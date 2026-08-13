@@ -47,15 +47,11 @@ type DemoStep =
   | { kind: "user"; text: string }
   | { kind: "card"; card: DemoCard };
 
-type DemoItem =
-  | { id: number; from: "eliza" | "user"; kind: "text"; text: string }
-  | { id: number; from: "eliza"; kind: "card"; card: DemoCard };
+type DemoItemInput =
+  | { from: "eliza" | "user"; kind: "text"; text: string }
+  | { from: "eliza"; kind: "card"; card: DemoCard };
 
-// Built-in Omit maps a union through only its shared keys, which would erase
-// the text/card payload that the discriminant guarantees. Keep each member
-// intact while removing the id assigned by the renderer.
-type WithoutId<Item> = Item extends { id: unknown } ? Omit<Item, "id"> : never;
-type DemoItemDraft = WithoutId<DemoItem>;
+type DemoItem = DemoItemInput & { id: number };
 
 const DEMO_INTRO: DemoStep[] = [
   { kind: "eliza", text: "Hey, it's Eliza — your new assistant." },
@@ -237,7 +233,7 @@ function PhoneMockup() {
     let cancelled = false;
     const sleep = (ms: number) =>
       new Promise<void>((resolve) => setTimeout(resolve, ms));
-    const append = (item: DemoItemDraft) => {
+    const append = (item: DemoItemInput) => {
       const id = nextIdRef.current;
       nextIdRef.current += 1;
       setItems((prev) => [

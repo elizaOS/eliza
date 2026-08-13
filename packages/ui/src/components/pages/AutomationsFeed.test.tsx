@@ -443,7 +443,7 @@ describe("AutomationsFeed", () => {
     );
 
     expect(openExternalUrlMock).toHaveBeenCalledWith(
-      "https://elizacloud.ai/dashboard/agents/de42b5ff-72d3-4a1a-8a16-19aee293bfea",
+      "https://cloud.eliza.app/cloud/agents/de42b5ff-72d3-4a1a-8a16-19aee293bfea",
     );
   });
 
@@ -582,7 +582,7 @@ describe("AutomationsFeed", () => {
       screen.getByRole("button", { name: "Upgrade to Dedicated" }),
     );
     expect(openExternalUrlMock).toHaveBeenCalledWith(
-      "https://elizacloud.ai/dashboard/agents/linked-shared-agent",
+      "https://cloud.eliza.app/cloud/agents/linked-shared-agent",
     );
   });
 

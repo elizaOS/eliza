@@ -18,7 +18,7 @@ export const DEPLOY_DRY_RUN_DESCRIPTION =
   "Print the deployment plan without network calls";
 
 const DOMAIN_REGEX = /^([a-z0-9]([a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,}$/;
-const DEFAULT_API_BASE_URL = "https://api.elizacloud.ai/api/v1";
+const DEFAULT_API_BASE_URL = "https://api.eliza.app/api/v1";
 const DEFAULT_POLL_INTERVAL_MS = 5_000;
 const DEFAULT_POLL_TIMEOUT_MS = 10 * 60_000;
 const APP_ID_KEYS = [
@@ -81,7 +81,7 @@ function buildPlan(options: DeployOptions, _cwd: string): PlannedStep[] {
       label: "attach custom domain",
       detail: domain
         ? `POST /api/v1/apps/${appId}/domains { domain: "${domain}" } and surface DNS TXT record if verification is pending.`
-        : "(no --domain provided — using default apps.elizacloud.ai subdomain).",
+        : "(no --domain provided — using default apps.eliza.app subdomain).",
       skipped: !domain,
     },
     {
@@ -91,8 +91,8 @@ function buildPlan(options: DeployOptions, _cwd: string): PlannedStep[] {
     {
       label: "print URL",
       detail: domain
-        ? `URL: https://${domain}  (+ apps.elizacloud.ai subdomain).`
-        : "URL: https://<subdomain>.apps.elizacloud.ai",
+        ? `URL: https://${domain}  (+ apps.eliza.app subdomain).`
+        : "URL: https://<subdomain>.apps.eliza.app",
     },
   ];
 }

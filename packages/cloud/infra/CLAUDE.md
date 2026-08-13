@@ -110,10 +110,10 @@ Three Terraform roots:
 - **`apps-data-plane/`** — manages Hetzner data-plane app server resources.
 - **`apps-shared/`** — manages shared Hetzner infrastructure.
 
-The separate **`cloudflare/pages-domains/`** root adopts and manages the
-environment-specific Pages custom domains and CNAMEs for `eliza-cloud` and
-`eliza-app`. Wrangler continues to own deployments and Worker routes; this root
-prevents dashboard-only domain/certificate drift.
+The separate **`cloudflare/pages-domains/`** root manages the canonical
+`eliza.app`/`cloud.eliza.app` Pages bindings, staging peers, legacy redirect
+DNS, and dedicated-agent certificates for the single `eliza-app` project.
+Wrangler continues to own deployments and Worker routes.
 
 The **data plane** is not in Terraform: dedicated robot nodes (`eliza-core-{env}-N`) are registered in the `docker_nodes` table (authoritative; `CONTAINERS_DOCKER_NODES` env only seeds when empty) and extra burst capacity (`eliza-core-<hex>`) is minted at runtime by `packages/cloud/shared/src/lib/services/containers/node-autoscaler.ts` via the Hetzner Cloud API.
 
@@ -155,7 +155,8 @@ Local dev only (copy `.env.example` → `.env` in `cloud/`):
 
 Hetzner Terraform (export before `terraform plan/apply`):
 - `HCLOUD_TOKEN` — Hetzner Cloud project API token
-- `CLOUDFLARE_API_TOKEN` — Cloudflare API token (DNS edit on `elizacloud.ai`)
+- `CLOUDFLARE_API_TOKEN` — Cloudflare API token (DNS edit on canonical
+  `eliza.app` and transitional `elizacloud.ai` zones)
 - `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` — Cloudflare R2 token (for Terraform remote state)
 
 Local cluster service env vars (copy from `.env.*.example`):

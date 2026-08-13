@@ -68,6 +68,7 @@ import type {
   SandboxWindowInfo,
 } from "./client-types";
 import {
+  DEFAULT_DIRECT_CLOUD_APP_BASE_URL,
   DEFAULT_DIRECT_CLOUD_BASE_URL,
   DIRECT_ELIZA_CLOUD_API_BY_HOST,
   resolveDirectCloudAuthApiBase,
@@ -438,7 +439,7 @@ function resolveBrowserCloudApiRequestUrl(url: string): string {
       return url;
     }
     // Same-origin collapse is valid only for production co-hosting, where
-    // app.elizacloud.ai proxies `/api` to the worker. On localhost dev, including
+    // cloud.eliza.app proxies `/api` to the worker. On localhost dev, including
     // shifted Vite ports such as 2160, the same path targets the local agent API
     // and trips its default-deny gate for `/api/auth/*`. Keep the absolute cloud
     // URL there; the worker CORS allowlist covers localhost ports.
@@ -461,6 +462,7 @@ function resolveBrowserCloudApiRequestUrl(url: string): string {
  * as files instead of rendering (#15143).
  */
 export {
+  resolveDirectCloudAppBase,
   resolveDirectCloudAuthApiBase,
   resolveDirectCloudWebBase,
 } from "./direct-cloud-endpoints";
@@ -930,7 +932,7 @@ function isDirectCloudAuthError(err: unknown): boolean {
 }
 
 function directTopUpUrl(): string {
-  return `${DEFAULT_DIRECT_CLOUD_BASE_URL}/dashboard/settings?tab=billing`;
+  return `${DEFAULT_DIRECT_CLOUD_APP_BASE_URL}/cloud/billing`;
 }
 
 function requireString(value: unknown, fieldName: string): string {
@@ -1786,7 +1788,7 @@ ElizaClient.prototype.getCloudCredits = async function (this: ElizaClient) {
 // than a steward session — the result degrades to `keys: null` with a reason
 // instead of throwing or fabricating an empty list.
 ElizaClient.prototype.listCloudApiKeys = async function (this: ElizaClient) {
-  const manageUrl = `${DEFAULT_DIRECT_CLOUD_BASE_URL}/dashboard/api-keys`;
+  const manageUrl = `${DEFAULT_DIRECT_CLOUD_APP_BASE_URL}/cloud/api-keys`;
   const directBase = resolveDirectCloudClientApiBase(this);
   if (!directBase || !readDirectCloudToken(this)) {
     return { keys: null, manageUrl, reason: "not-connected" as const };
@@ -3111,7 +3113,7 @@ ElizaClient.prototype.cloudLoginPollDirect = async function (
  * fall back to the raw container `bridgeUrl`.
  *
  * For a DEDICATED agent the server-provided `webUiUrl` IS the unified-auth
- * proxy base (`https://<agentId>.elizacloud.ai`, live since 2026-06-19 —
+ * proxy base (`https://<agentId>.cloud.eliza.app`, live since 2026-06-19 —
  * #8621/#8628): the Worker validates the caller's cloud token, swaps in the
  * container's own `ELIZA_API_TOKEN`, and auto-resumes a sleeping agent with
  * `202 + Retry-After`. Preferring `webUiUrl` is therefore what points the app
@@ -3700,7 +3702,7 @@ ElizaClient.prototype.selectOrProvisionCloudAgent = async function (
 
   // Create a NEW agent. createCloudCompatAgent provisions a DEDICATED (alwaysOn)
   // agent — the billed container product served at its own public subdomain
-  // (https://<id>.elizacloud.ai), reached with the cloud token via the
+  // (https://<id>.cloud.eliza.app), reached with the cloud token via the
   // unified-auth Worker. A dedicated agent's reachable base is that subdomain,
   // NOT the shared REST adapter (which 404s for non-shared agents), so resolve
   // the base from the agent's web_ui_url exactly like the reuse branch above.

@@ -6,7 +6,7 @@
 #
 # Required env vars / secrets (set on the Railway service before first deploy):
 #   GATEWAY_BOOTSTRAP_SECRET   Exchanged at startup for a JWT against ELIZA_CLOUD_URL.
-#   ELIZA_CLOUD_URL            Eliza Cloud API base URL (https://cloud.elizacloud.ai).
+#   ELIZA_CLOUD_URL            Eliza Cloud API base URL (https://api.eliza.app).
 #   REDIS_URL                  Upstash Redis REST URL (or KV_REST_API_URL).
 #   KV_REST_API_TOKEN          Upstash Redis REST token (paired with REDIS_URL/KV_REST_API_URL).
 #   AGENT_SERVER_SHARED_SECRET Shared secret for /internal/* routes from agent-server.

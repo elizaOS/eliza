@@ -45,7 +45,7 @@ const gatewayBootstrapSecret = process.env.GATEWAY_BOOTSTRAP_SECRET;
 const elizaCloudUrl =
   process.env.ELIZA_CLOUD_URL ||
   process.env.NEXT_PUBLIC_APP_URL ||
-  "https://elizacloud.ai";
+  "https://api.eliza.app";
 
 const project = process.env.PROJECT ?? "cloud";
 

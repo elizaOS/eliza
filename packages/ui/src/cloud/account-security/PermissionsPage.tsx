@@ -1,7 +1,7 @@
 /**
  * Standalone Plugin-grants console page mounted by the cloud router shell at
  * `dashboard/security/permissions` — cloud plugin-permission grants on the
- * apex console (elizacloud.ai), where the in-app Settings view never mounts.
+ * managed Cloud app (cloud.eliza.app), where the in-app Settings view never mounts.
  * Thin wrapper around the self-loading {@link PermissionsSurface} (the same
  * body the `cloud-plugin-grants` Settings section renders in the app).
  *

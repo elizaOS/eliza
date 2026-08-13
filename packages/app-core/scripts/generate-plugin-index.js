@@ -3,7 +3,7 @@
  * Generate plugins.json — a static manifest of all available plugins
  * that ships with the eliza package.
  *
- * Fetches plugin metadata from the public registry (plugins.elizacloud.ai)
+ * Fetches plugin metadata from the public registry (plugins.eliza.app)
  * and writes plugins.json to the eliza package root.
  *
  * Run from the eliza package directory:
@@ -22,7 +22,7 @@ const overridesPath = path.join(__dirname, "plugin-metadata-overrides.json");
 
 // Registry URL
 const GENERATED_REGISTRY_URL =
-  "https://plugins.elizacloud.ai/generated-registry.json";
+  "https://plugins.eliza.app/generated-registry.json";
 
 // ---------------------------------------------------------------------------
 // Category classification

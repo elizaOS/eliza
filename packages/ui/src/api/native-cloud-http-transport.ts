@@ -5,6 +5,10 @@
  */
 import { Capacitor, CapacitorHttp } from "@capacitor/core";
 import {
+  isElizaCloudControlPlaneHostname,
+  isElizaDedicatedAgentHostname,
+} from "@elizaos/shared/elizacloud";
+import {
   type AgentRequestTransport,
   bodyToString,
   fetchAgentTransport,
@@ -13,17 +17,9 @@ import {
   methodAllowsBody,
 } from "./transport";
 
-const DIRECT_CLOUD_API_HOSTS = new Set(["api.elizacloud.ai"]);
-const CLOUD_HOST_SUFFIX = ".elizacloud.ai";
-// Hosts under *.elizacloud.ai that are NOT dedicated agent subdomains: the
-// central API plus the web/auth hosts and the apex. None of these serve CORS
-// for the app origin, so their SSE must stay on CapacitorHttp's bypass path —
-// only `<agentId>.elizacloud.ai` subdomains route through native fetch.
-const NON_AGENT_CLOUD_HOSTS = new Set([
-  "api.elizacloud.ai",
-  "www.elizacloud.ai",
-  "dev.elizacloud.ai",
-  "elizacloud.ai",
+const DIRECT_CLOUD_API_HOSTS = new Set([
+  "api.eliza.app",
+  "api-staging.eliza.app",
 ]);
 
 function parseUrl(url: string): URL | null {
@@ -47,11 +43,11 @@ function isNativeDirectCloudApiUrl(url: string): boolean {
 }
 
 /**
- * A dedicated agent subdomain (`<agentId>.elizacloud.ai`) on a native build —
- * NOT the central `api.elizacloud.ai` host. Only these serve CORS for the app
+ * A dedicated agent subdomain (`<agentId>.cloud.eliza.app`) on a native build —
+ * NOT the central `api.eliza.app` host. Only these serve CORS for the app
  * origin (verified: `access-control-allow-origin: <webview origin>` +
  * `X-ElizaOS-Client-Id` in allow-headers), so the native browser fetch can read
- * an SSE stream cross-origin. The central `api.elizacloud.ai` does NOT allow the
+ * an SSE stream cross-origin. The central `api.eliza.app` does NOT allow the
  * app origin (it relies on CapacitorHttp's CORS bypass), so its SSE — e.g.
  * `computer-use/approvals/stream` — must stay on CapacitorHttp.
  */
@@ -61,7 +57,7 @@ function isNativeCloudAgentSubdomain(url: string): boolean {
   if (!Capacitor.isNativePlatform()) return false;
   if (parsed.protocol !== "https:") return false;
   const host = parsed.hostname.toLowerCase();
-  return !NON_AGENT_CLOUD_HOSTS.has(host) && host.endsWith(CLOUD_HOST_SUFFIX);
+  return isElizaDedicatedAgentHostname(host);
 }
 
 function isNativeCloudHttpsUrl(url: string): boolean {
@@ -69,7 +65,10 @@ function isNativeCloudHttpsUrl(url: string): boolean {
   if (!parsed || !Capacitor.isNativePlatform()) return false;
   if (parsed.protocol !== "https:") return false;
   const host = parsed.hostname.toLowerCase();
-  return host === "elizacloud.ai" || host.endsWith(CLOUD_HOST_SUFFIX);
+  return (
+    isElizaCloudControlPlaneHostname(host) ||
+    isElizaDedicatedAgentHostname(host)
+  );
 }
 
 type NativeWebFetch = (
@@ -113,7 +112,7 @@ const nativeCloudHttpTransport: AgentRequestTransport = {
     // `response.body` streams incrementally — first token in ~2s instead of the
     // full reply landing as one blob after generation finishes. Scoped to agent
     // subdomains only: they serve CORS for the app origin. The central
-    // `api.elizacloud.ai` does not, so its SSE stays on CapacitorHttp below.
+    // `api.eliza.app` does not, so its SSE stays on CapacitorHttp below.
     if (
       isNativeCloudAgentSubdomain(url) &&
       isStreamingRequest(url, init.headers)
@@ -151,7 +150,7 @@ const nativeCloudHttpTransport: AgentRequestTransport = {
       // the dedicated agent subdomain, and CapacitorHttp (unlike browser fetch)
       // would replay the Authorization header across a redirect. A 3xx here is a
       // misconfig/open-redirect signal — surface it instead of leaking the token
-      // off *.elizacloud.ai. (The agent-router/central API must never 30x a
+      // off the managed Eliza hosts. (The router/API must never 30x a
       // bearer-carrying request.)
       disableRedirects: true,
       ...(context?.timeoutMs

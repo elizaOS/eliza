@@ -2,12 +2,10 @@
 
 /**
  * Host-trust policy coverage focused on the strict iOS (store / cloud-runtime)
- * network policy — specifically that the canonical Eliza Cloud shared-tier hosts
- * are trusted even when `cloudApiBase` is NOT pinned to them, so the free
- * shared-agent bootstrap (`<host>/api/v1/eliza/agents/<id>`) is not rejected on a
- * store build. Under jsdom `window.location.hostname` is "localhost", so any
- * elizacloud.ai trust here comes purely from the shared-host predicate, not the
- * current-origin allowance.
+ * network policy — specifically that canonical eliza.app shared-tier hosts are
+ * trusted even when `cloudApiBase` is not pinned to them. Under jsdom
+ * `window.location.hostname` is "localhost", so trust here comes purely from
+ * the shared-host predicate, not the current-origin allowance.
  */
 
 import { describe, expect, it } from "vitest";
@@ -29,16 +27,19 @@ function strictStorePolicy(cloudApiBase?: string) {
 
 describe("isElizaCloudSharedHost", () => {
   it("matches the canonical shared-tier control-plane hosts (case-insensitive)", () => {
-    expect(isElizaCloudSharedHost("elizacloud.ai")).toBe(true);
-    expect(isElizaCloudSharedHost("www.elizacloud.ai")).toBe(true);
-    expect(isElizaCloudSharedHost("API.elizacloud.ai")).toBe(true);
+    expect(isElizaCloudSharedHost("eliza.app")).toBe(true);
+    expect(isElizaCloudSharedHost("cloud.eliza.app")).toBe(true);
+    expect(isElizaCloudSharedHost("API.eliza.app")).toBe(true);
+    expect(isElizaCloudSharedHost("api-staging.eliza.app")).toBe(true);
   });
 
-  it("does not match per-agent subdomains, staging, or arbitrary hosts", () => {
+  it("keeps redirect-era control planes trusted but excludes agent and arbitrary hosts", () => {
+    expect(isElizaCloudSharedHost("elizacloud.ai")).toBe(true);
+    expect(isElizaCloudSharedHost("api.elizacloud.ai")).toBe(true);
+    expect(isElizaCloudSharedHost("agent-123.cloud.eliza.app")).toBe(false);
     expect(isElizaCloudSharedHost("agent-123.elizacloud.ai")).toBe(false);
-    expect(isElizaCloudSharedHost("staging.elizacloud.ai")).toBe(false);
     expect(isElizaCloudSharedHost("evil.com")).toBe(false);
-    expect(isElizaCloudSharedHost("elizacloud.ai.evil.com")).toBe(false);
+    expect(isElizaCloudSharedHost("eliza.app.evil.com")).toBe(false);
   });
 });
 
@@ -47,21 +48,21 @@ describe("strict iOS policy — shared-tier bootstrap", () => {
     const policy = strictStorePolicy(undefined);
     expect(
       policy.isTrustedApiBaseUrl(
-        new URL("https://elizacloud.ai/api/v1/eliza/agents/agent-1"),
+        new URL("https://cloud.eliza.app/api/v1/eliza/agents/agent-1"),
       ),
     ).toBe(true);
     expect(
       policy.isTrustedApiBaseUrl(
-        new URL("https://api.elizacloud.ai/api/v1/eliza/agents/agent-1"),
+        new URL("https://api.eliza.app/api/v1/eliza/agents/agent-1"),
       ),
     ).toBe(true);
   });
 
   it("still rejects http:// and private/loopback hosts under the strict policy", () => {
     const policy = strictStorePolicy(undefined);
-    expect(
-      policy.isTrustedApiBaseUrl(new URL("http://elizacloud.ai/api")),
-    ).toBe(false);
+    expect(policy.isTrustedApiBaseUrl(new URL("http://eliza.app/api"))).toBe(
+      false,
+    );
     expect(policy.isTrustedApiBaseUrl(new URL("https://127.0.0.1/api"))).toBe(
       false,
     );
@@ -80,7 +81,7 @@ describe("strict iOS policy — shared-tier bootstrap", () => {
   it("also trusts the shared hosts on the deep-link gateway path", () => {
     const policy = strictStorePolicy(undefined);
     expect(
-      policy.isTrustedDeepLinkApiBaseUrl(new URL("https://elizacloud.ai/api")),
+      policy.isTrustedDeepLinkApiBaseUrl(new URL("https://api.eliza.app/api")),
     ).toBe(true);
     expect(
       policy.isTrustedDeepLinkApiBaseUrl(new URL("https://evil.com/api")),

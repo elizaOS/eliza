@@ -5,6 +5,7 @@
  * and performs no user, organization, identity, or tenant provisioning.
  */
 
+import { ELIZA_DOMAIN_CONTRACTS } from "@elizaos/shared/elizacloud";
 import { Hono } from "hono";
 import { ApiError } from "@/lib/api/cloud-worker-errors";
 import {
@@ -36,9 +37,9 @@ import {
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
-const STAGING_API_ORIGIN = "https://api-staging.elizacloud.ai";
-const STAGING_API_HOST = "api-staging.elizacloud.ai";
-const STAGING_APP_ORIGIN = "https://app-staging.elizacloud.ai";
+const STAGING_API_ORIGIN = ELIZA_DOMAIN_CONTRACTS.staging.cloudApiOrigin;
+const STAGING_API_HOST = new URL(STAGING_API_ORIGIN).hostname;
+const STAGING_APP_ORIGIN = ELIZA_DOMAIN_CONTRACTS.staging.cloudAppOrigin;
 
 function errorBody(
   message: string,

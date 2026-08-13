@@ -1,10 +1,10 @@
 /**
  * Default user avatars for new account creation.
- * Served from Cloudflare R2 CDN (blob.elizacloud.ai).
+ * Served from Cloudflare R2 CDN (blob.eliza.app).
  * Override the CDN base via NEXT_PUBLIC_ASSETS_CDN_URL.
  */
 
-const DEFAULT_CDN_BASE = "https://blob.elizacloud.ai";
+const DEFAULT_CDN_BASE = "https://blob.eliza.app";
 
 function cdnUrl(path: string): string {
   const base =

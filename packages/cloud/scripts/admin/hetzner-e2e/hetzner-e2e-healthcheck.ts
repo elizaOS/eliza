@@ -7,7 +7,7 @@
 
 import { readState } from "./state-file";
 
-const DEFAULT_BASE_URL = "https://api-staging.elizacloud.ai";
+const DEFAULT_BASE_URL = "https://api-staging.eliza.app";
 const DEFAULT_MAX_ATTEMPTS = 10;
 const DEFAULT_RETRY_DELAY_MS = 2_000;
 

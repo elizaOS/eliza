@@ -1,21 +1,16 @@
 name: Cloud CF Deploy
 
-# Cloudflare deployment for the Eliza Cloud surfaces + Workers API.
+# Cloudflare deployment for the consolidated Eliza frontend and Workers API.
 #
-# The web frontend builds ONE codebase (packages/app, which mounts the whole
-# cloud UI via @elizaos/ui/cloud) into TWO Pages projects (two domains, one
-# build target — packages/cloud/frontend has been deleted):
-#   - `eliza-cloud`  ->  packages/app (build:web)  ->  elizacloud.ai apex
-#       The cloud console (lander + dashboard) origin. Steward login + dashboard.
-#   - `eliza-app`    ->  packages/app (build:web)  ->  app.elizacloud.ai
-#       The Eliza agent app (chat + views) — the same web UI as `bun run dev`.
-# This re-consolidates the brief Topology-A apex split: both the apex and the
-# subdomain now serve packages/app; the only difference is the canonical-origin
-# env baked into each bundle (apex = elizacloud.ai, subdomain = app.elizacloud.ai).
+# One packages/app build is deployed to the `eliza-app` Pages project. Host-aware
+# routing serves the public homepage on eliza.app and the managed agent/cloud
+# experience on cloud.eliza.app. Legacy elizacloud.ai hosts are Worker-owned
+# redirect inputs and never receive a separately built frontend.
 #
-# Per environment (both projects):
-# - push to develop  -> staging   (api-staging.elizacloud.ai; staging.* / app-staging.*)
-# - push to main     -> production (api.elizacloud.ai; elizacloud.ai / app.elizacloud.ai)
+# Per environment:
+# - push to develop  -> staging   (staging.eliza.app, cloud-staging.eliza.app,
+#                                   api-staging.eliza.app)
+# - push to main     -> production (eliza.app, cloud.eliza.app, api.eliza.app)
 # - pull_request     -> build isolated Pages artifacts without credentials;
 #                       `.github/workflows/cloud-cf-pr-preview-deploy.yml`
 #                       performs the trusted `pr-<number>` deployment afterward.
@@ -23,6 +18,10 @@ name: Cloud CF Deploy
 # Required repo secrets:
 #   CLOUDFLARE_API_TOKEN   - account-scoped token with Workers + Pages edit perms
 #   CLOUDFLARE_ACCOUNT_ID  - matches account_id in packages/cloud/api/wrangler.toml
+# Shared Worker/control-plane secrets are published only when the selected
+# GitHub environment explicitly configures them. An absent GitHub value never
+# deletes or overwrites an existing Worker binding; a post-deploy names-only
+# inventory gate verifies the required bindings without reading their values.
 # Provider secrets are published when configured (the Worker calls native
 # providers directly and uses OpenRouter as the backup):
 #   OPENROUTER_API_KEY, CEREBRAS_API_KEY, OPENAI_API_KEY, ANTHROPIC_API_KEY,
@@ -52,6 +51,8 @@ on:
       - "packages/cloud/scripts/**"
       - "packages/app/**"
       - "packages/app-core/**"
+      - "packages/homepage/**"
+      - "packages/shared/**"
       - "packages/ui/**"
       - ".github/workflows/cloud-cf-deploy.yml"
       - ".github/workflows/cloud-cf-pr-preview-deploy.yml"
@@ -65,6 +66,8 @@ on:
       - "packages/cloud/scripts/**"
       - "packages/app/**"
       - "packages/app-core/**"
+      - "packages/homepage/**"
+      - "packages/shared/**"
       - "packages/ui/**"
       - ".github/workflows/cloud-cf-deploy.yml"
       - ".github/workflows/cloud-cf-pr-preview-deploy.yml"
@@ -535,7 +538,7 @@ jobs:
         if: steps.cf.outputs.configured == 'true'
         working-directory: ${{ env.CHECKOUT_DIR }}
         env:
-          SERVED_URL: ${{ steps.env.outputs.deploy_environment == 'production' && 'https://api.elizacloud.ai' || 'https://api-staging.elizacloud.ai' }}
+          SERVED_URL: ${{ steps.env.outputs.deploy_environment == 'production' && 'https://api.eliza.app' || 'https://api-staging.eliza.app' }}
           FORCE: ${{ github.event_name == 'workflow_dispatch' && inputs.force == true }}
         run: |
           args=(--run-sha "$GITHUB_SHA" --served-url "$SERVED_URL" --served-path /api/health)
@@ -543,6 +546,46 @@ jobs:
             args+=(--force)
           fi
           node packages/cloud/scripts/deploy-freshness-guard-cli.mjs "${args[@]}"
+
+      - name: Validate canonical routing contract
+        if: steps.cf.outputs.configured == 'true' && steps.freshness.outputs.should_deploy == 'true'
+        working-directory: ${{ env.CHECKOUT_DIR }}
+        env:
+          TARGET_ENVIRONMENT: ${{ steps.env.outputs.deploy_environment }}
+          API_ORIGIN: ${{ steps.env.outputs.deploy_environment == 'production' && 'https://api.eliza.app' || 'https://api-staging.eliza.app' }}
+          MARKETING_ORIGIN: ${{ steps.env.outputs.deploy_environment == 'production' && 'https://eliza.app' || 'https://staging.eliza.app' }}
+          CLOUD_APP_ORIGIN: ${{ steps.env.outputs.deploy_environment == 'production' && 'https://cloud.eliza.app' || 'https://cloud-staging.eliza.app' }}
+          AGENT_BASE_DOMAIN: ${{ steps.env.outputs.deploy_environment == 'production' && 'cloud.eliza.app' || 'cloud-staging.eliza.app' }}
+          HEADSCALE_ORIGIN: ${{ steps.env.outputs.deploy_environment == 'production' && 'https://headscale.eliza.app' || 'https://headscale-staging.eliza.app' }}
+          RELAY_ORIGIN: ${{ steps.env.outputs.deploy_environment == 'production' && 'https://relay.eliza.app' || 'https://relay-staging.eliza.app' }}
+        run: |
+          set -euo pipefail
+
+          require_exact() {
+            local name="$1"
+            local actual="$2"
+            local expected="$3"
+            if [ "$actual" != "$expected" ]; then
+              echo "::error::$name does not match the canonical $TARGET_ENVIRONMENT routing contract"
+              exit 1
+            fi
+          }
+
+          if [ "$TARGET_ENVIRONMENT" = "production" ]; then
+            require_exact API_ORIGIN "$API_ORIGIN" "https://api.eliza.app"
+            require_exact MARKETING_ORIGIN "$MARKETING_ORIGIN" "https://eliza.app"
+            require_exact CLOUD_APP_ORIGIN "$CLOUD_APP_ORIGIN" "https://cloud.eliza.app"
+            require_exact AGENT_BASE_DOMAIN "$AGENT_BASE_DOMAIN" "cloud.eliza.app"
+            require_exact HEADSCALE_ORIGIN "$HEADSCALE_ORIGIN" "https://headscale.eliza.app"
+            require_exact RELAY_ORIGIN "$RELAY_ORIGIN" "https://relay.eliza.app"
+          else
+            require_exact API_ORIGIN "$API_ORIGIN" "https://api-staging.eliza.app"
+            require_exact MARKETING_ORIGIN "$MARKETING_ORIGIN" "https://staging.eliza.app"
+            require_exact CLOUD_APP_ORIGIN "$CLOUD_APP_ORIGIN" "https://cloud-staging.eliza.app"
+            require_exact AGENT_BASE_DOMAIN "$AGENT_BASE_DOMAIN" "cloud-staging.eliza.app"
+            require_exact HEADSCALE_ORIGIN "$HEADSCALE_ORIGIN" "https://headscale-staging.eliza.app"
+            require_exact RELAY_ORIGIN "$RELAY_ORIGIN" "https://relay-staging.eliza.app"
+          fi
 
       - name: Disable staging session exchange before cutover
         if: steps.cf.outputs.configured == 'true' && steps.freshness.outputs.should_deploy == 'true' && steps.env.outputs.deploy_environment == 'staging'
@@ -571,6 +614,11 @@ jobs:
         working-directory: ${{ env.CHECKOUT_DIR }}/packages/cloud/api
         env:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL || secrets.RAILWAY_DATABASE_URL || secrets.NEON_DATABASE_URL }}
+          HEADSCALE_API_KEY: ${{ secrets.HEADSCALE_API_KEY }}
+          CONTAINERS_SSH_KEY: ${{ secrets.CONTAINERS_SSH_KEY }}
+          SECRETS_MASTER_KEY: ${{ secrets.SECRETS_MASTER_KEY }}
+          TUNNEL_HOSTNAME_SIGNING_SECRET: ${{ secrets.TUNNEL_HOSTNAME_SIGNING_SECRET }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
@@ -878,6 +926,20 @@ jobs:
             done
           fi
 
+          # Publish only values explicitly configured in this protected GitHub
+          # environment. publish_secret intentionally skips blank values, which
+          # preserves an existing Cloudflare binding that GitHub cannot recover.
+          managed_worker_provisioning_secrets=(
+            DATABASE_URL
+            HEADSCALE_API_KEY
+            CONTAINERS_SSH_KEY
+            SECRETS_MASTER_KEY
+            TUNNEL_HOSTNAME_SIGNING_SECRET
+          )
+          for name in "${managed_worker_provisioning_secrets[@]}"; do
+            publish_secret "$name" || exit 1
+          done
+
           for name in \
             OPENROUTER_API_KEY \
             OPENAI_API_KEY \
@@ -979,11 +1041,44 @@ jobs:
           bunx wrangler deploy "${args[@]}"
           trap - ERR
 
+      - name: Verify required Worker secret binding names
+        if: steps.cf.outputs.configured == 'true' && steps.freshness.outputs.should_deploy == 'true'
+        working-directory: ${{ env.CHECKOUT_DIR }}/packages/cloud/api
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          secret_inventory="$(bunx wrangler@4.100.0 secret list ${{ steps.env.outputs.wrangler_args }} --format json)"
+          printf '%s' "$secret_inventory" | node -e '
+            const fs = require("node:fs");
+            const parsed = JSON.parse(fs.readFileSync(0, "utf8"));
+            const entries = Array.isArray(parsed)
+              ? parsed
+              : Array.isArray(parsed?.result)
+                ? parsed.result
+                : [];
+            const present = new Set(entries.map((entry) => entry?.name).filter(Boolean));
+            const required = [
+              "DATABASE_URL",
+              "HEADSCALE_API_KEY",
+              "CONTAINERS_SSH_KEY",
+              "SECRETS_MASTER_KEY",
+              "TUNNEL_HOSTNAME_SIGNING_SECRET",
+            ];
+            const missing = required.filter((name) => !present.has(name));
+            if (missing.length > 0) {
+              console.error(`::error::Missing required Worker secret binding name(s): ${missing.join(" ")}`);
+              process.exit(1);
+            }
+            console.log(`Verified ${required.length} required Worker secret binding names; values were not read.`);
+          '
+
       - name: Verify deployed API commit
         if: steps.cf.outputs.configured == 'true' && steps.freshness.outputs.should_deploy == 'true'
         working-directory: ${{ env.CHECKOUT_DIR }}
         env:
-          API_URL: ${{ steps.env.outputs.deploy_environment == 'production' && 'https://api.elizacloud.ai' || 'https://api-staging.elizacloud.ai' }}
+          API_URL: ${{ steps.env.outputs.deploy_environment == 'production' && 'https://api.eliza.app' || 'https://api-staging.eliza.app' }}
           DEPLOY_ENVIRONMENT: ${{ steps.env.outputs.deploy_environment }}
         run: |
           set -euo pipefail
@@ -1052,7 +1147,7 @@ jobs:
             for attempt in 1 2 3 4 5 6; do
               code="$(curl -sS -o /tmp/realtime-rollback.json -w '%{http_code}' -m 20 \
                 -X POST -H "X-API-Key: $STAGING_ELIZACLOUD_API_KEY" \
-                https://api-staging.elizacloud.ai/api/v1/voice/session/consent || echo '000')"
+                https://api-staging.eliza.app/api/v1/voice/session/consent || echo '000')"
               [ "$code" = "404" ] && return 0
               [ "$attempt" -lt 6 ] && sleep 10
             done
@@ -1080,7 +1175,7 @@ jobs:
             body="$(mktemp)"
             code="$(curl -sS -o "$body" -w '%{http_code}' -m 20 \
               -X POST -H "X-API-Key: $STAGING_ELIZACLOUD_API_KEY" \
-              https://api-staging.elizacloud.ai/api/v1/voice/session/consent || echo '000')"
+              https://api-staging.eliza.app/api/v1/voice/session/consent || echo '000')"
             if [ "$code" = "200" ] && node - "$body" <<'NODE'
           const fs = require("fs");
           const body = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
@@ -1109,7 +1204,7 @@ jobs:
           STAGING_SESSION_EXCHANGE_DESIRED_ENABLED: ${{ contains(fromJSON('["1","true","TRUE","True","yes","YES","Yes","on","ON","On"]'), vars.STAGING_SESSION_EXCHANGE_ENABLED) && 'true' || 'false' }}
         run: |
           set -euo pipefail
-          health_url="https://api-staging.elizacloud.ai/api/health"
+          health_url="https://api-staging.eliza.app/api/health"
           expected_enabled="$STAGING_SESSION_EXCHANGE_DESIRED_ENABLED"
 
           rollback_gate() {
@@ -1215,7 +1310,7 @@ jobs:
           fi
 
   # ---------------------------------------------------------------------------
-  # Pages build — one prepared workspace emits both canonical-origin variants.
+  # Pages build — one prepared workspace emits the host-aware frontend.
   # ---------------------------------------------------------------------------
   build-pages:
     name: Build Pages artifacts
@@ -1273,22 +1368,22 @@ jobs:
         with:
           bun-version: "1.3.14"
 
-      - name: Install dependencies once for both Pages variants
+      - name: Install frontend dependencies
         run: bun install --frozen-lockfile --ignore-scripts
 
       - name: Build linked elizaOS core workspace once
         run: bun run build:core
 
-      - name: Build console artifact
+      - name: Build consolidated frontend artifact
         run: bun run --cwd packages/app build:web
         env:
-          VITE_API_URL: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'https://api.elizacloud.ai' || 'https://api-staging.elizacloud.ai' }}
-          NEXT_PUBLIC_API_URL: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'https://api.elizacloud.ai' || 'https://api-staging.elizacloud.ai' }}
-          VITE_OIDC_ISSUER_URL: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'https://api.elizacloud.ai' || 'https://api-staging.elizacloud.ai' }}
-          VITE_ELIZA_CLOUD_BASE: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'https://www.elizacloud.ai' || 'https://staging.elizacloud.ai' }}
-          VITE_APP_URL: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'https://elizacloud.ai' || 'https://staging.elizacloud.ai' }}
-          NEXT_PUBLIC_APP_URL: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'https://elizacloud.ai' || 'https://staging.elizacloud.ai' }}
-          VITE_ELIZA_APP_URL: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'https://app.elizacloud.ai' || 'https://app-staging.elizacloud.ai' }}
+          VITE_API_URL: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'https://api.eliza.app' || 'https://api-staging.eliza.app' }}
+          NEXT_PUBLIC_API_URL: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'https://api.eliza.app' || 'https://api-staging.eliza.app' }}
+          VITE_OIDC_ISSUER_URL: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'https://api.eliza.app' || 'https://api-staging.eliza.app' }}
+          VITE_ELIZA_CLOUD_BASE: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'https://cloud.eliza.app' || 'https://cloud-staging.eliza.app' }}
+          VITE_APP_URL: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'https://eliza.app' || 'https://staging.eliza.app' }}
+          NEXT_PUBLIC_APP_URL: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'https://cloud.eliza.app' || 'https://cloud-staging.eliza.app' }}
+          VITE_ELIZA_APP_URL: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'https://cloud.eliza.app' || 'https://cloud-staging.eliza.app' }}
           VITE_STEWARD_TENANT_ID: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'elizacloud' || 'elizacloud-staging' }}
           NEXT_PUBLIC_STEWARD_TENANT_ID: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'elizacloud' || 'elizacloud-staging' }}
           VITE_ENVIRONMENT: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'production' || 'staging' }}
@@ -1296,39 +1391,10 @@ jobs:
           VITE_VOICE_REALTIME_FORCE: "0"
           NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID: ${{ vars.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID }}
 
-      - name: Verify console chunk safety
+      - name: Verify frontend chunk safety
         run: bun run --cwd packages/app verify:chunks
 
-      - name: Upload console artifact
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
-        with:
-          name: pages-console-${{ steps.pages-artifact.outputs.run_id }}-${{ steps.pages-artifact.outputs.run_attempt }}
-          path: |
-            packages/app/dist
-            packages/app/functions
-            packages/app/wrangler.toml
-          if-no-files-found: error
-          retention-days: 1
-
-      - name: Build app artifact
-        run: bun run --cwd packages/app build:web
-        env:
-          VITE_API_URL: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'https://api.elizacloud.ai' || 'https://api-staging.elizacloud.ai' }}
-          NEXT_PUBLIC_API_URL: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'https://api.elizacloud.ai' || 'https://api-staging.elizacloud.ai' }}
-          VITE_OIDC_ISSUER_URL: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'https://api.elizacloud.ai' || 'https://api-staging.elizacloud.ai' }}
-          VITE_ELIZA_CLOUD_BASE: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'https://www.elizacloud.ai' || 'https://staging.elizacloud.ai' }}
-          NEXT_PUBLIC_APP_URL: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'https://app.elizacloud.ai' || 'https://app-staging.elizacloud.ai' }}
-          VITE_STEWARD_TENANT_ID: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'elizacloud' || 'elizacloud-staging' }}
-          NEXT_PUBLIC_STEWARD_TENANT_ID: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'elizacloud' || 'elizacloud-staging' }}
-          VITE_ENVIRONMENT: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'production' || 'staging' }}
-          VITE_VOICE_REALTIME_WS: ${{ !((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && contains(fromJSON('["1","true","TRUE","True","yes","YES","Yes","on","ON","On"]'), vars.VOICE_REALTIME_WS_ENABLED) && '1' || '0' }}
-          VITE_VOICE_REALTIME_FORCE: "0"
-          NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID: ${{ vars.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID }}
-
-      - name: Verify app chunk safety
-        run: bun run --cwd packages/app verify:chunks
-
-      - name: Upload app artifact
+      - name: Upload consolidated frontend artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: pages-app-${{ steps.pages-artifact.outputs.run_id }}-${{ steps.pages-artifact.outputs.run_attempt }}
@@ -1340,462 +1406,12 @@ jobs:
           retention-days: 1
 
   # ---------------------------------------------------------------------------
-  # Console frontend (Cloudflare Pages) — packages/app at the elizacloud.ai apex.
-  # The cloud console (lander + dashboard) origin, built from packages/app (which
-  # mounts the cloud UI via @elizaos/ui/cloud). Deploys to the `eliza-cloud`
-  # Pages project. The only difference from the `deploy-app` job below is the
-  # canonical-origin env baked into the bundle (apex vs the app.* subdomain).
-  # ---------------------------------------------------------------------------
-  deploy-console:
-    name: Deploy Console (Pages · elizacloud.ai)
-    # Per-env (or per-PR) job concurrency so a newer main promote queues behind
-    # the in-flight prod Pages deploy instead of cancelling it (#11640); PR
-    # previews keep a per-PR group that DOES dedupe (cancel-in-progress).
-    concurrency:
-      group: cloud-cf-deploy-console-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || (((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'production' || 'staging') }}
-      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
-    # Hosted unconditionally to preserve CI/placement workload separation.
-    runs-on: ubuntu-latest
-    timeout-minutes: 75
-    # Release gate (#11208/#18088): build the Pages artifacts in parallel with
-    # the API, but do not move a canonical Pages alias until both the artifact
-    # and the matching API deployment have succeeded. Pull requests publish
-    # only through the separate trusted workflow_run consumer.
-    needs: [deploy-api, build-pages]
-    if: ${{ !cancelled() && github.event_name != 'pull_request' && needs.deploy-api.result == 'success' && needs.build-pages.result == 'success' }}
-    env:
-      CHECKOUT_DIR: /tmp/eliza-checkout-${{ github.run_id }}-${{ github.run_attempt }}-deploy-console
-      CHECKOUT_MATERIALIZE_TIMEOUT_SECONDS: ${{ vars.CLOUD_CF_CHECKOUT_MATERIALIZE_TIMEOUT_SECONDS || '600' }}
-    steps:
-      - name: Reclaim disk from leaked checkouts of prior runs
-        continue-on-error: true
-        run: |
-          # Cancelled/killed deploy runs never reach the trailing "Clean temp
-          # checkout" step, so their /tmp/eliza-checkout-* trees (a full ~46k-file
-          # monorepo materialization) leak and pile up on this shared self-hosted
-          # box until disk/inodes are exhausted and materialization times out —
-          # freezing prod (elizaOS/eliza#10839). Reclaim leaked trees, but ONLY
-          # ones idle >90 min: a real deploy job runs <~50 min and self-cleans, so
-          # a dir untouched for 90 min is a definitively-dead leak.
-          # CONCURRENCY-SAFE: API, console, and app jobs within one release still
-          # materialize concurrently, and PR previews use independent groups. The
-          # age filter never deletes an actively-written checkout (its mtime stays
-          # fresh), and we also exclude this run's own dirs by name.
-          # UNFAILABLE BY CONSTRUCTION: sibling runs execute this same step at the
-          # same moment, so one sibling's rm -rf can race another's find into
-          # ENOENT (exit 1) — under the job's default `bash -e` (plus the pipefail
-          # this step previously set) that killed whole deploy jobs at step one.
-          # set +e swallows every failure mode, exit 0 guarantees the step, and
-          # continue-on-error guards future edits.
-          set +e
-          set +o pipefail
-          find_stale_checkouts() {
-            timeout 20s find /tmp -maxdepth 1 -type d \
-              -name 'eliza-checkout-*' \
-              -mmin +90 \
-              ! -name "eliza-checkout-${{ github.run_id }}-*" \
-              2>/dev/null || true
-          }
-          mapfile -t stale_dirs < <(find_stale_checkouts)
-          stale=${#stale_dirs[@]}
-          moved=0
-          index=0
-          for dir in "${stale_dirs[@]}"; do
-            index=$((index + 1))
-            stale_dir="/tmp/eliza-stale-checkout-${GITHUB_RUN_ID:-run}-${GITHUB_RUN_ATTEMPT:-0}-${GITHUB_JOB:-job}-${index}"
-            if mv "$dir" "$stale_dir" 2>/dev/null; then
-              moved=$((moved + 1))
-              nohup bash -c 'timeout 180s rm -rf "$1" || true' _ "$stale_dir" >/dev/null 2>&1 &
-            fi
-          done
-          echo "Scheduled background cleanup for ${moved}/${stale:-0} stale (idle >90min) leaked checkout dir(s)."
-          df -h /tmp / 2>/dev/null | tail -2
-          exit 0
-      - name: Checkout repository
-        timeout-minutes: 20
-        env:
-          CHECKOUT_TOKEN: ${{ github.token }}
-        working-directory: /tmp
-        run: |
-          set -euo pipefail
-          init_checkout_dir() {
-            mkdir -p "$CHECKOUT_DIR"
-            git init -q "$CHECKOUT_DIR"
-            git -C "$CHECKOUT_DIR" remote set-url origin "https://x-access-token:${CHECKOUT_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" 2>/dev/null \
-              || git -C "$CHECKOUT_DIR" remote add origin "https://x-access-token:${CHECKOUT_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
-          }
-          init_checkout_dir
-          # Shared, heavily-loaded self-hosted box (wrangler dev + PGlite + the full
-          # Worker suite): a single shallow fetch can stall for minutes or wedge
-          # entirely. Retry with a per-attempt timeout so a stuck fetch aborts and
-          # retries instead of burning the whole step budget (the #10310 stuck-checkout).
-          # http.version=HTTP/1.1: concurrent fetches of this large repo on the
-          # loaded box die under HTTP/2 (`curl 92 ... CANCEL` / `early EOF` /
-          # `invalid index-pack output`, observed run 28544777730); HTTP/1.1
-          # avoids the h2 stream-reset path at negligible single-stream cost.
-          fetched=
-          for attempt in 1 2 3; do
-            # Pages builds materialize packages/app + linked UI/core workspaces.
-            # Blobless fetch pushes that cost into checkout as lazy hydration and
-            # has repeatedly timed out on the deploy fleet, so use a normal
-            # shallow fetch here.
-            if timeout 420s git -C "$CHECKOUT_DIR" -c protocol.version=2 -c http.version=HTTP/1.1 fetch --force --no-tags --depth=1 origin "$GITHUB_SHA"; then
-              fetched=1
-              break
-            fi
-            echo "::warning::checkout fetch attempt ${attempt} stalled or failed; retrying"
-            if [ "$attempt" -lt 3 ]; then
-              rm -rf "$CHECKOUT_DIR"
-              sleep 10
-              init_checkout_dir
-            fi
-          done
-          [ -n "$fetched" ] || { echo "::error::git fetch failed after 3 attempts"; exit 1; }
-          # checkout --force --detach fully materializes the working tree from the
-          # fetched commit; the prior extra `git reset --hard` re-wrote the entire
-          # tree a second time, doubling the slowest part on this large repo. Keep
-          # this bounded, but give the large monorepo enough time on busy deploy
-          # runners and let Git parallelize path materialization when supported.
-          timeout "${CHECKOUT_MATERIALIZE_TIMEOUT_SECONDS}s" \
-            git -C "$CHECKOUT_DIR" \
-              -c checkout.workers=8 \
-              -c checkout.thresholdForParallelism=100 \
-              checkout --force --detach FETCH_HEAD \
-            || { echo "::error::git checkout (working-tree materialization) timed out or failed after ${CHECKOUT_MATERIALIZE_TIMEOUT_SECONDS}s"; exit 1; }
-
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
-        with:
-          node-version: "24.15.0"
-
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
-        with:
-          # Pinned off `canary`: canary's link phase hangs on the self-hosted
-          # runners (bun install resolves+extracts in ~2min then stalls past the
-          # 900s cap, ×3 retries), stranding prod deploys — observed on runs
-          # 28552075615 and 28569068598 (the money-integrity wave). A released
-          # Bun 1.3.14 does not exhibit the hang and avoids the floating-tag API
-          # lookup during setup. See elizaOS/eliza#10839.
-          bun-version: "1.3.14"
-
-      - name: Resolve immutable console artifact
-        id: pages-artifact
-        env:
-          PRODUCER_RUN_ID: ${{ needs.build-pages.outputs.artifact_run_id }}
-          PRODUCER_RUN_ATTEMPT: ${{ needs.build-pages.outputs.artifact_run_attempt }}
-          PRODUCER_SOURCE_SHA: ${{ needs.build-pages.outputs.artifact_source_sha }}
-        run: |
-          set -euo pipefail
-          if ! [[ "$PRODUCER_RUN_ID" =~ ^[1-9][0-9]*$ ]]; then
-            echo "::error::Pages producer run ID is missing or invalid"
-            exit 1
-          fi
-          if ! [[ "$PRODUCER_RUN_ATTEMPT" =~ ^[1-9][0-9]*$ ]]; then
-            echo "::error::Pages producer run attempt is missing or invalid"
-            exit 1
-          fi
-          if [ "$PRODUCER_RUN_ID" != "$GITHUB_RUN_ID" ]; then
-            echo "::error::Pages artifact run mismatch: producer=$PRODUCER_RUN_ID consumer=$GITHUB_RUN_ID"
-            exit 1
-          fi
-          if [ "$PRODUCER_SOURCE_SHA" != "$GITHUB_SHA" ]; then
-            echo "::error::Pages artifact SHA mismatch: producer=$PRODUCER_SOURCE_SHA consumer=$GITHUB_SHA"
-            exit 1
-          fi
-          echo "name=pages-console-${PRODUCER_RUN_ID}-${PRODUCER_RUN_ATTEMPT}" >> "$GITHUB_OUTPUT"
-
-      - name: Download immutable console artifact
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
-        with:
-          name: ${{ steps.pages-artifact.outputs.name }}
-          path: ${{ env.CHECKOUT_DIR }}/packages/app
-
-      - name: Legacy inline fallback - install dependencies
-        if: ${{ vars.CLOUD_CF_LEGACY_INLINE_BUILD == 'true' }}
-        working-directory: ${{ env.CHECKOUT_DIR }}
-        # The shared self-hosted deploy box can stall or kill a single bun
-        # install mid-flight (contended cache/IO), which surfaced as a
-        # "cancelled" install step failing an otherwise-green deploy while every
-        # sibling deploy job on the same run succeeded. Retry with a per-attempt
-        # timeout so a stuck/killed install aborts and retries instead of failing
-        # the deploy — the same resilience the checkout step already uses (#10310).
-        # The cap must exceed the box's real worst-case SLOW install, not just
-        # catch hangs: healthy installs here run ~190-300s+ (run 28532809562's
-        # first attempt already blew a 300s cap and only survived via retry),
-        # and on 2026-07-01 run 28545551059 failed 3/3 attempts at a 300s cap
-        # while making real progress — wedging prod for hours (#10839). 900s
-        # matches CHECKOUT_MATERIALIZE_TIMEOUT_SECONDS; a true hang still aborts.
-        run: |
-          set -euo pipefail
-          # Cache on LOCAL disk ($HOME), not under $PWD — the checkout dir lives
-          # on the box's /tmp, whose contended/slow filesystem stalls bun's link
-          # phase past the 900s cap and wedges deploys (bun itself logs "Slow
-          # filesystem detected ... consider setting $BUN_INSTALL_CACHE_DIR to a
-          # local folder"). This is the real fix; the earlier canary→latest pin
-          # (#11235) did not address it — the hang recurs on a released bun too
-          # (run 28572046433). Persistent across runs so the cache stays warm.
-          install_cache="${HOME}/.bun-install-cache-deploy"
-          install_timeout="${BUN_INSTALL_TIMEOUT_SECONDS:-2400}"
-          for attempt in 1 2 3; do
-            test -f package.json || { echo "::error::package.json missing from $PWD"; ls -la; exit 1; }
-            mkdir -p "$install_cache"
-            if timeout "${install_timeout}s" bun install --frozen-lockfile --no-save --ignore-scripts --cache-dir "$install_cache"; then
-              break
-            fi
-            if [ "$attempt" -eq 3 ]; then
-              echo "::error::bun install failed after ${attempt} attempts"
-              exit 1
-            fi
-            echo "::warning::bun install attempt ${attempt} timed out (>${install_timeout}s) or failed; retrying"
-            # Keep the download cache warm for the retry — the timeout bites in
-            # the link phase, not download, and a cold cache makes the retry
-            # SLOWER (more likely to time out again). Nuke it only before the
-            # final attempt so a corrupted cache entry can't fail all three.
-            rm -rf node_modules
-            if [ "$attempt" -eq 2 ]; then rm -rf "$install_cache"; fi
-          done
-          git diff --exit-code -- bun.lock
-
-      - name: Legacy inline fallback - build linked core
-        if: ${{ vars.CLOUD_CF_LEGACY_INLINE_BUILD == 'true' }}
-        working-directory: ${{ env.CHECKOUT_DIR }}
-        run: bun run build:core
-
-      # The cloud console origin, built from packages/app. The vite build is the
-      # gate (it resolves @elizaos/* to source); typecheck is enforced by the
-      # separate verify workflow, not here. Identical build to deploy-app — only
-      # the canonical-origin env below differs (apex vs app.* subdomain).
-      - name: Legacy inline fallback - build console
-        if: ${{ vars.CLOUD_CF_LEGACY_INLINE_BUILD == 'true' }}
-        working-directory: ${{ env.CHECKOUT_DIR }}
-        run: bun run --cwd packages/app build:web
-        env:
-          VITE_API_URL: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'https://api.elizacloud.ai' || 'https://api-staging.elizacloud.ai' }}
-          NEXT_PUBLIC_API_URL: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'https://api.elizacloud.ai' || 'https://api-staging.elizacloud.ai' }}
-          # The OpenID Provider origin, byte-identical to the Worker's
-          # OIDC_ISSUER_URL (packages/cloud/api/wrangler.toml). /oidc/continue
-          # resumes a signed-out relying-party sign-in against it, and it must
-          # be the absolute API origin: the per-request binding cookie is
-          # host-only on that host, so bouncing through the console origin's
-          # /api proxy would arrive without it and expire every sign-in.
-          # Unset, the console renders an explicit "not configured" page.
-          VITE_OIDC_ISSUER_URL: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'https://api.elizacloud.ai' || 'https://api-staging.elizacloud.ai' }}
-          VITE_ELIZA_CLOUD_BASE: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'https://www.elizacloud.ai' || 'https://staging.elizacloud.ai' }}
-          # The console's own canonical origin (OG/canonical tags, returnTo base).
-          VITE_APP_URL: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'https://elizacloud.ai' || 'https://staging.elizacloud.ai' }}
-          NEXT_PUBLIC_APP_URL: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'https://elizacloud.ai' || 'https://staging.elizacloud.ai' }}
-          # The Eliza agent app the console's "launch / talk to your agent" CTA
-          # sends users to (separate Pages project / subdomain).
-          VITE_ELIZA_APP_URL: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'https://app.elizacloud.ai' || 'https://app-staging.elizacloud.ai' }}
-          # Staging uses a separate Steward tenant (`elizacloud-staging`) so its
-          # `magicLinkBaseUrl` redirects email callbacks back to staging.elizacloud.ai.
-          # The SPA reads the VITE_* key; keep NEXT_PUBLIC_* for legacy/shared
-          # callers that still run outside Vite's client env exposure.
-          VITE_STEWARD_TENANT_ID: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'elizacloud' || 'elizacloud-staging' }}
-          NEXT_PUBLIC_STEWARD_TENANT_ID: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'elizacloud' || 'elizacloud-staging' }}
-          # Deployment-env signal baked into the SPA bundle. Read by isomorphic
-          # cloud-shared code (e.g. agent flavor catalog) to branch on env.
-          # Vite strips `process.env` for the browser, so the Worker
-          # `ENVIRONMENT` binding is invisible to the SPA — VITE_ENVIRONMENT is
-          # the only thing the bundle can see at runtime.
-          VITE_ENVIRONMENT: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'production' || 'staging' }}
-          VITE_VOICE_REALTIME_WS: ${{ !((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && contains(fromJSON('["1","true","TRUE","True","yes","YES","Yes","on","ON","On"]'), vars.VOICE_REALTIME_WS_ENABLED) && '1' || '0' }}
-          VITE_VOICE_REALTIME_FORCE: "0"
-          NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID: ${{ vars.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID }}
-
-      # Refuse to deploy a bundle where the bn.js/crypto graph folded into an
-      # eager chunk (the "Class constructor cannot be invoked without 'new'"
-      # Buffer.allocUnsafe module-init crash that blanks every route). This
-      # regression has reached prod multiple times; fail the deploy instead.
-      # HARD GATE: the chunking fold is fixed (#9150) — the `manualChunks` pin
-      # now lives under `rollupOptions.output` (the key Vite reads) and folds
-      # the crypto/wallet/solana graph into one lazy `vendor-crypto` chunk, so a
-      # clean build passes and any future eager-chunk regression fails the deploy.
-      - name: Legacy inline fallback - verify console chunks
-        if: ${{ vars.CLOUD_CF_LEGACY_INLINE_BUILD == 'true' }}
-        working-directory: ${{ env.CHECKOUT_DIR }}/packages/app
-        run: bun run verify:chunks
-
-      - name: Resolve Pages branch
-        id: pages
-        working-directory: ${{ env.CHECKOUT_DIR }}
-        env:
-          EVENT_NAME: ${{ github.event_name }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-          TARGET_ENVIRONMENT: ${{ inputs.environment }}
-        run: |
-          set -euo pipefail
-
-          if [ "$EVENT_NAME" = "pull_request" ]; then
-            if ! [[ "$PR_NUMBER" =~ ^[1-9][0-9]*$ ]]; then
-              echo "::error::Pull-request Pages branch requires a valid immutable PR number"
-              exit 1
-            fi
-            pages_branch="pr-${PR_NUMBER}"
-            case "$pages_branch" in
-              main|develop)
-                echo "::error::Pull-request Pages branch may not target canonical branch $pages_branch"
-                exit 1
-                ;;
-            esac
-          elif [ "$EVENT_NAME" = "workflow_dispatch" ] && [ "$TARGET_ENVIRONMENT" = "production" ]; then
-            pages_branch="main"
-          elif [ "$EVENT_NAME" = "workflow_dispatch" ]; then
-            pages_branch="develop"
-          else
-            pages_branch="${GITHUB_REF#refs/heads/}"
-          fi
-          echo "branch=$pages_branch" >> "$GITHUB_OUTPUT"
-
-      - name: Check Cloudflare credentials
-        id: cf
-        working-directory: ${{ env.CHECKOUT_DIR }}
-        env:
-          HAS_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN != '' }}
-          HAS_ACCOUNT: ${{ secrets.CLOUDFLARE_ACCOUNT_ID != '' }}
-          EVENT_NAME: ${{ github.event_name }}
-        run: |
-          if [ "$HAS_TOKEN" = "true" ] && [ "$HAS_ACCOUNT" = "true" ]; then
-            echo "configured=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "configured=false" >> "$GITHUB_OUTPUT"
-            MSG="CLOUDFLARE_API_TOKEN/CLOUDFLARE_ACCOUNT_ID not configured. Add them at https://github.com/elizaOS/eliza/settings/secrets/actions."
-            if [ "$EVENT_NAME" = "pull_request" ]; then
-              echo "::warning::$MSG Skipping Pages deploy (PR event)." >> "$GITHUB_STEP_SUMMARY"
-            else
-              echo "::error::$MSG Refusing to silently skip Pages deploy on $EVENT_NAME event." >> "$GITHUB_STEP_SUMMARY"
-              echo "::error::$MSG Refusing to silently skip Pages deploy on $EVENT_NAME event."
-              exit 1
-            fi
-          fi
-
-      # Freshness guard (#14083): SKIP this deploy when THIS run's SHA is an
-      # ancestor of the currently-served build's commit — i.e. a stale zombie
-      # run (stuck queued through a freeze) is about to clobber a NEWER bundle
-      # (the #14082 regression: staging fell back to a pre-#13410 ref hours
-      # after newer builds were live). Fail-open: any ambiguous signal deploys;
-      # only a provably-stale run is skipped. workflow_dispatch force=true
-      # bypasses for intentional rollbacks.
-      - name: Deploy freshness guard
-        id: freshness
-        if: steps.cf.outputs.configured == 'true' && github.event_name != 'pull_request'
-        working-directory: ${{ env.CHECKOUT_DIR }}
-        env:
-          SERVED_URL: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'https://elizacloud.ai' || 'https://staging.elizacloud.ai' }}
-          FORCE: ${{ github.event_name == 'workflow_dispatch' && inputs.force == true }}
-        run: |
-          args=(--run-sha "$GITHUB_SHA" --served-url "$SERVED_URL")
-          if [ "$FORCE" = "true" ]; then
-            args+=(--force)
-          fi
-          node packages/cloud/scripts/deploy-freshness-guard-cli.mjs "${args[@]}"
-
-      - name: Deploy to Cloudflare Pages
-        if: steps.cf.outputs.configured == 'true' && (github.event_name == 'pull_request' || steps.freshness.outputs.should_deploy == 'true')
-        working-directory: ${{ env.CHECKOUT_DIR }}/packages/app
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          PAGES_BRANCH: ${{ steps.pages.outputs.branch }}
-          PAGES_PROJECT: eliza-cloud
-        # Do NOT pass a positional `dist` argument: wrangler.toml already sets
-        # `pages_build_output_dir = "./dist"`, and passing both makes wrangler
-        # ignore wrangler.toml — which silently drops the `functions/` upload
-        # (so `_middleware.ts` never runs and `/api/*` falls through to the
-        # SPA's index.html instead of being proxied to the API Worker).
-        run: |
-          for attempt in 1 2 3; do
-            if bunx wrangler@4.100.0 pages deploy --project-name="$PAGES_PROJECT" --branch="$PAGES_BRANCH"; then
-              exit 0
-            fi
-            if [ "$attempt" = "3" ]; then
-              echo "::error::Cloudflare Pages deploy failed after ${attempt} attempts"
-              exit 1
-            fi
-            echo "::warning::Cloudflare Pages deploy attempt ${attempt} failed; retrying"
-            sleep $((attempt * 20))
-          done
-
-      - name: Verify Pages frontend freshness
-        if: steps.cf.outputs.configured == 'true' && github.event_name != 'pull_request' && steps.freshness.outputs.should_deploy == 'true'
-        working-directory: ${{ env.CHECKOUT_DIR }}
-        env:
-          SERVED_URL: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'https://elizacloud.ai' || 'https://staging.elizacloud.ai' }}
-        run: |
-          node packages/cloud/scripts/verify-pages-frontend-cli.mjs \
-            --served-url "$SERVED_URL" \
-            --dist packages/app/dist \
-            --require-text "Signing in to your agent" \
-            --require-text "This tab will continue automatically" \
-            --require-text "Open this agent from Eliza Cloud"
-
-      # Same-origin checks against the SITE_URL custom domains were removed: those
-      # domains were served by Vercel, which has been decommissioned. We verify the
-      # freshly-deployed Cloudflare API Worker directly instead.
-      - name: Verify API Worker health
-        if: steps.cf.outputs.configured == 'true' && github.event_name != 'pull_request'
-        working-directory: ${{ env.CHECKOUT_DIR }}
-        env:
-          API_URL: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'https://api.elizacloud.ai' || 'https://api-staging.elizacloud.ai' }}
-        run: |
-          # Probe an endpoint up to 5 times (transient blips right after a deploy
-          # shouldn't fail the gate). Echoes "PASS"/"FAIL" on the last line.
-          # Diagnostics go to stderr (visible in the job log); only PASS/FAIL is
-          # written to stdout so the caller can capture it.
-          probe_json() {
-            local label="$1" url="$2" expected="$3"
-            local tmp code content_type
-            for attempt in 1 2 3 4 5; do
-              tmp="$(mktemp)"
-              code="$(curl -sS -o "$tmp" -w '%{http_code}' -m 20 "$url" || echo "000")"
-              content_type="$(file -b --mime-type "$tmp" 2>/dev/null || true)"
-              if [ "$code" = "$expected" ] && head -c 1 "$tmp" | grep -q '[{[]'; then
-                echo "$label OK ($code)" >&2
-                rm -f "$tmp"; echo PASS; return 0
-              fi
-              echo "$label attempt $attempt: HTTP $code ($content_type): $url" >&2
-              head -c 300 "$tmp" >&2 2>/dev/null || true; echo >&2
-              rm -f "$tmp"
-              [ "$attempt" -lt 5 ] && sleep 8
-            done
-            echo FAIL; return 0
-          }
-
-          # Worker liveness is what THIS deploy is responsible for: hard-fail.
-          if [ "$(probe_json 'direct API health' "${API_URL%/}/api/health" 200 | tail -1)" != "PASS" ]; then
-            echo "::error::API health check failed after retries — the deployed Worker is not responding."
-            exit 1
-          fi
-
-          # The Steward providers endpoint is DB-backed. A failure here usually
-          # means a downstream database/infra incident, NOT a bad Worker deploy —
-          # so do NOT block the deploy on it (that turns any DB incident into an
-          # undeployable state, exactly when a fix needs to ship). Warn loudly.
-          if [ "$(probe_json 'direct Steward providers' "${API_URL%/}/steward/auth/providers" 200 | tail -1)" != "PASS" ]; then
-            echo "::warning::Steward providers (DB-backed) check failed after retries. The Worker deployed; this points at a database/infra issue — investigate the DB, do not assume the deploy is bad."
-            echo "⚠️ Steward providers (DB-backed) health check failed post-deploy — likely a downstream DB incident, not this deploy." >> "$GITHUB_STEP_SUMMARY"
-          fi
-
-      - name: Clean temp checkout
-        if: always()
-        working-directory: /tmp
-        run: |
-          set -uo pipefail
-          if [ -e "$CHECKOUT_DIR" ]; then
-            stale_dir="/tmp/eliza-stale-checkout-${GITHUB_RUN_ID:-run}-${GITHUB_RUN_ATTEMPT:-0}-${GITHUB_JOB:-job}-$(date +%s)"
-            mv "$CHECKOUT_DIR" "$stale_dir" 2>/dev/null || stale_dir="$CHECKOUT_DIR"
-            nohup bash -c 'timeout 30s rm -rf "$1" || true' _ "$stale_dir" >/dev/null 2>&1 &
-            echo "Scheduled best-effort cleanup for ${stale_dir}."
-          fi
-
-  # ---------------------------------------------------------------------------
-  # App frontend (Cloudflare Pages) — packages/app (the Eliza agent app) at
-  # app.elizacloud.ai. The same web UI as `bun run dev`. Deploys to the
-  # `eliza-app` Pages project (custom domains app.elizacloud.ai /
-  # app-staging.elizacloud.ai map to the production / develop branches in the
-  # Cloudflare Pages project config).
+  # Consolidated frontend — packages/app at eliza.app and cloud.eliza.app.
+  # The same host-aware bundle serves marketing, auth, cloud management, and the
+  # managed Eliza agent app from the single `eliza-app` Pages project.
   # ---------------------------------------------------------------------------
   deploy-app:
-    name: Deploy App (Pages · app.elizacloud.ai)
+    name: Deploy consolidated frontend (Pages · eliza.app)
     # Per-env concurrency so a newer main promote queues behind the in-flight
     # prod Pages deploy instead of cancelling it (#11640).
     concurrency:
@@ -1804,8 +1420,8 @@ jobs:
     # Hosted unconditionally to preserve CI/placement workload separation.
     runs-on: ubuntu-latest
     timeout-minutes: 75
-    # Release gate (#11208/#18088): same contract as deploy-console. Canonical
-    # Pages aliases wait for the matching API deployment; pull-request artifacts
+    # Release gate (#11208/#18088): canonical Pages aliases wait for the matching
+    # API deployment; pull-request artifacts
     # are consumed only by the separate trusted preview workflow.
     needs: [deploy-api, build-pages]
     if: ${{ !cancelled() && github.event_name != 'pull_request' && needs.deploy-api.result == 'success' && needs.build-pages.result == 'success' }}
@@ -2013,14 +1629,15 @@ jobs:
         working-directory: ${{ env.CHECKOUT_DIR }}
         run: bun run --cwd packages/app build:web
         env:
-          VITE_API_URL: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'https://api.elizacloud.ai' || 'https://api-staging.elizacloud.ai' }}
-          NEXT_PUBLIC_API_URL: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'https://api.elizacloud.ai' || 'https://api-staging.elizacloud.ai' }}
-          VITE_OIDC_ISSUER_URL: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'https://api.elizacloud.ai' || 'https://api-staging.elizacloud.ai' }}
-          VITE_ELIZA_CLOUD_BASE: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'https://www.elizacloud.ai' || 'https://staging.elizacloud.ai' }}
-          # The app's own canonical origin — its own subdomain, NOT the apex.
-          NEXT_PUBLIC_APP_URL: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'https://app.elizacloud.ai' || 'https://app-staging.elizacloud.ai' }}
-          # Steward tenant pin (same tenant as the console; one identity across
-          # the .elizacloud.ai cookie zone).
+          VITE_API_URL: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'https://api.eliza.app' || 'https://api-staging.eliza.app' }}
+          NEXT_PUBLIC_API_URL: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'https://api.eliza.app' || 'https://api-staging.eliza.app' }}
+          VITE_OIDC_ISSUER_URL: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'https://api.eliza.app' || 'https://api-staging.eliza.app' }}
+          VITE_ELIZA_CLOUD_BASE: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'https://cloud.eliza.app' || 'https://cloud-staging.eliza.app' }}
+          VITE_APP_URL: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'https://eliza.app' || 'https://staging.eliza.app' }}
+          NEXT_PUBLIC_APP_URL: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'https://cloud.eliza.app' || 'https://cloud-staging.eliza.app' }}
+          VITE_ELIZA_APP_URL: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'https://cloud.eliza.app' || 'https://cloud-staging.eliza.app' }}
+          # Steward tenant pin (one identity bridged between the marketing and
+          # managed cloud origins).
           # The SPA reads the VITE_* key; keep NEXT_PUBLIC_* for legacy/shared
           # callers that still run outside Vite's client env exposure.
           VITE_STEWARD_TENANT_ID: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'elizacloud' || 'elizacloud-staging' }}
@@ -2098,16 +1715,27 @@ jobs:
 
       # Self-bootstrap the project so the first deploy on a fresh account works.
       # Idempotent: a "project already exists" error is expected and ignored.
-      # NOTE: custom domains (app.elizacloud.ai / app-staging.elizacloud.ai) are
-      # attached once via the Cloudflare dashboard / API — see
-      # docs/cloud-into-eliza/CUTOVER-RUNBOOK.md.
+      # Canonical custom domains are managed by the pages-domains Terraform
+      # stack; this job only ensures the shared Pages project exists.
       - name: Ensure eliza-app Pages project exists
         if: steps.cf.outputs.configured == 'true'
         working-directory: ${{ env.CHECKOUT_DIR }}
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        run: bunx wrangler@4.100.0 pages project create eliza-app --production-branch=main 2>/dev/null || true
+        run: |
+          set -euo pipefail
+          if output=$(bunx wrangler@4.100.0 pages project create eliza-app --production-branch=main 2>&1); then
+            printf '%s\n' "$output"
+            exit 0
+          fi
+          if printf '%s\n' "$output" | grep -Eqi 'already exists|project with (the )?name .?eliza-app.? exists'; then
+            echo "::notice::Cloudflare Pages project eliza-app already exists"
+            exit 0
+          fi
+          printf '%s\n' "$output" >&2
+          echo "::error::Unable to create or confirm the eliza-app Pages project"
+          exit 1
 
       # Freshness guard (#14083): skip a stale zombie run about to clobber a
       # newer served build. Fail-open on any ambiguous signal; force=true
@@ -2117,7 +1745,7 @@ jobs:
         if: steps.cf.outputs.configured == 'true' && github.event_name != 'pull_request'
         working-directory: ${{ env.CHECKOUT_DIR }}
         env:
-          SERVED_URL: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'https://app.elizacloud.ai' || 'https://app-staging.elizacloud.ai' }}
+          SERVED_URL: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'https://cloud.eliza.app' || 'https://cloud-staging.eliza.app' }}
           FORCE: ${{ github.event_name == 'workflow_dispatch' && inputs.force == true }}
         run: |
           args=(--run-sha "$GITHUB_SHA" --served-url "$SERVED_URL")
@@ -2154,14 +1782,71 @@ jobs:
         if: steps.cf.outputs.configured == 'true' && github.event_name != 'pull_request' && steps.freshness.outputs.should_deploy == 'true'
         working-directory: ${{ env.CHECKOUT_DIR }}
         env:
-          SERVED_URL: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'https://app.elizacloud.ai' || 'https://app-staging.elizacloud.ai' }}
+          DEPLOY_ENVIRONMENT: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'production' || 'staging' }}
+          MARKETING_URL: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'https://eliza.app' || 'https://staging.eliza.app' }}
+          CLOUD_APP_URL: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'https://cloud.eliza.app' || 'https://cloud-staging.eliza.app' }}
+          API_URL: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'https://api.eliza.app' || 'https://api-staging.eliza.app' }}
         run: |
-          node packages/cloud/scripts/verify-pages-frontend-cli.mjs \
-            --served-url "$SERVED_URL" \
-            --dist packages/app/dist \
-            --require-text "Signing in to your agent" \
-            --require-text "This tab will continue automatically" \
-            --require-text "Open this agent from Eliza Cloud"
+          set -euo pipefail
+
+          for served_url in "$MARKETING_URL" "$CLOUD_APP_URL"; do
+            node packages/cloud/scripts/verify-pages-frontend-cli.mjs \
+              --served-url "$served_url" \
+              --dist packages/app/dist \
+              --require-text "Signing in to your agent" \
+              --require-text "This tab will continue automatically" \
+              --require-text "Open this agent from Eliza Cloud"
+          done
+
+          verify_json_endpoint() {
+            local endpoint="$1"
+            local check="$2"
+            local body
+            body="$(mktemp)"
+            local status
+            status="$(curl --silent --show-error --output "$body" --write-out '%{http_code}' "$endpoint")"
+            if [ "$status" != "200" ]; then
+              echo "::error::$endpoint returned HTTP $status, expected 200"
+              rm -f "$body"
+              exit 1
+            fi
+            node -e '
+              const fs = require("node:fs");
+              const [path, check, expectedEnvironment, expectedIssuer] = process.argv.slice(1);
+              const value = JSON.parse(fs.readFileSync(path, "utf8"));
+              if (check === "health" && value.environment !== expectedEnvironment) {
+                throw new Error(`environment beacon mismatch: expected ${expectedEnvironment}`);
+              }
+              if (check === "discovery" && value.issuer !== expectedIssuer) {
+                throw new Error(`OIDC issuer mismatch: expected ${expectedIssuer}`);
+              }
+              if (check === "jwks" && !Array.isArray(value.keys)) {
+                throw new Error("OIDC JWKS response has no keys array");
+              }
+            ' "$body" "$check" "$DEPLOY_ENVIRONMENT" "$API_URL"
+            rm -f "$body"
+          }
+
+          verify_exact_api_route() {
+            local endpoint="$1"
+            local body headers status
+            body="$(mktemp)"
+            headers="$(mktemp)"
+            status="$(curl --silent --show-error --output "$body" --dump-header "$headers" --write-out '%{http_code}' "$endpoint")"
+            if ! [[ "$status" =~ ^[24][0-9][0-9]$ ]] || grep -Eqi '^content-type:.*text/html' "$headers"; then
+              echo "::error::$endpoint did not reach the API Worker (HTTP $status)"
+              rm -f "$body" "$headers"
+              exit 1
+            fi
+            rm -f "$body" "$headers"
+          }
+
+          for served_url in "$MARKETING_URL" "$CLOUD_APP_URL"; do
+            verify_json_endpoint "$served_url/api/health" health
+            verify_exact_api_route "$served_url/api"
+            verify_json_endpoint "$served_url/.well-known/openid-configuration" discovery
+            verify_json_endpoint "$served_url/.well-known/oidc/jwks.json" jwks
+          done
 
       - name: Clean temp checkout
         if: always()
@@ -2177,21 +1862,21 @@ jobs:
 
   # ---------------------------------------------------------------------------
   # Post-deploy routing verification (regression guard for "staging pointing at
-  # prod CF"). After the Worker + both Pages projects deploy, probe the LIVE
+  # prod CF"). After the Worker + consolidated Pages project deploy, probe the LIVE
   # custom domains of the just-deployed environment and assert each is served by
   # THAT environment -- not the other one leaking through the prod
-  # `*.elizacloud.ai/*` wildcard or a mis-mapped Pages custom domain. This does
+  # legacy wildcard or a mis-mapped Pages custom domain. This does
   # NOT gate the deploy (it already happened); it surfaces a misroute as a red
   # check. Operators can also dispatch this workflow for an explicit recheck.
   # ---------------------------------------------------------------------------
   verify-routing:
     name: Verify ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'production' || 'staging' }} routing
-    needs: [deploy-api, deploy-console, deploy-app]
+    needs: [deploy-api, deploy-app]
     # Custom domains only exist for the real environments -- PR previews deploy to
     # a preview branch alias, so skip them. Require all three deploys to have
-    # landed (the beacon is served by the API Worker; the domains by the two Pages
-    # projects), else there is nothing trustworthy to probe.
-    if: ${{ !cancelled() && github.event_name != 'pull_request' && needs.deploy-api.result == 'success' && needs.deploy-console.result == 'success' && needs.deploy-app.result == 'success' }}
+    # landed (the beacon is served by the API Worker; both frontend domains by
+    # one Pages project), else there is nothing trustworthy to probe.
+    if: ${{ !cancelled() && github.event_name != 'pull_request' && needs.deploy-api.result == 'success' && needs.deploy-app.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:

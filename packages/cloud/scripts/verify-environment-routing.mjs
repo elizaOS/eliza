@@ -2,12 +2,10 @@
  * Cross-environment routing verifier for the Cloudflare surfaces.
  *
  * Regression guard for "staging is pointing at prod CF": the staging API Worker
- * (`eliza-cloud-api-staging`) owns `staging.*` / `app-staging.*` / `api-staging.*`
- * ONLY by claiming those hostnames MORE specifically than the prod Worker's
- * `*.elizacloud.ai/*` wildcard (see `packages/cloud/api/wrangler.toml`
- * `[env.staging].routes`). The same split exists at the Pages layer: the staging
- * SPA deployments bake `API_UPSTREAM=api-staging.elizacloud.ai` while prod bakes
- * `api.elizacloud.ai`. If EITHER claim lapses - a dropped staging Worker route,
+ * (`eliza-cloud-api-staging`) owns the staging API and wildcard hosts, while
+ * the unified Pages project owns the browser hosts and proxies protocol paths
+ * to api-staging.eliza.app. Production mirrors that split at api.eliza.app and
+ * the production Pages branch. If either claim lapses - a dropped Worker route,
  * a Pages custom-domain reattached to the wrong deployment, a preview var that
  * drifted to prod - a staging subdomain silently starts serving production. The
  * failure is invisible from the repo (it is Cloudflare dashboard / route state,
@@ -36,25 +34,23 @@ export const KNOWN_ENVIRONMENTS = /** @type {const} */ ([
 
 /**
  * The source-of-truth mapping of each live custom domain to the environment
- * that MUST answer it. Kept in lockstep with `packages/cloud/api/wrangler.toml`
- * (`[env.staging].routes` + `[env.production].routes`) - the wrangler-sync unit
- * test fails if a staging host is added to the Worker routes without being
- * represented here. Only hostnames that serve `/api/health` belong here
+ * that MUST answer it. Kept in lockstep with the Pages-domain and Worker-route
+ * ownership contract: browser hosts must stay off the API Worker while the API
+ * host remains routed. Only hostnames that serve `/api/health` directly or
+ * through the Pages proxy belong here
  * (blob-staging.* serves R2 objects, not the API - it is intentionally omitted).
  *
  * @type {ReadonlyArray<{ domain: string, environment: "staging" | "production" }>}
  */
 export const ENVIRONMENT_ROUTING = [
-  // Production: the prod Worker (`*.elizacloud.ai/*` wildcard + explicit
-  // api./x402.) and the prod Pages deployments (app.elizacloud.ai apex + subdomain).
-  { domain: "elizacloud.ai", environment: "production" },
-  { domain: "app.elizacloud.ai", environment: "production" },
-  { domain: "api.elizacloud.ai", environment: "production" },
-  // Staging: MUST be reclaimed from the prod wildcard by the staging Worker's
-  // more-specific routes and the staging Pages deployments.
-  { domain: "staging.elizacloud.ai", environment: "staging" },
-  { domain: "app-staging.elizacloud.ai", environment: "staging" },
-  { domain: "api-staging.elizacloud.ai", environment: "staging" },
+  { domain: "eliza.app", environment: "production" },
+  { domain: "cloud.eliza.app", environment: "production" },
+  { domain: "api.eliza.app", environment: "production" },
+  { domain: "relay.eliza.app", environment: "production" },
+  { domain: "staging.eliza.app", environment: "staging" },
+  { domain: "cloud-staging.eliza.app", environment: "staging" },
+  { domain: "api-staging.eliza.app", environment: "staging" },
+  { domain: "relay-staging.eliza.app", environment: "staging" },
 ];
 
 /**
@@ -214,7 +210,7 @@ export function decideRoutingVerdict({
  * reachability. Retries transient failures (the domains are always-up prod /
  * staging origins, so a persistent failure is meaningful; a single blip is not).
  *
- * @param {string} domain hostname, e.g. "app-staging.elizacloud.ai"
+ * @param {string} domain hostname, e.g. "cloud-staging.eliza.app"
  * @param {object} [opts]
  * @param {typeof fetch} [opts.fetchImpl]
  * @param {string} [opts.healthPath]

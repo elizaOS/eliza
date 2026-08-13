@@ -1,0 +1,143 @@
+name: Arm Headscale Control Plane
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Protected environment to converge
+        required: true
+        type: choice
+        options:
+          - staging
+          - production
+      headscale_api_url:
+        description: Loopback Headscale API URL (blank uses the environment default)
+        required: false
+        type: string
+      listen_addr:
+        description: Loopback Headscale listen address (blank uses the environment default)
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: arm-headscale-${{ inputs.environment }}
+  cancel-in-progress: false
+
+jobs:
+  arm:
+    name: Arm Headscale (${{ inputs.environment }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: ${{ inputs.environment }}
+    env:
+      TARGET_ENVIRONMENT: ${{ inputs.environment }}
+      DEPLOY_HOST: ${{ secrets.ELIZA_PROVISIONING_HOST }}
+      DEPLOY_SSH_KEY: ${{ secrets.ELIZA_PROVISIONING_SSH_KEY }}
+      DEPLOY_SSH_KNOWN_HOSTS: ${{ secrets.ELIZA_PROVISIONING_SSH_KNOWN_HOSTS }}
+      HEADSCALE_API_KEY: ${{ secrets.HEADSCALE_API_KEY }}
+      HEADSCALE_PUBLIC_URL: ${{ vars.HEADSCALE_PUBLIC_URL }}
+      HEADSCALE_API_URL: ${{ inputs.headscale_api_url }}
+      HEADSCALE_LISTEN_ADDR: ${{ inputs.listen_addr }}
+      AGENT_TOKEN_PRIVATE_KEY_PEM: ${{ secrets.AGENT_TOKEN_PRIVATE_KEY_PEM }}
+      ELIZA_LOCAL_ROOT_KEY: ${{ secrets.ELIZA_LOCAL_ROOT_KEY }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: "24.15.0"
+
+      - name: Validate canonical control-plane inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          missing=()
+          for name in DEPLOY_HOST DEPLOY_SSH_KEY DEPLOY_SSH_KNOWN_HOSTS HEADSCALE_API_KEY HEADSCALE_PUBLIC_URL; do
+            value="${!name:-}"
+            if [ -z "${value//[[:space:]]/}" ]; then
+              missing+=("$name")
+            fi
+          done
+          if [ "${#missing[@]}" -gt 0 ]; then
+            echo "::error::Missing required protected setting name(s): ${missing[*]}"
+            exit 1
+          fi
+
+          if [ "$TARGET_ENVIRONMENT" = "production" ]; then
+            expected_public_url="https://headscale.eliza.app"
+            default_api_url="http://127.0.0.1:8081"
+            default_listen_addr="127.0.0.1:8081"
+          else
+            expected_public_url="https://headscale-staging.eliza.app"
+            default_api_url="http://127.0.0.1:8080"
+            default_listen_addr="127.0.0.1:8080"
+          fi
+          if [ "$HEADSCALE_PUBLIC_URL" != "$expected_public_url" ]; then
+            echo "::error::HEADSCALE_PUBLIC_URL does not match the canonical $TARGET_ENVIRONMENT contract"
+            exit 1
+          fi
+
+          echo "resolved_api_url=${HEADSCALE_API_URL:-$default_api_url}" >> "$GITHUB_ENV"
+          echo "resolved_listen_addr=${HEADSCALE_LISTEN_ADDR:-$default_listen_addr}" >> "$GITHUB_ENV"
+
+      - name: Install deploy SSH identity
+        id: key
+        shell: bash
+        run: |
+          set -euo pipefail
+          key_path="$RUNNER_TEMP/headscale-deploy-key"
+          known_hosts_path="$RUNNER_TEMP/headscale-known-hosts"
+          umask 077
+          printf '%s\n' "$DEPLOY_SSH_KEY" > "$key_path"
+          printf '%s\n' "$DEPLOY_SSH_KNOWN_HOSTS" > "$known_hosts_path"
+          if ! ssh-keygen -F "$DEPLOY_HOST" -f "$known_hosts_path" >/dev/null; then
+            echo "::error::Protected known_hosts inventory has no entry for the control-plane host"
+            exit 1
+          fi
+          echo "path=$key_path" >> "$GITHUB_OUTPUT"
+          echo "known_hosts_path=$known_hosts_path" >> "$GITHUB_OUTPUT"
+
+      - name: Converge Headscale, canonical TLS, and control-plane router
+        shell: bash
+        env:
+          DEPLOY_SSH_KEY_PATH: ${{ steps.key.outputs.path }}
+        run: |
+          set -euo pipefail
+          node packages/cloud/scripts/admin/arm-headscale-control-plane.mjs \
+            --host "$DEPLOY_HOST" \
+            --ssh-key "$DEPLOY_SSH_KEY_PATH" \
+            --ssh-known-hosts "${{ steps.key.outputs.known_hosts_path }}" \
+            --headscale-public-url "$HEADSCALE_PUBLIC_URL" \
+            --headscale-api-url "$resolved_api_url" \
+            --listen-addr "$resolved_listen_addr"
+
+      - name: Verify canonical public health
+        shell: bash
+        run: |
+          set -euo pipefail
+          for _ in $(seq 1 30); do
+            if curl --fail --silent --show-error --max-time 10 \
+              "$HEADSCALE_PUBLIC_URL/health" >/dev/null; then
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "::error::Canonical Headscale health did not become ready"
+          exit 1
+
+      - name: Remove deploy SSH identity
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          for path in \
+            "$RUNNER_TEMP/headscale-deploy-key" \
+            "$RUNNER_TEMP/headscale-known-hosts"; do
+            if [ -f "$path" ]; then
+              shred -u "$path"
+            fi
+          done

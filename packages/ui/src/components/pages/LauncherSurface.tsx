@@ -7,6 +7,7 @@
  */
 import { logger } from "@elizaos/logger";
 import * as React from "react";
+import { isManagedCloudRuntime } from "../../cloud/managed-cloud-runtime";
 import { dispatchChatOpen } from "../../events";
 import { useViewCatalog } from "../../hooks/useViewCatalog";
 import type { ViewEntry } from "../../hooks/view-catalog";
@@ -44,15 +45,16 @@ export const LauncherSurface = React.memo(function LauncherSurface({
 }: LauncherSurfaceProps): React.JSX.Element {
   const { entries, get, loading } = useViewCatalog();
   const enabledKinds = useEnabledViewKinds();
-  const { appRuns, elizaCloudConnected, setActionNotice, setState, setTab, t } =
+  const { appRuns, runtimeTarget, setActionNotice, setState, setTab, t } =
     useAppSelectorShallow((state) => ({
       appRuns: state.appRuns,
-      elizaCloudConnected: state.elizaCloudConnected,
+      runtimeTarget: state.startupCoordinator.target,
       setActionNotice: state.setActionNotice,
       setState: state.setState,
       setTab: state.setTab,
       t: state.t,
     }));
+  const managedCloudRuntime = isManagedCloudRuntime(runtimeTarget);
   const isAosp = React.useMemo(() => isAospShellEnabled(), []);
 
   const page = React.useMemo<ViewEntry[]>(
@@ -72,10 +74,10 @@ export const LauncherSurface = React.memo(function LauncherSurface({
         {
           isAosp,
           enabledKinds,
-          cloudActive: elizaCloudConnected,
+          cloudActive: managedCloudRuntime,
         },
       ),
-    [catalogMode, entries, isAosp, enabledKinds, elizaCloudConnected],
+    [catalogMode, entries, isAosp, enabledKinds, managedCloudRuntime],
   );
 
   const handleLaunch = React.useCallback(

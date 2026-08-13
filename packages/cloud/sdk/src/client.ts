@@ -1,6 +1,6 @@
 /**
  * `ElizaCloudClient` — the SDK's primary class: a typed fetch wrapper over every
- * endpoint of `api.elizacloud.ai` (auth, inference, credits, containers, Eliza
+ * endpoint of `api.eliza.app` (auth, inference, credits, containers, Eliza
  * agents, earnings, workflows, and more). Wraps the low-level `ElizaCloudHttpClient`
  * and exposes the generated `.routes` public-route client. Consumed by
  * `plugins/plugin-elizacloud` and `packages/ui`.
@@ -203,7 +203,7 @@ function normalizeCloudApiBaseUrl(
 function browserBaseUrlForCliLogin(baseUrl: string): string {
   try {
     const url = new URL(baseUrl);
-    if (url.hostname.toLowerCase() === "api.elizacloud.ai") {
+    if (url.hostname.toLowerCase() === "api.eliza.app") {
       return DEFAULT_ELIZA_CLOUD_BASE_URL;
     }
   } catch {

@@ -15,6 +15,7 @@
  */
 
 import { logger } from "@elizaos/logger";
+import { isElizaCloudControlPlaneHostname } from "@elizaos/shared/elizacloud";
 import {
   clearStoredStewardToken,
   readStoredStewardToken,
@@ -35,7 +36,7 @@ import {
   isElectrobunRuntime,
 } from "../bridge";
 import { publishCloudAuthComplete } from "../cloud/auth/cloud-auth-complete-signal";
-import { clearStaleStewardSession } from "../cloud/shell/StewardProviderShared";
+import { signOutFromSsoBridgedHost } from "../cloud/sso-bridge/sso-bridge";
 import { getBootConfig, setBootConfig } from "../config/boot-config";
 import { dispatchElizaCloudStatusUpdated } from "../events";
 import { isElizaCloudRuntimeLocked } from "../first-run/mobile-runtime-mode";
@@ -75,7 +76,7 @@ const ELIZA_CLOUD_LOGIN_POLL_INTERVAL_MS = 1000;
 const ELIZA_CLOUD_LOGIN_RETURN_POLL_TIMEOUT_MS = 60_000;
 const ELIZA_CLOUD_LOGIN_TIMEOUT_MS = 300_000;
 const ELIZA_CLOUD_LOGIN_MAX_CONSECUTIVE_ERRORS = 3;
-const DEFAULT_DIRECT_CLOUD_BASE_URL = "https://elizacloud.ai";
+const DEFAULT_DIRECT_CLOUD_BASE_URL = "https://eliza.app";
 const ELIZA_CLOUD_LOGIN_COMPLETE_PARAM = "elizaCloudLogin";
 const ELIZA_CLOUD_LOGIN_SESSION_PARAM = "elizaCloudLoginSession";
 
@@ -321,12 +322,7 @@ function isConfiguredCloudSiteBase(baseUrl: string): boolean {
 
   try {
     const host = new URL(baseUrl).hostname.toLowerCase();
-    return (
-      host === "api.elizacloud.ai" ||
-      host === "elizacloud.ai" ||
-      host === "www.elizacloud.ai" ||
-      host === "dev.elizacloud.ai"
-    );
+    return isElizaCloudControlPlaneHostname(host);
   } catch {
     // error-policy:J3 malformed base URL fails closed (not a cloud site base).
     return false;
@@ -384,15 +380,7 @@ function resolveStewardRefreshEndpoint(): string | undefined {
   const cloudBase =
     getBootConfig().cloudApiBase?.trim() || DEFAULT_DIRECT_CLOUD_BASE_URL;
   try {
-    const url = new URL(cloudBase);
-    const host = url.hostname.toLowerCase();
-    const apiHost =
-      host === "elizacloud.ai" ||
-      host === "www.elizacloud.ai" ||
-      host === "dev.elizacloud.ai"
-        ? "api.elizacloud.ai"
-        : host;
-    return `${url.protocol}//${apiHost}${STEWARD_REFRESH_PATH}`;
+    return `${resolveDirectCloudAuthApiBase(cloudBase)}${STEWARD_REFRESH_PATH}`;
   } catch {
     // error-policy:J3 malformed cloud base URL → use the shared default
     // refresh endpoint (the documented `undefined` contract of this helper).
@@ -716,8 +704,7 @@ export function useCloudState({
         !hasUsableStoredStewardToken() &&
         getInjectedEthereumProvider()?.isElizaE2eWallet === true
       ) {
-        const siweBase =
-          getBootConfig().cloudApiBase ?? "https://elizacloud.ai";
+        const siweBase = getBootConfig().cloudApiBase ?? "https://eliza.app";
         try {
           const apiKey = await siweLoginWithInjectedWallet(siweBase);
           if (apiKey) {
@@ -814,8 +801,7 @@ export function useCloudState({
       // the Steward surface is not yet mounted). Determine if we should use
       // direct cloud auth (no local backend) or go through the agent proxy.
       const hasBackend = hasCloudLoginBackend();
-      const cloudApiBase =
-        getBootConfig().cloudApiBase ?? "https://elizacloud.ai";
+      const cloudApiBase = getBootConfig().cloudApiBase ?? "https://eliza.app";
       let useDirectAuth = !hasBackend;
 
       if (hasBackend) {
@@ -1458,7 +1444,11 @@ export function useCloudState({
     setElizaCloudDisconnecting(true);
 
     try {
-      clearStaleStewardSession();
+      // Hosted Cloud runs inside the normal agent shell now, so it no longer
+      // inherits the retired console's sign-out menu. Preserve the hardened
+      // cross-origin teardown here: synchronously suppress auto-bridging,
+      // revoke the server session, then scrub the local Steward session.
+      await signOutFromSsoBridgedHost();
       setElizaCloudEnabled(false);
       setElizaCloudConnected(false);
       publishElizaCloudVoiceSnapshot(setElizaCloudHasPersistedKey, {

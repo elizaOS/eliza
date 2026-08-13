@@ -1,11 +1,11 @@
 ---
 name: eliza-cloud-buy-domain
-description: "Use whenever a user wants to register or buy a custom domain for an Eliza Cloud app — including in the same request as building the app (\"build me X and put it on Y.com\"). Uses Cloudflare as registrar after explicit user confirmation, paid from the user's existing cloud credit balance. Pairs with `build-monetized-app` (build first, then buy domain) and `eliza-cloud-manage-domain` (post-purchase: list, edit dns records, detach). Skip when the user is fine with the auto-assigned `*.apps.elizacloud.ai` subdomain."
+description: "Use whenever a user wants to register or buy a custom domain for an Eliza Cloud app — including in the same request as building the app (\"build me X and put it on Y.com\"). Uses Cloudflare as registrar after explicit user confirmation, paid from the user's existing cloud credit balance. Pairs with `build-monetized-app` (build first, then buy domain) and `eliza-cloud-manage-domain` (post-purchase: list, edit dns records, detach). Skip when the user is fine with the auto-assigned `*.apps.eliza.app` subdomain."
 ---
 
 # Buy a domain for your app on Eliza Cloud
 
-Use this skill when an Eliza Cloud app needs a real custom domain (e.g. `myapp.com`) instead of the auto-assigned `*.apps.elizacloud.ai` subdomain.
+Use this skill when an Eliza Cloud app needs a real custom domain (e.g. `myapp.com`) instead of the auto-assigned `*.apps.eliza.app` subdomain.
 
 The cloud handles everything: domain availability check, registration through cloudflare, DNS pointing at your app's container, and attachment to your app record. You pay from your existing cloud credit balance — no separate cloudflare account, no manual DNS config, no credit card paste.
 
@@ -40,7 +40,7 @@ import { ElizaCloudClient } from "@elizaos/cloud-sdk";
 const cloud = new ElizaCloudClient({
   apiKey: process.env.ELIZAOS_CLOUD_API_KEY,
   // optional override for local dev / staging / preview deploys.
-  // unset in prod → SDK defaults to https://www.elizacloud.ai
+  // unset in prod → SDK uses eliza.app for browser flows and api.eliza.app for API calls
   baseUrl: process.env.ELIZA_CLOUD_BASE_URL,
 });
 
@@ -94,7 +94,7 @@ The buy route handles refunds and surfaces specific HTTP statuses; treat them li
 | Status | Meaning | Action |
 |---|---|---|
 | 400 | invalid domain format | re-prompt user for valid domain |
-| 402 | insufficient credit balance | tell user to top up at /dashboard/billing |
+| 402 | insufficient credit balance | tell user to top up at /cloud/billing |
 | 404 | app not found / wrong org | re-check appId |
 | 409 | domain unavailable or owned by another org | suggest alternates or add a suffix |
 | 502 | cloudflare returned an error (refund issued) | retry with different domain |

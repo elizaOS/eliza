@@ -6,12 +6,18 @@
  */
 
 import { BRAND_PATHS, LOGO_FILES } from "@elizaos/shared/brand";
+import { isElizaManagedCloudUiHostname } from "@elizaos/shared/elizacloud";
 import { CheckCircle2 } from "lucide-react";
 import { lazy, Suspense, useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { Button } from "../../../../components/primitives";
+import { isAppModeHost } from "../../../app-mode/app-mode";
 import { subscribeCloudAuthComplete } from "../../../auth/cloud-auth-complete-signal";
 import { useCloudT } from "../../../shell/CloudI18nProvider";
+import {
+  redirectToSsoBridge,
+  sanitizeBridgeReturnTo,
+} from "../../../sso-bridge/sso-bridge";
 import { usePageTitle } from "../../lib/use-page-title";
 import { LoginOptionsSkeleton } from "./login-section-skeleton";
 
@@ -85,7 +91,28 @@ function sessionIdFromLoginReturnTo(returnTo: string | null): string | null {
   }
 }
 
-export default function LoginPage() {
+function ManagedCloudLoginHandoff(): React.JSX.Element {
+  const [searchParams] = useSearchParams();
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    const returnTo = sanitizeBridgeReturnTo(searchParams.get("returnTo"));
+    void redirectToSsoBridge(returnTo).then((started) => {
+      if (!started) setFailed(true);
+    });
+  }, [searchParams]);
+
+  if (failed) return <PublicLoginPage />;
+  return (
+    <LoginBackground>
+      <p className="text-center font-mono text-[11px] uppercase tracking-[0.32em] text-muted">
+        Taking you to Eliza sign in
+      </p>
+    </LoginBackground>
+  );
+}
+
+function PublicLoginPage(): React.JSX.Element {
   const t = useCloudT();
   const [searchParams] = useSearchParams();
   const handoffSessionId = sessionIdFromLoginReturnTo(
@@ -93,9 +120,7 @@ export default function LoginPage() {
   );
   const [handoffComplete, setHandoffComplete] = useState(false);
 
-  usePageTitle(
-    t("cloud.login.metaTitle", { defaultValue: "Sign In | Eliza Cloud" }),
-  );
+  usePageTitle(t("cloud.login.metaTitle", { defaultValue: "Sign In | Eliza" }));
 
   useEffect(() => {
     if (!handoffSessionId) return;
@@ -150,15 +175,15 @@ export default function LoginPage() {
       <main className="space-y-8">
         <div className="space-y-3 text-center">
           <img
-            src={`${BRAND_PATHS.logos}/${LOGO_FILES.cloudWhite}`}
-            alt="Eliza Cloud"
+            src={`${BRAND_PATHS.logos}/${LOGO_FILES.elizaLockupWhite}`}
+            alt="Eliza"
             className="mx-auto h-8 w-auto"
             draggable={false}
           />
           <div className="space-y-1.5">
             <h1 className="font-sans text-2xl font-semibold tracking-tight text-txt-strong">
               {t("cloud.login.signIn", {
-                defaultValue: "Sign in to Eliza Cloud",
+                defaultValue: "Sign in to Eliza",
               })}
             </h1>
             <p className="text-sm text-muted">
@@ -192,4 +217,12 @@ export default function LoginPage() {
       </main>
     </LoginBackground>
   );
+}
+
+export default function LoginPage(): React.JSX.Element {
+  const managedCloudHost =
+    isAppModeHost() ||
+    (typeof window !== "undefined" &&
+      isElizaManagedCloudUiHostname(window.location.hostname));
+  return managedCloudHost ? <ManagedCloudLoginHandoff /> : <PublicLoginPage />;
 }

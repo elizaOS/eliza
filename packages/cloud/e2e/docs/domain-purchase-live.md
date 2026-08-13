@@ -18,7 +18,7 @@ Two complementary specs share one helper set
 
 ```bash
 ELIZA_LIVE_DOMAIN_PURCHASE=1 \
-ELIZA_LIVE_DOMAIN_BASE_URL=https://api-staging.elizacloud.ai \
+ELIZA_LIVE_DOMAIN_BASE_URL=https://api-staging.eliza.app \
 CLOUD_E2E_API_KEY=<funded operator org API key> \
 bun run --cwd packages/cloud/e2e test tests/domain-purchase.real.spec.ts
 ```

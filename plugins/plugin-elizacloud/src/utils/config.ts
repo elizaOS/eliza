@@ -50,7 +50,7 @@ export function resolveElizaCloudBaseURL(
   return (
     (options.browser ? read("ELIZAOS_CLOUD_BROWSER_BASE_URL") : undefined) ??
     read("ELIZAOS_CLOUD_BASE_URL") ??
-    "https://elizacloud.ai/api/v1"
+    "https://api.eliza.app/api/v1"
   );
 }
 

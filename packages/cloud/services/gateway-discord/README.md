@@ -142,7 +142,7 @@ bun run dev:local  # Uses local .env file
 **URL Resolution Order:**
 1. `ELIZA_CLOUD_URL` (if set)
 2. `NEXT_PUBLIC_APP_URL` (fallback)
-3. `https://elizacloud.ai` (default)
+3. `https://api.eliza.app` (default)
 
 Generate secure secrets:
 ```bash
@@ -478,11 +478,11 @@ Eliza Cloud logs show:
 | `JWT_SIGNING_PUBLIC_KEY` | Yes | - | Base64-encoded ES256 public key (SPKI) |
 | `JWT_SIGNING_KEY_ID` | No | `primary` | Key identifier for JWKS rotation |
 
-**\*** At least one of `ELIZA_CLOUD_URL` or `NEXT_PUBLIC_APP_URL` should be set. If neither is set, defaults to `https://elizacloud.ai`.
+**\*** At least one of `ELIZA_CLOUD_URL` or `NEXT_PUBLIC_APP_URL` should be set. If neither is set, defaults to `https://api.eliza.app`.
 
 **URL Resolution Order:**
 ```
-ELIZA_CLOUD_URL → NEXT_PUBLIC_APP_URL → https://elizacloud.ai
+ELIZA_CLOUD_URL → NEXT_PUBLIC_APP_URL → https://api.eliza.app
 ```
 
 ### Scripts

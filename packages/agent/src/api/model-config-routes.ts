@@ -597,7 +597,7 @@ export function resolveActiveChat(
     hostOf(baseURL) ??
     new URL(
       family === "ELIZAOS_CLOUD"
-        ? "https://elizacloud.ai/api/v1"
+        ? "https://api.eliza.app/api/v1"
         : family === "ANTHROPIC"
           ? "https://api.anthropic.com/v1"
           : provider === "cerebras"

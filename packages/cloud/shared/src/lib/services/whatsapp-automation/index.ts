@@ -28,7 +28,7 @@ import { secretsService } from "../secrets";
 
 // Use ELIZA_API_URL (ngrok) for local dev webhooks, otherwise NEXT_PUBLIC_APP_URL
 const WEBHOOK_BASE_URL =
-  process.env.ELIZA_API_URL || process.env.NEXT_PUBLIC_APP_URL || "https://www.elizacloud.ai";
+  process.env.ELIZA_API_URL || process.env.NEXT_PUBLIC_APP_URL || "https://api.eliza.app";
 
 const META_REQUEST_TIMEOUT_MS = 10_000;
 const STATUS_CACHE_TTL_SECONDS = 5 * 60;

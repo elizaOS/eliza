@@ -580,6 +580,16 @@ export class ClientBase {
             continue;
           }
 
+          // Normalize once per row before any context side effects; a
+          // present-but-unusable timestamp fails the row closed (#18965).
+          const createdAt = getEpochMs(tweet.timestamp);
+          if (createdAt === undefined) {
+            logger.debug(
+              `Skipping cached tweet ${tweet.id}: unusable timestamp`,
+            );
+            continue;
+          }
+
           // Create a world for this Twitter user if it doesn't exist
           const worldId = createUniqueUuid(this.runtime, tweet.userId) as UUID;
           await this.runtime.ensureWorldExists({
@@ -635,9 +645,10 @@ export class ClientBase {
               metadata: buildTwitterMessageMetadata(
                 tweet,
                 entityId,
+                createdAt,
                 this.accountId,
               ),
-              createdAt: getEpochMs(tweet.timestamp),
+              createdAt,
             },
             "messages",
           );
@@ -708,6 +719,14 @@ export class ClientBase {
         continue;
       }
 
+      // Normalize once per row before any context side effects; a
+      // present-but-unusable timestamp fails the row closed (#18965).
+      const createdAt = getEpochMs(tweet.timestamp);
+      if (createdAt === undefined) {
+        logger.debug(`Skipping fetched tweet ${tweet.id}: unusable timestamp`);
+        continue;
+      }
+
       // Create a world for this Twitter user if it doesn't exist
       const worldId = createUniqueUuid(this.runtime, tweet.userId) as UUID;
       await this.runtime.ensureWorldExists({
@@ -762,9 +781,10 @@ export class ClientBase {
           metadata: buildTwitterMessageMetadata(
             tweet,
             entityId,
+            createdAt,
             this.accountId,
           ),
-          createdAt: getEpochMs(tweet.timestamp),
+          createdAt,
         },
         "messages",
       );

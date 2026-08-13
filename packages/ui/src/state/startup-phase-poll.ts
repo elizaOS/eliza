@@ -169,10 +169,10 @@ export function shouldFallBackToLocalOrigin(args: {
 }): boolean {
   // A structured HTTP status means the server responded — not a wedge.
   if (typeof asApiLikeError(args.error)?.status === "number") return false;
-  // NEVER abandon a dedicated cloud agent base (<id>.elizacloud.ai) for the
+  // NEVER abandon a dedicated cloud agent base (<id>.cloud.eliza.app) for the
   // page origin. A connection-level failure there means the agent is still
   // starting / transiently unreachable — the correct move is to keep polling
-  // IT, not repoint at app.elizacloud.ai, which serves no backend. That
+  // IT, not repoint at cloud.eliza.app, which serves no backend. That
   // repoint is the actual trigger of the "Backend Unreachable / Backend API
   // routes are unavailable on this origin (404)" crash card: once the base is
   // the app origin, the next /api/first-run/status 404s and dead-ends startup.
@@ -229,7 +229,7 @@ export function isRecoverableRemoteBase(args: {
 // Direct elizaCloud control-plane API base, used to verify an agent record when
 // a per-agent base 404s. Mirrors DEFAULT_DIRECT_CLOUD_API_BASE_URL in
 // api/client-cloud.ts and DIRECT_CLOUD_API_BASE in startup-phase-restore.ts.
-const DIRECT_CLOUD_API_BASE = "https://api.elizacloud.ai";
+const DIRECT_CLOUD_API_BASE = "https://api.eliza.app";
 
 function sharedCloudAgentIdFromBase(base: string): string | null {
   try {
@@ -927,7 +927,7 @@ export async function runPollingBackend(
                 return;
               }
               if (isDedicatedCloudAgentBase(client.getBaseUrl())) {
-                // A dedicated cloud agent (<id>.elizacloud.ai) 404s on the
+                // A dedicated cloud agent (<id>.cloud.eliza.app) 404s on the
                 // first-run shell like the shared adapter — but it can also have
                 // been DELETED or be unreachable. Verify the record against the
                 // control-plane: if it is gone, clear the dead saved server and
@@ -1159,7 +1159,7 @@ export async function runPollingBackend(
           return;
         }
         if (isDedicatedCloudAgentBase(client.getBaseUrl())) {
-          // A dedicated cloud agent (<id>.elizacloud.ai) 404s on the first-run
+          // A dedicated cloud agent (<id>.cloud.eliza.app) 404s on the first-run
           // shell — but it can also have been DELETED or be unreachable. Verify
           // the record against the control-plane: if it is gone, recover to the
           // bundled on-device agent (local-capable native build with a stale
@@ -1202,7 +1202,7 @@ export async function runPollingBackend(
           ae.status === 504)
       ) {
         // Scope this destructive reset to the dev UI shell (port 2138) only.
-        // On hosted web (app.elizacloud.ai) a transient gateway 5xx must NOT
+        // On hosted web (cloud.eliza.app) a transient gateway 5xx must NOT
         // eject an established user to onboarding — it falls through to the
         // normal retry/backoff loop below instead.
         routeToOfflineFirstRun(

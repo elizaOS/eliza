@@ -77,6 +77,12 @@ export interface SettingsSectionDef {
    */
   hideOnCloud?: boolean;
   /**
+   * Show only while the active runtime target is a managed Eliza Cloud agent.
+   * This is independent from role/view-kind authorization: local and VPS
+   * runtimes must not expose management controls they cannot fulfill.
+   */
+  cloudOnly?: boolean;
+  /**
    * Four-tier visibility category. Supersedes `developerOnly` when set:
    * `system`/`release` always show; `developer`/`preview` follow the Settings
    * toggles. See `ViewKind` in `@elizaos/core`.

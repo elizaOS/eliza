@@ -10,8 +10,8 @@ import {
   runJoinFlow,
 } from "./run-join-flow";
 
-const CLOUD_API_BASE = "https://elizacloud.ai";
-const SHARED_BASE = "https://api.elizacloud.ai/api/v1/eliza/agents/agent-123";
+const CLOUD_API_BASE = "https://api.eliza.app";
+const SHARED_BASE = "https://api.eliza.app/api/v1/eliza/agents/agent-123";
 
 function makeClient(
   selectResult: Awaited<
@@ -77,9 +77,9 @@ describe("dedicatedSubdomainBase", () => {
   test("returns the dedicated container apex for an agent subdomain", () => {
     expect(
       dedicatedSubdomainBase(
-        "https://agent-123.elizacloud.ai/api/conversations",
+        "https://agent-123.cloud.eliza.app/api/conversations",
       ),
-    ).toBe("https://agent-123.elizacloud.ai");
+    ).toBe("https://agent-123.cloud.eliza.app");
   });
 
   test("returns null for the shared-tier control-plane REST base", () => {
@@ -87,8 +87,8 @@ describe("dedicatedSubdomainBase", () => {
   });
 
   test("returns null for the bare control-plane host", () => {
-    expect(dedicatedSubdomainBase("https://api.elizacloud.ai")).toBeNull();
-    expect(dedicatedSubdomainBase("https://www.elizacloud.ai")).toBeNull();
+    expect(dedicatedSubdomainBase("https://api.eliza.app")).toBeNull();
+    expect(dedicatedSubdomainBase("https://eliza.app")).toBeNull();
   });
 
   test("returns null for non-https or non-cloud hosts", () => {
@@ -152,7 +152,7 @@ describe("runJoinFlow", () => {
     const { client, setBaseUrl } = makeClient({
       agentId: "agent-xyz",
       agentName: "Dedicated",
-      apiBase: "https://agent-xyz.elizacloud.ai/api/conversations",
+      apiBase: "https://agent-xyz.cloud.eliza.app/api/conversations",
       bridgeUrl: null,
       created: true,
     });
@@ -166,11 +166,13 @@ describe("runJoinFlow", () => {
       agentName: "Dedicated",
     });
 
-    expect(setBaseUrl).toHaveBeenCalledWith("https://agent-xyz.elizacloud.ai");
+    expect(setBaseUrl).toHaveBeenCalledWith(
+      "https://agent-xyz.cloud.eliza.app",
+    );
     expect(saveServer).toHaveBeenCalledWith(
       expect.objectContaining({
         id: "cloud:agent-xyz",
-        apiBase: "https://agent-xyz.elizacloud.ai",
+        apiBase: "https://agent-xyz.cloud.eliza.app",
       }),
     );
     expect(result.dedicated).toBe(true);
@@ -196,10 +198,10 @@ describe("runJoinFlow", () => {
     });
 
     expect(setBaseUrl).toHaveBeenCalledWith(
-      "https://elizacloud.ai/api/v1/eliza/agents/agent-new",
+      "https://api.eliza.app/api/v1/eliza/agents/agent-new",
     );
     expect(result.apiBase).toBe(
-      "https://elizacloud.ai/api/v1/eliza/agents/agent-new",
+      "https://api.eliza.app/api/v1/eliza/agents/agent-new",
     );
     expect(result.dedicated).toBe(false);
   });
@@ -213,7 +215,7 @@ describe("runJoinFlow", () => {
       .mockResolvedValueOnce({
         agentId: "agent-alive",
         agentName: "Eliza",
-        apiBase: "https://api.elizacloud.ai/api/v1/eliza/agents/agent-alive",
+        apiBase: "https://api.eliza.app/api/v1/eliza/agents/agent-alive",
         bridgeUrl: null,
         created: false,
       });
@@ -255,7 +257,7 @@ describe("runJoinFlow", () => {
       .mockResolvedValueOnce({
         agentId: "agent-created",
         agentName: "Eliza",
-        apiBase: "https://agent-created.elizacloud.ai",
+        apiBase: "https://agent-created.cloud.eliza.app",
         bridgeUrl: null,
         created: true,
       });

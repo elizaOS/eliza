@@ -9,8 +9,8 @@
  * components inside the native app we mount them here as a self-contained
  * subtree:
  *
- *  - a **`MemoryRouter`** (NOT `BrowserRouter`) seeded at `/dashboard/apps`, so
- *    the pages' own `react-router` navigation (`/dashboard/apps/:id?tab=…`,
+ *  - a **`MemoryRouter`** (NOT `BrowserRouter`) seeded at `/cloud/apps`, so
+ *    the pages' own `react-router` navigation (`/cloud/apps/:id?tab=…`,
  *    the create-redirect, the detail UUID guard) works without touching the
  *    host app's URL bar or the native deep-link router;
  *  - the cloud providers the pages expect — the shared cloud `QueryClient` and
@@ -58,7 +58,7 @@ import ApplicationDetailPage from "./ApplicationDetailPage";
 import ApplicationsPage from "./ApplicationsPage";
 
 /** Entry route the MemoryRouter is seeded at (the Applications list). */
-const APPS_LIST_PATH = "/dashboard/apps";
+const APPS_LIST_PATH = "/cloud/apps";
 
 /**
  * A stored JWT with at least this many seconds of life left is fresh enough to
@@ -84,15 +84,15 @@ const PRE_RENDER_REFRESH_TIMEOUT_MS = 4_000;
  */
 function resolveNativeStewardRefreshEndpoint(): string | undefined {
   const cloudBase =
-    getBootConfig().cloudApiBase?.trim() || "https://api.elizacloud.ai";
+    getBootConfig().cloudApiBase?.trim() || "https://api.eliza.app";
   try {
     const url = new URL(cloudBase);
     const host = url.hostname.toLowerCase();
     const apiHost =
-      host === "elizacloud.ai" ||
-      host === "www.elizacloud.ai" ||
-      host === "dev.elizacloud.ai"
-        ? "api.elizacloud.ai"
+      host === "eliza.app" ||
+      host === "www.eliza.app" ||
+      host === "cloud.eliza.app"
+        ? "api.eliza.app"
         : host;
     return `${url.protocol}//${apiHost}/api/auth/steward-refresh`;
   } catch {
@@ -248,12 +248,12 @@ function StudioSurface({
 function ApplicationsRoutes(): React.JSX.Element {
   return (
     <Routes>
-      <Route path="/dashboard/apps" element={<ApplicationsPage />} />
+      <Route path="/cloud/apps" element={<ApplicationsPage />} />
       <Route
-        path="/dashboard/apps/create"
+        path="/cloud/apps/create"
         element={<Navigate to={APPS_LIST_PATH} replace />}
       />
-      <Route path="/dashboard/apps/:id" element={<ApplicationDetailPage />} />
+      <Route path="/cloud/apps/:id" element={<ApplicationDetailPage />} />
       <Route path="*" element={<Navigate to={APPS_LIST_PATH} replace />} />
     </Routes>
   );

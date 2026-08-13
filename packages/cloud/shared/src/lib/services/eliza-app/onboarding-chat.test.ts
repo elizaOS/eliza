@@ -170,7 +170,7 @@ describe("runOnboardingChat", () => {
     const loginUrl = new URL(result.loginUrl);
     // Same continuation as Discord: straight to the Cloud app's /get-started
     // (Steward login), never the homepage sign-in card.
-    expect(loginUrl.origin).toBe("https://app.elizacloud.ai");
+    expect(loginUrl.origin).toBe("https://cloud.eliza.app");
     expect(loginUrl.pathname).toBe("/get-started");
     // No legacy method/link hints: those forced the homepage's Telegram
     // widget + phone-number flow instead of the Steward continuation.
@@ -674,14 +674,14 @@ describe("runOnboardingChat", () => {
 
     const loginUrl = new URL(result.loginUrl);
     // Default cloud env => the Cloud *app* host, never the homepage (eliza.app).
-    expect(loginUrl.origin).toBe("https://app.elizacloud.ai");
+    expect(loginUrl.origin).toBe("https://cloud.eliza.app");
     expect(loginUrl.pathname).toBe("/get-started");
     expect(loginUrl.searchParams.get("onboardingSession")).toBeTruthy();
     expect(result.cta).toEqual({ label: "Connect", url: result.loginUrl });
   });
 
   test("discord Connect CTA follows ELIZA_ONBOARDING_APP_URL to the staging app host", async () => {
-    cloudEnv = { ELIZA_ONBOARDING_APP_URL: "https://app-staging.elizacloud.ai" };
+    cloudEnv = { ELIZA_ONBOARDING_APP_URL: "https://cloud-staging.eliza.app" };
     const result = await runOnboardingChat({
       message: "call me Sam",
       platform: "discord",
@@ -691,7 +691,7 @@ describe("runOnboardingChat", () => {
     });
 
     const loginUrl = new URL(result.loginUrl);
-    expect(loginUrl.origin).toBe("https://app-staging.elizacloud.ai");
+    expect(loginUrl.origin).toBe("https://cloud-staging.eliza.app");
     expect(loginUrl.pathname).toBe("/get-started");
   });
 
@@ -1747,7 +1747,7 @@ describe("runOnboardingChat", () => {
       expect(result.provisioning.status).toBe("insufficient_credits");
       expect(result.handoffComplete).toBe(false);
       expect(result.reply).toContain("you're out of credits, Sam");
-      expect(result.reply).toContain("/dashboard/billing");
+      expect(result.reply).toContain("/cloud/billing");
       expect(result.reply).not.toContain("agent is live");
       expect(result.reply).not.toContain("knows everything");
     });
