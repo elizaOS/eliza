@@ -218,3 +218,48 @@ describe("terminal action effect proof", () => {
     });
   });
 });
+
+describe("terminal command-line secret hygiene", () => {
+  beforeEach(() => {
+    vi.stubEnv("ELIZA_BUILD_VARIANT", "direct");
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
+  });
+
+  it("redacts secrets embedded in the command line before any consumer sees it", async () => {
+    const secret = "sk-proj-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
+    const leakyCommand = `curl -H "Authorization: Bearer ${secret}" https://api.example.com`;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        terminalResponse({ command: leakyCommand, stdout: "ok\n" }),
+      ),
+    );
+
+    const createMemory = vi.fn(
+      async () => "00000000-0000-0000-0000-000000000004",
+    );
+    const rt = {
+      agentId: "00000000-0000-0000-0000-000000000001",
+      createMemory,
+    } as unknown as IAgentRuntime;
+
+    const result = (await terminalAction.handler(
+      rt,
+      message(),
+      undefined,
+      options(leakyCommand),
+    )) as { text?: string; data?: unknown };
+
+    const surfaces = [
+      result.text ?? "",
+      JSON.stringify(result.data ?? {}),
+      JSON.stringify(createMemory.mock.calls),
+    ].join("\n");
+    expect(surfaces).not.toContain(secret);
+    expect(surfaces).toContain("curl");
+  });
+});

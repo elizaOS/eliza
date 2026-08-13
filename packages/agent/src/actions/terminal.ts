@@ -469,8 +469,13 @@ export const terminalAction: Action = {
     // stderr at the source, so no downstream path — the model-facing diagnostic
     // preview, the user-facing chat relay, or the stored output attachment —
     // can echo a plaintext secret that happened to appear in command output.
+    // The command LINE itself is a leak vector too (curl -H "Authorization:
+    // Bearer <token>", psql postgres://user:pass@host): scrub it once here so
+    // every consumer — "Command:" artifact header, attachment title and
+    // description, and the model-facing action text — sees the redacted form.
     const capturedRun: CapturedTerminalRun = {
       ...rawRun,
+      command: redactSensitiveText(rawRun.command, { mode: "tools" }),
       stdout: redactSensitiveText(rawRun.stdout, { mode: "tools" }),
       stderr: redactSensitiveText(rawRun.stderr, { mode: "tools" }),
     };
