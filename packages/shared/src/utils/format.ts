@@ -180,6 +180,9 @@ export function formatDateTime(
 ): string {
   const { fallback = "—", locale } = options;
   if (value == null || value === "") return fallback;
+  if (typeof value === "string" && !hasValidIsoCalendarDate(value)) {
+    return fallback;
+  }
   const parsed = value instanceof Date ? value : new Date(value);
   if (!Number.isFinite(parsed.getTime())) return fallback;
   return parsed.toLocaleString(locale);
@@ -211,6 +214,9 @@ export function formatShortDate(
 ): string {
   const { fallback = "—", locale } = options;
   if (value == null || value === "") return fallback;
+  if (typeof value === "string" && !hasValidIsoCalendarDate(value)) {
+    return fallback;
+  }
   const parsed = value instanceof Date ? value : new Date(value);
   if (!Number.isFinite(parsed.getTime())) return fallback;
   return parsed.toLocaleDateString(locale, {
