@@ -147,9 +147,8 @@ function main(argv) {
     );
     killGroup("SIGTERM");
     void (async () => {
-      const gracefullyReaped = await waitForProcessGroupGone(
-        TERMINATION_GRACE_MS,
-      );
+      const gracefullyReaped =
+        await waitForProcessGroupGone(TERMINATION_GRACE_MS);
       if (gracefullyReaped) {
         timeoutDone = true;
         finish();

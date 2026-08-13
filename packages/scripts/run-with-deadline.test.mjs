@@ -4,7 +4,13 @@
  */
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -23,9 +29,9 @@ test("waits for SIGKILL escalation when the direct child closes first", {
   writeFileSync(
     descendant,
     `import { writeFileSync } from "node:fs";
+process.on("SIGTERM", () => {});
 writeFileSync(${JSON.stringify(pidFile)}, String(process.pid));
 writeFileSync(${JSON.stringify(readyFile)}, "ready");
-process.on("SIGTERM", () => {});
 setInterval(() => {}, 1000);
 `,
   );
@@ -41,7 +47,7 @@ setInterval(() => {}, 1000);
   try {
     const result = spawnSync(
       process.execPath,
-      [SCRIPT, "500", "--", process.execPath, child],
+      [SCRIPT, "2000", "--", process.execPath, child],
       { encoding: "utf8", timeout: 20_000 },
     );
     assert.ok(existsSync(readyFile), "descendant did not signal readiness");
@@ -66,9 +72,9 @@ test("settles promptly when a descendant honors SIGTERM", {
   writeFileSync(
     descendant,
     `import { writeFileSync } from "node:fs";
-writeFileSync(${JSON.stringify(readyFile)}, "ready");
 const timer = setInterval(() => {}, 1000);
 process.on("SIGTERM", () => { clearInterval(timer); process.exit(0); });
+writeFileSync(${JSON.stringify(readyFile)}, "ready");
 `,
   );
   writeFileSync(
@@ -84,7 +90,7 @@ setInterval(() => {}, 1000);
     const startedAt = Date.now();
     const result = spawnSync(
       process.execPath,
-      [SCRIPT, "100", "--", process.execPath, child],
+      [SCRIPT, "2000", "--", process.execPath, child],
       { encoding: "utf8", timeout: 10_000 },
     );
     assert.equal(result.status, 124, `${result.stdout}\n${result.stderr}`);
