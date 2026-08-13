@@ -1011,7 +1011,7 @@ class ManagedLaunchOwnershipLost extends Error {
  * never buffering the full response (a malicious upstream could OOM the
  * Worker with an unbounded body).
  */
-async function readErrorBodyExcerpt(
+export async function readErrorBodyExcerpt(
   res: Pick<Response, "body" | "headers">,
 ): Promise<string | null> {
   // error-policy:J2 non-blocking diagnostic — a body-read failure degrades to
@@ -1036,6 +1036,11 @@ async function readErrorBodyExcerpt(
       // Cancel the reader to release the connection even if the body is larger.
       await reader.cancel().catch(() => {});
     }
+    // Flush any remaining buffered bytes from the final chunk — a multi-byte
+    // UTF-8 character split at the 512-byte boundary would be silently dropped
+    // without this final decode() call (felirami P2 nit on PR #18336).
+    const flushed = decoder.decode();
+    if (flushed) chunks.push(flushed);
     const body = chunks.join("");
     if (!body.trim()) return null;
     const contentType = res.headers.get("content-type") ?? "";
