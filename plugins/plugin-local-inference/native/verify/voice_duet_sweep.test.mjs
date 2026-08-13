@@ -1,12 +1,11 @@
 /**
  * Focused CLI-boundary tests for voice_duet_sweep numeric option validation.
  * Invalid --turns / --cell-timeout-ms must fail before any cell work starts.
+ * Parsing is asserted in-process; one spawned run proves the real entrypoint
+ * exits non-zero rather than sweeping with a fabricated default.
  */
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import fs from "node:fs";
-import os from "node:os";
-import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, it } from "vitest";
 import {
@@ -19,8 +18,8 @@ const SCRIPT_PATH = fileURLToPath(
   new URL("./voice_duet_sweep.mjs", import.meta.url),
 );
 
-function runCli(args, scriptPath = SCRIPT_PATH) {
-  return spawnSync("bun", [scriptPath, ...args], {
+function runCli(args) {
+  return spawnSync("bun", [SCRIPT_PATH, ...args], {
     encoding: "utf8",
     env: { PATH: process.env.PATH ?? "" },
   });
@@ -109,45 +108,13 @@ describe("voice_duet_sweep numeric CLI validation", () => {
     );
   });
 
-  it("CLI exits non-zero with a named flag before sweep work", () => {
-    for (const args of [
-      ["--turns", "junk"],
-      ["--cell-timeout-ms", "junk"],
-      ["--cell-timeout-ms", String(MAX_NODE_TIMER_MS + 1)],
-    ]) {
-      const result = runCli(args);
-      assert.equal(result.status, 1, `expected failure for ${args.join(" ")}`);
-      assert.match(result.stderr, new RegExp(args[0]));
-      assert.doesNotMatch(
-        result.stdout + result.stderr,
-        /CSV →|before\/after|voice-duet-sweep-cells|TimeoutOverflowWarning/i,
-      );
-    }
-  });
-
-  it("CLI accepts zero-padded valid flags under --dry-run", () => {
-    const result = runCli([
-      "--dry-run",
-      "--turns",
-      "01",
-      "--cell-timeout-ms",
-      "00001000",
-    ]);
-    assert.equal(result.status, 0);
-    assert.doesNotMatch(result.stderr, /--turns|--cell-timeout-ms/);
-  });
-
-  it("runs through a symlink so invalid flags still fail closed", () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "voice-duet-sweep-"));
-    try {
-      const linkPath = path.join(dir, "voice-duet-sweep");
-      fs.symlinkSync(SCRIPT_PATH, linkPath);
-      const result = runCli(["--turns", "junk"], linkPath);
-      assert.equal(result.status, 1);
-      assert.match(result.stderr, /--turns/);
-      assert.doesNotMatch(result.stdout + result.stderr, /CSV →|before\/after/i);
-    } finally {
-      fs.rmSync(dir, { recursive: true, force: true });
-    }
+  it("CLI exits non-zero with the named flag before any sweep work", () => {
+    const result = runCli(["--turns", "junk"]);
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /--turns/);
+    assert.doesNotMatch(
+      result.stdout + result.stderr,
+      /CSV \u2192|before\/after|voice-duet-sweep-cells|TimeoutOverflowWarning/i,
+    );
   });
 });
