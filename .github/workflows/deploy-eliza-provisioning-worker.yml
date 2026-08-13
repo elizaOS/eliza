@@ -175,6 +175,12 @@ jobs:
       # Keep the daemon's parser on the same environment-specific suffix or a
       # staging host (`<uuid>.cloud-staging.eliza.app`) is rejected as malformed.
       ELIZA_CLOUD_AGENT_BASE_DOMAIN: ${{ needs.determine-env.outputs.environment == 'production' && 'cloud.eliza.app' || 'cloud-staging.eliza.app' }}
+      # Public hostname the edge Worker uses to reach this agent-router. The
+      # host's nginx config predates the eliza.app consolidation and must accept
+      # both this canonical name and the legacy elizacloud.ai name during the
+      # compatibility window.
+      AGENT_ROUTER_PUBLIC_HOST: ${{ needs.determine-env.outputs.environment == 'production' && 'eliza-production-1.eliza.app' || 'eliza-staging-1.eliza.app' }}
+      LEGACY_AGENT_ROUTER_PUBLIC_HOST: ${{ needs.determine-env.outputs.environment == 'production' && 'eliza-production-1.elizacloud.ai' || 'eliza-staging-1.elizacloud.ai' }}
     steps:
       - name: Validate canonical deploy configuration and shared secrets
         id: deploy_config
@@ -290,7 +296,7 @@ jobs:
           # Preserve setup/build headroom without weakening the preflight's own
           # eight-minute fail-closed fence near the end of this remote script.
           command_timeout: 20m
-          envs: DEPLOY_BRANCH,DEPLOY_SHA,SYSTEMD_UNIT,HEADSCALE_API_URL,HEADSCALE_PUBLIC_URL,HEADSCALE_API_KEY,CONTAINERS_SSH_KEY,SANDBOX_REGISTRY_REDIS_URL,DATABASE_URL,SECRETS_MASTER_KEY,ELIZA_AGENT_IMAGE,ELIZA_CLOUD_AGENT_BASE_DOMAIN
+          envs: DEPLOY_BRANCH,DEPLOY_SHA,SYSTEMD_UNIT,HEADSCALE_API_URL,HEADSCALE_PUBLIC_URL,HEADSCALE_API_KEY,CONTAINERS_SSH_KEY,SANDBOX_REGISTRY_REDIS_URL,DATABASE_URL,SECRETS_MASTER_KEY,ELIZA_AGENT_IMAGE,ELIZA_CLOUD_AGENT_BASE_DOMAIN,AGENT_ROUTER_PUBLIC_HOST,LEGACY_AGENT_ROUTER_PUBLIC_HOST
           script: |
             set -euo pipefail
             echo "=== Deploying eliza-provisioning-worker (branch: $DEPLOY_BRANCH sha: $DEPLOY_SHA) ==="
@@ -539,6 +545,35 @@ jobs:
             sudo systemctl restart "$SYSTEMD_UNIT"
             sudo systemctl restart eliza-agent-router.service
             echo "=== Restart issued for both daemons ==="
+
+            # The canonical edge origin must terminate in the same nginx vhost
+            # as the legacy control-plane hostname. Without this alias, nginx
+            # serves its default blank web shell with HTTP 200; lifecycle calls
+            # then parse HTML as a snapshot and safe restarts wedge. Amend the
+            # existing, operator-reviewed router vhost rather than creating a
+            # second listener or certificate configuration.
+            mapfile -t router_vhosts < <(
+              sudo grep -RIl \
+                "server_name.*${LEGACY_AGENT_ROUTER_PUBLIC_HOST}" \
+                /etc/nginx 2>/dev/null || true
+            )
+            if [ "${#router_vhosts[@]}" -eq 0 ]; then
+              echo "::error::No nginx vhost owns legacy agent-router host ${LEGACY_AGENT_ROUTER_PUBLIC_HOST}"
+              exit 1
+            fi
+            for vhost in "${router_vhosts[@]}"; do
+              if sudo grep -Eq "server_name[^;]*${AGENT_ROUTER_PUBLIC_HOST}([[:space:]]|;)" "$vhost"; then
+                continue
+              fi
+              sudo sed -Ei \
+                "/server_name[^;]*${LEGACY_AGENT_ROUTER_PUBLIC_HOST}/ s/[[:space:]]*;/ ${AGENT_ROUTER_PUBLIC_HOST};/" \
+                "$vhost"
+            done
+            sudo nginx -t
+            sudo systemctl reload nginx
+            curl -fsS "https://${AGENT_ROUTER_PUBLIC_HOST}/healthz" \
+              | grep -Eq '"ok"[[:space:]]*:[[:space:]]*true'
+            echo "Verified canonical agent-router nginx host alias: ${AGENT_ROUTER_PUBLIC_HOST}"
 
       - name: Health check
         if: steps.deploy_config.outputs.configured == 'true'
