@@ -109,7 +109,11 @@ export function parseRunnerWorkspacePruneArgs(
     flags.get("min-age-hours") ??
     env.RUNNER_WORKSPACE_MIN_AGE_HOURS ??
     String(DEFAULT_MIN_AGE_HOURS);
-  const minAgeHours = Number.parseInt(minAgeRaw, 10);
+  const normalizedMinAge = minAgeRaw.trim();
+  if (!/^\+?\d+$/.test(normalizedMinAge)) {
+    throw new Error(`Invalid min-age-hours: ${minAgeRaw}`);
+  }
+  const minAgeHours = Number(normalizedMinAge);
   if (!Number.isInteger(minAgeHours) || minAgeHours < MIN_AGE_HOURS_FLOOR) {
     throw new Error(`Invalid min-age-hours: ${minAgeRaw}`);
   }

@@ -75,6 +75,14 @@ describe("parseRunnerWorkspacePruneArgs", () => {
     expect(() =>
       parseRunnerWorkspacePruneArgs(["--min-age-hours", "0"], {}),
     ).toThrow("Invalid min-age-hours");
+
+    expect(() =>
+      parseRunnerWorkspacePruneArgs(["--min-age-hours", "24oops"], {}),
+    ).toThrow("Invalid min-age-hours");
+
+    expect(
+      parseRunnerWorkspacePruneArgs(["--min-age-hours", "  +012  "], {}),
+    ).toMatchObject({ minAgeHours: 12 });
   });
 
   it("rejects an unknown flag instead of silently running on defaults", () => {
