@@ -17,6 +17,10 @@ test.use({
 
 test.beforeEach(async ({ page }) => {
   await page.clock.setFixedTime(FIXED_TIME);
+  // The project-level contextOptions override swallows test.use's
+  // reducedMotion in this runner; emulate it explicitly so the landing demo
+  // renders its settled snapshot.
+  await page.emulateMedia({ reducedMotion: "reduce" });
 });
 
 for (const viewport of [
@@ -44,23 +48,19 @@ for (const viewport of [
   });
 }
 
-test("phone mockup reaches its terminal four-bubble state", async ({
+test("reduced motion renders the settled intro conversation", async ({
   page,
 }) => {
   await page.goto("/", { waitUntil: "domcontentloaded" });
   await waitForLandingIntro(page);
 
-  const bubbles = page.locator(".landing-bubble");
-  await expect(bubbles).toHaveCount(4);
-  for (const bubble of await bubbles.all()) {
-    await expect
-      .poll(async () =>
-        Number(
-          await bubble.evaluate((element) => getComputedStyle(element).opacity),
-        ),
-      )
-      .toBeGreaterThan(0.98);
-  }
+  // This spec runs with reducedMotion: "reduce", so the demo must skip
+  // playback and render the whole intro at once: a stable snapshot for
+  // screenshot determinism.
+  const demo = page.locator(".landing-iphone");
+  await expect(demo).toHaveAttribute("data-demo-phase", "settled");
+  await expect(demo).toHaveAttribute("data-demo-messages", "14");
+  await expect(page.locator(".landing-demo-card")).toHaveCount(3);
 });
 
 test("landing has no horizontal overflow at mobile width", async ({ page }) => {

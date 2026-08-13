@@ -1,7 +1,9 @@
 /**
  * Shared readiness boundary for screenshots of the landing route. The page is
- * static DOM + CSS, so readiness is fonts plus the hero content and the
- * chat-bubble entrance animation reaching its terminal opacity.
+ * static DOM + CSS around a scripted iMessage demo; readiness is fonts, the
+ * hero heading, and the demo having rendered messages. Under reduced motion
+ * the demo renders its settled intro immediately (phase "settled"); otherwise
+ * playback appends messages within a few seconds.
  */
 
 import { expect, type Page } from "playwright/test";
@@ -14,16 +16,10 @@ export async function waitForLandingIntro(page: Page) {
     page.getByRole("heading", { name: /Get 4 hours of your time back/ }),
   ).toBeVisible({ timeout: READINESS_TIMEOUT_MS });
 
-  const lastBubble = page.locator(".landing-bubble").last();
+  const demo = page.locator(".landing-iphone");
   await expect
-    .poll(
-      async () =>
-        Number(
-          await lastBubble.evaluate(
-            (element) => getComputedStyle(element).opacity,
-          ),
-        ),
-      { timeout: READINESS_TIMEOUT_MS },
-    )
-    .toBeGreaterThan(0.98);
+    .poll(async () => Number(await demo.getAttribute("data-demo-messages")), {
+      timeout: READINESS_TIMEOUT_MS,
+    })
+    .toBeGreaterThanOrEqual(1);
 }
