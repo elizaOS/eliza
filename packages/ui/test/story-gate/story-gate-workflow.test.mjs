@@ -22,12 +22,16 @@ describe("UI Story Gate workflow", () => {
   });
 
   it("runs eight shards and uploads shard evidence", () => {
+    expect(shardJob["timeout-minutes"]).toBe(35);
+    expect(
+      shardJob.steps.find((step) => step.name === "Run deterministic Story Gate shard"),
+    ).toMatchObject({ "timeout-minutes": 20 });
     expect(shardJob.strategy).toMatchObject({
       "fail-fast": false,
       matrix: { shard: [1, 2, 3, 4, 5, 6, 7, 8] },
     });
     expect(shardUpload).toMatchObject({
-      if: "${{ always() && !cancelled() }}",
+      if: "${{ always() }}",
       with: {
         name: "story-gate-shard-${{ matrix.shard }}-of-8",
         path: "packages/ui/test/story-gate/output",
@@ -37,8 +41,8 @@ describe("UI Story Gate workflow", () => {
 
   it("has an aggregate job that preserves fail-closed evidence", () => {
     expect(aggregateJob.needs).toEqual(["build-catalog", "story-shard"]);
-    expect(aggregateJob.if).toBe("${{ always() && !cancelled() }}");
-    expect(aggregateMerge.if).toBe("${{ always() && !cancelled() }}");
+    expect(aggregateJob.if).toBe("${{ always() }}");
+    expect(aggregateMerge.if).toBe("${{ always() }}");
     expect(aggregateMerge.run).toContain("--shards 8");
 
     const catalogDownload = aggregateJob.steps.find(
@@ -57,7 +61,7 @@ describe("UI Story Gate workflow", () => {
         (step) => step.name === "Upload aggregate Story Gate output",
       ),
     ).toMatchObject({
-      if: "${{ always() && !cancelled() }}",
+      if: "${{ always() }}",
       with: { name: "story-gate-output" },
     });
   });
