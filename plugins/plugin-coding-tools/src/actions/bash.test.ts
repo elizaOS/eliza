@@ -1819,7 +1819,7 @@ describeIfPosix("shellAction", () => {
 });
 
 describe("shell timeout operator setting", () => {
-  it.each(["0", "-1", "45.5", "9007199254740992", "600001", "1e3", " 200"])(
+  it.each(["", "0", "-1", "45.5", "9007199254740992", "600001", "1e3", " 200"])(
     "rejects malformed timeout setting %j before starting the shell",
     async (shellTimeoutMs) => {
       const markerRoot = await fs.mkdtemp(
@@ -1857,6 +1857,7 @@ describe("shell timeout operator setting", () => {
 
   it.each([
     [undefined, 120_000],
+    [null, 120_000],
     ["200", 200],
     [100, 100],
     [600_000, 600_000],

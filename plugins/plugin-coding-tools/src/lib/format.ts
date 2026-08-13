@@ -182,7 +182,9 @@ export function readBoundedIntSetting(
   max: number,
 ): { value: number } | { error: string } | undefined {
   const raw = runtime.getSetting(key);
-  if (raw === undefined) return undefined;
+  // AgentRuntime normalizes a missing setting to null. Only that absence
+  // signal defaults; explicit strings (including "") still validate below.
+  if (raw == null) return undefined;
 
   const valid =
     (typeof raw === "number" && Number.isSafeInteger(raw)) ||

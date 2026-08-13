@@ -132,6 +132,7 @@ describe("readBoundedIntSetting", () => {
     expect(
       readBoundedIntSetting(rt(undefined), "k", 100, 600_000),
     ).toBeUndefined();
+    expect(readBoundedIntSetting(rt(null), "k", 100, 600_000)).toBeUndefined();
     expect(readBoundedIntSetting(rt("200"), "k", 100, 600_000)).toEqual({
       value: 200,
     });
@@ -141,6 +142,7 @@ describe("readBoundedIntSetting", () => {
   });
 
   it.each([
+    "",
     "45.5",
     "1e3",
     " 200",
@@ -150,7 +152,6 @@ describe("readBoundedIntSetting", () => {
     45.5,
     0,
     600_001,
-    null,
     false,
     {},
     Symbol("timeout"),
