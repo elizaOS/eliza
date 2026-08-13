@@ -45,6 +45,46 @@ describe("redactSecrets (known values)", () => {
 });
 
 describe("redactSensitiveText (pattern detection)", () => {
+	it("redacts credentials embedded in URI userinfo", () => {
+		const httpsUrl = "https://admin:hunter2hunter2@host.example.com/private";
+		const postgresUrl =
+			"postgres://service:database-password-123@db.example.com:5432/app";
+		const tokenUrl =
+			"https://github-token-value-123456789@github.com/org/repo.git";
+		const passwordOnlyUrl =
+			"https://:password-only-value-123456789@host.example/db";
+
+		const redactedHttps = redactSensitiveText(httpsUrl);
+		const redactedPostgres = redactSensitiveText(postgresUrl);
+		const redactedToken = redactSensitiveText(tokenUrl);
+		const redactedPasswordOnly = redactSensitiveText(passwordOnlyUrl);
+
+		expect(redactedHttps).toContain("https://");
+		expect(redactedHttps).toContain("@host.example.com/private");
+		expect(redactedHttps).not.toContain("admin");
+		expect(redactedHttps).not.toContain("hunter2hunter2");
+		expect(redactedPostgres).toContain("postgres://");
+		expect(redactedPostgres).toContain("@db.example.com:5432/app");
+		expect(redactedPostgres).not.toContain("service");
+		expect(redactedPostgres).not.toContain("database-password-123");
+		expect(redactedToken).toContain("@github.com/org/repo.git");
+		expect(redactedToken).not.toContain("github-token-value-123456789");
+		expect(redactedPasswordOnly).toContain("@host.example/db");
+		expect(redactedPasswordOnly).not.toContain("password-only-value-123456789");
+	});
+
+	it("redacts both spaced and equals-form credential flags", () => {
+		const spaced = "run --token flag-secret-value-123456789";
+		const equals = "run --password=flag-password-value-123456789";
+
+		expect(redactSensitiveText(spaced)).not.toContain(
+			"flag-secret-value-123456789",
+		);
+		expect(redactSensitiveText(equals)).not.toContain(
+			"flag-password-value-123456789",
+		);
+	});
+
 	it("masks an openai-style key without leaking it", () => {
 		const key = "sk-0123456789abcdefghij";
 		const out = redactSensitiveText(`my key ${key} end`);
