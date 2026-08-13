@@ -468,6 +468,7 @@ function isDirectExecution(argvEntry) {
       realpathSync(fileURLToPath(import.meta.url))
     );
   } catch {
+    // error-policy:J3 An unresolvable argv entry is not this module's executable path.
     return false;
   }
 }
