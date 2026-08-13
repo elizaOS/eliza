@@ -313,6 +313,29 @@ ph eg`,
     expect(f.verdict).toBe("broken");
   });
 
+  it("independently rejects a terminal finances loading frame", () => {
+    const policy = resolveViewOcrPolicy("plugin-finances-gui");
+    if (policy.kind !== "expectation") {
+      throw new Error("plugin-finances-gui must declare an OCR expectation");
+    }
+
+    const loading = evaluateOcrContent({
+      ocr: ocr("Finances\nLoading"),
+      expectation: policy.expectation,
+    });
+    expect(loading.verdict).toBe("broken");
+    expect(loading.forbiddenPresent).toEqual(["Loading"]);
+
+    for (const settled of ["Balance $125.00", "Transactions", "Recurring"]) {
+      const finding = evaluateOcrContent({
+        ocr: ocr(`Finances\n${settled}`),
+        expectation: policy.expectation,
+      });
+      expect(finding.verdict).toBe("verified");
+      expect(finding.forbiddenPresent).toEqual([]);
+    }
+  });
+
   it("soft-flags scaffolding and forbidden leaks as needs-eyeball", () => {
     const f = evaluateOcrContent({
       ocr: ocr("Welcome\nLorem ipsum dolor sit"),
