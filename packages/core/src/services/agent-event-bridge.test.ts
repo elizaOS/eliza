@@ -344,12 +344,12 @@ describe("agent-event-bridge", () => {
 		expect(notificationService.list()).toHaveLength(0);
 	});
 
-	it("fails closed for unknown, API, and missing-channel message provenance", async () => {
+	it("fails closed for unknown-connector and machine-channel message provenance", async () => {
 		const { runtime, events, notificationService } = await createCtx();
 		for (const [source, channelType] of [
 			["unknown-connector", ChannelType.DM],
 			["discord", ChannelType.API],
-			["discord", undefined],
+			["discord", ChannelType.AUTONOMOUS],
 		] as const) {
 			await bridgeMessageReceivedToStreams(
 				messagePayload(runtime, {
@@ -368,7 +368,82 @@ describe("agent-event-bridge", () => {
 		expect(notificationService.list()).toHaveLength(0);
 	});
 
-	it("allows registered connector extensions only on user-facing channels", async () => {
+	it("notifies for a real Slack payload that stamps no content.channelType", async () => {
+		const { runtime, notificationService } = await createCtx();
+		// Mirrors plugin-slack's registration and its inbound Memory: the content
+		// carries no `channelType` (the Room holds ChannelType.DM/GROUP and the
+		// Memory metadata carries Slack's own `chatType`, e.g. "im").
+		registerConnectorSourceMetadata("slack", {
+			aliases: ["slack"],
+			sourceKind: "passive",
+			isPassive: true,
+		});
+		await bridgeMessageReceivedToStreams(
+			messagePayload(runtime, {
+				source: "slack",
+				message: {
+					...messagePayload(runtime).message,
+					content: {
+						text: "standup in five?",
+						source: "slack",
+						name: "alice",
+						metadata: { accountId: "T123" },
+					},
+					metadata: {
+						type: "message",
+						source: "slack",
+						provider: "slack",
+						accountId: "T123",
+						entityName: "alice",
+						entityUserName: "alice",
+						fromBot: false,
+						chatType: "im",
+						sender: { id: "U1", name: "alice", username: "alice" },
+					},
+				},
+			} as Partial<MessagePayload>),
+		);
+		if (!notificationService) throw new Error("NotificationService not loaded");
+		expect(notificationService.list()).toHaveLength(1);
+	});
+
+	it("notifies for a real Signal payload that stamps no content.channelType", async () => {
+		const { runtime, notificationService } = await createCtx();
+		// Mirrors plugin-signal: `channelType` appears nowhere on content; the
+		// conversation kind lives on the Room and on `metadata.chatType`.
+		registerConnectorSourceMetadata("signal", {
+			aliases: ["signal"],
+			sourceKind: "passive",
+			isPassive: true,
+		});
+		await bridgeMessageReceivedToStreams(
+			messagePayload(runtime, {
+				source: "signal",
+				message: {
+					...messagePayload(runtime).message,
+					content: {
+						text: "landed safely",
+						source: "signal",
+						name: "bob",
+					},
+					metadata: {
+						type: "message",
+						source: "signal",
+						provider: "signal",
+						entityName: "bob",
+						entityUserName: "+15550000000",
+						fromBot: false,
+						chatType: ChannelType.GROUP,
+						sender: { id: "+15550000000", name: "bob", username: "bob" },
+					},
+				},
+			} as Partial<MessagePayload>),
+		);
+		if (!notificationService) throw new Error("NotificationService not loaded");
+		expect(notificationService.list()).toHaveLength(1);
+	});
+
+	it("allows a registered connector extension on a user-facing channel", async () => {
 		const { runtime, notificationService } = await createCtx();
 		registerConnectorSourceMetadata("custom-gateway", {
 			aliases: ["custom-gateway"],

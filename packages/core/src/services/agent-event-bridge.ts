@@ -296,17 +296,18 @@ function isBotMessage(metadata: Record<string, unknown>): boolean {
 	);
 }
 
-const USER_FACING_NOTIFICATION_CHANNEL_TYPES: ReadonlySet<string> = new Set(
-	[
-		ChannelType.DM,
-		ChannelType.GROUP,
-		ChannelType.VOICE_DM,
-		ChannelType.VOICE_GROUP,
-		ChannelType.FEED,
-		ChannelType.THREAD,
-		ChannelType.WORLD,
-		ChannelType.FORUM,
-	].map((value) => value.toLowerCase()),
+/**
+ * Channel types that are machine or self-directed surfaces rather than a human
+ * conversation. `Content.channelType` is optional and several shipped
+ * connectors never stamp it (Slack carries the type on the Room and a
+ * platform-specific `metadata.chatType`; Signal stamps none at all), so an
+ * absent channel type must not disqualify a message. Registration in the
+ * connector-source registry is the trust anchor; the channel type only vetoes.
+ */
+const NON_USER_FACING_CHANNEL_TYPES: ReadonlySet<string> = new Set(
+	[ChannelType.API, ChannelType.AUTONOMOUS, ChannelType.SELF].map((value) =>
+		value.toLowerCase(),
+	),
 );
 
 function hasTrustedNotificationProvenance(
@@ -314,12 +315,11 @@ function hasTrustedNotificationProvenance(
 	source: string,
 ): boolean {
 	const connector = getConnectorSourceMetadata(source);
+	// A non-empty alias set is what registration guarantees; API, web, and other
+	// internal senders never register, so they fail closed here.
 	if (!connector?.aliases?.length) return false;
-	const channelType = readString(payload.message.content.channelType);
-	return Boolean(
-		channelType &&
-			USER_FACING_NOTIFICATION_CHANNEL_TYPES.has(channelType.toLowerCase()),
-	);
+	const channelType = resolveMessageChannel(payload, source);
+	return !NON_USER_FACING_CHANNEL_TYPES.has(channelType.toLowerCase());
 }
 
 function shouldNotifyForInboundMessage(

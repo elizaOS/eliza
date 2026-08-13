@@ -262,7 +262,7 @@ describe("executeTriggerTask", () => {
     expect(persisted?.lastStatus).toBe("success");
   });
 
-  it("does not notify for legacy or system triggers without explicit provenance", async () => {
+  it("does not emit the success notification for legacy or system triggers without explicit provenance", async () => {
     const task = makeTriggerTask({
       triggerType: "interval",
       displayName: "User-sounding internal health check",
@@ -271,6 +271,30 @@ describe("executeTriggerTask", () => {
     });
     await executeTriggerTask(handle.runtime, task, { source: "scheduler" });
     expect(handle.notifyCalls).toHaveLength(0);
+  });
+
+  it("still notifies on failure for a legacy trigger that never persisted notifyOnOutcome", async () => {
+    handle.setDispatchResult({ ok: false, error: "workflow blew up" });
+    const task = makeTriggerTask({
+      triggerType: "interval",
+      displayName: "Legacy nightly backup",
+    });
+    // A trigger persisted before `notifyOnOutcome` existed carries no such key.
+    const persistedTrigger = readTriggerConfig(task);
+    if (!persistedTrigger) throw new Error("trigger config missing");
+    delete (persistedTrigger as { notifyOnOutcome?: boolean }).notifyOnOutcome;
+    expect(persistedTrigger.notifyOnOutcome).toBeUndefined();
+
+    const result = await executeTriggerTask(handle.runtime, task, {
+      source: "scheduler",
+    });
+
+    expect(result.status).toBe("error");
+    expect(handle.notifyCalls).toHaveLength(1);
+    expect(handle.notifyCalls[0].title).toBe(
+      'Automation "Legacy nightly backup" failed',
+    );
+    expect(handle.notifyCalls[0].priority).toBe("high");
   });
 
   it("allows an explicit per-runtime diagnostic override", async () => {
@@ -308,7 +332,6 @@ describe("executeTriggerTask", () => {
     const task = makeTriggerTask({
       triggerType: "interval",
       displayName: "Nightly backup",
-      notifyOnOutcome: true,
     });
 
     const result = await executeTriggerTask(handle.runtime, task, {
@@ -663,7 +686,6 @@ describe("executeTriggerTask", () => {
     const task = makeTriggerTask({
       triggerType: "interval",
       displayName: "Device health check",
-      notifyOnOutcome: true,
     });
 
     const result = await executeTriggerTask(handle.runtime, task, {
