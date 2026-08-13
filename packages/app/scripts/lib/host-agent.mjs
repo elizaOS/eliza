@@ -37,19 +37,27 @@ export function parsePort(value, label = "port") {
  */
 export function parseNonNegativeSafeInteger(value, label, options = {}) {
   const max = options.max ?? Number.MAX_SAFE_INTEGER;
+  const requirement =
+    max === Number.MAX_SAFE_INTEGER
+      ? "a non-negative safe integer"
+      : `a non-negative safe integer no greater than ${max}`;
+  const invalid = () =>
+    new Error(
+      `Invalid ${label}: expected ${requirement}; received ${JSON.stringify(value)}`,
+    );
   if (typeof value === "number") {
     if (!Number.isSafeInteger(value) || value < 0 || value > max) {
-      throw new Error(`Invalid ${label}: ${value}`);
+      throw invalid();
     }
     return value;
   }
   const raw = String(value ?? "");
   if (!/^\d+$/.test(raw)) {
-    throw new Error(`Invalid ${label}: ${value}`);
+    throw invalid();
   }
   const parsed = Number.parseInt(raw, 10);
   if (!Number.isSafeInteger(parsed) || parsed < 0 || parsed > max) {
-    throw new Error(`Invalid ${label}: ${value}`);
+    throw invalid();
   }
   return parsed;
 }

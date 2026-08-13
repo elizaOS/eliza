@@ -205,7 +205,7 @@ describe("host-agent helper", () => {
           ELIZA_HOST_AGENT_READY_DELAY_MS: String(MAX_TIMER_DELAY_MS + 1),
         },
       }),
-    ).toThrow(/Invalid host-agent readyDelayMs/);
+    ).toThrow(`no greater than ${MAX_TIMER_DELAY_MS}`);
   });
 
   it("rejects invalid readyAttempts before spawning a host agent child", async () => {
