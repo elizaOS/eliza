@@ -1,7 +1,8 @@
 /**
- * Static source-scan guard: boolean settings rows must use SettingsSwitchRow
- * instead of a hand-rolled SettingsRow + Switch. Reads files off disk — no
- * render. Remaining raw Switch sites are an explicit, documented allowlist.
+ * Occurrence ratchet for raw `<Switch` in the settings surface. A labelled
+ * boolean settings row must use SettingsSwitchRow. Remaining raw Switch sites
+ * are recorded by exact count so an extra occurrence in an already-known file
+ * fails. Reads files off disk — no render.
  */
 
 import { readdirSync, readFileSync, statSync } from "node:fs";
@@ -11,30 +12,51 @@ import { describe, expect, it } from "vitest";
 const settingsRoot = resolve(import.meta.dirname);
 
 /**
- * Files that still own a raw `<Switch` because they are not a 1:1 labelled
- * settings row. Adding a new file here is a product decision; the default is
- * `SettingsSwitchRow` so the toggle is themed, 44px-touch, and agent-addressable.
+ * Exact remaining raw `<Switch` counts. Raising a count is a product decision;
+ * the default is SettingsSwitchRow.
  */
-const RAW_SWITCH_ALLOWLIST = new Map<string, string>([
+const RAW_SWITCH_OCCURRENCES = new Map<
+  string,
+  { count: number; reason: string }
+>([
   [
     "settings-agent-rows.tsx",
-    "canonical SettingsSwitchRow primitive; it is the one allowed Switch owner",
+    {
+      count: 1,
+      reason:
+        "canonical SettingsSwitchRow primitive; it is the one allowed Switch owner",
+    },
   ],
   [
     "AdvancedToggle.tsx",
-    "compact inline disclosure control, not a labelled settings row",
+    {
+      count: 1,
+      reason: "compact inline disclosure control, not a labelled settings row",
+    },
   ],
   [
     "ConnectorsSection.tsx",
-    "standalone enable switch on a custom connector card, not a SettingsRow",
+    {
+      count: 1,
+      reason:
+        "standalone enable switch on a custom connector card, not a SettingsRow",
+    },
   ],
   [
     "VoiceConfigView.tsx",
-    "compact enable switch inside a custom status chip, not a SettingsRow",
+    {
+      count: 1,
+      reason:
+        "compact enable switch inside a custom status chip, not a SettingsRow",
+    },
   ],
   [
     "permission-controls.tsx",
-    "compound permission rows mix badges with Switch or Button trailing controls",
+    {
+      count: 2,
+      reason:
+        "compound permission rows mix badges with Switch or Button trailing controls",
+    },
   ],
 ]);
 
@@ -59,35 +81,79 @@ function listTsxFiles(dir: string): string[] {
   return out;
 }
 
-describe("settings controls: no raw <Switch outside the allowlist", () => {
+function countRawSwitches(source: string): number {
+  return (source.match(/<Switch[\s>]/g) ?? []).length;
+}
+
+function rawSwitchVerdict(
+  relPath: string,
+  source: string,
+): { ok: true } | { ok: false; message: string } {
+  const count = countRawSwitches(source);
+  const allowed = RAW_SWITCH_OCCURRENCES.get(relPath);
+  if (!allowed) {
+    if (count === 0) return { ok: true };
+    return {
+      ok: false,
+      message:
+        `${relPath} has ${count} raw <Switch occurrence(s). Use SettingsSwitchRow ` +
+        `from ./settings-agent-rows, or record the exact remaining count in ` +
+        `RAW_SWITCH_OCCURRENCES with a reason.`,
+    };
+  }
+  if (count !== allowed.count) {
+    return {
+      ok: false,
+      message:
+        `${relPath} has ${count} raw <Switch occurrence(s); the ratchet allows ` +
+        `${allowed.count} (${allowed.reason}).`,
+    };
+  }
+  return { ok: true };
+}
+
+describe("settings controls: raw <Switch occurrences are ratcheted", () => {
   const files = listTsxFiles(settingsRoot);
 
   it.each(files.map((file) => posixRelative(settingsRoot, file)))(
-    "%s uses SettingsSwitchRow instead of a raw <Switch, or is allowlisted",
+    "%s stays at its recorded raw <Switch count",
     (relPath) => {
       const source = readFileSync(resolve(settingsRoot, relPath), "utf8");
-      const hasRawSwitch = source.includes("<Switch");
-      if (!hasRawSwitch) {
-        expect(RAW_SWITCH_ALLOWLIST.has(relPath)).toBe(false);
-        return;
-      }
-      expect(
-        RAW_SWITCH_ALLOWLIST.has(relPath),
-        `${relPath} hand-rolls a raw <Switch. Use SettingsSwitchRow from ` +
-          `./settings-agent-rows for labelled boolean settings. If this file is ` +
-          `not a settings row, add it to RAW_SWITCH_ALLOWLIST with a reason.`,
-      ).toBe(true);
+      const verdict = rawSwitchVerdict(relPath, source);
+      expect(verdict.ok, !verdict.ok ? verdict.message : undefined).toBe(true);
     },
   );
 
-  it("documents a reason for every allowlisted raw Switch file", () => {
-    for (const [relPath, reason] of RAW_SWITCH_ALLOWLIST) {
-      expect(reason.trim().length).toBeGreaterThan(8);
+  it("documents a reason and exact count for every recorded file", () => {
+    for (const [relPath, entry] of RAW_SWITCH_OCCURRENCES) {
+      expect(entry.reason.trim().length).toBeGreaterThan(8);
+      expect(entry.count).toBeGreaterThan(0);
       const source = readFileSync(resolve(settingsRoot, relPath), "utf8");
-      expect(
-        source.includes("<Switch"),
-        `${relPath} is allowlisted but no longer contains <Switch; remove it from the allowlist`,
-      ).toBe(true);
+      expect(countRawSwitches(source)).toBe(entry.count);
     }
+  });
+
+  it("fails when an already-recorded file gains another raw <Switch", () => {
+    const source = readFileSync(
+      resolve(settingsRoot, "AdvancedToggle.tsx"),
+      "utf8",
+    );
+    const extra = `${source}\n<Switch checked={false} onCheckedChange={() => {}} />\n`;
+    const verdict = rawSwitchVerdict("AdvancedToggle.tsx", extra);
+    expect(verdict.ok).toBe(false);
+    expect(verdict.ok ? "" : verdict.message).toContain(
+      "has 2 raw <Switch occurrence(s); the ratchet allows 1",
+    );
+  });
+
+  it("fails when a new settings file introduces a raw <Switch", () => {
+    const verdict = rawSwitchVerdict(
+      "NewSettingsSection.tsx",
+      "<Switch checked={false} onCheckedChange={() => {}} />",
+    );
+    expect(verdict.ok).toBe(false);
+    expect(verdict.ok ? "" : verdict.message).toContain(
+      "has 1 raw <Switch occurrence(s)",
+    );
   });
 });
