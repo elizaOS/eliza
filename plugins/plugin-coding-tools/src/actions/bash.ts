@@ -17,6 +17,7 @@ import {
   type HandlerCallback,
   type IAgentRuntime,
   type Memory,
+  redactSensitiveText,
   type State,
 } from "@elizaos/core";
 import { resolveRuntimeExecutionMode } from "@elizaos/shared";
@@ -1315,8 +1316,10 @@ export const shellAction: Action = {
             .map((entry, index) => {
               const command =
                 typeof entry.command === "string"
-                  ? entry.command
-                  : JSON.stringify(entry);
+                  ? redactSensitiveText(entry.command, { mode: "tools" })
+                  : redactSensitiveText(JSON.stringify(entry), {
+                      mode: "tools",
+                    });
               return `${index + 1}. ${command}`;
             })
             .join("\n")
@@ -1372,7 +1375,7 @@ export const shellAction: Action = {
                 .join("\n")
             : "(no background shell sessions for this conversation)";
           const text = `Background shell sessions (${sessions.length}):\n${lines}`;
-          // Fenced (#16563): per-session lines embed raw command strings.
+          // Fenced (#16563): per-session lines embed command strings.
           if (callback)
             await callback({
               text: fencePreformatted(text),
@@ -1476,7 +1479,9 @@ export const shellAction: Action = {
         // tool failures.
         return failureToActionResult({
           reason: "internal",
-          message: (err as Error).message,
+          message: redactSensitiveText((err as Error).message, {
+            mode: "tools",
+          }),
         });
       }
     }
@@ -1636,7 +1641,7 @@ export const shellAction: Action = {
               "ask the user to confirm the exact operation, then re-run with confirm=true.",
           },
           {
-            command,
+            command: redactSensitiveText(command, { mode: "tools" }),
             destructive_reason: verdict.reason,
             targets: verdict.targets,
           },
@@ -1700,13 +1705,14 @@ export const shellAction: Action = {
           command,
           cwd,
         });
+        const redactedCommand = redactSensitiveText(command, { mode: "tools" });
         const text = [
-          `$ ${command}`,
+          `$ ${redactedCommand}`,
           `[background ${session.handle}] (pid=${session.pid ?? "unknown"}, cwd=${cwd})`,
           `poll with stdout_offset=${session.stdoutOffset} stderr_offset=${session.stderrOffset}`,
         ].join("\n");
-        // Fenced (#16563): the echoed `$ command` line is the literal
-        // italics-eaten failure shape from #16542's repro.
+        // Starting a background process is itself the requested operation, so
+        // retain its immediate acknowledgement while sanitizing the command.
         if (callback)
           await callback({
             text: fencePreformatted(text),
@@ -1715,7 +1721,7 @@ export const shellAction: Action = {
         return successActionResult(text, {
           actionName: "SHELL",
           [CANONICAL_SUBACTION_KEY]: "start_background",
-          command,
+          command: redactedCommand,
           cwd,
           handle: session.handle,
           session,
@@ -1727,8 +1733,16 @@ export const shellAction: Action = {
         // and spawn failures must be visible to the planner instead of falling
         // back to a host-spawned process.
         return failureToActionResult(
-          { reason: "internal", message: (err as Error).message },
-          { command, cwd },
+          {
+            reason: "internal",
+            message: redactSensitiveText((err as Error).message, {
+              mode: "tools",
+            }),
+          },
+          {
+            command: redactSensitiveText(command, { mode: "tools" }),
+            cwd,
+          },
         );
       }
     }
@@ -1758,7 +1772,9 @@ export const shellAction: Action = {
       // error-policy:J1 SHELL action boundary; a dispatch failure is logged and
       // returned as a success:false ActionResult carrying the real message, so
       // the planner loop shows the failure to the model.
-      const message = (err as Error).message;
+      const message = redactSensitiveText((err as Error).message, {
+        mode: "tools",
+      });
       coreLogger.error(
         `${CODING_TOOLS_LOG_PREFIX} SHELL dispatch failed: ${message}`,
       );
@@ -1768,15 +1784,24 @@ export const shellAction: Action = {
     const took = Date.now() - startedAt;
     const timedOut = result.timedOut;
     const signal = result.signal;
+    const redactedCommand = redactSensitiveText(command, { mode: "tools" });
+    const redactedStdout = redactSensitiveText(result.stdout, {
+      mode: "tools",
+    });
+    const redactedStderr = redactSensitiveText(result.stderr, {
+      mode: "tools",
+    });
     const head = timedOut
-      ? `$ ${command}\n[timeout ${timeout}ms] (cwd=${cwd}, took=${took}ms)`
-      : `$ ${command}\n[exit ${result.exitCode}] (cwd=${cwd}, took=${took}ms)`;
-    const streams = formatStreams(result.stdout, result.stderr, {
+      ? `$ ${redactedCommand}\n[timeout ${timeout}ms] (cwd=${cwd}, took=${took}ms)`
+      : `$ ${redactedCommand}\n[exit ${result.exitCode}] (cwd=${cwd}, took=${took}ms)`;
+    const streams = formatStreams(redactedStdout, redactedStderr, {
       showEmptyStreams: !result.stdout && !result.stderr,
     });
     const text = streams.length > 0 ? `${head}\n${streams}` : head;
 
-    if (callback)
+    const echoTranscript =
+      process.env.ELIZA_SHELL_ECHO_TRANSCRIPT?.trim().toLowerCase();
+    if (callback && (echoTranscript === "1" || echoTranscript === "true"))
       await callback({
         text: fencePreformatted(capTranscriptForChat(text)),
         source: "coding-tools",
@@ -1785,7 +1810,7 @@ export const shellAction: Action = {
     if (timedOut) {
       return failureToActionResult(
         { reason: "timeout", message: `command timed out after ${timeout}ms` },
-        { command, cwd, output: text },
+        { command: redactedCommand, cwd, output: text },
       );
     }
     if (result.exitCode !== 0) {
@@ -1794,11 +1819,16 @@ export const shellAction: Action = {
           reason: "command_failed",
           message: `command exited with code ${result.exitCode}`,
         },
-        { command, exit_code: result.exitCode, cwd, output: text },
+        {
+          command: redactedCommand,
+          exit_code: result.exitCode,
+          cwd,
+          output: text,
+        },
       );
     }
     const actionResult = successActionResult(text, {
-      command,
+      command: redactedCommand,
       exit_code: result.exitCode,
       cwd,
       execution_route: result.sandbox === "host" ? "host" : "sandbox",
@@ -1821,14 +1851,14 @@ export const shellAction: Action = {
         : (cryptoSpotUserFacingText({
             message,
             command,
-            stdout: result.stdout,
+            stdout: redactedStdout,
           }) ??
-          localResourceUserFacingText({ message, stdout: result.stdout }) ??
-          localStatusUserFacingText({ message, stdout: result.stdout }))) ??
+          localResourceUserFacingText({ message, stdout: redactedStdout }) ??
+          localStatusUserFacingText({ message, stdout: redactedStdout }))) ??
       safeSmallStdoutUserFacingText({
         command,
-        stdout: result.stdout,
-        stderr: result.stderr,
+        stdout: redactedStdout,
+        stderr: redactedStderr,
       });
     return userFacingText
       ? { ...actionResult, userFacingText, verifiedUserFacing: true }

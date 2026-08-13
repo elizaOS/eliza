@@ -81,6 +81,25 @@ describePosixShell("shell plugin real local integration", () => {
     expect(provider.values?.currentWorkingDirectory).toBe(allowedDirectory);
   });
 
+  it("stores and provides only redacted command history", async () => {
+    const secret = "sk-proj-DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD";
+    const result = await service.executeCommand(
+      `printf '%s\\n' '${secret}'`,
+      "room-secret",
+    );
+    expect(result.success).toBe(true);
+
+    const history = service.getCommandHistory("room-secret", 10);
+    const provider = await shellHistoryProvider.get(
+      runtime,
+      { roomId: "room-secret", agentId: "agent-1" } as never,
+      {} as never,
+    );
+
+    expect(JSON.stringify(history)).not.toContain(secret);
+    expect(JSON.stringify(provider)).not.toContain(secret);
+  });
+
   it("fails closed when a command tries to escape the allowed directory", async () => {
     const result = await service.executeCommand("cd ../..", "room-1");
 

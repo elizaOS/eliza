@@ -10,6 +10,7 @@
 import {
   logger as coreLogger,
   type IAgentRuntime,
+  redactSensitiveText,
   Service,
 } from "@elizaos/core";
 import {
@@ -350,9 +351,20 @@ function readRing(
       : Math.max(0, Math.floor(requestedOffset));
   const start = Math.max(offset, ring.startOffset);
   const index = start - ring.startOffset;
+  const redactedFull = redactSensitiveText(ring.text, { mode: "tools" });
+  const redactedPrefix = redactSensitiveText(ring.text.slice(0, index), {
+    mode: "tools",
+  });
+  // A credential can straddle the requested offset. When redacting the full
+  // retained ring changes the prefix, replay the sanitized retained window
+  // rather than risk returning a partial secret.
+  const canSliceAtRequestedOffset = redactedFull.startsWith(redactedPrefix);
+  const text = canSliceAtRequestedOffset
+    ? redactedFull.slice(redactedPrefix.length)
+    : redactedFull;
   return {
-    text: ring.text.slice(index),
-    startOffset: start,
+    text,
+    startOffset: canSliceAtRequestedOffset ? start : ring.startOffset,
     endOffset: ring.endOffset,
     truncatedBefore: ring.truncatedBefore,
   };
@@ -364,7 +376,7 @@ function snapshot(
   return {
     handle: session.handle,
     conversationId: session.conversationId,
-    command: session.command,
+    command: redactSensitiveText(session.command, { mode: "tools" }),
     cwd: session.cwd,
     pid: session.pid,
     status: session.status,

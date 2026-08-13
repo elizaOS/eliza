@@ -10,6 +10,7 @@ import {
   logger,
   type Memory,
   type Provider,
+  redactSensitiveText,
   type State,
 } from "@elizaos/core";
 import { requireProviderSpec } from "../generated/specs/spec-helpers";
@@ -69,21 +70,30 @@ export const shellHistoryProvider: Provider = {
       if (history.length > 0) {
         historyText = history
           .map((entry: CommandHistoryEntry) => {
-            let entryStr = `[${new Date(entry.timestamp).toISOString()}] ${entry.workingDirectory}> ${entry.command}`;
+            const stdout = redactSensitiveText(entry.stdout ?? "", {
+              mode: "tools",
+            });
+            const stderr = redactSensitiveText(entry.stderr ?? "", {
+              mode: "tools",
+            });
+            let entryStr = redactSensitiveText(
+              `[${new Date(entry.timestamp).toISOString()}] ${entry.workingDirectory}> ${entry.command}`,
+              { mode: "tools" },
+            );
 
-            if (entry.stdout) {
-              if (entry.stdout.length > MAX_OUTPUT_LENGTH) {
-                entryStr += `\n  Output: ${entry.stdout.substring(0, TRUNCATE_SEGMENT_LENGTH)}\n  ... [TRUNCATED] ...\n  ${entry.stdout.substring(entry.stdout.length - TRUNCATE_SEGMENT_LENGTH)}`;
+            if (stdout) {
+              if (stdout.length > MAX_OUTPUT_LENGTH) {
+                entryStr += `\n  Output: ${stdout.substring(0, TRUNCATE_SEGMENT_LENGTH)}\n  ... [TRUNCATED] ...\n  ${stdout.substring(stdout.length - TRUNCATE_SEGMENT_LENGTH)}`;
               } else {
-                entryStr += `\n  Output: ${entry.stdout}`;
+                entryStr += `\n  Output: ${stdout}`;
               }
             }
 
-            if (entry.stderr) {
-              if (entry.stderr.length > MAX_OUTPUT_LENGTH) {
-                entryStr += `\n  Error: ${entry.stderr.substring(0, TRUNCATE_SEGMENT_LENGTH)}\n  ... [TRUNCATED] ...\n  ${entry.stderr.substring(entry.stderr.length - TRUNCATE_SEGMENT_LENGTH)}`;
+            if (stderr) {
+              if (stderr.length > MAX_OUTPUT_LENGTH) {
+                entryStr += `\n  Error: ${stderr.substring(0, TRUNCATE_SEGMENT_LENGTH)}\n  ... [TRUNCATED] ...\n  ${stderr.substring(stderr.length - TRUNCATE_SEGMENT_LENGTH)}`;
               } else {
-                entryStr += `\n  Error: ${entry.stderr}`;
+                entryStr += `\n  Error: ${stderr}`;
               }
             }
 

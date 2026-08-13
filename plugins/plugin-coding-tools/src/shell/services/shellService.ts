@@ -10,7 +10,12 @@
 
 import type { ChildProcessWithoutNullStreams } from "node:child_process";
 import path from "node:path";
-import { type IAgentRuntime, logger, Service } from "@elizaos/core";
+import {
+  type IAgentRuntime,
+  logger,
+  redactSensitiveText,
+  Service,
+} from "@elizaos/core";
 import {
   isCloudExecutionMode,
   shouldUseSandboxExecution,
@@ -1721,9 +1726,9 @@ export class ShellService extends Service {
     if (!conversationId) return;
 
     const historyEntry: CommandHistoryEntry = {
-      command,
-      stdout: result.stdout,
-      stderr: result.stderr,
+      command: redactSensitiveText(command, { mode: "tools" }),
+      stdout: redactSensitiveText(result.stdout, { mode: "tools" }),
+      stderr: redactSensitiveText(result.stderr, { mode: "tools" }),
       exitCode: result.exitCode,
       timestamp: Date.now(),
       workingDirectory: result.executedIn,
