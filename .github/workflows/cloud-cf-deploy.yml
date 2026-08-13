@@ -251,7 +251,7 @@ jobs:
 
   build-pages:
     name: Build Pages artifacts
-    needs: [validate-deploy-source, resolve-pages-preview-config]
+    needs: resolve-pages-preview-config
     if: ${{ github.event_name == 'pull_request' && needs.resolve-pages-preview-config.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
