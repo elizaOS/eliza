@@ -111,10 +111,21 @@ const SERVICE_WORKER_PATH = "/sw.js";
 const ASSET_CACHE_CONTROL = "public, max-age=31536000, immutable";
 const SERVICE_WORKER_CACHE_CONTROL = "no-store";
 
+const NULL_BODY_STATUS_CODES = new Set([204, 205, 304]);
+
+const getNullBodySafeBody = (response: Response): BodyInit | null =>
+  NULL_BODY_STATUS_CODES.has(response.status) ? null : response.body;
+
 const withCacheControl = (response: Response, value: string): Response => {
   const headers = new Headers(response.headers);
   headers.set("Cache-Control", value);
-  return new Response(response.body, {
+  // Per Fetch spec, 204/205/304 MUST have null body — Response constructor throws otherwise.
+  // Preserve original status but strip body for null-body statuses (fixes #18915).
+  if (NULL_BODY_STATUS_CODES.has(response.status)) {
+    headers.delete("Content-Length");
+    headers.delete("Content-Type");
+  }
+  return new Response(getNullBodySafeBody(response), {
     status: response.status,
     statusText: response.statusText,
     headers,
@@ -224,7 +235,14 @@ export const onRequest = async (
   );
   headers.delete("X-Frame-Options");
 
-  return new Response(response.body, {
+  // 204/205/304 must have null body per Fetch spec — constructing Response with body throws
+  // TypeError: Invalid response status code 204 (fixes #18915).
+  const body = getNullBodySafeBody(response);
+  if (body === null) {
+    headers.delete("Content-Length");
+    headers.delete("Content-Type");
+  }
+  return new Response(body, {
     status: response.status,
     statusText: response.statusText,
     headers,
