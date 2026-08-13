@@ -89,9 +89,11 @@ jobs:
 
       - uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c
         with:
-          driver-opts: |
-            env.BUILDKIT_STEP_LOG_MAX_SIZE=10485760
-            env.BUILDKIT_STEP_LOG_MAX_SPEED=10485760
+          # Fleet runner processes share one Docker daemon. A container-driver
+          # builder can lose its freshly pulled moby/buildkit image to another
+          # job's global image prune between pull and create. The daemon driver
+          # has no helper image for another run to delete.
+          driver: docker
 
       # Docker tags must be lowercase; github.repository_owner is "elizaOS".
       - id: image
@@ -118,8 +120,6 @@ jobs:
           # Single-manifest image: vast pulls by tag, provenance attestation
           # manifests confuse some of its pullers.
           provenance: false
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
 
       - name: Image summary
         run: |
