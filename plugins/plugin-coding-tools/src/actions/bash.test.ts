@@ -19,7 +19,7 @@ import {
   UnavailableCapabilityRouter,
   type UUID,
 } from "@elizaos/core";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 // These tests exercise the SHELL action through `pwd`, `cd`, `git -C`, and
 // inline pipelines. The action itself does run on Windows (it routes to
@@ -34,6 +34,11 @@ const describeIfPosix = process.platform === "win32" ? describe.skip : describe;
 import codingToolsPlugin from "../index.js";
 import { runShell } from "../lib/run-shell.js";
 import { availableToolsProvider } from "../providers/available-tools.js";
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
+
 import {
   BackgroundShellService,
   SandboxService,
@@ -490,6 +495,9 @@ describeIfPosix("shellAction", () => {
   });
 
   it("caps only the visible callback for long foreground output", async () => {
+    // Transcript echo became opt-in (default off) in #18947; this test is
+    // specifically about the echoed callback's capping, so opt in.
+    vi.stubEnv("ELIZA_SHELL_ECHO_TRANSCRIPT", "1");
     const lines = Array.from(
       { length: 300 },
       (_, index) =>
@@ -2055,5 +2063,28 @@ describe("destructive-bulk confirm gate", () => {
       { command: 'node -e "process.exit(0)"' },
     );
     expect(result.success).toBe(true);
+  });
+});
+
+describe("command-line secret hygiene (#18947 P1)", () => {
+  it("redacts a Bearer token in the command line from text and data", async () => {
+    const secret = "sk-proj-BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB";
+    const leaky = `curl -H "Authorization: Bearer ${secret}" https://api.example.com`;
+    const router = makeShellRouter(async () => ({
+      output: "ok\n",
+      exitCode: 0,
+      timedOut: false,
+    }));
+    const { runtime } = await makeRuntime({ capabilityRouter: router });
+    const result = await shellAction.handler?.(
+      runtime,
+      makeMessage(),
+      undefined,
+      { command: leaky },
+    );
+    expect(result.success).toBe(true);
+    const surfaces = `${result.text}\n${JSON.stringify(result.data ?? {})}`;
+    expect(surfaces).not.toContain(secret);
+    expect(surfaces).toContain("curl");
   });
 });

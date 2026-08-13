@@ -1701,8 +1701,13 @@ export const shellAction: Action = {
           command,
           cwd,
         });
+        // Same command-line hygiene as the foreground path: never echo a
+        // secret embedded in the command back to chat or the action result.
+        const redactedBackgroundCommand = redactSensitiveText(command, {
+          mode: "tools",
+        });
         const text = [
-          `$ ${command}`,
+          `$ ${redactedBackgroundCommand}`,
           `[background ${session.handle}] (pid=${session.pid ?? "unknown"}, cwd=${cwd})`,
           `poll with stdout_offset=${session.stdoutOffset} stderr_offset=${session.stderrOffset}`,
         ].join("\n");
@@ -1716,7 +1721,7 @@ export const shellAction: Action = {
         return successActionResult(text, {
           actionName: "SHELL",
           [CANONICAL_SUBACTION_KEY]: "start_background",
-          command,
+          command: redactedBackgroundCommand,
           cwd,
           handle: session.handle,
           session,
@@ -1769,9 +1774,14 @@ export const shellAction: Action = {
     const took = Date.now() - startedAt;
     const timedOut = result.timedOut;
     const signal = result.signal;
+    // The command line is a leak vector of its own (curl -H "Authorization:
+    // Bearer <token>", postgres://user:pass@host) — scrub it like the streams
+    // so the `$ cmd` head never re-introduces a secret the output redaction
+    // removed.
+    const redactedCommand = redactSensitiveText(command, { mode: "tools" });
     const head = timedOut
-      ? `$ ${command}\n[timeout ${timeout}ms] (cwd=${cwd}, took=${took}ms)`
-      : `$ ${command}\n[exit ${result.exitCode}] (cwd=${cwd}, took=${took}ms)`;
+      ? `$ ${redactedCommand}\n[timeout ${timeout}ms] (cwd=${cwd}, took=${took}ms)`
+      : `$ ${redactedCommand}\n[exit ${result.exitCode}] (cwd=${cwd}, took=${took}ms)`;
     // Secret hygiene: scrub known secret shapes (API keys, tokens, Bearer
     // headers, PEM private keys, credential env/JSON fields) out of command
     // output before it reaches the model context, the chat relay, or the
@@ -1802,7 +1812,7 @@ export const shellAction: Action = {
     if (timedOut) {
       return failureToActionResult(
         { reason: "timeout", message: `command timed out after ${timeout}ms` },
-        { command, cwd, output: text },
+        { command: redactedCommand, cwd, output: text },
       );
     }
     if (result.exitCode !== 0) {
@@ -1811,11 +1821,16 @@ export const shellAction: Action = {
           reason: "command_failed",
           message: `command exited with code ${result.exitCode}`,
         },
-        { command, exit_code: result.exitCode, cwd, output: text },
+        {
+          command: redactedCommand,
+          exit_code: result.exitCode,
+          cwd,
+          output: text,
+        },
       );
     }
     const actionResult = successActionResult(text, {
-      command,
+      command: redactedCommand,
       exit_code: result.exitCode,
       cwd,
       execution_route: result.sandbox === "host" ? "host" : "sandbox",
