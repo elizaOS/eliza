@@ -1,8 +1,8 @@
 /**
  * Vitest config: aliases the `@elizaos/*` packages to their workspace sources and
- * runs both the legacy `__tests__/**` suites and the co-located `src/**`
- * `.test.ts` siblings. Real-FFI / real-model `*.real.test.ts` files run only in
- * the post-merge lane (`TEST_LANE=post-merge`).
+ * runs the package's TypeScript and deterministic script-contract suites.
+ * Real-FFI / real-model `*.real.test.ts` files run only in the post-merge lane
+ * (`TEST_LANE=post-merge`).
  */
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
@@ -111,7 +111,12 @@ export default defineConfig({
 		// `__tests__/**` glob for legacy suites and ALSO pick up co-located
 		// `.test.ts` files under `src/` so they actually run via
 		// `bun --filter @elizaos/plugin-local-inference verify`.
-		include: ["__tests__/**/*.test.ts", "src/**/*.test.ts"],
+		include: [
+			"__tests__/**/*.test.ts",
+			"src/**/*.test.ts",
+			"scripts/**/*.test.mjs",
+			"native/verify/voice_duet_sweep.test.mjs",
+		],
 		exclude: [
 			"dist/**",
 			"node_modules/**",
