@@ -4,13 +4,7 @@
  * dangling symlinks and read errors.
  */
 import assert from "node:assert";
-import {
-  mkdirSync,
-  rmdirSync,
-  rmSync,
-  symlinkSync,
-  writeFileSync,
-} from "node:fs";
+import { mkdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, it } from "node:test";
@@ -145,6 +139,38 @@ name: no-desc
         d.message.includes("description is required"),
       );
       assert.ok(descDiag);
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("reports malformed YAML instead of a fabricated metadata error", () => {
+    const tempDir = createTempDir("skill-loader-malformed-yaml");
+    try {
+      const filePath = join(tempDir, "malformed.md");
+      writeFileSync(
+        filePath,
+        `---
+invalid: : : yaml syntax error
+---
+# Malformed`,
+      );
+
+      const result = loadSkillsFromDir({ dir: tempDir, source: "test" });
+
+      assert.deepStrictEqual(result.skills, []);
+      assert.deepStrictEqual(result.diagnostics, [
+        {
+          type: "warning",
+          message: "Skill frontmatter contains invalid YAML",
+          path: filePath,
+        },
+      ]);
+      assert.ok(
+        !result.diagnostics.some((diagnostic) =>
+          diagnostic.message.includes("description is required"),
+        ),
+      );
     } finally {
       rmSync(tempDir, { recursive: true, force: true });
     }

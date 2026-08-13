@@ -246,7 +246,7 @@ export async function handleImageDescription(
       const status = finalResponse.status;
       if (status === 402) {
         throw new Error(
-          "Eliza Cloud credits exhausted — top up at https://www.elizacloud.ai/dashboard/settings?tab=billing"
+          "Eliza Cloud credits exhausted — top up at https://cloud.eliza.app/cloud/billing"
         );
       }
       if (status === 429) {

@@ -59,7 +59,7 @@ const vite = spawn(
     cwd: homepageDir,
     env: {
       ...process.env,
-      VITE_ELIZACLOUD_API_URL: "https://elizacloud.ai",
+      VITE_ELIZACLOUD_API_URL: "https://api.eliza.app",
       // Deterministic fake bot id so Telegram onboarding specs run in every
       // lane, including fork-safe jobs that carry no repository variables.
       // Specs stub window.Telegram.Login and intercept the network; nothing

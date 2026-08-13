@@ -23,7 +23,7 @@ export const CLOUD_PUBLIC_ROUTE_ACCESS = "cloud-public-route-reviewed" as const;
  */
 
 export interface CloudRouteDef {
-  /** Route path relative to the cloud mount (e.g. `"dashboard/apps"`). */
+  /** Route path relative to the cloud mount (e.g. `"cloud/agents"`). */
   path: string;
   /**
    * Element to render. Either an already-`React.lazy`-wrapped component

@@ -24,7 +24,7 @@ import {
 } from "../api/conversation-metadata.ts";
 import type { ConversationScope } from "../api/server-types.ts";
 import {
-  formatRelativeTimestamp,
+  formatRelativeTimestampPrefix,
   formatSpeakerLabel,
 } from "../shared/conversation-format.ts";
 import { renderLiveStateForScope } from "./page-scoped-live-state.ts";
@@ -69,7 +69,7 @@ const PAGE_SCOPE_BRIEF: Record<string, string> = {
 interface SourceTailEntry {
   speaker: string;
   text: string;
-  ageLabel: string;
+  agePrefix: string;
   role: "user" | "assistant" | "unknown";
 }
 
@@ -140,7 +140,7 @@ async function fetchSourceTail(
   return pruned.map((mem) => ({
     speaker: formatSpeakerLabel(runtime, mem),
     text: (mem.content.text ?? "").slice(0, 280),
-    ageLabel: formatRelativeTimestamp(mem.createdAt),
+    agePrefix: formatRelativeTimestampPrefix(mem.createdAt),
     role: inferRole(mem, runtime.agentId),
   }));
 }
@@ -148,7 +148,7 @@ async function fetchSourceTail(
 function formatSourceTail(entries: SourceTailEntry[]): string {
   const lines: string[] = ["Recent main-chat tail:"];
   for (const entry of entries) {
-    lines.push(`(${entry.ageLabel}) ${entry.speaker}: ${entry.text}`);
+    lines.push(`${entry.agePrefix}${entry.speaker}: ${entry.text}`);
   }
   return lines.join("\n");
 }

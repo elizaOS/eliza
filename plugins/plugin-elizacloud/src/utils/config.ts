@@ -41,7 +41,7 @@ export function getBaseURL(runtime: IAgentRuntime): string {
   const baseURL = (
     isBrowser() && browserURL
       ? browserURL
-      : getSetting(runtime, "ELIZAOS_CLOUD_BASE_URL", "https://elizacloud.ai/api/v1")
+      : getSetting(runtime, "ELIZAOS_CLOUD_BASE_URL", "https://api.eliza.app/api/v1")
   ) as string;
   return baseURL;
 }

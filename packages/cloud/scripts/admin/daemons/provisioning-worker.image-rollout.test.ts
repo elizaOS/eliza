@@ -202,6 +202,12 @@ describe("real one-shot daemon entrypoint", () => {
       created: true,
       job: { id: "canary-safe-upgrade" },
     }));
+    const reEnqueueFailedDeletions = mock(async () => ({
+      scanned: 1,
+      reEnqueued: 1,
+      failed: 0,
+      abandoned: 0,
+    }));
     const healthCheckAll = mock(
       async () =>
         new Map([
@@ -283,6 +289,7 @@ describe("real one-shot daemon entrypoint", () => {
           reconcileWarmClaimCredentialFences,
           reconcileReplacementCleanupFences,
           enqueueAgentUpgradeOnce,
+          reEnqueueFailedDeletions,
         },
       },
       "@elizaos/cloud-shared/lib/utils/logger": { logger },
@@ -436,6 +443,11 @@ describe("real one-shot daemon entrypoint", () => {
           "agent_admin_canary_image",
         ]);
         expect(enqueueAgentUpgradeOnce).toHaveBeenCalledTimes(1);
+        expect(reEnqueueFailedDeletions).toHaveBeenCalledTimes(1);
+        expect(reEnqueueFailedDeletions).toHaveBeenCalledWith({
+          minAgeMs: 10 * 60_000,
+          maxAgents: 200,
+        });
         expect(healthCheckAll).toHaveBeenCalledTimes(1);
         expect(syncAllocatedCounts).toHaveBeenCalledTimes(1);
         expect(prePullAgentImageOnAvailableNodes).toHaveBeenCalledWith(

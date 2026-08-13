@@ -53,7 +53,7 @@ const { app, apiKey } = await cloud.createApp({
 //    on the Worker AND the org is allowlisted.
 // 4. enable monetization: await cloud.updateMonetization(app.id, { ... })
 // 5. patch app_url + allowed_origins to the deployed URL: await cloud.updateApp(app.id, { ... })
-// 6. report URLs to the human (the auto-assigned *.apps.elizacloud.ai
+// 6. report URLs to the human (the auto-assigned *.apps.eliza.app
 //    subdomain is the default; if the user wants a custom branded domain
 //    instead, hand off to the `eliza-cloud-buy-domain` skill)
 ```
@@ -87,7 +87,7 @@ Use the [`eliza-cloud`](../eliza-cloud/SKILL.md) skill and its
   and credits the app-credit earnings ledger — note this is the stranded per-app pool (issue #8253), not the live inference revenue path. The working inference revenue model is the caller's org-credit balance + `recordCreatorEarnings` (markup added to the org-balance debit), not the per-app pool.
 - Use `POST /api/v1/x402/requests` for direct wallet-native crypto payments.
   Current settlement support includes Base, Ethereum, BSC, and Solana, with the
-  hosted default at `https://x402.elizacloud.ai`.
+  hosted default at `https://x402.eliza.app`.
 - Include `callback_channel` metadata (`roomId`, `agentId`) when the agent
   should announce payment success/failure in the initiating room.
 - Use `/api/v1/redemptions` to request creator payouts in elizaOS tokens on
@@ -146,7 +146,7 @@ For a static-hosted AI app:
 
 ## After the app is live — ALWAYS offer a custom domain
 
-The deployed app gets an auto-assigned `*.apps.elizacloud.ai` subdomain that works immediately. **At the end of every successful build, proactively offer the user a custom branded domain** (this is part of the standard build flow, not optional polish). Pattern:
+The deployed app gets an auto-assigned `*.apps.eliza.app` subdomain that works immediately. **At the end of every successful build, proactively offer the user a custom branded domain** (this is part of the standard build flow, not optional polish). Pattern:
 
 1. Use the `eliza-cloud-buy-domain` skill to call `POST /api/v1/domains/search` with the app name as the query (limit 3-5 candidates).
 2. Filter to `.com` / `.io` / `.dev` / `.app` if available, sort by price ascending.

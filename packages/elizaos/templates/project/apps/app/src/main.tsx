@@ -166,7 +166,7 @@ const elizaBootConfig: AppBootConfig = {
     (import.meta.env.VITE_ASSET_BASE_URL as string | undefined)?.trim() ||
     undefined,
   cloudApiBase:
-    (import.meta.env.VITE_CLOUD_BASE as string) ?? "https://elizacloud.ai",
+    (import.meta.env.VITE_CLOUD_BASE as string) ?? "https://api.eliza.app",
   vrmAssets: ELIZA_VRM_ASSETS,
   firstRunStyles: ELIZA_STYLE_PRESETS,
   characterEditor: CharacterEditor,

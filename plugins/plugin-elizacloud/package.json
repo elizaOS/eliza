@@ -146,7 +146,7 @@
     "pluginParameters": {
       "ELIZAOS_CLOUD_API_KEY": {
         "type": "string",
-        "description": "API key used to authenticate requests to ElizaOS Cloud API (format: eliza_xxxxx). Get it from https://www.elizacloud.ai/dashboard/api-keys",
+        "description": "API key used to authenticate requests to the Eliza Cloud API (format: eliza_xxxxx). Manage it inside Eliza at https://cloud.eliza.app/cloud/api-keys",
         "required": true,
         "sensitive": true
       },
@@ -154,7 +154,7 @@
         "type": "string",
         "description": "Base URL for all ElizaOS Cloud API requests.",
         "required": false,
-        "default": "https://elizacloud.ai/api/v1",
+        "default": "https://api.eliza.app/api/v1",
         "sensitive": false
       },
       "ELIZAOS_CLOUD_NANO_MODEL": {

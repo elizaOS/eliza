@@ -4,10 +4,11 @@
  * non-finite and out-of-range createdAt values, plus the healthy finite buckets.
  */
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   formatRelativeTimestamp,
+  formatRelativeTimestampPrefix,
   roomSourceTag,
 } from "./conversation-format.ts";
 
@@ -45,6 +46,21 @@ describe("formatRelativeTimestamp", () => {
 
   it("treats near-future timestamps as just now (clock skew)", () => {
     expect(formatRelativeTimestamp(Date.now() + 15_000)).toBe("just now");
+  });
+});
+
+describe("formatRelativeTimestampPrefix", () => {
+  it("omits both the label and parentheses for unavailable timestamps", () => {
+    expect(formatRelativeTimestampPrefix()).toBe("");
+    expect(formatRelativeTimestampPrefix(Number.POSITIVE_INFINITY)).toBe("");
+    expect(formatRelativeTimestampPrefix(Number.MAX_VALUE)).toBe("");
+  });
+
+  it("renders healthy labels as a parenthesized line prefix", () => {
+    vi.spyOn(Date, "now").mockReturnValue(1_700_000_000_000);
+    expect(formatRelativeTimestampPrefix(1_700_000_000_000 - 120_000)).toBe(
+      "(2m ago) ",
+    );
   });
 });
 

@@ -5,12 +5,20 @@
  * one slow test — it shells the actual run-all-tests plan, no mocks).
  */
 
-import { beforeAll, describe, expect, test } from "bun:test";
+import { beforeAll, describe, expect, mock, test } from "bun:test";
+import { spawn } from "node:child_process";
+import { once } from "node:events";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { Readable } from "node:stream";
+import { fileURLToPath } from "node:url";
 
-import { classifyResult, countStatuses } from "../lib/runner.mjs";
+import {
+  classifyResult,
+  countStatuses,
+  normalizeRunConcurrency,
+} from "../lib/runner.mjs";
 
 const LABEL = "@elizaos/logger (packages/logger)#test";
 
@@ -107,6 +115,29 @@ describe("classifyResult", () => {
   });
 });
 
+describe("normalizeRunConcurrency", () => {
+  test("preserves the default and ordinary positive integer inputs", () => {
+    expect(normalizeRunConcurrency(undefined)).toBe(3);
+    expect(normalizeRunConcurrency(4)).toBe(4);
+    expect(normalizeRunConcurrency("04")).toBe(4);
+  });
+
+  test("rejects values that could disable or exhaust the worker bound", () => {
+    for (const value of [
+      0,
+      -1,
+      "1e3",
+      "4workers",
+      33,
+      Number.MAX_SAFE_INTEGER,
+    ]) {
+      expect(() => normalizeRunConcurrency(value)).toThrow(
+        "concurrency must be a positive integer from 1 to 32",
+      );
+    }
+  });
+});
+
 describe("store roundtrip", () => {
   let store: typeof import("../lib/store.mjs");
   let testConsoleDir: string;
@@ -185,4 +216,146 @@ describe("registry (real plan discovery)", () => {
     });
     expect(suiteState(withKey)).toBe("armed");
   }, 30_000);
+});
+
+describe("server entrypoint", () => {
+  test("starts through a symlinked path containing spaces", async () => {
+    const tempDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), "eliza test-console-entrypoint-"),
+    );
+    const linkedServer = path.join(tempDir, "linked server.mjs");
+    fs.symlinkSync(
+      fileURLToPath(new URL("../server.mjs", import.meta.url)),
+      linkedServer,
+    );
+
+    const child = spawn("node", [linkedServer], {
+      env: {
+        ...process.env,
+        ELIZA_TEST_CONSOLE_DIR: path.join(tempDir, "state"),
+        ELIZA_TEST_CONSOLE_PORT: "0",
+      },
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    child.stdout.setEncoding("utf8");
+    child.stderr.setEncoding("utf8");
+
+    let stdout = "";
+    let stderr = "";
+    child.stdout.on("data", (chunk) => {
+      stdout += chunk;
+    });
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk;
+    });
+
+    let startupTimer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      await Promise.race([
+        new Promise<void>((resolve) => {
+          child.stdout.on("data", () => {
+            if (stdout.includes("[TestConsole] listening")) resolve();
+          });
+        }),
+        new Promise<never>((_, reject) => {
+          child.once("exit", (code, signal) => {
+            reject(
+              new Error(
+                `test console exited before listening (code=${code}, signal=${signal}, stderr=${stderr})`,
+              ),
+            );
+          });
+        }),
+        new Promise<never>((_, reject) => {
+          startupTimer = setTimeout(
+            () =>
+              reject(
+                new Error(
+                  `timed out waiting for test console startup (stdout=${stdout}, stderr=${stderr})`,
+                ),
+              ),
+            5_000,
+          );
+        }),
+      ]);
+      expect(child.exitCode).toBeNull();
+    } finally {
+      if (startupTimer) clearTimeout(startupTimer);
+      if (child.exitCode === null) {
+        child.kill("SIGTERM");
+        await once(child, "exit");
+      }
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    }
+  }, 10_000);
+});
+
+describe("route: POST /api/run rejects invalid concurrency before live-lane side effects", () => {
+  const refreshGoogleAccessTokenMock = mock(async () => ({
+    accessToken: "fake-access-token",
+  }));
+
+  let store: typeof import("../lib/store.mjs");
+  let server: typeof import("../server.mjs");
+
+  beforeAll(async () => {
+    const testConsoleDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), "eliza-test-console-route-"),
+    );
+    process.env.ELIZA_TEST_CONSOLE_DIR = testConsoleDir;
+
+    // Stub the Google OAuth client so a request that *does* reach the
+    // refresh step would succeed and persist a token — proving the ordering
+    // fix (not an unreachable network call) is what keeps it from firing.
+    mock.module("../lib/oauth.mjs", () => ({
+      completeGoogleFlow: mock(),
+      DEFAULT_CLOUD_BASE_URL: "https://cloud.example.test",
+      pollCloudLogin: mock(),
+      refreshGoogleAccessToken: refreshGoogleAccessTokenMock,
+      startCloudLogin: mock(),
+      startGoogleFlow: mock(),
+    }));
+
+    store = await import("../lib/store.mjs");
+    store.setConnection("google-oauth", {
+      GOOGLE_CLIENT_ID: "test-client-id",
+      GOOGLE_CLIENT_SECRET: "test-client-secret",
+      GOOGLE_OAUTH_REFRESH_TOKEN: "test-refresh-token",
+    });
+
+    server = await import("../server.mjs");
+  });
+
+  function postRun(body: unknown): Promise<{ status: number }> {
+    return new Promise((resolve, reject) => {
+      const req = Readable.from([Buffer.from(JSON.stringify(body))]);
+      let status = 0;
+      const res = {
+        writeHead(code: number) {
+          status = code;
+        },
+        end() {
+          resolve({ status });
+        },
+      };
+      Promise.resolve(
+        server.routes["POST /api/run"](req as never, res as never),
+      ).catch(reject);
+    });
+  }
+
+  test("returns 400 without ever refreshing/persisting Google credentials or starting a run", async () => {
+    refreshGoogleAccessTokenMock.mockClear();
+
+    const result = await postRun({
+      mode: "all",
+      lane: "live",
+      concurrency: "Infinity",
+    });
+
+    expect(result.status).toBe(400);
+    expect(refreshGoogleAccessTokenMock).not.toHaveBeenCalled();
+    expect(store.loadCredentials()["google-calendar"]).toBeUndefined();
+    expect(server.runManager.isRunning()).toBe(false);
+  });
 });

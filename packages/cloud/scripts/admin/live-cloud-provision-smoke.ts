@@ -34,7 +34,7 @@ type TimingPhase =
   | "cleanup"
   | "total";
 
-const STAGING_BASE_URL = "https://api-staging.elizacloud.ai";
+const STAGING_BASE_URL = "https://api-staging.eliza.app";
 const SMOKE_NAME_PREFIX = "shared-staging-smoke-";
 const EXPECTED_TIER = "shared";
 const REQUEST_TIMEOUT_MS = 130_000;

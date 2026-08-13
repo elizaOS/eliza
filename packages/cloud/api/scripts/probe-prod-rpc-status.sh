@@ -11,11 +11,11 @@
 #   API_KEY='<elizaos_apikey_...>' ./probe-prod-rpc-status.sh
 #
 #   # Override the host if needed:
-#   HOST=https://api.elizacloud.ai ./probe-prod-rpc-status.sh
+#   HOST=https://api.eliza.app ./probe-prod-rpc-status.sh
 
 set -euo pipefail
 
-HOST="${HOST:-https://api.elizacloud.ai}"
+HOST="${HOST:-https://api.eliza.app}"
 URL="${HOST}/api/admin/rpc-status"
 
 if [[ -n "${API_KEY:-}" ]]; then

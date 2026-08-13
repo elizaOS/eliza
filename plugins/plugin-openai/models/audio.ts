@@ -4,8 +4,10 @@
  * filename), and `handleTextToSpeech` synthesizes speech via the TTS endpoint.
  * Both accept the core param shapes as well as raw Blob/File/Buffer input.
  *
- * Caller-supplied audio URLs load only through `fetchRemoteMedia` so agents and
- * tools cannot aim transcription at loopback, link-local, or private hosts.
+ * Caller-supplied audio URLs load only through the platform-installed guarded
+ * fetcher (`models/transcription-url.ts`) so agents and tools cannot aim
+ * transcription at loopback, link-local, or private hosts, and so this shared
+ * module never names a Node-only core subpath a browser bundle would follow.
  * Provider endpoint calls (OpenAI-compatible base URL) stay on the configured
  * API path and are not remote-media fetches.
  */
@@ -32,11 +34,7 @@ import {
   getTTSModel,
   getTTSVoice,
 } from "../utils/config";
-
-/** OpenAI Whisper/upload limit is 25 MB; keep the same hard cap server-side. */
-const TRANSCRIPTION_AUDIO_MAX_BYTES = 25 * 1024 * 1024;
-const TRANSCRIPTION_AUDIO_FETCH_TIMEOUT_MS = 30_000;
-const TRANSCRIPTION_AUDIO_MAX_REDIRECTS = 5;
+import { fetchAudioFromUrl } from "./transcription-url";
 
 type AudioInput = Blob | File | Buffer;
 type TranscriptionInput = AudioInput | LocalTranscriptionParams | CoreTranscriptionParams | string;
@@ -47,7 +45,8 @@ function isBlobOrFile(value: unknown): value is Blob | File {
 }
 
 function isBuffer(value: unknown): value is Buffer {
-  return Buffer.isBuffer(value);
+  // A real browser has no Buffer global; referencing it bare throws.
+  return typeof Buffer !== "undefined" && Buffer.isBuffer(value);
 }
 
 function isLocalTranscriptionParams(value: unknown): value is LocalTranscriptionParams {
@@ -69,26 +68,6 @@ function isCoreTranscriptionParams(value: unknown): value is CoreTranscriptionPa
   );
 }
 
-async function fetchAudioFromUrl(url: string): Promise<Blob> {
-  if (!url || url.trim().length === 0) {
-    throw new Error("TRANSCRIPTION requires a valid audio URL");
-  }
-  // Untrusted agent/tool audio URLs must not hit private or metadata hosts.
-  // `fetchRemoteMedia` is Node-only, and the browser entry re-exports this
-  // module, so it must load lazily from the node entry rather than statically.
-  // @trajectory-allow Fetches caller-provided audio bytes; no model inference happens here.
-  const { fetchRemoteMedia } = await import("@elizaos/core/node");
-  const media = await fetchRemoteMedia({
-    url,
-    maxBytes: TRANSCRIPTION_AUDIO_MAX_BYTES,
-    timeoutMs: TRANSCRIPTION_AUDIO_FETCH_TIMEOUT_MS,
-    maxRedirects: TRANSCRIPTION_AUDIO_MAX_REDIRECTS,
-  });
-  const mimeType = media.contentType?.startsWith("audio/")
-    ? media.contentType
-    : detectAudioMimeType(media.buffer);
-  return new Blob([new Uint8Array(media.buffer)], { type: mimeType });
-}
 export async function handleTranscription(
   runtime: IAgentRuntime,
   input: TranscriptionInput

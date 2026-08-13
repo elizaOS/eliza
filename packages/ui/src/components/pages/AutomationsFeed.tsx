@@ -493,9 +493,7 @@ export function AutomationsFeed({
   );
   const openDedicatedUpgrade = useCallback((agentId: string) => {
     void openExternalUrl(
-      resolveCloudConsoleUrl(
-        `/dashboard/agents/${encodeURIComponent(agentId)}`,
-      ),
+      resolveCloudConsoleUrl(`/cloud/agents/${encodeURIComponent(agentId)}`),
     );
   }, []);
 

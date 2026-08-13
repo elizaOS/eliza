@@ -55,7 +55,7 @@ const preservedApk = path.join(
 const packageName = "app.eliza";
 const smsRole = "android.app.role.SMS";
 const defaultCloudWebhookUrl =
-  "https://api.elizacloud.ai/api/webhooks/blooio/local?bridge=bluebubbles";
+  "https://api.eliza.app/api/webhooks/blooio/local?bridge=bluebubbles";
 const defaultGatewayPhoneNumber = "+14159611510";
 const defaultGatewayPhoneLabel = "Eliza Cloud Gateway (+14159611510)";
 

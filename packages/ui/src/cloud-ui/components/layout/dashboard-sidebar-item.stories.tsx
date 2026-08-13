@@ -10,7 +10,7 @@ import type { DashboardSidebarItem } from "./dashboard-sidebar-types";
 const baseItem: DashboardSidebarItem = {
   id: "agents",
   label: "Agents",
-  href: "/dashboard/agents",
+  href: "/cloud/agents",
   icon: Bot,
 };
 
@@ -36,7 +36,7 @@ const meta = {
   ],
   args: {
     item: baseItem,
-    activePath: "/dashboard",
+    activePath: "/cloud",
     authenticated: true,
     isCollapsed: false,
   },
@@ -53,10 +53,10 @@ export const Active: Story = {
       ...baseItem,
       id: "home",
       label: "Home",
-      href: "/dashboard",
+      href: "/cloud",
       icon: Home,
     },
-    activePath: "/dashboard",
+    activePath: "/cloud",
   },
 };
 
@@ -65,7 +65,7 @@ export const WithNewBadge: Story = {
     item: {
       id: "analytics",
       label: "Analytics",
-      href: "/dashboard/analytics",
+      href: "/cloud/analytics",
       icon: BarChart3,
       isNew: true,
     },
@@ -77,7 +77,7 @@ export const WithCountBadge: Story = {
     item: {
       id: "wallet",
       label: "Wallet",
-      href: "/dashboard/wallet",
+      href: "/cloud/wallet",
       icon: Wallet,
       badge: 3,
     },
@@ -89,7 +89,7 @@ export const ComingSoon: Story = {
     item: {
       id: "magic",
       label: "Magic Mode",
-      href: "/dashboard/magic",
+      href: "/cloud/magic",
       icon: Sparkles,
       comingSoon: true,
     },
@@ -101,7 +101,7 @@ export const LockedForGuest: Story = {
     item: {
       id: "settings",
       label: "Settings",
-      href: "/dashboard/settings",
+      href: "/cloud/settings",
       icon: Settings,
       freeAllowed: false,
     },
@@ -137,10 +137,10 @@ export const CollapsedActive: Story = {
       ...baseItem,
       id: "home",
       label: "Home",
-      href: "/dashboard",
+      href: "/cloud",
       icon: Home,
     },
-    activePath: "/dashboard",
+    activePath: "/cloud",
     isCollapsed: true,
   },
   decorators: [

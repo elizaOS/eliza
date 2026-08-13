@@ -5,7 +5,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { rankMessageSearch } from "./search.ts";
+import { BM25, rankMessageSearch } from "./search.ts";
 
 describe("rankMessageSearch", () => {
 	it("matches a typo by trigram similarity, not only exact substrings", () => {
@@ -62,5 +62,44 @@ describe("rankMessageSearch", () => {
 		);
 
 		expect(hits).toEqual([]);
+	});
+});
+
+describe("BM25.search result ordering", () => {
+	// One "signal" occurrence per short doc scores higher than one occurrence
+	// diluted across a longer doc, so relevance order differs from index order.
+	const docs = [
+		{ body: "signal buried in a much longer document about other topics" },
+		{ body: "irrelevant filler text" },
+		{ body: "signal signal signal" },
+	];
+
+	it("returns descending scores even when fewer matches exist than topK", () => {
+		const bm25 = new BM25(docs);
+		const results = bm25.search("signal", 10);
+
+		expect(results.map((r) => r.index)).toEqual([2, 0]);
+		expect(results[0].score).toBeGreaterThan(results[1].score);
+	});
+
+	it("keeps the bounded top-K path intact when the buffer fills", () => {
+		const bm25 = new BM25(docs);
+		const results = bm25.search("signal", 2);
+
+		expect(results).toHaveLength(2);
+		expect(results.map((r) => r.index)).toEqual([2, 0]);
+	});
+
+	it("breaks score ties in ascending document order on the partial path", () => {
+		const twins = [
+			{ body: "unique filler alpha" },
+			{ body: "echo chamber" },
+			{ body: "echo chamber" },
+		];
+		const bm25 = new BM25(twins);
+		const results = bm25.search("echo", 10);
+
+		expect(results.map((r) => r.index)).toEqual([1, 2]);
+		expect(results[0].score).toBe(results[1].score);
 	});
 });

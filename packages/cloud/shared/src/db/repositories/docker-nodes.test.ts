@@ -7,6 +7,7 @@ import { PgDialect } from "drizzle-orm/pg-core";
 import * as realHelpers from "../helpers";
 
 let capturedWhere: SQL | undefined;
+let capturedUpdateWhere: SQL | undefined;
 let capturedSet: Record<string, unknown> | undefined;
 
 const limit = mock(() => []);
@@ -18,7 +19,11 @@ const where = mock((clause: SQL) => {
 const from = mock(() => ({ where }));
 const select = mock(() => ({ from }));
 
-const updateWhere = mock(() => Promise.resolve([]));
+const returning = mock(() => []);
+const updateWhere = mock((clause: SQL) => {
+  capturedUpdateWhere = clause;
+  return { returning };
+});
 const set = mock((values: Record<string, unknown>) => {
   capturedSet = values;
   return { where: updateWhere };
@@ -55,6 +60,7 @@ describe("DockerNodesRepository environment guard", () => {
   beforeEach(() => {
     useRepositoryMocks = true;
     capturedWhere = undefined;
+    capturedUpdateWhere = undefined;
     capturedSet = undefined;
     process.env.ENVIRONMENT = "staging";
   });
@@ -130,5 +136,37 @@ describe("DockerNodesRepository environment guard", () => {
     expect(sql).toContain("capacity");
     expect(sql).toContain("metadata");
     expect(sql).toContain("->>'environment'");
+    expect(sql).toContain("capacityprovisional");
+  });
+
+  test("reconcileProvisionalCapacity consumes the provisional marker atomically", async () => {
+    const { DockerNodesRepository } = await import("./docker-nodes");
+
+    await new DockerNodesRepository().reconcileProvisionalCapacity(
+      "row-1",
+      {
+        capacity: 2,
+        hostname: "203.0.113.10",
+        ssh_port: 22,
+        ssh_user: "root",
+        host_key_fingerprint: "SHA256:node",
+        status: "unknown",
+      },
+      {
+        memTotalMb: 7745,
+        vCpuCount: 4,
+        capacityBoundBy: "memory",
+      },
+    );
+
+    if (!capturedSet || !capturedUpdateWhere) {
+      throw new Error("reconcileProvisionalCapacity did not build an atomic update");
+    }
+    const metadataQuery = new PgDialect().sqlToQuery(capturedSet.metadata as SQL);
+    expect(metadataQuery.sql).toContain("capacityProvisional");
+    expect(metadataQuery.sql).toContain("::jsonb");
+    const whereQuery = new PgDialect().sqlToQuery(capturedUpdateWhere).sql;
+    expect(whereQuery).toContain("capacityProvisional");
+    expect(whereQuery).toContain("= 'true'");
   });
 });

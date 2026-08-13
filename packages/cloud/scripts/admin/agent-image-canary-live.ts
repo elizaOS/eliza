@@ -15,7 +15,7 @@ import { rename, writeFile } from "node:fs/promises";
 type JsonObject = Record<string, unknown>;
 type Fetch = typeof globalThis.fetch;
 
-export const AGENT_IMAGE_CANARY_PRODUCTION_ORIGIN = "https://api.elizacloud.ai";
+export const AGENT_IMAGE_CANARY_PRODUCTION_ORIGIN = "https://api.eliza.app";
 export const AGENT_IMAGE_CANARY_FIXED_AGENT_ID =
   "747a415a-e1ac-4c32-a147-9ab8c5a69d99";
 export const AGENT_IMAGE_CANARY_DEMO_REPOSITORY = "ghcr.io/elizaos/eliza-demo";

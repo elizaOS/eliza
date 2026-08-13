@@ -26,10 +26,11 @@ Set these on each GitHub Environment (`staging`, `production`):
 |---|---|---|
 | `ELIZA_PROVISIONING_HOST` | secret | Public IP of the control-plane host; SSH hostnames are Cloudflare-proxied and do not carry TCP/22. |
 | `ELIZA_PROVISIONING_SSH_KEY` | secret | Deploy-user SSH key used by the provisioning-worker deploy workflow. |
+| `ELIZA_PROVISIONING_SSH_KNOWN_HOSTS` | secret | Independently verified host-key line for `ELIZA_PROVISIONING_HOST`; obtain the fingerprint from the Hetzner console or an existing trusted operator inventory, never from deployment-time `ssh-keyscan` alone. |
 | `HEADSCALE_API_KEY` | secret | Existing Headscale API key; create/rotate on the host with `headscale apikeys create --expiration=8760h`. |
 | `AGENT_TOKEN_PRIVATE_KEY_PEM` | secret | Optional but launch-critical when steward agent JWT auth is enabled; must match the Worker secret. |
 | `ELIZA_LOCAL_ROOT_KEY` | secret | Optional but launch-critical for local root-token paths; must match the Worker secret. |
-| `HEADSCALE_PUBLIC_URL` | variable | `https://headscale-staging.elizacloud.ai` or `https://headscale.elizacloud.ai`. |
+| `HEADSCALE_PUBLIC_URL` | variable | `https://headscale-staging.eliza.app` or `https://headscale.eliza.app`. |
 
 ### Run the arm workflow
 
@@ -74,7 +75,8 @@ because that GitHub Environment requires deployment approval.
 node packages/cloud/scripts/admin/arm-headscale-control-plane.mjs \
   --host <control-plane-ip> \
   --ssh-key <deploy-key> \
-  --headscale-public-url https://headscale.elizacloud.ai \
+  --ssh-known-hosts <verified-known-hosts-file> \
+  --headscale-public-url https://headscale.eliza.app \
   --headscale-api-url http://127.0.0.1:8081 \
   --listen-addr 127.0.0.1:8081 \
   --headscale-api-key "$HEADSCALE_API_KEY"
@@ -104,42 +106,52 @@ Hetzner provisioning-worker host.
 
 ## 1. DNS
 
-- `headscale.elizacloud.ai` / `headscale-staging.elizacloud.ai` → A-record → the
+- `headscale.eliza.app` / `headscale-staging.eliza.app` → A-record → the
   Hetzner control-plane VM (`eliza-production-1` / `eliza-staging-1`), with
   nginx + Let's Encrypt terminating TLS in front of local headscale. NOT a CNAME
   to Railway — the Railway headscale service was removed (see note above).
-- `tunnel.elizacloud.ai` AND `*.tunnel.elizacloud.ai` → CNAME/ALIAS → Railway public domain for the tunnel-proxy service.
+- `tunnel.eliza.app` AND `*.tunnel.eliza.app` → CNAME/ALIAS → Railway public domain for the tunnel-proxy service.
 - Railway terminates public TLS for the tunnel-proxy custom domains; the proxy then uses `tsnet` to reach private tailnet hosts.
 
-## 2. Long-lived headscale preauth key for the proxy
+## 2. Protected tunnel-proxy convergence
 
-```
-# Run on the control-plane VM (where headscale lives)
-headscale preauthkeys create --reusable --expiration 8760h --tags tag:eliza-proxy
-```
+Dispatch `.github/workflows/deploy-tunnel-proxy.yml` against `develop` for
+staging or `main` for production. GitHub Environment approvals protect the
+Railway token, control-plane SSH identity, and shared tunnel signer. The
+workflow resolves the numeric `tunnel` user on the control-plane VM, mints a
+reusable one-year `tag:eliza-proxy` preauth key, and publishes it to Railway
+through stdin without logging or persisting it as a GitHub secret.
+`ELIZA_PROVISIONING_SSH_KNOWN_HOSTS` must contain the independently verified
+host-key line for `ELIZA_PROVISIONING_HOST`; the workflow uses strict host-key
+checking and never learns trust from the deployment connection itself.
 
-Save the returned key as Railway secret `TUNNEL_PROXY_TS_AUTHKEY` on the tunnel-proxy service.
-
-## 3. Tunnel-proxy Railway service
-
-```
-cd packages/cloud/services/tunnel-proxy
-railway up
-```
-
-Required env vars on the proxy service:
+The workflow converges these service variables:
 
 | Var | Value |
 |---|---|
-| `HEADSCALE_PUBLIC_URL` | `https://headscale.elizacloud.ai` |
-| `TUNNEL_PROXY_TS_AUTHKEY` | (from step 3) |
-| `TUNNEL_PROXY_HOST` | `tunnel.elizacloud.ai` |
+| `HEADSCALE_PUBLIC_URL` | `https://headscale.eliza.app` |
+| `TUNNEL_PROXY_TS_AUTHKEY` | workflow-minted reusable `tag:eliza-proxy` key |
+| `TUNNEL_PROXY_HOST` | `tunnel.eliza.app` |
 | `TUNNEL_TAILNET_DOMAIN` | `tunnel.eliza.local` |
 | `TUNNEL_HOSTNAME_SIGNING_SECRET` | shared HMAC secret also set as a Worker secret |
 
 Mount a Railway volume at `/var/lib/tunnel-proxy` so the `tsnet` node identity persists across restarts.
 
-## 4. API Worker secrets
+It also attaches and verifies both `tunnel.eliza.app` and
+`*.tunnel.eliza.app` (or the staging pair), deploys the committed service
+directory, proves `/health`, proves arbitrary unsigned wildcard labels return
+404, and only then expires superseded reusable proxy keys. If the Railway
+domains are not DNS-verified, the workflow stops before live smoke and retains
+the old keys. Copy the exact reviewed inventory from the workflow summary into
+the protected `RAILWAY_TUNNEL_DNS_RECORDS_JSON` environment variable, add each
+existing Cloudflare record ID to `DNS_RECORD_IMPORT_IDS_JSON` under its
+`railway-tunnel/<logical-key>` import key, and apply the `Infrastructure
+pages-domains` workflow. Rerun the tunnel deployment after Terraform owns the
+records. The tunnel apex, wildcard route, wildcard certificate challenge, and
+verification records remain DNS-only so Railway terminates TLS; this path does
+not require Cloudflare Advanced Certificate Manager.
+
+## 3. API Worker secrets
 
 On the cloud-api Worker (Cloudflare):
 
@@ -150,9 +162,16 @@ wrangler secret put HEADSCALE_INTERNAL_TOKEN   # same value as CLOUD_INTERNAL_TO
 wrangler secret put TUNNEL_HOSTNAME_SIGNING_SECRET
 ```
 
+For normal protected deployments, store one value as the
+`TUNNEL_HOSTNAME_SIGNING_SECRET` GitHub Environment secret instead of entering
+it independently at each provider. `cloud-cf-deploy.yml` publishes it to the
+Worker and `deploy-tunnel-proxy.yml` publishes the same value to Railway. A
+first adoption still requires an intentional rotation because existing
+provider-side secret values cannot be read back for comparison.
+
 `HEADSCALE_PUBLIC_URL`, `HEADSCALE_API_URL`, `HEADSCALE_USER`, `TUNNEL_PROXY_HOST`, `TUNNEL_TAILNET_DOMAIN`, and `TUNNEL_AUTH_KEY_COST_USD` are non-secret Worker vars in `apps/api/wrangler.toml`. The tunnel cost is a small on-demand org-credit debit per successful auth-key provisioning, not a subscription. Do not set `TUNNEL_ALLOW_UNSIGNED_HOSTNAMES` in production.
 
-## 5. Worker deploy
+## 4. Worker deploy
 
 ```
 cd cloud
@@ -161,7 +180,7 @@ bun run build:api
 bun run deploy:api -- --env production
 ```
 
-## 6. Smoke test
+## 5. Smoke test
 
 From a machine with the tailscale CLI installed and `@elizaos/plugin-tailscale` enabled with `ELIZAOS_CLOUD_API_KEY` set:
 
@@ -172,10 +191,10 @@ From a machine with the tailscale CLI installed and `@elizaos/plugin-tailscale` 
 
 You should see:
 - The agent host appear under `headscale nodes list`
-- A 200 response from `https://<sessionId>.tunnel.elizacloud.ai`
+- A 200 response from `https://<sessionId>.tunnel.eliza.app`
 - An immediate debit row in `credit_transactions` with `metadata.type = "tunnel"` and `metadata.billing_model = "on_demand"`
 
-## 7. Verify ACL isolation
+## 6. Verify ACL isolation
 
 The agent fleet (`tag:agent`) must NOT be reachable from a customer tunnel (`tag:eliza-tunnel`). After a tunnel is up, run from the tunnel node:
 

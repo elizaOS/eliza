@@ -80,9 +80,8 @@ mock.module("./user-service", () => ({
   },
 }));
 
-const { runOnboardingChat, validateTelegramOnboardingContinuation } = await import(
-  `./onboarding-chat.ts?test=onboarding-chat-${Date.now()}`
-);
+const { inspectOnboardingContinuation, runOnboardingChat, validateTelegramOnboardingContinuation } =
+  await import(`./onboarding-chat.ts?test=onboarding-chat-${Date.now()}`);
 const { peekLocalGreetingQueue, clearLocalGreetingQueue } = await import(
   "./onboarding-proactive-greeting"
 );
@@ -171,7 +170,7 @@ describe("runOnboardingChat", () => {
     const loginUrl = new URL(result.loginUrl);
     // Same continuation as Discord: straight to the Cloud app's /get-started
     // (Steward login), never the homepage sign-in card.
-    expect(loginUrl.origin).toBe("https://app.elizacloud.ai");
+    expect(loginUrl.origin).toBe("https://cloud.eliza.app");
     expect(loginUrl.pathname).toBe("/get-started");
     // No legacy method/link hints: those forced the homepage's Telegram
     // widget + phone-number flow instead of the Steward continuation.
@@ -675,14 +674,14 @@ describe("runOnboardingChat", () => {
 
     const loginUrl = new URL(result.loginUrl);
     // Default cloud env => the Cloud *app* host, never the homepage (eliza.app).
-    expect(loginUrl.origin).toBe("https://app.elizacloud.ai");
+    expect(loginUrl.origin).toBe("https://cloud.eliza.app");
     expect(loginUrl.pathname).toBe("/get-started");
     expect(loginUrl.searchParams.get("onboardingSession")).toBeTruthy();
     expect(result.cta).toEqual({ label: "Connect", url: result.loginUrl });
   });
 
   test("discord Connect CTA follows ELIZA_ONBOARDING_APP_URL to the staging app host", async () => {
-    cloudEnv = { ELIZA_ONBOARDING_APP_URL: "https://app-staging.elizacloud.ai" };
+    cloudEnv = { ELIZA_ONBOARDING_APP_URL: "https://cloud-staging.eliza.app" };
     const result = await runOnboardingChat({
       message: "call me Sam",
       platform: "discord",
@@ -692,7 +691,7 @@ describe("runOnboardingChat", () => {
     });
 
     const loginUrl = new URL(result.loginUrl);
-    expect(loginUrl.origin).toBe("https://app-staging.elizacloud.ai");
+    expect(loginUrl.origin).toBe("https://cloud-staging.eliza.app");
     expect(loginUrl.pathname).toBe("/get-started");
   });
 
@@ -996,6 +995,7 @@ describe("runOnboardingChat", () => {
         platform: "blooio",
         platformUserId: "+14155550123",
         sessionId: continuationToken(result),
+        confirmPlatformLink: true,
         authenticatedUser: {
           userId: "user-1",
           organizationId: "org-1",
@@ -1043,6 +1043,7 @@ describe("runOnboardingChat", () => {
         userId: "phone-user",
         organizationId: "phone-org",
       },
+      confirmPlatformLink: true,
     });
 
     expect(ensureElizaAppProvisioning).toHaveBeenCalledWith({
@@ -1083,6 +1084,7 @@ describe("runOnboardingChat", () => {
       message,
       platform: "blooio",
       platformUserId: PHONE,
+      platformReplyAddress: "+18087881821",
       sessionId: PLATFORM_SESSION,
       trustedPlatformIdentity: true,
     });
@@ -1219,6 +1221,7 @@ describe("runOnboardingChat", () => {
           userId: "victim-user",
           organizationId: "victim-org",
         },
+        confirmPlatformLink: true,
       });
       expect(victimBound.session.id).toBe(PLATFORM_SESSION);
       expect(victimBound.session.userId).toBe("victim-user");
@@ -1242,7 +1245,7 @@ describe("runOnboardingChat", () => {
       expect(linkPhoneToUser).not.toHaveBeenCalledWith("attacker-user", PHONE);
     });
 
-    test("an opaque web continuation cannot mutate the platform identity and still links the phone", async () => {
+    test("previews and explicitly confirms a trusted iMessage continuation", async () => {
       ensureElizaAppProvisioning.mockResolvedValue({
         status: "provisioning",
         agentId: "agent-1",
@@ -1251,15 +1254,60 @@ describe("runOnboardingChat", () => {
       });
 
       const gatewayTurn = await runTrustedPhoneTurn("My name is Sam");
+      const token = continuationToken(gatewayTurn);
+      const preview = await inspectOnboardingContinuation(token, {
+        userId: "user-1",
+        organizationId: "org-1",
+      });
+      expect(preview).toEqual({
+        platform: "blooio",
+        platformUserId: PHONE,
+        platformDisplayName: PHONE,
+        returnUrl: "sms:+18087881821",
+      });
       const continued = await runOnboardingChat({
-        sessionId: continuationToken(gatewayTurn),
+        sessionId: token,
         platform: "web",
         authenticatedUser: { userId: "user-1", organizationId: "org-1" },
+        confirmPlatformLink: true,
       });
 
       expect(continued.session.platform).toBe("blooio");
       expect(continued.session.platformUserId).toBe(PHONE);
       expect(linkPhoneToUser).toHaveBeenCalledWith("user-1", PHONE);
+    });
+
+    test("returns legacy iMessage sessions through the configured gateway number", async () => {
+      cloudEnv = { ELIZA_APP_BLOOIO_PHONE_NUMBER: "+18087881821" };
+      const gatewayTurn = await runOnboardingChat({
+        message: "My name is Sam",
+        platform: "blooio",
+        platformUserId: PHONE,
+        sessionId: PLATFORM_SESSION,
+        trustedPlatformIdentity: true,
+      });
+
+      await expect(
+        inspectOnboardingContinuation(continuationToken(gatewayTurn), {
+          userId: "user-1",
+          organizationId: "org-1",
+        }),
+      ).resolves.toMatchObject({ returnUrl: "sms:+18087881821" });
+    });
+
+    test("requires explicit confirmation before linking a trusted iMessage identity", async () => {
+      const gatewayTurn = await runTrustedPhoneTurn("My name is Sam");
+      await expect(
+        runOnboardingChat({
+          sessionId: continuationToken(gatewayTurn),
+          platform: "web",
+          authenticatedUser: { userId: "user-1", organizationId: "org-1" },
+        }),
+      ).rejects.toMatchObject({
+        code: "ONBOARDING_PLATFORM_LINK_CONFIRMATION_REQUIRED",
+      });
+      expect(linkPhoneToUser).not.toHaveBeenCalled();
+      expect(ensureElizaAppProvisioning).not.toHaveBeenCalled();
     });
   });
 
@@ -1699,7 +1747,7 @@ describe("runOnboardingChat", () => {
       expect(result.provisioning.status).toBe("insufficient_credits");
       expect(result.handoffComplete).toBe(false);
       expect(result.reply).toContain("you're out of credits, Sam");
-      expect(result.reply).toContain("/dashboard/billing");
+      expect(result.reply).toContain("/cloud/billing");
       expect(result.reply).not.toContain("agent is live");
       expect(result.reply).not.toContain("knows everything");
     });
@@ -1757,6 +1805,7 @@ describe("runOnboardingChat", () => {
         const second = await runOnboardingChat({
           platform: "blooio",
           sessionId: browserContinuation,
+          confirmPlatformLink: true,
           authenticatedUser: { userId: "user-1", organizationId: "org-1" },
         });
         expect(second.handoffComplete).toBe(true);
@@ -1766,6 +1815,7 @@ describe("runOnboardingChat", () => {
         const third = await runOnboardingChat({
           platform: "blooio",
           sessionId: browserContinuation,
+          confirmPlatformLink: true,
           authenticatedUser: { userId: "user-1", organizationId: "org-1" },
         });
         expect(third.handoffComplete).toBe(true);
@@ -2015,6 +2065,7 @@ describe("runOnboardingChat", () => {
       await runOnboardingChat({
         sessionId: continuationToken(named),
         platform: "web",
+        confirmPlatformLink: true,
         authenticatedUser: { userId: "user-1", organizationId: "org-1" },
       });
       expect(peekLocalGreetingQueue()).toHaveLength(0);
@@ -2145,6 +2196,7 @@ describe("runOnboardingChat", () => {
           await runOnboardingChat({
             platform: "blooio",
             sessionId: continuationToken(named),
+            confirmPlatformLink: true,
             authenticatedUser: { userId: "user-1", organizationId: "org-1" },
             statusOnly: true,
           });
@@ -2177,6 +2229,7 @@ describe("runOnboardingChat", () => {
         await runOnboardingChat({
           platform: "blooio",
           sessionId: continuationToken(named),
+          confirmPlatformLink: true,
           authenticatedUser: { userId: "user-1", organizationId: "org-1" },
           statusOnly: true,
         });

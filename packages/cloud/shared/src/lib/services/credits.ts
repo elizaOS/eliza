@@ -999,7 +999,7 @@ export class CreditsService {
         organizationName: org.name,
         currentBalance,
         threshold,
-        billingUrl: `${process.env.NEXT_PUBLIC_APP_URL}/dashboard/billing`,
+        billingUrl: `${process.env.NEXT_PUBLIC_APP_URL}/cloud/billing`,
       });
 
       if (sent) {

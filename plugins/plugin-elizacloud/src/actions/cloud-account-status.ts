@@ -23,7 +23,7 @@ import { logger } from "@elizaos/core";
 import { isCloudAuthApiKeyService } from "../cloud/auth-service-types";
 import { createElizaCloudClient } from "../utils/sdk-client";
 
-const TOP_UP_URL = "https://www.elizacloud.ai/dashboard/settings?tab=billing";
+const TOP_UP_URL = "https://cloud.eliza.app/cloud/billing";
 
 export const NO_CLOUD_MESSAGE =
   "I'm not connected to Eliza Cloud right now — connect your account in Settings (or set ELIZAOS_CLOUD_API_KEY) and I can check your credits.";

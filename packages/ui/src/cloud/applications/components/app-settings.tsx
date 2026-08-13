@@ -126,7 +126,7 @@ export function AppSettings({ app }: AppSettingsProps) {
           }),
         },
       );
-      navigate(`/dashboard/apps/${app.id}?tab=overview`, {
+      navigate(`/cloud/apps/${app.id}?tab=overview`, {
         preventScrollReset: true,
       });
     } catch (error) {
@@ -158,7 +158,7 @@ export function AppSettings({ app }: AppSettingsProps) {
         }),
       );
       await queryClient.invalidateQueries({ queryKey: APPS_QUERY_KEY });
-      navigate("/dashboard/apps");
+      navigate("/cloud/apps");
     } catch (error) {
       toast.error(
         t("cloud.appSettings.deleteFailed", {

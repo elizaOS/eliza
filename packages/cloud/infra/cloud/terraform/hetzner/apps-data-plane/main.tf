@@ -134,12 +134,25 @@ resource "hcloud_server_network" "app_node" {
 # ── Ingress DNS: wildcard for per-app URLs -> app node (single-node draft) ─────
 # STAN: with >1 app node, front this with a load balancer (hcloud_load_balancer)
 # and point the wildcard at the LB instead of a single node.
+# Preserve the existing resource address as legacy redirect ingress. Proxied
+# traffic is claimed by the Cloud API Worker's elizacloud.ai retirement route,
+# which issues a path-preserving 308 to the canonical app hostname.
 resource "cloudflare_dns_record" "apps_wildcard" {
   zone_id = var.cloudflare_zone_id
+  name    = "*.${var.legacy_apps_base_domain}"
+  type    = "A"
+  content = hcloud_server.app_node["1"].ipv4_address
+  ttl     = 1
+  proxied = true
+  comment = "legacy eliza apps redirect ingress (managed by terraform/hetzner/apps-data-plane)"
+}
+
+resource "cloudflare_dns_record" "canonical_apps_wildcard" {
+  zone_id = var.eliza_app_zone_id
   name    = "*.${var.apps_base_domain}"
   type    = "A"
   content = hcloud_server.app_node["1"].ipv4_address
   ttl     = 60
   proxied = false
-  comment = "eliza apps wildcard ingress (managed by terraform/hetzner/apps-data-plane)"
+  comment = "canonical eliza apps wildcard ingress (managed by terraform/hetzner/apps-data-plane)"
 }

@@ -1,7 +1,7 @@
 /**
  * @vitest-environment jsdom
  *
- * Tests for ensureCloudSessionForRepair: the silent cookie->session recovery
+ * Tests for ensureCloudSessionForRepair: silent same-origin cookie-to-session recovery
  * that unblocks the returning-PWA re-pair path (closes the
  * "Open this agent from Eliza Cloud" dead-end).
  */
@@ -17,6 +17,7 @@ vi.mock("../api/client-cloud", () => ({
 vi.mock("@elizaos/shared/steward-session-client", () => ({
   hasStewardAuthedCookie: () => false,
   readStoredStewardToken: () => null,
+  STEWARD_REFRESH_ENDPOINT: "/api/auth/steward-refresh",
   writeStoredStewardToken: () => {},
 }));
 
@@ -62,7 +63,7 @@ describe("ensureCloudSessionForRepair", () => {
     expect(deps.writeToken).not.toHaveBeenCalled();
   });
 
-  it("recovers the session from the shared cookie and persists it", async () => {
+  it("recovers the session from the host cookie and persists it", async () => {
     const deps = makeDeps();
     const token = await ensureCloudSessionForRepair(deps);
     expect(token).toBe("fresh.jwt");
@@ -70,7 +71,7 @@ describe("ensureCloudSessionForRepair", () => {
     expect(deps.writeToken).toHaveBeenCalledWith("fresh.jwt");
   });
 
-  it("returns null (keeps the wall) when there is no shared cookie", async () => {
+  it("returns null (keeps the wall) when there is no host cookie", async () => {
     const deps = makeDeps({ hasCookie: vi.fn(() => false) });
     const token = await ensureCloudSessionForRepair(deps);
     expect(token).toBeNull();

@@ -4,8 +4,10 @@
  * model's JSON output and falls back to regex title extraction from prose. The
  * call is wrapped in `recordLlmCall` for trajectory capture.
  *
- * Image bytes are loaded only through `fetchRemoteMedia` so caller-supplied URLs
- * cannot reach loopback, link-local, or private network targets (SSRF). Provider
+ * Image bytes are loaded only through the platform-installed guarded fetcher
+ * (`models/image-url.ts`) so caller-supplied URLs cannot reach loopback,
+ * link-local, or private network targets (SSRF), and so this shared module
+ * never names a Node-only core subpath a browser bundle would follow. Provider
  * failures (image fetch error, bad key, model-not-found, rate-limit, timeout,
  * safety block, empty completion) surface as typed errors so the caller and
  * model see a real failure — they are never fabricated into a
@@ -24,11 +26,7 @@ import {
   getSafetySettings,
 } from "../utils/config";
 import { countTokens } from "../utils/tokenization";
-
-/** Cap inline image payloads so a hostile host cannot force unbounded memory. */
-const IMAGE_DESCRIPTION_MAX_BYTES = 20 * 1024 * 1024;
-const IMAGE_DESCRIPTION_FETCH_TIMEOUT_MS = 15_000;
-const IMAGE_DESCRIPTION_MAX_REDIRECTS = 5;
+import { fetchImageFromUrl } from "./image-url";
 
 export async function handleImageDescription(
   runtime: IAgentRuntime,
@@ -61,16 +59,10 @@ export async function handleImageDescription(
 
   try {
     // Untrusted agent/tool image URLs must not hit private or metadata hosts.
-    // `fetchRemoteMedia` is Node-only, and the browser entry re-exports this
-    // module, so it must load lazily from the node entry rather than statically.
-    const { fetchRemoteMedia } = await import("@elizaos/core/node");
-    const media = await fetchRemoteMedia({
-      url: imageUrl,
-      maxBytes: IMAGE_DESCRIPTION_MAX_BYTES,
-      timeoutMs: IMAGE_DESCRIPTION_FETCH_TIMEOUT_MS,
-      maxRedirects: IMAGE_DESCRIPTION_MAX_REDIRECTS,
-    });
-    const base64Image = media.buffer.toString("base64");
+    // Each build entrypoint installs its platform's guarded fetcher, so this
+    // shared module never names the Node-only `@elizaos/core/node` subpath.
+    const media = await fetchImageFromUrl(imageUrl);
+    const base64Image = media.base64;
     const contentType = media.contentType || "image/jpeg";
 
     const details: RecordLlmCallDetails = {

@@ -52,7 +52,7 @@ export function getWebPushVapidConfig(
 ): WebPushVapidConfig | null {
   const publicKey = readStringBinding(env, WEB_PUSH_PUBLIC_KEY_ENV);
   const privateKey = readStringBinding(env, WEB_PUSH_PRIVATE_KEY_ENV);
-  const subject = readStringBinding(env, WEB_PUSH_SUBJECT_ENV) ?? "mailto:push@elizacloud.ai";
+  const subject = readStringBinding(env, WEB_PUSH_SUBJECT_ENV) ?? "mailto:push@eliza.app";
   if (!publicKey || !privateKey) return null;
   return { publicKey, privateKey, subject };
 }

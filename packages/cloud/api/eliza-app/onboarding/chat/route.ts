@@ -59,6 +59,7 @@ const chatSchema = z.object({
   platform: platformSchema.optional(),
   platformUserId: z.string().trim().max(256).optional(),
   platformDisplayName: z.string().trim().max(120).optional(),
+  platformReplyAddress: z.string().trim().max(256).optional(),
   statusOnly: z.boolean().optional(),
   confirmPlatformLink: z.boolean().optional(),
 });
@@ -129,7 +130,7 @@ async function resolveCaller(
     };
   }
 
-  // Steward session — the branded email/OAuth login on *.elizacloud.ai —
+  // Steward session — the branded email/OAuth login on the eliza.app hosts —
   // accepted by BEARER ONLY, never the steward-token cookie: this POST binds
   // sessions, links identities and starts provisioning, and Hono's
   // `req.json()` parses a cross-site text/plain simple request, so a
@@ -232,6 +233,9 @@ app.post("/", async (c) => {
       platform: parsed.data.platform as OnboardingPlatform | undefined,
       platformUserId: parsed.data.platformUserId,
       platformDisplayName: parsed.data.platformDisplayName,
+      platformReplyAddress: caller.trustedPlatformIdentity
+        ? parsed.data.platformReplyAddress
+        : undefined,
       authenticatedUser: caller.authenticatedUser,
       trustedPlatformIdentity: caller.trustedPlatformIdentity,
       idempotencyKey: idempotencyKey || undefined,
@@ -293,7 +297,7 @@ app.post("/", async (c) => {
         new ApiError(
           409,
           "session_not_ready",
-          "Confirm the Discord account before connecting it",
+          "Confirm the messaging account before connecting it",
         ),
       );
     }
@@ -306,7 +310,7 @@ app.post("/", async (c) => {
         new ApiError(
           409,
           "identity_conflict",
-          "This Discord account is already linked to another account",
+          "This messaging account is already linked to another account",
         ),
       );
     }

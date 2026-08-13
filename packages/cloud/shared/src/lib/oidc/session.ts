@@ -7,13 +7,13 @@
  * Bearer could only come from a non-browser caller, and account creation must
  * not be a side effect of a relying party sending a user here.
  *
- * The cookie reaches this endpoint because `steward-token` is scoped to
- * `Domain=elizacloud.ai` and `SameSite=Lax`, which is sent on a cross-site
- * top-level GET. Two consequences worth knowing: a change to `SameSite=Strict`
- * silently breaks SSO with a "not signed in" loop, and — because sibling
- * `*.elizacloud.ai` hosts serve user content and JS there can PLANT a
- * parent-domain cookie — the explicit-logout marker check below is load-bearing
- * rather than optional.
+ * The cookie reaches this endpoint only after same-origin auth or the one-time
+ * SSO bridge establishes a host-only `steward-token` on the issuer origin.
+ * `SameSite=Lax` sends that cookie on a cross-site top-level GET; changing it to
+ * `SameSite=Strict` silently breaks SSO with a "not signed in" loop. The
+ * explicit-logout marker check below is also load-bearing because every
+ * host-specific session copy must stop authorizing as soon as another Eliza
+ * host records logout.
  *
  * The session's Steward tenant is deliberately NOT carried into the claim
  * builder. `/userinfo` runs with an access token and no session, so a

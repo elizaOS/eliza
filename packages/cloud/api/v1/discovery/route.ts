@@ -268,7 +268,7 @@ async function fetchLocalAgents(
   params: z.infer<typeof querySchema>,
   appUrlEnv?: string,
 ): Promise<DiscoveredService[]> {
-  const baseUrl = appUrlEnv || "https://www.elizacloud.ai";
+  const baseUrl = appUrlEnv || "https://cloud.eliza.app";
   const source = resolveDiscoverySource(baseUrl);
 
   let characters = await charactersService.listPublic({
@@ -347,7 +347,7 @@ async function fetchLocalMcps(
   params: z.infer<typeof querySchema>,
   appUrlEnv?: string,
 ): Promise<DiscoveredService[]> {
-  const baseUrl = appUrlEnv || "https://www.elizacloud.ai";
+  const baseUrl = appUrlEnv || "https://cloud.eliza.app";
   const source = resolveDiscoverySource(baseUrl);
 
   const mcps = await userMcpsService.listPublic({

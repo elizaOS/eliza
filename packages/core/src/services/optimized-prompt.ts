@@ -364,6 +364,22 @@ function isTask(value: unknown): value is OptimizedPromptTask {
 	);
 }
 
+const OPTIMIZED_PROMPT_ARTIFACT_KEYS = new Set([
+	"task",
+	"optimizer",
+	"baseline",
+	"prompt",
+	"score",
+	"baselineScore",
+	"datasetId",
+	"datasetSize",
+	"generatedAt",
+	"fewShotExamples",
+	"lineage",
+	"frontier",
+	"promotionDecision",
+]);
+
 /**
  * Strict parser. We reject artifacts that are missing required fields so a
  * corrupt file cannot silently shadow the baseline prompt with garbage.
@@ -372,6 +388,14 @@ export function parseOptimizedPromptArtifact(
 	raw: unknown,
 ): OptimizedPromptArtifact | null {
 	if (!isStringRecord(raw)) return null;
+	// Keep the persisted contract closed. In particular, contextConfig was
+	// retired with its training consumer; accepting it (or any future extra)
+	// here would let an unconsumed producer field cross the signing boundary.
+	for (const key of Object.keys(raw)) {
+		if (!OPTIMIZED_PROMPT_ARTIFACT_KEYS.has(key)) {
+			return null;
+		}
+	}
 	if (!isTask(raw.task)) return null;
 	if (!isOptimizerName(raw.optimizer)) return null;
 	if (typeof raw.baseline !== "string" || typeof raw.prompt !== "string") {
@@ -388,10 +412,6 @@ export function parseOptimizedPromptArtifact(
 	}
 	if (typeof raw.generatedAt !== "string") return null;
 	if (!Array.isArray(raw.lineage)) return null;
-	// The training plugin that consumed contextConfig was removed in #17695.
-	// Reject the orphaned channel instead of loading an artifact whose provider
-	// selection, ordering, templates, and budgets cannot affect the runtime.
-	if (raw.contextConfig !== undefined) return null;
 	const lineage: OptimizedPromptLineageEntry[] = [];
 	for (const entry of raw.lineage) {
 		if (!isStringRecord(entry)) continue;
@@ -662,13 +682,32 @@ export class OptimizedPromptService extends Service {
 		task: OptimizedPromptTask,
 		artifact: OptimizedPromptArtifact,
 	): Promise<string> {
-		if (artifact.task !== task) {
-			throw new Error(
-				`[OptimizedPromptService] artifact.task=${artifact.task} does not match target task=${task}`,
+		const validatedArtifact = parseOptimizedPromptArtifact(artifact);
+		if (!validatedArtifact) {
+			throw new ElizaError(
+				"Optimized prompt artifact failed strict validation",
+				{
+					code: "OPTIMIZED_PROMPT_ARTIFACT_INVALID",
+					context: { task },
+				},
+			);
+		}
+		if (validatedArtifact.task !== task) {
+			throw new ElizaError(
+				"Optimized prompt artifact task does not match the target task",
+				{
+					code: "OPTIMIZED_PROMPT_ARTIFACT_TASK_MISMATCH",
+					context: {
+						expectedTask: task,
+						actualTask: validatedArtifact.task,
+					},
+				},
 			);
 		}
 		const dir = join(this.storeRoot, task);
-		return runExclusive(dir, () => this.writeArtifact(task, dir, artifact));
+		return runExclusive(dir, () =>
+			this.writeArtifact(task, dir, validatedArtifact),
+		);
 	}
 
 	private async writeArtifact(

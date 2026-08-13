@@ -15,7 +15,6 @@ import {
   type UUID,
 } from "@elizaos/core";
 import type { Tweet as ClientTweet } from "../client";
-import { getEpochMs } from "./time";
 
 function errorDetail(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -44,15 +43,21 @@ export interface TwitterContextResult {
 
 type TwitterMetadataTweet = Pick<
   ClientTweet,
-  "conversationId" | "id" | "name" | "timestamp" | "userId" | "username"
+  "conversationId" | "id" | "name" | "userId" | "username"
 >;
 
+/**
+ * `createdAt` must be an already-validated epoch-milliseconds value: callers
+ * normalize the raw tweet timestamp exactly once at their row boundary (and
+ * skip the row when it is unusable), so this builder never re-normalizes and
+ * can never emit an undefined timestamp (#18965).
+ */
 export function buildTwitterMessageMetadata(
   tweet: TwitterMetadataTweet,
   entityId: UUID,
+  createdAt: number,
   accountId?: string,
 ): Memory["metadata"] {
-  const createdAt = getEpochMs(tweet.timestamp);
   return {
     type: "message",
     source: "twitter",

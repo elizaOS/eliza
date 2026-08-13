@@ -3,9 +3,15 @@
  */
 
 import { readAliasedEnv } from "../utils/env.js";
+import {
+  classifyElizaHostname,
+  ELIZA_DOMAIN_CONTRACTS,
+  type ElizaCloudEnvironment,
+} from "./domain-contract.js";
 
-const PRODUCTION_CLOUD_SITE_URL = "https://elizacloud.ai";
-const STAGING_CLOUD_SITE_URL = "https://staging.elizacloud.ai";
+const PRODUCTION_CLOUD_SITE_URL =
+  ELIZA_DOMAIN_CONTRACTS.production.cloudAppOrigin;
+const STAGING_CLOUD_SITE_URL = ELIZA_DOMAIN_CONTRACTS.staging.cloudAppOrigin;
 
 /**
  * True when this process was started from the repo's dev entrypoint.
@@ -31,7 +37,7 @@ export function isDevCloudTarget(): boolean {
  *
  * Staging is a separate deployment with its own database and its own API keys:
  * a production `ELIZAOS_CLOUD_API_KEY` does NOT authenticate against it. Mint a
- * staging key with `eliza auth dev-login --cloud https://api-staging.elizacloud.ai`.
+ * staging key with `eliza auth dev-login --cloud https://api-staging.eliza.app`.
  */
 export function defaultCloudSiteUrl(): string {
   return isDevCloudTarget()
@@ -39,11 +45,22 @@ export function defaultCloudSiteUrl(): string {
     : PRODUCTION_CLOUD_SITE_URL;
 }
 
-const LEGACY_CLOUD_HOST_ALIASES = new Set([
-  "api.elizacloud.ai",
-  "elizacloud.ai",
-  "www.elizacloud.ai",
-]);
+function controlPlaneEnvironment(
+  hostname: string,
+): ElizaCloudEnvironment | null {
+  const classified = classifyElizaHostname(hostname);
+  switch (classified.role) {
+    case "marketing":
+    case "cloud-app":
+    case "cloud-api":
+    case "legacy-marketing":
+    case "legacy-cloud-app":
+    case "legacy-cloud-api":
+      return classified.environment;
+    default:
+      return null;
+  }
+}
 
 function isLoopbackHost(hostname: string): boolean {
   const normalized = hostname.toLowerCase();
@@ -94,8 +111,11 @@ export function normalizeCloudSiteUrl(rawUrl?: string): string {
     }
     parsed.pathname = pathname;
 
-    if (LEGACY_CLOUD_HOST_ALIASES.has(host)) {
-      parsed.hostname = "elizacloud.ai";
+    const environment = controlPlaneEnvironment(host);
+    if (environment) {
+      parsed.hostname = new URL(
+        ELIZA_DOMAIN_CONTRACTS[environment].cloudAppOrigin,
+      ).hostname;
       parsed.pathname = "";
     }
 
@@ -106,5 +126,17 @@ export function normalizeCloudSiteUrl(rawUrl?: string): string {
 }
 
 export function resolveCloudApiBaseUrl(rawUrl?: string): string {
-  return `${normalizeCloudSiteUrl(rawUrl)}/api/v1`;
+  const siteUrl = normalizeCloudSiteUrl(rawUrl);
+  try {
+    const parsed = new URL(siteUrl);
+    const environment = controlPlaneEnvironment(parsed.hostname);
+    if (environment) {
+      return `${ELIZA_DOMAIN_CONTRACTS[environment].cloudApiOrigin}/api/v1`;
+    }
+  } catch {
+    // error-policy:J3 malformed normalized input retains the sanitized custom
+    // base contract; the caller receives an explicit URL-like string, not a
+    // fabricated canonical environment.
+  }
+  return `${siteUrl}/api/v1`;
 }

@@ -34,7 +34,7 @@ const ELIZA_APP_LARGE_MODEL =
   process.env.ELIZA_APP_LARGE_MODEL || CEREBRAS_DEFAULT_TEXT_LARGE_MODEL;
 
 export const elizaAppConfig = {
-  // Frontend URL (the consumer-facing agent app, e.g. app.elizacloud.ai)
+  // Frontend URL for the hosted agent app (cloud.eliza.app).
   appUrl: process.env.ELIZA_APP_URL || EXTERNAL_URLS.app,
 
   // Agent configuration

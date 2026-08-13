@@ -84,7 +84,7 @@
           return suffix.charAt(0) === '?' ? `/${suffix}` : suffix || '/';
         }
         try {
-          const url = new URL(trimmed, window.location?.href ? window.location.href : 'https://app.elizacloud.ai');
+          const url = new URL(trimmed, window.location?.href ? window.location.href : 'https://cloud.eliza.app');
           if (
             isNativeCapacitorAgentHost() &&
             url.protocol === 'http:' &&
@@ -310,7 +310,7 @@
     /* The shell lives OUTSIDE the React mount root as a fixed overlay: React
        mounting must not wipe it, because with a lazy router shell the first
        commits render empty Suspense fallbacks into #root — the measured
-       ~1.4s blank on elizacloud.ai/login (#18256). An inline observer below
+       ~1.4s blank on the hosted /login route (#18256). An inline observer below
        removes it once #root paints meaningful content. */
     .eliza-preboot-shell {
       position: fixed;
@@ -390,28 +390,6 @@
       <p class="eliza-preboot-shell__status">Booting up&hellip;</p>
     </div>
   </div>
-  <script>
-    // One build serves the Eliza app hosts AND the Eliza Cloud console apex
-    // (see wrangler.toml); the console's surfaces are elizacloud-branded, so
-    // the preboot wordmark follows the host to avoid an elizaOS→elizacloud
-    // brand flip mid-boot (#18256 style drift). Host list mirrors
-    // APEX_UI_CONTROL_PLANE_HOSTS (packages/ui/src/cloud/shell/apex-host.ts).
-    (() => {
-      try {
-        const apexConsoleHosts = [
-          "elizacloud.ai",
-          "www.elizacloud.ai",
-          "dev.elizacloud.ai",
-          "staging.elizacloud.ai"
-        ];
-        if (!apexConsoleHosts.includes(window.location.hostname.toLowerCase())) return;
-        const name = document.querySelector(".eliza-preboot-shell__name");
-        const mark = document.querySelector(".eliza-preboot-shell__mark");
-        if (name) name.textContent = "elizacloud";
-        if (mark) mark.style.display = "none";
-      } catch (_) { }
-    })();
-  </script>
   <script>
     // Remove the preboot shell only when #root paints MEANINGFUL content.
     // React's first commits under the lazy web router shell render empty

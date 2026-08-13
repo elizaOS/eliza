@@ -306,7 +306,7 @@ function mapBillingSummary(
     success: source.success ?? true,
     balance,
     currency: "USD",
-    topUpUrl: `${baseUrl}/dashboard/settings?tab=billing`,
+    topUpUrl: `${baseUrl}/cloud/billing`,
     embeddedCheckoutEnabled: false,
     hostedCheckoutEnabled: true,
     cryptoEnabled:
@@ -636,10 +636,10 @@ export async function handleCloudBillingRoute(
 
     const upstreamBody = JSON.stringify({
       credits: amountUsd,
-      success_url: buildRedirectUrl(baseUrl, "/dashboard/billing/success", {
+      success_url: buildRedirectUrl(baseUrl, "/cloud/billing/success", {
         from: "eliza",
       }),
-      cancel_url: buildRedirectUrl(baseUrl, "/dashboard/settings", {
+      cancel_url: buildRedirectUrl(baseUrl, "/cloud/billing", {
         from: "eliza",
         tab: "billing",
         canceled: "1",

@@ -1,8 +1,20 @@
-/** Verifies shell startup diagnostics and invalid-directory failures at the configuration boundary. */
+/** Verifies typed shell configuration failures, live numeric bounds, defaults, and startup diagnostics. */
 import path from "node:path";
-import { logger } from "@elizaos/core";
+import { ElizaError, logger } from "@elizaos/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { loadShellConfig } from "./config.js";
+
+function captureConfigError(): ElizaError {
+  try {
+    loadShellConfig();
+  } catch (error) {
+    // error-policy:J3 the test captures the explicit invalid-config result so
+    // it can assert the typed classification and structured boundary context.
+    expect(error).toBeInstanceOf(ElizaError);
+    return error as ElizaError;
+  }
+  throw new Error("Expected loadShellConfig to reject invalid configuration");
+}
 
 describe("loadShellConfig", () => {
   afterEach(() => {
@@ -41,8 +53,84 @@ describe("loadShellConfig", () => {
     );
     vi.stubEnv("SHELL_ALLOWED_DIRECTORY", missingDirectory);
 
-    expect(() => loadShellConfig()).toThrow(
-      `SHELL_ALLOWED_DIRECTORY does not exist: ${missingDirectory}`,
-    );
+    const error = captureConfigError();
+    expect(error).toMatchObject({
+      code: "SHELL_CONFIG_DIRECTORY_MISSING",
+      context: { allowedDirectory: missingDirectory },
+      cause: expect.objectContaining({ code: "ENOENT" }),
+    });
+  });
+
+  it.each([
+    ["SHELL_TIMEOUT", "1oops", 1, 2_147_483_647],
+    ["SHELL_MAX_OUTPUT_CHARS", "1e3", 1, 1_000_000],
+    ["SHELL_PENDING_MAX_OUTPUT_CHARS", " 200000", 1, 1_000_000],
+    ["SHELL_BACKGROUND_MS", "9007199254740992", 10, 120_000],
+  ])(
+    "rejects malformed positive integer %s values",
+    (name, value, minimum, maximum) => {
+      vi.stubEnv(name, value);
+
+      const error = captureConfigError();
+      expect(error).toMatchObject({
+        code: "SHELL_CONFIG_INTEGER_INVALID",
+        context: { setting: name, received: value, minimum, maximum },
+        severity: "fatal",
+      });
+    },
+  );
+
+  it("preserves valid decimal values across every numeric setting", () => {
+    vi.stubEnv("SHELL_TIMEOUT", "45000");
+    vi.stubEnv("SHELL_MAX_OUTPUT_CHARS", "250000");
+    vi.stubEnv("SHELL_PENDING_MAX_OUTPUT_CHARS", "150000");
+    vi.stubEnv("SHELL_BACKGROUND_MS", "12000");
+
+    expect(loadShellConfig()).toMatchObject({
+      timeout: 45000,
+      maxOutputChars: 250000,
+      pendingMaxOutputChars: 150000,
+      defaultBackgroundMs: 12000,
+    });
+  });
+
+  it.each(["0", "-1"])(
+    "continues to reject non-positive timeout %s",
+    (value) => {
+      vi.stubEnv("SHELL_TIMEOUT", value);
+
+      expect(captureConfigError().message).toBe(
+        "Shell plugin configuration error: SHELL_TIMEOUT must be a positive decimal integer no greater than 2147483647",
+      );
+    },
+  );
+
+  it.each([
+    ["SHELL_TIMEOUT", "2147483648", 1, 2_147_483_647],
+    ["SHELL_MAX_OUTPUT_CHARS", "1000001", 1, 1_000_000],
+    ["SHELL_PENDING_MAX_OUTPUT_CHARS", "1000001", 1, 1_000_000],
+    ["SHELL_BACKGROUND_MS", "9", 10, 120_000],
+    ["SHELL_BACKGROUND_MS", "120001", 10, 120_000],
+  ])("rejects out-of-range %s=%s", (name, value, minimum, maximum) => {
+    vi.stubEnv(name, value);
+
+    expect(captureConfigError()).toMatchObject({
+      code: "SHELL_CONFIG_INTEGER_INVALID",
+      context: { setting: name, received: value, minimum, maximum },
+    });
+  });
+
+  it("accepts every numeric setting at its live boundary", () => {
+    vi.stubEnv("SHELL_TIMEOUT", "2147483647");
+    vi.stubEnv("SHELL_MAX_OUTPUT_CHARS", "1000000");
+    vi.stubEnv("SHELL_PENDING_MAX_OUTPUT_CHARS", "1");
+    vi.stubEnv("SHELL_BACKGROUND_MS", "120000");
+
+    expect(loadShellConfig()).toMatchObject({
+      timeout: 2_147_483_647,
+      maxOutputChars: 1_000_000,
+      pendingMaxOutputChars: 1,
+      defaultBackgroundMs: 120_000,
+    });
   });
 });

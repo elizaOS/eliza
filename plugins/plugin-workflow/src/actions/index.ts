@@ -1,3 +1,2 @@
-/** Barrel for the plugin's actions: EVAL_CODE and the umbrella WORKFLOW action. */
-export { evalCodeAction } from './eval-code';
+/** Barrel for the native Smithers WORKFLOW action. */
 export { workflowAction } from './workflow';
