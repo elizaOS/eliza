@@ -27,7 +27,7 @@ function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function getValidationRetryPolicy({ env = process.env } = {}) {
+export function getValidationRetryPolicy({ env = process.env } = {}) {
   const explicitAttempts = Number.parseInt(
     env.ELIZA_CDN_VALIDATE_ATTEMPTS ?? "",
     10,
@@ -234,6 +234,10 @@ export function resolveValidationGitRef({
 }
 
 export async function main({ cwd = repoRoot, env = process.env } = {}) {
+  // Resolve the retry policy from the supplied env up front, before any
+  // manifest read or network probe, so programmatic callers get the policy
+  // they injected rather than whatever happens to be in process.env.
+  const retryPolicy = getValidationRetryPolicy({ env });
   const releaseTag = resolveElizaReleaseTag({ env });
   const gitSha = resolveCurrentGitSha({ cwd, env });
   const explicitValidationRef = env.ELIZA_CDN_VALIDATION_REF?.trim();
@@ -279,7 +283,6 @@ export async function main({ cwd = repoRoot, env = process.env } = {}) {
     }
   }
 
-  const retryPolicy = getValidationRetryPolicy();
   const appAssetRoot = env.ELIZA_CDN_APP_ASSET_ROOT || "packages/app/public";
   const homepageAssetRoot =
     env.ELIZA_CDN_HOMEPAGE_ASSET_ROOT || "packages/homepage/public";
