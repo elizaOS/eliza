@@ -43,6 +43,7 @@ import { TwitterPostClient } from "../post";
 import { TwitterTimelineClient } from "../timeline";
 import type { ITwitterClient, TwitterClientState } from "../types";
 import { getSetting } from "../utils/settings";
+import { getEpochMs } from "../utils/time";
 import { TwitterPostService } from "./PostService";
 
 const X_CONNECTOR_CONTEXTS = ["social", "connectors"];
@@ -1353,9 +1354,10 @@ export class XService extends Service {
       post.accountId ?? this.defaultAccountId,
     );
     const authorId = post.userId || "unknown";
-    const createdAt = Number.isFinite(post.timestamp)
-      ? post.timestamp
-      : Date.now();
+    // Route through the shared normalizer so seconds/milliseconds sources do
+    // not drift and a present-but-unusable timestamp fails closed instead of
+    // being recorded as "now" (#18965).
+    const createdAt = getEpochMs(post.timestamp);
     const entityId =
       authorId === runtime.agentId
         ? runtime.agentId

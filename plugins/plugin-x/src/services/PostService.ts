@@ -204,6 +204,10 @@ export class TwitterPostService implements IPostService {
       if (!tweet?.id) return null;
       const tweetId = tweet.id;
 
+      // Fail closed on a present-but-unusable timestamp (#18965).
+      const timestamp = getEpochMs(tweet.timestamp);
+      if (timestamp === undefined) return null;
+
       const post: Post = {
         id: tweetId,
         agentId: agentId,
@@ -214,7 +218,7 @@ export class TwitterPostService implements IPostService {
         userId: tweet.userId ?? "",
         username: tweet.username ?? "",
         text: tweet.text ?? "",
-        timestamp: getEpochMs(tweet.timestamp),
+        timestamp,
         metrics: {
           likes: tweet.likes || 0,
           reposts: tweet.retweets || 0,
@@ -268,6 +272,8 @@ export class TwitterPostService implements IPostService {
 
       const posts: Post[] = tweets
         .filter((tweet) => typeof tweet.id === "string")
+        // Fail closed: corrupt timestamps never surface as fresh (#18965).
+        .filter((tweet) => getEpochMs(tweet.timestamp) !== undefined)
         .map((tweet) => {
           const tweetId = tweet.id as string;
           return {
@@ -280,7 +286,7 @@ export class TwitterPostService implements IPostService {
             userId: tweet.userId ?? "",
             username: tweet.username ?? "",
             text: tweet.text ?? "",
-            timestamp: getEpochMs(tweet.timestamp),
+            timestamp: getEpochMs(tweet.timestamp) ?? Date.now(),
             metrics: {
               likes: tweet.likes || 0,
               reposts: tweet.retweets || 0,
@@ -348,6 +354,8 @@ export class TwitterPostService implements IPostService {
 
       const posts: Post[] = searchResult.tweets
         .filter((tweet) => typeof tweet.id === "string")
+        // Fail closed: corrupt timestamps never surface as fresh (#18965).
+        .filter((tweet) => getEpochMs(tweet.timestamp) !== undefined)
         .map((tweet) => {
           const tweetId = tweet.id as string;
           return {
@@ -360,7 +368,7 @@ export class TwitterPostService implements IPostService {
             userId: tweet.userId ?? "",
             username: tweet.username ?? "",
             text: tweet.text ?? "",
-            timestamp: getEpochMs(tweet.timestamp),
+            timestamp: getEpochMs(tweet.timestamp) ?? Date.now(),
             metrics: {
               likes: tweet.likes || 0,
               reposts: tweet.retweets || 0,

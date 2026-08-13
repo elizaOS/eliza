@@ -385,8 +385,13 @@ export class TwitterInteractionClient {
         continue; // Already processed
       }
 
-      // Skip if tweet is too old (older than 24 hours)
-      const tweetAge = Date.now() - getEpochMs(tweet.timestamp);
+      // Skip if tweet is too old (older than 24 hours). A present but
+      // unusable timestamp fails closed: never engage it as if it were new.
+      const tweetEpochMs = getEpochMs(tweet.timestamp);
+      if (tweetEpochMs === undefined) {
+        continue;
+      }
+      const tweetAge = Date.now() - tweetEpochMs;
       const maxAge = 24 * 60 * 60 * 1000; // 24 hours
 
       if (tweetAge > maxAge) {
@@ -436,9 +441,13 @@ export class TwitterInteractionClient {
       }
 
       const relevantTweets = timelineTweets.filter((tweet) => {
-        // Filter for tweets from the last 12 hours
-        const tweetAge = Date.now() - getEpochMs(tweet.timestamp);
-        return tweetAge < 12 * 60 * 60 * 1000;
+        // Filter for tweets from the last 12 hours; a present but unusable
+        // timestamp fails closed rather than counting as brand-new.
+        const tweetEpochMs = getEpochMs(tweet.timestamp);
+        if (tweetEpochMs === undefined) {
+          return false;
+        }
+        return Date.now() - tweetEpochMs < 12 * 60 * 60 * 1000;
       });
 
       if (relevantTweets.length > 0) {

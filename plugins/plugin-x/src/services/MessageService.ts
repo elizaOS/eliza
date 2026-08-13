@@ -86,6 +86,8 @@ export class TwitterMessageService implements IMessageService {
 
       const messages: Message[] = searchResult.tweets
         .filter((tweet) => typeof tweet.id === "string")
+        // Fail closed: corrupt timestamps never surface as fresh (#18965).
+        .filter((tweet) => getEpochMs(tweet.timestamp) !== undefined)
         .filter((tweet) => {
           const conversationId = tweet.conversationId ?? tweet.id;
           if (!conversationId) return false;
@@ -112,7 +114,7 @@ export class TwitterMessageService implements IMessageService {
             type: tweet.inReplyToStatusId
               ? MessageType.REPLY
               : MessageType.MENTION,
-            timestamp: getEpochMs(tweet.timestamp),
+            timestamp: getEpochMs(tweet.timestamp) ?? Date.now(),
             inReplyTo: tweet.inReplyToStatusId,
             metadata: {
               tweetId,
@@ -192,6 +194,10 @@ export class TwitterMessageService implements IMessageService {
       if (!tweet?.id) return null;
       const conversationId = tweet.conversationId ?? tweet.id;
 
+      // Fail closed on a present-but-unusable timestamp (#18965).
+      const timestamp = getEpochMs(tweet.timestamp);
+      if (timestamp === undefined) return null;
+
       const message: Message = {
         id: tweet.id,
         agentId: agentId,
@@ -200,7 +206,7 @@ export class TwitterMessageService implements IMessageService {
         username: tweet.username ?? "",
         text: tweet.text ?? "",
         type: tweet.inReplyToStatusId ? MessageType.REPLY : MessageType.POST,
-        timestamp: getEpochMs(tweet.timestamp),
+        timestamp,
         inReplyTo: tweet.inReplyToStatusId,
         metadata: {
           tweetId: tweet.id,
