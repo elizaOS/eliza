@@ -50,6 +50,15 @@ try {
   }
 
   if (mode === "write") {
+    // The token comes through runtime.getSetting (which deliberately never
+    // reads process.env); the parent seeds it into the state dir's
+    // eliza.json agent settings alongside the Google client config.
+    const tokenValue = runtime.getSetting("DURABLE_TOKEN_VALUE");
+    if (typeof tokenValue !== "string" || tokenValue.length === 0) {
+      throw new Error(
+        "DURABLE_TOKEN_VALUE missing from agent settings (eliza.json)",
+      );
+    }
     const account = await manager.createAccount("google", {
       status: "pending",
     });
@@ -63,7 +72,7 @@ try {
       credentials: [
         {
           credentialType: "oauth.tokens",
-          value: process.env.DURABLE_TOKEN_VALUE ?? "",
+          value: tokenValue,
         },
       ],
     });

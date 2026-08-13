@@ -78,6 +78,9 @@ function newStateDir(prefix: string): string {
               GOOGLE_CLIENT_SECRET: "durable-secret",
               GOOGLE_REDIRECT_URI:
                 "http://127.0.0.1:39181/api/connectors/google/oauth/callback",
+              // The child fixture reads the token through runtime.getSetting,
+              // so it must live here, not in the spawn env.
+              DURABLE_TOKEN_VALUE: TOKEN_VALUE,
             },
           },
         ],
@@ -117,7 +120,6 @@ function runChild(
         GOOGLE_CLIENT_SECRET: "durable-secret",
         GOOGLE_REDIRECT_URI:
           "http://127.0.0.1:39181/api/connectors/google/oauth/callback",
-        DURABLE_TOKEN_VALUE: TOKEN_VALUE,
         ...env,
       },
     });
