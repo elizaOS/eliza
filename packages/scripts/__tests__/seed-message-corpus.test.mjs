@@ -148,15 +148,15 @@ describe("seed-message-corpus CLI boundary", () => {
     }
   });
 
-  test("valid CLI port overrides invalid env before any seed request", () => {
-    const result = runCli(["--api-port=44444"], {
+  test("valid CLI port overrides invalid env without entering network work", () => {
+    const result = runCli(["--api-port=44444", "--messages=not-an-integer"], {
       ELIZA_API_PORT: "notaport",
     });
     const combined = `${result.stdout}${result.stderr}`;
-    expect(combined).toContain(
-      "Seeding backdated message corpus via http://127.0.0.1:44444",
-    );
+    expect(result.status).not.toBe(0);
+    expect(combined).toContain("--messages must be an integer");
     expect(combined).not.toContain("ELIZA_API_PORT must be");
+    expect(combined).not.toContain("Seeding backdated message corpus");
   });
 
   test("--help bypasses an invalid environment port", () => {
