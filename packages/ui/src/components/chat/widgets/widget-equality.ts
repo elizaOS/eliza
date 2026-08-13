@@ -143,7 +143,7 @@ export function formRequestPropsEqual(
 }
 
 function workflowStepEqual(a: WorkflowStepSpec, b: WorkflowStepSpec): boolean {
-  return a.label === b.label && a.status === b.status;
+  return a.label === b.label && a.status === b.status && a.nodeId === b.nodeId;
 }
 
 /**
@@ -160,6 +160,9 @@ export function workflowPropsEqual(
   return (
     a.id === b.id &&
     a.title === b.title &&
+    a.workflowId === b.workflowId &&
+    a.runId === b.runId &&
+    JSON.stringify(a.widgets) === JSON.stringify(b.widgets) &&
     listEqual(a.steps, b.steps, workflowStepEqual)
   );
 }

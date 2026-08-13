@@ -12,12 +12,12 @@ import { handleWorkflowRoutes, type WorkflowRouteContext } from './routes/workfl
 
 type AnyRuntime = WorkflowRouteContext['runtime'];
 
-interface WorkflowCompatState {
+interface WorkflowRouteState {
   current: AnyRuntime;
 }
 
-function buildState(runtime: unknown): WorkflowCompatState {
-  return { current: runtime as AnyRuntime } as WorkflowCompatState;
+function buildState(runtime: unknown): WorkflowRouteState {
+  return { current: runtime as AnyRuntime } as WorkflowRouteState;
 }
 
 function jsonResponder(httpRes: http.ServerResponse) {
@@ -97,13 +97,6 @@ const workflowRouteList: Route[] = [
     rawPath: true,
     handler: workflowHandler,
   },
-  // Runtime lifecycle/status compatibility
-  {
-    type: 'POST',
-    path: '/api/workflow/runtime/start',
-    rawPath: true,
-    handler: workflowHandler,
-  },
   // Workflow CRUD
   {
     type: 'GET',
@@ -120,12 +113,6 @@ const workflowRouteList: Route[] = [
   {
     type: 'POST',
     path: '/api/workflow/workflows/generate',
-    rawPath: true,
-    handler: workflowHandler,
-  },
-  {
-    type: 'POST',
-    path: '/api/workflow/workflows/resolve-clarification',
     rawPath: true,
     handler: workflowHandler,
   },
@@ -174,6 +161,30 @@ const workflowRouteList: Route[] = [
   {
     type: 'GET',
     path: '/api/workflow/executions/:id',
+    rawPath: true,
+    handler: workflowHandler,
+  },
+  {
+    type: 'GET',
+    path: '/api/workflow/executions/:id/events',
+    rawPath: true,
+    handler: workflowHandler,
+  },
+  {
+    type: 'POST',
+    path: '/api/workflow/executions/:id/cancel',
+    rawPath: true,
+    handler: workflowHandler,
+  },
+  {
+    type: 'POST',
+    path: '/api/workflow/executions/:id/approvals/:nodeId/:iteration',
+    rawPath: true,
+    handler: workflowHandler,
+  },
+  {
+    type: 'POST',
+    path: '/api/workflow/executions/:id/signals/:signal',
     rawPath: true,
     handler: workflowHandler,
   },

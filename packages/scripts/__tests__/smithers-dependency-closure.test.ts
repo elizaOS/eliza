@@ -1,6 +1,5 @@
 /**
- * Audits the resolved Smithers runtime graph against the host versions and
- * keeps known-incompatible optional backends visibly disabled.
+ * Audits the resolved Smithers runtime graph against the host versions.
  */
 
 import { expect, test } from "bun:test";
@@ -67,7 +66,7 @@ test("Smithers uses one peer-compatible Effect and React closure", () => {
     }
   }
 
-  const engine = packageTuple(packages, "@smithers-orchestrator/engine");
+  const engine = packageTuple(packages, "@smthrs/engine");
   const engineDependencies = object(engine[2]?.dependencies, "Smithers deps");
   expect(Bun.semver.satisfies(hostReact, String(engineDependencies.react))).toBe(
     true,
@@ -75,33 +74,4 @@ test("Smithers uses one peer-compatible Effect and React closure", () => {
   expect(
     Bun.semver.satisfies(hostReact, String(engineDependencies["react-dom"])),
   ).toBe(true);
-});
-
-test("the incompatible Smithers PGlite backend remains fail-closed", () => {
-  const lock = object(
-    Bun.JSONC.parse(readFileSync(path.join(repoRoot, "bun.lock"), "utf8")),
-    "bun.lock",
-  );
-  const packages = object(lock.packages, "bun.lock.packages");
-  const pglite = packageTuple(
-    packages,
-    "@smithers-orchestrator/engine/@electric-sql/pglite",
-  );
-  const socket = packageTuple(
-    packages,
-    "@smithers-orchestrator/engine/@electric-sql/pglite-socket",
-  );
-  const socketPeers = object(socket[2]?.peerDependencies, "socket peers");
-  const pgliteVersion = versionOf(pglite[0]);
-  const socketRange = String(socketPeers["@electric-sql/pglite"]);
-  expect(Bun.semver.satisfies(pgliteVersion, socketRange)).toBe(false);
-
-  const workflowRuntime = readFileSync(
-    path.join(
-      repoRoot,
-      "plugins/plugin-workflow/src/services/smithers-runtime.ts",
-    ),
-    "utf8",
-  );
-  expect(workflowRuntime).toContain("SMITHERS_PGLITE_VERSION_INCOMPATIBLE");
 });

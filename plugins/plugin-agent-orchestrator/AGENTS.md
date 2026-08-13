@@ -308,6 +308,9 @@ README → "GitHub credentials".
 | `ELIZAOS_CLOUD_API_KEY` / `ELIZAOS_CLOUD_URL` | unset | Owner Cloud creds. **Broker-first (#14118): NOT forwarded to sub-agents by default** — a child reaches Cloud via the parent broker (`apps.create` / `containers.create`, spend-gated). Set `ELIZA_FORWARD_CLOUD_KEY_TO_SUBAGENTS=1` to restore raw forwarding. |
 | `ELIZA_FORWARD_CLOUD_KEY_TO_SUBAGENTS` | unset (OFF) | Opt IN to forwarding the owner's raw `ELIZAOS_CLOUD*` creds into every child env. Default OFF; broker-first is preferred. A structured warning logs when active. |
 | `ACPX_DEFAULT_TIMEOUT_MS` | `300000` | Per-prompt timeout in ms |
+| `ACP_COMMIT_LOCK_POLL_MS` | `25` | Poll cadence for the shared-worktree git commit lock. Values must be exact integers from `1` through `2147483647`; invalid values use the default, and each sleep is clipped to the remaining acquisition deadline. |
+| `ACP_COMMIT_LOCK_WAIT_MS` | `120000` | Maximum time to acquire the shared-worktree git commit lock. Values use the same bounded exact-integer contract. |
+| `ACP_COMMIT_LOCK_STALE_MS` | `30000` | Age after which an unrefreshed commit lock can be reclaimed. Values use the same bounded exact-integer contract; live holders refresh the lock through a heartbeat. |
 | `ACPX_APPROVE_ALL` | `false` | When `true`, defaults sessions to approve-all preset |
 | `ACPX_NO_TERMINAL` | `true` | Pass `--no-terminal` so agents use ACP events, not terminal UI |
 | `ACPX_DEFAULT_CWD` | runtime cwd | Default working directory for ACP sessions |

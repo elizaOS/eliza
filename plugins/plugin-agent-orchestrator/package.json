@@ -74,7 +74,7 @@
   "dependencies": {
     "@octokit/core": "^7.0.6",
     "@octokit/rest": "^22.0.0",
-    "@smithers-orchestrator/engine": "0.32.0",
+    "smthrs": "0.33.0",
     "coding-agent-adapters": "0.16.3",
     "drizzle-orm": "0.45.2",
     "effect": "4.0.0-beta.102",
