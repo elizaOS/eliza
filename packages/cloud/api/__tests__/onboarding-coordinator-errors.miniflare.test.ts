@@ -30,6 +30,14 @@ const ROUTE_BOUNDARIES = {
     /packages[\\/]cloud[\\/]shared[\\/]src[\\/]lib[\\/]runtime[\\/]cloud-bindings\.ts$/,
 } as const;
 
+const NESTED_BUILD_DEPENDENCIES: Record<string, string> = {
+  "libphonenumber-js": "../../shared/node_modules/libphonenumber-js/index.js",
+  "@noble/ciphers/aes.js": "../../../core/node_modules/@noble/ciphers/aes.js",
+  "@noble/hashes/legacy.js":
+    "../../../core/node_modules/@noble/hashes/legacy.js",
+  "@noble/hashes/sha2.js": "../../../core/node_modules/@noble/hashes/sha2.js",
+};
+
 describe("onboarding coordinator error integration", () => {
   let miniflare: Miniflare;
 
@@ -50,6 +58,22 @@ describe("onboarding coordinator error integration", () => {
         {
           name: "onboarding-route-boundaries",
           setup(build) {
+            // Bun's nested build does not inherit the test runner's workspace
+            // package search roots. Resolve the production shim's direct
+            // dependencies from each importing workspace, preserving pins.
+            build.onResolve(
+              {
+                filter:
+                  /^(?:libphonenumber-js|@noble\/ciphers\/aes\.js|@noble\/hashes\/(?:legacy|sha2)\.js)$/,
+              },
+              (args) => {
+                const relativePath = NESTED_BUILD_DEPENDENCIES[args.path];
+                if (!relativePath) return undefined;
+                return {
+                  path: fileURLToPath(new URL(relativePath, import.meta.url)),
+                };
+              },
+            );
             build.onResolve({ filter: /^@elizaos\/core$/ }, () => ({
               path: fileURLToPath(
                 new URL("../src/stubs/elizaos-core.ts", import.meta.url),
