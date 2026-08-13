@@ -1,3 +1,9 @@
+/**
+ * Contract for the in-memory adapter's fuzzy embedding cache: it must key off
+ * the same nested `content` subfield the SQL adapter matches on
+ * (`content->>query_field_sub_name`), or a runtime swapping storage backends
+ * silently loses every cache hit. Real adapter over real MemoryStorage.
+ */
 import { randomUUID } from "node:crypto";
 import type { Memory, UUID } from "@elizaos/core";
 import { beforeEach, describe, expect, it } from "vitest";
