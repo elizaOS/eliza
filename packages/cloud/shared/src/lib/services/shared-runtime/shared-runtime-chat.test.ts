@@ -92,7 +92,8 @@ const getInferenceAdmissionSnapshotCacheOnly = mock(async () => admissionSnapsho
 mock.module("../inference-admission-snapshot", () => ({
   getInferenceAdmissionSnapshotCacheOnly,
   InferenceAdmissionSnapshotCacheWarmingError: TestInferenceAdmissionSnapshotCacheWarmingError,
-  inferenceRateLimitConfig: () => ({ windowMs: 60_000, maxRequests: 120 }),
+  inferenceRateLimitConfig: (snapshot: unknown) =>
+    snapshot ? { windowMs: 60_000, maxRequests: 120 } : undefined,
 }));
 
 const admitOrganizationInference = mock(
@@ -413,6 +414,29 @@ describe("SharedRuntimeChatService", () => {
     expect(billCalls).toHaveLength(1);
     expect((billCalls[0] as unknown[])[2]).toBe(payoutAwareReservation);
     expect(settleCalls).toEqual([0.004]);
+  });
+
+  test("platform-funded personal Shared keeps rate limiting but never touches account credits", async () => {
+    const service = new SharedRuntimeChatService();
+    const h = harness();
+
+    const response = await service.bridge(agent, rpc, {
+      executionCtx: h.executionCtx,
+      historyStore: h.historyStore,
+      funding: "platform",
+    });
+
+    expect(response.result?.text).toBe("hello back");
+    expect(enforceOrgRateLimit).toHaveBeenCalledWith(agent.organization_id, "completions", {
+      cacheOnly: true,
+      executionCtx: h.executionCtx,
+      config: undefined,
+    });
+    expect(getInferenceAdmissionSnapshotCacheOnly).not.toHaveBeenCalled();
+    expect(admitOrganizationInference).not.toHaveBeenCalled();
+    expect(billCalls).toHaveLength(0);
+    expect(settleCalls).toHaveLength(0);
+    expect(h.history()).toHaveLength(3);
   });
 
   test("rate denial and policy warming stop before billing admission or provider dispatch", async () => {

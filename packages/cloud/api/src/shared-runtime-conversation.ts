@@ -9,6 +9,7 @@
 import type { BridgeRequest } from "@/lib/services/eliza-sandbox";
 import type { CachedAgentSandbox } from "@/lib/services/shared-runtime/cached-agent-dates";
 import type { SharedTurnMessage } from "@/lib/services/shared-runtime/run-shared-agent-turn";
+import type { SharedRuntimeAgent } from "@/lib/services/shared-runtime/shared-runtime-agent";
 import type {
   SharedRuntimeHistoryStore,
   SharedTurnClaimStore,
@@ -25,6 +26,11 @@ import type { AppEnv } from "@/types/cloud-worker-env";
 // service consumes the row (the CONVERSATIONS-500 defect class).
 type ConversationRequest =
   | { operation: "bridge"; agent: CachedAgentSandbox; rpc: BridgeRequest }
+  | {
+      operation: "personal-bridge";
+      agent: SharedRuntimeAgent;
+      rpc: BridgeRequest;
+    }
   | { operation: "stream"; agent: CachedAgentSandbox; rpc: BridgeRequest }
   | { operation: "history"; agentId: string; roomId: string }
   | { operation: "delete"; agentId: string };
@@ -327,12 +333,17 @@ export class SharedRuntimeConversation {
     }
 
     return await this.runWithBindings(async () => {
-      const [{ sharedRuntimeChatService }, { rehydrateCachedAgentDates }] =
-        await Promise.all([
-          import("@/lib/services/shared-runtime/shared-runtime-chat"),
-          import("@/lib/services/shared-runtime/cached-agent-dates"),
-        ]);
-      const agent = rehydrateCachedAgentDates(payload.agent);
+      const { sharedRuntimeChatService } = await import(
+        "@/lib/services/shared-runtime/shared-runtime-chat"
+      );
+      const agent =
+        payload.operation === "personal-bridge"
+          ? payload.agent
+          : await import(
+              "@/lib/services/shared-runtime/cached-agent-dates"
+            ).then(({ rehydrateCachedAgentDates }) =>
+              rehydrateCachedAgentDates(payload.agent),
+            );
       const executionCtx = {
         waitUntil: (promise: Promise<unknown>) => this.state.waitUntil(promise),
       };
@@ -348,6 +359,10 @@ export class SharedRuntimeConversation {
         executionCtx,
         historyStore,
         turnClaims,
+        funding:
+          payload.operation === "personal-bridge"
+            ? "platform"
+            : "organization-credits",
       });
       return Response.json(result);
     });

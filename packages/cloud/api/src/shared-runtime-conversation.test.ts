@@ -32,6 +32,8 @@ const repositoryHistoryLengths: number[] = [];
 const repositoryHistories: unknown[][] = [];
 let streamMergeGate: Promise<void> | null = null;
 let resolveStreamMergeGate = () => {};
+let rehydrateCalls = 0;
+let bridgeFunding: unknown;
 
 function testMessageIdentity(value: unknown): string {
   const message = value as {
@@ -53,7 +55,10 @@ mock.module("@/lib/runtime/cloud-bindings", () => ({
     await fn(),
 }));
 mock.module("@/lib/services/shared-runtime/cached-agent-dates", () => ({
-  rehydrateCachedAgentDates: (agent: unknown) => agent,
+  rehydrateCachedAgentDates: (agent: unknown) => {
+    rehydrateCalls++;
+    return agent;
+  },
 }));
 mock.module("@/db/repositories/shared-runtime-history", () => ({
   sharedRuntimeHistoryRepository: {
@@ -91,6 +96,7 @@ mock.module("@/lib/services/shared-runtime/shared-runtime-chat", () => ({
       agent: { id: string },
       rpc: { id?: string | number; params?: { roomId?: string } },
       options: {
+        funding?: unknown;
         historyStore: {
           load(agentId: string, channelId: string): Promise<unknown[]>;
           save(
@@ -106,6 +112,7 @@ mock.module("@/lib/services/shared-runtime/shared-runtime-chat", () => ({
         };
       },
     ) => {
+      bridgeFunding = options.funding;
       if (rpc.id === "rate-limited") {
         throw new RateLimitError("Organization rate limit exceeded.", 29);
       }
@@ -183,6 +190,8 @@ const { SharedRuntimeConversation } = await import(
 beforeEach(() => {
   streamMergeGate = null;
   resolveStreamMergeGate = () => {};
+  rehydrateCalls = 0;
+  bridgeFunding = undefined;
 });
 
 function makeState(data: Map<string, unknown>, background: Promise<unknown>[]) {
@@ -288,6 +297,59 @@ test("warm coordinated turns use local history and mirror asynchronously", async
   expect(repositoryReads).toBe(1);
   expect(repositoryWrites).toBe(2);
   expect(repositoryHistoryLengths).toEqual([2, 3]);
+});
+
+test("personal turns use the rowless envelope and platform funding", async () => {
+  repositoryReads = 0;
+  repositoryWrites = 0;
+  repositoryRow = [];
+  const personalAgent = {
+    id: "personal-agent-1",
+    organization_id: "org-1",
+    user_id: "user-1",
+    character_id: null,
+    agent_name: "Eliza",
+    agent_config: { character: { name: "Eliza" } },
+    execution_tier: "shared",
+  };
+  const data = new Map<string, unknown>([
+    [
+      "conversation",
+      {
+        agentId: personalAgent.id,
+        channelId: personalAgent.id,
+        history: [],
+        dirty: false,
+        version: 1,
+      },
+    ],
+  ]);
+  const background: Promise<unknown>[] = [];
+  const object = new SharedRuntimeConversation(
+    makeState(data, background) as never,
+    {} as never,
+  );
+
+  const response = await object.fetch(
+    new Request("https://shared-runtime.internal/bridge", {
+      method: "POST",
+      body: JSON.stringify({
+        operation: "personal-bridge",
+        agent: personalAgent,
+        rpc: {
+          jsonrpc: "2.0",
+          id: "personal-turn",
+          method: "message.send",
+          params: { text: "hi", roomId: personalAgent.id },
+        },
+      }),
+    }),
+  );
+
+  expect(response.status).toBe(200);
+  expect(bridgeFunding).toBe("platform");
+  expect(rehydrateCalls).toBe(0);
+  await Promise.all(background);
 });
 
 test("concurrent turns serialize through one room and retain both writes", async () => {

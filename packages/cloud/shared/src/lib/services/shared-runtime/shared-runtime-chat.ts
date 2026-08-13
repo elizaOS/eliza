@@ -7,7 +7,6 @@
  */
 
 import crypto from "node:crypto";
-import type { AgentSandbox } from "../../../db/repositories/agent-sandboxes";
 import type { UserCharacter } from "../../../db/repositories/characters";
 import {
   InsufficientCreditsError as InsufficientCreditsApiError,
@@ -56,6 +55,7 @@ import {
 } from "./run-shared-agent-turn";
 import { projectSharedAgentCharacter } from "./shared-agent-character";
 import { navIntentActionResult } from "./shared-nav-intent";
+import type { SharedRuntimeAgent } from "./shared-runtime-agent";
 import { SharedRuntimeCacheWarmingError, SharedTurnConflictError } from "./shared-runtime-errors";
 import { MAX_HISTORY_MESSAGES } from "./shared-runtime-history-policy";
 
@@ -121,6 +121,8 @@ export interface SharedRuntimeChatOptions {
   executionCtx?: BridgeExecutionContext;
   historyStore?: SharedRuntimeHistoryStore;
   turnClaims?: SharedTurnClaimStore;
+  /** Who funds provider work. Personal Shared chat is platform-funded. */
+  funding?: "organization-credits" | "platform";
 }
 
 export {
@@ -260,7 +262,7 @@ async function mergeHistory(
 }
 
 async function characterFor(
-  agent: AgentSandbox,
+  agent: SharedRuntimeAgent,
   options: {
     cacheOnly: boolean;
     executionCtx?: BridgeExecutionContext;
@@ -368,13 +370,14 @@ interface BillingTurn {
 }
 
 async function admitTurn(
-  agent: AgentSandbox,
+  agent: SharedRuntimeAgent,
   character: SharedAgentCharacter,
   history: SharedTurnMessage[],
   text: string,
   roomId: string,
   executionCtx?: BridgeExecutionContext,
   turnKey?: string,
+  funding: SharedRuntimeChatOptions["funding"] = "organization-credits",
 ): Promise<BillingTurn | null> {
   const model = resolveSharedAgentTurnModel(character.model);
   if (!model) return null;
@@ -405,7 +408,7 @@ async function admitTurn(
   };
   let rateLimited: Response | null;
   let admissionSnapshot: InferenceAdmissionSnapshot | undefined;
-  if (executionCtx) {
+  if (executionCtx && funding === "organization-credits") {
     try {
       admissionSnapshot = await getInferenceAdmissionSnapshotCacheOnly(
         agent.organization_id,
@@ -450,6 +453,10 @@ async function admitTurn(
       "Rate-limit authorization is unavailable. Retry shortly.",
     );
   }
+  // Account-native Shared is a platform service. It keeps the same abuse
+  // limiter and durable turn identity, but never reserves or debits the user's
+  // balance; Dedicated remains the explicit paid-compute boundary.
+  if (funding === "platform") return null;
   let admission: Awaited<ReturnType<typeof admitOrganizationInference>>;
   try {
     admission = await admitOrganizationInference({
@@ -479,7 +486,7 @@ async function admitTurn(
 }
 
 async function finishBilling(
-  agent: AgentSandbox,
+  agent: SharedRuntimeAgent,
   billing: BillingTurn,
   reply: string,
   prompt: string,
@@ -529,7 +536,7 @@ async function finishBilling(
 }
 
 async function settleAmbiguousProviderWork(
-  agent: AgentSandbox,
+  agent: SharedRuntimeAgent,
   billing: BillingTurn,
   reason: string,
 ): Promise<void> {
@@ -548,7 +555,7 @@ async function settleAmbiguousProviderWork(
 }
 
 function settleAmbiguousProviderWorkOffPath(
-  agent: AgentSandbox,
+  agent: SharedRuntimeAgent,
   billing: BillingTurn | null,
   executionCtx: BridgeExecutionContext | undefined,
   reason: string,
@@ -568,7 +575,7 @@ function isProvablyZeroProviderFailure(error: unknown): boolean {
 }
 
 function settleFailedProviderWorkOffPath(
-  agent: AgentSandbox,
+  agent: SharedRuntimeAgent,
   billing: BillingTurn | null,
   executionCtx: BridgeExecutionContext | undefined,
   error: unknown,
@@ -600,14 +607,14 @@ export class SharedRuntimeChatService {
   }
 
   async getCharacter(
-    agent: AgentSandbox,
+    agent: SharedRuntimeAgent,
     executionCtx: BridgeExecutionContext,
   ): Promise<SharedAgentCharacter> {
     return await characterFor(agent, { cacheOnly: true, executionCtx });
   }
 
   async bridge(
-    agent: AgentSandbox,
+    agent: SharedRuntimeAgent,
     rpc: BridgeRequest,
     options: SharedRuntimeChatOptions = {},
   ): Promise<BridgeResponse> {
@@ -669,6 +676,7 @@ export class SharedRuntimeChatService {
         roomId,
         options.executionCtx,
         claimKey,
+        options.funding,
       );
     } catch (error) {
       // error-policy:J1 translate the money boundary to the JSON-RPC protocol.
@@ -772,7 +780,7 @@ export class SharedRuntimeChatService {
   }
 
   async stream(
-    agent: AgentSandbox,
+    agent: SharedRuntimeAgent,
     rpc: BridgeRequest,
     options: SharedRuntimeChatOptions = {},
   ): Promise<Response> {
@@ -821,6 +829,7 @@ export class SharedRuntimeChatService {
         roomId,
         options.executionCtx,
         claimKey,
+        options.funding,
       );
     } catch (error) {
       // error-policy:J1 translate the money boundary to the HTTP stream boundary.

@@ -12,6 +12,7 @@ import { InsufficientCreditsError, RateLimitError } from "../../api/errors";
 import { logger } from "../../utils/logger";
 import type { BridgeRequest, BridgeResponse } from "../eliza-sandbox-bridge";
 import type { SharedTurnMessage } from "./run-shared-agent-turn";
+import type { SharedRuntimeAgent } from "./shared-runtime-agent";
 import type { BridgeExecutionContext } from "./shared-runtime-chat";
 import { SharedRuntimeCacheWarmingError, SharedTurnConflictError } from "./shared-runtime-errors";
 
@@ -19,6 +20,8 @@ export interface SharedConversationCoordinatorOptions {
   namespace: RuntimeDurableObjectNamespace;
   executionCtx: BridgeExecutionContext;
   abortSignal?: AbortSignal;
+  /** Selects the rowless personal-Eliza envelope and platform funding. */
+  agentKind?: "sandbox" | "personal";
 }
 
 export interface SharedConversationHistoryCoordinatorOptions {
@@ -118,7 +121,7 @@ async function requireCoordinatorResponse(response: Response, surface: string): 
 }
 
 export async function coordinateSharedBridge(
-  agent: AgentSandbox,
+  agent: SharedRuntimeAgent,
   rpc: BridgeRequest,
   options: SharedConversationCoordinatorOptions,
 ): Promise<BridgeResponse> {
@@ -128,7 +131,11 @@ export async function coordinateSharedBridge(
     .fetch("https://shared-runtime.internal/bridge", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ operation: "bridge", agent, rpc }),
+      body: JSON.stringify({
+        operation: options.agentKind === "personal" ? "personal-bridge" : "bridge",
+        agent,
+        rpc,
+      }),
     });
   await requireCoordinatorResponse(response, "conversation");
   return (await response.json()) as BridgeResponse;
