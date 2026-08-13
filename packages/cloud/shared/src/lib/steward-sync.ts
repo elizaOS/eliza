@@ -31,6 +31,7 @@ import type { UserWithOrganization } from "./types";
 import { getDefaultElizaCharacterData } from "./utils/default-eliza-character";
 import { getRandomUserAvatar } from "./utils/default-user-avatar";
 import { logger } from "./utils/logger";
+import { isValidE164, normalizePhoneNumber } from "./utils/phone-normalization";
 
 export interface SignupWelcomeBonusMetadata {
   initialCreditsGranted?: boolean;
@@ -208,12 +209,48 @@ function generateSlugFromWallet(walletAddress: string): string {
   return `wallet-${sanitized}-${timestamp}${random}`;
 }
 
+function generateSlugFromName(name: string): string {
+  const sanitized = name.toLowerCase().replace(/[^a-z0-9]/g, "-");
+  const random = Math.random().toString(36).substring(2, 8);
+  const timestamp = Date.now().toString(36).slice(-4);
+  return `${sanitized}-${timestamp}${random}`;
+}
+
 export interface StewardSyncParams {
   stewardUserId: string;
   email?: string;
   walletAddress?: string;
   walletChainType?: "ethereum" | "solana";
   name?: string;
+  /** Phone independently verified against the current Steward bearer. */
+  verifiedPhone?: string;
+}
+
+export class StewardPhoneAccountConflictError extends Error {
+  override readonly name = "StewardPhoneAccountConflictError";
+
+  constructor(readonly reason: string) {
+    super(`Verified phone account could not be claimed: ${reason}`);
+  }
+}
+
+async function linkVerifiedPhoneForStewardSync(userId: string, phoneNumber: string): Promise<void> {
+  try {
+    const linked = await usersRepository.linkVerifiedPhone(userId, phoneNumber);
+    if (!linked) {
+      throw new StewardPhoneAccountConflictError("phone_link_user_not_found");
+    }
+  } catch (error) {
+    // error-policy:J1 Verified-phone ownership conflicts are an explicit auth
+    // boundary result; other repository failures retain their original cause.
+    if (isUniqueViolation(error)) {
+      throw new StewardPhoneAccountConflictError("verified_phone_unique_conflict");
+    }
+    if (extractErrorMetadata(error).code === "VERIFIED_PHONE_MISMATCH") {
+      throw new StewardPhoneAccountConflictError("verified_phone_mismatch");
+    }
+    throw error;
+  }
 }
 
 /**
@@ -251,6 +288,12 @@ async function findUserByStoredWalletAddress(
 export async function syncUserFromSteward(params: StewardSyncParams): Promise<StewardSyncedUser> {
   const { stewardUserId, walletChainType } = params;
   const email = params.email?.toLowerCase().trim();
+  const verifiedPhone = params.verifiedPhone
+    ? normalizePhoneNumber(params.verifiedPhone)
+    : undefined;
+  if (verifiedPhone && !isValidE164(verifiedPhone)) {
+    throw new StewardPhoneAccountConflictError("invalid_phone");
+  }
   // Chain-aware, NOT a blanket lowercase: folding a base58 key produces a string
   // that is not the user's wallet, matches no existing row, and is then stored
   // as if it were a second wallet.
@@ -265,8 +308,41 @@ export async function syncUserFromSteward(params: StewardSyncParams): Promise<St
     name = email.split("@")[0];
   } else if (!name && walletAddress) {
     name = `${walletAddress.substring(0, 6)}...${walletAddress.substring(walletAddress.length - 4)}`;
+  } else if (!name && verifiedPhone) {
+    name = `User ***${verifiedPhone.slice(-4)}`;
   } else if (!name) {
     name = `user-${stewardUserId.substring(0, 8)}`;
+  }
+
+  // A signed inbound text creates a phone-only personal account before any
+  // browser session exists. SMS login may claim only that exact synthetic
+  // account. Stable user/org ids keep its Shared history attached.
+  if (verifiedPhone) {
+    const promotion = await usersRepository.promotePhonePersonalAccountToSteward({
+      phoneNumber: verifiedPhone,
+      stewardUserId,
+    });
+    if (promotion.status === "promoted" || promotion.status === "already_promoted") {
+      const promotedUser: UserWithOrganization = {
+        ...promotion.user,
+        organization: promotion.organization,
+      };
+      await apiKeysService.provisionDefaultApiKey(promotedUser.id, promotion.organization.id);
+      await ensureDefaultCharacter(promotedUser.id, promotion.organization.id);
+      try {
+        await ensureStewardTenant(promotion.organization.id);
+      } catch (error) {
+        // error-policy:J4 tenant provisioning is an opportunistic repair; the
+        // claimed account and Shared history remain usable and retry next login.
+        logger.warn(
+          `[StewardSync] Phone-account tenant provisioning failed for org ${promotion.organization.id}; sign-in proceeds: ${describeSyncError(error)}`,
+        );
+      }
+      return promotedUser;
+    }
+    if (promotion.status !== "not_found") {
+      throw new StewardPhoneAccountConflictError(promotion.status);
+    }
   }
 
   // ── 1. Existing user by steward_user_id ──────────────────────────────
@@ -282,6 +358,15 @@ export async function syncUserFromSteward(params: StewardSyncParams): Promise<St
         stewardUserId,
         error: error instanceof Error ? error.message : String(error),
       });
+    }
+
+    if (verifiedPhone) {
+      await linkVerifiedPhoneForStewardSync(user.id, verifiedPhone);
+      const phoneLinkedUser = await usersService.getByStewardIdForWrite(stewardUserId);
+      if (!phoneLinkedUser) {
+        throw new StewardPhoneAccountConflictError("phone_link_user_not_found");
+      }
+      user = phoneLinkedUser;
     }
 
     // Update user fields if anything changed
@@ -361,6 +446,8 @@ export async function syncUserFromSteward(params: StewardSyncParams): Promise<St
           wallet_address: walletAddress || null,
           wallet_chain_type: resolvedWalletChainType || null,
           wallet_verified: Boolean(walletAddress),
+          phone_number: verifiedPhone || null,
+          phone_verified: Boolean(verifiedPhone),
           name,
           avatar: getRandomUserAvatar(),
           organization_id: pendingInvite.organization_id,
@@ -434,6 +521,10 @@ export async function syncUserFromSteward(params: StewardSyncParams): Promise<St
       );
       const previousStewardUserId = existingByEmail.steward_user_id;
 
+      if (verifiedPhone) {
+        await linkVerifiedPhoneForStewardSync(existingByEmail.id, verifiedPhone);
+      }
+
       await usersService.update(existingByEmail.id, {
         steward_user_id: stewardUserId,
         updated_at: new Date(),
@@ -465,6 +556,10 @@ export async function syncUserFromSteward(params: StewardSyncParams): Promise<St
       logger.info(
         `[StewardSync] Linking Steward wallet account for ${walletAddress}: ${existingByWallet.steward_user_id} → ${stewardUserId}`,
       );
+
+      if (verifiedPhone) {
+        await linkVerifiedPhoneForStewardSync(existingByWallet.id, verifiedPhone);
+      }
 
       await usersService.linkStewardId(existingByWallet.id, stewardUserId);
 
@@ -511,10 +606,7 @@ export async function syncUserFromSteward(params: StewardSyncParams): Promise<St
   } else if (walletAddress) {
     orgSlug = generateSlugFromWallet(walletAddress);
   } else if (name) {
-    const sanitized = name.toLowerCase().replace(/[^a-z0-9]/g, "-");
-    const random = Math.random().toString(36).substring(2, 8);
-    const timestamp = Date.now().toString(36).slice(-4);
-    orgSlug = `${sanitized}-${timestamp}${random}`;
+    orgSlug = generateSlugFromName(name);
   } else {
     throw new Error(`Cannot generate organization slug for Steward user ${stewardUserId}`);
   }
@@ -528,7 +620,11 @@ export async function syncUserFromSteward(params: StewardSyncParams): Promise<St
         `Failed to generate unique organization slug for Steward user ${stewardUserId}`,
       );
     }
-    orgSlug = email ? generateSlugFromEmail(email) : generateSlugFromWallet(walletAddress!);
+    orgSlug = email
+      ? generateSlugFromEmail(email)
+      : walletAddress
+        ? generateSlugFromWallet(walletAddress)
+        : generateSlugFromName(name);
   }
 
   // Create organization with zero balance initially
@@ -554,6 +650,8 @@ export async function syncUserFromSteward(params: StewardSyncParams): Promise<St
       wallet_address: walletAddress || null,
       wallet_chain_type: resolvedWalletChainType || null,
       wallet_verified: Boolean(walletAddress),
+      phone_number: verifiedPhone || null,
+      phone_verified: Boolean(verifiedPhone),
       name,
       avatar: getRandomUserAvatar(),
       organization_id: organization.id,
@@ -582,6 +680,9 @@ export async function syncUserFromSteward(params: StewardSyncParams): Promise<St
         }
 
         if (existingUser) {
+          if (verifiedPhone) {
+            await linkVerifiedPhoneForStewardSync(existingUser.id, verifiedPhone);
+          }
           if (existingUser.steward_user_id !== stewardUserId) {
             // NOTE: This is the link path that the Steward identity-link DB
             // migration drafts depend on (see
