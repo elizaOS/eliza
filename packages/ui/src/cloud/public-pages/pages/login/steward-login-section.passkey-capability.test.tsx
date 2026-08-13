@@ -197,11 +197,14 @@ describe("StewardLoginSection passkey capability gating", () => {
     expect(screen.queryByRole("button", { name: /Passkey/i })).toBeNull();
     expect(screen.getByRole("button", { name: /Magic Link/i })).toBeTruthy();
     expect(screen.getByRole("button", { name: /Google/i })).toBeTruthy();
+    // The passkey-unavailable banner must not appear when passkeys are
+    // confirmed unsupported — the host should not mention passkeys at all
+    // on screen 1 (#19217).
     expect(
-      screen.getByText(
+      screen.queryByText(
         "Passkey sign-in is not available here. Use Google, Discord, or Magic Link, or open this sign-in link on another device.",
       ),
-    ).toBeTruthy();
+    ).toBeNull();
 
     fireEvent.change(input, { target: { value: "person@example.com" } });
     fireEvent.keyDown(input, { key: "Enter" });
