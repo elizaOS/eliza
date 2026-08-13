@@ -4911,7 +4911,7 @@ export async function startEliza(
       await runtime.getServiceLoadPromise("connector_credential_store");
     } catch (err) {
       logger.warn(
-        `[eliza] ConnectorCredentialStoreService failed to start; connector OAuth credential writes will fall back to non-durable storage: ${formatError(err)}`,
+        `[eliza] ConnectorCredentialStoreService failed to start; connector OAuth credential writes will fail until it is restored (no non-durable fallback): ${formatError(err)}`,
       );
     }
   };

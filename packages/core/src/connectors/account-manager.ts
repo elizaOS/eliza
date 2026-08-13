@@ -18,6 +18,7 @@
  * process-local map and referenced by an opaque `codeVerifierRef` written to
  * flow metadata, so stored rows never carry the raw secret.
  */
+import { ElizaError } from "../errors";
 import { logger } from "../logger";
 import type { Action, ActionParameters } from "../types/components";
 import type {
@@ -1730,18 +1731,52 @@ export class ConnectorAccountManager extends Service {
 		}
 
 		try {
-			const result = await registered.completeOAuth(
-				{
-					provider: providerId,
-					flow,
-					code: input.code,
-					error: input.error,
-					errorDescription: input.errorDescription,
-					query: input.query ?? {},
-					body: input.body,
-				},
-				this,
-			);
+			// The catch below is scoped to provider completion only: the one-time
+			// state is already consumed, so a throw here (token exchange or a
+			// rejecting durable credential writer) must leave a terminal `failed`
+			// flow, not an unretryable `pending` one. Account/success-state writes
+			// stay outside it so their failure cannot relabel an already-connected
+			// account as failed.
+			let result: ConnectorOAuthCallbackResult;
+			try {
+				result = await registered.completeOAuth(
+					{
+						provider: providerId,
+						flow,
+						code: input.code,
+						error: input.error,
+						errorDescription: input.errorDescription,
+						query: input.query ?? {},
+						body: input.body,
+					},
+					this,
+				);
+			} catch (err) {
+				// error-policy:J2 Persist the terminal failed OAuth state, then
+				// rethrow typed with the provider failure preserved on cause.
+				const completionError = new ElizaError(
+					`Connector OAuth completion failed for ${providerId} after the one-time state was consumed; start the flow again. Cause: ${err instanceof Error ? err.message : String(err)}`,
+					{
+						code: "CONNECTOR_OAUTH_COMPLETION_FAILED",
+						cause: err,
+						context: { provider: providerId, flowId: flow.id },
+					},
+				);
+				try {
+					await this.storage.updateOAuthFlow(providerId, flow.id, {
+						status: "failed",
+						error: completionError.message,
+					});
+				} catch (persistenceError) {
+					// error-policy:J2 Preserve both the provider-completion and
+					// failure-state-write failures.
+					throw new AggregateError(
+						[completionError, persistenceError],
+						`OAuth completion and failure-state persistence failed for ${providerId}`,
+					);
+				}
+				throw completionError;
+			}
 
 			const account = result.account
 				? await this.upsertAccount(providerId, result.account, flow.accountId)
