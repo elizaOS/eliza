@@ -117,9 +117,10 @@
   .product-visual { overflow: hidden; aspect-ratio: 1200 / 630; border-radius: 1rem; background: var(--orange); }
   .product-visual img { display: block; width: 100%; height: 100%; object-fit: cover; }
   .product h2 { font-size: clamp(3rem, 6vw, 5rem); font-weight: 830; letter-spacing: -0.04em; }
-  .role { margin-top: 0.8rem; color: var(--orange); font-size: 1.08rem; font-weight: 720; }
+  .role { margin-top: 0.8rem; font-size: 1.08rem; font-weight: 720; }
   .body { margin-top: 1.3rem; color: var(--muted); font-size: 1.04rem; }
-  .text-link { display: inline-block; margin-top: 1.8rem; color: var(--orange); font-weight: 720; text-underline-offset: 0.3em; }
+  .text-link { display: inline-block; margin-top: 1.8rem; font-weight: 720; text-underline-offset: 0.3em; }
+  .role, .text-link { color: var(--hero); }
   #slop { border: 0; background: var(--black); color: #f8f2ed; }
   #slop .product-visual { order: 2; background: #19120e; }
   #slop .role, #slop .text-link { color: var(--orange-light); }
@@ -151,8 +152,8 @@
   <div class="nav-links"><a href="#eliza">Products</a><a href="#contact">Contact</a></div>
 </nav>
 
-<header id="top" data-particle-surface>
-  <canvas id="swarm" data-particle-logo="assets/logo_white_nobg.svg" data-particle-layout="hero" aria-hidden="true"></canvas>
+<header id="top">
+  <canvas id="swarm" data-particle-logo="assets/logo_white_nobg.svg" aria-hidden="true"></canvas>
   <div class="wrap hero-copy">
     <h1>AI, built around people.</h1>
     <p>Open agents that remember context, use your tools, and act under your control.</p>

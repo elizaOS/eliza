@@ -94,7 +94,7 @@
   .contact-chip[data-feedback="success"] { background: linear-gradient(90deg, #fff5ee, #ffb38c, #ff5800); color: #160c08; }
   .contact-chip[data-feedback="error"] { background: #fff5ee; color: #8c2f00; }
 
-  @media (max-width: 767px) {
+  @media (max-width: 767px), (max-height: 480px) {
     :root { --rail: 0rem; }
     .rail { display: none; }
     .mobile-bar {
@@ -118,6 +118,12 @@
     .identity p { max-width: 30rem; margin-inline: auto; }
     .contact-chip { top: 4.8rem; right: 0; bottom: auto; width: 17.2rem; padding: 0.72rem 1rem; font-size: 0.72rem; }
   }
+  @media (min-width: 768px) and (max-height: 480px) {
+    .identity { bottom: 1.25rem; left: 2rem; width: min(24rem, 44%); transform: none; text-align: left; }
+    .identity h1 { font-size: 1.8rem; }
+    .identity p { max-width: 38ch; margin-inline: 0; font-size: 0.68rem; }
+    .contact-chip { width: 15rem; }
+  }
   @media (max-height: 650px) and (max-width: 767px) {
     .identity { bottom: 2.25rem; }
     .identity p { max-width: 38ch; font-size: 0.68rem; }
@@ -137,13 +143,13 @@
   </div>
 </aside>
 
-<div class="mobile-bar">
+<header class="mobile-bar">
   <a href="/reflow" aria-label="Eliza Research home"><img src="assets/logo_orange_nobg.svg" alt=""></a>
   <nav aria-label="Mobile navigation"><a href="/#eliza">PRODUCTS</a><a href="mailto:hello@elizaresearch.ai">CONTACT</a></nav>
-</div>
+</header>
 
-<main class="stage" data-particle-surface>
-  <canvas id="reflow-swarm" data-particle-logo="assets/logo_white_nobg.svg" data-particle-layout="reflow" aria-hidden="true"></canvas>
+<main class="stage">
+  <canvas id="reflow-swarm" data-particle-logo="assets/logo_white_nobg.svg" aria-hidden="true"></canvas>
   <section class="identity" aria-labelledby="reflow-title">
     <h1 id="reflow-title">Eliza Research</h1>
     <p>Open agents, shared intelligence, and software that answers to the people it serves.</p>
