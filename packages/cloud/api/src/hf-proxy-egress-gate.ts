@@ -7,10 +7,17 @@
  * two isolates can reserve against the same stale remaining budget or
  * lose an increment in a read-modify-write race.
  *
+ * Reservations are bounded leases: each carries a creation time and a TTL.
+ * If a Worker terminates after reserving but before committing/releasing,
+ * the alarm fires at the lease's expiry and reclaims the hold so a single
+ * interrupted request cannot permanently lock an org's entire budget. The
+ * same pruning runs at the start of every operation to settle leases that
+ * expired between events.
+ *
  * The route accesses this object via
  * `env.HF_PROXY_EGRESS_GATES.getByName(orgId)`. If the binding is absent
- * (local dev without wrangler), the route falls back to the in-memory +
- * KV path, which is safe within a single isolate but not cross-isolate.
+ * the route fails closed (production) or falls back to an in-memory path
+ * (local dev only).
  */
 
 import { logger } from "@/lib/utils/logger";
@@ -18,13 +25,23 @@ import type { AppEnv } from "@/types/cloud-worker-env";
 
 const STORAGE_KEY = "egress-ledger";
 
+/** Max time a reservation can remain in-flight before the alarm reclaims it. */
+const RESERVATION_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
+interface Reservation {
+  /** Bytes reserved (hard cap) when the hold was placed. */
+  reserved: number;
+  /** Epoch ms when the reservation was created. */
+  createdAt: number;
+}
+
 interface GateLedger {
   /** Committed monthly egress total (bytes actually streamed). */
   committed: number;
   /** Month bucket, e.g. "2026-08" — so a month rollover resets the ledger. */
   monthBucket: string;
   /** In-flight reservations keyed by reservationId. */
-  reservations: Record<string, { reserved: number }>;
+  reservations: Record<string, Reservation>;
 }
 
 function currentMonthBucket(now = new Date()): string {
@@ -118,6 +135,47 @@ export class HfProxyEgressGate {
     return sum;
   }
 
+  /**
+   * Remove reservations whose TTL has elapsed. Called at the start of every
+   * operation so expired leases are settled even if the alarm is delayed.
+   * Returns true if any reservations were pruned (caller should persist).
+   */
+  private pruneExpired(ledger: GateLedger, now = Date.now()): boolean {
+    let pruned = false;
+    for (const [id, res] of Object.entries(ledger.reservations)) {
+      if (now - res.createdAt > RESERVATION_TTL_MS) {
+        delete ledger.reservations[id];
+        pruned = true;
+        logger.warn("[hf-proxy-egress-gate] pruned expired reservation", {
+          reservationId: id,
+          ageMs: now - res.createdAt,
+        });
+      }
+    }
+    return pruned;
+  }
+
+  /**
+   * Schedule (or cancel) the Durable Object alarm to fire at the earliest
+   * reservation expiry. Called after every mutation to keep the alarm
+   * tracking the live set.
+   */
+  private async syncAlarm(ledger: GateLedger): Promise<void> {
+    const now = Date.now();
+    let earliestExpiry = Infinity;
+    for (const res of Object.values(ledger.reservations)) {
+      const expiry = res.createdAt + RESERVATION_TTL_MS;
+      if (expiry < earliestExpiry) earliestExpiry = expiry;
+    }
+    if (earliestExpiry === Infinity) {
+      await this.state.storage.deleteAlarm();
+    } else {
+      // Never schedule in the past; give the runtime at least 1s.
+      const scheduled = Math.max(earliestExpiry, now + 1000);
+      await this.state.storage.setAlarm(scheduled);
+    }
+  }
+
   async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url);
     const op = url.pathname;
@@ -145,6 +203,7 @@ export class HfProxyEgressGate {
       }
       if (op === "/read") {
         const ledger = await this.load();
+        this.pruneExpired(ledger);
         return Response.json({
           committed: ledger.committed,
           inFlight: this.inFlightBytes(ledger),
@@ -164,8 +223,22 @@ export class HfProxyEgressGate {
     }
   }
 
+  /**
+   * Alarm handler: prune expired reservations and re-arm if more remain.
+   * This is the crash-safe recovery path — a Worker that died mid-transfer
+   * has its hold reclaimed here instead of persisting forever.
+   */
+  async alarm(): Promise<void> {
+    const ledger = await this.load();
+    if (this.pruneExpired(ledger)) {
+      await this.save();
+    }
+    await this.syncAlarm(ledger);
+  }
+
   private async reserve(body: ReserveRequest): Promise<ReserveResponse> {
     const ledger = await this.load();
+    this.pruneExpired(ledger);
     const inFlight = this.inFlightBytes(ledger);
     const available = body.limitBytes - ledger.committed - inFlight;
     if (body.bytes > available) {
@@ -177,8 +250,13 @@ export class HfProxyEgressGate {
       };
     }
     const reservationId = crypto.randomUUID();
-    ledger.reservations[reservationId] = { reserved: body.bytes };
+    const now = Date.now();
+    ledger.reservations[reservationId] = {
+      reserved: body.bytes,
+      createdAt: now,
+    };
     await this.save();
+    await this.syncAlarm(ledger);
     return {
       admitted: true,
       reservationId,
@@ -189,6 +267,7 @@ export class HfProxyEgressGate {
 
   private async amend(body: AmendRequest): Promise<AmendResponse> {
     const ledger = await this.load();
+    this.pruneExpired(ledger);
     const res = ledger.reservations[body.reservationId];
     if (!res) {
       return {
@@ -201,6 +280,7 @@ export class HfProxyEgressGate {
       // Shrink — always allowed, releases budget.
       res.reserved = body.actualBytes;
       await this.save();
+      await this.syncAlarm(ledger);
       return {
         ok: true,
         committed: ledger.committed,
@@ -215,10 +295,12 @@ export class HfProxyEgressGate {
     if (body.actualBytes > available) {
       res.reserved = oldReserved;
       await this.save();
+      await this.syncAlarm(ledger);
       return { ok: false, committed: ledger.committed, inFlight };
     }
     res.reserved = body.actualBytes;
     await this.save();
+    await this.syncAlarm(ledger);
     return {
       ok: true,
       committed: ledger.committed,
@@ -228,7 +310,8 @@ export class HfProxyEgressGate {
 
   private async commit(body: CommitRequest): Promise<CommitResponse> {
     const ledger = await this.load();
-    // Idempotent: reservation already removed means a duplicate commit.
+    // Idempotent: reservation already removed (or pruned by alarm) means a
+    // duplicate commit.
     if (!ledger.reservations[body.reservationId]) {
       return { committed: ledger.committed };
     }
@@ -237,6 +320,7 @@ export class HfProxyEgressGate {
       ledger.committed += body.bytes;
     }
     await this.save();
+    await this.syncAlarm(ledger);
     return { committed: ledger.committed };
   }
 
@@ -244,7 +328,10 @@ export class HfProxyEgressGate {
     const ledger = await this.load();
     const existed = body.reservationId in ledger.reservations;
     delete ledger.reservations[body.reservationId];
-    if (existed) await this.save();
+    if (existed) {
+      await this.save();
+      await this.syncAlarm(ledger);
+    }
     return { released: existed };
   }
 }

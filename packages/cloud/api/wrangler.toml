@@ -122,10 +122,6 @@ name = "ONBOARDING_SESSIONS"
 class_name = "OnboardingSessionCoordinator"
 
 [[migrations]]
-tag = "hf-proxy-egress-gates-v1"
-new_sqlite_classes = ["HfProxyEgressGate"]
-
-[[migrations]]
 tag = "shared-runtime-conversations-v1"
 new_sqlite_classes = ["SharedRuntimeConversation"]
 
@@ -140,6 +136,10 @@ new_sqlite_classes = ["AnonymousChatGate"]
 [[migrations]]
 tag = "onboarding-session-coordinator-v1"
 new_sqlite_classes = ["OnboardingSessionCoordinator"]
+
+[[migrations]]
+tag = "hf-proxy-egress-gates-v1"
+new_sqlite_classes = ["HfProxyEgressGate"]
 
 # General API limits and queues may use Railway Redis via REDIS_URL. Inference
 # routes never connect to it: Cloudflare Rate Limiting bindings protect ingress,
@@ -604,6 +604,10 @@ class_name = "AnonymousChatGate"
 name = "ONBOARDING_SESSIONS"
 class_name = "OnboardingSessionCoordinator"
 
+[[env.staging.durable_objects.bindings]]
+name = "HF_PROXY_EGRESS_GATES"
+class_name = "HfProxyEgressGate"
+
 [[env.staging.ratelimits]]
 name = "GLOBAL_RATE_LIMITER"
 namespace_id = "1615311"
@@ -815,6 +819,10 @@ class_name = "AnonymousChatGate"
 [[env.production.durable_objects.bindings]]
 name = "ONBOARDING_SESSIONS"
 class_name = "OnboardingSessionCoordinator"
+
+[[env.production.durable_objects.bindings]]
+name = "HF_PROXY_EGRESS_GATES"
+class_name = "HfProxyEgressGate"
 
 [[env.production.ratelimits]]
 name = "GLOBAL_RATE_LIMITER"

@@ -141,7 +141,18 @@ function egressGate(
   organizationId: string,
 ): RuntimeDurableObjectStub | null {
   const namespace = env.HF_PROXY_EGRESS_GATES;
-  if (!namespace) return null;
+  if (!namespace) {
+    // Production/staging MUST have the binding — without the DO the quota
+    // is not cross-isolate atomic. Fail closed in real deployments so a
+    // missing binding does not silently weaken the quota gate.
+    const envName = env.ENVIRONMENT ?? "production";
+    if (envName === "production" || envName === "staging") {
+      throw new Error(
+        `HF_PROXY_EGRESS_GATES Durable Object binding is required in ${envName} but is not configured`,
+      );
+    }
+    return null;
+  }
   return namespace.getByName(organizationId);
 }
 
@@ -679,6 +690,35 @@ app.get("/*", async (c) => {
         },
         upstreamResponse.status as 401 | 403,
       );
+    }
+
+    // All other 4xx (404, upstream 429, etc.) — preserve the upstream
+    // status/body instead of falling through to quota enforcement. The
+    // reservation was already released above; passthrough the real response.
+    if (upstreamResponse.status >= 400 && upstreamResponse.status < 500) {
+      const upstreamCacheStatus = cacheStatus(upstreamResponse.headers);
+      logger.info("[hf-proxy] egress metric", {
+        organizationId: orgId,
+        repo,
+        path,
+        bytes: 0,
+        status: upstreamResponse.status,
+        cacheStatus: upstreamCacheStatus,
+        cacheHit: cacheHit(upstreamCacheStatus),
+        usedBytes: committedBefore,
+      });
+      // Pass through the upstream error response body and headers, so a 404
+      // or upstream 429 reaches the client instead of being masked as a
+      // quota rejection.
+      const errorHeaders = new Headers();
+      for (const name of PASSTHROUGH_RESPONSE_HEADERS) {
+        const value = upstreamResponse.headers.get(name);
+        if (value) errorHeaders.set(name, value);
+      }
+      return new Response(upstreamResponse.body, {
+        status: upstreamResponse.status,
+        headers: errorHeaders,
+      });
     }
 
     const contentLength = parseContentLength(upstreamResponse.headers);

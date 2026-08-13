@@ -512,7 +512,7 @@ function fakeEgressGateNamespace(_orgId: string, _limitBytes: number) {
   // Shared state — this is what a real DO persists in its storage.
   const storage = {
     committed: 0,
-    reservations: new Map<string, number>(),
+    reservations: new Map<string, { reserved: number; createdAt: number }>(),
   };
 
   function jsonResp(body: unknown): Response {
@@ -531,7 +531,7 @@ function fakeEgressGateNamespace(_orgId: string, _limitBytes: number) {
       const bytes = body.bytes as number;
       const limit = body.limitBytes as number;
       let inFlight = 0;
-      for (const r of storage.reservations.values()) inFlight += r;
+      for (const r of storage.reservations.values()) inFlight += r.reserved;
       const available = limit - storage.committed - inFlight;
       if (bytes > available) {
         return jsonResp({
@@ -542,7 +542,7 @@ function fakeEgressGateNamespace(_orgId: string, _limitBytes: number) {
         });
       }
       const id = crypto.randomUUID();
-      storage.reservations.set(id, bytes);
+      storage.reservations.set(id, { reserved: bytes, createdAt: Date.now() });
       return jsonResp({
         admitted: true,
         reservationId: id,
@@ -563,8 +563,11 @@ function fakeEgressGateNamespace(_orgId: string, _limitBytes: number) {
           inFlight: 0,
         });
       }
-      if (actualBytes <= current) {
-        storage.reservations.set(reservationId, actualBytes);
+      if (actualBytes <= current.reserved) {
+        storage.reservations.set(reservationId, {
+          reserved: actualBytes,
+          createdAt: current.createdAt,
+        });
         return jsonResp({
           ok: true,
           committed: storage.committed,
@@ -572,16 +575,25 @@ function fakeEgressGateNamespace(_orgId: string, _limitBytes: number) {
         });
       }
       // Grow: re-check
-      const oldReserved = current;
-      storage.reservations.set(reservationId, 0);
+      const oldReserved = current.reserved;
+      storage.reservations.set(reservationId, {
+        reserved: 0,
+        createdAt: current.createdAt,
+      });
       let inFlight = 0;
-      for (const r of storage.reservations.values()) inFlight += r;
+      for (const r of storage.reservations.values()) inFlight += r.reserved;
       const available = limit - storage.committed - inFlight;
       if (actualBytes > available) {
-        storage.reservations.set(reservationId, oldReserved);
+        storage.reservations.set(reservationId, {
+          reserved: oldReserved,
+          createdAt: current.createdAt,
+        });
         return jsonResp({ ok: false, committed: storage.committed, inFlight });
       }
-      storage.reservations.set(reservationId, actualBytes);
+      storage.reservations.set(reservationId, {
+        reserved: actualBytes,
+        createdAt: current.createdAt,
+      });
       return jsonResp({ ok: true, committed: storage.committed, inFlight });
     }
 
@@ -604,7 +616,7 @@ function fakeEgressGateNamespace(_orgId: string, _limitBytes: number) {
 
     if (op === "/read") {
       let inFlight = 0;
-      for (const r of storage.reservations.values()) inFlight += r;
+      for (const r of storage.reservations.values()) inFlight += r.reserved;
       return jsonResp({ committed: storage.committed, inFlight });
     }
 
@@ -744,6 +756,89 @@ describe("Cross-isolate atomic egress quota (Durable Object path)", () => {
   });
 });
 
+describe("Upstream 4xx passthrough (non-401/403)", () => {
+  test("upstream 404 is passed through, not masked as quota 429", async () => {
+    const kv = fakeKv();
+    globalThis.fetch = mock(
+      async () =>
+        new Response("not found", {
+          status: 404,
+          headers: { "content-type": "text/plain" },
+        }),
+    ) as unknown as typeof fetch;
+
+    const env = {
+      HF_TOKEN: "hf-secret",
+      CACHE_KV: kv,
+      HF_PROXY_MONTHLY_EGRESS_LIMIT_BYTES: "100",
+    };
+
+    const res = await app.fetch(makeRequest(RESOLVE_PATH), env);
+    // The real upstream 404 must reach the client, not a 429 quota error.
+    expect(res.status).toBe(404);
+    expect(await res.text()).toBe("not found");
+  });
+
+  test("upstream 429 is passed through with its body, not converted to quota 429", async () => {
+    const kv = fakeKv();
+    globalThis.fetch = mock(
+      async () =>
+        new Response('{"error":"rate limited"}', {
+          status: 429,
+          headers: { "content-type": "application/json" },
+        }),
+    ) as unknown as typeof fetch;
+
+    const env = {
+      HF_TOKEN: "hf-secret",
+      CACHE_KV: kv,
+      HF_PROXY_MONTHLY_EGRESS_LIMIT_BYTES: "100",
+    };
+
+    const res = await app.fetch(makeRequest(RESOLVE_PATH), env);
+    // The upstream 429 must be preserved — body, status, and all.
+    expect(res.status).toBe(429);
+    const body = await res.text();
+    expect(body).toContain("rate limited");
+    // It must NOT be our quota rejection shape.
+    expect(body).not.toContain("HF_PROXY_EGRESS_LIMIT");
+  });
+
+  test("a successful 200 download after a 404 does not lose budget", async () => {
+    const kv = fakeKv();
+    // Budget of 12. First request gets a 404 (released). Second gets 8 bytes.
+    globalThis.fetch = mock(
+      async () =>
+        new Response("not found", {
+          status: 404,
+          headers: { "content-type": "text/plain" },
+        }),
+    ) as unknown as typeof fetch;
+
+    const env = {
+      HF_TOKEN: "hf-secret",
+      CACHE_KV: kv,
+      HF_PROXY_MONTHLY_EGRESS_LIMIT_BYTES: "12",
+    };
+
+    const notFoundRes = await app.fetch(makeRequest(RESOLVE_PATH), env);
+    expect(notFoundRes.status).toBe(404);
+
+    // The 404 must not have consumed budget — a subsequent 8-byte download
+    // should still have the full 12-byte budget available.
+    globalThis.fetch = mock(
+      async () =>
+        new Response("12345678", {
+          status: 200,
+          headers: { "content-length": "8" },
+        }),
+    ) as unknown as typeof fetch;
+    const ok = await app.fetch(makeRequest(RESOLVE_PATH), env);
+    expect(ok.status).toBe(200);
+    expect(await ok.text()).toBe("12345678");
+  });
+});
+
 describe("ALLOWED_REPO_PREFIX single-source-of-truth", () => {
   test("matches the org segment of ELIZA_1_HF_REPO from @elizaos/shared", async () => {
     // The route's allowlist prefix is a local literal (kept out of the worker
@@ -762,5 +857,33 @@ describe("ALLOWED_REPO_PREFIX single-source-of-truth", () => {
     const org = ELIZA_1_HF_REPO.split("/")[0];
     expect(ALLOWED_REPO_PREFIX).toBe(`${org}/`);
     expect(ELIZA_1_HF_REPO.startsWith(ALLOWED_REPO_PREFIX)).toBe(true);
+  });
+});
+
+describe("wrangler.toml DO binding coverage (#13115)", () => {
+  test("every deployed environment binds HF_PROXY_EGRESS_GATES", async () => {
+    // Durable Object bindings are non-inheritable in Wrangler: each
+    // environment must declare its own. This test ensures staging and
+    // production both bind HF_PROXY_EGRESS_GATES so the egress quota is
+    // actually enforced cross-isolate in real deployments.
+    const { readFileSync } = await import("node:fs");
+    const { resolve } = await import("node:path");
+    const tomlPath = resolve(import.meta.dir, "../wrangler.toml");
+    const content = readFileSync(tomlPath, "utf-8");
+
+    // Count occurrences of the binding across all sections.
+    // Must appear in top-level + staging + production = 3 times.
+    const occurrences =
+      content.split('name = "HF_PROXY_EGRESS_GATES"').length - 1;
+
+    // Must appear in top-level + staging + production = 3 times.
+    expect(occurrences).toBeGreaterThanOrEqual(3);
+
+    // Verify the migration tag is AFTER existing migrations (not before).
+    const newMigrationIdx = content.indexOf('tag = "hf-proxy-egress-gates-v1"');
+    const lastExistingMigrationIdx = content.indexOf(
+      'tag = "onboarding-session-coordinator-v1"',
+    );
+    expect(newMigrationIdx).toBeGreaterThan(lastExistingMigrationIdx);
   });
 });
