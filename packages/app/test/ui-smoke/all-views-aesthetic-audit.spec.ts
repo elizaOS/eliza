@@ -398,15 +398,34 @@ async function readViewPaint(
       ];
       const visibleText: string[] = [];
       const loadingLabels = new Set<string>();
+      const visibleLabelCache = new Map<Element, string>();
+      const visibleLabelFor = (element: Element): string => {
+        let container = element;
+        while (container.parentElement) {
+          const display = getComputedStyle(container).display;
+          if (display !== "contents" && !display.startsWith("inline")) break;
+          container = container.parentElement;
+        }
+        const cached = visibleLabelCache.get(container);
+        if (cached !== undefined) return cached;
+
+        const pieces: string[] = [];
+        const walker = document.createTreeWalker(
+          container,
+          NodeFilter.SHOW_TEXT,
+        );
+        for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+          const owner = node.parentElement;
+          const text = node.textContent?.trim();
+          if (owner && text && isVisibleInViewport(owner)) pieces.push(text);
+        }
+        const label = pieces.join(" ").replace(/\s+/g, " ").trim();
+        visibleLabelCache.set(container, label);
+        return label;
+      };
       for (const element of elements) {
         if (!isVisibleInViewport(element)) continue;
-        const directText = Array.from(element.childNodes)
-          .filter((child) => child.nodeType === Node.TEXT_NODE)
-          .map((child) => child.textContent?.trim() ?? "")
-          .filter(Boolean)
-          .join(" ")
-          .replace(/\s+/g, " ")
-          .trim();
+        const visibleLabel = visibleLabelFor(element);
         for (const child of element.childNodes) {
           if (child.nodeType !== Node.TEXT_NODE) continue;
           const text = child.textContent?.trim();
@@ -415,11 +434,11 @@ async function readViewPaint(
         const explicitLoading =
           element.getAttribute("data-view-status") === "loading";
         const exactLoadingLabel = new RegExp(terminalLoadingPattern, "i").test(
-          directText,
+          visibleLabel,
         );
         if (explicitLoading || exactLoadingLabel) {
           loadingLabels.add(
-            directText ||
+            visibleLabel ||
               element.textContent?.trim().replace(/\s+/g, " ") ||
               '[data-view-status="loading"]',
           );
@@ -1528,6 +1547,21 @@ test.describe("all-views aesthetic audit (#8796)", () => {
     expect(loadingRenderStateIssues(terminalLoading)).toEqual([
       "dynamic view remained in its loading state after 12 seconds: Loading",
     ]);
+
+    for (const descriptiveLoading of [
+      "<div>Loading <span>history</span></div>",
+      "<div><span>Loading</span> <span>history</span></div>",
+    ]) {
+      await viewRoot.evaluate((root, content) => {
+        root.innerHTML = `<h1>Tasks</h1>${content}`;
+      }, descriptiveLoading);
+      await expect(
+        readViewPaint(viewRoot, overlay, tasksPolicy.expectation),
+      ).resolves.toMatchObject({
+        semanticReady: true,
+        loadingStateLabels: [],
+      });
+    }
 
     await viewRoot.evaluate((root) => {
       root.innerHTML =
