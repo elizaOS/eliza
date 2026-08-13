@@ -3655,6 +3655,65 @@ export function resolveEmbeddingProviderPluginName(
   return backend ? getFirstRunProviderOption(backend)?.pluginName : undefined;
 }
 
+export const DEFAULT_DEFERRED_PLUGIN_REGISTRATION_TIMEOUT_MS = 30_000;
+export const MAX_DEFERRED_PLUGIN_REGISTRATION_TIMEOUT_MS = 2_147_483_647;
+
+/**
+ * Validates and resolves `ELIZA_DEFERRED_PLUGIN_REGISTRATION_TIMEOUT_MS`.
+ *
+ * Acceptance criteria:
+ * - Accept only blank/unset or a complete positive decimal integer in Node's schedulable timer range 1..2147483647.
+ * - Reject malformed, partial, non-positive, unsafe, and overflowing values with a typed fatal `ElizaError` carrying actionable code/context.
+ */
+export function resolveDeferredPluginRegistrationTimeoutMs(
+  rawEnv?: string | null,
+): number {
+  if (rawEnv === undefined || rawEnv === null) {
+    return DEFAULT_DEFERRED_PLUGIN_REGISTRATION_TIMEOUT_MS;
+  }
+  const trimmed = rawEnv.trim();
+  if (trimmed === "") {
+    return DEFAULT_DEFERRED_PLUGIN_REGISTRATION_TIMEOUT_MS;
+  }
+  if (!/^\d+$/.test(trimmed)) {
+    throw new ElizaError(
+      `Invalid ELIZA_DEFERRED_PLUGIN_REGISTRATION_TIMEOUT_MS: "${rawEnv}". Expected a positive decimal integer between 1 and ${MAX_DEFERRED_PLUGIN_REGISTRATION_TIMEOUT_MS}.`,
+      {
+        code: "INVALID_DEFERRED_PLUGIN_REGISTRATION_TIMEOUT",
+        severity: "fatal",
+        context: {
+          raw: rawEnv,
+          trimmed,
+          min: 1,
+          max: MAX_DEFERRED_PLUGIN_REGISTRATION_TIMEOUT_MS,
+        },
+      },
+    );
+  }
+  const parsed = Number.parseInt(trimmed, 10);
+  if (
+    !Number.isSafeInteger(parsed) ||
+    parsed < 1 ||
+    parsed > MAX_DEFERRED_PLUGIN_REGISTRATION_TIMEOUT_MS
+  ) {
+    throw new ElizaError(
+      `Invalid ELIZA_DEFERRED_PLUGIN_REGISTRATION_TIMEOUT_MS: "${rawEnv}". Value ${parsed} is out of schedulable timer range 1..${MAX_DEFERRED_PLUGIN_REGISTRATION_TIMEOUT_MS}.`,
+      {
+        code: "INVALID_DEFERRED_PLUGIN_REGISTRATION_TIMEOUT",
+        severity: "fatal",
+        context: {
+          raw: rawEnv,
+          trimmed,
+          parsed,
+          min: 1,
+          max: MAX_DEFERRED_PLUGIN_REGISTRATION_TIMEOUT_MS,
+        },
+      },
+    );
+  }
+  return parsed;
+}
+
 // ---------------------------------------------------------------------------
 // Entry point
 // ---------------------------------------------------------------------------
@@ -3934,6 +3993,9 @@ export async function startEliza(
   opts?: StartElizaOptions,
 ): Promise<AgentRuntime | undefined> {
   opts?.abortSignal?.throwIfAborted();
+  const deferredWatchdogTimeoutMs = resolveDeferredPluginRegistrationTimeoutMs(
+    process.env.ELIZA_DEFERRED_PLUGIN_REGISTRATION_TIMEOUT_MS,
+  );
   const bootContext =
     opts?.bootContext ?? createBootContext({ observePhase: opts?.onBootPhase });
   const bootTimer = new BootTimer("[eliza-boot]");
@@ -5476,6 +5538,7 @@ export async function startEliza(
   const registerDeferredRuntimePlugins = async (
     deferredResolvedPlugins: RuntimeResolvedPlugin[],
     abortSignal: AbortSignal,
+    watchdogTimeoutMs: number = deferredWatchdogTimeoutMs,
   ): Promise<void> => {
     if (blockDeferredPluginImports) {
       return;
@@ -5515,13 +5578,7 @@ export async function startEliza(
       ...deferredPluginsForRuntime,
     ]);
 
-    const timeoutMs = (() => {
-      const raw =
-        process.env.ELIZA_DEFERRED_PLUGIN_REGISTRATION_TIMEOUT_MS?.trim();
-      if (!raw) return 30_000;
-      const parsed = Number.parseInt(raw, 10);
-      return Number.isFinite(parsed) && parsed > 0 ? parsed : 30_000;
-    })();
+    const timeoutMs = watchdogTimeoutMs;
     const registerDeferredPlugin = async (
       plugin: (typeof deferredPluginsForRuntime)[number],
     ): Promise<void> => {
@@ -5699,6 +5756,7 @@ export async function startEliza(
       await registerDeferredRuntimePlugins(
         deferredResolvedPlugins,
         abortSignal,
+        deferredWatchdogTimeoutMs,
       );
       bootTimer.lap("deferred:runtime-plugins");
     }
