@@ -168,8 +168,15 @@ function fireEvent(action: UiAction | undefined, ctx: UiRenderContext) {
         ctx.onAction(action.onSuccess.action, action.onSuccess.params);
       }
     } else if (ctx.onAction) {
+      // Resolve $path / $data dynamic references in action params from live
+      // state, the same resolution applied to element props. Without this,
+      // forms that declare { field: { $path: "form.field" } } in their save
+      // action send the literal { $path } object instead of the typed value.
+      const resolvedParams = action.params
+        ? resolveProps(action.params, ctx)
+        : action.params;
       try {
-        ctx.onAction(action.action, action.params);
+        ctx.onAction(action.action, resolvedParams);
         if (action.onSuccess)
           ctx.onAction(action.onSuccess.action, action.onSuccess.params);
       } catch {

@@ -772,6 +772,14 @@ export function MessageUiSpecBlock({
             }
           }
         }
+        // An empty patch means no fields were filled — do not call the API
+        // and do not report a false success.
+        if (Object.keys(config).length === 0) {
+          void sendActionMessage(
+            `[No configuration entered — nothing to save for ${pluginId}]`,
+          );
+          return;
+        }
         void client
           .updatePlugin(pluginId, { config })
           .then(() =>

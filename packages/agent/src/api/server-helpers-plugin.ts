@@ -125,10 +125,16 @@ export async function resolvePluginConfigReply(
   };
   elements.sep = { type: "Separator", props: {} };
 
+  // Build $path bindings so the UiRenderer resolves live config.* state values
+  // into the save action params at dispatch time. Each param key maps to its
+  // current form value via a dynamic reference resolved by resolveProps.
+  const saveParams: Record<string, { $path: string }> = {};
+
   for (const param of params) {
     const fid = `f_${param.key}`;
     fieldIds.push(fid);
     state[`config.${param.key}`] = "";
+    saveParams[`config.${param.key}`] = { $path: `config.${param.key}` };
     elements[fid] = {
       type: "Input",
       props: {
@@ -149,7 +155,10 @@ export async function resolvePluginConfigReply(
       variant: "default",
       className: "font-semibold",
       on: {
-        press: { action: "plugin:save", params: { pluginId: pluginName } },
+        press: {
+          action: "plugin:save",
+          params: { pluginId: pluginName, ...saveParams },
+        },
       },
     },
   };
