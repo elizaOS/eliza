@@ -7,6 +7,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { Memory } from "../../types/memory";
 import type { Content, UUID } from "../../types/primitives";
 import type { IAgentRuntime } from "../../types/runtime";
+import { wrapSingleTurnVisibleCallback } from "../message";
 import {
 	CONTINUITY_ANCHOR_VERSION,
 	CONTINUITY_WINDOW_MS,
@@ -36,6 +37,8 @@ function makeRuntime(args?: {
 	cache?: Map<string, unknown>;
 	getError?: Error;
 	setError?: Error;
+	setResult?: boolean;
+	setCache?: (key: string, value: unknown) => Promise<boolean>;
 }): IAgentRuntime & {
 	reportError: ReturnType<typeof vi.fn>;
 	getCache: ReturnType<typeof vi.fn>;
@@ -47,17 +50,29 @@ function makeRuntime(args?: {
 		if (args?.getError) throw args.getError;
 		return cache.get(key);
 	});
-	const setCache = vi.fn(async (key: string, value: unknown) => {
-		if (args?.setError) throw args.setError;
-		cache.set(key, value);
-		return true;
-	});
+	const setCache = vi.fn(
+		args?.setCache ??
+			(async (key: string, value: unknown) => {
+				if (args?.setError) throw args.setError;
+				cache.set(key, value);
+				return args?.setResult ?? true;
+			}),
+	);
 	return {
 		agentId: AGENT_ID,
 		cache,
 		getCache,
 		setCache,
 		reportError: vi.fn(),
+		logger: {
+			debug: vi.fn(),
+			info: vi.fn(),
+			warn: vi.fn(),
+			error: vi.fn(),
+		},
+		getSetting: vi.fn((key: string) =>
+			key === "ACTION_CALLBACK_VOICE_REWRITE" ? "false" : undefined,
+		),
 	} as unknown as IAgentRuntime & {
 		reportError: ReturnType<typeof vi.fn>;
 		getCache: ReturnType<typeof vi.fn>;
@@ -233,6 +248,103 @@ describe("recordOnMentionContinuityAnchor + senderInActiveConversation", () => {
 		);
 	});
 
+	it("reports a false cache-write result as a rejected anchor", async () => {
+		const runtime = makeRuntime({ setResult: false });
+		await expect(
+			recordOnMentionContinuityAnchor(runtime, {
+				roomId: ROOM_ID,
+				senderId: SHAW_ID,
+				deliveredAt: NOW,
+			}),
+		).resolves.toBeUndefined();
+		expect(runtime.reportError).toHaveBeenCalledWith(
+			"ReplyGateContinuity.record",
+			expect.objectContaining({
+				code: "REPLY_GATE_CONTINUITY_WRITE_REJECTED",
+			}),
+			{ roomId: ROOM_ID, senderId: SHAW_ID },
+		);
+	});
+
+	it("waits for a visible reply's pending anchor before checking a follow-up", async () => {
+		let releaseWrite: (() => void) | undefined;
+		const writeStarted = new Promise<void>((resolve) => {
+			releaseWrite = resolve;
+		});
+		let unblockWrite: (() => void) | undefined;
+		const blockedWrite = new Promise<void>((resolve) => {
+			unblockWrite = resolve;
+		});
+		const cache = new Map<string, unknown>();
+		const runtime = makeRuntime({
+			cache,
+			setCache: async (key, value) => {
+				releaseWrite?.();
+				await blockedWrite;
+				cache.set(key, value);
+				return true;
+			},
+		});
+		const recording = recordOnMentionContinuityAnchor(runtime, {
+			roomId: ROOM_ID,
+			senderId: SHAW_ID,
+			deliveredAt: NOW,
+		});
+		await writeStarted;
+		const lookup = senderInActiveConversation(
+			runtime,
+			inbound(SHAW_ID),
+			NOW + 1,
+		);
+		expect(runtime.getCache).not.toHaveBeenCalled();
+		unblockWrite?.();
+		await recording;
+		await expect(lookup).resolves.toBe(true);
+	});
+
+	it("serializes same-room writes so an older slow delivery cannot overwrite a newer one", async () => {
+		let markFirstStarted: (() => void) | undefined;
+		const firstStarted = new Promise<void>((resolve) => {
+			markFirstStarted = resolve;
+		});
+		let releaseFirst: (() => void) | undefined;
+		const firstBlocked = new Promise<void>((resolve) => {
+			releaseFirst = resolve;
+		});
+		const cache = new Map<string, unknown>();
+		let writes = 0;
+		const runtime = makeRuntime({
+			cache,
+			setCache: async (key, value) => {
+				writes += 1;
+				if (writes === 1) {
+					markFirstStarted?.();
+					await firstBlocked;
+				}
+				cache.set(key, value);
+				return true;
+			},
+		});
+		const older = recordOnMentionContinuityAnchor(runtime, {
+			roomId: ROOM_ID,
+			senderId: SHAW_ID,
+			deliveredAt: NOW,
+		});
+		await firstStarted;
+		const newer = recordOnMentionContinuityAnchor(runtime, {
+			roomId: ROOM_ID,
+			senderId: ALICE_ID,
+			deliveredAt: NOW + 1,
+		});
+		await Promise.resolve();
+		expect(writes).toBe(1);
+		releaseFirst?.();
+		await Promise.all([older, newer]);
+		expect(
+			cache.get(continuityAnchorCacheKey(AGENT_ID, ROOM_ID)),
+		).toMatchObject({ senderId: ALICE_ID, deliveredAt: NOW + 1 });
+	});
+
 	it("never records an anchor for the agent entity itself", async () => {
 		const runtime = makeRuntime();
 		await recordOnMentionContinuityAnchor(runtime, {
@@ -280,43 +392,12 @@ describe("isTranscriptVisibleEngagement does not treat non-dialogue as engagemen
 });
 
 describe("delivery-boundary continuity contract (wrapSingleTurnVisibleCallback seam)", () => {
-	/**
-	 * Mirrors the post-callback branch in wrapSingleTurnVisibleCallback: only a
-	 * resolved connector delivery of transcript-visible content records the
-	 * room/sender anchor. Kept local so this file does not import the full
-	 * message service graph.
-	 */
-	async function afterVisibleDelivery(args: {
-		runtime: ReturnType<typeof makeRuntime>;
-		message: { roomId: UUID; entityId: UUID };
-		content: Content;
-		callback: () => Promise<unknown>;
-	}): Promise<void> {
-		await args.callback();
-		if (
-			typeof args.runtime.setCache === "function" &&
-			isTranscriptVisibleEngagement(args.content) &&
-			args.message.entityId &&
-			args.message.entityId !== args.runtime.agentId &&
-			args.message.roomId
-		) {
-			await recordOnMentionContinuityAnchor(args.runtime, {
-				roomId: args.message.roomId,
-				senderId: args.message.entityId,
-			});
-		}
-	}
-
 	it("records the room/sender anchor when a visible reply callback resolves", async () => {
 		const runtime = makeRuntime();
 		const message = { roomId: ROOM_ID, entityId: SHAW_ID };
 		const callback = vi.fn(async () => []);
-		await afterVisibleDelivery({
-			runtime,
-			message,
-			content: { text: "answer", actions: ["REPLY"] } as Content,
-			callback,
-		});
+		const wrapped = wrapSingleTurnVisibleCallback(runtime, message, callback);
+		await wrapped?.({ text: "answer", actions: ["REPLY"] } as Content);
 		expect(callback).toHaveBeenCalled();
 		const stored = runtime.cache.get(
 			continuityAnchorCacheKey(AGENT_ID, ROOM_ID),
@@ -341,30 +422,51 @@ describe("delivery-boundary continuity contract (wrapSingleTurnVisibleCallback s
 		const callback = vi.fn(async () => {
 			throw new Error("connector down");
 		});
+		const wrapped = wrapSingleTurnVisibleCallback(runtime, message, callback);
 		await expect(
-			afterVisibleDelivery({
-				runtime,
-				message,
-				content: { text: "answer", actions: ["REPLY"] } as Content,
-				callback,
-			}),
+			wrapped?.({ text: "answer", actions: ["REPLY"] } as Content),
 		).rejects.toThrow("connector down");
 		expect(runtime.cache.size).toBe(0);
+	});
+
+	it("holds an immediate follow-up until the delivered reply anchor is stored", async () => {
+		const runtime = makeRuntime();
+		const message = { roomId: ROOM_ID, entityId: SHAW_ID };
+		let markVisible: (() => void) | undefined;
+		const visible = new Promise<void>((resolve) => {
+			markVisible = resolve;
+		});
+		let finishCallback: (() => void) | undefined;
+		const callbackBlocked = new Promise<void>((resolve) => {
+			finishCallback = resolve;
+		});
+		const callback = vi.fn(async () => {
+			markVisible?.();
+			await callbackBlocked;
+			return [];
+		});
+		const wrapped = wrapSingleTurnVisibleCallback(runtime, message, callback);
+		const delivery = wrapped?.({
+			text: "answer",
+			actions: ["REPLY"],
+		} as Content);
+		await visible;
+		const followUp = senderInActiveConversation(runtime, inbound(SHAW_ID));
+		expect(runtime.getCache).not.toHaveBeenCalled();
+		finishCallback?.();
+		await delivery;
+		await expect(followUp).resolves.toBe(true);
 	});
 
 	it("does not record IGNORE terminal deliveries", async () => {
 		const runtime = makeRuntime();
 		const message = { roomId: ROOM_ID, entityId: SHAW_ID };
 		const callback = vi.fn(async () => []);
-		await afterVisibleDelivery({
-			runtime,
-			message,
-			content: {
-				thought: "Agent decided not to respond",
-				actions: ["IGNORE"],
-			} as Content,
-			callback,
-		});
+		const wrapped = wrapSingleTurnVisibleCallback(runtime, message, callback);
+		await wrapped?.({
+			thought: "Agent decided not to respond",
+			actions: ["IGNORE"],
+		} as Content);
 		expect(runtime.cache.size).toBe(0);
 	});
 });
