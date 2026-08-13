@@ -4,7 +4,7 @@
   "kind": "plugin",
   "description": "An automated, independent second opinion an agent calls before a high-stakes action: one API call returns approve/concerns/reject and the agent weighs it and decides — no human in the loop, never blocks, degrades to a no-op if unavailable. Plus free proof verification (BIP-340 schnorr vs a published key), verified 100% locally with zero network calls when the caller supplies the full proof event — the independent check an agent can't self-issue.",
   "homepage": "https://api.babyblueviper.com/install",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "tags": [
     "verification",
     "autonomous",
