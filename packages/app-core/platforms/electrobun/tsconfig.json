@@ -31,6 +31,12 @@
       "@elizaos/app-core/*": ["../../src/*"],
       "@elizaos/agent": ["../../../agent/src/index.ts"],
       "@elizaos/agent/*": ["../../../agent/src/*"],
+      "@elizaos/capacitor-bun-runtime": [
+        "../../../../plugins/plugin-native-bun-runtime/src/index.ts"
+      ],
+      "@elizaos/capacitor-bun-runtime/*": [
+        "../../../../plugins/plugin-native-bun-runtime/src/*"
+      ],
       "@elizaos/core": ["../../../core/src/index.node.ts"],
       "@elizaos/core/atomic-json": ["../../../core/src/utils/atomic-json.ts"],
       "@elizaos/core/*": ["../../../core/src/*"],

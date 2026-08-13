@@ -19,6 +19,10 @@ import {
   WhatsAppIcon,
 } from "@elizaos/ui/cloud-ui/components/icons";
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
+// Imported through the bundler (not referenced from public/) so the wordmark
+// ships with whichever build consumes this source; a public/ path depends on
+// the host app's asset-sync allowlist and 404s when it drifts.
+import elizaLogotextUrl from "@/assets/eliza-logotext.svg";
 import {
   buildElizaDiscordHref,
   buildElizaSmsHref,
@@ -580,7 +584,7 @@ export default function LandingPage() {
             defaultValue: "Eliza",
           })}
         >
-          <img src="/eliza-logotext.svg" alt="Eliza" />
+          <img src={elizaLogotextUrl} alt="Eliza" />
         </a>
         <a
           className="landing-cta landing-cta--white landing-header-cta"
