@@ -40,8 +40,11 @@ function step(workflow: Workflow, jobId: string, name: string): WorkflowStep {
   return found;
 }
 
-const cloudSource = read(".github/workflows/cloud-cf-deploy.yml");
-const cloud = parse(".github/workflows/cloud-cf-deploy.yml");
+// `cloud-cf-deploy.yml` is the trigger/admission/approval entry point; every
+// Cloudflare mutation (deploy-api, deploy-app) runs in the reusable
+// `cloud-cf-release.yml` it calls, so the mutation contracts are read there.
+const cloudSource = read(".github/workflows/cloud-cf-release.yml");
+const cloud = parse(".github/workflows/cloud-cf-release.yml");
 const infraSource = read(".github/workflows/infra.yml");
 const infra = parse(".github/workflows/infra.yml");
 const provisioning = parse(
