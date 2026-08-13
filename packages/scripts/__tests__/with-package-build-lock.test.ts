@@ -3,7 +3,7 @@
  * processes, including contention, stale recovery, and spawn failures.
  */
 
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, setDefaultTimeout, test } from "bun:test";
 import {
   type ChildProcessWithoutNullStreams,
   spawn,
@@ -28,7 +28,13 @@ const REPO_ROOT = path.resolve(SCRIPT_DIR, "../../..");
 const WRAPPER = path.resolve(SCRIPT_DIR, "../with-package-build-lock.mjs");
 const LOCK_ROOT = path.join(REPO_ROOT, ".turbo", "build-locks");
 const NODE_BIN = "node";
+const PROCESS_TIMEOUT_MS = 15_000;
 const cleanupPaths = new Set<string>();
+
+// Every contract launches the real wrapper and at least one child process.
+// Match the subprocess deadline so a saturated shared runner cannot terminate
+// an otherwise bounded contract at Bun's shorter five-second default.
+setDefaultTimeout(PROCESS_TIMEOUT_MS);
 
 function uniquePackageKey(label: string): string {
   return `packages/scripts/__lock-test-${label}-${randomUUID()}`;
@@ -51,7 +57,7 @@ function runWrapper(
   packageKey: string,
   command: string[],
   staleMs: string | null = "1000",
-  timeout = 15_000,
+  timeout = PROCESS_TIMEOUT_MS,
 ) {
   const env = { ...process.env };
   if (staleMs === null) {
