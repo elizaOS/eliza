@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Eliza Research — particle interface</title>
+<meta name="description" content="Eliza Research builds open agents, shared intelligence, and software that answers to people.">
+<link rel="icon" type="image/svg+xml" href="assets/logo_orange_nobg.svg">
+<style>
+  @font-face {
+    font-family: "Geist";
+    font-style: normal;
+    font-weight: 100 900;
+    font-display: swap;
+    src: url("assets/geist-sans-latin.woff2") format("woff2");
+  }
+  :root { --orange: #ff5800; --black: #0b0908; --rail: 6rem; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { min-width: 320px; min-height: 100%; overflow: hidden; }
+  body { background: var(--black); color: #fffaf6; font-family: "Geist", Arial, sans-serif; -webkit-font-smoothing: antialiased; }
+  a, button { color: inherit; font: inherit; }
+  :where(a, button):focus-visible { outline: 2px solid var(--orange); outline-offset: 4px; }
+
+  .rail {
+    position: fixed;
+    z-index: 4;
+    inset: 0 auto 0 0;
+    display: flex;
+    width: var(--rail);
+    flex-direction: column;
+    align-items: center;
+    justify-content: space-between;
+    padding: 1.5rem 0 1.7rem;
+    border-right: 1px solid rgba(255,255,255,0.06);
+    background: rgba(8,7,6,0.95);
+  }
+  .rail-logo img { display: block; width: 3.2rem; height: 3.2rem; object-fit: contain; transition: transform 0.25s ease; }
+  .rail-logo:hover img { transform: scale(1.08); }
+  .rail-nav { display: flex; flex-direction: column; align-items: center; gap: clamp(3.5rem, 10vh, 6rem); }
+  .rail-nav a {
+    font-size: 0.78rem;
+    font-weight: 800;
+    letter-spacing: 0.2em;
+    text-decoration: none;
+    writing-mode: vertical-rl;
+    transform: rotate(180deg);
+    transition: color 0.2s ease, transform 0.2s ease;
+  }
+  .rail-nav a:hover { color: var(--orange); transform: rotate(180deg) scale(1.05); }
+  .socials { display: flex; flex-direction: column; gap: 1.15rem; }
+  .socials a { display: grid; width: 1.5rem; height: 1.5rem; place-items: center; text-decoration: none; transition: color 0.2s, transform 0.2s; }
+  .socials a:hover { color: var(--orange); transform: scale(1.18); }
+  .socials svg { width: 100%; height: 100%; fill: currentColor; }
+
+  .mobile-bar { display: none; }
+  .stage { position: relative; min-height: 100svh; margin-left: var(--rail); overflow: hidden; background: var(--black); }
+  #reflow-swarm {
+    --particle-rest: #ff7630;
+    --particle-scatter: #fff0e8;
+    position: fixed;
+    z-index: 0;
+    inset: 0 0 0 var(--rail);
+    width: calc(100% - var(--rail));
+    height: 100%;
+    pointer-events: none;
+  }
+  .identity {
+    position: absolute;
+    z-index: 2;
+    bottom: clamp(1.5rem, 4vw, 3rem);
+    left: clamp(2rem, 6vw, 6rem);
+    width: min(31rem, calc(100% - 24rem));
+  }
+  .identity h1 { font-size: clamp(1.8rem, 3vw, 2.5rem); font-weight: 850; letter-spacing: -0.045em; filter: drop-shadow(0 0 12px rgba(255,88,0,0.36)); }
+  .identity p { margin-top: 0.9rem; color: #ff9c6a; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.75rem; line-height: 1.7; letter-spacing: 0.05em; }
+  .contact-chip {
+    position: absolute;
+    z-index: 3;
+    right: 0;
+    bottom: clamp(4rem, 8vw, 6rem);
+    width: 20rem;
+    padding: 0.9rem 1.5rem;
+    border: 0;
+    border-radius: 0.65rem 0 0 0.65rem;
+    background: #c84200;
+    color: white;
+    font-size: 0.82rem;
+    font-weight: 720;
+    letter-spacing: 0.06em;
+    cursor: pointer;
+    transition: filter 0.2s ease, background 0.2s ease;
+  }
+  .contact-chip:hover { filter: brightness(1.12); }
+  .contact-chip[data-feedback="success"] { background: linear-gradient(90deg, #fff5ee, #ffb38c, #ff5800); color: #160c08; }
+  .contact-chip[data-feedback="error"] { background: #fff5ee; color: #8c2f00; }
+
+  @media (max-width: 767px) {
+    :root { --rail: 0rem; }
+    .rail { display: none; }
+    .mobile-bar {
+      position: fixed;
+      z-index: 5;
+      inset: 0 0 auto;
+      display: flex;
+      height: 4rem;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0.7rem 1rem;
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+      background: rgba(8,7,6,0.96);
+    }
+    .mobile-bar img { width: 2.5rem; height: 2.5rem; object-fit: contain; }
+    .mobile-bar nav { display: flex; gap: 1rem; }
+    .mobile-bar a { font-size: 0.72rem; font-weight: 800; letter-spacing: 0.11em; text-decoration: none; }
+    .stage { margin-left: 0; padding-top: 4rem; }
+    #reflow-swarm { inset: 4rem 0 0; width: 100%; height: calc(100% - 4rem); }
+    .identity { bottom: 6.5rem; left: 50%; width: 90%; transform: translateX(-50%); text-align: center; }
+    .identity p { max-width: 30rem; margin-inline: auto; }
+    .contact-chip { top: 4.8rem; right: 0; bottom: auto; width: 17.2rem; padding: 0.72rem 1rem; font-size: 0.72rem; }
+  }
+  @media (max-height: 650px) and (max-width: 767px) {
+    .identity { bottom: 2.25rem; }
+    .identity p { max-width: 38ch; font-size: 0.68rem; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .rail-logo img, .rail-nav a, .socials a, .contact-chip { transition: none; }
+  }
+</style>
+</head>
+<body>
+<aside class="rail" aria-label="Primary navigation">
+  <a class="rail-logo" href="/reflow" aria-label="Eliza Research home"><img src="assets/logo_orange_nobg.svg" alt=""></a>
+  <nav class="rail-nav" aria-label="Desktop navigation"><a href="/#eliza">PRODUCTS</a><a href="/#slop">SLOP</a><a href="mailto:hello@elizaresearch.ai">CONTACT</a></nav>
+  <div class="socials">
+    <a href="https://x.com/elizaOS" aria-label="Eliza Research on X"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"></path></svg></a>
+    <a href="https://github.com/elizaOS" aria-label="elizaOS on GitHub"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 0C5.374 0 0 5.373 0 12c0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23A11.5 11.5 0 0 1 12 5.803c1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.652.242 2.873.118 3.176.77.84 1.235 1.91 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576C20.566 21.797 24 17.302 24 12 24 5.373 18.627 0 12 0z"></path></svg></a>
+  </div>
+</aside>
+
+<div class="mobile-bar">
+  <a href="/reflow" aria-label="Eliza Research home"><img src="assets/logo_orange_nobg.svg" alt=""></a>
+  <nav aria-label="Mobile navigation"><a href="/#eliza">PRODUCTS</a><a href="mailto:hello@elizaresearch.ai">CONTACT</a></nav>
+</div>
+
+<main class="stage" data-particle-surface>
+  <canvas id="reflow-swarm" data-particle-logo="assets/logo_white_nobg.svg" data-particle-layout="reflow" aria-hidden="true"></canvas>
+  <section class="identity" aria-labelledby="reflow-title">
+    <h1 id="reflow-title">Eliza Research</h1>
+    <p>Open agents, shared intelligence, and software that answers to the people it serves.</p>
+  </section>
+  <button class="contact-chip" id="contact-chip" type="button" aria-live="polite">HELLO@ELIZARESEARCH.AI</button>
+</main>
+
+<script src="particle-logo.js" defer></script>
+<script>
+  const contact = document.getElementById("contact-chip");
+  let copyFailed = false;
+  contact.addEventListener("click", async () => {
+    if (copyFailed) {
+      location.href = "mailto:hello@elizaresearch.ai";
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText("hello@elizaresearch.ai");
+      contact.dataset.feedback = "success";
+      contact.textContent = "COPIED";
+      setTimeout(() => {
+        delete contact.dataset.feedback;
+        contact.textContent = "HELLO@ELIZARESEARCH.AI";
+      }, 1600);
+    } catch { // error-policy:J4 Clipboard denial becomes an explicit email fallback.
+      copyFailed = true;
+      contact.dataset.feedback = "error";
+      contact.textContent = "COPY FAILED · OPEN EMAIL";
+    }
+  });
+</script>
+</body>
+</html>
