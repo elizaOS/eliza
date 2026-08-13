@@ -392,7 +392,14 @@ export function parseOptimizedPromptArtifact(
 	// retired with its training consumer; accepting it (or any future extra)
 	// here would let an unconsumed producer field cross the signing boundary.
 	for (const key of Object.keys(raw)) {
-		if (!OPTIMIZED_PROMPT_ARTIFACT_KEYS.has(key)) return null;
+		// Preserve compatibility with producers that materialize an optional
+		// retired field as `undefined`; it is omitted from the canonical output.
+		if (
+			!OPTIMIZED_PROMPT_ARTIFACT_KEYS.has(key) &&
+			!(key === "contextConfig" && raw.contextConfig === undefined)
+		) {
+			return null;
+		}
 	}
 	if (!isTask(raw.task)) return null;
 	if (!isOptimizerName(raw.optimizer)) return null;
