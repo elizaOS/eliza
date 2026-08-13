@@ -81,18 +81,28 @@ import {
 const execFileAsync = promisify(execFile);
 
 const DEFAULT_HEARTBEAT_INTERVAL_MS = 60_000;
-const MAX_TIMER_INTERVAL_MS = 2_147_483_647;
+// Keep the recurring-task value portable to runtimes that ultimately schedule
+// with a JavaScript timer, even though current TaskService compares timestamps.
+const MAX_HEARTBEAT_INTERVAL_MS = 2_147_483_647;
 
 export function resolveHeartbeatIntervalMs(raw: string | undefined): number {
   if (raw === undefined || raw.trim() === "") return DEFAULT_HEARTBEAT_INTERVAL_MS;
   const normalized = raw.trim();
   if (!/^\d+$/.test(normalized)) {
-    throw new Error("IMESSAGE_HEARTBEAT_INTERVAL_MS must be a positive integer");
+    throw new IMessageConfigurationError(
+      "IMESSAGE_HEARTBEAT_INTERVAL_MS must be a positive integer",
+      "IMESSAGE_HEARTBEAT_INTERVAL_MS"
+    );
   }
   const intervalMs = Number(normalized);
-  if (!Number.isSafeInteger(intervalMs) || intervalMs <= 0 || intervalMs > MAX_TIMER_INTERVAL_MS) {
-    throw new Error(
-      `IMESSAGE_HEARTBEAT_INTERVAL_MS must be between 1 and ${MAX_TIMER_INTERVAL_MS}`
+  if (
+    !Number.isSafeInteger(intervalMs) ||
+    intervalMs <= 0 ||
+    intervalMs > MAX_HEARTBEAT_INTERVAL_MS
+  ) {
+    throw new IMessageConfigurationError(
+      `IMESSAGE_HEARTBEAT_INTERVAL_MS must be between 1 and ${MAX_HEARTBEAT_INTERVAL_MS}`,
+      "IMESSAGE_HEARTBEAT_INTERVAL_MS"
     );
   }
   return intervalMs;
@@ -1159,6 +1169,13 @@ export class IMessageService extends Service implements IIMessageService {
         ? DEFAULT_POLL_INTERVAL_MS
         : Math.max(0, parsedPollIntervalMs);
 
+    // Resolve all startup configuration before opening chat.db or arming the
+    // polling interval. A rejected setting must not leave a partial service
+    // running after Service.start() rejects.
+    const heartbeatIntervalMs = resolveHeartbeatIntervalMs(
+      getStringSetting("IMESSAGE_HEARTBEAT_INTERVAL_MS", "IMESSAGE_HEARTBEAT_INTERVAL_MS")
+    );
+
     const dmPolicy = getStringSetting(
       "IMESSAGE_DM_POLICY",
       "IMESSAGE_DM_POLICY",
@@ -1186,6 +1203,7 @@ export class IMessageService extends Service implements IIMessageService {
       cliPath,
       dbPath,
       pollIntervalMs,
+      heartbeatIntervalMs,
       dmPolicy,
       groupPolicy,
       allowFrom,
@@ -1903,9 +1921,10 @@ export class IMessageService extends Service implements IIMessageService {
       return;
     }
 
-    const heartbeatIntervalMs = resolveHeartbeatIntervalMs(
-      process.env.IMESSAGE_HEARTBEAT_INTERVAL_MS
-    );
+    if (!this.settings) {
+      throw new IMessageConfigurationError("Settings not loaded");
+    }
+    const { heartbeatIntervalMs } = this.settings;
 
     this.runtime.registerTaskWorker({
       name: "IMESSAGE_HEARTBEAT",
