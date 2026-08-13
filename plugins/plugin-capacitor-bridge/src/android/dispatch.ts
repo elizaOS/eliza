@@ -161,7 +161,10 @@ interface AndroidTaskServiceLike {
 	runDueTasks(options?: { maxWallTimeMs?: number }): Promise<unknown>;
 }
 
-let androidWakeInFlight: Promise<unknown> | null = null;
+// Runtime replacement can overlap an outgoing agent's final wake with the new
+// runtime's first one. Coalesce only within the same runtime so an old service
+// cannot make the replacement report success without running its own due work.
+const androidWakeInFlight = new WeakMap<IAgentRuntime, Promise<unknown>>();
 
 function headerValue(
 	headers: Record<string, string>,
@@ -247,17 +250,21 @@ async function directAndroidWakeRoute(
 	const maxWallTimeMs = Math.max(1_000, parsed.deadlineMs - startedAt);
 	let coalesced = false;
 	try {
-		if (androidWakeInFlight) {
+		const existing = androidWakeInFlight.get(runtime);
+		if (existing) {
 			coalesced = true;
-			await androidWakeInFlight;
+			await existing;
 		} else {
-			androidWakeInFlight = (
+			const wake = (
 				service as typeof service & AndroidTaskServiceLike
 			).runDueTasks({ maxWallTimeMs });
+			androidWakeInFlight.set(runtime, wake);
 			try {
-				await androidWakeInFlight;
+				await wake;
 			} finally {
-				androidWakeInFlight = null;
+				if (androidWakeInFlight.get(runtime) === wake) {
+					androidWakeInFlight.delete(runtime);
+				}
 			}
 		}
 		return jsonResponse(200, {
