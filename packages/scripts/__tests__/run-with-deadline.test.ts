@@ -5,6 +5,8 @@
  */
 import { describe, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
+import { mkdtempSync, rmSync, symlinkSync } from "node:fs";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -27,7 +29,9 @@ function runWrapper(args: string[], timeoutMs = 30_000) {
 describe("parseDeadlineMs", () => {
   test("accepts positive integers through the Node timer ceiling", () => {
     expect(parseDeadlineMs("1")).toBe(1);
+    expect(parseDeadlineMs("00001")).toBe(1);
     expect(parseDeadlineMs("500")).toBe(500);
+    expect(parseDeadlineMs("00500")).toBe(500);
     expect(parseDeadlineMs(String(MAX_TIMER_DELAY_MS))).toBe(
       MAX_TIMER_DELAY_MS,
     );
@@ -47,7 +51,6 @@ describe("parseDeadlineMs", () => {
       " ",
       "NaN",
       "Infinity",
-      "08",
     ]) {
       expect(() => parseDeadlineMs(value)).toThrow(
         `deadline-ms must be a positive decimal integer from 1 to ${MAX_TIMER_DELAY_MS}`,
@@ -97,6 +100,38 @@ describe("run-with-deadline", () => {
       "process.exit(7)",
     ]);
     expect(result.status).toBe(7);
+  });
+
+  test("preserves padded deadlines and exit behavior through a symlink", () => {
+    const directory = mkdtempSync(path.join(tmpdir(), "deadline-link-"));
+    const linkedWrapper = path.join(directory, "with-deadline.mjs");
+    try {
+      symlinkSync(WRAPPER, linkedWrapper);
+      const valid = spawnSync(
+        NODE_BIN,
+        [linkedWrapper, "00050", "--", NODE_BIN, "-e", "process.exit(7)"],
+        { encoding: "utf8", timeout: 30_000 },
+      );
+      expect(valid.status).toBe(7);
+
+      const overflow = spawnSync(
+        NODE_BIN,
+        [
+          linkedWrapper,
+          String(MAX_TIMER_DELAY_MS + 1),
+          "--",
+          NODE_BIN,
+          "-e",
+          "console.log('should-not-run')",
+        ],
+        { encoding: "utf8", timeout: 30_000 },
+      );
+      expect(overflow.status).toBe(2);
+      expect(overflow.stderr).toContain("deadline-ms");
+      expect(overflow.stdout).not.toContain("should-not-run");
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
   });
 
   test("kills a wedged child at the deadline and exits 124", () => {

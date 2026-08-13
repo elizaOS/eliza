@@ -14,7 +14,9 @@
  * usage: node packages/scripts/run-with-deadline.mjs <deadline-ms> -- <command> [args...]
  */
 import { spawn } from "node:child_process";
-import { pathToFileURL } from "node:url";
+import { realpathSync } from "node:fs";
+import { resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
 /** Node clamps `setTimeout` delays above this to 1 ms. */
 export const MAX_TIMER_DELAY_MS = 2_147_483_647;
@@ -25,7 +27,7 @@ export const MAX_TIMER_DELAY_MS = 2_147_483_647;
  * @returns {number}
  */
 export function parseDeadlineMs(raw) {
-  if (typeof raw !== "string" || !/^[1-9]\d*$/.test(raw)) {
+  if (typeof raw !== "string" || !/^\d+$/.test(raw)) {
     throw new Error(
       `deadline-ms must be a positive decimal integer from 1 to ${MAX_TIMER_DELAY_MS}`,
     );
@@ -123,9 +125,19 @@ function main(argv) {
   });
 }
 
-if (
-  process.argv[1] !== undefined &&
-  import.meta.url === pathToFileURL(process.argv[1]).href
-) {
+function isDirectRun(entryPath) {
+  if (!entryPath) return false;
+  try {
+    return (
+      realpathSync(resolve(entryPath)) ===
+      realpathSync(fileURLToPath(import.meta.url))
+    );
+  } catch {
+    // error-policy:J3 an unresolved argv entry is not this module's CLI path
+    return false;
+  }
+}
+
+if (isDirectRun(process.argv[1])) {
   main(process.argv.slice(2));
 }
