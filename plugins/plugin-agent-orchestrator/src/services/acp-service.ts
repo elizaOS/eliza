@@ -468,10 +468,15 @@ function run(argv, opts = {}) {
 // +Infinity, so the wrapper blocks forever instead of timing out), while "2m"
 // silently yields 2 — a 2ms acquire deadline that disables the serialization
 // this lock exists to provide, reopening #14183. Number() rejects trailing
-// garbage outright; anything not a positive safe integer falls back.
+// garbage outright; anything outside the bounded positive-integer range falls
+// back. The upper bound keeps deadline arithmetic and synchronous waits within
+// the same range Node uses for millisecond timers.
+const MAX_LOCK_TIMING_MS = 2147483647;
 function readPositiveIntMs(envKey, fallback) {
   const parsed = Number((process.env[envKey] || "").trim());
-  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : fallback;
+  return Number.isSafeInteger(parsed) && parsed > 0 && parsed <= MAX_LOCK_TIMING_MS
+    ? parsed
+    : fallback;
 }
 const LOCK_POLL_MS = readPositiveIntMs("ACP_COMMIT_LOCK_POLL_MS", 25);
 const LOCK_WAIT_MS = readPositiveIntMs("ACP_COMMIT_LOCK_WAIT_MS", 120000);
@@ -608,8 +613,12 @@ function acquireCommitLock(gitDir) {
       if (staleLock && stealStaleLock(lockPath, staleLock.raw)) {
         continue;
       }
-      if (Date.now() >= deadline) throw new Error("eliza-acp: timed out acquiring commit lock at " + lockPath);
-      sleepSync(LOCK_POLL_MS);
+      const remainingMs = deadline - Date.now();
+      if (remainingMs <= 0) throw new Error("eliza-acp: timed out acquiring commit lock at " + lockPath);
+      // A poll interval is a cadence, not permission to exceed the acquisition
+      // deadline. This also keeps an otherwise valid long poll bounded by a
+      // shorter wait override.
+      sleepSync(Math.min(LOCK_POLL_MS, remainingMs));
       continue;
     }
     fs.writeSync(fd, owner);

@@ -40,33 +40,39 @@ function git(repo: string, args: string[], env?: NodeJS.ProcessEnv): string {
   }).trim();
 }
 
+type WrapperResult = { code: number; stderr: string };
+type WrapperRun = { child: ChildProcess; result: Promise<WrapperResult> };
+
 /** Runs `args` through the session git wrapper on the session env's PATH. */
 function wrapperGit(
   repo: string,
   args: string[],
   env: NodeJS.ProcessEnv,
-): Promise<{ code: number; stderr: string }> {
+): WrapperRun {
   const wrapperDir = env.PATH?.split(path.delimiter)[0];
   if (!wrapperDir) throw new Error("ACP git wrapper directory is missing");
   const wrapper = path.join(wrapperDir, "git");
   const interpreter = readFileSync(wrapper, "utf8").split("\n", 1)[0]?.slice(2);
   if (!interpreter) throw new Error("ACP git wrapper interpreter is missing");
-  return new Promise((resolveRun) => {
-    execFile(
-      interpreter,
-      [wrapper, "-C", repo, ...args],
-      { env },
-      (err, _stdout, stderr) => {
-        const code =
-          err && typeof (err as { code?: unknown }).code === "number"
-            ? ((err as { code: number }).code ?? 1)
-            : err
-              ? 1
-              : 0;
-        resolveRun({ code, stderr: stderr ?? "" });
-      },
-    );
+  let resolveResult: (result: WrapperResult) => void = () => undefined;
+  const result = new Promise<WrapperResult>((resolve) => {
+    resolveResult = resolve;
   });
+  const child = execFile(
+    interpreter,
+    [wrapper, "-C", repo, ...args],
+    { env },
+    (err, _stdout, stderr) => {
+      const code =
+        err && typeof (err as { code?: unknown }).code === "number"
+          ? ((err as { code: number }).code ?? 1)
+          : err
+            ? 1
+            : 0;
+      resolveResult({ code, stderr: stderr ?? "" });
+    },
+  );
+  return { child, result };
 }
 
 /** A live process whose PID keeps the planted lock unstealable. */
@@ -74,6 +80,32 @@ function spawnLiveChild(): ChildProcess {
   return spawn(process.execPath, ["-e", "setInterval(() => {}, 1e9)"], {
     stdio: "ignore",
   });
+}
+
+async function stopChild(child: ChildProcess): Promise<void> {
+  if (child.exitCode !== null || child.signalCode !== null) return;
+  const exited = new Promise<void>((resolve) => {
+    child.once("exit", () => resolve());
+  });
+  child.kill();
+  await exited;
+}
+
+async function settleWithin<T>(
+  promise: Promise<T>,
+  timeoutMs: number,
+): Promise<T | "still-waiting"> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<"still-waiting">((resolve) => {
+        timer = setTimeout(() => resolve("still-waiting"), timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
 }
 
 type GitIndexPreparer = {
@@ -88,9 +120,11 @@ describe("ACP commit-lock env parsing", () => {
   let tmpRoot: string;
   let repo: string;
   let holder: ChildProcess | undefined;
+  let wrapperRuns: WrapperRun[];
 
   beforeEach(() => {
     tmpRoot = mkdtempSync(path.join(os.tmpdir(), "acp-lock-config-"));
+    wrapperRuns = [];
     repo = path.join(tmpRoot, "repo");
     git(tmpRoot, ["init", repo]);
     git(repo, ["config", "user.email", "test@example.com"]);
@@ -100,11 +134,21 @@ describe("ACP commit-lock env parsing", () => {
     git(repo, ["commit", "-m", "base"]);
   });
 
-  afterEach(() => {
-    holder?.kill();
+  afterEach(async () => {
+    for (const run of wrapperRuns) {
+      await stopChild(run.child);
+      await run.result;
+    }
+    if (holder) await stopChild(holder);
     holder = undefined;
     rmSync(tmpRoot, { recursive: true, force: true });
   });
+
+  function startWrapper(args: string[], env: NodeJS.ProcessEnv): WrapperRun {
+    const run = wrapperGit(repo, args, env);
+    wrapperRuns.push(run);
+    return run;
+  }
 
   /** Plants a fresh, live-PID-owned lock so the wrapper must wait, then poll. */
   async function contendedSessionEnv(
@@ -148,7 +192,8 @@ describe("ACP commit-lock env parsing", () => {
     });
 
     const started = Date.now();
-    const result = await wrapperGit(repo, ["commit", "-m", "contended"], env);
+    const result = await startWrapper(["commit", "-m", "contended"], env)
+      .result;
 
     expect(result.code).not.toBe(0);
     expect(result.stderr).toContain("timed out acquiring commit lock");
@@ -164,19 +209,46 @@ describe("ACP commit-lock env parsing", () => {
       ACP_COMMIT_LOCK_WAIT_MS: "2m",
     });
 
-    const settled = wrapperGit(repo, ["commit", "-m", "contended"], env).then(
-      (r) => r,
-      () => undefined,
-    );
-    const outcome = await Promise.race([
-      settled,
-      new Promise<"still-waiting">((r) =>
-        setTimeout(() => r("still-waiting"), 1_500),
-      ),
-    ]);
+    const run = startWrapper(["commit", "-m", "contended"], env);
+    const outcome = await settleWithin(run.result, 1_500);
 
     expect(outcome).toBe("still-waiting");
+    await stopChild(run.child);
+    await run.result;
   }, 30_000);
+
+  it("bounds an accepted long poll by a shorter acquisition deadline", async () => {
+    const env = await contendedSessionEnv({
+      ACP_COMMIT_LOCK_POLL_MS: "2147483647",
+      ACP_COMMIT_LOCK_WAIT_MS: "100",
+    });
+
+    const started = Date.now();
+    const run = startWrapper(["commit", "-m", "contended"], env);
+    const outcome = await settleWithin(run.result, 5_000);
+
+    if (outcome === "still-waiting") {
+      throw new Error(
+        "wrapper exceeded the configured lock acquisition deadline",
+      );
+    }
+    expect(outcome.code).not.toBe(0);
+    expect(outcome.stderr).toContain("timed out acquiring commit lock");
+    expect(Date.now() - started).toBeLessThan(5_000);
+  }, 10_000);
+
+  it("falls back when a timing exceeds the supported millisecond range", async () => {
+    const env = await contendedSessionEnv({
+      ACP_COMMIT_LOCK_POLL_MS: String(Number.MAX_SAFE_INTEGER),
+      ACP_COMMIT_LOCK_WAIT_MS: "100",
+    });
+
+    const result = await startWrapper(["commit", "-m", "contended"], env)
+      .result;
+
+    expect(result.code).not.toBe(0);
+    expect(result.stderr).toContain("timed out acquiring commit lock");
+  }, 10_000);
 
   it("honors valid overrides", async () => {
     const env = await contendedSessionEnv({
@@ -185,7 +257,8 @@ describe("ACP commit-lock env parsing", () => {
     });
 
     const started = Date.now();
-    const result = await wrapperGit(repo, ["commit", "-m", "contended"], env);
+    const result = await startWrapper(["commit", "-m", "contended"], env)
+      .result;
 
     expect(result.stderr).toContain("timed out acquiring commit lock");
     expect(Date.now() - started).toBeLessThan(20_000);
