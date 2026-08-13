@@ -3,9 +3,10 @@
  *
  * `app-client-handoff-success.spec.ts` proves the handoff machinery with a
  * hand-inserted dedicated row; this spec drives the PRODUCT flow instead: the
- * user chats on a shared agent, then `POST /upgrade-tier` mints the dedicated
- * migration target with the identity copied SERVER-side and a real provision
- * job, the mock control-plane boots it to running, and the ui-package upgrade
+ * user chats on a shared agent, reads the server-owned Dedicated quote, then
+ * explicitly confirms that exact quote to mint the migration target with the
+ * identity copied SERVER-side and a real provision job. The mock control-plane
+ * boots it to running, and the ui-package upgrade
  * handoff module (`runSharedToDedicatedUpgradeHandoff` — the exact code the
  * console's "Upgrade to Dedicated" action runs) moves the conversation and
  * deletes the shared bridge only after the confirmed switch.
@@ -53,6 +54,11 @@ import { expect, test } from "../src/helpers/test-fixtures";
 test.use({ stackOptions: { frontend: false, mockLlmEchoContext: true } });
 
 const MODEL = "openai/gpt-4o-mini";
+
+interface DedicatedQuote {
+  action: "activate_dedicated";
+  quoteId: string;
+}
 
 async function setOrgBalance(orgId: string, balance: string): Promise<void> {
   const { organizationsRepository } = await import(
@@ -140,12 +146,22 @@ test.describe("shared→dedicated tier upgrade", () => {
       // $0.50 clears the $0.10 create minimum — the gate the create/provision
       // routes use — so this proves upgrade-tier enforces the STRICTER runway.
       await setOrgBalance(seededUser.organizationId, "0.50");
+      const gatedQuote = await c<{ data?: DedicatedQuote }>(
+        "GET",
+        `/api/v1/eliza/agents/${sharedAgentId}/upgrade-tier`,
+      );
+      expect(gatedQuote.status).toBe(200);
+      expect(gatedQuote.json.data?.action).toBe("activate_dedicated");
+      expect(gatedQuote.json.data?.quoteId).toMatch(/^[a-f0-9]{64}$/);
       const gated = await c<{
         code?: string;
         requiredBalance?: number;
         currentBalance?: number;
         error?: string;
-      }>("POST", `/api/v1/eliza/agents/${sharedAgentId}/upgrade-tier`);
+      }>("POST", `/api/v1/eliza/agents/${sharedAgentId}/upgrade-tier`, {
+        action: gatedQuote.json.data?.action,
+        quoteId: gatedQuote.json.data?.quoteId,
+      });
       expect(gated.status, "runway gate refuses with 402").toBe(402);
       expect(gated.json.code).toBe("insufficient_credits");
       expect(
@@ -168,6 +184,13 @@ test.describe("shared→dedicated tier upgrade", () => {
 
       // ── 5. Funded upgrade: identity copied server-side + provision job. ──
       await setOrgBalance(seededUser.organizationId, "1000.000000");
+      const fundedQuote = await c<{ data?: DedicatedQuote }>(
+        "GET",
+        `/api/v1/eliza/agents/${sharedAgentId}/upgrade-tier`,
+      );
+      expect(fundedQuote.status).toBe(200);
+      expect(fundedQuote.json.data?.action).toBe("activate_dedicated");
+      expect(fundedQuote.json.data?.quoteId).toMatch(/^[a-f0-9]{64}$/);
       const started = await c<{
         success?: boolean;
         created?: boolean;
@@ -178,7 +201,10 @@ test.describe("shared→dedicated tier upgrade", () => {
           executionTier?: string;
         };
         polling?: { endpoint?: string };
-      }>("POST", `/api/v1/eliza/agents/${sharedAgentId}/upgrade-tier`);
+      }>("POST", `/api/v1/eliza/agents/${sharedAgentId}/upgrade-tier`, {
+        action: fundedQuote.json.data?.action,
+        quoteId: fundedQuote.json.data?.quoteId,
+      });
       expect(started.status, "funded upgrade is accepted").toBe(202);
       expect(started.json.created).toBe(true);
       const dedicatedAgentId = started.json.data?.dedicatedAgentId;
@@ -230,7 +256,10 @@ test.describe("shared→dedicated tier upgrade", () => {
         created?: boolean;
         alreadyInProgress?: boolean;
         data?: { dedicatedAgentId?: string };
-      }>("POST", `/api/v1/eliza/agents/${sharedAgentId}/upgrade-tier`);
+      }>("POST", `/api/v1/eliza/agents/${sharedAgentId}/upgrade-tier`, {
+        action: fundedQuote.json.data?.action,
+        quoteId: fundedQuote.json.data?.quoteId,
+      });
       expect([200, 202]).toContain(retried.status);
       expect(retried.json.created).toBe(false);
       expect(retried.json.alreadyInProgress).toBe(true);
@@ -300,7 +329,7 @@ test.describe("shared→dedicated tier upgrade", () => {
       );
       expect(sharedAfter, "shared agent row removed").toBeFalsy();
       const upgradeDeleted = await c<{ error?: string }>(
-        "POST",
+        "GET",
         `/api/v1/eliza/agents/${sharedAgentId}/upgrade-tier`,
       );
       expect(upgradeDeleted.status, "deleted shared id reads as 404").toBe(404);
