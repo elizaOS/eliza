@@ -32,6 +32,7 @@ vi.mock("@elizaos/agent", async (importOriginal) => ({
 import {
   __resetBriefComposersForTests,
   briefAction,
+  mapLifeOverviewItems,
   setBriefComposers,
 } from "../src/actions/brief.js";
 import { LifeOpsRepository } from "../src/lifeops/repository.js";
@@ -134,6 +135,78 @@ describe("BRIEF umbrella action — Daily Operations", () => {
       });
       expect(result.success).toBe(false);
       expect(result.data).toMatchObject({ error: "PERMISSION_DENIED" });
+    });
+  });
+
+  describe("life overview identity mapping", () => {
+    it("preserves occurrence receipt IDs and canonical task/routine classes", () => {
+      expect(
+        mapLifeOverviewItems({
+          occurrences: [
+            {
+              id: "occ-task-1",
+              definitionKind: "task",
+              title: "File the invoice",
+              dueAt: "2026-07-10T17:00:00.000Z",
+            },
+            {
+              id: "occ-routine-1",
+              definitionKind: "routine",
+              title: "Evening stretch",
+              dueAt: null,
+            },
+          ],
+          reminders: [
+            {
+              ownerType: "occurrence",
+              occurrenceId: "occ-task-1",
+              title: "Duplicate delivery projection",
+              dueAt: "2026-07-10T17:00:00.000Z",
+              scheduledFor: "2026-07-10T16:45:00.000Z",
+            },
+            {
+              ownerType: "occurrence",
+              occurrenceId: "occ-reminder-only",
+              title: "Take medication",
+              dueAt: null,
+              scheduledFor: "2026-07-10T20:00:00.000Z",
+            },
+            {
+              ownerType: "calendar_event",
+              occurrenceId: null,
+              title: "Calendar delivery belongs in calendar",
+              dueAt: null,
+              scheduledFor: "2026-07-10T21:00:00.000Z",
+            },
+          ],
+          goals: [{ id: "goal-1", title: "Ship the release" }],
+        }),
+      ).toEqual([
+        {
+          id: "occ-task-1",
+          kind: "todo",
+          title: "File the invoice",
+          dueAt: "2026-07-10T17:00:00.000Z",
+        },
+        {
+          id: "occ-routine-1",
+          kind: "habit",
+          title: "Evening stretch",
+          dueAt: null,
+        },
+        {
+          id: "occ-reminder-only",
+          kind: "reminder",
+          title: "Take medication",
+          dueAt: "2026-07-10T20:00:00.000Z",
+        },
+        {
+          id: "goal-1",
+          kind: "goal",
+          title: "Ship the release",
+          dueAt: null,
+        },
+      ]);
     });
   });
 

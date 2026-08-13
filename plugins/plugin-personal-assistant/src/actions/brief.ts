@@ -151,11 +151,7 @@ interface BriefLifeOpsService {
     requestUrl: URL,
     request: { timeMin: string; timeMax: string },
   ): Promise<{ events?: readonly unknown[] }>;
-  getOverview(): Promise<{
-    occurrences?: readonly unknown[];
-    reminders?: readonly unknown[];
-    goals?: readonly unknown[];
-  }>;
+  getOverview(): Promise<BriefLifeOpsOverview>;
   listOwnerOccurrencesCompletedToday(): Promise<
     ReadonlyArray<{
       id: string;
@@ -164,6 +160,27 @@ interface BriefLifeOpsService {
       dueAt: string | null;
     }>
   >;
+}
+
+interface BriefLifeOpsOverview {
+  occurrences?: readonly {
+    id: string;
+    definitionKind: string;
+    title: string;
+    dueAt: string | null;
+  }[];
+  reminders?: readonly {
+    ownerType: "occurrence" | "calendar_event";
+    occurrenceId: string | null;
+    title: string;
+    dueAt: string | null;
+    scheduledFor: string;
+    metadata?: Readonly<Record<string, unknown>>;
+  }[];
+  goals?: readonly {
+    id: string;
+    title: string;
+  }[];
 }
 
 async function getBriefLifeOpsService(
@@ -220,12 +237,18 @@ function mapMessageRefToBriefingItem(
 }
 
 function normalizeLifeKind(value: unknown): LifeOpsBriefingLifeItem["kind"] {
-  return value === "todo" ||
-    value === "reminder" ||
-    value === "habit" ||
-    value === "goal"
-    ? value
-    : "reminder";
+  switch (value) {
+    case "task":
+    case "todo":
+      return "todo";
+    case "habit":
+    case "routine":
+      return "habit";
+    case "goal":
+      return "goal";
+    default:
+      return "reminder";
+  }
 }
 
 function normalizeMoneyCadence(
@@ -309,35 +332,65 @@ async function loadLifeFromOverview(args: {
   try {
     const service = await getBriefLifeOpsService(args.runtime);
     const overview = await service.getOverview();
-    const records = [
-      ...(Array.isArray(overview.occurrences) ? overview.occurrences : []),
-      ...(Array.isArray(overview.reminders) ? overview.reminders : []),
-      ...(Array.isArray(overview.goals) ? overview.goals : []),
-    ];
-    return records.slice(0, 25).map((item) => {
-      const record = asRecord(item);
-      const metadata = asRecord(record.metadata);
-      return {
-        id: readString(record, "id") ?? "life-item",
-        kind: normalizeLifeKind(
-          readString(record, "kind") ??
-            readString(record, "type") ??
-            readString(record, "subjectType") ??
-            metadata.kind,
-        ),
-        title: readString(record, "title") ?? "Untitled item",
-        dueAt:
-          readString(record, "dueAt") ??
-          readString(record, "scheduledFor") ??
-          null,
-      };
-    });
+    return mapLifeOverviewItems(overview);
   } catch (error) {
     logger.warn(
       `[BRIEF] life load failed: ${error instanceof Error ? error.message : String(error)}`,
     );
     return [];
   }
+}
+
+/** Map overview projections onto the stable resource IDs used by receipts. */
+export function mapLifeOverviewItems(
+  overview: BriefLifeOpsOverview,
+): readonly LifeOpsBriefingLifeItem[] {
+  const items = new Map<string, LifeOpsBriefingLifeItem>();
+  const occurrenceKinds = new Map<string, LifeOpsBriefingLifeItem["kind"]>();
+
+  for (const occurrence of overview.occurrences ?? []) {
+    const id = occurrence.id.trim();
+    if (!id || items.size >= 25) continue;
+    const kind = normalizeLifeKind(occurrence.definitionKind);
+    occurrenceKinds.set(id, kind);
+    items.set(id, {
+      id,
+      kind,
+      title: occurrence.title.trim() || "Untitled item",
+      dueAt: occurrence.dueAt,
+    });
+  }
+
+  for (const reminder of overview.reminders ?? []) {
+    if (items.size >= 25) break;
+    // Calendar reminders use calendar-event identities and are represented by
+    // the calendar section. Owner occurrence reminders must retain the
+    // occurrence ID because completion receipts refer to that resource.
+    if (reminder.ownerType !== "occurrence") continue;
+    const id = reminder.occurrenceId?.trim();
+    if (!id || items.has(id)) continue;
+    items.set(id, {
+      id,
+      kind:
+        occurrenceKinds.get(id) ?? normalizeLifeKind(reminder.metadata?.kind),
+      title: reminder.title.trim() || "Untitled item",
+      dueAt: reminder.dueAt ?? reminder.scheduledFor,
+    });
+  }
+
+  for (const goal of overview.goals ?? []) {
+    if (items.size >= 25) break;
+    const id = goal.id.trim();
+    if (!id || items.has(id)) continue;
+    items.set(id, {
+      id,
+      kind: "goal",
+      title: goal.title.trim() || "Untitled item",
+      dueAt: null,
+    });
+  }
+
+  return [...items.values()];
 }
 
 /**
