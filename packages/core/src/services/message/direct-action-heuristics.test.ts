@@ -560,15 +560,19 @@ describe("inferDirectCurrentRequestCandidateInference kinds", () => {
 		],
 	};
 
-	it("classifies the live hijack message as weak view-capability evidence", () => {
-		// "whats" bypasses the instructional-question guard ("what is" does not)
-		// and "times" singularizes to TIME, matching the "screen-time" tag.
+	it("does NOT classify the live hijack message as view-capability evidence (multiword specificity)", () => {
+		// #17028: "whats 17 times 23?" previously matched VIEWS because the
+		// "screen-time" tag tokenized to [SCREEN, TIME], SCREEN was filtered as
+		// generic, and the remaining TIME matched "times". The multiword-specificity
+		// fix requires the FULL phrase ("screen time") to appear in the message,
+		// so scattered token overlap no longer hijacks the turn. "times" alone is
+		// not "screen time".
 		expect(
 			inferDirectCurrentRequestCandidateInference(
 				[viewsAction],
 				"whats 17 times 23?",
 			),
-		).toEqual({ names: ["VIEWS"], kind: "view-capability" });
+		).toEqual({ names: [], kind: null });
 	});
 
 	it("classifies explicit surface asks and bare-noun navigation as strong evidence", () => {
@@ -750,6 +754,144 @@ describe("inferDirectCurrentRequestCandidateInference kinds", () => {
 				),
 			).toEqual({ names: [], kind: null });
 		});
+	});
+});
+
+// Regression fence for #17028: VIEWS' over-broad capability tags (routines,
+// habits, health, screen-time, tasks, todos) hijacked owner habit/routine
+// mutation turns via incidental token overlap. "25 pushups, 3 times a day"
+// matched the "screen-time" tag because TIME ← "times" and GET ← "get them in"
+// counted as a read operation. The fix gives owner routine mutations
+// PRECEDENCE over view navigation and preserves multiword capability
+// specificity so a scattered single token ("times") is not "screen time".
+describe("owner routine mutation precedence over VIEWS (#17028)", () => {
+	const viewsAction: Pick<Action, "name" | "similes" | "tags"> = {
+		name: "VIEWS",
+		similes: ["VIEW", "SHOW_VIEW", "OPEN_VIEW", "OPEN_SETTINGS"],
+		tags: [
+			"views",
+			"ui",
+			"panel",
+			"app",
+			"layout",
+			"view-capability",
+			"routines",
+			"reminders",
+			"habits",
+			"health",
+			"screen-time",
+			"todos",
+			"tasks",
+			"settings",
+		],
+	};
+	const ownerRoutinesAction: Pick<Action, "name" | "similes" | "tags"> = {
+		name: "OWNER_ROUTINES",
+		similes: [
+			"HABIT",
+			"HABITS",
+			"ROUTINE",
+			"ROUTINES",
+			"SAVE_HABIT",
+			"CREATE_HABIT",
+			"TRACK_HABIT",
+			"CREATE_ROUTINE",
+		],
+		tags: [],
+	};
+
+	it("routes the exact workout transcript to OWNER_ROUTINES, never VIEWS", () => {
+		for (const message of [
+			"25 pushups, 3 times a day, doesnt matter when i just need to get them in",
+			"25 pushups, 3 times a day",
+			"3 times a day, 25 pushups",
+		]) {
+			expect(
+				inferDirectCurrentRequestCandidateInference(
+					[viewsAction, ownerRoutinesAction],
+					message,
+				),
+			).toEqual({ names: ["OWNER_ROUTINES"], kind: "owner-routines" });
+		}
+	});
+
+	it("'N times a day/week' with a concrete activity routes to OWNER_ROUTINES", () => {
+		for (const message of [
+			"remind me to do 50 squats 2 times a week",
+			"track 10 minutes of meditation once a day",
+			"log 5km runs three times a week",
+			"walk 10000 steps every day",
+		]) {
+			expect(
+				inferDirectCurrentRequestCandidateInference(
+					[viewsAction, ownerRoutinesAction],
+					message,
+				),
+			).toEqual({ names: ["OWNER_ROUTINES"], kind: "owner-routines" });
+		}
+	});
+
+	it("domain mutations win over view navigation even with a matching view installed", () => {
+		for (const message of [
+			"track this habit",
+			"schedule pushups daily",
+			"remind me daily to stretch",
+			"create a new morning workout routine",
+			"save this habit",
+		]) {
+			expect(
+				inferDirectCurrentRequestCandidateInference(
+					[viewsAction, ownerRoutinesAction],
+					message,
+				),
+			).toEqual({ names: ["OWNER_ROUTINES"], kind: "owner-routines" });
+		}
+	});
+
+	it("arithmetic with 'times' and 'get time' do not match screen-time", () => {
+		// The multiword-specificity fix: TIME alone (from "times") is not
+		// "screen time" — the full phrase must appear.
+		for (const message of [
+			"whats 17 times 23?",
+			"3 times 4",
+			"get time on the project",
+			"what times are available",
+		]) {
+			expect(
+				inferDirectCurrentRequestCandidateInference(
+					[viewsAction],
+					message,
+				),
+			).toEqual({ names: [], kind: null });
+		}
+	});
+
+	it("explicit navigation still selects VIEWS", () => {
+		for (const message of [
+			"show my screen time",
+			"open the health view",
+			"list views",
+			"show my routines",
+			"go to the habits panel",
+		]) {
+			const result = inferDirectCurrentRequestCandidateInference(
+				[viewsAction, ownerRoutinesAction],
+				message,
+			);
+			expect(result.names).toContain("VIEWS");
+			expect(result.kind).not.toBe("owner-routines");
+		}
+	});
+
+	it("yields no candidate (not VIEWS) when OWNER_ROUTINES is unregistered", () => {
+		// A runtime without OWNER_ROUTINES must fall back to an explicit
+		// unavailable path, not be captured by VIEWS.
+		expect(
+			inferDirectCurrentRequestCandidateInference(
+				[viewsAction],
+				"25 pushups, 3 times a day",
+			),
+		).toEqual({ names: [], kind: null });
 	});
 });
 

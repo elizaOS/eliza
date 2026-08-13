@@ -369,6 +369,7 @@ export type DirectCurrentRequestCandidateKind =
 	| "coding"
 	| "settings-write"
 	| "owner-goals"
+	| "owner-routines"
 	| "view-surface"
 	| "view-navigation"
 	| "view-capability"
@@ -548,6 +549,98 @@ function findOwnerGoalsActionName(
 	return findAvailableActionName(actions, OWNER_GOALS_ACTION_NAMES);
 }
 
+// Owner habit/routine mutation action names, in preference order. Stage-1 models
+// frequently invent HABIT/ROUTINE names; these resolve to OWNER_ROUTINES when it
+// is registered, or yield nothing on a runtime without it — the workout turn
+// then falls back to the planner's own recovery path instead of being hijacked
+// by VIEWS' over-broad capability tags (#17028).
+const OWNER_ROUTINES_ACTION_NAMES = [
+	"OWNER_ROUTINES",
+	"ROUTINES",
+	"ROUTINE",
+	"HABIT",
+	"HABITS",
+	"CREATE_HABIT",
+	"SAVE_HABIT",
+	"TRACK_HABIT",
+	"SET_HABIT",
+	"NEW_HABIT",
+	"DAILY_HABIT",
+	"CREATE_ROUTINE",
+	"RECURRING_TASK",
+] as const;
+
+function findOwnerRoutinesActionName(
+	actions: ReadonlyArray<Pick<Action, "name" | "similes">>,
+): string | undefined {
+	return findAvailableActionName(actions, OWNER_ROUTINES_ACTION_NAMES);
+}
+
+// Detects owner habit/routine MUTATION requests — the workout/tracking turns that
+// VIEWS' over-broad capability tags (`routines`, `habits`, `health`,
+// `screen-time`, `tasks`) otherwise hijack via incidental token overlap (#17028).
+// Demands an explicit mutation verb (create/schedule/track/remind/complete/do)
+// alongside habit/routine phrasing OR a "N times a day/week" frequency clause,
+// so a bare "show my routines" still routes to the views navigation surface.
+// The mutation wins PRECEDENCE over navigation because the user is committing to
+// a recurring action, not browsing a UI.
+function looksLikeOwnerRoutineWriteRequest(text: string): boolean {
+	const normalized = text.toLowerCase();
+	if (!normalized.trim()) return false;
+
+	// A read/navigation-only ask ("show my habits", "what routines do I have",
+	// "open the health view") is not a mutation — leave it to ordinary routing.
+	const isExplicitViewNavigation =
+		/\b(?:show|open|go\s+to|navigate\s+to|switch\s+to|list|view|browse|see)\b/iu.test(
+			normalized,
+		) && !/\b(?:create|track|schedule|remind|add|save|set|start|do)\b/iu.test(
+			normalized,
+		);
+	if (isExplicitViewNavigation) return false;
+
+	const hasMutationVerb =
+		/\b(?:create|schedule|track|remind|complete|add|save|set|start|do|repeat|log|build|practice|keep\s+up)\b/iu.test(
+			normalized,
+		);
+	const hasHabitDomain =
+		/\b(?:habit|habits|routine|routines|workout|workouts|pushup|pushups|push[- ]?up|push[- ]?ups|exercise|exercises|meditate|meditation|gym|run|running|jog|yoga|stretch|walk|walking|habitual|discipline)\b/iu.test(
+			normalized,
+		);
+	// "N times a day/week" is a strong recurring-frequency signal on its own —
+	// the exact workout transcript ("25 pushups, 3 times a day") carries this
+	// clause and a concrete activity, which is unambiguously a habit mutation.
+	const hasFrequencyClause =
+		/\b(?:\d+|one|two|three|four|five|six|seven|eight|nine|ten|once|twice|a\s+couple)\s+times?\s+(?:a|per|each|every)\s+(?:day|week|month|morning|evening|night)\b/iu.test(
+			normalized,
+		) ||
+		/\b(?:every|each|daily|weekly)\s+(?:day|morning|evening|night|week|month)\b/iu.test(
+			normalized,
+		);
+
+	// A frequency clause plus a concrete activity is a habit mutation even
+	// without an explicit mutation verb ("25 pushups, 3 times a day").
+	if (hasFrequencyClause) {
+		const hasConcreteActivity =
+			/\b(?:pushup|pushups|push[- ]?up|push[- ]?ups|situp|situps|sit[- ]?up|sit[- ]?ups|squat|squats|rep|reps|set|sets|lap|laps|mile|miles|km|minute|minutes|hour|hours|walk|run|jog|meditate|stretch|yoga|exercise|workout|gym|repetition|repetitions)\b/iu.test(
+				normalized,
+			) || hasHabitDomain;
+		if (hasConcreteActivity) return true;
+	}
+
+	// Mutation verb + habit/routine domain.
+	if (hasMutationVerb && hasHabitDomain) return true;
+
+	// Explicit habit-save phrasing.
+	if (
+		/\b(?:save|create|add|set|track|start)\b[^\n]{0,80}\b(?:habit|routine)\b/iu.test(
+			normalized,
+		)
+	)
+		return true;
+
+	return false;
+}
+
 export function inferDirectCurrentRequestCandidateActions(
 	actions: ReadonlyArray<Pick<Action, "name" | "similes" | "tags">>,
 	messageText: string,
@@ -585,6 +678,20 @@ export function inferDirectCurrentRequestCandidateInference(
 		const settingsAction = findSettingsWriteActionName(actions);
 		if (settingsAction) {
 			return { names: [settingsAction], kind: "settings-write" };
+		}
+	}
+	// Owner habit/routine mutations must win PRECEDENCE over view navigation.
+	// VIEWS declares `routines`, `habits`, `health`, `screen-time`, `tasks` as
+	// capability tags and says to navigate "when in doubt", so without this leg
+	// a workout turn ("25 pushups, 3 times a day") is hijacked by incidental
+	// token overlap (TIME ← "times") into the view-capability path. Resolved
+	// against a registered OWNER_ROUTINES action; a runtime without it yields no
+	// candidate here so the turn falls back to the planner's own recovery path
+	// instead of being captured by VIEWS (#17028).
+	if (looksLikeOwnerRoutineWriteRequest(messageText)) {
+		const ownerRoutinesAction = findOwnerRoutinesActionName(actions);
+		if (ownerRoutinesAction) {
+			return { names: [ownerRoutinesAction], kind: "owner-routines" };
 		}
 	}
 	const viewShellAction = findViewShellActionName(actions, messageText);
@@ -1025,12 +1132,57 @@ function findViewCapabilityActionName(
 						!VIEW_REQUEST_GENERIC_TOKENS.has(token),
 				);
 			if (targetTokens.length === 0) continue;
-			if (targetTokens.every((token) => messageTokenSet.has(token))) {
+			// PRESERVE MULTIWORD CAPABILITY SPECIFICITY (#17028). A multiword
+			// capability tag like "screen-time" must NOT match when only one of
+			// its tokens appears in the message: tokenizing "screen-time" to
+			// [SCREEN, TIME], then filtering SCREEN as generic, left only [TIME]
+			// — which matched "times" in "25 pushups, 3 times a day" and hijacked
+			// the workout turn into the VIEWS catalog. Require the FULL multiword
+			// capability to be present: either the alias is a single token
+			// (unchanged behavior), or every non-generic target token must be in
+			// the message AND, when there are 2+ tokens, the phrase itself must
+			// appear in the message text as an adjacent phrase. This keeps
+			// "show my screen time" matching (the phrase is there) while blocking
+			// the "times"-only overlap.
+			if (targetTokens.length === 1) {
+				if (messageTokenSet.has(targetTokens[0])) {
+					return viewActionName;
+				}
+				continue;
+			}
+			if (!targetTokens.every((token) => messageTokenSet.has(token))) {
+				continue;
+			}
+			// Multiword capability: require the phrase (normalized to allow a
+			// single separator: hyphen, space, or nothing) to appear in the
+			// message as adjacent words.
+			const aliasPhraseRegex = multiwordCapabilityPhraseRegex(targetTokens);
+			if (aliasPhraseRegex.test(messageText)) {
 				return viewActionName;
 			}
 		}
 	}
 	return undefined;
+}
+
+// Build a case-insensitive regex that matches the multiword capability tokens as
+// an adjacent phrase in the message, allowing a single optional separator
+// (hyphen, space, or underscore) between them. "screen-time" → matches
+// "screen time", "screen-time", "screentime"; does NOT match "3 times a day".
+function multiwordCapabilityPhraseRegex(
+	tokens: readonly string[],
+): RegExp {
+	const parts = tokens.map((token) => escapeRegex(token));
+	// Allow an optional separator between each token: the capability may be
+	// written as "screen time" (space), "screen-time" (hyphen), or "screentime".
+	const body = parts.join("[-\\s_]*");
+	// Match case-insensitively against the original message text (not the
+	// tokenized/uppercased form) so ordinary casing works.
+	return new RegExp(`\\b${body}\\b`, "iu");
+}
+
+function escapeRegex(value: string): string {
+	return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function looksLikeInstructionalViewQuestion(messageText: string): boolean {
