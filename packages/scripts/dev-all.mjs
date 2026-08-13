@@ -72,7 +72,7 @@ export function parsePositiveSafeInteger(value, label) {
     }
     return value;
   }
-  const raw = String(value ?? "").trim();
+  const raw = String(value ?? "");
   if (!/^\d+$/.test(raw)) {
     throw new Error(
       `${label} must be a positive safe-integer decimal (received ${JSON.stringify(String(value ?? ""))})`,
@@ -96,13 +96,10 @@ export function parsePositiveSafeInteger(value, label) {
  */
 export function resolveServiceStartupTimeoutMs(env = process.env) {
   const raw = env.DEV_ALL_SERVICE_STARTUP_TIMEOUT_MS;
-  if (raw === undefined || String(raw).trim() === "") {
+  if (raw === undefined || raw === "") {
     return DEFAULT_SERVICE_STARTUP_TIMEOUT_MS;
   }
-  return parsePositiveSafeInteger(
-    String(raw).trim(),
-    "DEV_ALL_SERVICE_STARTUP_TIMEOUT_MS",
-  );
+  return parsePositiveSafeInteger(raw, "DEV_ALL_SERVICE_STARTUP_TIMEOUT_MS");
 }
 
 const ports = {
@@ -683,6 +680,7 @@ const isDirectRun =
 
 if (isDirectRun) {
   main().catch((error) => {
+    // error-policy:J1 the executable boundary emits a sanitized validation or startup failure and exits non-zero.
     console.error(
       `[dev:all] ${error instanceof Error ? error.message : String(error)}`,
     );
