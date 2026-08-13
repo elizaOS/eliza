@@ -27,6 +27,7 @@ import {
   ElizaError,
   isLocalCodeExecutionAllowed,
   logger,
+  redactSensitiveText,
   stringToUuid,
 } from "@elizaos/core";
 import { readAliasedEnv, resolveServerOnlyPort } from "@elizaos/shared";
@@ -34,6 +35,7 @@ import { normalizeTerminalCommand } from "../utils/terminal-command.ts";
 
 const TERMINAL_ACTION_NAME = "TERMINAL_SHELL";
 const MAX_TERMINAL_DATA_CHARS = 16000;
+const TERMINAL_RELAY_MAX_CHARS = 200;
 
 type TerminalActionParameters = {
   arguments?: JsonValue;
@@ -312,7 +314,24 @@ function terminalUserFacingText(
   if (result.exitCode !== 0) {
     return `The command failed with exit code ${result.exitCode}.`;
   }
-  return cleanStdout || "The command finished successfully with exit code 0.";
+  if (!cleanStdout) {
+    return "The command finished successfully with exit code 0.";
+  }
+  const lineCount = cleanStdout.split("\n").length;
+  if (cleanStdout.length <= TERMINAL_RELAY_MAX_CHARS && lineCount === 1) {
+    return cleanStdout;
+  }
+  return `The command finished (exit 0) with ${lineCount} line${lineCount === 1 ? "" : "s"} of output; ask me about specifics instead of dumping it into chat.`;
+}
+
+function redactCapturedTerminalText(
+  runtime: IAgentRuntime,
+  text: string,
+): string {
+  // Runtime redaction knows the current character's configured secret values;
+  // the pattern pass remains required because lightweight/test runtimes and
+  // runtimes without configured secrets may return the input unchanged.
+  return redactSensitiveText(runtime.redactSecrets(text), { mode: "tools" });
 }
 
 function buildCapturedResponseText(
@@ -446,7 +465,15 @@ export const terminalAction: Action = {
         severity: "fatal",
       });
     }
-    const capturedRun = normalizeCapturedRun(command, responseBody);
+    const rawRun = normalizeCapturedRun(command, responseBody);
+    // Sanitize once before constructing model text, bounded action data, the
+    // user-facing relay, attachments, or persisted attachment memory.
+    const capturedRun: CapturedTerminalRun = {
+      ...rawRun,
+      command: redactCapturedTerminalText(runtime, rawRun.command),
+      stdout: redactCapturedTerminalText(runtime, rawRun.stdout),
+      stderr: redactCapturedTerminalText(runtime, rawRun.stderr),
+    };
     const boundedRun = {
       ...capturedRun,
       stdout: truncateForData(capturedRun.stdout),
@@ -479,7 +506,10 @@ export const terminalAction: Action = {
       text: buildCapturedResponseText(capturedRun, outputAttachment),
       success: succeeded,
       userFacingText,
-      verifiedUserFacing: true,
+      // Output-derived text must remain available as a fallback, but it is not
+      // canonical assistant prose. Only action-owned status sentences retain
+      // the do-not-paraphrase guarantee.
+      verifiedUserFacing: cleanStdout.length === 0,
       effectReceipts: [effectReceipt],
       userFacingEffectReceiptIds: [effectReceipt.receiptId],
       ...(succeeded
