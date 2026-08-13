@@ -64,6 +64,7 @@ import {
   parseCustomActionParams,
   parseSlashCommandInput,
   shouldApplyFinalStreamText,
+  type StreamingTextModification,
 } from "./internal";
 import {
   clearPendingChatTurn,
@@ -379,6 +380,14 @@ export interface UseChatSendDeps {
     v:
       | ConversationMessage[]
       | ((prev: ConversationMessage[]) => ConversationMessage[]),
+  ) => void;
+  /**
+   * Batch-apply in-flight streaming mutations through the reducer without the
+   * per-paint `dedupeGreetings` scan. When undefined, the streaming flush falls
+   * back to `setConversationMessages` (correct but slower).
+   */
+  applyStreamingMessageModifications?: (
+    modifications: readonly StreamingTextModification[],
   ) => void;
   setUnreadConversations: (
     v: Set<string> | ((prev: Set<string>) => Set<string>),

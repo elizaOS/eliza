@@ -1027,6 +1027,7 @@ function AppProviderInner({
     setActiveConversationId,
     setCompanionMessageCutoffTs,
     setConversationMessages,
+    applyStreamingMessageModifications,
     setUnreadConversations,
     setChatReplyTarget,
     resetConversationDraftState,

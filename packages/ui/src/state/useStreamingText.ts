@@ -252,42 +252,149 @@ export function applyStreamingTextModification(
   setMessages: StreamingTextSetter,
   mod: StreamingTextModification,
 ): void {
-  setMessages((prev: ConversationMessage[]) => {
-    if (mod.mode === "drop") {
-      const filtered = prev.filter((message) => message.id !== mod.messageId);
-      return filtered.length === prev.length ? prev : filtered;
-    }
+  applyStreamingTextModifications(setMessages, [mod]);
+}
 
-    let changed = false;
-    let next = prev.map((message) => {
-      if (message.id !== mod.messageId) return message;
-      const patched = computeNextMessage(message, mod);
-      if (patched === null) return message;
-      changed = true;
-      return patched;
-    });
-    // Id-swap dedupe: when terminal reconciliation rebinds a temp bubble to the
-    // persisted server id, a proactive-message WS echo carrying that same
-    // persisted id may have ALREADY appended its own bubble (action-callback
-    // turns persist + broadcast mid-turn, before the SSE `done` arrives). Keep
-    // only the FIRST occurrence — the swapped streamed bubble at the thread
-    // position the user watched (echoes append after it) — and drop the copy.
-    if (
-      (mod.mode === "complete" || mod.mode === "rekey") &&
-      mod.persistedMessageId !== mod.messageId
-    ) {
-      let seen = false;
-      const deduped = next.filter((message) => {
-        if (message.id !== mod.persistedMessageId) return true;
-        if (seen) return false;
-        seen = true;
-        return true;
-      });
-      if (deduped.length !== next.length) {
-        next = deduped;
-        changed = true;
-      }
-    }
-    return changed ? next : prev;
+type NonStructuralStreamingTextModification = Exclude<
+  StreamingTextModification,
+  { mode: "complete" | "rekey" | "drop" }
+>;
+
+/**
+ * True for mutations that only edit one in-flight turn's row content — they
+ * never insert, remove, or swap a message id, so they can take the targeted
+ * fast path that skips the full-array map and duplicate-id reconciliation.
+ */
+function isNonStructuralModification(
+  mod: StreamingTextModification,
+): mod is NonStructuralStreamingTextModification {
+  return mod.mode !== "complete" && mod.mode !== "rekey" && mod.mode !== "drop";
+}
+
+/**
+ * Locate the target message, checking the transcript tail first because the
+ * in-flight assistant turn lives at the end of the thread. Returns -1 when no
+ * row matches.
+ */
+function findTargetMessageIndex(
+  messages: ConversationMessage[],
+  messageId: string,
+): number {
+  const tailIndex = messages.length - 1;
+  if (tailIndex >= 0 && messages[tailIndex]?.id === messageId) {
+    return tailIndex;
+  }
+  for (let index = tailIndex - 1; index >= 0; index -= 1) {
+    if (messages[index]?.id === messageId) return index;
+  }
+  return -1;
+}
+
+/**
+ * Apply one general modification (structural or terminal) to a message array.
+ * Handles drop, complete/rekey id-swap dedupe, and all in-place edits. Returns
+ * the same reference when nothing changed.
+ */
+function applyGeneralModification(
+  prev: ConversationMessage[],
+  mod: StreamingTextModification,
+): ConversationMessage[] {
+  if (mod.mode === "drop") {
+    const filtered = prev.filter((message) => message.id !== mod.messageId);
+    return filtered.length === prev.length ? prev : filtered;
+  }
+
+  let changed = false;
+  let next = prev.map((message) => {
+    if (message.id !== mod.messageId) return message;
+    const patched = computeNextMessage(message, mod);
+    if (patched === null) return message;
+    changed = true;
+    return patched;
   });
+  // Terminal id reconciliation is deliberately a full pass: a proactive WS
+  // echo may already carry the persisted id before the SSE done event arrives.
+  if (
+    (mod.mode === "complete" || mod.mode === "rekey") &&
+    mod.persistedMessageId !== mod.messageId
+  ) {
+    let seen = false;
+    const deduped = next.filter((message) => {
+      if (message.id !== mod.persistedMessageId) return true;
+      if (seen) return false;
+      seen = true;
+      return true;
+    });
+    if (deduped.length !== next.length) {
+      next = deduped;
+      changed = true;
+    }
+  }
+  return changed ? next : prev;
+}
+
+/**
+ * Reduce one or more streaming mutations into a message array.
+ *
+ * When every modification targets the same in-flight turn and none are
+ * structural (complete/rekey/drop), the batch uses a targeted tail-row update:
+ * it locates the target row, folds each mutation onto it, and copies the array
+ * once. This avoids the O(n) full-array `.map()` that `applyGeneralModification`
+ * performs on every token paint (#17342) — with a 120-message transcript the
+ * per-paint map alone accounts for the quantized 4–5 frame stalls the
+ * `live-token-stream` KPI measures.
+ *
+ * Structural and terminal changes keep the complete duplicate-id reconciliation
+ * because they are rare and correctness-sensitive.
+ */
+export function applyStreamingTextModificationsToMessages(
+  prev: ConversationMessage[],
+  modifications: readonly StreamingTextModification[],
+): ConversationMessage[] {
+  if (modifications.length === 0) return prev;
+
+  const messageId = modifications[0]?.messageId;
+  const canUseTargetedPath =
+    messageId !== undefined &&
+    modifications.every(
+      (modification) =>
+        modification.messageId === messageId &&
+        isNonStructuralModification(modification),
+    );
+
+  if (!canUseTargetedPath) {
+    return modifications.reduce(applyGeneralModification, prev);
+  }
+
+  const targetIndex = findTargetMessageIndex(prev, messageId);
+  if (targetIndex < 0) return prev;
+  let target = prev[targetIndex];
+  if (!target) return prev;
+  let changed = false;
+  for (const modification of modifications) {
+    const patched = computeNextMessage(target, modification);
+    if (patched === null) continue;
+    target = patched;
+    changed = true;
+  }
+  if (!changed) return prev;
+
+  const next = prev.slice();
+  next[targetIndex] = target;
+  return next;
+}
+
+/**
+ * Apply multiple streaming mutations through one state update. Batching coalesces
+ * the text + tool-event + status mutations decoded from one transport event into
+ * a single setter call so they paint together.
+ */
+export function applyStreamingTextModifications(
+  setMessages: StreamingTextSetter,
+  modifications: readonly StreamingTextModification[],
+): void {
+  if (modifications.length === 0) return;
+  setMessages((prev: ConversationMessage[]) =>
+    applyStreamingTextModificationsToMessages(prev, modifications),
+  );
 }

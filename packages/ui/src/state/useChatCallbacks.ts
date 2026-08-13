@@ -45,6 +45,7 @@ import { deriveAgentReady } from "./types";
 
 import { useChatLifecycle } from "./useChatLifecycle";
 import { useChatSend } from "./useChatSend";
+import type { UseChatSendDeps } from "./useChatSend";
 
 function hasConversationBootstrapMessage(
   messages: ConversationMessage[],
@@ -410,6 +411,7 @@ export interface UseChatCallbacksDeps {
       | ConversationMessage[]
       | ((prev: ConversationMessage[]) => ConversationMessage[]),
   ) => void;
+  applyStreamingMessageModifications?: UseChatSendDeps["applyStreamingMessageModifications"];
   setUnreadConversations: (
     v: Set<string> | ((prev: Set<string>) => Set<string>),
   ) => void;
