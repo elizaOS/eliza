@@ -1,8 +1,7 @@
 /**
- * Unit and CLI-boundary tests for the login-transfer measurement argument
- * parser. The harness is deterministic here: invalid flags must fail closed
- * before Chromium launches, so subprocess cases never need a renderer or
- * browser.
+ * Unit and CLI-boundary tests for the login-transfer measurement harness. The
+ * deterministic cases verify invalid flags fail before Chromium launches and
+ * broken renderers cannot qualify as performance improvements.
  */
 import { spawnSync } from "node:child_process";
 import { mkdtempSync, rmSync, symlinkSync } from "node:fs";
@@ -10,6 +9,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
+  assertNoRuntimeErrors,
   MAX_TIMER_DELAY_MS,
   parseArgs,
   parseDecimalInt,
@@ -178,6 +178,23 @@ describe("parseArgs --settle-ms / --timeout", () => {
     ]);
     expect(args.settleMs).toBe(MAX_TIMER_DELAY_MS);
     expect(args.timeout).toBe(MAX_TIMER_DELAY_MS);
+  });
+});
+
+describe("assertNoRuntimeErrors", () => {
+  it("accepts a clean renderer", () => {
+    expect(() => assertNoRuntimeErrors([], "desktop")).not.toThrow();
+  });
+
+  it("rejects a crashed renderer with bounded diagnostics", () => {
+    expect(() =>
+      assertNoRuntimeErrors(
+        ["console: React is not defined", "page: mount failed"],
+        "mobile",
+      ),
+    ).toThrow(
+      "mobile /login emitted 2 runtime error(s): console: React is not defined | page: mount failed",
+    );
   });
 });
 

@@ -308,6 +308,21 @@ function sampleTransferInPage() {
   };
 }
 
+/**
+ * Reject a sample whose renderer crashed or logged an error. A smaller broken
+ * page is not a valid performance improvement.
+ *
+ * @param {string[]} runtimeErrors
+ * @param {string} viewportId
+ */
+export function assertNoRuntimeErrors(runtimeErrors, viewportId) {
+  if (runtimeErrors.length === 0) return;
+  const details = runtimeErrors.slice(0, 5).join(" | ");
+  throw new Error(
+    `${viewportId} /login emitted ${runtimeErrors.length} runtime error(s): ${details}`,
+  );
+}
+
 async function measureViewport(browser, { url, settleMs, timeout, viewport }) {
   const context = await browser.newContext({
     viewport: { width: viewport.width, height: viewport.height },
@@ -316,11 +331,21 @@ async function measureViewport(browser, { url, settleMs, timeout, viewport }) {
     ignoreHTTPSErrors: true,
   });
   const page = await context.newPage();
+  const runtimeErrors = [];
+  page.on("console", (message) => {
+    if (message.type() === "error") {
+      runtimeErrors.push(`console: ${message.text()}`);
+    }
+  });
+  page.on("pageerror", (error) => {
+    runtimeErrors.push(`page: ${error.message}`);
+  });
   const started = Date.now();
   try {
     await page.goto(url, { waitUntil: "domcontentloaded", timeout });
     await new Promise((r) => setTimeout(r, settleMs));
     const sample = await page.evaluate(sampleTransferInPage);
+    assertNoRuntimeErrors(runtimeErrors, viewport.id);
     return {
       viewport: viewport.id,
       width: viewport.width,
