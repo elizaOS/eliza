@@ -1515,10 +1515,15 @@ body {
   right: 0;
   left: 0;
   z-index: 2;
-  background: rgb(255 255 255 / 78%);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
-  border-bottom: 1px solid rgb(0 0 0 / 7%);
+  /* iOS 27: no bar, just a soft white fade so scrolling messages dissolve
+     behind the contact header. */
+  background: linear-gradient(
+    to bottom,
+    #ffffff 0%,
+    #ffffff 62%,
+    rgb(255 255 255 / 0%) 100%
+  );
+  padding-bottom: 1.6rem;
 }
 
 .landing-iphone-statusbar {
@@ -1712,19 +1717,14 @@ body {
   overflow: hidden;
 }
 
-.landing-composer-text > span,
-.landing-composer-text {
-  min-width: 0;
-}
-
-/* While typing, overflow clips at the start so the newest characters stay
-   visible, like a real message field. */
-.landing-phone-composer[data-typing="true"] .landing-composer-text {
-  justify-content: flex-end;
-}
-
-.landing-phone-composer[data-typing="false"] .landing-composer-text {
-  justify-content: flex-start;
+/* The inner span never shrinks below the field width, so short text sits
+   left-aligned; once it outgrows the field, the flex-end alignment clips the
+   beginning and keeps the newest characters visible, like a real field. */
+.landing-composer-typed {
+  flex-shrink: 0;
+  min-width: 100%;
+  text-align: left;
+  white-space: nowrap;
 }
 
 .landing-composer-mic {
@@ -1861,6 +1861,105 @@ body {
   color: #1d7a3d;
   font-size: 0.76rem;
   font-weight: 600;
+}
+
+/* iOS-style keyboard shown while the demo user is typing */
+.landing-keyboard {
+  overflow: hidden;
+  max-height: 0;
+  opacity: 0;
+  transition:
+    max-height 320ms cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 200ms ease;
+  background: #d3d6dd;
+}
+
+.landing-keyboard[data-open="true"] {
+  max-height: 14rem;
+  opacity: 1;
+}
+
+.landing-keyboard-inner {
+  display: grid;
+  gap: 0.4rem;
+  padding: 0.5rem 0.25rem 0.4rem;
+}
+
+.landing-kb-suggestions {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  align-items: center;
+  min-height: 1.7rem;
+  color: #111;
+  font-size: 0.82rem;
+  text-align: center;
+}
+
+.landing-kb-suggestions span {
+  overflow: hidden;
+  white-space: nowrap;
+  border-right: 1px solid rgb(0 0 0 / 12%);
+}
+
+.landing-kb-suggestions span:last-child {
+  border-right: 0;
+}
+
+.landing-kb-row {
+  display: flex;
+  justify-content: center;
+  gap: 0.28rem;
+  padding: 0 0.15rem;
+}
+
+.landing-kb-key {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 1 1 0;
+  max-width: 2rem;
+  min-height: 2.1rem;
+  border-radius: 0.32rem;
+  background: #ffffff;
+  box-shadow: 0 1px 0 rgb(0 0 0 / 30%);
+  color: #111;
+  font-size: 0.95rem;
+  transition: background 80ms ease;
+}
+
+.landing-kb-key[data-active="true"] {
+  background: #b8bcc6;
+}
+
+.landing-kb-key--special {
+  max-width: 2.6rem;
+  background: #b3b9c4;
+  font-size: 0.72rem;
+}
+
+.landing-kb-key--space {
+  max-width: none;
+  flex: 5 1 0;
+}
+
+.landing-kb-key--return {
+  max-width: 4.4rem;
+  flex: 2 1 0;
+  background: #b3b9c4;
+  font-size: 0.78rem;
+}
+
+.landing-kb-bottom {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.1rem 1.4rem 0.3rem;
+  color: #50555e;
+}
+
+.landing-kb-bottom svg {
+  width: 1.35rem;
+  height: 1.35rem;
 }
 
 @media (max-width: 640px) {

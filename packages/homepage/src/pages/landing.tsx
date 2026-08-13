@@ -291,7 +291,9 @@ function PhoneMockup() {
     const thread = threadRef.current;
     if (!thread) return;
     thread.scrollTo({ top: thread.scrollHeight, behavior: "smooth" });
-  }, [items, elizaTyping]);
+    // composerText opens/closes the keyboard, which changes the thread's
+    // height; re-pin so the newest message stays visible.
+  }, [items, elizaTyping, composerText]);
 
   return (
     <div
@@ -395,16 +397,18 @@ function PhoneMockup() {
             data-typing={composerText !== ""}
           >
             <span className="landing-composer-text">
-              {composerText === "" ? (
-                t("homepage_eliza.landing.demoComposer", {
-                  defaultValue: "iMessage",
-                })
-              ) : (
-                <>
-                  {composerText}
-                  <span className="landing-composer-caret" />
-                </>
-              )}
+              <span className="landing-composer-typed">
+                {composerText === "" ? (
+                  t("homepage_eliza.landing.demoComposer", {
+                    defaultValue: "iMessage",
+                  })
+                ) : (
+                  <>
+                    {composerText}
+                    <span className="landing-composer-caret" />
+                  </>
+                )}
+              </span>
             </span>
             {composerText === "" ? (
               <svg
@@ -437,7 +441,83 @@ function PhoneMockup() {
             )}
           </div>
         </div>
+        <DemoKeyboard composerText={composerText} />
         <div className="landing-iphone-homebar" />
+      </div>
+    </div>
+  );
+}
+
+const KEYBOARD_ROWS = ["qwertyuiop", "asdfghjkl", "zxcvbnm"] as const;
+
+/**
+ * iOS-style keyboard that slides up while the demo user is typing. The key
+ * matching the most recent character lights briefly, and the prediction bar
+ * echoes the word in progress the way iOS QuickType does.
+ */
+function DemoKeyboard({ composerText }: { composerText: string }) {
+  const open = composerText !== "";
+  const lastChar = composerText.slice(-1).toLowerCase();
+  const lastWord = composerText.split(/\s+/).at(-1) ?? "";
+  return (
+    <div className="landing-keyboard" data-open={open}>
+      <div className="landing-keyboard-inner">
+        <div className="landing-kb-suggestions">
+          <span>{lastWord ? `“${lastWord}”` : ""}</span>
+          <span>{lastWord}</span>
+          <span>{lastWord ? `${lastWord}s` : ""}</span>
+        </div>
+        {KEYBOARD_ROWS.map((row, rowIndex) => (
+          <div key={row} className="landing-kb-row">
+            {rowIndex === 2 ? (
+              <span className="landing-kb-key landing-kb-key--special">⇧</span>
+            ) : null}
+            {row.split("").map((key) => (
+              <span
+                key={key}
+                className="landing-kb-key"
+                data-active={key === lastChar}
+              >
+                {key}
+              </span>
+            ))}
+            {rowIndex === 2 ? (
+              <span className="landing-kb-key landing-kb-key--special">⌫</span>
+            ) : null}
+          </div>
+        ))}
+        <div className="landing-kb-row">
+          <span className="landing-kb-key landing-kb-key--special">123</span>
+          <span
+            className="landing-kb-key landing-kb-key--space"
+            data-active={lastChar === " "}
+          />
+          <span className="landing-kb-key landing-kb-key--return">return</span>
+        </div>
+        <div className="landing-kb-bottom">
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.6"
+            aria-hidden="true"
+          >
+            <circle cx="12" cy="12" r="9" />
+            <path d="M3 12h18M12 3c2.5 2.6 2.5 15.4 0 18M12 3c-2.5 2.6-2.5 15.4 0 18" />
+          </svg>
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.6"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+          >
+            <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" />
+            <path d="M19 11v1a7 7 0 0 1-14 0v-1M12 19v3" />
+          </svg>
+        </div>
       </div>
     </div>
   );
