@@ -698,15 +698,25 @@ jobs:
           # publish or mutate the pre-existing service bridge credential.
           ELIZA_SERVICE_JWT_SECRET: ${{ steps.env.outputs.deploy_environment == 'staging' && secrets.ELIZA_SERVICE_JWT_SECRET || '' }}
           STAGING_SESSION_EXCHANGE_SIGNING_KEY_ID: ${{ steps.env.outputs.deploy_environment == 'staging' && vars.STAGING_SESSION_EXCHANGE_SIGNING_KEY_ID || '' }}
-          STAGING_SESSION_EXCHANGE_ALLOWED_API_KEY_IDS: ${{ steps.env.outputs.deploy_environment == 'staging' && secrets.STAGING_SESSION_EXCHANGE_ALLOWED_API_KEY_IDS || '' }}
-          STAGING_SESSION_EXCHANGE_ALLOWED_USER_IDS: ${{ steps.env.outputs.deploy_environment == 'staging' && secrets.STAGING_SESSION_EXCHANGE_ALLOWED_USER_IDS || '' }}
-          STAGING_SESSION_EXCHANGE_ALLOWED_ORGANIZATION_IDS: ${{ steps.env.outputs.deploy_environment == 'staging' && secrets.STAGING_SESSION_EXCHANGE_ALLOWED_ORGANIZATION_IDS || '' }}
+          STAGING_SESSION_EXCHANGE_ALLOWED_API_KEY_IDS: ${{ steps.env.outputs.deploy_environment == 'staging' && vars.STAGING_SESSION_EXCHANGE_ALLOWED_API_KEY_IDS || '' }}
+          STAGING_SESSION_EXCHANGE_ALLOWED_USER_IDS: ${{ steps.env.outputs.deploy_environment == 'staging' && vars.STAGING_SESSION_EXCHANGE_ALLOWED_USER_IDS || '' }}
+          STAGING_SESSION_EXCHANGE_ALLOWED_ORGANIZATION_IDS: ${{ steps.env.outputs.deploy_environment == 'staging' && vars.STAGING_SESSION_EXCHANGE_ALLOWED_ORGANIZATION_IDS || '' }}
+          # Core Steward/OIDC bindings are preserved when their protected
+          # GitHub source is not yet backfilled, then names-only verified after
+          # deploy. Once configured, this step converges them on every release.
+          STEWARD_API_URL: ${{ secrets.STEWARD_API_URL }}
+          STEWARD_JWT_SECRET: ${{ secrets.STEWARD_JWT_SECRET }}
+          STEWARD_SESSION_SECRET: ${{ secrets.STEWARD_SESSION_SECRET }}
+          STEWARD_REQUEST_SIGNING_SECRET: ${{ secrets.STEWARD_REQUEST_SIGNING_SECRET }}
           # Platform key the Worker forwards as X-Steward-Platform-Key so per-org
           # sandbox Steward tenants provision instead of collapsing onto the
           # shared default tenant (#11461). publish_secret no-ops with a notice
           # while unset, so this is safe before ops adds the GH env secret and
           # keeps it published on every redeploy once they do.
           STEWARD_PLATFORM_KEYS: ${{ secrets.STEWARD_PLATFORM_KEYS }}
+          STEWARD_TENANT_API_KEY: ${{ secrets.STEWARD_TENANT_API_KEY }}
+          OIDC_SIGNING_JWKS: ${{ secrets.OIDC_SIGNING_JWKS }}
+          OIDC_CLIENTS: ${{ secrets.OIDC_CLIENTS }}
           ELIZA_APP_WEBHOOK_GATEWAY_URL: ${{ vars.ELIZA_APP_WEBHOOK_GATEWAY_URL }}
           ELIZA_APP_WEBHOOK_GATEWAY_SECRET: ${{ secrets.ELIZA_APP_WEBHOOK_GATEWAY_SECRET }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -958,7 +968,14 @@ jobs:
             FISH_AUDIO_API_KEY \
             FISH_AUDIO_REFERENCE_ID \
             VOICE_REALTIME_ELIZA_AUTHORIZATION \
+            STEWARD_API_URL \
+            STEWARD_JWT_SECRET \
+            STEWARD_SESSION_SECRET \
+            STEWARD_REQUEST_SIGNING_SECRET \
             STEWARD_PLATFORM_KEYS \
+            STEWARD_TENANT_API_KEY \
+            OIDC_SIGNING_JWKS \
+            OIDC_CLIENTS \
             ELIZA_APP_WEBHOOK_GATEWAY_SECRET
           do
             publish_secret "$name"
@@ -1065,6 +1082,14 @@ jobs:
               "CONTAINERS_SSH_KEY",
               "SECRETS_MASTER_KEY",
               "TUNNEL_HOSTNAME_SIGNING_SECRET",
+              "OIDC_CLIENTS",
+              "OIDC_SIGNING_JWKS",
+              "STEWARD_API_URL",
+              "STEWARD_JWT_SECRET",
+              "STEWARD_SESSION_SECRET",
+              "STEWARD_REQUEST_SIGNING_SECRET",
+              "STEWARD_PLATFORM_KEYS",
+              "STEWARD_TENANT_API_KEY",
             ];
             const missing = required.filter((name) => !present.has(name));
             if (missing.length > 0) {
@@ -1759,6 +1784,14 @@ jobs:
             verify_exact_api_route "$served_url/api"
             verify_json_endpoint "$served_url/.well-known/openid-configuration" discovery
             verify_json_endpoint "$served_url/.well-known/oidc/jwks.json" jwks
+            tenant_id="elizacloud"
+            if [ "$DEPLOY_ENVIRONMENT" = "staging" ]; then
+              tenant_id="elizacloud-staging"
+            fi
+            node packages/cloud/scripts/verify-steward-oauth-callbacks.mjs \
+              --base-url "$served_url" \
+              --callback-url "$served_url/login" \
+              --tenant-id "$tenant_id"
           done
 
       - name: Clean temp checkout
