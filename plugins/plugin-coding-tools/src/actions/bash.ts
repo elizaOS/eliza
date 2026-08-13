@@ -17,6 +17,7 @@ import {
   type HandlerCallback,
   type IAgentRuntime,
   type Memory,
+  redactSensitiveText,
   type State,
 } from "@elizaos/core";
 import { resolveRuntimeExecutionMode } from "@elizaos/shared";
@@ -1771,12 +1772,28 @@ export const shellAction: Action = {
     const head = timedOut
       ? `$ ${command}\n[timeout ${timeout}ms] (cwd=${cwd}, took=${took}ms)`
       : `$ ${command}\n[exit ${result.exitCode}] (cwd=${cwd}, took=${took}ms)`;
-    const streams = formatStreams(result.stdout, result.stderr, {
-      showEmptyStreams: !result.stdout && !result.stderr,
-    });
+    // Secret hygiene: scrub known secret shapes (API keys, tokens, Bearer
+    // headers, PEM private keys, credential env/JSON fields) out of command
+    // output before it reaches the model context, the chat relay, or the
+    // stored result — a command that echoes a real secret must not leak it.
+    const streams = formatStreams(
+      redactSensitiveText(result.stdout, { mode: "tools" }),
+      redactSensitiveText(result.stderr, { mode: "tools" }),
+      {
+        showEmptyStreams: !result.stdout && !result.stderr,
+      },
+    );
     const text = streams.length > 0 ? `${head}\n${streams}` : head;
 
-    if (callback)
+    // Transcript echo is opt-in: the raw `$ cmd / [exit N] / --- stdout ---`
+    // block posting as its own chat message ahead of the planner's answer
+    // reads as machinery noise in consumer-facing channels (the ActionResult
+    // below already carries the full output for the planner, and the final
+    // reply answers the user). Set ELIZA_SHELL_ECHO_TRANSCRIPT=1 to restore
+    // the dev-facing live transcript message.
+    const echoTranscript =
+      process.env.ELIZA_SHELL_ECHO_TRANSCRIPT?.trim().toLowerCase();
+    if (callback && (echoTranscript === "1" || echoTranscript === "true"))
       await callback({
         text: fencePreformatted(capTranscriptForChat(text)),
         source: "coding-tools",
