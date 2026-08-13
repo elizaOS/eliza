@@ -71,6 +71,7 @@ console.log(
   })`,
 );
 
+import path from "node:path";
 /**
  * Combined dev server — starts the elizaOS runtime in headless mode and
  * wires it into the API server so the Control UI has a live agent to talk to.
@@ -94,7 +95,7 @@ import {
   isRoutineDevMemoryHeartbeatEnabled,
   logRoutineDevMemoryHeartbeat,
 } from "./dev-memory-heartbeat.js";
-import { warnStalePluginDists } from "./dev-plugin-dist-staleness";
+import { warnStalePluginDists } from "./dev-plugin-dist-staleness.js";
 
 /**
  * The `./eliza` module is the entire agent-runtime / startEliza graph
@@ -476,30 +477,6 @@ process.once("SIGTERM", () => void shutdown());
 async function main() {
   const startupStart = Date.now();
 
-  // Stale-dist tripwire (#18737): workspace plugins resolve to dist/, so an
-  // edited plugin whose dist was not rebuilt silently runs old code under
-  // this dev server. One loud warning per stale plugin at boot; never
-  // blocks, never changes resolution. Fires only here - production builds
-  // never run this entrypoint.
-  try {
-    const path = await import("node:path");
-    const { existsSync } = await import("node:fs");
-    const pluginsRoot = path.join(process.cwd(), "plugins");
-    if (existsSync(pluginsRoot)) {
-      const sweep = warnStalePluginDists({
-        pluginsRoot,
-        warn: (message) => console.warn(message),
-      });
-      if (sweep.stale.length > 0) {
-        console.warn(
-          `[eliza] ${sweep.stale.length} of ${sweep.scanned} workspace plugin(s) have stale dist/ output; see warnings above.`,
-        );
-      }
-    }
-  } catch {
-    // A staleness heuristic must never affect boot.
-  }
-
   // Register the in-process restart handler so the RESTART_AGENT action
   // (and the POST /api@elizaos/agent/restart endpoint) work without killing the
   // process.
@@ -555,6 +532,31 @@ async function main() {
   // any cross-origin request can reach the agent. The resolved API port is
   // already synced into env above, so the runtime reads the correct port.
   scheduleRuntimeBootstrap(0, "startup");
+
+  // The API is already bound and runtime bootstrap is queued before this
+  // diagnostic performs filesystem work. It follows the same source condition
+  // as the dev child and therefore warns only for entries that still resolve
+  // into dist/, never for plugins already running directly from source.
+  setImmediate(() => {
+    try {
+      const sweep = warnStalePluginDists({
+        pluginsRoot: path.join(process.cwd(), "plugins"),
+        warn: (message) => logger.warn(message),
+      });
+      if (sweep.stale.length > 0) {
+        logger.warn(
+          `[eliza] ${sweep.stale.length} of ${sweep.distLoaded} dist-loaded workspace plugin(s) have stale output; ` +
+            `${sweep.sourceLoaded} source-loaded plugin(s) skipped; see warnings above.`,
+        );
+      }
+    } catch (error) {
+      // error-policy:J4 this optional development diagnostic becomes visibly
+      // unavailable without delaying or changing the already-bound API.
+      logger.warn(
+        `[eliza] Plugin dist staleness check unavailable: ${formatError(error)}`,
+      );
+    }
+  });
 
   // Invalidate cached CORS port set so the new port is allowed.
   const { invalidateCorsAllowedPorts } = await import("../api/server-cors.js");
