@@ -189,19 +189,24 @@ function LogsViewBody() {
   // biome-ignore lint/correctness/useExhaustiveDependencies: filter values are intentional extra deps — loadLogs reads them via refs; we still want the effect to re-run when they change
   useEffect(() => {
     let cancelled = false;
+    let settleTimer: number | undefined;
     void loadLogs().finally(() => {
       if (cancelled) return;
       if (!hydratedRef.current) {
         hydratedRef.current = true;
         setLogHydrationSettling(true);
         setInitialLoading(false);
-        window.setTimeout(() => {
+        settleTimer = window.setTimeout(() => {
           if (!cancelled) setLogHydrationSettling(false);
         }, LOG_HYDRATION_SETTLE_MS);
       }
     });
     return () => {
       cancelled = true;
+      if (settleTimer !== undefined) window.clearTimeout(settleTimer);
+      // If deps change mid-settle, the re-run effect skips the hydratedRef
+      // block entirely — reset here so the settling flag can't stick true.
+      setLogHydrationSettling(false);
     };
   }, [loadLogs, logTagFilter, logLevelFilter, logSourceFilter]);
 

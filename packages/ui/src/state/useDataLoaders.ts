@@ -378,8 +378,9 @@ export function useDataLoaders(deps: DataLoadersDeps) {
       ).slice(0, 4);
 
       // All gap requests are independent — run them in parallel to collapse the
-      // serial round-trips into a single wall-clock wait.
-      const gapResults = await Promise.all(
+      // serial round-trips into a single wall-clock wait. allSettled so one
+      // failed gap replay doesn't discard the others' results.
+      const gapResults = await Promise.allSettled(
         gapReplays.map((request) =>
           client.getAgentEvents({
             runId: request.runId,
@@ -388,9 +389,16 @@ export function useDataLoaders(deps: DataLoadersDeps) {
           }),
         ),
       );
-      for (const gapReplay of gapResults) {
-        if (gapReplay.events.length > 0) {
-          applyAutonomyEventMerge(gapReplay.events);
+      for (const result of gapResults) {
+        if (result.status === "rejected") {
+          logger.debug(
+            { error: result.reason },
+            "[useDataLoaders] autonomy gap replay failed; retried on next poll cycle",
+          );
+          continue;
+        }
+        if (result.value.events.length > 0) {
+          applyAutonomyEventMerge(result.value.events);
         }
       }
 
