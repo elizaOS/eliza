@@ -1436,12 +1436,27 @@ export const shellAction: Action = {
           });
         }
 
-        const poll = backgroundShell.poll({
+        const rawPoll = backgroundShell.poll({
           conversationId,
           handle,
           stdoutOffset: readNonNegativeOffset(options, "stdout_offset"),
           stderrOffset: readNonNegativeOffset(options, "stderr_offset"),
         });
+        // Background output reaches chat and the action result on the same
+        // terms as the foreground streams, so it gets the same source-level
+        // secret scrub. Offsets stay byte-accurate against the session buffer;
+        // only the relayed text is masked.
+        const poll = {
+          ...rawPoll,
+          stdout: {
+            ...rawPoll.stdout,
+            text: redactSensitiveText(rawPoll.stdout.text, { mode: "tools" }),
+          },
+          stderr: {
+            ...rawPoll.stderr,
+            text: redactSensitiveText(rawPoll.stderr.text, { mode: "tools" }),
+          },
+        };
         const text = [
           [
             `Background shell ${handle}`,
@@ -1784,6 +1799,18 @@ export const shellAction: Action = {
       return failureToActionResult({ reason: "internal", message }, { cwd });
     }
 
+    // Secret hygiene, applied at the source: scrub known secret shapes (API
+    // keys, tokens, Bearer headers, PEM private keys, credential env/JSON
+    // fields) out of the captured streams before ANY projection reads them.
+    // The user-facing summaries below (`safeSmallStdoutUserFacingText` and the
+    // crypto/resource/status projections) relay stdout into chat verbatim, so
+    // redacting only the transcript string would still leak through them.
+    result = {
+      ...result,
+      stdout: redactSensitiveText(result.stdout, { mode: "tools" }),
+      stderr: redactSensitiveText(result.stderr, { mode: "tools" }),
+    };
+
     const took = Date.now() - startedAt;
     const timedOut = result.timedOut;
     const signal = result.signal;
@@ -1795,17 +1822,9 @@ export const shellAction: Action = {
     const head = timedOut
       ? `$ ${redactedCommand}\n[timeout ${timeout}ms] (cwd=${cwd}, took=${took}ms)`
       : `$ ${redactedCommand}\n[exit ${result.exitCode}] (cwd=${cwd}, took=${took}ms)`;
-    // Secret hygiene: scrub known secret shapes (API keys, tokens, Bearer
-    // headers, PEM private keys, credential env/JSON fields) out of command
-    // output before it reaches the model context, the chat relay, or the
-    // stored result — a command that echoes a real secret must not leak it.
-    const streams = formatStreams(
-      redactSensitiveText(result.stdout, { mode: "tools" }),
-      redactSensitiveText(result.stderr, { mode: "tools" }),
-      {
-        showEmptyStreams: !result.stdout && !result.stderr,
-      },
-    );
+    const streams = formatStreams(result.stdout, result.stderr, {
+      showEmptyStreams: !result.stdout && !result.stderr,
+    });
     const text = streams.length > 0 ? `${head}\n${streams}` : head;
 
     // Transcript echo is opt-in: the raw `$ cmd / [exit N] / --- stdout ---`

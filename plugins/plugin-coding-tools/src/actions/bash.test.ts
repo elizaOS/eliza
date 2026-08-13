@@ -2302,4 +2302,33 @@ describe("command-line secret hygiene (#18947 P1)", () => {
     expect(surfaces).not.toContain(secret);
     expect(surfaces).toContain("curl");
   });
+
+  // The transcript string is not the only path stdout takes to a channel:
+  // `safeSmallStdoutUserFacingText` relays bounded output from allowlisted
+  // read-only commands verbatim as `userFacingText` with
+  // `verifiedUserFacing: true`. Redaction therefore has to happen on the
+  // captured streams, not on the formatted transcript, or the projection
+  // re-introduces the secret the transcript masked.
+  it("redacts a secret in stdout on the user-facing projection, not just the transcript", async () => {
+    const secret = "sk-proj-CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC";
+    const router = makeShellRouter(async () => ({
+      output: `OPENAI_API_KEY=${secret}\n`,
+      exitCode: 0,
+      timedOut: false,
+    }));
+    const { runtime } = await makeRuntime({ capabilityRouter: router });
+    const result = await shellAction.handler?.(
+      runtime,
+      makeMessage(),
+      undefined,
+      { command: "grep OPENAI_API_KEY .env" },
+    );
+    expect(result.success).toBe(true);
+    expect(result.verifiedUserFacing).toBe(true);
+    expect(result.userFacingText).toBeTruthy();
+    expect(result.userFacingText).not.toContain(secret);
+    expect(result.userFacingText).toContain("OPENAI_API_KEY");
+    const surfaces = `${result.text}\n${JSON.stringify(result.data ?? {})}`;
+    expect(surfaces).not.toContain(secret);
+  });
 });
