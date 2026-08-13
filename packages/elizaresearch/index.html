@@ -247,7 +247,7 @@
   const boids = [];
   let targets = [];
   let linkD2 = 88 * 88;
-  const FADE_MS = 2200, HOLD_MS = 5000, DRIFT_MS = 9000, PULL_MS = 4500;
+  const FADE_MS = 2600, HOLD_MS = 6000, DRIFT_MS = 10000, PULL_MS = 9000;
   const CYCLE_MS = HOLD_MS + DRIFT_MS + PULL_MS;
   let born = 0;                       // timestamp of last formation
   let wasForming = true;
@@ -360,9 +360,9 @@
 
     for (const b of boids) {
       if (forming) {
-        b.vx += (b.tx - b.x) * 0.012;
-        b.vy += (b.ty - b.y) * 0.012;
-        b.vx *= 0.86; b.vy *= 0.86;
+        b.vx += (b.tx - b.x) * 0.0022;
+        b.vy += (b.ty - b.y) * 0.0022;
+        b.vx *= 0.94; b.vy *= 0.94;
       } else {
         // free flight: local flocking in loose pieces
         let ax = 0, ay = 0, cx = 0, cy = 0, n = 0;
