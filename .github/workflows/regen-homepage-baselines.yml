@@ -12,6 +12,10 @@ name: Regenerate Homepage Baselines
 
 on:
   workflow_dispatch:
+  # Temporary branch trigger: workflow_dispatch only works once this file is
+  # on the default branch, so the redesign branch self-triggers on push.
+  push:
+    branches: [shaw/eliza-homepage-redesign-952489]
 
 permissions:
   contents: read
