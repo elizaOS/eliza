@@ -48,14 +48,16 @@ gh workflow run arm-headscale-control-plane.yml --repo elizaOS/eliza --ref main 
 The workflow:
 
 1. writes the committed `acl.hujson` to `/etc/headscale/acl.hujson`;
-2. converges `server_url`, `listen_addr`, metrics, and gRPC addresses in
+2. ensures the package-compatible `headscale` system user and group exist,
+   including on legacy hosts where the binary was installed manually;
+3. converges `server_url`, `listen_addr`, metrics, and gRPC addresses in
    `/etc/headscale/config.yaml`;
-3. ensures Headscale users `agent` and `tunnel` exist;
-4. upserts `HEADSCALE_PUBLIC_URL`, `HEADSCALE_API_URL`,
+4. ensures Headscale users `agent` and `tunnel` exist;
+5. upserts `HEADSCALE_PUBLIC_URL`, `HEADSCALE_API_URL`,
    `HEADSCALE_API_KEY`, `HEADSCALE_USER`, and optional agent-token secrets into
    `/opt/eliza/cloud/.env.local`;
-5. restarts `headscale` and `eliza-provisioning-worker.service`;
-6. fails if local `/health` is not green.
+6. restarts `headscale` and `eliza-provisioning-worker.service`;
+7. fails if local `/health` is not green.
 
 The matching Cloudflare Worker secrets still need to be set through the normal
 Worker secret path. Keep host and Worker values identical for
