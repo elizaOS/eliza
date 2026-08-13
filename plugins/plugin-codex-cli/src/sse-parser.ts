@@ -14,6 +14,13 @@ export async function* parseSSE(stream: ReadableStream<Uint8Array>): AsyncGenera
   let eventId: string | undefined;
   let retry: number | undefined;
   let dataLines: string[] = [];
+  let bomChecked = false;
+
+  const stripLeadingBom = () => {
+    if (bomChecked || buffer.length === 0) return;
+    if (buffer.startsWith("\uFEFF")) buffer = buffer.slice(1);
+    bomChecked = true;
+  };
 
   const emit = (): SSEEvent | null => {
     if (dataLines.length === 0 && eventName === undefined && eventId === undefined && retry === undefined) {
@@ -34,6 +41,7 @@ export async function* parseSSE(stream: ReadableStream<Uint8Array>): AsyncGenera
       const { value, done } = await reader.read();
       if (done) break;
       buffer += decoder.decode(value, { stream: true });
+      stripLeadingBom();
       while (true) {
         const nl = buffer.search(/\r\n|\r|\n/);
         if (nl === -1) break;
@@ -64,6 +72,7 @@ export async function* parseSSE(stream: ReadableStream<Uint8Array>): AsyncGenera
     }
 
     buffer += decoder.decode();
+    stripLeadingBom();
     if (buffer.length > 0) {
       for (const line of buffer.split(/\r\n|\r|\n/)) {
         if (line === "") {

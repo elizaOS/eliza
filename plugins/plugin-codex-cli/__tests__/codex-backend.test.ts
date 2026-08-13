@@ -81,6 +81,32 @@ describe("SSE parser", () => {
       },
     ]);
   });
+
+  it("strips one leading UTF-8 BOM even when its bytes are split across chunks", async () => {
+    const chunks = [
+      new Uint8Array([0xef]),
+      new Uint8Array([0xbb, 0xbf, ...new TextEncoder().encode("data: first\n\n")]),
+    ];
+    const stream = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        const chunk = chunks.shift();
+        if (chunk) controller.enqueue(chunk);
+        else controller.close();
+      },
+    });
+
+    const events = [];
+    for await (const event of parseSSE(stream)) events.push(event);
+    expect(events).toEqual([{ data: "first" }]);
+  });
+
+  it("preserves later BOM characters as event data", async () => {
+    const stream = new Response("data: before\uFEFFafter\n\n").body;
+    expect(stream).toBeTruthy();
+    const events = [];
+    for await (const event of parseSSE(stream as ReadableStream<Uint8Array>)) events.push(event);
+    expect(events).toEqual([{ data: "before\uFEFFafter" }]);
+  });
 });
 
 describe("tool translation", () => {
