@@ -579,7 +579,7 @@ export default function LandingPage() {
             defaultValue: "Eliza",
           })}
         >
-          Eliza
+          <img src="/eliza-logotext.svg" alt="Eliza" />
         </a>
         <a
           className="landing-cta landing-cta--white landing-header-cta"
