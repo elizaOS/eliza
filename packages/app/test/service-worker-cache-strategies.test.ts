@@ -6,6 +6,8 @@
  *
  * Covers the cold-start wins added for the installed iOS PWA:
  *  - navigation preload is enabled on activate (feature-detected)
+ *  - first install claims but never navigates an in-flight auth bridge
+ *  - replacement workers navigate existing windows to the fresh renderer
  *  - a navigation consumes event.preloadResponse instead of a second fetch
  *  - immutable /assets/<hash>.{js,css,...} are served cache-first and cached
  *  - the immutable asset cache is bounded (oldest entries evicted past the cap)
@@ -67,17 +69,23 @@ type Harness = {
   dispatch: (type: string, event: unknown) => void;
   caches: Map<string, FakeCache>;
   navPreloadEnabled: () => boolean;
+  clientClaims: () => number;
+  clientNavigations: () => string[];
   fetchCalls: () => string[];
 };
 
 function loadServiceWorker(options?: {
   navigationPreload?: boolean;
+  previousActiveWorker?: boolean;
   preexistingCaches?: string[];
+  clientUrls?: string[];
   fetchImpl?: (url: string) => Response;
 }): Harness {
   const {
     navigationPreload = true,
+    previousActiveWorker = false,
     preexistingCaches = [],
+    clientUrls = [],
     fetchImpl,
   } = options ?? {};
 
@@ -88,13 +96,17 @@ function loadServiceWorker(options?: {
   let navPreloadOn = false;
   const registration = navigationPreload
     ? {
+        active: previousActiveWorker ? {} : null,
         navigationPreload: {
           enable: async () => {
             navPreloadOn = true;
           },
         },
       }
-    : {};
+    : { active: previousActiveWorker ? {} : null };
+
+  let clientClaims = 0;
+  const clientNavigations: string[] = [];
 
   const self = {
     location: { origin: "https://app.example.test" },
@@ -104,8 +116,19 @@ function loadServiceWorker(options?: {
     },
     skipWaiting: () => Promise.resolve(),
     clients: {
-      claim: () => Promise.resolve(),
-      matchAll: () => Promise.resolve([]),
+      claim: () => {
+        clientClaims += 1;
+        return Promise.resolve();
+      },
+      matchAll: () =>
+        Promise.resolve(
+          clientUrls.map((url) => ({
+            url,
+            navigate: async (target: string) => {
+              clientNavigations.push(target);
+            },
+          })),
+        ),
     },
   };
 
@@ -145,6 +168,8 @@ function loadServiceWorker(options?: {
     },
     caches: cacheStore,
     navPreloadEnabled: () => navPreloadOn,
+    clientClaims: () => clientClaims,
+    clientNavigations: () => clientNavigations,
     fetchCalls: () => fetchCalls,
   };
 }
@@ -213,6 +238,41 @@ describe("service worker navigation preload", () => {
     expect(worker.caches.has("stale-cache-v0")).toBe(false);
     expect(worker.caches.has("elizaos-shell-v5")).toBe(false);
     expect(worker.caches.has(SHELL_CACHE_NAME)).toBe(true);
+  });
+
+  it("claims clients without navigating an in-flight auth bridge on first install", async () => {
+    const bridgeUrl =
+      "https://app.example.test/auth/bridge?state=state&challenge=challenge";
+    const worker = loadServiceWorker({ clientUrls: [bridgeUrl] });
+    const event = makeActivateEvent();
+
+    worker.dispatch("activate", event);
+    await Promise.all(event._work);
+
+    expect(worker.clientClaims()).toBe(1);
+    expect(worker.clientNavigations()).toEqual([]);
+  });
+
+  it("refreshes ordinary windows but preserves auth flows during an update", async () => {
+    const urls = [
+      "https://app.example.test/chat",
+      "https://app.example.test/login?code=oauth-code",
+      "https://app.example.test/auth/bridge?state=state",
+      "https://app.example.test/oidc/continue?rid=eoq_request",
+    ];
+    const worker = loadServiceWorker({
+      previousActiveWorker: true,
+      clientUrls: urls,
+    });
+    const event = makeActivateEvent();
+
+    worker.dispatch("activate", event);
+    await Promise.all(event._work);
+
+    expect(worker.clientClaims()).toBe(1);
+    expect(worker.clientNavigations()).toEqual([
+      "https://app.example.test/chat",
+    ]);
   });
 
   it("consumes the navigation preload response instead of issuing a second fetch", async () => {

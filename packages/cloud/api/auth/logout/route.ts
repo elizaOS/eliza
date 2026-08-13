@@ -8,6 +8,7 @@ import { Hono } from "hono";
 import { deleteCookie, getCookie } from "hono/cookie";
 import { getAuditDispatcher } from "@/api-app/services/audit-dispatcher-singleton";
 import { invalidateSessionCaches } from "@/lib/auth";
+import { checkElizaMutatingRequestOrigin } from "@/lib/auth/browser-origin-policy";
 import { cookieDomainForHost } from "@/lib/auth/cookie-domain";
 import { verifyStewardTokenCached } from "@/lib/auth/steward-client";
 import { stewardCookieNames } from "@/lib/auth/steward-cookies";
@@ -26,6 +27,20 @@ const app = new Hono<AppEnv>();
 app.use("*", rateLimit(RateLimitPresets.STANDARD));
 
 app.post("/", async (c) => {
+  const originCheck = checkElizaMutatingRequestOrigin(
+    c.req,
+    c.env.NODE_ENV === "production",
+  );
+  if (!originCheck.ok) {
+    logger.warn("[Logout] Rejected cross-origin POST", {
+      detail: originCheck.reason,
+    });
+    return c.json(
+      { error: "Forbidden", code: "forbidden_origin" as const },
+      403,
+    );
+  }
+
   const cookieNames = stewardCookieNames(c.env.ENVIRONMENT);
   // Each environment reads only its own scoped cookie. The bounded read-only
   // migration window that let non-production fall back to the historical

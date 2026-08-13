@@ -1,7 +1,7 @@
 /**
- * Logout cookie clearing keeps production and staging sessions isolated on the
- * shared elizacloud.ai parent domain. Non-production must clear its suffixed
- * Steward cookies without deleting production's historical unsuffixed names.
+ * Logout enforces the Steward mutation origin policy while keeping production
+ * and staging cookie names isolated. The harness mocks teardown collaborators
+ * but exercises the real route and cookie headers.
  */
 
 import { describe, expect, mock, test } from "bun:test";
@@ -61,6 +61,7 @@ describe("POST /api/auth/logout cookie clearing", () => {
         method: "POST",
         headers: {
           host: "api-staging.elizacloud.ai",
+          origin: "https://staging.eliza.app",
           cookie:
             "steward-token=prod-token; steward-refresh-token=prod-refresh",
         },
@@ -90,6 +91,7 @@ describe("POST /api/auth/logout cookie clearing", () => {
         method: "POST",
         headers: {
           host: "api-staging.elizacloud.ai",
+          origin: "https://staging.eliza.app",
           cookie:
             "steward-token=prod-token; steward-refresh-token=prod-refresh; steward-token-staging=staging-token; steward-refresh-token-staging=staging-refresh",
         },
@@ -114,6 +116,7 @@ describe("POST /api/auth/logout cookie clearing", () => {
         method: "POST",
         headers: {
           host: "api.elizacloud.ai",
+          origin: "https://eliza.app",
           cookie:
             "steward-token=prod-token; steward-refresh-token=prod-refresh",
         },
@@ -126,5 +129,56 @@ describe("POST /api/auth/logout cookie clearing", () => {
     expect(cleared).toContain("steward-token");
     expect(cleared).toContain("steward-refresh-token");
     expect(cleared).toContain("steward-authed");
+  });
+
+  test("same-site user-content origin cannot force a production logout", async () => {
+    getCurrentUserMock.mockClear();
+    endAllUserSessionsMock.mockClear();
+
+    const res = await app.request(
+      "/",
+      {
+        method: "POST",
+        headers: {
+          host: "api.eliza.app",
+          origin: "https://attacker.cloud.eliza.app",
+          cookie:
+            "steward-token=prod-token; steward-refresh-token=prod-refresh",
+        },
+      },
+      { ENVIRONMENT: "production", NODE_ENV: "production" },
+    );
+
+    expect(res.status).toBe(403);
+    expect((await res.json()) as unknown).toEqual({
+      error: "Forbidden",
+      code: "forbidden_origin",
+    });
+    expect(res.headers.getSetCookie()).toEqual([]);
+    expect(getCurrentUserMock).not.toHaveBeenCalled();
+    expect(endAllUserSessionsMock).not.toHaveBeenCalled();
+  });
+
+  test("missing browser origin cannot mutate the session", async () => {
+    getCurrentUserMock.mockClear();
+    endAllUserSessionsMock.mockClear();
+
+    const res = await app.request(
+      "/",
+      {
+        method: "POST",
+        headers: {
+          host: "api.eliza.app",
+          cookie:
+            "steward-token=prod-token; steward-refresh-token=prod-refresh",
+        },
+      },
+      { ENVIRONMENT: "production", NODE_ENV: "production" },
+    );
+
+    expect(res.status).toBe(403);
+    expect(res.headers.getSetCookie()).toEqual([]);
+    expect(getCurrentUserMock).not.toHaveBeenCalled();
+    expect(endAllUserSessionsMock).not.toHaveBeenCalled();
   });
 });

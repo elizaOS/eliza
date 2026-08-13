@@ -61,6 +61,17 @@ const cloudWorkerSecretNames = [
   "TUNNEL_HOSTNAME_SIGNING_SECRET",
 ] as const;
 
+const requiredAuthWorkerSecretNames = [
+  "OIDC_CLIENTS",
+  "OIDC_SIGNING_JWKS",
+  "STEWARD_API_URL",
+  "STEWARD_JWT_SECRET",
+  "STEWARD_SESSION_SECRET",
+  "STEWARD_REQUEST_SIGNING_SECRET",
+  "STEWARD_PLATFORM_KEYS",
+  "STEWARD_TENANT_API_KEY",
+] as const;
+
 describe("canonical cloud deployment environment contract", () => {
   test("derives Terraform deploy branches from the selected environment", () => {
     const deployBranch = infra.jobs?.terraform?.env?.TF_VAR_deploy_branch;
@@ -235,6 +246,19 @@ describe("canonical cloud deployment environment contract", () => {
       'echo "::notice::$name is not configured; skipping"',
     );
     expect(publish.run).not.toContain("required_worker_provisioning_secrets=(");
+    for (const name of requiredAuthWorkerSecretNames) {
+      expect(publish.env?.[name]).toContain("secrets.");
+      expect(publish.run).toContain(`\n  ${name} \\\n`);
+    }
+    expect(publish.env?.STAGING_SESSION_EXCHANGE_ALLOWED_API_KEY_IDS).toContain(
+      "vars.STAGING_SESSION_EXCHANGE_ALLOWED_API_KEY_IDS",
+    );
+    expect(publish.env?.STAGING_SESSION_EXCHANGE_ALLOWED_USER_IDS).toContain(
+      "vars.STAGING_SESSION_EXCHANGE_ALLOWED_USER_IDS",
+    );
+    expect(
+      publish.env?.STAGING_SESSION_EXCHANGE_ALLOWED_ORGANIZATION_IDS,
+    ).toContain("vars.STAGING_SESSION_EXCHANGE_ALLOWED_ORGANIZATION_IDS");
   });
 
   test("verifies required Worker binding names after deploy without reading values", () => {
@@ -257,6 +281,9 @@ describe("canonical cloud deployment environment contract", () => {
     expect(inventory?.run).toContain("wrangler@4.100.0 secret list");
     expect(inventory?.run).toContain("--format json");
     for (const name of cloudWorkerSecretNames) {
+      expect(inventory?.run).toContain(`\n    "${name}",\n`);
+    }
+    for (const name of requiredAuthWorkerSecretNames) {
       expect(inventory?.run).toContain(`\n    "${name}",\n`);
     }
     expect(inventory?.run).toContain(
@@ -299,6 +326,11 @@ describe("canonical cloud deployment environment contract", () => {
     expect(verify.run).toContain(
       'verify_json_endpoint "$served_url/.well-known/oidc/jwks.json" jwks',
     );
+    expect(verify.run).toContain(
+      "node packages/cloud/scripts/verify-steward-oauth-callbacks.mjs",
+    );
+    expect(verify.run).toContain('--callback-url "$served_url/login"');
+    expect(verify.run).toContain('tenant_id="elizacloud-staging"');
     expect(verify.run).toContain("OIDC issuer mismatch");
     expect(cloudSource).not.toContain(
       "pages project create eliza-app --production-branch=main 2>/dev/null || true",
