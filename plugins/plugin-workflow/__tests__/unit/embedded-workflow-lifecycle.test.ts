@@ -1,0 +1,115 @@
+/** Exercises native workflow persistence, scheduling, revision restore, and deletion against real SQL. */
+
+import { afterEach, describe, expect, test } from 'bun:test';
+import { PGlite } from '@electric-sql/pglite';
+import type { IAgentRuntime, Task, UUID } from '@elizaos/core';
+import { drizzle } from 'drizzle-orm/pglite';
+import * as schema from '../../src/db/schema';
+import { EmbeddedWorkflowService } from '../../src/services/embedded-workflow-service';
+import type { WorkflowDefinition } from '../../src/types/index';
+
+const clients: PGlite[] = [];
+
+function definition(name: string): WorkflowDefinition {
+  return {
+    name,
+    description: `${name} description`,
+    language: 'tsx',
+    source: `import { createSmithers } from 'smthrs/create';
+const api = createSmithers({}, { dbPath: process.env.ELIZA_SMTHRS_DB_PATH });
+export default api.smithers(() => api.Workflow({ name: '${name}' }));`,
+    active: true,
+    schedule: { cron: '0 * * * *', timezone: 'UTC', enabled: true },
+    steps: [{ id: 'run', label: 'Run', kind: 'task', agent: 'elizaOS' }],
+  };
+}
+
+async function harness() {
+  const client = new PGlite();
+  clients.push(client);
+  await client.exec(`
+    CREATE SCHEMA workflow;
+    CREATE TABLE workflow.embedded_workflows (
+      agent_id text NOT NULL,
+      id text NOT NULL,
+      name text NOT NULL,
+      active boolean NOT NULL DEFAULT false,
+      workflow jsonb NOT NULL,
+      created_at text NOT NULL,
+      updated_at text NOT NULL,
+      version_id text NOT NULL,
+      PRIMARY KEY (agent_id, id)
+    );
+    CREATE TABLE workflow.workflow_revisions (
+      agent_id text NOT NULL,
+      id text NOT NULL,
+      workflow_id text NOT NULL,
+      version_id text NOT NULL,
+      name text NOT NULL,
+      active boolean NOT NULL DEFAULT false,
+      workflow jsonb NOT NULL,
+      created_at text NOT NULL,
+      updated_at text NOT NULL,
+      captured_at text NOT NULL,
+      operation text NOT NULL,
+      PRIMARY KEY (agent_id, id),
+      UNIQUE (agent_id, workflow_id, version_id)
+    );
+  `);
+  const tasks: Task[] = [];
+  const runtime = {
+    agentId: '00000000-0000-4000-8000-000000000001' as UUID,
+    db: drizzle(client, { schema }),
+    getTasks: async () => tasks,
+    createTask: async (task: Task) => {
+      tasks.push({
+        ...task,
+        id: `00000000-0000-4000-8000-${String(tasks.length + 1).padStart(12, '0')}` as UUID,
+      });
+      return tasks.at(-1)?.id;
+    },
+    deleteTask: async (id: UUID) => {
+      const index = tasks.findIndex((task) => task.id === id);
+      if (index >= 0) tasks.splice(index, 1);
+    },
+  } as unknown as IAgentRuntime;
+  return { service: await EmbeddedWorkflowService.start(runtime), tasks };
+}
+
+afterEach(async () => {
+  await Promise.all(clients.splice(0).map((client) => client.close()));
+});
+
+describe('embedded native workflow lifecycle', () => {
+  test('creates, schedules, revises, restores, and deletes a Smithers workflow', async () => {
+    const { service, tasks } = await harness();
+    const created = await service.createWorkflow({ ...definition('Original'), id: 'review' });
+    expect((await service.listWorkflows()).data).toHaveLength(1);
+    expect(tasks).toHaveLength(1);
+
+    const updated = await service.updateWorkflow('review', {
+      ...created,
+      name: 'Revised',
+      schedule: { cron: '0 * * * *', timezone: 'UTC', enabled: false },
+    });
+    expect(updated.versionId).not.toBe(created.versionId);
+    expect(tasks).toHaveLength(0);
+    expect((await service.listWorkflowRevisions('review')).data[0]).toMatchObject({
+      versionId: created.versionId,
+      operation: 'update',
+    });
+
+    const restored = await service.restoreWorkflowRevision('review', created.versionId);
+    expect(restored.name).toBe('Original');
+    expect(tasks).toHaveLength(1);
+    expect((await service.listWorkflowRevisions('review')).data[0]).toMatchObject({
+      versionId: updated.versionId,
+      operation: 'restore',
+    });
+
+    await service.deleteWorkflow('review');
+    expect((await service.listWorkflows()).data).toHaveLength(0);
+    expect(tasks).toHaveLength(0);
+    expect((await service.listWorkflowRevisions('review')).data[0].operation).toBe('delete');
+  });
+});

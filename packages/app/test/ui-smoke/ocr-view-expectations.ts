@@ -135,6 +135,9 @@ export const VIEW_OCR_POLICIES = {
       "New",
     ],
   }),
+  "builtin-workflow-studio": expected({
+    requireAny: ["New workflow", "Run", "Build", "Schedule", "smthrs"],
+  }),
   "builtin-inventory": expected({
     requireAny: ["Wallet", "USDC", "Tokens", "Perps"],
   }),
