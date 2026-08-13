@@ -16,7 +16,7 @@ disposable identity row to leak or clean separately.
 
 ## Safety and pass contract
 
-- Target is hard-pinned to `https://api-staging.elizacloud.ai`; production is
+- Target is hard-pinned to `https://api-staging.eliza.app`; production is
   refused even when a valid credential is supplied.
 - Fixed workflow concurrency plus a prefix scan allows at most one canary. A
   leftover canary makes the next run red before another create can spend.

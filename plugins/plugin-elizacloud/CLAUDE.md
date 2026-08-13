@@ -207,13 +207,13 @@ All settings are optional except `ELIZAOS_CLOUD_API_KEY` (required for any authe
 
 | Var | Description |
 |---|---|
-| `ELIZAOS_CLOUD_API_KEY` | API key (`eliza_xxxxx`). Get from https://www.elizacloud.ai/dashboard/api-keys |
+| `ELIZAOS_CLOUD_API_KEY` | API key (`eliza_xxxxx`). Manage it inside Eliza at https://cloud.eliza.app/cloud/api-keys |
 
 ### Optional — core
 
 | Var | Default |
 |---|---|
-| `ELIZAOS_CLOUD_BASE_URL` | `https://elizacloud.ai/api/v1` |
+| `ELIZAOS_CLOUD_BASE_URL` | `https://api.eliza.app/api/v1` |
 | `ELIZAOS_CLOUD_ENABLED` | `false` — when true, enables container provisioning, device auth, bridge, and backup services |
 | `ELIZAOS_CLOUD_EXPERIMENTAL_TELEMETRY` | `false` |
 | `ELIZAOS_CLOUD_APP_VERSION` | `2.0.0-beta.0` |

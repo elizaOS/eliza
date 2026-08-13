@@ -1,6 +1,6 @@
 /**
  * App-mode: hostname detection and entry-routing decisions for the Eliza app
- * hosts (app.elizacloud.ai / app-staging.elizacloud.ai). The same packages/app
+ * hosts (cloud.eliza.app / cloud-staging.eliza.app). The same packages/app
  * bundle serves the apex console AND the app hosts; on the app hosts the
  * same-origin chat app IS the product, so entry always lands there (the
  * "chat floor"): signed-in visitors get the chat app immediately, and the only
@@ -9,7 +9,7 @@
  *
  * Entry deliberately performs NO pairing redirect into a per-agent web UI.
  * The previous entry gate minted a one-time pairing token (60s TTL) and
- * full-page-redirected into `<agentId>.elizacloud.ai/pair?token=…` whenever the
+ * full-page-redirected into `<agentId>.cloud.eliza.app/pair?token=…` whenever the
  * org had a running dedicated agent. A dedicated container that is cold
  * starting (or `running` in the DB but not yet serving) cannot consume the
  * token inside its TTL, so entry dead-ended on the agent's "Sign-in link
@@ -31,25 +31,33 @@ import type {
   AgentSandboxStatus,
   IsoDateString,
 } from "@elizaos/cloud-shared/lib/types/cloud-api";
+import {
+  classifyElizaHostname,
+  ELIZA_DOMAIN_CONTRACTS,
+  LEGACY_ELIZA_DOMAIN_CONTRACTS,
+} from "@elizaos/shared";
 
 /** Production + staging Eliza app hosts (the staging Pages deploy serves the
  * identical bundle on `app-staging.*`, so staging must mirror prod behavior). */
 export const APP_MODE_HOSTNAMES: ReadonlySet<string> = new Set([
-  "app.elizacloud.ai",
-  "app-staging.elizacloud.ai",
+  new URL(ELIZA_DOMAIN_CONTRACTS.production.cloudAppOrigin).hostname,
+  new URL(ELIZA_DOMAIN_CONTRACTS.staging.cloudAppOrigin).hostname,
+  ...LEGACY_ELIZA_DOMAIN_CONTRACTS.production.cloudAppHostnames,
+  ...LEGACY_ELIZA_DOMAIN_CONTRACTS.staging.cloudAppHostnames,
 ]);
 
 /** Trusted apex-console → app-host pairing for cross-origin product entry. */
 export function appModeOriginForApexHostname(hostname: string): string | null {
-  switch (hostname.toLowerCase()) {
-    case "elizacloud.ai":
-    case "www.elizacloud.ai":
-      return "https://app.elizacloud.ai";
-    case "staging.elizacloud.ai":
-      return "https://app-staging.elizacloud.ai";
-    default:
-      return null;
+  const classified = classifyElizaHostname(hostname);
+  if (
+    classified.role !== "marketing" &&
+    classified.role !== "legacy-marketing"
+  ) {
+    return null;
   }
+  return classified.environment
+    ? ELIZA_DOMAIN_CONTRACTS[classified.environment].cloudAppOrigin
+    : null;
 }
 
 /** Dev-only app-mode emulation: the app hosts are never `localhost`, so the

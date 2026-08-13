@@ -15,7 +15,7 @@
  *    via {@link registerMcpsSettingsSection} (opt-in; the settings IA decision
  *    belongs to the host, and the pinned `settings-section-meta` is owned
  *    elsewhere — so MCPs registers under the existing `system` group).
- *  - {@link mcpsCloudRoute} is registered **at import time** at `dashboard/mcps`
+ *  - {@link mcpsCloudRoute} is registered **at import time** at `cloud/mcps`
  *    (no `CloudRouterShell` redirect collides with it), so the standalone deep
  *    link is live. {@link registerMcpsCloudRoute} re-registers at a custom path.
  */
@@ -70,7 +70,7 @@ export { McpsView } from "./McpsView";
 /** Stable settings-section id + URL hash for the MCPs surface. */
 export const MCPS_SECTION_ID = "mcps";
 /** Stable URL path slug for the standalone MCPs route. */
-export const MCPS_ROUTE_PATH = "dashboard/mcps";
+export const MCPS_ROUTE_PATH = "cloud/mcps";
 
 /** Lazy route element for the standalone MCPs surface (code-split). */
 const McpsRouteLazy = lazy(() => import("./McpsRoute"));
@@ -79,12 +79,12 @@ const McpsRouteLazy = lazy(() => import("./McpsRoute"));
 export const mcpsCloudRoute: CloudRouteDef = {
   path: MCPS_ROUTE_PATH,
   element: McpsRouteLazy,
-  group: "dashboard",
+  group: "cloud",
 };
 
 /**
  * Register (or re-register) the standalone MCPs route. The default registration
- * below runs at import time since `dashboard/mcps` has no shell redirect to
+ * below runs at import time since `cloud/mcps` has no shell redirect to
  * collide with.
  */
 export function registerMcpsCloudRoute(
@@ -110,8 +110,8 @@ export function registerMcpsSettingsSection(): void {
     group: "system",
     titleKey: "settings.sections.mcps.title",
     defaultTitle: "MCP Servers",
-    // Hidden for MVP (kept registered so its route/deep-link still resolves).
-    developerOnly: true,
+    viewKind: "release",
+    cloudOnly: true,
     Component: McpsSection,
   });
 }

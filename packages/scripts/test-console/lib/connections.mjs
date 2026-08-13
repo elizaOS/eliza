@@ -863,7 +863,7 @@ export const CONNECTIONS = [
         label: "Base URL (optional)",
         secret: false,
         required: false,
-        placeholder: "https://elizacloud.ai",
+        placeholder: "https://api.eliza.app",
       },
     ],
     verify: { kind: "none" },

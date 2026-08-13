@@ -15,7 +15,7 @@ src/
                            middleware (cors, secureHeaders, requestId, logger,
                            observability, auth), special-case routes, then mountRoutes().
   dedicated-agent-proxy.ts Unified cloud-token auth + proxy for DEDICATED (container)
-                           agents reachable at <agentId>.elizacloud.ai/*. Validates the
+                           agents reachable at <agentId>.cloud.eliza.app/*. Validates the
                            cloud session, confirms org ownership, then swaps the cloud
                            token for the container's ELIZA_API_TOKEN before proxying
                            over the tailnet. Imported lazily from index.ts.

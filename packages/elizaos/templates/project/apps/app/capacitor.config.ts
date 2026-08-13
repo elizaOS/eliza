@@ -81,6 +81,9 @@ function filterIosStoreAllowedHosts(
 
 const allowNavigation: CapacitorAllowNavigation = [
   ...(isIosStoreBuild() ? [] : ["localhost", "127.0.0.1"]),
+  "eliza.app",
+  "*.eliza.app",
+  // Transitional redirect ingress for existing installed clients.
   "*.elizacloud.ai",
   ...toCapacitorAllowNavigation(
     filterIosStoreAllowedHosts(parseAllowedHostEnv(allowedHostsEnv)),

@@ -131,7 +131,7 @@ const SHOW_WALL: AgentSessionRecoveryDecision = { action: "show-wall" };
 
 /**
  * Extract the dedicated agent id from an API base alone: the
- * `<agentId>.elizacloud.ai` subdomain form first, then the REST adapter base
+ * `<agentId>.cloud.eliza.app` subdomain form first, then the REST adapter base
  * (`<cloudApiBase>/api/v1/eliza/agents/<agentId>`). Shared by the persisted
  * active-server resolver below and the credential-scoped purge
  * (cloud-pair-token), which must match agent profiles that carry only a base.

@@ -116,7 +116,7 @@ describe("deploy-eliza-provisioning-worker.yml SANDBOX_REGISTRY_REDIS_URL wiring
 
   it("pins the agent router to the protected deployment environment", () => {
     expect(workflow).toContain(
-      `${AGENT_BASE_DOMAIN_KEY}: \${{ needs.determine-env.outputs.environment == 'production' && 'elizacloud.ai' || 'staging.elizacloud.ai' }}`,
+      `${AGENT_BASE_DOMAIN_KEY}: \${{ needs.determine-env.outputs.environment == 'production' && 'cloud.eliza.app' || 'cloud-staging.eliza.app' }}`,
     );
     const deployEnvs = workflow
       .split("\n")

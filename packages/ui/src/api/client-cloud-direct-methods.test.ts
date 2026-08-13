@@ -111,6 +111,7 @@ describe("direct-cloud prototype methods (Steward session bound)", () => {
       balance: 0.25,
       low: true,
       critical: true,
+      topUpUrl: "https://cloud.eliza.app/cloud/billing",
     });
   });
 
@@ -144,6 +145,7 @@ describe("direct-cloud prototype methods (Steward session bound)", () => {
     expect(result.keys).toEqual([
       { id: "k1", name: "Key 1", keyPrefix: "sk_1", createdAt: "t1" },
     ]);
+    expect(result.manageUrl).toBe("https://cloud.eliza.app/cloud/api-keys");
   });
 
   it("listCloudApiKeys: reports session-required on a 401", async () => {

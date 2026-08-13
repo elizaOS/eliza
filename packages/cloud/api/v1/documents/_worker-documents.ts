@@ -52,7 +52,7 @@ export function publicBlobUrl(
   const host =
     typeof c.env.R2_PUBLIC_HOST === "string" && c.env.R2_PUBLIC_HOST.trim()
       ? c.env.R2_PUBLIC_HOST.trim()
-      : "blob.elizacloud.ai";
+      : "blob.eliza.app";
   return `https://${host.replace(/^https?:\/\//, "").replace(/\/+$/, "")}/${key}`;
 }
 

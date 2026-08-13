@@ -100,7 +100,7 @@ jobs:
     # finally cleanup before Actions can terminate the job.
     timeout-minutes: 45
     env:
-      CLOUD_DEDICATED_CANARY_BASE_URL: https://api-staging.elizacloud.ai
+      CLOUD_DEDICATED_CANARY_BASE_URL: https://api-staging.eliza.app
       CLOUD_DEDICATED_CANARY_EVIDENCE_PATH: reports/managed-dedicated-canary.json
       CLOUD_DEDICATED_CANARY_STALE_CANARY_SUFFIX: ${{ inputs.stale_canary_suffix || '' }}
       # Keep this identical to App Live's accepted repository-secret contract.
@@ -122,7 +122,7 @@ jobs:
         shell: bash
         run: |
           node --input-type=module <<'NODE'
-          const expected = "https://api-staging.elizacloud.ai";
+          const expected = "https://api-staging.eliza.app";
           const raw = process.env.CLOUD_DEDICATED_CANARY_BASE_URL ?? "";
           let url;
           try {

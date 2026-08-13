@@ -29,7 +29,7 @@ import {
 } from "../../utils/chunk-load-recovery";
 
 export interface CloudRouteErrorBoundaryProps {
-  /** Registered route path (e.g. `"dashboard/billing"`), used for keying + logs. */
+  /** Registered route path (e.g. `"cloud/billing"`), used for keying + logs. */
   routePath: string;
   children: React.ReactNode;
 }

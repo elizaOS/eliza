@@ -7,7 +7,7 @@
  * needed for the standalone deep-link surface — no edits to any shared route
  * table.
  *
- * Mount path: `dashboard/organization` (authenticated; the shell wraps it in
+ * Mount path: `cloud/organization` (authenticated; the shell wraps it in
  * the Steward auth provider). The Settings "Organization" section renders the
  * same {@link OrganizationSection}; this route stays registered as the
  * standalone deep-link target — the connect-link invite flow navigates here
@@ -18,7 +18,7 @@ import { lazy } from "react";
 import { registerCloudRoute } from "../shell/cloud-route-registry";
 
 registerCloudRoute({
-  path: "dashboard/organization",
-  group: "dashboard",
+  path: "cloud/organization",
+  group: "cloud",
   element: lazy(() => import("./OrganizationPage")),
 });

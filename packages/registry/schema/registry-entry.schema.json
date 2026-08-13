@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://plugins.elizacloud.ai/schema/registry-entry.schema.json",
+  "$id": "https://plugins.eliza.app/schema/registry-entry.schema.json",
   "title": "elizaOS third-party registry entry",
   "description": "One JSON file per community package under entries/third-party/. Mirrors src/schema.ts.",
   "type": "object",

@@ -19,12 +19,12 @@ import type { DashboardSidebarSection } from "./dashboard-sidebar-types";
 const generalSection: DashboardSidebarSection = {
   title: "General",
   items: [
-    { id: "home", label: "Home", href: "/dashboard", icon: Home },
-    { id: "agents", label: "Agents", href: "/dashboard/agents", icon: Bot },
+    { id: "home", label: "Home", href: "/cloud", icon: Home },
+    { id: "agents", label: "Agents", href: "/cloud/agents", icon: Bot },
     {
       id: "analytics",
       label: "Analytics",
-      href: "/dashboard/analytics",
+      href: "/cloud/analytics",
       icon: BarChart3,
       badge: 12,
     },
@@ -37,20 +37,20 @@ const monetizationSection: DashboardSidebarSection = {
     {
       id: "billing",
       label: "Billing",
-      href: "/dashboard/billing",
+      href: "/cloud/billing",
       icon: CreditCard,
     },
     {
       id: "rewards",
       label: "Rewards",
-      href: "/dashboard/rewards",
+      href: "/cloud/rewards",
       icon: Sparkles,
       isNew: true,
     },
     {
       id: "team",
       label: "Team",
-      href: "/dashboard/team",
+      href: "/cloud/team",
       icon: Users,
       freeAllowed: false,
     },
@@ -64,21 +64,21 @@ const adminSection: DashboardSidebarSection = {
     {
       id: "keys",
       label: "API Keys",
-      href: "/dashboard/admin/keys",
+      href: "/cloud/admin/keys",
       icon: Key,
       adminOnly: true,
     },
     {
       id: "security",
       label: "Security",
-      href: "/dashboard/admin/security",
+      href: "/cloud/admin/security",
       icon: ShieldCheck,
       superAdminOnly: true,
     },
     {
       id: "settings",
       label: "Settings",
-      href: "/dashboard/admin/settings",
+      href: "/cloud/admin/settings",
       icon: Settings,
       comingSoon: true,
     },
@@ -107,7 +107,7 @@ const meta = {
   ],
   args: {
     section: generalSection,
-    activePath: "/dashboard/agents",
+    activePath: "/cloud/agents",
     authenticated: true,
   },
 } satisfies Meta<typeof DashboardSidebarNavigationSection>;
@@ -120,7 +120,7 @@ export const Default: Story = {};
 export const Monetization: Story = {
   args: {
     section: monetizationSection,
-    activePath: "/dashboard/billing",
+    activePath: "/cloud/billing",
   },
 };
 
@@ -145,14 +145,14 @@ export const UnauthenticatedLocked: Story = {
   args: {
     section: monetizationSection,
     authenticated: false,
-    activePath: "/dashboard",
+    activePath: "/cloud",
   },
 };
 
 export const AdminWithSuperAdmin: Story = {
   args: {
     section: adminSection,
-    activePath: "/dashboard/admin/keys",
+    activePath: "/cloud/admin/keys",
     isAdmin: true,
     adminRole: "super_admin",
   },

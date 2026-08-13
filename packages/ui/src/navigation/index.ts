@@ -22,7 +22,10 @@ import {
   UserRound,
   Wallet,
 } from "lucide-react";
-import { listAppShellPages } from "../app-shell-registry";
+import {
+  appShellPageMatchesPath,
+  listAppShellPages,
+} from "../app-shell-registry";
 import { userAgentHasElizaOSMarker } from "../platform/aosp-user-agent";
 import { resolveDefaultLandingTab } from "./main-tab";
 
@@ -516,8 +519,8 @@ export function tabFromPath(pathname: string, basePath = ""): Tab | null {
     return prefixSubTabFromPath(normalized) ?? "character";
   }
 
-  const registeredAppShellPage = listAppShellPages().find(
-    (entry) => normalizePath(entry.path).toLowerCase() === normalized,
+  const registeredAppShellPage = listAppShellPages().find((entry) =>
+    appShellPageMatchesPath(entry, normalized),
   );
   if (registeredAppShellPage) {
     return registeredAppShellPage.tabAffinity ?? registeredAppShellPage.id;

@@ -44,26 +44,26 @@ describe("registerAllCloudSurfaces (sync public API contract)", () => {
     const paths = new Set(listCloudRoutes().map((r) => r.path));
     for (const p of [
       "join",
-      "dashboard",
-      "dashboard/agents",
-      "dashboard/my-agents",
-      "dashboard/analytics",
-      "dashboard/billing",
-      "dashboard/billing/success",
-      "dashboard/invoices/:id",
-      "dashboard/api-keys",
-      "dashboard/account",
-      "dashboard/security",
-      "dashboard/security/permissions",
-      "dashboard/monetization",
-      "dashboard/connectors",
-      "dashboard/organization",
-      "dashboard/api-explorer",
-      "dashboard/apps",
-      "dashboard/apps/:id",
-      "dashboard/applications",
-      "dashboard/applications/:id",
-      "dashboard/admin",
+      "cloud",
+      "cloud/agents",
+      "cloud/my-agents",
+      "cloud/analytics",
+      "cloud/billing",
+      "cloud/billing/success",
+      "cloud/invoices/:id",
+      "cloud/api-keys",
+      "cloud/account",
+      "cloud/security",
+      "cloud/security/permissions",
+      "cloud/monetization",
+      "cloud/connectors",
+      "cloud/organization",
+      "cloud/api-explorer",
+      "cloud/apps",
+      "cloud/apps/:id",
+      "cloud/applications",
+      "cloud/applications/:id",
+      "cloud/admin",
       "approve/:approvalId",
       "ballot/:ballotId",
       "sensitive-requests/:requestId",
@@ -79,15 +79,15 @@ describe("registerAllCloudSurfaces (sync public API contract)", () => {
 
   it("maps legacy Applications URLs to the moved Apps route", () => {
     registerAllCloudSurfaces();
-    const movedAppsRoute = getCloudRoute("dashboard/apps");
+    const movedAppsRoute = getCloudRoute("cloud/apps");
     expect(movedAppsRoute).toBeDefined();
-    expect(getCloudRoute("dashboard/apps/:id")?.element).toBe(
+    expect(getCloudRoute("cloud/apps/:id")?.element).toBe(
       movedAppsRoute?.element,
     );
-    expect(getCloudRoute("dashboard/applications")?.element).toBe(
+    expect(getCloudRoute("cloud/applications")?.element).toBe(
       movedAppsRoute?.element,
     );
-    expect(getCloudRoute("dashboard/applications/:id")?.element).toBe(
+    expect(getCloudRoute("cloud/applications/:id")?.element).toBe(
       movedAppsRoute?.element,
     );
   });
@@ -102,10 +102,10 @@ describe("registerAllCloudSurfaces (sync public API contract)", () => {
     registerAllCloudSurfaces();
     const paths = new Set(listCloudRoutes().map((r) => r.path));
     for (const p of [
-      "dashboard/earnings",
-      "dashboard/affiliates",
-      "dashboard/settings",
-      "dashboard/settings/connections",
+      "cloud/earnings",
+      "cloud/affiliates",
+      "cloud/settings",
+      "cloud/settings/connections",
     ]) {
       expect(paths, `unexpected standalone route ${p}`).not.toContain(p);
     }

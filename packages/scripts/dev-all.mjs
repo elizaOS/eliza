@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Local full-stack developer launcher (`bun run dev:all`). Spawns agent API,
- * frontend, homepage, and cloud services with a shared prepare path, then waits
+ * the unified app frontend and cloud services with a shared prepare path, then waits
  * for readiness using `DEV_ALL_SERVICE_STARTUP_TIMEOUT_MS` before treating a
  * port as failed to start.
  *
@@ -108,7 +108,6 @@ export function resolveServiceStartupTimeoutMs(env = process.env) {
 const ports = {
   agentApi: envDefault("DEV_ALL_AGENT_API_PORT", "31337"),
   frontend: envDefault("DEV_ALL_FRONTEND_PORT", "2138"),
-  homepage: envDefault("DEV_ALL_HOMEPAGE_PORT", "4444"),
   cloudWeb: envDefault("DEV_ALL_CLOUD_WEB_PORT", "3000"),
   cloudApi: envDefault("DEV_ALL_CLOUD_API_PORT", "8787"),
   cloudDb: envDefault("DEV_ALL_CLOUD_DB_PORT", "55432"),
@@ -117,7 +116,6 @@ const ports = {
 const urls = {
   agentApi: `http://127.0.0.1:${ports.agentApi}`,
   frontend: `http://localhost:${ports.frontend}`,
-  homepage: `http://localhost:${ports.homepage}`,
   osHomepage: envDefault("ELIZA_OS_URL", "https://os.elizaos.ai"),
   cloudWeb: `http://localhost:${ports.cloudWeb}`,
   cloudApi: `http://localhost:${ports.cloudApi}`,
@@ -147,11 +145,11 @@ const cloudSharedEnv = {
   ELIZA_CLOUD_LOCAL_API_URL: urls.cloudApi,
   NEXT_PUBLIC_APP_URL: urls.cloudWeb,
   NEXT_PUBLIC_API_URL: urls.cloudApi,
-  NEXT_PUBLIC_ELIZA_APP_URL: urls.homepage,
+  NEXT_PUBLIC_ELIZA_APP_URL: urls.cloudWeb,
   NEXT_PUBLIC_ELIZA_API_URL: urls.cloudApi,
   NEXT_PUBLIC_ELIZA_PROXY_URL: urls.cloudWeb,
   NEXT_PUBLIC_STEWARD_API_URL: `${urls.cloudApi}/steward`,
-  VITE_ELIZA_APP_URL: urls.homepage,
+  VITE_ELIZA_APP_URL: urls.cloudWeb,
   VITE_ELIZA_CLOUD_URL: urls.cloudWeb,
   VITE_ELIZA_OS_URL: urls.osHomepage,
   ...(enableTestAuth
@@ -218,21 +216,12 @@ const frontendEnv = {
   VITE_ELIZACLOUD_API_URL: urls.cloudApi,
   VITE_ASSET_BASE_URL: envDefault(
     "VITE_ASSET_BASE_URL",
-    "https://blob.elizacloud.ai",
+    "https://blob.eliza.app",
   ),
-  VITE_ELIZA_APP_URL: urls.homepage,
+  VITE_ELIZA_APP_URL: urls.cloudWeb,
   VITE_ELIZA_CLOUD_URL: urls.cloudWeb,
   VITE_ELIZA_OS_URL: urls.osHomepage,
   ELIZA_APP_VITE_NO_DISCOVERY: envDefault("ELIZA_APP_VITE_NO_DISCOVERY", "1"),
-  ...(enableTestAuth ? { VITE_PLAYWRIGHT_TEST_AUTH: "true" } : {}),
-};
-const homepageEnv = {
-  ...commonEnv,
-  PORT: ports.homepage,
-  VITE_ELIZACLOUD_API_URL: urls.cloudApi,
-  VITE_ELIZA_APP_URL: urls.homepage,
-  VITE_ELIZA_CLOUD_URL: urls.cloudWeb,
-  VITE_ELIZA_OS_URL: urls.osHomepage,
   ...(enableTestAuth ? { VITE_PLAYWRIGHT_TEST_AUTH: "true" } : {}),
 };
 const cloudDbEnv = {
@@ -307,22 +296,6 @@ const services = [
       "--strictPort",
     ],
     env: frontendEnv,
-  },
-  {
-    name: "homepage",
-    cwd: "packages/homepage",
-    command: [
-      bunBin,
-      "run",
-      "dev",
-      "--",
-      "--host",
-      "0.0.0.0",
-      "--port",
-      ports.homepage,
-      "--strictPort",
-    ],
-    env: homepageEnv,
   },
 ].filter(Boolean);
 
@@ -407,7 +380,6 @@ function printPlan() {
   console.log("[dev:all] local stack");
   console.log(`  agent API:  ${urls.agentApi}`);
   console.log(`  frontend:   ${urls.frontend}`);
-  console.log(`  app home:   ${urls.homepage}`);
   console.log(`  OS home:    ${urls.osHomepage} (external)`);
   console.log(`  cloud web:  ${urls.cloudWeb}`);
   console.log(`  cloud API:  ${urls.cloudApi}`);
@@ -463,7 +435,6 @@ async function assertPortsAvailable() {
     ["cloud web", "127.0.0.1", ports.cloudWeb],
     ["agent API", "127.0.0.1", ports.agentApi],
     ["frontend", "127.0.0.1", ports.frontend],
-    ["app home", "127.0.0.1", ports.homepage],
   ].filter(Boolean);
 
   const occupied = [];

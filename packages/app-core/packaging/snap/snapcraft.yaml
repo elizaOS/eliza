@@ -21,7 +21,7 @@ grade: devel
 confinement: strict
 base: core22
 license: MIT
-website: https://app.elizacloud.ai
+website: https://cloud.eliza.app
 source-code: https://github.com/elizaOS/eliza
 issues: https://github.com/elizaOS/eliza/issues
 

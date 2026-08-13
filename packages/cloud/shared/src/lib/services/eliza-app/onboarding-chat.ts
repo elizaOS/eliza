@@ -152,8 +152,8 @@ const MAX_HISTORY_MESSAGES = 200;
 const MAX_MESSAGE_LENGTH = 4000;
 // The Cloud app host. Serves the authenticated `/get-started` continuation
 // landing (Steward login -> identity confirm -> back-to-Discord handoff) that
-// the messaging Connect CTA now targets directly, plus dashboard/billing links.
-const DEFAULT_ONBOARDING_APP_URL = "https://app.elizacloud.ai";
+// the messaging Connect CTA now targets directly, plus in-app Cloud links.
+const DEFAULT_ONBOARDING_APP_URL = "https://cloud.eliza.app";
 const ELIZA_APP_INITIAL_CREDIT_USD = "$5";
 /** Label for platforms that render the login link as a UI affordance. */
 const ONBOARDING_CTA_LABEL = "Connect";
@@ -968,8 +968,8 @@ function onboardingAppPath(path: string): string {
 
 /**
  * The messaging-continuation Connect CTA target: the Cloud app's own
- * `/get-started` (ELIZA_ONBOARDING_APP_URL — app.elizacloud.ai /
- * app-staging.elizacloud.ai), NOT the homepage.
+ * `/get-started` (ELIZA_ONBOARDING_APP_URL — cloud.eliza.app /
+ * cloud-staging.eliza.app), not the public homepage.
  *
  * That Cloud-app route is authenticated, so a signed-out visitor is bounced
  * straight to `/login?returnTo=/get-started` (the Steward auth flow) with the
@@ -1113,7 +1113,7 @@ function fallbackReply(args: {
     return `last attempt failed, ${name}. I've queued another one, nothing for you to do. keep chatting here.`;
   }
   if (args.provisioning.status === "insufficient_credits") {
-    return `you're out of credits, ${name}. top up at ${onboardingAppPath("/dashboard/billing")} and I'll get your agent going.`;
+    return `you're out of credits, ${name}. top up at ${onboardingAppPath("/cloud/billing")} and I'll get your agent going.`;
   }
   return `on it, ${name}. your agent is spinning up now, takes a minute or two. keep chatting here in the meantime.`;
 }
@@ -1237,7 +1237,7 @@ async function copyTranscriptToManagedAgent(session: OnboardingSession): Promise
 }
 
 function controlPanelUrl(agentId?: string | null): string {
-  return onboardingAppPath(agentId ? `/dashboard/agents/${agentId}` : "/dashboard/agents");
+  return onboardingAppPath(agentId ? `/cloud/agents/${agentId}` : "/cloud/agents");
 }
 
 function newSession(id: string, input: OnboardingChatInput): OnboardingSession {

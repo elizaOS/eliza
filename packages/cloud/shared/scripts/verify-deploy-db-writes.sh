@@ -20,5 +20,5 @@ DATABASE_URL="pglite://$STORE" bun run db:migrate 2>&1 | tail -2
 echo
 echo "=== run the adapter write-verification against the real schema ==="
 DATABASE_URL="pglite://$STORE" \
-  CONTAINERS_PUBLIC_BASE_DOMAIN="containers.elizacloud.ai" \
+  CONTAINERS_PUBLIC_BASE_DOMAIN="apps.eliza.app" \
   bun run scripts/verify-deploy-db-writes.ts

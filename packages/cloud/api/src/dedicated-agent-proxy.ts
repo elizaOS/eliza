@@ -17,6 +17,10 @@
  */
 
 import { renderCloudPairHandoffHtml } from "@elizaos/shared/contracts";
+import {
+  ELIZA_DOMAIN_CONTRACTS,
+  elizaCloudEnvironmentForHostname,
+} from "@elizaos/shared/elizacloud";
 import { agentSandboxesRepository } from "@/db/repositories/agent-sandboxes";
 import { AuthenticationError, ForbiddenError } from "@/lib/api/errors";
 import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
@@ -32,7 +36,7 @@ import type { AppEnv } from "@/types/cloud-worker-env";
 
 type Bindings = AppEnv["Bindings"];
 
-const DEFAULT_AGENT_ROUTER_ORIGIN_HOST = "eliza-production-1.elizacloud.ai";
+const DEFAULT_AGENT_ROUTER_ORIGIN_HOST = "eliza-production-1.eliza.app";
 
 /** Non-`running` statuses we auto-resume on (mirrors the pairing endpoint). */
 const RESUMABLE_STATUSES = new Set(["pending", "stopped", "disconnected"]);
@@ -135,9 +139,9 @@ function escapeManagedPairHtml(value: string): string {
 }
 
 function managedPairDashboardUrl(url: URL): string {
-  return url.hostname.endsWith(".staging.elizacloud.ai")
-    ? "https://staging.elizacloud.ai/dashboard/agents"
-    : "https://elizacloud.ai/dashboard/agents";
+  const environment =
+    elizaCloudEnvironmentForHostname(url.hostname) ?? "production";
+  return `${ELIZA_DOMAIN_CONTRACTS[environment].cloudAppOrigin}/cloud/agents`;
 }
 
 function renderManagedPairError(
@@ -679,7 +683,7 @@ function isBridgeHostFallbackEnabled(env: Bindings): boolean {
 }
 
 /**
- * Auth-unify + proxy a request bound for `https://<agentId>.elizacloud.ai/*`.
+ * Auth-unify + proxy a request bound for `https://<agentId>.cloud.eliza.app/*`.
  * The Worker owns the browser policy and preflight so neither the tenant agent
  * nor the router can widen credentialed access or make failures CORS-opaque.
  */

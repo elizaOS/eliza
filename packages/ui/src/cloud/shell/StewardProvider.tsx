@@ -4,7 +4,7 @@
  * cookie so same-origin Hono/API routes can read it. The
  * heavy `@stwd/sdk` / `@stwd/react` runtime lives in a lazy chunk
  * ({@link StewardProviderRuntime}) loaded only when a token is present or the
- * current route is an auth/dashboard/payment surface.
+ * current route is an auth/Cloud/payment surface.
  *
  * Auth model: Cloud = Steward, unified across web and native.
  * On hosted web (same-origin apex) Steward rides the cookie + localStorage-JWT
@@ -60,6 +60,9 @@ const STEWARD_RUNTIME_ROUTE_PATTERNS = [
   /^\/app-auth(?:\/|$)/,
   /^\/auth(?:\/|$)/,
   /^\/bsc(?:\/|$)/,
+  /^\/cloud(?:\/|$)/,
+  // Retired bookmarks redirect synchronously, but loading Steward here avoids
+  // an auth-context flash if a browser reaches the bundle before the edge rule.
   /^\/dashboard(?:\/|$)/,
   /^\/login(?:\/|$)/,
   // JoinPage needs the runtime before a token is persisted so its cookie-backed

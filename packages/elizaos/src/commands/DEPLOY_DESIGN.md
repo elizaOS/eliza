@@ -27,7 +27,7 @@ elizaos deploy [--app-id <id>] [--domain <host>] [--dry-run] [--verbose]
 The CLI reads `ELIZAOS_CLOUD_API_KEY`, `ELIZA_CLOUD_API_KEY`,
 `ELIZACLOUD_API_KEY`, or `~/.elizaos/credentials.json`. Requests are sent with
 `Authorization: Bearer <key>`. The API base defaults to
-`https://api.elizacloud.ai/api/v1`; override with `ELIZA_CLOUD_API_BASE_URL`,
+`https://api.eliza.app/api/v1`; override with `ELIZA_CLOUD_API_BASE_URL`,
 `ELIZAOS_CLOUD_API_BASE_URL`, `ELIZACLOUD_API_BASE_URL`, or
 `ELIZA_CLOUD_BASE_URL`.
 
@@ -42,7 +42,7 @@ The CLI reads `ELIZAOS_CLOUD_API_KEY`, `ELIZA_CLOUD_API_KEY`,
 
 ## Vercel as the implementation target
 
-The CLI never talks to Vercel directly. It hits Eliza Cloud, which owns `VERCEL_TOKEN` and `VERCEL_TEAM_ID` (see `cloud/packages/lib/services/vercel-deployments.ts`). One Vercel project per app, subdomain on `apps.elizacloud.ai`, custom-domain attachment routed through Cloudflare. Keeping the CLI thin means no token leakage and no parallel auth surface.
+The CLI never talks to Vercel directly. It hits Eliza Cloud, which owns `VERCEL_TOKEN` and `VERCEL_TEAM_ID` (see `cloud/packages/lib/services/vercel-deployments.ts`). One Vercel project per app, subdomain on `apps.eliza.app`, custom-domain attachment routed through Cloudflare. Keeping the CLI thin means no token leakage and no parallel auth surface.
 
 ## Dry-run semantics
 

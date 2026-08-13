@@ -31,7 +31,11 @@ import {
 } from "./config";
 
 function env(overrides: Partial<OidcConfigEnv> = {}): OidcConfigEnv {
-  return { OIDC_ENABLED: "true", OIDC_ISSUER_URL: "https://api.elizacloud.ai", ...overrides };
+  return {
+    OIDC_ENABLED: "true",
+    OIDC_ISSUER_URL: "https://api.eliza.app",
+    ...overrides,
+  };
 }
 
 describe("the kill switch", () => {
@@ -52,34 +56,51 @@ describe("endpoint derivation", () => {
   test("every URL hangs off the issuer, which keeps its bytes", () => {
     const config = resolveOidcConfig(env());
     expect(config).not.toBeNull();
-    expect(config?.issuer).toBe("https://api.elizacloud.ai");
-    expect(config?.discoveryUrl).toBe("https://api.elizacloud.ai/.well-known/openid-configuration");
-    expect(config?.jwksUrl).toBe("https://api.elizacloud.ai/.well-known/oidc/jwks.json");
-    expect(config?.authorizationUrl).toBe("https://api.elizacloud.ai/api/oidc/authorize");
-    expect(config?.resumeUrl).toBe("https://api.elizacloud.ai/api/oidc/authorize/resume");
-    expect(config?.tokenUrl).toBe("https://api.elizacloud.ai/api/oidc/token");
-    expect(config?.userinfoUrl).toBe("https://api.elizacloud.ai/api/oidc/userinfo");
+    expect(config?.issuer).toBe("https://api.eliza.app");
+    expect(config?.discoveryUrl).toBe("https://api.eliza.app/.well-known/openid-configuration");
+    expect(config?.jwksUrl).toBe("https://api.eliza.app/.well-known/oidc/jwks.json");
+    expect(config?.authorizationUrl).toBe("https://api.eliza.app/api/oidc/authorize");
+    expect(config?.resumeUrl).toBe("https://api.eliza.app/api/oidc/authorize/resume");
+    expect(config?.tokenUrl).toBe("https://api.eliza.app/api/oidc/token");
+    expect(config?.userinfoUrl).toBe("https://api.eliza.app/api/oidc/userinfo");
   });
 
   test("a trailing slash is dropped so the issuer an RP pins never doubles it", () => {
-    const config = resolveOidcConfig(env({ OIDC_ISSUER_URL: "https://api.elizacloud.ai/" }));
-    expect(config?.issuer).toBe("https://api.elizacloud.ai");
-    expect(config?.discoveryUrl).toBe("https://api.elizacloud.ai/.well-known/openid-configuration");
+    const config = resolveOidcConfig(env({ OIDC_ISSUER_URL: "https://api.eliza.app/" }));
+    expect(config?.issuer).toBe("https://api.eliza.app");
+    expect(config?.discoveryUrl).toBe("https://api.eliza.app/.well-known/openid-configuration");
   });
 
-  test("the app origin comes from the console URL, falling back to the issuer origin", () => {
-    expect(resolveOidcConfig(env({ ELIZA_CLOUD_URL: "https://elizacloud.ai/" }))?.appOrigin).toBe(
-      "https://elizacloud.ai",
+  test("the app origin comes from the login host before managed-app and API fallbacks", () => {
+    expect(
+      resolveOidcConfig(
+        env({
+          ELIZA_ONBOARDING_LOGIN_APP_URL: "https://eliza.app/",
+          NEXT_PUBLIC_APP_URL: "https://cloud.eliza.app",
+          ELIZA_CLOUD_URL: "https://api.eliza.app",
+        }),
+      )?.appOrigin,
+    ).toBe("https://eliza.app");
+    expect(
+      resolveOidcConfig(
+        env({
+          NEXT_PUBLIC_APP_URL: "https://cloud.eliza.app/",
+          ELIZA_CLOUD_URL: "https://api.eliza.app",
+        }),
+      )?.appOrigin,
+    ).toBe("https://cloud.eliza.app");
+    expect(resolveOidcConfig(env({ ELIZA_CLOUD_URL: "https://api.eliza.app/" }))?.appOrigin).toBe(
+      "https://api.eliza.app",
     );
-    expect(resolveOidcConfig(env())?.appOrigin).toBe("https://api.elizacloud.ai");
+    expect(resolveOidcConfig(env())?.appOrigin).toBe("https://api.eliza.app");
   });
 });
 
 describe("the wallet-email domain derived from the issuer", () => {
   test("defaults to users.noreply.<issuer hostname>, which only this deployment can serve", () => {
     const config = resolveOidcConfig(env());
-    expect(config?.issuerHostname).toBe("api.elizacloud.ai");
-    expect(config?.walletEmailDomain).toBe("users.noreply.api.elizacloud.ai");
+    expect(config?.issuerHostname).toBe("api.eliza.app");
+    expect(config?.walletEmailDomain).toBe("users.noreply.api.eliza.app");
   });
 
   test("strips the port, because issuerHost is not a legal email domain", () => {
@@ -103,10 +124,8 @@ describe("the wallet-email domain derived from the issuer", () => {
   });
 
   test("an override below the issuer hostname is honored", () => {
-    const config = resolveOidcConfig(
-      env({ OIDC_WALLET_EMAIL_DOMAIN: "noreply.api.elizacloud.ai" }),
-    );
-    expect(config?.walletEmailDomain).toBe("noreply.api.elizacloud.ai");
+    const config = resolveOidcConfig(env({ OIDC_WALLET_EMAIL_DOMAIN: "noreply.api.eliza.app" }));
+    expect(config?.walletEmailDomain).toBe("noreply.api.eliza.app");
   });
 
   test("an override the deployment cannot own turns the FEATURE off, not the provider", () => {
@@ -118,8 +137,8 @@ describe("the wallet-email domain derived from the issuer", () => {
     for (const override of ["gmail.com", "users.noreply.elizacloud.ai", "api.elizacloud.ai"]) {
       const config = resolveOidcConfig(env({ OIDC_WALLET_EMAIL_DOMAIN: override }));
       expect(config).not.toBeNull();
-      expect(config?.issuer).toBe("https://api.elizacloud.ai");
-      expect(config?.tokenUrl).toBe("https://api.elizacloud.ai/api/oidc/token");
+      expect(config?.issuer).toBe("https://api.eliza.app");
+      expect(config?.tokenUrl).toBe("https://api.eliza.app/api/oidc/token");
       expect(config?.walletEmailDomain).toBeNull();
       expect(config?.walletEmailUnavailableReason).toMatch(/OIDC_WALLET_EMAIL_DOMAIN/);
       // Not a config failure: this string is what a caller logs beside the 404

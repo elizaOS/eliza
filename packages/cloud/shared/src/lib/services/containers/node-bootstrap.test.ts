@@ -126,4 +126,28 @@ describe("buildContainerNodeUserData — ghcr access", () => {
     expect(userData).toContain("host key fingerprint unavailable; refusing self-registration");
     expect(userData).toContain("exit 1");
   });
+
+  test("omits capacity from self-registration when the operator supplied no override", () => {
+    clearRegistryEnv();
+    const userData = buildContainerNodeUserData({
+      ...baseInput,
+      registrationUrl: "https://control.example.test/api/v1/admin/docker-nodes/bootstrap-callback",
+      registrationSecret: "bootstrap-secret",
+    });
+
+    expect(userData).not.toContain('CAPACITY_FIELD=\'"capacity":');
+    expect(userData).toContain("CAPACITY_FIELD=''");
+  });
+
+  test("includes an explicit operator capacity in self-registration", () => {
+    clearRegistryEnv();
+    const userData = buildContainerNodeUserData({
+      ...baseInput,
+      registrationUrl: "https://control.example.test/api/v1/admin/docker-nodes/bootstrap-callback",
+      registrationSecret: "bootstrap-secret",
+      capacity: 8,
+    });
+
+    expect(userData).toContain("CAPACITY_FIELD='\"capacity\":8,'");
+  });
 });

@@ -1,5 +1,5 @@
 /**
- * CORS policy: first-party origins (elizacloud.ai SPA, localhost, pages
+ * CORS policy: first-party origins (eliza.app SPA, localhost, pages
  * previews) keep credentialed CORS for cookie auth; every other browser origin
  * gets open, NON-credentialed CORS so registered third-party apps can call the
  * token-authed public API from the browser. Regression guard for the bug where
@@ -60,23 +60,14 @@ async function req(method: string, origin: string | null, isPreflight = false, p
 }
 
 describe("isFirstPartyOrigin", () => {
-  test("recognizes the production SPA + localhost, rejects third-party", () => {
-    expect(isFirstPartyOrigin("https://www.elizacloud.ai")).toBe(true);
-    expect(isFirstPartyOrigin("https://elizacloud.ai")).toBe(true);
-    // The Eliza agent app on its own subdomain is first-party.
+  test("recognizes canonical and transition SPAs + localhost, rejects third-party", () => {
+    expect(isFirstPartyOrigin("https://www.eliza.app")).toBe(true);
+    expect(isFirstPartyOrigin("https://eliza.app")).toBe(true);
+    expect(isFirstPartyOrigin("https://cloud.eliza.app")).toBe(true);
+    expect(isFirstPartyOrigin("https://cloud-staging.eliza.app")).toBe(true);
     expect(isFirstPartyOrigin("https://app.elizacloud.ai")).toBe(true);
-    expect(isFirstPartyOrigin("https://app-staging.elizacloud.ai")).toBe(true);
     expect(isFirstPartyOrigin("https://develop.eliza-app.pages.dev")).toBe(true);
     expect(isFirstPartyOrigin("https://random.eliza-app.pages.dev")).toBe(false);
-    // The eliza.app homepage runs the get-started auth flows (Telegram widget
-    // phone step, Discord OAuth callback) against /api/eliza-app/* on
-    // elizacloud.ai. Without first-party CORS every one of those POSTs dies in
-    // the browser preflight (the 2026-08-11 "phone number step fails" QA).
-    expect(isFirstPartyOrigin("https://eliza.app")).toBe(true);
-    expect(isFirstPartyOrigin("https://www.eliza.app")).toBe(true);
-    // The staging homepage (deploy-homepage-staging.yml -> staging.eliza.app)
-    // runs the same auth flows against staging.elizacloud.ai, which serves
-    // this same allowlist.
     expect(isFirstPartyOrigin("https://staging.eliza.app")).toBe(true);
     // Never a broad suffix match: sibling lookalikes stay third-party.
     expect(isFirstPartyOrigin("https://evil-eliza.app")).toBe(false);
@@ -251,7 +242,7 @@ describe("corsMiddleware — third-party app origins (open, NO credentials)", ()
   test("allows hosted agent subdomains to exchange one-time Cloud pair tokens", async () => {
     const res = await req(
       "OPTIONS",
-      "https://23766030-c096-4a14-932a-a4e43c562432.elizacloud.ai",
+      "https://23766030-c096-4a14-932a-a4e43c562432.cloud.eliza.app",
       true,
       "/api/auth/pair",
     );

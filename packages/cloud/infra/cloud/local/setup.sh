@@ -182,7 +182,7 @@ ELIZA_SERVER_ID=agent-server-local
 AGENT_SERVER_SHARED_SECRET=local-dev-agent-server-secret
 # Uncomment and set to enable LLM via ElizaCloud proxy:
 # ELIZAOS_CLOUD_API_KEY=ek_xxx
-# ELIZAOS_CLOUD_BASE_URL=https://www.elizacloud.ai/api/v1
+# ELIZAOS_CLOUD_BASE_URL=https://api.eliza.app/api/v1
 DEFAULTS
   info "  Edit $ENV_FILE to add your API keys, then re-run setup."
 else

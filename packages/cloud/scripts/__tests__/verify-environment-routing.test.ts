@@ -58,7 +58,7 @@ describe("parseServedEnvironment", () => {
 
 describe("classifyProbe", () => {
   const P = {
-    domain: "app-staging.elizacloud.ai",
+    domain: "cloud-staging.eliza.app",
     expected: "staging" as const,
   };
 
@@ -75,7 +75,7 @@ describe("classifyProbe", () => {
 
   it("MISROUTED in the reverse direction (prod domain answered by staging)", () => {
     const r = classifyProbe({
-      domain: "app.elizacloud.ai",
+      domain: "cloud.eliza.app",
       expected: "production",
       observed: "staging",
       reachable: true,
@@ -178,7 +178,7 @@ describe("fetchServedEnvironment - network boundary", () => {
       status: 200,
       text: async () => JSON.stringify({ environment: "staging" }),
     })) as unknown as typeof fetch;
-    const r = await fetchServedEnvironment("app-staging.elizacloud.ai", {
+    const r = await fetchServedEnvironment("cloud-staging.eliza.app", {
       fetchImpl,
       sleep: noSleep,
     });
@@ -191,7 +191,7 @@ describe("fetchServedEnvironment - network boundary", () => {
       status: 200,
       text: async () => JSON.stringify({ status: "ok" }),
     })) as unknown as typeof fetch;
-    const r = await fetchServedEnvironment("app.elizacloud.ai", {
+    const r = await fetchServedEnvironment("cloud.eliza.app", {
       fetchImpl,
       sleep: noSleep,
     });
@@ -208,11 +208,11 @@ describe("fetchServedEnvironment - network boundary", () => {
         text: async () => JSON.stringify({ environment: "production" }),
       };
     }) as unknown as typeof fetch;
-    await fetchServedEnvironment("api.elizacloud.ai///", {
+    await fetchServedEnvironment("api.eliza.app///", {
       fetchImpl,
       sleep: noSleep,
     });
-    expect(requested).toBe("https://api.elizacloud.ai/api/health");
+    expect(requested).toBe("https://api.eliza.app/api/health");
   });
 
   it("retries and succeeds after a transient failure", async () => {
@@ -226,7 +226,7 @@ describe("fetchServedEnvironment - network boundary", () => {
         text: async () => JSON.stringify({ environment: "staging" }),
       };
     }) as unknown as typeof fetch;
-    const r = await fetchServedEnvironment("staging.elizacloud.ai", {
+    const r = await fetchServedEnvironment("staging.eliza.app", {
       fetchImpl,
       sleep: noSleep,
     });
@@ -240,7 +240,7 @@ describe("fetchServedEnvironment - network boundary", () => {
       status: 502,
       text: async () => "bad gateway",
     })) as unknown as typeof fetch;
-    const r = await fetchServedEnvironment("api-staging.elizacloud.ai", {
+    const r = await fetchServedEnvironment("api-staging.eliza.app", {
       fetchImpl,
       attempts: 2,
       sleep: noSleep,
@@ -253,7 +253,7 @@ describe("fetchServedEnvironment - network boundary", () => {
     const fetchImpl = (async () => {
       throw new Error("ENOTFOUND");
     }) as unknown as typeof fetch;
-    const r = await fetchServedEnvironment("staging.elizacloud.ai", {
+    const r = await fetchServedEnvironment("staging.eliza.app", {
       fetchImpl,
       attempts: 2,
       sleep: noSleep,
@@ -292,20 +292,16 @@ describe("selectMatrix", () => {
 });
 
 describe("ENVIRONMENT_ROUTING matrix integrity", () => {
-  it("has unique domains, all under elizacloud.ai, all with a known env", () => {
+  it("has unique canonical domains under eliza.app with a known env", () => {
     const domains = ENVIRONMENT_ROUTING.map((e) => e.domain);
     expect(new Set(domains).size).toBe(domains.length);
     for (const { domain, environment } of ENVIRONMENT_ROUTING) {
-      expect(domain.endsWith("elizacloud.ai")).toBe(true);
+      expect(domain.endsWith("eliza.app")).toBe(true);
       expect(KNOWN_ENVIRONMENTS).toContain(environment);
     }
   });
 
-  it("stays in sync with the staging Worker routes in wrangler.toml", () => {
-    // The staging Worker reclaims these hosts from the prod `*.elizacloud.ai/*`
-    // wildcard by claiming them explicitly. If a NEW staging health host is
-    // added there without being added to the matrix, the verifier would never
-    // probe it; fail here so the two cannot silently diverge.
+  it("keeps staging Pages hosts off the Worker while retaining API and wildcard routes", () => {
     const wrangler = readFileSync(
       new URL("../../api/wrangler.toml", import.meta.url),
       "utf8",
@@ -317,25 +313,34 @@ describe("ENVIRONMENT_ROUTING matrix integrity", () => {
     const routeHosts = [
       ...stagingBlock.matchAll(/pattern\s*=\s*"([^"/]+)\/\*"/g),
     ].map((m) => m[1]);
-    // Every staging route host EXCEPT the R2 blob host (which serves objects,
-    // not /api/health) and wildcard routes (the per-agent *.staging wildcard
-    // from #15213 has no fixed hostname to probe) must be represented in the
-    // matrix as a staging domain. The wildcard exemption is pinned to the one
-    // known route: a new or broader wildcard (e.g. *.elizacloud.ai claimed by
-    // staging) must fail here for review instead of being silently skipped.
+    expect(routeHosts).not.toContain("staging.eliza.app");
+    expect(routeHosts).not.toContain("cloud-staging.eliza.app");
+    expect(routeHosts).toContain("api-staging.eliza.app");
+    expect(routeHosts).toContain("relay-staging.eliza.app");
+
+    // Agent, hosted-site, tunnel, and legacy wildcard ingress all remain
+    // Worker-owned. Exact browser hosts are Pages-owned above.
     const wildcardHosts = routeHosts.filter((h) => h.includes("*"));
-    expect(wildcardHosts).toEqual(["*.staging.elizacloud.ai"]);
-    const healthHosts = routeHosts.filter(
-      (h) => !h.startsWith("blob-") && !h.includes("*"),
-    );
+    expect(wildcardHosts).toEqual([
+      "*.cloud-staging.eliza.app",
+      "*.sites-staging.eliza.app",
+      "*.staging.elizacloud.ai",
+      "*.tunnel-staging.elizacloud.ai",
+      "*.sites-staging.elizacloud.ai",
+    ]);
     const stagingMatrix = new Set(
       ENVIRONMENT_ROUTING.filter((e) => e.environment === "staging").map(
         (e) => e.domain,
       ),
     );
-    expect(healthHosts.length).toBeGreaterThan(0);
-    for (const host of healthHosts) {
-      expect(stagingMatrix.has(host)).toBe(true);
-    }
+    expect(stagingMatrix.size).toBeGreaterThan(0);
+    expect(stagingMatrix).toEqual(
+      new Set([
+        "staging.eliza.app",
+        "cloud-staging.eliza.app",
+        "api-staging.eliza.app",
+        "relay-staging.eliza.app",
+      ]),
+    );
   });
 });
