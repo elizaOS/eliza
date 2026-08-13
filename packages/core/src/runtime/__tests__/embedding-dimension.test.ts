@@ -77,6 +77,46 @@ describe("AgentRuntime.ensureEmbeddingDimension provider failover", () => {
 		expect(ensureDim).toHaveBeenCalledWith(384);
 	});
 
+	it("regenerates empty vectors while preserving non-empty idempotency", async () => {
+		const runtime = makeRuntime();
+		const embedHandler = vi.fn(async () => [0.25, 0.5]);
+		runtime.registerModel(ModelType.TEXT_EMBEDDING, embedHandler, "direct", 0);
+
+		const empty = makeMemory("empty vector");
+		empty.embedding = [];
+		await expect(runtime.addEmbeddingToMemory(empty)).resolves.toBe(empty);
+		expect(empty.embedding).toEqual([0.25, 0.5]);
+
+		const existing = makeMemory("existing vector");
+		existing.embedding = [9];
+		await expect(runtime.addEmbeddingToMemory(existing)).resolves.toBe(
+			existing,
+		);
+		expect(existing.embedding).toEqual([9]);
+		expect(embedHandler).toHaveBeenCalledTimes(1);
+	});
+
+	it("queues empty vectors while skipping non-empty vectors", async () => {
+		const runtime = makeRuntime();
+		runtime.registerModel(
+			ModelType.TEXT_EMBEDDING,
+			async () => [0.25],
+			"direct",
+			0,
+		);
+		const emitEvent = vi.spyOn(runtime, "emitEvent");
+
+		const empty = makeMemory("queue empty vector");
+		empty.embedding = [];
+		await runtime.queueEmbeddingGeneration(empty);
+		expect(emitEvent).toHaveBeenCalledTimes(1);
+
+		const existing = makeMemory("queue existing vector");
+		existing.embedding = [9];
+		await runtime.queueEmbeddingGeneration(existing);
+		expect(emitEvent).toHaveBeenCalledTimes(1);
+	});
+
 	it("fails over past a broken provider on a non-rate-limit probe error and pins the working provider", async () => {
 		const runtime = makeRuntime();
 		const brokenHandler = vi.fn(async () => {
