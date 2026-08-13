@@ -45,7 +45,8 @@ function isBlobOrFile(value: unknown): value is Blob | File {
 }
 
 function isBuffer(value: unknown): value is Buffer {
-  return Buffer.isBuffer(value);
+  // A real browser has no Buffer global; referencing it bare throws.
+  return typeof Buffer !== "undefined" && Buffer.isBuffer(value);
 }
 
 function isLocalTranscriptionParams(value: unknown): value is LocalTranscriptionParams {
