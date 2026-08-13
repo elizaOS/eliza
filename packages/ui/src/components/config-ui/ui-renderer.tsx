@@ -240,11 +240,25 @@ function referencesSensitiveState(
   );
 }
 
+// Generic-action serialization writes resolved params into durable chat
+// history, so a field is excluded from that payload only if the spec declares
+// it secret. UiSpecs are plugin- and model-authored, and `type: "password"`
+// alone is a rendering choice a non-input element (a Textarea holding a seed
+// phrase, a text Input labelled "Private key") can silently miss. An explicit
+// `secret`/`sensitive` prop is therefore honored as well, so an author who
+// cannot use a password input still has a declarative way to stay out of
+// history. Anything a secret-bearing field feeds is redacted by whole key.
 function sensitiveStatePaths(ctx: UiRendererContext): ReadonlySet<string> {
   const paths = new Set<string>();
   for (const element of Object.values(ctx.spec.elements)) {
     const statePath = element.props.statePath;
-    if (element.props.type === "password" && typeof statePath === "string") {
+    if (typeof statePath !== "string") continue;
+    const props = element.props as { secret?: unknown; sensitive?: unknown };
+    if (
+      element.props.type === "password" ||
+      props.secret === true ||
+      props.sensitive === true
+    ) {
       paths.add(statePath);
     }
   }

@@ -291,6 +291,46 @@ describe("MessageUiSpecBlock plugin actions", () => {
     );
   });
 
+  it("redacts a secret-declared field that is not a password input", async () => {
+    // A seed phrase in a Textarea, or a text Input labelled "Private key",
+    // cannot use `type: "password"`. Declaring `secret` must keep it out of
+    // durable chat history just as a password input does.
+    const spec = pluginConfigSpec();
+    spec.elements.application.props = {
+      label: "Recovery phrase",
+      statePath: "config.DISCORD_APPLICATION_ID",
+      secret: true,
+    };
+    spec.elements.save.on = {
+      press: {
+        action: "sendBnb",
+        params: {
+          network: "bsc",
+          phrase: { $path: "config.DISCORD_APPLICATION_ID" },
+        },
+      },
+    };
+    const { container, sendActionMessage } = withApp(
+      <MessageUiSpecBlock spec={spec} raw={JSON.stringify(spec)} />,
+    );
+
+    const secretValue = "correct horse battery staple";
+    fireEvent.change(
+      container.querySelectorAll("input")[1] as HTMLInputElement,
+      { target: { value: secretValue } },
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Save configuration" }));
+
+    await waitFor(() => {
+      expect(sendActionMessage).toHaveBeenCalledWith(
+        '[action:sendBnb] {"network":"bsc"}',
+      );
+    });
+    expect(sendActionMessage).not.toHaveBeenCalledWith(
+      expect.stringContaining(secretValue),
+    );
+  });
+
   it("rejects plugin saves without an id without serializing config state", async () => {
     const spec = pluginConfigSpec();
     spec.elements.save.on = {
