@@ -1,3 +1,13 @@
+/**
+ * Aggregates the sharded Story Gate reports into the single canonical verdict.
+ *
+ * The gate is only meaningful if the merged manifest exactly covers the
+ * Storybook catalog discovered at build time, so every shard report must be
+ * present, well-formed, uniquely identified, and free of duplicate or unknown
+ * story ids. Any of those conditions failing is an aggregation failure, not a
+ * pass with a smaller manifest: a cancelled or truncated shard must never be
+ * able to produce a green run.
+ */
 import {
   cp,
   mkdir,
