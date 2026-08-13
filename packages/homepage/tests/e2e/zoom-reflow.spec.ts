@@ -80,8 +80,8 @@ for (const viewport of REFLOW_VIEWPORTS) {
     await expectNoUnreachableOverflow(page);
     // The zoomed page may scroll vertically; each control must be reachable
     // by scrolling and fit fully inside the viewport once scrolled to.
-    const textCta = page.getByRole("link", { name: "Text me" });
-    const callCta = page.getByRole("link", { name: "Call me" });
+    const textCta = page.getByRole("link", { name: "Text" });
+    const callCta = page.getByRole("link", { name: "Call" });
     await textCta.scrollIntoViewIfNeeded();
     await expectFullyInViewport(page, textCta);
     await callCta.scrollIntoViewIfNeeded();

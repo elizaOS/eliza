@@ -1372,10 +1372,10 @@ body {
 
 .landing-hero-heading {
   margin: 0;
-  max-width: 14ch;
-  font-size: clamp(2.6rem, 5.5vw, 4.6rem);
-  font-weight: 500;
-  line-height: 1;
+  max-width: 18ch;
+  font-size: clamp(1.9rem, 3.4vw, 2.9rem);
+  font-weight: 700;
+  line-height: 1.05;
   letter-spacing: -0.02em;
   text-wrap: balance;
   color: var(--brand-black);
@@ -1441,20 +1441,12 @@ body {
   color: var(--brand-white);
 }
 
-.landing-channels {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.75rem;
-  margin-top: 2rem;
-}
-
-.landing-channels a {
+.landing-channel {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 3rem;
-  height: 3rem;
+  width: 3.25rem;
+  height: 3.25rem;
   border-radius: 50%;
   background: #ffffff;
   box-shadow: 0 6px 18px rgb(0 0 0 / 10%);
@@ -1463,7 +1455,7 @@ body {
     box-shadow 0.15s ease;
 }
 
-.landing-channels a:hover {
+.landing-channel:hover {
   transform: translateY(-2px);
   box-shadow: 0 8px 20px rgb(0 0 0 / 18%);
 }
@@ -1491,13 +1483,24 @@ body {
   overflow: hidden;
 }
 
+.landing-phone-top {
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: 0;
+  z-index: 2;
+  background: rgb(255 255 255 / 78%);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border-bottom: 1px solid rgb(0 0 0 / 7%);
+}
+
 .landing-iphone-statusbar {
   position: relative;
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 0.85rem 1.6rem 0.35rem;
-  background: #ffffff;
 }
 
 .landing-iphone-time {
@@ -1538,7 +1541,6 @@ body {
   align-items: center;
   justify-content: center;
   padding: 0.35rem 0.9rem 0.6rem;
-  background: #ffffff;
 }
 
 .landing-phone-contact {
@@ -1594,7 +1596,9 @@ body {
   flex: 1;
   min-height: 0;
   gap: 0.5rem;
-  padding: 1.1rem 0.9rem;
+  /* Top padding clears the floating status bar + contact header so the
+     conversation starts below it and scrolls underneath the frosted chrome. */
+  padding: 8.6rem 0.9rem 1.1rem;
   overflow-y: auto;
   scrollbar-width: none;
 }
@@ -1818,10 +1822,26 @@ body {
 
 @media (max-width: 640px) {
   .landing-hero-heading {
-    font-size: clamp(2.7rem, 13vw, 3.6rem);
+    font-size: clamp(1.6rem, 7.5vw, 2.1rem);
   }
 
-  .landing-hero-actions .landing-cta {
-    flex: 1 1 8rem;
+  .landing-hero-actions {
+    gap: 0.5rem;
+  }
+
+  .landing-cta {
+    min-height: 2.75rem;
+    padding: 0 1rem;
+    font-size: 0.95rem;
+  }
+
+  .landing-channel {
+    width: 2.75rem;
+    height: 2.75rem;
+  }
+
+  .landing-channel svg {
+    width: 1.25rem;
+    height: 1.25rem;
   }
 }

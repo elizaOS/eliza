@@ -337,18 +337,18 @@ test("landing page renders its hero and messaging entrypoints", async ({
   await page.goto("/");
 
   await expect(
-    page.getByRole("heading", { name: /Get 4 hours of your time back/ }),
+    page.getByRole("heading", { name: /Four hours of your time back/ }),
   ).toBeVisible({ timeout: 20_000 });
 
-  const textCta = page.getByRole("link", { name: "Text me" });
+  const textCta = page.getByRole("link", { name: "Text" });
   await expect(textCta).toBeVisible();
   await expect(textCta).toHaveAttribute("href", /^sms:\+18087881821/);
-  const callCta = page.getByRole("link", { name: "Call me" });
+  const callCta = page.getByRole("link", { name: "Call" });
   await expect(callCta).toBeVisible();
   await expect(callCta).toHaveAttribute("href", "tel:+18087881821");
 
   // Every alternate channel is reachable with a real deep link.
-  const channels = page.locator(".landing-channels");
+  const channels = page.locator(".landing-hero-actions");
   await expect(
     channels.getByRole("link", { name: /Telegram/ }),
   ).toHaveAttribute("href", /^https:\/\/t\.me\//);

@@ -299,53 +299,55 @@ function PhoneMockup() {
       data-demo-messages={items.length}
     >
       <div className="landing-iphone-screen">
-        <div className="landing-iphone-statusbar">
-          <span className="landing-iphone-time">4:15</span>
-          <span className="landing-iphone-island" />
-          <span className="landing-iphone-signal">
-            <svg viewBox="0 0 46 12" fill="currentColor" aria-hidden="true">
-              <rect x="0" y="7" width="3" height="5" rx="1" />
-              <rect x="5" y="5" width="3" height="7" rx="1" />
-              <rect x="10" y="3" width="3" height="9" rx="1" />
-              <rect x="15" y="1" width="3" height="11" rx="1" />
-              <rect
-                x="24"
-                y="1"
-                width="20"
-                height="10"
-                rx="3"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.5"
-              />
-              <rect x="26" y="3" width="14" height="6" rx="1.5" />
-            </svg>
-          </span>
-        </div>
-        <div className="landing-phone-header">
-          <span className="landing-phone-contact">
-            <img
-              className="landing-phone-avatar"
-              src="/brand/logos/logo_white_orangebg.svg"
-              alt=""
-              width={423}
-              height={423}
-            />
-            <span className="landing-phone-name">
-              Eliza
-              <svg
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2.4"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                aria-hidden="true"
-              >
-                <path d="M9 18l6-6-6-6" />
+        <div className="landing-phone-top">
+          <div className="landing-iphone-statusbar">
+            <span className="landing-iphone-time">4:15</span>
+            <span className="landing-iphone-island" />
+            <span className="landing-iphone-signal">
+              <svg viewBox="0 0 46 12" fill="currentColor" aria-hidden="true">
+                <rect x="0" y="7" width="3" height="5" rx="1" />
+                <rect x="5" y="5" width="3" height="7" rx="1" />
+                <rect x="10" y="3" width="3" height="9" rx="1" />
+                <rect x="15" y="1" width="3" height="11" rx="1" />
+                <rect
+                  x="24"
+                  y="1"
+                  width="20"
+                  height="10"
+                  rx="3"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                />
+                <rect x="26" y="3" width="14" height="6" rx="1.5" />
               </svg>
             </span>
-          </span>
+          </div>
+          <div className="landing-phone-header">
+            <span className="landing-phone-contact">
+              <img
+                className="landing-phone-avatar"
+                src="/brand/logos/logo_white_orangebg.svg"
+                alt=""
+                width={423}
+                height={423}
+              />
+              <span className="landing-phone-name">
+                Eliza
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2.4"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden="true"
+                >
+                  <path d="M9 18l6-6-6-6" />
+                </svg>
+              </span>
+            </span>
+          </div>
         </div>
         <div className="landing-phone-thread" ref={threadRef}>
           <div className="landing-thread-preamble">
@@ -484,7 +486,7 @@ export default function LandingPage() {
         <div className="landing-hero-copy">
           <h1 className="landing-hero-heading">
             {t("homepage_eliza.landing.heroTitle", {
-              defaultValue: "Get 4 hours of your time back every week.",
+              defaultValue: "Four hours of your time back every week.",
             })}
           </h1>
           <div className="landing-hero-actions">
@@ -494,7 +496,7 @@ export default function LandingPage() {
             >
               <IMessageIcon className="size-5" />
               {t("homepage_eliza.landing.ctaText", {
-                defaultValue: "Text me",
+                defaultValue: "Text",
               })}
             </a>
             <a
@@ -510,14 +512,13 @@ export default function LandingPage() {
                 <path d="M6.62 10.79a15.05 15.05 0 0 0 6.59 6.59l2.2-2.2a1 1 0 0 1 1.02-.24 11.36 11.36 0 0 0 3.57.57 1 1 0 0 1 1 1V20a1 1 0 0 1-1 1A17 17 0 0 1 3 4a1 1 0 0 1 1-1h3.5a1 1 0 0 1 1 1 11.36 11.36 0 0 0 .57 3.57 1 1 0 0 1-.25 1.02Z" />
               </svg>
               {t("homepage_eliza.landing.ctaCall", {
-                defaultValue: "Call me",
+                defaultValue: "Call",
               })}
             </a>
-          </div>
-          <div className="landing-channels">
             {channels.map((channel) => (
               <a
                 key={channel.key}
+                className="landing-channel"
                 href={channel.href}
                 aria-label={channel.label}
                 title={channel.label}
