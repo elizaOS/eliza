@@ -4,8 +4,8 @@
  * non-plain collection roots, CRLF, and metadata/policy extraction.
  */
 import assert from "node:assert";
-import { ElizaError } from "@elizaos/core";
 import { describe, it } from "node:test";
+import { ElizaError } from "@elizaos/core";
 import {
   INVALID_SKILL_FRONTMATTER_YAML,
   parseFrontmatter,
@@ -103,7 +103,10 @@ Body content`;
       (error: unknown) => {
         assert.ok(error instanceof ElizaError);
         assert.strictEqual(error.code, INVALID_SKILL_FRONTMATTER_YAML);
-        assert.strictEqual(error.message, "Skill frontmatter contains invalid YAML");
+        assert.strictEqual(
+          error.message,
+          "Skill frontmatter contains invalid YAML",
+        );
         assert.ok(error.cause instanceof Error);
         return true;
       },

@@ -152,8 +152,11 @@ Detailed instructions for the AI agent...
 
 ### Frontmatter
 
-- `parseFrontmatter(content)` - Parse YAML frontmatter from markdown string
-- `stripFrontmatter(content)` - Return body without frontmatter
+- `parseFrontmatter(content)` - Parse YAML frontmatter from a markdown string;
+  malformed YAML throws `ElizaError` with code
+  `INVALID_SKILL_FRONTMATTER_YAML`
+- `stripFrontmatter(content)` - Return the body without frontmatter; malformed
+  YAML throws the same typed error
 - `serializeSkillFile(frontmatter, body)` - Re-serialize frontmatter + body (learning loop)
 - `resolveSkillMetadata(frontmatter)` - Resolve `SkillMetadata` from frontmatter
 - `resolveSkillInvocationPolicy(frontmatter)` - Resolve `SkillInvocationPolicy`

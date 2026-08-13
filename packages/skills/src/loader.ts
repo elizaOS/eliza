@@ -105,7 +105,7 @@ function loadSkillFromFile(
   try {
     ({ frontmatter } = parseFrontmatter<SkillFrontmatter>(rawContent));
   } catch (error: unknown) {
-    // error-policy:J1 skill discovery translates its known parser failure into a warning diagnostic
+    // error-policy:J3 malformed skill YAML becomes an explicit warning diagnostic and no skill
     if (!isElizaError(error) || error.code !== INVALID_SKILL_FRONTMATTER_YAML) {
       throw error;
     }

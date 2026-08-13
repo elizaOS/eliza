@@ -4,13 +4,7 @@
  * dangling symlinks and read errors.
  */
 import assert from "node:assert";
-import {
-  mkdirSync,
-  rmdirSync,
-  rmSync,
-  symlinkSync,
-  writeFileSync,
-} from "node:fs";
+import { mkdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, it } from "node:test";
