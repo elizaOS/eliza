@@ -195,8 +195,18 @@ function redactMatch(match: string, groups: string[]): string {
 	const token = filteredGroups[filteredGroups.length - 1] ?? match;
 	// Unlike provider tokens, URI userinfo includes an account identifier; do
 	// not preserve its usual six-character prefix in diagnostics.
+	// Anchor the rewrite to the userinfo span. A plain `replace(token, …)` hits
+	// the FIRST occurrence of the userinfo substring, which for a short user
+	// name is usually inside the scheme itself ("https://s@h" would become
+	// "http***://s@h" and leak the credential verbatim).
+	//
+	// Known residual: `[^\s/@]+` cannot cross an `@`, so a password containing a
+	// literal `@` ("https://user:p@ss@host") only masks up to the first `@` and
+	// leaves the tail ("ss@host") in the output. Widening the userinfo class
+	// would make the pattern swallow unrelated text after a bare scheme, so the
+	// partial mask is deliberate.
 	if (/^[a-z][a-z0-9+.-]*:\/\//i.test(match) && match.endsWith("@")) {
-		return match.replace(token, () => "***");
+		return match.replace(/^([a-z][a-z0-9+.-]*:\/\/)[^\s/@]+@$/i, "$1***@");
 	}
 	const masked = maskToken(token);
 	if (token === match) {
