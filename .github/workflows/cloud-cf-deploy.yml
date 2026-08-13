@@ -1250,10 +1250,71 @@ jobs:
   # ---------------------------------------------------------------------------
   # Pages build — one prepared workspace emits the host-aware frontend.
   # ---------------------------------------------------------------------------
+  resolve-pages-environment-config:
+    name: Resolve Pages environment configuration
+    needs: migrate-db
+    if: ${{ !cancelled() && github.event_name != 'pull_request' && needs.migrate-db.result == 'success' }}
+    runs-on: ubuntu-latest
+    environment: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'production' || 'staging' }}
+    outputs:
+      telegram_bot_id: ${{ steps.telegram.outputs.bot_id }}
+      telegram_bot_username: ${{ steps.telegram.outputs.bot_username }}
+    steps:
+      - name: Validate Telegram configuration
+        id: telegram
+        env:
+          TELEGRAM_BOT_ID: ${{ vars.VITE_TELEGRAM_BOT_ID }}
+          TELEGRAM_BOT_USERNAME: ${{ vars.VITE_TELEGRAM_BOT_USERNAME }}
+        run: |
+          set -euo pipefail
+          if [[ -z "$TELEGRAM_BOT_ID" && -z "$TELEGRAM_BOT_USERNAME" ]]; then
+            TELEGRAM_BOT_ID=7684336618
+            TELEGRAM_BOT_USERNAME=Elizav2_Bot
+          elif [[ -z "$TELEGRAM_BOT_ID" || -z "$TELEGRAM_BOT_USERNAME" ]]; then
+            echo "::error::VITE_TELEGRAM_BOT_ID and VITE_TELEGRAM_BOT_USERNAME must be configured together"
+            exit 1
+          fi
+          [[ "$TELEGRAM_BOT_ID" =~ ^[0-9]+$ ]] || { echo "::error::VITE_TELEGRAM_BOT_ID must be numeric"; exit 1; }
+          [[ "$TELEGRAM_BOT_USERNAME" =~ ^[A-Za-z0-9_]+$ ]] || { echo "::error::VITE_TELEGRAM_BOT_USERNAME must be a Telegram username without @"; exit 1; }
+          echo "bot_id=$TELEGRAM_BOT_ID" >> "$GITHUB_OUTPUT"
+          echo "bot_username=$TELEGRAM_BOT_USERNAME" >> "$GITHUB_OUTPUT"
+
+  resolve-pages-preview-config:
+    name: Resolve Pages preview configuration
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    outputs:
+      telegram_bot_id: ${{ steps.telegram.outputs.bot_id }}
+      telegram_bot_username: ${{ steps.telegram.outputs.bot_username }}
+    steps:
+      - name: Resolve public preview defaults
+        id: telegram
+        env:
+          TELEGRAM_BOT_ID: ${{ vars.VITE_TELEGRAM_BOT_ID }}
+          TELEGRAM_BOT_USERNAME: ${{ vars.VITE_TELEGRAM_BOT_USERNAME }}
+        run: |
+          set -euo pipefail
+          if [[ -z "$TELEGRAM_BOT_ID" && -z "$TELEGRAM_BOT_USERNAME" ]]; then
+            TELEGRAM_BOT_ID=7684336618
+            TELEGRAM_BOT_USERNAME=Elizav2_Bot
+          elif [[ -z "$TELEGRAM_BOT_ID" || -z "$TELEGRAM_BOT_USERNAME" ]]; then
+            echo "::error::VITE_TELEGRAM_BOT_ID and VITE_TELEGRAM_BOT_USERNAME must be configured together"
+            exit 1
+          fi
+          [[ "$TELEGRAM_BOT_ID" =~ ^[0-9]+$ ]] || { echo "::error::VITE_TELEGRAM_BOT_ID must be numeric"; exit 1; }
+          [[ "$TELEGRAM_BOT_USERNAME" =~ ^[A-Za-z0-9_]+$ ]] || { echo "::error::VITE_TELEGRAM_BOT_USERNAME must be a Telegram username without @"; exit 1; }
+          echo "bot_id=$TELEGRAM_BOT_ID" >> "$GITHUB_OUTPUT"
+          echo "bot_username=$TELEGRAM_BOT_USERNAME" >> "$GITHUB_OUTPUT"
+
   build-pages:
     name: Build Pages artifacts
-    needs: migrate-db
-    if: ${{ !cancelled() && (needs.migrate-db.result == 'success' || (github.event_name == 'pull_request' && needs.migrate-db.result == 'skipped')) }}
+    needs:
+      [
+        migrate-db,
+        resolve-pages-environment-config,
+        resolve-pages-preview-config,
+      ]
+    if: ${{ !cancelled() && (needs.migrate-db.result == 'success' || (github.event_name == 'pull_request' && needs.migrate-db.result == 'skipped')) && ((github.event_name == 'pull_request' && needs.resolve-pages-preview-config.result == 'success') || (github.event_name != 'pull_request' && needs.resolve-pages-environment-config.result == 'success')) }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     # GitHub preserves outputs from successful jobs when only failed jobs are
@@ -1264,6 +1325,8 @@ jobs:
       artifact_run_id: ${{ steps.pages-artifact.outputs.run_id }}
       artifact_run_attempt: ${{ steps.pages-artifact.outputs.run_attempt }}
       artifact_source_sha: ${{ steps.pages-artifact.outputs.source_sha }}
+      telegram_bot_id: ${{ needs.resolve-pages-environment-config.outputs.telegram_bot_id || needs.resolve-pages-preview-config.outputs.telegram_bot_id }}
+      telegram_bot_username: ${{ needs.resolve-pages-environment-config.outputs.telegram_bot_username || needs.resolve-pages-preview-config.outputs.telegram_bot_username }}
     steps:
       - name: Validate PR preview identity
         if: github.event_name == 'pull_request'
@@ -1315,6 +1378,8 @@ jobs:
       - name: Build consolidated frontend artifact
         run: bun run --cwd packages/app build:web
         env:
+          VITE_TELEGRAM_BOT_ID: ${{ needs.resolve-pages-environment-config.outputs.telegram_bot_id || needs.resolve-pages-preview-config.outputs.telegram_bot_id }}
+          VITE_TELEGRAM_BOT_USERNAME: ${{ needs.resolve-pages-environment-config.outputs.telegram_bot_username || needs.resolve-pages-preview-config.outputs.telegram_bot_username }}
           VITE_API_URL: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'https://api.eliza.app' || 'https://api-staging.eliza.app' }}
           NEXT_PUBLIC_API_URL: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'https://api.eliza.app' || 'https://api-staging.eliza.app' }}
           VITE_OIDC_ISSUER_URL: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'https://api.eliza.app' || 'https://api-staging.eliza.app' }}
@@ -1567,6 +1632,8 @@ jobs:
         working-directory: ${{ env.CHECKOUT_DIR }}
         run: bun run --cwd packages/app build:web
         env:
+          VITE_TELEGRAM_BOT_ID: ${{ needs.build-pages.outputs.telegram_bot_id }}
+          VITE_TELEGRAM_BOT_USERNAME: ${{ needs.build-pages.outputs.telegram_bot_username }}
           VITE_API_URL: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'https://api.eliza.app' || 'https://api-staging.eliza.app' }}
           NEXT_PUBLIC_API_URL: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'https://api.eliza.app' || 'https://api-staging.eliza.app' }}
           VITE_OIDC_ISSUER_URL: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'https://api.eliza.app' || 'https://api-staging.eliza.app' }}

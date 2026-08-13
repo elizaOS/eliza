@@ -110,6 +110,12 @@ describe("Cloud CF Pages artifact metadata", () => {
         "$" + "{{ steps.pages-artifact.outputs.run_attempt }}",
       artifact_source_sha:
         "$" + "{{ steps.pages-artifact.outputs.source_sha }}",
+      telegram_bot_id:
+        "$" +
+        "{{ needs.resolve-pages-environment-config.outputs.telegram_bot_id || needs.resolve-pages-preview-config.outputs.telegram_bot_id }}",
+      telegram_bot_username:
+        "$" +
+        "{{ needs.resolve-pages-environment-config.outputs.telegram_bot_username || needs.resolve-pages-preview-config.outputs.telegram_bot_username }}",
     });
 
     const metadata = namedStep(
