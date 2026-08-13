@@ -25,6 +25,7 @@ import {
 	renderContextObject,
 } from "./context-renderer";
 import { extractJsonObjects, parseJsonObject } from "./json-output";
+import { DEFAULT_MAX_KEPT_STEP_CHARS } from "./limits";
 import {
 	buildModelInputBudget,
 	withModelInputBudgetProviderOptions,
@@ -92,19 +93,46 @@ export async function runEvaluator(
 	params: RunEvaluatorParams,
 ): Promise<EvaluatorOutput> {
 	const streamingContext = getStreamingContext();
-	const renderedInput = renderEvaluatorModelInput({
+	const EVALUATOR_MIN_TOOL_RESULT_CHARS = 2_000;
+	let toolResultCap = DEFAULT_MAX_KEPT_STEP_CHARS;
+	let renderedInput = renderEvaluatorModelInput({
 		context: params.context,
 		trajectory: params.trajectory,
 	});
+	let modelInputBudget = buildModelInputBudget({
+		messages: renderedInput.messages,
+		promptSegments: renderedInput.promptSegments,
+	});
+	// Degrade, don't fail: when the assembled input would exceed the window
+	// (threshold = window - output reserve), shrink only the rendered tool
+	// results and re-estimate. Stable/context segments (system instructions,
+	// current user message) are never modified or dropped. Bounded: 30k -> 7.5k
+	// -> 2k. Live incident 2026-08: one oversized tool result rendered verbatim
+	// pushed the evaluator call to 2.28M tokens and the provider hard-400'd the
+	// whole turn with context_length_exceeded instead of answering.
+	while (
+		modelInputBudget.shouldCompact &&
+		toolResultCap > EVALUATOR_MIN_TOOL_RESULT_CHARS
+	) {
+		toolResultCap = Math.max(
+			EVALUATOR_MIN_TOOL_RESULT_CHARS,
+			Math.floor(toolResultCap / 4),
+		);
+		renderedInput = renderEvaluatorModelInput({
+			context: params.context,
+			trajectory: params.trajectory,
+			maxToolResultChars: toolResultCap,
+		});
+		modelInputBudget = buildModelInputBudget({
+			messages: renderedInput.messages,
+			promptSegments: renderedInput.promptSegments,
+		});
+	}
 	const prefixHashes = computePrefixHashes(renderedInput.promptSegments);
 	const cachePrefixHashes = computePrefixHashes(renderedInput.cacheKeySegments);
 	const prefixHash =
 		cachePrefixHashes[cachePrefixHashes.length - 1]?.hash ??
 		"no-context-segments";
-	const modelInputBudget = buildModelInputBudget({
-		messages: renderedInput.messages,
-		promptSegments: renderedInput.promptSegments,
-	});
 	const providerOptions = withModelInputBudgetProviderOptions(
 		cacheProviderOptions({
 			prefixHash,
@@ -375,6 +403,14 @@ function renderEvaluatorModelInput(params: {
 	context: ContextObject;
 	trajectory: PlannerTrajectory;
 	template?: string;
+	/**
+	 * Per-tool-result render cap (chars) applied via
+	 * `trajectoryStepsToMessages`. Defaults to `DEFAULT_MAX_KEPT_STEP_CHARS`
+	 * so a single pathological tool result can never blow the evaluator
+	 * call's context window on its own; `runEvaluator` passes tighter caps
+	 * when the total estimate still exceeds the compaction threshold.
+	 */
+	maxToolResultChars?: number;
 }): {
 	messages: ChatMessage[];
 	promptSegments: PromptSegment[];
@@ -385,7 +421,10 @@ function renderEvaluatorModelInput(params: {
 	const instructions = (
 		template.split("context_object:")[0] ?? template
 	).trim();
-	const stepMessages = trajectoryStepsToMessages(params.trajectory.steps);
+	const stepMessages = trajectoryStepsToMessages(params.trajectory.steps, {
+		maxToolResultChars:
+			params.maxToolResultChars ?? DEFAULT_MAX_KEPT_STEP_CHARS,
+	});
 	// Mirrors planner-loop: the evaluator stage instructions are template-derived
 	// (`evaluatorTemplate`) and structurally identical across calls. Marking
 	// the segment `stable: true` makes them cacheable on Anthropic's wire path.
