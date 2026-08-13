@@ -127,7 +127,7 @@ describe("cloud restore routes the client without waiting on the Steward refresh
     localStorage.setItem(STEWARD_TOKEN_KEY, nearExpiry);
     const fresh = makeJwt(3600);
     // …and a MISSING apiBase forces the backfill, which derives the dedicated
-    // `<agentId>.elizacloud.ai` base purely from the persisted id.
+    // `<agentId>.cloud.eliza.app` base purely from the persisted id.
     const restored: PersistedActiveServer = {
       id: `cloud:${AGENT_ID}`,
       kind: "cloud",
@@ -156,7 +156,7 @@ describe("cloud restore routes the client without waiting on the Steward refresh
     expect(clientRef.setToken).toHaveBeenNthCalledWith(1, null);
     expect(clientRef.setToken).toHaveBeenLastCalledWith(nearExpiry);
     expect(clientRef.setBaseUrl).toHaveBeenLastCalledWith(
-      `https://${AGENT_ID}.elizacloud.ai`,
+      `https://${AGENT_ID}.cloud.eliza.app`,
     );
     expect(clientRef.setToken.mock.invocationCallOrder[0]).toBeLessThan(
       clientRef.setBaseUrl.mock.invocationCallOrder[0] as number,
@@ -181,8 +181,10 @@ describe("cloud restore routes the client without waiting on the Steward refresh
     expect(clientRef.setToken).toHaveBeenLastCalledWith(fresh);
   });
 
-  it("preserves a shared adapter regardless of the dedicated-create default", async () => {
-    const sharedApiBase = `https://api.elizacloud.ai/api/v1/eliza/agents/${SHARED_AGENT_ID}`;
+  it("preserves a shared adapter with account authority regardless of the create default", async () => {
+    const stewardToken = makeJwt(3600);
+    localStorage.setItem(STEWARD_TOKEN_KEY, stewardToken);
+    const sharedApiBase = `https://api.eliza.app/api/v1/eliza/agents/${SHARED_AGENT_ID}`;
     const restored: PersistedActiveServer = {
       id: `cloud:${SHARED_AGENT_ID}`,
       kind: "cloud",
@@ -197,7 +199,7 @@ describe("cloud restore routes the client without waiting on the Steward refresh
       clientRef: dedicatedClient,
     });
     expect(dedicatedClient.setBaseUrl).toHaveBeenCalledWith(sharedApiBase);
-    expect(dedicatedClient.setToken).toHaveBeenCalledWith("paired-token");
+    expect(dedicatedClient.setToken).toHaveBeenLastCalledWith(stewardToken);
 
     setBootConfig({ ...DEFAULT_BOOT_CONFIG, preferSharedCloudTier: true });
     const sharedClient = { setBaseUrl: vi.fn(), setToken: vi.fn() };
@@ -206,14 +208,16 @@ describe("cloud restore routes the client without waiting on the Steward refresh
       clientRef: sharedClient,
     });
     expect(sharedClient.setBaseUrl).toHaveBeenCalledWith(sharedApiBase);
-    expect(sharedClient.setToken).toHaveBeenCalledWith("paired-token");
+    expect(sharedClient.setToken).toHaveBeenLastCalledWith(stewardToken);
   });
 
-  it("keeps a staging shared adapter on the staging control plane", async () => {
+  it("canonicalizes a legacy staging shared adapter on the staging control plane", async () => {
     setBootConfig({
       ...DEFAULT_BOOT_CONFIG,
       cloudApiBase: "https://staging.elizacloud.ai",
     });
+    const stewardToken = makeJwt(3600);
+    localStorage.setItem(STEWARD_TOKEN_KEY, stewardToken);
     const restored: PersistedActiveServer = {
       id: `cloud:${STAGING_AGENT_ID}`,
       kind: "cloud",
@@ -229,9 +233,9 @@ describe("cloud restore routes the client without waiting on the Steward refresh
     });
 
     expect(clientRef.setBaseUrl).toHaveBeenCalledWith(
-      `https://api-staging.elizacloud.ai/api/v1/eliza/agents/${STAGING_AGENT_ID}`,
+      `https://api-staging.eliza.app/api/v1/eliza/agents/${STAGING_AGENT_ID}`,
     );
-    expect(clientRef.setToken).toHaveBeenCalledWith("paired-token");
+    expect(clientRef.setToken).toHaveBeenLastCalledWith(stewardToken);
   });
 
   it("repairs a legacy dedicated-looking staging base when the owner record is shared", async () => {
@@ -262,7 +266,7 @@ describe("cloud restore routes the client without waiting on the Steward refresh
     });
 
     expect(fetchMock).toHaveBeenCalledWith(
-      `https://api-staging.elizacloud.ai/api/v1/eliza/agents/${SHARED_AGENT_ID}`,
+      `https://api-staging.eliza.app/api/v1/eliza/agents/${SHARED_AGENT_ID}`,
       expect.objectContaining({
         headers: expect.objectContaining({
           Authorization: `Bearer ${stewardToken}`,
@@ -271,11 +275,136 @@ describe("cloud restore routes the client without waiting on the Steward refresh
     );
     await vi.waitFor(() => {
       expect(clientRef.setBaseUrl).toHaveBeenLastCalledWith(
-        `https://api-staging.elizacloud.ai/api/v1/eliza/agents/${SHARED_AGENT_ID}`,
+        `https://api-staging.eliza.app/api/v1/eliza/agents/${SHARED_AGENT_ID}`,
       );
       expect(clientRef.setToken).toHaveBeenLastCalledWith(stewardToken);
     });
     expect(clientRef.setToken).toHaveBeenCalledWith(stewardToken);
+  });
+
+  it("uses the refreshed Steward token for legacy tier repair", async () => {
+    bridgeMock.isElectrobunRuntime.mockReturnValue(false);
+    const expired = makeJwt(-60);
+    const fresh = makeJwt(3600);
+    localStorage.setItem(STEWARD_TOKEN_KEY, expired);
+    fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
+      const url =
+        typeof input === "string"
+          ? input
+          : input instanceof URL
+            ? input.href
+            : input.url;
+      if (url.includes("steward-refresh")) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ token: fresh }),
+        } as Response;
+      }
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          success: true,
+          data: { executionTier: "shared" },
+        }),
+      } as Response;
+    });
+    const clientRef = { setBaseUrl: vi.fn(), setToken: vi.fn() };
+
+    await applyRestoredConnection({
+      restoredActiveServer: {
+        id: `cloud:${SHARED_AGENT_ID}`,
+        kind: "cloud",
+        label: "Eliza Cloud",
+        apiBase: `https://${SHARED_AGENT_ID}.elizacloud.ai`,
+      },
+      clientRef,
+    });
+
+    await vi.waitFor(() => {
+      expect(clientRef.setBaseUrl).toHaveBeenLastCalledWith(
+        `https://api.eliza.app/api/v1/eliza/agents/${SHARED_AGENT_ID}`,
+      );
+    });
+    const tierLookup = fetchMock.mock.calls.find(([input]) =>
+      String(input).includes(`/api/v1/eliza/agents/${SHARED_AGENT_ID}`),
+    );
+    expect(tierLookup?.[1]).toEqual(
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Authorization: `Bearer ${fresh}`,
+        }),
+      }),
+    );
+    expect(tierLookup?.[1]).not.toEqual(
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Authorization: `Bearer ${expired}`,
+        }),
+      }),
+    );
+    expect(clientRef.setToken).toHaveBeenLastCalledWith(fresh);
+  });
+
+  it("keeps the native owner key through tier repair when Steward refresh fails", async () => {
+    bridgeMock.isElectrobunRuntime.mockReturnValue(true);
+    const nearExpiry = makeJwt(30);
+    const nativeOwnerKey = "eliza_native-owner-key";
+    localStorage.setItem(STEWARD_TOKEN_KEY, nearExpiry);
+    fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
+      const url =
+        typeof input === "string"
+          ? input
+          : input instanceof URL
+            ? input.href
+            : input.url;
+      if (url.includes("steward-refresh")) {
+        return {
+          ok: false,
+          status: 401,
+          json: async () => ({}),
+        } as Response;
+      }
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          success: true,
+          data: { executionTier: "shared" },
+        }),
+      } as Response;
+    });
+    const clientRef = { setBaseUrl: vi.fn(), setToken: vi.fn() };
+
+    await applyRestoredConnection({
+      restoredActiveServer: {
+        id: `cloud:${SHARED_AGENT_ID}`,
+        kind: "cloud",
+        label: "Eliza Cloud",
+        apiBase: `https://${SHARED_AGENT_ID}.elizacloud.ai`,
+        accessToken: nativeOwnerKey,
+      },
+      clientRef,
+    });
+
+    await vi.waitFor(() => {
+      expect(clientRef.setBaseUrl).toHaveBeenLastCalledWith(
+        `https://api.eliza.app/api/v1/eliza/agents/${SHARED_AGENT_ID}`,
+      );
+    });
+    const tierLookup = fetchMock.mock.calls.find(([input]) =>
+      String(input).includes(`/api/v1/eliza/agents/${SHARED_AGENT_ID}`),
+    );
+    expect(tierLookup?.[1]).toEqual(
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Authorization: `Bearer ${nativeOwnerKey}`,
+        }),
+      }),
+    );
+    expect(clientRef.setToken).toHaveBeenLastCalledWith(nativeOwnerKey);
+    expect(localStorage.getItem(STEWARD_TOKEN_KEY)).toBeNull();
   });
 
   it("repairs a previously persisted production ingress in the staging app", async () => {
@@ -298,7 +427,7 @@ describe("cloud restore routes the client without waiting on the Steward refresh
     });
 
     expect(clientRef.setBaseUrl).toHaveBeenCalledWith(
-      `https://${STAGING_AGENT_ID}.staging.elizacloud.ai`,
+      `https://${STAGING_AGENT_ID}.cloud-staging.eliza.app`,
     );
     expect(clientRef.setToken).toHaveBeenCalledWith("paired-token");
   });
@@ -333,7 +462,7 @@ describe("cloud restore routes the client without waiting on the Steward refresh
     expect(clientRef.setToken).toHaveBeenCalledWith("paired-token");
   });
 
-  it("does not demote a persisted staging dedicated base under the prod boot default", async () => {
+  it("canonicalizes a legacy staging dedicated base under the prod boot default", async () => {
     setBootConfig({
       ...DEFAULT_BOOT_CONFIG,
       cloudApiBase: "https://elizacloud.ai",
@@ -353,7 +482,9 @@ describe("cloud restore routes the client without waiting on the Steward refresh
       clientRef,
     });
 
-    expect(clientRef.setBaseUrl).toHaveBeenCalledWith(stagingOrigin);
+    expect(clientRef.setBaseUrl).toHaveBeenCalledWith(
+      `https://${STAGING_AGENT_ID}.cloud-staging.eliza.app`,
+    );
     expect(clientRef.setToken).toHaveBeenCalledWith("paired-token");
   });
 });

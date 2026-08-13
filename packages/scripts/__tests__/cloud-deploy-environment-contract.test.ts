@@ -16,11 +16,13 @@ interface WorkflowStep {
   id?: string;
   name?: string;
   run?: string;
-  with?: { script?: string };
+  uses?: string;
+  with?: Record<string, string>;
 }
 
 interface WorkflowJob {
   env?: Record<string, string>;
+  needs?: string | string[];
   steps?: WorkflowStep[];
 }
 
@@ -40,8 +42,11 @@ function step(workflow: Workflow, jobId: string, name: string): WorkflowStep {
   return found;
 }
 
-const cloudSource = read(".github/workflows/cloud-cf-deploy.yml");
-const cloud = parse(".github/workflows/cloud-cf-deploy.yml");
+// `cloud-cf-deploy.yml` is the trigger/admission/approval entry point; every
+// Cloudflare mutation (deploy-api, deploy-app) runs in the reusable
+// `cloud-cf-release.yml` it calls, so the mutation contracts are read there.
+const cloudSource = read(".github/workflows/cloud-cf-release.yml");
+const cloud = parse(".github/workflows/cloud-cf-release.yml");
 const infraSource = read(".github/workflows/infra.yml");
 const infra = parse(".github/workflows/infra.yml");
 const provisioning = parse(
@@ -61,7 +66,109 @@ const cloudWorkerSecretNames = [
   "TUNNEL_HOSTNAME_SIGNING_SECRET",
 ] as const;
 
+const requiredAuthWorkerSecretNames = [
+  "OIDC_CLIENTS",
+  "OIDC_SIGNING_JWKS",
+  "STEWARD_API_URL",
+  "STEWARD_JWT_SECRET",
+  "STEWARD_SESSION_SECRET",
+  "STEWARD_REQUEST_SIGNING_SECRET",
+  "STEWARD_PLATFORM_KEYS",
+  "STEWARD_TENANT_API_KEY",
+] as const;
+
 describe("canonical cloud deployment environment contract", () => {
+  test("gates protected Terraform operations on the canonical source ref", () => {
+    expect(infra.jobs?.terraform?.needs).toBe("validate-source");
+    const validate = step(
+      infra,
+      "validate-source",
+      "Validate canonical source ref",
+    );
+    expect(validate.run).toContain('expected_ref="refs/heads/main"');
+    expect(validate.run).toContain('expected_ref="refs/heads/develop"');
+    expect(validate.run).toContain('if [ "$SOURCE_REF" != "$expected_ref" ]');
+  });
+
+  test("applies only an encrypted, service-bound artifact from a successful plan attempt", () => {
+    const plan = step(infra, "terraform", "Plan");
+    expect(plan.run).toContain("terraform plan");
+    const packagePlan = step(infra, "terraform", "Package reviewed plan");
+    expect(packagePlan.run).toContain("sha256sum selected.tfplan");
+    expect(packagePlan.run).toContain("plan-metadata.json");
+    expect(packagePlan.run).toContain("selected.tfplan.enc");
+    expect(packagePlan.run).toContain("terraform-plan-envelope.mjs");
+    expect(packagePlan.run).not.toContain(
+      'cp selected.tfplan "$artifact_dir/selected.tfplan"',
+    );
+    const validateRun = step(infra, "terraform", "Validate reviewed plan run");
+    expect(validateRun.run).toContain('run.name !== "Infrastructure"');
+    expect(validateRun.run).toContain(
+      'run.path !== ".github/workflows/infra.yml"',
+    );
+    expect(validateRun.run).toContain('run.conclusion !== "success"');
+    expect(validateRun.run).toContain("run.run_attempt");
+    const resolveArtifact = step(
+      infra,
+      "terraform",
+      "Resolve reviewed plan artifact",
+    );
+    expect(resolveArtifact.run).toContain(
+      "actions/artifacts/$EXPECTED_ARTIFACT_ID",
+    );
+    expect(resolveArtifact.run).toContain("artifact.digest");
+    expect(resolveArtifact.run).toContain("artifact.workflow_run?.id");
+    expect(resolveArtifact.run).toContain("EXPECTED_RUN_ATTEMPT");
+    const downloadArtifact = step(
+      infra,
+      "terraform",
+      "Download reviewed plan artifact",
+    );
+    expect(downloadArtifact.with?.["artifact-ids"]).toContain(
+      "inputs.plan_artifact_id",
+    );
+    expect(downloadArtifact.with).not.toHaveProperty("name");
+    const validateArtifact = step(
+      infra,
+      "terraform",
+      "Validate reviewed plan artifact",
+    );
+    expect(validateArtifact.run).toContain("selected.tfplan.enc");
+    expect(validateArtifact.run).toContain(
+      "Reviewed artifact contains a plaintext Terraform plan",
+    );
+    expect(validateArtifact.run).toContain("EXPECTED_SOURCE_SHA");
+    const decrypt = step(infra, "terraform", "Decrypt reviewed plan");
+    expect(decrypt.run).toContain("terraform-plan-envelope.mjs");
+    expect(decrypt.run).toContain("actual_digest");
+    const apply = step(infra, "terraform", "Apply reviewed plan");
+    expect(apply.run).toContain("terraform apply");
+    expect(apply.run).not.toContain("terraform plan");
+    const upload = step(infra, "terraform", "Upload reviewed plan artifact");
+    expect(upload.with?.name).toBe(
+      "terraform-plan-$" + "{{ github.run_id }}-$" + "{{ github.run_attempt }}",
+    );
+    expect(
+      infra.jobs?.terraform?.env?.TERRAFORM_PLAN_ARTIFACT_PUBLIC_KEY,
+    ).toContain("vars.TERRAFORM_PLAN_ARTIFACT_PUBLIC_KEY");
+    expect(infra.jobs?.terraform?.env).not.toHaveProperty(
+      "TERRAFORM_PLAN_ARTIFACT_PRIVATE_KEY",
+    );
+    expect(decrypt.env?.TERRAFORM_PLAN_ARTIFACT_PRIVATE_KEY).toContain(
+      "secrets.TERRAFORM_PLAN_ARTIFACT_PRIVATE_KEY",
+    );
+    expect(infraSource).not.toContain("TERRAFORM_PLAN_ARTIFACT_KEY");
+    const summary = step(
+      infra,
+      "terraform",
+      "Summarize reviewed plan identity",
+    );
+    expect(summary.run).toContain("Artifact digest: sha256:$ARTIFACT_DIGEST");
+    expect(infraSource).not.toContain(
+      "$RUNNER_TEMP/terraform-plan-artifact/selected.tfplan\n",
+    );
+  });
+
   test("derives Terraform deploy branches from the selected environment", () => {
     const deployBranch = infra.jobs?.terraform?.env?.TF_VAR_deploy_branch;
     expect(deployBranch).toContain("inputs.environment == 'production'");
@@ -235,6 +342,19 @@ describe("canonical cloud deployment environment contract", () => {
       'echo "::notice::$name is not configured; skipping"',
     );
     expect(publish.run).not.toContain("required_worker_provisioning_secrets=(");
+    for (const name of requiredAuthWorkerSecretNames) {
+      expect(publish.env?.[name]).toContain("secrets.");
+      expect(publish.run).toContain(`\n  ${name} \\\n`);
+    }
+    expect(publish.env?.STAGING_SESSION_EXCHANGE_ALLOWED_API_KEY_IDS).toContain(
+      "vars.STAGING_SESSION_EXCHANGE_ALLOWED_API_KEY_IDS",
+    );
+    expect(publish.env?.STAGING_SESSION_EXCHANGE_ALLOWED_USER_IDS).toContain(
+      "vars.STAGING_SESSION_EXCHANGE_ALLOWED_USER_IDS",
+    );
+    expect(
+      publish.env?.STAGING_SESSION_EXCHANGE_ALLOWED_ORGANIZATION_IDS,
+    ).toContain("vars.STAGING_SESSION_EXCHANGE_ALLOWED_ORGANIZATION_IDS");
   });
 
   test("verifies required Worker binding names after deploy without reading values", () => {
@@ -257,6 +377,9 @@ describe("canonical cloud deployment environment contract", () => {
     expect(inventory?.run).toContain("wrangler@4.100.0 secret list");
     expect(inventory?.run).toContain("--format json");
     for (const name of cloudWorkerSecretNames) {
+      expect(inventory?.run).toContain(`\n    "${name}",\n`);
+    }
+    for (const name of requiredAuthWorkerSecretNames) {
       expect(inventory?.run).toContain(`\n    "${name}",\n`);
     }
     expect(inventory?.run).toContain(
@@ -299,6 +422,11 @@ describe("canonical cloud deployment environment contract", () => {
     expect(verify.run).toContain(
       'verify_json_endpoint "$served_url/.well-known/oidc/jwks.json" jwks',
     );
+    expect(verify.run).toContain(
+      "node packages/cloud/scripts/verify-steward-oauth-callbacks.mjs",
+    );
+    expect(verify.run).toContain('--callback-url "$served_url/login"');
+    expect(verify.run).toContain('tenant_id="elizacloud-staging"');
     expect(verify.run).toContain("OIDC issuer mismatch");
     expect(cloudSource).not.toContain(
       "pages project create eliza-app --production-branch=main 2>/dev/null || true",

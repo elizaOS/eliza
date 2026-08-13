@@ -166,18 +166,27 @@ function resolveWebhookAccount(
     return null;
   }
 
-  const pathname = new URL(rawUrl, "http://localhost").pathname;
-  if (pathname === "/webhook/wechat" && accounts.length === 1) {
-    return accounts[0];
-  }
+  try {
+    const pathname = new URL(rawUrl, "http://localhost").pathname;
+    if (pathname === "/webhook/wechat" && accounts.length === 1) {
+      return accounts[0];
+    }
 
-  const match = /^\/webhook\/wechat\/([^/]+)$/.exec(pathname);
-  if (!match) {
+    const match = /^\/webhook\/wechat\/([^/]+)$/.exec(pathname);
+    if (!match) {
+      return null;
+    }
+
+    const accountId = decodeURIComponent(match[1]);
+    return accounts.find((account) => account.accountId === accountId) ?? null;
+  } catch {
+    // error-policy:J3 the request target is untrusted input: a lone "%" or
+    // "%ZZ" account segment makes decodeURIComponent throw URIError, which
+    // would otherwise escape the synchronous request handler and kill the
+    // server. Malformed targets resolve to "no account" so the caller
+    // answers a plain 404.
     return null;
   }
-
-  const accountId = decodeURIComponent(match[1]);
-  return accounts.find((account) => account.accountId === accountId) ?? null;
 }
 
 function readHeaderValue(
@@ -216,13 +225,25 @@ function closeServer(server: ReturnType<typeof createServer>): Promise<void> {
   });
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
 export function normalizePayload(
-  payload: Record<string, unknown>,
+  payload: unknown,
 ): WechatMessageContext | null {
-  // Support two payload formats: nested "raw" and flattened "proxy"
-  const data =
-    (payload.data as Record<string, unknown>) ??
-    (payload.content ? payload : null);
+  if (!isRecord(payload)) {
+    return null;
+  }
+
+  // Support two payload formats: nested "raw" and flattened "proxy". The
+  // nested form must actually be a plain object — a string/array/scalar
+  // `data` field is an unrecognized payload, not a message.
+  const data = isRecord(payload.data)
+    ? payload.data
+    : payload.content
+      ? payload
+      : null;
 
   if (!data) {
     console.warn("[wechat] Unrecognized webhook payload format");
@@ -256,7 +277,18 @@ export function normalizePayload(
   const sender = String(data.sender ?? data.from ?? "");
   const recipient = String(data.recipient ?? data.to ?? "");
   const content = String(data.content ?? data.text ?? "");
-  const timestamp = Number(data.timestamp ?? Date.now());
+  // A genuinely absent timestamp means "received now"; a present but
+  // unusable one fails the whole message closed so a non-finite or negative
+  // value can never become the inbound Memory's createdAt (#19060, matching
+  // the plugin-x policy from #18965).
+  const rawTimestamp = data.timestamp;
+  const timestamp = rawTimestamp == null ? Date.now() : Number(rawTimestamp);
+  if (!Number.isFinite(timestamp) || timestamp < 0) {
+    console.warn(
+      `[wechat] Dropping webhook message with unusable timestamp: ${String(rawTimestamp)}`,
+    );
+    return null;
+  }
   const msgId = String(data.msgId ?? data.id ?? `${sender}-${timestamp}`);
 
   // Group detection

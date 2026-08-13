@@ -24,11 +24,17 @@ interface WorkflowStep {
 }
 
 interface Workflow {
-  jobs?: Record<string, { steps?: WorkflowStep[] }>;
+  jobs?: Record<string, { if?: string; steps?: WorkflowStep[] }>;
 }
 
-const workflowSource = read(".github/workflows/cloud-cf-deploy.yml");
+// The Worker `deploy-api` job lives in the reusable release workflow that
+// `cloud-cf-deploy.yml` calls after admission; the pull-request entry workflow
+// still owns the credential-free preview frontend build. Both files are read so
+// no expression in either escapes the balance and realtime-flag contracts.
+const entrySource = read(".github/workflows/cloud-cf-deploy.yml");
+const workflowSource = read(".github/workflows/cloud-cf-release.yml");
 const workflow = Bun.YAML.parse(workflowSource) as Workflow;
+const entryWorkflow = Bun.YAML.parse(entrySource) as Workflow;
 const publishStep = workflow.jobs?.["deploy-api"]?.steps?.find(
   (step) => step.name === "Publish Worker AI secrets",
 );
@@ -101,6 +107,7 @@ describe("Cloud CF realtime voice deploy contract", () => {
         "{{ steps.env.outputs.deploy_environment == 'staging' && secrets.ELIZACLOUD_API_KEY || '' }}",
     );
     expect(workflowSource).not.toContain("format('Bearer {0}'");
+    expect(entrySource).not.toContain("format('Bearer {0}'");
   });
 
   test("gates realtime secret publication behind explicit opt-in", () => {
@@ -207,15 +214,39 @@ describe("Cloud CF realtime voice deploy contract", () => {
       "&& 'true' || 'false'",
     );
 
-    const frontendRealtimeFlags = workflowSource.match(
-      /VITE_VOICE_REALTIME_WS: \$\{\{[^}]*vars\.VOICE_REALTIME_WS_ENABLED[^}]*&& '1' \|\| '0' \}\}/g,
-    );
-    expect(frontendRealtimeFlags?.length).toBeGreaterThanOrEqual(2);
-    for (const flag of frontendRealtimeFlags ?? []) {
-      expect(flag).toContain("inputs.environment == 'production'");
-      expect(flag).toContain("github.ref == 'refs/heads/main'");
+    // Every frontend build in either workflow must resolve the realtime flag
+    // from the repository variable and must not be able to reach production
+    // with it on. The canonical release build carries the production guard in
+    // the expression itself; the pull-request preview build has no production
+    // path at all because its whole environment is pinned to staging.
+    const flagPattern =
+      /VITE_VOICE_REALTIME_WS: \$\{\{[^}]*vars\.VOICE_REALTIME_WS_ENABLED[^}]*&& '1' \|\| '0' \}\}/g;
+    const releaseRealtimeFlags = workflowSource.match(flagPattern) ?? [];
+    expect(releaseRealtimeFlags.length).toBeGreaterThanOrEqual(1);
+    for (const flag of releaseRealtimeFlags) {
+      expect(flag).toContain("!(inputs.target_environment == 'production')");
       expect(flag).toContain("vars.VOICE_REALTIME_WS_ENABLED");
     }
+
+    const entryRealtimeFlags = entrySource.match(flagPattern) ?? [];
+    expect(entryRealtimeFlags.length).toBeGreaterThanOrEqual(1);
+    for (const flag of entryRealtimeFlags) {
+      expect(flag).toContain("vars.VOICE_REALTIME_WS_ENABLED");
+    }
+    const previewBuild = entryWorkflow.jobs?.["build-pages"]?.steps?.find(
+      (step) => step.name === "Build consolidated frontend artifact",
+    );
+    expect(previewBuild?.env?.VITE_VOICE_REALTIME_WS).toBe(
+      entryRealtimeFlags[0]?.replace("VITE_VOICE_REALTIME_WS: ", ""),
+    );
+    expect(previewBuild?.env?.VITE_ENVIRONMENT).toBe("staging");
+    expect(previewBuild?.env?.VITE_API_URL).toBe(
+      "https://api-staging.eliza.app",
+    );
+    expect(previewBuild?.env?.VITE_APP_URL).toBe("https://staging.eliza.app");
+    expect(entryWorkflow.jobs?.["build-pages"]?.if).toContain(
+      "github.event_name == 'pull_request'",
+    );
   });
 
   test("every GitHub expression in the deploy workflow has balanced parentheses", () => {
@@ -223,7 +254,10 @@ describe("Cloud CF realtime voice deploy contract", () => {
     // the GitHub layer (instant run failure with zero jobs) while remaining
     // invisible to the substring/regex assertions above. Balance-check every
     // expression so the parse error fails HERE, in a reviewable unit test.
-    const expressions = workflowSource.match(/\$\{\{[\s\S]*?\}\}/g) ?? [];
+    const expressions = [
+      ...(workflowSource.match(/\$\{\{[\s\S]*?\}\}/g) ?? []),
+      ...(entrySource.match(/\$\{\{[\s\S]*?\}\}/g) ?? []),
+    ];
     expect(expressions.length).toBeGreaterThan(0);
     for (const expression of expressions) {
       let depth = 0;

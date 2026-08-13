@@ -140,6 +140,43 @@ function appendRunRecord(
     : runs.slice(runs.length - MAX_TRIGGER_RUN_HISTORY);
 }
 
+/** Match an event payload against a recursive subset filter. */
+function eventFilterMatches(
+  expected: unknown,
+  actual: unknown,
+  depth = 0,
+): boolean {
+  if (depth > 16) return false;
+  if (expected === undefined) return true;
+  if (expected === actual) return true;
+  if (Array.isArray(expected)) {
+    return (
+      Array.isArray(actual) &&
+      actual.length === expected.length &&
+      expected.every((value, index) =>
+        eventFilterMatches(value, actual[index], depth + 1),
+      )
+    );
+  }
+  if (
+    typeof expected === "object" &&
+    expected !== null &&
+    typeof actual === "object" &&
+    actual !== null &&
+    !Array.isArray(actual)
+  ) {
+    return Object.entries(expected as Record<string, unknown>).every(
+      ([key, value]) =>
+        eventFilterMatches(
+          value,
+          (actual as Record<string, unknown>)[key],
+          depth + 1,
+        ),
+    );
+  }
+  return false;
+}
+
 function taskMetadata(task: Task): TriggerTaskMetadata {
   const metadata = task.metadata;
   return metadata && typeof metadata === "object" && !Array.isArray(metadata)
@@ -466,6 +503,16 @@ export async function executeTriggerTask(
   if (
     options.source === "event" &&
     trigger.triggerType !== "event" &&
+    !options.force
+  ) {
+    recordExecutionMetric(runtime.agentId, "skipped", Date.now());
+    return { status: "skipped", taskDeleted: false };
+  }
+
+  if (
+    options.source === "event" &&
+    trigger.triggerType === "event" &&
+    !eventFilterMatches(trigger.eventFilter, options.event?.payload) &&
     !options.force
   ) {
     recordExecutionMetric(runtime.agentId, "skipped", Date.now());
@@ -871,6 +918,7 @@ export function taskToTriggerSummary(task: Task): TriggerSummary | null {
       scheduledAtIso: trigger.scheduledAtIso,
       cronExpression: trigger.cronExpression,
       eventKind: trigger.eventKind,
+      eventFilter: trigger.eventFilter,
       maxRuns: trigger.maxRuns,
       runCount: trigger.runCount,
       nextRunAtMs: trigger.nextRunAtMs,

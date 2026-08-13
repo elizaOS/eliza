@@ -402,7 +402,30 @@
     (() => {
       const shell = document.getElementById("eliza-preboot-shell");
       const root = document.getElementById("root");
-      if (!shell || !root || typeof MutationObserver !== "function") return;
+      if (!shell) return;
+      // Public marketing hosts render a static landing page, not the agent
+      // app, so there is nothing to boot and the branded "Booting up…" splash
+      // would only flash dark chrome over a light page. Drop it synchronously
+      // (this script runs immediately after the element parses, before any
+      // paint) and let the page's own background show. Hostnames mirror the
+      // marketing + legacy-marketing roles in
+      // packages/shared/src/elizacloud/domain-contract.ts.
+      const MARKETING_HOSTNAMES = [
+        "eliza.app",
+        "www.eliza.app",
+        "staging.eliza.app",
+        "elizacloud.ai",
+        "www.elizacloud.ai",
+        "dev.elizacloud.ai",
+      ];
+      const hostname = (location.hostname || "").toLowerCase().replace(/\.$/, "");
+      if (MARKETING_HOSTNAMES.indexOf(hostname) !== -1) {
+        shell.remove();
+        document.documentElement.style.background = "#fdfaf7";
+        document.body.style.background = "#fdfaf7";
+        return;
+      }
+      if (!root || typeof MutationObserver !== "function") return;
       const hasMeaningfulContent = () =>
         (root.textContent || "").trim().length > 0 ||
         root.querySelector("img,svg,canvas,video,iframe,input,button,textarea,select") !== null;
@@ -466,7 +489,7 @@
       };
     }
   </script>
-  <script type="module" src="/src/main.tsx"></script>
+  <script type="module" src="/src/entry.ts"></script>
 </body>
 
 </html>

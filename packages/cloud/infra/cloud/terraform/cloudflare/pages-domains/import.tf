@@ -2,6 +2,11 @@
 # discovery is unsafe during this migration because several hosts currently have
 # records of different types or multiple origin records with the same name.
 locals {
+  # Every canonical Pages binding exists before this root is allowed to plan:
+  # operators attach it to eliza-app during the no-DNS-gap cutover, then this
+  # deterministic import adopts it. Existing state addresses are a no-op.
+  pages_domain_imports = local.canonical_pages_domains
+
   pages_dns_imports = {
     for key, domain in local.pages_dns_domains : key => {
       zone_id   = domain.zone_id
@@ -53,6 +58,12 @@ locals {
     for key, pack in var.legacy_redirect_certificate_packs : key => pack
     if pack.id != ""
   }
+}
+
+import {
+  for_each = local.pages_domain_imports
+  to       = cloudflare_pages_domain.public[each.key]
+  id       = "${var.cloudflare_account_id}/${each.value.project_name}/${each.value.domain}"
 }
 
 import {

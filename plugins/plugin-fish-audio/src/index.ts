@@ -25,6 +25,7 @@ const DEFAULT_LATENCY = "balanced";
 const DEFAULT_CHUNK_LENGTH = 100;
 const DEFAULT_MAX_BUFFER_BYTES = 16 * 1024 * 1024;
 const DEFAULT_SYNTHESIS_TIMEOUT_MS = 120_000;
+const MAX_SYNTHESIS_TIMEOUT_MS = 2_147_483_647;
 const DEFAULT_MIME_TYPE = "audio/pcm; codecs=pcm_s16le; rate=24000";
 const TRUEY = new Set(["1", "true", "yes", "on"]);
 
@@ -196,7 +197,11 @@ function resolveConfig(runtime: IAgentRuntime, input: TtsInput) {
       getSetting(runtime, "FISH_AUDIO_SYNTHESIS_TIMEOUT_MS") ??
       DEFAULT_SYNTHESIS_TIMEOUT_MS,
   );
-  if (!Number.isSafeInteger(synthesisTimeoutMs) || synthesisTimeoutMs <= 0) {
+  if (
+    !Number.isSafeInteger(synthesisTimeoutMs) ||
+    synthesisTimeoutMs <= 0 ||
+    synthesisTimeoutMs > MAX_SYNTHESIS_TIMEOUT_MS
+  ) {
     throw new ElizaError(
       "Fish Audio synthesisTimeoutMs must be a positive integer",
       {

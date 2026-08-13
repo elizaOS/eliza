@@ -2,7 +2,6 @@ export type { BatchEmbeddingResult } from "./embeddings";
 export { handleBatchTextEmbedding, handleTextEmbedding } from "./embeddings";
 export { handleImageDescription, handleImageGeneration } from "./image";
 export { handleAudioGeneration, handleVideoGeneration } from "./media";
-export { handleResearch } from "./research";
 export { fetchTextToSpeech, handleTextToSpeech } from "./speech";
 export {
   handleActionPlanner,

@@ -1,5 +1,6 @@
 /**
- * Destination resolution for the OIDC sign-in bounce (`/oidc/continue`).
+ * Destination resolution and issuer-session preparation for the OIDC sign-in
+ * bounce (`/oidc/continue`).
  *
  * The Eliza Cloud OpenID Provider lives on the API origin, but its `/authorize`
  * endpoint can only send a signed-out browser to the console's `/login`, whose
@@ -19,15 +20,21 @@
  * its issuer names, so a guess that misses lands on a host where the parked
  * request does not exist and the user is told their sign-in expired. Nor is it
  * the console's own origin: the resume leg is authenticated by a per-request
- * binding cookie that `/authorize` set as a HOST-ONLY cookie on the issuer host,
- * so a hop through the console origin's `/api` proxy arrives without it and every
- * sign-in reads as expired.
+ * binding cookie that `/authorize` set as a HOST-ONLY cookie on the issuer host.
+ * Steward's session cookie is also host-only, so this module explicitly syncs
+ * the browser's stored Steward token to that issuer origin before resuming.
  *
  * When the issuer is unset, only LOOPBACK development resolves — to the current
  * origin, where the dev server proxies `/api` and the binding cookie therefore
  * belongs to that origin — and every other host resolves to nothing so the page
  * can say which variable is missing.
  */
+
+import {
+  readStoredStewardToken,
+  STEWARD_SESSION_ENDPOINT,
+  syncStewardSession,
+} from "@elizaos/shared/steward-session-client";
 
 const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]"]);
 
@@ -48,6 +55,21 @@ export type OidcResumeTarget =
   | { status: "ok"; url: string }
   | { status: "invalid_request_id" }
   | { status: "issuer_unconfigured" };
+
+/**
+ * Result after both destination validation and issuer-origin session sync.
+ * Session failures are deliberately distinct from invalid request ids because
+ * retrying the application request cannot repair a missing browser login.
+ */
+export type PreparedOidcResumeTarget =
+  | OidcResumeTarget
+  | { status: "session_missing" }
+  | { status: "session_sync_failed" };
+
+export interface OidcIssuerSessionDependencies {
+  readToken?: () => string | null;
+  syncSession?: (token: string, endpoint: string) => Promise<unknown>;
+}
 
 /**
  * The configured issuer. `import.meta.env.VITE_OIDC_ISSUER_URL` is written as a
@@ -77,7 +99,9 @@ export function resolveOidcIssuerOrigin(
   const configured = configuredOidcIssuerUrl();
   if (configured) {
     try {
-      return new URL(configured).origin;
+      const url = new URL(configured);
+      if (url.protocol !== "https:" && url.protocol !== "http:") return null;
+      return url.origin;
     } catch {
       // error-policy:J3 untrusted-input sanitizing — an unusable build-time
       // value is reported as "no issuer", never silently replaced by a guess at
@@ -108,4 +132,49 @@ export function buildOidcResumeTarget(
   const url = new URL(OIDC_RESUME_PATH, `${origin}/`);
   url.searchParams.set("rid", requestId);
   return { status: "ok", url: url.toString() };
+}
+
+/**
+ * Validate the parked request destination and establish a Steward cookie on
+ * the issuer host before `/resume` consumes the request. The sync endpoint is
+ * derived from the already issuer-pinned resume target, never from caller
+ * input, preserving the open-redirect and cross-tenant boundaries above.
+ */
+export async function prepareOidcResumeTarget(
+  requestId: string | null | undefined,
+  hostname: string | null | undefined,
+  currentOrigin?: string | null,
+  dependencies: OidcIssuerSessionDependencies = {},
+): Promise<PreparedOidcResumeTarget> {
+  const target = buildOidcResumeTarget(requestId, hostname, currentOrigin);
+  if (target.status !== "ok") return target;
+
+  const readToken = dependencies.readToken ?? readStoredStewardToken;
+  const token = readToken()?.trim();
+  if (!token) return { status: "session_missing" };
+
+  let endpoint: string;
+  try {
+    endpoint = new URL(STEWARD_SESSION_ENDPOINT, target.url).toString();
+  } catch {
+    // error-policy:J3 the already validated issuer unexpectedly failed URL
+    // construction; report deployment configuration instead of rejecting the
+    // continuation promise and leaving the page in a permanent loading state.
+    return { status: "issuer_unconfigured" };
+  }
+  const syncSession =
+    dependencies.syncSession ??
+    ((stewardToken: string, sessionEndpoint: string) =>
+      syncStewardSession(stewardToken, null, { endpoint: sessionEndpoint }));
+
+  try {
+    await syncSession(token, endpoint);
+  } catch {
+    // error-policy:J4 user-facing degrade — a failed cross-origin session sync
+    // is shown as an authentication error and the one-time OIDC request is not
+    // consumed without the issuer-host session required to authorize it.
+    return { status: "session_sync_failed" };
+  }
+
+  return target;
 }

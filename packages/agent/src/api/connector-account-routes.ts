@@ -26,6 +26,7 @@ import {
 import type { ReadJsonBodyOptions } from "@elizaos/shared";
 import type { infer as ZodInfer } from "zod";
 import * as zod from "zod";
+import { resolveDirectRequestOrigin } from "./request-origin.ts";
 import { isBlockedObjectKey } from "./server-helpers-config.ts";
 
 const z = (zod as typeof zod & { z?: typeof zod }).z ?? zod;
@@ -917,8 +918,22 @@ export async function handleConnectorAccountRoutes(
         return true;
       }
       try {
+        // A configured external base is the authority behind a reverse proxy.
+        // Otherwise use the direct TLS/Host request that passed the server Host
+        // gate; arbitrary X-Forwarded-* headers must not bless a callback.
+        const configuredExternalBase = ctx.state.runtime?.getSetting?.(
+          "ELIZA_EXTERNAL_BASE_URL",
+        );
+        const normalizedExternalBase =
+          typeof configuredExternalBase === "string" &&
+          configuredExternalBase.trim()
+            ? configuredExternalBase.trim()
+            : undefined;
+        const servedOrigin =
+          normalizedExternalBase ?? resolveDirectRequestOrigin(req);
         const flow = await manager.startOAuth(provider, {
           ...parsed.data,
+          ...(servedOrigin ? { servedOrigin } : {}),
           metadata: cleanMetadata(parsed.data.metadata),
         });
         json(res, { provider, flow: serializeFlow(flow) }, 201);

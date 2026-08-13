@@ -4,9 +4,12 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { validateStagingSessionCutoverConfig } from "../../cloud/scripts/validate-staging-session-cutover.mjs";
 
+// The mutating `deploy-api` job lives in the reusable release workflow that
+// `cloud-cf-deploy.yml` calls once admission and approval have passed; the
+// cutover contract is asserted where the mutation actually runs.
 const repoRoot = new URL("../../../", import.meta.url);
 const workflowSource = readFileSync(
-  new URL(".github/workflows/cloud-cf-deploy.yml", repoRoot),
+  new URL(".github/workflows/cloud-cf-release.yml", repoRoot),
   "utf8",
 );
 
@@ -127,6 +130,22 @@ describe("Cloud CF staging session cutover", () => {
     expect(validateStagingSessionCutoverConfig(VALID)).toEqual([]);
     expect(workflowSource).toContain("ELIZA_SERVICE_JWT_SECRET:");
     expect(workflowSource).toContain("secrets.ELIZA_SERVICE_JWT_SECRET");
+    expect(workflowSource).toContain(
+      `STAGING_SESSION_EXCHANGE_SIGNING_SECRET: \${{ steps.env.outputs.deploy_environment == 'staging' && secrets.STAGING_SESSION_EXCHANGE_SIGNING_SECRET || '' }}`,
+    );
+    expect(workflowSource).toContain(
+      `STAGING_SESSION_EXCHANGE_SIGNING_KEY_ID: \${{ steps.env.outputs.deploy_environment == 'staging' && vars.STAGING_SESSION_EXCHANGE_SIGNING_KEY_ID || '' }}`,
+    );
+    for (const name of [
+      "STAGING_SESSION_EXCHANGE_ALLOWED_API_KEY_IDS",
+      "STAGING_SESSION_EXCHANGE_ALLOWED_USER_IDS",
+      "STAGING_SESSION_EXCHANGE_ALLOWED_ORGANIZATION_IDS",
+    ]) {
+      expect(workflowSource).toContain(
+        `${name}: \${{ steps.env.outputs.deploy_environment == 'staging' && vars.${name} || '' }}`,
+      );
+      expect(workflowSource).not.toContain(`secrets.${name}`);
+    }
     expect(
       validateStagingSessionCutoverConfig({
         ...VALID,

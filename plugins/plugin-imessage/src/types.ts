@@ -42,6 +42,8 @@ export interface IMessageSettings {
   dbPath?: string;
   /** Polling interval in ms */
   pollIntervalMs: number;
+  /** Heartbeat health-check interval in ms */
+  heartbeatIntervalMs: number;
   /** DM policy */
   dmPolicy: "open" | "pairing" | "allowlist" | "disabled";
   /** Group policy */

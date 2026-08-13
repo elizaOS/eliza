@@ -103,9 +103,13 @@ function idMatch(path: string): { id: string; suffix: string } | null {
   return match ? { id: decodeURIComponent(match[1]), suffix: match[2] || '' } : null;
 }
 
-async function streamEvents(ctx: WorkflowRouteContext, runId: string): Promise<void> {
+async function streamEvents(
+  ctx: WorkflowRouteContext,
+  runId: string,
+  ownerEntityId: string
+): Promise<void> {
   const service = embeddedFor(ctx);
-  const execution = await service.getExecution(runId);
+  const execution = await serviceFor(ctx).getExecutionDetail(runId, ownerEntityId);
   ctx.res.statusCode = 200;
   ctx.res.setHeader('content-type', 'text/event-stream; charset=utf-8');
   ctx.res.setHeader('cache-control', 'no-cache, no-transform');
@@ -166,7 +170,7 @@ export async function handleWorkflowRoutes(ctx: WorkflowRouteContext): Promise<v
     if (executionMatch) {
       const runId = decodeURIComponent(executionMatch[1]);
       const operation = executionMatch[2];
-      if (ctx.method === 'GET' && operation === 'events') return streamEvents(ctx, runId);
+      if (ctx.method === 'GET' && operation === 'events') return streamEvents(ctx, runId, owner);
       if (ctx.method === 'POST' && operation === 'cancel') {
         ctx.json(ctx.res, { execution: await service.cancelExecution(runId, owner) }, 202);
         return;
@@ -244,10 +248,14 @@ export async function handleWorkflowRoutes(ctx: WorkflowRouteContext): Promise<v
     }
     if (ctx.method === 'POST' && match.suffix === '/run') {
       const body = await readBody(ctx.req);
-      const execution = await service.startWorkflow(match.id, {
-        mode: 'manual',
-        input: isRecord(body.input) ? body.input : body,
-      });
+      const execution = await service.startWorkflow(
+        match.id,
+        {
+          mode: 'manual',
+          input: isRecord(body.input) ? body.input : body,
+        },
+        owner
+      );
       ctx.json(ctx.res, { execution }, 202);
       return;
     }

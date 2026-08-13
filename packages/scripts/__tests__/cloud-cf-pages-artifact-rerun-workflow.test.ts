@@ -13,8 +13,17 @@ import { join } from "node:path";
 import { resolveGnuBash } from "../lib/gnu-shell.mjs";
 import { spawnSync } from "../lib/spawn-sync-captured.mjs";
 
+// The canonical producer/consumer pair (build-pages -> deploy-app) lives in the
+// reusable release workflow invoked by `cloud-cf-deploy.yml`; the entry
+// workflow keeps only the credential-free pull-request producer, whose artifact
+// is consumed by `cloud-cf-pr-preview-deploy.yml`. Both producers are asserted
+// so neither can drift away from the immutable-identity contract.
 const repoRoot = new URL("../../../", import.meta.url);
 const workflowSource = readFileSync(
+  new URL(".github/workflows/cloud-cf-release.yml", repoRoot),
+  "utf8",
+);
+const entrySource = readFileSync(
   new URL(".github/workflows/cloud-cf-deploy.yml", repoRoot),
   "utf8",
 );
@@ -40,7 +49,9 @@ interface Workflow {
 }
 
 const workflow = Bun.YAML.parse(workflowSource) as Workflow;
+const entryWorkflow = Bun.YAML.parse(entrySource) as Workflow;
 const buildJob = workflow.jobs?.["build-pages"];
+const entryBuildJob = entryWorkflow.jobs?.["build-pages"];
 const deployJobs = [
   {
     artifactPrefix: "pages-app",
@@ -110,28 +121,49 @@ describe("Cloud CF Pages artifact metadata", () => {
         "$" + "{{ steps.pages-artifact.outputs.run_attempt }}",
       artifact_source_sha:
         "$" + "{{ steps.pages-artifact.outputs.source_sha }}",
+      telegram_bot_id:
+        "$" +
+        "{{ needs.resolve-pages-environment-config.outputs.telegram_bot_id }}",
+      telegram_bot_username:
+        "$" +
+        "{{ needs.resolve-pages-environment-config.outputs.telegram_bot_username }}",
+    });
+    expect(entryBuildJob?.outputs).toEqual({
+      artifact_run_id: "$" + "{{ steps.pages-artifact.outputs.run_id }}",
+      artifact_run_attempt:
+        "$" + "{{ steps.pages-artifact.outputs.run_attempt }}",
+      artifact_source_sha:
+        "$" + "{{ steps.pages-artifact.outputs.source_sha }}",
+      telegram_bot_id:
+        "$" +
+        "{{ needs.resolve-pages-preview-config.outputs.telegram_bot_id }}",
+      telegram_bot_username:
+        "$" +
+        "{{ needs.resolve-pages-preview-config.outputs.telegram_bot_username }}",
     });
 
-    const metadata = namedStep(
-      buildJob,
-      "Bind Pages artifacts to this producer attempt",
-    );
-    expect(metadata.id).toBe("pages-artifact");
-    expect(metadata.env).toEqual({
-      PRODUCER_RUN_ID: "$" + "{{ github.run_id }}",
-      PRODUCER_RUN_ATTEMPT: "$" + "{{ github.run_attempt }}",
-      PRODUCER_SOURCE_SHA: "$" + "{{ github.sha }}",
-    });
-
-    for (const { artifactPrefix, upload: uploadName } of deployJobs) {
-      const upload = namedStep(buildJob, uploadName);
-      expect(upload.with?.name).toBe(
-        `${artifactPrefix}-` +
-          "$" +
-          "{{ steps.pages-artifact.outputs.run_id }}-" +
-          "$" +
-          "{{ steps.pages-artifact.outputs.run_attempt }}",
+    for (const producer of [buildJob, entryBuildJob]) {
+      const metadata = namedStep(
+        producer,
+        "Bind Pages artifacts to this producer attempt",
       );
+      expect(metadata.id).toBe("pages-artifact");
+      expect(metadata.env).toEqual({
+        PRODUCER_RUN_ID: "$" + "{{ github.run_id }}",
+        PRODUCER_RUN_ATTEMPT: "$" + "{{ github.run_attempt }}",
+        PRODUCER_SOURCE_SHA: "$" + "{{ github.sha }}",
+      });
+
+      for (const { artifactPrefix, upload: uploadName } of deployJobs) {
+        const upload = namedStep(producer, uploadName);
+        expect(upload.with?.name).toBe(
+          `${artifactPrefix}-` +
+            "$" +
+            "{{ steps.pages-artifact.outputs.run_id }}-" +
+            "$" +
+            "{{ steps.pages-artifact.outputs.run_attempt }}",
+        );
+      }
     }
   });
 
