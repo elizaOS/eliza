@@ -50,14 +50,29 @@ jobs:
       TF_VAR_environment: ${{ inputs.environment }}
       TF_VAR_cloudflare_account_id: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       TF_VAR_cloudflare_zone_id: ${{ secrets.APPS_CLOUDFLARE_ZONE_ID || vars.APPS_CLOUDFLARE_ZONE_ID }}
+      TF_VAR_eliza_app_zone_id: ${{ secrets.ELIZA_APP_CLOUDFLARE_ZONE_ID || vars.ELIZA_APP_CLOUDFLARE_ZONE_ID }}
+      TF_VAR_elizacloud_ai_zone_id: ${{ secrets.APPS_CLOUDFLARE_ZONE_ID || vars.APPS_CLOUDFLARE_ZONE_ID }}
       TF_VAR_ssh_public_keys: ${{ inputs.component == 'apps-shared' && format('["{0}"]', vars.APPS_SHARED_OPERATOR_SSH_KEY) || format('["{0}"]', vars.APPS_OPERATOR_SSH_KEY) }}
       TF_VAR_operator_ingress_cidrs: ${{ inputs.component == 'apps-shared' && vars.APPS_SHARED_OPERATOR_INGRESS_CIDRS || vars.OPERATOR_INGRESS_CIDRS }}
-      TF_VAR_apps_base_domain: ${{ vars.APPS_BASE_DOMAIN }}
-      TF_VAR_cloud_api_origin: ${{ vars.APPS_CLOUD_API_ORIGIN }}
-      TF_VAR_deploy_branch: ${{ vars.DEPLOY_BRANCH }}
+      TF_VAR_apps_base_domain: ${{ inputs.environment == 'production' && 'apps.eliza.app' || 'apps-staging.eliza.app' }}
+      TF_VAR_legacy_apps_base_domain: ${{ inputs.environment == 'production' && 'apps.elizacloud.ai' || 'apps-staging.elizacloud.ai' }}
+      TF_VAR_cloud_api_origin: ${{ inputs.environment == 'production' && 'https://api.eliza.app' || 'https://api-staging.eliza.app' }}
+      TF_VAR_headscale_hostname: ${{ inputs.environment == 'production' && 'headscale.elizacloud.ai' || 'headscale-staging.elizacloud.ai' }}
+      TF_VAR_canonical_headscale_hostname: ${{ inputs.environment == 'production' && 'headscale.eliza.app' || 'headscale-staging.eliza.app' }}
+      # Branch selection is part of the environment contract, not mutable
+      # operator inventory. Derive it here so a stale or missing GitHub variable
+      # can never bootstrap production from develop (or staging from main).
+      TF_VAR_deploy_branch: ${{ inputs.environment == 'production' && 'main' || 'develop' }}
+      TF_VAR_dns_record_import_ids: ${{ vars.DNS_RECORD_IMPORT_IDS_JSON || '{}' }}
+      TF_VAR_canonical_edge_wildcard_origins: ${{ vars.CANONICAL_EDGE_WILDCARD_ORIGINS_JSON || '[]' }}
+      TF_VAR_canonical_service_origins: ${{ vars.CANONICAL_SERVICE_ORIGINS_JSON || '{}' }}
+      TF_VAR_railway_tunnel_dns_records: ${{ vars.RAILWAY_TUNNEL_DNS_RECORDS_JSON || '{}' }}
+      TF_VAR_canonical_edge_certificate_packs: ${{ vars.CANONICAL_EDGE_CERTIFICATE_PACKS_JSON || '{}' }}
       TF_VAR_staging_agent_wildcard_origins: ${{ vars.STAGING_AGENT_WILDCARD_ORIGINS_JSON || '[]' }}
       TF_VAR_staging_agent_certificate_pack_id: ${{ vars.STAGING_AGENT_CERTIFICATE_PACK_ID }}
       TF_VAR_staging_agent_certificate_hosts: ${{ vars.STAGING_AGENT_CERTIFICATE_HOSTS_JSON || '[]' }}
+      TF_VAR_legacy_redirect_wildcard_origins: ${{ vars.LEGACY_REDIRECT_WILDCARD_ORIGINS_JSON || '{}' }}
+      TF_VAR_legacy_redirect_certificate_packs: ${{ vars.LEGACY_REDIRECT_CERTIFICATE_PACKS_JSON || '{}' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
 
@@ -100,7 +115,39 @@ jobs:
           if [ "${{ inputs.component }}" = "pages-domains" ]; then
             [ -n "$CLOUDFLARE_API_TOKEN" ] || { echo "::error::CLOUDFLARE_API_TOKEN is required"; exit 1; }
             [ -n "$TF_VAR_cloudflare_account_id" ] || { echo "::error::CLOUDFLARE_ACCOUNT_ID is required"; exit 1; }
-            [ -n "$TF_VAR_cloudflare_zone_id" ] || { echo "::error::APPS_CLOUDFLARE_ZONE_ID is required"; exit 1; }
+            [ -n "$TF_VAR_eliza_app_zone_id" ] || { echo "::error::ELIZA_APP_CLOUDFLARE_ZONE_ID is required"; exit 1; }
+            [ -n "$TF_VAR_elizacloud_ai_zone_id" ] || { echo "::error::APPS_CLOUDFLARE_ZONE_ID is required for legacy redirects"; exit 1; }
+            node -e '
+              const required = [
+                ["DNS_RECORD_IMPORT_IDS_JSON", process.env.TF_VAR_dns_record_import_ids, "object"],
+                ["CANONICAL_EDGE_WILDCARD_ORIGINS_JSON", process.env.TF_VAR_canonical_edge_wildcard_origins, "array"],
+                ["CANONICAL_SERVICE_ORIGINS_JSON", process.env.TF_VAR_canonical_service_origins, "object"],
+                ["RAILWAY_TUNNEL_DNS_RECORDS_JSON", process.env.TF_VAR_railway_tunnel_dns_records, "object"],
+                ["CANONICAL_EDGE_CERTIFICATE_PACKS_JSON", process.env.TF_VAR_canonical_edge_certificate_packs, "object"],
+                ["LEGACY_REDIRECT_WILDCARD_ORIGINS_JSON", process.env.TF_VAR_legacy_redirect_wildcard_origins, "object"],
+                ["LEGACY_REDIRECT_CERTIFICATE_PACKS_JSON", process.env.TF_VAR_legacy_redirect_certificate_packs, "object"],
+              ];
+              const invalid = [];
+              for (const [name, source, expected] of required) {
+                try {
+                  const value = JSON.parse(source ?? "");
+                  const isExpected = expected === "array"
+                    ? Array.isArray(value) && value.length > 0
+                    : value && !Array.isArray(value) && Object.keys(value).length > 0;
+                  if (!isExpected) invalid.push(name);
+                } catch {
+                  invalid.push(name);
+                }
+              }
+              if (invalid.length > 0) {
+                console.error(`::error::Missing, empty, or malformed protected Pages inventory variable name(s): ${invalid.join(" ")}`);
+                process.exit(1);
+              }
+              console.log("Validated protected Pages inventory shapes; values were not printed.");
+            '
+          fi
+          if [ "${{ inputs.component }}" = "control-plane" ] || [ "${{ inputs.component }}" = "apps-data-plane" ]; then
+            [ -n "$TF_VAR_eliza_app_zone_id" ] || { echo "::error::ELIZA_APP_CLOUDFLARE_ZONE_ID is required"; exit 1; }
           fi
           if [ "$OPERATION" = "state-rm" ]; then
             [ -n "$STATE_ADDRESS" ] || { echo "::error::state_address is required for state-rm"; exit 1; }
@@ -108,6 +155,35 @@ jobs:
               echo "::error::state_address contains unsupported characters"
               exit 1
             fi
+          fi
+
+      - name: Validate canonical environment contract
+        shell: bash
+        env:
+          TARGET_ENVIRONMENT: ${{ inputs.environment }}
+        run: |
+          set -euo pipefail
+
+          require_exact() {
+            local name="$1"
+            local actual="$2"
+            local expected="$3"
+            if [ "$actual" != "$expected" ]; then
+              echo "::error::$name does not match the canonical $TARGET_ENVIRONMENT environment contract"
+              exit 1
+            fi
+          }
+
+          if [ "$TARGET_ENVIRONMENT" = "production" ]; then
+            require_exact TF_VAR_deploy_branch "$TF_VAR_deploy_branch" "main"
+            require_exact TF_VAR_apps_base_domain "$TF_VAR_apps_base_domain" "apps.eliza.app"
+            require_exact TF_VAR_cloud_api_origin "$TF_VAR_cloud_api_origin" "https://api.eliza.app"
+            require_exact TF_VAR_canonical_headscale_hostname "$TF_VAR_canonical_headscale_hostname" "headscale.eliza.app"
+          else
+            require_exact TF_VAR_deploy_branch "$TF_VAR_deploy_branch" "develop"
+            require_exact TF_VAR_apps_base_domain "$TF_VAR_apps_base_domain" "apps-staging.eliza.app"
+            require_exact TF_VAR_cloud_api_origin "$TF_VAR_cloud_api_origin" "https://api-staging.eliza.app"
+            require_exact TF_VAR_canonical_headscale_hostname "$TF_VAR_canonical_headscale_hostname" "headscale-staging.eliza.app"
           fi
 
       - name: Format and initialize
@@ -132,7 +208,10 @@ jobs:
         working-directory: ${{ steps.root.outputs.directory }}
         run: |
           terraform output -json pages_domains > "$RUNNER_TEMP/pages-domains.json"
-          terraform output -json staging_agent_edge > "$RUNNER_TEMP/staging-agent-edge.json"
+          terraform output -json canonical_edge > "$RUNNER_TEMP/canonical-edge.json"
+          terraform output -json railway_tunnel_dns > "$RUNNER_TEMP/railway-tunnel-dns.json"
+          terraform output -json redirect_dns > "$RUNNER_TEMP/redirect-dns.json"
+          terraform output -json legacy_certificate_packs > "$RUNNER_TEMP/legacy-certificate-packs.json"
           node -e '
             const fs = require("node:fs");
             const domains = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
@@ -140,16 +219,71 @@ jobs:
               if (entry.status !== "active") throw new Error(`${key} domain is ${entry.status}, expected active`);
               if (!entry.certificate_authority) throw new Error(`${key} has no issued certificate authority`);
             }
-            const agentEdge = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
+
+            const canonical = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
+            const tunnel = JSON.parse(fs.readFileSync(process.argv[3], "utf8"));
+            const redirect = JSON.parse(fs.readFileSync(process.argv[4], "utf8"));
+            const legacyPacks = JSON.parse(fs.readFileSync(process.argv[5], "utf8"));
+
+            const requireProxiedRecords = (label, records) => {
+              const entries = Object.entries(records ?? {});
+              if (entries.length === 0) throw new Error(`${label} has no managed DNS records`);
+              for (const [key, record] of entries) {
+                if (!record.id) throw new Error(`${label}.${key} has no Cloudflare record id`);
+                if (record.proxied !== true) throw new Error(`${label}.${key} is not proxied`);
+              }
+            };
+            const requireActivePacks = (label, packs) => {
+              const entries = Object.entries(packs ?? {});
+              if (entries.length === 0) throw new Error(`${label} has no certificate generations`);
+              for (const [key, pack] of entries) {
+                if (pack.status !== "active") throw new Error(`${label}.${key} certificate is ${pack.status}, expected active`);
+              }
+            };
+            const requireDnsOnlyRecords = (label, records) => {
+              const entries = Object.entries(records ?? {});
+              if (entries.length === 0) throw new Error(`${label} has no managed DNS records`);
+              const requiredRoles = [
+                "apex-routing",
+                "apex-verification",
+                "wildcard-routing",
+                "wildcard-certificate",
+                "wildcard-verification",
+              ];
+              for (const [key, record] of entries) {
+                if (!record.id) throw new Error(`${label}.${key} has no Cloudflare record id`);
+                if (record.proxied !== false) throw new Error(`${label}.${key} must remain DNS-only`);
+                if (!['CNAME', 'TXT'].includes(record.type)) throw new Error(`${label}.${key} has unsupported type ${record.type}`);
+              }
+              for (const role of requiredRoles) {
+                const count = entries.filter(([, record]) => record.roles?.includes(role)).length;
+                if (count !== 1) throw new Error(`${label} must cover ${role} exactly once, found ${count}`);
+              }
+            };
+
+            requireProxiedRecords("canonical_edge.dns_records", canonical.dns_records);
+            requireProxiedRecords("canonical_edge.service_dns_records", canonical.service_dns_records);
+            requireActivePacks("canonical_edge.certificate_packs", canonical.certificate_packs);
+            requireDnsOnlyRecords("railway_tunnel_dns", tunnel);
+            requireProxiedRecords("redirect_dns.exact", redirect.exact);
+            requireProxiedRecords("redirect_dns.deep_wildcards", redirect.deep_wildcards);
+            requireActivePacks("legacy_certificate_packs.redirect", legacyPacks.redirect);
             if (process.env.TF_VAR_environment === "staging") {
-              if (Object.keys(agentEdge.dns_records).length !== 2) throw new Error("staging agent wildcard does not have two DNS records");
-              if (agentEdge.certificate_pack.status !== "active") throw new Error(`staging agent certificate is ${agentEdge.certificate_pack.status}, expected active`);
+              requireProxiedRecords("redirect_dns.staging_agent", redirect.staging_agent);
+              if (legacyPacks.staging_agent?.status !== "active") {
+                throw new Error(`legacy staging agent certificate is ${legacyPacks.staging_agent?.status ?? "missing"}, expected active`);
+              }
             }
-          ' "$RUNNER_TEMP/pages-domains.json" "$RUNNER_TEMP/staging-agent-edge.json"
+          ' \
+            "$RUNNER_TEMP/pages-domains.json" \
+            "$RUNNER_TEMP/canonical-edge.json" \
+            "$RUNNER_TEMP/railway-tunnel-dns.json" \
+            "$RUNNER_TEMP/redirect-dns.json" \
+            "$RUNNER_TEMP/legacy-certificate-packs.json"
 
       - name: Verify staging agent wildcard TLS
         if: inputs.component == 'pages-domains' && inputs.operation == 'apply' && inputs.environment == 'staging'
-        run: curl --silent --show-error --output /dev/null https://terraform-probe.staging.elizacloud.ai/api/health
+        run: curl --silent --show-error --output /dev/null https://terraform-probe.cloud-staging.eliza.app/api/health
 
       - name: Verify live environment routing
         if: inputs.component == 'pages-domains' && inputs.operation == 'apply'

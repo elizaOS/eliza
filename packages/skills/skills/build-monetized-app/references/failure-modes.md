@@ -30,7 +30,7 @@ in step 3:
 |---|---|---|
 | `503 { code: "apps_deploy_disabled" }` from `deployApp` | `APPS_DEPLOY_ENABLED` is not `1` on the Worker | The apps-deploy backend isn't armed for this environment. Report to the human; do not work around it. |
 | `403` from `deployApp` | Org is not on the production deploy allowlist | Report to the human — the org must be allowlisted for apps deploy. |
-| `402 insufficient_balance` | Org has zero credits AND zero earnings | Tell the human to top up at `/dashboard/billing`. There's no auto-recovery — an agent that can't pay can't deploy. |
+| `402 insufficient_balance` | Org has zero credits AND zero earnings | Tell the human to top up at `/cloud/billing`. There's no auto-recovery — an agent that can't pay can't deploy. |
 | `getAppDeployStatus().status === "error"` | The deploy failed (image-allowlist reject, image pull, crash on boot) | Read `status.error` and surface it. There is NO per-container logs/health/metrics SDK route; the deploy status error string is the only signal. |
 | `status` stuck on `pending` / `building` for >10 min | Image pull slow or scheduler congested | Wait up to ~10 min before declaring failure, then surface `status.error`. |
 
@@ -48,7 +48,7 @@ Rare:
 
 | Symptom | Cause | Recovery |
 |---|---|---|
-| `400 invalid_origin` | The deployed URL isn't ready yet | Re-poll `getAppDeployStatus(appId)` until `status === "ready"` and `vercelUrl` is populated (else use the app's `*.apps.elizacloud.ai` subdomain), then patch. |
+| `400 invalid_origin` | The deployed URL isn't ready yet | Re-poll `getAppDeployStatus(appId)` until `status === "ready"` and `vercelUrl` is populated (else use the app's `*.apps.eliza.app` subdomain), then patch. |
 
 ## Custom domain (post-skill, optional)
 
@@ -71,6 +71,6 @@ These hit AFTER the skill is complete, when users actually try to sign in to the
 
 If the agent can't deploy at all (zero credits AND zero earnings) the loop has bottomed out. There's no programmatic recovery — only the human can top up. Tell them clearly:
 
-> "I can't deploy a new app — both org credits and your redeemable earnings are zero. Top up at https://www.elizacloud.ai/dashboard/billing or earn enough on existing apps to cover the next deploy."
+> "I can't deploy a new app — both org credits and your redeemable earnings are zero. Top up at https://cloud.eliza.app/cloud/billing or earn enough on existing apps to cover the next deploy."
 
 This is a survival-economics terminal state, not a code bug.

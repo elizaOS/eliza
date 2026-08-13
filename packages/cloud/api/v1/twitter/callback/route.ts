@@ -34,8 +34,8 @@ app.get("/", async (c) => {
   const baseUrl =
     c.env?.NEXT_PUBLIC_APP_URL ||
     process.env.NEXT_PUBLIC_APP_URL ||
-    "https://www.elizacloud.ai";
-  const defaultRedirectPath = "/dashboard/settings?tab=connections";
+    "https://cloud.eliza.app";
+  const defaultRedirectPath = "/cloud/settings?tab=connections";
   const allowedAbsoluteOrigins = [
     ...getDefaultPlatformRedirectOrigins(),
     ...LOOPBACK_REDIRECT_ORIGINS,

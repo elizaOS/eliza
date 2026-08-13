@@ -24,8 +24,8 @@ import (
 )
 
 const (
-	defaultControlURL    = "https://headscale.elizacloud.ai"
-	defaultPublicHost    = "tunnel.elizacloud.ai"
+	defaultControlURL    = "https://headscale.eliza.app"
+	defaultPublicHost    = "tunnel.eliza.app"
 	defaultTailnetDomain = "tunnel.eliza.local"
 	defaultStateDir      = "/var/lib/tunnel-proxy"
 	defaultHostname      = "eliza-tunnel-proxy"

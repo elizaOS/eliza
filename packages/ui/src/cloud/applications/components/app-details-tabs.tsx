@@ -107,7 +107,7 @@ export function AppDetailsTabs({ app, showApiKey }: AppDetailsTabsProps) {
     const params = new URLSearchParams(searchParams.toString());
     params.delete("showApiKey");
     params.set("tab", value);
-    navigate(`/dashboard/apps/${app.id}?${params.toString()}`, {
+    navigate(`/cloud/apps/${app.id}?${params.toString()}`, {
       preventScrollReset: true,
     });
   };

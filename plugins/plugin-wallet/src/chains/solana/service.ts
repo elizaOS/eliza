@@ -913,7 +913,7 @@ export class SolanaService extends Service {
     ) {
       const cloudBaseRaw = this.runtime.getSetting("ELIZAOS_CLOUD_BASE_URL");
       const cloudBase =
-        typeof cloudBaseRaw === "string" ? cloudBaseRaw : "https://elizacloud.ai/api/v1";
+        typeof cloudBaseRaw === "string" ? cloudBaseRaw : "https://api.eliza.app/api/v1";
 
       return {
         baseUrl: `${cloudBase}/proxy/birdeye`,
@@ -966,7 +966,7 @@ export class SolanaService extends Service {
     ) {
       const cloudBaseRaw = runtime.getSetting("ELIZAOS_CLOUD_BASE_URL");
       const cloudBase =
-        typeof cloudBaseRaw === "string" ? cloudBaseRaw : "https://elizacloud.ai/api/v1";
+        typeof cloudBaseRaw === "string" ? cloudBaseRaw : "https://api.eliza.app/api/v1";
       return `${cloudBase}/proxy/solana-rpc?api_key=${cloudKey}`;
     }
 

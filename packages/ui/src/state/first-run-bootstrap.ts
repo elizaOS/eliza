@@ -117,7 +117,7 @@ async function interpretAnsweredFirstRunStatus(
  * Whether the boot-time existing-install probe (GET /api/first-run/status +
  * /api/config) should run for `origin`. The probe detects a returning
  * local/self-hosted install so the user skips re-onboarding. On a bare Eliza
- * Cloud control-plane origin (app.elizacloud.ai, elizacloud.ai, …) the
+ * Cloud control-plane origin (cloud.eliza.app, with legacy aliases during migration) the
  * same-origin API is the managed cloud endpoint: it requires auth and hosts no
  * unauthenticated local install to detect, so probing it only yields 401
  * console noise during fresh onboarding (#16242). Skip it there — the in-chat

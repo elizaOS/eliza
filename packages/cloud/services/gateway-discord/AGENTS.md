@@ -58,7 +58,7 @@ Required at startup (the process `exit(1)`s if missing):
 
 Connection / routing:
 
-- `ELIZA_CLOUD_URL` (falls back to `NEXT_PUBLIC_APP_URL`, then `https://elizacloud.ai`)
+- `ELIZA_CLOUD_URL` (falls back to `NEXT_PUBLIC_APP_URL`, then `https://api.eliza.app`)
 - `REDIS_URL` (or `KV_REST_API_URL`) and `KV_REST_API_TOKEN` — Redis/Upstash.
 - `AGENT_SERVER_SHARED_SECRET` — sent as `X-Server-Token` when forwarding to agent-servers.
 - `POD_NAME` — required in production (K8s downward API); falls back to `gateway-<hostname>`

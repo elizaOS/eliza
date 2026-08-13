@@ -171,11 +171,7 @@ const CONFIGS = {
     failSafe: {
       lanes: ["server"],
       codeRoots: ["packages/**", "plugins/**"],
-      ignore: [
-        "packages/docs/**",
-        "packages/homepage/**",
-        "packages/cloud/docs-redirect/**",
-      ],
+      ignore: ["packages/docs/**", "packages/homepage/**"],
       reason:
         "unmapped code path - no lane rule matched; running the server lane as a fail-safe so a code change can never skip every test lane",
     },

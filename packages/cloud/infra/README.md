@@ -18,9 +18,9 @@ Infrastructure-as-code for the elizaOS Cloud stack. Contains Kubernetes manifest
 See `cloud/RAILWAY.md` for the canonical service/runtime/request-path map.
 Short version:
 
-- Frontends → Cloudflare Pages: two projects (`eliza-cloud` at the
-  `elizacloud.ai` apex, `eliza-app` at `app.elizacloud.ai`), both built from
-  `packages/app` (`packages/cloud-frontend` was deleted)
+- Frontend → one Cloudflare Pages project (`eliza-app`) serving `eliza.app`
+  and `cloud.eliza.app` from the host-aware `packages/app` build, which embeds
+  the `packages/homepage` surface
 - `eliza-cloud-api` → ONE Cloudflare Worker (`packages/cloud/api`): REST API,
   auth, billing, model gateway, dedicated-agent proxy, and the public batch
   voice routes

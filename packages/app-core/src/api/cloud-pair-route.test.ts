@@ -42,6 +42,8 @@ const MANAGED_ENV_KEYS = [
   "ELIZA_CLOUD_PAIR_DIRECT_RELAY",
   "ELIZA_CLOUD_AGENT_ID",
   "WAIFU_ELIZA_CLOUD_AGENT_ID",
+  "ELIZAOS_CLOUD_BASE_URL",
+  "NEXT_PUBLIC_API_URL",
 ] as const;
 const originalManagedEnv = Object.fromEntries(
   MANAGED_ENV_KEYS.map((key) => [key, process.env[key]]),
@@ -199,6 +201,35 @@ describe("handleCloudPairRoute", () => {
     expect(harness.headers()["cache-control"]).toContain("no-store");
   });
 
+  it("keeps staging recovery links in the staging Cloud app", async () => {
+    process.env.ELIZAOS_CLOUD_BASE_URL = "https://api-staging.eliza.app/api/v1";
+    const harness = fakeRes();
+    const req = fakeReq({ pathname: "/pair" });
+
+    await handleCloudPairRoute(req, harness.res);
+
+    expect(harness.status()).toBe(400);
+    expect(harness.body()).toContain(
+      'href="https://cloud-staging.eliza.app/cloud/agents"',
+    );
+    expect(harness.body()).not.toContain(
+      'href="https://cloud.eliza.app/cloud/agents"',
+    );
+  });
+
+  it("maps legacy staging API configuration to the staging Cloud app", async () => {
+    process.env.NEXT_PUBLIC_API_URL =
+      "https://api-staging.elizacloud.ai/api/v1";
+    const harness = fakeRes();
+    const req = fakeReq({ pathname: "/pair" });
+
+    await handleCloudPairRoute(req, harness.res);
+
+    expect(harness.body()).toContain(
+      'href="https://cloud-staging.eliza.app/cloud/agents"',
+    );
+  });
+
   it("renders 403 when cloud-api rejects the token (expired/used)", async () => {
     globalThis.fetch = vi.fn().mockResolvedValue(
       new Response(
@@ -333,7 +364,7 @@ describe("handleCloudPairRoute", () => {
     );
     expect(loopbackHarness.status()).toBe(200);
     expect(fetchMock).toHaveBeenCalledWith(
-      "https://api.elizacloud.ai/api/auth/pair",
+      "https://api.eliza.app/api/auth/pair",
       expect.objectContaining({
         headers: expect.objectContaining({
           origin: "http://127.0.0.1:43123",

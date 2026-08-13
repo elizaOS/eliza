@@ -83,7 +83,7 @@ vi.mock("../../lib/steward-oauth-url", async () => {
 });
 
 vi.mock("../../lib/login-return-to", () => ({
-  resolveLoginReturnTo: () => "/dashboard",
+  resolveLoginReturnTo: () => "/cloud",
   consumePendingOAuthReturnTo: () => null,
   storePendingOAuthReturnTo: () => undefined,
 }));

@@ -11,7 +11,10 @@ import {
   ELIZA_DISCORD_APPLICATION_ID,
   ELIZA_PHONE_FORMATTED,
   ELIZA_PHONE_NUMBER,
+  ELIZA_TELEGRAM_BOT_ID,
   ELIZA_TELEGRAM_BOT_USERNAME,
+  getDiscordBotApplicationId,
+  getTelegramBotId,
   getWhatsAppNumber,
 } from "../src/lib/contact";
 
@@ -39,5 +42,7 @@ describe("Eliza contact links", () => {
     expect(buildElizaDiscordHref()).toBe(
       `https://discord.com/users/${ELIZA_DISCORD_APPLICATION_ID}`,
     );
+    expect(getTelegramBotId()).toBe(ELIZA_TELEGRAM_BOT_ID);
+    expect(getDiscordBotApplicationId()).toBe(ELIZA_DISCORD_APPLICATION_ID);
   });
 });

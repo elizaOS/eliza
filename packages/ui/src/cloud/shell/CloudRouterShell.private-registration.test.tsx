@@ -19,11 +19,11 @@ afterEach(() => {
 
 beforeEach(() => {
   registerPublicCloudSurfaces();
-  window.history.pushState({}, "", "/dashboard/unknown-surface");
+  window.history.pushState({}, "", "/cloud/unknown-surface");
 });
 
-describe("CloudRouterShell dashboard private registration UI", () => {
-  it("shows pending then Not found after ready (idle → pending → ready)", async () => {
+describe("CloudRouterShell private Cloud registration UI", () => {
+  it("shows pending then mounts the app after ready (idle → pending → ready)", async () => {
     let resolveLoad!: () => void;
     setPrivateCloudLoadForTests(
       () =>
@@ -43,7 +43,7 @@ describe("CloudRouterShell dashboard private registration UI", () => {
       await Promise.resolve();
     });
     await waitFor(() => {
-      expect(screen.getByText("Not found")).toBeTruthy();
+      expect(screen.getByTestId("app-probe")).toBeTruthy();
     });
   });
 
@@ -74,7 +74,7 @@ describe("CloudRouterShell dashboard private registration UI", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByText("Not found")).toBeTruthy();
+      expect(screen.getByTestId("app-probe")).toBeTruthy();
     });
     expect(attempts).toBe(2);
   });

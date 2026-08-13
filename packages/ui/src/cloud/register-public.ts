@@ -3,9 +3,9 @@
  * (#18056).
  *
  * `packages/app` imports this module (not `./register-all`) so private
- * dashboard domains never enter the idle `/login` critical graph. Private
+ * Cloud management domains never enter the idle `/login` critical graph. Private
  * surfaces load later via {@link ensurePrivateCloudSurfaces} when a
- * `dashboard/*` path is visited.
+ * `/cloud/*` path is visited.
  *
  * The legacy synchronous full-table contract remains at
  * `@elizaos/ui/cloud/register-all` (`registerAllCloudSurfaces(): void`).
@@ -40,7 +40,7 @@ let publicRegistered = false;
 
 /**
  * Register public/auth/join cloud routes only. Safe to call on every boot;
- * does not pull private dashboard/settings module graphs and must not start
+ * does not pull private Cloud/settings module graphs and must not start
  * private dynamic imports (#18056).
  */
 export function registerPublicCloudSurfaces(): void {

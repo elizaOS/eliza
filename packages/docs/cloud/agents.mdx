@@ -11,7 +11,7 @@ dashboard for interactive editing or the API for automation.
 <Tabs>
   <Tab title="Dashboard">
 
-Open [Dashboard → My Agents](https://elizacloud.ai/dashboard/my-agents), choose
+Open [Cloud → Agents](https://cloud.eliza.app/cloud/agents), choose
 **Create Agent**, enter a name and bio, then deploy it.
 
   </Tab>
@@ -21,7 +21,7 @@ Open [Dashboard → My Agents](https://elizacloud.ai/dashboard/my-agents), choos
 the token metadata fields are optional.
 
 ```bash
-curl -X POST "https://elizacloud.ai/api/v1/app/agents" \
+curl -X POST "https://api.eliza.app/api/v1/app/agents" \
   -H "Authorization: Bearer $ELIZA_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
@@ -44,15 +44,15 @@ The fuller character-management surface is
 
 ```bash
 # List characters
-curl "https://elizacloud.ai/api/my-agents/characters" \
+curl "https://api.eliza.app/api/my-agents/characters" \
   -H "Authorization: Bearer $ELIZA_API_KEY"
 
 # Read one character
-curl "https://elizacloud.ai/api/my-agents/characters/$CHARACTER_ID" \
+curl "https://api.eliza.app/api/my-agents/characters/$CHARACTER_ID" \
   -H "Authorization: Bearer $ELIZA_API_KEY"
 
 # Delete one character
-curl -X DELETE "https://elizacloud.ai/api/my-agents/characters/$CHARACTER_ID" \
+curl -X DELETE "https://api.eliza.app/api/my-agents/characters/$CHARACTER_ID" \
   -H "Authorization: Bearer $ELIZA_API_KEY"
 ```
 
@@ -62,7 +62,7 @@ Publishing makes an agent available through the marketplace and can enable
 monetization, A2A, and MCP discovery.
 
 ```bash
-curl -X POST "https://elizacloud.ai/api/v1/agents/$AGENT_ID/publish" \
+curl -X POST "https://api.eliza.app/api/v1/agents/$AGENT_ID/publish" \
   -H "Authorization: Bearer $ELIZA_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{

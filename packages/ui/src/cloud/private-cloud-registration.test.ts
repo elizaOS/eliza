@@ -42,8 +42,12 @@ describe("pathNeedsPrivateCloudSurfaces", () => {
     }
   });
 
-  it("is true only for dashboard console paths", () => {
+  it("is true for canonical Cloud paths and retired dashboard paths", () => {
     for (const path of [
+      "/cloud",
+      "/cloud/",
+      "/cloud/billing",
+      "cloud/agents",
       "/dashboard",
       "/dashboard/",
       "/dashboard/billing",
@@ -58,15 +62,15 @@ describe("pathNeedsPrivateCloudSurfaces", () => {
 describe("private cloud route registration", () => {
   it("maps legacy Applications URLs to the moved Apps route", () => {
     registerMovedApplicationsCloudRoutes();
-    const movedAppsRoute = getCloudRoute("dashboard/apps");
+    const movedAppsRoute = getCloudRoute("cloud/apps");
     expect(movedAppsRoute).toBeDefined();
-    expect(getCloudRoute("dashboard/apps/:id")?.element).toBe(
+    expect(getCloudRoute("cloud/apps/:id")?.element).toBe(
       movedAppsRoute?.element,
     );
-    expect(getCloudRoute("dashboard/applications")?.element).toBe(
+    expect(getCloudRoute("cloud/applications")?.element).toBe(
       movedAppsRoute?.element,
     );
-    expect(getCloudRoute("dashboard/applications/:id")?.element).toBe(
+    expect(getCloudRoute("cloud/applications/:id")?.element).toBe(
       movedAppsRoute?.element,
     );
   });

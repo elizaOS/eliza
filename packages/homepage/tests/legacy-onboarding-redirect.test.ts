@@ -15,7 +15,7 @@ describe("legacy onboarding redirect", () => {
         hash: "#continue",
       }),
     ).toBe(
-      "https://app.elizacloud.ai/get-started?onboardingSession=session-123&source=imessage#continue",
+      "https://cloud.eliza.app/get-started?onboardingSession=session-123&source=imessage#continue",
     );
   });
 
@@ -27,9 +27,7 @@ describe("legacy onboarding redirect", () => {
         search: "?onboardingSession=session-123",
         hash: "",
       }),
-    ).toBe(
-      "https://app.elizacloud.ai/get-started?onboardingSession=session-123",
-    );
+    ).toBe("https://cloud.eliza.app/get-started?onboardingSession=session-123");
   });
 
   test("leaves organic homepage onboarding and non-production hosts alone", () => {

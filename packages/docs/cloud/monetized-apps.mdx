@@ -36,7 +36,7 @@ user signs in and chats with your app
 <Step title="Create a Cloud app">
 
 ```bash
-curl -X POST "https://www.elizacloud.ai/api/v1/apps" \
+curl -X POST "https://api.eliza.app/api/v1/apps" \
   -H "Authorization: Bearer $ELIZA_CLOUD_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
@@ -54,7 +54,7 @@ The response includes `app.id` and a one-time `apiKey`. Store the app ID in your
 <Step title="Enable monetization">
 
 ```bash
-curl -X PUT "https://www.elizacloud.ai/api/v1/apps/$APP_ID/monetization" \
+curl -X PUT "https://api.eliza.app/api/v1/apps/$APP_ID/monetization" \
   -H "Authorization: Bearer $ELIZA_CLOUD_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
@@ -109,7 +109,7 @@ const { data: container } = await cloud.createContainer({
   environmentVars: {
     PORT: "3000",
     ELIZA_APP_ID: APP_ID,
-    ELIZA_CLOUD_URL: "https://www.elizacloud.ai",
+    ELIZA_CLOUD_URL: "https://api.eliza.app",
   },
 });
 ```
@@ -117,7 +117,7 @@ const { data: container } = await cloud.createContainer({
 When the container is running, patch the Cloud app to the real URL:
 
 ```bash
-curl -X PATCH "https://www.elizacloud.ai/api/v1/apps/$APP_ID" \
+curl -X PATCH "https://api.eliza.app/api/v1/apps/$APP_ID" \
   -H "Authorization: Bearer $ELIZA_CLOUD_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
@@ -130,10 +130,10 @@ curl -X PATCH "https://www.elizacloud.ai/api/v1/apps/$APP_ID" \
 
 <Step title="Redeem earnings">
 
-Use [Dashboard -> Earnings](https://elizacloud.ai/dashboard/earnings), or call the redemptions API. Earnings are tracked in dollars; redemptions use `pointsAmount`, where 100 points equals $1.00.
+Use [Cloud → Monetization](https://cloud.eliza.app/cloud/monetization), or call the redemptions API. Earnings are tracked in dollars; redemptions use `pointsAmount`, where 100 points equals $1.00.
 
 ```bash
-curl "https://www.elizacloud.ai/api/v1/redemptions/balance" \
+curl "https://api.eliza.app/api/v1/redemptions/balance" \
   -H "Authorization: Bearer $ELIZA_CLOUD_API_KEY"
 ```
 

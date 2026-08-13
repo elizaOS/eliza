@@ -161,7 +161,7 @@ app.get("/", rateLimit(RateLimitPresets.STANDARD), async (c) => {
     return c.json({ error: "A2A not enabled for this agent" }, 403);
   }
 
-  const baseUrl = c.env.NEXT_PUBLIC_APP_URL || "https://www.elizacloud.ai";
+  const baseUrl = c.env.NEXT_PUBLIC_APP_URL || "https://cloud.eliza.app";
   const agentCard = generateAgentCard(character, baseUrl);
 
   return c.json(agentCard, 200, {

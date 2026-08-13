@@ -42,28 +42,28 @@ function DemoShell({ initialPath }: { initialPath: string }) {
         </header>
         <nav className="mb-6 flex gap-3 text-sm">
           <Link
-            to="/dashboard"
+            to="/cloud"
             className="rounded border border-white/20 px-3 py-1.5 hover:bg-white/10"
           >
-            /dashboard
+            /cloud
           </Link>
           <Link
-            to="/agents"
+            to="/cloud/agents"
             className="rounded border border-white/20 px-3 py-1.5 hover:bg-white/10"
           >
-            /agents
+            /cloud/agents
           </Link>
           <Link
-            to="/billing"
+            to="/cloud/billing"
             className="rounded border border-white/20 px-3 py-1.5 hover:bg-white/10"
           >
-            /billing
+            /cloud/billing
           </Link>
           <Link
-            to="/settings?tab=profile"
+            to="/cloud/account?tab=profile"
             className="rounded border border-white/20 px-3 py-1.5 hover:bg-white/10"
           >
-            /settings?tab=profile
+            /cloud/account?tab=profile
           </Link>
         </nav>
         <Routes>
@@ -86,13 +86,13 @@ function DemoShell({ initialPath }: { initialPath: string }) {
 }
 
 export const Default: Story = {
-  render: () => <DemoShell initialPath="/dashboard" />,
+  render: () => <DemoShell initialPath="/cloud" />,
 };
 
 export const StartingOnAgents: Story = {
-  render: () => <DemoShell initialPath="/agents" />,
+  render: () => <DemoShell initialPath="/cloud/agents" />,
 };
 
 export const WithSearchParams: Story = {
-  render: () => <DemoShell initialPath="/settings?tab=profile" />,
+  render: () => <DemoShell initialPath="/cloud/account?tab=profile" />,
 };

@@ -142,7 +142,7 @@ export function AppsTable({ apps }: { apps: App[] }) {
         apps={apps}
         deletingId={deletingIds.size === 1 ? [...deletingIds][0] : null}
         renderAppLink={({ app, className, children }) => (
-          <Link to={`/dashboard/apps/${app.id}`} className={className}>
+          <Link to={`/cloud/apps/${app.id}`} className={className}>
             {children}
           </Link>
         )}

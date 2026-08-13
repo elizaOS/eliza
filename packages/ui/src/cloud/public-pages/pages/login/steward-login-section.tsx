@@ -820,7 +820,7 @@ export default function StewardLoginSection() {
     setError(null);
     const host = window.location.hostname.toLowerCase();
     const oauthOrigin = host.endsWith(".pages.dev")
-      ? "https://staging.elizacloud.ai"
+      ? "https://staging.eliza.app"
       : window.location.origin;
     let codeChallenge: string;
     try {
@@ -901,7 +901,7 @@ export default function StewardLoginSection() {
           <div className="h-8 w-8 animate-spin rounded-full border-2 border-border-strong border-t-accent motion-reduce:animate-none" />
           <p className="text-sm text-muted">
             {t("cloud.login.redirecting", {
-              defaultValue: "Redirecting to dashboard...",
+              defaultValue: "Redirecting to Eliza...",
             })}
           </p>
         </div>

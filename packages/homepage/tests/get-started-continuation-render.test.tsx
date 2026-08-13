@@ -187,6 +187,7 @@ function setupDom() {
   g.HTMLElement = window.HTMLElement;
   g.localStorage = window.localStorage;
   g.sessionStorage = window.sessionStorage;
+  g.IS_REACT_ACT_ENVIRONMENT = true;
   // jsdom has no layout engine; the provisioning chat autoscrolls on mount.
   window.HTMLElement.prototype.scrollIntoView = () => undefined;
   return window as unknown as Window & typeof globalThis;
@@ -205,24 +206,29 @@ async function renderPage(
   const container = window.document.getElementById("root");
   if (!container) throw new Error("root element not found");
   const root = createRoot(container);
-  root.render(
-    React.createElement(
-      I18nProvider,
-      { initialLang: "en" },
+  await React.act(async () => {
+    root.render(
       React.createElement(
-        MemoryRouter,
-        { initialEntries: [url] },
-        React.createElement(GetStartedPage),
+        I18nProvider,
+        { initialLang: "en" },
+        React.createElement(
+          MemoryRouter,
+          { initialEntries: [url] },
+          React.createElement(GetStartedPage),
+        ),
       ),
-    ),
-  );
-  // Let effects (initial-step resolution) settle.
-  await new Promise((resolve) => setTimeout(resolve, 150));
+    );
+    // Let effects and the async continuation preview settle inside React's
+    // supported test transaction rather than racing the initial paint.
+    await new Promise((resolve) => setTimeout(resolve, 200));
+  });
   return {
     html: () => container.innerHTML,
     query: (testId: string) =>
       container.querySelector(`[data-testid="${testId}"]`),
-    unmount: () => root.unmount(),
+    unmount: () => {
+      React.act(() => root.unmount());
+    },
   };
 }
 
@@ -277,8 +283,10 @@ describe("GetStartedPage platform continuation", () => {
 
     const confirmButton = page.query("continuation-confirm-button");
     expect(confirmButton).not.toBeNull();
-    (confirmButton as HTMLButtonElement).click();
-    await new Promise((resolve) => setTimeout(resolve, 150));
+    await React.act(async () => {
+      (confirmButton as HTMLButtonElement).click();
+      await new Promise((resolve) => setTimeout(resolve, 150));
+    });
 
     // The redemption POST carried the explicit confirmation flag.
     const confirmCall = chatFetch.mock.calls.find(([, init]) => {
@@ -315,8 +323,10 @@ describe("GetStartedPage platform continuation", () => {
 
     expect(page.html()).toContain("Connect your Telegram account?");
     expect(page.html()).toContain("Telegram ID 123456789");
-    (page.query("continuation-confirm-button") as HTMLButtonElement).click();
-    await new Promise((resolve) => setTimeout(resolve, 150));
+    await React.act(async () => {
+      (page.query("continuation-confirm-button") as HTMLButtonElement).click();
+      await new Promise((resolve) => setTimeout(resolve, 150));
+    });
 
     expect(page.html()).toContain("Head back to Telegram");
     const openTelegram = page.query("continuation-open-telegram");
@@ -360,8 +370,10 @@ describe("GetStartedPage platform continuation", () => {
       .query("continuation-error")
       ?.querySelector("button");
     expect(retryButton).not.toBeNull();
-    (retryButton as HTMLButtonElement).click();
-    await new Promise((resolve) => setTimeout(resolve, 150));
+    await React.act(async () => {
+      (retryButton as HTMLButtonElement).click();
+      await new Promise((resolve) => setTimeout(resolve, 150));
+    });
     expect(page.query("continuation-confirm")).not.toBeNull();
 
     page.unmount();

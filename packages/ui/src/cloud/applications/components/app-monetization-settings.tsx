@@ -418,9 +418,7 @@ export function AppMonetizationSettings({ app }: AppMonetizationSettingsProps) {
                 <Button
                   variant="ghost"
                   type="button"
-                  onClick={() =>
-                    navigate(`/dashboard/apps/${appId}?tab=earnings`)
-                  }
+                  onClick={() => navigate(`/cloud/apps/${appId}?tab=earnings`)}
                   className="mt-2 text-xs text-muted hover:text-txt transition-colors flex items-center gap-1"
                 >
                   {t("cloud.monetization.earned", {
@@ -733,11 +731,11 @@ function SelfHostCTA() {
           </p>
           <div className="flex flex-wrap gap-2">
             <Link
-              to="/dashboard/agents"
+              to="/cloud/agents"
               onClick={(e) => {
                 // Native studio: the agents surface is outside the apps-only
                 // MemoryRouter — open it in the system browser. No-op on web.
-                if (openCloudConsoleRouteExternally("/dashboard/agents")) {
+                if (openCloudConsoleRouteExternally("/cloud/agents")) {
                   e.preventDefault();
                 }
               }}
@@ -749,11 +747,11 @@ function SelfHostCTA() {
               })}
             </Link>
             <Link
-              to="/dashboard/earnings"
+              to="/cloud/monetization"
               onClick={(e) => {
                 // Native studio: the org earnings surface is outside the
                 // apps-only MemoryRouter — open it in the system browser.
-                if (openCloudConsoleRouteExternally("/dashboard/earnings")) {
+                if (openCloudConsoleRouteExternally("/cloud/monetization")) {
                   e.preventDefault();
                 }
               }}

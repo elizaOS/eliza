@@ -41,7 +41,7 @@ bun run test:e2e:foundation
 To target a different host (staging, a deployed preview):
 
 ```bash
-TEST_API_BASE_URL=https://api-staging.elizacloud.ai bun run test:e2e:foundation
+TEST_API_BASE_URL=https://api-staging.eliza.app bun run test:e2e:foundation
 ```
 
 If the Worker isn't reachable, every test inside the suite skips with a
