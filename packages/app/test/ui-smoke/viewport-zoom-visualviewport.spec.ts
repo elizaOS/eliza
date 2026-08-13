@@ -11,8 +11,9 @@ async function pageScale(page: Page) {
 /**
  * The served shell can issue a client-side redirect (first-run routing) right
  * after domcontentloaded, destroying the execution context mid-evaluate. The
- * assertions here are about the served document's viewport meta, which is
- * identical across those routes, so retry the read across the navigation.
+ * replacement document can briefly expose an empty head before its parser
+ * installs the viewport tag. The assertions are about the settled served
+ * document, which is identical across those routes, so retry both transitions.
  */
 async function evaluateAcrossNavigation<T>(
   page: Page,
@@ -33,13 +34,29 @@ async function evaluateAcrossNavigation<T>(
   throw lastError;
 }
 
+async function readViewportMetaAcrossNavigation(page: Page): Promise<string> {
+  let content = "";
+  await expect
+    .poll(
+      async () => {
+        content = await evaluateAcrossNavigation(page, () => {
+          const meta = document.querySelector('meta[name="viewport"]');
+          return meta?.getAttribute("content") ?? "";
+        });
+        return content;
+      },
+      {
+        message: "the final served document should expose viewport metadata",
+      },
+    )
+    .not.toBe("");
+  return content;
+}
+
 test.describe("WCAG 2.2 SC 1.4.4 browser zoom", () => {
   test("the served web shell allows 2× zoom", async ({ page }) => {
     await page.goto("/", { waitUntil: "domcontentloaded" });
-    const viewportMeta = await evaluateAcrossNavigation(page, () => {
-      const meta = document.querySelector('meta[name="viewport"]');
-      return meta?.getAttribute("content") ?? "";
-    });
+    const viewportMeta = await readViewportMetaAcrossNavigation(page);
 
     expect(viewportMeta).toContain("width=device-width");
     expect(viewportMeta).toContain("initial-scale=1.0");
