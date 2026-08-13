@@ -4,8 +4,8 @@
  * that the centralized classifier workflow path triggers every consumer lane.
  */
 import { describe, expect, it } from "bun:test";
-import { writeFileSync, unlinkSync } from "node:fs";
-import { parseGitNameStatus, evaluate, CONFIGS } from "../ci-path-gate.mjs";
+import { unlinkSync, writeFileSync } from "node:fs";
+import { CONFIGS, evaluate, parseGitNameStatus } from "../ci-path-gate.mjs";
 
 const CLASSIFIER_PATH = ".github/workflows/classify-paths.yml";
 const tmpFile = `${import.meta.dir}/.tmp-classifier-only-diff`;
@@ -44,9 +44,9 @@ describe("classifier self-registration regression", () => {
         labels: "",
         changedFilesPath: tmpFile,
       });
-      expect(result.matchesByLane.get("run_scenario_pr").length).toBeGreaterThan(
-        0,
-      );
+      expect(
+        result.matchesByLane.get("run_scenario_pr").length,
+      ).toBeGreaterThan(0);
     } finally {
       unlinkSync(tmpFile);
     }

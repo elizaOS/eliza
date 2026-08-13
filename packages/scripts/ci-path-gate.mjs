@@ -460,7 +460,10 @@ function applyFailSafe(config, changedFiles, matchedPaths, matchesByLane) {
   }
 }
 
-export function evaluate(config, { eventName, labels, base, head, changedFilesPath }) {
+export function evaluate(
+  config,
+  { eventName, labels, base, head, changedFilesPath },
+) {
   const matchesByLane = new Map(config.outputs.map((output) => [output, []]));
   let changedFiles = [];
 
