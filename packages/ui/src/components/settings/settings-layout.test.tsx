@@ -179,7 +179,26 @@ describe("agent-addressable rows", () => {
     expect(trigger.getAttribute("data-agent-id")).toBe("pick-theme");
     expect(trigger.getAttribute("data-agent-role")).toBe("select");
     expect(trigger.getAttribute("id")).toBe("pick-theme");
+    expect(trigger.getAttribute("aria-label")).toBeNull();
     expect(screen.getByText("Theme").tagName).toBe("LABEL");
+    expect(screen.getByText("Theme").getAttribute("for")).toBe("pick-theme");
+  });
+
+  it("SettingsSelectRow keeps the visible label as the accessible name", () => {
+    render(
+      <SettingsSelectRow
+        agentId="identity-voice"
+        label="Voice"
+        agentLabel="Agent voice preset"
+        value="alloy"
+        onValueChange={() => {}}
+        options={[{ value: "alloy", label: "Alloy" }]}
+      />,
+    );
+    const trigger = screen.getByLabelText("Voice");
+    expect(trigger.getAttribute("data-agent-label")).toBe("Agent voice preset");
+    expect(trigger.getAttribute("aria-label")).toBeNull();
+    expect(screen.queryByLabelText("Agent voice preset")).toBeNull();
   });
 
   it("SettingsSelectRow renders grouped options and a trailing control", () => {

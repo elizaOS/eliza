@@ -204,6 +204,8 @@ export function SettingsSelectRow({
     getValue: () => value,
     onFill: disabled ? undefined : (next: string) => onValueChange(next),
   });
+  const { "aria-label": _ignoredSelectAccessibleName, ...selectAgentProps } =
+    agentProps;
 
   const select = (
     <Select value={value} onValueChange={onValueChange} disabled={disabled}>
@@ -212,9 +214,8 @@ export function SettingsSelectRow({
         id={agentId}
         variant="touch"
         className={cn(trailing && "min-w-0 flex-1", triggerClassName)}
-        aria-label={resolvedLabel}
         data-testid={testId}
-        {...agentProps}
+        {...selectAgentProps}
       >
         <SelectValue placeholder={placeholder} />
       </SettingsSelectTrigger>
