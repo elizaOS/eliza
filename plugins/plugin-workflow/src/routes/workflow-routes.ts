@@ -1,50 +1,18 @@
 /**
- * Central dispatcher for the rawPath `/api/workflow/*` surface: workflow CRUD,
- * draft generation, clarification resolution, activate/deactivate, executions,
- * and engine status. `handleWorkflowRoutes` inspects method + pathname and
- * delegates to WorkflowService, building responses directly in-process with no
- * proxy or HTTP sidecar.
- *
- * These routes are registered verbatim (no plugin-name prefix) via
- * plugin-routes.ts and the app-route-plugin-registry; clarification handling
- * threads pending catalog snapshots through the workflow-clarification lib.
+ * Authenticated elizaOS HTTP boundary for native Smithers workflow definitions,
+ * runs, revisions, and live events. The API talks directly to runtime services;
+ * it does not proxy a Smithers Gateway or expose its protocol.
  */
 import type http from 'node:http';
 import type { AgentRuntime } from '@elizaos/core';
-import { invalidateAutomationExecutionCache } from '../lib/automations-builder';
 import {
-  applyResolutions,
-  buildCatalogSnapshot,
-  type CatalogLike,
-  coerceClarifications,
-  pruneResolvedClarifications,
-  type WorkflowClarificationResolution,
-} from '../lib/workflow-clarification';
+  EMBEDDED_WORKFLOW_SERVICE_TYPE,
+  type EmbeddedWorkflowService,
+} from '../services/embedded-workflow-service';
 import { WORKFLOW_SERVICE_TYPE, type WorkflowService } from '../services/workflow-service';
-import type {
-  TriggerContext,
-  WorkflowCreationResult,
-  WorkflowDefinition,
-  WorkflowDefinitionResponse,
-} from '../types/index';
+import type { WorkflowDefinition } from '../types/index';
 import { WorkflowApiError } from '../types/index';
 import { getRouteOwnerEntityId } from './_helpers';
-
-export type WorkflowMode = 'local' | 'disabled';
-export type WorkflowRuntimeStatus = 'ready' | 'error';
-
-export interface WorkflowStatusResponse {
-  mode: WorkflowMode;
-  host: string | null;
-  status: WorkflowRuntimeStatus;
-  cloudConnected: false;
-  localEnabled: boolean;
-  platform: 'desktop';
-  cloudHealth: 'unknown';
-  errorMessage?: string | null;
-}
-
-type WorkflowJsonResponder = (res: http.ServerResponse, body: unknown, status?: number) => void;
 
 export interface WorkflowRouteContext {
   req: http.IncomingMessage;
@@ -52,593 +20,265 @@ export interface WorkflowRouteContext {
   method: string;
   pathname: string;
   runtime: AgentRuntime | null;
-  /** Authenticated entity principal supplied by a non-HTTP dispatcher. */
   principalId?: string;
-  json: WorkflowJsonResponder;
+  json: (res: http.ServerResponse, body: unknown, status?: number) => void;
 }
 
-function sendJson(
-  ctx: Pick<WorkflowRouteContext, 'res' | 'json'>,
-  status: number,
-  body: unknown
-): void {
-  ctx.json(ctx.res, body, status);
-}
-
-function normalizePath(pathname: string): string {
-  const withoutPrefix = pathname.replace(/^\/api\/workflow/, '');
-  return withoutPrefix.length > 0 ? withoutPrefix : '/';
-}
-
-function readId(path: string): string | null {
-  const match = /^\/workflows\/([^/]+)(?:\/.*)?$/.exec(path);
-  return match?.[1] ? decodeURIComponent(match[1]) : null;
-}
-
-function resolveOwnerEntityId(ctx: WorkflowRouteContext): string {
-  if (ctx.principalId?.trim()) {
-    return ctx.principalId.trim();
-  }
-  if (!ctx.runtime) {
-    throw new WorkflowApiError('Workflow route principal is unavailable', 503);
-  }
-  return getRouteOwnerEntityId(ctx.runtime);
-}
-
-function getWorkflowService(ctx: WorkflowRouteContext): WorkflowService | null {
-  return (ctx.runtime?.getService?.(WORKFLOW_SERVICE_TYPE) as WorkflowService | null) ?? null;
-}
-
-function isCatalogLike(value: unknown): value is CatalogLike {
-  return isRecord(value) && typeof value.listGroups === 'function';
-}
-
-function getConnectorTargetCatalog(ctx: WorkflowRouteContext): CatalogLike | null {
-  const raw = ctx.runtime?.getService?.('connector_target_catalog');
-  return isCatalogLike(raw) ? raw : null;
+export interface WorkflowStatusResponse {
+  mode: 'cloud' | 'disabled';
+  host: string | null;
+  status: 'ready' | 'error';
+  cloudConnected: boolean;
+  localEnabled: boolean;
+  platform: 'cloud';
+  cloudHealth: 'healthy' | 'unknown';
+  engine: 'smthrs';
+  errorMessage?: string | null;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
-function asClarificationResolution(value: unknown): WorkflowClarificationResolution | null {
-  if (!isRecord(value) || typeof value.paramPath !== 'string' || typeof value.value !== 'string') {
-    return null;
-  }
-  return { paramPath: value.paramPath, value: value.value };
+function serviceFor(ctx: WorkflowRouteContext): WorkflowService {
+  const service = ctx.runtime?.getService<WorkflowService>(WORKFLOW_SERVICE_TYPE);
+  if (!service) throw new WorkflowApiError('Workflow service is unavailable', 503);
+  return service;
 }
 
-function isWorkflowDefinition(value: unknown): value is WorkflowDefinition {
-  return (
-    isRecord(value) &&
-    typeof value.name === 'string' &&
-    Array.isArray(value.nodes) &&
-    value.nodes.every(isRecord) &&
-    isRecord(value.connections)
-  );
+function embeddedFor(ctx: WorkflowRouteContext): EmbeddedWorkflowService {
+  const service = ctx.runtime?.getService<EmbeddedWorkflowService>(EMBEDDED_WORKFLOW_SERVICE_TYPE);
+  if (!service) throw new WorkflowApiError('Workflow runtime is unavailable', 503);
+  return service;
 }
 
-async function readJsonBody(
+function ownerFor(ctx: WorkflowRouteContext): string {
+  if (ctx.principalId?.trim()) return ctx.principalId.trim();
+  if (!ctx.runtime) throw new WorkflowApiError('Workflow principal is unavailable', 503);
+  return getRouteOwnerEntityId(ctx.runtime);
+}
+
+function pathFor(pathname: string): string {
+  return pathname.replace(/^\/api\/workflow/, '') || '/';
+}
+
+async function readBody(
   req: http.IncomingMessage,
-  res: http.ServerResponse,
-  maxBytes = 1_048_576
-): Promise<Record<string, unknown> | null> {
-  const attachedBody = (req as http.IncomingMessage & { body?: unknown }).body;
-  if (attachedBody !== undefined) {
-    if (isRecord(attachedBody)) {
-      return attachedBody;
-    }
-    res.statusCode = 400;
-    res.setHeader('content-type', 'application/json; charset=utf-8');
-    res.end(JSON.stringify({ error: 'JSON body must be an object' }));
-    return null;
-  }
-
+  limit = 2_000_000
+): Promise<Record<string, unknown>> {
+  const attached = (req as http.IncomingMessage & { body?: unknown }).body;
+  if (isRecord(attached)) return attached;
   const chunks: Buffer[] = [];
-  let totalBytes = 0;
+  let size = 0;
   for await (const chunk of req) {
-    const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
-    totalBytes += buffer.length;
-    if (totalBytes > maxBytes) {
-      res.statusCode = 413;
-      res.setHeader('content-type', 'application/json; charset=utf-8');
-      res.end(JSON.stringify({ error: 'request body too large' }));
-      return null;
-    }
-    chunks.push(buffer);
+    const value = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+    size += value.length;
+    if (size > limit) throw new WorkflowApiError('Request body is too large', 413);
+    chunks.push(value);
   }
-
-  if (chunks.length === 0) {
-    res.statusCode = 400;
-    res.setHeader('content-type', 'application/json; charset=utf-8');
-    res.end(JSON.stringify({ error: 'JSON body is required' }));
-    return null;
-  }
-
+  if (chunks.length === 0) return {};
   try {
-    const parsed = JSON.parse(Buffer.concat(chunks).toString('utf-8'));
+    const parsed = JSON.parse(Buffer.concat(chunks).toString('utf8'));
     if (isRecord(parsed)) return parsed;
-    res.statusCode = 400;
-    res.setHeader('content-type', 'application/json; charset=utf-8');
-    res.end(JSON.stringify({ error: 'JSON body must be an object' }));
-    return null;
   } catch {
-    // error-policy:J3 malformed transport input is returned as an explicit invalid request.
-    res.statusCode = 400;
-    res.setHeader('content-type', 'application/json; charset=utf-8');
-    res.end(JSON.stringify({ error: 'invalid JSON body' }));
-    return null;
+    // error-policy:J3 malformed request bodies become an explicit 400 response.
   }
+  throw new WorkflowApiError('JSON object body is required', 400);
 }
 
-function asWorkflow(value: unknown): WorkflowDefinition | null {
-  return isWorkflowDefinition(value) ? value : null;
-}
-
-async function readWorkflowPayload(
-  ctx: WorkflowRouteContext
-): Promise<{ workflow: WorkflowDefinition; activate?: boolean } | null> {
-  const body = await readJsonBody(ctx.req, ctx.res);
-  if (!body) {
-    return null;
+function workflowFrom(body: Record<string, unknown>): WorkflowDefinition {
+  const candidate = isRecord(body.workflow) ? body.workflow : body;
+  if (
+    typeof candidate.name !== 'string' ||
+    typeof candidate.source !== 'string' ||
+    (candidate.language !== 'tsx' && candidate.language !== 'typescript')
+  ) {
+    throw new WorkflowApiError('Native Smithers workflow payload is required', 400);
   }
+  return candidate as unknown as WorkflowDefinition;
+}
 
-  const record = body as Record<string, unknown>;
-  const workflow = asWorkflow(record.workflow) ?? asWorkflow(record);
-  if (!workflow) {
-    sendJson(ctx, 400, { error: 'workflow payload required' });
-    return null;
+function idMatch(path: string): { id: string; suffix: string } | null {
+  const match = /^\/workflows\/([^/]+)(.*)$/.exec(path);
+  return match ? { id: decodeURIComponent(match[1]), suffix: match[2] || '' } : null;
+}
+
+async function streamEvents(ctx: WorkflowRouteContext, runId: string): Promise<void> {
+  const service = embeddedFor(ctx);
+  const execution = await service.getExecution(runId);
+  ctx.res.statusCode = 200;
+  ctx.res.setHeader('content-type', 'text/event-stream; charset=utf-8');
+  ctx.res.setHeader('cache-control', 'no-cache, no-transform');
+  ctx.res.setHeader('connection', 'keep-alive');
+  ctx.res.flushHeaders?.();
+  for (const event of execution.events ?? []) {
+    ctx.res.write(`id: ${event.sequence}\nevent: workflow\ndata: ${JSON.stringify(event)}\n\n`);
   }
-  return {
-    workflow,
-    activate: typeof record.activate === 'boolean' ? record.activate : undefined,
-  };
-}
-
-function toWorkflowResponse(result: WorkflowCreationResult): Pick<
-  WorkflowDefinitionResponse,
-  'id' | 'name' | 'active'
-> & {
-  nodeCount: number;
-  missingCredentials: WorkflowCreationResult['missingCredentials'];
-} {
-  return {
-    id: result.id,
-    name: result.name,
-    active: result.active,
-    nodeCount: result.nodeCount,
-    missingCredentials: result.missingCredentials,
-  };
-}
-
-async function deployWorkflow(
-  ctx: WorkflowRouteContext,
-  service: WorkflowService,
-  workflow: WorkflowDefinition,
-  activate?: boolean
-): Promise<void> {
-  const ownerEntityId = resolveOwnerEntityId(ctx);
-  const deployed = await service.deployWorkflow(workflow, ownerEntityId, { activate });
-  if (deployed.id) {
-    invalidateAutomationExecutionCache(service, ownerEntityId, deployed.id);
-  }
-  if (deployed.missingCredentials.length > 0 && !deployed.id) {
-    sendJson(ctx, 200, {
-      ...toWorkflowResponse(deployed),
-      warning: 'missing credentials',
-    });
-    return;
-  }
-
-  const full = deployed.id
-    ? await service.getWorkflow(deployed.id, ownerEntityId)
-    : toWorkflowResponse(deployed);
-  sendJson(ctx, 200, full);
-}
-
-async function buildTriggerContextFromConversation(
-  runtime: AgentRuntime | null,
-  conversationId: string
-): Promise<TriggerContext | undefined> {
-  const room = await runtime?.getRoom?.(conversationId);
-  const metadata = isRecord(room?.metadata) ? room.metadata : null;
-  const inbound = isRecord(metadata?.inbound) ? metadata.inbound : null;
-  if (!inbound) {
-    return undefined;
-  }
-  const platform = typeof inbound.platform === 'string' ? inbound.platform : undefined;
-  const channelId = typeof inbound.channelId === 'string' ? inbound.channelId : undefined;
-  const guildId = typeof inbound.guildId === 'string' ? inbound.guildId : undefined;
-  const threadId = typeof inbound.threadId === 'string' ? inbound.threadId : undefined;
-  return {
-    source: platform,
-    ...(platform === 'discord' || channelId || guildId || threadId
-      ? { discord: { channelId, guildId, threadId } }
-      : {}),
-  };
-}
-
-async function handleStatus(ctx: WorkflowRouteContext): Promise<void> {
-  const service = getWorkflowService(ctx);
-  sendJson(ctx, 200, {
-    mode: service ? 'local' : 'disabled',
-    host: 'in-process',
-    status: service ? 'ready' : 'error',
-    cloudConnected: false,
-    localEnabled: Boolean(service),
-    platform: 'desktop',
-    cloudHealth: 'unknown',
-    errorMessage: service ? null : 'Workflow service is not registered',
-  } satisfies WorkflowStatusResponse);
-}
-
-async function handleList(ctx: WorkflowRouteContext, service: WorkflowService): Promise<void> {
-  const workflows = await service.listWorkflows(resolveOwnerEntityId(ctx));
-  sendJson(ctx, 200, { workflows });
-}
-
-async function handleGet(
-  ctx: WorkflowRouteContext,
-  service: WorkflowService,
-  id: string
-): Promise<void> {
-  sendJson(ctx, 200, await service.getWorkflow(id, resolveOwnerEntityId(ctx)));
-}
-
-async function handleListRevisions(
-  ctx: WorkflowRouteContext,
-  service: WorkflowService,
-  id: string
-): Promise<void> {
-  const url = new URL(`http://x${ctx.req.url ?? ''}`);
-  const rawLimit = url.searchParams.get('limit');
-  const limit = Math.min(Math.max(1, Number(rawLimit) || 20), 50);
-  const ownerEntityId = resolveOwnerEntityId(ctx);
-  const [workflow, revisions] = await Promise.all([
-    service.getWorkflow(id, ownerEntityId),
-    service.listWorkflowRevisions(id, limit, ownerEntityId),
-  ]);
-  sendJson(ctx, 200, {
-    currentVersionId: workflow.versionId,
-    revisions,
+  const unsubscribe = service.subscribe(runId, (event) => {
+    ctx.res.write(`id: ${event.sequence}\nevent: workflow\ndata: ${JSON.stringify(event)}\n\n`);
   });
-}
-
-async function handleRestoreRevision(
-  ctx: WorkflowRouteContext,
-  service: WorkflowService,
-  id: string,
-  versionId: string
-): Promise<void> {
-  sendJson(
-    ctx,
-    200,
-    await service.restoreWorkflowRevision(id, versionId, resolveOwnerEntityId(ctx))
-  );
-}
-
-async function handleGenerate(ctx: WorkflowRouteContext, service: WorkflowService): Promise<void> {
-  const body = await readJsonBody(ctx.req, ctx.res);
-  if (!isRecord(body)) {
-    sendJson(ctx, 400, { error: 'request body required' });
-    return;
-  }
-
-  const prompt = typeof body.prompt === 'string' ? body.prompt.trim() : '';
-  if (!prompt) {
-    sendJson(ctx, 400, { error: 'prompt required' });
-    return;
-  }
-
-  const triggerContext =
-    typeof body.bridgeConversationId === 'string'
-      ? await buildTriggerContextFromConversation(ctx.runtime, body.bridgeConversationId)
-      : undefined;
-
-  const draft = await service.generateWorkflowDraft(prompt, {
-    userId: resolveOwnerEntityId(ctx),
-    ...(triggerContext ? { triggerContext } : {}),
-  });
-  if (typeof body.name === 'string' && body.name.trim()) {
-    draft.name = body.name.trim();
-  }
-  if (typeof body.workflowId === 'string' && body.workflowId.trim()) {
-    draft.id = body.workflowId.trim();
-  }
-
-  const clarifications = coerceClarifications(draft._meta?.requiresClarification);
-  if (clarifications.length > 0) {
-    const catalog = getConnectorTargetCatalog(ctx);
-    sendJson(ctx, 200, {
-      status: 'needs_clarification',
-      draft,
-      clarifications,
-      catalog: catalog ? await buildCatalogSnapshot(catalog, clarifications) : [],
-    });
-    return;
-  }
-
-  await deployWorkflow(
-    ctx,
-    service,
-    draft,
-    typeof body.activate === 'boolean' ? body.activate : undefined
-  );
-}
-
-async function handleResolveClarification(
-  ctx: WorkflowRouteContext,
-  service: WorkflowService
-): Promise<void> {
-  const body = await readJsonBody(ctx.req, ctx.res);
-  if (!isRecord(body) || !isRecord(body.draft) || !Array.isArray(body.resolutions)) {
-    sendJson(ctx, 400, { error: 'draft and resolutions required' });
-    return;
-  }
-
-  const draftRecord = body.draft;
-  const draft = asWorkflow(draftRecord);
-  if (!draft) {
-    sendJson(ctx, 400, { error: 'valid draft workflow required' });
-    return;
-  }
-  const resolutions = body.resolutions.map(asClarificationResolution);
-  const validResolutions = resolutions.filter(
-    (resolution): resolution is WorkflowClarificationResolution => resolution !== null
-  );
-  if (validResolutions.length !== body.resolutions.length) {
-    sendJson(ctx, 400, { error: 'resolution missing paramPath or string value' });
-    return;
-  }
-  const result = applyResolutions(draftRecord, validResolutions);
-  if (result.ok === false) {
-    sendJson(ctx, 400, { error: result.error, paramPath: result.paramPath });
-    return;
-  }
-
-  const resolvedPaths = new Set(
-    body.resolutions
-      .map((resolution) => (isRecord(resolution) ? resolution.paramPath : undefined))
-      .filter((path): path is string => typeof path === 'string' && path.length > 0)
-  );
-  const freeFormCount = body.resolutions.filter(
-    (resolution) => !isRecord(resolution) || typeof resolution.paramPath !== 'string'
-  ).length;
-  pruneResolvedClarifications(draftRecord, resolvedPaths, freeFormCount);
-
-  if (typeof body.name === 'string' && body.name.trim()) {
-    draft.name = body.name.trim();
-  }
-  if (typeof body.workflowId === 'string' && body.workflowId.trim()) {
-    draft.id = body.workflowId.trim();
-  }
-
-  const remaining = coerceClarifications(draft._meta?.requiresClarification);
-  if (remaining.length > 0) {
-    const catalog = getConnectorTargetCatalog(ctx);
-    sendJson(ctx, 200, {
-      status: 'needs_clarification',
-      draft,
-      clarifications: remaining,
-      catalog: catalog ? await buildCatalogSnapshot(catalog, remaining) : [],
-    });
-    return;
-  }
-
-  await deployWorkflow(
-    ctx,
-    service,
-    draft,
-    typeof body.activate === 'boolean' ? body.activate : undefined
-  );
-}
-
-async function handleWrite(
-  ctx: WorkflowRouteContext,
-  service: WorkflowService,
-  id?: string
-): Promise<void> {
-  const payload = await readWorkflowPayload(ctx);
-  if (!payload) {
-    return;
-  }
-  const workflow = id ? { ...payload.workflow, id } : payload.workflow;
-  await deployWorkflow(ctx, service, workflow, payload.activate);
-}
-
-async function handleToggle(
-  ctx: WorkflowRouteContext,
-  service: WorkflowService,
-  id: string,
-  active: boolean
-): Promise<void> {
-  const ownerEntityId = resolveOwnerEntityId(ctx);
-  if (active) {
-    await service.activateWorkflow(id, ownerEntityId);
-  } else {
-    await service.deactivateWorkflow(id, ownerEntityId);
-  }
-  sendJson(ctx, 200, await service.getWorkflow(id, ownerEntityId));
-}
-
-async function handleListExecutions(
-  ctx: WorkflowRouteContext,
-  service: WorkflowService,
-  id: string
-): Promise<void> {
-  const url = new URL(`http://x${ctx.req.url ?? ''}`);
-  const rawLimit = url.searchParams.get('limit');
-  const limit = Math.min(Math.max(1, Number(rawLimit) || 10), 50);
-  const response = await service.listExecutions(
-    { workflowId: id, limit },
-    resolveOwnerEntityId(ctx)
-  );
-  sendJson(ctx, 200, { executions: response.data });
-}
-
-async function handleEvaluationSamples(
-  ctx: WorkflowRouteContext,
-  service: WorkflowService,
-  id: string
-): Promise<void> {
-  const url = new URL(`http://x${ctx.req.url ?? ''}`);
-  const rawLimit = url.searchParams.get('limit');
-  const limit = Math.min(Math.max(1, Number(rawLimit) || 10), 50);
-  sendJson(
-    ctx,
-    200,
-    await service.getWorkflowEvaluationSuite(id, limit, resolveOwnerEntityId(ctx))
-  );
-}
-
-async function handleRunWorkflow(
-  ctx: WorkflowRouteContext,
-  service: WorkflowService,
-  id: string
-): Promise<void> {
-  const ownerEntityId = resolveOwnerEntityId(ctx);
-  const execution = await service.runWorkflow(
-    id,
-    {
-      mode: 'manual',
-      throwOnError: false,
-    },
-    ownerEntityId
-  );
-  invalidateAutomationExecutionCache(service, ownerEntityId, id);
-  sendJson(ctx, 200, { execution });
-}
-
-async function handleGetExecution(
-  ctx: WorkflowRouteContext,
-  service: WorkflowService,
-  id: string
-): Promise<void> {
-  sendJson(ctx, 200, {
-    execution: await service.getExecutionDetail(id, resolveOwnerEntityId(ctx)),
+  const heartbeat = setInterval(() => ctx.res.write(': heartbeat\n\n'), 15_000);
+  await new Promise<void>((resolve) => ctx.req.once('close', resolve)).finally(() => {
+    clearInterval(heartbeat);
+    unsubscribe();
   });
 }
 
 export async function handleWorkflowRoutes(ctx: WorkflowRouteContext): Promise<void> {
-  const path = normalizePath(ctx.pathname);
-  const method = ctx.method.toUpperCase();
-
+  const path = pathFor(ctx.pathname);
   try {
-    if (method === 'GET' && path === '/status') {
-      await handleStatus(ctx);
+    const service = serviceFor(ctx);
+    const owner = ownerFor(ctx);
+    if (ctx.method === 'GET' && path === '/status') {
+      ctx.json(ctx.res, {
+        mode: 'cloud',
+        host: 'eliza-cloud',
+        status: 'ready',
+        cloudConnected: true,
+        localEnabled: false,
+        platform: 'cloud',
+        cloudHealth: 'healthy',
+        engine: 'smthrs',
+      });
       return;
     }
-
-    if (method === 'POST' && path === '/runtime/start') {
-      sendJson(ctx, 200, { ok: true });
+    if (ctx.method === 'GET' && path === '/workflows') {
+      ctx.json(ctx.res, { workflows: await service.listWorkflows(owner) });
       return;
     }
-
-    const service = getWorkflowService(ctx);
-    if (!service) {
-      sendJson(ctx, 503, { error: 'workflow service unavailable' });
+    if (ctx.method === 'POST' && path === '/workflows/generate') {
+      const body = await readBody(ctx.req);
+      if (typeof body.prompt !== 'string' || !body.prompt.trim())
+        throw new WorkflowApiError('prompt is required', 400);
+      const workflow = await service.generateWorkflowDraft(body.prompt, { userId: owner });
+      ctx.json(ctx.res, { workflow }, 200);
       return;
     }
-
-    if (method === 'GET' && path === '/workflows') {
-      await handleList(ctx, service);
+    if (ctx.method === 'POST' && path === '/workflows') {
+      const body = await readBody(ctx.req);
+      const created = await service.deployWorkflow(workflowFrom(body), owner, {
+        activate: typeof body.activate === 'boolean' ? body.activate : undefined,
+      });
+      ctx.json(ctx.res, await service.getWorkflow(created.id, owner), 201);
       return;
     }
-
-    if (method === 'POST' && path === '/workflows') {
-      await handleWrite(ctx, service);
-      return;
-    }
-
-    if (method === 'POST' && path === '/workflows/generate') {
-      await handleGenerate(ctx, service);
-      return;
-    }
-
-    if (method === 'POST' && path === '/workflows/resolve-clarification') {
-      await handleResolveClarification(ctx, service);
-      return;
-    }
-
-    if (method === 'GET' && path.startsWith('/executions/')) {
-      const executionId = decodeURIComponent(path.slice('/executions/'.length));
-      if (executionId) {
-        await handleGetExecution(ctx, service, executionId);
+    const executionMatch = /^\/executions\/([^/]+)(?:\/(events|cancel))?$/.exec(path);
+    if (executionMatch) {
+      const runId = decodeURIComponent(executionMatch[1]);
+      const operation = executionMatch[2];
+      if (ctx.method === 'GET' && operation === 'events') return streamEvents(ctx, runId);
+      if (ctx.method === 'POST' && operation === 'cancel') {
+        ctx.json(ctx.res, { execution: await service.cancelExecution(runId, owner) }, 202);
+        return;
+      }
+      if (ctx.method === 'GET' && !operation) {
+        ctx.json(ctx.res, { execution: await service.getExecutionDetail(runId, owner) });
         return;
       }
     }
-
-    const id = readId(path);
-    if (id && method === 'GET' && path === `/workflows/${encodeURIComponent(id)}`) {
-      await handleGet(ctx, service, id);
-      return;
-    }
-    if (id && method === 'GET' && path === `/workflows/${encodeURIComponent(id)}/revisions`) {
-      await handleListRevisions(ctx, service, id);
-      return;
-    }
-    if (
-      id &&
-      method === 'POST' &&
-      path.startsWith(`/workflows/${encodeURIComponent(id)}/revisions/`)
-    ) {
-      const prefix = `/workflows/${encodeURIComponent(id)}/revisions/`;
-      const suffix = path.slice(prefix.length);
-      const versionId = suffix.endsWith('/restore') ? suffix.slice(0, -'/restore'.length) : '';
-      if (versionId) {
-        await handleRestoreRevision(ctx, service, id, decodeURIComponent(versionId));
-        return;
+    const approvalMatch = /^\/executions\/([^/]+)\/approvals\/([^/]+)\/(\d+)$/.exec(path);
+    if (ctx.method === 'POST' && approvalMatch) {
+      const body = await readBody(ctx.req);
+      if (body.approved !== true && body.approved !== false) {
+        throw new WorkflowApiError('approved must be a boolean', 400);
       }
-    }
-    if (id && method === 'PUT' && path === `/workflows/${encodeURIComponent(id)}`) {
-      await handleWrite(ctx, service, id);
+      ctx.json(
+        ctx.res,
+        {
+          execution: await service.decideApproval(
+            decodeURIComponent(approvalMatch[1]),
+            decodeURIComponent(approvalMatch[2]),
+            Number(approvalMatch[3]),
+            body.approved,
+            {
+              ...(typeof body.note === 'string' ? { note: body.note } : {}),
+              decidedBy: owner,
+              ...(body.decision !== undefined ? { decision: body.decision } : {}),
+            }
+          ),
+        },
+        202
+      );
       return;
     }
-    if (id && method === 'DELETE' && path === `/workflows/${encodeURIComponent(id)}`) {
-      const ownerEntityId = resolveOwnerEntityId(ctx);
-      await service.deleteWorkflow(id, ownerEntityId);
-      invalidateAutomationExecutionCache(service, ownerEntityId, id);
-      sendJson(ctx, 200, { ok: true });
+    const signalMatch = /^\/executions\/([^/]+)\/signals\/([^/]+)$/.exec(path);
+    if (ctx.method === 'POST' && signalMatch) {
+      const body = await readBody(ctx.req);
+      ctx.json(
+        ctx.res,
+        {
+          execution: await service.signalExecution(
+            decodeURIComponent(signalMatch[1]),
+            decodeURIComponent(signalMatch[2]),
+            body.payload,
+            owner
+          ),
+        },
+        202
+      );
       return;
     }
-    if (id && method === 'POST' && path === `/workflows/${encodeURIComponent(id)}/activate`) {
-      await handleToggle(ctx, service, id, true);
+    const match = idMatch(path);
+    if (!match) throw new WorkflowApiError('Workflow route not found', 404);
+    if (ctx.method === 'GET' && match.suffix === '') {
+      ctx.json(ctx.res, await service.getWorkflow(match.id, owner));
       return;
     }
-    if (id && method === 'POST' && path === `/workflows/${encodeURIComponent(id)}/deactivate`) {
-      await handleToggle(ctx, service, id, false);
+    if (ctx.method === 'PUT' && match.suffix === '') {
+      const body = await readBody(ctx.req);
+      ctx.json(ctx.res, await service.updateWorkflow(match.id, workflowFrom(body), owner));
       return;
     }
-    if (id && method === 'POST' && path === `/workflows/${encodeURIComponent(id)}/run`) {
-      await handleRunWorkflow(ctx, service, id);
+    if (ctx.method === 'DELETE' && match.suffix === '') {
+      await service.deleteWorkflow(match.id, owner);
+      ctx.json(ctx.res, { ok: true });
       return;
     }
-    if (
-      id &&
-      method === 'GET' &&
-      path === `/workflows/${encodeURIComponent(id)}/evaluation-samples`
-    ) {
-      await handleEvaluationSamples(ctx, service, id);
+    if (ctx.method === 'POST' && (match.suffix === '/activate' || match.suffix === '/deactivate')) {
+      const workflow =
+        match.suffix === '/activate'
+          ? await service.activateWorkflow(match.id, owner)
+          : await service.deactivateWorkflow(match.id, owner);
+      ctx.json(ctx.res, workflow);
       return;
     }
-    if (id && method === 'GET' && path === `/workflows/${encodeURIComponent(id)}/executions`) {
-      await handleListExecutions(ctx, service, id);
+    if (ctx.method === 'POST' && match.suffix === '/run') {
+      const body = await readBody(ctx.req);
+      const execution = await service.startWorkflow(match.id, {
+        mode: 'manual',
+        input: isRecord(body.input) ? body.input : body,
+      });
+      ctx.json(ctx.res, { execution }, 202);
       return;
     }
-
-    sendJson(ctx, 404, { error: 'workflow route not found' });
+    if (ctx.method === 'GET' && match.suffix === '/executions') {
+      ctx.json(ctx.res, { executions: await service.getWorkflowExecutions(match.id, 50, owner) });
+      return;
+    }
+    if (ctx.method === 'GET' && match.suffix === '/revisions') {
+      const workflow = await service.getWorkflow(match.id, owner);
+      ctx.json(ctx.res, {
+        currentVersionId: workflow.versionId,
+        revisions: await service.getWorkflowRevisions(match.id, 50, owner),
+      });
+      return;
+    }
+    const restore = /^\/revisions\/([^/]+)\/restore$/.exec(match.suffix);
+    if (ctx.method === 'POST' && restore) {
+      ctx.json(
+        ctx.res,
+        await service.restoreWorkflowRevision(match.id, decodeURIComponent(restore[1]), owner)
+      );
+      return;
+    }
+    if (ctx.method === 'GET' && match.suffix === '/evaluation-samples') {
+      ctx.json(ctx.res, await service.getWorkflowEvaluationSuite(match.id, 20, owner));
+      return;
+    }
+    throw new WorkflowApiError('Workflow route not found', 404);
   } catch (error) {
-    // error-policy:J1 the raw HTTP boundary translates typed service failures.
-    // All not-found results share one body so workflow, execution, and revision
-    // identifiers cannot be used as a cross-owner existence oracle.
-    const status = error instanceof WorkflowApiError ? (error.statusCode ?? 500) : 500;
-    sendJson(
-      ctx,
-      status,
-      status === 404
-        ? { error: 'Workflow resource not found', code: 'workflow_resource_not_found' }
-        : { error: error instanceof Error ? error.message : String(error) }
-    );
+    // error-policy:J1 HTTP boundary translates typed workflow failures.
+    const status = error instanceof WorkflowApiError ? error.statusCode : 500;
+    ctx.json(ctx.res, { error: error instanceof Error ? error.message : String(error) }, status);
   }
 }

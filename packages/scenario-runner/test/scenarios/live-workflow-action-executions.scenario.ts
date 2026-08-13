@@ -43,31 +43,18 @@ type RuntimeWithWorkflow = IAgentRuntime & {
 const workflowDefinition: WorkflowDefinition = {
   id: WORKFLOW_ID,
   name: WORKFLOW_NAME,
-  nodes: [
-    {
-      id: "manual",
-      name: "Manual Trigger",
-      type: "workflows-nodes-base.manualTrigger",
-      typeVersion: 1,
-      position: [0, 0],
-      parameters: {},
-    },
-    {
-      id: "set",
-      name: "Set",
-      type: "workflows-nodes-base.set",
-      typeVersion: 3.4,
-      position: [200, 0],
-      parameters: {
-        assignments: {
-          assignments: [{ name: "digest", value: "sent" }],
-        },
-      },
-    },
-  ],
-  connections: {
-    "Manual Trigger": { main: [[{ node: "Set", type: "main", index: 0 }]] },
-  },
+  source: `/** @jsxImportSource smthrs */
+import { createSmithers } from "smthrs/create";
+import { z } from "zod";
+const { Workflow, smithers } = createSmithers(
+  { result: z.object({ message: z.string() }) },
+  { dbPath: process.env.ELIZA_SMTHRS_DB_PATH },
+);
+export default smithers(() => <Workflow name="Morning digest" />);`,
+  language: "tsx",
+  active: true,
+  steps: [],
+  widgets: [],
 };
 
 let seededExecutionId: string | null = null;

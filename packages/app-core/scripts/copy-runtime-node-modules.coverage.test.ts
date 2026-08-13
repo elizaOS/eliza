@@ -2,9 +2,7 @@
  * Focused unit coverage for the pure decision helpers in
  * `copy-runtime-node-modules.ts`.
  *
- * The desktop runtime-copy script is what the electrobun tar-safe baseline fix
- * touches (adding `@smithers-orchestrator/aws` → CodeBuild/ECS/CloudWatch-Logs
- * to `PACKAGED_DEPENDENCY_SKIPS`). These tests exercise the platform-variant,
+ * These tests exercise the desktop runtime-copy script's platform-variant,
  * version-inference, dependency-walk, and candidate-selection helpers that
  * decide WHICH files/packages land in the packaged bundle. They pass explicit
  * `targetOS`/`targetArch` so the assertions are deterministic on any CI
@@ -856,18 +854,6 @@ describe("shouldSkipPackagedDependency", () => {
     const incompatibleArch = process.arch === "arm64" ? "x64" : "arm64";
     const incompatible = `@node-llama-cpp/${incompatibleOS}-${incompatibleArch}`;
     expect(shouldSkipPackagedDependency("requester", incompatible)).toBe(true);
-    expect(
-      shouldSkipPackagedDependency(
-        "@smithers-orchestrator/aws",
-        "@aws-sdk/client-codebuild",
-      ),
-    ).toBe(true);
-    expect(
-      shouldSkipPackagedDependency(
-        "@smithers-orchestrator/aws",
-        "@aws-sdk/client-s3",
-      ),
-    ).toBe(false);
   });
 });
 

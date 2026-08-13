@@ -483,13 +483,6 @@ export function tabFromPath(pathname: string, basePath = ""): Tab | null {
   // (clouds/avatar surface) when no app declares elizaos.app.mainTab=true.
   if (normalized === "/") return resolveDefaultLandingTab();
 
-  if (
-    normalized === "/node-catalog" ||
-    normalized === "/automations/node-catalog"
-  ) {
-    return "automations";
-  }
-
   // Apps disabled in production builds — redirect to chat
   if (
     !APPS_ENABLED &&
