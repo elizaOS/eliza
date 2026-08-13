@@ -257,6 +257,9 @@ describe("google plugin", () => {
     expect(result?.metadata).toMatchObject({
       requestedCapabilities: ["gmail.read", "calendar.read"],
     });
+    // The provider-owned callback must be returned at the top level so the
+    // manager persists it (result.redirectUri ?? flow.redirectUri).
+    expect(result?.redirectUri).toBe("http://localhost:31437/api/connectors/google/oauth/callback");
   });
 
   it("keeps failing closed when the re-auth accountId is unknown", async () => {

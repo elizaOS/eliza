@@ -126,17 +126,22 @@ function readClientConfig(runtime: IAgentRuntime): {
 }
 
 /**
- * Re-auth of an existing account may omit `scopes`: default to exactly the
+ * Re-auth of an existing account that OMITS `scopes` defaults to exactly the
  * account's recorded granted capabilities — least privilege, re-requesting
- * what was granted and never expanding it (#18543). New-account starts (no
- * usable `accountId`, no recorded grant) keep failing closed downstream in
- * normalizeRequestedCapabilities.
+ * what was granted and never expanding it (#18543).
+ *
+ * Branch on property semantics, not length: an explicitly supplied array
+ * (including an empty `[]`) is returned unchanged so it flows to
+ * normalizeRequestedCapabilities, which fails closed on empty. Per #18454 an
+ * explicit empty selection is NOT consent to restore prior authority; only a
+ * genuinely omitted field consults the account. New-account starts (no usable
+ * `accountId`, no recorded grant) also keep failing closed downstream.
  */
 async function resolveRequestedScopes(
   request: ConnectorOAuthStartRequest,
   manager: ConnectorAccountManager
 ): Promise<readonly string[] | undefined> {
-  if (request.scopes && request.scopes.length > 0) {
+  if (request.scopes !== undefined) {
     return request.scopes;
   }
   const accountId = nonEmptyString(request.accountId);
@@ -473,6 +478,10 @@ export function createGoogleConnectorAccountProvider(
 
       return {
         authUrl: `${GOOGLE_OAUTH_PROVIDER_METADATA.authorizationEndpoint}?${params.toString()}`,
+        // Provider-owned canonical callback: the manager persists
+        // result.redirectUri ?? flow.redirectUri, so returning it keeps the
+        // stored flow callback populated when the caller supplies none.
+        redirectUri,
         codeVerifier,
         metadata: {
           ...request.metadata,
