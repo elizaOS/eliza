@@ -9,6 +9,13 @@
 <meta property="og:description" content="AI, built around people.">
 <meta property="og:url" content="https://elizaresearch.ai">
 <meta property="og:type" content="website">
+<meta property="og:image" content="https://elizaresearch.ai/assets/eliza-og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Eliza — an agent you can trust">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://elizaresearch.ai/assets/eliza-og.png">
+<meta name="twitter:image:alt" content="Eliza — an agent you can trust">
 <link rel="icon" type="image/svg+xml" href="assets/logo_orange_nobg.svg">
 <style>
   @font-face {
@@ -50,7 +57,7 @@
   h1, h2 { font-family: "Syne", sans-serif; line-height: 1; text-wrap: balance; }
   p { max-width: 62ch; text-wrap: pretty; }
   a { color: inherit; }
-  ::selection { background: var(--orange); color: white; }
+  ::selection { background: var(--orange); color: var(--hero-ink); }
   :where(a, button):focus-visible { outline: 2px solid var(--orange-text); outline-offset: 4px; }
   .wrap { width: min(100%, 1200px); margin-inline: auto; padding-inline: clamp(1.25rem, 4vw, 3rem); }
 
@@ -121,7 +128,7 @@
   .product h2 { font-size: clamp(3rem, 6vw, 5rem); font-weight: 800; letter-spacing: -0.025em; }
   .role { margin-top: 0.8rem; font-size: 1.08rem; font-weight: 720; }
   .body { margin-top: 1.3rem; color: var(--muted); font-size: 1.04rem; }
-  .text-link { display: inline-block; margin-top: 1.8rem; font-weight: 720; text-underline-offset: 0.3em; }
+  .text-link { display: inline-flex; min-height: 2.75rem; align-items: center; margin-top: 1.8rem; font-weight: 720; text-underline-offset: 0.3em; }
   .role, .text-link { color: var(--orange-text); }
   #slop { border: 0; background: var(--black); color: #f8f2ed; }
   #slop .product-visual { order: 2; background: #19120e; }
@@ -131,10 +138,11 @@
   footer { padding-block: clamp(4rem, 10vw, 7rem) 2rem; background: var(--black); color: #f8f2ed; border-top: 1px solid #392c26; }
   footer h2 { max-width: 12ch; font-size: clamp(2.8rem, 6vw, 5.5rem); font-weight: 800; letter-spacing: -0.025em; }
   footer .contact { margin-top: 1.2rem; color: #baada5; }
-  footer .contact a { color: var(--orange-light); font-weight: 720; }
+  footer .contact a { display: inline-flex; min-height: 2.75rem; align-items: center; color: var(--orange-light); font-weight: 720; }
+  .contact-note { margin-top: 0.7rem; color: #93857d; font-size: 0.78rem; }
   .footer-row { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 1rem 2rem; margin-top: clamp(4rem, 8vw, 7rem); padding-top: 1.2rem; border-top: 1px solid #392c26; color: #93857d; font-size: 0.82rem; }
   .footer-links { display: flex; gap: 1.5rem; }
-  .footer-links a { text-decoration: none; }
+  .footer-links a { display: inline-flex; min-width: 2.75rem; min-height: 2.75rem; align-items: center; justify-content: center; text-decoration: none; }
 
   @media (max-width: 760px) {
     .product-grid { grid-template-columns: minmax(0, 1fr); }
@@ -165,61 +173,9 @@
 </style>
 </head>
 <body>
-<nav aria-label="Main navigation">
-  <a class="brand" href="#top"><img src="assets/logo_white_nobg.svg" alt=""><span>Eliza Research</span></a>
-  <div class="nav-links"><a href="#eliza">Products</a><a href="#contact">Contact</a></div>
-</nav>
-
-<header id="top">
-  <canvas id="swarm" data-particle-logo="assets/logo_white_nobg.svg" aria-hidden="true"></canvas>
-  <div class="wrap hero-copy">
-    <h1>AI, built around people.</h1>
-    <p>Eliza Research builds products at the intersection of artificial intelligence and the people who live with it.</p>
-    <a href="#eliza">See what we make ↓</a>
-  </div>
-</header>
-
-<main>
-  <section class="statement wrap" aria-label="Our thesis">
-    <p>Intelligence is getting cheap. <em>Agency</em> is the scarce thing—software that acts for you, answers to you, and belongs to everyone.</p>
-  </section>
-
-  <section class="product" id="eliza" aria-labelledby="eliza-title">
-    <div class="wrap product-grid">
-      <figure class="product-visual"><img src="assets/eliza-og.png" alt="Eliza — an agent you can trust" loading="lazy" decoding="async"></figure>
-      <div>
-        <h2 id="eliza-title">Eliza</h2>
-        <p class="role">A personal agent you can trust, powered by the open elizaOS.</p>
-        <p class="body">Eliza remembers context, connects to the tools you choose, and acts on your behalf. Underneath it is elizaOS: auditable, extensible, and yours to run anywhere.</p>
-        <a class="text-link" href="https://github.com/elizaOS/eliza">Explore elizaOS on GitHub →</a>
-      </div>
-    </div>
-  </section>
-
-  <section class="product" id="slop" aria-labelledby="slop-title">
-    <div class="wrap product-grid">
-      <figure class="product-visual"><img src="assets/slop-og.png" alt="slop.cash — make money shipping slop" loading="lazy" decoding="async"></figure>
-      <div>
-        <h2 id="slop-title">slop.cash</h2>
-        <p class="role">A contribution market for human and machine swarms.</p>
-        <p class="body">Post a problem, fund it, and let a swarm of contributors earn by moving it forward. Contribution is measured, rewarded, and open to anyone with something useful to add.</p>
-        <a class="text-link" href="https://slop.cash">Visit slop.cash →</a>
-      </div>
-    </div>
-  </section>
-</main>
-
-<footer id="contact">
-  <div class="wrap">
-    <h2>Work on this with us.</h2>
-    <p class="contact">We are a small team building in the open. <a href="mailto:hello@elizaresearch.ai">hello@elizaresearch.ai</a></p>
-    <div class="footer-row">
-      <span>© 2026 Eliza Research</span>
-      <span class="footer-links"><a href="/reflow-compare">Compare Reflow cuts</a><a href="https://github.com/elizaOS">GitHub</a><a href="https://x.com/elizaOS">X</a><a href="https://slop.cash">slop.cash</a></span>
-    </div>
-  </div>
-</footer>
-
+<div id="primary-app"></div>
+<noscript><main class="wrap"><h1>Eliza Research</h1><p>AI, built around people. Visit the elizaOS GitHub organization to explore the open work.</p></main></noscript>
+<script src="reflow-site.js" defer></script>
 <script src="particle-logo.js" defer></script>
 </body>
 </html>

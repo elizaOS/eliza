@@ -30,7 +30,9 @@ software should act for people, answer to them, and remain open to everyone.
   build step.
 - Eliza and slop.cash are the only products described by the current approved
   Research copy.
-- Contact is email, GitHub, and X. There is no contact-form backend.
+- Contact is a displayed/copyable email plus verified GitHub and X destinations.
+  The preview does not claim the email route is deliverable, and there is no
+  contact-form backend.
 - Team-member profiles, legal terms, a privacy policy, customer claims,
   benchmarks, and commercial terms have not been supplied and must not be
   invented.
@@ -46,6 +48,8 @@ software should act for people, answer to them, and remain open to everyone.
   edge contact chip, and sparse full-viewport compositions.
 - The user wants three complete local editions to compare before one is chosen;
   comparison controls must not appear inside the editions themselves.
+- Every comparison route is `noindex` and deliberately absent from production
+  navigation. Direct local URLs are the review boundary.
 
 ## Evidence on Hand
 

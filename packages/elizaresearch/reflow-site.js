@@ -4,7 +4,34 @@
  * behavior, product truth, and accessibility remain identical across cuts.
  */
 (() => {
-  const email = "hello@elizaresearch.ai";
+  const content = {
+    name: "Eliza Research",
+    email: "hello@elizaresearch.ai",
+    tagline: "AI, built around people.",
+    overview:
+      "Eliza Research builds products at the intersection of artificial intelligence and the people who live with it.",
+    thesis:
+      "Intelligence is getting cheap. Agency is the scarce thing—software that acts for you, answers to you, and belongs to everyone.",
+    team: "We are a small team building in the open.",
+    invitation: "If that sounds like you, work on this with us.",
+    products: {
+      eliza: {
+        name: "Eliza",
+        role: "Your personal superagent—and an open source operating system.",
+        description:
+          "Eliza is a personal agent powered by the open source elizaOS framework.",
+        href: "https://github.com/elizaOS/eliza",
+      },
+      slop: {
+        name: "slop.cash",
+        role: "A swarm contribution platform.",
+        description:
+          "slop.cash is a contribution market for human and machine swarms.",
+        href: "https://slop.cash",
+      },
+    },
+  };
+  const email = content.email;
   const routeFiles = {
     home: "reflow",
     about: "reflow-about",
@@ -47,15 +74,15 @@
     ? requestedEdition
     : "rail";
   const app = document.getElementById("reflow-app");
-  if (!app) throw new Error("Reflow study mount is unavailable");
+  const primaryApp = document.getElementById("primary-app");
 
   function routeHref(route, targetEdition = edition) {
     return `${routeFiles[route]}?edition=${targetEdition}`;
   }
 
-  function navLink(route) {
+  function navLink(route, label = pageNames[route].toUpperCase()) {
     const current = page === route ? ' aria-current="page"' : "";
-    return `<a href="${routeHref(route)}"${current}>${pageNames[route].toUpperCase()}</a>`;
+    return `<a href="${routeHref(route)}"${current}>${label}</a>`;
   }
 
   function socialLinks() {
@@ -68,42 +95,102 @@
   }
 
   function workIndex() {
-    return `<div class="work-index" aria-label="Products">
-      <a href="https://github.com/elizaOS/eliza">
-        <strong>Eliza</strong>
-        <span>Your personal superagent—and an open source operating system.</span>
+    return `<section class="work-index" aria-label="Products">
+      <a href="${content.products.eliza.href}">
+        <strong>${content.products.eliza.name}</strong>
+        <span>${content.products.eliza.role}</span>
         <b aria-hidden="true">↗</b>
       </a>
-      <a href="https://slop.cash">
-        <strong>slop.cash</strong>
-        <span>A swarm contribution platform.</span>
+      <a href="${content.products.slop.href}">
+        <strong>${content.products.slop.name}</strong>
+        <span>${content.products.slop.role}</span>
         <b aria-hidden="true">↗</b>
       </a>
-    </div>`;
+    </section>`;
   }
+
+  function renderPrimary() {
+    primaryApp.innerHTML = `<nav aria-label="Main navigation">
+      <a class="brand" href="#top"><img src="assets/logo_white_nobg.svg" alt=""><span>${content.name}</span></a>
+      <div class="nav-links"><a href="#eliza">Products</a><a href="#contact">Contact</a></div>
+    </nav>
+    <header id="top">
+      <canvas id="swarm" data-particle-logo="assets/logo_white_nobg.svg" aria-hidden="true"></canvas>
+      <div class="wrap hero-copy">
+        <h1>${content.tagline}</h1>
+        <p>${content.overview}</p>
+        <a href="#eliza">See what we make ↓</a>
+      </div>
+    </header>
+    <main>
+      <section class="statement wrap" aria-label="Our thesis">
+        <p>${content.thesis.replace("Agency", "<em>Agency</em>")}</p>
+      </section>
+      <section class="product" id="eliza" aria-labelledby="eliza-title">
+        <div class="wrap product-grid">
+          <figure class="product-visual"><img src="assets/eliza-og.png" alt="Eliza — an agent you can trust" loading="lazy" decoding="async"></figure>
+          <div>
+            <h2 id="eliza-title">${content.products.eliza.name}</h2>
+            <p class="role">${content.products.eliza.role}</p>
+            <p class="body">${content.products.eliza.description}</p>
+            <a class="text-link" href="${content.products.eliza.href}">Explore elizaOS on GitHub →</a>
+          </div>
+        </div>
+      </section>
+      <section class="product" id="slop" aria-labelledby="slop-title">
+        <div class="wrap product-grid">
+          <figure class="product-visual"><img src="assets/slop-og.png" alt="slop.cash — make money shipping slop" loading="lazy" decoding="async"></figure>
+          <div>
+            <h2 id="slop-title">${content.products.slop.name}</h2>
+            <p class="role">${content.products.slop.role}</p>
+            <p class="body">${content.products.slop.description}</p>
+            <a class="text-link" href="${content.products.slop.href}">Visit slop.cash →</a>
+          </div>
+        </div>
+      </section>
+    </main>
+    <footer id="contact">
+      <div class="wrap">
+        <h2>Work on this with us.</h2>
+        <p class="contact">${content.team} <a href="mailto:${email}">${email}</a></p>
+        <p class="contact-note">Email routing is not yet verified. GitHub and X remain available.</p>
+        <div class="footer-row">
+          <span>© 2026 ${content.name}</span>
+          <span class="footer-links"><a href="https://github.com/elizaOS">GitHub</a><a href="https://x.com/elizaOS">X</a><a href="${content.products.slop.href}">slop.cash</a></span>
+        </div>
+      </div>
+    </footer>`;
+  }
+
+  if (primaryApp) {
+    renderPrimary();
+    return;
+  }
+
+  if (!app) throw new Error("Reflow study mount is unavailable");
 
   function pageContent() {
     if (page === "home") {
       return `<section class="home-copy">
-        <p class="home-thesis">AI, built around people.</p>
-        <h1>Eliza Research</h1>
-        <p class="lead">Eliza Research builds products at the intersection of artificial intelligence and the people who live with it.</p>
+        <p class="home-thesis">${content.tagline}</p>
+        <h1>${content.name}</h1>
+        <p class="lead">${content.overview}</p>
         <a class="text-action" href="${routeHref("about")}">Enter the work <span aria-hidden="true">→</span></a>
       </section>`;
     }
     if (page === "about") {
       return `<section class="copy-page">
         <h1>About</h1>
-        <p class="lead">Eliza Research builds products at the intersection of artificial intelligence and the people who live with it.</p>
-        <p class="thesis">Intelligence is getting cheap. <strong>Agency</strong> is the scarce thing—software that acts for you, answers to you, and belongs to everyone.</p>
+        <p class="lead">${content.overview}</p>
+        <p class="thesis">${content.thesis.replace("Agency", "<strong>Agency</strong>")}</p>
         ${workIndex()}
       </section>`;
     }
     if (page === "team") {
-      return `<section class="copy-page team-page">
+      return `<section class="copy-page">
         <h1>Team</h1>
-        <p class="lead">We are a small team building in the open.</p>
-        <p class="thesis">If that sounds like you, work on this with us.</p>
+        <p class="lead">${content.team}</p>
+        <p class="thesis">${content.invitation}</p>
         <div class="action-row">
           <a class="text-action" href="mailto:${email}">Write to us <span aria-hidden="true">→</span></a>
           <a class="text-action" href="https://github.com/elizaOS">Build with us on GitHub <span aria-hidden="true">↗</span></a>
@@ -114,12 +201,13 @@
     if (page === "contact") {
       return `<section class="copy-page contact-page">
         <h1>Work on this with us.</h1>
-        <p class="lead">We are a small team building in the open. If that sounds like you, write to us.</p>
+        <p class="lead">${content.team} If that sounds like you, write to us.</p>
         <button class="email-display" type="button" data-copy-email aria-label="Copy ${email}">${email}</button>
         <div class="action-row">
           <a class="text-action" href="https://github.com/elizaOS">GitHub <span aria-hidden="true">↗</span></a>
           <a class="text-action" href="https://x.com/elizaOS">X <span aria-hidden="true">↗</span></a>
         </div>
+        <p class="truth-note">Email routing is not verified for this local preview. GitHub and X remain available.</p>
       </section>`;
     }
     if (page === "animation") {
@@ -127,21 +215,21 @@
         <h1>Particle study</h1>
         <p class="lead">The Eliza mark forms from grouped dots, then stays quietly alive.</p>
         <p class="thesis">Move through the face to bend the field. Press to deepen the motion. The cursor core stays filled and every dot returns.</p>
-        <p class="truth-note">Local motion specimen · excluded from production navigation.</p>
+        <p class="truth-note">Local motion specimen for this review family.</p>
       </section>`;
     }
     if (page === "privacy") {
       return `<section class="copy-page legal-page">
         <h1>Privacy</h1>
         <p class="lead">A privacy policy has not been published for this preview.</p>
-        <p class="thesis">No policy text is presented here. Questions can be sent directly to <a href="mailto:${email}">${email}</a>.</p>
+        <p class="thesis">No policy text is presented here. Use the Contact page for the available channels.</p>
       </section>`;
     }
     if (page === "terms") {
       return `<section class="copy-page legal-page">
         <h1>Terms</h1>
         <p class="lead">Terms of service have not been published for this preview.</p>
-        <p class="thesis">No terms are presented here. Questions can be sent directly to <a href="mailto:${email}">${email}</a>.</p>
+        <p class="thesis">No terms are presented here. Use the Contact page for the available channels.</p>
       </section>`;
     }
     throw new Error(`Unknown Reflow study page: ${page}`);
@@ -182,7 +270,7 @@
           )
           .join("")}
       </div>
-      <p class="review-note">These are local studies. No cut is wired into deployment.</p>
+      <p class="review-note">Local review only. No cut replaces the production homepage.</p>
     </main>`;
   }
 
@@ -206,7 +294,6 @@
       </nav>
       <div class="rail-bottom">
         <div class="social-links">${socialLinks()}</div>
-        <a class="review-link" href="reflow-compare">Compare cuts</a>
       </div>
     </aside>
     <header class="mobile-bar">
@@ -222,9 +309,9 @@
       <footer class="study-footer">
         <span>© 2026 Eliza Research</span>
         <nav aria-label="Study pages">
-          <a href="${routeHref("animation")}">Particle study</a>
-          <a href="${routeHref("privacy")}">Privacy</a>
-          <a href="${routeHref("terms")}">Terms</a>
+          ${navLink("animation", pageNames.animation)}
+          ${navLink("privacy", pageNames.privacy)}
+          ${navLink("terms", pageNames.terms)}
         </nav>
       </footer>
     </div>
@@ -261,6 +348,8 @@
         }, 1800);
       } catch {
         // error-policy:J4 Clipboard denial becomes an explicit mail action.
+        clearTimeout(resetTimer);
+        resetTimer = 0;
         copyFailed = true;
         for (const peer of copyButtons) {
           peer.dataset.feedback = "error";

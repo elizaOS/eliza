@@ -19,7 +19,6 @@
   --orange-dark: #a63700;
   --ink: #110e0c;
   --paper: #fffaf5;
-  --paper-dark: #eadfd5;
   --rail: 6rem;
   color-scheme: dark;
   font-family: "Geist", Arial, sans-serif;
@@ -62,7 +61,7 @@ img {
 
 ::selection {
   background: var(--orange);
-  color: #fff;
+  color: #351208;
 }
 
 :where(a, button):focus-visible {
@@ -188,20 +187,6 @@ img {
   width: 1.2rem;
   height: 1.2rem;
   fill: currentColor;
-}
-
-.review-link {
-  display: grid;
-  min-width: 2.75rem;
-  min-height: 4.5rem;
-  place-items: center;
-  color: #b5aaa3;
-  font-size: 0.58rem;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-decoration: none;
-  writing-mode: vertical-rl;
-  transform: rotate(180deg);
 }
 
 .mobile-bar {
@@ -481,7 +466,7 @@ img {
   display: flex;
   justify-content: space-between;
   gap: 1rem;
-  color: #81756f;
+  color: #9b8f88;
   font-size: 0.68rem;
 }
 
@@ -507,8 +492,30 @@ img {
 }
 
 .site-shell[data-edition="field"] .site-rail {
+  inset: 0 0 auto;
+  width: auto;
+  height: 5rem;
+  flex-direction: row;
+  padding: 0 2rem;
+  border-right: 0;
+  border-bottom: 1px solid rgba(53, 18, 8, 0.28);
   border-color: rgba(53, 18, 8, 0.28);
   background: var(--orange);
+}
+
+.site-shell[data-edition="field"] .rail-logo {
+  width: 2.8rem;
+  height: 2.8rem;
+}
+
+.site-shell[data-edition="field"] .rail-logo img,
+.site-shell[data-edition="field"] .mobile-bar img {
+  filter: brightness(0) saturate(100%);
+}
+
+.site-shell[data-edition="field"] .rail-nav {
+  flex-direction: row;
+  gap: 1.8rem;
 }
 
 .site-shell[data-edition="field"] .rail-nav a,
@@ -516,26 +523,51 @@ img {
   color: #351208;
 }
 
-.site-shell[data-edition="field"] .rail-nav a:hover,
-.site-shell[data-edition="field"] .rail-nav a[aria-current="page"] {
-  color: #fff;
+.site-shell[data-edition="field"] .rail-nav a {
+  min-width: 2.75rem;
+  min-height: 2.75rem;
+  writing-mode: initial;
+  transform: none;
 }
 
-.site-shell[data-edition="field"] .review-link {
+.site-shell[data-edition="field"] .rail-nav a:hover,
+.site-shell[data-edition="field"] .rail-nav a[aria-current="page"] {
   color: #351208;
+  text-decoration: underline;
+  text-underline-offset: 0.35em;
+  transform: translateY(-2px);
+}
+
+.site-shell[data-edition="field"] .rail-bottom,
+.site-shell[data-edition="field"] .social-links {
+  flex-direction: row;
 }
 
 .site-shell[data-edition="field"] .site-stage {
+  margin-left: 0;
+  padding-top: 5rem;
   background: var(--orange);
 }
 
 .site-shell[data-edition="field"] .particle-logo {
   --particle-rest: #fffaf5;
+  inset: 5rem 0 0 38%;
+  width: 62%;
+  height: calc(100% - 5rem);
+}
+
+.site-shell[data-edition="field"] .page-content {
+  min-height: calc(100svh - 5rem);
 }
 
 .site-shell[data-edition="field"] .home-copy,
 .site-shell[data-edition="field"] .copy-page {
-  width: min(43rem, calc(100% - 20rem));
+  width: min(38rem, 43%);
+}
+
+.site-shell[data-edition="field"] .home-thesis {
+  max-width: 7ch;
+  font-size: clamp(3.5rem, 7vw, 7rem);
 }
 
 .site-shell[data-edition="field"] .home-thesis,
@@ -550,13 +582,13 @@ img {
 .site-shell[data-edition="field"] .work-index span,
 .site-shell[data-edition="field"] .truth-note,
 .site-shell[data-edition="field"] .study-footer {
-  color: #67250d;
+  color: #351208;
 }
 
 .site-shell[data-edition="field"] .thesis strong,
 .site-shell[data-edition="field"] .text-action,
 .site-shell[data-edition="field"] .email-display {
-  color: #fff;
+  color: #351208;
 }
 
 .site-shell[data-edition="field"] .work-index {
@@ -574,6 +606,10 @@ img {
 
 .site-shell[data-edition="field"] .study-footer a {
   color: #351208;
+}
+
+.site-shell[data-edition="field"] :where(a, button):focus-visible {
+  outline-color: #351208;
 }
 
 /* Research / Paper */
@@ -627,12 +663,6 @@ img {
 
 .site-shell[data-edition="index"] .social-links a {
   color: var(--ink);
-}
-
-.site-shell[data-edition="index"] .review-link {
-  color: #665c55;
-  writing-mode: initial;
-  transform: none;
 }
 
 .site-shell[data-edition="index"] .site-stage {
@@ -800,6 +830,13 @@ img {
   background: var(--orange);
 }
 
+.review-card--field .review-preview-rail {
+  inset: 0 0 auto;
+  width: auto;
+  height: 2.2rem;
+  border-bottom: 1px solid rgba(53, 18, 8, 0.25);
+}
+
 .review-card--field .review-preview b {
   color: #351208;
 }
@@ -860,8 +897,10 @@ img {
 
 .review-card nav a {
   display: inline-flex;
+  min-width: 2.75rem;
   min-height: 2.75rem;
   align-items: center;
+  justify-content: center;
   color: #5f554e;
   font-size: 0.78rem;
 }
@@ -951,12 +990,14 @@ img {
   }
 
   .site-stage,
+  .site-shell[data-edition="field"] .site-stage,
   .site-shell[data-edition="index"] .site-stage {
     margin-left: 0;
     padding-top: 4rem;
   }
 
   .particle-logo,
+  .site-shell[data-edition="field"] .particle-logo,
   .site-shell[data-edition="index"] .particle-logo {
     inset: 4rem 0 0;
     width: 100%;
@@ -964,6 +1005,7 @@ img {
   }
 
   .page-content,
+  .site-shell[data-edition="field"] .page-content,
   .site-shell[data-edition="index"] .page-content {
     min-height: calc(100svh - 4rem);
     align-items: end;
@@ -980,6 +1022,11 @@ img {
   }
 
   .home-thesis {
+    max-width: 8ch;
+    font-size: clamp(2.65rem, 14vw, 4.5rem);
+  }
+
+  .site-shell[data-edition="field"] .home-thesis {
     max-width: 8ch;
     font-size: clamp(2.65rem, 14vw, 4.5rem);
   }
@@ -1054,7 +1101,9 @@ img {
   }
 
   .site-shell[data-edition="field"] .mobile-bar nav a[aria-current="page"] {
-    color: #fff;
+    color: #351208;
+    text-decoration: underline;
+    text-underline-offset: 0.3em;
   }
 
   .site-shell[data-edition="index"] .mobile-bar {
@@ -1104,6 +1153,7 @@ img {
 
 @media (max-width: 767px) and (max-height: 480px) {
   .page-content,
+  .site-shell[data-edition="field"] .page-content,
   .site-shell[data-edition="index"] .page-content {
     align-items: center;
     padding: 0.25rem 1.25rem 0;
@@ -1112,11 +1162,16 @@ img {
 
 @media (max-height: 650px) and (max-width: 767px) {
   .page-content,
+  .site-shell[data-edition="field"] .page-content,
   .site-shell[data-edition="index"] .page-content {
     padding-bottom: 4.6rem;
   }
 
   .home-thesis {
+    font-size: clamp(2.15rem, 10vh, 3.1rem);
+  }
+
+  .site-shell[data-edition="field"] .home-thesis {
     font-size: clamp(2.15rem, 10vh, 3.1rem);
   }
 
@@ -1138,6 +1193,7 @@ img {
 
 @media (min-width: 768px) and (max-height: 480px) {
   .page-content,
+  .site-shell[data-edition="field"] .page-content,
   .site-shell[data-edition="index"] .page-content {
     align-items: center;
     padding: 1rem 2rem 0.25rem;
@@ -1153,6 +1209,10 @@ img {
   }
 
   .home-thesis {
+    font-size: clamp(2.4rem, 8vh, 3.4rem);
+  }
+
+  .site-shell[data-edition="field"] .home-thesis {
     font-size: clamp(2.4rem, 8vh, 3.4rem);
   }
 

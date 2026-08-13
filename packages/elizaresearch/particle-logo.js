@@ -10,9 +10,10 @@
 (() => {
   const baseParticleCount = 8500;
   const referenceArea = 1440 * 1080;
-  const formationMs = 3000;
-  const fadeMs = 700;
+  const formationMs = 1600;
+  const fadeMs = 450;
   const fullTurn = Math.PI * 2;
+  const activeFrameMs = 1000 / 60;
   const idleFrameMs = 1000 / 18;
   const driftAngularVelocity = fullTurn / 8200;
   const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
@@ -55,6 +56,8 @@
       y: 0,
       targetX: 0,
       targetY: 0,
+      clientX: 0,
+      clientY: 0,
       active: false,
       down: false,
       flowX: 0.92,
@@ -249,7 +252,8 @@
       context.globalAlpha = opacity * opacity * (3 - 2 * opacity);
       context.beginPath();
 
-      for (const particle of particles) {
+      for (let index = 0; index < particles.length; index += 1) {
+        const particle = particles[index];
         const wave =
           driftSin * particle.phaseCos + driftCos * particle.phaseSin;
         const orbit =
@@ -290,7 +294,8 @@
         particle.offsetX += offsetErrorX * offsetResponse;
         particle.offsetY += offsetErrorY * offsetResponse;
         if (
-          !pointer.active &&
+          desiredX === 0 &&
+          desiredY === 0 &&
           Math.abs(particle.offsetX) + Math.abs(particle.offsetY) < 0.02
         ) {
           particle.offsetX = 0;
@@ -328,18 +333,25 @@
         !particles.length
       )
         return;
-      lastFrame = performance.now();
-      frame = requestAnimationFrame(loop);
+      renderTick(performance.now());
     }
 
-    function loop(now) {
-      frame = 0;
+    function renderTick(now) {
       const delta = Math.min((now - lastFrame) / 1000, 0.05);
       lastFrame = now;
       const moving = draw(now, delta);
       if (reducedMotion.matches || document.hidden || !inView) return;
       if (moving) frame = requestAnimationFrame(loop);
       else idleTimer = setTimeout(wakeIdle, idleFrameMs);
+    }
+
+    function loop(now) {
+      frame = 0;
+      if (now - lastFrame < activeFrameMs - 1) {
+        frame = requestAnimationFrame(loop);
+        return;
+      }
+      renderTick(now);
     }
 
     function start() {
@@ -363,6 +375,10 @@
       const bounds = canvas.getBoundingClientRect();
       canvasLeft = bounds.left;
       canvasTop = bounds.top;
+      if (pointer.active) {
+        pointer.targetX = pointer.clientX - canvasLeft;
+        pointer.targetY = pointer.clientY - canvasTop;
+      }
       return bounds;
     }
 
@@ -384,6 +400,10 @@
       pointerShift = width < 768 ? 10 : 14;
       const animateEntrance = !hasBuilt && !reducedMotion.matches;
       seedParticles(markGeometry(), animateEntrance);
+      if (pointer.active) {
+        pointer.x = pointer.targetX;
+        pointer.y = pointer.targetY;
+      }
       hasBuilt = true;
       forming = animateEntrance;
       born = performance.now();
@@ -392,6 +412,8 @@
     }
 
     function updatePointer(event) {
+      pointer.clientX = event.clientX;
+      pointer.clientY = event.clientY;
       const x = event.clientX - canvasLeft;
       const y = event.clientY - canvasTop;
       if (pointer.active) {
@@ -465,10 +487,14 @@
       },
       { passive: true },
     );
-    addEventListener("scroll", cacheCanvasBounds, {
-      passive: true,
-      capture: true,
-    });
+    addEventListener(
+      "scroll",
+      () => {
+        cacheCanvasBounds();
+        if (pointer.active) start();
+      },
+      { passive: true, capture: true },
+    );
     document.addEventListener("visibilitychange", () =>
       document.hidden ? stop() : start(),
     );
