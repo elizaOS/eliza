@@ -194,7 +194,7 @@ function EmailCallbackContent() {
           })}
         </h1>
         <p className="max-w-xs text-center text-sm text-muted">{error}</p>
-        <Button asChild className="mt-2">
+        <Button asChild className="hosted-signin-focus-emphasis mt-2">
           <a href="/login">
             {t("cloud.cliLogin.signInAgain", {
               defaultValue: "Sign In Again",

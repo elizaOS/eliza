@@ -107,7 +107,10 @@ export default function OidcContinuePage() {
 
   function RecoveryAction() {
     return (
-      <Button asChild>
+      <Button
+        asChild
+        className="hosted-signin-focus-emphasis border border-transparent"
+      >
         <a href="/login">
           {t("cloud.cliLogin.signInAgain", {
             defaultValue: "Sign In Again",

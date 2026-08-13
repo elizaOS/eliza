@@ -368,7 +368,7 @@ export default function CliLoginPage() {
         actions={
           <Button
             asChild
-            className="w-full h-11 bg-accent hover:bg-accent-hover text-accent-foreground"
+            className="hosted-signin-focus-emphasis w-full h-11 bg-accent hover:bg-accent-hover text-accent-foreground"
           >
             <a href={sessionId ? signInHref : "/login"}>
               {t("cloud.cliLogin.signInAgain", {
