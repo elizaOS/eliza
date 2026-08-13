@@ -27,9 +27,12 @@ mock.module("../eliza-sandbox", () => ({
   },
 }));
 
-const { coordinateSharedBridge, coordinateSharedHistory, coordinateSharedStream } = await import(
-  "./conversation-coordinator"
-);
+const {
+  coordinateSharedBridge,
+  coordinateSharedHistory,
+  coordinateSharedStream,
+  purgeSharedConversationRooms,
+} = await import("./conversation-coordinator");
 
 describe("shared conversation coordinator", () => {
   test("routes bridge, stream, and history through one room object", async () => {
@@ -232,5 +235,61 @@ describe("shared conversation coordinator", () => {
     expect(directBridge).not.toHaveBeenCalled();
     expect(directStream).not.toHaveBeenCalled();
     expect(directHistory).not.toHaveBeenCalled();
+  });
+
+  test("purge dispatches one delete envelope per room using the turn naming", async () => {
+    const names: string[] = [];
+    const envelopes: unknown[] = [];
+    const namespace = {
+      getByName(name: string) {
+        names.push(name);
+        return {
+          fetch: async (_input: RequestInfo | URL, init?: RequestInit) => {
+            envelopes.push(JSON.parse(String(init?.body)));
+            return Response.json({ success: true });
+          },
+        };
+      },
+    };
+
+    const result = await purgeSharedConversationRooms("agent-1", ["room-1", "room-2"], {
+      namespace,
+    });
+
+    expect(result).toEqual({ purged: 2, failures: 0 });
+    expect(names).toEqual(["agent-1:room-1", "agent-1:room-2"]);
+    expect(envelopes).toEqual([
+      { operation: "delete", agentId: "agent-1" },
+      { operation: "delete", agentId: "agent-1" },
+    ]);
+  });
+
+  test("purge continues past a failed room and never throws", async () => {
+    const names: string[] = [];
+    const namespace = {
+      getByName(name: string) {
+        names.push(name);
+        return {
+          fetch: async () => {
+            if (name.endsWith(":room-throws")) {
+              throw new Error("stub fetch exploded");
+            }
+            if (name.endsWith(":room-500")) {
+              return Response.json({ success: false }, { status: 500 });
+            }
+            return Response.json({ success: true });
+          },
+        };
+      },
+    };
+
+    const result = await purgeSharedConversationRooms(
+      "agent-1",
+      ["room-throws", "room-500", "room-ok"],
+      { namespace },
+    );
+
+    expect(result).toEqual({ purged: 1, failures: 2 });
+    expect(names).toEqual(["agent-1:room-throws", "agent-1:room-500", "agent-1:room-ok"]);
   });
 });
