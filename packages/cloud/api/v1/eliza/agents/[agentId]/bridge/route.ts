@@ -101,6 +101,22 @@ async function __hono_POST(
         CORS_METHODS,
       );
     }
+    // A reused clientMessageId with different text must not replace the landed
+    // turn — non-retryable; the caller picks a new id (#18045).
+    if (error instanceof Error && error.name === "SharedTurnConflictError") {
+      return applyCorsHeaders(
+        Response.json(
+          {
+            success: false,
+            error: error.message,
+            code: "client_message_conflict",
+            retryable: false,
+          },
+          { status: 409 },
+        ),
+        CORS_METHODS,
+      );
+    }
     return applyCorsHeaders(errorToResponse(error), CORS_METHODS);
   }
 }

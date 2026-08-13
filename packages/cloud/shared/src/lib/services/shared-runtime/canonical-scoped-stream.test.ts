@@ -117,7 +117,13 @@ describe("handleCanonicalScopedAgentStream", () => {
 
     expect(res.status).toBe(200);
     const rpc = (coordinateSharedStream.mock.calls[0] as unknown[])[1];
-    expect(rpc).toMatchObject({ id: "client-id-9", method: "message.send" });
+    expect(rpc).toMatchObject({
+      id: "client-id-9",
+      method: "message.send",
+      // The params marker is what admits the id to the coordinator's durable
+      // claim/replay/conflict boundary — a generated id must never carry it.
+      params: { clientMessageId: "client-id-9" },
+    });
   });
 
   test("an absent, blank, or oversized clientMessageId falls back to a fresh RPC id", async () => {
@@ -142,6 +148,11 @@ describe("handleCanonicalScopedAgentStream", () => {
       (call) => ((call as unknown[])[1] as { id?: unknown }).id,
     );
     expect(ids).toHaveLength(3);
+    for (const call of coordinateSharedStream.mock.calls) {
+      expect(((call as unknown[])[1] as { params: object }).params).not.toHaveProperty(
+        "clientMessageId",
+      );
+    }
     for (const id of ids) {
       expect(typeof id).toBe("string");
       expect(id).not.toBe("   ");
