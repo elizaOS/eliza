@@ -3935,6 +3935,14 @@ export async function startEliza(
   opts?: StartElizaOptions,
 ): Promise<AgentRuntime | undefined> {
   opts?.abortSignal?.throwIfAborted();
+  // Validate operator configuration before creating boot state or runtime
+  // resources. The deferred-task boundary intentionally catches later
+  // failures, so parsing inside that task would leave a ready-looking runtime
+  // with every deferred capability absent instead of failing startup.
+  const deferredPluginRegistrationTimeoutMs =
+    parseDeferredPluginRegistrationTimeoutMs(
+      process.env.ELIZA_DEFERRED_PLUGIN_REGISTRATION_TIMEOUT_MS,
+    );
   const bootContext =
     opts?.bootContext ?? createBootContext({ observePhase: opts?.onBootPhase });
   const bootTimer = new BootTimer("[eliza-boot]");
@@ -5516,9 +5524,6 @@ export async function startEliza(
       ...deferredPluginsForRuntime,
     ]);
 
-    const timeoutMs = parseDeferredPluginRegistrationTimeoutMs(
-      process.env.ELIZA_DEFERRED_PLUGIN_REGISTRATION_TIMEOUT_MS,
-    );
     const registerDeferredPlugin = async (
       plugin: (typeof deferredPluginsForRuntime)[number],
     ): Promise<void> => {
@@ -5535,10 +5540,10 @@ export async function startEliza(
         registrationWatchdog = setTimeout(() => {
           exceededWatchdog = true;
           const error = new Error(
-            `Registration exceeded ${timeoutMs / 1000}s watchdog`,
+            `Registration exceeded ${deferredPluginRegistrationTimeoutMs / 1000}s watchdog`,
           );
           logger.warn(
-            `[eliza] deferred: Plugin ${plugin.name} registration exceeded the ${timeoutMs / 1000}s watchdog; still waiting for a definitive result`,
+            `[eliza] deferred: Plugin ${plugin.name} registration exceeded the ${deferredPluginRegistrationTimeoutMs / 1000}s watchdog; still waiting for a definitive result`,
           );
           // error-policy:J7 the watchdog reports a diagnostic without killing
           // the deferred loop; the same registration promise remains awaited.
@@ -5548,10 +5553,10 @@ export async function startEliza(
             {
               plugin: plugin.name,
               phase: "deferred-boot",
-              timeoutMs,
+              timeoutMs: deferredPluginRegistrationTimeoutMs,
             },
           );
-        }, timeoutMs);
+        }, deferredPluginRegistrationTimeoutMs);
         registrationWatchdog.unref?.();
         await runtime.registerPlugin(plugin);
         logger.info(

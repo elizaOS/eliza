@@ -2,8 +2,21 @@
  * Unit coverage for deferred-plugin watchdog configuration validation.
  */
 
+import { ElizaError } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import { parseDeferredPluginRegistrationTimeoutMs } from "./deferred-plugin-timeout.ts";
+
+function captureConfigError(value: string): ElizaError {
+  try {
+    parseDeferredPluginRegistrationTimeoutMs(value);
+  } catch (error) {
+    // error-policy:J3 the test captures the explicit invalid-config result so
+    // it can assert the typed classification and structured boundary context.
+    expect(error).toBeInstanceOf(ElizaError);
+    return error as ElizaError;
+  }
+  throw new Error(`Expected ${JSON.stringify(value)} to be rejected`);
+}
 
 describe("parseDeferredPluginRegistrationTimeoutMs", () => {
   it("uses the default only when the setting is absent or blank", () => {
@@ -36,4 +49,17 @@ describe("parseDeferredPluginRegistrationTimeoutMs", () => {
       );
     },
   );
+
+  it("classifies invalid operator configuration as a typed fatal error", () => {
+    expect(captureConfigError("45ms")).toMatchObject({
+      code: "DEFERRED_PLUGIN_REGISTRATION_TIMEOUT_INVALID",
+      context: {
+        setting: "ELIZA_DEFERRED_PLUGIN_REGISTRATION_TIMEOUT_MS",
+        received: "45ms",
+        minimum: 1,
+        maximum: 2_147_483_647,
+      },
+      severity: "fatal",
+    });
+  });
 });
