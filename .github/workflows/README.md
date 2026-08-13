@@ -50,6 +50,15 @@ the `pr.yaml` title check cover narrower contracts. None replaces the
   that commit, and uploads signed desktop assets without creating or replacing
   the release. `snap-publish.yml` owns Snap Store publication.
 - `infra.yml` is the only Terraform plan, apply, and state-edit entry point.
+  Each protected Environment supplies a distinct RSA public-key variable
+  `TERRAFORM_PLAN_ARTIFACT_PUBLIC_KEY` and apply-only private-key secret
+  `TERRAFORM_PLAN_ARTIFACT_PRIVATE_KEY`. Plan runs wrap a fresh AES-256-GCM key
+  with RSA-OAEP, encrypt the saved plan before it leaves the runner, and
+  authenticate its review metadata. An apply requires the exact plan run id,
+  run attempt, GitHub artifact id, and GitHub service digest shown in the plan
+  summary; it downloads by artifact id, decrypts only after every identity
+  check, and never creates a replacement plan. Plaintext plan files are
+  shredded on every plan/apply outcome.
 - `deploy-tunnel-proxy.yml` is the protected Railway + Headscale convergence
   path for the customer tunnel proxy. It validates canonical staging/production
   hosts, rotates the reusable `tag:eliza-proxy` enrollment key without logging
