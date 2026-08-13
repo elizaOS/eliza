@@ -417,6 +417,54 @@ describe("composeState provider execution", () => {
 		await adapter.close();
 	});
 
+	it("keeps nested provider model tokens out of the visible reply stream", async () => {
+		const adapter = new InMemoryDatabaseAdapter();
+		await adapter.init();
+		const runtime = new AgentRuntime({
+			character: { name: "provider-hidden-model-stream" } as Character,
+			adapter,
+		});
+		runtime.registerModel(
+			ModelType.TEXT_SMALL,
+			async (_runtime, params: unknown) => {
+				const streamingParams = params as {
+					onStreamChunk?: (chunk: string) => Promise<void> | void;
+				};
+				await streamingParams.onStreamChunk?.("internal provider token");
+				return "provider model result";
+			},
+			"provider-hidden-model-stream-test",
+			0,
+			{ streamable: true },
+		);
+		runtime.registerProvider({
+			name: "USES_HIDDEN_MODEL_STREAM",
+			get: async (providerRuntime) => ({
+				text: await providerRuntime.useModel(ModelType.TEXT_SMALL, {
+					prompt: "build private provider context",
+				}),
+			}),
+		});
+		const streamed: string[] = [];
+		const state = await runWithStreamingContext(
+			{
+				onStreamChunk: (chunk) => {
+					streamed.push(chunk);
+				},
+			},
+			() =>
+				runtime.composeState(
+					makeMessage("20202020-2020-2020-2020-202020202020"),
+					["USES_HIDDEN_MODEL_STREAM"],
+					true,
+				),
+		);
+
+		expect(state.text).toBe("provider model result");
+		expect(streamed).toEqual([]);
+		await adapter.close();
+	});
+
 	it("does not start provider work for an owner that was already cancelled", async () => {
 		const runtime = new AgentRuntime({
 			character: { name: "provider-pre-aborted-owner" } as Character,
