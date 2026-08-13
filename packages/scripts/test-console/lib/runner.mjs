@@ -37,6 +37,34 @@ function taskSlug(label) {
 }
 
 const CLOUD_LABEL = "cloud#test";
+export const MAX_RUN_CONCURRENCY = 32;
+
+/**
+ * Normalize the API's optional worker count before it reaches the pool.
+ * Missing and blank values preserve the console's default; supplied values
+ * must be bounded positive decimal integers so one request cannot fan out the
+ * entire repository test plan at once.
+ */
+export function normalizeRunConcurrency(value, fallback = 3) {
+  if (value === undefined || value === null || value === "") return fallback;
+  const raw = typeof value === "number" ? String(value) : value;
+  if (typeof raw !== "string" || !/^\d+$/.test(raw)) {
+    throw new TypeError(
+      `concurrency must be a positive integer from 1 to ${MAX_RUN_CONCURRENCY}`,
+    );
+  }
+  const parsed = Number(raw);
+  if (
+    !Number.isSafeInteger(parsed) ||
+    parsed < 1 ||
+    parsed > MAX_RUN_CONCURRENCY
+  ) {
+    throw new TypeError(
+      `concurrency must be a positive integer from 1 to ${MAX_RUN_CONCURRENCY}`,
+    );
+  }
+  return parsed;
+}
 
 export class RunManager extends EventEmitter {
   constructor() {

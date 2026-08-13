@@ -321,6 +321,32 @@ describe("onboarding chat — trusted platform gateway caller", () => {
     expect(resolveIdentity).toHaveBeenLastCalledWith("+15551234568", "phone");
   });
 
+  test("preserves a trusted iMessage reply address for the browser return link", async () => {
+    resolveIdentity.mockResolvedValue(null);
+    const gatewayData = await dataOf(
+      await post({
+        sessionId: "platform:blooio:+15551234568",
+        message: "My name is Ada",
+        platform: "blooio",
+        platformUserId: "+15551234568",
+        platformDisplayName: "Ada",
+        platformReplyAddress: "+18087881821",
+      }),
+    );
+    const continuation = continuationFromReply(gatewayData.reply);
+
+    getCurrentUser.mockResolvedValue(activeStewardUser());
+    const preview = await get(continuation, STEWARD_JWT);
+
+    expect(preview.status).toBe(200);
+    expect(await dataOf(preview)).toEqual({
+      platform: "blooio",
+      platformUserId: "+15551234568",
+      platformDisplayName: "Ada",
+      returnUrl: "sms:+18087881821",
+    });
+  });
+
   test("falls back to anonymous onboarding when the platform identity is unknown", async () => {
     resolveIdentity.mockResolvedValue(null);
 
@@ -553,6 +579,7 @@ describe("onboarding chat — trusted platform gateway caller", () => {
       platform: "discord",
       platformUserId: "1234567890",
       platformDisplayName: "attested-discord-user",
+      returnUrl: null,
     });
     expect(linkDiscordToUser).not.toHaveBeenCalled();
     expect(ensureElizaAppProvisioning).not.toHaveBeenCalled();

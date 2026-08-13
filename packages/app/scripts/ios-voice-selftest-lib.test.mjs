@@ -14,6 +14,7 @@ import {
   DEFAULT_VOICE_SELFTEST_ATTEMPTS,
   DEFAULT_VOICE_SELFTEST_DELAY_MS,
   evaluateVoiceSelfTestReport,
+  MAX_TIMER_DELAY_MS,
   parseNonNegativeSafeInteger,
   parsePositiveSafeInteger,
   REQUIRED_VOICE_STAGES,
@@ -172,7 +173,6 @@ describe("parsePositiveSafeInteger", () => {
     expect(parsePositiveSafeInteger("1", "label")).toBe(1);
     expect(parsePositiveSafeInteger("300", "label")).toBe(300);
     expect(parsePositiveSafeInteger(90, "label")).toBe(90);
-    expect(parsePositiveSafeInteger(" 15 ", "label")).toBe(15);
   });
 
   it("rejects zero, negative, partial, signed, fractional, and non-decimal forms", () => {
@@ -185,6 +185,7 @@ describe("parsePositiveSafeInteger", () => {
       "0x10",
       "1e2",
       "0300",
+      " 300 ",
       "",
       " ",
       "NaN",
@@ -208,7 +209,6 @@ describe("parseNonNegativeSafeInteger", () => {
     expect(parseNonNegativeSafeInteger("0", "label")).toBe(0);
     expect(parseNonNegativeSafeInteger(0, "label")).toBe(0);
     expect(parseNonNegativeSafeInteger("1000", "label")).toBe(1000);
-    expect(parseNonNegativeSafeInteger(" 10 ", "label")).toBe(10);
   });
 
   it("rejects negative, partial, signed, fractional, and non-decimal forms", () => {
@@ -220,6 +220,7 @@ describe("parseNonNegativeSafeInteger", () => {
       "0x10",
       "1e2",
       "01000",
+      " 1000 ",
       "",
       " ",
       "NaN",
@@ -260,14 +261,22 @@ describe("resolveVoiceSelfTestPollPolicy", () => {
       resolveVoiceSelfTestPollPolicy({
         env: {
           IOS_VOICE_SELFTEST_ATTEMPTS: "45",
-          IOS_VOICE_SELFTEST_DELAY_MS: "0",
+          IOS_VOICE_SELFTEST_DELAY_MS: String(MAX_TIMER_DELAY_MS),
         },
       }),
-    ).toEqual({ attempts: 45, delayMs: 0 });
+    ).toEqual({ attempts: 45, delayMs: MAX_TIMER_DELAY_MS });
   });
 
   it("fails closed on explicit invalid attempts", () => {
-    for (const value of ["0", "30junk", "notanumber", "1.5", "+300", "0300"]) {
+    for (const value of [
+      "0",
+      "30junk",
+      "notanumber",
+      "1.5",
+      "+300",
+      "0300",
+      " 300 ",
+    ]) {
       expect(() =>
         resolveVoiceSelfTestPollPolicy({
           env: { IOS_VOICE_SELFTEST_ATTEMPTS: value },
@@ -279,7 +288,15 @@ describe("resolveVoiceSelfTestPollPolicy", () => {
   });
 
   it("fails closed on explicit invalid delay", () => {
-    for (const value of ["-1", "10junk", "1.5", "+1000", "01000"]) {
+    for (const value of [
+      "-1",
+      "10junk",
+      "1.5",
+      "+1000",
+      "01000",
+      " 1000 ",
+      String(MAX_TIMER_DELAY_MS + 1),
+    ]) {
       expect(() =>
         resolveVoiceSelfTestPollPolicy({
           env: { IOS_VOICE_SELFTEST_DELAY_MS: value },
@@ -288,12 +305,19 @@ describe("resolveVoiceSelfTestPollPolicy", () => {
         /IOS_VOICE_SELFTEST_DELAY_MS must be a non-negative safe-integer decimal/,
       );
     }
+    expect(() =>
+      resolveVoiceSelfTestPollPolicy({
+        env: {
+          IOS_VOICE_SELFTEST_DELAY_MS: String(MAX_TIMER_DELAY_MS + 1),
+        },
+      }),
+    ).toThrow(`no greater than ${MAX_TIMER_DELAY_MS}`);
   });
 });
 
 describe("ios-voice-selftest-smoke CLI boundary", () => {
   it("rejects invalid IOS_VOICE_SELFTEST_ATTEMPTS before simulator work", () => {
-    for (const value of ["0", "30junk", "notanumber", "1.5", "+300"]) {
+    for (const value of ["0", "30junk", "notanumber", "1.5", "+300", " 300 "]) {
       const result = runSmokeCli({ IOS_VOICE_SELFTEST_ATTEMPTS: value });
       expect(result.status).not.toBe(0);
       const combined = `${result.stdout ?? ""}${result.stderr ?? ""}`;
@@ -306,7 +330,14 @@ describe("ios-voice-selftest-smoke CLI boundary", () => {
   });
 
   it("rejects invalid IOS_VOICE_SELFTEST_DELAY_MS before simulator work", () => {
-    for (const value of ["-1", "10junk", "1.5", "+1000"]) {
+    for (const value of [
+      "-1",
+      "10junk",
+      "1.5",
+      "+1000",
+      " 1000 ",
+      String(MAX_TIMER_DELAY_MS + 1),
+    ]) {
       const result = runSmokeCli({ IOS_VOICE_SELFTEST_DELAY_MS: value });
       expect(result.status).not.toBe(0);
       const combined = `${result.stdout ?? ""}${result.stderr ?? ""}`;

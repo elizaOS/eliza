@@ -67,7 +67,10 @@ function describeRelativeTime(
 	if (days === 1) {
 		return future ? "Tomorrow" : "Yesterday";
 	}
-	if (days < 7) {
+	// Gate the week fallback on the raw magnitude, not the direction-rounded
+	// `days`: a future 6d + 1ms ceils to 7 and would otherwise jump to an
+	// absolute date a full day early. Matches the packages/ui WEEK_MS gate.
+	if (absDiff < 7 * 86400000) {
 		return tense(`${days}d`);
 	}
 	return new Date(time).toLocaleDateString(undefined, {

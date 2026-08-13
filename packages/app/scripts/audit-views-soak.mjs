@@ -52,6 +52,9 @@ export const DEFAULT_NAV_TIMEOUT_MS = 10_000;
 /** Node clamps `setTimeout` / Playwright timer delays above this to 1 ms. */
 export const MAX_TIMER_DELAY_MS = 2_147_483_647;
 
+/** Largest settle wait whose three-times navigation allowance remains safe. */
+export const MAX_NAV_WAIT_MS = Math.floor(MAX_TIMER_DELAY_MS / 3);
+
 /**
  * Accept only complete positive safe-integer decimal strings (or numbers).
  * Rejects partial numbers, signed values, fractions, zero, and values above
@@ -77,7 +80,7 @@ export function parsePositiveSafeInteger(value, label, options = {}) {
     }
     return value;
   }
-  const raw = String(value ?? "").trim();
+  const raw = String(value ?? "");
   if (!/^\d+$/.test(raw)) {
     throw new Error(
       `${label} must be ${rangeHint} (received ${received(value)})`,
@@ -118,7 +121,7 @@ export function resolveSoakTiming(env = process.env) {
     navWaitRaw == null || String(navWaitRaw).trim() === ""
       ? DEFAULT_NAV_WAIT_MS
       : parsePositiveSafeInteger(navWaitRaw, "NAV_WAIT_MS", {
-          max: MAX_TIMER_DELAY_MS,
+          max: MAX_NAV_WAIT_MS,
         });
 
   const navTimeoutMs =
@@ -129,6 +132,23 @@ export function resolveSoakTiming(env = process.env) {
         });
 
   return { rounds, navWaitMs, navTimeoutMs };
+}
+
+/**
+ * Resolve the exact Playwright navigation timeout without exceeding Node's
+ * timer ceiling when the settle wait contributes a three-times allowance.
+ * @param {number} navTimeoutMs
+ * @param {number} navWaitMs
+ * @returns {number}
+ */
+export function resolveNavigationTimeoutMs(navTimeoutMs, navWaitMs) {
+  const timeoutMs = Math.max(navTimeoutMs, navWaitMs * 3);
+  if (!Number.isSafeInteger(timeoutMs) || timeoutMs > MAX_TIMER_DELAY_MS) {
+    throw new Error(
+      `derived navigation timeout must be at most ${MAX_TIMER_DELAY_MS} ms`,
+    );
+  }
+  return timeoutMs;
 }
 
 const UI = process.env.UI || "http://127.0.0.1:2138";
@@ -731,7 +751,7 @@ async function main() {
           return normalized === target;
         },
         targetPath,
-        { timeout: Math.max(NAV_TIMEOUT_MS, NAV_WAIT_MS * 3) },
+        { timeout: resolveNavigationTimeoutMs(NAV_TIMEOUT_MS, NAV_WAIT_MS) },
       );
     } catch (cause) {
       // error-policy:J2 Preserve Playwright's timeout while identifying the

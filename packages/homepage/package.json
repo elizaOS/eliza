@@ -13,7 +13,7 @@
     "clean": "node ../scripts/rm-path-recursive.mjs dist",
     "check:release-data": "node ../app-core/scripts/check-homepage-release-data.mjs",
     "check:snapshot-inventory": "bun scripts/check-snapshot-inventory.ts",
-    "test": "bun test tests/smoke.node.test.mjs tests/screenshot-stability.node.test.mjs tests/e2e-port.node.test.mjs tests/channel-build-config.node.test.mjs tests/contact.test.ts tests/snapshot-inventory.test.ts tests/auth-return.test.ts tests/wallet-linking.test.ts tests/release-availability.test.ts edge/apple-app-site-association.test.ts tests/landing-a11y-helpers.test.ts tests/provisioning-poll-body.test.ts tests/provisioning-poll-hook.test.ts tests/onboarding-continuation.test.ts tests/get-started-continuation-render.test.tsx",
+    "test": "bun test tests/smoke.node.test.mjs tests/screenshot-stability.node.test.mjs tests/e2e-port.node.test.mjs tests/channel-build-config.node.test.mjs tests/contact.test.ts tests/snapshot-inventory.test.ts tests/auth-return.test.ts tests/wallet-linking.test.ts tests/release-availability.test.ts edge/apple-app-site-association.test.ts tests/landing-a11y-helpers.test.ts tests/provisioning-poll-body.test.ts tests/provisioning-poll-hook.test.ts tests/onboarding-continuation.test.ts tests/get-started-continuation-render.test.tsx tests/legacy-onboarding-redirect.test.ts",
     "test:aasa-edge": "bun run typecheck:aasa-edge && bun test edge/apple-app-site-association.test.ts",
     "typecheck:aasa-edge": "bunx --package typescript@6.0.3 tsc --noEmit -p edge/tsconfig.json",
     "deploy:aasa-edge": "bunx wrangler@4.100.0 deploy --config wrangler-aasa.toml --strict",

@@ -1,7 +1,8 @@
 # Agent-surface e2e — manual review
 
 Run: `bun run --cwd packages/ui test:agent-surface-e2e` (real headless chromium,
-no app server). Screenshots land in `output/`.
+no app server). Direct-run screenshots land in `output/`; the repository-wide
+recorder writes them to its suite-specific `e2e-recordings/` destination.
 
 ## Verdict: **good**
 
