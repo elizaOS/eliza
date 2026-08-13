@@ -55,12 +55,19 @@ function fakeClient() {
   const createCloudCompatAgent = vi.fn();
   const getCloudCompatAgent = vi.fn();
   const resumeCloudCompatAgent = vi.fn(async () => ({ success: true }));
+  // Fresh creates that answer with a jobId now follow the job to terminal;
+  // default it to an already-completed job so reuse-focused cases pass through.
+  const getCloudCompatJobStatus = vi.fn(async (jobId: string) => ({
+    success: true,
+    data: { jobId, id: jobId, status: "completed", state: "completed" },
+  }));
   const client = Object.create(ElizaClient.prototype) as ElizaClient;
   Object.assign(client, {
     getCloudCompatAgents,
     createCloudCompatAgent,
     getCloudCompatAgent,
     resumeCloudCompatAgent,
+    getCloudCompatJobStatus,
   });
   return {
     client,
@@ -68,6 +75,7 @@ function fakeClient() {
     createCloudCompatAgent,
     getCloudCompatAgent,
     resumeCloudCompatAgent,
+    getCloudCompatJobStatus,
   };
 }
 

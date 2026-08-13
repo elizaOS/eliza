@@ -142,6 +142,7 @@ type DirectCloudAgentCreateData = {
   id: string;
   agentName: string;
   status: string;
+  jobId: string | null;
 };
 
 function requireConfirmedFreshCloudAgentCreate(
@@ -947,6 +948,7 @@ function parseDirectCloudAgentCreateData(
 ): DirectCloudAgentCreateData {
   const data = recordOrNull(value);
   if (!data) throw new Error("Eliza Cloud response missing data");
+  const job = recordOrNull(data.job);
   return {
     // The cloud create response carries the new agent's id under `id` in most
     // branches but only `agentId` in the async-provisioning (202) branch.
@@ -955,6 +957,12 @@ function parseDirectCloudAgentCreateData(
     id: requireString(data.id ?? data.agentId, "data.id"),
     agentName: stringOrNull(data.agentName) ?? fallbackAgentName,
     status: stringOrNull(data.status) ?? "pending",
+    // The async-provisioning branch also answers with the canonical job id.
+    // It must survive normalization so the caller can follow the job to a
+    // terminal state instead of inferring progress from agent-detail polling.
+    jobId:
+      firstString(data.jobId, data.job_id, job?.jobId, job?.job_id, job?.id) ??
+      null,
   };
 }
 
@@ -2111,7 +2119,7 @@ ElizaClient.prototype.createCloudCompatAgent = async function (
       data: {
         agentId: data.id,
         agentName: data.agentName,
-        jobId: "",
+        jobId: data.jobId ?? "",
         status: data.status,
         nodeId: null,
         message: direct.success ? "Agent created" : (direct.error ?? ""),
@@ -2169,7 +2177,7 @@ ElizaClient.prototype.createCloudCompatAgent = async function (
       data: {
         agentId: data.id,
         agentName: data.agentName,
-        jobId: "",
+        jobId: data.jobId ?? "",
         status: data.status,
         nodeId: null,
         message: response.success ? "Agent created" : (response.error ?? ""),
@@ -3413,6 +3421,114 @@ const CLOUD_AGENT_FAILED_STATUSES = new Set([
   "deletion_failed",
 ]);
 
+/**
+ * Control-plane answers a wake/provision wait must surface immediately: auth
+ * expiry (401/403), credit exhaustion (402), a deleted agent row (404), a
+ * conflicting lifecycle operation (409), and a worker/capacity outage (503).
+ * Continuing to poll cannot cure any of them — it only hides the real failure
+ * behind the six-minute timeout (#18463). Everything else (network blips,
+ * other 5xx churn) stays transient: the bounded poll is the authority.
+ */
+const CLOUD_WAKE_NON_TRANSIENT_STATUSES = new Set([
+  401, 402, 403, 404, 409, 503,
+]);
+
+/** Where in the wake/provision state machine a typed failure was observed. */
+export type CloudAgentWakePhase =
+  | "resume"
+  | "status-poll"
+  | "provision-job"
+  | "failed"
+  | "timeout";
+
+/**
+ * Typed failure from the dedicated wake/provision wait. The pre-#18463 loop
+ * swallowed every resume/detail error, collapsing auth expiry, missing rows,
+ * credit exhaustion, and worker outages into one indistinguishable spinner
+ * and a generic timeout string. Callers render `message` as-is; programmatic
+ * consumers branch on `phase`/`status` and honor `retryAfter` (seconds, from
+ * the backend's Retry-After) when present. `agentId`/`jobId` are the
+ * operator-safe correlation ids for the attempt.
+ */
+export class CloudAgentWakeError extends Error {
+  readonly phase: CloudAgentWakePhase;
+  readonly agentId: string;
+  readonly jobId?: string;
+  /** HTTP status of the underlying non-transient control-plane failure. */
+  readonly status?: number;
+  /** Seconds until retry is worthwhile, when the backend sent Retry-After. */
+  readonly retryAfter?: number;
+  /** Last agent/job status observed before the failure. */
+  readonly lastObservedStatus?: string;
+
+  constructor(options: {
+    message: string;
+    phase: CloudAgentWakePhase;
+    agentId: string;
+    jobId?: string;
+    status?: number;
+    retryAfter?: number;
+    lastObservedStatus?: string;
+    cause?: unknown;
+  }) {
+    super(options.message);
+    this.name = "CloudAgentWakeError";
+    this.phase = options.phase;
+    this.agentId = options.agentId;
+    if (options.jobId !== undefined) this.jobId = options.jobId;
+    if (options.status !== undefined) this.status = options.status;
+    if (options.retryAfter !== undefined) this.retryAfter = options.retryAfter;
+    if (options.lastObservedStatus !== undefined) {
+      this.lastObservedStatus = options.lastObservedStatus;
+    }
+    if (options.cause !== undefined) {
+      (this as Error & { cause?: unknown }).cause = options.cause;
+    }
+  }
+}
+
+/**
+ * Classify a wake-path request rejection. Returns the HTTP status (+
+ * Retry-After when the transport preserved one) for the statuses in
+ * `CLOUD_WAKE_NON_TRANSIENT_STATUSES`; `null` means transient — keep polling.
+ * Reads both transport error shapes: `ApiError` (`status`/`retryAfter`) and
+ * the direct-cloud `Object.assign(new Error(), { status, data })` throw.
+ */
+function nonTransientWakeFailure(
+  cause: unknown,
+): { status: number; retryAfter?: number } | null {
+  if (typeof cause !== "object" || cause === null) return null;
+  const { status } = cause as { status?: unknown };
+  if (
+    typeof status !== "number" ||
+    !CLOUD_WAKE_NON_TRANSIENT_STATUSES.has(status)
+  ) {
+    return null;
+  }
+  const body = recordOrNull((cause as { data?: unknown }).data);
+  const retryAfter = firstNumber(
+    (cause as { retryAfter?: unknown }).retryAfter,
+    body?.retryAfter,
+    body?.retry_after,
+  );
+  return { status, ...(retryAfter !== null ? { retryAfter } : {}) };
+}
+
+function wakeFailureMessage(
+  what: string,
+  status: number,
+  retryAfter: number | undefined,
+  cause: unknown,
+): string {
+  const causeMessage =
+    cause instanceof Error && cause.message ? ` ${cause.message}` : "";
+  const retryHint =
+    typeof retryAfter === "number" && retryAfter > 0
+      ? ` Try again in about ${Math.ceil(retryAfter)}s.`
+      : "";
+  return `${what} (HTTP ${status}).${causeMessage}${retryHint}`;
+}
+
 function isTerminalFailedCloudAgent(agent: CloudCompatAgent): boolean {
   return CLOUD_AGENT_FAILED_STATUSES.has(
     String(agent.status ?? "").toLowerCase(),
@@ -3456,34 +3572,79 @@ export async function waitForCloudAgentRunning(
     "starting",
     "Starting your agent — a cold boot can take a few minutes...",
   );
-  // error-policy:J4 resume is an idempotent wake nudge — the status poll
-  // below is the authority and surfaces failed/timed-out boots as errors.
-  await client.resumeCloudCompatAgent(agentId).catch(() => null);
+  await client.resumeCloudCompatAgent(agentId).catch((cause: unknown) => {
+    const hard = nonTransientWakeFailure(cause);
+    if (hard) {
+      throw new CloudAgentWakeError({
+        message: wakeFailureMessage(
+          "Starting your cloud agent failed",
+          hard.status,
+          hard.retryAfter,
+          cause,
+        ),
+        phase: "resume",
+        agentId,
+        ...hard,
+        cause,
+      });
+    }
+    // error-policy:J4 a transient resume rejection is an idempotent wake
+    // nudge lost in transit — the status poll below is the authority and
+    // surfaces failed/timed-out boots as errors.
+    return null;
+  });
 
   let lastStatus = "unknown";
   for (;;) {
-    // error-policy:J4 a failed status read counts as an unknown tick inside
-    // this bounded poll; the deadline below throws with the last status.
-    const detail = await client.getCloudCompatAgent(agentId).catch(() => null);
+    const detail = await client
+      .getCloudCompatAgent(agentId)
+      .catch((cause: unknown) => {
+        const hard = nonTransientWakeFailure(cause);
+        if (hard) {
+          throw new CloudAgentWakeError({
+            message: wakeFailureMessage(
+              "Checking your cloud agent failed",
+              hard.status,
+              hard.retryAfter,
+              cause,
+            ),
+            phase: "status-poll",
+            agentId,
+            lastObservedStatus: lastStatus,
+            ...hard,
+            cause,
+          });
+        }
+        // error-policy:J4 a transient status read counts as an unknown tick
+        // inside this bounded poll; the deadline below throws with the last
+        // status.
+        return null;
+      });
     const agent = detail?.success ? detail.data : null;
     if (agent) {
       lastStatus = agent.status || "unknown";
       if (lastStatus === "running") return agent;
       if (CLOUD_AGENT_FAILED_STATUSES.has(lastStatus)) {
-        throw new Error(
-          agent.error_message
+        throw new CloudAgentWakeError({
+          message: agent.error_message
             ? `Your cloud agent failed to start: ${agent.error_message}`
             : "Your cloud agent failed to start. Check its status in Eliza Cloud and try again.",
-        );
+          phase: "failed",
+          agentId,
+          lastObservedStatus: lastStatus,
+        });
       }
     }
     const elapsedMs = Date.now() - startedAt;
     if (elapsedMs + pollIntervalMs > timeoutMs) {
-      throw new Error(
-        `Your cloud agent is still "${lastStatus}" after ${Math.round(
+      throw new CloudAgentWakeError({
+        message: `Your cloud agent is still "${lastStatus}" after ${Math.round(
           elapsedMs / 1000,
-        )}s. It may still be booting — try again in a minute.`,
-      );
+        )}s (agent ${agentId}). It may still be booting — try again in a minute.`,
+        phase: "timeout",
+        agentId,
+        lastObservedStatus: lastStatus,
+      });
     }
     onProgress?.("starting", describeAgentWakeWait(elapsedMs));
     await new Promise((r) => setTimeout(r, pollIntervalMs));
@@ -3504,6 +3665,98 @@ export function describeAgentWakeWait(elapsedMs: number): string {
   }
   const minutes = Math.floor(elapsedMs / 60_000);
   return `Still starting your agent — about ${minutes} minute${minutes === 1 ? "" : "s"} in. Cold boots can take a few minutes…`;
+}
+
+/**
+ * Follow the canonical provisioning job for a fresh dedicated create to a
+ * terminal state. The 202 create path answers with a `jobId` the old flow
+ * discarded, reducing a failed provision to an opaque agent-detail timeout;
+ * the job row carries the real failure reason (worker unavailable, image
+ * pull, capacity) as soon as the worker records it. Resolves on `completed`,
+ * throws typed on `failed`, on a non-transient job read, and on timeout.
+ * Exported for unit tests.
+ */
+export async function waitForCloudProvisionJob(
+  client: ElizaClient,
+  options: {
+    agentId: string;
+    jobId: string;
+    pollIntervalMs?: number;
+    timeoutMs?: number;
+    onProgress?: (status: string, detail?: string) => void;
+  },
+): Promise<void> {
+  const { agentId, jobId, onProgress } = options;
+  const pollIntervalMs = Math.max(
+    50,
+    options.pollIntervalMs ?? CLOUD_AGENT_WAKE_POLL_INTERVAL_MS,
+  );
+  const timeoutMs = Math.max(
+    pollIntervalMs,
+    options.timeoutMs ?? CLOUD_AGENT_WAKE_TIMEOUT_MS,
+  );
+  const startedAt = Date.now();
+  let lastStatus = "queued";
+  for (;;) {
+    const res = await client
+      .getCloudCompatJobStatus(jobId)
+      .catch((cause: unknown) => {
+        const hard = nonTransientWakeFailure(cause);
+        if (hard) {
+          throw new CloudAgentWakeError({
+            message: wakeFailureMessage(
+              "Provisioning your cloud agent failed",
+              hard.status,
+              hard.retryAfter,
+              cause,
+            ),
+            phase: "provision-job",
+            agentId,
+            jobId,
+            lastObservedStatus: lastStatus,
+            ...hard,
+            cause,
+          });
+        }
+        // error-policy:J4 a transient job read counts as an unknown tick
+        // inside this bounded poll; the deadline below throws with the last
+        // status.
+        return null;
+      });
+    const job = res?.data ?? null;
+    if (job) {
+      lastStatus = job.state || job.status;
+      if (job.status === "completed") return;
+      if (job.status === "failed") {
+        throw new CloudAgentWakeError({
+          message: job.error
+            ? `Your cloud agent failed to start: ${job.error}`
+            : "Your cloud agent failed to start. Check its status in Eliza Cloud and try again.",
+          phase: "provision-job",
+          agentId,
+          jobId,
+          lastObservedStatus: lastStatus,
+        });
+      }
+    }
+    const elapsedMs = Date.now() - startedAt;
+    if (elapsedMs + pollIntervalMs > timeoutMs) {
+      throw new CloudAgentWakeError({
+        message: `Your cloud agent's provisioning job is still "${lastStatus}" after ${Math.round(
+          elapsedMs / 1000,
+        )}s (agent ${agentId}, job ${jobId}). It may still be working — try again in a minute.`,
+        phase: "timeout",
+        agentId,
+        jobId,
+        lastObservedStatus: lastStatus,
+      });
+    }
+    onProgress?.(
+      "provisioning",
+      describeProvisioningWait(lastStatus, elapsedMs),
+    );
+    await new Promise((r) => setTimeout(r, pollIntervalMs));
+  }
 }
 
 /**
@@ -3703,6 +3956,22 @@ ElizaClient.prototype.selectOrProvisionCloudAgent = async function (
   }
   requireConfirmedFreshCloudAgentCreate(mustForceCreate, created.created);
   const agentId = created.data.agentId;
+  // A 202 async create names its canonical provisioning job. Follow THAT job
+  // to terminal — its row carries the real failure reason long before the
+  // agent-detail poll below would time out — instead of discarding the id.
+  if (created.data.jobId) {
+    await waitForCloudProvisionJob(this, {
+      agentId,
+      jobId: created.data.jobId,
+      ...(typeof options.wakePollIntervalMs === "number"
+        ? { pollIntervalMs: options.wakePollIntervalMs }
+        : {}),
+      ...(typeof options.wakeTimeoutMs === "number"
+        ? { timeoutMs: options.wakeTimeoutMs }
+        : {}),
+      ...(onProgress ? { onProgress } : {}),
+    });
+  }
   // error-policy:J4 detail is an optimization probe (warm-pool fast path);
   // on failure the standard dedicated subdomain is still the desired default.
   const detail = await this.getCloudCompatAgent(agentId).catch(() => null);
