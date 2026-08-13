@@ -10939,9 +10939,25 @@ ${section_end}`;
 			this.warnEmbeddingGenerationSkipped();
 			return memory;
 		}
-		memory.embedding = await this.useModel(ModelType.TEXT_EMBEDDING, {
+		const embedding = await this.useModel(ModelType.TEXT_EMBEDDING, {
 			text: memoryText,
 		});
+		if (!Array.isArray(embedding) || embedding.length === 0) {
+			throw new ElizaError(
+				"TEXT_EMBEDDING provider returned no usable vector",
+				{
+					code: "EMBEDDING_MODEL_OUTPUT_INVALID",
+					context: {
+						memoryId: memory.id,
+						outputKind: Array.isArray(embedding)
+							? "empty-array"
+							: typeof embedding,
+					},
+					severity: "fatal",
+				},
+			);
+		}
+		memory.embedding = embedding;
 		return memory;
 	}
 
