@@ -262,8 +262,26 @@ export function deriveCanonicalProvenance(
 				? "sender-stamped"
 				: "unverified";
 
-	const accountId =
-		readString(metadata, "accountId") ?? readString(nested, "accountId");
+	// Account id must be consistent across paths. When both the top-level
+	// metadata.accountId and the nested identity object's accountId are
+	// present and differ, the record is contradictory — reject instead of
+	// silently picking the first one.
+	const metadataAccountId = readString(metadata, "accountId");
+	const nestedAccountId = readString(nested, "accountId");
+	if (
+		metadataAccountId !== undefined &&
+		nestedAccountId !== undefined &&
+		metadataAccountId !== nestedAccountId
+	) {
+		return {
+			valid: false,
+			code: "invalid_provenance",
+			source,
+			reason:
+				"stored memory records conflicting connector account id fields; cannot determine a single canonical account",
+		};
+	}
+	const accountId = metadataAccountId ?? nestedAccountId;
 	if (!accountId) {
 		return {
 			valid: false,
@@ -273,11 +291,27 @@ export function deriveCanonicalProvenance(
 		};
 	}
 
+	// Platform message id must be consistent across paths. Each candidate
+	// path can stamp a different key; when two are present and differ the
+	// record is contradictory — reject instead of first-wins.
+	const pmiCandidates = [
+		readString(metadata, "platformMessageId"),
+		readString(metadata, "messageIdFull"),
+		readString(nested, "messageId"),
+		readString(metadata, "sourceId"),
+	].filter((value): value is string => value !== undefined);
+	const distinctPmi = new Set(pmiCandidates);
+	if (distinctPmi.size > 1) {
+		return {
+			valid: false,
+			code: "invalid_provenance",
+			source,
+			reason:
+				"stored memory records conflicting platform message id fields; cannot determine a single canonical record id",
+		};
+	}
 	const platformMessageId =
-		readString(metadata, "platformMessageId") ??
-		readString(metadata, "messageIdFull") ??
-		readString(nested, "messageId") ??
-		readString(metadata, "sourceId");
+		distinctPmi.size === 1 ? [...distinctPmi][0] : undefined;
 	if (!platformMessageId) {
 		return {
 			valid: false,
@@ -301,8 +335,21 @@ export function deriveCanonicalProvenance(
 		};
 	}
 
-	const scope =
-		readScope(asRecord(metadata?.base)?.scope) ?? readScope(metadata?.scope);
+	// Scope must be consistent across paths. When both metadata.base.scope
+	// and metadata.scope are present and differ, the record is contradictory
+	// — reject instead of first-wins.
+	const baseScope = readScope(asRecord(metadata?.base)?.scope);
+	const metadataScope = readScope(metadata?.scope);
+	if (baseScope && metadataScope && baseScope !== metadataScope) {
+		return {
+			valid: false,
+			code: "invalid_provenance",
+			source,
+			reason:
+				"stored memory records conflicting scope fields; cannot determine a single canonical scope",
+		};
+	}
+	const scope = baseScope ?? metadataScope;
 	if (!scope) {
 		return {
 			valid: false,
@@ -627,6 +674,27 @@ export async function searchCanonicalConversationMemories(
 		};
 	}
 
+	// Revalidate the attested audience against live room state BEFORE any
+	// retrieval. A changed audience or failed lookup is a hard stop — no
+	// same-room or cross-room recall proceeds. This satisfies the issue's
+	// requirement that changed turn evidence is rejected before any retrieval.
+	const revalidated = await revalidateOwnerExclusiveDisclosure(
+		input.runtime,
+		deliveryMessage,
+	);
+	if (
+		!revalidated.allowed &&
+		(revalidated.reason === "audience_changed" ||
+			revalidated.reason === "audience_lookup_failed")
+	) {
+		return {
+			items: [],
+			withheld: [],
+			availability: "unavailable",
+			candidateWindowComplete: false,
+		};
+	}
+
 	const requesterResult = await resolveRequesterAccessContext(
 		input.runtime,
 		deliveryMessage,
@@ -652,9 +720,7 @@ export async function searchCanonicalConversationMemories(
 	}
 	const requester = requesterResult.context;
 
-	const crossRoomGate: CrossRoomRecallGate = crossRoomRecallGate(
-		await revalidateOwnerExclusiveDisclosure(input.runtime, deliveryMessage),
-	);
+	const crossRoomGate: CrossRoomRecallGate = crossRoomRecallGate(revalidated);
 
 	// Constrain the vector scan by the attested room BEFORE ranking so a global
 	// top-K cannot starve eligible same-room rows. When cross-room recall is
@@ -663,51 +729,91 @@ export async function searchCanonicalConversationMemories(
 	// complete.
 	const roomConstrained = !crossRoomGate.allowed;
 
-	// Over-fetch by a bounded factor so source filtering, malformed records,
-	// and dedupe cannot silently starve the final result below the requested
-	// count. The refill is honest: if the adapter returns fewer than requested
-	// (it hit the end of the eligible set or its own limit) the window is
-	// marked incomplete.
+	// Bounded advancing refill: instead of a single over-fetched query,
+	// request in windows and advance until enough valid items are collected
+	// or the adapter exhausts the eligible set. This prevents closer
+	// wrong-source/malformed/denied rows from starving valid rows.
 	const overfetchFactor = 3;
-	const candidateCount = Math.max(input.count, input.count * overfetchFactor);
+	const maxRefillRounds = 3;
+	const allCandidates: Memory[] = [];
+	let candidateWindowComplete = true;
+	let accumulatedValid = 0;
+	const seenIds = new Set<string>();
 
-	let candidates: Memory[];
-	try {
-		candidates = await input.runtime.searchMemories({
-			embedding: input.embedding,
-			tableName: "messages",
-			match_threshold: input.matchThreshold,
-			count: candidateCount,
-			...(input.query ? { query: input.query } : {}),
-			...(input.entityId ? { entityId: input.entityId } : {}),
-			...(roomConstrained ? { roomId: destinationRoomId } : {}),
-			accessContext: requester,
-		});
-	} catch (cause) {
-		input.runtime.reportError(
-			"CanonicalRecall.adapter",
-			new ElizaError("Canonical conversation recall adapter query failed.", {
-				code: "CANONICAL_RECALL_ADAPTER_FAILED",
-				cause,
-				context: { roomId: destinationRoomId },
-			}),
+	for (let round = 0; round < maxRefillRounds; round++) {
+		const roundCount = Math.max(
+			input.count,
+			input.count * overfetchFactor * (round + 1),
 		);
-		return {
-			items: [],
-			withheld: [],
-			availability: "unavailable",
-			candidateWindowComplete: false,
-		};
+		let roundCandidates: Memory[];
+		try {
+			roundCandidates = await input.runtime.searchMemories({
+				embedding: input.embedding,
+				tableName: "messages",
+				match_threshold: input.matchThreshold,
+				count: roundCount,
+				...(input.query ? { query: input.query } : {}),
+				...(input.entityId ? { entityId: input.entityId } : {}),
+				...(roomConstrained ? { roomId: destinationRoomId } : {}),
+				accessContext: requester,
+			});
+		} catch (cause) {
+			input.runtime.reportError(
+				"CanonicalRecall.adapter",
+				new ElizaError("Canonical conversation recall adapter query failed.", {
+					code: "CANONICAL_RECALL_ADAPTER_FAILED",
+					cause,
+					context: { roomId: destinationRoomId },
+				}),
+			);
+			return {
+				items: [],
+				withheld: [],
+				availability: "unavailable",
+				candidateWindowComplete: false,
+			};
+		}
+
+		// Track whether the adapter returned a full window (possible
+		// truncation) or fewer rows (exhaustion of eligible set).
+		if (roundCandidates.length >= roundCount) {
+			candidateWindowComplete = false;
+		}
+
+		// Deduplicate against what we already have and accumulate.
+		for (const mem of roundCandidates) {
+			const memId = mem.id?.toString();
+			if (memId && seenIds.has(memId)) continue;
+			if (memId) seenIds.add(memId);
+			allCandidates.push(mem);
+		}
+
+		// Quick-check: if this round added enough candidates to potentially
+		// satisfy the requested count after filtering, we can stop early.
+		// We check the raw count since we don't know the filter ratio yet.
+		const evaluated = evaluateCanonicalRecall({
+			candidates: allCandidates,
+			agentId: input.runtime.agentId,
+			requester,
+			destinationRoomId,
+			crossRoomGate,
+		});
+		accumulatedValid = evaluated.items.length;
+
+		if (
+			accumulatedValid >= input.count ||
+			roundCandidates.length < roundCount
+		) {
+			// Either we have enough valid items, or the adapter returned
+			// fewer than requested — it exhausted the eligible set.
+			if (roundCandidates.length < roundCount) {
+				candidateWindowComplete = true;
+			}
+			break;
+		}
 	}
 
-	// The adapter returned fewer rows than the requested candidate window. When
-	// it returns fewer than candidateCount it exhausted the eligible set — the
-	// window IS complete (every eligible row was fetched). When it returns
-	// exactly candidateCount it may have been truncated by its own LIMIT, so
-	// closer ineligible rows could have starved eligible results out of the
-	// window; mark it incomplete in that case so the caller never renders a
-	// truncated window as a confident complete result.
-	const candidateWindowComplete = candidates.length < candidateCount;
+	const candidates = allCandidates;
 
 	const evaluated = evaluateCanonicalRecall({
 		candidates,
