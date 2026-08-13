@@ -80,6 +80,24 @@ import {
 
 const execFileAsync = promisify(execFile);
 
+const DEFAULT_HEARTBEAT_INTERVAL_MS = 60_000;
+const MAX_TIMER_INTERVAL_MS = 2_147_483_647;
+
+export function resolveHeartbeatIntervalMs(raw: string | undefined): number {
+  if (raw === undefined || raw.trim() === "") return DEFAULT_HEARTBEAT_INTERVAL_MS;
+  const normalized = raw.trim();
+  if (!/^\d+$/.test(normalized)) {
+    throw new Error("IMESSAGE_HEARTBEAT_INTERVAL_MS must be a positive integer");
+  }
+  const intervalMs = Number(normalized);
+  if (!Number.isSafeInteger(intervalMs) || intervalMs <= 0 || intervalMs > MAX_TIMER_INTERVAL_MS) {
+    throw new Error(
+      `IMESSAGE_HEARTBEAT_INTERVAL_MS must be between 1 and ${MAX_TIMER_INTERVAL_MS}`
+    );
+  }
+  return intervalMs;
+}
+
 function resolveInteractionAppBaseUrl(runtime: IAgentRuntime): string | undefined {
   const rawAppUrl =
     runtime.getSetting?.("ELIZA_APP_URL") || runtime.getSetting?.("ELIZA_CLOUD_URL");
@@ -1885,7 +1903,9 @@ export class IMessageService extends Service implements IIMessageService {
       return;
     }
 
-    const heartbeatIntervalMs = Number(process.env.IMESSAGE_HEARTBEAT_INTERVAL_MS) || 60_000;
+    const heartbeatIntervalMs = resolveHeartbeatIntervalMs(
+      process.env.IMESSAGE_HEARTBEAT_INTERVAL_MS
+    );
 
     this.runtime.registerTaskWorker({
       name: "IMESSAGE_HEARTBEAT",
