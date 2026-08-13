@@ -337,6 +337,13 @@ export default defineConfig({
             use: {
               ...devices["Desktop Chrome"],
               ...withChromiumLaunchOptions(),
+              // This project opens a fresh context for every view/viewport and
+              // validates rendered pixels plus real bundle provenance, not PWA
+              // caching. Letting each context install the app worker triggers
+              // its first-install navigation and doubles the boot graph; late in
+              // the 200+ case matrix Chromium can exhaust request resources and
+              // the worker then masks valid hashed assets behind synthetic 503s.
+              serviceWorkers: "block" as const,
             },
           },
         ]

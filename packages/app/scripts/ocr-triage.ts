@@ -373,17 +373,17 @@ export async function runOcrTriage(argv: string[]): Promise<TriageResult> {
       ...policyInput,
       exemptFromBlank,
     });
-    const alreadyTriedSparseFallback = rec.attempts?.some(
-      (attempt) => attempt.mode === "sparse-high-contrast",
+    const alreadyTriedDarkSurfaceFallback = rec.attempts?.some(
+      (attempt) => attempt.mode === "sparse-dark-surface",
     );
     if (
       !args.ocr &&
       finding.missingRequired.length > 0 &&
-      !alreadyTriedSparseFallback
+      !alreadyTriedDarkSurfaceFallback
     ) {
-      // A confident transcript can still omit small labels. Retry only the
-      // screenshot whose declared content failed, rather than doubling OCR work
-      // for the entire audit or accepting a false pixel regression.
+      // A confident transcript can still omit small or colored labels. Retry
+      // only the screenshot whose declared content failed, including the
+      // dark-surface pass rather than multiplying OCR work for the full audit.
       const retried = await runPackagedOcr([rec.path], true);
       const retryRecord = retried[0];
       if (!retryRecord) {

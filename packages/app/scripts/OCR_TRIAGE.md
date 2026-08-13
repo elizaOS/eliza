@@ -16,13 +16,15 @@ missing or cannot initialize, the gate fails instead of skipping the check.
 
 OCR silence is not proof of blank pixels. The shared evidence primitive first
 runs whole-page OCR and retains its transcript and mean confidence. A weak pass
-(fewer than two words or below 45% confidence) gets one deterministic retry:
-the image is enlarged up to 3×/2400 px, converted to normalized grayscale,
-sharpened, thresholded at 225, and read with sparse-text segmentation. The raw
-transcript/confidence for both attempts and the selected mode are written to the
-triage report. Separately, downsampled pixel analysis proves blank frames only
-when they have no opaque samples or a single quantized color. Low-confidence OCR
-on a visually populated frame is `needs-eyeball`, never “pixels are blank.”
+(fewer than two words or below 45% confidence) gets a deterministic retry: the
+image is enlarged up to 3×/2400 px, converted to normalized grayscale,
+sharpened, thresholded at 225, and read with sparse-text segmentation. When a
+declared semantic label is still missing, a second sparse pass at threshold 70
+retains small colored text on dark surfaces. The raw transcript/confidence for
+every attempt and the selected mode are written to the triage report. Separately,
+downsampled pixel analysis proves blank frames only when they have no opaque
+samples or a single quantized color. Low-confidence OCR on a visually populated
+frame is `needs-eyeball`, never “pixels are blank.”
 
 This split is load-bearing for icon-heavy mobile launchers (#16327). On the
 390×844 reproduction, default packaged Tesseract returned only `oY)` at 40%

@@ -30,6 +30,7 @@ export const DEFAULT_OCR_CONFIDENCE_FLOOR = 0.45;
 const OCR_FALLBACK_MAX_WIDTH = 2400;
 const OCR_FALLBACK_SCALE = 3;
 const OCR_FALLBACK_THRESHOLD = 225;
+const OCR_DARK_SURFACE_THRESHOLD = 70;
 const PROVEN_BLANK_IMAGE_ISSUES = new Set([
   "screenshot has no sampled pixels",
   "screenshot is one color",
@@ -494,11 +495,11 @@ export function resetTesseractProbe() {
  * bounded high-contrast upscale plus sparse-text segmentation gets one second
  * chance; this is particularly important for mobile screenshots whose labels
  * are only a dozen source pixels tall. A semantic gate that finds required
- * content missing may request that same bounded second pass with
- * `alwaysTryFallback`; confidence alone cannot prove that the first transcript
- * captured the labels under review. The selected transcript, confidence, every
- * attempted transcript, and independent pixel-blank diagnostics remain in the
- * result so downstream gates never infer "blank" from OCR silence.
+ * content missing may request `alwaysTryFallback`, which also samples a lower
+ * threshold that retains colored text on dark surfaces. The selected transcript,
+ * confidence, every attempted transcript, and independent pixel-blank
+ * diagnostics remain in the result so downstream gates never infer "blank"
+ * from OCR silence.
  */
 export async function ocrImage(pngPath, opts = {}) {
   const engine = await resolveOcrEngine();
@@ -558,6 +559,42 @@ export async function ocrImage(pngPath, opts = {}) {
     } else {
       attempts.push(
         buildOcrAttempt("sparse-high-contrast", fallbackRecognition),
+      );
+    }
+  }
+
+  if (opts.alwaysTryFallback === true) {
+    const darkSurfaceRecognition = await buildHighContrastOcrInput(
+      pngPath,
+      OCR_DARK_SURFACE_THRESHOLD,
+    )
+      .then((fallbackInput) =>
+        recognizeWithEngine(
+          engine,
+          fallbackInput,
+          lang,
+          timeoutMs,
+          "sparse-high-contrast",
+        ),
+      )
+      .catch((err) => {
+        // error-policy:J1 OCR primitive boundary — retain this optional
+        // diagnostic while the primary and high-threshold passes stay usable.
+        return { error: err instanceof Error ? err.message : String(err) };
+      });
+    if ("error" in darkSurfaceRecognition) {
+      attempts.push({
+        mode: "sparse-dark-surface",
+        ok: false,
+        reason: darkSurfaceRecognition.error,
+        text: "",
+        words: 0,
+        chars: 0,
+        meanConfidence: 0,
+      });
+    } else {
+      attempts.push(
+        buildOcrAttempt("sparse-dark-surface", darkSurfaceRecognition),
       );
     }
   }
@@ -873,7 +910,10 @@ async function getPackagedWorker(lang, timeoutMs, mode) {
   return trackedWorkerPromise;
 }
 
-async function buildHighContrastOcrInput(pngPath) {
+async function buildHighContrastOcrInput(
+  pngPath,
+  threshold = OCR_FALLBACK_THRESHOLD,
+) {
   const metadata = await sharp(pngPath).metadata();
   if (!metadata.width || metadata.width <= 0) {
     throw new Error("OCR image has no positive pixel width");
@@ -887,7 +927,7 @@ async function buildHighContrastOcrInput(pngPath) {
     .grayscale()
     .normalize()
     .sharpen()
-    .threshold(OCR_FALLBACK_THRESHOLD)
+    .threshold(threshold)
     .png()
     .toBuffer();
 }

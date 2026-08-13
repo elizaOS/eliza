@@ -93,13 +93,50 @@ describe("real OCR blank-vs-unreadable classification", () => {
       alwaysTryFallback: true,
     });
     if (!retried.available) throw new Error(retried.reason);
-    expect(retried.attempts).toHaveLength(2);
+    expect(retried.attempts).toHaveLength(3);
     expect(retried.attempts?.map((attempt) => attempt.mode)).toEqual([
       "auto",
       "sparse-high-contrast",
+      "sparse-dark-surface",
     ]);
     expect(retried.text).toMatch(/Misty Forest/i);
     expect(retried.text).toMatch(/Desert Dusk/i);
+  }, 90_000);
+
+  it("recovers small colored labels from a dark application surface", async () => {
+    const path = join(dir, "dark-surface.png");
+    const svg = Buffer.from(`
+      <svg width="1440" height="900" xmlns="http://www.w3.org/2000/svg">
+        <rect width="1440" height="900" fill="#000000" />
+        <text x="20" y="45" font-family="Arial, sans-serif" font-size="18" fill="#ffffff">Refresh Call</text>
+        <text x="20" y="85" font-family="Arial, sans-serif" font-size="12" fill="#ff3344">call-blocked</text>
+        <text x="700" y="105" font-family="Arial, sans-serif" font-size="12" fill="#9299a8">dialer</text>
+        <text x="1320" y="85" font-family="Arial, sans-serif" font-size="12" fill="#9299a8">0 recent</text>
+      </svg>
+    `);
+    await sharp(svg).png().toFile(path);
+
+    const result = await ocrImage(path, {
+      timeoutMs: 60_000,
+      alwaysTryFallback: true,
+    });
+    if (!result.available) throw new Error(result.reason);
+
+    expect(result.attempts?.map((attempt) => attempt.mode)).toEqual([
+      "auto",
+      "sparse-high-contrast",
+      "sparse-dark-surface",
+    ]);
+    expect(result.selectedMode).toBe("sparse-dark-surface");
+    expect(result.text).toMatch(/call-blocked/i);
+    expect(result.text).toMatch(/dialer/i);
+    expect(result.text).toMatch(/recent/i);
+    expect(
+      evaluateOcrContent({
+        ocr: contentResult(result),
+        expectation: { requireAny: ["call-blocked", "dialer", "recent"] },
+      }).verdict,
+    ).toBe("verified");
   }, 90_000);
 
   it("does not call a populated mobile launcher blank when the first OCR pass is weak", async () => {
