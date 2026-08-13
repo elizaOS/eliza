@@ -30,6 +30,7 @@ import {
 type EntryState =
   | { kind: "paused-continuation" }
   | { kind: "invalid-continuation" }
+  | { kind: "storage-error" }
   | { kind: "setup-consent" };
 
 function removeOnboardingSessionFromUrl(): void {
@@ -86,6 +87,8 @@ export default function GetStartedPage(): React.JSX.Element {
     if (rawToken) {
       if (storePendingOnboardingSession(rawToken)) {
         removeOnboardingSessionFromUrl();
+      } else {
+        setEntry({ kind: "storage-error" });
       }
       return;
     }
@@ -95,7 +98,10 @@ export default function GetStartedPage(): React.JSX.Element {
   }, [rawToken, restoreStoredToken]);
 
   const dismissContinuation = useCallback(() => {
-    clearPendingOnboardingSession();
+    if (!clearPendingOnboardingSession()) {
+      setEntry({ kind: "storage-error" });
+      return;
+    }
     removeOnboardingSessionFromUrl();
     setEntry({ kind: "setup-consent" });
   }, []);
@@ -151,6 +157,35 @@ export default function GetStartedPage(): React.JSX.Element {
           {t("cloud.getStarted.continuationInvalidBody", {
             defaultValue:
               "Return to your messaging app and request a new sign-in link.",
+          })}
+        </p>
+        <Button
+          type="button"
+          variant="outline"
+          onClick={dismissContinuation}
+          className="hosted-signin-focus-emphasis h-auto min-h-11 max-w-full whitespace-normal px-6 py-2.5 text-center font-semibold"
+        >
+          {t("cloud.getStarted.continuationCancel", {
+            defaultValue: "Dismiss connection",
+          })}
+        </Button>
+      </div>
+    ) : entry.kind === "storage-error" ? (
+      <div className="flex flex-col items-center gap-4" role="alert">
+        <h1
+          ref={headingRef}
+          data-entry-kind={entry.kind}
+          tabIndex={-1}
+          className="font-poppins text-lg font-semibold text-white outline-none"
+        >
+          {t("cloud.getStarted.continuationStorageErrorTitle", {
+            defaultValue: "Browser storage blocked this connection",
+          })}
+        </h1>
+        <p className="text-sm leading-6 text-white/70">
+          {t("cloud.getStarted.continuationStorageErrorBody", {
+            defaultValue:
+              "This page could not safely save or clear the connection. No Cloud request was sent. Check your browser storage settings, then dismiss the connection again.",
           })}
         </p>
         <Button

@@ -89,11 +89,43 @@ describe("pending-token persistence", () => {
 
   it("clears both browser stores on explicit dismissal", () => {
     storePendingOnboardingSession(TOKEN);
-    clearPendingOnboardingSession();
+    expect(clearPendingOnboardingSession()).toBe(true);
     expect(peekPendingOnboardingSession()).toBeNull();
   });
 
-  it("reports when no cross-tab store preserves the credential", () => {
+  it.each([
+    ["local", true, false],
+    ["session", false, true],
+    ["both", true, true],
+  ])(
+    "reports a residual %s storage copy after removal",
+    (_name, blockLocal, blockSession) => {
+      storePendingOnboardingSession(TOKEN);
+      const originalRemoveItem = Storage.prototype.removeItem;
+      vi.spyOn(Storage.prototype, "removeItem").mockImplementation(function (
+        this: Storage,
+        key: string,
+      ) {
+        if (
+          (blockLocal && this === window.localStorage) ||
+          (blockSession && this === window.sessionStorage)
+        ) {
+          return;
+        }
+        originalRemoveItem.call(this, key);
+      });
+
+      expect(clearPendingOnboardingSession()).toBe(false);
+      expect(window.localStorage.getItem(STORAGE_KEY) !== null).toBe(
+        blockLocal,
+      );
+      expect(window.sessionStorage.getItem(STORAGE_KEY) !== null).toBe(
+        blockSession,
+      );
+    },
+  );
+
+  it("reports success when session storage alone preserves the credential", () => {
     const originalSetItem = Storage.prototype.setItem;
     vi.spyOn(Storage.prototype, "setItem").mockImplementation(function (
       this: Storage,
@@ -105,8 +137,17 @@ describe("pending-token persistence", () => {
       originalSetItem.call(this, key, value);
     });
 
-    expect(storePendingOnboardingSession(TOKEN)).toBe(false);
+    expect(storePendingOnboardingSession(TOKEN)).toBe(true);
     expect(peekPendingOnboardingSession()).toBe(TOKEN);
+  });
+
+  it("reports failure when neither browser store verifies the credential", () => {
+    vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new Error("storage blocked");
+    });
+
+    expect(storePendingOnboardingSession(TOKEN)).toBe(false);
+    expect(peekPendingOnboardingSession()).toBeNull();
   });
 
   it("prefers a fresh cross-tab token over stale session storage", () => {

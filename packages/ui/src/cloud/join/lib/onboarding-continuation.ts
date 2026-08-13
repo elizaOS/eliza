@@ -14,11 +14,6 @@ interface StoredPendingOnboardingSession {
   expiresAt: number;
 }
 
-interface AvailableStorage {
-  crossTab: boolean;
-  storage: Storage;
-}
-
 export function sanitizeOnboardingSessionToken(
   value: string | null | undefined,
 ): string | null {
@@ -27,16 +22,16 @@ export function sanitizeOnboardingSessionToken(
   return trimmed.startsWith("platform:") ? null : trimmed;
 }
 
-function eachStorage(): AvailableStorage[] {
+function eachStorage(): Storage[] {
   if (typeof window === "undefined") return [];
-  const storages: AvailableStorage[] = [];
+  const storages: Storage[] = [];
   try {
-    storages.push({ storage: window.localStorage, crossTab: true });
+    storages.push(window.localStorage);
   } catch {
     // error-policy:J3 storage may be disabled entirely by the browser.
   }
   try {
-    storages.push({ storage: window.sessionStorage, crossTab: false });
+    storages.push(window.sessionStorage);
   } catch {
     // error-policy:J3 the credential remains in the same-origin URL instead.
   }
@@ -44,8 +39,8 @@ function eachStorage(): AvailableStorage[] {
 }
 
 /**
- * Persist the credential and report whether it is available across tabs. The
- * caller keeps the URL parameter unless localStorage succeeds.
+ * Persist the credential and report whether either browser store verifies the
+ * exact write. The caller may remove the URL parameter only after success.
  */
 export function storePendingOnboardingSession(token: string): boolean {
   const sanitized = sanitizeOnboardingSessionToken(token);
@@ -54,16 +49,16 @@ export function storePendingOnboardingSession(token: string): boolean {
     token: sanitized,
     expiresAt: Date.now() + PENDING_ONBOARDING_SESSION_TTL_MS,
   } satisfies StoredPendingOnboardingSession);
-  let crossTabPersisted = false;
-  for (const { storage, crossTab } of eachStorage()) {
+  let persisted = false;
+  for (const storage of eachStorage()) {
     try {
       storage.setItem(PENDING_ONBOARDING_SESSION_KEY, stored);
-      crossTabPersisted ||= crossTab;
+      persisted ||= storage.getItem(PENDING_ONBOARDING_SESSION_KEY) === stored;
     } catch {
       // error-policy:J3 unwritable storage leaves the URL credential intact.
     }
   }
-  return crossTabPersisted;
+  return persisted;
 }
 
 function parseStored(value: string | null): string | null {
@@ -86,7 +81,7 @@ function parseStored(value: string | null): string | null {
 
 export function peekPendingOnboardingSession(): string | null {
   let pendingToken: string | null = null;
-  for (const { storage } of eachStorage()) {
+  for (const storage of eachStorage()) {
     try {
       const value = storage.getItem(PENDING_ONBOARDING_SESSION_KEY);
       if (!value) continue;
@@ -103,12 +98,36 @@ export function peekPendingOnboardingSession(): string | null {
   return pendingToken;
 }
 
-export function clearPendingOnboardingSession(): void {
-  for (const { storage } of eachStorage()) {
+/** Remove and verify both browser copies before the page reports dismissal. */
+export function clearPendingOnboardingSession(): boolean {
+  if (typeof window === "undefined") return false;
+  let cleared = true;
+  const accessors = [
+    () => window.localStorage,
+    () => window.sessionStorage,
+  ] as const;
+  for (const getStorage of accessors) {
+    let storage: Storage;
     try {
+      storage = getStorage();
       storage.removeItem(PENDING_ONBOARDING_SESSION_KEY);
     } catch {
-      // error-policy:J6 best-effort browser-only credential cleanup.
+      // error-policy:J4 cleanup is verified below and any residual copy becomes a visible blocked state.
+      try {
+        storage = getStorage();
+      } catch {
+        cleared = false;
+        continue;
+      }
+    }
+    try {
+      if (storage.getItem(PENDING_ONBOARDING_SESSION_KEY) !== null) {
+        cleared = false;
+      }
+    } catch {
+      // error-policy:J4 unreadable storage cannot be reported as safely cleared.
+      cleared = false;
     }
   }
+  return cleared;
 }

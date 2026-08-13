@@ -22,6 +22,8 @@ const GET_STARTED_KEYS = [
   "cloud.getStarted.continuationInvalidTitle",
   "cloud.getStarted.continuationPausedBody",
   "cloud.getStarted.continuationPausedTitle",
+  "cloud.getStarted.continuationStorageErrorBody",
+  "cloud.getStarted.continuationStorageErrorTitle",
   "cloud.getStarted.setupBody",
   "cloud.getStarted.setupCta",
   "cloud.getStarted.setupTitle",
@@ -165,25 +167,53 @@ describe("GetStartedPage", () => {
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
-  it("keeps the URL credential when cross-tab storage is unavailable", () => {
-    const originalSetItem = Storage.prototype.setItem;
-    vi.spyOn(Storage.prototype, "setItem").mockImplementation(function (
-      this: Storage,
-      key: string,
-      value: string,
-    ) {
-      if (this === window.localStorage)
-        throw new Error("local storage blocked");
-      originalSetItem.call(this, key, value);
+  it.each([
+    ["local", () => window.localStorage, () => window.sessionStorage],
+    ["session", () => window.sessionStorage, () => window.localStorage],
+  ])(
+    "strips the URL after a verified %s-storage partial write",
+    (_blockedName, blockedStorage, retainedStorage) => {
+      const originalSetItem = Storage.prototype.setItem;
+      vi.spyOn(Storage.prototype, "setItem").mockImplementation(function (
+        this: Storage,
+        key: string,
+        value: string,
+      ) {
+        if (this === blockedStorage()) throw new Error("storage blocked");
+        originalSetItem.call(this, key, value);
+      });
+      const fetchSpy = vi.spyOn(globalThis, "fetch");
+
+      renderPage();
+
+      expect(
+        screen.getByRole("heading", { name: "Messaging connection paused" }),
+      ).toBeTruthy();
+      expect(window.location.search).toBe("");
+      expect(retainedStorage().length).toBe(1);
+      expect(peekPendingOnboardingSession()).toBe(TOKEN);
+      expect(screen.queryByTestId("join-route")).toBeNull();
+      expect(fetchSpy).not.toHaveBeenCalled();
+    },
+  );
+
+  it("keeps the URL and shows a designed failure when neither store persists", () => {
+    vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new Error("storage blocked");
     });
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
 
     renderPage();
 
     expect(
-      screen.getByRole("heading", { name: "Messaging connection paused" }),
-    ).toBeTruthy();
+      screen.getByRole("heading", {
+        name: "Browser storage blocked this connection",
+      }),
+    ).toBe(document.activeElement);
     expect(window.location.search).toContain(`onboardingSession=${TOKEN}`);
-    expect(peekPendingOnboardingSession()).toBe(TOKEN);
+    expect(peekPendingOnboardingSession()).toBeNull();
+    expect(screen.queryByTestId("join-route")).toBeNull();
+    expect(fetchSpy).not.toHaveBeenCalled();
   });
 
   it("dismisses and forgets a continuation before showing setup consent", () => {
@@ -202,4 +232,54 @@ describe("GetStartedPage", () => {
     );
     expect(fetchSpy).not.toHaveBeenCalled();
   });
+
+  it.each([
+    ["local", true, false],
+    ["session", false, true],
+    ["both", true, true],
+  ])(
+    "keeps the connection blocked when %s storage removal leaves a residual copy",
+    (_name, blockLocal, blockSession) => {
+      const fetchSpy = vi.spyOn(globalThis, "fetch");
+      renderPage();
+      const originalRemoveItem = Storage.prototype.removeItem;
+      const removeSpy = vi
+        .spyOn(Storage.prototype, "removeItem")
+        .mockImplementation(function (this: Storage, key: string) {
+          if (
+            (blockLocal && this === window.localStorage) ||
+            (blockSession && this === window.sessionStorage)
+          ) {
+            return;
+          }
+          originalRemoveItem.call(this, key);
+        });
+
+      fireEvent.click(
+        screen.getByRole("button", { name: "Dismiss connection" }),
+      );
+
+      expect(
+        screen.getByRole("heading", {
+          name: "Browser storage blocked this connection",
+        }),
+      ).toBe(document.activeElement);
+      expect(
+        screen.queryByRole("heading", { name: "Set up Eliza Cloud" }),
+      ).toBeNull();
+      expect(window.localStorage.length).toBe(blockLocal ? 1 : 0);
+      expect(window.sessionStorage.length).toBe(blockSession ? 1 : 0);
+      expect(fetchSpy).not.toHaveBeenCalled();
+
+      removeSpy.mockRestore();
+      fireEvent.click(
+        screen.getByRole("button", { name: "Dismiss connection" }),
+      );
+      expect(window.localStorage.length).toBe(0);
+      expect(window.sessionStorage.length).toBe(0);
+      expect(screen.getByRole("heading", { name: "Set up Eliza Cloud" })).toBe(
+        document.activeElement,
+      );
+    },
+  );
 });

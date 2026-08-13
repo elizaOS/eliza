@@ -7385,6 +7385,8 @@
   "cloud.getStarted.continuationInvalidTitle": "この接続リンクは無効です",
   "cloud.getStarted.continuationPausedBody": "このページでは接続の確認やリンクを行っていません。現在のCloudフローではクレジット追加やDedicatedコンピュートの開始も行われる可能性があるため、安全なリンクフローが提供されるまでメッセージ接続は利用できません。今はメッセージアプリでチャットを続けてください。",
   "cloud.getStarted.continuationPausedTitle": "メッセージ接続は一時停止中です",
+  "cloud.getStarted.continuationStorageErrorBody": "このページでは接続を安全に保存または消去できませんでした。Cloudへのリクエストは送信されていません。ブラウザのストレージ設定を確認してから、もう一度接続を破棄してください。",
+  "cloud.getStarted.continuationStorageErrorTitle": "ブラウザストレージがこの接続をブロックしました",
   "cloud.getStarted.setupBody": "このページではエージェントを起動しません。準備ができた場合のみ続行してください。Cloudセットアップでは、エージェントの選択または作成、コンピュートの起動、アカウントクレジットの使用が行われる場合があります。",
   "cloud.getStarted.setupCta": "Cloudセットアップに進む",
   "cloud.getStarted.setupTitle": "Eliza Cloudをセットアップ"

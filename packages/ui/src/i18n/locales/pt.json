@@ -7385,6 +7385,8 @@
   "cloud.getStarted.continuationInvalidTitle": "Este link de conexão não é válido",
   "cloud.getStarted.continuationPausedBody": "Esta página não verificou nem vinculou esta conexão. O fluxo atual do Cloud também pode adicionar crédito e iniciar processamento Dedicated, portanto as conexões de mensagens ficam indisponíveis até que exista um fluxo seguro. Continue conversando no aplicativo de mensagens por enquanto.",
   "cloud.getStarted.continuationPausedTitle": "Conexão de mensagens pausada",
+  "cloud.getStarted.continuationStorageErrorBody": "Esta página não conseguiu salvar nem apagar a conexão com segurança. Nenhuma solicitação foi enviada ao Cloud. Verifique as configurações de armazenamento do navegador e descarte a conexão novamente.",
+  "cloud.getStarted.continuationStorageErrorTitle": "O armazenamento do navegador bloqueou esta conexão",
   "cloud.getStarted.setupBody": "Esta página não inicia um agente. Continue somente quando estiver pronto: a configuração do Cloud pode selecionar ou criar um agente, iniciar processamento e usar o crédito da conta.",
   "cloud.getStarted.setupCta": "Continuar para a configuração do Cloud",
   "cloud.getStarted.setupTitle": "Configurar o Eliza Cloud"

@@ -8176,6 +8176,8 @@
   "cloud.getStarted.continuationInvalidTitle": "This connection link isn't valid",
   "cloud.getStarted.continuationPausedBody": "This page did not verify or link this connection. The current Cloud flow can also add credit and start Dedicated compute, so messaging connections are unavailable until a safe linking flow ships. Keep chatting in your messaging app for now.",
   "cloud.getStarted.continuationPausedTitle": "Messaging connection paused",
+  "cloud.getStarted.continuationStorageErrorBody": "This page could not safely save or clear the connection. No Cloud request was sent. Check your browser storage settings, then dismiss the connection again.",
+  "cloud.getStarted.continuationStorageErrorTitle": "Browser storage blocked this connection",
   "cloud.getStarted.errorTitle": "Couldn't connect your account",
   "cloud.getStarted.linkedBody": "Head back to your chat — your agent will pick up right where you left off. Setup finishes in the background.",
   "cloud.getStarted.linkedTitle": "You're connected",
