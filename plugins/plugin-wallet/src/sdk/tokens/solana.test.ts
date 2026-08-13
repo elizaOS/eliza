@@ -1,10 +1,11 @@
 /**
- * SPL balance formatting (#19013 — 0-decimal balances stripped of significant
- * zeros). `formatSplBalance` is the exact production path that produces
- * `SplBalanceResult.humanBalance`; a bug here misreports a wallet's balance by
- * orders of magnitude. Pin the 0-decimal path (where the trailing-zero trim used
- * to corrupt multiples of ten), the bigint-exactness above Number.MAX_SAFE_INTEGER,
- * and the unchanged formatting for tokens with decimals.
+ * SPL balance formatting (#19013). `formatSplBalance` is the exact production
+ * path that produces `SplBalanceResult.humanBalance`; a bug here misreports a
+ * wallet's balance. It now delegates to the bigint-safe `toHuman`, so pin both
+ * failure modes it removes: 0-decimal balances losing significant trailing zeros
+ * (multiples of ten), and positive-decimal `u64` values above
+ * Number.MAX_SAFE_INTEGER being rounded by a Number() conversion. Also pin the
+ * unchanged spelling for whole and zero decimal balances ("1.0" -> "1").
  */
 import { describe, expect, it } from "vitest";
 import { formatSplBalance } from "./solana.ts";
@@ -38,5 +39,17 @@ describe("formatSplBalance", () => {
     expect(formatSplBalance(1_000_000n, 6)).toBe("1");
     // A zero balance on a decimal token falls back to "0".
     expect(formatSplBalance(0n, 6)).toBe("0");
+  });
+
+  it("stays exact for positive-decimal balances above Number.MAX_SAFE_INTEGER", () => {
+    // A Number() conversion rounds this to "9007199254.740992"; delegating to
+    // the bigint-safe toHuman keeps the trailing 3 exact.
+    expect(formatSplBalance(9_007_199_254_740_993n, 6)).toBe(
+      "9007199254.740993",
+    );
+  });
+
+  it("formats negative decimal amounts", () => {
+    expect(formatSplBalance(-2_500_000n, 6)).toBe("-2.5");
   });
 });

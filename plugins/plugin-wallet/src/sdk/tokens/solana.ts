@@ -13,6 +13,7 @@
 
 import type { TransactionInstruction } from "@solana/web3.js";
 import bs58 from "bs58";
+import { toHuman } from "./decimals.js";
 
 type SolanaWeb3Module = typeof import("@solana/web3.js");
 type SplTokenModule = typeof import("@solana/spl-token");
@@ -147,20 +148,16 @@ export interface SolanaTxResult {
 /**
  * Format a raw on-chain SPL token amount into a human-readable string.
  *
- * A 0-decimal token has no fractional part, so `toFixed(0)` produces a plain
- * integer with no decimal point and the trailing-zero trim would strip
- * significant zeros (100 -> "1", 1200 -> "12"). Return the exact integer for
- * 0-decimal tokens (matching `toHuman(amount, 0)` in ./decimals.ts); `rawBalance`
- * is a bigint so this stays exact even above Number.MAX_SAFE_INTEGER. Tokens with
- * decimals keep the existing formatting unchanged.
+ * Delegates to the bigint-safe `toHuman` in ./decimals.js so every balance is
+ * exact: 0-decimal tokens no longer lose significant trailing zeros
+ * (100 became "1"), and positive-decimal `u64` values above
+ * Number.MAX_SAFE_INTEGER are no longer silently rounded by a Number()
+ * conversion. `toHuman` keeps a single trailing ".0" for whole positive-decimal
+ * amounts; the existing wallet spelling drops it ("1.0" -> "1", "0.0" -> "0").
  */
 export function formatSplBalance(rawBalance: bigint, decimals: number): string {
-  if (decimals === 0) return rawBalance.toString();
-  return (
-    (Number(rawBalance) / 10 ** decimals)
-      .toFixed(decimals)
-      .replace(/\.?0+$/, "") || "0"
-  );
+  const formatted = toHuman(rawBalance, decimals);
+  return formatted.endsWith(".0") ? formatted.slice(0, -2) : formatted;
 }
 
 /**
