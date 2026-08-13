@@ -221,6 +221,23 @@ app.post("/", async (c) => {
         origin,
       );
     }
+    // A reused clientMessageId with different text must not replace the landed
+    // turn — non-retryable by contract; the caller picks a new id (#18045).
+    if (error instanceof Error && error.name === "SharedTurnConflictError") {
+      return applyCorsHeaders(
+        Response.json(
+          {
+            success: false,
+            error: error.message,
+            code: "client_message_conflict",
+            retryable: false,
+          },
+          { status: 409 },
+        ),
+        CORS_METHODS,
+        origin,
+      );
+    }
     // Insufficient credits is a PERMANENT condition until the org tops up —
     // hiding it behind the generic retryable 503 below reads as "try again"
     // forever to every welcome-bonus-withheld signup and drained org. Return

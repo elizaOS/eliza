@@ -303,6 +303,9 @@ describe("shared-rest-adapter — messages", () => {
       "client-id-1",
     );
     expect(coordinateSharedBridge.mock.calls[0][1].id).toBe("client-id-1");
+    // The params marker is what admits the id to the coordinator's durable
+    // claim/replay/conflict boundary — a generated id must never carry it.
+    expect(coordinateSharedBridge.mock.calls[0][1].params.clientMessageId).toBe("client-id-1");
   });
 
   test("POST without a clientMessageId generates a fresh RPC id per send", async () => {
@@ -317,6 +320,7 @@ describe("shared-rest-adapter — messages", () => {
     const second = coordinateSharedBridge.mock.calls[1][1].id;
     expect(typeof first).toBe("string");
     expect(first).not.toBe(second);
+    expect(coordinateSharedBridge.mock.calls[0][1].params).not.toHaveProperty("clientMessageId");
   });
 
   test("POST throws when the bridge returns an error (surfaced to the client)", async () => {

@@ -521,7 +521,13 @@ export async function sharedRestMessageSend(
     jsonrpc: "2.0",
     id: clientMessageId ?? crypto.randomUUID(),
     method: "message.send",
-    params: { text, roomId: conversationId },
+    // params.clientMessageId marks the id as CLIENT-supplied: only those enter
+    // the coordinator's durable claim/replay/conflict boundary (#18045).
+    params: {
+      text,
+      roomId: conversationId,
+      ...(clientMessageId ? { clientMessageId } : {}),
+    },
   };
   // The production coordinator and Worker lifetime are required together so a
   // missing binding cannot select an inline legacy bridge or billing path.

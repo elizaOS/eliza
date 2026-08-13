@@ -94,9 +94,12 @@ export async function handleCanonicalScopedAgentStream(
     jsonrpc: "2.0",
     id: clientMessageId ?? crypto.randomUUID(),
     method: "message.send",
+    // params.clientMessageId marks the id as CLIENT-supplied: only those enter
+    // the coordinator's durable claim/replay/conflict boundary (#18045).
     params: {
       text,
       roomId: request.conversationId,
+      ...(clientMessageId ? { clientMessageId } : {}),
       ...(request.userId ? { userId: request.userId, source: "voice" } : {}),
     },
   };
@@ -151,6 +154,26 @@ export async function handleCanonicalScopedAgentStream(
                 "Retry-After": String(error.retryAfter ?? 60),
               },
             },
+          ),
+          CORS_METHODS,
+          request.origin,
+        ),
+        timings,
+      );
+    }
+    if (error instanceof Error && error.name === "SharedTurnConflictError") {
+      // A reused clientMessageId with different text must not replace the
+      // landed turn — non-retryable; the caller picks a new id (#18045).
+      return addStreamTimingHeaders(
+        applyCorsHeaders(
+          Response.json(
+            {
+              success: false,
+              error: error.message,
+              code: "client_message_conflict",
+              retryable: false,
+            },
+            { status: 409 },
           ),
           CORS_METHODS,
           request.origin,
