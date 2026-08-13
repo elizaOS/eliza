@@ -30,7 +30,7 @@
  * model key or a running agent, so it is safe to run in CI behind a dev server.
  */
 
-import { writeFileSync } from "node:fs";
+import { realpathSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { chromium } from "@playwright/test";
@@ -56,7 +56,7 @@ export function parsePositiveInt(raw, flag, opts = {}) {
       `${flag} requires a positive decimal integer from 1 to ${max}`,
     );
   }
-  if (!/^[1-9]\d*$/.test(raw)) {
+  if (!/^\d+$/.test(raw)) {
     throw new Error(
       `${flag} must be a positive decimal integer from 1 to ${max}, got "${raw}"`,
     );
@@ -253,11 +253,20 @@ async function main(argv = process.argv) {
   process.exit(anyOk ? 0 : 1);
 }
 
-const isMain =
-  process.argv[1] &&
-  path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+function isDirectRun(entryPath) {
+  if (!entryPath) return false;
+  try {
+    return (
+      realpathSync(path.resolve(entryPath)) ===
+      realpathSync(fileURLToPath(import.meta.url))
+    );
+  } catch {
+    // error-policy:J3 an unresolved argv entry is not this module's CLI path
+    return false;
+  }
+}
 
-if (isMain) {
+if (isDirectRun(process.argv[1])) {
   // error-policy:J1 CLI boundary — invalid flags and capture failures exit
   // non-zero with a legible message instead of an unhandled rejection.
   main().catch((err) => {

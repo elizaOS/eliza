@@ -4,6 +4,8 @@
  * Chromium launches, so subprocess cases never need a renderer or browser.
  */
 import { spawnSync } from "node:child_process";
+import { existsSync, mkdtempSync, rmSync, symlinkSync } from "node:fs";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
@@ -21,7 +23,9 @@ const SCRIPT_PATH = path.join(import.meta.dirname, "capture-startup-trace.mjs");
 describe("parsePositiveInt", () => {
   it("accepts positive decimal integers", () => {
     expect(parsePositiveInt("1", "--runs")).toBe(1);
+    expect(parsePositiveInt("01", "--runs")).toBe(1);
     expect(parsePositiveInt("42", "--runs")).toBe(42);
+    expect(parsePositiveInt("00042", "--runs")).toBe(42);
     expect(parsePositiveInt("60000", "--timeout")).toBe(60_000);
   });
 
@@ -81,6 +85,19 @@ describe("parseArgs --runs / --timeout", () => {
     expect(args.url).toBe("http://127.0.0.1:2138");
   });
 
+  it("preserves complete positive decimal overrides with leading zeros", () => {
+    const args = parseArgs([
+      "node",
+      "capture-startup-trace.mjs",
+      "--runs",
+      "02",
+      "--timeout",
+      "005000",
+    ]);
+    expect(args.runs).toBe(2);
+    expect(args.timeout).toBe(5000);
+  });
+
   it("fails closed when --runs is missing or malformed", () => {
     expect(() =>
       parseArgs(["node", "capture-startup-trace.mjs", "--runs"]),
@@ -130,6 +147,7 @@ describe("CLI --runs / --timeout fail-closed", () => {
   function runCli(extraArgs: string[]) {
     return spawnSync(process.execPath, [SCRIPT_PATH, ...extraArgs], {
       encoding: "utf8",
+      timeout: 15_000,
     });
   }
 
@@ -154,6 +172,38 @@ describe("CLI --runs / --timeout fail-closed", () => {
       expect(result.stdout, args.join(" ")).not.toMatch(
         /Capturing startup trace:/,
       );
+    }
+  }, 30_000);
+
+  it("enters capture through a symlink with zero-padded valid values", () => {
+    const directory = mkdtempSync(path.join(tmpdir(), "startup-trace-link-"));
+    const linkedScript = path.join(directory, "capture-trace.mjs");
+    const out = path.join(directory, "trace.json");
+    try {
+      symlinkSync(SCRIPT_PATH, linkedScript);
+      const result = spawnSync(
+        process.execPath,
+        [
+          linkedScript,
+          "--runs",
+          "01",
+          "--timeout",
+          "000001",
+          "--url",
+          "http://127.0.0.1:1",
+          "--out",
+          out,
+        ],
+        { encoding: "utf8", timeout: 15_000 },
+      );
+
+      expect(result.status).not.toBe(0);
+      expect(result.stdout).toMatch(/Capturing startup trace:/);
+      expect(result.stdout).toMatch(/runs=1/);
+      expect(result.stderr).not.toMatch(/--runs|--timeout/);
+      expect(existsSync(out)).toBe(false);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
     }
   });
 });
