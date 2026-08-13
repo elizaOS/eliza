@@ -13,7 +13,7 @@ import * as path from "node:path";
 // REAL importer, proving cross-package `.eliza-agent` format compatibility.
 import { importAgent } from "@elizaos/agent/services/agent-export";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { migrateAgent } from "../commands/migrate-agent.js";
+import { migrateAgent, parseMemoryDays } from "../commands/migrate-agent.js";
 import { buildElizaAgentArchive } from "./archive-format.js";
 import { assemblePayload } from "./archive-writer.js";
 import { mapToCharacter } from "./character-mapper.js";
@@ -664,5 +664,19 @@ describe("migrate-agent --json stdout purity (GAP E)", () => {
     expect(parsed.memoryCount).toBeGreaterThan(0);
     expect(parsed.summary).toHaveProperty("sqliteStores");
     expect(parsed.summary).toHaveProperty("warnings");
+  });
+});
+
+describe("migrate-agent memory-days validation", () => {
+  it("rejects non-finite values before they reach memory tiering", () => {
+    expect(parseMemoryDays("Infinity")).toBeNull();
+    expect(parseMemoryDays("-Infinity")).toBeNull();
+  });
+
+  it("preserves valid zero and default behavior", () => {
+    expect(parseMemoryDays("0")).toBe(0);
+    expect(parseMemoryDays(" ")).toBe(0);
+    expect(parseMemoryDays("14.5")).toBe(14.5);
+    expect(parseMemoryDays(undefined)).toBe(14);
   });
 });

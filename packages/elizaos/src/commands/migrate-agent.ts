@@ -42,6 +42,11 @@ export interface MigrateAgentOptions {
  */
 let quiet = false;
 
+export function parseMemoryDays(value: string | undefined): number | null {
+  const parsed = value ? Number(value) : 14;
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
+}
+
 function fail(msg: string): never {
   if (quiet) {
     process.stderr.write(`${msg}\n`);
@@ -92,10 +97,9 @@ export async function migrateAgent(opts: MigrateAgentOptions): Promise<void> {
   if (!fs.existsSync(sourceHome)) fail(`Home not found: ${sourceHome}`);
 
   const firewall = opts.noFirewall ? false : (opts.firewall ?? true);
-  const memoryDays = opts.memoryDays ? Number(opts.memoryDays) : 14;
-  if (Number.isNaN(memoryDays) || memoryDays < 0) {
-    fail("--memory-days must be a non-negative number.");
-  }
+  const memoryDays = parseMemoryDays(opts.memoryDays);
+  if (memoryDays === null)
+    fail("--memory-days must be a finite non-negative number.");
 
   if (!quiet) clack.intro(pc.cyan(`migrate-agent: ${sourceAgentId}`));
 
