@@ -33,9 +33,9 @@ legacy API/blob/plugin/x402 names.
 ## Wildcard TLS
 
 This root owns the canonical exact Worker service DNS plus both wildcard
-families in each environment. Exact DNS covers `api`, `blob`, `plugins`, and
-`x402`; a Worker route does not create DNS, and the route is unreachable until
-its hostname has a proxied record.
+families in each environment. Exact DNS covers `api`, `blob`, `plugins`,
+`relay`, and `x402`; a Worker route does not create DNS, and the route is
+unreachable until its hostname has a proxied record.
 
 | Environment | Managed agents              | Hosted sites                |
 | ----------- | --------------------------- | --------------------------- |
@@ -113,6 +113,13 @@ The examples under `tfvars/` enumerate the exact resource keys. An omitted live
 record will make Cloudflare reject the create; it must not be worked around by
 deleting DNS before state adoption.
 
+Canonical Pages bindings use deterministic configuration-driven imports of the
+form `<account-id>/eliza-app/<domain>`. The cutover therefore attaches the
+binding before the first plan and leaves its DNS untouched; Terraform then
+adopts the live binding instead of attempting a duplicate create. Inspect the
+remote state before every migration and require all existing desired bindings
+to appear as imports or already-managed addresses.
+
 ## Required protected environment values
 
 The `Infrastructure` workflow must expose the following JSON values as the
@@ -158,14 +165,18 @@ protected GitHub Environment variables rather than committing live values.
    `eliza-cloud`. Confirm no other project still owns a domain that this root
    will attach to `eliza-app`.
 4. Dispatch `Infrastructure` with `component=pages-domains`,
-   `environment=staging`, and `operation=plan`. The plan must show imports for
+   `environment=staging`, and `operation=plan`. The successful run uploads a
+   three-day `terraform-plan-<run-id>` artifact. The plan must show imports for
    every pre-existing DNS/certificate object, DNS-only Railway tunnel records,
    new canonical Pages bindings, and only additive certificate creation. Stop
    on any DNS or certificate destroy, replace, duplicate-create, or unexpected
    content change.
 5. Deploy the staging Worker routes before converting legacy site/tunnel DNS to
-   proxied redirect ingress. Apply the saved, reviewed staging plan. Wait for all
-   Pages bindings and every new advanced pack to report `active`.
+   proxied redirect ingress. Dispatch `operation=apply` with the exact successful
+   plan run id. The apply job verifies the source workflow, environment, branch,
+   commit, artifact metadata, and SHA-256 before using that saved plan; it never
+   creates a fresh unreviewed plan. Wait for all Pages bindings and every new
+   advanced pack to report `active`.
 6. Verify the homepage, hosted app, API proxy, a managed-agent hostname, a hosted
    site hostname, and every legacy 308 family over real TLS. Verify path/query
    preservation and confirm `docs.elizacloud.ai` lands on `https://eliza.app`.

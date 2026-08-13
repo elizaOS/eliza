@@ -21,6 +21,7 @@ interface WorkflowStep {
 
 interface WorkflowJob {
   env?: Record<string, string>;
+  needs?: string | string[];
   steps?: WorkflowStep[];
 }
 
@@ -76,6 +77,43 @@ const requiredAuthWorkerSecretNames = [
 ] as const;
 
 describe("canonical cloud deployment environment contract", () => {
+  test("gates protected Terraform operations on the canonical source ref", () => {
+    expect(infra.jobs?.terraform?.needs).toBe("validate-source");
+    const validate = step(
+      infra,
+      "validate-source",
+      "Validate canonical source ref",
+    );
+    expect(validate.run).toContain('expected_ref="refs/heads/main"');
+    expect(validate.run).toContain('expected_ref="refs/heads/develop"');
+    expect(validate.run).toContain('if [ "$SOURCE_REF" != "$expected_ref" ]');
+  });
+
+  test("applies only a digest-bound artifact from a successful plan run", () => {
+    const plan = step(infra, "terraform", "Plan");
+    expect(plan.run).toContain("terraform plan");
+    const packagePlan = step(infra, "terraform", "Package reviewed plan");
+    expect(packagePlan.run).toContain("sha256sum selected.tfplan");
+    expect(packagePlan.run).toContain("plan-metadata.json");
+    const validateRun = step(infra, "terraform", "Validate reviewed plan run");
+    expect(validateRun.run).toContain('run.name !== "Infrastructure"');
+    expect(validateRun.run).toContain('run.path !== ".github/workflows/infra.yml"');
+    expect(validateRun.run).toContain('run.conclusion !== "success"');
+    const validateArtifact = step(
+      infra,
+      "terraform",
+      "Validate reviewed plan artifact",
+    );
+    expect(validateArtifact.run).toContain("metadata.planSha256 !== actualDigest");
+    expect(validateArtifact.run).toContain("EXPECTED_SOURCE_SHA");
+    const apply = step(infra, "terraform", "Apply reviewed plan");
+    expect(apply.run).toContain(
+      'cp "$RUNNER_TEMP/reviewed-terraform-plan/selected.tfplan" selected.tfplan',
+    );
+    expect(apply.run).not.toContain("terraform plan");
+    expect(infraSource).toContain("terraform-plan-${{ inputs.plan_run_id }}");
+  });
+
   test("derives Terraform deploy branches from the selected environment", () => {
     const deployBranch = infra.jobs?.terraform?.env?.TF_VAR_deploy_branch;
     expect(deployBranch).toContain("inputs.environment == 'production'");

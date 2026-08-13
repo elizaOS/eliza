@@ -188,6 +188,15 @@ describe("Cloudflare Pages domain durability", () => {
     expect(readme).toContain("Omit a key only when");
   });
 
+  test("adopts pre-attached canonical Pages bindings deterministically", () => {
+    expect(imports).toContain("pages_domain_imports = local.canonical_pages_domains");
+    expect(imports).toContain("cloudflare_pages_domain.public[each.key]");
+    expect(imports).toContain(
+      '${var.cloudflare_account_id}/${each.value.project_name}/${each.value.domain}',
+    );
+    expect(readme).toContain("configuration-driven imports");
+  });
+
   test("owns canonical agent and site wildcard DNS plus additive certificates", () => {
     expect(main).toContain('"*.cloud.eliza.app"');
     expect(main).toContain('"*.sites.eliza.app"');
@@ -231,6 +240,17 @@ describe("Cloudflare Pages domain durability", () => {
     expect(imports).toContain("local.canonical_service_dns_imports");
     expect(imports).toContain(
       "cloudflare_dns_record.canonical_service[each.key]",
+    );
+  });
+
+  test("examples enumerate relay import ids alongside relay origins", () => {
+    expect(productionExample).toContain('"pages/legacy_relay"');
+    expect(productionExample).toContain(
+      '"canonical-service/relay.eliza.app|<first-reviewed-origin-ipv4>"',
+    );
+    expect(stagingExample).toContain('"pages/legacy_relay"');
+    expect(stagingExample).toContain(
+      '"canonical-service/relay-staging.eliza.app|<first-current-origin-ipv4>"',
     );
   });
 
