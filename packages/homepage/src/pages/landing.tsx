@@ -51,7 +51,7 @@ type DemoItem =
 
 const DEMO_INTRO: DemoStep[] = [
   { kind: "eliza", text: "Hey, it's Eliza — your new assistant." },
-  { kind: "user", text: "Hi Eliza, what can you do?" },
+  { kind: "user", text: "what can you do?" },
   {
     kind: "eliza",
     text: "I'm here to save you time and take things off your plate. Should we start with your email?",
