@@ -33,7 +33,10 @@ async function __hono_GET(
     const { searchParams } = new URL(request.url);
     const rawLimit = searchParams.get("limit");
     const limit = parsePositiveInteger(rawLimit);
-    if (rawLimit !== null && (limit === undefined || limit > MAX_LIMIT)) {
+    if (
+      rawLimit !== null &&
+      (rawLimit !== rawLimit.trim() || limit === undefined || limit > MAX_LIMIT)
+    ) {
       return Response.json(
         { success: false, error: "Invalid limit" },
         { status: 400 },

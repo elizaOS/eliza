@@ -65,6 +65,7 @@ describe("GET /api/v1/apps/:id/users limit validation", () => {
     ["partial", "20abc"],
     ["fractional", "1.5"],
     ["exponent form", "2e3"],
+    ["surrounding whitespace", " 1 "],
     ["above maximum", "101"],
     ["safe pathological integer", "9007199254740991"],
     ["unsafe integer", "9007199254740992"],
