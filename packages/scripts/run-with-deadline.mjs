@@ -109,6 +109,8 @@ function main(argv) {
       process.kill(-child.pid, 0);
       return true;
     } catch (error) {
+      // error-policy:J6 process-group liveness probe: ESRCH proves teardown;
+      // permission or transient probe errors conservatively mean still alive.
       return error?.code !== "ESRCH";
     }
   };
