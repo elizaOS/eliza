@@ -323,6 +323,12 @@ describe("onboarding chat — trusted platform gateway caller", () => {
       organizationId: "org-9",
       discordId: "different-discord-user",
     });
+    const mismatchedPreview = await get(continuation, "Bearer browser-session");
+    expect(mismatchedPreview.status).toBe(403);
+    expect(await mismatchedPreview.json()).toMatchObject({
+      success: false,
+      code: "access_denied",
+    });
     const mismatch = await post(
       {
         sessionId: continuation,

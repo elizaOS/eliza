@@ -166,7 +166,7 @@ function replayStorageKey(
   idempotencyKey: string,
   input: OnboardingChatInput,
 ): string {
-  const identity = `${input.continuationMode ?? "standard"}:${input.authenticatedUser?.telegramId ?? "no-telegram"}:${idempotencyKey}`;
+  const identity = `${input.continuationMode ?? "standard"}:${input.authenticatedUser?.telegramId ?? "no-telegram"}:${input.authenticatedUser?.discordId ?? "no-discord"}:${idempotencyKey}`;
   return `${REPLAY_KEY_PREFIX}${scope}:${storageComponent(identity)}`;
 }
 
@@ -763,9 +763,12 @@ export class OnboardingSessionCoordinator {
     if (replay) {
       writes[replayStorageKey(scope, replay.key, request.input)] = replay;
     }
+    // A different authenticated account is deliberately given a fresh session.
+    // In that case, keep the platform scope pointing at its original owner;
+    // retargeting it to the rejected caller would hijack every later DM.
     const migratedPlatformSession =
       (platformSession ?? legacySession ?? cachedSession)?.id ===
-      request.sessionId;
+        request.sessionId && result.session.id === request.sessionId;
     const platformHistoryKeys = migratedPlatformSession
       ? await historyStorageKeys(this.state.storage, platformScope)
       : [];
