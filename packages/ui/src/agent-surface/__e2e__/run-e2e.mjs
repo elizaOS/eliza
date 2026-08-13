@@ -15,21 +15,37 @@
  *      discovers and drives real plugin source — list-elements → agent-click /
  *      agent-fill → state change — exactly as DynamicViewLoader does in-app.
  *
+ * Direct runs write to ./output. The canonical recorder sets E2E_RECORD=1 and
+ * E2E_RECORDING_DIR to collect these artifacts under the repository-wide
+ * e2e-recordings tree.
+ *
  * Run: bun run packages/ui/src/agent-surface/__e2e__/run-e2e.mjs
  * Exits non-zero on any failed assertion.
  */
 
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
 import { chromium } from "playwright";
+import {
+  AGENT_SURFACE_ARTIFACT_NAMES,
+  resolveAgentSurfaceOutputDir,
+} from "./output-path.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const uiSrc = resolve(here, "..");
 const repoRoot = resolve(here, "../../../../..");
-const outDir = join(here, "output");
+const outDir = resolveAgentSurfaceOutputDir();
 await mkdir(outDir, { recursive: true });
+
+// A previous successful run must never satisfy the current run's evidence
+// contract. Remove only the runner-owned files before launching Chromium.
+await Promise.all(
+  AGENT_SURFACE_ARTIFACT_NAMES.map((name) =>
+    rm(join(outDir, name), { force: true }),
+  ),
+);
 
 function assert(cond, msg) {
   if (!cond) {
@@ -219,10 +235,19 @@ async function driveRealView(browser) {
   }
 }
 
+async function assertArtifactsWritten() {
+  for (const artifactName of AGENT_SURFACE_ARTIFACT_NAMES) {
+    const artifactPath = join(outDir, artifactName);
+    const artifact = await stat(artifactPath);
+    assert(artifact.size > 0, `${artifactName} was written to ${outDir}`);
+  }
+}
+
 const browser = await chromium.launch();
 try {
   await driveSyntheticFixture(browser);
   await driveRealView(browser);
+  await assertArtifactsWritten();
   console.log(`\nScreenshots written to ${outDir}`);
 } finally {
   await browser.close();
