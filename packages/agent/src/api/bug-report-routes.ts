@@ -19,6 +19,10 @@ function sanitizeRepoName(value: string | undefined): string | null {
   const trimmed = value?.trim();
   if (!trimmed) return null;
   if (!/^[\w.-]+\/[\w.-]+$/.test(trimmed)) return null;
+  const [owner, repo] = trimmed.split("/");
+  if (owner === "." || owner === ".." || repo === "." || repo === "..") {
+    return null;
+  }
   return trimmed;
 }
 

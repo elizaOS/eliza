@@ -99,6 +99,11 @@ describe.sequential("bug report repository routing", () => {
     ["missing owner", "/repo"],
     ["missing repository", "owner/"],
     ["extra path segment", "owner/repo/issues"],
+    ["dot owner", "./repo"],
+    ["parent owner", "../repo"],
+    ["dot repository", "owner/."],
+    ["parent repository", "owner/.."],
+    ["dot path", "../.."],
   ])("falls back for a %s primary override", (_name, value) => {
     expect(
       resolveBugReportRepo({
@@ -119,6 +124,20 @@ describe.sequential("bug report repository routing", () => {
         "https://github.com/elizaOS/eliza/issues/new?template=bug_report.yml",
     });
     expect(ctx.responseStatus).toBe(200);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("falls back to the canonical no-token URL for a dot-path override", async () => {
+    vi.stubEnv(BUG_REPORT_REPO_ENV_KEY, "../..");
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const ctx = createContext();
+
+    expect(await handleBugReportRoutes(ctx)).toBe(true);
+    expect(ctx.responseBody).toEqual({
+      fallback:
+        "https://github.com/elizaOS/eliza/issues/new?template=bug_report.yml",
+    });
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
@@ -158,6 +177,27 @@ describe.sequential("bug report repository routing", () => {
     expect(ctx.responseBody).toEqual({
       url: "https://github.com/elizaOS/eliza/issues/123",
     });
+  });
+
+  it("posts to the canonical GitHub API for a dot-path override", async () => {
+    vi.stubEnv(BUG_REPORT_REPO_ENV_KEY, "../..");
+    vi.stubEnv("GITHUB_TOKEN", "test-token-not-a-credential");
+    const fetchMock = vi.fn(
+      async (_input: RequestInfo | URL, _init?: RequestInit) =>
+        new Response(
+          JSON.stringify({
+            html_url: "https://github.com/elizaOS/eliza/issues/123",
+          }),
+          { status: 201, headers: { "Content-Type": "application/json" } },
+        ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const ctx = createContext();
+
+    expect(await handleBugReportRoutes(ctx)).toBe(true);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url] = fetchMock.mock.calls[0];
+    expect(url).toBe("https://api.github.com/repos/elizaOS/eliza/issues");
   });
 
   it("keeps remote intake precedence over token-backed GitHub submission", async () => {
