@@ -166,6 +166,16 @@ if (!process.env.ELIZA_API_PORT) {
   process.env.ELIZA_API_PORT = String(uiSmokeApiPort);
 }
 
+// Functional lanes own deterministic route fixtures, while service-worker fetch
+// behavior has dedicated unit coverage. Blocking the production worker also
+// prevents route transitions from turning intentionally aborted dynamic imports
+// into synthetic 503 "Offline" console errors. This stays project-scoped rather
+// than global: the aesthetic-audit projects photograph the shipped app, so they
+// must keep the production service worker they render with today.
+const BLOCK_PRODUCTION_SERVICE_WORKER = {
+  serviceWorkers: "block" as const,
+};
+
 // CI splits this lane across runners because `workers: 1` is a suite invariant
 // (one live stack per process). Playwright assigns whole spec files while
 // `fullyParallel` is false, so a file's internal order survives the split.
@@ -214,6 +224,7 @@ export default defineConfig({
       use: {
         ...devices["Desktop Chrome"],
         ...withChromiumLaunchOptions(),
+        ...BLOCK_PRODUCTION_SERVICE_WORKER,
       },
     },
     ...DASHBOARD_E2E_DEVICE_MATRIX.map((viewport) => ({
@@ -225,6 +236,7 @@ export default defineConfig({
         isMobile: viewport.isMobile,
         hasTouch: viewport.hasTouch,
         ...withChromiumLaunchOptions(),
+        ...BLOCK_PRODUCTION_SERVICE_WORKER,
       },
     })),
     {

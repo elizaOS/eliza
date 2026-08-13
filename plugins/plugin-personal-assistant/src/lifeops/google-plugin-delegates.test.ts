@@ -10,7 +10,11 @@ function runtime(): IAgentRuntime {
     agentId: "11111111-1111-4111-8111-111111111111",
     character: { name: "Test Agent" },
     getService: vi.fn(() => null),
-    getSetting: vi.fn(() => undefined),
+    getSetting: vi.fn((key: string) =>
+      key === "GOOGLE_REDIRECT_URI"
+        ? "http://127.0.0.1:31437/api/connectors/google/oauth/callback"
+        : undefined,
+    ),
     setSetting: vi.fn(),
   } as IAgentRuntime;
 }

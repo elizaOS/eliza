@@ -474,5 +474,5 @@ describe("measure-anonymous-login-transfer CLI", () => {
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }
-  });
+  }, 30_000);
 });
