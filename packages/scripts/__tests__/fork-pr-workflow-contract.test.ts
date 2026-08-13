@@ -70,6 +70,12 @@ function assertForkPrDispatchContract(
   expect(secretScan?.name).toBe("gitleaks");
   expect(secretScan?.["runs-on"]).toBe("ubuntu-24.04");
   expect(JSON.stringify(secretScan)).toContain("gitleaks detect");
+  // Canonical CI owns the only pull-request secret scan now, so it must keep
+  // the three-dot merge-base range from #17984; a two-dot range re-flags
+  // fixtures the branch merely inherited by merging develop.
+  expect(JSON.stringify(secretScan)).toContain(
+    "$" + "{BASE_SHA}..." + "$" + "{HEAD_SHA}",
+  );
   const required = JSON.stringify(ci.jobs?.required);
   expect(required).toContain("develop_pr");
   expect(required).toContain("needs.develop_pr.result");

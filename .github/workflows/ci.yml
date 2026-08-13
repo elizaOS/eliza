@@ -549,12 +549,23 @@ jobs:
       - name: Scan changed commits
         shell: bash
         env:
+          EVENT_NAME: ${{ github.event_name }}
           BASE_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
           HEAD_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
         run: |
           set -euo pipefail
           if [ -n "$BASE_SHA" ] && [ "$BASE_SHA" != "0000000000000000000000000000000000000000" ]; then
-            range="${BASE_SHA}..${HEAD_SHA}"
+            if [ "$EVENT_NAME" = "pull_request" ]; then
+              # Three-dot: scan merge-base(base,head)..head, i.e. only what THIS
+              # PR added. `pull_request.base.sha` is the base tip at event time,
+              # not the merge base, so a two-dot range also scans commits the
+              # branch merely inherited by merging develop and re-flags fixtures
+              # the PR never touched (#17971/#17984). Canonical CI now owns the
+              # only PR secret scan, so the three-dot range must live here.
+              range="${BASE_SHA}...${HEAD_SHA}"
+            else
+              range="${BASE_SHA}..${HEAD_SHA}"
+            fi
           else
             range="-1 ${HEAD_SHA}"
           fi
