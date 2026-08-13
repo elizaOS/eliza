@@ -168,29 +168,68 @@ function normalizeRequestedCapabilities(scopes: readonly string[] | undefined): 
       }
     );
   }
+
   // The caller passes either capability identifiers (e.g. "gmail.read") OR raw
   // OAuth scope URLs. Both shapes are accepted so the manager's startOAuth API
   // surface stays uniform with other providers (which use raw scopes).
   const requested = new Set<GoogleCapability>();
+  const seenRawScopes = new Set<string>();
+  const seenCapabilities = new Set<GoogleCapability>();
   const identityScopes = new Set<string>(
     GOOGLE_IDENTITY_SCOPES.map((scope) => scope.toLowerCase())
   );
   for (const value of scopes) {
-    if (isGoogleCapability(value)) {
-      requested.add(value);
+    if (typeof value !== "string") {
+      throw new ElizaError("Google OAuth capability or scope must be a string.", {
+        code: "GOOGLE_OAUTH_SCOPE_MALFORMED",
+        context: { valueType: typeof value },
+        severity: "fatal",
+      });
+    }
+    const normalizedValue = value.trim();
+    if (!normalizedValue) {
+      throw new ElizaError("Google OAuth capability or scope cannot be blank.", {
+        code: "GOOGLE_OAUTH_SCOPE_MALFORMED",
+        context: { scope: value },
+        severity: "fatal",
+      });
+    }
+    const rawKey = normalizedValue.toLowerCase();
+    if (seenRawScopes.has(rawKey)) {
+      throw new ElizaError(`Google OAuth capability or scope is duplicated: ${normalizedValue}`, {
+        code: "GOOGLE_OAUTH_SCOPE_DUPLICATE",
+        context: { scope: normalizedValue },
+        severity: "fatal",
+      });
+    }
+    seenRawScopes.add(rawKey);
+
+    let capability: GoogleCapability | undefined;
+    if (isGoogleCapability(normalizedValue)) {
+      capability = normalizedValue;
+    } else {
+      capability = matchCapabilityFromScope(normalizedValue);
+    }
+
+    if (capability) {
+      if (seenCapabilities.has(capability)) {
+        throw new ElizaError(`Google OAuth capability is duplicated: ${capability}`, {
+          code: "GOOGLE_OAUTH_SCOPE_DUPLICATE",
+          context: { capability },
+          severity: "fatal",
+        });
+      }
+      seenCapabilities.add(capability);
+      requested.add(capability);
       continue;
     }
-    const matched = matchCapabilityFromScope(value);
-    if (matched) {
-      requested.add(matched);
+
+    if (identityScopes.has(rawKey)) {
       continue;
     }
-    if (identityScopes.has(value.trim().toLowerCase())) {
-      continue;
-    }
-    throw new ElizaError(`Google OAuth capability or scope is not recognized: ${value}`, {
+    throw new ElizaError(`Google OAuth capability or scope is not recognized: ${normalizedValue}`, {
       code: "GOOGLE_OAUTH_SCOPE_UNRECOGNIZED",
-      context: { scope: value },
+      context: { scope: normalizedValue },
       severity: "fatal",
     });
   }
@@ -473,7 +512,7 @@ export function createGoogleConnectorAccountProvider(
         prompt: "consent",
         code_challenge: codeChallenge,
         code_challenge_method: "S256",
-        include_granted_scopes: "true",
+        include_granted_scopes: "false",
       });
 
       return {
@@ -517,17 +556,38 @@ export function createGoogleConnectorAccountProvider(
         codeVerifier: request.flow.codeVerifier,
       });
 
+      const requestedCapabilities = normalizeRequestedCapabilities(
+        requestedScopesFromMetadata(request.flow.metadata)
+      );
       const grantedScopes = parseScopeString(tokens.scope);
       const normalizedGrant =
         grantedScopes.length > 0
           ? normalizeGrantedCapabilities(grantedScopes)
           : {
-              capabilities: normalizeRequestedCapabilities(
-                requestedScopesFromMetadata(request.flow.metadata)
-              ),
+              capabilities: requestedCapabilities,
               ignoredScopes: [],
             };
       const grantedCapabilities = normalizedGrant.capabilities;
+      const requestedCapabilitySet = new Set<GoogleCapability>(requestedCapabilities);
+      const unexpectedCapabilities = grantedCapabilities.filter(
+        (capability) => !requestedCapabilitySet.has(capability)
+      );
+      if (unexpectedCapabilities.length > 0) {
+        throw new ElizaError(
+          `Google OAuth returned unrequested capability grants: ${unexpectedCapabilities.join(
+            ", "
+          )}. Reconnect with an explicit capability selection.`,
+          {
+            code: "GOOGLE_OAUTH_SCOPE_ESCALATION",
+            context: {
+              requestedCapabilities,
+              grantedCapabilities,
+              unexpectedCapabilities,
+            },
+            severity: "fatal",
+          }
+        );
+      }
       if (normalizedGrant.ignoredScopes.length > 0) {
         logger.warn(
           {

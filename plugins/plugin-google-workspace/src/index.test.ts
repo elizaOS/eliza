@@ -92,7 +92,7 @@ describe("google plugin", () => {
     expect(config.scopes).toContain(GOOGLE_OAUTH_SCOPES.drive.read);
     expect(config.scopes).toContain(GOOGLE_OAUTH_SCOPES.meet.read);
     expect(config.scopes).not.toContain(GOOGLE_OAUTH_SCOPES.gmail.send);
-    expect(config.authorizationParams.include_granted_scopes).toBe("true");
+    expect(config.authorizationParams.include_granted_scopes).toBe("false");
   });
 
   it("rejects unknown connector OAuth capabilities instead of widening access", async () => {
@@ -203,6 +203,63 @@ describe("google plugin", () => {
     ).rejects.toThrow(
       "Google OAuth requires an explicit Gmail, Calendar, Drive, or Meet capability selection."
     );
+  });
+
+  it.each([
+    {
+      label: "duplicate capability ids",
+      scopes: ["gmail.read", "gmail.read"],
+      expected: "Google OAuth capability or scope is duplicated: gmail.read",
+    },
+    {
+      label: "duplicate raw scope aliases",
+      scopes: [GOOGLE_OAUTH_SCOPES.gmail.read, GOOGLE_OAUTH_SCOPES.gmail.read],
+      expected: `Google OAuth capability or scope is duplicated: ${GOOGLE_OAUTH_SCOPES.gmail.read}`,
+    },
+    {
+      label: "capability id repeated through raw scope",
+      scopes: ["gmail.read", GOOGLE_OAUTH_SCOPES.gmail.read],
+      expected: "Google OAuth capability is duplicated: gmail.read",
+    },
+    {
+      label: "blank strings",
+      scopes: ["gmail.read", " "],
+      expected: "Google OAuth capability or scope cannot be blank.",
+    },
+    {
+      label: "non-string entries",
+      scopes: ["gmail.read", 42] as never,
+      expected: "Google OAuth capability or scope must be a string.",
+    },
+  ])("rejects malformed OAuth start scope input: $label", async ({ scopes, expected }) => {
+    const runtime = {
+      getSetting: (key: string) =>
+        ({
+          GOOGLE_CLIENT_ID: "google-client",
+          GOOGLE_CLIENT_SECRET: "google-secret",
+          GOOGLE_REDIRECT_URI: "http://localhost:31437/api/connectors/google/oauth/callback",
+        })[key],
+      getService: () => null,
+    } as never;
+    const provider = createGoogleConnectorAccountProvider(runtime);
+
+    await expect(
+      provider.startOAuth?.(
+        {
+          provider: "google",
+          scopes,
+          flow: {
+            id: "flow-bad-scope-input",
+            provider: "google",
+            state: "state-bad-scope-input",
+            status: "pending",
+            createdAt: Date.now(),
+            updatedAt: Date.now(),
+          },
+        },
+        {} as never
+      )
+    ).rejects.toThrow(expected);
   });
 
   it("defaults re-auth with accountId and omitted scopes to the account's recorded granted capabilities (#18543)", async () => {
@@ -425,8 +482,16 @@ describe("google plugin", () => {
     expect(requestedScopes).not.toContain(GOOGLE_OAUTH_SCOPES.drive.write);
     expect(requestedScopes).not.toContain(GOOGLE_OAUTH_SCOPES.meet.create);
     expect(requestedScopes).not.toContain(GOOGLE_OAUTH_SCOPES.meet.read);
+    expect(url.searchParams.get("include_granted_scopes")).toBe("false");
     expect(result?.metadata).toMatchObject({
       requestedCapabilities: ["gmail.read", "calendar.read"],
+      requestedScopes: [
+        GOOGLE_OAUTH_SCOPES.profile.openid,
+        GOOGLE_OAUTH_SCOPES.profile.email,
+        GOOGLE_OAUTH_SCOPES.profile.profile,
+        GOOGLE_OAUTH_SCOPES.gmail.read,
+        GOOGLE_OAUTH_SCOPES.calendar.read,
+      ],
     });
   });
 
@@ -471,6 +536,7 @@ describe("google plugin", () => {
       ])
     );
     expect(requestedScopes).not.toContain(GOOGLE_OAUTH_SCOPES.calendar.write);
+    expect(url.searchParams.get("include_granted_scopes")).toBe("false");
     expect(result?.metadata).toMatchObject({
       requestedCapabilities: ["calendar.read"],
     });
@@ -564,6 +630,41 @@ describe("google plugin", () => {
       scope: request.scopes.join(" "),
     });
     expect(credentialStore.get).toHaveBeenCalledTimes(2);
+  });
+
+  it("rejects account operations when the stored grant lacks the requested capability", async () => {
+    const storage = createCredentialStorage({
+      records: [
+        {
+          credentialType: "oauth.tokens",
+          value: JSON.stringify({
+            access_token: "access-token",
+            refresh_token: "refresh-token",
+            expiry_date: Date.now() + 3600_000,
+          }),
+        },
+      ],
+      metadata: {
+        grantedCapabilities: ["gmail.read"],
+      },
+    });
+    const resolver = new DefaultGoogleCredentialResolver({
+      storage,
+      clientId: "google-client",
+      clientSecret: "google-secret",
+    });
+
+    await expect(
+      resolver.getAuthClient({
+        provider: "google",
+        accountId: "acct_google_1",
+        capabilities: ["calendar.read"],
+        scopes: scopesForGoogleCapabilities(["calendar.read"]),
+        reason: "calendar.listCalendars",
+      })
+    ).rejects.toThrow(
+      "Google account acct_google_1 is missing required capability calendar.read for calendar.listCalendars."
+    );
   });
 
   it("resolves OAuth clients from account metadata credential refs", async () => {
@@ -733,7 +834,10 @@ describe("google plugin", () => {
           codeVerifier: "verifier",
           createdAt: Date.now(),
           updatedAt: Date.now(),
-          metadata: { requestedRole: "AGENT" },
+          metadata: {
+            requestedRole: "AGENT",
+            requestedScopes: scopesForGoogleCapabilities(["gmail.read"]),
+          },
         },
       },
       manager as never
@@ -848,6 +952,79 @@ describe("google plugin", () => {
     expect(
       vault.get("connector.agent-1.google.acct_google_incremental_grant.oauth_tokens")
     ).toContain(providerAddedScope);
+  });
+
+  it("rejects provider-returned supported capabilities that were not requested", async () => {
+    const runtime = {
+      agentId: "agent-1",
+      getSetting: (key: string) =>
+        ({
+          GOOGLE_CLIENT_ID: "google-client",
+          GOOGLE_CLIENT_SECRET: "google-secret",
+          GOOGLE_REDIRECT_URI: "http://localhost:31437/api/connectors/google/oauth/callback",
+        })[key],
+      getService: () => null,
+    } as never;
+    const manager = createOAuthCallbackManager(
+      "google",
+      "acct_google_scope_escalation",
+      vi.fn(async () => undefined)
+    );
+    const returnedScopes = [
+      GOOGLE_OAUTH_SCOPES.profile.openid,
+      GOOGLE_OAUTH_SCOPES.profile.email,
+      GOOGLE_OAUTH_SCOPES.gmail.read,
+      GOOGLE_OAUTH_SCOPES.drive.read,
+    ];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string | URL | Request) => {
+        const href = String(url);
+        if (href.includes("oauth2.googleapis.com/token")) {
+          return new Response(
+            JSON.stringify({
+              access_token: "google-access-token",
+              refresh_token: "google-refresh-token",
+              expires_in: 3600,
+              scope: returnedScopes.join(" "),
+              token_type: "Bearer",
+              id_token: createUnsignedJwt({
+                sub: "google-subject",
+                email: "ada@example.com",
+              }),
+            }),
+            { status: 200, headers: { "content-type": "application/json" } }
+          );
+        }
+        throw new Error(`Unexpected fetch ${href}`);
+      })
+    );
+    const provider = createGoogleConnectorAccountProvider(runtime);
+
+    await expect(
+      provider.completeOAuth?.(
+        {
+          provider: "google",
+          code: "oauth-code",
+          query: {},
+          flow: {
+            id: "flow-scope-escalation",
+            provider: "google",
+            state: "state-scope-escalation",
+            status: "pending",
+            codeVerifier: "verifier",
+            createdAt: Date.now(),
+            updatedAt: Date.now(),
+            metadata: {
+              requestedCapabilities: ["gmail.read"],
+              requestedScopes: scopesForGoogleCapabilities(["gmail.read"]),
+            },
+          },
+        },
+        manager as never
+      )
+    ).rejects.toThrow("Google OAuth returned unrequested capability grants: drive.read");
+    expect(manager.upsertAccount).not.toHaveBeenCalled();
   });
 
   it("fails an OAuth callback that grants identity but no connector capability", async () => {
@@ -1052,7 +1229,9 @@ describe("google plugin", () => {
             codeVerifier: "verifier",
             createdAt: Date.now(),
             updatedAt: Date.now(),
-            metadata: {},
+            metadata: {
+              requestedScopes: scopesForGoogleCapabilities(["gmail.read"]),
+            },
           },
         },
         manager as never
@@ -1802,7 +1981,10 @@ function createCredentialStorage(options: {
     status: "connected",
     createdAt: Date.now(),
     updatedAt: Date.now(),
-    metadata: options.metadata ?? {},
+    metadata: {
+      grantedCapabilities: GOOGLE_CAPABILITIES,
+      ...(options.metadata ?? {}),
+    },
   };
 
   return {

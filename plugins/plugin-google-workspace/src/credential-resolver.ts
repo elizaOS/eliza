@@ -31,6 +31,7 @@ import {
   CORE_SECRETS_SERVICE_TYPE,
   credentialRefRecordsFromMetadata,
 } from "./connector-credential-refs.js";
+import { type GoogleCapability, isGoogleCapability } from "./scopes.js";
 import type {
   GoogleAuthClient,
   GoogleAuthResolutionRequest,
@@ -177,6 +178,7 @@ export class DefaultGoogleCredentialResolver implements GoogleCredentialResolver
     if (account.status !== "connected") {
       throw new Error(`Google account ${request.accountId} is ${account.status}, not connected.`);
     }
+    assertAccountHasCapabilities(account, request);
 
     const clientConfig = this.resolveOAuthClientConfig(account);
     const storage = this.resolveStorage();
@@ -599,6 +601,47 @@ function readStringFromRecord(
     if (value) return value;
   }
   return undefined;
+}
+
+function capabilitiesFromValue(value: unknown): GoogleCapability[] {
+  if (!Array.isArray(value)) return [];
+  const capabilities: GoogleCapability[] = [];
+  const seen = new Set<GoogleCapability>();
+  for (const item of value) {
+    if (!isGoogleCapability(item) || seen.has(item)) {
+      continue;
+    }
+    seen.add(item);
+    capabilities.push(item);
+  }
+  return capabilities;
+}
+
+function capabilitiesFromAccount(account: ConnectorAccount): GoogleCapability[] {
+  const metadata = asRecord(account.metadata);
+  const topLevelCapabilities = capabilitiesFromValue(
+    (account as ConnectorAccount & { capabilities?: unknown }).capabilities
+  );
+  return [...capabilitiesFromValue(metadata?.grantedCapabilities), ...topLevelCapabilities];
+}
+
+function assertAccountHasCapabilities(
+  account: ConnectorAccount,
+  request: GoogleAuthResolutionRequest
+): void {
+  if (request.capabilities.length === 0) {
+    return;
+  }
+  const granted = new Set(capabilitiesFromAccount(account));
+  const missing = request.capabilities.filter((capability) => !granted.has(capability));
+  if (missing.length === 0) {
+    return;
+  }
+  throw new Error(
+    `Google account ${request.accountId} is missing required capability ${missing.join(
+      ", "
+    )} for ${request.reason}. Reconnect the account with the required Google Workspace capability.`
+  );
 }
 
 async function readSecret(
