@@ -27,6 +27,7 @@ export type ReplyGateDecision =
 				| "no_gate"
 				| "lift_signal"
 				| "on_mention_satisfied"
+				| "on_mention_continuity"
 				| "addressed_or_ambient";
 	  }
 	| {
@@ -41,6 +42,14 @@ export interface ReplyGateInput {
 	globalSlot?: PersonalitySlot | null;
 	messageText: string | undefined;
 	explicitlyAddressesAgent: boolean;
+	/**
+	 * Caller-computed: the agent's most recent message in this room is fresh
+	 * AND was engaged with THIS sender (see services/message/reply-gate-continuity.ts).
+	 * Consulted ONLY by the on_mention branch — an unaddressed follow-up that
+	 * continues an active exchange is not an unsolicited reply. Muting
+	 * (never_until_lift) deliberately ignores it.
+	 */
+	recentlyEngagedWithSender?: boolean;
 }
 
 export function resolveEffectiveReplyGate(
@@ -109,6 +118,13 @@ export function decideReplyGate(input: ReplyGateInput): ReplyGateDecision {
 	if (mode === "on_mention") {
 		if (input.explicitlyAddressesAgent) {
 			return { allow: true, reason: "on_mention_satisfied" };
+		}
+		if (input.recentlyEngagedWithSender === true) {
+			// Active-conversation continuity: the agent just replied to this
+			// sender in this room, so an unaddressed follow-up continues the
+			// exchange rather than starting one. Downstream over-reply guards
+			// (Stage-1 group triage, post-Stage-1 addressing gate) still run.
+			return { allow: true, reason: "on_mention_continuity" };
 		}
 		return {
 			allow: false,
