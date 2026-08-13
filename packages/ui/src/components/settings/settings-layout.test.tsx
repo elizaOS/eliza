@@ -9,7 +9,11 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { Bell } from "lucide-react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { SettingsSelectRow, SettingsSwitchRow } from "./settings-agent-rows";
+import {
+  SettingsInputRow,
+  SettingsSelectRow,
+  SettingsSwitchRow,
+} from "./settings-agent-rows";
 import { SettingsGroup, SettingsRow, SettingsStack } from "./settings-layout";
 
 afterEach(() => cleanup());
@@ -107,6 +111,28 @@ describe("agent-addressable rows", () => {
       "Toggle push notifications",
     );
     expect(sw).toHaveProperty("disabled", true);
+  });
+
+  it("SettingsInputRow labels the field and exposes agent data attributes", () => {
+    const onValueChange = vi.fn();
+    render(
+      <SettingsInputRow
+        agentId="security-password-new"
+        label="New password"
+        type="password"
+        value=""
+        onValueChange={onValueChange}
+        invalid
+      />,
+    );
+    const input = screen.getByLabelText("New password");
+    expect(input.getAttribute("data-agent-id")).toBe("security-password-new");
+    expect(input.getAttribute("data-agent-role")).toBe("text-input");
+    expect(input.getAttribute("id")).toBe("security-password-new");
+    expect(input.getAttribute("aria-invalid")).toBe("true");
+    expect(screen.getByText("New password").tagName).toBe("LABEL");
+    fireEvent.change(input, { target: { value: "abcdefghijkl" } });
+    expect(onValueChange).toHaveBeenCalledWith("abcdefghijkl");
   });
 
   it("SettingsSelectRow registers as an agent-addressable select", () => {

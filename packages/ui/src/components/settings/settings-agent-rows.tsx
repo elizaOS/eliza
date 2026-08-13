@@ -292,6 +292,10 @@ export interface SettingsInputRowProps {
   variant?: SettingsInputVariant;
   disabled?: boolean;
   group?: string;
+  /** Marks the field invalid for assistive tech and danger styling. */
+  invalid?: boolean;
+  /** Optional stable test id applied to the input. */
+  testId?: string;
   className?: string;
   inputClassName?: string;
 }
@@ -313,6 +317,8 @@ export function SettingsInputRow({
   variant = "touch",
   disabled = false,
   group = "settings",
+  invalid = false,
+  testId,
   className,
   inputClassName,
 }: SettingsInputRowProps) {
@@ -334,10 +340,12 @@ export function SettingsInputRow({
       label={label}
       description={description}
       className={className}
+      htmlFor={agentId}
       stacked
     >
       <SettingsInput
         ref={ref}
+        id={agentId}
         variant={variant}
         type={type}
         value={value}
@@ -346,8 +354,10 @@ export function SettingsInputRow({
         inputMode={inputMode}
         autoComplete={autoComplete}
         disabled={disabled}
+        aria-invalid={invalid || undefined}
         aria-label={resolvedLabel}
-        className={inputClassName}
+        data-testid={testId}
+        className={cn(invalid && "border-danger", inputClassName)}
         {...agentProps}
       />
     </SettingsRow>
