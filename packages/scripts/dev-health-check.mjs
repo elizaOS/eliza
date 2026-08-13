@@ -40,6 +40,12 @@ const POLL_INTERVAL_MS = 1000;
 const FETCH_TIMEOUT_MS = 10000;
 const FINAL_PROBE_RETRIES = 3;
 const FINAL_PROBE_RETRY_DELAY_MS = 1000;
+// Biome prefers a literal, but that form embeds the control character rejected by its safety rule.
+// biome-ignore lint/complexity/useRegexLiterals: construct the ANSI matcher without a control-character literal
+const ANSI_ESCAPE_PATTERN = new RegExp(
+  String.raw`\u001b\[[0-9;?]*[ -/]*[@-~]`,
+  "g",
+);
 
 /**
  * Parse CLI argv and optional env into health-check options.
@@ -47,23 +53,30 @@ const FINAL_PROBE_RETRY_DELAY_MS = 1000;
  * @param {NodeJS.ProcessEnv} [env]
  */
 export function parseArgs(argv, env = process.env) {
+  if (argv.some((arg) => arg === "--help" || arg === "-h")) {
+    printHelp();
+    process.exit(0);
+  }
+
+  const parsedArgs = argv.map((arg) => {
+    const separatorIndex = arg.indexOf("=");
+    if (separatorIndex < 1 || separatorIndex === arg.length - 1) {
+      throw new Error(`Expected --key=value, got ${arg}`);
+    }
+    return {
+      key: arg.slice(0, separatorIndex),
+      value: arg.slice(separatorIndex + 1),
+    };
+  });
   const options = {
     seconds: DEFAULT_SECONDS,
-    uiPort: resolveUiPortFromEnv(env),
-    apiPort: resolveApiPortFromEnv(env),
+    uiPort: null,
+    apiPort: null,
     initialProbeDelayMs: DEFAULT_INITIAL_PROBE_DELAY_MS,
     logDir: path.join(process.cwd(), "logs"),
   };
 
-  for (const arg of argv) {
-    if (arg === "--help" || arg === "-h") {
-      printHelp();
-      process.exit(0);
-    }
-    const [key, value] = arg.split("=", 2);
-    if (!value) {
-      throw new Error(`Expected --key=value, got ${arg}`);
-    }
+  for (const { key, value } of parsedArgs) {
     if (key === "--seconds") {
       options.seconds = parsePositiveNumber(value, "--seconds");
     } else if (key === "--duration-ms") {
@@ -82,6 +95,13 @@ export function parseArgs(argv, env = process.env) {
     } else {
       throw new Error(`Unknown option: ${key}`);
     }
+  }
+
+  if (options.uiPort === null) {
+    options.uiPort = resolveUiPortFromEnv(env);
+  }
+  if (options.apiPort === null) {
+    options.apiPort = resolveApiPortFromEnv(env);
   }
 
   return options;
@@ -126,7 +146,7 @@ export function resolveApiPortFromEnv(env = process.env) {
  * @param {string} label
  */
 export function parseTcpPort(value, label) {
-  const raw = String(value ?? "").trim();
+  const raw = String(value ?? "");
   if (!/^\d+$/.test(raw)) {
     throw new Error(
       `${label} must be a TCP port integer from 1 to 65535 (received ${JSON.stringify(String(value ?? ""))})`,
@@ -219,7 +239,7 @@ function parsePositiveNumber(value, label) {
 }
 
 function stripAnsi(value) {
-  return value.replace(/\x1b\[[0-9;?]*[ -/]*[@-~]/g, "");
+  return value.replace(ANSI_ESCAPE_PATTERN, "");
 }
 
 function timestamp() {
@@ -705,7 +725,7 @@ async function run() {
       )
     : [];
   const exitedEarly = Boolean(
-    childExit && childExit.at && childExit.at - startedAt < durationMs - 1000,
+    childExit?.at && childExit.at - startedAt < durationMs - 1000,
   );
 
   const failures = [];
