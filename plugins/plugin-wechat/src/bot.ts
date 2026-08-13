@@ -40,7 +40,7 @@ export class Bot {
     );
   }
 
-  handleIncoming(message: WechatMessageContext): void {
+  async handleIncoming(message: WechatMessageContext): Promise<void> {
     // Deduplication
     if (this.isDuplicate(message.id)) {
       return;
@@ -61,9 +61,16 @@ export class Bot {
       return;
     }
 
-    void Promise.resolve(this.onMessage(message)).catch((error: unknown) => {
-      console.error("[wechat] Failed to process inbound message:", error);
-    });
+    try {
+      await this.onMessage(message);
+    } catch (error) {
+      // error-policy:J2 preserve the delivery failure for the webhook boundary
+      // after restoring retryability; do not convert it into acknowledged work.
+      // A delivery acknowledged with HTTP 500 must remain retryable. The
+      // request boundary reports this failure after it propagates upward.
+      this.seen.delete(message.id);
+      throw error;
+    }
   }
 
   private isDuplicate(messageId: string): boolean {

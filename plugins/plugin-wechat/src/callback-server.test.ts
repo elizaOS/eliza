@@ -2,10 +2,10 @@
  * Fail-closed coverage for the webhook boundary (#19060): malformed
  * percent-encoding in the account path answers 404 over a real HTTP
  * round-trip instead of throwing out of the request handler, non-object
- * payload data is rejected, and present-but-unusable timestamps drop the
- * message instead of producing a non-finite inbound createdAt. The server
- * suite runs against a real listener on an ephemeral port; only the
- * onMessage sink is a recording stub.
+ * payload data is rejected, present-but-unusable timestamps drop the message,
+ * and delivery failures remain server errors rather than malformed-input
+ * responses. The server suite runs against a real listener on an ephemeral
+ * port; only the delivery and diagnostic sinks are recording stubs.
  */
 
 import { request } from "node:http";
@@ -77,6 +77,21 @@ describe("normalizePayload fail-closed boundaries (#19060)", () => {
     expect(normalizePayload({})).toBeNull();
   });
 
+  it("does not reinterpret a present invalid nested envelope as flattened", () => {
+    for (const data of [null, undefined, "invalid", 42, false, ["array"]]) {
+      expect(
+        normalizePayload({
+          data,
+          type: 60001,
+          sender: "alice",
+          recipient: "bot",
+          content: "must not fall through",
+          timestamp: VALID_MS,
+        }),
+      ).toBeNull();
+    }
+  });
+
   it("keeps valid nested and flattened payloads working", () => {
     expect(normalizePayload(basePayload())?.content).toBe("hello");
     expect(
@@ -97,24 +112,35 @@ describe("normalizePayload fail-closed boundaries (#19060)", () => {
     );
   });
 
-  it("drops messages whose present timestamp is unusable", () => {
-    expect(
-      normalizePayload(basePayload({ timestamp: "not-a-date" })),
-    ).toBeNull();
-    expect(
-      normalizePayload(basePayload({ timestamp: Number.POSITIVE_INFINITY })),
-    ).toBeNull();
-    expect(normalizePayload(basePayload({ timestamp: -5 }))).toBeNull();
+  it.each([
+    ["null", null],
+    ["undefined", undefined],
+    ["blank", ""],
+    ["whitespace", "   "],
+    ["boolean true", true],
+    ["boolean false", false],
+    ["garbage", "not-a-date"],
+    ["Infinity", Number.POSITIVE_INFINITY],
+    ["negative", -5],
+    ["fractional", VALID_MS + 0.5],
+    ["unsafe integer", Number.MAX_SAFE_INTEGER + 1],
+  ])("drops a present %s timestamp", (_label, timestamp) => {
+    expect(normalizePayload(basePayload({ timestamp }))).toBeNull();
   });
 
   it("keeps a usable timestamp and defaults a genuinely missing one to now", () => {
     const kept = normalizePayload(basePayload());
     expect(kept?.timestamp).toBe(VALID_MS);
 
+    const { timestamp: _timestamp, ...withoutTimestamp } = basePayload().data;
     const before = Date.now();
-    const defaulted = normalizePayload(basePayload({ timestamp: undefined }));
+    const defaulted = normalizePayload({ data: withoutTimestamp });
     expect(defaulted?.timestamp).toBeGreaterThanOrEqual(before);
     expect(Number.isFinite(defaulted?.timestamp)).toBe(true);
+
+    expect(
+      normalizePayload(basePayload({ timestamp: String(VALID_MS) }))?.timestamp,
+    ).toBe(VALID_MS);
   });
 });
 
@@ -139,6 +165,7 @@ describe("webhook server malformed-path handling (#19060)", () => {
       onMessage: (_accountId, msg) => {
         received.push(msg);
       },
+      onDeliveryError: () => undefined,
     });
     closers.push(handle.close);
     return handle.port;
@@ -237,5 +264,33 @@ describe("webhook server malformed-path handling (#19060)", () => {
     });
     expect(res.status).toBe(200);
     expect(received).toHaveLength(0);
+  });
+
+  it("returns 500 and reports a delivery failure without calling it bad input", async () => {
+    const failures: Array<{ accountId: string; error: unknown }> = [];
+    const handle = await startCallbackServer({
+      port: 0,
+      accounts: [{ accountId: "main", apiKey: "key-main" }],
+      onMessage: async () => {
+        throw new Error("delivery exploded");
+      },
+      onDeliveryError: (error, accountId) => {
+        failures.push({ accountId, error });
+      },
+    });
+    closers.push(handle.close);
+
+    const res = await requestRaw(handle.port, "/webhook/wechat/main", {
+      headers: {
+        "x-api-key": "key-main",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify(basePayload()),
+    });
+
+    expect(res).toEqual({ body: "Internal Server Error", status: 500 });
+    expect(failures).toHaveLength(1);
+    expect(failures[0]?.accountId).toBe("main");
+    expect(failures[0]?.error).toEqual(new Error("delivery exploded"));
   });
 });

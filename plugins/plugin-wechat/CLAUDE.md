@@ -129,8 +129,11 @@ mapping to `WECHAT_TYPE_MAP` in `src/callback-server.ts`.
   mode, accounts sharing a port share one server; each gets its own URL path
   (`/webhook/wechat/<accountId>`). Port conflicts throw at startup.
 - **Webhook fail-closed.** Malformed percent-encoding in an account path returns
-  404. JSON primitives and non-object `data` produce no inbound message; missing
-  timestamps default to receipt time, while unusable timestamps are dropped.
+  404. A present `data` field is authoritative and must be a plain object; it
+  never falls through to the flattened format. Only an actually absent
+  timestamp defaults to receipt time, while present unusable values are
+  dropped. Delivery failures return HTTP 500 and are reported through the
+  runtime instead of being mislabeled as malformed requests.
 - **Message dedup.** `Bot` tracks seen message IDs in a 30-minute window (max
   1 000 entries) to prevent double-processing webhook retries.
 - **Chunking.** `ReplyDispatcher` breaks outgoing text at 2 000-character

@@ -1,7 +1,7 @@
 /**
  * Unit tests for WeChat inbound/outbound internals with mocked collaborators:
- * webhook payload normalization, `Bot` dedup/gating, and `ReplyDispatcher`
- * chunking. No live proxy service.
+ * webhook payload normalization, `Bot` dedup/gating and delivery failure
+ * propagation, and `ReplyDispatcher` chunking. No live proxy service.
  */
 import { describe, expect, it, vi } from "vitest";
 import { Bot } from "./bot";
@@ -59,7 +59,7 @@ describe("@elizaos/plugin-wechat", () => {
     );
   });
 
-  it("deduplicates inbound messages before dispatching to runtime", () => {
+  it("deduplicates inbound messages before dispatching to runtime", async () => {
     const onMessage = vi.fn();
     const bot = new Bot({ onMessage });
     const message: WechatMessageContext = {
@@ -72,12 +72,36 @@ describe("@elizaos/plugin-wechat", () => {
       raw: {},
     };
 
-    bot.handleIncoming(message);
-    bot.handleIncoming(message);
+    await bot.handleIncoming(message);
+    await bot.handleIncoming(message);
     bot.stop();
 
     expect(onMessage).toHaveBeenCalledTimes(1);
     expect(onMessage).toHaveBeenCalledWith(message);
+  });
+
+  it("propagates failed delivery and leaves the message retryable", async () => {
+    const failure = new Error("runtime delivery failed");
+    const onMessage = vi
+      .fn<(message: WechatMessageContext) => Promise<void>>()
+      .mockRejectedValueOnce(failure)
+      .mockResolvedValueOnce(undefined);
+    const bot = new Bot({ onMessage });
+    const message: WechatMessageContext = {
+      id: "msg-retry",
+      type: "text",
+      sender: "wxid_alice",
+      recipient: "wxid_bot",
+      content: "retry me",
+      timestamp: 1_700_000_000,
+      raw: {},
+    };
+
+    await expect(bot.handleIncoming(message)).rejects.toBe(failure);
+    await expect(bot.handleIncoming(message)).resolves.toBeUndefined();
+    bot.stop();
+
+    expect(onMessage).toHaveBeenCalledTimes(2);
   });
 
   it("chunks long outgoing text through the proxy client", async () => {

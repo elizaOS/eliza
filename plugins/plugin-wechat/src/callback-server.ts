@@ -37,7 +37,11 @@ const DEFAULT_MAX_REQUEST_BODY_BYTES = 1024 * 1024;
 export interface CallbackServerOptions {
   port: number;
   accounts: Array<{ accountId: string; apiKey: string }>;
-  onMessage: (accountId: string, msg: WechatMessageContext) => void;
+  onMessage: (
+    accountId: string,
+    msg: WechatMessageContext,
+  ) => void | Promise<void>;
+  onDeliveryError: (error: unknown, accountId: string) => void;
   signal?: AbortSignal;
   maxBodyBytes?: number;
 }
@@ -52,6 +56,7 @@ export async function startCallbackServer(
     port,
     accounts,
     onMessage,
+    onDeliveryError,
     signal,
     maxBodyBytes = DEFAULT_MAX_REQUEST_BODY_BYTES,
   } = options;
@@ -84,23 +89,43 @@ export async function startCallbackServer(
       body += chunk.toString();
     });
 
-    req.on("end", () => {
+    req.on("end", async () => {
       if (res.writableEnded) {
         return;
       }
 
+      let payload: unknown;
       try {
-        const payload = JSON.parse(body) as Record<string, unknown>;
-        const message = normalizePayload(payload);
-        if (message) {
-          onMessage(account.accountId, message);
-        }
-        res.writeHead(200);
-        res.end("OK");
+        payload = JSON.parse(body);
       } catch {
+        // error-policy:J1 malformed JSON is translated at the HTTP boundary;
+        // delivery failures are handled separately below and must never be
+        // mislabeled as invalid client input.
         res.writeHead(400);
         res.end("Bad Request");
+        return;
       }
+
+      const message = normalizePayload(payload);
+      if (!message) {
+        res.writeHead(200);
+        res.end("OK");
+        return;
+      }
+
+      try {
+        await onMessage(account.accountId, message);
+      } catch (error) {
+        // error-policy:J1 the HTTP boundary returns a retryable server failure;
+        // the runtime callback owns diagnostic reporting for the failed event.
+        res.writeHead(500);
+        res.end("Internal Server Error");
+        onDeliveryError(error, account.accountId);
+        return;
+      }
+
+      res.writeHead(200);
+      res.end("OK");
     });
 
     req.on("error", () => {
@@ -108,6 +133,8 @@ export async function startCallbackServer(
         return;
       }
 
+      // error-policy:J1 a broken inbound request stream is translated at the
+      // transport boundary and never enters payload normalization or delivery.
       res.writeHead(400);
       res.end("Bad Request");
     });
@@ -239,8 +266,11 @@ export function normalizePayload(
   // Support two payload formats: nested "raw" and flattened "proxy". The
   // nested form must actually be a plain object — a string/array/scalar
   // `data` field is an unrecognized payload, not a message.
-  const data = isRecord(payload.data)
-    ? payload.data
+  const hasNestedData = Object.hasOwn(payload, "data");
+  const data = hasNestedData
+    ? isRecord(payload.data)
+      ? payload.data
+      : null
     : payload.content
       ? payload
       : null;
@@ -281,9 +311,12 @@ export function normalizePayload(
   // unusable one fails the whole message closed so a non-finite or negative
   // value can never become the inbound Memory's createdAt (#19060, matching
   // the plugin-x policy from #18965).
+  const hasTimestamp = Object.hasOwn(data, "timestamp");
   const rawTimestamp = data.timestamp;
-  const timestamp = rawTimestamp == null ? Date.now() : Number(rawTimestamp);
-  if (!Number.isFinite(timestamp) || timestamp < 0) {
+  const timestamp = hasTimestamp
+    ? normalizeWebhookTimestamp(rawTimestamp)
+    : Date.now();
+  if (timestamp === null) {
     console.warn(
       `[wechat] Dropping webhook message with unusable timestamp: ${String(rawTimestamp)}`,
     );
@@ -319,4 +352,15 @@ export function normalizePayload(
     imageUrl: imageUrl || undefined,
     raw: payload,
   };
+}
+
+function normalizeWebhookTimestamp(value: unknown): number | null {
+  if (typeof value === "number") {
+    return Number.isSafeInteger(value) && value >= 0 ? value : null;
+  }
+  if (typeof value !== "string" || !/^(0|[1-9]\d*)$/.test(value)) {
+    return null;
+  }
+  const timestamp = Number(value);
+  return Number.isSafeInteger(timestamp) ? timestamp : null;
 }
