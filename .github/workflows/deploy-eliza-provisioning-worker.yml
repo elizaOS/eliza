@@ -546,19 +546,21 @@ jobs:
             sudo systemctl restart eliza-agent-router.service
             echo "=== Restart issued for both daemons ==="
 
-            # The canonical edge origin must terminate in the same nginx vhost
-            # as the legacy control-plane hostname. Without this alias, nginx
+            # The canonical edge origin must terminate in the nginx vhost that
+            # proxies the agent-router daemon. Without this alias, nginx
             # serves its default blank web shell with HTTP 200; lifecycle calls
             # then parse HTML as a snapshot and safe restarts wedge. Amend the
             # existing, operator-reviewed router vhost rather than creating a
             # second listener or certificate configuration.
             mapfile -t router_vhosts < <(
               sudo grep -RIl \
-                "server_name.*${LEGACY_AGENT_ROUTER_PUBLIC_HOST}" \
-                /etc/nginx 2>/dev/null || true
+                'proxy_pass[[:space:]]\+http://127\.0\.0\.1:3458' \
+                /etc/nginx/sites-enabled /etc/nginx/conf.d 2>/dev/null \
+                | xargs -r readlink -f \
+                | sort -u
             )
             if [ "${#router_vhosts[@]}" -eq 0 ]; then
-              echo "::error::No nginx vhost owns legacy agent-router host ${LEGACY_AGENT_ROUTER_PUBLIC_HOST}"
+              echo "::error::No enabled nginx vhost proxies the agent-router upstream on 127.0.0.1:3458"
               exit 1
             fi
             for vhost in "${router_vhosts[@]}"; do
@@ -566,7 +568,7 @@ jobs:
                 continue
               fi
               sudo sed -Ei \
-                "/server_name[^;]*${LEGACY_AGENT_ROUTER_PUBLIC_HOST}/ s/[[:space:]]*;/ ${AGENT_ROUTER_PUBLIC_HOST};/" \
+                "/server_name[^;]*;/ s/[[:space:]]*;/ ${AGENT_ROUTER_PUBLIC_HOST};/" \
                 "$vhost"
             done
             sudo nginx -t
