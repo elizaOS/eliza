@@ -6705,6 +6705,7 @@
   "cloud.paymentRequest.unableToLoad": "Unable to load payment request.",
   "cloud.paymentRequest.missingId": "Missing payment request id.",
   "cloud.paymentRequest.noCheckoutUrl": "This payment request has no hosted checkout URL yet.",
+  "cloud.paymentRequest.noLongerPayable": "This payment request is no longer payable.",
   "cloud.paymentRequest.metaTitle": "Payment Request | Eliza Cloud",
   "cloud.paymentRequest.unavailableTitle": "Payment request unavailable",
   "cloud.paymentRequest.linkUnavailable": "This payment link is unavailable.",
