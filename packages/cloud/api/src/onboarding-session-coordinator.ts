@@ -711,10 +711,11 @@ export class OnboardingSessionCoordinator {
     // to a live session: `cache.get` answers null for an outage and for a miss
     // alike, so a conversation that depends on it restarts on the first bad
     // minute. Durable storage above is the authority in both scopes.
-    let nextSession =
-      storedSession ??
-      legacySession ??
-      (await loadCachedOnboardingSession(request.sessionId));
+    const cachedSession =
+      storedSession || legacySession
+        ? null
+        : await loadCachedOnboardingSession(request.sessionId);
+    let nextSession = storedSession ?? legacySession ?? cachedSession ?? null;
     if (request.input.continuationMode === "trusted-telegram") {
       assertTrustedTelegramContinuation(nextSession, request.input);
     }
@@ -761,15 +762,17 @@ export class OnboardingSessionCoordinator {
     if (replay) {
       writes[replayStorageKey(scope, replay.key, request.input)] = replay;
     }
-    const platformHistoryKeys =
-      platformSession && result.session.id === request.sessionId
-        ? await historyStorageKeys(this.state.storage, platformScope)
-        : [];
+    const migratedPlatformSession =
+      (platformSession ?? legacySession ?? cachedSession)?.id ===
+      request.sessionId;
+    const platformHistoryKeys = migratedPlatformSession
+      ? await historyStorageKeys(this.state.storage, platformScope)
+      : [];
     const currentAlarm = await this.state.storage.getAlarm();
     await this.state.storage.transaction(async (transaction) => {
       await transaction.put(writes);
       if (legacySession) await transaction.delete(LEGACY_LEDGER_KEY);
-      if (platformSession && result.session.id === request.sessionId) {
+      if (migratedPlatformSession) {
         // The transcript now lives in the account scope and the platform copy
         // is retired — but the key itself must keep answering, because the
         // sender's next message can address nothing else. Replace the session
