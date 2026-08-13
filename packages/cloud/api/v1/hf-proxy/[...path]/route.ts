@@ -18,17 +18,30 @@
  * as an open SSRF relay. The target repo is additionally scoped to the curated
  * eliza-1 org (`ALLOWED_REPO_PREFIX`): the cloud's own `HF_TOKEN` may only be
  * spent proxying the shipping catalog, never an arbitrary user-chosen repo.
+ *
+ * EGRESS & CONCURRENCY: a per-organization Durable Object (`HF_PROXY_GATES`)
+ * atomically reserves bytes and holds a concurrent-download slot for every
+ * request. This replaces the original non-atomic KV read/put counter, which
+ * lost increments under concurrency and let concurrent requests all read the
+ * same pre-update value. The DO also enforces a per-org concurrent-download
+ * cap so one org cannot saturate the Worker's subrequests.
  */
 
 import { Hono } from "hono";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import { logger, redact } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
+import type {
+  AppEnv,
+  RuntimeDurableObjectNamespace,
+  RuntimeDurableObjectStub,
+} from "@/types/cloud-worker-env";
 
 const HF_UPSTREAM_HOST = "https://huggingface.co";
 const DEFAULT_MONTHLY_EGRESS_LIMIT_BYTES = 500 * 1024 ** 3;
-const MONTHLY_EGRESS_TTL_SECONDS = 35 * 24 * 60 * 60;
+const DEFAULT_MAX_CONCURRENT_DOWNLOADS = 4;
+const GATE_ORIGIN = "https://hf-proxy-gate.internal";
+const GATE_TIMEOUT_MS = 3_000;
 
 /**
  * Only repos under this org may be proxied. The curated eliza-1 catalog lives at
@@ -74,12 +87,7 @@ const PASSTHROUGH_RESPONSE_HEADERS = [
 
 const app = new Hono<AppEnv>();
 
-interface EgressCounter {
-  bytes: number;
-  expiresAt: number;
-}
-
-const inMemoryEgressCounters = new Map<string, EgressCounter>();
+// ---- Egress policy helpers ----
 
 function monthlyEgressLimitBytes(env: AppEnv["Bindings"]): number {
   const raw = env.HF_PROXY_MONTHLY_EGRESS_LIMIT_BYTES;
@@ -90,64 +98,17 @@ function monthlyEgressLimitBytes(env: AppEnv["Bindings"]): number {
     : DEFAULT_MONTHLY_EGRESS_LIMIT_BYTES;
 }
 
+function maxConcurrentDownloads(env: AppEnv["Bindings"]): number {
+  const raw = env.HF_PROXY_MAX_CONCURRENT_DOWNLOADS;
+  const parsed =
+    typeof raw === "string" ? Number.parseInt(raw.trim(), 10) : Number.NaN;
+  return Number.isFinite(parsed) && parsed > 0
+    ? parsed
+    : DEFAULT_MAX_CONCURRENT_DOWNLOADS;
+}
+
 function monthBucket(now = new Date()): string {
   return `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}`;
-}
-
-function egressKey(organizationId: string, now = new Date()): string {
-  return `hf-proxy:egress:${organizationId}:${monthBucket(now)}`;
-}
-
-async function readMonthlyEgress(
-  env: AppEnv["Bindings"],
-  organizationId: string,
-): Promise<number> {
-  const key = egressKey(organizationId);
-  const kv = env.CACHE_KV;
-  if (kv) {
-    const raw = await kv.get(key);
-    if (!raw) return 0;
-    try {
-      const parsed = JSON.parse(raw) as { bytes?: unknown };
-      return typeof parsed.bytes === "number" ? parsed.bytes : 0;
-    } catch {
-      return 0;
-    }
-  }
-
-  const now = Date.now();
-  const counter = inMemoryEgressCounters.get(key);
-  if (!counter || counter.expiresAt <= now) {
-    inMemoryEgressCounters.delete(key);
-    return 0;
-  }
-  return counter.bytes;
-}
-
-async function addMonthlyEgress(
-  env: AppEnv["Bindings"],
-  organizationId: string,
-  bytes: number,
-): Promise<number> {
-  if (bytes <= 0) return readMonthlyEgress(env, organizationId);
-
-  const key = egressKey(organizationId);
-  const kv = env.CACHE_KV;
-  const current = await readMonthlyEgress(env, organizationId);
-  const next = current + bytes;
-  const value = JSON.stringify({
-    bytes: next,
-    updatedAt: new Date().toISOString(),
-  });
-  if (kv) {
-    await kv.put(key, value, { expirationTtl: MONTHLY_EGRESS_TTL_SECONDS });
-  } else {
-    inMemoryEgressCounters.set(key, {
-      bytes: next,
-      expiresAt: Date.now() + MONTHLY_EGRESS_TTL_SECONDS * 1000,
-    });
-  }
-  return next;
 }
 
 function parseContentLength(headers: Headers): number | null {
@@ -166,6 +127,137 @@ function cacheHit(value: string | null): boolean | null {
   return /\bhit\b/i.test(value);
 }
 
+// ---- Durable Object gate client ----
+
+function getGateStub(env: AppEnv["Bindings"], orgId: string): RuntimeDurableObjectStub | null {
+  const ns = env.HF_PROXY_GATES;
+  if (!ns) return null;
+  return ns.getByName(orgId);
+}
+
+interface ReserveDecision {
+  admitted: boolean;
+  usedBytes: number;
+  limitBytes: number;
+  activeDownloads: number;
+  maxConcurrent: number;
+}
+
+async function gateReserve(
+  stub: RuntimeDurableObjectStub,
+  requestId: string,
+  estimatedBytes: number,
+  limitBytes: number,
+  maxConcurrent: number,
+  bucket: string,
+): Promise<ReserveDecision> {
+  const response = await stub.fetch(
+    new Request(`${GATE_ORIGIN}/reserve`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        requestId,
+        estimatedBytes,
+        limitBytes,
+        maxConcurrent,
+        monthBucket: bucket,
+      }),
+      signal: AbortSignal.timeout(GATE_TIMEOUT_MS),
+    }),
+  );
+  const body = (await response.json()) as Partial<ReserveDecision> & {
+    error?: string;
+    code?: string;
+  };
+  if (response.status === 503) {
+    throw new HfProxyGateError(
+      body.error ?? "HF proxy gate is unavailable",
+      body.code,
+    );
+  }
+  if (!body || typeof body.admitted !== "boolean") {
+    throw new HfProxyGateError("HF proxy gate returned an invalid reserve response");
+  }
+  return body as ReserveDecision;
+}
+
+async function gateSettle(
+  stub: RuntimeDurableObjectStub,
+  requestId: string,
+  actualBytes: number,
+  bucket: string,
+): Promise<void> {
+  try {
+    await stub.fetch(
+      new Request(`${GATE_ORIGIN}/settle`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          requestId,
+          actualBytes,
+          monthBucket: bucket,
+        }),
+        signal: AbortSignal.timeout(GATE_TIMEOUT_MS),
+      }),
+    );
+  } catch (error) {
+    // Settlement is best-effort from the response path's perspective: the DO
+    // already pre-charged the estimate, so a settle failure means the estimate
+    // remains as the charge. Log but do not throw — the user already has the
+    // body they requested.
+    logger.warn("[hf-proxy] egress settle failed", {
+      requestId,
+      actualBytes,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
+async function gateCancel(
+  stub: RuntimeDurableObjectStub,
+  requestId: string,
+  bucket: string,
+): Promise<void> {
+  try {
+    await stub.fetch(
+      new Request(`${GATE_ORIGIN}/cancel`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ requestId, monthBucket: bucket }),
+        signal: AbortSignal.timeout(GATE_TIMEOUT_MS),
+      }),
+    );
+  } catch (error) {
+    logger.warn("[hf-proxy] egress cancel failed", {
+      requestId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
+class HfProxyGateError extends Error {
+  readonly code: string | undefined;
+  constructor(message: string, code?: string) {
+    super(message);
+    this.name = "HfProxyGateError";
+    this.code = code;
+  }
+}
+
+function concurrencyLimitResponse(
+  organizationId: string,
+  activeDownloads: number,
+  maxConcurrent: number,
+) {
+  return {
+    error: "HuggingFace proxy concurrent download limit reached.",
+    code: "HF_PROXY_CONCURRENCY_LIMIT",
+    organization_id: organizationId,
+    active_downloads: activeDownloads,
+    max_concurrent: maxConcurrent,
+  };
+}
+
 function egressLimitResponse(
   organizationId: string,
   limitBytes: number,
@@ -180,46 +272,67 @@ function egressLimitResponse(
   };
 }
 
+/**
+ * Wrap the upstream body so every byte is counted as it flows through, and the
+ * final actual byte count is settled against the gate regardless of whether the
+ * stream completes or is cancelled mid-way. Cancellation handling: the original
+ * code only charged on `flush()`, so a client that cancelled after receiving
+ * 90% of a multi-GB file escaped accounting. Now the `cancel` callback on the
+ * transform charges the actual bytes streamed so far.
+ */
 function streamWithEgressAccounting(args: {
   body: ReadableStream<Uint8Array>;
-  env: AppEnv["Bindings"];
+  gateStub: RuntimeDurableObjectStub;
+  requestId: string;
+  monthBucket: string;
   organizationId: string;
   repo: string;
   path: string;
   status: number;
-  cacheStatus: string | null;
+  cacheStatusValue: string | null;
 }): ReadableStream<Uint8Array> {
   let bytes = 0;
+  let settled = false;
+
+  const settleOnce = (finalBytes: number) => {
+    if (settled) return;
+    settled = true;
+    gateSettle(args.gateStub, args.requestId, finalBytes, args.monthBucket).then(
+      () => {
+        logger.info("[hf-proxy] egress metric", {
+          organizationId: args.organizationId,
+          repo: args.repo,
+          path: args.path,
+          bytes: finalBytes,
+          status: args.status,
+          cacheStatus: args.cacheStatusValue,
+          cacheHit: cacheHit(args.cacheStatusValue),
+        });
+      },
+    );
+  };
+
   return args.body.pipeThrough(
     new TransformStream<Uint8Array, Uint8Array>({
       transform(chunk, controller) {
         bytes += chunk.byteLength;
         controller.enqueue(chunk);
       },
-      async flush() {
-        const record = addMonthlyEgress(
-          args.env,
-          args.organizationId,
-          bytes,
-        ).then((usedBytes) => {
-          logger.info("[hf-proxy] egress metric", {
-            organizationId: args.organizationId,
-            repo: args.repo,
-            path: args.path,
-            bytes,
-            status: args.status,
-            cacheStatus: args.cacheStatus,
-            cacheHit: cacheHit(args.cacheStatus),
-            usedBytes,
-          });
-        });
-        await record;
+      flush() {
+        settleOnce(bytes);
+      },
+      // Called when the consumer cancels the stream (client disconnect). The
+      // original code only charged on flush, so a cancelled partial download
+      // escaped accounting entirely.
+      cancel() {
+        settleOnce(bytes);
       },
     }),
   );
 }
 
 app.get("/*", async (c) => {
+  const requestId = crypto.randomUUID();
   try {
     // Auth: a real cloud session or org API key. We require a valid linked
     // account and capture the identity for usage attribution below.
@@ -264,10 +377,70 @@ app.get("/*", async (c) => {
       );
     }
 
+    // ---- Atomic egress reservation + concurrency check via Durable Object ----
+    const gateStub = getGateStub(c.env, orgId);
+    if (!gateStub) {
+      // No DO binding: fail closed. We never silently fall back to the old
+      // non-atomic KV counter, which could reset an org's budget.
+      logger.error("[hf-proxy] HF_PROXY_GATES binding is missing");
+      return c.json(
+        {
+          error: "HuggingFace proxy egress accounting is not configured.",
+          code: "HF_PROXY_GATE_UNAVAILABLE",
+        },
+        503,
+      );
+    }
+
     const limitBytes = monthlyEgressLimitBytes(c.env);
-    const usedBytes = await readMonthlyEgress(c.env, orgId);
-    if (usedBytes >= limitBytes) {
-      return c.json(egressLimitResponse(orgId, limitBytes, usedBytes), 429);
+    const maxConcurrent = maxConcurrentDownloads(c.env);
+    const bucket = monthBucket();
+
+    // Reserve with zero estimated bytes initially; the actual content-length is
+    // only known after the upstream fetch. We hold the concurrency slot first.
+    let reserve: ReserveDecision;
+    try {
+      reserve = await gateReserve(
+        gateStub,
+        requestId,
+        0,
+        limitBytes,
+        maxConcurrent,
+        bucket,
+      );
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : String(error);
+      logger.error("[hf-proxy] egress reserve failed", {
+        requestId,
+        orgId: redact.orgId(orgId),
+        error: message,
+      });
+      return c.json(
+        {
+          error: "HuggingFace proxy egress accounting is unavailable.",
+          code: "HF_PROXY_GATE_UNAVAILABLE",
+        },
+        503,
+      );
+    }
+
+    if (!reserve.admitted) {
+      // Distinguish egress-exhausted from concurrency-exhausted.
+      if (reserve.activeDownloads >= reserve.maxConcurrent) {
+        return c.json(
+          concurrencyLimitResponse(
+            orgId,
+            reserve.activeDownloads,
+            reserve.maxConcurrent,
+          ),
+          429,
+        );
+      }
+      return c.json(
+        egressLimitResponse(orgId, reserve.limitBytes, reserve.usedBytes),
+        429,
+      );
     }
 
     const incomingUrl = new URL(c.req.url);
@@ -281,11 +454,18 @@ app.get("/*", async (c) => {
     const range = c.req.header("range");
     if (range) headers.set("range", range);
 
-    const upstreamResponse = await fetch(upstream, {
-      method: "GET",
-      headers,
-      redirect: "follow",
-    });
+    let upstreamResponse: Response;
+    try {
+      upstreamResponse = await fetch(upstream, {
+        method: "GET",
+        headers,
+        redirect: "follow",
+      });
+    } catch (error) {
+      // Upstream fetch failed: release the slot without charging.
+      await gateCancel(gateStub, requestId, bucket);
+      throw error;
+    }
 
     if (upstreamResponse.status >= 400) {
       logger.warn("[hf-proxy] upstream HuggingFace error", {
@@ -317,8 +497,9 @@ app.get("/*", async (c) => {
         status: upstreamResponse.status,
         cacheStatus: upstreamCacheStatus,
         cacheHit: cacheHit(upstreamCacheStatus),
-        usedBytes,
       });
+      // Gated/unauthorized: release the concurrency slot without charging.
+      await gateCancel(gateStub, requestId, bucket);
       return c.json(
         {
           error: "HuggingFace repo is gated or unauthorized.",
@@ -329,8 +510,14 @@ app.get("/*", async (c) => {
       );
     }
 
-    if (contentLength !== null && usedBytes + contentLength > limitBytes) {
-      return c.json(egressLimitResponse(orgId, limitBytes, usedBytes), 429);
+    // Pre-flight egress check: if content-length is known and exceeds the
+    // remaining budget, cancel the reservation and reject.
+    if (contentLength !== null && reserve.usedBytes + contentLength > limitBytes) {
+      await gateCancel(gateStub, requestId, bucket);
+      return c.json(
+        egressLimitResponse(orgId, limitBytes, reserve.usedBytes),
+        429,
+      );
     }
 
     const responseHeaders = new Headers();
@@ -339,15 +526,19 @@ app.get("/*", async (c) => {
       if (value) responseHeaders.set(name, value);
     }
 
+    const upstreamCacheStatus = cacheStatus(upstreamResponse.headers);
+
     const body = upstreamResponse.body
       ? streamWithEgressAccounting({
           body: upstreamResponse.body,
-          env: c.env,
+          gateStub,
+          requestId,
+          monthBucket: bucket,
           organizationId: orgId,
           repo,
           path,
           status: upstreamResponse.status,
-          cacheStatus: cacheStatus(upstreamResponse.headers),
+          cacheStatusValue: upstreamCacheStatus,
         })
       : null;
 

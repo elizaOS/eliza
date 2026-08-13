@@ -79,7 +79,14 @@ export interface Bindings {
   INFERENCE_ADMISSION_GATES?: RuntimeDurableObjectNamespace;
 
   /**
-   * One strongly ordered identity/quota cache per anonymous chat session.
+   * One strongly ordered HF proxy coordinator per organization. It enforces
+   * per-org monthly egress budgets and concurrent-download caps atomically;
+   * the route's KV-based read/put loop was non-atomic and lost increments
+   * under concurrency.
+   */
+  HF_PROXY_GATES?: RuntimeDurableObjectNamespace;
+
+  /** One strongly ordered identity/quota cache per anonymous chat session.
    * Postgres hydration and counter mirrors run only outside the response path.
    */
   ANONYMOUS_CHAT_GATES?: RuntimeDurableObjectNamespace;
@@ -233,6 +240,11 @@ export interface Bindings {
    * bytes. Unset uses the route default.
    */
   HF_PROXY_MONTHLY_EGRESS_LIMIT_BYTES?: string;
+  /**
+   * Optional per-organization concurrent download cap for the HuggingFace
+   * proxy. Unset uses the route default.
+   */
+  HF_PROXY_MAX_CONCURRENT_DOWNLOADS?: string;
   VERCEL_OIDC_TOKEN?: string;
   /**
    * Public hostname that serves the BLOB R2 bucket. Used to construct sample

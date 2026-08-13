@@ -20,6 +20,7 @@ import { serveRegistryHostRequest } from "./registry-host";
 import { isThinStewardPublicPath } from "./steward/public-paths";
 
 export { AnonymousChatGate } from "./anonymous-chat-gate";
+export { HfProxyGate } from "./hf-proxy-gate";
 export { InferenceAdmissionGate } from "./inference-admission-gate";
 export { OnboardingSessionCoordinator } from "./onboarding-session-coordinator";
 export { SharedRuntimeConversation } from "./shared-runtime-conversation";

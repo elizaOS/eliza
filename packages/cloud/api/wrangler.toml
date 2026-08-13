@@ -110,6 +110,10 @@ name = "INFERENCE_ADMISSION_GATES"
 class_name = "InferenceAdmissionGate"
 
 [[durable_objects.bindings]]
+name = "HF_PROXY_GATES"
+class_name = "HfProxyGate"
+
+[[durable_objects.bindings]]
 name = "ANONYMOUS_CHAT_GATES"
 class_name = "AnonymousChatGate"
 
@@ -124,6 +128,10 @@ new_sqlite_classes = ["SharedRuntimeConversation"]
 [[migrations]]
 tag = "inference-admission-gates-v1"
 new_sqlite_classes = ["InferenceAdmissionGate"]
+
+[[migrations]]
+tag = "hf-proxy-gates-v1"
+new_sqlite_classes = ["HfProxyGate"]
 
 [[migrations]]
 tag = "anonymous-chat-gates-v1"
@@ -592,6 +600,10 @@ name = "INFERENCE_ADMISSION_GATES"
 class_name = "InferenceAdmissionGate"
 
 [[env.staging.durable_objects.bindings]]
+name = "HF_PROXY_GATES"
+class_name = "HfProxyGate"
+
+[[env.staging.durable_objects.bindings]]
 name = "ANONYMOUS_CHAT_GATES"
 class_name = "AnonymousChatGate"
 
@@ -786,6 +798,10 @@ class_name = "SharedRuntimeConversation"
 [[env.production.durable_objects.bindings]]
 name = "INFERENCE_ADMISSION_GATES"
 class_name = "InferenceAdmissionGate"
+
+[[env.production.durable_objects.bindings]]
+name = "HF_PROXY_GATES"
+class_name = "HfProxyGate"
 
 [[env.production.durable_objects.bindings]]
 name = "ANONYMOUS_CHAT_GATES"
