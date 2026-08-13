@@ -25,6 +25,47 @@ import {
 } from "./host-agent.mjs";
 
 const tmpDirs = [];
+const PINNED_NODE_VERSION = "24.15.0";
+
+function resolvePinnedNode() {
+  const candidates = [];
+  if (process.env.ELIZA_NODE_PATH) {
+    candidates.push(process.env.ELIZA_NODE_PATH);
+  }
+  const nvmDir = process.env.NVM_DIR ?? path.join(os.homedir(), ".nvm");
+  candidates.push(
+    path.join(
+      nvmDir,
+      "versions",
+      "node",
+      `v${PINNED_NODE_VERSION}`,
+      "bin",
+      "node",
+    ),
+  );
+  const lookup = spawnSync(
+    process.platform === "win32" ? "where" : "which",
+    ["node"],
+    {
+      encoding: "utf8",
+    },
+  );
+  if (lookup.status === 0) {
+    candidates.push(...lookup.stdout.trim().split(/\r?\n/));
+  }
+  for (const candidate of candidates) {
+    const result = spawnSync(candidate, ["--version"], { encoding: "utf8" });
+    if (
+      result.status === 0 &&
+      result.stdout.trim() === `v${PINNED_NODE_VERSION}`
+    ) {
+      return candidate;
+    }
+  }
+  throw new Error(
+    `Pinned Node.js ${PINNED_NODE_VERSION} is required for this real-process regression; set ELIZA_NODE_PATH or install it through the repository toolchain.`,
+  );
+}
 
 function makeTmpDir() {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-host-agent-test-"));
@@ -202,8 +243,7 @@ describe("host-agent helper", () => {
   });
 
   it("rejects overflowing delay under pinned Node before spawn", () => {
-    const pinnedNode = "/Users/symbiex/.nvm/versions/node/v24.15.0/bin/node";
-    if (!fs.existsSync(pinnedNode)) return;
+    const pinnedNode = resolvePinnedNode();
     const artifactDir = makeTmpDir();
     const moduleUrl = new URL("./host-agent.mjs", import.meta.url).href;
     const script = `
@@ -224,11 +264,16 @@ describe("host-agent helper", () => {
         process.stdout.write("rejected-before-spawn");
       }
     `;
-    const result = spawnSync(pinnedNode, ["--input-type=module", "-e", script], {
-      encoding: "utf8",
-      env: { ...process.env, TEST_ARTIFACT_DIR: artifactDir },
-    });
+    const result = spawnSync(
+      pinnedNode,
+      ["--input-type=module", "-e", script],
+      {
+        encoding: "utf8",
+        env: { ...process.env, TEST_ARTIFACT_DIR: artifactDir },
+      },
+    );
     expect(result.status).toBe(0);
+    expect(result.stderr).not.toContain("TimeoutOverflowWarning");
     expect(result.stdout).toContain("rejected-before-spawn");
     expect(fs.existsSync(path.join(artifactDir, "host-agent.log"))).toBe(false);
   });

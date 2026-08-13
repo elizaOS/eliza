@@ -71,26 +71,30 @@ export function resolveReadyOptions(options = {}) {
   const { readyAttempts, readyDelayMs, env = process.env } = options;
   const hasReadyAttempts = Object.hasOwn(options, "readyAttempts");
   const hasReadyDelayMs = Object.hasOwn(options, "readyDelayMs");
-  const attemptsOverride = hasReadyAttempts && readyAttempts !== undefined
-    ? readyAttempts
-    : (env.ELIZA_HOST_AGENT_READY_ATTEMPTS ?? null);
-  const delayOverride = hasReadyDelayMs && readyDelayMs !== undefined
-    ? readyDelayMs
-    : (env.ELIZA_HOST_AGENT_READY_DELAY_MS ?? null);
+  const attemptsOverride =
+    hasReadyAttempts && readyAttempts !== undefined
+      ? readyAttempts
+      : (env.ELIZA_HOST_AGENT_READY_ATTEMPTS ?? null);
+  const delayOverride =
+    hasReadyDelayMs && readyDelayMs !== undefined
+      ? readyDelayMs
+      : (env.ELIZA_HOST_AGENT_READY_DELAY_MS ?? null);
   const isBlank = (value) =>
     value === null ||
     value === undefined ||
     (typeof value === "string" && value.trim() === "");
-  const attemptsSource = hasReadyAttempts && readyAttempts !== undefined
-    ? attemptsOverride
-    : isBlank(attemptsOverride)
-      ? DEFAULT_READY_ATTEMPTS
-      : attemptsOverride;
-  const delaySource = hasReadyDelayMs && readyDelayMs !== undefined
-    ? delayOverride
-    : isBlank(delayOverride)
-      ? DEFAULT_READY_DELAY_MS
-      : delayOverride;
+  const attemptsSource =
+    hasReadyAttempts && readyAttempts !== undefined
+      ? attemptsOverride
+      : isBlank(attemptsOverride)
+        ? DEFAULT_READY_ATTEMPTS
+        : attemptsOverride;
+  const delaySource =
+    hasReadyDelayMs && readyDelayMs !== undefined
+      ? delayOverride
+      : isBlank(delayOverride)
+        ? DEFAULT_READY_DELAY_MS
+        : delayOverride;
 
   return {
     readyAttempts: parsePositiveSafeInteger(
