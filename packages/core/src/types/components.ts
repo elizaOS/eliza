@@ -806,19 +806,6 @@ export interface Provider {
 	cacheScope?: CacheScope;
 
 	/**
-	 * @deprecated Provider wall-clock deadlines are no longer enforced. This
-	 * field remains temporarily as an ignored source-compatibility shim; use
-	 * `ProviderExecutionContext.signal` for lifecycle cancellation.
-	 */
-	timeoutMs?: number;
-
-	/**
-	 * @deprecated Provider timeout degradation is no longer supported. This
-	 * ignored field remains temporarily for source compatibility.
-	 */
-	timeoutMode?: "fail" | "degrade";
-
-	/**
 	 * Whether plugin registration should install this provider into the runtime.
 	 *
 	 * Defaults to true. Set to false for plugin-owned providers that are

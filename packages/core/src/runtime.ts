@@ -5081,9 +5081,11 @@ export class AgentRuntime implements IAgentRuntime {
 						() =>
 							runWithStreamingContext(
 								{
-									...(callerStreamingContext ?? {
-										onStreamChunk: async () => undefined,
-									}),
+									// A caller without its own streaming context contributes
+									// no chunk consumer, so the scope stays cancellation-only
+									// and provider-internal useModel calls remain off the
+									// streaming path.
+									...callerStreamingContext,
 									// Nested useModel calls read cancellation from this
 									// scope. They belong to the shared execution, not to
 									// whichever caller happened to create it.
