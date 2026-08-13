@@ -10,7 +10,11 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-import { classifyResult, countStatuses } from "../lib/runner.mjs";
+import {
+  classifyResult,
+  countStatuses,
+  normalizeRunConcurrency,
+} from "../lib/runner.mjs";
 
 const LABEL = "@elizaos/logger (packages/logger)#test";
 
@@ -104,6 +108,29 @@ describe("classifyResult", () => {
         { status: "failed" },
       ]),
     ).toEqual({ passed: 2, failed: 1 });
+  });
+});
+
+describe("normalizeRunConcurrency", () => {
+  test("preserves the default and ordinary positive integer inputs", () => {
+    expect(normalizeRunConcurrency(undefined)).toBe(3);
+    expect(normalizeRunConcurrency(4)).toBe(4);
+    expect(normalizeRunConcurrency("04")).toBe(4);
+  });
+
+  test("rejects values that could disable or exhaust the worker bound", () => {
+    for (const value of [
+      0,
+      -1,
+      "1e3",
+      "4workers",
+      33,
+      Number.MAX_SAFE_INTEGER,
+    ]) {
+      expect(() => normalizeRunConcurrency(value)).toThrow(
+        "concurrency must be a positive integer from 1 to 32",
+      );
+    }
   });
 });
 

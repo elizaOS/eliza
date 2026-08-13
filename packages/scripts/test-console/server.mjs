@@ -37,7 +37,7 @@ import {
   startGoogleFlow,
 } from "./lib/oauth.mjs";
 import { buildRegistry, discoverPlan } from "./lib/registry.mjs";
-import { RunManager } from "./lib/runner.mjs";
+import { normalizeRunConcurrency, RunManager } from "./lib/runner.mjs";
 import {
   consoleDir,
   credentialsToEnv,
@@ -190,11 +190,21 @@ const routes = {
         });
       }
     }
+    let normalizedConcurrency;
+    try {
+      normalizedConcurrency = normalizeRunConcurrency(concurrency);
+    } catch (error) {
+      // error-policy:J1 API boundary — reject an invalid worker count before
+      // it can fan out repository test processes.
+      return json(res, 400, {
+        error: error instanceof Error ? error.message : "invalid concurrency",
+      });
+    }
     const runId = runManager.startRun({
       tasks,
       lane,
       extraEnv,
-      concurrency: Number(concurrency) || 3,
+      concurrency: normalizedConcurrency,
     });
     json(res, 200, { runId, taskCount: tasks.length });
   },
