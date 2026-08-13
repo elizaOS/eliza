@@ -193,7 +193,10 @@ function applyConcurrencyOverride(args, concurrency) {
     if (arg.startsWith("--concurrency=")) continue;
     if (arg === "--concurrency") {
       const value = turboOwnArgs[index + 1];
-      if (value !== undefined && !value.startsWith("-")) index += 1;
+      const isSplitValue =
+        value !== undefined &&
+        (!value.startsWith("-") || /^-(?:\d|\.\d)/u.test(value));
+      if (isSplitValue) index += 1;
       continue;
     }
     normalizedTurboOwnArgs.push(arg);

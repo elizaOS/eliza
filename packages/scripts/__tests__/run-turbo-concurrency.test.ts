@@ -132,23 +132,49 @@ describe("run-turbo concurrency override", () => {
     expect(argv).not.toContain("3");
   });
 
-  test("preserves a Turbo option after valueless split-form concurrency", async () => {
-    const { argvFile, fakeTurbo } = await fixture();
+  test.each(["--filter=x", "-F"])(
+    "preserves Turbo option %s after valueless split-form concurrency",
+    async (option) => {
+      const { argvFile, fakeTurbo } = await fixture();
 
-    const result = invoke(fakeTurbo, "5", [
-      "run",
-      "lint",
-      "--concurrency",
-      "--filter=x",
-    ]);
+      const result = invoke(fakeTurbo, "5", [
+        "run",
+        "lint",
+        "--concurrency",
+        option,
+      ]);
 
-    expect(result.status, result.stderr).toBe(0);
-    const argv = JSON.parse(await readFile(argvFile, "utf8"));
-    expect(argv.filter((arg) => arg.startsWith("--concurrency"))).toEqual([
-      "--concurrency=5",
-    ]);
-    expect(argv).toContain("--filter=x");
-  });
+      expect(result.status, result.stderr).toBe(0);
+      const argv = JSON.parse(await readFile(argvFile, "utf8"));
+      expect(argv.filter((arg) => arg.startsWith("--concurrency"))).toEqual([
+        "--concurrency=5",
+      ]);
+      expect(argv).toContain(option);
+    },
+  );
+
+  test.each(["-1", "-0", "+2", "-.5"])(
+    "removes signed split-form concurrency operand %s",
+    async (operand) => {
+      const { argvFile, fakeTurbo } = await fixture();
+
+      const result = invoke(fakeTurbo, "5", [
+        "run",
+        "lint",
+        "--concurrency",
+        operand,
+        "--filter=x",
+      ]);
+
+      expect(result.status, result.stderr).toBe(0);
+      const argv = JSON.parse(await readFile(argvFile, "utf8"));
+      expect(argv.filter((arg) => arg.startsWith("--concurrency"))).toEqual([
+        "--concurrency=5",
+      ]);
+      expect(argv).not.toContain(operand);
+      expect(argv).toContain("--filter=x");
+    },
+  );
 
   test.each([
     " ",
