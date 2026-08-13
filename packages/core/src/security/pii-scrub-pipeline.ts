@@ -37,19 +37,20 @@
 
 import type { PiiScrubRequestPayload } from "../types/events.js";
 import { EventType } from "../types/events.js";
-import type { PiiScrubResult, PiiScrubVerdict } from "../types/model.js";
+import type { PiiScrubVerdict } from "../types/model.js";
 import type { IAgentRuntime } from "../types/runtime.js";
-import { detectPii } from "./pii-detectors.js";
 import {
 	assembleContextPack,
 	type PiiContextSources,
 	type PiiScrubCandidate,
 } from "./pii-context-pack.js";
+import { detectPii } from "./pii-detectors.js";
 import { CorpusPseudonymMap } from "./pii-pseudonym-map.js";
 import {
 	EncryptedCachePseudonymMapStore,
 	type PseudonymMapStore,
 } from "./pii-pseudonym-map-store.js";
+import { isScrubDone, markScrubDone } from "./pii-scrub-markers.js";
 import { scrubWithEscalation } from "./pii-scrub-seam.js";
 
 /**
@@ -64,6 +65,12 @@ export interface PiiScrubPipelineItem {
 	readonly itemRef: string;
 	/** Mined candidates for this chunk (may be empty). */
 	readonly candidates: readonly PiiScrubCandidate[];
+	/**
+	 * Persist the transformed text to the source artifact. The promise must not
+	 * resolve until the write is durable; throwing keeps the item unmarked so it
+	 * can be retried.
+	 */
+	readonly writeBack: (scrubbedText: string) => Promise<void>;
 	/** Rooms for conversation FTS, when the caller has them. */
 	readonly roomIds?: readonly string[];
 }
@@ -82,10 +89,9 @@ export interface PiiScrubPipelineResult {
 	readonly skipped: boolean;
 	/**
 	 * The scrub-rails request payload, ready to emit as
-	 * `PII_SCRUB_REQUESTED` so the live `PiiScrubService` drains it (marker,
-	 * retry, observability). `null` when the pipeline applied the scrub
-	 * directly (e.g. tier-0-only content that needs no rails drain) — callers
-	 * that want the async rails to own the marker emit this payload instead.
+	 * `PII_SCRUB_REQUESTED` so the live `PiiScrubService` owns inference,
+	 * write-back, marker, retry, and observability. `null` for direct write-back
+	 * and idempotent skips.
 	 */
 	readonly railsPayload: Omit<PiiScrubRequestPayload, "runtime"> | null;
 }
@@ -107,9 +113,9 @@ export interface PiiScrubPipelineOptions {
 	 */
 	readonly sources?: PiiContextSources;
 	/**
-	 * When `true` (default), apply verdicts + pseudonym substitution and return
-	 * the transformed text. When `false`, only build the rails payload (the
-	 * service applies the rewrite at drain time).
+	 * When `true` (default), run inference, durably write the transformed text,
+	 * and mark the source complete. When `false`, perform no inference and only
+	 * build the rails payload; the service owns the entire paid/durable path.
 	 */
 	readonly applyWriteBack?: boolean;
 	/**
@@ -237,9 +243,19 @@ export async function runPiiScrubPipeline(
 		inferencePriority,
 	} = options;
 
-	// 1. Load the encrypted pseudonym map (fail-closed). When no map exists
-	//    yet, start from an empty one — the context pack populates it as
-	//    entities resolve.
+	// Marker checks happen before context retrieval or inference. Repeated direct
+	// calls and repeated enqueue attempts therefore perform zero paid work.
+	if (await isScrubDone(runtime, item.content, rulesetVersion)) {
+		return {
+			scrubbedText: item.content,
+			escalated: false,
+			verdicts: [],
+			modelId: "skipped",
+			skipped: true,
+			railsPayload: null,
+		};
+	}
+
 	const mapStore =
 		options.mapStore ?? new EncryptedCachePseudonymMapStore(runtime);
 	const snapshot = await mapStore.load();
@@ -247,8 +263,6 @@ export async function runPiiScrubPipeline(
 		? CorpusPseudonymMap.fromSnapshot(snapshot)
 		: new CorpusPseudonymMap();
 
-	// 2. Assemble the context pack: resolve candidates, gather fragments,
-	//    cluster confident resolutions into the map, emit the assignment slice.
 	const pack = await assembleContextPack(sources ?? {}, {
 		chunk: item.content,
 		candidates: item.candidates,
@@ -256,9 +270,34 @@ export async function runPiiScrubPipeline(
 		rulesetVersion,
 	});
 
-	// 3. Run the scrub seam: tier-0 deterministic detectors first, then
-	//    escalate the residue to the PII_SCRUB model. Fail-closed: a missing
-	//    handler for residue, a fabricated result, or a model error throws.
+	if (map.size > 0) {
+		await mapStore.save(map.toSnapshot());
+	}
+
+	// Async mode is payload-only. Inference happens exactly once when the
+	// service drains this payload.
+	if (!applyWriteBack) {
+		return {
+			scrubbedText: item.content,
+			escalated: false,
+			verdicts: [],
+			modelId: "pending",
+			skipped: false,
+			railsPayload: {
+				content: item.content,
+				rulesetVersion,
+				candidateSpans: pack.candidateSpans,
+				contextPack: pack.contextPack,
+				pseudonymAssignments: pack.assignments,
+				priority,
+				inferencePriority,
+				itemRef: item.itemRef,
+				writeBack: item.writeBack,
+				source: "pii-scrub-pipeline",
+			},
+		};
+	}
+
 	const escalation = await scrubWithEscalation(runtime, {
 		text: item.content,
 		candidateSpans: pack.candidateSpans,
@@ -267,38 +306,23 @@ export async function runPiiScrubPipeline(
 		pseudonymAssignments: pack.assignments,
 		priority: inferencePriority ?? "background",
 	});
-
-	// 4. The map was mutated by the context pack (new clusters assigned). Persist
-	//    it back to the encrypted store so the next item / next run sees the same
-	//    pseudonyms. Fail-closed: a save failure propagates.
-	if (map.size > 0) {
-		await mapStore.save(map.toSnapshot());
-	}
-
 	const verdicts = escalation.escalation?.verdicts ?? [];
 	const modelId = escalation.escalation?.modelId ?? "tier0";
-	const scrubbedText = applyWriteBack
-		? applyScrubVerdicts(item.content, verdicts, map)
-		: item.content;
+	const redacted = applyScrubWriteBack(
+		item.content,
+		escalation.tier0,
+		verdicts,
+	);
+	const scrubbedText = map.substituteAliases(redacted).text;
 
-	// 5. Build the rails payload so a caller can emit PII_SCRUB_REQUESTED and
-	//    let the live PiiScrubService own the marker / retry / observability.
-	//    The pipeline applied the scrub directly; the payload carries the pack
-	//    data for the service's drain-time idempotency check.
-	const railsPayload: Omit<PiiScrubRequestPayload, "runtime"> | null =
-		applyWriteBack
-			? {
-					content: item.content,
-					rulesetVersion,
-					candidateSpans: pack.candidateSpans,
-					contextPack: pack.contextPack,
-					pseudonymAssignments: pack.assignments,
-					priority,
-					inferencePriority,
-					itemRef: item.itemRef,
-					source: "pii-scrub-pipeline",
-				}
-			: null;
+	// The source artifact is committed before the marker. A failed write never
+	// becomes an idempotency hit and can safely retry.
+	await item.writeBack(scrubbedText);
+	await markScrubDone(runtime, item.content, {
+		rulesetVersion,
+		modelId,
+		tier0Only: !escalation.escalated,
+	});
 
 	return {
 		scrubbedText,
@@ -306,7 +330,7 @@ export async function runPiiScrubPipeline(
 		verdicts,
 		modelId,
 		skipped: false,
-		railsPayload,
+		railsPayload: null,
 	};
 }
 
@@ -325,50 +349,18 @@ export async function enqueuePiiScrub(
 	item: PiiScrubPipelineItem,
 	options: PiiScrubPipelineOptions,
 ): Promise<void> {
-	const {
-		rulesetVersion,
-		sources,
-		priority,
-		inferencePriority,
-	} = options;
-
-	// Load the map so the context pack can cluster resolved entities and emit
-	// consistent assignment slices. The service's drain re-runs the seam, but
-	// the pack is assembled HERE (the caller has the candidates + retrieval
-	// sources; the drain-time service only has the payload).
-	const mapStore =
-		options.mapStore ?? new EncryptedCachePseudonymMapStore(runtime);
-	const snapshot = await mapStore.load();
-	const map = snapshot
-		? CorpusPseudonymMap.fromSnapshot(snapshot)
-		: new CorpusPseudonymMap();
-
-	const pack = await assembleContextPack(sources ?? {}, {
-		chunk: item.content,
-		candidates: item.candidates,
-		map,
-		rulesetVersion,
+	const result = await runPiiScrubPipeline(runtime, item, {
+		...options,
+		applyWriteBack: false,
 	});
-
-	// Persist the map if the context pack added clusters.
-	if (map.size > 0) {
-		await mapStore.save(map.toSnapshot());
+	if (result.skipped || !result.railsPayload) {
+		return;
 	}
 
-	const payload: PiiScrubRequestPayload = {
+	await runtime.emitEvent(EventType.PII_SCRUB_REQUESTED, {
 		runtime,
-		content: item.content,
-		rulesetVersion,
-		candidateSpans: pack.candidateSpans,
-		contextPack: pack.contextPack,
-		pseudonymAssignments: pack.assignments,
-		priority,
-		inferencePriority,
-		itemRef: item.itemRef,
-		source: "pii-scrub-pipeline",
-	};
-
-	await runtime.emitEvent(EventType.PII_SCRUB_REQUESTED, payload);
+		...result.railsPayload,
+	});
 }
 
 /**

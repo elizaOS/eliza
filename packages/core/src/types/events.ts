@@ -369,8 +369,13 @@ export interface PiiScrubRequestPayload extends EventPayload {
 	inferencePriority?: LocalInferencePriority;
 	/** Correlates all items belonging to one scrub job (progress/observability). */
 	jobId?: UUID;
-	/** Opaque caller ref (e.g. the memory/document id) for write-back. */
+	/** Opaque caller ref (e.g. the memory/document id) for audit correlation. */
 	itemRef?: string;
+	/**
+	 * Local durable write-back owned by the source adapter. The scrub service
+	 * awaits this before writing the done marker; a rejection triggers retry.
+	 */
+	writeBack?: (scrubbedText: string) => Promise<void>;
 }
 
 /**

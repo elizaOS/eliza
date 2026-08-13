@@ -84,6 +84,8 @@ function makeRuntime(opts: {
 			events.push({ type, payload });
 		},
 		registerEvent: vi.fn(),
+		registerPipelineHook: vi.fn(),
+		unregisterPipelineHook: vi.fn(),
 		registerTaskWorker: vi.fn(),
 		getTasksByName: async () => [],
 		getTask: async () => null,

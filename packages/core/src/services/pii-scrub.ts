@@ -38,16 +38,21 @@
  * the model seam itself (already merged).
  */
 
-import { applyScrubWriteBack } from "../security/pii-scrub-pipeline.js";
+import { ElizaError } from "../errors.js";
 import {
 	getScrubMarker,
 	isScrubDone,
 	markScrubDone,
 } from "../security/pii-scrub-markers.js";
 import {
+	applyScrubWriteBack,
+	enqueuePiiScrub,
+	mineTier0Candidates,
+} from "../security/pii-scrub-pipeline.js";
+import {
 	PiiScrubFabricationError,
-	type Tier0Span,
 	scrubWithEscalation,
+	type Tier0Span,
 } from "../security/pii-scrub-seam.js";
 import type { PiiScrubRequestPayload } from "../types/events.js";
 import { EventType } from "../types/events.js";
@@ -67,9 +72,12 @@ interface PiiScrubQueueItem {
 	inferencePriority: "interactive" | "background";
 	jobId?: string;
 	itemRef?: string;
+	writeBack?: PiiScrubRequestPayload["writeBack"];
 }
 
 const SRC = "plugin:basic-capabilities:service:pii-scrub";
+const MEMORY_HOOK_ID = "core:pii-scrub:after-memory-persisted";
+export const PII_SCRUB_RULESET_VERSION = "2026.08";
 
 /**
  * Service responsible for running the corpus PII scrub asynchronously on the
@@ -109,6 +117,65 @@ export class PiiScrubService extends Service {
 			EventType.PII_SCRUB_REQUESTED,
 			this.handleScrubRequest.bind(this),
 		);
+		this.runtime.registerPipelineHook({
+			id: MEMORY_HOOK_ID,
+			phase: "after_memory_persisted",
+			schedule: "serial",
+			mutatesPrimary: false,
+			handler: async (_runtime, ctx) => {
+				if (ctx.phase !== "after_memory_persisted") return;
+				const originalText = ctx.memory.content.text;
+				if (typeof originalText !== "string" || originalText.length === 0) {
+					return;
+				}
+				const candidates = mineTier0Candidates(originalText);
+				if (candidates.length === 0) return;
+
+				await enqueuePiiScrub(
+					this.runtime,
+					{
+						content: originalText,
+						itemRef: ctx.memoryId,
+						candidates,
+						writeBack: async (scrubbedText) => {
+							const current = await this.runtime.getMemoryById(ctx.memoryId);
+							if (!current) {
+								throw new ElizaError(
+									"PII scrub source memory no longer exists",
+									{
+										code: "PII_SCRUB_SOURCE_MISSING",
+										context: { memoryId: ctx.memoryId },
+									},
+								);
+							}
+							if (current.content.text !== originalText) {
+								throw new ElizaError(
+									"PII scrub source changed before write-back",
+									{
+										code: "PII_SCRUB_SOURCE_CHANGED",
+										context: { memoryId: ctx.memoryId },
+									},
+								);
+							}
+							const updated = await this.runtime.updateMemory({
+								id: ctx.memoryId,
+								content: { ...current.content, text: scrubbedText },
+							});
+							if (!updated) {
+								throw new ElizaError(
+									"PII scrub source write-back was rejected",
+									{
+										code: "PII_SCRUB_WRITE_BACK_REJECTED",
+										context: { memoryId: ctx.memoryId },
+									},
+								);
+							}
+						},
+					},
+					{ rulesetVersion: PII_SCRUB_RULESET_VERSION },
+				);
+			},
+		});
 
 		// Same drain/retry/priority model as the embedding service - the task
 		// system owns WHEN (repeat PII_SCRUB_DRAIN tick), we own WHAT (dequeue,
@@ -193,6 +260,7 @@ export class PiiScrubService extends Service {
 			inferencePriority: payload.inferencePriority ?? "background",
 			jobId: payload.jobId,
 			itemRef: payload.itemRef,
+			writeBack: payload.writeBack,
 		};
 
 		this.batchQueue.enqueue(item);
@@ -273,6 +341,12 @@ export class PiiScrubService extends Service {
 			verdicts,
 		);
 
+		// The source adapter must confirm its durable write before this item can
+		// become an idempotency hit. Rejections throw into the queue retry path.
+		if (item.writeBack) {
+			await item.writeBack(scrubbedText);
+		}
+
 		// Success: write the content-addressed done-marker so a re-scrub of this
 		// exact content under this ruleset no-ops, and a crash-restart resumes
 		// past it with zero duplicate work.
@@ -325,6 +399,7 @@ export class PiiScrubService extends Service {
 		if (this.isDisabled || !this.batchQueue) {
 			return;
 		}
+		this.runtime.unregisterPipelineHook(MEMORY_HOOK_ID);
 		const remaining = this.batchQueue.size;
 		const fastShutdown = process.env.ELIZA_FAST_SHUTDOWN === "1";
 		if (fastShutdown) {

@@ -15,8 +15,11 @@
 
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { hashScrubContent } from "../security/pii-scrub-markers.js";
+import type { Memory } from "../types/memory.js";
 import type { PiiScrubResult } from "../types/model.js";
 import { ModelType } from "../types/model.js";
+import type { PipelineHookSpec } from "../types/pipeline-hooks.js";
+import type { UUID } from "../types/primitives.js";
 import type { IAgentRuntime } from "../types/runtime.js";
 import { PiiScrubService } from "./pii-scrub.js";
 
@@ -70,6 +73,8 @@ function makeRuntime(opts: RuntimeMockOpts = {}): MockRuntime {
 			events.push({ type, payload });
 		},
 		registerEvent: vi.fn(),
+		registerPipelineHook: vi.fn(),
+		unregisterPipelineHook: vi.fn(),
 		registerTaskWorker: vi.fn(),
 		getTasksByName: async () => [],
 		getTask: async () => null,
@@ -141,6 +146,51 @@ describe("PiiScrubService drain config", () => {
 			expect.any(Function),
 		);
 	});
+
+	test("scrubs persisted memories through the production hook and durable write-back", async () => {
+		const runtime = makeRuntime();
+		const service = (await PiiScrubService.start(runtime)) as PiiScrubService;
+		const memoryId = "00000000-0000-0000-0000-000000000010" as UUID;
+		let stored: Memory = {
+			id: memoryId,
+			entityId: "00000000-0000-0000-0000-000000000011" as UUID,
+			roomId: "00000000-0000-0000-0000-000000000012" as UUID,
+			content: { text: "pay 4111 1111 1111 1111" },
+		};
+		runtime.getMemoryById = vi.fn(async () => stored);
+		runtime.updateMemory = vi.fn(
+			async (update: Parameters<IAgentRuntime["updateMemory"]>[0]) => {
+				stored = { ...stored, ...update };
+				return true;
+			},
+		);
+		const registered = runtime.registerPipelineHook as unknown as {
+			mock: { calls: Array<[PipelineHookSpec]> };
+		};
+		const hook = registered.mock.calls
+			.map(([spec]) => spec)
+			.find((spec) => spec.id === "core:pii-scrub:after-memory-persisted");
+		expect(hook).toBeDefined();
+
+		await hook?.handler(runtime, {
+			phase: "after_memory_persisted",
+			memory: stored,
+			tableName: "memories",
+			memoryId,
+		});
+		const requested = runtime.__events.find(
+			(event) => event.type === "PII_SCRUB_REQUESTED",
+		);
+		expect(requested).toBeDefined();
+		await enqueue(service, requested?.payload ?? {});
+		await drain(service);
+
+		expect(stored.content.text).toBe("pay [REDACTED]");
+		expect(
+			await service.getMarker("pay 4111 1111 1111 1111", "2026.08"),
+		).toBeDefined();
+		await service.stop();
+	});
 });
 
 describe("PiiScrubService enqueue -> drain -> scrub applied", () => {
@@ -166,6 +216,35 @@ describe("PiiScrubService enqueue -> drain -> scrub applied", () => {
 		);
 		expect(completed).toHaveLength(1);
 		expect(completed[0].payload.tier0Only).toBe(true);
+		await service.stop();
+	});
+
+	test("durably writes tier-0 output before marking and emits the transformed text", async () => {
+		const runtime = makeRuntime();
+		const service = (await PiiScrubService.start(runtime)) as PiiScrubService;
+		const content = "my card is 4111 1111 1111 1111";
+		const order: string[] = [];
+		const setCache = runtime.setCache.bind(runtime);
+		runtime.setCache = async (key, value) => {
+			order.push("marker");
+			return setCache(key, value);
+		};
+
+		await enqueue(service, {
+			content,
+			rulesetVersion: RULESET,
+			writeBack: async (scrubbedText: string) => {
+				order.push("writeBack");
+				expect(scrubbedText).toBe("my card is [REDACTED]");
+			},
+		});
+		await drain(service);
+
+		expect(order).toEqual(["writeBack", "marker"]);
+		const completed = runtime.__events.find(
+			(event) => event.type === "PII_SCRUB_COMPLETED",
+		);
+		expect(completed?.payload.scrubbedText).toBe("my card is [REDACTED]");
 		await service.stop();
 	});
 
