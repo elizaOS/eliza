@@ -42,15 +42,18 @@ import { logger } from "@/lib/utils/logger";
  * historical default rather than guessing, and the create path logs the skip.
  */
 const DEFAULT_CALLBACK_CAPACITY = 8;
+const MAX_CALLBACK_CAPACITY = 64;
+/** 16 TiB in MiB: generous hardware headroom while remaining a bounded contract. */
+const MAX_CALLBACK_MEM_TOTAL_MB = 16 * 1024 * 1024;
 
 const callbackSchema = z.object({
   nodeId: z.string().min(1).max(64),
   hostname: z.string().min(1).max(255),
   // No default: an absent capacity means "derive it from the machine", which
   // is not the same request as an explicit 8.
-  capacity: z.number().int().min(1).max(64).optional(),
+  capacity: z.number().int().min(1).max(MAX_CALLBACK_CAPACITY).optional(),
   /** MemTotal reported by the node itself, in MiB. */
-  memTotalMb: z.number().int().min(1).optional(),
+  memTotalMb: z.number().int().min(1).max(MAX_CALLBACK_MEM_TOTAL_MB).optional(),
   /** vCPU the node reports, from nproc. */
   vCpuCount: z.number().int().min(1).max(512).optional(),
   sshPort: z.number().int().min(1).max(65535).optional().default(22),
@@ -168,14 +171,129 @@ async function __hono_POST(request: Request) {
         );
       }
 
+      const existingMetadata = existing.metadata as Record<string, unknown>;
+      if (existingMetadata.capacityProvisional === true) {
+        const persistedRequest = existingMetadata.capacityRequested;
+        if (
+          persistedRequest !== null &&
+          (typeof persistedRequest !== "number" ||
+            !Number.isSafeInteger(persistedRequest) ||
+            persistedRequest < 1 ||
+            persistedRequest > MAX_CALLBACK_CAPACITY)
+        ) {
+          logger.error(
+            "[admin/docker-nodes/bootstrap-callback] provisional capacity metadata is invalid",
+            { nodeId },
+          );
+          return Response.json(
+            {
+              success: false,
+              error: "Provisional capacity metadata is invalid.",
+            },
+            { status: 409 },
+          );
+        }
+        const requestedCapacity =
+          persistedRequest === null ? undefined : persistedRequest;
+        if (capacity !== requestedCapacity) {
+          return Response.json(
+            {
+              success: false,
+              error:
+                "Bootstrap capacity does not match the autoscaler request recorded for this node.",
+            },
+            { status: 409 },
+          );
+        }
+        if (memTotalMb === undefined || vCpuCount === undefined) {
+          return Response.json(
+            {
+              success: false,
+              error:
+                "A provisional autoscaled node must report both memTotalMb and vCpuCount before it can advertise capacity.",
+            },
+            { status: 422 },
+          );
+        }
+
+        const resolved = resolveNodeCapacity({
+          requestedCapacity,
+          memTotalMb,
+          vCpuCount,
+          agentMemoryLimitMb: containersEnv.agentContainerMemoryLimitMb(),
+          fallbackCapacity: DEFAULT_CALLBACK_CAPACITY,
+        });
+        if (resolved.capacity > MAX_CALLBACK_CAPACITY) {
+          logger.error(
+            "[admin/docker-nodes/bootstrap-callback] derived capacity exceeds callback contract",
+            { nodeId, capacity: resolved.capacity, memTotalMb, vCpuCount },
+          );
+          return Response.json(
+            {
+              success: false,
+              error: `Derived capacity exceeds the maximum of ${MAX_CALLBACK_CAPACITY}.`,
+            },
+            { status: 422 },
+          );
+        }
+
+        const attestedAt = new Date().toISOString();
+        const reconciled =
+          await dockerNodesRepository.reconcileProvisionalCapacity(
+            existing.id,
+            {
+              capacity: resolved.capacity,
+              hostname: identityChanged ? hostname : existing.hostname,
+              ssh_port: identityChanged ? sshPort : existing.ssh_port,
+              ssh_user: identityChanged ? sshUser : existing.ssh_user,
+              host_key_fingerprint: hasPinnedFingerprint
+                ? existing.host_key_fingerprint!
+                : hostKeyFingerprint,
+              status: "unknown",
+            },
+            stampDockerNodeEnvironmentMetadata({
+              memTotalMb,
+              vCpuCount,
+              capacityBoundBy: resolved.boundBy,
+              capacityDerivedFromMemory: resolved.derived,
+              capacityAttestedAt: attestedAt,
+              lastBootstrapAt: attestedAt,
+            }),
+          );
+
+        // A concurrent first callback may have consumed the marker after our
+        // read. The repository predicate is the authority; re-read its result
+        // instead of performing a second capacity write.
+        const updated =
+          reconciled ?? (await dockerNodesRepository.findByNodeId(nodeId));
+        logger.info(
+          "[admin/docker-nodes/bootstrap-callback] hardware-attested autoscaled node capacity",
+          {
+            nodeId,
+            capacity: updated?.capacity ?? existing.capacity,
+            reconciled: reconciled !== null,
+          },
+        );
+        return Response.json({
+          success: true,
+          data: {
+            nodeId,
+            hostname: updated?.hostname ?? existing.hostname,
+            action: "updated",
+            node: updated,
+          },
+        });
+      }
+
       // Identity fields are only ever taken from the request on a
       // fingerprint-proven re-bootstrap (identityChanged && verified above);
       // otherwise the server-stored values are preserved verbatim so an
       // unauthenticated re-bootstrap caller cannot silently rewrite them.
       //
-      // `capacity` is deliberately NOT written here: once a node exists, its
-      // slot count is operator-owned (set via the admin PATCH route or a direct
-      // DB tune). The callback default is sized for the small cpx32-class box
+      // `capacity` is deliberately NOT written here once the provisional
+      // marker has been consumed: the slot count is then operator-owned (set
+      // via the admin PATCH route or a direct DB tune). The callback default
+      // is sized for the small cpx32-class box
       // it was born on, so re-writing it on every liveness re-bootstrap would
       // silently reset a hand-tuned value (e.g. a 252 GB robot at capacity=24
       // back to 8). Capacity is stamped only on the create path below.
@@ -217,6 +335,15 @@ async function __hono_POST(request: Request) {
       agentMemoryLimitMb: containersEnv.agentContainerMemoryLimitMb(),
       fallbackCapacity: DEFAULT_CALLBACK_CAPACITY,
     });
+    if (resolved.capacity > MAX_CALLBACK_CAPACITY) {
+      return Response.json(
+        {
+          success: false,
+          error: `Derived capacity exceeds the maximum of ${MAX_CALLBACK_CAPACITY}.`,
+        },
+        { status: 422 },
+      );
+    }
     if (memTotalMb === undefined) {
       logger.warn(
         "[admin/docker-nodes/bootstrap-callback] node did not report its RAM; capacity not derived",

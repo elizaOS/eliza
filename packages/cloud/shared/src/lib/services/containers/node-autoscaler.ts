@@ -56,7 +56,7 @@ export interface AutoscalePolicy {
   defaultLocation: string;
   /** Image used for the OS install (cloud-init compatible). */
   defaultImage: string;
-  /** Default per-node capacity (slot count) for newly provisioned nodes. */
+  /** Policy fallback retained in provisional metadata until hardware attests. */
   defaultCapacity: number;
 }
 
@@ -147,6 +147,7 @@ export class NodeAutoscaler {
     const healthyEnabled = enabled.filter(
       (n) =>
         n.status === "healthy" &&
+        n.metadata.capacityProvisional !== true &&
         isArchitectureCompatibleWithPlatform(
           inferNodeArchitectureFromMetadata(n.metadata),
           requiredPlatform,
@@ -242,7 +243,8 @@ export class NodeAutoscaler {
     const serverType = request.serverType ?? this.policy.defaultServerType;
     const location = request.location ?? this.policy.defaultLocation;
     const image = request.image ?? this.policy.defaultImage;
-    const capacity = request.capacity ?? this.policy.defaultCapacity;
+    const policyCapacity = this.policy.defaultCapacity;
+    const requestedCapacity = request.capacity ?? policyCapacity;
     const prePullImages = request.prePullImages ?? [containersEnv.defaultAgentImage()];
     const networkIds = containersEnv.defaultHcloudNetworkIds();
 
@@ -253,7 +255,7 @@ export class NodeAutoscaler {
       registrationSecret: bootstrap.registrationSecret,
       prePullImages,
       prePullPlatform: containersEnv.defaultAgentImagePlatform(),
-      capacity,
+      ...(request.capacity === undefined ? {} : { capacity: request.capacity }),
     });
 
     const client = this.computeProvider();
@@ -305,9 +307,21 @@ export class NodeAutoscaler {
         return id === undefined || !providerIds.has(String(id));
       }).length;
       const authoritativeNodeCount = providerServers.length + dbOnlyCount;
+      const representedProviderIds = new Set(
+        environmentNodes
+          .map((node) => getHcloudServerId(node))
+          .filter((id): id is number => id !== undefined)
+          .map(String),
+      );
+      const providerOnlyCount = providerServers.filter(
+        (server) => !representedProviderIds.has(String(server.id)),
+      ).length;
       const authoritativeCapacity =
-        environmentNodes.reduce((sum, node) => sum + node.capacity, 0) +
-        Math.max(0, providerServers.length - environmentNodes.length) * this.policy.defaultCapacity;
+        environmentNodes.reduce(
+          (sum, node) => sum + nodeCapacityReservation(node, policyCapacity),
+          0,
+        ) +
+        providerOnlyCount * policyCapacity;
       const capacityBudget = this.policy.maxNodes * this.policy.defaultCapacity;
 
       if (!existingServer && authoritativeNodeCount >= this.policy.maxNodes) {
@@ -316,7 +330,7 @@ export class NodeAutoscaler {
           `Compute node quota reached for ${providerName}/${environment}`,
         );
       }
-      if (!existingServer && authoritativeCapacity + capacity > capacityBudget) {
+      if (!existingServer && authoritativeCapacity + requestedCapacity > capacityBudget) {
         throw new HetznerCloudError(
           "quota_exceeded",
           `Compute capacity budget reached for ${providerName}/${environment}`,
@@ -342,7 +356,9 @@ export class NodeAutoscaler {
           node_id: nodeId,
           hostname: ip,
           ssh_port: 22,
-          capacity,
+          // Zero is the data-level fail-closed fence. Legacy placement paths
+          // query allocated_count < capacity without reading metadata.
+          capacity: 0,
           enabled: true,
           status: "unknown",
           allocated_count: 0,
@@ -352,11 +368,15 @@ export class NodeAutoscaler {
             environment,
             autoscaled: true,
             hcloudServerId,
+            ip,
             serverType,
             location,
             image,
             architecture: inferArchitectureFromHetznerServerType(serverType),
             provisionedAt: new Date().toISOString(),
+            capacityProvisional: true,
+            capacityRequested: request.capacity ?? null,
+            capacityPolicyFallback: policyCapacity,
           },
         });
       } catch (error) {
@@ -370,6 +390,7 @@ export class NodeAutoscaler {
         ip,
         serverType,
         location,
+        capacityProvisional: true,
       });
 
       return {
@@ -523,6 +544,19 @@ function generateNodeId(): string {
 function getHcloudServerId(node: DockerNode): number | undefined {
   const meta = (node.metadata ?? {}) as Record<string, unknown>;
   return typeof meta.hcloudServerId === "number" ? meta.hcloudServerId : undefined;
+}
+
+function nodeCapacityReservation(node: DockerNode, policyFallback: number): number {
+  const metadata = (node.metadata ?? {}) as Record<string, unknown>;
+  if (metadata.capacityProvisional !== true) return node.capacity;
+  const requested = metadata.capacityRequested;
+  if (typeof requested === "number" && Number.isSafeInteger(requested) && requested > 0) {
+    return requested;
+  }
+  const fallback = metadata.capacityPolicyFallback;
+  return typeof fallback === "number" && Number.isSafeInteger(fallback) && fallback > 0
+    ? fallback
+    : policyFallback;
 }
 
 function provisionResultFromNode(node: DockerNode): ProvisionResult {

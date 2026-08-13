@@ -677,14 +677,13 @@ export const containersEnv = {
   },
 
   /**
-   * Per-node agent capacity for newly autoscaled Hetzner Cloud nodes. The
-   * autoscaler stamps this onto a node's `capacity` at creation; the
-   * scheduler then refuses placement once `allocated_count >= capacity`.
+   * Legacy per-node policy fallback for newly autoscaled Hetzner Cloud nodes.
+   * It is retained in provisional metadata for operator visibility, while the
+   * row itself stays at capacity zero until hardware reports RAM and vCPU.
    *
-   * Env-overridable so ops can right-size for a smaller server type without
-   * a code change. Default: 8 — safe alongside the ccx33 default at
-   * ~32 GB / ~4 GB per agent. Lower it explicitly if you set a smaller
-   * server type (e.g. cpx41 16 GB → 4-5; cpx31 8 GB → 2-3) to avoid OOM.
+   * Env-overridable for compatibility with existing fleet configuration.
+   * Default: 8. Hardware-attested capacity is derived by the bootstrap
+   * callback and does not treat this fallback as an explicit request.
    *
    * Clamped to [1, 64].
    */

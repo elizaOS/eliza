@@ -215,13 +215,16 @@ describe("NodeAutoscaler Hetzner provisioning", () => {
       expect.objectContaining({
         node_id: "node-test",
         hostname: "203.0.113.10",
-        capacity: 6,
+        capacity: 0,
         enabled: true,
         status: "unknown",
         ssh_user: "root",
         metadata: expect.objectContaining({
           provider: "hetzner-cloud",
           autoscaled: true,
+          capacityProvisional: true,
+          capacityRequested: 6,
+          capacityPolicyFallback: 8,
           hcloudServerId: 4242,
           serverType: "cax21",
           location: "fsn1",
@@ -340,6 +343,78 @@ describe("NodeAutoscaler Hetzner provisioning", () => {
       ),
     ).rejects.toThrow("database unavailable");
     expect(mocks.deleteServer).toHaveBeenCalledWith(4242);
+  });
+
+  test("persists a fail-closed provisional row while preserving an absent override", async () => {
+    const autoscaler = new NodeAutoscaler(policy);
+
+    await autoscaler.provisionNode(
+      { nodeId: "node-derived" },
+      {
+        controlPlanePublicKey: "ssh-ed25519 AAAAcontrol",
+        registrationUrl: "https://cloud.example.test/register",
+        registrationSecret: "secret",
+      },
+    );
+
+    expect(mocks.buildUserData).toHaveBeenCalledWith(
+      expect.not.objectContaining({ capacity: expect.anything() }),
+    );
+    expect(mocks.createNode).toHaveBeenCalledWith(
+      expect.objectContaining({
+        capacity: 0,
+        metadata: expect.objectContaining({
+          capacityProvisional: true,
+          capacityRequested: null,
+          capacityPolicyFallback: 8,
+        }),
+      }),
+    );
+  });
+
+  test("charges provisional capacity reservations against the atomic budget", async () => {
+    mocks.nodes = Array.from(
+      { length: policy.maxNodes - 1 },
+      (_, index) =>
+        ({
+          node_id: `booting-${index}`,
+          hostname: `203.0.113.${index + 20}`,
+          capacity: 0,
+          metadata: {
+            provider: "hetzner-cloud",
+            environment: "local",
+            hcloudServerId: 6000 + index,
+            capacityProvisional: true,
+            capacityRequested: null,
+            capacityPolicyFallback: policy.defaultCapacity,
+          },
+        }) as DockerNode,
+    );
+    mocks.listServers.mockResolvedValue(
+      mocks.nodes.map((node) => ({
+        id: (node.metadata as Record<string, unknown>).hcloudServerId as number,
+        name: node.node_id,
+        status: "running",
+        labels: {
+          "managed-by": "eliza-cloud",
+          environment: "local",
+          tier: "data-plane",
+        },
+      })),
+    );
+    const autoscaler = new NodeAutoscaler(policy);
+
+    await expect(
+      autoscaler.provisionNode(
+        { nodeId: "capacity-over-budget", capacity: policy.defaultCapacity + 1 },
+        {
+          controlPlanePublicKey: "ssh-ed25519 AAAAcontrol",
+          registrationUrl: "https://cloud.example.test/register",
+          registrationSecret: "secret",
+        },
+      ),
+    ).rejects.toMatchObject({ code: "quota_exceeded" });
+    expect(mocks.createServer).not.toHaveBeenCalled();
   });
 
   test("passes configured Hetzner private network ids to new nodes", async () => {
@@ -576,10 +651,13 @@ describe("NodeAutoscaler full provision\u2192healthy\u2192drain loop (#8920)", (
     expect(booting.healthyNodeCount).toBe(0);
     expect(booting.shouldScaleUp).toBe(true);
 
-    // 4. The server boots (tick advances the action clock) and the periodic
+    // 4. The server boots (tick advances the action clock), its bootstrap
+    //    callback consumes the provisional-capacity marker, and the periodic
     //    health check flips the docker_nodes row to `healthy`.
     fake.tick(1);
     expect((await fake.getServer(serverId))?.status).toBe("active");
+    delete store[0].metadata.capacityProvisional;
+    store[0].capacity = 8;
     store[0].status = "healthy";
 
     // 5. The node now serves its full capacity \u2192 no more scale-up.

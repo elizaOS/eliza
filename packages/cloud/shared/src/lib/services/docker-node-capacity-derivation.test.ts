@@ -108,10 +108,13 @@ describe("deriveNodeCapacity", () => {
     expect(d.byCpu).toBeNull();
   });
 
-  test("never returns zero for a box that can hold something", () => {
+  test("reports zero when the configured agent cannot fit after the host reserve", () => {
     expect(
       deriveNodeCapacity({ memTotalMb: 2048, vCpuCount: 2, agentMemoryLimitMb: AGENT_MB }).capacity,
-    ).toBe(1);
+    ).toBe(0);
+    expect(
+      deriveNodeCapacity({ memTotalMb: 512, vCpuCount: 8, agentMemoryLimitMb: AGENT_MB }),
+    ).toMatchObject({ capacity: 0, byMemory: 0, boundBy: "memory" });
   });
 });
 
@@ -161,5 +164,16 @@ describe("resolveNodeCapacity", () => {
       vCpuCount: ROBOT_VCPU,
     });
     expect(r).toEqual({ capacity: 11, derived: true, boundBy: "cpu" });
+  });
+
+  test("clamps an explicit request to zero when known hardware cannot hold one agent", () => {
+    expect(
+      resolveNodeCapacity({
+        ...base,
+        requestedCapacity: 8,
+        memTotalMb: 2048,
+        vCpuCount: 2,
+      }),
+    ).toEqual({ capacity: 0, derived: false, clampedFrom: 8, boundBy: "memory" });
   });
 });
