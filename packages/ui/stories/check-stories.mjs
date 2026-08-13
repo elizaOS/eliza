@@ -6,18 +6,19 @@
  *   node stories/check-stories.mjs [--base http://localhost:6006] [--limit N] [--filter substr] [--globals theme:light]
  */
 import { chromium } from "playwright";
+import { integerArg } from "./check-stories-cli.mjs";
 
 const arg = (name, def) => {
   const i = process.argv.indexOf(name);
   return i >= 0 ? process.argv[i + 1] : def;
 };
 const base = arg("--base", "http://localhost:6006");
-const limit = Number(arg("--limit", "0")) || 0;
+const limit = integerArg(process.argv, "--limit", 0, 1);
 const filter = arg("--filter", "");
 const globals = arg("--globals", "");
 
 const idsFile = arg("--ids-file", "");
-const settle = Number(arg("--settle", "600")) || 600;
+const settle = integerArg(process.argv, "--settle", 600, 0);
 const isTransientNavigationError = (message) =>
   /net::ERR_(ABORTED|CONNECTION_REFUSED)|Execution context was destroyed/i.test(
     message,
