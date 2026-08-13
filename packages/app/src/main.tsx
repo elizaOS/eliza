@@ -1235,16 +1235,15 @@ async function driveIosLivenessChatTurn(prompt: string): Promise<string> {
 
 function parseIosCloudOnboardingSmokeRequest(raw: string | null): {
   mode: "tap" | "autologin";
-  // Liveness contract (#14359 / #16936): when the harness points the lane at a
-  // live-provider backend it sets `liveness: true` so the verifier drives one
-  // real chat turn after landing on home and reports the reply for the shared
-  // non-stub assertion. Default false — the deterministic host is stub-backed.
+  // Liveness contract (#14359 / #16936): liveness is intrinsic to every SIWE
+  // cloud-onboarding lane. The harness always sets liveness: true; the default
+  // is also true so a bare request ("1") still drives the real chat turn.
   liveness: boolean;
   livenessPrompt: string;
 } {
   const fallback = {
     mode: "tap" as const,
-    liveness: false,
+    liveness: true,
     livenessPrompt: "In one short sentence, say hello.",
   };
   if (!raw || raw === "1") return fallback;
@@ -1256,7 +1255,7 @@ function parseIosCloudOnboardingSmokeRequest(raw: string | null): {
     };
     return {
       mode: parsed.mode === "autologin" ? "autologin" : fallback.mode,
-      liveness: parsed.liveness === true,
+      liveness: parsed.liveness !== false,
       livenessPrompt:
         typeof parsed.livenessPrompt === "string" &&
         parsed.livenessPrompt.trim()
@@ -1386,13 +1385,12 @@ async function runIosCloudOnboardingSmokeIfRequested(): Promise<boolean> {
       '[data-testid="first-run-chat"], [data-testid="startup-first-run-background"]',
     );
 
-    // Liveness contract (#14359 / #16936): against a live-provider cloud
-    // backend, end the lane with one real chat turn and report the reply for
-    // the harness's shared non-stub assertion. Skipped for the default
-    // deterministic (stub) host.
-    const livenessReply = request.liveness
-      ? await driveIosLivenessChatTurn(request.livenessPrompt)
-      : null;
+    // Liveness contract (#14359 / #16936): the cloud agent is
+    // SIWE-provisioned and live, so every lane ends with one real chat turn.
+    // The result carries the reply for the harness's shared non-stub assertion.
+    const livenessReply = await driveIosLivenessChatTurn(
+      request.livenessPrompt,
+    );
 
     await writeIosCloudOnboardingSmokeResult({
       ok:
@@ -1411,7 +1409,7 @@ async function runIosCloudOnboardingSmokeIfRequested(): Promise<boolean> {
       firstRunPostCount,
       cloudActiveServer,
       storage,
-      livenessRequested: request.liveness,
+      livenessRequested: true,
       livenessReply,
     });
   } catch (error) {

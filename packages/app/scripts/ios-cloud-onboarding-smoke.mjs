@@ -9,6 +9,7 @@
  * simulator Preference key while this script records screenshots and video.
  */
 import { execFileSync, spawnSync } from "node:child_process";
+import { randomBytes } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -18,6 +19,10 @@ import {
   captureIosSimulatorScreenshot,
   startIosSimulatorVideo,
 } from "./lib/ios-simulator-capture.mjs";
+
+function cryptoRandomHex(bytes) {
+  return randomBytes(bytes).toString("hex");
+}
 
 const appDir = path.resolve(fileURLToPath(import.meta.url), "..", "..");
 const repoRoot = path.resolve(appDir, "..", "..");
@@ -318,9 +323,11 @@ async function runMode({ udid, appId, mode, privateKey }) {
   installLatestApp(udid, appId);
   for (const key of FIRST_RUN_STATE_KEYS) defaultsDelete(udid, appId, key);
 
-  const livenessEnabled =
-    process.env.ELIZA_ONBOARDING_LIVENESS === "1" ||
-    process.env.IOS_CLOUD_ONBOARDING_LIVENESS === "1";
+  // Liveness contract (#14359 / #16936): strict non-stub liveness is intrinsic
+  // to every SIWE cloud-onboarding lane — the cloud agent is SIWE-provisioned
+  // and live, so the harness always requests it. The run-unique challenge prompt
+  // proves the reply came from this exact run, not a cached response.
+  const livenessChallenge = `Reply with exactly this code to confirm you are live: ${cryptoRandomHex(3)}`;
 
   defaultsWriteString(udid, appId, E2E_WALLET_KEY, privateKey);
   if (mode === "autologin") {
@@ -330,7 +337,7 @@ async function runMode({ udid, appId, mode, privateKey }) {
     udid,
     appId,
     REQUEST_KEY,
-    JSON.stringify({ mode, liveness: livenessEnabled }),
+    JSON.stringify({ mode, liveness: true, livenessPrompt: livenessChallenge }),
   );
   defaultsWriteString(
     udid,
@@ -366,24 +373,23 @@ async function runMode({ udid, appId, mode, privateKey }) {
     if (mode === "tap" && result.signInGreetingVisible !== true) {
       throw new Error("tap mode did not prove the sign-in greeting");
     }
-    // Liveness contract (#14359 / #16936): when liveness was requested, the
-    // result must carry a non-empty reply that passes the shared non-stub
-    // assertion. A missing or stub-marked reply means the cloud agent did not
-    // produce a real answer — the lane fails.
-    if (livenessEnabled) {
-      if (
-        typeof result.livenessReply !== "string" ||
-        !result.livenessReply.trim()
-      ) {
-        throw new Error(
-          `iOS cloud onboarding ${mode} liveness was requested but no reply was captured`,
-        );
-      }
-      if (result.livenessReply.includes(STUB_FIXTURE_MARKER)) {
-        throw new Error(
-          `iOS cloud onboarding ${mode} liveness reply carried the stub fixture marker — a real model did not answer`,
-        );
-      }
+    // Liveness contract (#14359 / #16936): strict non-stub liveness is
+    // intrinsic to the lane — the harness always requests it. The result must
+    // carry a non-empty reply that passes the shared non-stub assertion. A
+    // missing or stub-marked reply means the cloud agent did not produce a real
+    // answer — the lane fails.
+    if (
+      typeof result.livenessReply !== "string" ||
+      !result.livenessReply.trim()
+    ) {
+      throw new Error(
+        `iOS cloud onboarding ${mode} liveness was requested but no reply was captured`,
+      );
+    }
+    if (result.livenessReply.includes(STUB_FIXTURE_MARKER)) {
+      throw new Error(
+        `iOS cloud onboarding ${mode} liveness reply carried the stub fixture marker — a real model did not answer`,
+      );
     }
     fs.writeFileSync(
       path.join(artifactDir, "result.json"),

@@ -6,22 +6,16 @@
 // route is mocked; the test records `/api/first-run` attempts to enforce the
 // Cloud architecture boundary while proving durable completion state.
 //
-// Liveness contract (#14359 / #16936): every onboarding lane ends with a real
-// chat turn. When ELIZA_ONBOARDING_LIVENESS=1 is set (pointing at a
-// live-provider backend), the final turn asserts a non-stub reply through the
-// shared liveness contract. Without the flag, the lane drives the chat turn but
-// only asserts a non-empty reply (the cloud agent is real, but the caller gates
-// the strict non-stub assertion so CI-only runs without a model key still pass
-// the contract surface wiring).
+// Liveness contract (#14359 / #16936): every SIWE cloud-onboarding lane ends
+// with a real chat turn that must pass the shared non-stub assertion. This is
+// intrinsic to the lane, not opt-in — the cloud agent is SIWE-provisioned and
+// live, so a stub or empty reply means the lane fails.
+
+import { randomBytes } from "node:crypto";
 import path from "node:path";
 import { startAndroidScreenRecord } from "../../scripts/lib/android-capture.mjs";
-import {
-  assertOnboardingLiveness,
-  sendChatAndReadReply,
-} from "../liveness-contract";
+import { assertOnboardingLiveness } from "../liveness-contract";
 import { expect, ORIGIN, test } from "./android-harness";
-
-const LIVENESS_ENABLED = process.env.ELIZA_ONBOARDING_LIVENESS === "1";
 
 const ARTIFACT_DIR = path.join(
   process.cwd(),
@@ -260,31 +254,32 @@ async function runCloudOnboardingMode({
     expect(state.activeServer).toMatchObject({ kind: "cloud" });
     expect(state.bodyText).not.toMatch(/First, where should your agent run/i);
 
-    // Liveness contract (#14359 / #16936): every SIWE cloud onboarding lane ends
-    // with a real chat turn. The cloud agent is live (SIWE-provisioned), so a
-    // non-empty reply is the baseline; when ELIZA_ONBOARDING_LIVENESS=1 is set,
-    // the reply must also pass the strict non-stub assertion.
-    if (LIVENESS_ENABLED) {
-      const reply = await assertOnboardingLiveness(page, {
-        label: `android-cloud-onboarding-${mode}`,
-      });
-      await testInfo.attach(`liveness reply (${mode})`, {
-        body: reply,
-        contentType: "text/plain",
-      });
-    } else {
-      const reply = await sendChatAndReadReply(page, {
-        label: `android-cloud-onboarding-${mode}`,
-      });
-      expect(
-        reply.length,
-        "cloud onboarding chat turn must produce a non-empty reply",
-      ).toBeGreaterThan(0);
-      await testInfo.attach(`chat reply (${mode})`, {
-        body: reply,
-        contentType: "text/plain",
-      });
-    }
+    // Liveness contract (#14359 / #16936): every SIWE cloud-onboarding lane
+    // ends with a real chat turn. Strict non-stub liveness is intrinsic to the
+    // lane — the cloud agent is SIWE-provisioned and live, so a stub or empty
+    // reply means the lane fails. The run-unique challenge prompt proves the
+    // reply came from this exact run, not a cached response.
+    const challenge = `Reply with exactly this code to confirm you are live: ${randomBytes(3).toString("hex")}`;
+    const reply = await assertOnboardingLiveness(page, {
+      label: `android-cloud-onboarding-${mode}`,
+      prompt: challenge,
+    });
+    await testInfo.attach(`liveness reply (${mode})`, {
+      body: reply,
+      contentType: "text/plain",
+    });
+    // Issue #16936 requires a reply JPG artifact alongside the existing
+    // greeting and home screenshots.
+    const replyScreenshotPath = path.join(
+      ARTIFACT_DIR,
+      mode,
+      "reply-liveness.jpg",
+    );
+    await page.screenshot({ path: replyScreenshotPath, fullPage: true });
+    await testInfo.attach("reply liveness screenshot", {
+      path: replyScreenshotPath,
+      contentType: "image/jpeg",
+    });
   } finally {
     const videoPath = await recording.stop();
     if (videoPath) {
