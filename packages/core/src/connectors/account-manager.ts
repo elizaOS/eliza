@@ -109,10 +109,10 @@ export interface ConnectorOAuthStartRequest {
 	label?: string;
 	scopes?: string[];
 	/**
-	 * Externally served origin of the request that started the flow (derived
-	 * server-side from proxy metadata / the Host header, never from the client
-	 * body). Providers whose callback must reach this origin validate against
-	 * it; callers with no HTTP request (chat actions, snapshots) omit it.
+	 * Externally served origin selected at a trusted server boundary (configured
+	 * external base or direct TLS/Host request, never the client body). Providers
+	 * whose callback must reach this origin validate against it; callers without
+	 * an authoritative origin may omit it.
 	 */
 	servedOrigin?: string;
 	metadata?: Metadata;

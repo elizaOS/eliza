@@ -5,7 +5,10 @@
  */
 import {
   type ConnectorAccount,
+  DEFAULT_SERVER_ONLY_PORT,
   getConnectorAccountManager,
+  isLoopbackBindHost,
+  isWildcardBindHost,
 } from "@elizaos/core";
 import { assessGoogleOAuthCallbackConfig } from "@elizaos/plugin-google-workspace";
 import type {
@@ -38,13 +41,68 @@ import {
 } from "../service-normalize-connector.js";
 
 /**
- * Chat actions and provider snapshots have no HTTP request; they pass the
- * synthetic INTERNAL_URL sentinel (`http://127.0.0.1/`). That is not a served
- * origin, so host/port callback comparison only runs for real request URLs —
- * a production callback must not be rejected against the sentinel.
+ * Resolve the externally served connector origin. HTTP requests carry it
+ * directly. Chat and provider snapshots use the synthetic INTERNAL_URL, so
+ * public callbacks rely on ELIZA_EXTERNAL_BASE_URL while loopback callbacks
+ * infer the same API-port precedence as the agent host.
  */
-function servedOriginFromRequestUrl(requestUrl: URL): URL | undefined {
-  return requestUrl.href === INTERNAL_URL.href ? undefined : requestUrl;
+function servedOriginFromRequestUrl(
+  runtime: LifeOpsContext["runtime"],
+  requestUrl: URL,
+): string | undefined {
+  if (requestUrl.href !== INTERNAL_URL.href) return requestUrl.origin;
+
+  const externalBase = nonEmptySetting(runtime, "ELIZA_EXTERNAL_BASE_URL");
+  if (externalBase) return externalBase;
+
+  const redirect = nonEmptySetting(runtime, "GOOGLE_REDIRECT_URI");
+  if (!redirect) return undefined;
+  let callback: URL;
+  try {
+    callback = new URL(redirect);
+  } catch {
+    // error-policy:J3 callback assessment reports the malformed setting.
+    return undefined;
+  }
+  if (!isLoopbackBindHost(callback.hostname)) return undefined;
+
+  const configuredBind =
+    nonEmptySetting(runtime, "ELIZA_API_BIND") ?? "127.0.0.1";
+  const callbackHost = callback.hostname.replace(/^\[|\]$/g, "");
+  const servedHost = isWildcardBindHost(configuredBind)
+    ? callbackHost
+    : configuredBind;
+  const originHost = servedHost.includes(":")
+    ? `[${servedHost.replace(/^\[|\]$/g, "")}]`
+    : servedHost;
+  const apiPort =
+    positivePortSetting(runtime, "ELIZA_API_PORT") ??
+    positivePortSetting(runtime, "ELIZA_PORT") ??
+    positivePortSetting(runtime, "ELIZA_UI_PORT") ??
+    DEFAULT_SERVER_ONLY_PORT;
+  return `http://${originHost}:${apiPort}`;
+}
+
+function nonEmptySetting(
+  runtime: LifeOpsContext["runtime"],
+  key: string,
+): string | undefined {
+  const value = runtime.getSetting?.(key);
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  return trimmed || undefined;
+}
+
+function positivePortSetting(
+  runtime: LifeOpsContext["runtime"],
+  key: string,
+): number | undefined {
+  const value = nonEmptySetting(runtime, key);
+  if (!value || !/^\d+$/.test(value)) return undefined;
+  const port = Number(value);
+  return Number.isInteger(port) && port >= 1 && port <= 65_535
+    ? port
+    : undefined;
 }
 
 function roleForSide(side: LifeOpsConnectorSide): "OWNER" | "AGENT" {
@@ -399,7 +457,10 @@ export class GoogleDomain {
     if (account?.status === "connected") {
       return this.googleAccountStatus(account);
     }
-    const servedOrigin = servedOriginFromRequestUrl(requestUrl);
+    const servedOrigin = servedOriginFromRequestUrl(
+      this.ctx.runtime,
+      requestUrl,
+    );
     const callbackAssessment = assessGoogleOAuthCallbackConfig(
       this.ctx.runtime,
       servedOrigin ? { servedOrigin } : undefined,
@@ -479,9 +540,12 @@ export class GoogleDomain {
     }
     // Fail closed before redirecting the user to Google: a callback that
     // cannot reach the origin serving this request would strand the grant.
-    // Chat has no request origin (INTERNAL_URL sentinel); scheme/path/port
-    // shape is still validated, host/port comparison is skipped.
-    const servedOrigin = servedOriginFromRequestUrl(requestUrl);
+    // Chat has no request URL (INTERNAL_URL sentinel), so it uses an explicit
+    // external base when configured or infers the local agent API port.
+    const servedOrigin = servedOriginFromRequestUrl(
+      this.ctx.runtime,
+      requestUrl,
+    );
     const callbackAssessment = assessGoogleOAuthCallbackConfig(
       this.ctx.runtime,
       servedOrigin ? { servedOrigin } : undefined,
@@ -494,12 +558,15 @@ export class GoogleDomain {
           .join(" ")}`,
       );
     }
+    const providerServedOrigin = servedOrigin
+      ? new URL(servedOrigin).origin
+      : undefined;
 
     const requestedAccountId = googleAccountIdFromGrantId(request.grantId);
     const flow = await manager.startOAuth("google", {
       accountId: requestedAccountId ?? undefined,
       scopes: requestedScopesForCapabilities(requestedCapabilities),
-      servedOrigin: servedOrigin?.href,
+      servedOrigin: providerServedOrigin,
       metadata: {
         lifeops: true,
         side: requestedSide,

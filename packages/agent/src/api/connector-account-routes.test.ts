@@ -329,10 +329,14 @@ type Captured = {
 
 type TestStorage = InstanceType<typeof InMemoryConnectorAccountStorage>;
 
-function createRuntime(storage: TestStorage) {
+function createRuntime(
+  storage: TestStorage,
+  settings: Record<string, string> = {},
+) {
   return {
     agentId: "00000000-0000-0000-0000-000000000001",
     adapter: undefined as unknown,
+    getSetting: vi.fn((key: string) => settings[key]),
     getService: vi.fn((type: string) =>
       type === "connector_account_storage" ? storage : null,
     ),
@@ -353,13 +357,14 @@ function createConnectorAccountHarness(options: {
   pathname: string;
   body?: Record<string, unknown>;
   headers?: Record<string, string>;
+  settings?: Record<string, string>;
   storage?: TestStorage;
   adapter?: unknown;
   authorize?: ConnectorAccountRouteContext["authorize"] | null;
 }) {
   const captured: Captured = { status: 200, body: null };
   const storage = options.storage ?? new InMemoryConnectorAccountStorage();
-  const runtime = createRuntime(storage);
+  const runtime = createRuntime(storage, options.settings);
   runtime.adapter = options.adapter;
   const req = {
     url: options.pathname,
@@ -547,7 +552,7 @@ describe("connector account routes", () => {
     });
   });
 
-  it("forwards the externally served origin, proxy metadata first, into OAuth start", async () => {
+  it("uses the configured external base as the trusted proxy origin", async () => {
     const { ctx, captured, runtime, storage } = createConnectorAccountHarness({
       method: "POST",
       pathname: "/api/connectors/google/oauth/start",
@@ -555,7 +560,36 @@ describe("connector account routes", () => {
       headers: {
         host: "127.0.0.1:2138",
         "x-forwarded-proto": "https",
-        "x-forwarded-host": "eliza.example",
+        "x-forwarded-host": "attacker.example",
+      },
+      settings: { ELIZA_EXTERNAL_BASE_URL: "https://eliza.example" },
+    });
+    const manager = getConnectorAccountManager(runtime as never, storage);
+    const seen: Array<string | undefined> = [];
+    manager.registerProvider({
+      provider: "google",
+      startOAuth: async ({ flow, servedOrigin }) => {
+        seen.push(servedOrigin);
+        return {
+          authUrl: `https://accounts.google.example/?state=${flow.state}`,
+        };
+      },
+    });
+
+    await expect(handleConnectorAccountRoutes(ctx)).resolves.toBe(true);
+    expect(captured.status, JSON.stringify(captured.body)).toBe(201);
+    expect(seen).toEqual(["https://eliza.example"]);
+  });
+
+  it("ignores untrusted forwarded origins when no external base is configured", async () => {
+    const { ctx, captured, runtime, storage } = createConnectorAccountHarness({
+      method: "POST",
+      pathname: "/api/connectors/google/oauth/start",
+      body: {},
+      headers: {
+        host: "127.0.0.1:2138",
+        "x-forwarded-proto": "https",
+        "x-forwarded-host": "attacker.example",
       },
     });
     const manager = getConnectorAccountManager(runtime as never, storage);
@@ -571,8 +605,8 @@ describe("connector account routes", () => {
     });
 
     await expect(handleConnectorAccountRoutes(ctx)).resolves.toBe(true);
-    expect(captured.status).toBe(201);
-    expect(seen).toEqual(["https://eliza.example"]);
+    expect(captured.status, JSON.stringify(captured.body)).toBe(201);
+    expect(seen).toEqual(["http://127.0.0.1:2138"]);
   });
 
   it("derives the served origin from the Host header when no proxy metadata exists", async () => {
@@ -595,7 +629,7 @@ describe("connector account routes", () => {
     });
 
     await expect(handleConnectorAccountRoutes(ctx)).resolves.toBe(true);
-    expect(captured.status).toBe(201);
+    expect(captured.status, JSON.stringify(captured.body)).toBe(201);
     expect(seen).toEqual(["http://127.0.0.1:2138"]);
   });
 
@@ -621,7 +655,7 @@ describe("connector account routes", () => {
     });
 
     await expect(handleConnectorAccountRoutes(ctx)).resolves.toBe(true);
-    expect(captured.status).toBe(201);
+    expect(captured.status, JSON.stringify(captured.body)).toBe(201);
     const startBody = captured.body as {
       flow: {
         id: string;

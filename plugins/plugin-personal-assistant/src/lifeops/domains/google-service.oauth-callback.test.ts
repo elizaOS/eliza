@@ -52,7 +52,10 @@ function domainWith(accounts: unknown[], settings: Record<string, string>) {
 }
 
 /** Domain wired for OAuth start: a manager whose startOAuth echoes the callback. */
-function startDomainWith(redirectUri: string) {
+function startDomainWith(
+  redirectUri: string,
+  settings: Record<string, string> = {},
+) {
   const startOAuth = vi.fn(async () => ({
     redirectUri,
     authUrl: "https://accounts.google.com/o/oauth2/v2/auth?client_id=test",
@@ -63,6 +66,7 @@ function startDomainWith(redirectUri: string) {
         GOOGLE_CLIENT_ID: "client-id",
         GOOGLE_CLIENT_SECRET: "client-secret",
         GOOGLE_REDIRECT_URI: redirectUri,
+        ...settings,
       })[key],
   };
   const domain = new GoogleDomain({
@@ -88,6 +92,7 @@ describe("GoogleDomain OAuth callback parity", () => {
           GOOGLE_CLIENT_ID: "client-id",
           GOOGLE_CLIENT_SECRET: "client-secret",
           GOOGLE_REDIRECT_URI: CANONICAL,
+          ELIZA_API_PORT: "31437",
         })[key],
     };
     const manager = {
@@ -214,12 +219,58 @@ describe("GoogleDomain OAuth callback parity", () => {
   });
 
   it("starts OAuth from chat against a local loopback callback", async () => {
-    const { domain } = startDomainWith(CANONICAL);
+    const { domain, startOAuth } = startDomainWith(CANONICAL, {
+      ELIZA_API_PORT: "31437",
+    });
     const response = await domain.startGoogleConnector(
       { side: "owner" },
       new URL("http://127.0.0.1/"),
     );
     expect(response.redirectUri).toBe(CANONICAL);
+    expect(startOAuth).toHaveBeenCalledWith(
+      "google",
+      expect.objectContaining({ servedOrigin: "http://127.0.0.1:31437" }),
+    );
+  });
+
+  it("fails chat OAuth start when the configured loopback callback misses the API port", async () => {
+    const { domain } = startDomainWith(CANONICAL, {
+      ELIZA_API_PORT: "2138",
+    });
+    await expect(
+      domain.startGoogleConnector(
+        { side: "owner" },
+        new URL("http://127.0.0.1/"),
+      ),
+    ).rejects.toThrow(/served on port 2138/);
+  });
+
+  it("uses the configured concrete API bind host for chat reachability", async () => {
+    const { domain } = startDomainWith(CANONICAL, {
+      ELIZA_API_BIND: "localhost",
+      ELIZA_API_PORT: "31437",
+    });
+    await expect(
+      domain.startGoogleConnector(
+        { side: "owner" },
+        new URL("http://127.0.0.1/"),
+      ),
+    ).rejects.toThrow(/served on localhost/);
+  });
+
+  it("accepts a loopback callback proven reachable through a wildcard bind", async () => {
+    const { domain, startOAuth } = startDomainWith(CANONICAL, {
+      ELIZA_API_BIND: "0.0.0.0",
+      ELIZA_API_PORT: "31437",
+    });
+    await domain.startGoogleConnector(
+      { side: "owner" },
+      new URL("http://127.0.0.1/"),
+    );
+    expect(startOAuth).toHaveBeenCalledWith(
+      "google",
+      expect.objectContaining({ servedOrigin: "http://127.0.0.1:31437" }),
+    );
   });
 
   it("forwards the real served origin to the connector start boundary", async () => {
@@ -232,7 +283,56 @@ describe("GoogleDomain OAuth callback parity", () => {
     await domain.startGoogleConnector({ side: "owner" }, requestUrl);
     expect(startOAuth).toHaveBeenCalledWith(
       "google",
-      expect.objectContaining({ servedOrigin: requestUrl.href }),
+      expect.objectContaining({ servedOrigin: requestUrl.origin }),
+    );
+  });
+
+  it("uses the configured external origin for chat OAuth callback validation", async () => {
+    const callback =
+      "https://eliza.example/api/connectors/google/oauth/callback";
+    const { domain, startOAuth } = startDomainWith(callback, {
+      ELIZA_EXTERNAL_BASE_URL: "https://eliza.example/app",
+    });
+    await domain.startGoogleConnector(
+      { side: "owner" },
+      new URL("http://127.0.0.1/"),
+    );
+    expect(startOAuth).toHaveBeenCalledWith(
+      "google",
+      expect.objectContaining({
+        servedOrigin: "https://eliza.example",
+      }),
+    );
+  });
+
+  it("rejects a configured external origin that does not match the callback", async () => {
+    const callback =
+      "https://eliza.example/api/connectors/google/oauth/callback";
+    const { domain } = startDomainWith(callback, {
+      ELIZA_EXTERNAL_BASE_URL: "https://other.example",
+    });
+    await expect(
+      domain.startGoogleConnector(
+        { side: "owner" },
+        new URL("http://127.0.0.1/"),
+      ),
+    ).rejects.toThrow(/served on other\.example/);
+  });
+
+  it("rejects a malformed external origin without echoing its secret", async () => {
+    const secret = "external-origin-secret";
+    const callback =
+      "https://eliza.example/api/connectors/google/oauth/callback";
+    const { domain } = startDomainWith(callback, {
+      ELIZA_EXTERNAL_BASE_URL: `not a URL ${secret}`,
+    });
+    await expect(
+      domain.startGoogleConnector(
+        { side: "owner" },
+        new URL("http://127.0.0.1/"),
+      ),
+    ).rejects.toThrow(
+      "Google OAuth callback is not usable: The configured external connector origin is not a valid URL.",
     );
   });
 

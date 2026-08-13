@@ -81,10 +81,15 @@ describe("google oauth callback contract", () => {
   });
 
   it("rejects credential-bearing callbacks", () => {
+    const secret = "callback-password-must-not-leak";
     const assessment = assessGoogleOAuthCallbackConfig(
-      runtimeWithRedirect("http://user:pass@127.0.0.1:31437/api/connectors/google/oauth/callback")
+      runtimeWithRedirect(
+        `http://user:${secret}@127.0.0.1:31437/api/connectors/google/oauth/callback`
+      )
     );
     expect(assessment.configured).toBe(false);
+    expect(assessment.redirectUri).toBeNull();
+    expect(JSON.stringify(assessment)).not.toContain(secret);
     expect(assessment.issues.some((issue) => issue.code === "credentials")).toBe(true);
   });
 
@@ -100,6 +105,20 @@ describe("google oauth callback contract", () => {
     const assessment = assessGoogleOAuthCallbackConfig(runtimeWithRedirect(`${CANONICAL}#frag`));
     expect(assessment.configured).toBe(false);
     expect(assessment.issues.some((issue) => issue.code === "fragment")).toBe(true);
+  });
+
+  it("rejects callbacks carrying an explicitly empty query or fragment", () => {
+    for (const uri of [`${CANONICAL}?`, `${CANONICAL}#`]) {
+      const assessment = assessGoogleOAuthCallbackConfig(runtimeWithRedirect(uri));
+      expect(assessment.configured).toBe(false);
+      expect(assessment.redirectUri).toBeNull();
+    }
+  });
+
+  it("rejects a trailing slash instead of normalizing a different callback path", () => {
+    const assessment = assessGoogleOAuthCallbackConfig(runtimeWithRedirect(`${CANONICAL}/`));
+    expect(assessment.configured).toBe(false);
+    expect(assessment.issues.some((issue) => issue.code === "wrong_path")).toBe(true);
   });
 
   it("treats a portless bracketed ::1 loopback as portless loopback", () => {
@@ -136,28 +155,68 @@ describe("google oauth callback contract", () => {
       expect(assessment.issues.some((issue) => issue.code === "wrong_host")).toBe(true);
     });
 
-    it("accepts a matching loopback callback across loopback host spellings", () => {
+    it("rejects distinct loopback spellings without proof that one listener covers both", () => {
       const assessment = assessGoogleOAuthCallbackConfig(runtimeWithRedirect(CANONICAL), {
         servedOrigin: new URL("http://localhost:31437/api/lifeops/connectors/google"),
       });
-      expect(assessment.configured).toBe(true);
+      expect(assessment.configured).toBe(false);
+      expect(assessment.issues.some((issue) => issue.code === "wrong_host")).toBe(true);
     });
 
     it("accepts a production https callback served behind a default-port proxy", () => {
-      // Request URLs are reconstructed from the Host header behind an http
-      // base, so the served origin reads http://eliza.example with no port.
       const assessment = assessGoogleOAuthCallbackConfig(
         runtimeWithRedirect("https://eliza.example/api/connectors/google/oauth/callback"),
-        { servedOrigin: new URL("http://eliza.example/api/lifeops/connectors/google") }
+        { servedOrigin: new URL("https://eliza.example/api/lifeops/connectors/google") }
       );
       expect(assessment.configured).toBe(true);
     });
 
-    it("skips the port assertion when a loopback served origin names no port", () => {
+    it("rejects a loopback callback when a portless origin says the API is on port 80", () => {
       const assessment = assessGoogleOAuthCallbackConfig(runtimeWithRedirect(CANONICAL), {
         servedOrigin: new URL("http://127.0.0.1/"),
       });
-      expect(assessment.configured).toBe(true);
+      expect(assessment.configured).toBe(false);
+      expect(assessment.issues.some((issue) => issue.code === "wrong_port")).toBe(true);
+    });
+
+    it("rejects a callback whose scheme differs from the served origin", () => {
+      const assessment = assessGoogleOAuthCallbackConfig(
+        runtimeWithRedirect("https://eliza.example/api/connectors/google/oauth/callback"),
+        { servedOrigin: "http://eliza.example" }
+      );
+      expect(assessment.configured).toBe(false);
+      expect(assessment.issues.some((issue) => issue.code === "wrong_scheme")).toBe(true);
+    });
+
+    it("rejects a custom callback port for a default-port public origin", () => {
+      const assessment = assessGoogleOAuthCallbackConfig(
+        runtimeWithRedirect("https://eliza.example:8443/api/connectors/google/oauth/callback"),
+        { servedOrigin: "https://eliza.example" }
+      );
+      expect(assessment.configured).toBe(false);
+      expect(assessment.issues.some((issue) => issue.code === "wrong_port")).toBe(true);
+    });
+
+    it("rejects a default-port callback for a custom-port public origin", () => {
+      const assessment = assessGoogleOAuthCallbackConfig(
+        runtimeWithRedirect("https://eliza.example/api/connectors/google/oauth/callback"),
+        { servedOrigin: "https://eliza.example:8443" }
+      );
+      expect(assessment.configured).toBe(false);
+      expect(assessment.issues.some((issue) => issue.code === "wrong_port")).toBe(true);
+    });
+
+    it("rejects a malformed served origin without echoing it", () => {
+      const secret = "external-origin-secret";
+      const assessment = assessGoogleOAuthCallbackConfig(runtimeWithRedirect(CANONICAL), {
+        servedOrigin: `not a URL ${secret}`,
+      });
+      expect(assessment.configured).toBe(false);
+      expect(assessment.redirectUri).toBeNull();
+      expect(assessment.issues.some((issue) => issue.code === "served_origin_malformed")).toBe(
+        true
+      );
+      expect(JSON.stringify(assessment)).not.toContain(secret);
     });
   });
 
@@ -165,6 +224,14 @@ describe("google oauth callback contract", () => {
     it("rejects a DNS name beginning with 127. as a plain-http callback host", () => {
       const probe = "http://127.0.0.1.attacker.example:31437/api/connectors/google/oauth/callback";
       const assessment = assessGoogleOAuthCallbackConfig(runtimeWithRedirect(probe));
+      expect(assessment.configured).toBe(false);
+      expect(assessment.issues.some((issue) => issue.code === "wrong_scheme")).toBe(true);
+    });
+
+    it("rejects a short 127.-prefixed DNS name as a plain-http callback host", () => {
+      const assessment = assessGoogleOAuthCallbackConfig(
+        runtimeWithRedirect("http://127.evil:31437/api/connectors/google/oauth/callback")
+      );
       expect(assessment.configured).toBe(false);
       expect(assessment.issues.some((issue) => issue.code === "wrong_scheme")).toBe(true);
     });
@@ -180,12 +247,30 @@ describe("google oauth callback contract", () => {
       expect(assessment.issues.some((issue) => issue.code === "wrong_host")).toBe(true);
     });
 
-    it("keeps genuinely numeric 127.0.0.0/8 addresses loopback", () => {
+    it("accepts the same genuinely numeric 127.0.0.0/8 address", () => {
+      const assessment = assessGoogleOAuthCallbackConfig(
+        runtimeWithRedirect("http://127.0.0.2:31437/api/connectors/google/oauth/callback"),
+        { servedOrigin: new URL("http://127.0.0.2:31437/") }
+      );
+      expect(assessment.configured).toBe(true);
+    });
+
+    it("rejects a callback on another numeric 127/8 address", () => {
       const assessment = assessGoogleOAuthCallbackConfig(
         runtimeWithRedirect("http://127.0.0.2:31437/api/connectors/google/oauth/callback"),
         { servedOrigin: new URL("http://127.0.0.1:31437/") }
       );
-      expect(assessment.configured).toBe(true);
+      expect(assessment.configured).toBe(false);
+      expect(assessment.issues.some((issue) => issue.code === "wrong_host")).toBe(true);
+    });
+
+    it("rejects an IPv6 callback for an IPv4-only served listener", () => {
+      const assessment = assessGoogleOAuthCallbackConfig(
+        runtimeWithRedirect("http://[::1]:31437/api/connectors/google/oauth/callback"),
+        { servedOrigin: new URL("http://127.0.0.1:31437/") }
+      );
+      expect(assessment.configured).toBe(false);
+      expect(assessment.issues.some((issue) => issue.code === "wrong_host")).toBe(true);
     });
   });
 });

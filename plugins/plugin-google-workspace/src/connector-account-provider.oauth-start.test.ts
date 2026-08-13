@@ -65,7 +65,7 @@ describe("google provider startOAuth served-origin boundary", () => {
     {
       name: "production behind a TLS-terminating proxy",
       redirect: "https://eliza.example/api/connectors/google/oauth/callback",
-      servedOrigin: "http://eliza.example",
+      servedOrigin: "https://eliza.example",
     },
   ];
 
@@ -100,5 +100,21 @@ describe("google provider startOAuth served-origin boundary", () => {
         "http://127.0.0.1:2138"
       )
     ).rejects.toThrow(/served on port 2138/);
+  });
+
+  it("fails closed when proxy metadata reports a different served scheme", async () => {
+    await expect(
+      startWith(
+        "https://eliza.example/api/connectors/google/oauth/callback",
+        "http://eliza.example"
+      )
+    ).rejects.toThrow(/served over http/);
+  });
+
+  it("fails closed on a malformed served origin without echoing it", async () => {
+    const secret = "origin-secret-must-not-leak";
+    await expect(startWith(CASES[0].redirect, `not a URL ${secret}`)).rejects.toThrow(
+      /^The configured external connector origin is not a valid URL\.$/
+    );
   });
 });
