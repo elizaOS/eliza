@@ -26,7 +26,6 @@ import {
 import { splitChunks } from "../../utils";
 import { BatchProcessor } from "../../utils/batch-queue";
 import { getProviderRateLimits, validateModelConfig } from "./config.ts";
-import type { ModelConfig } from "./types.ts";
 import {
 	DEFAULT_CHUNK_OVERLAP_TOKENS,
 	DEFAULT_CHUNK_TOKEN_SIZE,
@@ -40,6 +39,7 @@ import { generateText } from "./llm.ts";
 import type {
 	DocumentFragmentMemoryMetadata,
 	DocumentMemoryMetadata,
+	ModelConfig,
 	PreChunkedFragmentInput,
 } from "./types.ts";
 import {
@@ -966,6 +966,10 @@ async function generateContextsInBatch(
 	);
 
 	const config = validateModelConfig(runtime);
+	// Resolved once per batch: the gate is configuration, not per-chunk state, so
+	// deriving it inside generateTextOperation below re-ran it for every chunk
+	// AND every rate-limit retry.
+	const useCustomLLM = shouldUseCustomLLM(config);
 	const isUsingOpenRouter = config.TEXT_PROVIDER === "openrouter";
 	const isUsingCacheCapableModel =
 		isUsingOpenRouter &&
@@ -1000,7 +1004,7 @@ async function generateContextsInBatch(
 
 			try {
 				const generateTextOperation = async () => {
-					if (shouldUseCustomLLM(config)) {
+					if (useCustomLLM) {
 						if (item.usesCaching && item.promptText) {
 							return generateText(runtime, item.promptText, item.systemPrompt, {
 								cacheDocument: item.fullDocumentTextForContext,
