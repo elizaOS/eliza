@@ -72,9 +72,11 @@ function getCtxDocumentsEnabled(runtime?: IAgentRuntime): boolean {
 	return result;
 }
 
-function shouldUseCustomLLM(): boolean {
-	const textProvider = process.env.TEXT_PROVIDER;
-	const textModel = process.env.TEXT_MODEL;
+function shouldUseCustomLLM(runtime?: IAgentRuntime): boolean {
+	const get = (key: string) =>
+		(runtime?.getSetting(key) as string | undefined) ?? process.env[key];
+	const textProvider = get("TEXT_PROVIDER");
+	const textModel = get("TEXT_MODEL");
 
 	if (!textProvider || !textModel) {
 		return false;
@@ -82,19 +84,17 @@ function shouldUseCustomLLM(): boolean {
 
 	switch (textProvider.toLowerCase()) {
 		case "openrouter":
-			return !!process.env.OPENROUTER_API_KEY;
+			return !!get("OPENROUTER_API_KEY");
 		case "openai":
-			return !!process.env.OPENAI_API_KEY;
+			return !!get("OPENAI_API_KEY");
 		case "anthropic":
-			return !!process.env.ANTHROPIC_API_KEY;
+			return !!get("ANTHROPIC_API_KEY");
 		case "google":
-			return !!process.env.GOOGLE_API_KEY;
+			return !!get("GOOGLE_API_KEY");
 		default:
 			return false;
 	}
 }
-
-const useCustomLLM = shouldUseCustomLLM();
 
 /** Whether vector enrichment is available for newly ingested documents. */
 export function hasDocumentEmbeddingModel(runtime: IAgentRuntime): boolean {
@@ -995,7 +995,7 @@ async function generateContextsInBatch(
 
 			try {
 				const generateTextOperation = async () => {
-					if (useCustomLLM) {
+					if (shouldUseCustomLLM(runtime)) {
 						if (item.usesCaching && item.promptText) {
 							return generateText(runtime, item.promptText, item.systemPrompt, {
 								cacheDocument: item.fullDocumentTextForContext,
