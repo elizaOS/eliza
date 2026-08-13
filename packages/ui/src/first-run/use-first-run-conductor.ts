@@ -1426,10 +1426,9 @@ export function useFirstRunConductor(): void {
         silentCloudEntryRef.current = true;
         runCloudResumeRef.current("cloud");
       } else if (typeof window !== "undefined" && hasStewardAuthedCookie()) {
-        // Cross-subdomain SSO (#15089/#15133): a user already signed in on
-        // the console carries the shared, HttpOnly .elizacloud.ai refresh
-        // cookie, but localStorage does not cross subdomains — so this app
-        // origin has no stored token yet. Seed NOTHING and recover the access
+        // Same-origin session recovery: a returning hosted-app user can carry
+        // the host-only HttpOnly refresh cookie while the localStorage access
+        // token is missing. Seed NOTHING and recover the access
         // token first (same-origin refresh, bounded like
         // startup-phase-restore's resolveRestoredStewardToken) so an
         // authenticated user never sees a sign-in greeting that a

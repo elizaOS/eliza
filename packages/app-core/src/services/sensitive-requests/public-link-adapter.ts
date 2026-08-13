@@ -18,7 +18,7 @@ import {
 } from "@elizaos/core";
 import { readAliasedEnv } from "@elizaos/shared";
 
-const CLOUD_BASE_FALLBACK = "https://elizacloud.ai/api/v1";
+const CLOUD_BASE_FALLBACK = "https://api.eliza.app/api/v1";
 
 /**
  * Structural subset of `IAgentRuntime` we touch for cloud base resolution.

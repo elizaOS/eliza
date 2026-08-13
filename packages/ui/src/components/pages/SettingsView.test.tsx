@@ -71,6 +71,17 @@ const stubSections = vi.hoisted(() => [
     titleKey: "settings.sections.crash.label",
     defaultTitle: "Crash",
   },
+  {
+    id: "cloud-management",
+    label: "settings.sections.cloudManagement.label",
+    defaultLabel: "Cloud Management",
+    tone: "accent",
+    hue: "accent",
+    group: "cloud",
+    titleKey: "settings.sections.cloudManagement.label",
+    defaultTitle: "Cloud Management",
+    cloudOnly: true,
+  },
 ]);
 
 vi.mock("../../state", () => ({
@@ -130,6 +141,7 @@ vi.mock("../settings/settings-sections", async () => {
     agent: "Agent",
     system: "System",
     security: "Security",
+    cloud: "Cloud",
   };
   const groupOrder = ["agent", "system", "security"];
   return {
@@ -198,6 +210,7 @@ function makeContext(
     t,
     loadPlugins: vi.fn(async () => {}),
     walletEnabled: true,
+    startupCoordinator: { target: "embedded-local" },
     ...overrides,
   };
 }
@@ -250,6 +263,32 @@ describe("SettingsView", () => {
     const nav = hubList();
     expect(nav.textContent).toContain("Agent");
     expect(nav.textContent).toContain("System");
+  });
+
+  it("hides Cloud management for local and VPS runtime targets", () => {
+    render(<SettingsView />);
+    expect(
+      screen.queryByTestId("settings-hub-row-cloud-management"),
+    ).toBeNull();
+
+    cleanup();
+    appMock.value = makeContext({
+      startupCoordinator: { target: "remote-backend" },
+    });
+    render(<SettingsView />);
+    expect(
+      screen.queryByTestId("settings-hub-row-cloud-management"),
+    ).toBeNull();
+  });
+
+  it("shows Cloud management for a managed Cloud runtime target", () => {
+    appMock.value = makeContext({
+      startupCoordinator: { target: "cloud-managed" },
+    });
+    render(<SettingsView />);
+    expect(hubRow("cloud-management").textContent).toContain(
+      "Cloud Management",
+    );
   });
 
   it("tapping a hub row opens that section as a subview under the same header", () => {

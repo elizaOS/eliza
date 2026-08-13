@@ -155,7 +155,7 @@ While driving toward real-infra confirmation I dispatched the real
 `hetzner-e2e` workflow (gh authed as a maintainer; `ci-hetzner-e2e` secrets are
 present). **Every run skips provisioning** at the preflight:
 `Cloud API auth preflight returned HTTP 500 … skipping`. Reproduced directly
-against `https://api-staging.elizacloud.ai`:
+against `https://api-staging.eliza.app`:
 
 | Request | Staging | Local stack | Expected |
 | --- | --- | --- | --- |
@@ -178,7 +178,7 @@ session-only `/api/v1/api-keys` route (no `validateApiKey`) correctly 401s.
 shapes (`tests/auth-errors.spec.ts`, 5 cases). This is a **staging
 infrastructure/config fault** (the staging Worker's `dbRead` replica URL or
 Upstash credentials), not a defect in this repo. It cannot be fixed from a
-credential-less dev box: it needs access to the `api-staging.elizacloud.ai`
+credential-less dev box: it needs access to the `api-staging.eliza.app`
 Cloudflare Worker env / Neon / Upstash. Until it's fixed, the real Hetzner e2e
 stays gated and true real-infra confidence is unreachable.
 
@@ -189,7 +189,7 @@ the operator-run Hetzner E2E scripts.
 
 ### Update (2026-06-01) — staging datastore FIXED; only an expired CI key remains
 
-The staging datastore was repaired. Re-probed `api-staging.elizacloud.ai`:
+The staging datastore was repaired. Re-probed `api-staging.eliza.app`:
 `GET /api/v1/eliza/agents` with an invalid `eliza_` bearer now returns **401**
 (was 500) — the `validateApiKey` path is healthy again. Re-dispatched the real
 `hetzner-e2e` workflow on `develop`; its preflight advanced from a 500 skip to:

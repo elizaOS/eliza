@@ -107,7 +107,7 @@ const CLOUD_AGENT_TIER_PROBE_TIMEOUT_MS =
 /** Steward refresh endpoint path (same-origin on web; `api.` host on native). */
 const STEWARD_REFRESH_PATH = "/api/auth/steward-refresh";
 /** Default direct Cloud site base used to derive the native refresh endpoint. */
-const RESTORE_DEFAULT_DIRECT_CLOUD_BASE_URL = "https://elizacloud.ai";
+const RESTORE_DEFAULT_DIRECT_CLOUD_BASE_URL = "https://eliza.app";
 
 function recoverCloudAgentId(active: PersistedActiveServer): string | null {
   const rawId = active.id?.startsWith("cloud:")
@@ -381,15 +381,7 @@ function resolveRestoreStewardRefreshEndpoint(): string | undefined {
     getBootConfig().cloudApiBase?.trim() ||
     RESTORE_DEFAULT_DIRECT_CLOUD_BASE_URL;
   try {
-    const url = new URL(cloudBase);
-    const host = url.hostname.toLowerCase();
-    const apiHost =
-      host === "elizacloud.ai" ||
-      host === "www.elizacloud.ai" ||
-      host === "dev.elizacloud.ai"
-        ? "api.elizacloud.ai"
-        : host;
-    return `${url.protocol}//${apiHost}${STEWARD_REFRESH_PATH}`;
+    return `${resolveDirectCloudAuthApiBase(cloudBase)}${STEWARD_REFRESH_PATH}`;
   } catch {
     return undefined;
   }
@@ -419,9 +411,9 @@ function resolveRestoreStewardRefreshEndpoint(): string | undefined {
 async function resolveRestoredStewardToken(): Promise<string | null> {
   const stored = readStoredStewardToken()?.trim();
   if (!stored) {
-    // No app-origin token, but the shared, HttpOnly .elizacloud.ai session
+    // No app-origin token, but the host-only Eliza session
     // cookie is present — the user signed in on the console (or another
-    // *.elizacloud.ai tab). Recover the access token from it (bounded, same as
+    // managed Eliza tab). Recover the access token from it (bounded, same as
     // the /login page) instead of forcing a redundant re-sign-in; on success
     // the top-level LoginView gate and the first-run conductor both skip.
     if (typeof window !== "undefined" && hasStewardAuthedCookie()) {

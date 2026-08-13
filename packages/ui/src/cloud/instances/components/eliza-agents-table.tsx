@@ -564,7 +564,7 @@ export function ElizaAgentsTable({
 
   const refreshData = useCallback(async () => {
     try {
-      // The typed cloud client (Bearer → api.elizacloud.ai). A same-origin
+      // The typed cloud client (Bearer → api.eliza.app). A same-origin
       // fetch here 404s on the console hosts, which serve no /api/*.
       const json = await api<{ data?: SandboxListAgent[] }>(
         "/api/v1/eliza/agents",
@@ -1278,7 +1278,7 @@ export function ElizaAgentsTable({
                         <div className="space-y-1">
                           <div className="flex flex-wrap items-center gap-2">
                             <a
-                              href={`/dashboard/agents/${sb.id}`}
+                              href={`/cloud/agents/${sb.id}`}
                               className="font-medium text-txt-strong hover:opacity-75 transition-opacity"
                             >
                               {sb.agent_name ??
@@ -1351,7 +1351,7 @@ export function ElizaAgentsTable({
                           <Tooltip>
                             <TooltipTrigger asChild>
                               <a
-                                href={`/dashboard/agents/${sb.id}`}
+                                href={`/cloud/agents/${sb.id}`}
                                 className="inline-flex size-touch items-center justify-center text-muted hover:text-txt-strong hover:bg-bg-hover transition-colors"
                               >
                                 <FileText className="h-4 w-4" />
@@ -1538,7 +1538,7 @@ export function ElizaAgentsTable({
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0 space-y-1">
                       <a
-                        href={`/dashboard/agents/${sb.id}`}
+                        href={`/cloud/agents/${sb.id}`}
                         className="font-medium text-txt-strong hover:opacity-75 transition-opacity block truncate"
                       >
                         {sb.agent_name ??
@@ -1573,7 +1573,7 @@ export function ElizaAgentsTable({
 
                   <div className="flex items-center gap-1 border-t border-border pt-3">
                     <a
-                      href={`/dashboard/agents/${sb.id}`}
+                      href={`/cloud/agents/${sb.id}`}
                       className="flex-1 flex min-h-touch items-center justify-center gap-1.5 py-2 text-xs text-muted-strong hover:text-txt-strong hover:bg-bg-hover transition-colors"
                     >
                       <FileText className="h-3.5 w-3.5" />

@@ -4,7 +4,7 @@ TypeScript SDK for the Eliza Cloud API: auth, agent management, inference, billi
 
 ## Purpose / role
 
-Provides `ElizaCloudClient` — a typed fetch wrapper for every endpoint exposed by `api.elizacloud.ai`. Used directly by `plugins/plugin-elizacloud` (for auth / agent lifecycle calls from inside an agent runtime) and `packages/ui` (for UI-layer Cloud API calls). The secondary export `./cloud-setup-session` ships a service interface and mock implementation for the guided-setup flow that runs when a new tenant provisions a Cloud container.
+Provides `ElizaCloudClient` — a typed fetch wrapper for every endpoint exposed by `api.eliza.app`. Used directly by `plugins/plugin-elizacloud` (for auth / agent lifecycle calls from inside an agent runtime) and `packages/ui` (for UI-layer Cloud API calls). The secondary export `./cloud-setup-session` ships a service interface and mock implementation for the guided-setup flow that runs when a new tenant provisions a Cloud container.
 
 ## Layout
 
@@ -121,8 +121,8 @@ The SDK reads no env vars at runtime — callers must supply credentials via `El
 | `ELIZA_CLOUD_SDK_LIVE` | `"1"` to run any live tests |
 | `ELIZAOS_CLOUD_API_KEY` / `ELIZA_CLOUD_API_KEY` | API key for authenticated checks |
 | `ELIZA_CLOUD_SESSION_TOKEN` | Bearer token for browser-session checks |
-| `ELIZA_CLOUD_BASE_URL` | Override base URL (default `https://elizacloud.ai`) |
-| `ELIZA_CLOUD_API_BASE_URL` | Override API base URL (default `https://api.elizacloud.ai/api/v1`) |
+| `ELIZA_CLOUD_BASE_URL` | Override browser-flow base URL (default `https://eliza.app`) |
+| `ELIZA_CLOUD_API_BASE_URL` | Override API base URL (default `https://api.eliza.app/api/v1`) |
 | `ELIZA_CLOUD_SDK_LIVE_GENERATION` | `"1"` to enable paid generation checks |
 | `ELIZA_CLOUD_SDK_LIVE_RELAY` | `"1"` to enable gateway relay checks |
 | `ELIZA_CLOUD_SDK_LIVE_DESTRUCTIVE` | `"1"` + resource flag to allow create/mutate |

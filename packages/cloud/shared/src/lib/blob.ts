@@ -1,7 +1,7 @@
 // Defines cloud shared blob behavior for backend service consumers.
 import { getRuntimeR2Bucket, runtimeR2BucketConfigured } from "./storage/r2-runtime-binding";
 
-const DEFAULT_R2_PUBLIC_HOST = "blob.elizacloud.ai";
+const DEFAULT_R2_PUBLIC_HOST = "blob.eliza.app";
 
 function getR2PublicHost(): string {
   const host = process.env.R2_PUBLIC_HOST;
@@ -68,7 +68,7 @@ function toArrayBuffer(content: Buffer | string): ArrayBuffer {
 
 /**
  * Uploads a file to R2 storage via the runtime binding. R2 objects are public
- * via the bucket's public host (R2_PUBLIC_HOST, default "blob.elizacloud.ai").
+ * via the bucket's public host (R2_PUBLIC_HOST, default "blob.eliza.app").
  *
  * @param content - File content as Buffer or string.
  * @param options - Upload options including filename and metadata.

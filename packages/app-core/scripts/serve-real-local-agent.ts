@@ -9,8 +9,8 @@
 
 import { readFile } from "node:fs/promises";
 import { ModelType, type Route } from "@elizaos/core";
-import { backgroundUploadImageRoute } from "../../agent/src/api/background-routes.ts";
 import { createDeterministicModelPlugin } from "@elizaos/core/testing";
+import { backgroundUploadImageRoute } from "../../agent/src/api/background-routes.ts";
 import { startApiServer } from "../src/api/server.ts";
 import { useIsolatedConfigEnv } from "../test/helpers/isolated-config.ts";
 import { createRealTestRuntime } from "../test/helpers/real-runtime.ts";
@@ -25,8 +25,8 @@ const STREAM_E2E_REPLY =
   "STREAM_E2E_OK The dashboard receives this reply through the real model callback, runtime message loop, HTTP SSE route, browser parser, and React transcript. " +
   "Each chunk is intentionally small and evenly paced so the browser lane can measure token-to-paint latency, frame cadence, layout stability, and DOM identity while the visible answer grows.";
 const GENERATED_REGISTRY_URL =
-  "https://plugins.elizacloud.ai/generated-registry.json";
-const CLOUD_API_PROBE_URL = "https://elizacloud.ai/api/v1";
+  "https://plugins.eliza.app/generated-registry.json";
+const CLOUD_API_PROBE_URL = "https://api.eliza.app/api/v1";
 const RUBY_HIGH_EVIDENCE_ACTIONS = new Set([
   "CONNECT_RUBY_HIGH",
   "ENROLL_RUBY_HIGH",

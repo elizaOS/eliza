@@ -1,7 +1,7 @@
 /**
  * Registry data layer for the plugin-manager capability: fetches and normalizes
  * the elizaOS plugin registry. Pulls the authoritative generated registry from
- * plugins.elizacloud.ai, scans the local
+ * plugins.eliza.app, scans the local
  * `plugins/` directory for `elizaos.plugin.json` manifests that override remote
  * entries, and caches the merged `Map<name, RegistryPlugin>` in memory for one
  * hour. Exposes the lookup (`getRegistryEntry`, with fuzzy `@elizaos/`-prefix
@@ -21,7 +21,7 @@ import type { PluginMetadata } from "../types.ts";
 // ---------------------------------------------------------------------------
 
 const GENERATED_REGISTRY_URL =
-	"https://plugins.elizacloud.ai/generated-registry.json";
+	"https://plugins.eliza.app/generated-registry.json";
 const CACHE_DURATION = 3_600_000; // 1 hour
 
 // ---------------------------------------------------------------------------

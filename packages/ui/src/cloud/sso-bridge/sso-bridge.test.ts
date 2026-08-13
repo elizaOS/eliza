@@ -84,22 +84,24 @@ afterEach(() => {
 
 describe("ssoBridgeRoleForHostname", () => {
   it("exact allowlist only — prod pair", () => {
-    expect(ssoBridgeRoleForHostname("app.elizacloud.ai")).toBe("exchange");
-    expect(ssoBridgeRoleForHostname("elizacloud.ai")).toBe("mint");
-    expect(ssoBridgeRoleForHostname("www.elizacloud.ai")).toBe("mint");
+    expect(ssoBridgeRoleForHostname("cloud.eliza.app")).toBe("exchange");
+    expect(ssoBridgeRoleForHostname("eliza.app")).toBe("mint");
+    expect(ssoBridgeRoleForHostname("www.eliza.app")).toBe("mint");
   });
 
   it("staging pair maps to itself", () => {
-    expect(ssoBridgeRoleForHostname("app-staging.elizacloud.ai")).toBe(
+    expect(ssoBridgeRoleForHostname("cloud-staging.eliza.app")).toBe(
       "exchange",
     );
-    expect(ssoBridgeRoleForHostname("staging.elizacloud.ai")).toBe("mint");
+    expect(ssoBridgeRoleForHostname("staging.eliza.app")).toBe("mint");
   });
 
   it("everything else is inert", () => {
     for (const host of [
       "localhost",
       "127.0.0.1",
+      "elizacloud.ai",
+      "app.elizacloud.ai",
       "dev.elizacloud.ai",
       "blob.elizacloud.ai",
       "abc12345.apps.elizacloud.ai",
@@ -113,7 +115,7 @@ describe("ssoBridgeRoleForHostname", () => {
   });
 
   it("is case-insensitive", () => {
-    expect(ssoBridgeRoleForHostname("App.ElizaCloud.AI")).toBe("exchange");
+    expect(ssoBridgeRoleForHostname("Cloud.Eliza.App")).toBe("exchange");
   });
 });
 
@@ -196,58 +198,54 @@ describe("logged-out marker", () => {
 describe("handshake URLs", () => {
   it("pairs prod app host with prod dashboard; mint carries state + challenge, exchange carries code + state — never the verifier", () => {
     expect(
-      buildBridgeMintUrl("app.elizacloud.ai", STATE, CHALLENGE, "/chat"),
+      buildBridgeMintUrl("cloud.eliza.app", STATE, CHALLENGE, "/chat"),
     ).toBe(
-      `https://elizacloud.ai/auth/bridge?state=${STATE}&challenge=${CHALLENGE}&returnTo=%2Fchat`,
+      `https://eliza.app/auth/bridge?state=${STATE}&challenge=${CHALLENGE}&returnTo=%2Fchat`,
     );
-    expect(buildBridgeExchangeUrl("elizacloud.ai", CODE, STATE, "/chat")).toBe(
-      `https://app.elizacloud.ai/auth/bridge?code=${CODE}&state=${STATE}&returnTo=%2Fchat`,
+    expect(buildBridgeExchangeUrl("eliza.app", CODE, STATE, "/chat")).toBe(
+      `https://cloud.eliza.app/auth/bridge?code=${CODE}&state=${STATE}&returnTo=%2Fchat`,
     );
-    expect(pairedAppOrigin("www.elizacloud.ai")).toBe(
-      "https://app.elizacloud.ai",
-    );
+    expect(pairedAppOrigin("www.eliza.app")).toBe("https://cloud.eliza.app");
   });
 
   it("pairs staging with staging — never across environments", () => {
     expect(
-      buildBridgeMintUrl("app-staging.elizacloud.ai", STATE, CHALLENGE, "/"),
-    ).toContain("https://staging.elizacloud.ai/auth/bridge");
+      buildBridgeMintUrl("cloud-staging.eliza.app", STATE, CHALLENGE, "/"),
+    ).toContain("https://staging.eliza.app/auth/bridge");
     expect(
-      buildBridgeExchangeUrl("staging.elizacloud.ai", CODE, STATE, "/"),
-    ).toContain("https://app-staging.elizacloud.ai/auth/bridge");
-    expect(pairedAppOrigin("staging.elizacloud.ai")).toBe(
-      "https://app-staging.elizacloud.ai",
+      buildBridgeExchangeUrl("staging.eliza.app", CODE, STATE, "/"),
+    ).toContain("https://cloud-staging.eliza.app/auth/bridge");
+    expect(pairedAppOrigin("staging.eliza.app")).toBe(
+      "https://cloud-staging.eliza.app",
     );
   });
 
   it("wrong-side or unknown hostnames build nothing", () => {
-    expect(
-      buildBridgeMintUrl("elizacloud.ai", STATE, CHALLENGE, "/"),
-    ).toBeNull();
+    expect(buildBridgeMintUrl("eliza.app", STATE, CHALLENGE, "/")).toBeNull();
     expect(buildBridgeMintUrl("localhost", STATE, CHALLENGE, "/")).toBeNull();
     expect(
-      buildBridgeExchangeUrl("app.elizacloud.ai", CODE, STATE, "/"),
+      buildBridgeExchangeUrl("cloud.eliza.app", CODE, STATE, "/"),
     ).toBeNull();
     expect(buildBridgeExchangeUrl("localhost", CODE, STATE, "/")).toBeNull();
-    expect(pairedAppOrigin("app.elizacloud.ai")).toBeNull();
+    expect(pairedAppOrigin("cloud.eliza.app")).toBeNull();
     expect(pairedAppOrigin("localhost")).toBeNull();
   });
 
   it("malformed state or challenge builds nothing", () => {
     expect(
-      buildBridgeMintUrl("app.elizacloud.ai", "junk", CHALLENGE, "/"),
+      buildBridgeMintUrl("cloud.eliza.app", "junk", CHALLENGE, "/"),
     ).toBeNull();
     expect(
-      buildBridgeMintUrl("app.elizacloud.ai", STATE, "junk", "/"),
+      buildBridgeMintUrl("cloud.eliza.app", STATE, "junk", "/"),
     ).toBeNull();
   });
 
   it("sanitizes returnTo in both builders", () => {
     expect(
-      buildBridgeMintUrl("app.elizacloud.ai", STATE, CHALLENGE, "//evil.com"),
+      buildBridgeMintUrl("cloud.eliza.app", STATE, CHALLENGE, "//evil.com"),
     ).toContain("returnTo=%2F");
     expect(
-      buildBridgeExchangeUrl("elizacloud.ai", CODE, STATE, "https://evil.com"),
+      buildBridgeExchangeUrl("eliza.app", CODE, STATE, "https://evil.com"),
     ).toContain("returnTo=%2F");
   });
 });
@@ -255,27 +253,27 @@ describe("handshake URLs", () => {
 describe("shouldAutoBridgeToSso", () => {
   it("requires the exchange role", () => {
     document.cookie = "steward-authed=1";
-    expect(shouldAutoBridgeToSso("elizacloud.ai")).toBe(false);
+    expect(shouldAutoBridgeToSso("eliza.app")).toBe(false);
     expect(shouldAutoBridgeToSso("localhost")).toBe(false);
-    expect(shouldAutoBridgeToSso("app.elizacloud.ai")).toBe(true);
+    expect(shouldAutoBridgeToSso("cloud.eliza.app")).toBe(true);
   });
 
   it("requires the domain-wide authed marker cookie (post-logout browsers skip the bounce)", () => {
-    expect(shouldAutoBridgeToSso("app.elizacloud.ai")).toBe(false);
+    expect(shouldAutoBridgeToSso("cloud.eliza.app")).toBe(false);
   });
 
   it("honors the explicit logged-out marker", () => {
     document.cookie = "steward-authed=1";
     markSsoLoggedOut();
-    expect(shouldAutoBridgeToSso("app.elizacloud.ai")).toBe(false);
+    expect(shouldAutoBridgeToSso("cloud.eliza.app")).toBe(false);
     clearSsoLoggedOut();
-    expect(shouldAutoBridgeToSso("app.elizacloud.ai")).toBe(true);
+    expect(shouldAutoBridgeToSso("cloud.eliza.app")).toBe(true);
   });
 
   it("honors the loop guard", () => {
     document.cookie = "steward-authed=1";
     markSsoBridgeAttempt();
-    expect(shouldAutoBridgeToSso("app.elizacloud.ai")).toBe(false);
+    expect(shouldAutoBridgeToSso("cloud.eliza.app")).toBe(false);
   });
 });
 
@@ -313,7 +311,7 @@ function json(status: number, body: unknown): Response {
 describe("mintSsoCode", () => {
   it("refuses without a local session", async () => {
     const { fn, calls } = fetchStub(() => json(200, { ok: true, code: CODE }));
-    const result = await mintSsoCode("elizacloud.ai", CHALLENGE, fn);
+    const result = await mintSsoCode("eliza.app", CHALLENGE, fn);
     expect(result).toEqual({ ok: false, error: "No local session" });
     expect(calls).toEqual([]);
   });
@@ -321,12 +319,10 @@ describe("mintSsoCode", () => {
   it("POSTs the localStorage token as Bearer with the app origin's challenge", async () => {
     localStorage.setItem(STEWARD_TOKEN_KEY, liveToken());
     const { fn, calls } = fetchStub(() => json(200, { ok: true, code: CODE }));
-    const result = await mintSsoCode("elizacloud.ai", CHALLENGE, fn);
+    const result = await mintSsoCode("eliza.app", CHALLENGE, fn);
     expect(result).toEqual({ ok: true, code: CODE });
     expect(calls).toHaveLength(1);
-    expect(calls[0].url).toBe(
-      "https://api.elizacloud.ai/api/auth/sso-bridge/mint",
-    );
+    expect(calls[0].url).toBe("https://eliza.app/api/auth/sso-bridge/mint");
     const headers = new Headers(calls[0].init?.headers);
     expect(headers.get("authorization")).toBe(
       `Bearer ${localStorage.getItem(STEWARD_TOKEN_KEY)}`,
@@ -339,7 +335,7 @@ describe("mintSsoCode", () => {
   it("refuses a malformed challenge without calling out", async () => {
     localStorage.setItem(STEWARD_TOKEN_KEY, liveToken());
     const { fn, calls } = fetchStub(() => json(200, { ok: true, code: CODE }));
-    const result = await mintSsoCode("elizacloud.ai", "junk", fn);
+    const result = await mintSsoCode("eliza.app", "junk", fn);
     expect(result.ok).toBe(false);
     expect(calls).toEqual([]);
   });
@@ -347,13 +343,13 @@ describe("mintSsoCode", () => {
   it("maps HTTP failures and malformed bodies to failures", async () => {
     localStorage.setItem(STEWARD_TOKEN_KEY, liveToken());
     const denied = await mintSsoCode(
-      "elizacloud.ai",
+      "eliza.app",
       CHALLENGE,
       fetchStub(() => json(401, { error: "nope" })).fn,
     );
     expect(denied.ok).toBe(false);
     const junkCode = await mintSsoCode(
-      "elizacloud.ai",
+      "eliza.app",
       CHALLENGE,
       fetchStub(() => json(200, { ok: true, code: "not-a-code" })).fn,
     );
@@ -386,7 +382,7 @@ describe("performSsoExchange", () => {
       const result = await performSsoExchange(
         CODE,
         VERIFIER,
-        "app.elizacloud.ai",
+        "cloud.eliza.app",
         fn,
       );
       expect(result).toEqual({ ok: true });
@@ -396,7 +392,7 @@ describe("performSsoExchange", () => {
 
     expect(localStorage.getItem(STEWARD_TOKEN_KEY)).toBe(token);
     expect(calls[0].url).toBe(
-      "https://api.elizacloud.ai/api/auth/sso-bridge/exchange",
+      "https://cloud.eliza.app/api/auth/sso-bridge/exchange",
     );
     expect(JSON.parse(String(calls[0].init?.body))).toEqual({
       code: CODE,
@@ -416,7 +412,7 @@ describe("performSsoExchange", () => {
     const result = await performSsoExchange(
       CODE,
       "junk",
-      "app.elizacloud.ai",
+      "cloud.eliza.app",
       fn,
     );
     expect(result.ok).toBe(false);
@@ -434,7 +430,7 @@ describe("performSsoExchange", () => {
       const result = await performSsoExchange(
         CODE,
         VERIFIER,
-        "app.elizacloud.ai",
+        "cloud.eliza.app",
         fn,
       );
       expect(result.ok).toBe(false);
@@ -447,7 +443,7 @@ describe("performSsoExchange", () => {
     const result = await performSsoExchange(
       CODE,
       VERIFIER,
-      "app.elizacloud.ai",
+      "cloud.eliza.app",
       fn,
     );
     expect(result.ok).toBe(false);
@@ -458,17 +454,17 @@ describe("performSsoExchange", () => {
 describe("burnSsoBridgeCode", () => {
   it("fires a verifier-less exchange POST that destroys the code server-side", () => {
     const { fn, calls } = fetchStub(() => json(401, { error: "invalid_code" }));
-    burnSsoBridgeCode(CODE, "app.elizacloud.ai", fn);
+    burnSsoBridgeCode(CODE, "cloud.eliza.app", fn);
     expect(calls).toHaveLength(1);
     expect(calls[0].url).toBe(
-      "https://api.elizacloud.ai/api/auth/sso-bridge/exchange",
+      "https://cloud.eliza.app/api/auth/sso-bridge/exchange",
     );
     expect(JSON.parse(String(calls[0].init?.body))).toEqual({ code: CODE });
   });
 
   it("is inert for malformed codes and unmapped hosts", () => {
     const { fn, calls } = fetchStub(() => json(401, {}));
-    burnSsoBridgeCode("not-a-code", "app.elizacloud.ai", fn);
+    burnSsoBridgeCode("not-a-code", "cloud.eliza.app", fn);
     burnSsoBridgeCode(CODE, "localhost", fn);
     expect(calls).toEqual([]);
   });
@@ -487,9 +483,9 @@ describe("signOutFromSsoBridgedHost", () => {
     }) as typeof fetch;
     try {
       const { fn, calls } = fetchStub(() => json(200, { success: true }));
-      await signOutFromSsoBridgedHost("app.elizacloud.ai", fn);
+      await signOutFromSsoBridgedHost("cloud.eliza.app", fn);
       expect(isSsoLoggedOut()).toBe(true);
-      expect(calls[0].url).toBe("https://api.elizacloud.ai/api/auth/logout");
+      expect(calls[0].url).toBe("https://cloud.eliza.app/api/auth/logout");
       expect(localStorage.getItem(STEWARD_TOKEN_KEY)).toBeNull();
     } finally {
       globalThis.fetch = realFetch;

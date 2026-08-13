@@ -35,7 +35,7 @@ Autoscaled Hetzner Cloud nodes need the Worker cron secrets:
 ```bash
 HCLOUD_TOKEN=<hetzner cloud api token>
 CONTAINERS_AUTOSCALE_PUBLIC_SSH_KEY=<public key matching CONTAINERS_SSH_KEY>
-CONTAINERS_BOOTSTRAP_CALLBACK_URL=https://api.elizacloud.ai/api/v1/admin/docker-nodes/bootstrap-callback
+CONTAINERS_BOOTSTRAP_CALLBACK_URL=https://api.eliza.app/api/v1/admin/docker-nodes/bootstrap-callback
 CONTAINERS_BOOTSTRAP_SECRET=<strong random secret>
 ```
 

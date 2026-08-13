@@ -82,7 +82,7 @@ export interface AppBootConfig {
 
 export const DEFAULT_BOOT_CONFIG: AppBootConfig = {
   branding: {},
-  cloudApiBase: "https://elizacloud.ai",
+  cloudApiBase: "https://api.eliza.app",
   preferSharedCloudTier: true,
   // Default OFF: shared-first onboarding stays shared-only; no billed dedicated
   // mutation without explicit opt-in (#18204).

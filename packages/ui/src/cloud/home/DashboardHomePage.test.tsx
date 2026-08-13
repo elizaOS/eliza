@@ -51,10 +51,10 @@ function renderHome(): void {
 
 /** The launch-core directory (mirrors the sidebar cut exactly). */
 const EXPECTED_LINKS = [
-  "/dashboard/agents",
-  "/dashboard/billing",
-  "/dashboard/api-keys",
-  "/dashboard/account",
+  "/cloud/agents",
+  "/cloud/billing",
+  "/cloud/api-keys",
+  "/cloud/account",
 ];
 
 describe("DashboardHomePage", () => {
@@ -75,13 +75,13 @@ describe("DashboardHomePage", () => {
     for (const to of EXPECTED_LINKS) {
       expect(hrefs, `missing console link ${to}`).toContain(to);
     }
-    expect(hrefs).not.toContain("/dashboard/organization");
+    expect(hrefs).not.toContain("/cloud/organization");
   });
 
   it("links Add funds to the billing console page", () => {
     renderHome();
     const addFunds = screen.getByRole("link", { name: "Add funds" });
-    expect(addFunds.getAttribute("href")).toBe("/dashboard/billing");
+    expect(addFunds.getAttribute("href")).toBe("/cloud/billing");
   });
 
   it("shows a busy em dash while the balance loads — never a fabricated amount", () => {

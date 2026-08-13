@@ -146,7 +146,7 @@ export const CONNECTOR_PATHS = [
     optional: ["PRIVATE_KEY", "SIWE_BASE"],
     probeId: "elizacloud",
     probeEndpoint:
-      "GET {SIWE_BASE|https://api.elizacloud.ai}/api/v1/credits/balance (Bearer apiKey)",
+      "GET {SIWE_BASE|https://api.eliza.app}/api/v1/credits/balance (Bearer apiKey)",
     oneClick: {
       type: "siwe",
       detail:
@@ -165,7 +165,7 @@ export const CONNECTOR_PATHS = [
     optional: ["SIWE_BASE"],
     probeId: "elizacloud",
     probeEndpoint:
-      "GET {SIWE_BASE|https://api.elizacloud.ai}/api/v1/credits/balance (Bearer apiKey)",
+      "GET {SIWE_BASE|https://api.eliza.app}/api/v1/credits/balance (Bearer apiKey)",
     availability: { type: "always" },
   }),
 

@@ -1,9 +1,7 @@
 /**
- * Eliza Cloud base-URL resolution. normalizeCloudSiteUrl collapses api/www host
- * aliases to the apex origin, strips query and hash, preserves loopback origins
- * but coerces other origins to https, and sanitizes malformed input rather than
- * echoing it back; resolveCloudApiBaseUrl appends the canonical /api/v1 path.
- * The ELIZAOS_CLOUD_BASE_URL env override takes precedence over the passed URL.
+ * Eliza Cloud base-URL resolution separates the managed app and API origins,
+ * collapses legacy aliases into their canonical environment, preserves custom
+ * and loopback bases, and honors the ELIZAOS_CLOUD_BASE_URL override.
  */
 import { afterEach, describe, expect, it } from "vitest";
 import { getBootConfig, setBootConfig } from "../config/boot-config";
@@ -23,21 +21,27 @@ describe("Eliza Cloud base URL normalization", () => {
     setBootConfig(savedConfig);
   });
 
-  it("normalizes every cloud host alias to the apex origin", () => {
+  it("normalizes every production cloud alias to the managed app origin", () => {
     expect(normalizeCloudSiteUrl("https://api.elizacloud.ai")).toBe(
-      "https://elizacloud.ai",
+      "https://cloud.eliza.app",
     );
     expect(normalizeCloudSiteUrl("https://api.elizacloud.ai/api/v1")).toBe(
-      "https://elizacloud.ai",
+      "https://cloud.eliza.app",
     );
     expect(normalizeCloudSiteUrl("https://www.elizacloud.ai")).toBe(
-      "https://elizacloud.ai",
+      "https://cloud.eliza.app",
+    );
+    expect(normalizeCloudSiteUrl("https://eliza.app")).toBe(
+      "https://cloud.eliza.app",
     );
   });
 
-  it("resolves canonical API paths from API host input", () => {
+  it("resolves the canonical API origin independently from the app origin", () => {
     expect(resolveCloudApiBaseUrl("https://api.elizacloud.ai")).toBe(
-      "https://elizacloud.ai/api/v1",
+      "https://api.eliza.app/api/v1",
+    );
+    expect(resolveCloudApiBaseUrl("https://cloud.eliza.app")).toBe(
+      "https://api.eliza.app/api/v1",
     );
   });
 
@@ -104,17 +108,17 @@ describe("default cloud target by environment", () => {
   it("defaults to staging under the dev entrypoint", () => {
     process.env.ELIZA_DEV_SOURCE = "1";
     expect(isDevCloudTarget()).toBe(true);
-    expect(defaultCloudSiteUrl()).toBe("https://staging.elizacloud.ai");
+    expect(defaultCloudSiteUrl()).toBe("https://cloud-staging.eliza.app");
     expect(resolveCloudApiBaseUrl()).toBe(
-      "https://staging.elizacloud.ai/api/v1",
+      "https://api-staging.eliza.app/api/v1",
     );
   });
 
   it("defaults to production when the dev flag is absent", () => {
     delete process.env.ELIZA_DEV_SOURCE;
     expect(isDevCloudTarget()).toBe(false);
-    expect(defaultCloudSiteUrl()).toBe("https://elizacloud.ai");
-    expect(resolveCloudApiBaseUrl()).toBe("https://elizacloud.ai/api/v1");
+    expect(defaultCloudSiteUrl()).toBe("https://cloud.eliza.app");
+    expect(resolveCloudApiBaseUrl()).toBe("https://api.eliza.app/api/v1");
   });
 
   it("ignores NODE_ENV=development — only the explicit dev flag counts", () => {
@@ -123,7 +127,7 @@ describe("default cloud target by environment", () => {
     process.env.NODE_ENV = "development";
     delete process.env.ELIZA_DEV_SOURCE;
     expect(isDevCloudTarget()).toBe(false);
-    expect(defaultCloudSiteUrl()).toBe("https://elizacloud.ai");
+    expect(defaultCloudSiteUrl()).toBe("https://cloud.eliza.app");
   });
 
   it('treats any value other than exactly "1" as not-dev', () => {
@@ -137,24 +141,22 @@ describe("default cloud target by environment", () => {
     // dev run pinned back to production
     process.env.ELIZA_DEV_SOURCE = "1";
     process.env.ELIZAOS_CLOUD_BASE_URL = "https://elizacloud.ai";
-    expect(resolveCloudApiBaseUrl()).toBe("https://elizacloud.ai/api/v1");
+    expect(resolveCloudApiBaseUrl()).toBe("https://api.eliza.app/api/v1");
 
     // non-dev run pointed at staging
     delete process.env.ELIZA_DEV_SOURCE;
     process.env.ELIZAOS_CLOUD_BASE_URL = "https://staging.elizacloud.ai";
     expect(resolveCloudApiBaseUrl()).toBe(
-      "https://staging.elizacloud.ai/api/v1",
+      "https://api-staging.eliza.app/api/v1",
     );
   });
 
-  it("does not collapse staging into the production apex", () => {
-    // api/www/apex are production aliases that normalize to the apex; staging
-    // must NOT be swept into that set or dev would silently hit production.
+  it("keeps legacy staging aliases in the staging environment", () => {
     expect(normalizeCloudSiteUrl("https://staging.elizacloud.ai")).toBe(
-      "https://staging.elizacloud.ai",
+      "https://cloud-staging.eliza.app",
     );
     expect(normalizeCloudSiteUrl("https://api-staging.elizacloud.ai")).toBe(
-      "https://api-staging.elizacloud.ai",
+      "https://cloud-staging.eliza.app",
     );
   });
 });

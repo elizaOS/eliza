@@ -109,7 +109,7 @@ describe("managed dedicated live-smoke workflow contract", () => {
 
   test("fails closed on credentials, target drift, and invalid recovery intent", () => {
     expect(dedicated.env?.CLOUD_DEDICATED_CANARY_BASE_URL).toBe(
-      "https://api-staging.elizacloud.ai",
+      "https://api-staging.eliza.app",
     );
     expect(dedicated.env?.CLOUD_DEDICATED_CANARY_EVIDENCE_PATH).toBe(
       "reports/managed-dedicated-canary.json",
@@ -130,7 +130,7 @@ describe("managed dedicated live-smoke workflow contract", () => {
 
     const target = namedStep("Require exact staging target").run ?? "";
     expect(target).toContain(
-      'const expected = "https://api-staging.elizacloud.ai"',
+      'const expected = "https://api-staging.eliza.app"',
     );
     expect(target).toContain("url.username");
     expect(target).toContain("url.password");

@@ -51,11 +51,10 @@ export function PageHeaderProvider({ children }: { children: ReactNode }) {
 /**
  * Provide a page-header context ONLY when there isn't one already.
  *
- * Standalone cloud routes need their own {@link PageHeaderProvider} (mounted
- * directly by `CloudRouterShell` / natively in the app, they have no ancestor
- * provider and `useSetPageHeader` would throw). But the SAME routes also render
- * inside `ConsoleShell`, which already provides one and reads it to draw the
- * top-bar title. An unconditional inner provider SHADOWS the shell's, so
+ * Cloud routes can be mounted directly by tests/native surfaces or inside the
+ * managed Cloud app-shell page. The app-shell page provides and consumes this
+ * context to draw its route-specific title and actions. An unconditional inner
+ * provider SHADOWS that owner, so
  * `useSetPageHeader` writes to a dead context and the top bar shows no title
  * (and any in-page heading then reads as a second, competing title).
  *

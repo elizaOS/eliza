@@ -19,7 +19,7 @@ const defaultEnvFile = path.join(
   "bluebubbles-bridge.env",
 );
 const defaultWebhookUrl =
-  "https://api.elizacloud.ai/api/webhooks/blooio/local?bridge=bluebubbles";
+  "https://api.eliza.app/api/webhooks/blooio/local?bridge=bluebubbles";
 const defaultGatewayPhoneNumber = "+14159611510";
 const defaultGatewayPhoneLabel = `Eliza Cloud Gateway (${defaultGatewayPhoneNumber})`;
 const defaultAttempts = 3;
@@ -205,10 +205,18 @@ function mentionsStarterCredit(text) {
 }
 
 function assertSmsSafeReply(label, text) {
-  if (/[^\x09\x0A\x0D\x20-\x7E]/.test(text)) {
-    throw new Error(
-      `${label} reply included non-ASCII SMS-hostile text: ${text}`,
-    );
+  for (const character of text) {
+    const codePoint = character.codePointAt(0);
+    const isSmsSafe =
+      codePoint === 0x09 ||
+      codePoint === 0x0a ||
+      codePoint === 0x0d ||
+      (codePoint !== undefined && codePoint >= 0x20 && codePoint <= 0x7e);
+    if (!isSmsSafe) {
+      throw new Error(
+        `${label} reply included non-ASCII SMS-hostile text: ${text}`,
+      );
+    }
   }
 }
 
@@ -313,8 +321,7 @@ async function main() {
   assertGatewayIdentity("Second", second, args);
   assertSmsSafeReply("Second", secondReply);
   if (
-    !loginUrl ||
-    !loginUrl.includes("/get-started/") ||
+    !loginUrl?.includes("/get-started/") ||
     !loginUrl.includes("onboardingSession=")
   ) {
     throw new Error(

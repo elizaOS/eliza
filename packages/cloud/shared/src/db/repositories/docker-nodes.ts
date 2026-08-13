@@ -41,6 +41,11 @@ function currentEnvironmentPredicate() {
   )`;
 }
 
+/** Provisional autoscaler capacity must never count as schedulable authority. */
+function capacityAttestedPredicate() {
+  return sql`COALESCE(${dockerNodes.metadata}->>'capacityProvisional', 'false') <> 'true'`;
+}
+
 export class DockerNodesRepository {
   // ============================================================================
   // READ OPERATIONS
@@ -82,6 +87,7 @@ export class DockerNodesRepository {
         and(
           eq(dockerNodes.enabled, true),
           eq(dockerNodes.placement_state, PLACEABLE_NODE_STATE),
+          capacityAttestedPredicate(),
           currentEnvironmentPredicate(),
         ),
       )
@@ -115,6 +121,7 @@ export class DockerNodesRepository {
           eq(dockerNodes.enabled, true),
           eq(dockerNodes.placement_state, PLACEABLE_NODE_STATE),
           eq(dockerNodes.status, "healthy"),
+          capacityAttestedPredicate(),
           currentEnvironmentPredicate(),
           sql`${dockerNodes.allocated_count} < ${dockerNodes.capacity}`,
         ),
@@ -139,6 +146,38 @@ export class DockerNodesRepository {
       .update(dockerNodes)
       .set({ ...data, updated_at: new Date() })
       .where(eq(dockerNodes.id, id))
+      .returning();
+    return r ?? null;
+  }
+
+  /**
+   * Replace an autoscaler's provisional capacity with its first hardware
+   * attestation. The metadata predicate is the exactly-once fence: concurrent
+   * or later callbacks cannot consume the marker twice or overwrite a tune.
+   */
+  async reconcileProvisionalCapacity(
+    id: string,
+    data: {
+      capacity: number;
+      hostname: string;
+      ssh_port: number;
+      ssh_user: string;
+      host_key_fingerprint: string;
+      status: DockerNodeStatus;
+    },
+    metadataPatch: Record<string, unknown>,
+  ): Promise<DockerNode | null> {
+    const patch = JSON.stringify(metadataPatch);
+    const [r] = await dbWrite
+      .update(dockerNodes)
+      .set({
+        ...data,
+        metadata: sql`(${dockerNodes.metadata} - 'capacityProvisional') || ${patch}::jsonb`,
+        updated_at: new Date(),
+      })
+      .where(
+        and(eq(dockerNodes.id, id), sql`${dockerNodes.metadata}->>'capacityProvisional' = 'true'`),
+      )
       .returning();
     return r ?? null;
   }

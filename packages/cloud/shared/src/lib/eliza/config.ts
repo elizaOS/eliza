@@ -14,8 +14,8 @@ import { expandBitRouterModelIdCandidates } from "../providers/model-id-translat
  * Get the elizaOS Cloud API base URL based on environment
  * - Local: http://localhost:3000/api/v1
  * - Test: http://localhost:3000/api/v1 (same as local)
- * - Development: https://dev.elizacloud.ai/api/v1
- * - Production: https://elizacloud.ai/api/v1
+ * - Development: https://api-staging.eliza.app/api/v1
+ * - Production: https://api.eliza.app/api/v1
  */
 export function getElizaCloudApiUrl(): string {
   // Allow explicit override via environment variable
@@ -37,12 +37,12 @@ export function getElizaCloudApiUrl(): string {
   }
 
   // Development environment
-  if (appUrl?.includes("dev.elizacloud.ai")) {
-    return "https://dev.elizacloud.ai/api/v1";
+  if (appUrl?.includes("staging.eliza.app")) {
+    return "https://api-staging.eliza.app/api/v1";
   }
 
   // Production (default)
-  return "https://elizacloud.ai/api/v1";
+  return "https://api.eliza.app/api/v1";
 }
 
 /**

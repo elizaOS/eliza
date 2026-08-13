@@ -4,6 +4,10 @@
  */
 
 import { isCloudPairAgentId } from "@elizaos/shared/contracts";
+import {
+  isElizaCloudControlPlaneHostname,
+  isElizaDedicatedAgentHostname,
+} from "@elizaos/shared/elizacloud";
 import { client } from "../api";
 import { getBootConfig } from "../config/boot-config-store";
 import { upsertAndActivateAgentProfile } from "../state/agent-profiles";
@@ -16,13 +20,6 @@ import {
   isTrustedRestoreApiBaseUrl,
 } from "../state/runtime-url-trust";
 import { isDedicatedCloudAgentBase } from "../utils/cloud-agent-base";
-
-const TRUSTED_CLOUD_LAUNCH_HOSTS = new Set([
-  "elizacloud.ai",
-  "www.elizacloud.ai",
-  "app.elizacloud.ai",
-  "api.elizacloud.ai",
-]);
 
 function getSearchParams(): URLSearchParams {
   if (typeof window === "undefined") {
@@ -49,7 +46,8 @@ function isConfiguredCloudHost(host: string): boolean {
 function isTrustedCloudLaunchHost(host: string): boolean {
   const normalized = host.toLowerCase();
   return (
-    TRUSTED_CLOUD_LAUNCH_HOSTS.has(normalized) ||
+    isElizaCloudControlPlaneHostname(normalized) ||
+    isElizaDedicatedAgentHostname(normalized) ||
     isConfiguredCloudHost(normalized)
   );
 }

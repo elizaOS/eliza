@@ -8,6 +8,12 @@ import {
   cloudPairTokenKeyForAgent,
   parseCloudPairRelaySession,
 } from "@elizaos/shared/contracts";
+import {
+  classifyElizaHostname,
+  ELIZA_DOMAIN_CONTRACTS,
+  isElizaCloudControlPlaneHostname,
+  isElizaDedicatedAgentHostname,
+} from "@elizaos/shared/elizacloud";
 import { useEffect, useState } from "react";
 import { getBootConfig, setBootConfig } from "../../config/boot-config";
 import {
@@ -63,25 +69,21 @@ export function isElizaCloudHostedLocation(
     return false;
   }
   const hostname = locationLike.hostname.trim().toLowerCase();
-  return hostname === "elizacloud.ai" || hostname.endsWith(".elizacloud.ai");
+  return (
+    isElizaCloudControlPlaneHostname(hostname) ||
+    isElizaDedicatedAgentHostname(hostname)
+  );
 }
 
 export function resolveCloudPairExchangeUrl(cloudApiBase?: string): string {
   const configured = cloudApiBase?.trim() || getBootConfig().cloudApiBase;
-  const base = (configured || "https://elizacloud.ai")
+  const base = (configured || ELIZA_DOMAIN_CONTRACTS.production.marketingOrigin)
     .replace(/\/+$/, "")
     .replace(/\/api\/v1\/?$/, "");
   const url = new URL(`${base}/api/auth/pair`);
-  const apiHost = new Map([
-    ["elizacloud.ai", "api.elizacloud.ai"],
-    ["www.elizacloud.ai", "api.elizacloud.ai"],
-    ["app.elizacloud.ai", "api.elizacloud.ai"],
-    ["dev.elizacloud.ai", "api.elizacloud.ai"],
-    ["staging.elizacloud.ai", "api-staging.elizacloud.ai"],
-    ["app-staging.elizacloud.ai", "api-staging.elizacloud.ai"],
-  ]).get(url.hostname.toLowerCase());
-  if (apiHost) {
-    url.hostname = apiHost;
+  const environment = classifyElizaHostname(url.hostname).environment;
+  if (environment) {
+    url.host = new URL(ELIZA_DOMAIN_CONTRACTS[environment].cloudApiOrigin).host;
   }
   return url.toString();
 }
@@ -292,18 +294,10 @@ export function resolveCloudHostedAgentUrl(
     : window.location,
 ): string {
   const hostname = locationLike?.hostname.trim().toLowerCase() ?? "";
-  const staging =
-    hostname === "staging.elizacloud.ai" ||
-    hostname === "app-staging.elizacloud.ai" ||
-    hostname.endsWith(".staging.elizacloud.ai");
-  const base = staging
-    ? "https://staging.elizacloud.ai"
-    : "https://elizacloud.ai";
-  const agentId = hostname.endsWith(".staging.elizacloud.ai")
-    ? hostname.slice(0, -".staging.elizacloud.ai".length)
-    : hostname.endsWith(".elizacloud.ai")
-      ? hostname.slice(0, -".elizacloud.ai".length)
-      : "";
+  const classified = classifyElizaHostname(hostname);
+  const environment = classified.environment ?? "production";
+  const base = ELIZA_DOMAIN_CONTRACTS[environment].cloudAppOrigin;
+  const agentId = classified.agentId ?? "";
   const agentPath =
     agentId &&
     !["www", "app", "app-staging", "api", "api-staging", "staging"].includes(
@@ -311,7 +305,7 @@ export function resolveCloudHostedAgentUrl(
     )
       ? `/${encodeURIComponent(agentId)}`
       : "";
-  return `${base}/dashboard/agents${agentPath}`;
+  return `${base}/cloud/agents${agentPath}`;
 }
 
 type CloudPairStatus =

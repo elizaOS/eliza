@@ -565,7 +565,7 @@ export type CloudConfig = {
   remoteApiBase?: string;
   /** Remote access token used when the app is attached to a remote backend. */
   remoteAccessToken?: string;
-  /** Eliza Cloud API base URL. Default: https://elizacloud.ai/api/v1 */
+  /** Eliza Cloud API base URL. Default: https://api.eliza.app/api/v1 */
   baseUrl?: string;
   /** Cached API key (stored encrypted via gateway auth). */
   apiKey?: string;

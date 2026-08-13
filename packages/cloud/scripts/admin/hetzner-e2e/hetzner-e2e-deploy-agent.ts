@@ -11,7 +11,7 @@ import { SMOKE_AGENT_PLUGINS } from "../smoke-agent-plugins";
 import { provisionJobId } from "./provision-response";
 import { appendStateAtomic } from "./state-file";
 
-const DEFAULT_BASE_URL = "https://api-staging.elizacloud.ai";
+const DEFAULT_BASE_URL = "https://api-staging.eliza.app";
 
 function requireEnv(name: string): string {
   const value = process.env[name];

@@ -11,6 +11,10 @@ import {
   SHELL_NAVIGATE_VIEW_WS_EVENT,
   stripAssistantStageDirections,
 } from "@elizaos/shared";
+import {
+  isElizaCloudControlPlaneHostname,
+  isElizaDedicatedAgentHostname,
+} from "@elizaos/shared/elizacloud";
 import { getBootConfig, setBootConfig } from "../config/boot-config";
 import {
   NETWORK_STATUS_CHANGE_EVENT,
@@ -72,16 +76,6 @@ import { type AgentRequestTransport, fetchAgentTransport } from "./transport";
 const GENERIC_NO_RESPONSE_TEXT =
   "Sorry, I couldn't generate a response right now. Please try again.";
 const LOCAL_STORAGE_API_BASE_KEY = "elizaos_api_base";
-const ELIZA_CLOUD_CONTROL_PLANE_HOSTS = new Set([
-  "api.elizacloud.ai",
-  "elizacloud.ai",
-  "www.elizacloud.ai",
-  "dev.elizacloud.ai",
-  "app.elizacloud.ai",
-  "staging.elizacloud.ai",
-  "api-staging.elizacloud.ai",
-  "app-staging.elizacloud.ai",
-]);
 const DEDICATED_CLOUD_CORS_BLOCKED_HEADERS = new Set([
   "x-elizaos-client-id",
   "x-elizaos-ui-language",
@@ -262,7 +256,7 @@ function isElizaCloudControlPlaneBase(
   const normalized = normalizeBaseUrl(value);
   if (!normalized) return false;
   try {
-    return ELIZA_CLOUD_CONTROL_PLANE_HOSTS.has(
+    return isElizaCloudControlPlaneHostname(
       new URL(normalized).hostname.toLowerCase(),
     );
   } catch {
@@ -528,7 +522,7 @@ function shouldTreatAsConnectedWithoutWebSocket(
   );
 }
 
-// A dedicated cloud agent lives on its own subdomain (<id>.elizacloud.ai) and
+// A dedicated cloud agent lives on `<id>.cloud.eliza.app` and
 // serves chat over REST. Its `/ws` upgrade is NOT currently proxied by the
 // agent-router (the upgrade returns 404), so attempting the WebSocket only
 // produced a "Reconnecting… (N/15)" header for ~95s before degrading. Treat
@@ -542,10 +536,7 @@ function isDedicatedCloudAgentBase(value: string | null | undefined): boolean {
   if (!normalized) return false;
   try {
     const host = new URL(normalized).hostname.toLowerCase();
-    return (
-      host.endsWith(".elizacloud.ai") &&
-      !ELIZA_CLOUD_CONTROL_PLANE_HOSTS.has(host)
-    );
+    return isElizaDedicatedAgentHostname(host);
   } catch {
     // error-policy:J3 malformed base URL reads as "not a dedicated agent".
     return false;
@@ -1045,7 +1036,7 @@ export class ElizaClient {
    * `setBaseUrl`.
    *
    * Note on the WS swap: on cloud bases (the shared REST adapter and
-   * `*.elizacloud.ai`) `connectWs()` reports connected-over-REST and no socket
+   * `*.cloud.eliza.app`) `connectWs()` reports connected-over-REST and no socket
    * is opened, so `ws-reconnected` does NOT fire and live updates resume via
    * REST/SSE keyed off the new `baseUrl`. The socket teardown + reconnect path
    * (steps 1 and 3, where `onopen` fires `ws-reconnected`) is exercised only for

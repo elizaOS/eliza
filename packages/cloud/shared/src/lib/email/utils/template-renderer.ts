@@ -57,13 +57,13 @@ export function renderWelcomeTemplate(data: WelcomeEmailData): {
   const htmlTemplate = loadTemplate("welcome.html");
   const textTemplate = loadTemplate("welcome.txt");
 
-  const baseUrl = data.dashboardUrl.replace(/\/dashboard.*/, "");
+  const baseUrl = new URL(data.dashboardUrl).origin;
   const templateData = {
     userName: data.userName,
     organizationName: data.organizationName,
     creditBalance: data.creditBalance.toLocaleString(),
     dashboardUrl: data.dashboardUrl,
-    docsUrl: `${baseUrl}/docs`,
+    docsUrl: "https://docs.elizaos.ai/cloud",
     baseUrl: baseUrl,
     currentYear: new Date().getFullYear(),
   };

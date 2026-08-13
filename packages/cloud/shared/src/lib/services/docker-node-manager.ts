@@ -414,8 +414,8 @@ function deriveCapacityDimension(
   if (typeof total !== "number" || !Number.isFinite(total) || total <= 0) return null;
   if (!Number.isFinite(perAgent) || perAgent <= 0) return null;
   const budget = total - hostReserve;
-  if (budget <= 0) return null;
-  return Math.max(1, Math.floor(budget / perAgent));
+  if (budget <= 0) return 0;
+  return Math.floor(budget / perAgent);
 }
 
 export function resolveNodeCapacity(opts: {

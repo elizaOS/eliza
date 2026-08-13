@@ -14,7 +14,7 @@ describe("buildHomeRemoteRunnerAccessUrl", () => {
     const url = buildHomeRemoteRunnerAccessUrl({ sessionId: "session-123" });
 
     expect(url).toBe(
-      `https://elizacloud.ai/dashboard/app?${HOME_REMOTE_RUNNER_ACCESS_SESSION_PARAM}=session-123`
+      `https://cloud.eliza.app/cloud?${HOME_REMOTE_RUNNER_ACCESS_SESSION_PARAM}=session-123`
     );
   });
 
@@ -25,7 +25,7 @@ describe("buildHomeRemoteRunnerAccessUrl", () => {
     });
 
     expect(url).toBe(
-      `https://elizacloud.ai/dashboard/app?${HOME_REMOTE_RUNNER_ACCESS_SESSION_PARAM}=session-123`
+      `https://cloud.eliza.app/cloud?${HOME_REMOTE_RUNNER_ACCESS_SESSION_PARAM}=session-123`
     );
   });
 
@@ -36,7 +36,7 @@ describe("buildHomeRemoteRunnerAccessUrl", () => {
     });
 
     expect(url).toBe(
-      `http://127.0.0.1:8787/dashboard/app?${HOME_REMOTE_RUNNER_ACCESS_SESSION_PARAM}=local-session`
+      `http://127.0.0.1:8787/cloud?${HOME_REMOTE_RUNNER_ACCESS_SESSION_PARAM}=local-session`
     );
   });
 

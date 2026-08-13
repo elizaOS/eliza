@@ -2195,7 +2195,7 @@ export async function autoFetchCloudGithubToken(
   // Need cloud credentials and an agent ID
   const cloudApiKey = process.env.ELIZAOS_CLOUD_API_KEY?.trim();
   const cloudBaseUrl =
-    process.env.ELIZAOS_CLOUD_BASE_URL?.trim() || "https://api.elizacloud.ai";
+    process.env.ELIZAOS_CLOUD_BASE_URL?.trim() || "https://api.eliza.app";
   if (!cloudApiKey || !agentId) return;
 
   const managedNs = readAliasedEnv("ELIZA_CLOUD_MANAGED_AGENTS_API_SEGMENT");
