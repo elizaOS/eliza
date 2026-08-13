@@ -19,6 +19,9 @@ const CANONICAL_SELECTOR =
 const PULL_REQUEST_HOSTED_SELECTOR =
   EXPRESSION_OPEN +
   " fromJSON(github.event_name == 'pull_request' && '[\"ubuntu-24.04\"]' || vars.HETZNER_FLEET_ONLINE != 'true' && '[\"ubuntu-24.04\"]' || '[\"self-hosted\",\"hetzner-robot\"]') }}";
+const FORCE_HOSTED_SELECTOR =
+  EXPRESSION_OPEN +
+  " fromJSON((inputs.force_hosted || github.event_name == 'pull_request' || vars.HETZNER_FLEET_ONLINE != 'true') && '[\"ubuntu-24.04\"]' || '[\"self-hosted\",\"hetzner-robot\"]') }}";
 const JANITOR_ROBOT_SELECTOR =
   EXPRESSION_OPEN +
   ' vars.HETZNER_FLEET_ONLINE != \'true\' && \'["ubuntu-latest"]\' || vars.ACTIONS_JANITOR_ROBOT_LANE_DISABLED == \'true\' && \'["ubuntu-latest"]\' || vars.ACTIONS_JANITOR_ROBOT_RUNNER_JSON || \'["self-hosted","Linux","X64","hetzner-robot"]\' }}';
@@ -32,6 +35,7 @@ const CERTIFICATION_DISPATCH_SELECTOR =
 const DIRECT_RUNNER_SELECTORS = new Set([
   CANONICAL_SELECTOR,
   PULL_REQUEST_HOSTED_SELECTOR,
+  FORCE_HOSTED_SELECTOR,
   CERTIFICATION_DISPATCH_SELECTOR,
 ]);
 const JANITOR_WORKFLOW = "actions-zombie-janitor.yml";
