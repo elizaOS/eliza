@@ -1918,6 +1918,7 @@ public class ElizaAgentService extends Service {
             currentTerminalRunToken = terminalToken;
             try {
                 writeLocalAgentTokenFile(token);
+                ElizaWorkScheduler.reconcile(getApplicationContext());
             } catch (IOException error) {
                 Log.w(TAG, "Failed to persist local-agent token file: " + error.getMessage());
             }
@@ -2732,6 +2733,8 @@ public class ElizaAgentService extends Service {
             currentLocalAgentToken = null;
             currentTerminalRunToken = null;
         }
+        deleteLocalAgentTokenFile();
+        ElizaWorkScheduler.reconcile(getApplicationContext());
         persistDetachedLaunchTimestamp(0L);
         if (wasDetached) {
             appendDiagnosticEvent("stop-detached-agent", null);
@@ -2841,6 +2844,13 @@ public class ElizaAgentService extends Service {
         file.setReadable(true, true);
         file.setWritable(false, false);
         file.setWritable(true, true);
+    }
+
+    private void deleteLocalAgentTokenFile() {
+        File file = new File(new File(getFilesDir(), "auth"), "local-agent-token");
+        if (file.exists() && !file.delete()) {
+            Log.w(TAG, "Unable to delete stopped local-agent token file");
+        }
     }
 
     private long safePid(Process process) {

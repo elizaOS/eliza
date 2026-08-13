@@ -6,7 +6,14 @@
  */
 
 import { ScrollText } from "lucide-react";
-import { memo, type ReactNode, useEffect, useMemo, useState } from "react";
+import {
+  memo,
+  type ReactNode,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useAgentElement } from "../../agent-surface";
 import type { LogEntry } from "../../api";
 import { useIntervalWhenDocumentVisible } from "../../hooks/useDocumentVisibility";
@@ -35,14 +42,7 @@ const LOG_INITIAL_SKELETON_ROWS = 4;
 const LOG_INITIAL_SKELETON_ROW_CLASS = "h-[11.375rem]";
 
 function logEntryKey(entry: LogEntry, index: number): string {
-  return [
-    entry.timestamp,
-    entry.source,
-    entry.level,
-    entry.message,
-    entry.tags.join(","),
-    index,
-  ].join("|");
+  return `${entry.timestamp}|${entry.source}|${entry.level}|${index}`;
 }
 
 /**
@@ -178,22 +178,37 @@ function LogsViewBody() {
   );
   useRegisterViewChatBinding(chatBinding);
 
-  // Initial load + quiet live tail: poll instead of a user-facing refresh
-  // button so the view stays current without an extra control to reason about.
+  // hydratedRef ensures the skeleton-to-content transition fires only on the
+  // first load; subsequent filter-change reloads skip the animation entirely.
+  const hydratedRef = useRef(false);
+
+  // Initial load + filter-change reload: loadLogs has a stable identity
+  // (reads filter values from refs at call-time) so adding the filter values
+  // here makes the effect fire on mount AND whenever a dropdown filter changes,
+  // without firing on every other re-render of the parent.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: filter values are intentional extra deps — loadLogs reads them via refs; we still want the effect to re-run when they change
   useEffect(() => {
     let cancelled = false;
+    let settleTimer: number | undefined;
     void loadLogs().finally(() => {
       if (cancelled) return;
-      setLogHydrationSettling(true);
-      setInitialLoading(false);
-      window.setTimeout(() => {
-        if (!cancelled) setLogHydrationSettling(false);
-      }, LOG_HYDRATION_SETTLE_MS);
+      if (!hydratedRef.current) {
+        hydratedRef.current = true;
+        setLogHydrationSettling(true);
+        setInitialLoading(false);
+        settleTimer = window.setTimeout(() => {
+          if (!cancelled) setLogHydrationSettling(false);
+        }, LOG_HYDRATION_SETTLE_MS);
+      }
     });
     return () => {
       cancelled = true;
+      if (settleTimer !== undefined) window.clearTimeout(settleTimer);
+      // If deps change mid-settle, the re-run effect skips the hydratedRef
+      // block entirely — reset here so the settling flag can't stick true.
+      setLogHydrationSettling(false);
     };
-  }, [loadLogs]);
+  }, [loadLogs, logTagFilter, logLevelFilter, logSourceFilter]);
 
   // Live tail only ticks while the document is visible; pauses when the
   // tab/window is hidden and resumes on visibilitychange.
