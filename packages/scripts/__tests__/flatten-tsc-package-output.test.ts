@@ -27,6 +27,11 @@ const testDir = dirname(fileURLToPath(import.meta.url));
 const scriptPath = join(testDir, "..", "flatten-tsc-package-output.mjs");
 const cleanupHelperPath = join(testDir, "..", "rm-path-recursive.mjs");
 
+// These contracts spawn a second Bun process and can outlive Vitest's 5-second
+// default when the shared CI host is saturated. Keep the bound explicit while
+// allowing the subprocess enough time to reach the filesystem assertions.
+const SUBPROCESS_TEST_TIMEOUT_MS = 15_000;
+
 const temporaryDirectories: string[] = [];
 
 afterEach(() => {
@@ -67,7 +72,9 @@ async function runFlatten(root: string, packageDir: string) {
   });
 }
 
-describe("flatten-tsc-package-output", () => {
+describe("flatten-tsc-package-output", {
+  timeout: SUBPROCESS_TEST_TIMEOUT_MS,
+}, () => {
   test("directory merge preserves pre-existing sibling files while adding tsc output", async () => {
     const root = createFakeWorkspace();
     const dist = join(root, "packages", "demo", "dist");
