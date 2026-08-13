@@ -97,18 +97,57 @@ describe("GitHub concurrency state model", () => {
     expect(lock.active).toBe("A-release");
     completeConcurrency(lock, "A-release");
     expect(lock.active).toBe("B-release");
-    expect(lock.pending).toBeNull();
+    expect(lock.pending).toEqual([]);
   });
 
-  test("three overlapping runs evict the pending member, not the active one", () => {
+  test("default queue:single evicts the pending member, not the active one", () => {
     const lock = createConcurrencyGroup({ cancelInProgress: false });
     requestConcurrency(lock, "A");
     requestConcurrency(lock, "B");
     requestConcurrency(lock, "C");
     expect(lock.active).toBe("A");
-    expect(lock.pending).toBe("C");
+    expect(lock.pending).toEqual(["C"]);
     expect(lock.cancelled.has("B")).toBe(true);
     expect(lock.cancelled.has("A")).toBe(false);
+  });
+
+  test("queue:max keeps every approved waiter and promotes FIFO by wait-start", () => {
+    const lock = createConcurrencyGroup(releaseGroup("production"));
+    expect(lock.queue).toBe("max");
+    requestConcurrency(lock, "A");
+    requestConcurrency(lock, "B");
+    requestConcurrency(lock, "C");
+    expect(lock.active).toBe("A");
+    expect(lock.pending).toEqual(["B", "C"]);
+    expect(lock.cancelled.size).toBe(0);
+    completeConcurrency(lock, "A");
+    expect(lock.active).toBe("B");
+    expect(lock.pending).toEqual(["C"]);
+    completeConcurrency(lock, "B");
+    expect(lock.active).toBe("C");
+    expect(lock.pending).toEqual([]);
+  });
+
+  test("queue:max cannot combine with cancel-in-progress", () => {
+    expect(() =>
+      createConcurrencyGroup({ cancelInProgress: true, queue: "max" }),
+    ).toThrow(/queue: max/);
+  });
+
+  test("queue:max cancels arrivals after 100 pending members", () => {
+    const lock = createConcurrencyGroup({
+      cancelInProgress: false,
+      queue: "max",
+    });
+    requestConcurrency(lock, "active");
+    for (let i = 0; i < 100; i += 1) {
+      expect(requestConcurrency(lock, `p${i}`)).toBe("pending");
+    }
+    expect(requestConcurrency(lock, "overflow")).toBe("cancelled");
+    expect(lock.active).toBe("active");
+    expect(lock.pending).toHaveLength(100);
+    expect(lock.cancelled.has("overflow")).toBe(true);
+    expect(lock.cancelled.has("p0")).toBe(false);
   });
 
   test("the former three-group design allows B to migrate while A deploys API", () => {
@@ -163,6 +202,7 @@ describe("committed Cloud CF workflow matches the policy", () => {
       "format('pr-{0}', github.event.pull_request.number)",
     );
     expect(block).not.toContain("github.sha");
+    expect(block).not.toContain("queue: max");
     expect(cloudCf).not.toContain("cloud-cf-deploy-v5-");
   });
 
@@ -174,6 +214,7 @@ describe("committed Cloud CF workflow matches the policy", () => {
     expect(release).toContain("uses: ./.github/workflows/cloud-cf-release.yml");
     expect(release).toContain("group: cloud-cf-release-v6-");
     expect(release).toContain("cancel-in-progress: false");
+    expect(release).toContain("queue: max");
     expect(release).not.toMatch(/^ {4}environment:/m);
   });
 
@@ -198,6 +239,7 @@ describe("committed AASA and provisioning workflows match the policy", () => {
     expect(determine).not.toContain("concurrency:");
     expect(deploy).toContain("group: deploy-eliza-provisioning-worker-mutate-");
     expect(deploy).toContain("cancel-in-progress: false");
+    expect(deploy).toContain("queue: max");
   });
 
   test("AASA admission is per run and CDN proof stays inside the mutate job", () => {
@@ -210,5 +252,6 @@ describe("committed AASA and provisioning workflows match the policy", () => {
     expect(publish).toContain("group: deploy-aasa-edge-mutate");
     expect(publish).toContain("apple-cdn-live");
     expect(publish).toContain("cancel-in-progress: false");
+    expect(publish).toContain("queue: max");
   });
 });
