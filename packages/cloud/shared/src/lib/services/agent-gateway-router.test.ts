@@ -883,6 +883,7 @@ describe("AgentGatewayRouterService telegram onboarding", () => {
       messageId: "tg-msg-1",
       content: "hi eliza",
       sender: { id: "telegram-user-1", username: "newuser", displayName: "New User" },
+      onboardUnknownOwner: true,
       ...overrides,
     };
   }
@@ -914,9 +915,48 @@ describe("AgentGatewayRouterService telegram onboarding", () => {
         // append to one transcript instead of restarting the greeting.
         sessionId: "platform:telegram:telegram-user-1",
         trustedPlatformIdentity: true,
-        idempotencyKey: "telegram:tg-msg-1",
+        idempotencyKey: "telegram:org-1:chat-1:tg-msg-1",
       }),
     );
+  });
+
+  test("overlapping message ids stay isolated across organization bot chats", async () => {
+    findByTelegramIdWithOrganization.mockResolvedValue(null);
+    runOnboardingChat.mockResolvedValue({
+      reply: "Connect",
+      cta: null,
+      session: { userId: undefined, organizationId: undefined },
+      provisioning: { agentId: null },
+    });
+
+    await newRouter().routeTelegramMessage(telegramArgs());
+    await newRouter().routeTelegramMessage(
+      telegramArgs({ organizationId: "org-2", chatId: "chat-2" }),
+    );
+
+    expect(runOnboardingChat).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        idempotencyKey: "telegram:org-1:chat-1:tg-msg-1",
+      }),
+    );
+    expect(runOnboardingChat).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        idempotencyKey: "telegram:org-2:chat-2:tg-msg-1",
+      }),
+    );
+  });
+
+  test("an active app automation can retain unknown-owner precedence", async () => {
+    findByTelegramIdWithOrganization.mockResolvedValue(null);
+
+    const result = await newRouter().routeTelegramMessage(
+      telegramArgs({ onboardUnknownOwner: false }),
+    );
+
+    expect(result).toEqual({ handled: false, reason: "unknown_owner" });
+    expect(runOnboardingChat).not.toHaveBeenCalled();
   });
 
   test("the onboarding identity is carried back on the result", async () => {
