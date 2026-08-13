@@ -371,6 +371,9 @@ export function isTextBackedDocumentContent(
 	contentType: string,
 	filename: string,
 ): boolean {
+	if (filename.toLowerCase().endsWith(".pdf")) {
+		return false;
+	}
 	return !isBinaryContentType(contentType, filename);
 }
 

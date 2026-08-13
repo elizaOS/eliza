@@ -149,6 +149,70 @@ describe("document routes", () => {
     expect(addDocument).not.toHaveBeenCalled();
   });
 
+  it.each([
+    ["empty MIME essence", "; charset=UTF-8"],
+    ["whitespace-only MIME", "   "],
+    ["null MIME", null],
+    ["numeric MIME", 42],
+    ["object MIME", { type: "text/plain" }],
+    ["boolean MIME", true],
+  ])(
+    "rejects %s on single upload before persistence",
+    async (_label, contentType) => {
+      const store = vi.fn();
+      const { ctx, res } = buildCtx({
+        method: "POST",
+        pathname: "/api/documents",
+        runtime: {
+          getService: vi.fn(() => ({ store })),
+        } as Partial<NonNullable<DocumentRouteContext["runtime"]>>,
+        body: {
+          content: "hello world",
+          filename: "notes.blob",
+          contentType,
+        },
+      });
+
+      await expect(handleDocumentsRoutes(ctx)).resolves.toBe(true);
+
+      expect(res.statusCode).toBe(400);
+      expect(res.body).toEqual({
+        error: expect.stringMatching(/contentType must/),
+      });
+      expect(store).not.toHaveBeenCalled();
+      expect(addDocument).not.toHaveBeenCalled();
+    },
+  );
+
+  it("defaults an omitted contentType to canonical text/plain", async () => {
+    addDocument.mockResolvedValueOnce({
+      clientDocumentId: "doc-id",
+      fragmentCount: 1,
+    });
+    const { ctx, res } = buildCtx({
+      method: "POST",
+      pathname: "/api/documents",
+      body: {
+        content: "hello world",
+        filename: "notes.blob",
+      },
+    });
+
+    await expect(handleDocumentsRoutes(ctx)).resolves.toBe(true);
+
+    expect(res.statusCode).toBe(200);
+    expect(addDocument).toHaveBeenCalledWith(
+      expect.objectContaining({
+        contentType: "text/plain",
+        metadata: expect.objectContaining({
+          contentType: "text/plain",
+          fileType: "text/plain",
+          textBacked: true,
+        }),
+      }),
+    );
+  });
+
   it("rejects image uploads that would otherwise store placeholder text", async () => {
     const { ctx, res } = buildCtx({
       method: "POST",
@@ -219,10 +283,34 @@ describe("document routes", () => {
       expectedBytes: "hello world",
     },
     {
+      content: "const answer: number = 42;",
+      filename: "source.blob",
+      contentType: "APPLICATION/TYPESCRIPT; charset=UTF-8",
+      expectedContentType: "application/typescript",
+      expectedTextBacked: true,
+      expectedBytes: "const answer: number = 42;",
+    },
+    {
       content: Buffer.from("pdf bytes").toString("base64"),
       filename: "report.bin",
       contentType: "APPLICATION/PDF",
       expectedContentType: "application/pdf",
+      expectedTextBacked: false,
+      expectedBytes: "pdf bytes",
+    },
+    {
+      content: Buffer.from("pdf bytes").toString("base64"),
+      filename: "report.txt",
+      contentType: "application/pdf",
+      expectedContentType: "application/pdf",
+      expectedTextBacked: false,
+      expectedBytes: "pdf bytes",
+    },
+    {
+      content: Buffer.from("pdf bytes").toString("base64"),
+      filename: "report.pdf",
+      contentType: "text/plain",
+      expectedContentType: "text/plain",
       expectedTextBacked: false,
       expectedBytes: "pdf bytes",
     },
@@ -270,6 +358,7 @@ describe("document routes", () => {
       expect(store.mock.calls).toHaveLength(1);
       const storedContent = store.mock.calls[0][0] as Buffer;
       expect(storedContent.toString("utf8")).toBe(expectedBytes);
+      expect(store.mock.calls[0][1]).toBe(expectedContentType);
       expect(addDocument).toHaveBeenCalledWith(
         expect.objectContaining({
           contentType: expectedContentType,
@@ -485,6 +574,56 @@ describe("document routes", () => {
           },
         ],
       });
+      expect(addDocument).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([
+    ["empty MIME essence", "; charset=UTF-8"],
+    ["whitespace-only MIME", "   "],
+    ["null MIME", null],
+    ["numeric MIME", 42],
+    ["object MIME", { type: "text/plain" }],
+    ["boolean MIME", true],
+  ])(
+    "reports %s as a bulk item failure without persistence",
+    async (_label, contentType) => {
+      const store = vi.fn();
+      const { ctx, res } = buildCtx({
+        method: "POST",
+        pathname: "/api/documents/bulk",
+        runtime: {
+          getService: vi.fn(() => ({ store })),
+        } as Partial<NonNullable<DocumentRouteContext["runtime"]>>,
+        body: {
+          documents: [
+            {
+              content: "hello world",
+              filename: "notes.blob",
+              contentType,
+            },
+          ],
+        },
+      });
+
+      await expect(handleDocumentsRoutes(ctx)).resolves.toBe(true);
+
+      expect(res.statusCode).toBe(200);
+      expect(res.body).toEqual({
+        ok: false,
+        total: 1,
+        successCount: 0,
+        failureCount: 1,
+        results: [
+          {
+            index: 0,
+            ok: false,
+            filename: "notes.blob",
+            error: expect.stringMatching(/contentType must/),
+          },
+        ],
+      });
+      expect(store).not.toHaveBeenCalled();
       expect(addDocument).not.toHaveBeenCalled();
     },
   );

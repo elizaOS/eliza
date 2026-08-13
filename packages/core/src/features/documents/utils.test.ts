@@ -77,6 +77,10 @@ describe("classification", () => {
 		},
 	);
 
+	it("preserves the service's PDF filename fallback for byte routing", () => {
+		expect(isTextBackedDocumentContent("text/plain", "report.pdf")).toBe(false);
+	});
+
 	it("normalizeDocumentSourceValue maps known sources, else 'unknown'", () => {
 		expect(normalizeDocumentSourceValue("upload")).toBe("upload");
 		expect(normalizeDocumentSourceValue("rag-service-main-upload")).toBe(

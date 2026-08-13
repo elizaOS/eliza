@@ -37,7 +37,9 @@ import type {
 import {
   __setDocumentUrlFetchImplForTests,
   actorFromAccessContext,
+  ElizaError,
   fetchDocumentFromUrl,
+  isTextBackedDocumentContent,
   isYouTubeUrl,
   normalizeDocumentContentType,
   ServiceType,
@@ -119,7 +121,7 @@ function parseKnowledgeFacet(
 type DocumentUploadBody = {
   content: string;
   filename: string;
-  contentType?: string;
+  contentType?: unknown;
   metadata?: Record<string, unknown>;
   roomId?: string;
   worldId?: string;
@@ -129,31 +131,52 @@ type DocumentUploadBody = {
   addedFrom?: string;
 };
 
-function isTextBackedContentType(
-  contentType: string,
+const MIME_TOKEN = "[!#$%&'*+.^_`|~0-9A-Za-z-]+";
+const MIME_ESSENCE_PATTERN = new RegExp(`^${MIME_TOKEN}/${MIME_TOKEN}$`);
+
+type DocumentUploadMime = {
+  contentType: string;
+  fileType: string;
+  textBacked: boolean;
+};
+
+function parseDocumentUploadMime(
+  contentType: unknown,
   filename: string,
-): boolean {
-  const normalizedContentType = normalizeDocumentContentType(contentType);
-  if (normalizedContentType.startsWith("text/")) return true;
-  if (
-    normalizedContentType === "application/json" ||
-    normalizedContentType === "application/xml" ||
-    normalizedContentType === "application/javascript" ||
-    normalizedContentType === "text/markdown"
-  ) {
-    return true;
+): DocumentUploadMime {
+  if (contentType === undefined) {
+    return {
+      contentType: "text/plain",
+      fileType: "text/plain",
+      textBacked: isTextBackedDocumentContent("text/plain", filename),
+    };
   }
 
-  const lowerFilename = filename.toLowerCase();
-  return (
-    lowerFilename.endsWith(".md") ||
-    lowerFilename.endsWith(".mdx") ||
-    lowerFilename.endsWith(".txt") ||
-    lowerFilename.endsWith(".json") ||
-    lowerFilename.endsWith(".xml") ||
-    lowerFilename.endsWith(".csv") ||
-    lowerFilename.endsWith(".tsv")
-  );
+  if (typeof contentType !== "string") {
+    throw new ElizaError(
+      "contentType must be a valid MIME type string when provided",
+      {
+        code: "DOCUMENT_CONTENT_TYPE_INVALID",
+        context: {
+          receivedType: contentType === null ? "null" : typeof contentType,
+        },
+      },
+    );
+  }
+
+  const normalizedContentType = normalizeDocumentContentType(contentType);
+  if (!MIME_ESSENCE_PATTERN.test(normalizedContentType)) {
+    throw new ElizaError("contentType must contain a valid MIME type essence", {
+      code: "DOCUMENT_CONTENT_TYPE_INVALID",
+      context: { receivedType: "string" },
+    });
+  }
+
+  return {
+    contentType: normalizedContentType,
+    fileType: contentType,
+    textBacked: isTextBackedDocumentContent(normalizedContentType, filename),
+  };
 }
 
 function getOwnerEntityId(runtime: AgentRuntime | null): UUID | undefined {
@@ -1107,14 +1130,13 @@ export async function handleDocumentsRoutes(
     // Capture the bytes exactly as uploaded before any content rewrite (e.g.
     // image → description text), so the linked original-bytes file is faithful.
     const originalContent = document.content;
-    const originalContentType = document.contentType || "text/plain";
-    let contentType =
-      normalizeDocumentContentType(originalContentType) || "text/plain";
-    const warnings: string[] = [];
-    const textBacked = isTextBackedContentType(
-      originalContentType,
+    const uploadMime = parseDocumentUploadMime(
+      document.contentType,
       document.filename,
     );
+    let contentType = uploadMime.contentType;
+    const warnings: string[] = [];
+    const textBacked = uploadMime.textBacked;
 
     if (contentType.startsWith("image/")) {
       const includeDescriptions =
@@ -1199,7 +1221,7 @@ export async function handleDocumentsRoutes(
           const bytes = textBacked
             ? Buffer.from(originalContent, "utf8")
             : Buffer.from(originalContent, "base64");
-          const stored = await fileStorage.store(bytes, originalContentType);
+          const stored = await fileStorage.store(bytes, uploadMime.contentType);
           mediaLink = {
             mediaUrl: stored.url,
             mediaHash: stored.hash,
@@ -1236,7 +1258,7 @@ export async function handleDocumentsRoutes(
         source,
         filename: document.filename,
         originalFilename: document.filename,
-        fileType: originalContentType,
+        fileType: uploadMime.fileType,
         contentType,
         textBacked,
         scope: uploadFilters.scope,
@@ -1290,11 +1312,14 @@ export async function handleDocumentsRoutes(
       error(
         res,
         `Failed to add document: ${message}`,
-        /Only the owner|Users can only/i.test(message)
-          ? 403
-          : /Image uploads require|Image description model/i.test(message)
-            ? 400
-            : 500,
+        err instanceof ElizaError &&
+          (err as ElizaError).code === "DOCUMENT_CONTENT_TYPE_INVALID"
+          ? 400
+          : /Only the owner|Users can only/i.test(message)
+            ? 403
+            : /Image uploads require|Image description model/i.test(message)
+              ? 400
+              : 500,
       );
       return true;
     }
@@ -1395,11 +1420,16 @@ export async function handleDocumentsRoutes(
           warnings: uploadResult.warnings,
         });
       } catch (err) {
+        const failure =
+          err instanceof ElizaError &&
+          (err as ElizaError).code === "DOCUMENT_CONTENT_TYPE_INVALID"
+            ? err.message
+            : String(err);
         results.push({
           index,
           ok: false,
           filename,
-          error: String(err),
+          error: failure,
         });
       }
     }

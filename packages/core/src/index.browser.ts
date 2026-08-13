@@ -56,6 +56,7 @@ export {
 	type FetchedDocumentUrl,
 	type FetchedDocumentUrlKind,
 	fetchDocumentFromUrl,
+	isTextBackedDocumentContent,
 	isYouTubeUrl,
 	normalizeDocumentContentType,
 } from "./features/documents/index";

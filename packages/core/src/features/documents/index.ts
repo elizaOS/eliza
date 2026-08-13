@@ -75,4 +75,7 @@ export {
 	fetchDocumentFromUrl,
 	isYouTubeUrl,
 } from "./url-ingest";
-export { normalizeDocumentContentType } from "./utils";
+export {
+	isTextBackedDocumentContent,
+	normalizeDocumentContentType,
+} from "./utils";
