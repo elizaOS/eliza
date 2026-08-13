@@ -48,6 +48,8 @@ for (let i = 0; i < argv.length; i += 1) {
     try {
       limit = parsePositiveLimit(argv[i]);
     } catch (err) {
+      // error-policy:J1 CLI boundary translates invalid operator input to a
+      // diagnostic and non-zero process exit before any network request.
       console.error(
         `[voice-latency-report] ${err instanceof Error ? err.message : String(err)}`,
       );
