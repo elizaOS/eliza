@@ -16,6 +16,7 @@ import {
   DEFAULT_READY_DELAY_MS,
   hostAgentApiBase,
   isPortAvailable,
+  MAX_TIMER_DELAY_MS,
   parseNonNegativeSafeInteger,
   parsePort,
   parsePositiveSafeInteger,
@@ -87,7 +88,7 @@ describe("host-agent helper", () => {
         /Invalid attempts/,
       );
     }
-    for (const value of ["", "abc", "10abc", "1.5", "-1", NaN, -3]) {
+    for (const value of ["", "abc", "10abc", "1.5", "-1", " 2000 ", NaN, -3]) {
       expect(() => parseNonNegativeSafeInteger(value, "delay")).toThrow(
         /Invalid delay/,
       );
@@ -113,6 +114,17 @@ describe("host-agent helper", () => {
         },
       }),
     ).toEqual({ readyAttempts: 7, readyDelayMs: 25 });
+    expect(
+      resolveReadyOptions({
+        env: {
+          ELIZA_HOST_AGENT_READY_ATTEMPTS: "   ",
+          ELIZA_HOST_AGENT_READY_DELAY_MS: "",
+        },
+      }),
+    ).toEqual({
+      readyAttempts: DEFAULT_READY_ATTEMPTS,
+      readyDelayMs: DEFAULT_READY_DELAY_MS,
+    });
 
     expect(() =>
       resolveReadyOptions({
@@ -127,6 +139,24 @@ describe("host-agent helper", () => {
     expect(() => resolveReadyOptions({ readyAttempts: "0" })).toThrow(
       /Invalid host-agent readyAttempts/,
     );
+    expect(() => resolveReadyOptions({ readyAttempts: null })).toThrow(
+      /Invalid host-agent readyAttempts/,
+    );
+    expect(() => resolveReadyOptions({ readyDelayMs: null })).toThrow(
+      /Invalid host-agent readyDelayMs/,
+    );
+    expect(() =>
+      resolveReadyOptions({
+        env: { ELIZA_HOST_AGENT_READY_DELAY_MS: " 2000 " },
+      }),
+    ).toThrow(/Invalid host-agent readyDelayMs/);
+    expect(() =>
+      resolveReadyOptions({
+        env: {
+          ELIZA_HOST_AGENT_READY_DELAY_MS: String(MAX_TIMER_DELAY_MS + 1),
+        },
+      }),
+    ).toThrow(/Invalid host-agent readyDelayMs/);
   });
 
   it("rejects invalid readyAttempts before spawning a host agent child", async () => {
