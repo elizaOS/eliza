@@ -42,6 +42,7 @@ import { BootTimer } from "./boot-timer.ts";
 // Dev/test-only crash/hang injection (#10203). No-op unless ELIZA_CRASH_INJECT
 // is armed, and it refuses to arm in production — see crash-injection.ts.
 import { maybeInjectFault } from "./crash-injection.ts";
+import { parseDeferredPluginRegistrationTimeoutMs } from "./deferred-plugin-timeout.ts";
 import { runFirstTimeSetup } from "./first-time-setup.ts";
 import { startMemoryWatchdog } from "./memory-watchdog.ts";
 import {
@@ -5515,13 +5516,9 @@ export async function startEliza(
       ...deferredPluginsForRuntime,
     ]);
 
-    const timeoutMs = (() => {
-      const raw =
-        process.env.ELIZA_DEFERRED_PLUGIN_REGISTRATION_TIMEOUT_MS?.trim();
-      if (!raw) return 30_000;
-      const parsed = Number.parseInt(raw, 10);
-      return Number.isFinite(parsed) && parsed > 0 ? parsed : 30_000;
-    })();
+    const timeoutMs = parseDeferredPluginRegistrationTimeoutMs(
+      process.env.ELIZA_DEFERRED_PLUGIN_REGISTRATION_TIMEOUT_MS,
+    );
     const registerDeferredPlugin = async (
       plugin: (typeof deferredPluginsForRuntime)[number],
     ): Promise<void> => {
