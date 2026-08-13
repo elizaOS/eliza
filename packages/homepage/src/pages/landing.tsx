@@ -177,9 +177,13 @@ const DEMO_LOOP: DemoStep[] = [
 // Keep only the most recent messages in the DOM; the thread stays pinned to
 // the bottom so pruning older rows is invisible.
 const MAX_RENDERED_ITEMS = 14;
-const USER_KEYSTROKE_MS = 38;
-const ELIZA_TYPING_MS = 1400;
-const BEAT_PAUSE_MS = 900;
+const USER_KEYSTROKE_MS = 48;
+const ELIZA_TYPING_MS = 1750;
+const BEAT_PAUSE_MS = 1125;
+const PRE_USER_MS = 625;
+const PRE_ELIZA_MS = 625;
+const PRE_CARD_MS = 750;
+const SEND_HOLD_MS = 500;
 
 function settledIntroItems(): DemoItem[] {
   return DEMO_INTRO.map((step, index) =>
@@ -238,18 +242,18 @@ function PhoneMockup() {
       for (const step of steps) {
         if (cancelled) return;
         if (step.kind === "user") {
-          await sleep(500);
+          await sleep(PRE_USER_MS);
           for (let i = 1; i <= step.text.length; i++) {
             if (cancelled) return;
             setComposerText(step.text.slice(0, i));
             await sleep(USER_KEYSTROKE_MS);
           }
-          await sleep(400);
+          await sleep(SEND_HOLD_MS);
           if (cancelled) return;
           setComposerText("");
           append({ from: "user", kind: "text", text: step.text });
         } else if (step.kind === "eliza") {
-          await sleep(500);
+          await sleep(PRE_ELIZA_MS);
           if (cancelled) return;
           setElizaTyping(true);
           await sleep(ELIZA_TYPING_MS);
@@ -257,7 +261,7 @@ function PhoneMockup() {
           setElizaTyping(false);
           append({ from: "eliza", kind: "text", text: step.text });
         } else {
-          await sleep(600);
+          await sleep(PRE_CARD_MS);
           if (cancelled) return;
           append({ from: "eliza", kind: "card", card: step.card });
         }
@@ -319,17 +323,69 @@ function PhoneMockup() {
           </span>
         </div>
         <div className="landing-phone-header">
-          <img
-            className="landing-phone-avatar"
-            src="/brand/logos/logo_white_orangebg.svg"
-            alt=""
-            width={423}
-            height={423}
-          />
-          <span className="landing-phone-name">Eliza</span>
-          <span className="landing-phone-channel">iMessage</span>
+          <span className="landing-phone-back">
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.6"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M15 18l-6-6 6-6" />
+            </svg>
+            <span className="landing-phone-unread">12</span>
+          </span>
+          <span className="landing-phone-contact">
+            <img
+              className="landing-phone-avatar"
+              src="/brand/logos/logo_white_orangebg.svg"
+              alt=""
+              width={423}
+              height={423}
+            />
+            <span className="landing-phone-name">
+              Eliza
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.4"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                <path d="M9 18l6-6-6-6" />
+              </svg>
+            </span>
+          </span>
+          <span className="landing-phone-video">
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.9"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <rect x="2.5" y="6" width="13" height="12" rx="3" />
+              <path d="M15.5 10.5l6-3.5v10l-6-3.5" />
+            </svg>
+          </span>
         </div>
         <div className="landing-phone-thread" ref={threadRef}>
+          <div className="landing-thread-preamble">
+            <span className="landing-thread-service">iMessage</span>
+            <span className="landing-thread-encrypted">
+              <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                <path d="M12 2a5 5 0 0 0-5 5v3H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8a2 2 0 0 0-2-2h-1V7a5 5 0 0 0-5-5Zm-3 8V7a3 3 0 0 1 6 0v3H9Z" />
+              </svg>
+              Encrypted
+            </span>
+            <span className="landing-thread-timestamp">Today 4:15 PM</span>
+          </div>
           {items.map((item) =>
             item.kind === "card" ? (
               <div key={item.id} className="landing-bubble-card">
@@ -352,20 +408,65 @@ function PhoneMockup() {
             </div>
           ) : null}
         </div>
-        <div
-          className="landing-phone-composer"
-          data-typing={composerText !== ""}
-        >
-          {composerText === "" ? (
-            t("homepage_eliza.landing.demoComposer", {
-              defaultValue: "iMessage",
-            })
-          ) : (
-            <>
-              {composerText}
-              <span className="landing-composer-caret" />
-            </>
-          )}
+        <div className="landing-composer-row">
+          <span className="landing-composer-plus">
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              aria-hidden="true"
+            >
+              <path d="M12 5v14M5 12h14" />
+            </svg>
+          </span>
+          <div
+            className="landing-phone-composer"
+            data-typing={composerText !== ""}
+          >
+            <span className="landing-composer-text">
+              {composerText === "" ? (
+                t("homepage_eliza.landing.demoComposer", {
+                  defaultValue: "iMessage",
+                })
+              ) : (
+                <>
+                  {composerText}
+                  <span className="landing-composer-caret" />
+                </>
+              )}
+            </span>
+            {composerText === "" ? (
+              <svg
+                className="landing-composer-mic"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" />
+                <path d="M19 11v1a7 7 0 0 1-14 0v-1M12 19v3" />
+              </svg>
+            ) : (
+              <span className="landing-composer-send">
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2.6"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden="true"
+                >
+                  <path d="M12 19V5M5 12l7-7 7 7" />
+                </svg>
+              </span>
+            )}
+          </div>
         </div>
         <div className="landing-iphone-homebar" />
       </div>
