@@ -3659,52 +3659,32 @@ export const DEFAULT_DEFERRED_PLUGIN_REGISTRATION_TIMEOUT_MS = 30_000;
 export const MAX_DEFERRED_PLUGIN_REGISTRATION_TIMEOUT_MS = 2_147_483_647;
 
 /**
- * Validates and resolves `ELIZA_DEFERRED_PLUGIN_REGISTRATION_TIMEOUT_MS`.
+ * Resolves `ELIZA_DEFERRED_PLUGIN_REGISTRATION_TIMEOUT_MS` for the deferred
+ * registration watchdog.
  *
- * Acceptance criteria:
- * - Accept only blank/unset or a complete positive decimal integer in Node's schedulable timer range 1..2147483647.
- * - Reject malformed, partial, non-positive, unsafe, and overflowing values with a typed fatal `ElizaError` carrying actionable code/context.
+ * Blank/unset keeps the default. Anything else must be a complete decimal
+ * integer inside Node's schedulable timer range: `Number.parseInt` alone
+ * silently truncates `"10.5"` to a 10 ms watchdog and lets `"2147483648"`
+ * through to a `setTimeout` that Node clamps to 1 ms, either of which aborts
+ * deferred plugin registration instantly instead of waiting.
  */
 export function resolveDeferredPluginRegistrationTimeoutMs(
   rawEnv?: string | null,
 ): number {
-  if (rawEnv === undefined || rawEnv === null) {
-    return DEFAULT_DEFERRED_PLUGIN_REGISTRATION_TIMEOUT_MS;
-  }
-  const trimmed = rawEnv.trim();
+  const trimmed = rawEnv?.trim() ?? "";
   if (trimmed === "") {
     return DEFAULT_DEFERRED_PLUGIN_REGISTRATION_TIMEOUT_MS;
   }
-  if (!/^\d+$/.test(trimmed)) {
+  const parsed = /^\d+$/.test(trimmed) ? Number(trimmed) : Number.NaN;
+  if (!(parsed >= 1 && parsed <= MAX_DEFERRED_PLUGIN_REGISTRATION_TIMEOUT_MS)) {
     throw new ElizaError(
-      `Invalid ELIZA_DEFERRED_PLUGIN_REGISTRATION_TIMEOUT_MS: "${rawEnv}". Expected a positive decimal integer between 1 and ${MAX_DEFERRED_PLUGIN_REGISTRATION_TIMEOUT_MS}.`,
+      `Invalid ELIZA_DEFERRED_PLUGIN_REGISTRATION_TIMEOUT_MS: "${rawEnv}". Expected a decimal integer between 1 and ${MAX_DEFERRED_PLUGIN_REGISTRATION_TIMEOUT_MS}.`,
       {
         code: "INVALID_DEFERRED_PLUGIN_REGISTRATION_TIMEOUT",
         severity: "fatal",
         context: {
           raw: rawEnv,
           trimmed,
-          min: 1,
-          max: MAX_DEFERRED_PLUGIN_REGISTRATION_TIMEOUT_MS,
-        },
-      },
-    );
-  }
-  const parsed = Number.parseInt(trimmed, 10);
-  if (
-    !Number.isSafeInteger(parsed) ||
-    parsed < 1 ||
-    parsed > MAX_DEFERRED_PLUGIN_REGISTRATION_TIMEOUT_MS
-  ) {
-    throw new ElizaError(
-      `Invalid ELIZA_DEFERRED_PLUGIN_REGISTRATION_TIMEOUT_MS: "${rawEnv}". Value ${parsed} is out of schedulable timer range 1..${MAX_DEFERRED_PLUGIN_REGISTRATION_TIMEOUT_MS}.`,
-      {
-        code: "INVALID_DEFERRED_PLUGIN_REGISTRATION_TIMEOUT",
-        severity: "fatal",
-        context: {
-          raw: rawEnv,
-          trimmed,
-          parsed,
           min: 1,
           max: MAX_DEFERRED_PLUGIN_REGISTRATION_TIMEOUT_MS,
         },
@@ -5538,7 +5518,6 @@ export async function startEliza(
   const registerDeferredRuntimePlugins = async (
     deferredResolvedPlugins: RuntimeResolvedPlugin[],
     abortSignal: AbortSignal,
-    watchdogTimeoutMs: number = deferredWatchdogTimeoutMs,
   ): Promise<void> => {
     if (blockDeferredPluginImports) {
       return;
@@ -5578,7 +5557,6 @@ export async function startEliza(
       ...deferredPluginsForRuntime,
     ]);
 
-    const timeoutMs = watchdogTimeoutMs;
     const registerDeferredPlugin = async (
       plugin: (typeof deferredPluginsForRuntime)[number],
     ): Promise<void> => {
@@ -5595,10 +5573,10 @@ export async function startEliza(
         registrationWatchdog = setTimeout(() => {
           exceededWatchdog = true;
           const error = new Error(
-            `Registration exceeded ${timeoutMs / 1000}s watchdog`,
+            `Registration exceeded ${deferredWatchdogTimeoutMs / 1000}s watchdog`,
           );
           logger.warn(
-            `[eliza] deferred: Plugin ${plugin.name} registration exceeded the ${timeoutMs / 1000}s watchdog; still waiting for a definitive result`,
+            `[eliza] deferred: Plugin ${plugin.name} registration exceeded the ${deferredWatchdogTimeoutMs / 1000}s watchdog; still waiting for a definitive result`,
           );
           // error-policy:J7 the watchdog reports a diagnostic without killing
           // the deferred loop; the same registration promise remains awaited.
@@ -5608,10 +5586,10 @@ export async function startEliza(
             {
               plugin: plugin.name,
               phase: "deferred-boot",
-              timeoutMs,
+              timeoutMs: deferredWatchdogTimeoutMs,
             },
           );
-        }, timeoutMs);
+        }, deferredWatchdogTimeoutMs);
         registrationWatchdog.unref?.();
         await runtime.registerPlugin(plugin);
         logger.info(
@@ -5756,7 +5734,6 @@ export async function startEliza(
       await registerDeferredRuntimePlugins(
         deferredResolvedPlugins,
         abortSignal,
-        deferredWatchdogTimeoutMs,
       );
       bootTimer.lap("deferred:runtime-plugins");
     }
