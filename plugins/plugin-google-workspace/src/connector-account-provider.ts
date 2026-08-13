@@ -218,6 +218,7 @@ function normalizeGrantedCapabilities(scopes: readonly string[]): {
   ignoredScopes: string[];
 } {
   const capabilities = new Set<GoogleCapability>();
+  const grantedScopeSet = new Set<string>();
   const ignoredScopes: string[] = [];
   const identityScopes = new Set(GOOGLE_IDENTITY_SCOPES.map((scope) => scope.toLowerCase()));
 
@@ -231,13 +232,24 @@ function normalizeGrantedCapabilities(scopes: readonly string[]): {
       capabilities.add(normalized);
       continue;
     }
-    const matched = matchCapabilityFromScope(normalized);
-    if (matched) {
-      capabilities.add(matched);
+    const normalizedScope = normalized.toLowerCase();
+    if (identityScopes.has(normalizedScope)) {
       continue;
     }
-    if (!identityScopes.has(normalized.toLowerCase())) {
-      ignoredScopes.push(normalized);
+    if (matchCapabilityFromScope(normalized)) {
+      grantedScopeSet.add(normalizedScope);
+      continue;
+    }
+    ignoredScopes.push(normalized);
+  }
+
+  for (const capability of GOOGLE_CAPABILITIES) {
+    if (capabilities.has(capability)) continue;
+    const capabilityScopes = scopesForGoogleCapabilities([capability], {
+      includeIdentityScopes: false,
+    });
+    if (capabilityScopes.every((scope) => grantedScopeSet.has(scope.toLowerCase()))) {
+      capabilities.add(capability);
     }
   }
 
