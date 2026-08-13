@@ -13,6 +13,7 @@ import {
   clearStoredStewardToken,
   hasStewardAuthedCookie,
   readStoredStewardToken,
+  STEWARD_TOKEN_KEY,
   writeStoredStewardToken,
 } from "@elizaos/shared/steward-session-client";
 import { client, type FirstRunOptions } from "../api";
@@ -27,6 +28,7 @@ import {
   invokeDesktopBridgeRequestWithTimeout,
   isElectrobunRuntime,
 } from "../bridge";
+import { normalizeCloudApiKeyToken } from "../cloud/lib/cloud-api-key-token";
 import { getBootConfig } from "../config/boot-config";
 import {
   ANDROID_LOCAL_AGENT_IPC_BASE,
@@ -57,6 +59,7 @@ import {
   dedicatedCloudAgentIdFromBase,
   isDedicatedCloudAgentBase,
   isElizaCloudControlPlaneAgentlessBase,
+  isManagedCloudSharedAgentBase,
   resolveCloudEnvironmentBase,
 } from "../utils/cloud-agent-base";
 import { getElizaApiBase, getElizaApiToken } from "../utils/eliza-globals";
@@ -77,6 +80,7 @@ import {
   isTrustedCloudApiBaseUrl,
   isTrustedRestoreApiBaseUrl,
 } from "./runtime-url-trust";
+import { clearSharedCloudAccountBinding } from "./shared-cloud-account-binding";
 import type { StartupEvent } from "./startup-coordinator";
 import { buildStaticFirstRunOptions } from "./startup-first-run-options";
 import { runStartupProbeWithTimeout } from "./startup-probe";
@@ -483,6 +487,7 @@ async function resolveRestoredStewardToken(): Promise<string | null> {
   // drop it so we restore unauthenticated instead of a guaranteed-401 dial.
   if (secs <= 0) {
     clearStoredStewardToken();
+    clearSharedCloudAccountBinding();
     return null;
   }
   return stored;
@@ -542,13 +547,43 @@ export async function applyRestoredConnection(args: {
     )
       ? reconcileLegacyDedicatedCloudApiBase(resolved, restoreProbeToken)
       : Promise.resolve(null);
-    const stewardTokenPromise = resolveRestoredStewardToken();
+    const nativeOwnerApiKey =
+      isNative || isElectrobunRuntime()
+        ? (normalizeCloudApiKeyToken(resolved.accessToken) ??
+          normalizeCloudApiKeyToken(getElizaApiToken()))
+        : null;
+    if (nativeOwnerApiKey && restoreProbeToken) {
+      const secs = cloudTokenSecsRemaining(restoreProbeToken);
+      if (secs !== null && secs <= 0 && typeof window !== "undefined") {
+        // The owner key remains a valid native transport credential, but the
+        // canonical getter prefers any stored Steward token. Drain the dead JWT
+        // without publishing terminal logout so subsequent requests reach the
+        // supported owner-key fallback.
+        window.localStorage.removeItem(STEWARD_TOKEN_KEY);
+      }
+    }
+    const stewardTokenPromise = nativeOwnerApiKey
+      ? Promise.resolve(null)
+      : resolveRestoredStewardToken();
     // Cloud = Steward everywhere (DECISIONS.md D3): prefer the live Steward
     // session token over the token captured at provision time (which may have
     // rotated since). If that stored JWT expired while the app was closed,
     // refresh it BEFORE handing it to the client so a returning user never
     // boots into a permanently-401ing session (see resolveRestoredStewardToken).
     const stewardToken = await stewardTokenPromise;
+    if (
+      isManagedCloudSharedAgentBase(resolved.apiBase) &&
+      !stewardToken &&
+      !nativeOwnerApiKey
+    ) {
+      // Terminal refresh failure or a missing account session makes the saved
+      // shared target unsafe. Clear every account-scoped mirror before startup
+      // can reinstall the provision-time token or poll the previous agent.
+      clearSharedCloudAccountBinding();
+      clientRef.setToken(null);
+      clientRef.setBaseUrl(null);
+      return;
+    }
     // Dedicated agent subdomains and explicit local-Docker pair targets use an
     // agent-local bearer for `/api/*`. The edge-owned dedicated path can keep
     // its Steward recovery fallback; a loopback process must never receive a
@@ -559,8 +594,8 @@ export async function applyRestoredConnection(args: {
         : isDedicatedCloudAgentBase(resolved.apiBase)
           ? resolved.accessToken || stewardToken || null
           : isAgentlessControlPlane
-            ? stewardToken || null
-            : stewardToken || resolved.accessToken || null,
+            ? stewardToken || nativeOwnerApiKey || null
+            : stewardToken || nativeOwnerApiKey || resolved.accessToken || null,
     );
     void tierRepairPromise.then((repaired) => {
       if (!repaired || repaired.apiBase === resolved.apiBase) return;
@@ -904,6 +939,17 @@ export async function runRestoringSession(
       }
     },
   });
+
+  if (
+    isManagedCloudSharedAgentBase(restoredActiveServer.apiBase) &&
+    !loadPersistedActiveServer()
+  ) {
+    deps.setFirstRunOptions(buildStaticFirstRunOptions(deps.uiLanguage));
+    deps.setFirstRunComplete(false);
+    deps.setFirstRunLoading(false);
+    dispatch({ type: "NO_SESSION", hadPriorFirstRun: hadPrior });
+    return;
+  }
 
   // The connection is applied (base URL + token are what the post-paint auth
   // gate will use), so start the /api/auth/me probe now — it overlaps the
