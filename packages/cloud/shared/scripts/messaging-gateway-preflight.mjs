@@ -143,11 +143,7 @@ function checkShared() {
   addCheck(
     "shared",
     "webhook gateway URL",
-    hasAny([
-      "ELIZA_APP_WEBHOOK_GATEWAY_URL",
-      "WEBHOOK_GATEWAY_URL",
-      "GATEWAY_WEBHOOK_URL",
-    ]),
+    hasAny(["ELIZA_APP_WEBHOOK_GATEWAY_URL", "WEBHOOK_GATEWAY_URL", "GATEWAY_WEBHOOK_URL"]),
     "Webhook gateway upstream URL is configured",
     "Set ELIZA_APP_WEBHOOK_GATEWAY_URL (or WEBHOOK_GATEWAY_URL / GATEWAY_WEBHOOK_URL) to the gateway-webhook service URL.",
   );
