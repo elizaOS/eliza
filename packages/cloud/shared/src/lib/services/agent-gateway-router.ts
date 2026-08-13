@@ -1131,11 +1131,19 @@ export class AgentGatewayRouterService {
     messageId: string;
     content: string;
     sender: AgentGatewaySender;
+    /** Allows the owning webhook to preserve an active app automation. */
+    onboardUnknownOwner: boolean;
   }): Promise<AgentGatewayRouteResult> {
     const senderTelegramId = args.sender.id.trim();
     const owner = await usersRepository.findByTelegramIdWithOrganization(senderTelegramId);
 
     if (!owner) {
+      if (!args.onboardUnknownOwner) {
+        return {
+          handled: false,
+          reason: "unknown_owner",
+        };
+      }
       // Parity with the Discord DM and phone first-contact paths: an unlinked
       // sender is an onboarding candidate, not silence. This route only ever
       // sees private chats (the webhook and the gateway adapter both drop group
@@ -1149,7 +1157,10 @@ export class AgentGatewayRouterService {
         platformDisplayName: args.sender.displayName ?? args.sender.username,
         sessionId: `platform:telegram:${senderTelegramId}`,
         trustedPlatformIdentity: true,
-        idempotencyKey: `telegram:${args.messageId}`,
+        // Telegram message ids are only unique inside one chat. The same sender
+        // can DM multiple per-organization bots whose counters overlap, while
+        // the onboarding transcript intentionally remains sender-scoped.
+        idempotencyKey: `telegram:${args.organizationId}:${args.chatId}:${args.messageId}`,
       });
 
       return {
