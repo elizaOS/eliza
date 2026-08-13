@@ -236,14 +236,22 @@
 </footer>
 
 <script>
-// Hero swarm: boid-like particles drifting with mild flocking, drawn in white on the orange field.
+// Hero: particles assemble the Eliza face wireframe, drift apart in pieces,
+// periodically re-form, and react to pointer/touch (hover repels, drag shoves).
 (() => {
   const canvas = document.getElementById("swarm");
+  const header = canvas.parentElement;
   const ctx = canvas.getContext("2d");
   const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
-  let W, H, dpr;
-  const N = 55;
+  let W = 0, H = 0, dpr = 1;
   const boids = [];
+  let targets = [];
+  let linkD2 = 88 * 88;
+  const FADE_MS = 2200, HOLD_MS = 5000, DRIFT_MS = 9000, PULL_MS = 4500;
+  const CYCLE_MS = HOLD_MS + DRIFT_MS + PULL_MS;
+  let born = 0;                       // timestamp of last formation
+  let wasForming = true;
+  const pointer = { x: -1e4, y: -1e4, vx: 0, vy: 0, down: false, t: 0 };
 
   function resize() {
     dpr = Math.min(devicePixelRatio || 1, 2);
@@ -254,58 +262,166 @@
   resize();
   addEventListener("resize", resize);
 
-  function seed() {
-    for (let i = 0; i < N; i++) {
-      const a = Math.random() * Math.PI * 2;
-      boids.push({ x: Math.random() * W, y: Math.random() * H,
-        vx: Math.cos(a) * 0.22, vy: Math.sin(a) * 0.22 });
+  // Sample particle targets from the face logo rendered offscreen.
+  const img = new Image();
+  img.src = "assets/logo_white_nobg.svg";
+  img.onload = () => { tryInit(); };
+  function sampleFace() {
+    const scale = Math.min(W, H) * 0.62;
+    const ow = Math.round(scale * (img.width / img.height)), oh = Math.round(scale);
+    const off = document.createElement("canvas");
+    off.width = ow; off.height = oh;
+    const octx = off.getContext("2d", { willReadFrequently: true });
+    octx.drawImage(img, 0, 0, ow, oh);
+    const data = octx.getImageData(0, 0, ow, oh).data;
+    const pts = [];
+    const stride = Math.max(8, Math.round(scale / 30));
+    const solid = (x, y) => {
+      if (x < 0 || y < 0 || x >= ow || y >= oh) return false;
+      return data[((y | 0) * ow + (x | 0)) * 4 + 3] > 128;
+    };
+    const e = Math.max(3, stride * 0.45);
+    const push = (x, y) => pts.push({
+      x: x + (W - ow) / 2 + (Math.random() - 0.5) * 2,
+      y: y + (H - oh) * 0.38 + (Math.random() - 0.5) * 2,
+    });
+    const isEdge = (x, y) =>
+      !solid(x - e, y) || !solid(x + e, y) || !solid(x, y - e) || !solid(x, y + e);
+    // dense contour pass keeps the outline legible as connected wire
+    const fine = Math.max(5, Math.round(stride * 0.55));
+    for (let y = 0; y < oh; y += fine) {
+      for (let x = 0; x < ow; x += fine) {
+        if (solid(x, y) && isEdge(x, y)) push(x, y);
+      }
     }
+    // sparse interior mesh
+    for (let y = 0; y < oh; y += stride) {
+      for (let x = 0; x < ow; x += stride) {
+        if (solid(x, y) && !isEdge(x, y) && Math.random() < 0.2) push(x, y);
+      }
+    }
+    linkD2 = Math.pow(stride * 2.1, 2);
+    return pts;
   }
 
-  function step() {
-    if (!boids.length) { if (W > 0 && H > 0) seed(); else return; }
+  function tryInit() {
+    if (!img.complete || !img.naturalWidth || W === 0) return;
+    targets = sampleFace();
+    boids.length = 0;
+    for (const t of targets) {
+      boids.push({ x: t.x, y: t.y, vx: 0, vy: 0, tx: t.x, ty: t.y });
+    }
+    born = performance.now();
+    if (reduced) draw(born + FADE_MS);
+  }
+
+  // Pointer interaction on the header (canvas sits behind the copy).
+  function toLocal(e) {
+    const r = canvas.getBoundingClientRect();
+    return { x: e.clientX - r.left, y: e.clientY - r.top };
+  }
+  header.addEventListener("pointermove", (e) => {
+    const p = toLocal(e);
+    const now = performance.now();
+    const dt = Math.max(16, now - pointer.t);
+    pointer.vx = (p.x - pointer.x) / dt * 16;
+    pointer.vy = (p.y - pointer.y) / dt * 16;
+    pointer.x = p.x; pointer.y = p.y; pointer.t = now;
+  }, { passive: true });
+  header.addEventListener("pointerdown", (e) => {
+    pointer.down = true;
+    const p = toLocal(e);
+    pointer.x = p.x; pointer.y = p.y; pointer.t = performance.now();
+  }, { passive: true });
+  addEventListener("pointerup", () => { pointer.down = false; }, { passive: true });
+  header.addEventListener("pointerleave", () => {
+    pointer.x = -1e4; pointer.y = -1e4; pointer.vx = pointer.vy = 0;
+  }, { passive: true });
+
+  function step(now) {
+    if (!boids.length) { tryInit(); return; }
+    const phase = (now - born) % CYCLE_MS;
+    // hold the face, drift apart, then pull back in — breathing loop
+    const forming = window.__frozen === true || phase < HOLD_MS || phase >= HOLD_MS + DRIFT_MS;
+    if (wasForming && !forming) {
+      // release: shove chunks outward from the face centroid so pieces break off
+      let mx = 0, my = 0;
+      for (const b of boids) { mx += b.x; my += b.y; }
+      mx /= boids.length; my /= boids.length;
+      for (const b of boids) {
+        const dx = b.x - mx, dy = b.y - my, d = Math.hypot(dx, dy) || 1;
+        const kick = 0.5 + Math.random() * 0.4;
+        b.vx += dx / d * kick; b.vy += dy / d * kick;
+      }
+    }
+    wasForming = forming;
+
     for (const b of boids) {
-      let ax = 0, ay = 0, cx = 0, cy = 0, n = 0;
-      for (const o of boids) {
-        if (o === b) continue;
-        const dx = o.x - b.x, dy = o.y - b.y, d2 = dx * dx + dy * dy;
-        if (d2 < 190 * 190) { cx += o.x; cy += o.y; ax += o.vx; ay += o.vy; n++; }
-        if (d2 < 90 * 90 && d2 > 0) { b.vx -= dx / d2 * 7; b.vy -= dy / d2 * 7; }
+      if (forming) {
+        b.vx += (b.tx - b.x) * 0.012;
+        b.vy += (b.ty - b.y) * 0.012;
+        b.vx *= 0.86; b.vy *= 0.86;
+      } else {
+        // free flight: local flocking in loose pieces
+        let ax = 0, ay = 0, cx = 0, cy = 0, n = 0;
+        for (const o of boids) {
+          if (o === b) continue;
+          const dx = o.x - b.x, dy = o.y - b.y, d2 = dx * dx + dy * dy;
+          if (d2 < 110 * 110) { cx += o.x; cy += o.y; ax += o.vx; ay += o.vy; n++; }
+          if (d2 < 46 * 46 && d2 > 0) { b.vx -= dx / d2 * 3.2; b.vy -= dy / d2 * 3.2; }
+        }
+        if (n) {
+          b.vx += ((cx / n - b.x) * 0.0004) + ((ax / n - b.vx) * 0.02);
+          b.vy += ((cy / n - b.y) * 0.0004) + ((ay / n - b.vy) * 0.02);
+        }
+        const sp = Math.hypot(b.vx, b.vy) || 1;
+        b.vx = b.vx / sp * Math.min(Math.max(sp, 0.1), 0.4);
+        b.vy = b.vy / sp * Math.min(Math.max(sp, 0.1), 0.4);
       }
-      if (n) {
-        b.vx += ((cx / n - b.x) * 0.0004) + ((ax / n - b.vx) * 0.015);
-        b.vy += ((cy / n - b.y) * 0.0004) + ((ay / n - b.vy) * 0.015);
+
+      // pointer force: gentle repel on hover, strong shove while dragging
+      const px = b.x - pointer.x, py = b.y - pointer.y;
+      const pd2 = px * px + py * py;
+      const R = pointer.down ? 190 : 120;
+      if (pd2 < R * R && pd2 > 1) {
+        const pd = Math.sqrt(pd2);
+        const f = (1 - pd / R) * (pointer.down ? 1.6 : 0.5);
+        b.vx += (px / pd) * f + pointer.vx * f * 0.25;
+        b.vy += (py / pd) * f + pointer.vy * f * 0.25;
       }
-      const sp = Math.hypot(b.vx, b.vy) || 1;
-      b.vx = b.vx / sp * Math.min(Math.max(sp, 0.12), 0.45);
-      b.vy = b.vy / sp * Math.min(Math.max(sp, 0.12), 0.45);
+
       b.x += b.vx; b.y += b.vy;
-      if (b.x < -10) b.x = W + 10; if (b.x > W + 10) b.x = -10;
-      if (b.y < -10) b.y = H + 10; if (b.y > H + 10) b.y = -10;
+      if (!forming) {
+        if (b.x < -12) b.x = W + 12; if (b.x > W + 12) b.x = -12;
+        if (b.y < -12) b.y = H + 12; if (b.y > H + 12) b.y = -12;
+      }
     }
   }
 
-  function draw() {
+  function draw(now) {
     ctx.clearRect(0, 0, W, H);
-    ctx.strokeStyle = "rgba(255,255,255,0.18)";
+    ctx.globalAlpha = reduced ? 1 : Math.min(1, (now - born) / FADE_MS);
+    ctx.strokeStyle = "rgba(255,255,255,0.22)";
     ctx.lineWidth = 1;
+    const LINK = linkD2;
     for (let i = 0; i < boids.length; i++) {
+      const a = boids[i];
       for (let j = i + 1; j < boids.length; j++) {
-        const a = boids[i], b = boids[j];
-        const dx = a.x - b.x, dy = a.y - b.y;
-        if (dx * dx + dy * dy < 150 * 150) {
+        const b = boids[j];
+        const dx = a.x - b.x, dy = a.y - b.y, d2 = dx * dx + dy * dy;
+        if (d2 < LINK) {
           ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
         }
       }
     }
     ctx.fillStyle = "rgba(255,255,255,0.9)";
     for (const b of boids) {
-      ctx.beginPath(); ctx.arc(b.x, b.y, 2.2, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(b.x, b.y, 2, 0, Math.PI * 2); ctx.fill();
     }
   }
 
-  function loop() { step(); draw(); requestAnimationFrame(loop); }
-  if (reduced) { step(); draw(); } else { loop(); }
+  function loop(now) { step(now); draw(now); requestAnimationFrame(loop); }
+  if (!reduced) requestAnimationFrame(loop);
 })();
 
 </script>
