@@ -101,6 +101,19 @@ function roomTableKey(tableName: string, roomId: UUID): string {
 	return `${tableName}:${String(roomId)}`;
 }
 
+function memoryMatchesMetadata(
+	memory: Memory,
+	filter: Record<string, unknown>,
+): boolean {
+	if (!memory.metadata) return false;
+	const metadata = memory.metadata as Record<string, unknown>;
+	for (const [key, value] of Object.entries(filter)) {
+		if (!(key in metadata)) return false;
+		if (JSON.stringify(metadata[key]) !== JSON.stringify(value)) return false;
+	}
+	return true;
+}
+
 function connectorAccountKey(params: {
 	agentId: UUID;
 	provider: string;
@@ -963,24 +976,12 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 			});
 		}
 
-		// WHY: In-memory metadata filtering uses deep equality check for each
-		// filter key. This is less efficient than SQL containment operators but
-		// correct for nested objects/arrays. Matches PG @> and MySQL JSON_CONTAINS semantics.
+		// In-memory metadata filtering compares each requested top-level value by
+		// JSON representation. Keep get/count on this shared matcher so their
+		// pagination totals cannot drift apart.
 		if (params.metadata) {
 			const filterMeta = params.metadata as Record<string, unknown>;
-			all = all.filter((memory) => {
-				if (!memory.metadata) return false;
-				const memMeta = memory.metadata as Record<string, unknown>;
-				// Check if memory.metadata contains all key-value pairs from params.metadata
-				for (const [key, value] of Object.entries(filterMeta)) {
-					if (!(key in memMeta)) return false;
-					// Deep equality check for nested objects/arrays
-					if (JSON.stringify(memMeta[key]) !== JSON.stringify(value)) {
-						return false;
-					}
-				}
-				return true;
-			});
+			all = all.filter((memory) => memoryMatchesMetadata(memory, filterMeta));
 		}
 
 		// Keyword filter — same case-insensitive `includes` semantics the SQL
@@ -1326,21 +1327,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 		const roomIds = params.roomIds ?? [];
 		const tbl = params.tableName ?? "messages";
 		const u = params.unique;
-		// Mirror the metadata matcher getMemories applies (per-key JSON.stringify
-		// equality) so a metadata-filtered count matches the number of memories
-		// getMemories would return.
 		const filterMeta = params.metadata as Record<string, unknown> | undefined;
-		const matchesMetadata = (m: Memory): boolean => {
-			if (!filterMeta) return true;
-			if (!m.metadata) return false;
-			const memMeta = m.metadata as Record<string, unknown>;
-			for (const [key, value] of Object.entries(filterMeta)) {
-				if (!(key in memMeta)) return false;
-				if (JSON.stringify(memMeta[key]) !== JSON.stringify(value))
-					return false;
-			}
-			return true;
-		};
 		let total = 0;
 		if (roomIds.length === 0) {
 			// No room filter: count all memories matching tableName and other filters (consistent with SQL/store behavior)
@@ -1352,7 +1339,10 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 					list = list.filter((m) => m.entityId === params.entityId);
 				if (params.agentId)
 					list = list.filter((m) => m.agentId === params.agentId);
-				if (filterMeta) list = list.filter(matchesMetadata);
+				if (filterMeta)
+					list = list.filter((memory) =>
+						memoryMatchesMetadata(memory, filterMeta),
+					);
 				total += u ? list.filter((m) => m.unique).length : list.length;
 			}
 			return total;
@@ -1365,7 +1355,10 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 				list = list.filter((m) => m.entityId === params.entityId);
 			if (params.agentId)
 				list = list.filter((m) => m.agentId === params.agentId);
-			if (filterMeta) list = list.filter(matchesMetadata);
+			if (filterMeta)
+				list = list.filter((memory) =>
+					memoryMatchesMetadata(memory, filterMeta),
+				);
 			total += u ? list.filter((m) => m.unique).length : list.length;
 		}
 		return total;
