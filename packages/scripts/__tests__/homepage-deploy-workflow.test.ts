@@ -20,6 +20,9 @@ describe("homepage deployment workflow", () => {
       "utf8",
     ),
   ) as { name?: string; scripts?: Record<string, string> };
+  const appPackage = JSON.parse(
+    readFileSync(path.join(repositoryRoot, "packages/app/package.json"), "utf8"),
+  ) as { scripts?: Record<string, string> };
   const devAll = readFileSync(
     path.join(repositoryRoot, "packages/scripts/dev-all.mjs"),
     "utf8",
@@ -48,6 +51,7 @@ describe("homepage deployment workflow", () => {
   });
 
   it("builds homepage changes into the single eliza-app artifact", () => {
+    expect(appPackage.scripts?.["prebuild:web"]).toBe("bun run prebuild");
     expect(workflow).toContain('      - "packages/homepage/**"');
     expect(workflow).toContain("Build consolidated frontend artifact");
     expect(workflow).toContain("Upload consolidated frontend artifact");
