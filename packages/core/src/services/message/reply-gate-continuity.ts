@@ -208,8 +208,14 @@ export async function senderInActiveConversation(
 	const state = getContinuityState(runtime, false);
 	if (!state) return false;
 
-	const pending = state.pendingDeliveries.get(message.roomId);
-	if (pending?.size) await Promise.all([...pending]);
+	// A connector can register another same-room delivery while this probe is
+	// awaiting the current batch. Drain successive nonempty snapshots so the
+	// probe cannot authorize an older sender while a newer receipt is unresolved.
+	while (true) {
+		const pending = state.pendingDeliveries.get(message.roomId);
+		if (!pending?.size) break;
+		await Promise.all([...pending]);
+	}
 	const checkedAt = now ?? Date.now();
 	sweepExpiredAnchors(state, checkedAt);
 	const anchor = state.anchors.get(message.roomId);

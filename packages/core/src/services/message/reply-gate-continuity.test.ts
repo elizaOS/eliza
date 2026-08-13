@@ -435,6 +435,74 @@ describe("delivery-boundary contract", () => {
 		await expect(followUp).resolves.toBe(true);
 	});
 
+	it("waits for a same-room delivery registered while draining an earlier barrier", async () => {
+		const runtime = makeRuntime();
+		let markFirstStarted: (() => void) | undefined;
+		const firstStarted = new Promise<void>((resolve) => {
+			markFirstStarted = resolve;
+		});
+		let finishFirst: (() => void) | undefined;
+		const firstBlocked = new Promise<void>((resolve) => {
+			finishFirst = resolve;
+		});
+		const firstCallback = vi.fn(async () => {
+			markFirstStarted?.();
+			await firstBlocked;
+			return [receipt({ createdAt: NOW })];
+		});
+		const firstWrapped = wrapSingleTurnVisibleCallback(
+			runtime,
+			{ roomId: ROOM_ID, entityId: SHAW_ID },
+			firstCallback,
+		);
+		const firstDelivery = firstWrapped?.({
+			text: "first answer",
+			actions: ["REPLY"],
+		});
+		await firstStarted;
+
+		let probeSettled = false;
+		const probe = senderInActiveConversation(runtime, inbound(SHAW_ID)).then(
+			(result) => {
+				probeSettled = true;
+				return result;
+			},
+		);
+
+		let markSecondStarted: (() => void) | undefined;
+		const secondStarted = new Promise<void>((resolve) => {
+			markSecondStarted = resolve;
+		});
+		let finishSecond: (() => void) | undefined;
+		const secondBlocked = new Promise<void>((resolve) => {
+			finishSecond = resolve;
+		});
+		const secondCallback = vi.fn(async () => {
+			markSecondStarted?.();
+			await secondBlocked;
+			return [receipt({ createdAt: NOW + 1 })];
+		});
+		const secondWrapped = wrapSingleTurnVisibleCallback(
+			runtime,
+			{ roomId: ROOM_ID, entityId: ALICE_ID },
+			secondCallback,
+		);
+		const secondDelivery = secondWrapped?.({
+			text: "second answer",
+			actions: ["REPLY"],
+		});
+		await secondStarted;
+
+		finishFirst?.();
+		await firstDelivery;
+		await Promise.resolve();
+		expect(probeSettled).toBe(false);
+
+		finishSecond?.();
+		await secondDelivery;
+		await expect(probe).resolves.toBe(false);
+	});
+
 	it("orders overlapping callbacks by receipt timestamp, not completion", async () => {
 		const runtime = makeRuntime();
 		let startOlder: (() => void) | undefined;
