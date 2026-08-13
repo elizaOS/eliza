@@ -11,6 +11,8 @@ const RETRY_ATTEMPTS = 5;
 const RETRY_BASE_DELAY_MS = 2_000;
 const RETRY_INCREMENT_MS = 1_000;
 const IDENTITY_CACHE_TTL_SECONDS = 300;
+const AGENT_ID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 interface ServerRoute {
   serverName: string;
@@ -29,6 +31,12 @@ export interface ResolvedIdentity {
   // agent yet. Callers must treat this as an onboarding/provisioning condition,
   // never as an agent-server routing target.
   agentId: string | null;
+}
+
+/** Returns the fixed-domain public route for a validated cloud agent id. */
+export function getCanonicalAgentFallbackBase(agentId: string): string | null {
+  if (!AGENT_ID_PATTERN.test(agentId)) return null;
+  return `https://${agentId.toLowerCase()}.elizacloud.ai/api`;
 }
 
 export async function resolveIdentity(
@@ -343,6 +351,7 @@ export async function forwardToServer(
     userId,
     `/agents/${agentId}/message`,
     JSON.stringify(body),
+    getCanonicalAgentFallbackBase(agentId),
   );
   return parseAgentResponse(raw, agentId);
 }
@@ -401,6 +410,7 @@ export async function forwardEventToServer(
     userId,
     `/agents/${agentId}/event`,
     JSON.stringify({ userId, type, payload }),
+    getCanonicalAgentFallbackBase(agentId),
   );
 }
 
@@ -420,6 +430,7 @@ async function forwardWithRetry(
   hashKey: string,
   endpointPath: string,
   body: string,
+  connectionFallbackBaseUrl?: string | null,
 ): Promise<string> {
   let lastError: Error | null = null;
   let woken = false;
@@ -446,6 +457,25 @@ async function forwardWithRetry(
 
     const result = await tryTarget(targets[0], endpointPath, body);
     if (result.ok) return result.response;
+
+    // Dedicated sandboxes can remain healthy behind their canonical hostname
+    // while an old direct host:port is still being refreshed into Redis. Only
+    // a transport failure may use this fixed-domain route: an HTTP response is
+    // authoritative and must not be bypassed through a second ingress.
+    if (
+      result.isConnectionError &&
+      connectionFallbackBaseUrl &&
+      targets[0].replace(/\/$/, "") !==
+        connectionFallbackBaseUrl.replace(/\/$/, "")
+    ) {
+      const canonical = await tryTarget(
+        connectionFallbackBaseUrl,
+        endpointPath,
+        body,
+      );
+      if (canonical.ok) return canonical.response;
+      lastError = canonical.error;
+    }
 
     if (targets.length > 1) {
       await refreshHashRing(serverUrl);

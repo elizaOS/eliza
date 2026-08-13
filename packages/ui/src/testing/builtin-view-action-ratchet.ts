@@ -258,7 +258,6 @@ export const BUILTIN_VIEW_MUTATION_BASELINE = [
       "packages/ui/src/components/pages/TaskEditor.tsx",
       "packages/ui/src/components/pages/ScheduledTaskEditor.tsx",
       "packages/ui/src/components/pages/WorkflowEditor.tsx",
-      "packages/ui/src/components/pages/WorkflowGraphViewer.tsx",
     ],
     semanticActions: ["SCHEDULED_TASKS", "TRIGGER"],
     maxMutationSites: 71,

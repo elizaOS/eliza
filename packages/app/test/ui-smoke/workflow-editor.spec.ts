@@ -1,10 +1,8 @@
 /**
- * Exercises the workflow editor against deterministic HTTP fixtures, including
- * persistence, graph rendering, and invalid execution timestamps at desktop and
- * mobile sizes. The route fixtures are the system boundary under test here.
+ * Exercises native Smithers authoring, persistence, execution, and run inspection
+ * through the app against deterministic HTTP fixtures.
  */
 // @eliza-live-audit allow-route-fixtures
-
 import { expect, type Page, test } from "@playwright/test";
 import {
   installDefaultAppRoutes,
@@ -12,190 +10,170 @@ import {
   seedAppStorage,
 } from "./helpers";
 
-type WorkflowConnectionMap = Record<
-  string,
-  { main?: Array<Array<{ node: string; type: "main"; index: number }>> }
->;
-
-type WorkflowNode = {
-  id?: string;
-  name: string;
-  type: string;
-  typeVersion: number;
-  position: [number, number];
-  parameters: Record<string, unknown>;
-};
-
-type WorkflowWriteRequest = {
-  name: string;
-  nodes: WorkflowNode[];
-  connections: WorkflowConnectionMap;
-  settings?: Record<string, unknown>;
-};
-
-type WorkflowDefinition = WorkflowWriteRequest & {
+type WorkflowDefinition = {
   id: string;
+  name: string;
+  description: string;
+  source: string;
+  language: "tsx";
   active: boolean;
+  steps: Array<{ id: string; label: string; kind: "task"; agent: string }>;
+  widgets: Array<{
+    id: string;
+    title: string;
+    surface: "both";
+    component: "status";
+  }>;
   versionId: string;
-  nodeCount: number;
+  createdAt: string;
+  updatedAt: string;
 };
 
-const SAVED_WORKFLOW: WorkflowDefinition = {
-  ...workflowDraft(),
-  id: "workflow-matrix-digest",
-  active: false,
-  versionId: "version-1",
-  nodeCount: 2,
-};
-
-const INVALID_DATE_EXECUTION = {
-  id: "execution-invalid-stop",
-  workflowId: SAVED_WORKFLOW.id,
-  status: "success",
-  startedAt: "2026-06-23T00:00:00.000Z",
-  stoppedAt: "",
-  mode: "manual",
-  data: {
-    resultData: {
-      lastNodeExecuted: "Add Summary Param",
-      runData: {},
-    },
-  },
-};
-
-function workflowDraft(): WorkflowWriteRequest {
-  return {
-    name: "Matrix message digest",
-    nodes: [
-      {
-        id: "manual",
-        name: "Manual Trigger",
-        type: "workflows-nodes-base.manualTrigger",
-        typeVersion: 1,
-        position: [0, 0],
-        parameters: {},
-      },
-      {
-        id: "set-summary",
-        name: "Add Summary Param",
-        type: "workflows-nodes-base.set",
-        typeVersion: 1,
-        position: [260, 0],
-        parameters: { summary: "matrix smoke digest" },
-      },
-    ],
-    connections: {
-      "Manual Trigger": {
-        main: [[{ node: "Add Summary Param", type: "main", index: 0 }]],
-      },
-    },
-    settings: { saveDataSuccessExecution: "all" },
-  };
-}
-
-async function installWorkflowApi(
-  page: Page,
-  initialWorkflow: WorkflowDefinition | null = null,
-  executions: Array<typeof INVALID_DATE_EXECUTION> = [],
-): Promise<{
-  getSavedWorkflow: () => WorkflowDefinition | null;
-  getLastSaveBody: () => WorkflowWriteRequest | null;
-}> {
-  let savedWorkflow: WorkflowDefinition | null = initialWorkflow;
-  let lastSaveBody: WorkflowWriteRequest | null = null;
-
-  await page.route("**/api/lifeops/scheduled-tasks**", async (route) => {
-    if (route.request().method() !== "GET") {
-      await route.fallback();
-      return;
-    }
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({ tasks: [] }),
-    });
-  });
-
+async function installWorkflowApi(page: Page) {
+  let saved: WorkflowDefinition | null = null;
+  let createCount = 0;
+  let runCount = 0;
+  let execution: Record<string, unknown> | null = null;
   await page.route("**/api/workflow/workflows**", async (route) => {
     const request = route.request();
-    const url = new URL(request.url());
-    const method = request.method();
-    const pathname = url.pathname;
-
-    if (method === "POST" && pathname === "/api/workflow/workflows") {
-      lastSaveBody = request.postDataJSON() as WorkflowWriteRequest;
-      savedWorkflow = {
-        ...lastSaveBody,
-        id: "workflow-matrix-digest",
-        active: false,
-        versionId: "version-1",
-        nodeCount: lastSaveBody.nodes.length,
+    const pathname = new URL(request.url()).pathname;
+    if (request.method() === "POST" && pathname === "/api/workflow/workflows") {
+      const body = request.postDataJSON() as Omit<
+        WorkflowDefinition,
+        "id" | "versionId" | "createdAt" | "updatedAt"
+      >;
+      const now = new Date().toISOString();
+      saved = {
+        ...body,
+        id: "smithers-digest",
+        versionId: "v1",
+        createdAt: now,
+        updatedAt: now,
       };
+      createCount += 1;
       await route.fulfill({
         status: 201,
         contentType: "application/json",
-        body: JSON.stringify(savedWorkflow),
+        body: JSON.stringify(saved),
       });
       return;
     }
-
-    if (method === "GET" && pathname === "/api/workflow/workflows") {
+    if (
+      request.method() === "POST" &&
+      pathname === "/api/workflow/workflows/smithers-digest/run"
+    ) {
+      const now = new Date().toISOString();
+      execution = {
+        id: "run-smithers-digest-1",
+        workflowId: "smithers-digest",
+        workflowVersionId: "v1",
+        workflowName: "Smithers digest",
+        mode: "manual",
+        status: "running",
+        finished: false,
+        startedAt: now,
+        stoppedAt: null,
+        input: {},
+        events: [
+          {
+            id: "event-started",
+            sequence: 1,
+            runId: "run-smithers-digest-1",
+            workflowId: "smithers-digest",
+            timestamp: now,
+            type: "workflow.started",
+            nodeId: "digest",
+            payload: {},
+          },
+        ],
+      };
+      runCount += 1;
+      await route.fulfill({
+        status: 202,
+        contentType: "application/json",
+        body: JSON.stringify({ execution }),
+      });
+      return;
+    }
+    if (request.method() === "GET" && pathname === "/api/workflow/workflows") {
       await route.fulfill({
         status: 200,
         contentType: "application/json",
-        body: JSON.stringify({
-          workflows: savedWorkflow
-            ? [{ ...savedWorkflow, nodes: undefined, connections: undefined }]
-            : [],
-        }),
+        body: JSON.stringify({ workflows: saved ? [saved] : [] }),
       });
       return;
     }
-
     if (
-      method === "GET" &&
-      pathname === "/api/workflow/workflows/workflow-matrix-digest"
+      request.method() === "GET" &&
+      pathname === "/api/workflow/workflows/smithers-digest"
     ) {
       await route.fulfill({
-        status: savedWorkflow ? 200 : 404,
+        status: saved ? 200 : 404,
         contentType: "application/json",
-        body: JSON.stringify(
-          savedWorkflow ?? { error: "workflow not saved yet" },
-        ),
+        body: JSON.stringify(saved ?? { error: "not found" }),
       });
       return;
     }
-
-    if (
-      method === "GET" &&
-      pathname === "/api/workflow/workflows/workflow-matrix-digest/executions"
-    ) {
+    if (request.method() === "GET" && pathname.endsWith("/executions")) {
       await route.fulfill({
         status: 200,
         contentType: "application/json",
-        body: JSON.stringify({ executions }),
+        body: JSON.stringify({ executions: execution ? [execution] : [] }),
       });
       return;
     }
-
-    if (
-      method === "GET" &&
-      pathname === "/api/workflow/workflows/workflow-matrix-digest/revisions"
-    ) {
+    if (request.method() === "GET" && pathname.endsWith("/revisions")) {
       await route.fulfill({
         status: 200,
         contentType: "application/json",
-        body: JSON.stringify({ currentVersionId: "version-1", revisions: [] }),
+        body: JSON.stringify({ currentVersionId: "v1", revisions: [] }),
       });
       return;
     }
-
     await route.fallback();
   });
-
+  await page.route("**/api/workflow/executions/**", async (route) => {
+    const request = route.request();
+    const pathname = new URL(request.url()).pathname;
+    if (
+      request.method() === "GET" &&
+      pathname === "/api/workflow/executions/run-smithers-digest-1" &&
+      execution
+    ) {
+      const stoppedAt = new Date().toISOString();
+      execution = {
+        ...execution,
+        status: "finished",
+        finished: true,
+        stoppedAt,
+        output: { message: "Digest ready" },
+        events: [
+          ...((execution.events as unknown[]) ?? []),
+          {
+            id: "event-finished",
+            sequence: 2,
+            runId: "run-smithers-digest-1",
+            workflowId: "smithers-digest",
+            timestamp: stoppedAt,
+            type: "workflow.finished",
+            nodeId: "digest",
+            payload: { message: "Digest ready" },
+          },
+        ],
+      };
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ execution }),
+      });
+      return;
+    }
+    await route.fallback();
+  });
   return {
-    getSavedWorkflow: () => savedWorkflow,
-    getLastSaveBody: () => lastSaveBody,
+    getSaved: () => saved,
+    getCreateCount: () => createCount,
+    getRunCount: () => runCount,
   };
 }
 
@@ -204,128 +182,59 @@ test.beforeEach(async ({ page }) => {
   await installDefaultAppRoutes(page);
 });
 
-test("workflow editor saves a connected graph and reloads the persisted definition", async ({
+test("workflow studio creates, executes, inspects, and reloads a Smithers workflow", async ({
   page,
 }) => {
   const api = await installWorkflowApi(page);
-  const saveStatuses: number[] = [];
-  page.on("response", (response) => {
-    if (
-      response.request().method() === "POST" &&
-      /\/api\/workflow\/workflows(?:\?|$)/.test(response.url())
-    ) {
-      saveStatuses.push(response.status());
-    }
-  });
-
   await openAppPath(page, "/automations");
   await expect(page.getByTestId("automations-shell")).toBeVisible({
     timeout: 60_000,
   });
-
   await page.evaluate(() => {
     window.location.hash = "#automations/__new__";
   });
 
-  const editor = page.getByTestId("workflow-editor-json");
-  await expect(editor).toBeVisible({ timeout: 60_000 });
-  await editor.fill(JSON.stringify(workflowDraft(), null, 2));
-  await expect(editor).toHaveValue(/Matrix message digest/);
-
-  await expect(
-    page.getByRole("img", {
-      name: "Workflow graph with 2 nodes and 1 connections",
-    }),
-  ).toBeVisible({ timeout: 15_000 });
-  await expect(page.getByTestId("rf__node-manual")).toContainText(
-    "Manual Trigger",
-  );
-  await expect(page.getByTestId("rf__node-set-summary")).toContainText(
-    "Add Summary Param",
-  );
-
-  const save = page.locator('[data-agent-id="save"]');
-  await expect(save).toBeEnabled({ timeout: 15_000 });
-  await save.click();
-
-  await expect
-    .poll(() => saveStatuses.some((status) => status >= 200 && status < 300), {
-      message: "workflow save should receive a 2xx POST",
-    })
-    .toBe(true);
-
-  expect(api.getLastSaveBody()).toMatchObject({
-    name: "Matrix message digest",
-    connections: {
-      "Manual Trigger": {
-        main: [[{ node: "Add Summary Param", type: "main", index: 0 }]],
-      },
-    },
+  await expect(page.getByTestId("workflow-studio")).toBeVisible({
+    timeout: 60_000,
   });
-  expect(
-    api
-      .getLastSaveBody()
-      ?.nodes.find((node) => node.name === "Add Summary Param")?.parameters,
-  ).toMatchObject({ summary: "matrix smoke digest" });
+  await expect(page.getByTestId("smithers-canvas")).toBeVisible();
+  await expect(page.getByText("Run", { exact: true })).toBeVisible();
+  await page.getByLabel("Workflow name").fill("Smithers digest");
+  await page.getByRole("button", { name: "Source" }).click();
+  const source = `/** @jsxImportSource smthrs */
+import { createSmithers } from "smthrs/create";
+import { z } from "zod";
+const { Workflow, Task, smithers, outputs } = createSmithers({ result: z.object({ message: z.string() }) });
+const agent = globalThis.__elizaSmithers.agent;
+export default smithers(() => <Workflow name="digest"><Task id="digest" output={outputs.result} agent={agent}>Create the digest.</Task></Workflow>);`;
+  await page.getByTestId("smithers-source-editor").fill(source);
+  await page.locator('[data-agent-id="save-workflow"]').click();
 
-  await expect
-    .poll(() => api.getSavedWorkflow()?.id)
-    .toBe("workflow-matrix-digest");
+  await expect.poll(() => api.getSaved()?.name).toBe("Smithers digest");
+  expect(api.getCreateCount()).toBe(1);
+  expect(api.getSaved()?.source).toContain('from "smthrs/create"');
+  expect(api.getSaved()).not.toHaveProperty("nodes");
+  expect(api.getSaved()).not.toHaveProperty("connections");
+
+  await page.getByRole("button", { name: "Run", exact: true }).click();
+  await expect.poll(api.getRunCount).toBe(1);
+  await expect(page.getByText("run-smithers").first()).toBeVisible();
+  await expect(page.getByText("Digest ready")).toBeVisible({
+    timeout: 10_000,
+  });
+  await expect(page.getByText("workflow.finished")).toBeVisible();
+  await expect(page.getByText("digest", { exact: true }).first()).toBeVisible();
 
   await page.evaluate(() => {
-    window.location.hash = "#automations/workflow-matrix-digest";
+    window.location.hash = "#automations/smithers-digest";
   });
   await page.reload({ waitUntil: "domcontentloaded" });
-
-  await expect(page.getByTestId("workflow-editor-json")).toHaveValue(
-    /Matrix message digest/,
+  await page.getByRole("button", { name: "Source" }).click();
+  await expect(page.getByTestId("smithers-source-editor")).toHaveValue(
+    /Create the digest/,
     { timeout: 60_000 },
   );
-  await expect(page.getByTestId("workflow-editor-json")).toHaveValue(
-    /matrix smoke digest/,
-  );
-  await expect(page.getByTestId("rf__node-manual")).toContainText(
-    "Manual Trigger",
-    {
-      timeout: 15_000,
-    },
-  );
-  await expect(page.getByTestId("rf__node-set-summary")).toContainText(
-    "Add Summary Param",
-    {
-      timeout: 15_000,
-    },
-  );
-});
-
-test("workflow run renders an explicit invalid-date state on desktop and mobile", async ({
-  page,
-}) => {
-  await installWorkflowApi(page, SAVED_WORKFLOW, [INVALID_DATE_EXECUTION]);
-  const consoleErrors: string[] = [];
-  const failedRequests: string[] = [];
-  page.on("console", (message) => {
-    if (message.type() === "error") consoleErrors.push(message.text());
-  });
-  page.on("requestfailed", (request) => {
-    if (new URL(request.url()).pathname.startsWith("/api/")) {
-      failedRequests.push(`${request.method()} ${request.url()}`);
-    }
-  });
-
-  await openAppPath(page, `/automations#automations/${SAVED_WORKFLOW.id}`);
-  await expect(page.getByTestId("workflow-editor-json")).toHaveValue(
-    /Matrix message digest/,
-    { timeout: 60_000 },
-  );
-  await expect(page.getByText("Invalid date", { exact: false })).toHaveCount(2);
-
-  await page.setViewportSize({ width: 390, height: 844 });
-  await page
-    .getByText("Invalid date", { exact: false })
-    .first()
-    .scrollIntoViewIfNeeded();
-  await expect(page.getByText("Invalid date", { exact: false })).toHaveCount(2);
-  expect(consoleErrors).toEqual([]);
-  expect(failedRequests).toEqual([]);
+  await expect(page.getByRole("button", { name: "Schedule" })).toBeVisible();
+  expect(api.getCreateCount()).toBe(1);
+  expect(api.getRunCount()).toBe(1);
 });

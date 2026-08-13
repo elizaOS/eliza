@@ -327,7 +327,7 @@ async function resolvePluginRoot(): Promise<string> {
  */
 function createTaskScript(): string {
   return String.raw`
-    import { Smithers } from '@smithers-orchestrator/engine';
+    import { Smithers } from 'smthrs';
     import { Effect, Schema } from 'effect';
     import { readFileSync } from 'node:fs';
     import { createInterface } from 'node:readline/promises';

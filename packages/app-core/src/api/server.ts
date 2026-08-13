@@ -55,7 +55,6 @@ import {
   ensureCompatSensitiveRouteAuthorized,
   ensureRouteAuthorized,
 } from "./auth.ts";
-import { handleAutomationsCompatRoutes } from "./automations-compat-routes";
 import {
   type CompatRouteChainEntry,
   type CompatRouteContext,
@@ -738,11 +737,6 @@ const COMPAT_ROUTE_CHAIN: readonly CompatRouteChainEntry[] = [
       // WebView -> agent PCM transport for live on-device speaker diarization.
       return handleLiveDiarizationRoute(req, res, state);
     },
-  },
-  {
-    id: "automations",
-    handler: ({ req, res, state }) =>
-      handleAutomationsCompatRoutes(req, res, state),
   },
   {
     // Workbench todos CRUD is owned by @elizaos/plugin-workflow and served on

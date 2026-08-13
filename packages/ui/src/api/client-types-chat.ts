@@ -753,7 +753,7 @@ export interface ShareIngestItem {
 
 // ── Workflow types ────────────────────────────────────────────────────────────
 
-export type WorkflowMode = "local" | "cloud" | "disabled";
+export type WorkflowMode = "cloud" | "disabled";
 export type WorkflowRuntimeStatus = "ready" | "error";
 
 export interface WorkflowStatusResponse {
@@ -762,61 +762,68 @@ export interface WorkflowStatusResponse {
   status: WorkflowRuntimeStatus;
   cloudConnected: boolean;
   localEnabled: boolean;
-  platform?: "desktop";
-  cloudHealth?: "ok" | "degraded" | "unknown";
+  platform?: "cloud";
+  cloudHealth?: "healthy" | "unknown";
+  engine: "smthrs";
 }
 
-export interface WorkflowDefinitionNode {
+export interface WorkflowStepManifest {
   id: string;
-  name: string;
-  type: string;
-  typeVersion?: number;
-  /** Canvas position — [x, y]. Present on single-workflow GET; absent on list. */
-  position?: [number, number];
-  /** Node parameters. Present on single-workflow GET; absent on list. */
-  parameters?: Record<string, unknown>;
-  credentials?: Record<string, { id: string; name: string }>;
-  disabled?: boolean;
-  notes?: string;
-  notesInFlow?: boolean;
-  color?: string;
-  continueOnFail?: boolean;
-  executeOnce?: boolean;
-  alwaysOutputData?: boolean;
-  retryOnFail?: boolean;
-  maxTries?: number;
-  waitBetweenTries?: number;
-  onError?: "continueErrorOutput" | "continueRegularOutput" | "stopWorkflow";
+  label: string;
+  kind:
+    | "approval"
+    | "branch"
+    | "loop"
+    | "parallel"
+    | "sequence"
+    | "signal"
+    | "task"
+    | "timer"
+    | "ui"
+    | "workflow";
+  dependsOn?: string[];
+  description?: string;
+  agent?: string;
 }
 
-/** A single outbound connection edge from the workflow connection map. */
-export interface WorkflowConnection {
-  node: string;
-  type: "main";
-  index: number;
+export interface WorkflowWidgetManifest {
+  id: string;
+  title: string;
+  description?: string;
+  surface: "chat" | "workflow" | "both";
+  component:
+    | "approval"
+    | "chart"
+    | "data-table"
+    | "form"
+    | "issue-list"
+    | "json"
+    | "markdown"
+    | "status";
+  dataPath?: string;
+  actions?: Array<{
+    id: string;
+    label: string;
+    signal?: string;
+    style?: "default" | "primary" | "danger";
+  }>;
 }
-
-/**
- * Workflow connection map shape.
- * Keys are source node names; values group edges by output type.
- * Present on single-workflow GET only — list endpoint stays shallow.
- */
-export type WorkflowConnectionMap = Record<
-  string,
-  { main?: WorkflowConnection[][] }
->;
 
 export interface WorkflowDefinition {
   id: string;
   name: string;
   active: boolean;
-  versionId?: string;
+  versionId: string;
+  createdAt: string;
+  updatedAt: string;
   description?: string;
-  nodeCount?: number;
-  nodes?: WorkflowDefinitionNode[];
-  lastExecutionAt?: string;
-  /** Connection graph. Present on single-workflow GET; absent on list. */
-  connections?: WorkflowConnectionMap;
+  source: string;
+  language: "tsx" | "typescript";
+  inputSchema?: Record<string, unknown>;
+  steps?: WorkflowStepManifest[];
+  widgets?: WorkflowWidgetManifest[];
+  schedule?: { cron: string; timezone: string; enabled: boolean };
+  metadata?: Record<string, string | number | boolean>;
 }
 
 export type WorkflowRevisionOperation =
@@ -840,41 +847,44 @@ export interface WorkflowRevision {
   operation: WorkflowRevisionOperation;
 }
 
-export interface WorkflowExecutionEngineMetrics {
-  provider: "smithers";
-  nodes: number;
-  levels: number;
-  maxConcurrency: number;
-  started: number;
-  finished: number;
-  failed: number;
-  skipped: number;
-  retries: number;
+export interface WorkflowRunEvent {
+  id: string;
+  sequence: number;
+  runId: string;
+  workflowId: string;
+  timestamp: string;
+  type: string;
+  nodeId?: string;
+  iteration?: number;
+  payload: Record<string, unknown>;
 }
 
 export interface WorkflowExecution {
   id: string;
   status:
-    | "success"
-    | "error"
+    | "cancelled"
+    | "continued"
+    | "failed"
+    | "finished"
+    | "paused"
+    | "queued"
     | "running"
-    | "waiting"
-    | "canceled"
-    | "crashed"
-    | "new"
-    | "unknown";
+    | "waiting-approval"
+    | "waiting-event"
+    | "waiting-quota"
+    | "waiting-timer";
+  finished: boolean;
   startedAt: string;
   stoppedAt?: string | null;
-  mode?: string;
-  workflowId?: string;
-  data?: {
-    resultData?: {
-      runData?: Record<string, unknown[]>;
-      error?: { message?: string; stack?: string };
-      lastNodeExecuted?: string;
-      engine?: WorkflowExecutionEngineMetrics;
-    };
-  };
+  mode: string;
+  workflowId: string;
+  workflowVersionId: string;
+  workflowName: string;
+  input: Record<string, unknown>;
+  output?: unknown;
+  error?: { message: string; stack?: string };
+  events?: WorkflowRunEvent[];
+  nextRunId?: string;
 }
 
 export interface WorkflowEvaluationSampleNode {
@@ -901,7 +911,6 @@ export interface WorkflowEvaluationSample {
     status: WorkflowExecution["status"];
     passed: boolean;
     lastNodeExecuted?: string;
-    engine?: WorkflowExecutionEngineMetrics;
     error?: string;
     nodes: WorkflowEvaluationSampleNode[];
   };
@@ -935,159 +944,15 @@ export interface WorkflowEvaluationSuite {
   };
 }
 
-/**
- * One missing credential entry on a workflow generate response. `authUrl` is
- * a `eliza://settings/connectors/<provider>` deep-link the UI may surface.
- */
-export interface WorkflowDefinitionMissingCredential {
-  credType: string;
-  authUrl?: string;
-}
-
-/**
- * Returned by `POST /api/workflow/workflows/generate` when the deployed workflow
- * references credentials the user hasn't connected yet. Carries the deployed
- * workflow's identity plus the list of unmet credential requirements so the
- * UI can render a CTA banner.
- */
-export interface WorkflowDefinitionMissingCredentialsResponse {
-  id: string;
-  name: string;
-  active: boolean;
-  missingCredentials: WorkflowDefinitionMissingCredential[];
-  warning: "missing credentials";
-}
-
-/**
- * Structured clarification request emitted by the plugin's workflow generator
- * when a node parameter cannot be resolved from the runtime context. The host
- * surfaces these as quick-pick buttons; on click the host calls
- * `/api/workflow/workflows/resolve-clarification` with the chosen value, which
- * patches the draft at `paramPath` and deploys — no LLM regeneration.
- *
- * Mirrors the plugin's `ClarificationRequest` (see
- * @elizaos/plugin-workflow `src/types/index.ts`). Re-declared here to
- * avoid a host → plugin import cycle.
- */
-export interface WorkflowClarificationRequest {
-  kind:
-    | "target_channel"
-    | "target_server"
-    | "recipient"
-    | "value"
-    | "free_text";
-  platform?: string;
-  scope?: { guildId?: string };
-  question: string;
-  paramPath: string;
-}
-
-/** One server / workspace / contact-collection from a connector catalog. */
-export interface WorkflowClarificationTargetGroup {
-  platform: string;
-  groupId: string;
-  groupName: string;
-  targets: Array<{
-    id: string;
-    name: string;
-    kind: "channel" | "recipient" | "chat";
-  }>;
-}
-
-/**
- * Returned by `POST /api/workflow/workflows/generate` when the LLM emitted one or
- * more `ClarificationRequest`s and the host needs the user to pick a target
- * before deploying. The `draft` is the unmodified workflow JSON from the
- * plugin (with the unresolved parameters left absent); `catalog` is a
- * snapshot of the relevant connector-target-catalog scoped to the
- * platforms referenced by the clarifications.
- */
-export interface WorkflowDefinitionNeedsClarificationResponse {
-  status: "needs_clarification";
-  draft: Record<string, unknown>;
-  clarifications: WorkflowClarificationRequest[];
-  catalog: WorkflowClarificationTargetGroup[];
-}
-
-/** Resolution payload sent to /api/workflow/workflows/resolve-clarification. */
-export interface WorkflowClarificationResolution {
-  paramPath: string;
-  value: string;
-}
-
-export interface WorkflowDefinitionResolveClarificationRequest {
-  draft: Record<string, unknown>;
-  resolutions: WorkflowClarificationResolution[];
-  name?: string;
-  workflowId?: string;
-}
-
-export type WorkflowDefinitionGenerateResponse =
-  | WorkflowDefinition
-  | WorkflowDefinitionMissingCredentialsResponse
-  | WorkflowDefinitionNeedsClarificationResponse;
-
-export function isMissingCredentialsResponse(
-  res: WorkflowDefinitionGenerateResponse,
-): res is WorkflowDefinitionMissingCredentialsResponse {
-  const candidate = res as WorkflowDefinitionMissingCredentialsResponse;
-  return (
-    candidate.warning === "missing credentials" &&
-    Array.isArray(candidate.missingCredentials)
-  );
-}
-
-export function isNeedsClarificationResponse(
-  res: WorkflowDefinitionGenerateResponse,
-): res is WorkflowDefinitionNeedsClarificationResponse {
-  const candidate = res as WorkflowDefinitionNeedsClarificationResponse;
-  return (
-    candidate.status === "needs_clarification" &&
-    Array.isArray(candidate.clarifications) &&
-    Array.isArray(candidate.catalog) &&
-    typeof candidate.draft === "object" &&
-    candidate.draft !== null
-  );
-}
-
-export interface WorkflowDefinitionWriteNode {
-  id?: string;
-  name: string;
-  type: string;
-  typeVersion: number;
-  position: [number, number];
-  parameters: Record<string, unknown>;
-  credentials?: Record<string, { id: string; name: string }>;
-  disabled?: boolean;
-  notes?: string;
-  notesInFlow?: boolean;
-  color?: string;
-  continueOnFail?: boolean;
-  executeOnce?: boolean;
-  alwaysOutputData?: boolean;
-  retryOnFail?: boolean;
-  maxTries?: number;
-  waitBetweenTries?: number;
-  onError?: "continueErrorOutput" | "continueRegularOutput" | "stopWorkflow";
-}
-
 export interface WorkflowDefinitionWriteRequest {
   name: string;
-  nodes: WorkflowDefinitionWriteNode[];
-  connections: WorkflowConnectionMap;
-  settings?: Record<string, unknown>;
-}
-
-export interface WorkflowDefinitionGenerateRequest {
-  prompt: string;
-  name?: string;
-  workflowId?: string;
-  /**
-   * Optional originating conversation id. When present, the server reads
-   * the conversation's tail inbound message metadata and threads platform
-   * routing (Discord channelId/guildId, Telegram chatId, etc.) into the
-   * workflow generator so the LLM can target "this channel" / "back to
-   * here" without the user naming an ID.
-   */
-  bridgeConversationId?: string;
+  description?: string;
+  source: string;
+  language: "tsx" | "typescript";
+  active?: boolean;
+  inputSchema?: Record<string, unknown>;
+  steps?: WorkflowStepManifest[];
+  widgets?: WorkflowWidgetManifest[];
+  schedule?: { cron: string; timezone: string; enabled: boolean };
+  metadata?: Record<string, string | number | boolean>;
 }
