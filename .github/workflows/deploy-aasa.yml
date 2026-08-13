@@ -23,11 +23,10 @@ on:
         required: false
         type: string
 
-# Per-SHA workflow group: validate-ref must run even while an older
-# production approval is waiting (#18092). The publish job owns the
-# shared mutate lock and never cancels in-flight publishes.
+# Per-run admission so two dispatches of the same SHA both reach
+# validate-ref (#18092). The publish job owns mutate+CDN proof.
 concurrency:
-  group: deploy-aasa-edge-${{ github.sha }}
+  group: deploy-aasa-edge-v6-${{ format('run-{0}', github.run_id) }}
   cancel-in-progress: false
 
 permissions:
@@ -93,7 +92,7 @@ jobs:
     name: Publish & Verify iOS Association Origin
     needs: validate-ref
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 40
     concurrency:
       group: deploy-aasa-edge-mutate
       cancel-in-progress: false
@@ -164,23 +163,6 @@ jobs:
           echo "::warning::No previous Worker version was available; deleting the exact-path Worker restores the inert Pages fallback."
           bunx wrangler@4.100.0 delete --config wrangler-aasa.toml --force
 
-  verify-apple-cdn:
-    name: Observe Apple CDN Readiness
-    needs: [validate-ref, deploy-and-verify-origin]
-    runs-on: ubuntu-24.04
-    timeout-minutes: 30
-    steps:
-      - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-        with:
-          ref: ${{ needs.validate-ref.outputs.sha }}
-          persist-credentials: false
-          submodules: false
-
-      - name: Setup Node.js
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
-        with:
-          node-version: "24.15.0"
-
       - name: Wait for Apple's unmodified CDN cache
+        if: ${{ steps.deploy.outcome == 'success' && steps.origin.outcome == 'success' }}
         run: node packages/homepage/scripts/verify-aasa-response.mjs --apple-cdn-live --attempts=60 --retry-ms=15000 --timeout-ms=10000
