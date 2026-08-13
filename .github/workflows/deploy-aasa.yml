@@ -23,8 +23,11 @@ on:
         required: false
         type: string
 
+# Per-SHA workflow group: validate-ref must run even while an older
+# production approval is waiting (#18092). The publish job owns the
+# shared mutate lock and never cancels in-flight publishes.
 concurrency:
-  group: deploy-aasa-edge
+  group: deploy-aasa-edge-${{ github.sha }}
   cancel-in-progress: false
 
 permissions:
@@ -91,6 +94,9 @@ jobs:
     needs: validate-ref
     runs-on: ubuntu-24.04
     timeout-minutes: 10
+    concurrency:
+      group: deploy-aasa-edge-mutate
+      cancel-in-progress: false
     environment: production
     steps:
       - name: Checkout
