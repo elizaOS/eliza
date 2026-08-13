@@ -1,9 +1,10 @@
 /**
- * Exercises safe self-hosted runner workspace cleanup planning without touching
- * real runner paths.
+ * Exercises safe self-hosted runner workspace cleanup planning and its real CLI
+ * failure boundary without touching real runner paths.
  */
 
 import { afterEach, describe, expect, it } from "bun:test";
+import { spawnSync } from "node:child_process";
 import {
   mkdirSync,
   mkdtempSync,
@@ -13,6 +14,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   buildRunnerWorkspacePrunePlan,
   findRunnerWorkDirs,
@@ -21,6 +23,10 @@ import {
 } from "./prune-runner-workspaces";
 
 const roots: string[] = [];
+const runner = fileURLToPath(
+  new URL("./prune-runner-workspaces.ts", import.meta.url),
+);
+const maxMinAgeHours = Math.floor(Number.MAX_SAFE_INTEGER / (60 * 60_000));
 
 function tempRoot(): string {
   const root = mkdtempSync(join(tmpdir(), "runner-workspaces-test-"));
@@ -64,7 +70,7 @@ describe("parseRunnerWorkspacePruneArgs", () => {
     });
   });
 
-  it("uses env fallback and rejects unsafe age values", () => {
+  it("uses env fallback and accepts exactly representable age bounds", () => {
     expect(
       parseRunnerWorkspacePruneArgs([], {
         RUNNER_WORKSPACE_ROOT: "/var/runners",
@@ -72,9 +78,51 @@ describe("parseRunnerWorkspacePruneArgs", () => {
       }),
     ).toMatchObject({ root: "/var/runners", minAgeHours: 24 });
 
+    expect(
+      parseRunnerWorkspacePruneArgs(["--min-age-hours", "  +012  "], {}),
+    ).toMatchObject({ minAgeHours: 12 });
+
+    expect(
+      parseRunnerWorkspacePruneArgs(
+        ["--min-age-hours", String(maxMinAgeHours)],
+        {},
+      ),
+    ).toMatchObject({ minAgeHours: maxMinAgeHours });
+  });
+
+  it("rejects malformed, non-positive, unsafe, and millisecond-overflowing ages", () => {
+    for (const raw of [
+      "",
+      "0",
+      "-5",
+      "24oops",
+      "1e3",
+      "24.5",
+      String(Number.MAX_SAFE_INTEGER + 1),
+      String(maxMinAgeHours + 1),
+    ]) {
+      expect(() =>
+        parseRunnerWorkspacePruneArgs(["--min-age-hours", raw], {}),
+      ).toThrow("Invalid min-age-hours");
+    }
+
     expect(() =>
-      parseRunnerWorkspacePruneArgs(["--min-age-hours", "0"], {}),
+      parseRunnerWorkspacePruneArgs([], {
+        RUNNER_WORKSPACE_MIN_AGE_HOURS: "24oops",
+      }),
     ).toThrow("Invalid min-age-hours");
+  });
+
+  it("rejects malformed age input at the real CLI boundary before pruning", () => {
+    const result = spawnSync(
+      process.execPath,
+      [runner, "--root", tempRoot(), "--min-age-hours", "24oops", "--dry-run"],
+      { encoding: "utf8" },
+    );
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("Invalid min-age-hours: 24oops");
+    expect(result.stdout).not.toContain("would remove");
   });
 
   it("rejects an unknown flag instead of silently running on defaults", () => {
