@@ -190,5 +190,7 @@
   "homepage_eliza.model.botResponse6": "大丈夫ですよ、対応します。他に何か確認しましょうか？",
   "homepage_eliza.model.botResponse7": "いいですね！すでに取り掛かっています",
   "homepage_eliza.model.botResponse8": "完了です！次回も見つけやすいよう整理しました",
-  "homepage_eliza.model.botResponse9": "お任せください"
+  "homepage_eliza.model.botResponse9": "お任せください",
+  "homepage_eliza.landing.signIn": "サインイン",
+  "homepage_eliza.landing.dashboard": "ダッシュボード"
 }

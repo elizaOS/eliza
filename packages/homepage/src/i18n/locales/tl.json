@@ -190,5 +190,7 @@
   "homepage_eliza.model.botResponse6": "huwag mag-alala, hahawakan ko iyon para sa iyo. gusto mo bang tingnan ko pa ang ibang bagay?",
   "homepage_eliza.model.botResponse7": "magandang ideya! nandito na ako",
   "homepage_eliza.model.botResponse8": "tapos na lahat! inorganisa ko ang lahat para mas madaling mahanap sa susunod",
-  "homepage_eliza.model.botResponse9": "ituring mo itong naayos na"
+  "homepage_eliza.model.botResponse9": "ituring mo itong naayos na",
+  "homepage_eliza.landing.signIn": "Mag-sign in",
+  "homepage_eliza.landing.dashboard": "Dashboard"
 }

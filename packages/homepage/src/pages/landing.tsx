@@ -11,6 +11,8 @@
  * renders the settled intro with no playback, which also keeps screenshot
  * tests deterministic.
  */
+
+import { EXTERNAL_URLS } from "@elizaos/shared/brand";
 import {
   DiscordIcon,
   IMessageIcon,
@@ -441,8 +443,15 @@ function PhoneMockup() {
   );
 }
 
+const SESSION_STORAGE_KEY = "eliza_app_session";
+const CLOUD_SIGN_IN_URL = `${EXTERNAL_URLS.cloud}/login?intent=launch`;
+const CLOUD_DASHBOARD_URL = `${EXTERNAL_URLS.app}/cloud-apps`;
+
 export default function LandingPage() {
   const t = useT();
+  const signedIn =
+    typeof window !== "undefined" &&
+    window.localStorage.getItem(SESSION_STORAGE_KEY) !== null;
   const channels = [
     {
       key: "telegram",
@@ -482,6 +491,27 @@ export default function LandingPage() {
         aria-hidden="true"
         className="fixed inset-0 pointer-events-none mix-blend-overlay bg-[url('/grain.webp')] z-0"
       />
+      <header className="landing-header">
+        <a
+          className="landing-brand"
+          href="/"
+          aria-label={t("homepage_eliza.landing.brandAria", {
+            defaultValue: "Eliza",
+          })}
+        >
+          <img src="/eliza-logotext.svg" alt="Eliza" />
+        </a>
+        <a
+          className="landing-cta landing-cta--white landing-header-cta"
+          href={signedIn ? CLOUD_DASHBOARD_URL : CLOUD_SIGN_IN_URL}
+        >
+          {signedIn
+            ? t("homepage_eliza.landing.dashboard", {
+                defaultValue: "Dashboard",
+              })
+            : t("homepage_eliza.landing.signIn", { defaultValue: "Sign in" })}
+        </a>
+      </header>
       <main className="landing-hero">
         <div className="landing-hero-copy">
           <h1 className="landing-hero-heading">

@@ -208,5 +208,7 @@
   "homepage_eliza.model.botResponse6": "no worries, i'll handle that for you. want me to look into anything else?",
   "homepage_eliza.model.botResponse7": "good thinking! already on it",
   "homepage_eliza.model.botResponse8": "all done! organized everything so it's easier to find next time",
-  "homepage_eliza.model.botResponse9": "consider it handled"
+  "homepage_eliza.model.botResponse9": "consider it handled",
+  "homepage_eliza.landing.signIn": "Sign in",
+  "homepage_eliza.landing.dashboard": "Dashboard"
 }

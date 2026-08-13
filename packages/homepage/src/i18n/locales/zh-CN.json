@@ -190,5 +190,7 @@
   "homepage_eliza.model.botResponse6": "没关系，我来处理。还需要查询其他内容吗？",
   "homepage_eliza.model.botResponse7": "好想法！已经在处理了",
   "homepage_eliza.model.botResponse8": "全部完成！已整理好，下次更容易找到",
-  "homepage_eliza.model.botResponse9": "交给我吧"
+  "homepage_eliza.model.botResponse9": "交给我吧",
+  "homepage_eliza.landing.signIn": "登录",
+  "homepage_eliza.landing.dashboard": "控制台"
 }

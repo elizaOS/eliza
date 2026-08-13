@@ -190,5 +190,7 @@
   "homepage_eliza.model.botResponse6": "sem problema, cuido disso pra você. quer que eu verifique mais alguma coisa?",
   "homepage_eliza.model.botResponse7": "boa ideia! já estou nisso",
   "homepage_eliza.model.botResponse8": "feito! organizei tudo para ficar mais fácil de encontrar da próxima vez",
-  "homepage_eliza.model.botResponse9": "pode deixar que eu resolvo"
+  "homepage_eliza.model.botResponse9": "pode deixar que eu resolvo",
+  "homepage_eliza.landing.signIn": "Entrar",
+  "homepage_eliza.landing.dashboard": "Painel"
 }

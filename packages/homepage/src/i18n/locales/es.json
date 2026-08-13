@@ -190,5 +190,7 @@
   "homepage_eliza.model.botResponse6": "sin problema, yo me encargo. ¿quieres que investigue algo más?",
   "homepage_eliza.model.botResponse7": "¡buena idea! ya estoy en ello",
   "homepage_eliza.model.botResponse8": "¡todo listo! organicé todo para que sea más fácil de encontrar la próxima vez",
-  "homepage_eliza.model.botResponse9": "considera que ya está resuelto"
+  "homepage_eliza.model.botResponse9": "considera que ya está resuelto",
+  "homepage_eliza.landing.signIn": "Iniciar sesión",
+  "homepage_eliza.landing.dashboard": "Panel"
 }

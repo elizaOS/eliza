@@ -1343,6 +1343,32 @@ body {
   font-family: "Geist", Arial, sans-serif;
 }
 
+.landing-header {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1.1rem clamp(1.25rem, 4vw, 3rem) 0;
+}
+
+.landing-brand {
+  display: inline-flex;
+  align-items: center;
+  text-decoration: none;
+}
+
+.landing-brand img {
+  height: 2rem;
+  width: auto;
+}
+
+.landing-header-cta {
+  min-height: 2.6rem;
+  padding: 0 1.2rem;
+  font-size: 0.95rem;
+}
+
 .landing-hero {
   position: relative;
   z-index: 1;
@@ -1678,10 +1704,27 @@ body {
 }
 
 .landing-composer-text {
+  display: flex;
+  justify-content: flex-end;
   flex: 1;
   min-width: 0;
   white-space: nowrap;
   overflow: hidden;
+}
+
+.landing-composer-text > span,
+.landing-composer-text {
+  min-width: 0;
+}
+
+/* While typing, overflow clips at the start so the newest characters stay
+   visible, like a real message field. */
+.landing-phone-composer[data-typing="true"] .landing-composer-text {
+  justify-content: flex-end;
+}
+
+.landing-phone-composer[data-typing="false"] .landing-composer-text {
+  justify-content: flex-start;
 }
 
 .landing-composer-mic {
