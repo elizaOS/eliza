@@ -23,6 +23,11 @@ jobs:
   test:
     runs-on: \${{ fromJSON(github.event_name == 'pull_request' && '["ubuntu-24.04"]' || vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
 `;
+const FORCE_HOSTED_WORKFLOW = `name: Test
+jobs:
+  test:
+    runs-on: \${{ fromJSON((inputs.force_hosted || github.event_name == 'pull_request' || vars.HETZNER_FLEET_ONLINE != 'true') && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
+`;
 const MANUAL_FLEET_WORKFLOW = `name: Test
 jobs:
   test:
@@ -93,6 +98,34 @@ describe("Hetzner fleet routing contract", () => {
         files: 1,
         selectors: 1,
       });
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("accepts a force-hosted override that retains the repository opt-in", () => {
+    const root = buildRepo(FORCE_HOSTED_WORKFLOW);
+    try {
+      expect(validateHetznerFleetRouting(root)).toEqual({
+        files: 1,
+        selectors: 1,
+      });
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("rejects a force-hosted override without the repository opt-in", () => {
+    const root = buildRepo(
+      FORCE_HOSTED_WORKFLOW.replace(
+        " || vars.HETZNER_FLEET_ONLINE != 'true'",
+        "",
+      ),
+    );
+    try {
+      expect(() => validateHetznerFleetRouting(root)).toThrow(
+        /must require explicit HETZNER_FLEET_ONLINE opt-in/,
+      );
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

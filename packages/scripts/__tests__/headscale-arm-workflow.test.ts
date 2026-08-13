@@ -68,6 +68,28 @@ describe("protected Headscale arm workflow", () => {
     expect(workflowSource).not.toContain("ssh-keyscan");
   });
 
+  test("repairs legacy hosts that have a binary but no package user", () => {
+    const groupGuard = scriptSource.indexOf(
+      "if ! getent group headscale >/dev/null; then",
+    );
+    const userGuard = scriptSource.indexOf(
+      "if ! id -u headscale >/dev/null 2>&1; then",
+    );
+    const stateDirectory = scriptSource.indexOf(
+      "sudo install -d -o headscale -g headscale",
+    );
+
+    expect(groupGuard).toBeGreaterThan(-1);
+    expect(userGuard).toBeGreaterThan(groupGuard);
+    expect(stateDirectory).toBeGreaterThan(userGuard);
+    expect(scriptSource).toContain("sudo groupadd --system headscale");
+    expect(scriptSource).toContain("sudo useradd \\\\");
+    expect(scriptSource).toContain("--shell /usr/sbin/nologin");
+    expect(scriptSource).toContain(
+      "existing headscale user is not a member of the headscale group",
+    );
+  });
+
   test("cleans both temporary SSH identity files on every outcome", () => {
     const cleanup = step("Remove deploy SSH identity");
     expect(cleanup.run).toContain('"$RUNNER_TEMP/headscale-deploy-key"');
