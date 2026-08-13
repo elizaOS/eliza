@@ -4,6 +4,11 @@
  * normalizes the raw proxy payloads into `WechatMessageContext` for the bot.
  * `WECHAT_TYPE_MAP` translates the proxy's numeric message types into the
  * plugin's message-type + private/group scope.
+ *
+ * Untrusted request URLs and JSON bodies fail closed: malformed percent-encoding
+ * in `/webhook/wechat/<accountId>` is a 404 (never a thrown `URIError`), nested
+ * `data` must be a plain object, and non-finite timestamps are dropped so they
+ * cannot become `NaN` `createdAt` values on inbound memories.
  */
 import { timingSafeEqual } from "node:crypto";
 import {
@@ -57,60 +62,16 @@ export async function startCallbackServer(
   } = options;
 
   const server = createServer((req: IncomingMessage, res: ServerResponse) => {
-    const account = resolveWebhookAccount(req.url, accounts);
-    if (req.method !== "POST" || !account) {
-      res.writeHead(404);
-      res.end("Not Found");
-      return;
-    }
-
-    const incomingKey = readHeaderValue(req.headers["x-api-key"]);
-    if (!incomingKey || !safeCompare(incomingKey, account.apiKey)) {
-      res.writeHead(401);
-      res.end("Unauthorized");
-      return;
-    }
-
-    let body = "";
-    let bodyBytes = 0;
-    req.on("data", (chunk: Buffer) => {
-      bodyBytes += chunk.length;
-      if (bodyBytes > maxBodyBytes) {
-        res.writeHead(413);
-        res.end("Payload Too Large");
-        req.destroy();
-        return;
-      }
-      body += chunk.toString();
-    });
-
-    req.on("end", () => {
-      if (res.writableEnded) {
-        return;
-      }
-
-      try {
-        const payload = JSON.parse(body) as Record<string, unknown>;
-        const message = normalizePayload(payload);
-        if (message) {
-          onMessage(account.accountId, message);
-        }
-        res.writeHead(200);
-        res.end("OK");
-      } catch {
+    try {
+      dispatchWebhookRequest(req, res, accounts, onMessage, maxBodyBytes);
+    } catch {
+      // error-policy:J1 HTTP webhook boundary — untrusted URLs/bodies must not
+      // escape the listener as an uncaught exception.
+      if (!res.writableEnded) {
         res.writeHead(400);
         res.end("Bad Request");
       }
-    });
-
-    req.on("error", () => {
-      if (res.writableEnded) {
-        return;
-      }
-
-      res.writeHead(400);
-      res.end("Bad Request");
-    });
+    }
   });
 
   await new Promise<void>((resolve, reject) => {
@@ -158,15 +119,86 @@ export async function startCallbackServer(
   };
 }
 
-function resolveWebhookAccount(
+function dispatchWebhookRequest(
+  req: IncomingMessage,
+  res: ServerResponse,
+  accounts: Array<{ accountId: string; apiKey: string }>,
+  onMessage: (accountId: string, msg: WechatMessageContext) => void,
+  maxBodyBytes: number,
+): void {
+  const account = resolveWebhookAccount(req.url, accounts);
+  if (req.method !== "POST" || !account) {
+    res.writeHead(404);
+    res.end("Not Found");
+    return;
+  }
+
+  const incomingKey = readHeaderValue(req.headers["x-api-key"]);
+  if (!incomingKey || !safeCompare(incomingKey, account.apiKey)) {
+    res.writeHead(401);
+    res.end("Unauthorized");
+    return;
+  }
+
+  let body = "";
+  let bodyBytes = 0;
+  req.on("data", (chunk: Buffer) => {
+    bodyBytes += chunk.length;
+    if (bodyBytes > maxBodyBytes) {
+      res.writeHead(413);
+      res.end("Payload Too Large");
+      req.destroy();
+      return;
+    }
+    body += chunk.toString();
+  });
+
+  req.on("end", () => {
+    if (res.writableEnded) {
+      return;
+    }
+
+    try {
+      const payload: unknown = JSON.parse(body);
+      const message = normalizePayload(payload);
+      if (message) {
+        onMessage(account.accountId, message);
+      }
+      res.writeHead(200);
+      res.end("OK");
+    } catch {
+      // error-policy:J3 malformed JSON is an invalid webhook body, not a
+      // fabricated inbound message.
+      res.writeHead(400);
+      res.end("Bad Request");
+    }
+  });
+
+  req.on("error", () => {
+    if (res.writableEnded) {
+      return;
+    }
+
+    res.writeHead(400);
+    res.end("Bad Request");
+  });
+}
+
+export function resolveWebhookAccount(
   rawUrl: string | undefined,
   accounts: Array<{ accountId: string; apiKey: string }>,
-) {
+): { accountId: string; apiKey: string } | null {
   if (!rawUrl) {
     return null;
   }
 
-  const pathname = new URL(rawUrl, "http://localhost").pathname;
+  let pathname: string;
+  try {
+    pathname = new URL(rawUrl, "http://localhost").pathname;
+  } catch {
+    // error-policy:J3 a malformed request URL is not a webhook target.
+    return null;
+  }
   if (pathname === "/webhook/wechat" && accounts.length === 1) {
     return accounts[0];
   }
@@ -176,8 +208,29 @@ function resolveWebhookAccount(
     return null;
   }
 
-  const accountId = decodeURIComponent(match[1]);
+  let accountId: string;
+  try {
+    accountId = decodeURIComponent(match[1]);
+  } catch {
+    // error-policy:J3 malformed percent-encoding is not a resolvable account id.
+    return null;
+  }
+  if (!accountId) {
+    return null;
+  }
   return accounts.find((account) => account.accountId === accountId) ?? null;
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function readFiniteTimestamp(value: unknown, fallback: number): number | null {
+  if (value === undefined || value === null || value === "") {
+    return fallback;
+  }
+  const timestamp = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(timestamp) ? timestamp : null;
 }
 
 function readHeaderValue(
@@ -217,12 +270,19 @@ function closeServer(server: ReturnType<typeof createServer>): Promise<void> {
 }
 
 export function normalizePayload(
-  payload: Record<string, unknown>,
+  payload: unknown,
 ): WechatMessageContext | null {
+  if (!isPlainObject(payload)) {
+    return null;
+  }
+
   // Support two payload formats: nested "raw" and flattened "proxy"
-  const data =
-    (payload.data as Record<string, unknown>) ??
-    (payload.content ? payload : null);
+  const nested = payload.data;
+  const data = isPlainObject(nested)
+    ? nested
+    : payload.content !== undefined && payload.content !== null
+      ? payload
+      : null;
 
   if (!data) {
     console.warn("[wechat] Unrecognized webhook payload format");
@@ -230,7 +290,9 @@ export function normalizePayload(
   }
 
   const typeCode = Number(data.type ?? data.msgType ?? 0);
-  const mapping = WECHAT_TYPE_MAP[typeCode];
+  const mapping = Number.isFinite(typeCode)
+    ? WECHAT_TYPE_MAP[typeCode]
+    : undefined;
 
   let msgType: WechatMessageType = "unknown";
   let scope: "private" | "group" = "private";
@@ -238,11 +300,19 @@ export function normalizePayload(
   if (mapping) {
     msgType = mapping.type;
     scope = mapping.scope;
-  } else if (typeCode >= 60006 && typeCode <= 60010) {
+  } else if (
+    Number.isFinite(typeCode) &&
+    typeCode >= 60006 &&
+    typeCode <= 60010
+  ) {
     // Unmapped private media — treat as file
     msgType = "file";
     scope = "private";
-  } else if (typeCode >= 80006 && typeCode <= 80010) {
+  } else if (
+    Number.isFinite(typeCode) &&
+    typeCode >= 80006 &&
+    typeCode <= 80010
+  ) {
     // Unmapped group media — treat as file
     msgType = "file";
     scope = "group";
@@ -256,7 +326,11 @@ export function normalizePayload(
   const sender = String(data.sender ?? data.from ?? "");
   const recipient = String(data.recipient ?? data.to ?? "");
   const content = String(data.content ?? data.text ?? "");
-  const timestamp = Number(data.timestamp ?? Date.now());
+  const timestamp = readFiniteTimestamp(data.timestamp, Date.now());
+  if (timestamp === null) {
+    console.warn("[wechat] Non-finite webhook timestamp; dropping message");
+    return null;
+  }
   const msgId = String(data.msgId ?? data.id ?? `${sender}-${timestamp}`);
 
   // Group detection
