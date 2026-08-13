@@ -83,7 +83,7 @@ afterEach(() => {
 describe("CloudRouteErrorBoundary — chunk-load recovery", () => {
   it("reloads exactly once on a chunk-load error and stamps the cooldown marker", () => {
     render(
-      <CloudRouteErrorBoundary routePath="dashboard/billing">
+      <CloudRouteErrorBoundary routePath="cloud/billing">
         <ChunkBoom />
       </CloudRouteErrorBoundary>,
     );
@@ -101,7 +101,7 @@ describe("CloudRouteErrorBoundary — chunk-load recovery", () => {
     window.sessionStorage.setItem(RELOAD_MARKER_KEY, String(Date.now()));
 
     render(
-      <CloudRouteErrorBoundary routePath="dashboard/billing">
+      <CloudRouteErrorBoundary routePath="cloud/billing">
         <ChunkBoom />
       </CloudRouteErrorBoundary>,
     );
@@ -122,7 +122,7 @@ describe("CloudRouteErrorBoundary — chunk-load recovery", () => {
     window.sessionStorage.setItem(RELOAD_MARKER_KEY, String(staleAttempt));
 
     render(
-      <CloudRouteErrorBoundary routePath="dashboard/billing">
+      <CloudRouteErrorBoundary routePath="cloud/billing">
         <ChunkBoom />
       </CloudRouteErrorBoundary>,
     );
@@ -135,7 +135,7 @@ describe("CloudRouteErrorBoundary — chunk-load recovery", () => {
 
   it("shows the Retry card for a NON-chunk render error: zero reloads, marker untouched", () => {
     render(
-      <CloudRouteErrorBoundary routePath="dashboard/billing">
+      <CloudRouteErrorBoundary routePath="cloud/billing">
         <PlainBoom />
       </CloudRouteErrorBoundary>,
     );
@@ -164,7 +164,7 @@ describe("CloudRouteErrorBoundary — chunk-load recovery", () => {
           >
             fix
           </button>
-          <CloudRouteErrorBoundary routePath="dashboard/billing">
+          <CloudRouteErrorBoundary routePath="cloud/billing">
             <Recoverable crash={crash} />
           </CloudRouteErrorBoundary>
         </div>
@@ -186,7 +186,7 @@ describe("CloudRouteErrorBoundary — chunk-load recovery", () => {
 describe("StewardAuthProvider — steward-runtime chunk failures self-heal (D2)", () => {
   function renderDashboard() {
     return render(
-      <MemoryRouter initialEntries={["/dashboard/billing"]}>
+      <MemoryRouter initialEntries={["/cloud/billing"]}>
         <StewardAuthProvider>
           <div data-testid="protected-child" />
         </StewardAuthProvider>

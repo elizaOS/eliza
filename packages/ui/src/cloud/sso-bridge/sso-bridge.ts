@@ -1,17 +1,16 @@
 /**
- * Client side of the elizacloud.ai ↔ app.elizacloud.ai SSO bridge — shared
- * login across the dashboard origin and the Eliza app-mode origin without a
+ * Client side of the eliza.app ↔ cloud.eliza.app SSO bridge — shared login
+ * across the public/auth origin and the managed Eliza app origin without a
  * shared cookie.
  *
  * SECURITY MODEL (server rationale in
  * `packages/cloud/api/auth/sso-bridge/route.ts`): the Steward session JWT the
  * SPA runs on is per-origin localStorage. Mirroring it into a JS-readable
- * `Domain=elizacloud.ai` cookie is rejected because user-controlled content is
- * served on sibling subdomains — user apps on `<id>.apps.elizacloud.ai`,
- * dedicated-agent web UIs on `<sandboxId>.elizacloud.ai`, uploaded blobs on
- * `blob.elizacloud.ai` — and a parent-domain non-HttpOnly cookie is readable by
- * JS on every one of them; cookies cannot scope to "apex + one subdomain
- * only". Instead the app origin redirects through the dashboard origin, which
+ * parent-domain cookie is rejected because user-controlled content is served
+ * on sibling subdomains such as hosted apps, dedicated-agent web UIs, and
+ * uploaded blobs. A parent-domain non-HttpOnly cookie would be readable by JS
+ * on every one of them; cookies cannot scope to "apex + one subdomain only".
+ * Instead the managed app redirects through the eliza.app auth origin, which
  * mints a 60-second single-use opaque code that the app origin exchanges for
  * the token over POST. The token never appears in a URL.
  *
@@ -31,12 +30,12 @@
  *    to redeem a code.
  *
  * Hostname gating is a strict hardcoded allowlist: only the real app hosts
- * initiate/exchange, only their paired dashboard hosts mint, and every other
+ * initiate/exchange, only their paired eliza.app auth hosts mint, and every other
  * hostname — localhost/dev (even with `VITE_FORCE_APP_MODE`), previews,
  * per-agent subdomains — resolves to role "none" and the bridge is inert.
  *
  * Logout stays logged out (both hosts): explicit sign-out on EITHER host
- * (`signOutFromSsoBridgedHost` — ConsoleShell routes both its branches here)
+ * (`signOutFromSsoBridgedHost` — the unified app's account action uses it)
  * records a persistent local marker that suppresses auto-bridging until the
  * next real sign-in, and calls the server logout route, which stamps a
  * server-side Postgres logout marker. The mint/exchange endpoints refuse to
@@ -48,6 +47,7 @@
  * the bounce.
  */
 
+import { ELIZA_DOMAIN_CONTRACTS } from "@elizaos/shared/elizacloud";
 import {
   hasStewardAuthedCookie,
   readStoredStewardToken,
@@ -67,7 +67,7 @@ export const SSO_BRIDGE_PATH = "/auth/bridge";
 
 /**
  * The two deployed origin pairs. Staging must bridge to staging — a staging
- * app host minting against the production dashboard would splice sessions
+ * app host minting against the production auth origin would splice sessions
  * across environments. Origins are hardcoded canonical values, never derived
  * from request input.
  */
@@ -80,16 +80,16 @@ interface SsoBridgePair {
 
 const SSO_BRIDGE_PAIRS: readonly SsoBridgePair[] = [
   {
-    mintHosts: ["elizacloud.ai", "www.elizacloud.ai"],
-    mintOrigin: "https://elizacloud.ai",
-    appHost: "app.elizacloud.ai",
-    appOrigin: "https://app.elizacloud.ai",
+    mintHosts: ["eliza.app", "www.eliza.app"],
+    mintOrigin: ELIZA_DOMAIN_CONTRACTS.production.marketingOrigin,
+    appHost: "cloud.eliza.app",
+    appOrigin: ELIZA_DOMAIN_CONTRACTS.production.cloudAppOrigin,
   },
   {
-    mintHosts: ["staging.elizacloud.ai"],
-    mintOrigin: "https://staging.elizacloud.ai",
-    appHost: "app-staging.elizacloud.ai",
-    appOrigin: "https://app-staging.elizacloud.ai",
+    mintHosts: ["staging.eliza.app"],
+    mintOrigin: ELIZA_DOMAIN_CONTRACTS.staging.marketingOrigin,
+    appHost: "cloud-staging.eliza.app",
+    appOrigin: ELIZA_DOMAIN_CONTRACTS.staging.cloudAppOrigin,
   },
 ];
 
@@ -250,11 +250,11 @@ const SSO_ATTEMPT_KEY = "eliza_sso_bridge_attempted_at";
 const SSO_ATTEMPT_WINDOW_MS = 5 * 60 * 1000;
 
 /**
- * A failed handshake (no dashboard session, expired code, cache down) must
+ * A failed handshake (no auth-origin session, expired code, cache down) must
  * fall back to the app origin's own /login instead of bouncing to the
- * dashboard again — otherwise an unauthenticated visitor ping-pongs between
+ * auth origin again — otherwise an unauthenticated visitor ping-pongs between
  * the origins forever. The marker is set right before leaving for the
- * dashboard, cleared only by a successful exchange, and ages out on its own so
+ * auth origin, cleared only by a successful exchange, and ages out on its own so
  * a later visit retries.
  */
 export function shouldAttemptSsoBridge(now: number = Date.now()): boolean {
@@ -353,7 +353,7 @@ export function buildBridgeMintUrl(
   return `${pair.mintOrigin}${SSO_BRIDGE_PATH}?state=${encodeURIComponent(state)}&challenge=${encodeURIComponent(challenge)}&returnTo=${encodeURIComponent(safe)}`;
 }
 
-/** App-origin URL the dashboard redirects back to after minting a code. */
+/** Managed-app URL the auth origin redirects back to after minting a code. */
 export function buildBridgeExchangeUrl(
   mintHostname: string,
   code: string,
@@ -372,7 +372,7 @@ export function buildBridgeExchangeUrl(
 // ---------------------------------------------------------------------------
 
 /**
- * Whether an unauthenticated app-mode visit should leave for the dashboard
+ * Whether an unauthenticated app-mode visit should leave for the auth origin
  * bridge right now. True only on the real app hosts, when the user has not
  * explicitly signed out here, when the domain-wide `steward-authed` marker
  * says a server session exists to bridge FROM (after any logout that marker
@@ -382,8 +382,8 @@ export function buildBridgeExchangeUrl(
  * ACCEPTED RISK: `steward-authed` is a non-HttpOnly parent-domain cookie, so
  * JS on a user-content sibling subdomain can PLANT it and force this gate
  * open. The cookie is only ever a routing hint — minting still requires the
- * dashboard's localStorage Bearer, exchanging still requires this origin's
- * state + verifier — so the worst case is one wasted bounce to the dashboard
+ * auth origin's localStorage Bearer, exchanging still requires this origin's
+ * state + verifier — so the worst case is one wasted bounce to the auth origin
  * and back to /login, bounded to one attempt per tab per 5 minutes by the
  * loop guard. There is no unplantable cross-origin signal available to a
  * first visit, so this hint is used knowingly.
@@ -399,7 +399,7 @@ export function shouldAutoBridgeToSso(
 }
 
 /**
- * Leave for the dashboard mint leg: create + store the state nonce and PKCE
+ * Leave for the auth-origin mint leg: create + store the state nonce and PKCE
  * verifier, mark the attempt, and replace the location (the gate page is
  * transient — Back must not re-enter it). Resolves false when the bridge
  * cannot start (no nonce storage / unknown host); the caller falls back to
@@ -605,8 +605,8 @@ export function burnSsoBridgeCode(
 // ---------------------------------------------------------------------------
 
 /**
- * Explicit sign-out on ANY host of a bridge pair — ConsoleShell routes both
- * the app-mode AND dashboard sign-out branches here, because a dashboard
+ * Explicit sign-out on ANY host of a bridge pair. The unified app's account
+ * action routes hosted and public-auth sessions here because a local-only
  * sign-out that never reaches `/api/auth/logout` stamps no server logout
  * marker, and the paired origin's surviving session would silently undo it
  * (re-planting the domain cookies via its background session sync). Order
@@ -618,7 +618,7 @@ export function burnSsoBridgeCode(
  * local scrub stays synchronous so the login page never renders over a
  * half-signed-out session. On hostnames outside the deployed map (local dev)
  * the server call is skipped and this degrades to the local scrub, exactly
- * the previous dashboard behavior. The returned promise settles with the
+ * the previous local behavior. The returned promise settles with the
  * server teardown; callers may ignore it.
  */
 export async function signOutFromSsoBridgedHost(

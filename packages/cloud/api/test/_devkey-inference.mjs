@@ -2,7 +2,7 @@
 import { readFileSync } from "node:fs";
 
 const KEY = readFileSync("/tmp/view-work/dev-key.txt", "utf8").trim();
-const API = "https://api.elizacloud.ai";
+const API = "https://api.eliza.app";
 const log = (...a) => console.log(new Date().toISOString().slice(11, 19), ...a);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 async function j(m, p, { body, base } = {}) {
@@ -33,7 +33,7 @@ if (!id) {
   log("FAIL no agent");
   process.exit(1);
 }
-const pub = `https://${id}.elizacloud.ai`;
+const pub = `https://${id}.cloud.eliza.app`;
 let ready = false;
 const t0 = Date.now();
 for (let i = 0; i < 40; i++) {

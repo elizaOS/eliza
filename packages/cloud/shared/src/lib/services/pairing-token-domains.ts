@@ -1,11 +1,11 @@
 // Domain alias groups — all domains in a group resolve to the same agent
 // container. Each agent's public URL may be rewritten between any two
 // domains in the same group (e.g. the dashboard generates an
-// `<uuid>.elizacloud.ai` link but the agent was originally provisioned with
+// `<uuid>.cloud.eliza.app` link but the agent was originally provisioned with
 // an `<uuid>.waifu.fun` Origin), so token validation tries every alias.
 //
-// `.elizacloud.ai` is the canonical post-2026-05 brand; `.waifu.fun` and
-// `.eliza.ai` are kept during the rebrand grace period and can be retired
+// `.cloud.eliza.app` is canonical; `.elizacloud.ai`, `.waifu.fun`, and
+// `.eliza.ai` are retained only while old pairing records expire
 // once no DB rows reference them.
 //
 // Intentionally NOT in this list:
@@ -19,7 +19,8 @@
 // import chain.
 
 export const DOMAIN_ALIAS_GROUPS: readonly (readonly string[])[] = [
-  [".waifu.fun", ".eliza.ai", ".elizacloud.ai"],
+  [".cloud.eliza.app", ".elizacloud.ai", ".waifu.fun", ".eliza.ai"],
+  [".cloud-staging.eliza.app", ".staging.elizacloud.ai"],
 ];
 
 /**

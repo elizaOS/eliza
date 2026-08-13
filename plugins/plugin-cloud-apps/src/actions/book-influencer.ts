@@ -225,7 +225,7 @@ export const bookInfluencerAction: Action = {
           // The earlier fund attempt failed at the transport level, so the
           // escrow may already be held server-side. Never claim "nothing
           // happened" — tell the user where to check and how to get a refund.
-          const bookingsUrl = `${resolveCloudSiteBaseUrl(runtime)}/dashboard/marketing/influencers`;
+          const bookingsUrl = `${resolveCloudSiteBaseUrl(runtime)}/cloud/marketing/influencers`;
           const msg =
             `Okay — I won't retry that booking. Heads up: my earlier attempt to fund ${pending.metadata.appName} for ${usd(pending.metadata.amount)} didn't confirm either way, ` +
             `so the booking may already exist with the budget held in escrow. Check your bookings at ${bookingsUrl} — if it's there you can cancel it for a full refund.`;
@@ -370,7 +370,7 @@ export const bookInfluencerAction: Action = {
           // confirm is settled and the pending can go.
           await deleteCloudAppConfirmation(runtime, pending.taskId);
           if (info.status === 402) {
-            const billingUrl = `${resolveCloudSiteBaseUrl(runtime)}/dashboard/billing`;
+            const billingUrl = `${resolveCloudSiteBaseUrl(runtime)}/cloud/billing`;
             const msg =
               `Not enough credits to book ${pending.metadata.appName} for ${usd(pending.metadata.amount)} — nothing was funded. ` +
               `Add credits and ask me again: ${billingUrl}`;

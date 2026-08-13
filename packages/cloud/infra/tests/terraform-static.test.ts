@@ -142,36 +142,143 @@ describe("Cloudflare Pages domain durability", () => {
     join(CLOUDFLARE_PAGES_DOMAINS_DIR, "variables.tf"),
     "utf-8",
   );
+  const outputs = readFileSync(
+    join(CLOUDFLARE_PAGES_DOMAINS_DIR, "outputs.tf"),
+    "utf-8",
+  );
+  const readme = readFileSync(
+    join(CLOUDFLARE_PAGES_DOMAINS_DIR, "README.md"),
+    "utf-8",
+  );
+  const stagingExample = readFileSync(
+    join(CLOUDFLARE_PAGES_DOMAINS_DIR, "tfvars", "staging.tfvars.example"),
+    "utf-8",
+  );
+  const productionExample = readFileSync(
+    join(CLOUDFLARE_PAGES_DOMAINS_DIR, "tfvars", "production.tfvars.example"),
+    "utf-8",
+  );
   const workflow = readFileSync(
-    join(
-      import.meta.dir,
-      "../../../../.github/workflows/infra.yml",
-    ),
+    join(import.meta.dir, "../../../../.github/workflows/infra.yml"),
     "utf-8",
   );
 
-  test("binds production and staging to distinct Pages branch aliases", () => {
-    expect(main).toContain('domain       = "elizacloud.ai"');
-    expect(main).toContain('domain       = "app.elizacloud.ai"');
-    expect(main).toContain('domain       = "staging.elizacloud.ai"');
-    expect(main).toContain('domain       = "app-staging.elizacloud.ai"');
-    expect(main).toContain('cname_target = "develop.eliza-cloud.pages.dev"');
+  test("binds every canonical browser host to one Pages project", () => {
+    expect(main).toContain('domain       = "eliza.app"');
+    expect(main).toContain('domain       = "cloud.eliza.app"');
+    expect(main).toContain('domain       = "www.eliza.app"');
+    expect(main).toContain('domain       = "staging.eliza.app"');
+    expect(main).toContain('domain       = "cloud-staging.eliza.app"');
     expect(main).toContain('cname_target = "develop.eliza-app.pages.dev"');
+    expect(main).not.toContain('project_name = "eliza-cloud"');
     expect(main).toContain('resource "cloudflare_pages_domain" "public"');
     expect(main).toContain('resource "cloudflare_dns_record" "pages"');
+    expect(readme).toContain("custom branch aliases");
   });
 
-  test("adopts live bindings and exact-name DNS records before managing them", () => {
-    expect(imports).toContain('data "cloudflare_dns_records" "existing_pages"');
-    expect(imports).toContain("exact = each.value.domain");
-    expect(imports).toContain("cloudflare_pages_domain.public[each.key]");
-    expect(imports).toContain("cloudflare_dns_record.pages[each.key]");
+  test("adopts canonical and legacy DNS only through explicit record ids", () => {
+    expect(variables).toContain('variable "dns_record_import_ids"');
+    expect(imports).not.toContain('data "cloudflare_dns_records"');
     expect(imports).toContain(
-      "one(data.cloudflare_dns_records.existing_pages[each.key].result).id",
+      'lookup(var.dns_record_import_ids, "pages/${key}", "")',
+    );
+    expect(imports).toContain("cloudflare_dns_record.pages[each.key]");
+    expect(imports).toContain("local.canonical_edge_dns_imports");
+    expect(imports).toContain("local.legacy_edge_dns_imports");
+    expect(readme).toContain("Omit a key only when");
+  });
+
+  test("owns canonical agent and site wildcard DNS plus additive certificates", () => {
+    expect(main).toContain('"*.cloud.eliza.app"');
+    expect(main).toContain('"*.sites.eliza.app"');
+    expect(main).toContain('"*.cloud-staging.eliza.app"');
+    expect(main).toContain('"*.sites-staging.eliza.app"');
+    expect(main).toContain(
+      'resource "cloudflare_dns_record" "canonical_edge_wildcard"',
+    );
+    expect(main).toContain(
+      'resource "cloudflare_certificate_pack" "canonical_edge"',
+    );
+    expect(main).toContain('type                  = "advanced"');
+    expect(main).toContain("prevent_destroy = true");
+    expect(variables).toContain('variable "canonical_edge_wildcard_origins"');
+    expect(variables).toContain('variable "canonical_edge_certificate_packs"');
+    expect(imports).toContain(
+      "cloudflare_certificate_pack.canonical_edge[each.key]",
+    );
+    expect(outputs).toContain('output "canonical_edge"');
+  });
+
+  test("owns proxied DNS for every exact canonical Worker service", () => {
+    for (const hostname of [
+      "api.eliza.app",
+      "blob.eliza.app",
+      "plugins.eliza.app",
+      "relay.eliza.app",
+      "x402.eliza.app",
+      "api-staging.eliza.app",
+      "blob-staging.eliza.app",
+      "plugins-staging.eliza.app",
+      "relay-staging.eliza.app",
+      "x402-staging.eliza.app",
+    ]) {
+      expect(variables).toContain(hostname);
+    }
+    expect(main).toContain(
+      'resource "cloudflare_dns_record" "canonical_service"',
+    );
+    expect(variables).toContain('variable "canonical_service_origins"');
+    expect(imports).toContain("local.canonical_service_dns_imports");
+    expect(imports).toContain(
+      "cloudflare_dns_record.canonical_service[each.key]",
     );
   });
 
-  test("owns the staging dedicated-agent wildcard and paid certificate pack", () => {
+  test("owns reviewed Railway tunnel DNS as an imported DNS-only inventory", () => {
+    expect(variables).toContain('variable "railway_tunnel_dns_records"');
+    expect(variables).toContain('"apex-routing"');
+    expect(variables).toContain('"apex-verification"');
+    expect(variables).toContain('"wildcard-routing"');
+    expect(variables).toContain('"wildcard-certificate"');
+    expect(variables).toContain('"wildcard-verification"');
+    expect(main).toContain('resource "cloudflare_dns_record" "railway_tunnel"');
+    expect(main).toContain("for_each = var.railway_tunnel_dns_records");
+    expect(main).toContain("proxied = false");
+    expect(variables).toContain("roles   = set(string)");
+    expect(variables).toContain("length(distinct([");
+    expect(imports).toContain('"railway-tunnel/$' + '{key}"');
+    expect(imports).toContain("cloudflare_dns_record.railway_tunnel[each.key]");
+    expect(outputs).toContain('output "railway_tunnel_dns"');
+    expect(outputs).toContain(
+      "roles   = var.railway_tunnel_dns_records[key].roles",
+    );
+    for (const example of [stagingExample, productionExample]) {
+      expect(example).toContain('"railway-tunnel/shared-verification"');
+      expect(example).toContain(
+        'roles   = ["apex-verification", "wildcard-verification"]',
+      );
+    }
+    expect(readme).toContain("RAILWAY_TUNNEL_DNS_RECORDS_JSON");
+    expect(readme).toContain("deduplicates a");
+    expect(readme).toContain("no paid Cloudflare certificate dependency");
+  });
+
+  test("keeps legacy redirect ingress explicit and preserves the live staging pack", () => {
+    for (const hostname of [
+      "elizacloud.ai",
+      "app.elizacloud.ai",
+      "www.elizacloud.ai",
+      "docs.elizacloud.ai",
+      "api.elizacloud.ai",
+      "blob.elizacloud.ai",
+      "plugins.elizacloud.ai",
+      "relay.elizacloud.ai",
+      "x402.elizacloud.ai",
+    ]) {
+      expect(main).toContain(hostname);
+    }
+    expect(variables).toContain('"*.sites.elizacloud.ai"');
+    expect(variables).toContain('"*.tunnel.elizacloud.ai"');
     expect(main).toContain(
       'resource "cloudflare_dns_record" "staging_agent_wildcard"',
     );
@@ -179,18 +286,13 @@ describe("Cloudflare Pages domain durability", () => {
     expect(main).toContain(
       'resource "cloudflare_certificate_pack" "staging_agent"',
     );
-    expect(main).toContain('type                  = "advanced"');
-    expect(main).toContain("prevent_destroy       = true");
-    expect(imports).toContain(
-      'data "cloudflare_dns_records" "existing_staging_agent_wildcard"',
+    expect(main).toContain(
+      'resource "cloudflare_certificate_pack" "legacy_redirect"',
     );
     expect(imports).toContain("cloudflare_certificate_pack.staging_agent[0]");
-    expect(variables).toContain('variable "staging_agent_wildcard_origins"');
-    expect(variables).toContain('variable "staging_agent_certificate_pack_id"');
-    expect(workflow).toContain("STAGING_AGENT_WILDCARD_ORIGINS_JSON");
-    expect(workflow).toContain("pages-domains");
-    expect(workflow).toContain("STAGING_AGENT_CERTIFICATE_PACK_ID");
-    expect(workflow).toContain("terraform-probe.staging.elizacloud.ai");
+    expect(variables).toContain('variable "legacy_redirect_wildcard_origins"');
+    expect(variables).toContain('variable "legacy_redirect_certificate_packs"');
+    expect(outputs).toContain('output "redirect_dns"');
   });
 
   test("keeps real writes manual and verifies certificate plus routing after apply", () => {
@@ -198,6 +300,13 @@ describe("Cloudflare Pages domain durability", () => {
     expect(workflow).toContain("options: [plan, apply, state-rm]");
     expect(workflow).toContain("terraform apply -no-color -input=false");
     expect(workflow).toContain('entry.status !== "active"');
+    expect(workflow).toContain(
+      "TF_VAR_railway_tunnel_dns_records: $" +
+        "{{ vars.RAILWAY_TUNNEL_DNS_RECORDS_JSON || '{}' }}",
+    );
+    expect(workflow).toContain("terraform output -json railway_tunnel_dns");
+    expect(workflow).toContain("record.proxied !== false");
+    expect(workflow).toContain("record.roles?.includes(role)");
     expect(workflow).toContain("--require-beacon");
     expect(workflow).not.toContain("bun install");
     expect(workflow).not.toContain("push:");

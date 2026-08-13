@@ -11,6 +11,10 @@
  */
 import type { IAgentRuntime } from "@elizaos/core";
 import {
+  classifyElizaHostname,
+  ELIZA_DOMAIN_CONTRACTS,
+} from "@elizaos/shared/elizacloud";
+import {
   buildRemoteCapabilityEndpointTrustPolicy,
   connectRemoteCapabilityEndpointProvider,
   installRemoteCapabilityEndpoint,
@@ -440,11 +444,20 @@ function normalizeCloudApiBase(value: string): string {
   if (!trimmed) throw new Error("cloudApiBase is required.");
   try {
     const url = new URL(trimmed);
+    const classified = classifyElizaHostname(url.hostname);
     if (
-      url.hostname === "www.elizacloud.ai" ||
-      url.hostname === "elizacloud.ai"
+      classified.environment &&
+      [
+        "marketing",
+        "cloud-app",
+        "legacy-marketing",
+        "legacy-cloud-app",
+        "legacy-cloud-api",
+      ].includes(classified.role)
     ) {
-      url.hostname = "api.elizacloud.ai";
+      url.hostname = new URL(
+        ELIZA_DOMAIN_CONTRACTS[classified.environment].cloudApiOrigin,
+      ).hostname;
     }
     return url.toString().replace(/\/+$/, "");
   } catch {

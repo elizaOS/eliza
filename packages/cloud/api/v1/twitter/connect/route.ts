@@ -38,8 +38,8 @@ app.post("/", async (c) => {
     const baseUrl =
       c.env?.NEXT_PUBLIC_APP_URL ||
       process.env.NEXT_PUBLIC_APP_URL ||
-      "https://www.elizacloud.ai";
-    const defaultRedirectPath = "/dashboard/settings?tab=connections";
+      "https://cloud.eliza.app";
+    const defaultRedirectPath = "/cloud/settings?tab=connections";
     const { target: safeRedirectTarget, rejected } =
       resolveOAuthSuccessRedirectUrl({
         value:

@@ -74,7 +74,7 @@ Read by the resolve functions at call time via `runtime.getSetting()`:
 |---|---|
 | `ELIZAOS_CLOUD_API_KEY` | Cloud API key; required for cloud-proxy source |
 | `ELIZAOS_CLOUD_ENABLED` | Must be `"true"`, `"1"`, or boolean `true` to enable cloud routing |
-| `ELIZAOS_CLOUD_BASE_URL` | Override cloud base URL; defaults to `https://www.elizacloud.ai/api/v1` |
+| `ELIZAOS_CLOUD_BASE_URL` | Override cloud base URL; defaults to `https://api.eliza.app/api/v1` |
 | `ELIZAOS_CLOUD_ROUTING_LLM` | Per-feature policy for LLM calls |
 | `ELIZAOS_CLOUD_ROUTING_RPC` | Per-feature policy for blockchain RPC |
 | `ELIZAOS_CLOUD_ROUTING_TOOL_USE` | Per-feature policy for tool/function execution |

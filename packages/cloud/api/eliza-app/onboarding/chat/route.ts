@@ -130,7 +130,7 @@ async function resolveCaller(
     };
   }
 
-  // Steward session — the branded email/OAuth login on *.elizacloud.ai —
+  // Steward session — the branded email/OAuth login on the eliza.app hosts —
   // accepted by BEARER ONLY, never the steward-token cookie: this POST binds
   // sessions, links identities and starts provisioning, and Hono's
   // `req.json()` parses a cross-site text/plain simple request, so a

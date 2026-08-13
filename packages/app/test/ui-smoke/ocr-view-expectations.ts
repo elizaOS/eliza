@@ -234,11 +234,10 @@ export const VIEW_OCR_POLICIES = {
     requireAll: ["Misty Forest", "Desert Dusk"],
     requireAny: ["Ocean Deep", "Alpine Dawn", "Ember Night"],
   }),
-  "plugin-cloud-gui": exempt(
-    "unregistered-remote-bundle",
-    "The Cloud GUI has no remote bundle in the hermetic browser audit, so the view-registry fallback is the only observable surface.",
-    VIEW_REGISTRY_FALLBACK,
-  ),
+  // The hermetic audit runs a local agent topology. Direct Cloud navigation is
+  // deliberately unavailable there and returns to the normal launcher; Cloud
+  // routes are exercised separately with a managed-agent runtime fixture.
+  "plugin-cloud-gui": expected(LAUNCHER_FALLBACK),
   "plugin-contacts-gui": expected({
     requireAny: ["address book", "phone, or email", "search"],
   }),

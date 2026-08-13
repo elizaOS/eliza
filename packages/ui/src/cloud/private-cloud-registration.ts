@@ -1,7 +1,7 @@
 /**
  * Route-owned private cloud surface registration (#18056).
  *
- * Public boot only registers public/auth routes. Private dashboard/settings
+ * Public boot only registers public/auth routes. Private Cloud/settings
  * domains are loaded when a private path is actually visited, via
  * {@link ensurePrivateCloudSurfaces}. Status is observable so the shell can
  * show pending / retry / real-404 without fire-and-forget races.
@@ -100,6 +100,10 @@ async function loadPrivateCloudDomains(): Promise<void> {
   registerAdminCloudRoutes();
   registerMcpsCloudRoute();
   registerCloudSettingsSections();
+  const { registerManagedCloudAppShellPage } = await import(
+    "./register-managed-cloud-page"
+  );
+  registerManagedCloudAppShellPage();
 }
 
 /**
@@ -121,13 +125,19 @@ export function subscribePrivateCloudRegistration(
 }
 
 /**
- * True when the URL requires private cloud domains (dashboard / console).
- * Public auth and marketing paths must stay false so idle `/login` never
- * starts private chunk downloads.
+ * True when the URL requires private Cloud domains. Retired dashboard links
+ * are included so the router can load before issuing their canonical redirect.
+ * Public auth and marketing paths stay false so idle `/login` never starts
+ * private chunk downloads.
  */
 export function pathNeedsPrivateCloudSurfaces(pathname: string): boolean {
   const path = pathname.replace(/^\/+/, "").replace(/\/+$/, "");
-  return path === "dashboard" || path.startsWith("dashboard/");
+  return (
+    path === "cloud" ||
+    path.startsWith("cloud/") ||
+    path === "dashboard" ||
+    path.startsWith("dashboard/")
+  );
 }
 
 /**

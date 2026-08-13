@@ -98,7 +98,7 @@ describe("resolveCloudAgentApiBase", () => {
         agentId: "agent-123",
         cloudApiBase: "https://www.elizacloud.ai",
       }),
-    ).toBe("https://api.elizacloud.ai/api/v1/eliza/agents/agent-123");
+    ).toBe("https://api.eliza.app/api/v1/eliza/agents/agent-123");
   });
 
   it("derives from agentId when both server URLs are missing", () => {
@@ -109,7 +109,7 @@ describe("resolveCloudAgentApiBase", () => {
         agentId: "agent-xyz",
         cloudApiBase: "https://api.elizacloud.ai",
       }),
-    ).toBe("https://api.elizacloud.ai/api/v1/eliza/agents/agent-xyz");
+    ).toBe("https://api.eliza.app/api/v1/eliza/agents/agent-xyz");
   });
 
   it("does NOT clobber a raw dedicated bridge even when agentId is supplied", () => {
@@ -145,14 +145,14 @@ describe("cloud-agent-base helpers", () => {
 
   it("buildDedicatedCloudAgentApiBase preserves production as the default", () => {
     expect(buildDedicatedCloudAgentApiBase("agent-123")).toBe(
-      "https://agent-123.elizacloud.ai",
+      "https://agent-123.cloud.eliza.app",
     );
     expect(
       buildDedicatedCloudAgentApiBase(
         "agent-123",
         "https://api.elizacloud.ai/api/v1",
       ),
-    ).toBe("https://agent-123.elizacloud.ai");
+    ).toBe("https://agent-123.cloud.eliza.app");
   });
 
   it("buildDedicatedCloudAgentApiBase keeps staging agents on staging ingress", () => {
@@ -161,9 +161,12 @@ describe("cloud-agent-base helpers", () => {
       "https://api-staging.elizacloud.ai/api/v1",
       "https://app-staging.elizacloud.ai",
       "https://existing.staging.elizacloud.ai",
+      "https://cloud-staging.eliza.app",
+      "https://api-staging.eliza.app/api/v1",
+      "https://existing.cloud-staging.eliza.app",
     ]) {
       expect(buildDedicatedCloudAgentApiBase("agent-123", cloudBase)).toBe(
-        "https://agent-123.staging.elizacloud.ai",
+        "https://agent-123.cloud-staging.eliza.app",
       );
     }
   });
@@ -175,7 +178,7 @@ describe("cloud-agent-base helpers", () => {
         apiBase: "https://agent-123.staging.elizacloud.ai",
         bootCloudApiBase: "https://elizacloud.ai",
       }),
-    ).toBe("https://staging.elizacloud.ai");
+    ).toBe("https://cloud-staging.eliza.app");
 
     expect(
       resolveCloudEnvironmentBase({
@@ -183,7 +186,7 @@ describe("cloud-agent-base helpers", () => {
         apiBase: "https://agent-123.staging.elizacloud.ai",
         bootCloudApiBase: "https://elizacloud.ai",
       }),
-    ).toBe("https://staging.elizacloud.ai");
+    ).toBe("https://cloud-staging.eliza.app");
 
     expect(
       resolveCloudEnvironmentBase({
@@ -191,7 +194,7 @@ describe("cloud-agent-base helpers", () => {
         apiBase: "https://agent-123.elizacloud.ai",
         bootCloudApiBase: "https://staging.elizacloud.ai",
       }),
-    ).toBe("https://staging.elizacloud.ai");
+    ).toBe("https://cloud-staging.eliza.app");
   });
 
   it("dedicatedCloudAgentIdFromBase extracts production and staging ids", () => {
@@ -200,6 +203,14 @@ describe("cloud-agent-base helpers", () => {
     ).toBe("agent-123");
     expect(
       dedicatedCloudAgentIdFromBase("https://agent-123.staging.elizacloud.ai"),
+    ).toBe("agent-123");
+    expect(
+      dedicatedCloudAgentIdFromBase("https://agent-123.cloud.eliza.app"),
+    ).toBe("agent-123");
+    expect(
+      dedicatedCloudAgentIdFromBase(
+        "https://agent-123.cloud-staging.eliza.app",
+      ),
     ).toBe("agent-123");
   });
 

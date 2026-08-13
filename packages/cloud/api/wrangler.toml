@@ -157,17 +157,18 @@ new_sqlite_classes = ["OnboardingSessionCoordinator"]
 # -----------------------------------------------------------------------------
 [vars]
 NODE_ENV = "production"
-NEXT_PUBLIC_APP_URL = "https://elizacloud.ai"
-NEXT_PUBLIC_API_URL = "https://api.elizacloud.ai"
-ELIZA_CLOUD_URL = "https://elizacloud.ai"
-ELIZA_CLOUD_AGENT_BASE_DOMAIN = "elizacloud.ai"
+NEXT_PUBLIC_APP_URL = "https://cloud.eliza.app"
+NEXT_PUBLIC_API_URL = "https://api.eliza.app"
+ELIZA_CLOUD_URL = "https://api.eliza.app"
+ELIZA_CLOUD_AGENT_BASE_DOMAIN = "cloud.eliza.app"
+ELIZA_FRONTEND_HOST_SUFFIX = "sites.eliza.app"
 # Internal Worker-to-agent calls must target the control-plane origin directly;
 # same-zone fetches to a UUID host bypass its Worker route and hit wildcard DNS.
-AGENT_ROUTER_ORIGIN_HOST = "eliza-production-1.elizacloud.ai"
+AGENT_ROUTER_ORIGIN_HOST = "eliza-production-1.eliza.app"
 WAIFU_SERVICE_ORG_ID = "d96d3fc8-cc07-40be-b81c-ba7a7b4e8028"
 WAIFU_SERVICE_USER_ID = "90101225-836f-4fa7-a69c-f70691dcf256"
-ELIZA_APP_URL = "https://eliza.app"
-ELIZA_ONBOARDING_APP_URL = "https://app.elizacloud.ai"
+ELIZA_APP_URL = "https://cloud.eliza.app"
+ELIZA_ONBOARDING_APP_URL = "https://cloud.eliza.app"
 ELIZA_ONBOARDING_LOGIN_APP_URL = "https://eliza.app"
 NEXT_PUBLIC_NETWORK = "base"
 NEXT_PUBLIC_SOLANA_RPC_URL = "https://api.mainnet-beta.solana.com"
@@ -233,15 +234,15 @@ INFERENCE_PASSTHROUGH_STREAMING = "false"
 # through the identical settle chain. Default off; rollback = flip off.
 INFERENCE_PASSTHROUGH_EMBEDDINGS = "false"
 FORCE_REDIS_EVENTS = "false"
-R2_PUBLIC_HOST = "blob.elizacloud.ai"
+R2_PUBLIC_HOST = "blob.eliza.app"
 SQL_HEAVY_PAYLOAD_STORAGE = "r2"
 SQL_HEAVY_PAYLOAD_MIN_BYTES = "0"
 SQL_HEAVY_PAYLOAD_INLINE_PREVIEW_BYTES = "512"
 LLM_TRAJECTORY_STORAGE = "r2"
-HEADSCALE_PUBLIC_URL = "https://headscale.elizacloud.ai"
-HEADSCALE_API_URL = "https://headscale.elizacloud.ai"
+HEADSCALE_PUBLIC_URL = "https://headscale.eliza.app"
+HEADSCALE_API_URL = "https://headscale.eliza.app"
 HEADSCALE_USER = "tunnel"
-TUNNEL_PROXY_HOST = "tunnel.elizacloud.ai"
+TUNNEL_PROXY_HOST = "tunnel.eliza.app"
 TUNNEL_TAILNET_DOMAIN = "tunnel.eliza.local"
 TUNNEL_AUTH_KEY_COST_USD = "0.01"
 
@@ -380,19 +381,27 @@ workers_dev = false
 # follows in its own change.
 placement = { mode = "smart" }
 routes = [
+  # Canonical browser hosts belong to the eliza-app Pages project. Pages
+  # Functions proxy /api and auth protocol paths to this Worker.
+  { pattern = "api-staging.eliza.app/*", zone_name = "eliza.app" },
+  { pattern = "*.cloud-staging.eliza.app/*", zone_name = "eliza.app" },
+  { pattern = "blob-staging.eliza.app/*", zone_name = "eliza.app" },
+  { pattern = "plugins-staging.eliza.app/*", zone_name = "eliza.app" },
+  { pattern = "relay-staging.eliza.app/*", zone_name = "eliza.app" },
+  { pattern = "x402-staging.eliza.app/*", zone_name = "eliza.app" },
+  { pattern = "*.sites-staging.eliza.app/*", zone_name = "eliza.app" },
+  # Legacy names remain routed only so this Worker can issue deterministic 308s
+  # while clients, bookmarks, and webhooks transition to the canonical zone.
   { pattern = "staging.elizacloud.ai/*", zone_name = "elizacloud.ai" },
   { pattern = "app-staging.elizacloud.ai/*", zone_name = "elizacloud.ai" },
   { pattern = "api-staging.elizacloud.ai/*", zone_name = "elizacloud.ai" },
-  # Per-agent subdomains for staging (#15205): mirrors prod's *.elizacloud.ai so
-  # the STAGING Worker (not the prod one) proxies staging agents. Requires the
-  # matching *.staging.elizacloud.ai DNS wildcard and ELIZA_CLOUD_AGENT_BASE_DOMAIN
-  # = staging.elizacloud.ai (below). Without it, staging agent URLs fall into the
-  # prod *.elizacloud.ai wildcard and the prod worker 404s them (CORS dead-end).
   { pattern = "*.staging.elizacloud.ai/*", zone_name = "elizacloud.ai" },
-  # Public R2 objects for staging. Without this explicit route the host falls
-  # into [env.production]'s *.elizacloud.ai wildcard and the PROD worker serves
-  # the PROD bucket for staging-minted URLs.
+  { pattern = "*.tunnel-staging.elizacloud.ai/*", zone_name = "elizacloud.ai" },
+  { pattern = "*.sites-staging.elizacloud.ai/*", zone_name = "elizacloud.ai" },
   { pattern = "blob-staging.elizacloud.ai/*", zone_name = "elizacloud.ai" },
+  { pattern = "plugins.staging.elizacloud.ai/*", zone_name = "elizacloud.ai" },
+  { pattern = "relay-staging.elizacloud.ai/*", zone_name = "elizacloud.ai" },
+  { pattern = "x402-staging.elizacloud.ai/*", zone_name = "elizacloud.ai" },
 ]
 
 [env.staging.define]
@@ -407,9 +416,10 @@ NODE_ENV = "production"
 # Caddy app node + armed daemon) is live on staging. Gates configureAppsDeployTrigger
 # in bootstrap-app.ts; no effect on Product-1 / agent paths.
 APPS_DEPLOY_ENABLED = "1"
-NEXT_PUBLIC_APP_URL = "https://staging.elizacloud.ai"
-NEXT_PUBLIC_API_URL = "https://api-staging.elizacloud.ai"
-ELIZA_CLOUD_URL = "https://staging.elizacloud.ai"
+NEXT_PUBLIC_APP_URL = "https://cloud-staging.eliza.app"
+NEXT_PUBLIC_API_URL = "https://api-staging.eliza.app"
+ELIZA_CLOUD_URL = "https://api-staging.eliza.app"
+ELIZA_FRONTEND_HOST_SUFFIX = "sites-staging.eliza.app"
 # OpenID Connect provider (Eliza Cloud as the OP for Eliza Hub). Committed vars,
 # not secrets: the issuer string is byte-compared by every relying party, so it
 # must survive a redeploy that wipes secrets rather than silently disappear.
@@ -422,7 +432,7 @@ ELIZA_CLOUD_URL = "https://staging.elizacloud.ai"
 # `build:web` env blocks in .github/workflows/cloud-cf-deploy.yml carry it, and
 # `packages/cloud/shared/src/lib/oidc/config.test.ts` fails if the two drift.
 OIDC_ENABLED = "true"
-OIDC_ISSUER_URL = "https://api-staging.elizacloud.ai"
+OIDC_ISSUER_URL = "https://api-staging.eliza.app"
 # Per-tenant `magicLinkBaseUrl` (set in Steward Neon `tenant_configs.email_config`)
 # redirects email magic-link callbacks to staging.elizacloud.ai instead of the
 # prod fallback (www.elizacloud.ai). Tenant row provisioned manually.
@@ -432,37 +442,23 @@ NEXT_PUBLIC_STEWARD_TENANT_ID = "elizacloud-staging"
 # <id>.elizacloud.ai), served by the *.staging.elizacloud.ai/* route above.
 # Was "elizacloud.ai", which minted staging agent URLs on the PROD wildcard so
 # the prod worker (which has no staging agents) served CORS-less 404s (#15205).
-ELIZA_CLOUD_AGENT_BASE_DOMAIN = "staging.elizacloud.ai"
+ELIZA_CLOUD_AGENT_BASE_DOMAIN = "cloud-staging.eliza.app"
 # Routes agent-subdomain traffic to the staging control-plane VM. Without this
 # the Worker falls back to DEFAULT_AGENT_ROUTER_ORIGIN_HOST in
 # packages/cloud/api/src/index.ts (= eliza-production-1.elizacloud.ai) so
 # staging agent requests would silently hit the prod CP.
-AGENT_ROUTER_ORIGIN_HOST = "eliza-staging-1.elizacloud.ai"
+AGENT_ROUTER_ORIGIN_HOST = "eliza-staging-1.eliza.app"
 WAIFU_SERVICE_ORG_ID = "d96d3fc8-cc07-40be-b81c-ba7a7b4e8028"
 WAIFU_SERVICE_USER_ID = "90101225-836f-4fa7-a69c-f70691dcf256"
-ELIZA_APP_URL = "https://eliza.app"
-# Onboarding dashboard/billing links. Production pins the Eliza *app* host
-# (app.elizacloud.ai), deliberately not the console apex, so this must pin the
-# app host's staging peer — app-staging.elizacloud.ai, the `eliza-app` Pages
-# domain owned by terraform/cloudflare/pages-domains and reclaimed from the prod
-# wildcard by the staging Worker route above. Unpinned, `getOnboardingAppUrl`
-# fell through to NEXT_PUBLIC_APP_URL and emitted the staging *console* apex:
-# right environment, wrong surface, and silently divergent from production.
-# Same environment-peer rule as STAGING_ELIZA_APP_ORIGIN in
-# packages/ui/src/utils/cloud-agent-base.ts (#15161).
-ELIZA_ONBOARDING_APP_URL = "https://app-staging.elizacloud.ai"
-# VESTIGIAL as of the CONNECT-DIRECT-STEWARD change: the messaging Connect CTA
-# now targets the Cloud app's own /get-started (ELIZA_ONBOARDING_APP_URL above)
-# for a direct Steward-login handoff, so onboarding-chat.ts no longer reads
-# ELIZA_ONBOARDING_LOGIN_APP_URL. Left in place (not deleted) because the
-# canonical Worker deploy still manages the paired out-of-band secret binding
-# around this key; deleting it here without updating that workflow could break
-# the secret-removal/restore dance. Safe to remove once that workflow drops it.
-# Login CTA base for onboarding DMs (`/get-started?onboardingSession=...`).
-# The staging homepage exists since 2026-08-11: CF Pages project
-# eliza-home-staging serves https://staging.eliza.app built with
-# VITE_ELIZACLOUD_API_URL=https://staging.elizacloud.ai (packages/homepage
-# .env.staging + the canonical deploy-homepage.yml workflow), so staging
+ELIZA_APP_URL = "https://cloud-staging.eliza.app"
+# Onboarding and billing links land in the hosted agent application's in-app
+# Cloud view. This host is distinct from staging.eliza.app, which owns the
+# public homepage and login entrypoint.
+ELIZA_ONBOARDING_APP_URL = "https://cloud-staging.eliza.app"
+# Canonical login and OIDC continuation origin. Onboarding itself uses the
+# hosted app URL above; authentication remains owned by staging.eliza.app.
+# The staging homepage is part of the host-aware eliza-app Pages artifact at
+# https://staging.eliza.app and proxies to https://api-staging.eliza.app, so staging
 # continuation tokens land on a bundle that redeems them against the STAGING
 # API. Before that this had to stay unpinned (prod-only homepage would freeze
 # staging tokens into a prod redemption endpoint - #18197); the interim live
@@ -544,7 +540,7 @@ INFERENCE_PASSTHROUGH_EMBEDDINGS = "true"
 # remains explicitly off (flag flip there is a separate, gated decision).
 VOICE_REALTIME_WS_ENABLED = "true"
 VOICE_REALTIME_CARTESIA_VOICE_ID = "db6b0ed5-d5d3-463d-ae85-518a07d3c2b4"
-VOICE_REALTIME_ELIZA_ENDPOINT = "https://api-staging.elizacloud.ai"
+VOICE_REALTIME_ELIZA_ENDPOINT = "https://api-staging.eliza.app"
 VOICE_REALTIME_ELIZA_MODEL = "gemma-4-31b"
 # Fish is promoted only by the environment-scoped deploy variable after its
 # credentials exist; the committed default remains safe for local deploys.
@@ -552,15 +548,15 @@ ELIZA_TTS_FISH_ENABLED = "false"
 FISH_AUDIO_DATA_GOVERNANCE_APPROVED = "false"
 
 FORCE_REDIS_EVENTS = "false"
-R2_PUBLIC_HOST = "blob-staging.elizacloud.ai"
+R2_PUBLIC_HOST = "blob-staging.eliza.app"
 SQL_HEAVY_PAYLOAD_STORAGE = "r2"
 SQL_HEAVY_PAYLOAD_MIN_BYTES = "0"
 SQL_HEAVY_PAYLOAD_INLINE_PREVIEW_BYTES = "512"
 LLM_TRAJECTORY_STORAGE = "r2"
-HEADSCALE_PUBLIC_URL = "https://headscale-staging.elizacloud.ai"
-HEADSCALE_API_URL = "https://headscale-staging.elizacloud.ai"
+HEADSCALE_PUBLIC_URL = "https://headscale-staging.eliza.app"
+HEADSCALE_API_URL = "https://headscale-staging.eliza.app"
 HEADSCALE_USER = "tunnel"
-TUNNEL_PROXY_HOST = "tunnel-staging.elizacloud.ai"
+TUNNEL_PROXY_HOST = "tunnel-staging.eliza.app"
 TUNNEL_TAILNET_DOMAIN = "tunnel.staging.eliza.local"
 TUNNEL_AUTH_KEY_COST_USD = "0.01"
 
@@ -626,11 +622,26 @@ name = "eliza-cloud-api-prod"
 # this line + redeploy.
 placement = { mode = "smart" }
 workers_dev = false
-# The wildcard makes this Worker the default origin for elizacloud.ai agent
-# subdomains; separately hosted surfaces need a more-specific route or DNS-only
-# record so they do not fall through to cloud-api.
+# Canonical routes serve the API and UUID agents. The cloud.eliza.app browser
+# host belongs to Pages; legacy routes remain redirect ingress during the
+# elizacloud.ai retirement window.
 routes = [
+  { pattern = "api.eliza.app/*", zone_name = "eliza.app" },
+  { pattern = "x402.eliza.app/*", zone_name = "eliza.app" },
+  { pattern = "blob.eliza.app/*", zone_name = "eliza.app" },
+  { pattern = "plugins.eliza.app/*", zone_name = "eliza.app" },
+  { pattern = "relay.eliza.app/*", zone_name = "eliza.app" },
+  { pattern = "*.cloud.eliza.app/*", zone_name = "eliza.app" },
+  { pattern = "*.sites.eliza.app/*", zone_name = "eliza.app" },
+  { pattern = "*.tunnel.elizacloud.ai/*", zone_name = "elizacloud.ai" },
+  { pattern = "*.sites.elizacloud.ai/*", zone_name = "elizacloud.ai" },
+  { pattern = "elizacloud.ai/*", zone_name = "elizacloud.ai" },
+  { pattern = "app.elizacloud.ai/*", zone_name = "elizacloud.ai" },
   { pattern = "api.elizacloud.ai/*", zone_name = "elizacloud.ai" },
+  { pattern = "relay.elizacloud.ai/*", zone_name = "elizacloud.ai" },
+  # The retired docs Worker is replaced by this exact route so every old docs
+  # URL receives the same deterministic redirect to https://eliza.app.
+  { pattern = "docs.elizacloud.ai/*", zone_name = "elizacloud.ai" },
   { pattern = "x402.elizacloud.ai/*", zone_name = "elizacloud.ai" },
   { pattern = "*.elizacloud.ai/*", zone_name = "elizacloud.ai" },
 ]
@@ -658,27 +669,28 @@ APPS_DEPLOY_ENABLED = "1"
 # in apps-deploy-gate.ts (#9735). To pilot a narrower cohort instead, replace "*"
 # with comma/space-separated org UUIDs.
 APPS_DEPLOY_ALLOWED_ORG_IDS = "*"
-NEXT_PUBLIC_APP_URL = "https://elizacloud.ai"
-NEXT_PUBLIC_API_URL = "https://api.elizacloud.ai"
-ELIZA_CLOUD_URL = "https://elizacloud.ai"
-ELIZA_CLOUD_AGENT_BASE_DOMAIN = "elizacloud.ai"
+NEXT_PUBLIC_APP_URL = "https://cloud.eliza.app"
+NEXT_PUBLIC_API_URL = "https://api.eliza.app"
+ELIZA_CLOUD_URL = "https://api.eliza.app"
+ELIZA_CLOUD_AGENT_BASE_DOMAIN = "cloud.eliza.app"
+ELIZA_FRONTEND_HOST_SUFFIX = "sites.eliza.app"
 # OpenID Connect provider — see the staging block for why these are vars, not
 # secrets. Flip OIDC_ENABLED to "true" only after OIDC_SIGNING_JWKS and
 # OIDC_CLIENTS are pushed; changing OIDC_ISSUER_URL afterwards invalidates every
 # relying-party account link.
 OIDC_ENABLED = "true"
-OIDC_ISSUER_URL = "https://api.elizacloud.ai"
+OIDC_ISSUER_URL = "https://api.eliza.app"
 # Pin the prod Steward tenant explicitly instead of leaning on the implicit
 # DEFAULT_STEWARD_TENANT_ID ("elizacloud") in steward-tenant-config.ts. That
 # implicit fallback is what the prod magic-link bug hinged on — make it explicit
 # so prod tenant scope can't silently shift if the code default ever changes.
 STEWARD_TENANT_ID = "elizacloud"
 NEXT_PUBLIC_STEWARD_TENANT_ID = "elizacloud"
-AGENT_ROUTER_ORIGIN_HOST = "eliza-production-1.elizacloud.ai"
+AGENT_ROUTER_ORIGIN_HOST = "eliza-production-1.eliza.app"
 WAIFU_SERVICE_ORG_ID = "d96d3fc8-cc07-40be-b81c-ba7a7b4e8028"
 WAIFU_SERVICE_USER_ID = "90101225-836f-4fa7-a69c-f70691dcf256"
-ELIZA_APP_URL = "https://eliza.app"
-ELIZA_ONBOARDING_APP_URL = "https://app.elizacloud.ai"
+ELIZA_APP_URL = "https://cloud.eliza.app"
+ELIZA_ONBOARDING_APP_URL = "https://cloud.eliza.app"
 ELIZA_ONBOARDING_LOGIN_APP_URL = "https://eliza.app"
 NEXT_PUBLIC_NETWORK = "base"
 NEXT_PUBLIC_SOLANA_RPC_URL = "https://api.mainnet-beta.solana.com"
@@ -748,15 +760,15 @@ VOICE_REALTIME_WS_ENABLED = "false"
 ELIZA_TTS_FISH_ENABLED = "false"
 FISH_AUDIO_DATA_GOVERNANCE_APPROVED = "false"
 FORCE_REDIS_EVENTS = "false"
-R2_PUBLIC_HOST = "blob.elizacloud.ai"
+R2_PUBLIC_HOST = "blob.eliza.app"
 SQL_HEAVY_PAYLOAD_STORAGE = "r2"
 SQL_HEAVY_PAYLOAD_MIN_BYTES = "0"
 SQL_HEAVY_PAYLOAD_INLINE_PREVIEW_BYTES = "512"
 LLM_TRAJECTORY_STORAGE = "r2"
-HEADSCALE_PUBLIC_URL = "https://headscale.elizacloud.ai"
-HEADSCALE_API_URL = "https://headscale.elizacloud.ai"
+HEADSCALE_PUBLIC_URL = "https://headscale.eliza.app"
+HEADSCALE_API_URL = "https://headscale.eliza.app"
 HEADSCALE_USER = "tunnel"
-TUNNEL_PROXY_HOST = "tunnel.elizacloud.ai"
+TUNNEL_PROXY_HOST = "tunnel.eliza.app"
 TUNNEL_TAILNET_DOMAIN = "tunnel.eliza.local"
 TUNNEL_AUTH_KEY_COST_USD = "0.01"
 

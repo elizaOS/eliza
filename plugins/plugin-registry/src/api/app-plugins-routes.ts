@@ -944,9 +944,53 @@ function inferSensitiveConfigKey(key: string): boolean {
   );
 }
 
+/**
+ * Reads a declared plugin param through the live runtime's `getSetting`
+ * surface. Connectors resolve credentials via `runtime.getSetting()`, which
+ * deliberately never falls through to `process.env`, so when this reader
+ * exists it is the only source the catalog may report from — a live miss
+ * stays a miss (#18713). Returning `undefined` here means "no live runtime";
+ * only then may the catalog fall back to env/saved config.
+ */
+function createRuntimeSettingReader(
+  runtime: AgentRuntime | null,
+): ((key: string) => string | undefined) | undefined {
+  if (!runtime || typeof runtime.getSetting !== "function") {
+    return undefined;
+  }
+  return (key: string) => {
+    const value = runtime.getSetting(key);
+    return typeof value === "string" && value.trim() ? value : undefined;
+  };
+}
+
+/**
+ * Consults the plugin's registered runtime service health probe when one
+ * exists. Returns `null` when the plugin exposes no health surface (loaded
+ * state stays authoritative), otherwise the probe result. Discord's init
+ * catches login failures, so a loaded plugin name alone cannot prove a live
+ * gateway (#18713).
+ */
+function resolvePluginServiceHealth(
+  runtime: AgentRuntime | null,
+  pluginId: string,
+): boolean | null {
+  if (!runtime || typeof runtime.getService !== "function") {
+    return null;
+  }
+  const service = runtime.getService(pluginId) as {
+    isHealthy?: () => boolean;
+  } | null;
+  if (!service || typeof service.isHealthy !== "function") {
+    return null;
+  }
+  return Boolean(service.isHealthy());
+}
+
 function buildPluginParamDefs(
   parameters: Record<string, ManifestPluginParameter> | undefined,
   savedValues?: Record<string, string>,
+  getRuntimeSetting?: (key: string) => string | undefined,
 ): Array<{
   key: string;
   type: string;
@@ -979,10 +1023,15 @@ function buildPluginParamDefs(
   });
 
   return filteredEntries.map(([key, definition]) => {
+    // A live runtime's getSetting() is authoritative: connectors resolve
+    // credentials only through it and it never falls through to host env, so
+    // a live miss must not be papered over by stale process.env or saved
+    // config (#18713). Env/saved fallbacks serve only runtime-null builds.
     const envValue = process.env[key]?.trim() || undefined;
-    const savedValue = savedValues?.[key];
-    const effectiveValue =
-      envValue ?? (savedValue ? savedValue.trim() || undefined : undefined);
+    const savedValue = savedValues?.[key]?.trim() || undefined;
+    const effectiveValue = getRuntimeSetting
+      ? getRuntimeSetting(key)
+      : (envValue ?? savedValue);
     const isSet = Boolean(effectiveValue);
     const sensitive =
       typeof definition.sensitive === "boolean"
@@ -1157,6 +1206,7 @@ export function buildPluginListResponse(runtime: AgentRuntime | null): {
 
   const configEntries = config.plugins?.entries ?? {};
   const installEntries = config.plugins?.installs ?? {};
+  const readRuntimeSetting = createRuntimeSettingReader(runtime);
   const plugins = new Map<string, CompatPluginRecord>();
 
   for (const entry of manifest.plugins ?? []) {
@@ -1175,8 +1225,21 @@ export function buildPluginListResponse(runtime: AgentRuntime | null): {
         ? entry.configKeys
         : (bundledMeta?.configKeys ?? []);
     const envKey = entry.envKey ?? findPrimaryEnvKey(configKeys);
+    const paramDefinitions =
+      entry.pluginParameters ?? bundledMeta?.pluginParameters;
+    const savedParamValues = paramDefinitions
+      ? collectAgentScopedPluginParamValues(
+          Object.keys(paramDefinitions).map((key) => ({ key })),
+          {
+            entryConfig: asRecord(asRecord(configEntries[pluginId])?.config),
+            configEnv: asRecord(config.env),
+          },
+        )
+      : undefined;
     const parameters = buildPluginParamDefs(
-      entry.pluginParameters ?? bundledMeta?.pluginParameters,
+      paramDefinitions,
+      savedParamValues,
+      readRuntimeSetting,
     );
     const advancedCapabilityStatus = resolveAdvancedCapabilityCompatStatus(
       pluginId,
@@ -1366,6 +1429,27 @@ export function buildPluginListResponse(runtime: AgentRuntime | null): {
       isActive: isPluginLoaded(pluginId, pluginName, loadedNames),
       icon: null,
     });
+  }
+
+  // Health gate: a loaded plugin name proves module load, not a live
+  // connection. When the plugin's registered service exposes `isHealthy()`
+  // (Discord does — its init catches login failures), an unhealthy probe
+  // demotes the catalog row to inactive so an invalid or unreachable gateway
+  // never reports as active (#18713).
+  for (const plugin of plugins.values()) {
+    if (!plugin.isActive) {
+      continue;
+    }
+    if (resolvePluginServiceHealth(runtime, plugin.id) === false) {
+      plugin.isActive = false;
+      plugin.validationWarnings = [
+        ...(plugin.validationWarnings ?? []),
+        {
+          message:
+            "Service is loaded but reports unhealthy: the connection is not established. Check credentials and connectivity.",
+        },
+      ];
+    }
   }
 
   const pluginList = Array.from(plugins.values()).sort((left, right) =>
@@ -1812,6 +1896,22 @@ export async function handlePluginsCompatRoutes(
           durationMs: Date.now() - startMs,
         });
       }
+      return true;
+    }
+
+    const serviceHealth = resolvePluginServiceHealth(
+      state.current,
+      testPluginId,
+    );
+    if (serviceHealth !== null) {
+      sendJsonResponse(res, serviceHealth ? 200 : 422, {
+        success: serviceHealth,
+        pluginId: testPluginId,
+        message: serviceHealth
+          ? "Service reports healthy: connection established."
+          : "Service is loaded but reports unhealthy: the connection is not established. Check credentials and connectivity.",
+        durationMs: Date.now() - startMs,
+      });
       return true;
     }
 

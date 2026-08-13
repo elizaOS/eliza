@@ -68,5 +68,5 @@ export const DeepDocsPage: Story = {
  * empty surface here to confirm the early-return path.
  */
 export const HiddenOutsideDocs: Story = {
-  parameters: { initialPath: "/dashboard" },
+  parameters: { initialPath: "/cloud" },
 };

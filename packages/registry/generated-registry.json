@@ -994,6 +994,52 @@
       "registryKind": "plugin",
       "directory": null
     },
+    "@zkp2p/plugin-peer-cash": {
+      "git": {
+        "repo": "ADWilkinson/plugin-peer-cash",
+        "v0": {
+          "branch": null
+        },
+        "v1": {
+          "branch": null
+        },
+        "v2": {
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@zkp2p/plugin-peer-cash",
+        "v0": null,
+        "v1": null,
+        "v2": "0.1.0"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Peer Cash offramp actions: cash out Base USDC to Venmo, Revolut, Wise, Zelle, and more at the live oracle market rate, with order tracking, withdraw, and top-up.",
+      "homepage": "https://peer.xyz/cash-sdk",
+      "topics": [
+        "offramp",
+        "usdc",
+        "base",
+        "crypto-to-fiat",
+        "payments",
+        "zkp2p"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript",
+      "origin": "third-party",
+      "source": "community",
+      "support": "community",
+      "builtIn": false,
+      "firstParty": false,
+      "thirdParty": true,
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": null
+    },
     "blackwall-eliza-guardrail": {
       "git": {
         "repo": "bluetieroperations-create/blackwall-eliza-guardrail",

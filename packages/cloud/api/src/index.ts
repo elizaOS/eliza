@@ -12,6 +12,11 @@
 
 import "./worker-polyfills";
 
+import {
+  canonicalElizaServiceHostname,
+  classifyElizaHostname,
+  ELIZA_DOMAIN_CONTRACTS,
+} from "@elizaos/shared/elizacloud";
 import type { Hono } from "hono";
 import { makeCronHandler } from "@/lib/cron/cloudflare-cron";
 import type { AppEnv } from "@/types/cloud-worker-env";
@@ -137,22 +142,23 @@ const INFERENCE_ROUTES: readonly InferenceRouteSpec[] = [
 ];
 const AGENT_ID_RE =
   /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
-const DEFAULT_AGENT_BASE_DOMAIN = "elizacloud.ai";
+const DEFAULT_AGENT_BASE_DOMAIN =
+  ELIZA_DOMAIN_CONTRACTS.production.dedicatedAgentHostnameSuffix.slice(1);
 const FRONTEND_ALIAS_TARGETS: Record<
   string,
   { appHost: string; apiHost: string }
 > = {
-  "app.elizacloud.ai": {
+  "cloud.eliza.app": {
     appHost: "eliza-app.pages.dev",
-    apiHost: "api.elizacloud.ai",
+    apiHost: "api.eliza.app",
   },
-  "app-staging.elizacloud.ai": {
+  "cloud-staging.eliza.app": {
     appHost: "develop.eliza-app.pages.dev",
-    apiHost: "api-staging.elizacloud.ai",
+    apiHost: "api-staging.eliza.app",
   },
-  "staging.elizacloud.ai": {
-    appHost: "develop.eliza-cloud-enq.pages.dev",
-    apiHost: "api-staging.elizacloud.ai",
+  "staging.eliza.app": {
+    appHost: "develop.eliza-app.pages.dev",
+    apiHost: "api-staging.eliza.app",
   },
 };
 type AgentDomainBindings = Pick<
@@ -304,10 +310,10 @@ function healthResponse(env: AppEnv["Bindings"]): Response {
       timestamp: Date.now(),
       region: (env as { CF_REGION?: string }).CF_REGION ?? "unknown",
       commit: env.ELIZA_DEPLOY_COMMIT ?? null,
-      // Self-identify which deployment env answered. The staging worker and the
-      // prod worker share the `*.elizacloud.ai` zone; the staging worker only
-      // owns `staging.*`/`app-staging.*`/`api-staging.*` by claiming those
-      // routes MORE specifically than prod's `*.elizacloud.ai/*` wildcard
+      // Self-identify which deployment env answered. Production and staging
+      // share the eliza.app zone. Staging claims its
+      // exact control-plane names and `*.cloud-staging.eliza.app` before the
+      // production managed-agent wildcard can handle the request.
       // (wrangler.toml [env.staging].routes). If that claim ever lapses, a
       // staging subdomain silently falls into the prod wildcard and starts
       // serving prod — invisible except by asking who answered. This field is
@@ -355,23 +361,71 @@ function getGeneratedAgentId(
 
 export function redirectFrontendHost(
   url: URL,
-  env: AgentDomainBindings,
+  _env: AgentDomainBindings,
 ): Response | null {
-  const baseDomain =
-    normalizeHostname(env.ELIZA_CLOUD_AGENT_BASE_DOMAIN) ??
-    DEFAULT_AGENT_BASE_DOMAIN;
   const hostname = normalizeHostname(url.hostname);
-  // `www.` 308s to the apex (the canonical lander + dashboard / "console"
-  // origin), preserving path + query. `app.<base>` is deliberately NOT
-  // redirected: under the D5 topology split it serves the Eliza agent app
-  // (the `eliza-app` Pages project), a separate surface from the apex console.
-  // Redirecting it here would bury the app under the console.
-  if (hostname !== `www.${baseDomain}`) {
-    return null;
+  if (!hostname) return null;
+  // docs.elizacloud.ai is retired, not migrated as a separate product. Send
+  // every stale bookmark to the canonical Eliza homepage instead of keeping a
+  // second Cloud-branded docs entrypoint alive.
+  if (hostname === "docs.elizacloud.ai") {
+    return Response.redirect(
+      ELIZA_DOMAIN_CONTRACTS.production.marketingOrigin,
+      308,
+    );
+  }
+  const classified = classifyElizaHostname(hostname);
+  let canonicalHostname: string | null = null;
+  if (hostname === "www.eliza.app") {
+    canonicalHostname = new URL(
+      ELIZA_DOMAIN_CONTRACTS.production.marketingOrigin,
+    ).hostname;
+  } else if (classified.role === "legacy-marketing") {
+    const contract =
+      ELIZA_DOMAIN_CONTRACTS[classified.environment ?? "production"];
+    if (isFrontendAliasBackendPath(url)) {
+      canonicalHostname = new URL(contract.cloudApiOrigin).hostname;
+    } else if (
+      url.pathname === "/dashboard" ||
+      url.pathname.startsWith("/dashboard/")
+    ) {
+      canonicalHostname = new URL(contract.cloudAppOrigin).hostname;
+      url.pathname = url.pathname.replace(/^\/dashboard(?=\/|$)/, "/cloud");
+    } else {
+      canonicalHostname = classified.canonicalHostname;
+    }
+  } else if (
+    classified.role === "legacy-cloud-app" ||
+    classified.role === "legacy-cloud-api"
+  ) {
+    canonicalHostname = classified.canonicalHostname;
+  } else if (
+    classified.role === "legacy-dedicated-agent" &&
+    classified.agentId &&
+    AGENT_ID_RE.test(classified.agentId)
+  ) {
+    // Only UUID hosts are managed agents. Reserved service labels such as
+    // blob/plugins/x402 remain on their dedicated compatibility handlers.
+    canonicalHostname = classified.canonicalHostname;
+  } else {
+    canonicalHostname = canonicalElizaServiceHostname(hostname);
+    if (!canonicalHostname && hostname === "os.elizacloud.ai") {
+      canonicalHostname = "os.eliza.app";
+    }
+  }
+  if (!canonicalHostname || canonicalHostname === hostname) return null;
+
+  if (
+    (classified.role === "legacy-marketing" ||
+      classified.role === "legacy-cloud-app" ||
+      classified.role === "legacy-dedicated-agent") &&
+    (url.pathname === "/dashboard" || url.pathname.startsWith("/dashboard/"))
+  ) {
+    url.pathname = url.pathname.replace(/^\/dashboard(?=\/|$)/, "/cloud");
   }
 
   const targetUrl = new URL(url);
-  targetUrl.hostname = baseDomain;
+  targetUrl.hostname = canonicalHostname;
   return Response.redirect(targetUrl.toString(), 308);
 }
 
@@ -561,14 +615,14 @@ export default {
 
     const frontendAliasResponse = proxyFrontendAliasRequest(request, url);
     if (frontendAliasResponse) return frontendAliasResponse;
+    const frontendRedirect = redirectFrontendHost(url, env);
+    if (frontendRedirect) return frontendRedirect;
     const blobResponse = await serveBlobHostRequest(request, url, env);
     if (blobResponse) return blobResponse;
     const registryResponse = await serveRegistryHostRequest(request, url, env);
     if (registryResponse) return registryResponse;
     const agentProxyResponse = proxyGeneratedAgentRequest(request, env, url);
     if (agentProxyResponse) return agentProxyResponse;
-    const frontendRedirect = redirectFrontendHost(url, env);
-    if (frontendRedirect) return frontendRedirect;
 
     const hostedFrontendServe = getHostedFrontendServeRewrite(url, env);
     if (hostedFrontendServe) {
@@ -591,7 +645,7 @@ export default {
     if (inferenceResponse) return inferenceResponse;
 
     // OpenAI-compat prefix rewrite. Dedicated agents whose cloud base/embedding
-    // URL got stamped as the bare host (`https://api.elizacloud.ai`) hit
+    // URL got stamped as the bare host (`https://api.eliza.app`) hit
     // `/v1/embeddings` / `/embeddings` (and would for `/chat/completions`),
     // which 404 because the canonical routes live under `/api/v1/*`. Accept the
     // OpenAI-style prefixes by rewriting to `/api/v1/*` so embeddings + inference

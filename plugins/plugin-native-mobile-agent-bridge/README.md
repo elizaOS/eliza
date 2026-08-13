@@ -32,7 +32,7 @@ IPC bridge the UI uses for full-Bun local mode.
 import { MobileAgentBridge } from "@elizaos/capacitor-mobile-agent-bridge";
 
 await MobileAgentBridge.startInboundTunnel({
-  relayUrl: "wss://relay.elizacloud.ai/v1/agent-tunnel",
+  relayUrl: "wss://relay.eliza.app/v1/agent-tunnel",
   deviceId: "phone-abc123",
   pairingToken: "...",
 });
