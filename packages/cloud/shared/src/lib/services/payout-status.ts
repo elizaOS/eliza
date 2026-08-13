@@ -8,11 +8,18 @@
 import { type Address, createPublicClient, http, parseAbi } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { shouldBlockPayoutAssumeOperational } from "../config/deployment-environment";
-import { type EvmPayoutNetwork, resolveEvmRpc } from "../config/evm-rpc";
-import { ELIZA_DECIMALS, EVM_CHAINS } from "../config/token-constants";
+import {
+  type EvmPayoutNetwork,
+  evmChain,
+  resolveEvmRpc,
+} from "../config/evm-rpc";
+import {
+  getMonitoringPayoutAsset,
+  getPayoutTokenConfig,
+} from "../config/payout-assets";
 import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 import { logger } from "../utils/logger";
-import { ELIZA_TOKEN_ADDRESSES, type SupportedNetwork } from "./eliza-token-price";
+import { type SupportedNetwork } from "./eliza-token-price";
 
 // ============================================================================
 // TYPES

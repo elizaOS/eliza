@@ -51,16 +51,17 @@ import { privateKeyToAccount } from "viem/accounts";
 import { dbRead, dbWrite } from "../../db/client";
 import { redeemableEarnings, redeemableEarningsLedger } from "../../db/schemas/redeemable-earnings";
 import { tokenRedemptions } from "../../db/schemas/token-redemptions";
-import { type EvmPayoutNetwork, resolveEvmRpc } from "../config/evm-rpc";
-import { getPayoutTokenConfig } from "../config/payout-assets";
-import { ELIZA_DECIMALS, ERC20_ABI, EVM_CHAINS } from "../config/token-constants";
+import {
+  type EvmPayoutNetwork,
+  evmChain,
+  listEvmPayoutNetworks,
+  resolveEvmRpc,
+} from "../config/evm-rpc";
+import { getMonitoringPayoutAsset, getPayoutTokenConfig } from "../config/payout-assets";
+import { ERC20_ABI } from "../config/token-constants";
 import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 import { logger } from "../utils/logger";
-import {
-  ELIZA_TOKEN_ADDRESSES,
-  elizaTokenPriceService,
-  type SupportedNetwork,
-} from "./eliza-token-price";
+import { elizaTokenPriceService, type SupportedNetwork } from "./eliza-token-price";
 import { payoutAlertsService } from "./payout-alerts";
 import { redeemableEarningsService } from "./redeemable-earnings";
 
@@ -722,7 +723,7 @@ export class PayoutProcessorService {
       };
     }
 
-    const chain = EVM_CHAINS[network];
+    const chain = evmChain(network as EvmPayoutNetwork);
     if (!chain) {
       return {
         success: false,
@@ -1274,11 +1275,20 @@ export class PayoutProcessorService {
     // Check EVM wallets
     if (this.evmPrivateKey) {
       const account = privateKeyToAccount(this.evmPrivateKey);
+      const monitoringAsset = getMonitoringPayoutAsset();
 
-      for (const [network, chain] of Object.entries(EVM_CHAINS)) {
-        const tokenAddress = ELIZA_TOKEN_ADDRESSES[network as SupportedNetwork] as Address;
+      for (const network of listEvmPayoutNetworks()) {
+        // The token whose balance we monitor must match the asset actually being
+        // paid out, and the chain + RPC must match the environment. Before this,
+        // the monitor read ELIZA_TOKEN_ADDRESSES against the mainnet chain even in
+        // staging (where payouts resolve testnet USDC), so operational health
+        // advertised a different asset and network than the payout rail.
+        const tokenConfig = getPayoutTokenConfig(network as SupportedNetwork, monitoringAsset);
+        const tokenAddress = tokenConfig.address as Address;
+        const chain = evmChain(network);
+        const decimals = tokenConfig.decimals;
 
-        const { url: rpcUrl } = resolveEvmRpc(network as EvmPayoutNetwork);
+        const { url: rpcUrl } = resolveEvmRpc(network);
         const publicClient = createPublicClient({
           chain,
           transport: http(rpcUrl),
@@ -1291,13 +1301,13 @@ export class PayoutProcessorService {
           args: [account.address],
         });
 
-        const balanceFormatted =
-          Number(balance) / 10 ** ELIZA_DECIMALS[network as keyof typeof ELIZA_DECIMALS];
+        const balanceFormatted = Number(balance) / 10 ** decimals;
         result.evm.balances[network] = balanceFormatted;
 
         if (balanceFormatted < config.MIN_HOT_WALLET_BALANCE) {
           logger.warn("[PayoutProcessor] LOW HOT WALLET BALANCE", {
             network,
+            asset: monitoringAsset,
             balance: balanceFormatted,
             threshold: config.MIN_HOT_WALLET_BALANCE,
             address: account.address,
@@ -1319,23 +1329,30 @@ export class PayoutProcessorService {
       const { PublicKey } = require("@solana/web3.js") as typeof import("@solana/web3.js");
       const { getAssociatedTokenAddress, getAccount } =
         require("@solana/spl-token") as typeof import("@solana/spl-token");
-      const mintAddress = new PublicKey(ELIZA_TOKEN_ADDRESSES.solana);
+      // Asset-aware (#13100): monitor the asset being paid out, not the legacy
+      // elizaOS mint. Solana payouts are deferred until Base USDC is proven, but
+      // if Solana is configured the monitor must read the same rail.
+      const monitoringAsset = getMonitoringPayoutAsset();
+      const tokenConfig = getPayoutTokenConfig("solana", monitoringAsset);
+      const mintAddress = new PublicKey(tokenConfig.address);
       const ata = await getAssociatedTokenAddress(mintAddress, this.solanaKeypair.publicKey);
 
       const account = await getAccount(this.solanaConnection, ata).catch(() => null);
 
       if (!account) {
         logger.warn("[PayoutProcessor] Solana token account not found", {
+          asset: monitoringAsset,
           wallet: this.solanaKeypair.publicKey.toBase58(),
         });
         result.solana.balance = 0;
       } else {
-        const balanceFormatted = Number(account.amount) / 10 ** ELIZA_DECIMALS.solana;
+        const balanceFormatted = Number(account.amount) / 10 ** tokenConfig.decimals;
         result.solana.balance = balanceFormatted;
 
         if (balanceFormatted < config.MIN_HOT_WALLET_BALANCE) {
           logger.warn("[PayoutProcessor] LOW HOT WALLET BALANCE", {
             network: "solana",
+            asset: monitoringAsset,
             balance: balanceFormatted,
             threshold: config.MIN_HOT_WALLET_BALANCE,
             address: this.solanaKeypair.publicKey.toBase58(),

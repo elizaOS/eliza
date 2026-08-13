@@ -53,6 +53,24 @@ export function isUsdcPayoutNetwork(network: SupportedNetwork): boolean {
   return USDC_PAYOUT_NETWORKS.includes(network);
 }
 
+/**
+ * Asset the hot-wallet balance monitor reads.
+ *
+ * Creator payouts default to USDC (`redemptionAssetEnum` defaults to "usdc") and
+ * the launch scope is Base USDC first, so the monitor must read the USDC rail —
+ * not the legacy elizaOS token. Before this, `checkHotWalletBalances` and the
+ * payout status service hard-coded `ELIZA_TOKEN_ADDRESSES`, so operational
+ * health advertised and alerted on a different asset than the one actually being
+ * paid out. Override with `PAYOUT_MONITORING_ASSET=eliza` to monitor the legacy
+ * rail instead (env-read mirrors this module's existing `process.env` convention
+ * for USDC_TESTNET_TOKEN_ADDRESSES).
+ */
+export const DEFAULT_PAYOUT_ASSET: PayoutAsset = "usdc";
+
+export function getMonitoringPayoutAsset(): PayoutAsset {
+  return process.env.PAYOUT_MONITORING_ASSET === "eliza" ? "eliza" : DEFAULT_PAYOUT_ASSET;
+}
+
 export interface PayoutTokenConfig {
   address: string;
   decimals: number;
