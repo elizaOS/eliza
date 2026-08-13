@@ -26,28 +26,32 @@ interface FamilyManifest {
   peerDependencies?: Record<string, string>;
 }
 
-/** Resolve `name` exactly as a module at `fromFile` would, then read the
- *  manifest of the package that resolution landed in. */
-function resolvedManifest(fromFile: string, name: string): FamilyManifest {
-  const entry = createRequire(fromFile).resolve(name);
-  let dir = path.dirname(entry);
+interface ResolvedFamilyManifest extends FamilyManifest {
+  entry: string;
+}
+
+/** Resolve the installed manifest that `fromFile` can reach through its
+ *  nearest node_modules chain. Reading the manifest path directly also covers
+ *  packages whose export map intentionally has no root entry point. */
+function resolvedManifest(fromFile: string, name: string): ResolvedFamilyManifest {
+  let dir = path.dirname(fromFile);
   for (;;) {
-    const manifestPath = path.join(dir, 'package.json');
+    const manifestPath = path.join(dir, 'node_modules', name, 'package.json');
     if (existsSync(manifestPath)) {
-      const manifest = JSON.parse(readFileSync(manifestPath, 'utf8')) as FamilyManifest;
-      if (manifest.name === name)
-        return { ...manifest, entry } as FamilyManifest & { entry: string };
+      const entry = realpathSync(manifestPath);
+      const manifest = JSON.parse(readFileSync(entry, 'utf8')) as FamilyManifest;
+      if (manifest.name === name) return { ...manifest, entry };
     }
     const parent = path.dirname(dir);
     if (parent === dir) {
-      throw new Error(`no ${name} package.json above ${entry}`);
+      throw new Error(`cannot resolve ${name}'s package.json from ${fromFile}`);
     }
     dir = parent;
   }
 }
 
-function entryOf(manifest: FamilyManifest): string {
-  return (manifest as FamilyManifest & { entry: string }).entry;
+function entryOf(manifest: ResolvedFamilyManifest): string {
+  return manifest.entry;
 }
 
 const FAMILY = new Set([
@@ -76,15 +80,15 @@ describe('spawned-worker Effect family peer coherence (#18810)', () => {
     path.dirname(fileURLToPath(import.meta.url)),
     '../../package.json'
   );
-  const plugin = {
+  const plugin: ResolvedFamilyManifest = {
     ...(JSON.parse(readFileSync(pluginManifestPath, 'utf8')) as FamilyManifest),
     entry: pluginManifestPath,
-  } as FamilyManifest & { entry: string };
-  const chain: FamilyManifest[] = [plugin];
+  };
+  const chain: ResolvedFamilyManifest[] = [plugin];
   const seen = new Set<string>([plugin.name]);
 
   // Breadth-first walk of the family edges reachable from the plugin, always
-  // resolving from the dependent's own entry file so Bun's isolated-store
+  // resolving from the dependent's own manifest anchor so Bun's isolated-store
   // linkage (including peer placement) is what gets tested. Smithers' own
   // packages are traversed as intermediates (observability carries the
   // opentelemetry edge) but only family edges are asserted.
@@ -95,19 +99,7 @@ describe('spawned-worker Effect family peer coherence (#18810)', () => {
       const isFamily = FAMILY.has(name);
       if (!isFamily && name !== 'smthrs' && !name.startsWith('@smthrs/')) continue;
       seen.add(name);
-      if (isFamily) {
-        chain.push(resolvedManifest(entryOf(dependent), name));
-        continue;
-      }
-      try {
-        chain.push(resolvedManifest(entryOf(dependent), name));
-      } catch {
-        // error-policy:J3 an intermediate Smithers package that is not
-        // installed (optional tooling such as the CLI's TUI) is out of the
-        // worker chain; only family edges must resolve, and those keep the
-        // hard failure above.
-        seen.delete(name);
-      }
+      chain.push(resolvedManifest(entryOf(dependent), name));
     }
   }
 
