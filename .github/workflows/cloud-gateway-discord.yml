@@ -71,7 +71,21 @@ jobs:
         run: bun install --frozen-lockfile --no-save && git diff --exit-code -- bun.lock
 
       - name: Run messaging gateway preflight
-        run: bun run preflight:messaging-gateways
+        # Strict: a missing required secret fails the gate rather than printing
+        # "missing" and passing (#17345). Scoped to the channels this CI
+        # exercises (shared + telegram + discord) so unrelated iMessage/WhatsApp
+        # secrets do not gate a Discord-gateway test run.
+        run: bun run preflight:messaging-gateways:strict -- --channels=shared,telegram,discord
+        env:
+          ELIZACLOUD_API_URL: ${{ secrets.ELIZACLOUD_API_URL }}
+          CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
+          ELIZA_APP_WEBHOOK_GATEWAY_URL: ${{ secrets.ELIZA_APP_WEBHOOK_GATEWAY_URL }}
+          ELIZA_APP_WEBHOOK_GATEWAY_SECRET: ${{ secrets.ELIZA_APP_WEBHOOK_GATEWAY_SECRET }}
+          ELIZA_APP_TELEGRAM_BOT_TOKEN: ${{ secrets.ELIZA_APP_TELEGRAM_BOT_TOKEN }}
+          ELIZA_APP_TELEGRAM_WEBHOOK_SECRET: ${{ secrets.ELIZA_APP_TELEGRAM_WEBHOOK_SECRET }}
+          ELIZA_APP_DISCORD_APPLICATION_ID: ${{ secrets.ELIZA_APP_DISCORD_APPLICATION_ID }}
+          ELIZA_APP_DISCORD_CLIENT_SECRET: ${{ secrets.ELIZA_APP_DISCORD_CLIENT_SECRET }}
+          ELIZA_APP_DISCORD_BOT_TOKEN: ${{ secrets.ELIZA_APP_DISCORD_BOT_TOKEN }}
 
       - name: Run service tests
         working-directory: packages/cloud/services/gateway-discord

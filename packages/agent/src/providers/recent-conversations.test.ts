@@ -24,6 +24,33 @@ function message(): Memory {
 }
 
 describe("recentConversationsProvider fast-fail (#12265)", () => {
+  it("omits empty age labels and their parentheses from provider output", async () => {
+    const runtime = {
+      agentId: "00000000-0000-0000-0000-0000000000f0" as UUID,
+      character: { name: "Test Agent" },
+      getRoom: vi.fn(async () => ({
+        id: ROOM_ID,
+        source: "discord",
+        name: "general",
+      })),
+      getRoomsForParticipant: vi.fn(async () => [ROOM_ID]),
+      getMemoriesByRoomIds: vi.fn(async () => [
+        { ...message(), createdAt: Number.POSITIVE_INFINITY },
+      ]),
+      reportError: vi.fn(),
+    } as unknown as IAgentRuntime;
+
+    const result = await recentConversationsProvider.get(
+      runtime,
+      message(),
+      EMPTY_STATE,
+    );
+
+    expect(result.text).toContain("[discord] general user: hello there");
+    expect(result.text).not.toContain("()");
+    expect(result.text).not.toContain("NaN");
+  });
+
   it("reports a recall failure and degrades to empty context, not fabricated history", async () => {
     const reportError = vi.fn();
     const runtime = {
