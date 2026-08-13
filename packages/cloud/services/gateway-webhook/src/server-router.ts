@@ -57,15 +57,16 @@ export function getCanonicalAgentFallbackTarget(
   }
   const agentBaseDomain =
     env.ELIZA_CLOUD_AGENT_BASE_DOMAIN?.trim() || "cloud.eliza.app";
+  const forwardedHost = `${normalizedAgentId}.${agentBaseDomain.toLowerCase()}`;
   if (
     !DNS_HOSTNAME_PATTERN.test(routerOriginHost) ||
-    !DNS_HOSTNAME_PATTERN.test(agentBaseDomain)
+    !DNS_HOSTNAME_PATTERN.test(forwardedHost)
   ) {
     return null;
   }
   return {
     baseUrl: `https://${routerOriginHost}/api`,
-    forwardedHost: `${normalizedAgentId}.${agentBaseDomain.toLowerCase()}`,
+    forwardedHost,
   };
 }
 
