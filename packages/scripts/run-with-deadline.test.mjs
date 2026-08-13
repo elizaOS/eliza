@@ -1,3 +1,7 @@
+/**
+ * Real-process process-group supervision harness for run-with-deadline. These
+ * tests spawn actual Node children and descendants; no child lifecycle is mocked.
+ */
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
