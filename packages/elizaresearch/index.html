@@ -309,7 +309,9 @@
     targets = sampleFace();
     boids.length = 0;
     for (const t of targets) {
-      boids.push({ x: t.x, y: t.y, vx: 0, vy: 0, tx: t.x, ty: t.y });
+      const a = Math.random() * Math.PI * 2;
+      boids.push({ x: Math.random() * W, y: Math.random() * H,
+        vx: Math.cos(a) * 0.3, vy: Math.sin(a) * 0.3, tx: t.x, ty: t.y });
     }
     born = performance.now();
     if (reduced) draw(born + FADE_MS);
@@ -341,8 +343,8 @@
   function step(now) {
     if (!boids.length) { tryInit(); return; }
     const phase = (now - born) % CYCLE_MS;
-    // hold the face, drift apart, then pull back in — breathing loop
-    const forming = window.__frozen === true || phase < HOLD_MS || phase >= HOLD_MS + DRIFT_MS;
+    // converge into the face, hold it, then let groups drift apart — and repeat
+    const forming = window.__frozen === true || phase < PULL_MS + HOLD_MS;
     if (wasForming && !forming) {
       // release: shove chunks outward from the face centroid so pieces break off
       let mx = 0, my = 0;
