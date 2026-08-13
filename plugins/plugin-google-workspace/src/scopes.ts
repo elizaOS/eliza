@@ -182,6 +182,45 @@ export function scopesForGoogleCapabilities(
   return Array.from(selected);
 }
 
+export function capabilitiesForGoogleScopes(
+  scopes: Iterable<unknown> | undefined
+): GoogleCapability[] {
+  const capabilities: GoogleCapability[] = [];
+  const seen = new Set<GoogleCapability>();
+  const identityScopes = new Set<string>(
+    GOOGLE_IDENTITY_SCOPES.map((scope) => scope.toLowerCase())
+  );
+
+  for (const scope of scopes ?? []) {
+    if (typeof scope !== "string") continue;
+    const normalized = scope.trim();
+    if (!normalized) continue;
+    if (isGoogleCapability(normalized)) {
+      if (!seen.has(normalized)) {
+        seen.add(normalized);
+        capabilities.push(normalized);
+      }
+      continue;
+    }
+    const lower = normalized.toLowerCase();
+    if (identityScopes.has(lower)) continue;
+    for (const capability of GOOGLE_CAPABILITIES) {
+      if (seen.has(capability)) continue;
+      if (
+        GOOGLE_CAPABILITY_METADATA[capability].scopes.some(
+          (candidate) => candidate.toLowerCase() === lower
+        )
+      ) {
+        seen.add(capability);
+        capabilities.push(capability);
+        break;
+      }
+    }
+  }
+
+  return capabilities;
+}
+
 export function capabilityGroups(
   capabilities: readonly GoogleCapability[]
 ): GoogleCapabilityGroup[] {

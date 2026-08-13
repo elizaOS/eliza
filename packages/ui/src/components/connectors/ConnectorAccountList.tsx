@@ -100,6 +100,41 @@ function openConnectorAuthUrl(authUrl: string | undefined): void {
   window.open(authUrl, "_blank", "noopener,noreferrer");
 }
 
+function uniqueStringList(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  const result: string[] = [];
+  const seen = new Set<string>();
+  for (const item of value) {
+    if (typeof item !== "string") continue;
+    const trimmed = item.trim();
+    if (!trimmed || seen.has(trimmed)) continue;
+    seen.add(trimmed);
+    result.push(trimmed);
+  }
+  return result;
+}
+
+function nestedStringList(value: unknown, key: string): string[] {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return [];
+  return uniqueStringList((value as Record<string, unknown>)[key]);
+}
+
+function accountOAuthCapabilityFallback(
+  account: ConnectorAccountRecord,
+): string[] {
+  const metadata = account.metadata ?? {};
+  const granted = uniqueStringList(metadata.grantedCapabilities);
+  if (granted.length > 0) return granted;
+  const requested = uniqueStringList(metadata.requestedCapabilities);
+  if (requested.length > 0) return requested;
+  const required = nestedStringList(
+    metadata.reauthRequired,
+    "requiredCapabilities",
+  );
+  if (required.length > 0) return required;
+  return nestedStringList(metadata.reauthRequired, "missingCapabilities");
+}
+
 function defaultTitleForRole(
   role: ConnectorAccountListRole | undefined,
 ): string {
@@ -206,6 +241,35 @@ export function ConnectorAccountList({
     openConnectorAuthUrl(result.authUrl);
   };
 
+  const handleReauthorize = async (account: ConnectorAccountRecord) => {
+    const requestedRole: ConnectorAccountRole =
+      account.role ??
+      (accountRole && accountRole !== CONNECTOR_UNKNOWN_ROLE_BUCKET
+        ? accountRole
+        : "OWNER");
+    const capabilities =
+      selectedOAuthCapabilities.size > 0
+        ? [...selectedOAuthCapabilities]
+        : accountOAuthCapabilityFallback(account);
+    if (oauthCapabilities.length > 0 && capabilities.length === 0) {
+      return;
+    }
+    const result = await connectorAccounts.startOAuth({
+      accountId: account.id,
+      ...(oauthCapabilities.length > 0 ? { scopes: capabilities } : {}),
+      metadata: {
+        ...(oauthCapabilities.length > 0
+          ? { requestedCapabilities: capabilities }
+          : {}),
+        requestedRole,
+        privacy:
+          account.privacy ??
+          (requestedRole === "OWNER" ? "owner_only" : "team_visible"),
+      },
+    });
+    openConnectorAuthUrl(result.authUrl);
+  };
+
   const addBusy =
     connectorAccounts.saving.has(`add:${provider}:${connectorId}`) ||
     connectorAccounts.saving.has(`oauth:${provider}:${connectorId}:new`);
@@ -286,6 +350,10 @@ export function ConnectorAccountList({
                 account.isDefault === true &&
                 account.enabled !== false &&
                 account.status === "connected");
+            const reauthorizeCapabilities =
+              selectedOAuthCapabilities.size > 0
+                ? [...selectedOAuthCapabilities]
+                : accountOAuthCapabilityFallback(account);
             return (
               <ConnectorAccountCard
                 key={account.id}
@@ -300,6 +368,13 @@ export function ConnectorAccountList({
                 refreshBusy={connectorAccounts.saving.has(
                   `refresh:${account.id}`,
                 )}
+                reauthorizeBusy={connectorAccounts.saving.has(
+                  `oauth:${provider}:${connectorId}:${account.id}`,
+                )}
+                reauthorizeDisabled={
+                  oauthCapabilities.length > 0 &&
+                  reauthorizeCapabilities.length === 0
+                }
                 onSelect={() => handleSelect(account.id)}
                 onUpdate={async (body) => {
                   await connectorAccounts.update(account.id, body);
@@ -310,6 +385,13 @@ export function ConnectorAccountList({
                 onRefresh={async () => {
                   await connectorAccounts.refreshAccount(account.id);
                 }}
+                onReauthorize={
+                  oauthCapabilities.length > 0
+                    ? async () => {
+                        await handleReauthorize(account);
+                      }
+                    : undefined
+                }
                 onDelete={async () => {
                   await connectorAccounts.remove(account.id);
                 }}

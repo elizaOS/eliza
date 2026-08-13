@@ -193,6 +193,7 @@ export function normalizeConnectorAccountRecord(
       nonEmptyString(record.handle) ?? nonEmptyString(record.displayHandle),
     externalId:
       typeof record.externalId === "string" ? record.externalId : null,
+    statusDetail: nonEmptyString(record.statusDetail),
     status: normalizeStatus(record.status),
     role,
     purpose: normalizePurposes(record.purpose),

@@ -34,6 +34,7 @@ import { persistConnectorCredentialRefs } from "./connector-credential-refs.js";
 import { createGmailMessageConnector } from "./gmail-message-connector.js";
 import { resolveGoogleConnectorOAuthCallbackUrl } from "./google-oauth-callback.js";
 import {
+  capabilitiesForGoogleScopes,
   GOOGLE_CAPABILITIES,
   GOOGLE_IDENTITY_SCOPES,
   type GoogleCapability,
@@ -149,12 +150,55 @@ async function resolveRequestedScopes(
     return request.scopes;
   }
   const account = await manager.getAccount(GOOGLE_SERVICE_NAME, accountId);
-  const recorded = (account?.metadata as Record<string, unknown> | undefined)?.grantedCapabilities;
-  if (!Array.isArray(recorded)) {
-    return request.scopes;
+  const metadata = account?.metadata as Record<string, unknown> | undefined;
+  const accountRecord = account as
+    | (ConnectorAccount & {
+        capabilities?: unknown;
+        scopes?: unknown;
+      })
+    | null;
+  const granted = [
+    ...capabilityValuesFromMetadata(metadata?.grantedCapabilities),
+    ...capabilityValuesFromMetadata(metadata?.capabilities),
+    ...capabilityValuesFromMetadata(accountRecord?.capabilities),
+  ];
+  if (granted.length > 0) {
+    return uniqueCapabilities(granted);
   }
-  const granted = recorded.filter((value): value is GoogleCapability => isGoogleCapability(value));
-  return granted.length > 0 ? granted : request.scopes;
+  const legacyGrant = capabilitiesForGoogleScopes([
+    ...scopeValuesFromMetadata(metadata?.grantedScopes),
+    ...scopeValuesFromMetadata(metadata?.scopes),
+    ...scopeValuesFromMetadata(metadata?.scope),
+    ...scopeValuesFromMetadata(accountRecord?.scopes),
+  ]);
+  if (legacyGrant.length > 0) {
+    return legacyGrant;
+  }
+  return request.scopes;
+}
+
+function capabilityValuesFromMetadata(value: unknown): GoogleCapability[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((item): item is GoogleCapability => isGoogleCapability(item));
+}
+
+function scopeValuesFromMetadata(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return value.filter((item): item is string => typeof item === "string");
+  }
+  const text = nonEmptyString(value);
+  return text ? text.split(/\s+/).filter(Boolean) : [];
+}
+
+function uniqueCapabilities(capabilities: readonly GoogleCapability[]): GoogleCapability[] {
+  const result: GoogleCapability[] = [];
+  const seen = new Set<GoogleCapability>();
+  for (const capability of capabilities) {
+    if (seen.has(capability)) continue;
+    seen.add(capability);
+    result.push(capability);
+  }
+  return result;
 }
 
 function normalizeRequestedCapabilities(scopes: readonly string[] | undefined): GoogleCapability[] {

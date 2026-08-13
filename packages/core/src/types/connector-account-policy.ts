@@ -27,6 +27,7 @@ export type ConnectorAccountAccessGate =
 export type ConnectorAccountStatus =
 	| "connected"
 	| "pending"
+	| "needs-reauth"
 	| "disabled"
 	| "revoked"
 	| "error";

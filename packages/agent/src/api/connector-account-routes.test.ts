@@ -308,6 +308,7 @@ vi.mock("@elizaos/core", async (importOriginal) => ({
 const { getConnectorAccountManager, InMemoryConnectorAccountStorage } =
   coreMocks;
 
+import { ElizaError } from "@elizaos/core";
 import {
   type ConnectorAccountRouteContext,
   handleConnectorAccountRoutes,
@@ -701,6 +702,102 @@ describe("connector account routes", () => {
           isDefault: false,
         }),
       ]),
+    });
+  });
+
+  it("serializes reconnect-required account state and capability metadata", async () => {
+    const { ctx, captured, storage } = createConnectorAccountHarness({
+      method: "GET",
+      pathname: "/api/connectors/google/accounts",
+    });
+    await storage.upsertAccount({
+      id: "acct_google_reauth",
+      provider: "google",
+      role: "OWNER",
+      purpose: ["calendar"],
+      accessGate: "open",
+      status: "needs-reauth",
+      createdAt: 1,
+      updatedAt: 2,
+      metadata: {
+        statusDetail:
+          "Reconnect Google with calendar.read to continue calendar.listCalendars.",
+        grantedCapabilities: ["gmail.read"],
+        requestedCapabilities: ["calendar.read"],
+        reauthRequired: {
+          code: "GOOGLE_ACCOUNT_CAPABILITY_REAUTH_REQUIRED",
+          missingCapabilities: ["calendar.read"],
+        },
+      },
+    });
+
+    await expect(handleConnectorAccountRoutes(ctx)).resolves.toBe(true);
+
+    expect(captured.status).toBe(200);
+    expect(captured.body).toMatchObject({
+      provider: "google",
+      defaultAccountId: null,
+      accounts: [
+        expect.objectContaining({
+          id: "acct_google_reauth",
+          status: "needs-reauth",
+          statusDetail:
+            "Reconnect Google with calendar.read to continue calendar.listCalendars.",
+          enabled: true,
+          isDefault: false,
+          metadata: expect.objectContaining({
+            grantedCapabilities: ["gmail.read"],
+            requestedCapabilities: ["calendar.read"],
+            reauthRequired: expect.objectContaining({
+              code: "GOOGLE_ACCOUNT_CAPABILITY_REAUTH_REQUIRED",
+              missingCapabilities: ["calendar.read"],
+            }),
+          }),
+        }),
+      ],
+    });
+  });
+
+  it("translates typed reconnect errors at the OAuth boundary", async () => {
+    const { ctx, captured, runtime, storage } = createConnectorAccountHarness({
+      method: "POST",
+      pathname: "/api/connectors/google/oauth/start",
+      body: {
+        accountId: "acct_google_reauth",
+        scopes: ["calendar.read"],
+        metadata: { requestedCapabilities: ["calendar.read"] },
+      },
+    });
+    const manager = getConnectorAccountManager(runtime as never, storage);
+    manager.registerProvider({
+      provider: "google",
+      startOAuth: async () => {
+        throw new ElizaError("Reconnect Google with calendar.read.", {
+          code: "GOOGLE_ACCOUNT_CAPABILITY_REAUTH_REQUIRED",
+          context: {
+            provider: "google",
+            accountId: "acct_google_reauth",
+            status: "needs-reauth",
+            missingCapabilities: ["calendar.read"],
+          },
+          severity: "ephemeral",
+        });
+      },
+    });
+
+    await expect(handleConnectorAccountRoutes(ctx)).resolves.toBe(true);
+
+    expect(captured.status).toBe(409);
+    expect(captured.body).toMatchObject({
+      error: "Reconnect Google with calendar.read.",
+      code: "GOOGLE_ACCOUNT_CAPABILITY_REAUTH_REQUIRED",
+      severity: "ephemeral",
+      status: "needs-reauth",
+      reconnectRequired: true,
+      context: expect.objectContaining({
+        accountId: "acct_google_reauth",
+        missingCapabilities: ["calendar.read"],
+      }),
     });
   });
 

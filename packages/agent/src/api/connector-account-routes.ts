@@ -19,6 +19,7 @@ import {
   type ConnectorAccountStatus,
   type ConnectorOAuthFlow,
   DEFAULT_PRIVACY_LEVEL,
+  ElizaError,
   getConnectorAccountManager,
   isPrivacyLevel,
   type Metadata,
@@ -175,6 +176,8 @@ function normalizeConnectorAccountStatus(
   status: ConnectorAccountStatus,
 ): string {
   switch (status) {
+    case "needs-reauth":
+      return "needs-reauth";
     case "disabled":
     case "revoked":
       return "disconnected";
@@ -412,6 +415,10 @@ function serializeAccount(account: ConnectorAccount): Record<string, unknown> {
   const handle =
     account.displayHandle ??
     (typeof metadata.handle === "string" ? metadata.handle : undefined);
+  const statusDetail =
+    typeof metadata.statusDetail === "string"
+      ? metadata.statusDetail
+      : undefined;
   return {
     id: account.id,
     provider: account.provider,
@@ -427,6 +434,7 @@ function serializeAccount(account: ConnectorAccount): Record<string, unknown> {
       : DEFAULT_PRIVACY_LEVEL,
     accessGate: account.accessGate,
     status: normalizeConnectorAccountStatus(account.status),
+    statusDetail,
     externalId: account.externalId,
     handle,
     displayHandle: account.displayHandle,
@@ -438,6 +446,54 @@ function serializeAccount(account: ConnectorAccount): Record<string, unknown> {
     updatedAt: account.updatedAt,
     metadata: redactAuditMetadata(metadata),
   };
+}
+
+function connectorElizaErrorStatus(
+  err: ElizaError,
+  fallbackStatus: number,
+): number {
+  if (err.context?.status === "needs-reauth" || err.code.includes("REAUTH")) {
+    return 409;
+  }
+  const status = err.context?.httpStatus;
+  return typeof status === "number" && status >= 400 && status < 600
+    ? status
+    : fallbackStatus;
+}
+
+function writeConnectorError(
+  res: http.ServerResponse,
+  json: ConnectorAccountRouteContext["json"],
+  error: ConnectorAccountRouteContext["error"],
+  err: unknown,
+  fallbackMessage: string,
+  fallbackStatus: number,
+): void {
+  if (err instanceof ElizaError) {
+    const reconnectRequired =
+      err.context?.status === "needs-reauth" || err.code.includes("REAUTH");
+    json(
+      res,
+      {
+        error: err.message,
+        code: err.code,
+        severity: err.severity,
+        context: err.context ?? {},
+        ...(typeof err.context?.status === "string"
+          ? { status: err.context.status }
+          : {}),
+        ...(reconnectRequired ? { reconnectRequired: true } : {}),
+      },
+      connectorElizaErrorStatus(err, fallbackStatus),
+    );
+    return;
+  }
+
+  error(
+    res,
+    err instanceof Error ? err.message : fallbackMessage,
+    fallbackStatus,
+  );
 }
 
 function isUsableDefaultAccount(account: ConnectorAccount): boolean {
@@ -923,9 +979,12 @@ export async function handleConnectorAccountRoutes(
         });
         json(res, { provider, flow: serializeFlow(flow) }, 201);
       } catch (err) {
-        error(
+        writeConnectorError(
           res,
-          err instanceof Error ? err.message : "Failed to start OAuth flow",
+          json,
+          error,
+          err,
+          "Failed to start OAuth flow",
           400,
         );
       }
@@ -985,9 +1044,12 @@ export async function handleConnectorAccountRoutes(
           redirectUrl: result.redirectUrl,
         });
       } catch (err) {
-        error(
+        writeConnectorError(
           res,
-          err instanceof Error ? err.message : "Failed to complete OAuth flow",
+          json,
+          error,
+          err,
+          "Failed to complete OAuth flow",
           400,
         );
       }

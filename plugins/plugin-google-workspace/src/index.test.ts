@@ -11,7 +11,7 @@ import type {
   ConnectorAccountStorage,
   IAgentRuntime,
 } from "@elizaos/core";
-import { getConnectorAccountManager } from "@elizaos/core";
+import { ElizaError, getConnectorAccountManager } from "@elizaos/core";
 import { getConnectorAccountCatalogEntry } from "@elizaos/shared/connector-account-catalog";
 import { Auth } from "googleapis";
 
@@ -21,6 +21,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import googlePlugin, {
   createGoogleConnectorAccountProvider,
   DefaultGoogleCredentialResolver,
+  GOOGLE_ACCOUNT_CAPABILITY_REAUTH_REQUIRED,
   GOOGLE_CAPABILITIES,
   GOOGLE_MEET_API_SURFACE,
   GOOGLE_OAUTH_SCOPES,
@@ -317,6 +318,56 @@ describe("google plugin", () => {
     // The provider-owned callback must be returned at the top level so the
     // manager persists it (result.redirectUri ?? flow.redirectUri).
     expect(result?.redirectUri).toBe("http://localhost:31437/api/connectors/google/oauth/callback");
+  });
+
+  it("defaults re-auth with legacy grantedScopes metadata without expanding access", async () => {
+    const runtime = {
+      getSetting: (key: string) =>
+        ({
+          GOOGLE_CLIENT_ID: "google-client",
+          GOOGLE_CLIENT_SECRET: "google-secret",
+          GOOGLE_REDIRECT_URI: "http://localhost:31437/api/connectors/google/oauth/callback",
+        })[key],
+      getService: () => null,
+    } as never;
+    const provider = createGoogleConnectorAccountProvider(runtime);
+    const getAccount = vi.fn(async (_provider: string, accountId: string) => ({
+      id: accountId,
+      provider: "google",
+      metadata: { grantedScopes: [GOOGLE_OAUTH_SCOPES.calendar.read] },
+    }));
+
+    const result = await provider.startOAuth?.(
+      {
+        provider: "google",
+        accountId: "acct-legacy-scopes",
+        flow: {
+          id: "flow-legacy-scopes",
+          provider: "google",
+          state: "state-legacy-scopes",
+          status: "pending",
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+        },
+      },
+      { getAccount } as never
+    );
+
+    const requestedScopes = new Set(
+      (new URL(result?.authUrl ?? "").searchParams.get("scope") ?? "").split(" ").filter(Boolean)
+    );
+    expect(requestedScopes).toEqual(
+      new Set([
+        GOOGLE_OAUTH_SCOPES.profile.openid,
+        GOOGLE_OAUTH_SCOPES.profile.email,
+        GOOGLE_OAUTH_SCOPES.profile.profile,
+        GOOGLE_OAUTH_SCOPES.calendar.read,
+      ])
+    );
+    expect(requestedScopes).not.toContain(GOOGLE_OAUTH_SCOPES.gmail.read);
+    expect(result?.metadata).toMatchObject({
+      requestedCapabilities: ["calendar.read"],
+    });
   });
 
   it("keeps failing closed when the re-auth accountId is unknown", async () => {
@@ -654,17 +705,97 @@ describe("google plugin", () => {
       clientSecret: "google-secret",
     });
 
-    await expect(
-      resolver.getAuthClient({
+    let caught: unknown;
+    try {
+      await resolver.getAuthClient({
         provider: "google",
         accountId: "acct_google_1",
         capabilities: ["calendar.read"],
         scopes: scopesForGoogleCapabilities(["calendar.read"]),
         reason: "calendar.listCalendars",
+      });
+    } catch (err) {
+      caught = err;
+    }
+
+    expect(caught).toBeInstanceOf(ElizaError);
+    expect((caught as ElizaError).code).toBe(GOOGLE_ACCOUNT_CAPABILITY_REAUTH_REQUIRED);
+    expect((caught as ElizaError).context).toMatchObject({
+      provider: "google",
+      accountId: "acct_google_1",
+      requestedAccountId: "acct_google_1",
+      reason: "calendar.listCalendars",
+      status: "needs-reauth",
+      requiredCapabilities: ["calendar.read"],
+      grantedCapabilities: ["gmail.read"],
+      missingCapabilities: ["calendar.read"],
+    });
+    await expect(storage.getAccount("google", "acct_google_1")).resolves.toMatchObject({
+      status: "needs-reauth",
+      metadata: expect.objectContaining({
+        statusDetail: "Reconnect Google with calendar.read to continue calendar.listCalendars.",
+        reauthRequired: expect.objectContaining({
+          code: GOOGLE_ACCOUNT_CAPABILITY_REAUTH_REQUIRED,
+          requiredCapabilities: ["calendar.read"],
+          grantedCapabilities: ["gmail.read"],
+          missingCapabilities: ["calendar.read"],
+        }),
+      }),
+    });
+  });
+
+  it("infers account-operation capabilities from legacy grantedScopes metadata", async () => {
+    const storage = createCredentialStorage({
+      records: [
+        {
+          credentialType: "oauth.tokens",
+          value: JSON.stringify({
+            access_token: "access-token",
+            refresh_token: "refresh-token",
+            expiry_date: Date.now() + 3600_000,
+          }),
+        },
+      ],
+      metadata: {
+        grantedCapabilities: undefined,
+        grantedScopes: [GOOGLE_OAUTH_SCOPES.calendar.read],
+      },
+    });
+    const resolver = new DefaultGoogleCredentialResolver({
+      storage,
+      clientId: "google-client",
+      clientSecret: "google-secret",
+    });
+
+    const client = await resolver.getAuthClient({
+      provider: "google",
+      accountId: "acct_google_1",
+      capabilities: ["calendar.read"],
+      scopes: scopesForGoogleCapabilities(["calendar.read"]),
+      reason: "calendar.listCalendars",
+    });
+
+    expect(client.credentials).toMatchObject({
+      access_token: "access-token",
+      refresh_token: "refresh-token",
+    });
+    await expect(storage.getAccount("google", "acct_google_1")).resolves.toMatchObject({
+      status: "connected",
+    });
+    await expect(
+      resolver.getAuthClient({
+        provider: "google",
+        accountId: "acct_google_1",
+        capabilities: ["gmail.read"],
+        scopes: scopesForGoogleCapabilities(["gmail.read"]),
+        reason: "gmail.listMessages",
       })
-    ).rejects.toThrow(
-      "Google account acct_google_1 is missing required capability calendar.read for calendar.listCalendars."
-    );
+    ).rejects.toMatchObject({
+      code: GOOGLE_ACCOUNT_CAPABILITY_REAUTH_REQUIRED,
+      context: expect.objectContaining({
+        missingCapabilities: ["gmail.read"],
+      }),
+    });
   });
 
   it("resolves OAuth clients from account metadata credential refs", async () => {
@@ -1971,7 +2102,7 @@ function createCredentialStorage(options: {
     accountId: string;
   }): Promise<TestCredentialRecord[]>;
 } {
-  const account: ConnectorAccount = {
+  let account: ConnectorAccount = {
     id: "acct_google_1",
     provider: "google",
     label: "Google User",
@@ -1995,6 +2126,7 @@ function createCredentialStorage(options: {
       return provider === "google" && accountId === account.id ? account : null;
     },
     async upsertAccount(next: ConnectorAccount) {
+      account = next;
       return next;
     },
     async deleteAccount() {

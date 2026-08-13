@@ -6,7 +6,7 @@
  * goes through a confirmation dialog.
  */
 
-import { RefreshCw, Star, Trash2 } from "lucide-react";
+import { KeyRound, RefreshCw, Star, Trash2 } from "lucide-react";
 import { useCallback, useState } from "react";
 import type {
   ConnectorAccountRecord,
@@ -43,10 +43,13 @@ export interface ConnectorAccountCardProps {
   saving?: boolean;
   testBusy?: boolean;
   refreshBusy?: boolean;
+  reauthorizeBusy?: boolean;
+  reauthorizeDisabled?: boolean;
   onSelect?: () => void;
   onUpdate: (body: ConnectorAccountUpdateInput) => Promise<void>;
   onTest: () => Promise<void>;
   onRefresh: () => Promise<void>;
+  onReauthorize?: () => Promise<void>;
   onDelete: () => Promise<void>;
   onMakeDefault: () => Promise<void>;
 }
@@ -143,6 +146,43 @@ function initials(label: string): string {
     .join("");
 }
 
+function uniqueStringList(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  const result: string[] = [];
+  const seen = new Set<string>();
+  for (const item of value) {
+    if (typeof item !== "string") continue;
+    const trimmed = item.trim();
+    if (!trimmed || seen.has(trimmed)) continue;
+    seen.add(trimmed);
+    result.push(trimmed);
+  }
+  return result;
+}
+
+function capabilityListFromMetadata(
+  metadata: Record<string, unknown> | undefined,
+  key: string,
+): string[] {
+  return uniqueStringList(metadata?.[key]);
+}
+
+function missingCapabilitiesFromMetadata(
+  metadata: Record<string, unknown> | undefined,
+): string[] {
+  const reauthRequired = metadata?.reauthRequired;
+  if (
+    !reauthRequired ||
+    typeof reauthRequired !== "object" ||
+    Array.isArray(reauthRequired)
+  ) {
+    return [];
+  }
+  return uniqueStringList(
+    (reauthRequired as Record<string, unknown>).missingCapabilities,
+  );
+}
+
 export function ConnectorAccountCard({
   account,
   isDefault = account.isDefault === true,
@@ -150,10 +190,13 @@ export function ConnectorAccountCard({
   saving = false,
   testBusy = false,
   refreshBusy = false,
+  reauthorizeBusy = false,
+  reauthorizeDisabled = false,
   onSelect,
   onUpdate,
   onTest,
   onRefresh,
+  onReauthorize,
   onDelete,
   onMakeDefault,
 }: ConnectorAccountCardProps) {
@@ -165,6 +208,38 @@ export function ConnectorAccountCard({
   const status = deriveStatus(account.status, t);
   const displayHandle = account.handle ?? account.externalId ?? null;
   const enabled = account.enabled !== false;
+  const requestedCapabilities = capabilityListFromMetadata(
+    account.metadata,
+    "requestedCapabilities",
+  );
+  const grantedCapabilities = capabilityListFromMetadata(
+    account.metadata,
+    "grantedCapabilities",
+  );
+  const missingCapabilities = missingCapabilitiesFromMetadata(account.metadata);
+  const capabilityRows = [
+    {
+      key: "granted",
+      label: t("connectoraccount.capabilities.granted", {
+        defaultValue: "Granted",
+      }),
+      values: grantedCapabilities,
+    },
+    {
+      key: "requested",
+      label: t("connectoraccount.capabilities.requested", {
+        defaultValue: "Requested",
+      }),
+      values: requestedCapabilities,
+    },
+    {
+      key: "missing",
+      label: t("connectoraccount.capabilities.missing", {
+        defaultValue: "Missing",
+      }),
+      values: missingCapabilities,
+    },
+  ].filter((row) => row.values.length > 0);
 
   const handleDelete = () => {
     void deleteModal.submit(() => Promise.resolve(onDelete()));
@@ -282,6 +357,33 @@ export function ConnectorAccountCard({
               t("connectoraccount.test", { defaultValue: "Test" })
             )}
           </Button>
+          {onReauthorize ? (
+            <Button
+              type="button"
+              variant={
+                account.status === "needs-reauth" ? "default" : "outline"
+              }
+              size="sm"
+              disabled={saving || reauthorizeBusy || reauthorizeDisabled}
+              onClick={() => void onReauthorize()}
+              aria-label={t("connectoraccount.reauthorize", {
+                defaultValue: "Reconnect connector account",
+              })}
+              title={t("connectoraccount.reauthorize", {
+                defaultValue: "Reconnect connector account",
+              })}
+              className="h-7 px-2 text-xs"
+            >
+              {reauthorizeBusy ? (
+                <Spinner className="h-3 w-3" />
+              ) : (
+                <KeyRound className="h-3.5 w-3.5" aria-hidden />
+              )}
+              <span>
+                {t("connectoraccount.reconnect", { defaultValue: "Reconnect" })}
+              </span>
+            </Button>
+          ) : null}
           <Button
             type="button"
             variant="outline"
@@ -320,6 +422,17 @@ export function ConnectorAccountCard({
           </Button>
         </div>
       </div>
+
+      {capabilityRows.length > 0 ? (
+        <div className="flex flex-wrap gap-x-4 gap-y-1 text-[10px] text-muted">
+          {capabilityRows.map((row) => (
+            <span key={row.key} className="min-w-0">
+              <span className="font-medium text-txt">{row.label}:</span>{" "}
+              <span className="break-all">{row.values.join(", ")}</span>
+            </span>
+          ))}
+        </div>
+      ) : null}
 
       <div className="flex flex-wrap items-center gap-3">
         <ConnectorAccountPurposeSelector

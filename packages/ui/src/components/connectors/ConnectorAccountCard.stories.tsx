@@ -83,6 +83,7 @@ export const NeedsReauth: Story = {
       statusDetail: "Session expired 2h ago — re-authenticate to resume sync.",
       lastSyncedAt: Date.now() - 6 * 3_600_000,
     },
+    onReauthorize: noop,
   },
 };
 

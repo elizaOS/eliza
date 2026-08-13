@@ -14,6 +14,7 @@ import {
   type ConnectorAccount,
   type ConnectorAccountManager,
   type ConnectorAccountStorage,
+  ElizaError,
   getConnectorAccountManager,
   type IAgentRuntime,
 } from "@elizaos/core";
@@ -31,7 +32,11 @@ import {
   CORE_SECRETS_SERVICE_TYPE,
   credentialRefRecordsFromMetadata,
 } from "./connector-credential-refs.js";
-import { type GoogleCapability, isGoogleCapability } from "./scopes.js";
+import {
+  capabilitiesForGoogleScopes,
+  type GoogleCapability,
+  isGoogleCapability,
+} from "./scopes.js";
 import type {
   GoogleAuthClient,
   GoogleAuthResolutionRequest,
@@ -42,6 +47,8 @@ import { GOOGLE_SERVICE_NAME } from "./types.js";
 const GOOGLE_CLIENT_ID_SETTING = "GOOGLE_CLIENT_ID";
 const GOOGLE_CLIENT_SECRET_SETTING = "GOOGLE_CLIENT_SECRET";
 const GOOGLE_REDIRECT_URI_SETTING = "GOOGLE_REDIRECT_URI";
+export const GOOGLE_ACCOUNT_CAPABILITY_REAUTH_REQUIRED =
+  "GOOGLE_ACCOUNT_CAPABILITY_REAUTH_REQUIRED";
 
 // Read-side store resolution mirrors the write side exactly
 // (connector-credential-refs.ts): same service names, same precedence. A
@@ -175,10 +182,24 @@ export class DefaultGoogleCredentialResolver implements GoogleCredentialResolver
         `Google account ${request.accountId} was not found in connector account storage.`
       );
     }
+    if (account.status === "needs-reauth") {
+      const state = capabilityCheckState(account, request);
+      throw createCapabilityReauthError(account, request, {
+        ...state,
+        missingCapabilities:
+          state.missingCapabilities.length > 0
+            ? state.missingCapabilities
+            : [...request.capabilities],
+      });
+    }
     if (account.status !== "connected") {
       throw new Error(`Google account ${request.accountId} is ${account.status}, not connected.`);
     }
-    assertAccountHasCapabilities(account, request);
+    const capabilityState = capabilityCheckState(account, request);
+    if (capabilityState.missingCapabilities.length > 0) {
+      await this.markAccountNeedsReauth(account, request, capabilityState);
+      throw createCapabilityReauthError(account, request, capabilityState);
+    }
 
     const clientConfig = this.resolveOAuthClientConfig(account);
     const storage = this.resolveStorage();
@@ -306,6 +327,42 @@ export class DefaultGoogleCredentialResolver implements GoogleCredentialResolver
 
     const manager = this.accountManager ?? this.getRuntimeAccountManager();
     return (manager?.getStorage() as GoogleConnectorStorage | undefined) ?? null;
+  }
+
+  private async markAccountNeedsReauth(
+    account: ConnectorAccount,
+    request: GoogleAuthResolutionRequest,
+    state: CapabilityCheckState
+  ): Promise<void> {
+    const storage = this.resolveStorage();
+    if (!storage) {
+      return;
+    }
+    const statusDetail = reauthStatusDetail(request, state.missingCapabilities);
+    const metadata = {
+      ...(asRecord(account.metadata) ?? {}),
+      statusDetail,
+      reauthRequired: {
+        code: GOOGLE_ACCOUNT_CAPABILITY_REAUTH_REQUIRED,
+        reason: request.reason,
+        requiredCapabilities: [...request.capabilities],
+        grantedCapabilities: state.grantedCapabilities,
+        missingCapabilities: state.missingCapabilities,
+        markedAt: Date.now(),
+      },
+    };
+
+    try {
+      await storage.upsertAccount({
+        ...account,
+        status: "needs-reauth",
+        updatedAt: Date.now(),
+        metadata,
+      });
+      this.clearCache(account.id);
+    } catch {
+      // The caller still receives the typed reconnect error; state persistence is best effort.
+    }
   }
 
   private async resolveCredentialMaterial(
@@ -617,30 +674,97 @@ function capabilitiesFromValue(value: unknown): GoogleCapability[] {
   return capabilities;
 }
 
+function stringListFromValue(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return value.filter((item): item is string => typeof item === "string");
+  }
+  const text = nonEmptyString(value);
+  return text ? text.split(/\s+/).filter(Boolean) : [];
+}
+
+function mergeCapabilities(...groups: GoogleCapability[][]): GoogleCapability[] {
+  const merged: GoogleCapability[] = [];
+  const seen = new Set<GoogleCapability>();
+  for (const group of groups) {
+    for (const capability of group) {
+      if (seen.has(capability)) continue;
+      seen.add(capability);
+      merged.push(capability);
+    }
+  }
+  return merged;
+}
+
 function capabilitiesFromAccount(account: ConnectorAccount): GoogleCapability[] {
   const metadata = asRecord(account.metadata);
   const topLevelCapabilities = capabilitiesFromValue(
     (account as ConnectorAccount & { capabilities?: unknown }).capabilities
   );
-  return [...capabilitiesFromValue(metadata?.grantedCapabilities), ...topLevelCapabilities];
+  const topLevelScopes = stringListFromValue(
+    (account as ConnectorAccount & { scopes?: unknown }).scopes
+  );
+  const metadataScopeValues = [
+    ...stringListFromValue(metadata?.grantedScopes),
+    ...stringListFromValue(metadata?.scopes),
+    ...stringListFromValue(metadata?.scope),
+    ...stringListFromValue(metadata?.oauthScope),
+  ];
+  return mergeCapabilities(
+    capabilitiesFromValue(metadata?.grantedCapabilities),
+    capabilitiesFromValue(metadata?.capabilities),
+    topLevelCapabilities,
+    capabilitiesForGoogleScopes([...metadataScopeValues, ...topLevelScopes])
+  );
 }
 
-function assertAccountHasCapabilities(
+interface CapabilityCheckState {
+  grantedCapabilities: GoogleCapability[];
+  missingCapabilities: GoogleCapability[];
+}
+
+function capabilityCheckState(
   account: ConnectorAccount,
   request: GoogleAuthResolutionRequest
-): void {
+): CapabilityCheckState {
+  const grantedCapabilities = capabilitiesFromAccount(account);
   if (request.capabilities.length === 0) {
-    return;
+    return { grantedCapabilities, missingCapabilities: [] };
   }
-  const granted = new Set(capabilitiesFromAccount(account));
+  const granted = new Set(grantedCapabilities);
   const missing = request.capabilities.filter((capability) => !granted.has(capability));
-  if (missing.length === 0) {
-    return;
-  }
-  throw new Error(
-    `Google account ${request.accountId} is missing required capability ${missing.join(
+  return { grantedCapabilities, missingCapabilities: missing };
+}
+
+function reauthStatusDetail(
+  request: GoogleAuthResolutionRequest,
+  missingCapabilities: readonly GoogleCapability[]
+): string {
+  return `Reconnect Google with ${missingCapabilities.join(", ")} to continue ${request.reason}.`;
+}
+
+function createCapabilityReauthError(
+  account: ConnectorAccount,
+  request: GoogleAuthResolutionRequest,
+  state: CapabilityCheckState
+): ElizaError {
+  return new ElizaError(
+    `Google account ${request.accountId} is missing required capability ${state.missingCapabilities.join(
       ", "
-    )} for ${request.reason}. Reconnect the account with the required Google Workspace capability.`
+    )} for ${request.reason}. Reconnect the account with the required Google Workspace capability.`,
+    {
+      code: GOOGLE_ACCOUNT_CAPABILITY_REAUTH_REQUIRED,
+      context: {
+        provider: GOOGLE_SERVICE_NAME,
+        accountId: account.id,
+        requestedAccountId: request.accountId,
+        reason: request.reason,
+        status: "needs-reauth",
+        requiredCapabilities: [...request.capabilities],
+        grantedCapabilities: state.grantedCapabilities,
+        missingCapabilities: state.missingCapabilities,
+      },
+      severity: "ephemeral",
+    }
   );
 }
 
