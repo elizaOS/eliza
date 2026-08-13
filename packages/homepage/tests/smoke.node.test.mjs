@@ -19,14 +19,6 @@ const pruneAssetsPath = resolve(
   "../scripts/prune-unused-static-assets.mjs",
 );
 const landingPath = resolve(__dirname, "../src/pages/landing.tsx");
-const modelViewerPath = resolve(
-  __dirname,
-  "../src/components/ModelViewers/ModelB.tsx",
-);
-const shaderBackgroundPath = resolve(
-  __dirname,
-  "../src/components/ShaderBackground/ShaderBackground.tsx",
-);
 const visualRegressionSpecPath = resolve(__dirname, "./e2e/visual.spec.ts");
 const cloudApiClientPath = resolve(__dirname, "../src/lib/api/client.ts");
 const playwrightLauncherPath = resolve(
@@ -41,10 +33,6 @@ const cloudRouteMockPaths = [
   "./e2e/visual.spec.ts",
 ].map((relativePath) => resolve(__dirname, relativePath));
 const globalStylesPath = resolve(__dirname, "../src/index.css");
-const iphoneModelPath = resolve(
-  __dirname,
-  "../public/models/iphone-meshopt.glb",
-);
 const elizaAvatarPath = resolve(
   __dirname,
   "../public/brand/logos/logo_white_orangebg.svg",
@@ -57,14 +45,7 @@ const headersPath = resolve(__dirname, "../public/_headers");
 const viteConfigPath = resolve(__dirname, "../vite.config.ts");
 const tsconfigPath = resolve(__dirname, "../tsconfig.app.json");
 
-test("landing ships its compressed phone and canonical profile assets", () => {
-  const model = readFileSync(iphoneModelPath);
-  assert.equal(model.subarray(0, 4).toString("ascii"), "glTF");
-  assert.ok(
-    statSync(iphoneModelPath).size < 550_000,
-    "phone model must stay under its 550 KB transfer budget",
-  );
-
+test("landing ships its canonical profile assets", () => {
   const avatar = readFileSync(elizaAvatarPath, "utf8");
   assert.match(avatar, /fill="#FF5800"/);
   const profileImage = readFileSync(profileImagePath);
@@ -80,22 +61,24 @@ test("landing ships its compressed phone and canonical profile assets", () => {
   );
 });
 
-test("landing keeps WebGL deferred and render loops demand-driven", () => {
+test("landing stays a static surface with no animation-framework dependencies", () => {
   const packageJson = JSON.parse(readFileSync(packageJsonPath, "utf8"));
   const pruneAssets = readFileSync(pruneAssetsPath, "utf8");
   const landing = readFileSync(landingPath, "utf8");
-  const modelViewer = readFileSync(modelViewerPath, "utf8");
-  const shaderBackground = readFileSync(shaderBackgroundPath, "utf8");
 
-  assert.equal(packageJson.dependencies["@react-three/drei"], undefined);
-  assert.equal(packageJson.dependencies["country-flag-icons"], undefined);
-  assert.match(
+  for (const dependency of [
+    "@react-three/drei",
+    "@react-spring/web",
+    "@react-spring/three",
+    "@use-gesture/react",
+    "country-flag-icons",
+  ]) {
+    assert.equal(packageJson.dependencies[dependency], undefined);
+  }
+  assert.doesNotMatch(
     landing,
-    /const ModelB = lazy\(\(\) => import\("@\/components\/ModelViewers\/ModelB"\)\)/,
+    /@react-three|react-spring|use-gesture|ModelViewers|ShaderBackground/,
   );
-  assert.match(modelViewer, /frameloop="demand"/);
-  assert.match(shaderBackground, /frameloop="demand"/);
-  assert.match(shaderBackground, /1000 \/ 30/);
   assert.match(packageJson.scripts.postbuild, /prune-unused-static-assets/);
   assert.match(pruneAssets, /"brand\/background", "product"/);
 });
