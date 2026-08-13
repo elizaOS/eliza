@@ -11,30 +11,62 @@ afterEach(() => {
 });
 
 describe("LogViewer timestamps", () => {
-  it("renders malformed refresh and entry timestamps as explicitly unavailable", () => {
+  it("renders every malformed present timestamp as explicitly unavailable", () => {
     render(
       <LogViewer
         title="Runtime logs"
-        fetchedAt="not-a-date"
+        fetchedAt="2026-02-31T00:00:00Z"
         entries={[
           {
-            id: "invalid",
+            id: "malformed",
             timestamp: "not-a-date",
             message: "Malformed entry",
           },
+          {
+            id: "nan",
+            timestamp: Number.NaN,
+            message: "NaN entry",
+          },
+          {
+            id: "invalid-date",
+            timestamp: new Date(Number.NaN),
+            message: "Invalid object entry",
+          },
+          {
+            id: "time-clip",
+            timestamp: 8.64e15 + 1,
+            message: "Out-of-TimeClip entry",
+          },
+          {
+            id: "calendar-invalid",
+            timestamp: "2026-02-31T00:00:00Z",
+            message: "Calendar-invalid entry",
+          },
           { id: "missing", message: "Missing entry timestamp" },
+          { id: "empty", timestamp: "", message: "Empty entry timestamp" },
         ]}
       />,
     );
 
     expect(screen.getByText("Refreshed at —")).toBeTruthy();
-    expect(screen.getByText("Malformed entry").parentElement?.textContent).toBe(
-      "—Malformed entry",
-    );
+    for (const message of [
+      "Malformed entry",
+      "NaN entry",
+      "Invalid object entry",
+      "Out-of-TimeClip entry",
+      "Calendar-invalid entry",
+    ]) {
+      expect(screen.getByText(message).parentElement?.textContent).toBe(
+        `—${message}`,
+      );
+    }
     expect(
       screen.getByText("Missing entry timestamp").parentElement?.textContent,
     ).toBe("Missing entry timestamp");
-    expect(screen.queryByText("Invalid Date")).toBeNull();
+    expect(
+      screen.getByText("Empty entry timestamp").parentElement?.textContent,
+    ).toBe("Empty entry timestamp");
+    expect(document.body.textContent).not.toContain("Invalid Date");
   });
 
   it("preserves valid timestamps, including the Unix epoch", () => {

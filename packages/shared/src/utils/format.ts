@@ -72,6 +72,35 @@ type DurationFormatOptions = {
   t?: (key: string, vars?: Record<string, string | number>) => string;
 };
 
+const ISO_CALENDAR_DATE_PREFIX = /^(\d{4})-(\d{2})-(\d{2})(?:T|$)/;
+
+function hasValidIsoCalendarDate(value: string): boolean {
+  const match = ISO_CALENDAR_DATE_PREFIX.exec(value);
+  if (!match) return true;
+
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  if (month < 1 || month > 12 || day < 1) return false;
+
+  const isLeapYear = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  const daysInMonth = [
+    31,
+    isLeapYear ? 29 : 28,
+    31,
+    30,
+    31,
+    30,
+    31,
+    31,
+    30,
+    31,
+    30,
+    31,
+  ];
+  return day <= daysInMonth[month - 1];
+}
+
 /**
  * Format a byte count in human-readable units.
  */
@@ -165,6 +194,9 @@ export function formatTime(
 ): string {
   const { fallback = "—", locale } = options;
   if (value == null || value === "") return fallback;
+  if (typeof value === "string" && !hasValidIsoCalendarDate(value)) {
+    return fallback;
+  }
   const parsed = value instanceof Date ? value : new Date(value);
   if (!Number.isFinite(parsed.getTime())) return fallback;
   return parsed.toLocaleTimeString(locale);
