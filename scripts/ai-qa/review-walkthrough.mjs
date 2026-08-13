@@ -17,7 +17,7 @@
  *
  * Usage:
  *   node scripts/ai-qa/review-walkthrough.mjs [--run-dir reports/walkthrough/<id>]
- *     [--concurrency 4] [--strict] [--update-debt]
+ *     [--concurrency 4] [--strict | --update-debt]
  *     [--verdict-md packages/app/test/ui-smoke/walkthrough/WALKTHROUGH_VERDICTS.md]
  */
 

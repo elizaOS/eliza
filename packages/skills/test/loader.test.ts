@@ -149,6 +149,38 @@ name: no-desc
       rmSync(tempDir, { recursive: true, force: true });
     }
   });
+
+  it("reports malformed YAML instead of a fabricated metadata error", () => {
+    const tempDir = createTempDir("skill-loader-malformed-yaml");
+    try {
+      const filePath = join(tempDir, "malformed.md");
+      writeFileSync(
+        filePath,
+        `---
+invalid: : : yaml syntax error
+---
+# Malformed`,
+      );
+
+      const result = loadSkillsFromDir({ dir: tempDir, source: "test" });
+
+      assert.deepStrictEqual(result.skills, []);
+      assert.deepStrictEqual(result.diagnostics, [
+        {
+          type: "warning",
+          message: "Skill frontmatter contains invalid YAML",
+          path: filePath,
+        },
+      ]);
+      assert.ok(
+        !result.diagnostics.some((diagnostic) =>
+          diagnostic.message.includes("description is required"),
+        ),
+      );
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
 });
 
 describe("loadSkills and loadSkillEntries", () => {

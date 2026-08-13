@@ -64,5 +64,9 @@ export function parseReviewerArgs(argv, { defaultVerdictMd } = {}) {
     throw new Error(`unknown argument: ${argument}`);
   }
 
+  if (options.strict && options.updateDebt) {
+    throw new Error("--strict and --update-debt cannot be combined");
+  }
+
   return options;
 }

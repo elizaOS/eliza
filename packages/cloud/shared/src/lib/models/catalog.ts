@@ -399,9 +399,13 @@ function buildSelectorName(modelId: string): string {
 }
 
 function buildSelectorDescription(modelId: string): string {
-  const [provider = "", rawName = modelId] = modelId.toLowerCase().split("/", 2);
+  const normalizedModelId = modelId.toLowerCase();
+  const [provider = "", rawName = normalizedModelId] = normalizedModelId.split("/", 2);
   const id = rawName.startsWith(`${provider}-`) ? rawName.slice(provider.length + 1) : rawName;
 
+  if (normalizedModelId === "minimax/minimax-m3") {
+    return "Flagship long-context agentic coding model";
+  }
   if (id.includes("codex")) return "Coding-focused model";
   if (id.includes("deep-research")) return "Research-focused reasoning model";
   if (id.includes("thinking")) return "Extended reasoning model";

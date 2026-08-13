@@ -14,8 +14,9 @@ import {
 } from "node:fs";
 import { homedir } from "node:os";
 import { basename, dirname, isAbsolute, join, resolve, sep } from "node:path";
-import { resolveStateDir } from "@elizaos/core";
+import { isElizaError, resolveStateDir } from "@elizaos/core";
 import {
+  INVALID_SKILL_FRONTMATTER_YAML,
   parseFrontmatter,
   resolveSkillInvocationPolicy,
   resolveSkillMetadata,
@@ -100,7 +101,21 @@ function loadSkillFromFile(
     return { skill: null, diagnostics };
   }
 
-  const { frontmatter } = parseFrontmatter<SkillFrontmatter>(rawContent);
+  let frontmatter: SkillFrontmatter;
+  try {
+    ({ frontmatter } = parseFrontmatter<SkillFrontmatter>(rawContent));
+  } catch (error: unknown) {
+    // error-policy:J1 skill discovery translates its known parser failure into a warning diagnostic
+    if (!isElizaError(error) || error.code !== INVALID_SKILL_FRONTMATTER_YAML) {
+      throw error;
+    }
+    diagnostics.push({
+      type: "warning",
+      message: error.message,
+      path: filePath,
+    });
+    return { skill: null, diagnostics };
+  }
   const skillDir = dirname(filePath);
   const parentDirName = basename(skillDir);
 

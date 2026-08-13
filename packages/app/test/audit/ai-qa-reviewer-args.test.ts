@@ -4,13 +4,16 @@
  */
 
 import { spawnSync } from "node:child_process";
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { resolve } from "node:path";
-import { describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it } from "vitest";
 import { parseReviewerArgs } from "../../../../scripts/ai-qa/reviewer-args.mjs";
 
 const reviewerScripts = [
   {
     label: "screenshot reviewer",
+    supportsVerdictMd: false,
     path: resolve(
       import.meta.dirname,
       "../../../../scripts/ai-qa/review-screenshots.mjs",
@@ -18,6 +21,7 @@ const reviewerScripts = [
   },
   {
     label: "walkthrough reviewer",
+    supportsVerdictMd: true,
     path: resolve(
       import.meta.dirname,
       "../../../../scripts/ai-qa/review-walkthrough.mjs",
@@ -31,6 +35,11 @@ const {
   OPENAI_API_KEY: _openAiKey,
   ...keylessEnvironment
 } = process.env;
+const temporaryRoot = mkdtempSync(resolve(tmpdir(), "ai-qa-reviewer-args-"));
+
+afterAll(() => {
+  rmSync(temporaryRoot, { recursive: true, force: true });
+});
 
 describe("AI-QA reviewer arguments", () => {
   it("preserves defaults and supported screenshot options", () => {
@@ -47,14 +56,14 @@ describe("AI-QA reviewer arguments", () => {
         "--concurrency",
         "8",
         "--strict",
-        "--update-debt",
       ]),
     ).toEqual({
       runDir: "reports/example",
       concurrency: 8,
       strict: true,
-      updateDebt: true,
+      updateDebt: false,
     });
+    expect(parseReviewerArgs(["--update-debt"]).updateDebt).toBe(true);
   });
 
   it("supports the walkthrough-only verdict destination", () => {
@@ -72,6 +81,14 @@ describe("AI-QA reviewer arguments", () => {
     [["--strcit"], "unknown argument: --strcit"],
     [["positional"], "unknown argument: positional"],
     [["--strict", "--strict"], "--strict may be specified only once"],
+    [
+      ["--strict", "--update-debt"],
+      "--strict and --update-debt cannot be combined",
+    ],
+    [
+      ["--update-debt", "--strict"],
+      "--strict and --update-debt cannot be combined",
+    ],
     [
       ["--concurrency", "2", "--concurrency", "3"],
       "--concurrency may be specified only once",
@@ -114,6 +131,34 @@ describe("AI-QA reviewer arguments", () => {
       expect(result.stderr).toContain("unknown argument: --strcit");
       expect(result.stdout).not.toContain("skipping");
       expect(result.stdout).not.toContain("PASSED");
+    },
+  );
+
+  it.each(
+    reviewerScripts.flatMap((reviewer) => [
+      { ...reviewer, flags: ["--strict", "--update-debt"] },
+      { ...reviewer, flags: ["--update-debt", "--strict"] },
+    ]),
+  )(
+    "rejects conflicting flags before work at the real $label boundary: $flags",
+    ({ label, path, flags, supportsVerdictMd }) => {
+      const caseName = `${label.replaceAll(" ", "-")}-${flags[0].slice(2)}`;
+      const runDir = resolve(temporaryRoot, caseName, "run");
+      const verdictMd = resolve(temporaryRoot, caseName, "verdict.md");
+      const args = [path, ...flags, "--run-dir", runDir];
+      if (supportsVerdictMd) args.push("--verdict-md", verdictMd);
+      const result = spawnSync(process.execPath, args, {
+        encoding: "utf8",
+        env: keylessEnvironment,
+      });
+
+      expect(result.status).toBe(1);
+      expect(result.stderr).toContain(
+        "--strict and --update-debt cannot be combined",
+      );
+      expect(result.stdout).not.toContain("skipping");
+      expect(existsSync(runDir)).toBe(false);
+      expect(existsSync(verdictMd)).toBe(false);
     },
   );
 

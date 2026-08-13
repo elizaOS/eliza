@@ -4,6 +4,8 @@
  * `bun run dev` startup.
  */
 import { describe, expect, test } from "bun:test";
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -47,7 +49,6 @@ describe("parseTcpPort", () => {
     expect(parseTcpPort(String(DEFAULT_API_PORT), "--api-port")).toBe(
       DEFAULT_API_PORT,
     );
-    expect(parseTcpPort(" 31337 ", "ELIZA_API_PORT")).toBe(31337);
   });
 
   test("rejects zero, out-of-range, partial, signed, and non-decimal forms", () => {
@@ -65,6 +66,7 @@ describe("parseTcpPort", () => {
       " ",
       "NaN",
       "Infinity",
+      " 31337 ",
     ];
     for (const value of bad) {
       expect(() => parseTcpPort(value, "--ui-port")).toThrow(
@@ -131,6 +133,16 @@ describe("parseArgs port wiring", () => {
     expect(options.apiPort).toBe(45555);
   });
 
+  test("CLI port overrides suppress invalid values from the same env source", () => {
+    const options = parseArgs(["--ui-port=44444", "--api-port=45555"], {
+      ELIZA_UI_PORT: "notaport",
+      ELIZA_PORT: "also-bad",
+      ELIZA_API_PORT: "still-bad",
+    });
+    expect(options.uiPort).toBe(44444);
+    expect(options.apiPort).toBe(45555);
+  });
+
   test("env ports apply when CLI ports are omitted", () => {
     const options = parseArgs([], {
       ELIZA_UI_PORT: "40002",
@@ -153,6 +165,9 @@ describe("parseArgs port wiring", () => {
     expect(() => parseArgs(["--api-port=0"], {})).toThrow(
       /--api-port must be a TCP port integer from 1 to 65535/,
     );
+    expect(() => parseArgs(["--ui-port=44444=garbage"], {})).toThrow(
+      /--ui-port must be a TCP port integer from 1 to 65535/,
+    );
   });
 });
 
@@ -164,6 +179,54 @@ describe("dev-health-check CLI boundary", () => {
     expect(result.stdout).toContain("--ui-port");
     expect(result.stdout).toContain("--api-port");
     expect(result.stdout).toContain("1-65535");
+  });
+
+  test("--help ignores invalid environment overrides", () => {
+    const result = runCli(["--help"], {
+      ELIZA_UI_PORT: "notaport",
+      ELIZA_API_PORT: "also-bad",
+    });
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain("Usage:");
+    expect(result.stderr).toBe("");
+  });
+
+  test("explicit CLI ports ignore invalid matching environment overrides", () => {
+    const result = runCli(
+      ["--ui-port=44444", "--api-port=45555", "--seconds=0"],
+      {
+        ELIZA_UI_PORT: "notaport",
+        ELIZA_PORT: "also-bad",
+        ELIZA_API_PORT: "still-bad",
+      },
+    );
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toMatch(/--seconds must be a positive number/);
+    expect(result.stderr).not.toMatch(/ELIZA_(?:UI|API)?_?PORT/);
+    expect(result.stdout).not.toContain("[dev-health-check] starting:");
+  });
+
+  test("rejects noncanonical operands before creating output", () => {
+    const directory = mkdtempSync(path.join(tmpdir(), "dev-health-ports-"));
+    const logDir = path.join(directory, "nested-logs");
+    try {
+      const extraEquals = runCli([
+        `--log-dir=${logDir}`,
+        "--ui-port=44444=garbage",
+      ]);
+      expect(extraEquals.status).not.toBe(0);
+      expect(extraEquals.stderr).toMatch(/--ui-port must be a TCP port/);
+      expect(existsSync(logDir)).toBe(false);
+
+      const paddedEnv = runCli([`--log-dir=${logDir}`], {
+        ELIZA_API_PORT: " 31337 ",
+      });
+      expect(paddedEnv.status).not.toBe(0);
+      expect(paddedEnv.stderr).toMatch(/ELIZA_API_PORT must be a TCP port/);
+      expect(existsSync(logDir)).toBe(false);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
   });
 
   test("rejects invalid --ui-port before log/output or dev startup", () => {
