@@ -5,7 +5,15 @@
  * helpers stay on an explicit allowlist.
  */
 
-import { readdirSync, readFileSync, statSync } from "node:fs";
+import {
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, join, relative, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
@@ -169,7 +177,25 @@ function importedBindingFiles(file: string, identifier: string): string[] {
   }
   for (const match of source.matchAll(
     new RegExp(
-      `const\\s+${identifier}\\s*=\\s*lazy\\(\\(\\)\\s*=>\\s*import\\(\\s*["'](\\.?\\.?\\/[^"']+)["']`,
+      `import\\s+${identifier}\\s+from\\s*["'](\\.?\\.?\\/[^"']+)["']`,
+      "g",
+    ),
+  )) {
+    const resolved = resolveExistingFile(fromDir, match[1]);
+    if (resolved) files.add(resolved);
+  }
+  for (const match of source.matchAll(
+    new RegExp(
+      `import\\s+${identifier}\\s*,\\s*\\{[^}]*\\}\\s*from\\s*["'](\\.?\\.?\\/[^"']+)["']`,
+      "g",
+    ),
+  )) {
+    const resolved = resolveExistingFile(fromDir, match[1]);
+    if (resolved) files.add(resolved);
+  }
+  for (const match of source.matchAll(
+    new RegExp(
+      `(?:const|let|var)\\s+${identifier}\\s*=\\s*(?:lazy\\(\\(\\)\\s*=>\\s*)?import\\(\\s*["'](\\.?\\.?\\/[^"']+)["']`,
       "g",
     ),
   )) {
@@ -186,6 +212,37 @@ function importedBindingFiles(file: string, identifier: string): string[] {
     }
   }
   return [...files];
+}
+
+function usesSettingsLayout(source: string): boolean {
+  const code = source
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/\/\/[^\n]*/g, "");
+  return code.includes("<SettingsStack") || code.includes("<SettingsGroup");
+}
+
+function layoutVerdict(
+  relPath: string,
+  source: string,
+  allowlist: Map<string, string>,
+): { ok: true } | { ok: false; message: string } {
+  if (usesSettingsLayout(source)) {
+    if (allowlist.has(relPath)) {
+      return {
+        ok: false,
+        message: `${relPath} uses SettingsStack/SettingsGroup and must not stay allowlisted.`,
+      };
+    }
+    return { ok: true };
+  }
+  if (allowlist.has(relPath)) return { ok: true };
+  return {
+    ok: false,
+    message:
+      `${relPath} does not use SettingsStack/SettingsGroup. Compose the ` +
+      `shared settings layout primitives, or add this file to ` +
+      `SECTION_LAYOUT_ALLOWLIST with a reason.`,
+  };
 }
 
 function registeredSectionRelPaths(): string[] {
@@ -217,21 +274,8 @@ describe("settings sections: use SettingsStack/Group or are allowlisted", () => 
     "%s uses SettingsStack/SettingsGroup, or is allowlisted",
     (relPath) => {
       const source = readFileSync(resolve(settingsRoot, relPath), "utf8");
-      const code = source
-        .replace(/\/\*[\s\S]*?\*\//g, "")
-        .replace(/\/\/[^\n]*/g, "");
-      const usesLayout =
-        code.includes("<SettingsStack") || code.includes("<SettingsGroup");
-      if (usesLayout) {
-        expect(SECTION_LAYOUT_ALLOWLIST.has(relPath)).toBe(false);
-        return;
-      }
-      expect(
-        SECTION_LAYOUT_ALLOWLIST.has(relPath),
-        `${relPath} does not use SettingsStack/SettingsGroup. Compose the ` +
-          `shared settings layout primitives, or add this file to ` +
-          `SECTION_LAYOUT_ALLOWLIST with a reason.`,
-      ).toBe(true);
+      const verdict = layoutVerdict(relPath, source, SECTION_LAYOUT_ALLOWLIST);
+      expect(verdict.ok, !verdict.ok ? verdict.message : undefined).toBe(true);
     },
   );
 
@@ -249,15 +293,38 @@ describe("settings sections: use SettingsStack/Group or are allowlisted", () => 
     expect(files).toContain("../../cloud/mcps/McpsSection.tsx");
   });
 
-  it("fails when a newly registered file skips SettingsStack/SettingsGroup", () => {
-    const source = "export function NewSettingsSection() { return <div /> }";
-    const code = source
-      .replace(/\/\*[\s\S]*?\*\//g, "")
-      .replace(/\/\/[^\n]*/g, "");
-    const usesLayout =
-      code.includes("<SettingsStack") || code.includes("<SettingsGroup");
-    expect(usesLayout).toBe(false);
-    expect(SECTION_LAYOUT_ALLOWLIST.has("NewSettingsSection.tsx")).toBe(false);
-    expect(files.includes("NewSettingsSection.tsx")).toBe(false);
+  it("fails when a default-imported registered component skips SettingsStack/SettingsGroup", () => {
+    const dir = mkdtempSync(join(tmpdir(), "settings-layout-gate-"));
+    try {
+      writeFileSync(
+        join(dir, "HandrolledSection.tsx"),
+        "export default function HandrolledSection() { return <div /> }\n",
+      );
+      const registrar = join(dir, "register.ts");
+      writeFileSync(
+        registrar,
+        [
+          'import HandrolledSection from "./HandrolledSection";',
+          "registerSettingsSection({",
+          '  id: "handrolled",',
+          "  Component: HandrolledSection,",
+          "});",
+          "",
+        ].join("\n"),
+      );
+      const resolved = importedBindingFiles(registrar, "HandrolledSection");
+      expect(resolved).toEqual([join(dir, "HandrolledSection.tsx")]);
+      const verdict = layoutVerdict(
+        posixRelative(dir, resolved[0]),
+        readFileSync(resolved[0], "utf8"),
+        new Map(),
+      );
+      expect(verdict.ok).toBe(false);
+      expect(verdict.ok ? "" : verdict.message).toContain(
+        "does not use SettingsStack/SettingsGroup",
+      );
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
