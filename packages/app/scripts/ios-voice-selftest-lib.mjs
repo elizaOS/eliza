@@ -71,10 +71,14 @@ export function parsePositiveSafeInteger(value, label) {
  */
 export function parseNonNegativeSafeInteger(value, label, options = {}) {
   const max = options.max ?? Number.MAX_SAFE_INTEGER;
+  const requirement =
+    max === Number.MAX_SAFE_INTEGER
+      ? "a non-negative safe-integer decimal"
+      : `a non-negative safe-integer decimal no greater than ${max}`;
   if (typeof value === "number") {
     if (!Number.isSafeInteger(value) || value < 0 || value > max) {
       throw new Error(
-        `${label} must be a non-negative safe-integer decimal (received ${JSON.stringify(value)})`,
+        `${label} must be ${requirement} (received ${JSON.stringify(value)})`,
       );
     }
     return value;
@@ -82,7 +86,7 @@ export function parseNonNegativeSafeInteger(value, label, options = {}) {
   const raw = String(value ?? "");
   if (!/^\d+$/.test(raw)) {
     throw new Error(
-      `${label} must be a non-negative safe-integer decimal (received ${JSON.stringify(String(value ?? ""))})`,
+      `${label} must be ${requirement} (received ${JSON.stringify(String(value ?? ""))})`,
     );
   }
   const parsed = Number.parseInt(raw, 10);
@@ -93,7 +97,7 @@ export function parseNonNegativeSafeInteger(value, label, options = {}) {
     String(parsed) !== raw
   ) {
     throw new Error(
-      `${label} must be a non-negative safe-integer decimal (received ${JSON.stringify(String(value ?? ""))})`,
+      `${label} must be ${requirement} (received ${JSON.stringify(String(value ?? ""))})`,
     );
   }
   return parsed;

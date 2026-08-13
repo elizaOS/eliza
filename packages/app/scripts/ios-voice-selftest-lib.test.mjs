@@ -305,6 +305,13 @@ describe("resolveVoiceSelfTestPollPolicy", () => {
         /IOS_VOICE_SELFTEST_DELAY_MS must be a non-negative safe-integer decimal/,
       );
     }
+    expect(() =>
+      resolveVoiceSelfTestPollPolicy({
+        env: {
+          IOS_VOICE_SELFTEST_DELAY_MS: String(MAX_TIMER_DELAY_MS + 1),
+        },
+      }),
+    ).toThrow(`no greater than ${MAX_TIMER_DELAY_MS}`);
   });
 });
 
