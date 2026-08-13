@@ -205,6 +205,27 @@ describe("terminal action effect proof", () => {
     expect(result?.text).toContain("first\nsecond");
   });
 
+  it("summarizes carriage-return-delimited stdout", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => terminalResponse({ stdout: "first\rsecond" })),
+    );
+
+    const result = await terminalAction.handler(
+      runtime(),
+      message(),
+      undefined,
+      options("printf 'first\\rsecond'"),
+    );
+
+    expect(result).toMatchObject({
+      success: true,
+      userFacingText:
+        "The command finished (exit 0) with 2 lines of output; ask me about specifics instead of dumping it into chat.",
+      verifiedUserFacing: false,
+    });
+  });
+
   it("summarizes single-line stdout over the relay limit", async () => {
     const stdout = "x".repeat(201);
     vi.stubGlobal(
