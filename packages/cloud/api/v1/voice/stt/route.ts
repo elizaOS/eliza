@@ -770,17 +770,16 @@ async function __hono_POST(c: AppContext) {
     }
 
     // -------------------------------------------------------------------------
-    // Cartesia batch default: when CARTESIA_API_KEY is configured, prerecorded
-    // transcription runs on Cartesia's batch `/stt` endpoint (ink-whisper) by
-    // default — mirroring the TTS route, where a configured Cartesia key makes
-    // Cartesia the un-pinned default. VOICE_BATCH_STT_PROVIDER still pins
-    // deepgram/whisper/elevenlabs explicitly; Whisper remains the free
-    // fallback when no Cartesia key is present.
+    // Cartesia batch lane: prerecorded transcription on Cartesia's batch `/stt`
+    // endpoint (ink-whisper). Opt-in via VOICE_BATCH_STT_PROVIDER=cartesia, for
+    // the same two reasons the Deepgram lane above is opt-in: CARTESIA_API_KEY
+    // also powers realtime Ink sessions, so key presence alone must not move
+    // every batch transcription onto a paid upstream without an explicit
+    // rollout — and unlike TTS, batch STT has a *free* default today
+    // (WHISPER_STT_URL), so an un-pinned flip would silently convert working
+    // zero-credit transcription into 402s.
     // -------------------------------------------------------------------------
-    if (
-      cartesiaApiKey &&
-      (batchSttProvider === "cartesia" || !batchSttProvider)
-    ) {
+    if (cartesiaApiKey && batchSttProvider === "cartesia") {
       const estimate = await getBillingEstimate();
       const sttCost = await calculateSTTCostFromCatalog({
         model: STT_PRICING_PROXY_MODEL,
@@ -968,11 +967,11 @@ async function __hono_POST(c: AppContext) {
     }
 
     // -------------------------------------------------------------------------
-    // Free fallback STT: self-hosted Whisper (OpenAI-compatible
-    // `/v1/audio/transcriptions`). When WHISPER_STT_URL is set and no Cartesia
-    // key claims the default, this lane runs — no credit reservation, no
-    // billing. ElevenLabs STT is the path below. Inert when WHISPER_STT_URL is
-    // unset or the operator pinned `elevenlabs`.
+    // Free default STT: self-hosted Whisper (OpenAI-compatible
+    // `/v1/audio/transcriptions`). When WHISPER_STT_URL is set this remains the
+    // un-pinned default — no credit reservation, no billing. ElevenLabs STT is
+    // the path below. Inert when WHISPER_STT_URL is unset or the operator
+    // pinned `elevenlabs`.
     // -------------------------------------------------------------------------
     const whisperBaseUrl = env.WHISPER_STT_URL?.trim();
     if (whisperBaseUrl && batchSttProvider !== "elevenlabs") {

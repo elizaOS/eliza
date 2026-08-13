@@ -3,8 +3,8 @@
  * handler runs end to end with only auth/billing/provider modules mocked at
  * the module boundary. Covers the shared upload-validation gates (multipart,
  * size, declared-type and magic-number checks), the Deepgram prerecorded lane,
- * the Cartesia batch lane (the configured default whenever CARTESIA_API_KEY is
- * present, plus the VOICE_BATCH_STT_PROVIDER override matrix), the whisper
+ * the Cartesia batch lane (opt-in via VOICE_BATCH_STT_PROVIDER=cartesia, plus
+ * the full override matrix), the whisper
  * lane against a local OpenAI-shaped upstream (#14806 verbose_json
  * word/segment timestamps + the J3 malformed-200 boundary), the billed
  * ElevenLabs lane with its error mapping, and — gated on
@@ -437,12 +437,24 @@ const deepgramAndWhisperEnv = {
   DEEPGRAM_API_KEY: "dg-secret",
   WHISPER_STT_URL: `http://localhost:${upstream.port}`,
 } as never;
-const cartesiaEnv = { CARTESIA_API_KEY: "car-secret" } as never;
-// Cartesia + Whisper both configured: the Cartesia batch default must win by
-// key presence alone, mirroring the TTS route's Cartesia-first selection.
+// Cartesia pinned: the wire-contract and billing cases below drive the lane
+// directly, which now requires the explicit opt-in.
+const cartesiaEnv = {
+  CARTESIA_API_KEY: "car-secret",
+  VOICE_BATCH_STT_PROVIDER: "cartesia",
+} as never;
+// Cartesia + Whisper both configured: free Whisper must keep the un-pinned
+// default; the Cartesia lane only runs when explicitly pinned.
 const cartesiaAndWhisperEnv = {
   CARTESIA_API_KEY: "car-secret",
   WHISPER_STT_URL: `http://localhost:${upstream.port}`,
+} as never;
+// Cartesia pinned with a free Whisper binding still available: proves the
+// pinned lane fails closed rather than degrading to the free upstream.
+const cartesiaPinnedWithWhisperEnv = {
+  CARTESIA_API_KEY: "car-secret",
+  WHISPER_STT_URL: `http://localhost:${upstream.port}`,
+  VOICE_BATCH_STT_PROVIDER: "cartesia",
 } as never;
 // No WHISPER_STT_URL binding: the route falls through to the billed
 // ElevenLabs lane.
@@ -1277,14 +1289,37 @@ describe("POST /api/v1/voice/stt — Deepgram prerecorded lane", () => {
   });
 });
 
-describe("POST /api/v1/voice/stt — Cartesia batch lane (configured default)", () => {
-  test("prefers Cartesia ink-whisper over Whisper from key presence alone (mirrors the TTS default)", async () => {
-    upstreamReply = () => Response.json({ text: "whisper should not run" });
+describe("POST /api/v1/voice/stt — Cartesia batch lane (opt-in)", () => {
+  // The lane is opt-in for the same reason the Deepgram lane above is:
+  // CARTESIA_API_KEY also powers realtime Ink sessions, and batch STT's
+  // un-pinned default is FREE (Whisper). A key-presence default would silently
+  // bill every existing transcription and 402 every zero-credit user.
+  test("a configured Cartesia key alone does not move batch STT off free Whisper", async () => {
+    upstreamReply = () =>
+      Response.json({ text: "whisper remains the default" });
     const res = await app.request(
       sttRequest(),
       undefined,
       cartesiaAndWhisperEnv,
     );
+
+    expect(res.status).toBe(200);
+    expect(await readJson(res)).toEqual({
+      transcript: "whisper remains the default",
+      duration_ms: expect.any(Number),
+    });
+    expect(cartesiaCaptured.url).toBeNull();
+    expect(speechToText).not.toHaveBeenCalled();
+    expect(reserve).not.toHaveBeenCalled();
+    expect(billFlatUsage).not.toHaveBeenCalled();
+  });
+
+  test("VOICE_BATCH_STT_PROVIDER=cartesia runs the paid Cartesia ink-whisper lane", async () => {
+    upstreamReply = () => Response.json({ text: "whisper should not run" });
+    const res = await app.request(sttRequest(), undefined, {
+      ...(cartesiaAndWhisperEnv as unknown as Record<string, string>),
+      VOICE_BATCH_STT_PROVIDER: "cartesia",
+    } as never);
 
     expect(res.status).toBe(200);
     const body = (await readJson(res)) as Record<string, unknown>;
@@ -1510,7 +1545,7 @@ describe("POST /api/v1/voice/stt — Cartesia batch lane (configured default)", 
     const res = await app.request(
       sttRequest(),
       undefined,
-      cartesiaAndWhisperEnv,
+      cartesiaPinnedWithWhisperEnv,
     );
 
     expect(res.status).toBe(502);
@@ -1545,7 +1580,7 @@ describe("POST /api/v1/voice/stt — Cartesia batch lane (configured default)", 
     const res = await app.request(
       sttRequest(),
       undefined,
-      cartesiaAndWhisperEnv,
+      cartesiaPinnedWithWhisperEnv,
     );
 
     expect(res.status).toBe(502);
@@ -1565,7 +1600,7 @@ describe("POST /api/v1/voice/stt — Cartesia batch lane (configured default)", 
     const res = await app.request(
       sttRequest(),
       undefined,
-      cartesiaAndWhisperEnv,
+      cartesiaPinnedWithWhisperEnv,
     );
 
     expect(res.status).toBe(502);
