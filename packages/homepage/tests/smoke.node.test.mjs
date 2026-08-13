@@ -92,6 +92,10 @@ test("landing stays a static surface with no animation-framework dependencies", 
     assert.equal(packageJson.scripts[script], undefined);
   }
   assert.match(appPackageJson.scripts.prebuild, /sync-homepage-assets/);
+  assert.match(
+    appPackageJson.scripts.typecheck,
+    /write-homepage-release-data\.mjs\s+&&\s+tsc/,
+  );
   assert.match(appViteConfig, /find:\s*\/\^@homepage\\\//);
   assert.match(appAssetSync, /\.\.\/homepage\/public/);
 });
