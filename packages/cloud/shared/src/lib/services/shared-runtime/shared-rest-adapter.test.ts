@@ -287,6 +287,38 @@ describe("shared-rest-adapter — messages", () => {
     });
   });
 
+  test("POST rides a caller-supplied clientMessageId as the bridge RPC id (retry idempotency, #18045)", async () => {
+    coordinateSharedBridge.mockResolvedValue({
+      jsonrpc: "2.0",
+      id: "client-id-1",
+      result: { text: "four" },
+    });
+    await sharedRestMessageSend(
+      SHARED_AGENT,
+      AGENT,
+      "2+2?",
+      "Eliza",
+      EXECUTION_CTX,
+      NAMESPACE,
+      "client-id-1",
+    );
+    expect(coordinateSharedBridge.mock.calls[0][1].id).toBe("client-id-1");
+  });
+
+  test("POST without a clientMessageId generates a fresh RPC id per send", async () => {
+    coordinateSharedBridge.mockResolvedValue({
+      jsonrpc: "2.0",
+      id: "x",
+      result: { text: "four" },
+    });
+    await sharedRestMessageSend(SHARED_AGENT, AGENT, "2+2?", "Eliza", EXECUTION_CTX, NAMESPACE);
+    await sharedRestMessageSend(SHARED_AGENT, AGENT, "2+2?", "Eliza", EXECUTION_CTX, NAMESPACE);
+    const first = coordinateSharedBridge.mock.calls[0][1].id;
+    const second = coordinateSharedBridge.mock.calls[1][1].id;
+    expect(typeof first).toBe("string");
+    expect(first).not.toBe(second);
+  });
+
   test("POST throws when the bridge returns an error (surfaced to the client)", async () => {
     coordinateSharedBridge.mockResolvedValue({
       jsonrpc: "2.0",

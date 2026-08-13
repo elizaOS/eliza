@@ -93,6 +93,7 @@ async function __hono_POST(
           {
             success: false,
             error: error.message,
+            code: "shared_runtime_cache_warming",
             retryable: true,
           },
           { status: 503, headers: { "Retry-After": "1" } },
@@ -183,6 +184,7 @@ __hono_app.post("/", async (c) => {
         {
           success: false,
           error: scope.error,
+          ...(scope.code ? { code: scope.code } : {}),
           ...(scope.status === 503 ? { retryable: true } : {}),
         },
         {
