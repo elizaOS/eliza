@@ -173,3 +173,27 @@ export function readPositiveIntSetting(
   }
   return fallback;
 }
+
+/** Reads an operator setting that must be a bounded, canonical integer. */
+export function readBoundedIntSetting(
+  runtime: IAgentRuntime,
+  key: string,
+  min: number,
+  max: number,
+): { value: number } | { error: string } | undefined {
+  const raw = runtime.getSetting(key);
+  if (raw === undefined) return undefined;
+
+  const valid =
+    (typeof raw === "number" && Number.isSafeInteger(raw)) ||
+    (typeof raw === "string" && /^(?:0|[1-9]\d*)$/.test(raw));
+  const value =
+    typeof raw === "number" || typeof raw === "string" ? Number(raw) : NaN;
+  if (!valid || !Number.isSafeInteger(value) || value < min || value > max) {
+    return {
+      error: `${key} must be a canonical decimal integer between ${min} and ${max}.`,
+    };
+  }
+
+  return { value };
+}

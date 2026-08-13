@@ -8,6 +8,7 @@ import {
   fencePreformatted,
   readArrayParam,
   readBoolParam,
+  readBoundedIntSetting,
   readNumberParam,
   readParam,
   readPositiveIntSetting,
@@ -120,6 +121,51 @@ describe("readPositiveIntSetting", () => {
     expect(readPositiveIntSetting(rt(0), "k", 3)).toBe(3);
     expect(readPositiveIntSetting(rt(-2), "k", 3)).toBe(3);
     expect(readPositiveIntSetting(rt("nope"), "k", 3)).toBe(3);
+  });
+});
+
+describe("readBoundedIntSetting", () => {
+  const rt = (value: unknown): IAgentRuntime =>
+    ({ getSetting: () => value }) as unknown as IAgentRuntime;
+
+  it("accepts omitted, canonical integer, and numeric settings in range", () => {
+    expect(
+      readBoundedIntSetting(rt(undefined), "k", 100, 600_000),
+    ).toBeUndefined();
+    expect(readBoundedIntSetting(rt("200"), "k", 100, 600_000)).toEqual({
+      value: 200,
+    });
+    expect(readBoundedIntSetting(rt(600_000), "k", 100, 600_000)).toEqual({
+      value: 600_000,
+    });
+  });
+
+  it.each([
+    "45.5",
+    "1e3",
+    " 200",
+    "0200",
+    "9007199254740992",
+    "oops",
+    45.5,
+    0,
+    600_001,
+    null,
+    false,
+    {},
+    Symbol("timeout"),
+  ])("rejects invalid operator settings: %j", (value) => {
+    expect(
+      readBoundedIntSetting(
+        rt(value),
+        "CODING_TOOLS_SHELL_TIMEOUT_MS",
+        100,
+        600_000,
+      ),
+    ).toEqual({
+      error:
+        "CODING_TOOLS_SHELL_TIMEOUT_MS must be a canonical decimal integer between 100 and 600000.",
+    });
   });
 });
 

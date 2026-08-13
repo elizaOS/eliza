@@ -89,7 +89,7 @@ async function pathExists(target: string): Promise<boolean> {
 
 interface RuntimeOptions {
   blockedPaths?: string;
-  shellTimeoutMs?: number;
+  shellTimeoutMs?: unknown;
   shellHistoryCommands?: string[];
   withShellHistoryService?: boolean;
   capabilityRouter?: ElizaCapabilityRouter;
@@ -1815,6 +1815,129 @@ describeIfPosix("shellAction", () => {
     );
     const data = result.data as Record<string, unknown> | undefined;
     expect(data?.action).toBe("view_history");
+  });
+});
+
+describe("shell timeout operator setting", () => {
+  it.each(["0", "-1", "45.5", "9007199254740992", "600001", "1e3", " 200"])(
+    "rejects malformed timeout setting %j before starting the shell",
+    async (shellTimeoutMs) => {
+      const markerRoot = await fs.mkdtemp(
+        path.join(os.tmpdir(), "coding-tools-timeout-setting-"),
+      );
+      const marker = path.join(markerRoot, "started");
+      const script = path.join(markerRoot, "write-marker.mjs");
+      await fs.writeFile(
+        script,
+        `import { writeFileSync } from "node:fs";\nwriteFileSync(${JSON.stringify(marker)}, "started");\n`,
+      );
+
+      try {
+        const { runtime } = await makeRuntime({ shellTimeoutMs });
+        const result = await shellAction.handler?.(
+          runtime,
+          makeMessage(),
+          undefined,
+          {
+            command: `${JSON.stringify(process.execPath)} ${JSON.stringify(script)}`,
+          },
+        );
+
+        expect(result?.success).toBe(false);
+        expect(result?.text).toContain("invalid_param");
+        expect(result?.text).toContain("CODING_TOOLS_SHELL_TIMEOUT_MS");
+        await expect(fs.access(marker)).rejects.toMatchObject({
+          code: "ENOENT",
+        });
+      } finally {
+        await fs.rm(markerRoot, { recursive: true, force: true });
+      }
+    },
+  );
+
+  it.each([
+    [undefined, 120_000],
+    ["200", 200],
+    [100, 100],
+    [600_000, 600_000],
+  ] as const)(
+    "passes the omitted or valid setting %j to foreground execution as %j ms",
+    async (shellTimeoutMs, expectedTimeoutMs) => {
+      const calls: Array<{ timeoutMs?: number }> = [];
+      const router = makeShellRouter(async (params) => {
+        calls.push(params);
+        return { output: "ok\n", exitCode: 0, timedOut: false };
+      });
+      const { runtime } = await makeRuntime({
+        shellTimeoutMs,
+        capabilityRouter: router,
+      });
+
+      const result = await shellAction.handler?.(
+        runtime,
+        makeMessage(),
+        undefined,
+        { command: "echo ok" },
+      );
+
+      expect(result?.success).toBe(true);
+      expect(calls).toHaveLength(1);
+      expect(calls[0]?.timeoutMs).toBe(expectedTimeoutMs);
+    },
+  );
+
+  it("prefers the per-call timeout over the operator default", async () => {
+    const calls: Array<{ timeoutMs?: number }> = [];
+    const router = makeShellRouter(async (params) => {
+      calls.push(params);
+      return { output: "ok\n", exitCode: 0, timedOut: false };
+    });
+    const { runtime } = await makeRuntime({
+      shellTimeoutMs: "600000",
+      capabilityRouter: router,
+    });
+
+    const result = await shellAction.handler?.(
+      runtime,
+      makeMessage(),
+      undefined,
+      { command: "echo ok", timeout: 250 },
+    );
+
+    expect(result?.success).toBe(true);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.timeoutMs).toBe(250);
+  });
+
+  it("rejects invalid background settings without starting a child", async () => {
+    const markerRoot = await fs.mkdtemp(
+      path.join(os.tmpdir(), "coding-tools-background-timeout-setting-"),
+    );
+    const marker = path.join(markerRoot, "started");
+    const script = path.join(markerRoot, "write-marker.mjs");
+    await fs.writeFile(
+      script,
+      `import { writeFileSync } from "node:fs";\nwriteFileSync(${JSON.stringify(marker)}, "started");\n`,
+    );
+
+    try {
+      const { runtime } = await makeRuntime({ shellTimeoutMs: "0" });
+      const result = await shellAction.handler?.(
+        runtime,
+        makeMessage(),
+        undefined,
+        {
+          action: "start_background",
+          command: `${JSON.stringify(process.execPath)} ${JSON.stringify(script)}`,
+        },
+      );
+
+      expect(result?.success).toBe(false);
+      expect(result?.text).toContain("CODING_TOOLS_SHELL_TIMEOUT_MS");
+      await expect(fs.access(marker)).rejects.toMatchObject({ code: "ENOENT" });
+    } finally {
+      await fs.rm(markerRoot, { recursive: true, force: true });
+    }
   });
 });
 
