@@ -132,8 +132,8 @@
     aspect-ratio: 4 / 3; border-radius: 1.25rem; overflow: hidden;
     display: grid; place-items: center; position: relative;
   }
-  #eliza .figure { background: var(--black); }
-  #eliza .figure svg { width: 100%; height: 100%; display: block; }
+  #eliza .figure { background: var(--orange); aspect-ratio: 1200 / 630; }
+  #eliza .figure img { width: 100%; height: 100%; object-fit: cover; display: block; }
   #slop .figure img { width: 100%; height: 100%; object-fit: cover; display: block; }
 
   #slop {
@@ -200,22 +200,8 @@
       <p class="body">Eliza is an agent that lives with you: it remembers, schedules, connects to your tools, and acts on your behalf across every device you own. Underneath it is elizaOS, a fully open source operating system for agents — auditable, extensible, and yours to run anywhere, from a laptop to a phone to your own metal.</p>
       <a class="cta" href="https://github.com/elizaOS/eliza">Explore elizaOS on GitHub →</a>
     </div>
-    <div class="figure" role="img" aria-label="Diagram of one agent orbited by the tools and devices it coordinates">
-      <svg viewBox="0 0 400 300">
-        <g stroke="#ff7a30" stroke-width="1.2" fill="none" opacity="0.65">
-          <circle cx="200" cy="150" r="58"/><circle cx="200" cy="150" r="96"/><circle cx="200" cy="150" r="132"/>
-        </g>
-        <g fill="#ff7a30">
-          <circle cx="200" cy="150" r="14"/>
-          <circle cx="258" cy="150" r="6"/><circle cx="152" cy="72" r="6"/><circle cx="104" cy="182" r="6"/>
-          <circle cx="296" cy="216" r="6"/><circle cx="278" cy="62" r="6"/><circle cx="88" cy="120" r="6"/>
-        </g>
-        <g stroke="#ff7a30" stroke-width="1.2" opacity="0.5">
-          <line x1="200" y1="150" x2="258" y2="150"/><line x1="200" y1="150" x2="152" y2="72"/>
-          <line x1="200" y1="150" x2="104" y2="182"/><line x1="200" y1="150" x2="296" y2="216"/>
-          <line x1="200" y1="150" x2="278" y2="62"/><line x1="200" y1="150" x2="88" y2="120"/>
-        </g>
-      </svg>
+    <div class="figure">
+      <img src="assets/eliza-og.png" alt="Eliza — an agent you can trust" />
     </div>
   </div>
 </section>
