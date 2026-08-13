@@ -22,7 +22,8 @@ import type { AppEnv } from "@/types/cloud-worker-env";
 type ConversationRequest =
   | { operation: "bridge"; agent: CachedAgentSandbox; rpc: BridgeRequest }
   | { operation: "stream"; agent: CachedAgentSandbox; rpc: BridgeRequest }
-  | { operation: "history"; agentId: string; roomId: string };
+  | { operation: "history"; agentId: string; roomId: string }
+  | { operation: "delete"; agentId: string };
 
 interface StoredConversation {
   agentId: string;
@@ -238,6 +239,17 @@ export class SharedRuntimeConversation {
         );
       });
       return Response.json({ history });
+    }
+
+    // #17006: purge all DO-stored conversation state for this agent's room.
+    // Dispatched from agent deletion (purgeSharedConversationRooms) after the
+    // Postgres mirror rows are dropped; also cancels a pending mirror-retry
+    // alarm so a queued retry cannot fire against the emptied room.
+    if (payload.operation === "delete") {
+      await this.state.storage.deleteAll();
+      await this.state.storage.deleteAlarm();
+      this.conversation = null;
+      return Response.json({ success: true });
     }
 
     return await this.runWithBindings(async () => {
