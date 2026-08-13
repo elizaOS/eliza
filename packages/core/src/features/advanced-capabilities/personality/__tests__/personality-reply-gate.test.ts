@@ -156,6 +156,55 @@ describe("decideReplyGate", () => {
 		}
 	});
 
+	test("on_mention allows unaddressed follow-up when recently engaged with sender (continuity)", () => {
+		// Repro of the dropped-follow-up bug at the decision point: bot just
+		// answered this user, user sends an unaddressed follow-up seconds later.
+		const decision = decideReplyGate({
+			userSlot: userSlot(),
+			globalSlot: globalSlot({ reply_gate: "on_mention" }),
+			messageText: "okay but how many dimensions?",
+			explicitlyAddressesAgent: false,
+			recentlyEngagedWithSender: true,
+		});
+		expect(decision.allow).toBe(true);
+		if (decision.allow) {
+			expect(decision.reason).toBe("on_mention_continuity");
+		}
+	});
+
+	test("on_mention still blocks unaddressed messages without continuity", () => {
+		// Guards against broad over-reply regression: false and omitted both block.
+		for (const recentlyEngagedWithSender of [false, undefined]) {
+			const decision = decideReplyGate({
+				userSlot: userSlot({ reply_gate: "on_mention" }),
+				globalSlot: globalSlot(),
+				messageText: "just chatting in the room",
+				explicitlyAddressesAgent: false,
+				...(recentlyEngagedWithSender === undefined
+					? {}
+					: { recentlyEngagedWithSender }),
+			});
+			expect(decision.allow).toBe(false);
+			if (!decision.allow) {
+				expect(decision.reason).toBe("on_mention_not_addressed");
+			}
+		}
+	});
+
+	test("never_until_lift ignores continuity — mute stays hard", () => {
+		const decision = decideReplyGate({
+			userSlot: userSlot({ reply_gate: "never_until_lift" }),
+			globalSlot: globalSlot(),
+			messageText: "so what about the other thing",
+			explicitlyAddressesAgent: false,
+			recentlyEngagedWithSender: true,
+		});
+		expect(decision.allow).toBe(false);
+		if (!decision.allow) {
+			expect(decision.reason).toBe("never_until_lift");
+		}
+	});
+
 	test("global never_until_lift applies when user has no gate", () => {
 		const decision = decideReplyGate({
 			userSlot: userSlot(),

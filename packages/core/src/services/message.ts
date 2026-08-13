@@ -360,6 +360,7 @@ import {
 } from "./message/generate-text-result";
 import { resolveEffectiveMuteState } from "./message/mute-state";
 import { sanitizeOutboundText } from "./message/outbound-sanitize";
+import { senderInActiveConversation } from "./message/reply-gate-continuity";
 import {
 	GROUP_TRIAGE_MESSAGE_HANDLER_TEMPLATE,
 	isStage1GroupTriageTierEnabled,
@@ -11901,11 +11902,20 @@ export class DefaultMessageService implements IMessageService {
 		if (personalityStore && message.entityId !== runtime.agentId) {
 			const userSlot = personalityStore.getSlot(message.entityId);
 			const globalSlot = personalityStore.getSlot("global");
+			// Continuity probe is lazy: only an on_mention gate that is about to
+			// drop an unaddressed turn pays the recent-history lookup — addressed
+			// turns and every other mode stay zero-cost.
+			const recentlyEngagedWithSender =
+				resolveEffectiveReplyGate(userSlot, globalSlot).mode === "on_mention" &&
+				!explicitlyAddressesAgent
+					? await senderInActiveConversation(runtime, message)
+					: false;
 			const gateDecision = decideReplyGate({
 				userSlot,
 				globalSlot,
 				messageText: message.content?.text,
 				explicitlyAddressesAgent,
+				recentlyEngagedWithSender,
 			});
 			if (gateDecision.allow === false) {
 				runtime.logger.debug(
