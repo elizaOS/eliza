@@ -7252,8 +7252,10 @@ export async function runV5MessageRuntimeStage1(args: {
 				reportError: args.runtime.reportError.bind(args.runtime),
 				// Final-persistence tool-diagnostic projection: the recorder always
 				// runs the shared tool-shape pattern pass; this adds the runtime's
-				// character-configured secret masking on top.
-				redactSecrets: (text) => args.runtime.redactSecrets(text),
+				// character-configured secret masking on top. Optional-bound because
+				// lightweight/test runtimes may not implement redactSecrets — the
+				// pattern pass must keep running for them.
+				redactSecrets: args.runtime.redactSecrets?.bind(args.runtime),
 			})
 		: undefined;
 	const trajectoryId = recorder

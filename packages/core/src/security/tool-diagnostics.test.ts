@@ -123,6 +123,17 @@ describe("projectToolDiagnosticValue", () => {
 		expect(serialized).toContain(TOOL_DIAGNOSTIC_MASK);
 	});
 
+	it("passes Date values through untouched, valid or invalid", () => {
+		const valid = new Date("2026-01-02T03:04:05.000Z");
+		const invalid = new Date(Number.NaN);
+		const projected = projectToolDiagnosticValue(
+			{ at: valid, bad: invalid },
+			redactor,
+		) as { at: Date; bad: Date };
+		expect(projected.at).toBe(valid);
+		expect(projected.bad).toBe(invalid);
+	});
+
 	it("scrubs Error message and stack while preserving the shape", () => {
 		const raw = new Error(`refused --token=${FLAG_CANARY}`);
 		raw.name = "ToolFailure";

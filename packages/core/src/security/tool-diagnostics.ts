@@ -68,6 +68,13 @@ function projectValue(
 		// which fields a surface serializes — only what the strings contain.
 		return value;
 	}
+	if (value instanceof Date) {
+		// A Date carries no string payload to scrub. Pass it through untouched so
+		// downstream sanitizers keep their own Date semantics — in particular an
+		// invalid Date must keep failing normalization loudly instead of being
+		// flattened into a healthy-looking empty object.
+		return value;
+	}
 	if (depth >= MAX_TOOL_DIAGNOSTIC_DEPTH || seen.has(value)) {
 		return TOOL_DIAGNOSTIC_MASK;
 	}
