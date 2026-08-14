@@ -3,7 +3,7 @@
  * renders one OS/app permission (icon, name, status badge, request/open-settings
  * action, and the optional shell-enable switch); `CapabilityToggle` renders a
  * capability on/off row. Status/badge/action copy is resolved through
- * `permission-types`; the controls are agent-addressable via `useAgentElement`.
+ * `permission-types`; the controls are agent-addressable via SettingsSwitchRow.
  */
 
 import {
@@ -34,18 +34,17 @@ import {
   Wifi,
   Workflow,
 } from "lucide-react";
-import { useAgentElement } from "../../agent-surface";
 import type { PermissionStatus, PluginInfo } from "../../api";
 import { useAppSelector } from "../../state";
 import { Button } from "../ui/button";
 import { StatusBadge } from "../ui/status-badge";
-import { Switch } from "../ui/switch";
 import type { CapabilityDef, PermissionDef } from "./permission-types";
 import {
   getPermissionAction,
   getPermissionBadge,
   translateWithFallback,
 } from "./permission-types";
+import { SettingsSwitchRow } from "./settings-agent-rows";
 import { SettingsRow } from "./settings-layout";
 
 const PERMISSION_ICONS: Record<string, LucideIcon> = {
@@ -116,65 +115,6 @@ export function PermissionRow({
   const showShellToggle =
     isShell && onToggleShell && status !== "not-applicable";
 
-  const { ref: shellRef, agentProps: shellAgentProps } =
-    useAgentElement<HTMLButtonElement>({
-      id: `perm-shell-${def.id}`,
-      role: "toggle",
-      label: `${name} shell access`,
-      group: "permissions",
-      status: shellEnabled ? "on" : "off",
-      getValue: () => shellEnabled,
-      onActivate: onToggleShell
-        ? () => onToggleShell(!shellEnabled)
-        : undefined,
-    });
-  const { ref: actionRef, agentProps: actionAgentProps } =
-    useAgentElement<HTMLButtonElement>({
-      id: `perm-action-${def.id}`,
-      role: "button",
-      label: action ? `${action.ariaLabelPrefix} ${name}` : `Grant ${name}`,
-      group: "permissions",
-      onActivate: action
-        ? action.type === "request"
-          ? onRequest
-          : onOpenSettings
-        : undefined,
-    });
-
-  const control = showShellToggle ? (
-    <Switch
-      ref={shellRef}
-      checked={shellEnabled}
-      onCheckedChange={onToggleShell}
-      title={
-        shellEnabled
-          ? translateWithFallback(
-              t,
-              "permissionssection.DisableShellAccess",
-              "Disable shell access",
-            )
-          : translateWithFallback(
-              t,
-              "permissionssection.EnableShellAccess",
-              "Enable shell access",
-            )
-      }
-      {...shellAgentProps}
-    />
-  ) : !isShell && action ? (
-    <Button
-      ref={actionRef}
-      variant="default"
-      size="sm"
-      className="min-h-11 rounded-sm px-3 text-xs font-semibold"
-      onClick={action.type === "request" ? onRequest : onOpenSettings}
-      aria-label={`${action.ariaLabelPrefix} ${name}`}
-      {...actionAgentProps}
-    >
-      {action.label}
-    </Button>
-  ) : undefined;
-
   const label = (
     <span className="flex flex-wrap items-center gap-2">
       {name}
@@ -195,6 +135,40 @@ export function PermissionRow({
       />
     </span>
   );
+
+  if (showShellToggle) {
+    return (
+      <SettingsSwitchRow
+        agentId={`perm-shell-${def.id}`}
+        label={label}
+        agentLabel={`${name} shell access`}
+        group="permissions"
+        checked={shellEnabled}
+        onCheckedChange={onToggleShell}
+        description={
+          <>
+            {description}
+            {reason ? (
+              <span className="mt-1 block text-txt">{reason}</span>
+            ) : null}
+          </>
+        }
+        icon={permissionIcon(def.icon)}
+      />
+    );
+  }
+
+  const control = !isShell && action ? (
+    <Button
+      variant="default"
+      size="sm"
+      className="min-h-11 rounded-sm px-3 text-xs font-semibold"
+      onClick={action.type === "request" ? onRequest : onOpenSettings}
+      aria-label={`${action.ariaLabelPrefix} ${name}`}
+    >
+      {action.label}
+    </Button>
+  ) : undefined;
 
   return (
     <SettingsRow
@@ -234,23 +208,6 @@ export function CapabilityToggle({
     cap.descriptionKey,
     cap.description,
   );
-  const toggleActionLabel = `${
-    enabled
-      ? translateWithFallback(t, "permissionssection.Disable", "Disable")
-      : translateWithFallback(t, "permissionssection.Enable", "Enable")
-  } ${label}`;
-
-  const { ref: toggleRef, agentProps: toggleAgentProps } =
-    useAgentElement<HTMLButtonElement>({
-      id: `perm-capability-${cap.id}`,
-      role: "toggle",
-      label,
-      group: "permissions",
-      description,
-      status: enabled ? "on" : "off",
-      getValue: () => enabled,
-      onActivate: canEnable ? () => onToggle(!enabled) : undefined,
-    });
 
   const rowLabel = (
     <span className="flex flex-wrap items-center gap-2">
@@ -273,44 +230,15 @@ export function CapabilityToggle({
   );
 
   return (
-    <SettingsRow
+    <SettingsSwitchRow
+      agentId={`perm-capability-${cap.id}`}
       label={rowLabel}
+      agentLabel={label}
+      group="permissions"
+      checked={enabled}
+      onCheckedChange={onToggle}
+      disabled={!canEnable}
       description={description}
-      control={
-        <Switch
-          ref={toggleRef}
-          checked={enabled}
-          onCheckedChange={onToggle}
-          disabled={!canEnable}
-          aria-label={toggleActionLabel}
-          {...toggleAgentProps}
-          title={
-            !available
-              ? translateWithFallback(
-                  t,
-                  "permissionssection.PluginNotAvailable",
-                  "Plugin not available",
-                )
-              : !permissionsGranted
-                ? translateWithFallback(
-                    t,
-                    "permissionssection.GrantRequiredPermissionsFirst",
-                    "Grant required permissions first",
-                  )
-                : enabled
-                  ? translateWithFallback(
-                      t,
-                      "permissionssection.Disable",
-                      "Disable",
-                    )
-                  : translateWithFallback(
-                      t,
-                      "permissionssection.Enable",
-                      "Enable",
-                    )
-          }
-        />
-      }
     />
   );
 }
