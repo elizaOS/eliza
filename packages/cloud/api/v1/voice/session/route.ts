@@ -6,6 +6,11 @@ import { agentSandboxesRepository } from "@/db/repositories/agent-sandboxes";
 import { userCharactersRepository } from "@/db/repositories/characters";
 import { conversationsRepository } from "@/db/repositories/conversations";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
+import { findActivePersonalDedicatedTarget } from "@/lib/services/agent-tier-upgrade-target";
+import {
+  isPersonalSharedAgentId,
+  personalSharedAgentId,
+} from "@/lib/services/shared-runtime/personal-shared-agent";
 import { logger } from "@/lib/utils/logger";
 import {
   isVoiceRealtimeWsEnabled,
@@ -35,11 +40,21 @@ import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
  *     server-enforced precondition of mint, never a client promise.
  */
 
+const Uuid = z.string().uuid();
+const VoiceConversationId = z
+  .string()
+  .max(128)
+  .refine(
+    (value) => Uuid.safeParse(value).success || isPersonalSharedAgentId(value),
+  );
+
 const MintBody = z.object({
-  // UUID-validated so a malformed id is a clean 400 here, never a 500 from a
-  // Postgres invalid-uuid error when the repository queries a uuid column.
+  // Agent rows are UUID-keyed, so malformed input stops before repository I/O.
   agentId: z.string().uuid(),
-  conversationId: z.string().uuid(),
+  // UUIDs retain the general cloud-conversation path. The only non-UUID shape
+  // admitted is the reserved personal namespace, which is account-derived and
+  // cutover-target-bound below before any token is minted.
+  conversationId: VoiceConversationId,
   transport: z.literal("websocket").optional(),
   /** Server-enforced consent nonce (SEC-21). Required to mint. */
   consentNonce: z.string().min(1),
@@ -116,21 +131,50 @@ app.post("/", async (c) => {
     }
   }
 
-  // A supplied conversationId that exists must belong to the caller (org AND
-  // user). A not-yet-existent conversationId is allowed (a session may open a
-  // new one).
-  const conversation = await conversationsRepository.findById(
-    body.conversationId,
-  );
-  if (
-    conversation &&
-    (conversation.organization_id !== auth.organization_id ||
-      conversation.user_id !== auth.id)
-  ) {
-    return c.json(
-      { error: "conversation not found", code: "conversation_not_found" },
-      404,
+  if (isPersonalSharedAgentId(body.conversationId)) {
+    // The rowless personal conversation survives Shared -> Dedicated cutover
+    // under its stable `personal:*` id. It has no cloud `conversations` row to
+    // authorize, so derive the only valid id from the authenticated account and
+    // bind it to the server-authoritative cutover target. This permits the
+    // canonical imported thread without accepting arbitrary string ids or an
+    // owned-but-inactive sandbox that would fork the personal history.
+    const canonicalPersonalId = personalSharedAgentId({
+      userId: auth.id,
+      organizationId: auth.organization_id,
+    });
+    const activePersonalTarget =
+      body.conversationId === canonicalPersonalId
+        ? await findActivePersonalDedicatedTarget(
+            auth.organization_id,
+            canonicalPersonalId,
+          )
+        : null;
+    if (
+      !activePersonalTarget ||
+      activePersonalTarget.id !== sandboxAgent.id ||
+      activePersonalTarget.user_id !== auth.id
+    ) {
+      return c.json(
+        { error: "conversation not found", code: "conversation_not_found" },
+        404,
+      );
+    }
+  } else {
+    // A supplied UUID conversation that exists must belong to the caller (org
+    // AND user). A not-yet-existent UUID is allowed (a session may open one).
+    const conversation = await conversationsRepository.findById(
+      body.conversationId,
     );
+    if (
+      conversation &&
+      (conversation.organization_id !== auth.organization_id ||
+        conversation.user_id !== auth.id)
+    ) {
+      return c.json(
+        { error: "conversation not found", code: "conversation_not_found" },
+        404,
+      );
+    }
   }
 
   // SEC-21: consent is a server-enforced mint precondition. A missing store, a

@@ -52,6 +52,7 @@ type ControlDetails = {
   role: string | null;
   type: string | null;
   href: string | null;
+  visible: boolean;
   label: string;
   text: string;
   value: string | null;
@@ -69,6 +70,7 @@ type ControlSnapshot = {
 
 const CLICK_OBSERVED_ATTRIBUTES = [
   "data-agent-id",
+  "data-chat-open",
   "aria-expanded",
   "aria-pressed",
   "aria-selected",
@@ -340,6 +342,9 @@ async function snapshotControl(
         role: attr("role"),
         type: attr("type"),
         href: "href" in anchorEl ? anchorEl.href : null,
+        visible:
+          htmlEl.getClientRects().length > 0 &&
+          getComputedStyle(htmlEl).visibility !== "hidden",
         label: label ? label.slice(0, 120) : "",
         text: text.slice(0, 120),
         value: "value" in inputEl ? String(inputEl.value) : null,
@@ -393,6 +398,9 @@ function semanticDelta(
   }
   if (after.details.label !== before.details.label) {
     return `control label changed from "${before.details.label}" to "${after.details.label}"`;
+  }
+  if (after.details.visible !== before.details.visible) {
+    return `control visibility changed ${String(before.details.visible)} -> ${String(after.details.visible)}`;
   }
   if (after.details.text !== before.details.text) {
     return `control text changed from "${truncate(before.details.text)}" to "${truncate(after.details.text)}"`;
@@ -469,6 +477,13 @@ function documentedClickNoop(
     // runtime; the DOM outcome depends on the agent round-trip, which the
     // keyless stub does not perform.
     return "spatial agent-dispatch control routes its action to the agent runtime; no local DOM outcome in the keyless stub";
+  }
+  if (details.attributes["data-chat-open"]) {
+    // chat-open dispatch controls (data-chat-open) route their action to the
+    // ChatOverlay, which the interaction harness hides in setup via
+    // hideChatOverlay so overlay chrome does not shadow the view controls;
+    // opening it therefore produces no observable local DOM outcome here.
+    return "chat-open dispatch control routes its action to the ChatOverlay, which the interaction harness hides in setup; no local DOM outcome";
   }
   return null;
 }
@@ -554,6 +569,7 @@ async function pressEscapeWithSemanticOutcome(
  * its semantic outcome instead of tripping the stub server's catch-all 501.
  */
 async function installInteractionAuditRoutes(page: Page): Promise<void> {
+  let interactionWorkflow: Record<string, unknown> | null = null;
   let character: Record<string, unknown> = {
     name: "Playwright Smoke",
     bio: ["Interaction-audit character"],
@@ -644,6 +660,120 @@ async function installInteractionAuditRoutes(page: Page): Promise<void> {
         restartRequired: false,
       }),
     });
+  });
+
+  await page.route("**/api/triggers**", async (route) => {
+    if (
+      route.request().method() === "GET" &&
+      new URL(route.request().url()).pathname === "/api/triggers"
+    ) {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ triggers: [] }),
+      });
+      return;
+    }
+    await route.fallback();
+  });
+
+  await page.route("**/api/workflow/workflows**", async (route) => {
+    const request = route.request();
+    const pathname = new URL(request.url()).pathname;
+    if (request.method() === "GET" && pathname === "/api/workflow/workflows") {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          workflows: interactionWorkflow ? [interactionWorkflow] : [],
+        }),
+      });
+      return;
+    }
+    if (request.method() === "POST" && pathname === "/api/workflow/workflows") {
+      const payload = request.postDataJSON() as Record<string, unknown>;
+      const now = new Date().toISOString();
+      interactionWorkflow = {
+        ...payload,
+        active: payload.active ?? false,
+        id: "interaction-audit-workflow",
+        versionId: "interaction-audit-v1",
+        createdAt: now,
+        updatedAt: now,
+      };
+      await route.fulfill({
+        status: 201,
+        contentType: "application/json",
+        body: JSON.stringify(interactionWorkflow),
+      });
+      return;
+    }
+
+    const segments = pathname.split("/").filter(Boolean);
+    const workflowId = decodeURIComponent(segments[3] ?? "");
+    const subresource = segments[4];
+    if (workflowId !== "interaction-audit-workflow" || !interactionWorkflow) {
+      await route.fallback();
+      return;
+    }
+    if (request.method() === "GET" && subresource === "executions") {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ executions: [] }),
+      });
+      return;
+    }
+    if (request.method() === "GET" && subresource === "revisions") {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          currentVersionId: interactionWorkflow.versionId,
+          revisions: [],
+        }),
+      });
+      return;
+    }
+    if (request.method() === "GET" && !subresource) {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(interactionWorkflow),
+      });
+      return;
+    }
+    if (request.method() === "PUT" && !subresource) {
+      const payload = request.postDataJSON() as Record<string, unknown>;
+      interactionWorkflow = {
+        ...interactionWorkflow,
+        ...payload,
+        updatedAt: new Date().toISOString(),
+      };
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(interactionWorkflow),
+      });
+      return;
+    }
+    if (
+      request.method() === "POST" &&
+      (subresource === "activate" || subresource === "deactivate")
+    ) {
+      interactionWorkflow = {
+        ...interactionWorkflow,
+        active: subresource === "activate",
+        updatedAt: new Date().toISOString(),
+      };
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(interactionWorkflow),
+      });
+      return;
+    }
+    await route.fallback();
   });
 
   await page.route("**/api/pendant/sessions/current", async (route) => {

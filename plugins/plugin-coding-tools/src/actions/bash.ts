@@ -26,8 +26,8 @@ import {
   failureToActionResult,
   fencePreformatted,
   readBoolParam,
+  readBoundedIntSetting,
   readNumberParam,
-  readPositiveIntSetting,
   readStringParam,
   successActionResult,
   truncate,
@@ -37,6 +37,7 @@ import { resolveHostShell } from "../lib/terminal-capabilities.js";
 import type { BackgroundShellService } from "../services/background-shell-service.js";
 import type { SandboxService } from "../services/sandbox-service.js";
 import type { SessionCwdService } from "../services/session-cwd-service.js";
+import { redactShellText } from "../shell/redaction.js";
 import {
   BACKGROUND_SHELL_SERVICE,
   CODING_TOOLS_CONTEXTS,
@@ -334,7 +335,10 @@ function getBackgroundShellService(
 }
 
 function clampTimeout(value: number | undefined, fallback: number): number {
-  if (value === undefined || !Number.isFinite(value)) return fallback;
+  const boundedFallback = Number.isFinite(fallback)
+    ? Math.max(TIMEOUT_MIN_MS, Math.min(TIMEOUT_MAX_MS, Math.floor(fallback)))
+    : DEFAULT_TIMEOUT_MS;
+  if (value === undefined || !Number.isFinite(value)) return boundedFallback;
   return Math.max(TIMEOUT_MIN_MS, Math.min(TIMEOUT_MAX_MS, Math.floor(value)));
 }
 
@@ -1315,8 +1319,8 @@ export const shellAction: Action = {
             .map((entry, index) => {
               const command =
                 typeof entry.command === "string"
-                  ? entry.command
-                  : JSON.stringify(entry);
+                  ? redactShellText(runtime, entry.command)
+                  : redactShellText(runtime, JSON.stringify(entry));
               return `${index + 1}. ${command}`;
             })
             .join("\n")
@@ -1372,7 +1376,7 @@ export const shellAction: Action = {
                 .join("\n")
             : "(no background shell sessions for this conversation)";
           const text = `Background shell sessions (${sessions.length}):\n${lines}`;
-          // Fenced (#16563): per-session lines embed raw command strings.
+          // Fenced (#16563): per-session lines embed command strings.
           if (callback)
             await callback({
               text: fencePreformatted(text),
@@ -1476,7 +1480,7 @@ export const shellAction: Action = {
         // tool failures.
         return failureToActionResult({
           reason: "internal",
-          message: (err as Error).message,
+          message: redactShellText(runtime, (err as Error).message),
         });
       }
     }
@@ -1531,7 +1535,7 @@ export const shellAction: Action = {
         if (!stat.isDirectory()) {
           return failureToActionResult({
             reason: "invalid_param",
-            message: `cwd is not a directory: ${cwdParam}`,
+            message: `cwd is not a directory: ${redactShellText(runtime, cwdParam)}`,
           });
         }
       } catch (err) {
@@ -1542,7 +1546,7 @@ export const shellAction: Action = {
         if (!isMissingPathError(err)) {
           return failureToActionResult({
             reason: "io_error",
-            message: `cwd stat failed: ${(err as Error).message}`,
+            message: `cwd stat failed: ${redactShellText(runtime, (err as Error).message)}`,
           });
         }
         const fallback = await session.getExistingCwd(conversationId);
@@ -1636,9 +1640,11 @@ export const shellAction: Action = {
               "ask the user to confirm the exact operation, then re-run with confirm=true.",
           },
           {
-            command,
+            command: redactShellText(runtime, command),
             destructive_reason: verdict.reason,
-            targets: verdict.targets,
+            targets: verdict.targets.map((target) =>
+              redactShellText(runtime, target),
+            ),
           },
         );
       }
@@ -1686,6 +1692,21 @@ export const shellAction: Action = {
       }
     }
 
+    // Validate the operator timeout before any action can create a child.
+    const timeoutSetting = readBoundedIntSetting(
+      runtime,
+      "CODING_TOOLS_SHELL_TIMEOUT_MS",
+      TIMEOUT_MIN_MS,
+      TIMEOUT_MAX_MS,
+    );
+    if (timeoutSetting && "error" in timeoutSetting) {
+      return failureToActionResult({
+        reason: "invalid_param",
+        message: timeoutSetting.error,
+      });
+    }
+    const redactedCwd = redactShellText(runtime, cwd);
+
     if (subaction === "start_background") {
       const backgroundShell = getBackgroundShellService(runtime);
       if (!backgroundShell) {
@@ -1700,13 +1721,14 @@ export const shellAction: Action = {
           command,
           cwd,
         });
+        const redactedCommand = redactShellText(runtime, command);
         const text = [
-          `$ ${command}`,
-          `[background ${session.handle}] (pid=${session.pid ?? "unknown"}, cwd=${cwd})`,
+          `$ ${redactedCommand}`,
+          `[background ${session.handle}] (pid=${session.pid ?? "unknown"}, cwd=${redactedCwd})`,
           `poll with stdout_offset=${session.stdoutOffset} stderr_offset=${session.stderrOffset}`,
         ].join("\n");
-        // Fenced (#16563): the echoed `$ command` line is the literal
-        // italics-eaten failure shape from #16542's repro.
+        // Starting a background process is itself the requested operation, so
+        // retain its immediate acknowledgement while sanitizing the command.
         if (callback)
           await callback({
             text: fencePreformatted(text),
@@ -1715,8 +1737,8 @@ export const shellAction: Action = {
         return successActionResult(text, {
           actionName: "SHELL",
           [CANONICAL_SUBACTION_KEY]: "start_background",
-          command,
-          cwd,
+          command: redactedCommand,
+          cwd: redactedCwd,
           handle: session.handle,
           session,
           execution_route: session.sandbox === "host" ? "host" : "sandbox",
@@ -1727,17 +1749,19 @@ export const shellAction: Action = {
         // and spawn failures must be visible to the planner instead of falling
         // back to a host-spawned process.
         return failureToActionResult(
-          { reason: "internal", message: (err as Error).message },
-          { command, cwd },
+          {
+            reason: "internal",
+            message: redactShellText(runtime, (err as Error).message),
+          },
+          {
+            command: redactShellText(runtime, command),
+            cwd: redactedCwd,
+          },
         );
       }
     }
 
-    const defaultTimeout = readPositiveIntSetting(
-      runtime,
-      "CODING_TOOLS_SHELL_TIMEOUT_MS",
-      DEFAULT_TIMEOUT_MS,
-    );
+    const defaultTimeout = timeoutSetting?.value ?? DEFAULT_TIMEOUT_MS;
     const timeout = clampTimeout(
       readNumberParam(options, "timeout"),
       defaultTimeout,
@@ -1758,25 +1782,33 @@ export const shellAction: Action = {
       // error-policy:J1 SHELL action boundary; a dispatch failure is logged and
       // returned as a success:false ActionResult carrying the real message, so
       // the planner loop shows the failure to the model.
-      const message = (err as Error).message;
+      const message = redactShellText(runtime, (err as Error).message);
       coreLogger.error(
         `${CODING_TOOLS_LOG_PREFIX} SHELL dispatch failed: ${message}`,
       );
-      return failureToActionResult({ reason: "internal", message }, { cwd });
+      return failureToActionResult(
+        { reason: "internal", message },
+        { cwd: redactedCwd },
+      );
     }
 
     const took = Date.now() - startedAt;
     const timedOut = result.timedOut;
     const signal = result.signal;
+    const redactedCommand = redactShellText(runtime, command);
+    const redactedStdout = redactShellText(runtime, result.stdout);
+    const redactedStderr = redactShellText(runtime, result.stderr);
     const head = timedOut
-      ? `$ ${command}\n[timeout ${timeout}ms] (cwd=${cwd}, took=${took}ms)`
-      : `$ ${command}\n[exit ${result.exitCode}] (cwd=${cwd}, took=${took}ms)`;
-    const streams = formatStreams(result.stdout, result.stderr, {
+      ? `$ ${redactedCommand}\n[timeout ${timeout}ms] (cwd=${redactedCwd}, took=${took}ms)`
+      : `$ ${redactedCommand}\n[exit ${result.exitCode}] (cwd=${redactedCwd}, took=${took}ms)`;
+    const streams = formatStreams(redactedStdout, redactedStderr, {
       showEmptyStreams: !result.stdout && !result.stderr,
     });
     const text = streams.length > 0 ? `${head}\n${streams}` : head;
 
-    if (callback)
+    const echoTranscript =
+      process.env.ELIZA_SHELL_ECHO_TRANSCRIPT?.trim().toLowerCase();
+    if (callback && (echoTranscript === "1" || echoTranscript === "true"))
       await callback({
         text: fencePreformatted(capTranscriptForChat(text)),
         source: "coding-tools",
@@ -1785,7 +1817,7 @@ export const shellAction: Action = {
     if (timedOut) {
       return failureToActionResult(
         { reason: "timeout", message: `command timed out after ${timeout}ms` },
-        { command, cwd, output: text },
+        { command: redactedCommand, cwd: redactedCwd, output: text },
       );
     }
     if (result.exitCode !== 0) {
@@ -1794,13 +1826,18 @@ export const shellAction: Action = {
           reason: "command_failed",
           message: `command exited with code ${result.exitCode}`,
         },
-        { command, exit_code: result.exitCode, cwd, output: text },
+        {
+          command: redactedCommand,
+          exit_code: result.exitCode,
+          cwd: redactedCwd,
+          output: text,
+        },
       );
     }
     const actionResult = successActionResult(text, {
-      command,
+      command: redactedCommand,
       exit_code: result.exitCode,
-      cwd,
+      cwd: redactedCwd,
       execution_route: result.sandbox === "host" ? "host" : "sandbox",
       sandbox_backend: result.sandbox,
       signal,
@@ -1821,14 +1858,14 @@ export const shellAction: Action = {
         : (cryptoSpotUserFacingText({
             message,
             command,
-            stdout: result.stdout,
+            stdout: redactedStdout,
           }) ??
-          localResourceUserFacingText({ message, stdout: result.stdout }) ??
-          localStatusUserFacingText({ message, stdout: result.stdout }))) ??
+          localResourceUserFacingText({ message, stdout: redactedStdout }) ??
+          localStatusUserFacingText({ message, stdout: redactedStdout }))) ??
       safeSmallStdoutUserFacingText({
         command,
-        stdout: result.stdout,
-        stderr: result.stderr,
+        stdout: redactedStdout,
+        stderr: redactedStderr,
       });
     return userFacingText
       ? { ...actionResult, userFacingText, verifiedUserFacing: true }

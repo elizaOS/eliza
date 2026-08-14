@@ -127,6 +127,9 @@ describe("Cloud CF Pages artifact metadata", () => {
       telegram_bot_username:
         "$" +
         "{{ needs.resolve-pages-environment-config.outputs.telegram_bot_username }}",
+      whatsapp_phone_number:
+        "$" +
+        "{{ needs.resolve-pages-environment-config.outputs.whatsapp_phone_number }}",
     });
     expect(entryBuildJob?.outputs).toEqual({
       artifact_run_id: "$" + "{{ steps.pages-artifact.outputs.run_id }}",

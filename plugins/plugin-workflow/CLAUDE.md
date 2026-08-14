@@ -37,7 +37,7 @@ Source validation requires a `smthrs` import and default export and rejects lega
 - `WorkflowService` (`workflow`) is the chat and API facade. It generates native source with the selected elizaOS model and exposes search, CRUD, activation, asynchronous runs, revisions, and evaluation samples.
 - `EmbeddedWorkflowService` (`embedded_workflow_service`) persists tenant-scoped definitions and runs, launches the Smithers worker, records events, and supports cancellation and live subscriptions.
 - `WORKFLOW_DISPATCH` is the typed trigger bridge and preserves idempotency keys.
-- `WorkflowCredentialStore` remains the agent-scoped connector credential mapping service; workflow tasks access integrations through elizaOS capabilities rather than embedded secrets.
+- Workflow tasks access integrations through elizaOS capabilities; the plugin does not define foreign credential records or embed connector secrets.
 
 ## HTTP surface
 
@@ -48,6 +48,10 @@ All routes are elizaOS routes under `/api/workflow`: status, definitions, genera
 ## UI and chat
 
 The Workflows studio edits source, renders the Smithers step manifest, starts and cancels runs, follows live events, previews widgets, and restores revisions. Chat uses the same service. A run response emits a `[WORKFLOW]` block with workflow/run ids, step ids, and widget manifests; the inline widget hydrates from the execution API and links back to the studio.
+
+## Configuration
+
+`ELIZA_SMTHRS_TIMEOUT_MS` sets the maximum Smithers worker wall-clock time and defaults to 30 minutes. Operator values must be canonical decimal integers from `1` through `2147483647` with no sign, padding, whitespace, fraction, or exponent. Invalid values fail with `SMTHRS_TIMEOUT_INVALID` before a worker starts; an explicit validated run timeout takes precedence over the environment setting.
 
 ## Commands
 

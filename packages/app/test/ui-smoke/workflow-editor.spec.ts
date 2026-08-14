@@ -17,22 +17,46 @@ type WorkflowDefinition = {
   source: string;
   language: "tsx";
   active: boolean;
-  steps: Array<{ id: string; label: string; kind: "task"; agent: string }>;
+  steps: Array<{
+    id: string;
+    label: string;
+    kind: "task";
+    agent: string;
+    dependsOn?: string[];
+  }>;
   widgets: Array<{
     id: string;
     title: string;
     surface: "both";
     component: "status";
   }>;
+  inputSchema?: Record<string, unknown>;
   versionId: string;
   createdAt: string;
   updatedAt: string;
 };
 
 async function installWorkflowApi(page: Page) {
+  const sourceWorkflow: WorkflowDefinition = {
+    id: "research-pipeline",
+    name: "Research pipeline",
+    description: "",
+    source: "",
+    language: "tsx",
+    active: true,
+    steps: [
+      { id: "collect", label: "Collect", kind: "task", agent: "researcher" },
+    ],
+    widgets: [],
+    versionId: "source-v1",
+    createdAt: "2026-01-01T00:00:00.000Z",
+    updatedAt: "2026-01-01T00:00:00.000Z",
+  };
   let saved: WorkflowDefinition | null = null;
   let createCount = 0;
   let runCount = 0;
+  let trigger: Record<string, unknown> | null = null;
+  let runInput: Record<string, unknown> | null = null;
   let execution: Record<string, unknown> | null = null;
   await page.route("**/api/workflow/workflows**", async (route) => {
     const request = route.request();
@@ -45,6 +69,31 @@ async function installWorkflowApi(page: Page) {
       const now = new Date().toISOString();
       saved = {
         ...body,
+        inputSchema: {
+          type: "object",
+          required: ["topic", "notify"],
+          properties: {
+            topic: { type: "string", title: "Topic" },
+            limit: { type: "integer", title: "Limit", default: 5 },
+            notify: { type: "boolean", title: "Notify" },
+          },
+        },
+        steps: [
+          {
+            id: "digest",
+            label: "Build digest",
+            kind: "task",
+            agent: "elizaOS",
+            dependsOn: [],
+          },
+          {
+            id: "publish",
+            label: "Publish",
+            kind: "task",
+            agent: "elizaOS",
+            dependsOn: ["digest"],
+          },
+        ],
         id: "smithers-digest",
         versionId: "v1",
         createdAt: now,
@@ -62,6 +111,8 @@ async function installWorkflowApi(page: Page) {
       request.method() === "POST" &&
       pathname === "/api/workflow/workflows/smithers-digest/run"
     ) {
+      runInput = (request.postDataJSON() as { input: Record<string, unknown> })
+        .input;
       const now = new Date().toISOString();
       execution = {
         id: "run-smithers-digest-1",
@@ -73,7 +124,7 @@ async function installWorkflowApi(page: Page) {
         finished: false,
         startedAt: now,
         stoppedAt: null,
-        input: {},
+        input: runInput,
         events: [
           {
             id: "event-started",
@@ -95,11 +146,26 @@ async function installWorkflowApi(page: Page) {
       });
       return;
     }
+    if (
+      request.method() === "POST" &&
+      pathname === "/api/workflow/workflows/smithers-digest/activate" &&
+      saved
+    ) {
+      saved = { ...saved, active: true };
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(saved),
+      });
+      return;
+    }
     if (request.method() === "GET" && pathname === "/api/workflow/workflows") {
       await route.fulfill({
         status: 200,
         contentType: "application/json",
-        body: JSON.stringify({ workflows: saved ? [saved] : [] }),
+        body: JSON.stringify({
+          workflows: saved ? [saved, sourceWorkflow] : [sourceWorkflow],
+        }),
       });
       return;
     }
@@ -127,6 +193,33 @@ async function installWorkflowApi(page: Page) {
         status: 200,
         contentType: "application/json",
         body: JSON.stringify({ currentVersionId: "v1", revisions: [] }),
+      });
+      return;
+    }
+    await route.fallback();
+  });
+  await page.route("**/api/triggers**", async (route) => {
+    const request = route.request();
+    const pathname = new URL(request.url()).pathname;
+    if (pathname === "/api/triggers" && request.method() === "GET") {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ triggers: trigger ? [trigger] : [] }),
+      });
+      return;
+    }
+    if (pathname === "/api/triggers" && request.method() === "POST") {
+      trigger = {
+        ...(request.postDataJSON() as Record<string, unknown>),
+        id: "trigger-smithers-digest",
+        taskId: "task-trigger-smithers-digest",
+        runCount: 0,
+      };
+      await route.fulfill({
+        status: 201,
+        contentType: "application/json",
+        body: JSON.stringify({ trigger }),
       });
       return;
     }
@@ -174,12 +267,37 @@ async function installWorkflowApi(page: Page) {
     getSaved: () => saved,
     getCreateCount: () => createCount,
     getRunCount: () => runCount,
+    getRunInput: () => runInput,
+    getTrigger: () => trigger,
   };
 }
 
 test.beforeEach(async ({ page }) => {
   await seedAppStorage(page);
   await installDefaultAppRoutes(page);
+});
+
+test("first trigger saves and refreshes an unsaved workflow", async ({
+  page,
+}) => {
+  const api = await installWorkflowApi(page);
+  await openAppPath(page, "/automations");
+  await expect(page.getByTestId("automations-shell")).toBeVisible({
+    timeout: 60_000,
+  });
+  await page.getByRole("button", { name: "New automation" }).click();
+  await page.getByRole("button", { name: "New workflow" }).click();
+  await page.getByRole("button", { name: "Add workflow trigger" }).click();
+  await page.getByRole("button", { name: "Repeat" }).click();
+  await page.getByLabel("Interval minutes").fill("15");
+  await page.getByRole("button", { name: "Save trigger" }).click();
+
+  await expect(page.getByTitle("Repeat · 15m")).toBeVisible();
+  expect(api.getCreateCount()).toBe(1);
+  expect(api.getTrigger()).toMatchObject({
+    workflowId: "smithers-digest",
+    intervalMs: 900_000,
+  });
 });
 
 test("workflow studio creates, executes, inspects, and reloads a Smithers workflow", async ({
@@ -190,9 +308,8 @@ test("workflow studio creates, executes, inspects, and reloads a Smithers workfl
   await expect(page.getByTestId("automations-shell")).toBeVisible({
     timeout: 60_000,
   });
-  await page.evaluate(() => {
-    window.location.hash = "#automations/__new__";
-  });
+  await page.getByRole("button", { name: "New automation" }).click();
+  await page.getByRole("button", { name: "New workflow" }).click();
 
   await expect(page.getByTestId("workflow-studio")).toBeVisible({
     timeout: 60_000,
@@ -204,9 +321,9 @@ test("workflow studio creates, executes, inspects, and reloads a Smithers workfl
   const source = `/** @jsxImportSource smthrs */
 import { createSmithers } from "smthrs/create";
 import { z } from "zod";
-const { Workflow, Task, smithers, outputs } = createSmithers({ result: z.object({ message: z.string() }) });
+const { Workflow, Task, smithers, outputs } = createSmithers({ output: z.object({ message: z.string() }) });
 const agent = globalThis.__elizaSmithers.agent;
-export default smithers(() => <Workflow name="digest"><Task id="digest" output={outputs.result} agent={agent}>Create the digest.</Task></Workflow>);`;
+export default smithers(() => <Workflow name="digest"><Task id="digest" output={outputs.output} agent={agent}>Create the digest.</Task></Workflow>);`;
   await page.getByTestId("smithers-source-editor").fill(source);
   await page.locator('[data-agent-id="save-workflow"]').click();
 
@@ -216,8 +333,34 @@ export default smithers(() => <Workflow name="digest"><Task id="digest" output={
   expect(api.getSaved()).not.toHaveProperty("nodes");
   expect(api.getSaved()).not.toHaveProperty("connections");
 
+  await page.getByRole("button", { name: "Add workflow trigger" }).click();
+  await page.getByRole("button", { name: "Event" }).click();
+  await page.getByLabel("Event source").selectOption("step");
+  await page.getByLabel("Source workflow").selectOption("research-pipeline");
+  await page.getByLabel("Source step").selectOption("collect");
+  await page.getByRole("button", { name: "Save trigger" }).click();
+  await expect
+    .poll(() => api.getTrigger()?.eventKind)
+    .toBe("workflow_run_event");
+  expect(api.getTrigger()?.eventFilter).toEqual({
+    event: {
+      type: "NodeFinished",
+      workflowId: "research-pipeline",
+      nodeId: "collect",
+    },
+  });
+  await page.getByRole("button", { name: "Enable workflow" }).click();
+  await expect.poll(() => api.getSaved()?.active).toBe(true);
+
   await page.getByRole("button", { name: "Run", exact: true }).click();
+  await page.getByLabel("Topic").fill("release");
+  await page.getByRole("button", { name: "Run workflow" }).click();
   await expect.poll(api.getRunCount).toBe(1);
+  expect(api.getRunInput()).toEqual({
+    topic: "release",
+    limit: 5,
+    notify: false,
+  });
   await expect(page.getByText("run-smithers").first()).toBeVisible();
   await expect(page.getByText("Digest ready")).toBeVisible({
     timeout: 10_000,
@@ -234,7 +377,10 @@ export default smithers(() => <Workflow name="digest"><Task id="digest" output={
     /Create the digest/,
     { timeout: 60_000 },
   );
-  await expect(page.getByRole("button", { name: "Schedule" })).toBeVisible();
+  await page.getByRole("button", { name: "Build" }).click();
+  await expect(page.getByText("Build digest", { exact: true })).toBeVisible();
+  await expect(page.getByText("Publish", { exact: true })).toBeVisible();
+  await expect(page.getByTitle(/After Collect/)).toBeVisible();
   expect(api.getCreateCount()).toBe(1);
   expect(api.getRunCount()).toBe(1);
 });

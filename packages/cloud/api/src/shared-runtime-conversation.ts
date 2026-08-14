@@ -9,6 +9,7 @@
 import type { BridgeRequest } from "@/lib/services/eliza-sandbox";
 import type { CachedAgentSandbox } from "@/lib/services/shared-runtime/cached-agent-dates";
 import type { SharedTurnMessage } from "@/lib/services/shared-runtime/run-shared-agent-turn";
+import type { SharedRuntimeAgent } from "@/lib/services/shared-runtime/shared-runtime-agent";
 import type {
   SharedRuntimeHistoryStore,
   SharedTurnClaimStore,
@@ -17,6 +18,7 @@ import type {
 import {
   MAX_HISTORY_MESSAGES,
   mergeSharedRuntimeHistoryMessages,
+  selectSharedRuntimeContext,
 } from "@/lib/services/shared-runtime/shared-runtime-history-policy";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -25,21 +27,121 @@ import type { AppEnv } from "@/types/cloud-worker-env";
 // service consumes the row (the CONVERSATIONS-500 defect class).
 type ConversationRequest =
   | { operation: "bridge"; agent: CachedAgentSandbox; rpc: BridgeRequest }
+  | {
+      operation: "personal-bridge";
+      agent: SharedRuntimeAgent;
+      rpc: BridgeRequest;
+    }
   | { operation: "stream"; agent: CachedAgentSandbox; rpc: BridgeRequest }
+  | {
+      operation: "personal-stream";
+      agent: SharedRuntimeAgent;
+      rpc: BridgeRequest;
+    }
   | { operation: "prewarm"; agentId: string; roomId: string }
   | { operation: "history"; agentId: string; roomId: string }
+  | {
+      operation: "cutover-seal";
+      agentId: string;
+      roomId: string;
+      token: string;
+      leaseMs: number;
+      organizationId: string;
+      dedicatedAgentId: string;
+    }
+  | { operation: "cutover-release"; token: string }
+  | { operation: "cutover-commit"; token: string }
+  | {
+      operation: "provisional-convergence-reserve";
+      agentId: string;
+      token: string;
+      holderId: string;
+      leaseMs: number;
+    }
+  | {
+      operation: "provisional-convergence-seal";
+      agentId: string;
+      token: string;
+      holderId: string;
+      targetAgentId: string;
+      targetUserId: string;
+      targetOrganizationId: string;
+      leaseMs: number;
+    }
+  | {
+      operation: "provisional-convergence-import";
+      agentId: string;
+      token: string;
+      holderId: string;
+      history: SharedTurnMessage[];
+    }
+  | {
+      operation: "provisional-convergence-alias";
+      token: string;
+      targetAgentId: string;
+      targetUserId: string;
+      targetOrganizationId: string;
+    }
+  | {
+      operation: "provisional-convergence-release";
+      token: string;
+      holderId: string;
+    }
   | { operation: "delete"; agentId: string };
 
 interface StoredConversation {
   agentId: string;
   channelId: string;
   history: SharedTurnMessage[];
+  recall?: SharedTurnMessage[];
   dirty: boolean;
   version: number;
 }
 
 const CONVERSATION_KEY = "conversation";
+const HISTORY_ARCHIVE_PREFIX = "history-archive:";
+const MAX_RECALL_MESSAGES = 128;
+const CUTOVER_SEAL_KEY = "personal-cutover-seal";
+const PROVISIONAL_CONVERGENCE_SEAL_KEY =
+  "personal-provisional-convergence-seal";
+const PROVISIONAL_CONVERGENCE_RESERVATION_KEY =
+  "personal-provisional-convergence-reservation";
+const PROVISIONAL_CONVERGENCE_ALIAS_KEY =
+  "personal-provisional-convergence-alias";
+const PROVISIONAL_CONVERGENCE_IMPORT_PREFIX =
+  "personal-provisional-convergence-import:";
 const RETRY_DELAY_MS = 30_000;
+
+interface StoredCutoverSeal {
+  token: string;
+  expiresAt: number;
+  committed: boolean;
+  organizationId?: string;
+  sourceAgentId?: string;
+  dedicatedAgentId?: string;
+}
+
+interface StoredProvisionalConvergenceSeal {
+  token: string;
+  holderIds: string[];
+  targetAgentId: string;
+  targetUserId: string;
+  targetOrganizationId: string;
+  expiresAt: number;
+}
+
+interface StoredProvisionalConvergenceReservation {
+  token: string;
+  holderIds: string[];
+  expiresAt: number;
+}
+
+interface StoredProvisionalConvergenceAlias {
+  token: string;
+  targetAgentId: string;
+  targetUserId: string;
+  targetOrganizationId: string;
+}
 
 /**
  * Durable claim ledger for client-keyed turns (#18045), stored as one bounded
@@ -102,6 +204,20 @@ function boundSnapshotHistory(
   return bounded;
 }
 
+function archiveMessageKey(message: SharedTurnMessage): string {
+  const identity =
+    message.id ??
+    `${message.role}:${message.createdAt ?? 0}:${message.content}`;
+  let hash = 2166136261;
+  for (let index = 0; index < identity.length; index += 1) {
+    hash ^= identity.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return `${HISTORY_ARCHIVE_PREFIX}${(message.createdAt ?? 0)
+    .toString()
+    .padStart(16, "0")}:${(hash >>> 0).toString(16).padStart(8, "0")}`;
+}
+
 class ConversationCacheWarmingError extends Error {
   constructor() {
     super("Conversation cache is warming. Retry shortly.");
@@ -136,6 +252,7 @@ export class SharedRuntimeConversation {
   private async loadConversation(
     agentId: string,
     channelId: string,
+    startEmpty: boolean,
   ): Promise<StoredConversation> {
     if (this.conversation) return this.conversation;
     if (this.conversation === undefined) {
@@ -144,6 +261,21 @@ export class SharedRuntimeConversation {
         null;
     }
     if (this.conversation) return this.conversation;
+
+    // A personal identity has no sandbox-era Postgres history to migrate. Its
+    // Durable Object is born on first contact, so delaying that first reply for
+    // a mirror read would turn a successful Telegram webhook into silent loss.
+    if (startEmpty) {
+      this.conversation = {
+        agentId,
+        channelId,
+        history: [],
+        dirty: false,
+        version: 0,
+      };
+      await this.state.storage.put(CONVERSATION_KEY, this.conversation);
+      return this.conversation;
+    }
 
     if (!this.hydration) {
       this.hydration = this.runWithBindings(async () => {
@@ -191,7 +323,7 @@ export class SharedRuntimeConversation {
     channelId: string,
   ): Promise<void> {
     try {
-      await this.loadConversation(agentId, channelId);
+      await this.loadConversation(agentId, channelId, false);
     } catch (error) {
       if (!(error instanceof ConversationCacheWarmingError)) throw error;
       const hydration = this.hydration;
@@ -256,22 +388,79 @@ export class SharedRuntimeConversation {
     return this.mirrorQueue;
   }
 
-  private historyStore(): SharedRuntimeHistoryStore {
+  private async loadArchivedHistory(): Promise<SharedTurnMessage[]> {
+    const archived = await this.state.storage.list<SharedTurnMessage>({
+      prefix: HISTORY_ARCHIVE_PREFIX,
+    });
+    return [...archived.values()];
+  }
+
+  private async loadCompleteHistory(
+    current: StoredConversation,
+  ): Promise<SharedTurnMessage[]> {
+    const archived = await this.loadArchivedHistory();
+    return mergeSharedRuntimeHistoryMessages(
+      archived,
+      current.history,
+      Number.MAX_SAFE_INTEGER,
+    );
+  }
+
+  private historyStore(startEmpty: boolean): SharedRuntimeHistoryStore {
     return {
-      load: async (agentId, channelId) =>
-        (await this.loadConversation(agentId, channelId)).history,
+      load: async (agentId, channelId, queryText) => {
+        const current = await this.loadConversation(
+          agentId,
+          channelId,
+          startEmpty,
+        );
+        if (!startEmpty) return current.history;
+        if (queryText === undefined) {
+          return await this.loadCompleteHistory(current);
+        }
+        const recallContext = mergeSharedRuntimeHistoryMessages(
+          current.recall ?? [],
+          current.history,
+          Number.MAX_SAFE_INTEGER,
+        );
+        return selectSharedRuntimeContext(
+          recallContext,
+          queryText,
+          MAX_HISTORY_MESSAGES,
+        );
+      },
       merge: async (agentId, channelId, messages) => {
-        const current = await this.loadConversation(agentId, channelId);
+        const current = await this.loadConversation(
+          agentId,
+          channelId,
+          startEmpty,
+        );
+        const merged = mergeSharedRuntimeHistoryMessages(
+          current.history,
+          messages,
+          Number.MAX_SAFE_INTEGER,
+        );
+        const evicted = merged.slice(0, -MAX_HISTORY_MESSAGES);
+        let recall = current.recall;
+        if (startEmpty && evicted.length > 0) {
+          for (const message of evicted) {
+            await this.state.storage.put(archiveMessageKey(message), message);
+          }
+          recall = selectSharedRuntimeContext(
+            mergeSharedRuntimeHistoryMessages(
+              current.recall ?? [],
+              evicted,
+              Number.MAX_SAFE_INTEGER,
+            ),
+            "",
+            MAX_RECALL_MESSAGES,
+          );
+        }
         const snapshot: StoredConversation = {
           agentId,
           channelId,
-          history: boundSnapshotHistory(
-            mergeSharedRuntimeHistoryMessages(
-              current.history,
-              messages,
-              MAX_HISTORY_MESSAGES,
-            ),
-          ),
+          history: boundSnapshotHistory(merged.slice(-MAX_HISTORY_MESSAGES)),
+          ...(recall ? { recall } : {}),
           dirty: true,
           version: (this.conversation?.version ?? 0) + 1,
         };
@@ -325,12 +514,527 @@ export class SharedRuntimeConversation {
     };
   }
 
+  private async activeCutoverSeal(): Promise<StoredCutoverSeal | null> {
+    const seal =
+      (await this.state.storage.get<StoredCutoverSeal>(CUTOVER_SEAL_KEY)) ??
+      null;
+    // A pending lease expires so a crashed migration cannot strand Shared.
+    // A committed seal is the durable cutover authority: expiring it would let
+    // a stale browser/native session resume the archived Shared transcript.
+    if (!seal || seal.committed || seal.expiresAt > Date.now()) return seal;
+
+    // The DB marker commits before the final DO transition. If the Worker
+    // crashes or loses the acknowledgement between those two durable writes,
+    // an expired lease must recover the server-owned marker rather than
+    // reopening Shared and splitting later turns into the archived log.
+    if (seal.organizationId && seal.sourceAgentId && seal.dedicatedAgentId) {
+      const organizationId = seal.organizationId;
+      const sourceAgentId = seal.sourceAgentId;
+      const active = await this.runWithBindings(async () => {
+        const { findActivePersonalDedicatedTarget } = await import(
+          "@/lib/services/agent-tier-upgrade-target"
+        );
+        return await findActivePersonalDedicatedTarget(
+          organizationId,
+          sourceAgentId,
+        );
+      });
+      if (active?.id === seal.dedicatedAgentId) {
+        const recovered = { ...seal, committed: true };
+        await this.state.storage.put(CUTOVER_SEAL_KEY, recovered);
+        return recovered;
+      }
+    }
+    await this.state.storage.delete(CUTOVER_SEAL_KEY);
+    return null;
+  }
+
+  private async activeProvisionalConvergenceSeal(): Promise<StoredProvisionalConvergenceSeal | null> {
+    const seal =
+      (await this.state.storage.get<StoredProvisionalConvergenceSeal>(
+        PROVISIONAL_CONVERGENCE_SEAL_KEY,
+      )) ?? null;
+    if (!seal || seal.expiresAt > Date.now()) return seal;
+    await this.state.storage.delete(PROVISIONAL_CONVERGENCE_SEAL_KEY);
+    return null;
+  }
+
+  private async activeProvisionalConvergenceReservation(): Promise<StoredProvisionalConvergenceReservation | null> {
+    const reservation =
+      (await this.state.storage.get<StoredProvisionalConvergenceReservation>(
+        PROVISIONAL_CONVERGENCE_RESERVATION_KEY,
+      )) ?? null;
+    if (!reservation || reservation.expiresAt > Date.now()) return reservation;
+    await this.state.storage.delete(PROVISIONAL_CONVERGENCE_RESERVATION_KEY);
+    return null;
+  }
+
+  private async forwardToConvergedPersonalEliza(
+    payload: ConversationRequest,
+    alias: StoredProvisionalConvergenceAlias,
+    signal: AbortSignal,
+  ): Promise<Response> {
+    const namespace = this.env.SHARED_RUNTIME_CONVERSATIONS;
+    if (!namespace) {
+      throw new Error(
+        "Shared runtime namespace is unavailable for personal history alias",
+      );
+    }
+
+    let forwarded: ConversationRequest = payload;
+    if (
+      payload.operation === "personal-bridge" ||
+      payload.operation === "personal-stream"
+    ) {
+      forwarded = {
+        ...payload,
+        agent: {
+          ...payload.agent,
+          id: alias.targetAgentId,
+          user_id: alias.targetUserId,
+          organization_id: alias.targetOrganizationId,
+        },
+        rpc: {
+          ...payload.rpc,
+          params: {
+            ...payload.rpc.params,
+            roomId: alias.targetAgentId,
+          },
+        },
+      };
+    } else if (
+      payload.operation === "prewarm" ||
+      payload.operation === "history" ||
+      payload.operation === "cutover-seal"
+    ) {
+      forwarded = {
+        ...payload,
+        agentId: alias.targetAgentId,
+        roomId: alias.targetAgentId,
+      };
+    }
+
+    return await namespace
+      .getByName(`${alias.targetAgentId}:${alias.targetAgentId}`)
+      .fetch("https://shared-runtime.internal/converged-personal", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(forwarded),
+        signal,
+      });
+  }
+
   private async handle(request: Request): Promise<Response> {
     const payload = (await request.json()) as ConversationRequest;
-    const historyStore = this.historyStore();
+    const personal =
+      payload.operation === "personal-bridge" ||
+      payload.operation === "personal-stream" ||
+      ("agentId" in payload &&
+        typeof payload.agentId === "string" &&
+        payload.agentId.startsWith("personal:"));
+    const historyStore = this.historyStore(personal);
     const turnClaims = this.turnClaims();
+    if (payload.operation === "provisional-convergence-reserve") {
+      if (
+        typeof payload.agentId !== "string" ||
+        !payload.agentId.startsWith("personal:") ||
+        typeof payload.token !== "string" ||
+        payload.token.length === 0 ||
+        typeof payload.holderId !== "string" ||
+        payload.holderId.length === 0 ||
+        typeof payload.leaseMs !== "number" ||
+        !Number.isFinite(payload.leaseMs) ||
+        payload.leaseMs <= 0
+      ) {
+        return Response.json(
+          { success: false, code: "invalid_provisional_convergence" },
+          { status: 400 },
+        );
+      }
+      const cutover = await this.activeCutoverSeal();
+      if (cutover) {
+        return Response.json(
+          {
+            success: false,
+            code: cutover.committed
+              ? "personal_eliza_dedicated"
+              : "personal_cutover_in_progress",
+          },
+          { status: cutover.committed ? 409 : 423 },
+        );
+      }
+      if (await this.activeProvisionalConvergenceSeal()) {
+        return Response.json(
+          { success: false, code: "provisional_convergence_in_progress" },
+          { status: 423 },
+        );
+      }
+      const existing = await this.activeProvisionalConvergenceReservation();
+      if (existing && existing.token !== payload.token) {
+        return Response.json(
+          { success: false, code: "provisional_convergence_in_progress" },
+          { status: 423 },
+        );
+      }
+      await this.state.storage.put(PROVISIONAL_CONVERGENCE_RESERVATION_KEY, {
+        token: payload.token,
+        holderIds: [
+          ...new Set([...(existing?.holderIds ?? []), payload.holderId]),
+        ],
+        expiresAt: Math.max(
+          existing?.expiresAt ?? 0,
+          Date.now() + payload.leaseMs,
+        ),
+      } satisfies StoredProvisionalConvergenceReservation);
+      return Response.json({ success: true });
+    }
+    if (payload.operation === "provisional-convergence-seal") {
+      if (
+        typeof payload.agentId !== "string" ||
+        !payload.agentId.startsWith("personal:") ||
+        typeof payload.targetAgentId !== "string" ||
+        !payload.targetAgentId.startsWith("personal:") ||
+        payload.agentId === payload.targetAgentId ||
+        typeof payload.targetUserId !== "string" ||
+        payload.targetUserId.length === 0 ||
+        typeof payload.targetOrganizationId !== "string" ||
+        payload.targetOrganizationId.length === 0 ||
+        typeof payload.token !== "string" ||
+        payload.token.length === 0 ||
+        typeof payload.holderId !== "string" ||
+        payload.holderId.length === 0 ||
+        typeof payload.leaseMs !== "number" ||
+        !Number.isFinite(payload.leaseMs) ||
+        payload.leaseMs <= 0
+      ) {
+        return Response.json(
+          { success: false, code: "invalid_provisional_convergence" },
+          { status: 400 },
+        );
+      }
+      const cutover = await this.activeCutoverSeal();
+      if (cutover) {
+        return Response.json(
+          {
+            success: false,
+            code: cutover.committed
+              ? "personal_eliza_dedicated"
+              : "personal_cutover_in_progress",
+          },
+          { status: cutover.committed ? 409 : 423 },
+        );
+      }
+      if (await this.activeProvisionalConvergenceReservation()) {
+        return Response.json(
+          { success: false, code: "provisional_convergence_in_progress" },
+          { status: 423 },
+        );
+      }
+      const alias =
+        await this.state.storage.get<StoredProvisionalConvergenceAlias>(
+          PROVISIONAL_CONVERGENCE_ALIAS_KEY,
+        );
+      if (alias) {
+        if (
+          alias.token !== payload.token ||
+          alias.targetAgentId !== payload.targetAgentId ||
+          alias.targetUserId !== payload.targetUserId ||
+          alias.targetOrganizationId !== payload.targetOrganizationId
+        ) {
+          return Response.json(
+            { success: false, code: "provisional_convergence_conflict" },
+            { status: 409 },
+          );
+        }
+        return Response.json({
+          success: true,
+          alreadyAliased: true,
+          history: [],
+        });
+      }
+      const existing = await this.activeProvisionalConvergenceSeal();
+      if (
+        existing &&
+        (existing.token !== payload.token ||
+          existing.targetAgentId !== payload.targetAgentId ||
+          existing.targetUserId !== payload.targetUserId ||
+          existing.targetOrganizationId !== payload.targetOrganizationId)
+      ) {
+        return Response.json(
+          { success: false, code: "provisional_convergence_in_progress" },
+          { status: 423 },
+        );
+      }
+      const seal: StoredProvisionalConvergenceSeal = {
+        token: payload.token,
+        holderIds: [
+          ...new Set([...(existing?.holderIds ?? []), payload.holderId]),
+        ],
+        targetAgentId: payload.targetAgentId,
+        targetUserId: payload.targetUserId,
+        targetOrganizationId: payload.targetOrganizationId,
+        expiresAt: Math.max(
+          existing?.expiresAt ?? 0,
+          Date.now() + payload.leaseMs,
+        ),
+      };
+      await this.state.storage.put(PROVISIONAL_CONVERGENCE_SEAL_KEY, seal);
+      const history = await this.runWithBindings(async () => {
+        const { sharedRuntimeChatService } = await import(
+          "@/lib/services/shared-runtime/shared-runtime-chat"
+        );
+        return await sharedRuntimeChatService.getHistory(
+          payload.agentId,
+          payload.agentId,
+          historyStore,
+        );
+      });
+      return Response.json({ success: true, alreadyAliased: false, history });
+    }
+    if (payload.operation === "provisional-convergence-import") {
+      if (
+        typeof payload.agentId !== "string" ||
+        !payload.agentId.startsWith("personal:") ||
+        typeof payload.token !== "string" ||
+        payload.token.length === 0 ||
+        typeof payload.holderId !== "string" ||
+        payload.holderId.length === 0 ||
+        !Array.isArray(payload.history)
+      ) {
+        return Response.json(
+          { success: false, code: "invalid_provisional_convergence" },
+          { status: 400 },
+        );
+      }
+      const cutover = await this.activeCutoverSeal();
+      if (cutover) {
+        return Response.json(
+          {
+            success: false,
+            code: cutover.committed
+              ? "personal_eliza_dedicated"
+              : "personal_cutover_in_progress",
+          },
+          { status: cutover.committed ? 409 : 423 },
+        );
+      }
+      const reservation = await this.activeProvisionalConvergenceReservation();
+      if (
+        reservation?.token !== payload.token ||
+        !reservation.holderIds.includes(payload.holderId)
+      ) {
+        return Response.json(
+          { success: false, code: "provisional_convergence_not_reserved" },
+          { status: 409 },
+        );
+      }
+      const markerKey = `${PROVISIONAL_CONVERGENCE_IMPORT_PREFIX}${payload.token}`;
+      if (await this.state.storage.get<boolean>(markerKey)) {
+        return Response.json({ success: true, alreadyImported: true });
+      }
+      await historyStore.merge(
+        payload.agentId,
+        payload.agentId,
+        payload.history,
+      );
+      await this.state.storage.put(markerKey, true);
+      return Response.json({ success: true, alreadyImported: false });
+    }
+    if (payload.operation === "provisional-convergence-alias") {
+      if (
+        typeof payload.token !== "string" ||
+        payload.token.length === 0 ||
+        typeof payload.targetAgentId !== "string" ||
+        !payload.targetAgentId.startsWith("personal:") ||
+        typeof payload.targetUserId !== "string" ||
+        payload.targetUserId.length === 0 ||
+        typeof payload.targetOrganizationId !== "string" ||
+        payload.targetOrganizationId.length === 0
+      ) {
+        return Response.json(
+          { success: false, code: "invalid_provisional_convergence" },
+          { status: 400 },
+        );
+      }
+      const existingAlias =
+        await this.state.storage.get<StoredProvisionalConvergenceAlias>(
+          PROVISIONAL_CONVERGENCE_ALIAS_KEY,
+        );
+      if (
+        existingAlias &&
+        (existingAlias.token !== payload.token ||
+          existingAlias.targetAgentId !== payload.targetAgentId ||
+          existingAlias.targetUserId !== payload.targetUserId ||
+          existingAlias.targetOrganizationId !== payload.targetOrganizationId)
+      ) {
+        return Response.json(
+          { success: false, code: "provisional_convergence_conflict" },
+          { status: 409 },
+        );
+      }
+      if (existingAlias) {
+        return Response.json({ success: true });
+      }
+      const activeSeal = await this.activeProvisionalConvergenceSeal();
+      if (
+        !activeSeal ||
+        activeSeal.token !== payload.token ||
+        activeSeal.targetAgentId !== payload.targetAgentId ||
+        activeSeal.targetUserId !== payload.targetUserId ||
+        activeSeal.targetOrganizationId !== payload.targetOrganizationId
+      ) {
+        return Response.json(
+          { success: false, code: "provisional_convergence_not_prepared" },
+          { status: 409 },
+        );
+      }
+      await this.state.storage.put(PROVISIONAL_CONVERGENCE_ALIAS_KEY, {
+        token: payload.token,
+        targetAgentId: payload.targetAgentId,
+        targetUserId: payload.targetUserId,
+        targetOrganizationId: payload.targetOrganizationId,
+      } satisfies StoredProvisionalConvergenceAlias);
+      await this.state.storage.delete(PROVISIONAL_CONVERGENCE_SEAL_KEY);
+      return Response.json({ success: true });
+    }
+    if (payload.operation === "provisional-convergence-release") {
+      if (
+        typeof payload.token !== "string" ||
+        payload.token.length === 0 ||
+        typeof payload.holderId !== "string" ||
+        payload.holderId.length === 0
+      ) {
+        return Response.json(
+          { success: false, code: "invalid_provisional_convergence" },
+          { status: 400 },
+        );
+      }
+      const activeSeal = await this.activeProvisionalConvergenceSeal();
+      if (activeSeal?.token === payload.token) {
+        const holderIds = activeSeal.holderIds.filter(
+          (holderId) => holderId !== payload.holderId,
+        );
+        if (holderIds.length === 0) {
+          await this.state.storage.delete(PROVISIONAL_CONVERGENCE_SEAL_KEY);
+        } else {
+          await this.state.storage.put(PROVISIONAL_CONVERGENCE_SEAL_KEY, {
+            ...activeSeal,
+            holderIds,
+          } satisfies StoredProvisionalConvergenceSeal);
+        }
+      }
+      const reservation = await this.activeProvisionalConvergenceReservation();
+      if (reservation?.token === payload.token) {
+        const holderIds = reservation.holderIds.filter(
+          (holderId) => holderId !== payload.holderId,
+        );
+        if (holderIds.length === 0) {
+          await this.state.storage.delete(
+            PROVISIONAL_CONVERGENCE_RESERVATION_KEY,
+          );
+        } else {
+          await this.state.storage.put(
+            PROVISIONAL_CONVERGENCE_RESERVATION_KEY,
+            {
+              ...reservation,
+              holderIds,
+            } satisfies StoredProvisionalConvergenceReservation,
+          );
+        }
+      }
+      return Response.json({ success: true });
+    }
+
+    const convergenceAlias =
+      await this.state.storage.get<StoredProvisionalConvergenceAlias>(
+        PROVISIONAL_CONVERGENCE_ALIAS_KEY,
+      );
+    if (convergenceAlias && payload.operation !== "delete") {
+      return await this.forwardToConvergedPersonalEliza(
+        payload,
+        convergenceAlias,
+        request.signal,
+      );
+    }
+    const convergenceSeal = await this.activeProvisionalConvergenceSeal();
+    const convergenceReservation =
+      await this.activeProvisionalConvergenceReservation();
+    if (convergenceSeal || convergenceReservation) {
+      return Response.json(
+        {
+          success: false,
+          error: "Personal history is being linked. Retry shortly.",
+          code: "personal_convergence_in_progress",
+          retryable: true,
+        },
+        { status: 423, headers: { "Retry-After": "1" } },
+      );
+    }
     if (payload.operation === "prewarm") {
       await this.prewarmConversation(payload.agentId, payload.roomId);
+      return Response.json({ success: true });
+    }
+    if (payload.operation === "cutover-seal") {
+      const existing = await this.activeCutoverSeal();
+      if (existing && existing.token !== payload.token) {
+        return Response.json(
+          {
+            success: false,
+            code: existing.committed
+              ? "personal_eliza_dedicated"
+              : "personal_cutover_in_progress",
+          },
+          { status: existing.committed ? 409 : 423 },
+        );
+      }
+      const seal: StoredCutoverSeal = {
+        token: payload.token,
+        expiresAt: Date.now() + payload.leaseMs,
+        committed: existing?.committed ?? false,
+        organizationId: payload.organizationId,
+        sourceAgentId: payload.agentId,
+        dedicatedAgentId: payload.dedicatedAgentId,
+      };
+      await this.state.storage.put(CUTOVER_SEAL_KEY, seal);
+      try {
+        const history = await this.runWithBindings(async () => {
+          const { sharedRuntimeChatService } = await import(
+            "@/lib/services/shared-runtime/shared-runtime-chat"
+          );
+          return await sharedRuntimeChatService.getHistory(
+            payload.agentId,
+            payload.roomId,
+            historyStore,
+          );
+        });
+        return Response.json({ success: true, history });
+      } catch (error) {
+        const current = await this.activeCutoverSeal();
+        if (current?.token === payload.token && !current.committed) {
+          await this.state.storage.delete(CUTOVER_SEAL_KEY);
+        }
+        throw error;
+      }
+    }
+    if (payload.operation === "cutover-release") {
+      const existing = await this.activeCutoverSeal();
+      if (existing?.token === payload.token && !existing.committed) {
+        await this.state.storage.delete(CUTOVER_SEAL_KEY);
+      }
+      return Response.json({ success: true });
+    }
+    if (payload.operation === "cutover-commit") {
+      const existing = await this.activeCutoverSeal();
+      if (!existing || existing.token !== payload.token) {
+        return Response.json(
+          { success: false, code: "personal_cutover_seal_lost" },
+          { status: 409 },
+        );
+      }
+      await this.state.storage.put(CUTOVER_SEAL_KEY, {
+        ...existing,
+        committed: true,
+      } satisfies StoredCutoverSeal);
       return Response.json({ success: true });
     }
     if (payload.operation === "history") {
@@ -358,28 +1062,56 @@ export class SharedRuntimeConversation {
       return Response.json({ success: true });
     }
 
+    const cutoverSeal = await this.activeCutoverSeal();
+    if (cutoverSeal) {
+      return Response.json(
+        {
+          success: false,
+          error: cutoverSeal.committed
+            ? "This personal Eliza is active on Dedicated."
+            : "Dedicated cutover is finishing. Retry this turn shortly.",
+          code: cutoverSeal.committed
+            ? "personal_eliza_dedicated"
+            : "personal_cutover_in_progress",
+          retryable: !cutoverSeal.committed,
+        },
+        {
+          status: cutoverSeal.committed ? 409 : 423,
+          headers: cutoverSeal.committed ? {} : { "Retry-After": "1" },
+        },
+      );
+    }
+
     return await this.runWithBindings(async () => {
-      const [{ sharedRuntimeChatService }, { rehydrateCachedAgentDates }] =
-        await Promise.all([
-          import("@/lib/services/shared-runtime/shared-runtime-chat"),
-          import("@/lib/services/shared-runtime/cached-agent-dates"),
-        ]);
-      const agent = rehydrateCachedAgentDates(payload.agent);
+      const { sharedRuntimeChatService } = await import(
+        "@/lib/services/shared-runtime/shared-runtime-chat"
+      );
+      const agent = personal
+        ? payload.agent
+        : await import("@/lib/services/shared-runtime/cached-agent-dates").then(
+            ({ rehydrateCachedAgentDates }) =>
+              rehydrateCachedAgentDates(payload.agent),
+          );
       const executionCtx = {
         waitUntil: (promise: Promise<unknown>) => this.state.waitUntil(promise),
       };
-      if (payload.operation === "stream") {
+      if (
+        payload.operation === "stream" ||
+        payload.operation === "personal-stream"
+      ) {
         return await sharedRuntimeChatService.stream(agent, payload.rpc, {
           abortSignal: request.signal,
           executionCtx,
           historyStore,
           turnClaims,
+          funding: personal ? "platform" : "organization-credits",
         });
       }
       const result = await sharedRuntimeChatService.bridge(agent, payload.rpc, {
         executionCtx,
         historyStore,
         turnClaims,
+        funding: personal ? "platform" : "organization-credits",
       });
       return Response.json(result);
     });

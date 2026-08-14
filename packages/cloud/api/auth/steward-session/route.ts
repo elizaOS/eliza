@@ -3,10 +3,11 @@
  * DELETE /api/auth/steward-session — clear steward cookies (logout).
  */
 
-import type {
-  StewardSessionErrorCode,
-  StewardSessionRequest,
-  StewardSessionResponse,
+import {
+  type StewardSessionErrorCode,
+  type StewardSessionRequest,
+  type StewardSessionResponse,
+  sanitizeTelegramAccountClaimContinuation,
 } from "@elizaos/shared/steward-session-client";
 import { Hono } from "hono";
 import { deleteCookie, setCookie } from "hono/cookie";
@@ -25,7 +26,16 @@ import {
   rateLimit,
 } from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { isBlockedBySsoBridgeLogout } from "@/lib/services/sso-bridge-codes";
-import { describeSyncError, syncUserFromSteward } from "@/lib/steward-sync";
+import {
+  StewardPhoneOwnershipError,
+  verifyStewardBearerPhone,
+} from "@/lib/services/steward-client";
+import {
+  describeSyncError,
+  StewardPhoneAccountConflictError,
+  StewardTelegramAccountClaimError,
+  syncUserFromSteward,
+} from "@/lib/steward-sync";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -107,10 +117,33 @@ app.post("/", async (c) => {
       )) as Partial<StewardSessionRequest>;
     const token = body.token;
     const refreshToken = body.refreshToken;
+    const verifiedPhoneHint = body.verifiedPhone;
+    const telegramContinuation = sanitizeTelegramAccountClaimContinuation(
+      body.telegramContinuation,
+    );
 
     if (!token || typeof token !== "string") {
       logStewardAuth("missing-token", null);
       return c.json(errorBody("Token required", "missing_token"), 400);
+    }
+
+    if (
+      verifiedPhoneHint !== undefined &&
+      (typeof verifiedPhoneHint !== "string" ||
+        verifiedPhoneHint.trim().length === 0)
+    ) {
+      logStewardAuth("verified-phone-invalid", null);
+      return c.json(
+        errorBody("Verified phone must be a string", "verified_phone_invalid"),
+        400,
+      );
+    }
+    if (body.telegramContinuation !== undefined && !telegramContinuation) {
+      logStewardAuth("telegram-claim-invalid", null);
+      return c.json(
+        errorBody("Invalid Telegram account claim", "telegram_claim_conflict"),
+        409,
+      );
     }
 
     if (!stewardSecretConfigured(c.env)) {
@@ -190,8 +223,63 @@ app.post("/", async (c) => {
       }
     }
 
+    let verifiedPhone: string | undefined;
+    if (verifiedPhoneHint) {
+      try {
+        const ownership = await verifyStewardBearerPhone({
+          env: c.env,
+          bearerToken: token,
+          tenantId: claims.tenantId,
+          phoneNumber: verifiedPhoneHint,
+        });
+        if (ownership.status !== "verified") {
+          logStewardAuth("verified-phone-mismatch", null);
+          return c.json(
+            errorBody(
+              "Phone is not linked to this Steward session",
+              "verified_phone_mismatch",
+            ),
+            403,
+          );
+        }
+        verifiedPhone = ownership.phoneNumber;
+      } catch (error) {
+        if (
+          error instanceof StewardPhoneOwnershipError &&
+          error.code === "invalid_phone"
+        ) {
+          logStewardAuth("verified-phone-invalid", null);
+          return c.json(
+            errorBody("Invalid phone number", "verified_phone_invalid"),
+            400,
+          );
+        }
+        logStewardAuth("verified-phone-upstream-unavailable", null);
+        logger.error("[steward-auth] Steward phone verification failed", {
+          error: error instanceof Error ? error.message : String(error),
+        });
+        return c.json(
+          errorBody(
+            "Could not verify phone ownership",
+            "steward_upstream_unavailable",
+          ),
+          503,
+        );
+      }
+    }
+
     let cloudUser: Awaited<ReturnType<typeof syncUserFromSteward>>;
     if (claims.stagingSessionBinding) {
+      if (telegramContinuation) {
+        logStewardAuth("telegram-claim-staging-session", null);
+        return c.json(
+          errorBody(
+            "A QA session cannot claim a Telegram account",
+            "telegram_claim_conflict",
+          ),
+          409,
+        );
+      }
       const boundCloudUser = await loadVerifiedStagingSessionUser({
         binding: claims.stagingSessionBinding,
         stewardUserId: claims.userId,
@@ -208,8 +296,32 @@ app.post("/", async (c) => {
           email: claims.email,
           walletAddress: claims.walletAddress ?? claims.address,
           walletChainType: claims.walletChain,
+          verifiedPhone,
+          telegramContinuation: telegramContinuation ?? undefined,
+          sharedRuntimeConversationNamespace:
+            c.env.SHARED_RUNTIME_CONVERSATIONS,
         });
       } catch (error) {
+        if (error instanceof StewardPhoneAccountConflictError) {
+          logStewardAuth("verified-phone-conflict", null);
+          return c.json(
+            errorBody(
+              "This phone account cannot be linked automatically",
+              "verified_phone_conflict",
+            ),
+            409,
+          );
+        }
+        if (error instanceof StewardTelegramAccountClaimError) {
+          logStewardAuth("telegram-claim-conflict", null);
+          return c.json(
+            errorBody(
+              "This Telegram chat cannot be linked automatically",
+              "telegram_claim_conflict",
+            ),
+            409,
+          );
+        }
         logStewardAuth("sync-failed", null);
         // Workers Logs indexes only the message STRING — an Error passed in the
         // context object is dropped entirely. Inline everything (same fix as the

@@ -189,6 +189,49 @@ describe("resolveAgentSessionRecovery", () => {
       expect(decision.agentId).toBe("23766030-c096-4a14-932a-a4e43c562432");
     }
   });
+
+  it("re-pairs the active Dedicated runtime without replacing its personal identity", () => {
+    const dedicatedAgentId = "23766030-c096-4a14-932a-a4e43c562432";
+    const decision = resolveAgentSessionRecovery({
+      reason: "remote_auth_required",
+      activeServer: {
+        kind: "cloud",
+        id: "cloud:personal:00000000-0000-5000-8000-000000000001",
+        label: "Eliza",
+        apiBase: `https://${dedicatedAgentId}.elizacloud.ai`,
+        cloudRuntimeAgentId: dedicatedAgentId,
+        cloudRuntime: "dedicated",
+      },
+      cloudToken: "steward.jwt.token",
+      cloudApiBase: "https://elizacloud.ai",
+      alreadyAttempted: false,
+    });
+
+    expect(decision).toMatchObject({
+      action: "re-pair",
+      agentId: dedicatedAgentId,
+    });
+  });
+
+  it("does not mistake a Shared personal identity for a Dedicated runtime", () => {
+    const decision = resolveAgentSessionRecovery({
+      reason: "remote_auth_required",
+      activeServer: {
+        kind: "cloud",
+        id: "cloud:personal:00000000-0000-5000-8000-000000000001",
+        label: "Eliza",
+        apiBase:
+          "https://api.eliza.app/api/v1/eliza/shared/personal%3A00000000-0000-5000-8000-000000000001",
+        cloudRuntimeAgentId: "personal:00000000-0000-5000-8000-000000000001",
+        cloudRuntime: "shared",
+      },
+      cloudToken: "steward.jwt.token",
+      cloudApiBase: "https://api.eliza.app",
+      alreadyAttempted: false,
+    });
+
+    expect(decision).toEqual({ action: "show-wall" });
+  });
 });
 
 describe("agentSessionRepairNeedsCloudToken", () => {
@@ -293,6 +336,16 @@ describe("shouldShowCloudAgentReauthNotice", () => {
       shouldShowCloudAgentReauthNotice({
         isHostedLocation: false,
         isNative: true,
+        activeServer: cloudServer("23766030-0000-0000-0000-000000000000"),
+      }),
+    ).toBe(true);
+  });
+
+  it("routes managed desktop Cloud targets to Cloud instead of the password wall", () => {
+    expect(
+      shouldShowCloudAgentReauthNotice({
+        isHostedLocation: false,
+        isNative: false,
         activeServer: cloudServer("23766030-0000-0000-0000-000000000000"),
       }),
     ).toBe(true);

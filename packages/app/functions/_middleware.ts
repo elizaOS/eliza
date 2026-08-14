@@ -31,6 +31,8 @@
 //   default (max-age=14400), which would delay SW update propagation by hours.
 
 import {
+  canonicalCloudPathForLegacyDashboard,
+  LANDING_AB_HOSTNAMES,
   classifyElizaHostname,
   ELIZA_DOMAIN_CONTRACTS,
 } from "@elizaos/shared/elizacloud/domain-contract";
@@ -62,41 +64,40 @@ export function resolveCanonicalPageRedirect(
   requestUrl: string,
 ): string | null {
   const url = new URL(requestUrl);
+  // A/B landing hosts serve the variant in place; redirecting them to the
+  // canonical marketing origin would send every visitor to the control.
+  if (LANDING_AB_HOSTNAMES.includes(url.hostname.toLowerCase())) return null;
   const classified = classifyElizaHostname(url.hostname);
   if (!classified.environment) return null;
 
   const contract = ELIZA_DOMAIN_CONTRACTS[classified.environment];
+  const canonicalDashboardPath = canonicalCloudPathForLegacyDashboard(
+    url.pathname,
+    url.search,
+  );
   let origin: string | null = null;
   if (classified.role === "legacy-marketing" && isProtocolPath(url.pathname)) {
     origin = contract.cloudApiOrigin;
-  } else if (
-    classified.role === "legacy-marketing" &&
-    (url.pathname === "/dashboard" || url.pathname.startsWith("/dashboard/"))
-  ) {
+  } else if (classified.role === "legacy-marketing" && canonicalDashboardPath) {
     origin = contract.cloudAppOrigin;
-    url.pathname = url.pathname.replace(/^\/dashboard(?=\/|$)/, "/cloud");
-  } else if (
-    classified.role === "marketing" &&
-    (url.pathname === "/dashboard" || url.pathname.startsWith("/dashboard/"))
-  ) {
+    url.pathname = canonicalDashboardPath;
+  } else if (classified.role === "marketing" && canonicalDashboardPath) {
     origin = contract.cloudAppOrigin;
-    url.pathname = url.pathname.replace(/^\/dashboard(?=\/|$)/, "/cloud");
+    url.pathname = canonicalDashboardPath;
   } else if (
     classified.role === "legacy-marketing" ||
     (classified.role === "marketing" &&
       url.hostname !== new URL(contract.marketingOrigin).hostname)
   ) {
     origin = contract.marketingOrigin;
+  } else if (classified.role === "cloud-app" && canonicalDashboardPath) {
+    origin = contract.cloudAppOrigin;
+    url.pathname = canonicalDashboardPath;
   } else if (classified.role === "legacy-cloud-app") {
     origin = isProtocolPath(url.pathname)
       ? contract.cloudApiOrigin
       : contract.cloudAppOrigin;
-    if (
-      url.pathname === "/dashboard" ||
-      url.pathname.startsWith("/dashboard/")
-    ) {
-      url.pathname = url.pathname.replace(/^\/dashboard(?=\/|$)/, "/cloud");
-    }
+    if (canonicalDashboardPath) url.pathname = canonicalDashboardPath;
   } else if (classified.role === "legacy-cloud-api") {
     origin = contract.cloudApiOrigin;
   }

@@ -14,6 +14,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   enqueueStepWrite,
   ensureTrajectoriesTable,
+  normalizeLlmCallPayload,
 } from "./trajectory-internals.ts";
 import { installDatabaseTrajectoryLogger } from "./trajectory-persistence.ts";
 import { loadPersistedTrajectoryRows } from "./trajectory-query.ts";
@@ -1364,5 +1365,52 @@ describe("installDatabaseTrajectoryLogger (capture bridge)", () => {
 
     expect(originalExportTrajectories).not.toHaveBeenCalled();
     expect(hasTraceFilter(execute, "trace-1")).toBe(true);
+  });
+});
+
+describe("budgeted LLM capture completeness", () => {
+  it("retains required fields without exceeding the global row budget", () => {
+    const optionalFields = Object.fromEntries(
+      Array.from({ length: 20 }, (_, index) => [
+        `optional-${index}`,
+        "x".repeat(70_000),
+      ]),
+    );
+    const normalized = normalizeLlmCallPayload([
+      {
+        stepId: "step-budget-exhausted",
+        ...optionalFields,
+        model: "zai-glm-4.7",
+        response: "r".repeat(400_000),
+        purpose: "response",
+        actionType: "llm",
+      },
+    ]);
+
+    expect(normalized?.params).toMatchObject({
+      model: "zai-glm-4.7",
+      purpose: "response",
+      actionType: "llm",
+    });
+    expect(normalized?.params.response).toEqual(
+      expect.stringContaining("...[truncated]"),
+    );
+    expect(
+      new TextEncoder().encode(JSON.stringify(normalized?.params)).byteLength,
+    ).toBeLessThanOrEqual(1024 * 1024);
+  });
+
+  it("leaves a small response byte-identical", () => {
+    const normalized = normalizeLlmCallPayload([
+      {
+        stepId: "step-small",
+        model: "zai-glm-4.7",
+        purpose: "response",
+        actionType: "llm",
+        response: "ok",
+      },
+    ]);
+
+    expect(normalized?.params.response).toBe("ok");
   });
 });

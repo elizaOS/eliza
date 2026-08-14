@@ -1,12 +1,12 @@
 /**
- * Silently repoints the app at a provisioned cloud agent — adds the profile and
- * persists the active-server record without a user-facing switch.
+ * Silently repoints the app at a provisioned cloud runtime, preserving a
+ * personal logical identity when the runtime is its Dedicated target.
  */
 import { client } from "../../api";
 import {
-  addAgentProfile,
   createPersistedActiveServer,
   savePersistedActiveServer,
+  upsertAndActivateAgentProfile,
 } from "../../state";
 import { clearPendingCloudHandoff } from "./pending-handoff-store";
 
@@ -26,8 +26,8 @@ import { clearPendingCloudHandoff } from "./pending-handoff-store";
  * agent already holds the copied transcript on the SAME conversation id, the
  * user is mid-conversation, and the composer may hold an unsent draft. So the
  * handoff re-points in place instead:
- *   - persist the dedicated as the active server + profile (so a reboot restores
- *     the dedicated, not the shared bridge),
+ *   - persist the serving runtime on the same logical profile (so a reboot
+ *     restores Dedicated without inventing a second personal identity),
  *   - re-point the API/WS base seamlessly via `client.repointBaseUrl` (which
  *     reconnects the WS in place — no visible drop, no coordinator re-entry),
  *   - set the bearer token,
@@ -41,28 +41,35 @@ export function silentlyRepointToDedicated(opts: {
   authToken: string;
   /** The dedicated agent id — persisted so a reboot restores the dedicated. */
   dedicatedAgentId: string;
+  /** Stable rowless identity retained while the active runtime changes. */
+  personalElizaId?: string;
 }): void {
-  const { containerBase, authToken, dedicatedAgentId } = opts;
+  const { containerBase, authToken, dedicatedAgentId, personalElizaId } = opts;
+  const logicalAgentId = personalElizaId ?? dedicatedAgentId;
 
-  // Persist the dedicated as the restorable active server. Keyed by the
-  // dedicated id so a re-boot restores the dedicated agent, not the now-stale
-  // shared bridge.
+  // Keep the account-native identity stable while storing the serving runtime
+  // explicitly. A reboot restores Dedicated without turning its container UUID
+  // into a second personal Eliza in the runtime chooser.
   const server = createPersistedActiveServer({
     kind: "cloud",
-    id: `cloud:${dedicatedAgentId}`,
+    id: `cloud:${logicalAgentId}`,
     apiBase: containerBase,
     accessToken: authToken,
+    cloudRuntimeAgentId: dedicatedAgentId,
+    cloudRuntime: "dedicated",
   });
   savePersistedActiveServer(server);
 
   // Register + activate the dedicated profile WITHOUT going through
   // switchAgentProfile (which would clear drafts + dispatch SWITCH_AGENT).
-  // addAgentProfile sets it active in the registry and persists before
-  // returning, so no separate activation step is needed.
-  addAgentProfile({
+  // Identity-based upsert keeps the original personal profile rather than
+  // accumulating one Shared row and one Dedicated row for the same Eliza.
+  upsertAndActivateAgentProfile({
     kind: "cloud",
     label: server.label,
-    cloudAgentId: dedicatedAgentId,
+    cloudAgentId: logicalAgentId,
+    cloudRuntimeAgentId: dedicatedAgentId,
+    cloudRuntime: "dedicated",
     apiBase: containerBase,
     accessToken: authToken,
   });

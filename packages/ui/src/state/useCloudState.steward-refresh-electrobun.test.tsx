@@ -19,6 +19,7 @@ const clientCloudMocks = vi.hoisted(() => ({
 vi.mock("../api/client-cloud", () => ({
   cloudTokenSecsRemaining: () => 0,
   refreshCloudStewardSession: clientCloudMocks.refreshCloudStewardSession,
+  resolveDirectCloudAuthApiBase: () => "https://api.eliza.app",
 }));
 
 vi.mock("../bridge", () => ({
@@ -61,7 +62,7 @@ describe("useCloudState — Electrobun Steward refresh endpoint", () => {
 
     await waitFor(() =>
       expect(clientCloudMocks.refreshCloudStewardSession).toHaveBeenCalledWith({
-        endpoint: "https://api.elizacloud.ai/api/auth/steward-refresh",
+        endpoint: "https://api.eliza.app/api/auth/steward-refresh",
       }),
     );
   });

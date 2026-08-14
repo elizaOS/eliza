@@ -1,7 +1,11 @@
-/** Exercises a real smthrs workflow through the isolated elizaOS runner and model bridge. */
+/**
+ * Exercises a real smthrs workflow through the isolated elizaOS runner and
+ * model bridge, including durable output and child-resource teardown.
+ */
 
+import { Database } from 'bun:sqlite';
 import { afterAll, describe, expect, test } from 'bun:test';
-import { rm } from 'node:fs/promises';
+import { readdir, rm, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import {
   resolveSmithersWorkflowDir,
@@ -21,12 +25,12 @@ const workflow: WorkflowDefinitionResponse = {
 import { createSmithers } from "smthrs/create";
 import { z } from "zod";
 const { Workflow, Task, smithers, outputs } = createSmithers({
-  result: z.object({ message: z.string() }),
+  output: z.object({ message: z.string() }),
 }, { dbPath: process.env.ELIZA_SMTHRS_DB_PATH });
 const agent = globalThis.__elizaSmithers.agent;
 export default smithers(() => (
   <Workflow name="integration">
-    <Task id="run" output={outputs.result} agent={agent}>Return a message.</Task>
+    <Task id="run" output={outputs.output} agent={agent}>Return a message.</Task>
   </Workflow>
 ));`,
   steps: [{ id: 'run', label: 'Run', kind: 'task', agent: 'elizaOS' }],
@@ -44,10 +48,11 @@ describe('real Smithers runner', () => {
   test('executes TSX, bridges model generation, and streams native events', async () => {
     const modelRequests: unknown[] = [];
     const events: string[] = [];
+    const runId = `run-${Date.now()}`;
     const result = await runSmithersWorkflow({
       tenantId,
       workflow,
-      runId: `run-${Date.now()}`,
+      runId,
       mode: 'manual',
       input: { request: 'hello' },
       timeoutMs: 20_000,
@@ -61,9 +66,45 @@ describe('real Smithers runner', () => {
     });
 
     expect(result.status).toBe('finished');
+    expect(result.output).toEqual([expect.objectContaining({ message: 'done' })]);
     expect(modelRequests).toHaveLength(1);
     expect(events.length).toBeGreaterThan(0);
     expect(result.events.length).toBe(events.length);
-    expect(join('.eliza', 'smthrs')).toBe('.eliza/smthrs');
+
+    const workflowDir = resolveSmithersWorkflowDir(tenantId, workflowId);
+    const databasePath = join(workflowDir, 'runs.sqlite');
+    expect((await stat(databasePath)).isFile()).toBe(true);
+
+    const database = new Database(databasePath);
+    try {
+      const persistedRun = database
+        .query<{ finishedAtMs: number; status: string }, [string]>(
+          `SELECT finished_at_ms AS finishedAtMs, status
+             FROM _smithers_runs
+            WHERE run_id = ?`
+        )
+        .get(runId);
+      expect(persistedRun).toEqual({ finishedAtMs: expect.any(Number), status: 'finished' });
+
+      const persistedOutput = database
+        .query<{ message: string }, [string, string]>(
+          `SELECT message
+             FROM "output"
+            WHERE run_id = ? AND node_id = ?`
+        )
+        .get(runId, 'run');
+      expect(persistedOutput).toEqual({ message: 'done' });
+
+      // The runner resolves only after the child exits; taking a write lock
+      // proves its SQLite connection has also released the durable store.
+      database.exec('BEGIN IMMEDIATE');
+      database.exec('ROLLBACK');
+    } finally {
+      database.close();
+    }
+
+    const retainedFiles = await readdir(workflowDir);
+    expect(retainedFiles).toContain(`${workflow.versionId}.tsx`);
+    expect(retainedFiles.filter((name) => name.startsWith('.run-'))).toEqual([]);
   }, 45_000);
 });

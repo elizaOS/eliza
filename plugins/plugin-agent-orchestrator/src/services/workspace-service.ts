@@ -1208,7 +1208,7 @@ export class CodingWorkspaceService {
     repo: string,
     issueNumber: number,
     labels: string[],
-  ): Promise<void> {
+  ): Promise<IssueInfo> {
     return ghAddLabels(this.getGitHubContext(), repo, issueNumber, labels);
   }
 

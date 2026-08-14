@@ -93,6 +93,12 @@
         "required": false,
         "sensitive": false
       },
+      "IMESSAGE_HEARTBEAT_INTERVAL_MS": {
+        "type": "number",
+        "description": "Heartbeat health-check interval in milliseconds",
+        "required": false,
+        "sensitive": false
+      },
       "IMESSAGE_DM_POLICY": {
         "type": "string",
         "description": "DM policy (e.g. allow, deny, allowlist)",
@@ -140,19 +146,25 @@
         "order": 10,
         "group": "behavior"
       },
+      "IMESSAGE_HEARTBEAT_INTERVAL_MS": {
+        "label": "Heartbeat interval",
+        "unit": "ms",
+        "order": 11,
+        "group": "behavior"
+      },
       "IMESSAGE_DM_POLICY": {
         "label": "DM policy",
-        "order": 11,
+        "order": 12,
         "group": "behavior"
       },
       "IMESSAGE_GROUP_POLICY": {
         "label": "Group policy",
-        "order": 12,
+        "order": 13,
         "group": "behavior"
       },
       "IMESSAGE_ALLOW_FROM": {
         "label": "Allow from",
-        "order": 13,
+        "order": 14,
         "group": "behavior"
       }
     }

@@ -158,6 +158,11 @@ describe("native Smithers Cloud workflow routes", () => {
     expect(await started.json()).toMatchObject({
       execution: { id: "run-1", status: "queued" },
     });
+    expect(service.startWorkflow).toHaveBeenCalledWith(
+      "owned-workflow",
+      { mode: "manual", input: { topic: "AI" } },
+      "owner",
+    );
 
     const approved = await request(
       app,

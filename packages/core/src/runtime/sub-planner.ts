@@ -164,6 +164,42 @@ export type SubPlannerExecute = (
 	options: ExecutePlannedToolCallOptions,
 ) => Promise<ActionResult> | ActionResult;
 
+export function subPlannerCallDigest(toolCall: PlannerToolCall): string {
+	const canonical = JSON.stringify(toolCall.params ?? {}, (_key, value) =>
+		value && typeof value === "object" && !Array.isArray(value)
+			? Object.fromEntries(
+					Object.entries(value as Record<string, unknown>).sort(([a], [b]) =>
+						a.localeCompare(b),
+					),
+				)
+			: value,
+	);
+	return `${normalizeSubPlannerActionIdentifier(toolCall.name)}|${canonical}`;
+}
+
+function priorNonRetryableSubstep(
+	previousResults: readonly ActionResult[] | undefined,
+	toolCall: PlannerToolCall,
+): boolean {
+	const digest = subPlannerCallDigest(toolCall);
+	for (const result of [...(previousResults ?? [])].reverse()) {
+		const subSteps = result.data?.subSteps;
+		if (!Array.isArray(subSteps)) continue;
+		for (const candidate of [...subSteps].reverse()) {
+			if (!candidate || typeof candidate !== "object") continue;
+			const record = candidate as Record<string, unknown>;
+			if (
+				record.callDigest === digest &&
+				record.success === false &&
+				record.retryable === false
+			) {
+				return true;
+			}
+		}
+	}
+	return false;
+}
+
 export interface RunSubPlannerParams {
 	runtime: IAgentRuntime & PlannerRuntime;
 	action: Action;
@@ -292,11 +328,32 @@ export async function runSubPlanner(
 					error: `Action ${toolCall.name} is not available to sub-planner ${params.action.name}`,
 				};
 			}
+			// The loop records this same object after execution. Canonicalize it in
+			// place so the persisted sub-step identity is stable when the model uses
+			// a simile on one pass and the canonical name (or another simile) later.
+			// Keeping the alias in the trajectory made the replay guard compare two
+			// different digests for the same child operation.
+			toolCall.name = resolvedChildAction.name;
+			const canonicalCall = toolCall;
+			if (
+				priorNonRetryableSubstep(subPlannerCtx.previousResults, canonicalCall)
+			) {
+				return {
+					success: false,
+					error:
+						"An identical nested operation already reached a non-retryable outcome this turn.",
+					data: {
+						retryable: false,
+						replaySuppressed: true,
+						code: "PRIOR_NON_RETRYABLE_SUBSTEP",
+					},
+				};
+			}
 
 			const rawResult = await execute(
 				params.runtime,
 				subPlannerCtx,
-				{ ...toolCall, name: resolvedChildAction.name },
+				canonicalCall,
 				{
 					...(params.options ?? {}),
 					actions: childActions,

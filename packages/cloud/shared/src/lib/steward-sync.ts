@@ -14,32 +14,38 @@
  * differ only in case.
  */
 
+import { ElizaError, isElizaError } from "@elizaos/core";
 import { ELIZA_DOMAIN_CONTRACTS } from "@elizaos/shared/elizacloud";
 import { normalizeWallet } from "../db/crypto/field-crypto";
 import { organizationInvitesRepository } from "../db/repositories/organization-invites";
-import { usersRepository } from "../db/repositories/users";
-import { getClientIp } from "./runtime/request-context";
+import {
+  type CommitPhoneTelegramConvergenceResult,
+  usersRepository,
+} from "../db/repositories/users";
+import type { RuntimeDurableObjectNamespace } from "../types/cloud-worker-env";
 import { apiKeysService } from "./services/api-keys";
 import { charactersService } from "./services/characters/characters";
-import { creditsService } from "./services/credits";
 import { discordService } from "./services/discord";
 import { emailService } from "./services/email";
 import { invitesService } from "./services/invites";
 import { organizationsService } from "./services/organizations";
 import {
-  runWithSignupGrantIpCapDetailed,
-  type SignupGrantWithheldReason,
-  welcomeBonusWithheldSettingsPatch,
-} from "./services/signup-grant-guard";
+  commitPersonalProvisionalHistoryConvergence,
+  type PersonalProvisionalHistoryConvergence,
+  type PreparedPersonalProvisionalHistoryConvergence,
+  preparePersonalProvisionalHistoryConvergence,
+  releasePersonalProvisionalHistoryConvergence,
+} from "./services/shared-runtime/conversation-coordinator";
+import { personalSharedAgentId } from "./services/shared-runtime/personal-shared-agent";
+import type { SignupGrantWithheldReason } from "./services/signup-grant-guard";
 import { ensureStewardTenant } from "./services/steward-tenant-config";
 import { usersService } from "./services/users";
-import { getInitialCredits } from "./signup-credits";
+import { SIGNUP_CREDIT_POLICY } from "./signup-credits";
 import type { UserWithOrganization } from "./types";
 import { getDefaultElizaCharacterData } from "./utils/default-eliza-character";
 import { getRandomUserAvatar } from "./utils/default-user-avatar";
 import { logger } from "./utils/logger";
-
-export { DEFAULT_INITIAL_CREDITS, getInitialCredits } from "./signup-credits";
+import { isValidE164, normalizePhoneNumber } from "./utils/phone-normalization";
 
 export interface SignupWelcomeBonusMetadata {
   initialCreditsGranted?: boolean;
@@ -217,12 +223,167 @@ function generateSlugFromWallet(walletAddress: string): string {
   return `wallet-${sanitized}-${timestamp}${random}`;
 }
 
+function generateSlugFromName(name: string): string {
+  const sanitized = name.toLowerCase().replace(/[^a-z0-9]/g, "-");
+  const random = Math.random().toString(36).substring(2, 8);
+  const timestamp = Date.now().toString(36).slice(-4);
+  return `${sanitized}-${timestamp}${random}`;
+}
+
 export interface StewardSyncParams {
   stewardUserId: string;
   email?: string;
   walletAddress?: string;
   walletChainType?: "ethereum" | "solana";
   name?: string;
+  /** Phone independently verified against the current Steward bearer. */
+  verifiedPhone?: string;
+  /** Opaque account-bound continuation delivered only inside a Telegram DM. */
+  telegramContinuation?: string;
+  /** Strongly ordered personal-history coordinator supplied by the Worker auth boundary. */
+  sharedRuntimeConversationNamespace?: RuntimeDurableObjectNamespace;
+}
+
+export class StewardPhoneAccountConflictError extends Error {
+  override readonly name = "StewardPhoneAccountConflictError";
+
+  constructor(readonly reason: string) {
+    super(`Verified phone account could not be claimed: ${reason}`);
+  }
+}
+
+export class StewardTelegramAccountClaimError extends ElizaError {
+  override readonly name = "StewardTelegramAccountClaimError";
+
+  constructor(readonly reason: string) {
+    super(`Telegram personal account could not be claimed: ${reason}`, {
+      code: "STEWARD_TELEGRAM_ACCOUNT_CLAIM_CONFLICT",
+      context: { reason },
+      severity: "ephemeral",
+    });
+  }
+}
+
+const PROVISIONAL_CONVERGENCE_LEASE_MS = 5 * 60 * 1000;
+
+function historyConvergencePlan(input: {
+  token: string;
+  sourceAgentId: string;
+  targetAgentId: string;
+  targetUserId: string;
+  targetOrganizationId: string;
+}): PersonalProvisionalHistoryConvergence {
+  return {
+    token: input.token,
+    holderId: crypto.randomUUID(),
+    sourceAgentId: input.sourceAgentId,
+    targetAgentId: input.targetAgentId,
+    targetUserId: input.targetUserId,
+    targetOrganizationId: input.targetOrganizationId,
+    leaseMs: PROVISIONAL_CONVERGENCE_LEASE_MS,
+  };
+}
+
+type CommittedPhoneTelegramConvergence = Extract<
+  CommitPhoneTelegramConvergenceResult,
+  { status: "committed" | "already_committed" }
+>;
+
+async function completePhoneTelegramHistoryConvergence(input: {
+  convergence: Pick<CommittedPhoneTelegramConvergence, "receipt" | "user" | "organization">;
+  namespace?: RuntimeDurableObjectNamespace;
+  prepared?: {
+    plan: PersonalProvisionalHistoryConvergence;
+    snapshot: PreparedPersonalProvisionalHistoryConvergence;
+  };
+}): Promise<UserWithOrganization> {
+  if (!input.namespace) {
+    throw new StewardPhoneAccountConflictError("history_coordinator_unavailable");
+  }
+
+  const { receipt, user, organization } = input.convergence;
+  const expectedSourceAgentId = personalSharedAgentId({
+    userId: receipt.source_user_id,
+    organizationId: receipt.source_organization_id,
+  });
+  const expectedTargetAgentId = personalSharedAgentId({
+    userId: receipt.target_user_id,
+    organizationId: receipt.target_organization_id,
+  });
+  if (
+    receipt.source_agent_id !== expectedSourceAgentId ||
+    receipt.target_agent_id !== expectedTargetAgentId ||
+    receipt.target_user_id !== user.id ||
+    receipt.target_organization_id !== organization.id ||
+    user.organization_id !== organization.id ||
+    user.steward_user_id !== receipt.steward_user_id ||
+    user.phone_number !== receipt.phone_number ||
+    user.phone_verified !== true ||
+    user.telegram_id !== receipt.telegram_id
+  ) {
+    throw new StewardTelegramAccountClaimError("identity_projection_conflict");
+  }
+
+  const plan =
+    input.prepared?.plan ??
+    historyConvergencePlan({
+      token: receipt.token,
+      sourceAgentId: receipt.source_agent_id,
+      targetAgentId: receipt.target_agent_id,
+      targetUserId: receipt.target_user_id,
+      targetOrganizationId: receipt.target_organization_id,
+    });
+  const snapshot =
+    input.prepared?.snapshot ??
+    (await preparePersonalProvisionalHistoryConvergence(plan, {
+      namespace: input.namespace,
+    }));
+  await commitPersonalProvisionalHistoryConvergence(plan, snapshot, {
+    namespace: input.namespace,
+  });
+  const completed = await usersRepository.markPhoneTelegramPersonalAccountAliasComplete(
+    receipt.token,
+  );
+  if (!completed) {
+    throw new Error("Personal account convergence receipt disappeared during recovery");
+  }
+
+  return { ...user, organization };
+}
+
+type ConvergenceConflictStatus = Exclude<
+  CommitPhoneTelegramConvergenceResult["status"],
+  "committed" | "already_committed"
+>;
+
+function throwConvergenceConflict(status: ConvergenceConflictStatus): never {
+  if (
+    status === "phone_account_mature" ||
+    status === "funded_account" ||
+    status === "agent_bearing_account"
+  ) {
+    throw new StewardPhoneAccountConflictError(status);
+  }
+  throw new StewardTelegramAccountClaimError(status);
+}
+
+async function linkVerifiedPhoneForStewardSync(userId: string, phoneNumber: string): Promise<void> {
+  try {
+    const linked = await usersRepository.linkVerifiedPhone(userId, phoneNumber);
+    if (!linked) {
+      throw new StewardPhoneAccountConflictError("phone_link_user_not_found");
+    }
+  } catch (error) {
+    // error-policy:J1 Verified-phone ownership conflicts are an explicit auth
+    // boundary result; other repository failures retain their original cause.
+    if (isUniqueViolation(error)) {
+      throw new StewardPhoneAccountConflictError("verified_phone_unique_conflict");
+    }
+    if (extractErrorMetadata(error).code === "VERIFIED_PHONE_MISMATCH") {
+      throw new StewardPhoneAccountConflictError("verified_phone_mismatch");
+    }
+    throw error;
+  }
 }
 
 /**
@@ -260,6 +421,12 @@ async function findUserByStoredWalletAddress(
 export async function syncUserFromSteward(params: StewardSyncParams): Promise<StewardSyncedUser> {
   const { stewardUserId, walletChainType } = params;
   const email = params.email?.toLowerCase().trim();
+  const verifiedPhone = params.verifiedPhone
+    ? normalizePhoneNumber(params.verifiedPhone)
+    : undefined;
+  if (verifiedPhone && !isValidE164(verifiedPhone)) {
+    throw new StewardPhoneAccountConflictError("invalid_phone");
+  }
   // Chain-aware, NOT a blanket lowercase: folding a base58 key produces a string
   // that is not the user's wallet, matches no existing row, and is then stored
   // as if it were a second wallet.
@@ -274,23 +441,220 @@ export async function syncUserFromSteward(params: StewardSyncParams): Promise<St
     name = email.split("@")[0];
   } else if (!name && walletAddress) {
     name = `${walletAddress.substring(0, 6)}...${walletAddress.substring(walletAddress.length - 4)}`;
+  } else if (!name && verifiedPhone) {
+    name = `User ***${verifiedPhone.slice(-4)}`;
   } else if (!name) {
     name = `user-${stewardUserId.substring(0, 8)}`;
   }
 
-  // ── 1. Existing user by steward_user_id ──────────────────────────────
-  let user = await usersService.getByStewardId(stewardUserId);
+  let claimedTelegramUser: UserWithOrganization | undefined;
 
-  if (user) {
-    // Ensure identity projection is current
+  // Once the database merge commits, the authenticated Steward subject is the
+  // durable retry authority. A repeated phone claim narrows that authority but
+  // is not required, and a stale one-time continuation cannot strand repair.
+  const pending = await usersRepository.findPendingPhoneTelegramPersonalAccountConvergence({
+    stewardUserId,
+    ...(verifiedPhone ? { phoneNumber: verifiedPhone } : {}),
+  });
+  if (pending.status === "identity_projection_conflict") {
+    throw new StewardTelegramAccountClaimError(pending.status);
+  }
+  if (pending.status === "resume_alias") {
+    claimedTelegramUser = await completePhoneTelegramHistoryConvergence({
+      convergence: pending,
+      namespace: params.sharedRuntimeConversationNamespace,
+    });
+  }
+
+  // A Telegram DM creates the canonical rowless account before a browser
+  // session exists. The opaque, account-bound continuation is validated first,
+  // then the provisional `telegram:<id>` subject is atomically promoted before
+  // generic Steward sync has any opportunity to create a duplicate user/org.
+  if (params.telegramContinuation && !claimedTelegramUser) {
+    let claim: Awaited<
+      ReturnType<
+        typeof import("./services/eliza-app/onboarding-chat").inspectTelegramPersonalAccountContinuation
+      >
+    >;
     try {
-      await usersService.upsertStewardIdentity(user.id, stewardUserId);
+      const { inspectTelegramPersonalAccountContinuation } = await import(
+        "./services/eliza-app/onboarding-chat"
+      );
+      claim = await inspectTelegramPersonalAccountContinuation(params.telegramContinuation);
     } catch (error) {
-      logger.warn("[StewardSync] Failed to repair Steward identity projection for existing user", {
-        userId: user.id,
+      // error-policy:J3 Invalid opaque authority becomes one non-enumerating
+      // claim conflict; storage and coordinator failures still surface as 5xx.
+      if (!isElizaError(error) || error.code !== "ONBOARDING_TRUSTED_CONTINUATION_INVALID") {
+        throw error;
+      }
+      logger.warn("[StewardSync] Telegram continuation validation failed", {
         stewardUserId,
         error: error instanceof Error ? error.message : String(error),
       });
+      throw new StewardTelegramAccountClaimError("invalid_continuation");
+    }
+
+    if (verifiedPhone) {
+      const proof = {
+        phoneNumber: verifiedPhone,
+        telegramId: claim.telegramId,
+        stewardUserId,
+        expectedTelegramUserId: claim.userId,
+        expectedTelegramOrganizationId: claim.organizationId,
+      };
+      const inspection =
+        await usersRepository.inspectPhoneTelegramPersonalAccountConvergence(proof);
+
+      if (inspection.status === "eligible") {
+        const namespace = params.sharedRuntimeConversationNamespace;
+        if (!namespace) {
+          throw new StewardPhoneAccountConflictError("history_coordinator_unavailable");
+        }
+        const sourceAgentId = personalSharedAgentId({
+          userId: inspection.plan.sourceUser.id,
+          organizationId: inspection.plan.sourceOrganization.id,
+        });
+        const targetAgentId = personalSharedAgentId({
+          userId: inspection.plan.targetUser.id,
+          organizationId: inspection.plan.targetOrganization.id,
+        });
+        const token = `phone-telegram:${inspection.plan.sourceUser.id}:${inspection.plan.targetUser.id}`;
+        const historyPlan = historyConvergencePlan({
+          token,
+          sourceAgentId,
+          targetAgentId,
+          targetUserId: inspection.plan.targetUser.id,
+          targetOrganizationId: inspection.plan.targetOrganization.id,
+        });
+        const preparedHistory = await preparePersonalProvisionalHistoryConvergence(historyPlan, {
+          namespace,
+        });
+
+        let databaseCommitted = false;
+        try {
+          const convergence = await usersRepository.commitPhoneTelegramPersonalAccountConvergence({
+            ...proof,
+            sourceUserId: inspection.plan.sourceUser.id,
+            sourceOrganizationId: inspection.plan.sourceOrganization.id,
+            sourceAgentId,
+            targetUserId: inspection.plan.targetUser.id,
+            targetOrganizationId: inspection.plan.targetOrganization.id,
+            targetAgentId,
+            token,
+          });
+          if (convergence.status !== "committed" && convergence.status !== "already_committed") {
+            throwConvergenceConflict(convergence.status);
+          }
+          databaseCommitted = true;
+          claimedTelegramUser = await completePhoneTelegramHistoryConvergence({
+            convergence,
+            namespace,
+            prepared: { plan: historyPlan, snapshot: preparedHistory },
+          });
+        } catch (error) {
+          // error-policy:J6 pre-commit rejection releases only this attempt's
+          // history holder; post-commit failures retain both leases for recovery.
+          if (!databaseCommitted) {
+            try {
+              await releasePersonalProvisionalHistoryConvergence(historyPlan, { namespace });
+            } catch (releaseError) {
+              // error-policy:J6 the database rejection remains primary; the
+              // bounded leases self-expire and this makes delayed repair visible.
+              logger.warn("[StewardSync] Failed to release rejected convergence leases", {
+                sourceAgentId,
+                error: releaseError instanceof Error ? releaseError.message : String(releaseError),
+              });
+            }
+          }
+          throw error;
+        }
+      } else if (inspection.status === "resume_alias") {
+        claimedTelegramUser = await completePhoneTelegramHistoryConvergence({
+          convergence: inspection,
+          namespace: params.sharedRuntimeConversationNamespace,
+        });
+      } else if (inspection.status !== "not_dual_account") {
+        throwConvergenceConflict(inspection.status);
+      }
+    }
+
+    if (!claimedTelegramUser) {
+      const promotion = await usersRepository.promoteTelegramPersonalAccountToSteward({
+        telegramId: claim.telegramId,
+        stewardUserId,
+        expectedUserId: claim.userId,
+        expectedOrganizationId: claim.organizationId,
+      });
+      if (promotion.status !== "promoted" && promotion.status !== "already_promoted") {
+        throw new StewardTelegramAccountClaimError(promotion.status);
+      }
+      claimedTelegramUser = {
+        ...promotion.user,
+        organization: promotion.organization,
+      };
+    }
+  }
+
+  // A signed inbound text creates a phone-only personal account before any
+  // browser session exists. SMS login may claim only that exact synthetic
+  // account. Stable user/org ids keep its Shared history attached.
+  if (verifiedPhone && !claimedTelegramUser) {
+    const promotion = await usersRepository.promotePhonePersonalAccountToSteward({
+      phoneNumber: verifiedPhone,
+      stewardUserId,
+    });
+    if (promotion.status === "promoted" || promotion.status === "already_promoted") {
+      const promotedUser: UserWithOrganization = {
+        ...promotion.user,
+        organization: promotion.organization,
+      };
+      await apiKeysService.provisionDefaultApiKey(promotedUser.id, promotion.organization.id);
+      await ensureDefaultCharacter(promotedUser.id, promotion.organization.id);
+      try {
+        await ensureStewardTenant(promotion.organization.id);
+      } catch (error) {
+        // error-policy:J4 tenant provisioning is an opportunistic repair; the
+        // claimed account and Shared history remain usable and retry next login.
+        logger.warn(
+          `[StewardSync] Phone-account tenant provisioning failed for org ${promotion.organization.id}; sign-in proceeds: ${describeSyncError(error)}`,
+        );
+      }
+      return promotedUser;
+    }
+    if (promotion.status !== "not_found") {
+      throw new StewardPhoneAccountConflictError(promotion.status);
+    }
+  }
+
+  // ── 1. Existing user by steward_user_id ──────────────────────────────
+  let user = claimedTelegramUser ?? (await usersService.getByStewardId(stewardUserId));
+
+  if (user) {
+    // Telegram promotion updates canonical and projected ownership in one
+    // transaction. Ordinary existing accounts retain the repair pass because
+    // older sync paths may have written only the canonical column.
+    if (!claimedTelegramUser) {
+      try {
+        await usersService.upsertStewardIdentity(user.id, stewardUserId);
+      } catch (error) {
+        logger.warn(
+          "[StewardSync] Failed to repair Steward identity projection for existing user",
+          {
+            userId: user.id,
+            stewardUserId,
+            error: error instanceof Error ? error.message : String(error),
+          },
+        );
+      }
+    }
+
+    if (verifiedPhone) {
+      await linkVerifiedPhoneForStewardSync(user.id, verifiedPhone);
+      const phoneLinkedUser = await usersService.getByStewardIdForWrite(stewardUserId);
+      if (!phoneLinkedUser) {
+        throw new StewardPhoneAccountConflictError("phone_link_user_not_found");
+      }
+      user = phoneLinkedUser;
     }
 
     // Update user fields if anything changed
@@ -339,7 +703,7 @@ export async function syncUserFromSteward(params: StewardSyncParams): Promise<St
     // org first and returns immediately when a tenant already exists, so the
     // healthy-org cost is one indexed read while existing NULL-tenant orgs get
     // repaired opportunistically without a bulk backfill.
-    if (user.organization_id) {
+    if (user.organization_id && !claimedTelegramUser) {
       try {
         await ensureStewardTenant(user.organization_id);
       } catch (error) {
@@ -370,6 +734,8 @@ export async function syncUserFromSteward(params: StewardSyncParams): Promise<St
           wallet_address: walletAddress || null,
           wallet_chain_type: resolvedWalletChainType || null,
           wallet_verified: Boolean(walletAddress),
+          phone_number: verifiedPhone || null,
+          phone_verified: Boolean(verifiedPhone),
           name,
           avatar: getRandomUserAvatar(),
           organization_id: pendingInvite.organization_id,
@@ -443,6 +809,10 @@ export async function syncUserFromSteward(params: StewardSyncParams): Promise<St
       );
       const previousStewardUserId = existingByEmail.steward_user_id;
 
+      if (verifiedPhone) {
+        await linkVerifiedPhoneForStewardSync(existingByEmail.id, verifiedPhone);
+      }
+
       await usersService.update(existingByEmail.id, {
         steward_user_id: stewardUserId,
         updated_at: new Date(),
@@ -474,6 +844,10 @@ export async function syncUserFromSteward(params: StewardSyncParams): Promise<St
       logger.info(
         `[StewardSync] Linking Steward wallet account for ${walletAddress}: ${existingByWallet.steward_user_id} → ${stewardUserId}`,
       );
+
+      if (verifiedPhone) {
+        await linkVerifiedPhoneForStewardSync(existingByWallet.id, verifiedPhone);
+      }
 
       await usersService.linkStewardId(existingByWallet.id, stewardUserId);
 
@@ -520,10 +894,7 @@ export async function syncUserFromSteward(params: StewardSyncParams): Promise<St
   } else if (walletAddress) {
     orgSlug = generateSlugFromWallet(walletAddress);
   } else if (name) {
-    const sanitized = name.toLowerCase().replace(/[^a-z0-9]/g, "-");
-    const random = Math.random().toString(36).substring(2, 8);
-    const timestamp = Date.now().toString(36).slice(-4);
-    orgSlug = `${sanitized}-${timestamp}${random}`;
+    orgSlug = generateSlugFromName(name);
   } else {
     throw new Error(`Cannot generate organization slug for Steward user ${stewardUserId}`);
   }
@@ -537,78 +908,24 @@ export async function syncUserFromSteward(params: StewardSyncParams): Promise<St
         `Failed to generate unique organization slug for Steward user ${stewardUserId}`,
       );
     }
-    orgSlug = email ? generateSlugFromEmail(email) : generateSlugFromWallet(walletAddress!);
+    orgSlug = email
+      ? generateSlugFromEmail(email)
+      : walletAddress
+        ? generateSlugFromWallet(walletAddress)
+        : generateSlugFromName(name);
   }
 
   // Create organization with zero balance initially
   const organization = await organizationsService.create({
     name: `${name}'s Organization`,
     slug: orgSlug,
-    credit_balance: "0.00",
+    credit_balance: SIGNUP_CREDIT_POLICY.openingBalanceUsd,
   });
 
-  // Add initial free credits — withheld when this IP has already hit the daily
-  // free-grant cap (anti-sybil). Withholding is not a failure: the org is still
-  // created (at $0) and the signup proceeds.
-  const initialCredits = getInitialCredits();
-  const signupIp = getClientIp();
-  let initialCreditsGranted = false;
-  let initialFreeCreditsUsd = 0;
-  let welcomeBonusWithheld: SignupWelcomeBonusMetadata | null = null;
-
-  if (initialCredits > 0) {
-    try {
-      // The cap check and the grant run under a per-IP advisory lock so
-      // concurrent same-IP signups cannot each pass the cap before any commits.
-      const grantDecision = await runWithSignupGrantIpCapDetailed(signupIp, async (tx) => {
-        await creditsService.addCredits({
-          organizationId: organization.id,
-          amount: initialCredits,
-          description: "Initial free credits - Welcome bonus",
-          metadata: {
-            type: "initial_free_credits",
-            source: "signup",
-            ip_address: signupIp,
-          },
-          db: tx,
-        });
-      });
-      initialCreditsGranted = grantDecision.granted;
-      initialFreeCreditsUsd = grantDecision.granted ? initialCredits : 0;
-      if (grantDecision.withheldReason) {
-        welcomeBonusWithheld = {
-          welcomeBonusWithheld: true,
-          welcomeBonusWithheldReason: grantDecision.withheldReason,
-          welcomeBonusWithheldMessage: grantDecision.withheldMessage,
-        };
-        // Record the withheld decision on the org so the agent credit gate can
-        // explain the $0-balance 402 this signup will hit at /join — the auth
-        // response is discarded long before provisioning runs. Service update
-        // (not a raw repo write) so the org cache stays coherent. The org was
-        // created moments ago with default `{}` settings, so overwriting is safe.
-        const withheldPatch = welcomeBonusWithheldSettingsPatch({
-          withheldReason: grantDecision.withheldReason,
-          withheldMessage: grantDecision.withheldMessage,
-        });
-        if (withheldPatch) {
-          await organizationsService.update(organization.id, { settings: withheldPatch });
-        }
-      }
-    } catch (error) {
-      logger.error(
-        `[StewardSync] addCredits failed for new org ${organization.id} (initialCredits=${initialCredits}); rolling back signup organization: ${describeSyncError(error)}`,
-      );
-      try {
-        await organizationsService.delete(organization.id);
-      } catch (rollbackError) {
-        logger.error("[StewardSync] Failed to delete organization after welcome-credit failure", {
-          organizationId: organization.id,
-          error: rollbackError instanceof Error ? rollbackError.message : String(rollbackError),
-        });
-      }
-      throw error;
-    }
-  }
+  // Cloud identity is created at $0. Shared service access is not a credit
+  // grant, and purchased credits remain exclusive to explicit funding paths.
+  const initialCreditsGranted = false;
+  const initialFreeCreditsUsd = SIGNUP_CREDIT_POLICY.automaticGrantUsd;
 
   // Create user, handle race conditions
   let createdUser: Awaited<ReturnType<typeof usersService.create>> | undefined;
@@ -621,6 +938,8 @@ export async function syncUserFromSteward(params: StewardSyncParams): Promise<St
       wallet_address: walletAddress || null,
       wallet_chain_type: resolvedWalletChainType || null,
       wallet_verified: Boolean(walletAddress),
+      phone_number: verifiedPhone || null,
+      phone_verified: Boolean(verifiedPhone),
       name,
       avatar: getRandomUserAvatar(),
       organization_id: organization.id,
@@ -649,6 +968,9 @@ export async function syncUserFromSteward(params: StewardSyncParams): Promise<St
         }
 
         if (existingUser) {
+          if (verifiedPhone) {
+            await linkVerifiedPhoneForStewardSync(existingUser.id, verifiedPhone);
+          }
           if (existingUser.steward_user_id !== stewardUserId) {
             // NOTE: This is the link path that the Steward identity-link DB
             // migration drafts depend on (see
@@ -743,7 +1065,6 @@ export async function syncUserFromSteward(params: StewardSyncParams): Promise<St
       email: recipientEmail,
       userName: name || "there",
       organizationName: userWithOrg.organization?.name || "",
-      creditBalance: initialFreeCreditsUsd,
     }).catch((error) => {
       logger.error("[StewardSync] Failed to send welcome email:", { error });
     });
@@ -810,7 +1131,6 @@ export async function syncUserFromSteward(params: StewardSyncParams): Promise<St
     ...userWithOrg,
     initialCreditsGranted,
     initialFreeCreditsUsd,
-    ...(welcomeBonusWithheld ?? {}),
   };
 }
 
@@ -868,7 +1188,6 @@ async function queueWelcomeEmail(data: {
   email: string;
   userName: string;
   organizationName: string;
-  creditBalance: number;
 }): Promise<void> {
   await emailService.sendWelcomeEmail({
     ...data,

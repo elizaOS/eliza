@@ -155,7 +155,6 @@ export class CloudModelRegistryService extends Service {
         label: "action planner model",
       },
       { key: "ELIZAOS_CLOUD_RESPONSE_MODEL", label: "response model" },
-      { key: "ELIZAOS_CLOUD_RESEARCH_MODEL", label: "research model" },
       { key: "ELIZAOS_CLOUD_EMBEDDING_MODEL", label: "embedding model" },
       {
         key: "ELIZAOS_CLOUD_IMAGE_DESCRIPTION_MODEL",

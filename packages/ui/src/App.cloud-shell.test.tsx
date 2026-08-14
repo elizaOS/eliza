@@ -11,6 +11,10 @@ import { resolve } from "node:path";
 
 import { describe, expect, it } from "vitest";
 import {
+  FOCUSED_APP_SHELL_MODES,
+  resolveAppShellMode,
+} from "./platform/app-shell-mode";
+import {
   isChatOverlayWindowShell,
   isDetachedWindowShell,
   isStandaloneWindowShell,
@@ -120,16 +124,21 @@ describe("App standalone chat-overlay wiring", () => {
 
   it("preserves chat-overlay shell mode during shell-window navigation", () => {
     expect(USE_NAVIGATION_STATE_TS).toContain("pathWithCurrentShellMode");
-    expect(USE_NAVIGATION_STATE_TS).toContain("isDetachedShell");
-    expect(USE_NAVIGATION_STATE_TS).toContain("eliza-chat-overlay-shell");
-    expect(USE_NAVIGATION_STATE_TS).toContain(
-      "if (!isDetachedShell) return path",
-    );
-    expect(USE_NAVIGATION_STATE_TS).toContain('params.get("shellMode")');
-    expect(USE_NAVIGATION_STATE_TS).toContain('params.get("shell-mode")');
     expect(USE_NAVIGATION_STATE_TS).toContain(
       'shellHistory.pushState(null, "", pathWithCurrentShellMode(path))',
     );
+    expect(FOCUSED_APP_SHELL_MODES).toEqual([
+      "chat-overlay",
+      "tray-popover",
+      "voice-selftest",
+      "voice-workbench",
+      "launcher",
+      "kiosk",
+    ]);
+    expect(resolveAppShellMode("?shellMode=voice-workbench", "")).toBe(
+      "voice-workbench",
+    );
+    expect(resolveAppShellMode("?shellMode=full", "")).toBe("full");
   });
 
   it("lets existing shell windows advance after onboarding finishes elsewhere", () => {

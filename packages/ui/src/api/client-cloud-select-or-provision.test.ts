@@ -55,12 +55,19 @@ function fakeClient() {
   const createCloudCompatAgent = vi.fn();
   const getCloudCompatAgent = vi.fn();
   const resumeCloudCompatAgent = vi.fn(async () => ({ success: true }));
+  // Fresh creates that answer with a jobId now follow the job to terminal;
+  // default it to an already-completed job so reuse-focused cases pass through.
+  const getCloudCompatJobStatus = vi.fn(async (jobId: string) => ({
+    success: true,
+    data: { jobId, id: jobId, status: "completed", state: "completed" },
+  }));
   const client = Object.create(ElizaClient.prototype) as ElizaClient;
   Object.assign(client, {
     getCloudCompatAgents,
     createCloudCompatAgent,
     getCloudCompatAgent,
     resumeCloudCompatAgent,
+    getCloudCompatJobStatus,
   });
   return {
     client,
@@ -68,6 +75,7 @@ function fakeClient() {
     createCloudCompatAgent,
     getCloudCompatAgent,
     resumeCloudCompatAgent,
+    getCloudCompatJobStatus,
   };
 }
 
@@ -206,7 +214,7 @@ describe("selectOrProvisionCloudAgent — never duplicate on a failed lookup", (
 
     expect(result.created).toBe(false);
     expect(result.agentId).toBe("agent-no-urls");
-    expect(result.apiBase).toBe("https://agent-no-urls.elizacloud.ai");
+    expect(result.apiBase).toBe("https://agent-no-urls.cloud.eliza.app");
     expect(result.apiBase).not.toContain("/api/v1/eliza/agents/");
     expect(createCloudCompatAgent).not.toHaveBeenCalled();
   });
@@ -234,7 +242,9 @@ describe("selectOrProvisionCloudAgent — never duplicate on a failed lookup", (
     });
 
     expect(result.created).toBe(false);
-    expect(result.apiBase).toBe("https://agent-staging.staging.elizacloud.ai");
+    expect(result.apiBase).toBe(
+      "https://agent-staging.cloud-staging.eliza.app",
+    );
     expect(createCloudCompatAgent).not.toHaveBeenCalled();
   });
 
@@ -264,7 +274,7 @@ describe("selectOrProvisionCloudAgent — never duplicate on a failed lookup", (
     expect(result.created).toBe(false);
     expect(result.executionTier).toBe("shared");
     expect(result.apiBase).toBe(
-      "https://api-staging.elizacloud.ai/api/v1/eliza/agents/agent-shared",
+      "https://api-staging.eliza.app/api/v1/eliza/agents/agent-shared",
     );
     expect(createCloudCompatAgent).not.toHaveBeenCalled();
   });
@@ -563,6 +573,47 @@ describe("selectOrProvisionCloudAgent — never duplicate on a failed lookup", (
     );
     expect(result.created).toBe(true);
     expect(result.agentId).toBe("agent-forced-new");
+  });
+
+  it("returns the exact create identity when cancellation arrives after acceptance", async () => {
+    const controller = new AbortController();
+    const { client, getCloudCompatAgents, createCloudCompatAgent } =
+      fakeClient();
+    getCloudCompatAgents.mockResolvedValue({ success: true, data: [] });
+    createCloudCompatAgent.mockImplementation(async () => {
+      controller.abort(new DOMException("signed out", "AbortError"));
+      return {
+        success: true,
+        created: true,
+        data: {
+          agentId: "agent-cancelled",
+          agentName: "Authoritative Eliza",
+          jobId: "provision-job",
+          status: "provisioning",
+          nodeId: null,
+          message: "accepted",
+          createdAt: "2026-08-14T12:00:00.000Z",
+          executionTier: "dedicated-always" as const,
+        },
+      };
+    });
+
+    const result = await client.selectOrProvisionCloudAgent({
+      ...BASE_OPTS,
+      signal: controller.signal,
+    });
+
+    expect(result).toMatchObject({
+      agentId: "agent-cancelled",
+      created: true,
+      cleanupReceipt: {
+        deleteCondition: {
+          expectedAgentName: "Authoritative Eliza",
+          expectedCreatedAt: "2026-08-14T12:00:00.000Z",
+          expectedExecutionTier: "dedicated-always",
+        },
+      },
+    });
   });
 
   it("rejects an existing-agent response to forceCreate without binding or inspecting that agent", async () => {

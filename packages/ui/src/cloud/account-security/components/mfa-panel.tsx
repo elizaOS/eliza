@@ -1,12 +1,17 @@
 /**
  * Two-factor authentication status panel. The Cloud API exposes a status
  * contract even while enrollment is unavailable, so the panel reads the DTO and
- * renders loading / unavailable / error / ready as distinct states.
+ * renders loading / unavailable / error / ready as distinct states. Status-only:
+ * there is no enrollment form on this surface.
  */
 
 import { Lock } from "lucide-react";
 import { useEffect, useState } from "react";
-import { BrandCard, CornerBrackets } from "../../../cloud-ui";
+import {
+  SettingsGroup,
+  SettingsRow,
+  SettingsStack,
+} from "../../../components/settings/settings-layout";
 import { api } from "../../lib/api-client";
 import { useCloudT } from "../../shell/CloudI18nProvider";
 
@@ -62,37 +67,31 @@ export function MfaPanel() {
   }, []);
 
   return (
-    <BrandCard className="relative">
-      <CornerBrackets size="sm" className="opacity-50" />
-      <div className="relative z-10 space-y-3">
-        <div className="flex items-center gap-2">
-          <Lock className="h-5 w-5 text-muted" />
-          <h3 className="text-lg font-bold text-txt-strong">
-            {t("cloud.mfaPanel.title", {
-              defaultValue: "Two-factor authentication",
-            })}
-          </h3>
-        </div>
+    <SettingsStack data-testid="cloud-mfa-panel">
+      <SettingsGroup
+        title={t("cloud.mfaPanel.title", {
+          defaultValue: "Two-factor authentication",
+        })}
+      >
         {state.kind === "loading" ? (
-          <p className="text-sm text-muted">
-            {t("cloud.mfaPanel.loading", {
+          <SettingsRow
+            label={t("cloud.mfaPanel.loading", {
               defaultValue: "Loading MFA status...",
             })}
-          </p>
+          />
         ) : state.kind === "unavailable" ? (
-          <p className="text-sm text-muted">
-            {t("cloud.mfaPanel.notAvailable", {
+          <SettingsRow
+            label={t("cloud.mfaPanel.notAvailable", {
               reason: state.reason ?? "",
               defaultValue: "MFA enrollment is unavailable on this server.",
             })}
-          </p>
+          />
         ) : state.kind === "error" ? (
-          <p className="text-sm text-red-600 dark:text-red-300">
-            {state.message}
-          </p>
+          <SettingsRow tone="danger" label={state.message} />
         ) : state.enrolled ? (
-          <p className="text-sm text-green-700 dark:text-green-300">
-            {t("cloud.mfaPanel.enabled", {
+          <SettingsRow
+            icon={Lock}
+            label={t("cloud.mfaPanel.enabled", {
               method:
                 state.method ??
                 t("cloud.mfaPanel.unknownMethod", {
@@ -100,16 +99,16 @@ export function MfaPanel() {
                 }),
               defaultValue: "Enabled - method: {{method}}",
             })}
-          </p>
+          />
         ) : (
-          <p className="text-sm text-muted">
-            {t("cloud.mfaPanel.notEnabled", {
+          <SettingsRow
+            label={t("cloud.mfaPanel.notEnabled", {
               defaultValue:
                 "MFA is not enabled. Adding a second factor protects your account even if your password is compromised.",
             })}
-          </p>
+          />
         )}
-      </div>
-    </BrandCard>
+      </SettingsGroup>
+    </SettingsStack>
   );
 }

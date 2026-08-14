@@ -39,7 +39,7 @@ function expectNoLocalPersistOrStatusProbe(): void {
   for (const url of calledNativeUrls()) {
     expect(url).not.toContain("localhost");
     expect(url).not.toContain("/api/cloud/login/persist");
-    expect(url).not.toBe("https://api.elizacloud.ai/api/status");
+    expect(url).not.toBe("https://api.eliza.app/api/status");
   }
 }
 
@@ -67,7 +67,7 @@ describe("ElizaClient direct Cloud auth on native", () => {
 
     expect(capacitorMocks.post).toHaveBeenCalledWith(
       expect.objectContaining({
-        url: "https://api.elizacloud.ai/api/auth/cli-session",
+        url: "https://api.eliza.app/api/auth/cli-session",
         data: expect.objectContaining({ sessionId: expect.any(String) }),
       }),
     );
@@ -77,9 +77,9 @@ describe("ElizaClient direct Cloud auth on native", () => {
     expect(result).toEqual(
       expect.objectContaining({
         ok: true,
-        apiBase: "https://api.elizacloud.ai",
+        apiBase: "https://api.eliza.app",
         browserUrl: expect.stringMatching(
-          /^https:\/\/elizacloud\.ai\/auth\/cli-login\?session=/,
+          /^https:\/\/eliza\.app\/auth\/cli-login\?session=/,
         ),
       }),
     );
@@ -96,16 +96,16 @@ describe("ElizaClient direct Cloud auth on native", () => {
 
     expect(capacitorMocks.post).toHaveBeenCalledWith(
       expect.objectContaining({
-        url: "https://api-staging.elizacloud.ai/api/auth/cli-session",
+        url: "https://api-staging.eliza.app/api/auth/cli-session",
         data: expect.objectContaining({ sessionId: expect.any(String) }),
       }),
     );
     expect(result).toEqual(
       expect.objectContaining({
         ok: true,
-        apiBase: "https://api-staging.elizacloud.ai",
+        apiBase: "https://api-staging.eliza.app",
         browserUrl: expect.stringMatching(
-          /^https:\/\/staging\.elizacloud\.ai\/auth\/cli-login\?session=/,
+          /^https:\/\/staging\.eliza\.app\/auth\/cli-login\?session=/,
         ),
       }),
     );
@@ -121,15 +121,15 @@ describe("ElizaClient direct Cloud auth on native", () => {
 
     expect(capacitorMocks.post).toHaveBeenCalledWith(
       expect.objectContaining({
-        url: "https://api-staging.elizacloud.ai/api/auth/cli-session",
+        url: "https://api-staging.eliza.app/api/auth/cli-session",
       }),
     );
     expect(result).toEqual(
       expect.objectContaining({
         ok: true,
-        apiBase: "https://api-staging.elizacloud.ai",
+        apiBase: "https://api-staging.eliza.app",
         browserUrl: expect.stringMatching(
-          /^https:\/\/staging\.elizacloud\.ai\/auth\/cli-login\?session=/,
+          /^https:\/\/staging\.eliza\.app\/auth\/cli-login\?session=/,
         ),
       }),
     );
@@ -152,15 +152,15 @@ describe("ElizaClient direct Cloud auth on native", () => {
 
     expect(capacitorMocks.post).toHaveBeenCalledWith(
       expect.objectContaining({
-        url: "https://api-staging.elizacloud.ai/api/auth/cli-session",
+        url: "https://api-staging.eliza.app/api/auth/cli-session",
       }),
     );
     expect(result).toEqual(
       expect.objectContaining({
         ok: true,
-        apiBase: "https://api-staging.elizacloud.ai",
+        apiBase: "https://api-staging.eliza.app",
         browserUrl: expect.stringMatching(
-          /^https:\/\/staging\.elizacloud\.ai\/auth\/cli-login\?session=/,
+          /^https:\/\/staging\.eliza\.app\/auth\/cli-login\?session=/,
         ),
       }),
     );
@@ -187,7 +187,7 @@ describe("ElizaClient direct Cloud auth on native", () => {
 
     expect(capacitorMocks.get).toHaveBeenCalledWith(
       expect.objectContaining({
-        url: "https://api.elizacloud.ai/api/auth/cli-session/mobile-session",
+        url: "https://api.eliza.app/api/auth/cli-session/mobile-session",
       }),
     );
     expect(result).toEqual({
@@ -213,7 +213,7 @@ describe("ElizaClient direct Cloud auth on native", () => {
 
     expect(capacitorMocks.request).toHaveBeenCalledWith(
       expect.objectContaining({
-        url: "https://api.elizacloud.ai/api/v1/user",
+        url: "https://api.eliza.app/api/v1/user",
         headers: expect.objectContaining({
           Authorization: "Bearer cloud-api-key",
         }),
@@ -240,7 +240,7 @@ describe("ElizaClient direct Cloud auth on native", () => {
 
     expect(capacitorMocks.request).toHaveBeenCalledWith(
       expect.objectContaining({
-        url: "https://api.elizacloud.ai/api/v1/credits/balance",
+        url: "https://api.eliza.app/api/v1/credits/balance",
         headers: expect.objectContaining({
           Authorization: "Bearer cloud-api-key",
         }),
@@ -277,7 +277,7 @@ describe("ElizaClient direct Cloud auth on native", () => {
 
     expect(capacitorMocks.request).toHaveBeenCalledWith(
       expect.objectContaining({
-        url: "https://api.elizacloud.ai/api/v1/eliza/agents",
+        url: "https://api.eliza.app/api/v1/eliza/agents",
         method: "GET",
         headers: expect.objectContaining({
           Authorization: "Bearer cloud-api-key",
@@ -298,7 +298,7 @@ describe("ElizaClient direct Cloud auth on native", () => {
     });
     if (!result.success) throw new Error("Expected the agent list to load");
     const selected = await client.selectOrProvisionCloudAgent({
-      cloudApiBase: "https://api.elizacloud.ai/api/v1",
+      cloudApiBase: "https://api.eliza.app/api/v1",
       authToken: "cloud-api-key",
       name: "My Agent",
       knownAgents: result.data,
@@ -342,7 +342,7 @@ describe("ElizaClient direct Cloud auth on native", () => {
     expect(capacitorMocks.request).toHaveBeenNthCalledWith(
       1,
       expect.objectContaining({
-        url: "https://api.elizacloud.ai/api/v1/eliza/agents",
+        url: "https://api.eliza.app/api/v1/eliza/agents",
         method: "POST",
         data: expect.objectContaining({ agentName: "My Agent" }),
       }),
@@ -350,7 +350,7 @@ describe("ElizaClient direct Cloud auth on native", () => {
     expect(capacitorMocks.request).toHaveBeenNthCalledWith(
       2,
       expect.objectContaining({
-        url: "https://api.elizacloud.ai/api/v1/eliza/agents/agent-1/provision",
+        url: "https://api.eliza.app/api/v1/eliza/agents/agent-1/provision",
         method: "POST",
       }),
     );
@@ -388,7 +388,7 @@ describe("ElizaClient direct Cloud auth on native", () => {
     expect(capacitorMocks.request).toHaveBeenNthCalledWith(
       1,
       expect.objectContaining({
-        url: "https://api.elizacloud.ai/api/v1/eliza/agents",
+        url: "https://api.eliza.app/api/v1/eliza/agents",
         method: "POST",
         data: expect.objectContaining({
           agentName: "My Agent",
@@ -433,6 +433,8 @@ describe("ElizaClient direct Cloud auth on native", () => {
           agentName: "My Agent",
           status: "provisioning",
           jobId: "job-async-1",
+          createdAt: "2026-08-14T12:00:00.000Z",
+          executionTier: "dedicated-always",
         },
       },
     });
@@ -448,6 +450,8 @@ describe("ElizaClient direct Cloud auth on native", () => {
         data: expect.objectContaining({
           agentId: "agent-async-1",
           status: "provisioning",
+          createdAt: "2026-08-14T12:00:00.000Z",
+          executionTier: "dedicated-always",
         }),
       }),
     );
@@ -468,7 +472,7 @@ describe("ElizaClient direct Cloud auth on native", () => {
 
     expect(capacitorMocks.request).toHaveBeenCalledWith(
       expect.objectContaining({
-        url: "https://api.elizacloud.ai/api/v1/eliza/agents/agent-1",
+        url: "https://api.eliza.app/api/v1/eliza/agents/agent-1",
         method: "DELETE",
       }),
     );
@@ -503,7 +507,7 @@ describe("ElizaClient direct Cloud auth on native", () => {
 
     expect(capacitorMocks.request).toHaveBeenCalledWith(
       expect.objectContaining({
-        url: "https://api.elizacloud.ai/api/v1/eliza/agents/agent-1/suspend",
+        url: "https://api.eliza.app/api/v1/eliza/agents/agent-1/suspend",
         method: "POST",
         headers: expect.objectContaining({
           Authorization: "Bearer cloud-api-key",
@@ -541,7 +545,7 @@ describe("ElizaClient direct Cloud auth on native", () => {
 
     expect(capacitorMocks.request).toHaveBeenCalledWith(
       expect.objectContaining({
-        url: "https://api.elizacloud.ai/api/v1/eliza/agents/agent-1/resume",
+        url: "https://api.eliza.app/api/v1/eliza/agents/agent-1/resume",
         method: "POST",
         headers: expect.objectContaining({
           Authorization: "Bearer cloud-api-key",
@@ -576,7 +580,7 @@ describe("ElizaClient direct Cloud auth on native", () => {
     );
     expect(capacitorMocks.request).toHaveBeenCalledWith(
       expect.objectContaining({
-        url: "https://api.elizacloud.ai/api/v1/eliza/agents/agent-1/suspend",
+        url: "https://api.eliza.app/api/v1/eliza/agents/agent-1/suspend",
         method: "POST",
       }),
     );
@@ -655,7 +659,7 @@ describe("ElizaClient direct Cloud auth on native", () => {
 
     expect(capacitorMocks.request).toHaveBeenCalledWith(
       expect.objectContaining({
-        url: "https://api.elizacloud.ai/api/compat/agents/agent-1/launch",
+        url: "https://api.eliza.app/api/compat/agents/agent-1/launch",
         method: "POST",
         headers: expect.objectContaining({
           Authorization: "Bearer cloud-api-key",
@@ -693,7 +697,7 @@ describe("ElizaClient direct Cloud auth on native", () => {
     await expectation;
     expect(capacitorMocks.request).toHaveBeenCalledWith(
       expect.objectContaining({
-        url: "https://api.elizacloud.ai/api/v1/eliza/agents/agent-1/provision",
+        url: "https://api.eliza.app/api/v1/eliza/agents/agent-1/provision",
         method: "POST",
       }),
     );
@@ -717,7 +721,7 @@ describe("ElizaClient direct Cloud auth on native", () => {
     );
     expect(capacitorMocks.request).toHaveBeenCalledWith(
       expect.objectContaining({
-        url: "https://api.elizacloud.ai/api/v1/eliza/agents/agent-1/provision",
+        url: "https://api.eliza.app/api/v1/eliza/agents/agent-1/provision",
         method: "POST",
       }),
     );
@@ -750,7 +754,7 @@ describe("ElizaClient direct Cloud auth on native", () => {
     );
     expect(capacitorMocks.request).toHaveBeenCalledWith(
       expect.objectContaining({
-        url: "https://api.elizacloud.ai/api/v1/eliza/agents/agent-1/provision",
+        url: "https://api.eliza.app/api/v1/eliza/agents/agent-1/provision",
         method: "POST",
       }),
     );
@@ -829,7 +833,7 @@ describe("ElizaClient direct Cloud auth on native", () => {
 
     expect(capacitorMocks.request).toHaveBeenCalledWith(
       expect.objectContaining({
-        url: "https://api.elizacloud.ai/api/v1/jobs/job-1",
+        url: "https://api.eliza.app/api/v1/jobs/job-1",
         method: "GET",
       }),
     );
@@ -903,7 +907,7 @@ describe("ElizaClient direct Cloud auth on native", () => {
       },
     });
     capacitorMocks.request.mockImplementation(async ({ url, method }) => {
-      if (url === "https://api.elizacloud.ai/api/v1/user") {
+      if (url === "https://api.eliza.app/api/v1/user") {
         return {
           status: 200,
           data: {
@@ -913,13 +917,13 @@ describe("ElizaClient direct Cloud auth on native", () => {
         };
       }
       if (
-        url === "https://api.elizacloud.ai/api/v1/eliza/agents" &&
+        url === "https://api.eliza.app/api/v1/eliza/agents" &&
         method === "GET"
       ) {
         return { status: 200, data: { success: true, data: [] } };
       }
       if (
-        url === "https://api.elizacloud.ai/api/v1/eliza/agents" &&
+        url === "https://api.eliza.app/api/v1/eliza/agents" &&
         method === "POST"
       ) {
         return {
@@ -936,7 +940,7 @@ describe("ElizaClient direct Cloud auth on native", () => {
       }
       if (
         url ===
-          "https://api.elizacloud.ai/api/v1/eliza/agents/agent-dev/provision" &&
+          "https://api.eliza.app/api/v1/eliza/agents/agent-dev/provision" &&
         method === "POST"
       ) {
         return {
@@ -947,7 +951,7 @@ describe("ElizaClient direct Cloud auth on native", () => {
           },
         };
       }
-      if (url === "https://api.elizacloud.ai/api/v1/jobs/job-dev") {
+      if (url === "https://api.eliza.app/api/v1/jobs/job-dev") {
         return {
           status: 200,
           data: {
@@ -971,7 +975,7 @@ describe("ElizaClient direct Cloud auth on native", () => {
     const client = new ElizaClient("");
     const login = await client.cloudLoginDirect("https://www.elizacloud.ai");
     const poll = await client.cloudLoginPollDirect(
-      login.apiBase ?? "https://api.elizacloud.ai",
+      login.apiBase ?? "https://api.eliza.app",
       login.sessionId ?? "missing-session",
     );
     client.setToken(poll.token ?? null);
@@ -1010,14 +1014,14 @@ describe("ElizaClient direct Cloud auth on native", () => {
     expect(fetchSpy).not.toHaveBeenCalled();
     expect(calledNativeUrls()).toEqual(
       expect.arrayContaining([
-        "https://api.elizacloud.ai/api/auth/cli-session",
+        "https://api.eliza.app/api/auth/cli-session",
         expect.stringMatching(
-          /^https:\/\/api\.elizacloud\.ai\/api\/auth\/cli-session\//,
+          /^https:\/\/api\.eliza\.app\/api\/auth\/cli-session\//,
         ),
-        "https://api.elizacloud.ai/api/v1/user",
-        "https://api.elizacloud.ai/api/v1/eliza/agents",
-        "https://api.elizacloud.ai/api/v1/eliza/agents/agent-dev/provision",
-        "https://api.elizacloud.ai/api/v1/jobs/job-dev",
+        "https://api.eliza.app/api/v1/user",
+        "https://api.eliza.app/api/v1/eliza/agents",
+        "https://api.eliza.app/api/v1/eliza/agents/agent-dev/provision",
+        "https://api.eliza.app/api/v1/jobs/job-dev",
       ]),
     );
     expectNoLocalPersistOrStatusProbe();
@@ -1032,7 +1036,7 @@ describe("ElizaClient direct Cloud auth on native", () => {
       );
     capacitorMocks.request.mockImplementation(async ({ url, method }) => {
       if (
-        url === "https://api.elizacloud.ai/api/v1/eliza/agents" &&
+        url === "https://api.eliza.app/api/v1/eliza/agents" &&
         method === "POST"
       ) {
         return {
@@ -1042,7 +1046,7 @@ describe("ElizaClient direct Cloud auth on native", () => {
       }
       if (
         url ===
-          "https://api.elizacloud.ai/api/v1/eliza/agents/sandbox-agent/provision" &&
+          "https://api.eliza.app/api/v1/eliza/agents/sandbox-agent/provision" &&
         method === "POST"
       ) {
         return {
@@ -1054,7 +1058,7 @@ describe("ElizaClient direct Cloud auth on native", () => {
           },
         };
       }
-      if (url === "https://api.elizacloud.ai/api/v1/jobs/sandbox-job") {
+      if (url === "https://api.eliza.app/api/v1/jobs/sandbox-job") {
         return {
           status: 200,
           data: {
@@ -1094,7 +1098,7 @@ describe("ElizaClient direct Cloud auth on native", () => {
     expect(capacitorMocks.request).toHaveBeenNthCalledWith(
       1,
       expect.objectContaining({
-        url: "https://api.elizacloud.ai/api/v1/eliza/agents",
+        url: "https://api.eliza.app/api/v1/eliza/agents",
         method: "POST",
         headers: expect.objectContaining({
           authorization: "Bearer dev-js-bearer",
@@ -1110,7 +1114,7 @@ describe("ElizaClient direct Cloud auth on native", () => {
     expect(capacitorMocks.request).toHaveBeenNthCalledWith(
       2,
       expect.objectContaining({
-        url: "https://api.elizacloud.ai/api/v1/eliza/agents/sandbox-agent/provision",
+        url: "https://api.eliza.app/api/v1/eliza/agents/sandbox-agent/provision",
         method: "POST",
         headers: expect.objectContaining({
           authorization: "Bearer dev-js-bearer",
@@ -1120,7 +1124,7 @@ describe("ElizaClient direct Cloud auth on native", () => {
     expect(capacitorMocks.request).toHaveBeenNthCalledWith(
       3,
       expect.objectContaining({
-        url: "https://api.elizacloud.ai/api/v1/jobs/sandbox-job",
+        url: "https://api.eliza.app/api/v1/jobs/sandbox-job",
         method: "GET",
         headers: expect.objectContaining({
           authorization: "Bearer dev-js-bearer",
@@ -1134,7 +1138,7 @@ describe("ElizaClient direct Cloud auth on native", () => {
   it("rejects shared-runtime Cloud agents by default", async () => {
     capacitorMocks.request.mockImplementation(async ({ url, method }) => {
       if (
-        url === "https://api.elizacloud.ai/api/v1/eliza/agents" &&
+        url === "https://api.eliza.app/api/v1/eliza/agents" &&
         method === "POST"
       ) {
         return {
@@ -1151,7 +1155,7 @@ describe("ElizaClient direct Cloud auth on native", () => {
       }
       if (
         url ===
-          "https://api.elizacloud.ai/api/v1/eliza/agents/shared-agent/provision" &&
+          "https://api.eliza.app/api/v1/eliza/agents/shared-agent/provision" &&
         method === "POST"
       ) {
         return {
@@ -1190,7 +1194,7 @@ describe("ElizaClient direct Cloud auth on native", () => {
       );
     capacitorMocks.request.mockImplementation(async ({ url, method }) => {
       if (
-        url === "https://api.elizacloud.ai/api/v1/eliza/agents" &&
+        url === "https://api.eliza.app/api/v1/eliza/agents" &&
         method === "POST"
       ) {
         return {
@@ -1207,7 +1211,7 @@ describe("ElizaClient direct Cloud auth on native", () => {
       }
       if (
         url ===
-          "https://api.elizacloud.ai/api/v1/eliza/agents/shared-agent/provision" &&
+          "https://api.eliza.app/api/v1/eliza/agents/shared-agent/provision" &&
         method === "POST"
       ) {
         return {
@@ -1237,8 +1241,8 @@ describe("ElizaClient direct Cloud auth on native", () => {
     expect(result).toEqual({
       agentId: "shared-agent",
       bridgeUrl:
-        "https://api.elizacloud.ai/api/v1/eliza/agents/shared-agent/bridge",
-      webUiUrl: "https://api.elizacloud.ai/api/v1/eliza/agents/shared-agent",
+        "https://api.eliza.app/api/v1/eliza/agents/shared-agent/bridge",
+      webUiUrl: "https://api.eliza.app/api/v1/eliza/agents/shared-agent",
       executionTier: "shared",
     });
     expect(result.bridgeUrl).toContain("/api/v1/eliza/agents/shared-agent/");

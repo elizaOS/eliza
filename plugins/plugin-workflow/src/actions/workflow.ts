@@ -85,6 +85,10 @@ export const workflowAction: Action = {
     'DELETE_AUTOMATION',
     'RUN_AUTOMATION',
     'CREATE_WORKFLOW',
+    // Live planner output has used the noun-first form for the same supported
+    // create operation. Keep it on WORKFLOW only so exact parent resolution is
+    // unambiguous and the user is not refused over vocabulary ordering.
+    'WORKFLOW_CREATE',
     'EDIT_WORKFLOW',
     'UPDATE_WORKFLOW',
     'DELETE_WORKFLOW',
@@ -244,10 +248,14 @@ export const workflowAction: Action = {
       }
       if (op === 'run') {
         const workflow = await service.getWorkflow(workflowId as string, ownerId);
-        const execution = await service.startWorkflow(workflowId as string, {
-          mode: 'chat',
-          input: record(params.input),
-        });
+        const execution = await service.startWorkflow(
+          workflowId as string,
+          {
+            mode: 'chat',
+            input: record(params.input),
+          },
+          ownerId
+        );
         const marker = JSON.stringify({
           id: execution.id,
           workflowId,

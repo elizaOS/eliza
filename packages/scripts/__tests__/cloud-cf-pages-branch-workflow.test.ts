@@ -41,6 +41,7 @@ interface WorkflowStep {
 }
 
 interface WorkflowJob {
+  environment?: unknown;
   if?: string;
   needs?: string | string[];
   steps?: WorkflowStep[];
@@ -176,6 +177,7 @@ describe("Cloud CF PR preview workflow contract", () => {
       "$" +
         "{{ github.event_name == 'pull_request' && needs.resolve-pages-preview-config.result == 'success' }}",
     );
+    expect(buildJob?.environment).toBeUndefined();
     expect(
       namedStep(producer, "build-pages", "Validate PR preview identity").if,
     ).toBe("github.event_name == 'pull_request'");

@@ -163,4 +163,17 @@ describe("homepage deployment workflow", () => {
       "PLAYWRIGHT_INSTALL_CWD=packages/homepage",
     );
   });
+
+  it("builds the core workspace before the quality frontend build", () => {
+    // packages/app/vite.config.ts reaches @elizaos/core through the
+    // packages/shared barrels, and Vite bundles the config with esbuild under
+    // default export conditions, so core's dist must exist first. Both
+    // workflows install with --ignore-scripts and therefore need the step.
+    expect(workflow).toContain("run: bun run build:core");
+    expect(qualityWorkflow).toContain("run: bun run build:core");
+    const coreBuildIndex = qualityWorkflow.indexOf("run: bun run build:core");
+    const webBuildIndex = qualityWorkflow.indexOf("run: bun run build:web");
+    expect(coreBuildIndex).toBeGreaterThan(-1);
+    expect(webBuildIndex).toBeGreaterThan(coreBuildIndex);
+  });
 });

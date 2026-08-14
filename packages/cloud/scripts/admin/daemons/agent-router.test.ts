@@ -342,8 +342,8 @@ describe("buildUnresolvedAgentResponse — CORS-bearing failure (#15347)", () =>
 
 describe("handleRequest — agent-host CORS preflight (#15347)", () => {
   const AGENT = "e06bb509-6c52-4c33-a9f7-66addc43e8c8";
-  const HOST = `${AGENT}.elizacloud.ai`;
-  const ORIGIN = "https://app-staging.elizacloud.ai";
+  const HOST = `${AGENT}.cloud.eliza.app`;
+  const ORIGIN = "https://cloud.eliza.app";
 
   function fakeReq(
     method: string,
@@ -376,8 +376,8 @@ describe("handleRequest — agent-host CORS preflight (#15347)", () => {
 
   it("recognizes the public agent host forwarded through the control-plane origin", async () => {
     const res = await handleRequest(
-      new URL("http://eliza-production-1.elizacloud.ai/api/agents"),
-      fakeReq("OPTIONS", "eliza-production-1.elizacloud.ai", ORIGIN, HOST),
+      new URL("http://eliza-production-1.eliza.app/api/agents"),
+      fakeReq("OPTIONS", "eliza-production-1.eliza.app", ORIGIN, HOST),
     );
 
     expect(res.status).toBe(204);
