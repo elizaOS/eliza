@@ -578,8 +578,9 @@ function ContactSheet({
 export default function LandingPage() {
   const t = useT();
   const [phoneCopyState, setPhoneCopyState] = useState<
-    "idle" | "copied" | "error"
+    "idle" | "handoff" | "copied" | "error"
   >("idle");
+  const phoneCopyOperation = useRef(0);
   const browserWindow = typeof window === "undefined" ? null : window;
   const signedIn =
     browserWindow !== null &&
@@ -626,12 +627,24 @@ export default function LandingPage() {
   ];
 
   const handleMessageEliza = async () => {
+    const operation = ++phoneCopyOperation.current;
     try {
       const outcome = await openOrCopyElizaMessage(window);
-      setPhoneCopyState(outcome === "copied" ? "copied" : "idle");
+      if (operation === phoneCopyOperation.current) setPhoneCopyState(outcome);
     } catch {
       // error-policy:J4 Clipboard rejection stays visible as a distinct UI error.
-      setPhoneCopyState("error");
+      if (operation === phoneCopyOperation.current) setPhoneCopyState("error");
+    }
+  };
+
+  const handleCopyPhone = async () => {
+    const operation = ++phoneCopyOperation.current;
+    try {
+      await navigator.clipboard.writeText(ELIZA_PHONE_NUMBER);
+      if (operation === phoneCopyOperation.current) setPhoneCopyState("copied");
+    } catch {
+      // error-policy:J4 Clipboard rejection stays visible as a distinct UI error.
+      if (operation === phoneCopyOperation.current) setPhoneCopyState("error");
     }
   };
 
@@ -640,9 +653,14 @@ export default function LandingPage() {
       ? t("homepage_eliza.landing.phoneCopied", {
           defaultValue: "Phone number copied",
         })
-      : t("homepage_eliza.landing.phoneCopyFailed", {
-          defaultValue: "Couldn't copy the phone number",
-        });
+      : phoneCopyState === "handoff"
+        ? t("homepage_eliza.common.messageHandoff", {
+            defaultValue:
+              "Opening Messages. If nothing happens, copy the number.",
+          })
+        : t("homepage_eliza.landing.phoneCopyFailed", {
+            defaultValue: "Couldn't copy the phone number",
+          });
   return (
     <div className="landing-page theme-app">
       <Suspense fallback={null}>
@@ -725,10 +743,24 @@ export default function LandingPage() {
           {phoneCopyState !== "idle" && (
             <div
               className={`landing-copy-notice landing-copy-notice--${phoneCopyState}`}
-              role={phoneCopyState === "error" ? "alert" : "status"}
-              aria-live="polite"
             >
-              {phoneCopyLabel}
+              <span
+                role={phoneCopyState === "error" ? "alert" : "status"}
+                aria-live="polite"
+              >
+                {phoneCopyLabel}
+              </span>
+              {phoneCopyState === "handoff" && (
+                <button
+                  type="button"
+                  className="landing-copy-notice-action"
+                  onClick={() => void handleCopyPhone()}
+                >
+                  {t("homepage_eliza.connected.copyPhoneAria", {
+                    defaultValue: "Copy phone number",
+                  })}
+                </button>
+              )}
             </div>
           )}
         </div>

@@ -281,11 +281,11 @@ test("get-started covers Discord callback errors and setup guide", async ({
   await expect(
     page.getByRole("heading", { name: "Discord Setup Guide" }),
   ).toBeVisible();
-  await expect(page.getByText("Add Eliza to your server")).toBeVisible();
+  await expect(page.getByText("Install Eliza for your account")).toBeVisible();
   await expect(page.getByText("Send a direct message")).toBeVisible();
   await expect(page.getByText("Start chatting")).toBeVisible();
   await expect(
-    page.getByRole("button", { name: "Invite to Server" }),
+    page.getByRole("button", { name: "Install for DMs" }),
   ).toBeVisible();
   await expect(page.getByRole("button", { name: "Open DM" })).toBeVisible();
 
@@ -459,6 +459,160 @@ test("landing keeps clipboard rejection visible", async ({ page }) => {
     "Couldn't copy the phone number",
   );
   await page.waitForTimeout(2_250);
+  await expect(page.getByRole("alert")).toHaveText(
+    "Couldn't copy the phone number",
+  );
+});
+
+test("supported-platform messaging keeps a manual copy recovery visible", async ({
+  context,
+  page,
+}) => {
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, "platform", {
+      configurable: true,
+      value: "MacIntel",
+    });
+    Object.defineProperty(navigator, "userAgentData", {
+      configurable: true,
+      value: { platform: "macOS" },
+    });
+  });
+  await page.goto("/");
+  await waitForLandingIntro(page);
+
+  await page.getByRole("button", { name: "Text" }).click();
+  await expect(page.getByRole("status")).toHaveText(
+    "Opening Messages. If nothing happens, copy the number.",
+  );
+
+  const copyButton = page.getByRole("button", { name: "Copy phone number" });
+  await expect(copyButton).toBeVisible();
+  await copyButton.click();
+  await expect(page.getByRole("status")).toHaveText("Phone number copied");
+  await expect
+    .poll(() => page.evaluate(() => navigator.clipboard.readText()))
+    .toBe("+18087881821");
+  await expect(page.getByText("+1 (808) 788-1821")).toHaveCount(0);
+
+  await page.goto("/get-started");
+  await page.getByRole("button", { name: /^iMessage$/ }).click();
+  await page.getByRole("button", { name: "Message Eliza" }).click();
+  await expect(page.getByRole("status")).toHaveText(
+    "Opening Messages. If nothing happens, copy the number.",
+  );
+  await page.evaluate(() => {
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: {
+        writeText: () =>
+          Promise.reject(new DOMException("denied", "NotAllowedError")),
+      },
+    });
+  });
+  await page.getByRole("button", { name: "Copy phone number" }).click();
+  await expect(page.getByRole("alert")).toHaveText(
+    "Couldn't copy the phone number",
+  );
+
+  await seedAuthenticatedSession(page);
+  await page.goto("/connected");
+  await page.getByRole("button", { name: /^iMessage$/ }).click();
+  await page.getByLabel("Phone number").fill("416 555 0123");
+  await page.getByRole("button", { name: "Link Phone" }).click();
+  await page.getByRole("button", { name: /^iMessage$/ }).click();
+  await expect(page.getByRole("status")).toHaveText(
+    "Opening Messages. If nothing happens, copy the number.",
+  );
+  await page.getByRole("button", { name: "Copy phone number" }).click();
+  await expect(page.getByRole("status")).toHaveText("Phone number copied");
+});
+
+test("the latest manual-copy attempt owns the visible result", async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, "platform", {
+      configurable: true,
+      value: "MacIntel",
+    });
+    Object.defineProperty(navigator, "userAgentData", {
+      configurable: true,
+      value: { platform: "macOS" },
+    });
+    const attempts: Array<{
+      reject: () => void;
+      resolve: () => void;
+    }> = [];
+    Object.defineProperty(window, "__homepageCopyAttempts", {
+      configurable: true,
+      value: attempts,
+    });
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: {
+        writeText: () =>
+          new Promise<void>((resolve, reject) => {
+            attempts.push({ resolve, reject });
+          }),
+      },
+    });
+  });
+
+  const attempts = () =>
+    page.evaluate(() => {
+      const controls = (
+        window as unknown as {
+          __homepageCopyAttempts: Array<{
+            reject: () => void;
+            resolve: () => void;
+          }>;
+        }
+      ).__homepageCopyAttempts;
+      return controls.length;
+    });
+  const settle = (index: number, outcome: "resolve" | "reject") =>
+    page.evaluate(
+      ({ attemptIndex, attemptOutcome }) => {
+        const controls = (
+          window as unknown as {
+            __homepageCopyAttempts: Array<{
+              reject: () => void;
+              resolve: () => void;
+            }>;
+          }
+        ).__homepageCopyAttempts;
+        controls[attemptIndex]?.[attemptOutcome]();
+      },
+      { attemptIndex: index, attemptOutcome: outcome },
+    );
+
+  await page.goto("/");
+  await waitForLandingIntro(page);
+  await page.getByRole("button", { name: "Text" }).click();
+  const copyButton = page.getByRole("button", { name: "Copy phone number" });
+  await copyButton.click();
+  await copyButton.click();
+  await expect.poll(attempts).toBe(2);
+
+  await settle(1, "resolve");
+  await expect(page.getByRole("status")).toHaveText("Phone number copied");
+  await settle(0, "reject");
+  await expect(page.getByRole("status")).toHaveText("Phone number copied");
+
+  await page.reload();
+  await waitForLandingIntro(page);
+  await page.getByRole("button", { name: "Text" }).click();
+  await copyButton.click();
+  await copyButton.click();
+  await expect.poll(attempts).toBe(2);
+
+  await settle(1, "reject");
+  await expect(page.getByRole("alert")).toHaveText(
+    "Couldn't copy the phone number",
+  );
+  await settle(0, "resolve");
   await expect(page.getByRole("alert")).toHaveText(
     "Couldn't copy the phone number",
   );

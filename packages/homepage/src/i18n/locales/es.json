@@ -9,6 +9,7 @@
   "homepage_eliza.common.skipToContent": "Saltar al contenido",
   "homepage_eliza.common.loading": "Cargando…",
   "homepage_eliza.common.redirecting": "Redirigiendo…",
+  "homepage_eliza.common.messageHandoff": "Abriendo Mensajes. Si no ocurre nada, copia el número.",
   "homepage_eliza.common.year": "ElizaCloud Inc. {{year}}",
   "homepage_eliza.common.terms": "Términos",
   "homepage_eliza.common.privacy": "Privacidad",

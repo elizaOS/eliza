@@ -9,6 +9,7 @@
   "homepage_eliza.common.skipToContent": "本文へスキップ",
   "homepage_eliza.common.loading": "読み込み中…",
   "homepage_eliza.common.redirecting": "リダイレクト中…",
+  "homepage_eliza.common.messageHandoff": "メッセージを開いています。開かない場合は電話番号をコピーしてください。",
   "homepage_eliza.common.year": "ElizaCloud Inc. {{year}}",
   "homepage_eliza.common.terms": "利用規約",
   "homepage_eliza.common.privacy": "プライバシー",

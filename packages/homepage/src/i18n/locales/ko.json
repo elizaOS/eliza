@@ -9,6 +9,7 @@
   "homepage_eliza.common.skipToContent": "본문으로 건너뛰기",
   "homepage_eliza.common.loading": "불러오는 중…",
   "homepage_eliza.common.redirecting": "이동 중이에요…",
+  "homepage_eliza.common.messageHandoff": "메시지 앱을 여는 중입니다. 열리지 않으면 번호를 복사하세요.",
   "homepage_eliza.common.year": "ElizaCloud Inc. {{year}}",
   "homepage_eliza.common.terms": "이용약관",
   "homepage_eliza.common.privacy": "개인정보",
