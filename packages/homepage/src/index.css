@@ -1517,6 +1517,8 @@ body {
 }
 
 .landing-iphone-screen {
+  --landing-keyboard-transition: 240ms cubic-bezier(0.32, 0.72, 0, 1);
+
   position: relative;
   display: flex;
   flex-direction: column;
@@ -1584,9 +1586,17 @@ body {
   height: 1.35rem;
   margin: 0;
   background: #ffffff;
-  /* The home area stays attached to the keyboard surface until the keyboard
-     has fully retracted, preventing a white seam during the slide. */
-  transition: background-color 0s linear 320ms;
+  overflow: hidden;
+}
+
+.landing-iphone-homebar::before {
+  position: absolute;
+  inset: 0;
+  background: #d3d6dd;
+  content: "";
+  transform: scaleY(0);
+  transform-origin: bottom;
+  transition: transform var(--landing-keyboard-transition);
 }
 
 .landing-iphone-homebar::after {
@@ -1599,6 +1609,7 @@ body {
   border-radius: 999px;
   background: rgb(0 0 0 / 28%);
   content: "";
+  z-index: 1;
 }
 
 .landing-phone-header {
@@ -1909,22 +1920,15 @@ body {
   overflow: hidden;
   grid-template-rows: 0fr;
   background: #d3d6dd;
-  transition: grid-template-rows 320ms cubic-bezier(0.22, 1, 0.36, 1);
+  transition: grid-template-rows var(--landing-keyboard-transition);
 }
 
 .landing-keyboard[data-open="true"] {
   grid-template-rows: 1fr;
 }
 
-.landing-keyboard[data-open="true"] + .landing-iphone-homebar {
-  background: #d3d6dd;
-  transition-delay: 0s;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .landing-iphone-homebar {
-    transition-delay: 0s;
-  }
+.landing-keyboard[data-open="true"] + .landing-iphone-homebar::before {
+  transform: scaleY(1);
 }
 
 .landing-keyboard-clip {
