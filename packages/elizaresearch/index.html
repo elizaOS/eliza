@@ -373,7 +373,17 @@
         sz: entranceComplete ? 0 : Math.min(W, H) * (0.35 + entranceRandom() * 0.55) * (entranceRandom() < 0.5 ? -1 : 1),
         lane: (entranceRandom() * LANE_COUNT) | 0,
         offsetX: 0, offsetY: 0, depthScale: 1,
-        size: entranceRandom() * 1.15 + 1.05, life: entranceRandom() * 100, age: 0,
+        // Boids are seeded so the first steady-state draw is full opacity
+        // regardless of when init runs. age is pinned at the full-fade value
+        // and life is well above the fade window so the entrance-handoff
+        // opacity contract holds on the post-entrance init too (e.g. resize
+        // re-init after entranceComplete). The fade clock then advances from
+        // there, exactly like the original handoff. Initial life uses the
+        // production 0..150 lifetime range, not 200, so the test exercises
+        // the real initialization distribution.
+        size: entranceRandom() * 1.15 + 1.05,
+        life: entranceRandom() * 150 + 90,
+        age: entranceComplete ? FADE_FRAMES : 0,
         ph: entranceRandom(), phy: entranceRandom(),
         fs: 0.6 + entranceRandom() * 0.8, amp: 1.1 + entranceRandom() * 2.6 });
     }
@@ -441,7 +451,14 @@
         entranceComplete = true;
         // Last entrance frame is alpha 1. Seed the fade clock at full
         // opacity so the first steady-state frame does not drop to bucket 0.
-        for (let i = 0; i < boids.length; i++) boids[i].age = FADE_FRAMES;
+        // Both age AND life must clear FADE_FRAMES: draw() takes
+        // min(age, life)/FADE_FRAMES, so a particle whose initial life is
+        // below FADE_FRAMES would otherwise render below full opacity on
+        // every steady-state frame until it reseeds.
+        for (let i = 0; i < boids.length; i++) {
+          boids[i].age = FADE_FRAMES;
+          if (boids[i].life < FADE_FRAMES) boids[i].life = FADE_FRAMES;
+        }
       }
     }
     // whole face breathes: slow expand/contract around its center
