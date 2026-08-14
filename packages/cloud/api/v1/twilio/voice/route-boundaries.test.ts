@@ -36,4 +36,20 @@ describe("Twilio voice route boundaries", () => {
       error: "voice realtime session misconfigured",
     });
   });
+
+  test("media fails closed on invalid bootstrap admission configuration", async () => {
+    const response = await media.request(
+      "http://local/",
+      { headers: { Upgrade: "websocket" } },
+      {
+        VOICE_REALTIME_WS_ENABLED: "true",
+        ELIZA_APP_TWILIO_AUTH_TOKEN: "secret",
+        TWILIO_VOICE_MAX_PENDING_BOOTSTRAPS: "unbounded",
+      } as never,
+    );
+    expect(response.status).toBe(503);
+    expect((await response.json()) as unknown).toEqual({
+      error: "voice realtime session misconfigured",
+    });
+  });
 });

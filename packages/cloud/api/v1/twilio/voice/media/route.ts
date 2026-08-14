@@ -47,6 +47,10 @@ import {
 } from "../../../voice/session/lib/provider-socket-factory";
 import { VoiceSession } from "../../../voice/session/lib/session";
 import {
+  resolveTwilioBootstrapLimits,
+  TwilioBootstrapGate,
+} from "../lib/twilio-bootstrap-gate";
+import {
   decodeTwilioMedia,
   encodeTwilioMedia,
 } from "../lib/twilio-media-codec";
@@ -58,6 +62,7 @@ const app = new Hono<AppEnv>();
 // window instead of terminating ordinary first calls before setup completes.
 const MAX_PENDING_MEDIA_FRAMES = 512;
 const DEFAULT_MAX_CALL_SECONDS = 30 * 60;
+const bootstrapGate = new TwilioBootstrapGate();
 
 const TwilioStreamEventSchema = z.discriminatedUnion("event", [
   z.object({ event: z.literal("connected") }).passthrough(),
@@ -129,6 +134,16 @@ app.get("/", async (c) => {
   if (!streamSigningSecret) {
     return c.json({ error: "voice realtime session misconfigured" }, 503);
   }
+  const bootstrapLimits = resolveTwilioBootstrapLimits(
+    env as VoiceRealtimeEnv & {
+      TWILIO_VOICE_MAX_PENDING_BOOTSTRAPS?: string;
+      TWILIO_VOICE_BOOTSTRAP_TIMEOUT_MS?: string;
+    },
+  );
+  if (!bootstrapLimits) {
+    logger.error("[twilio-media] invalid bootstrap admission configuration");
+    return c.json({ error: "voice realtime session misconfigured" }, 503);
+  }
   const rawRedis = buildRedisClient(
     env as unknown as Parameters<typeof buildRedisClient>[0],
   );
@@ -173,7 +188,26 @@ app.get("/", async (c) => {
   if (!WebSocketPairCtor) {
     return c.json({ error: "voice realtime transport unavailable" }, 503);
   }
-  const [client, serverRaw] = new WebSocketPairCtor();
+  const bootstrapLease = bootstrapGate.tryAcquire(bootstrapLimits.maxPending);
+  if (!bootstrapLease) {
+    return c.json(
+      { error: "voice realtime capacity reached", code: "at_capacity" },
+      503,
+    );
+  }
+  let client: unknown;
+  let serverRaw: unknown;
+  try {
+    [client, serverRaw] = new WebSocketPairCtor();
+  } catch (error) {
+    // error-policy:J1 WebSocket allocation is the transport boundary; return
+    // an explicit unavailable response and release admission capacity.
+    bootstrapLease.release();
+    logger.error("[twilio-media] WebSocket allocation failed", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return c.json({ error: "voice realtime transport unavailable" }, 503);
+  }
   const server = serverRaw as {
     accept(): void;
     send(data: string): void;
@@ -202,6 +236,24 @@ app.get("/", async (c) => {
   let starting = false;
   let closed = false;
   const pendingMedia: Uint8Array[] = [];
+  let bootstrapTimer: ReturnType<typeof setTimeout> | null = null;
+
+  const releaseBootstrap = (): void => {
+    if (bootstrapTimer) {
+      clearTimeout(bootstrapTimer);
+      bootstrapTimer = null;
+    }
+    bootstrapLease.release();
+  };
+  const closeBootstrapBoundary = (code: number, reason: string): void => {
+    if (closed) return;
+    releaseBootstrap();
+    server.close(code, reason);
+    closed = true;
+  };
+  bootstrapTimer = setTimeout(() => {
+    closeBootstrapBoundary(1008, "stream bootstrap timeout");
+  }, bootstrapLimits.timeoutMs);
 
   const sendEvent = (event: object): void => {
     if (closed) return;
@@ -213,6 +265,7 @@ app.get("/", async (c) => {
       logger.warn("[twilio-media] downstream send failed", {
         error: error instanceof Error ? error.message : String(error),
       });
+      releaseBootstrap();
       session?.sever("error");
       closed = true;
     }
@@ -252,6 +305,7 @@ app.get("/", async (c) => {
       });
     },
     close(code, reason) {
+      releaseBootstrap();
       closed = true;
       server.close(code, reason);
     },
@@ -262,6 +316,10 @@ app.get("/", async (c) => {
   ): Promise<void> => {
     if (session || starting || closed) return;
     starting = true;
+    if (event.streamSid !== event.start.streamSid) {
+      closeBootstrapBoundary(1008, "stream identity mismatch");
+      return;
+    }
     streamSid = event.start.streamSid;
     const format = event.start.mediaFormat;
     if (
@@ -270,8 +328,7 @@ app.get("/", async (c) => {
       format.channels !== 1
     ) {
       logger.warn("[twilio-media] unsupported media format", { format });
-      server.close(1003, "unsupported media format");
-      closed = true;
+      closeBootstrapBoundary(1003, "unsupported media format");
       return;
     }
     const presentedToken = event.start.customParameters.token;
@@ -282,8 +339,7 @@ app.get("/", async (c) => {
         : null;
     if (!claims || claims.sessionId !== requestedSessionId) {
       logger.warn("[twilio-media] invalid stream bootstrap");
-      server.close(1008, "invalid stream bootstrap");
-      closed = true;
+      closeBootstrapBoundary(1008, "invalid stream bootstrap");
       return;
     }
     if (
@@ -294,18 +350,17 @@ app.get("/", async (c) => {
       ))
     ) {
       logger.warn("[twilio-media] replayed stream bootstrap");
-      server.close(1008, "stream bootstrap already used");
-      closed = true;
+      closeBootstrapBoundary(1008, "stream bootstrap already used");
       return;
     }
     if (
       event.start.callSid !== claims.callSid ||
       event.start.accountSid !== claims.accountSid
     ) {
-      server.close(1008, "call identity mismatch");
-      closed = true;
+      closeBootstrapBoundary(1008, "call identity mismatch");
       return;
     }
+    releaseBootstrap();
     const elizaFetch = createScopedElizaFetch({
       agentId: claims.agentId,
       conversationId: claims.conversationId,
@@ -362,14 +417,12 @@ app.get("/", async (c) => {
       raw = JSON.parse(message.data);
     } catch {
       // error-policy:J3 malformed provider input is rejected explicitly.
-      server.close(1003, "invalid JSON");
-      closed = true;
+      closeBootstrapBoundary(1003, "invalid JSON");
       return;
     }
     const parsed = TwilioStreamEventSchema.safeParse(raw);
     if (!parsed.success) {
-      server.close(1003, "invalid Twilio event");
-      closed = true;
+      closeBootstrapBoundary(1003, "invalid Twilio event");
       return;
     }
     const event = parsed.data;
@@ -381,6 +434,7 @@ app.get("/", async (c) => {
         logger.error("[twilio-media] session setup failed", {
           error: error instanceof Error ? error.message : String(error),
         });
+        releaseBootstrap();
         session?.sever("error");
         server.close(1011, "session setup failed");
         closed = true;
@@ -388,34 +442,39 @@ app.get("/", async (c) => {
       return;
     }
     if (event.event === "media") {
+      if (streamSid && event.streamSid !== streamSid) {
+        closeBootstrapBoundary(1008, "stream identity mismatch");
+        return;
+      }
       let frame: Uint8Array;
       try {
         frame = decodeTwilioMedia(event.media.payload);
       } catch {
         // error-policy:J3 invalid base64/audio is dropped as untrusted input.
-        server.close(1003, "invalid media payload");
-        closed = true;
+        closeBootstrapBoundary(1003, "invalid media payload");
         return;
       }
       if (session) session.pushUplinkAudio(frame);
       else if (pendingMedia.length < MAX_PENDING_MEDIA_FRAMES)
         pendingMedia.push(frame);
       else {
-        server.close(1008, "too much media before start");
-        closed = true;
+        closeBootstrapBoundary(1008, "too much media before start");
       }
       return;
     }
     if (event.event === "stop") {
+      releaseBootstrap();
       session?.sever("client_disconnect");
       closed = true;
     }
   });
   server.addEventListener("close", () => {
+    releaseBootstrap();
     if (!closed) session?.sever("client_disconnect");
     closed = true;
   });
   server.addEventListener("error", () => {
+    releaseBootstrap();
     if (!closed) session?.sever("error");
     closed = true;
   });
