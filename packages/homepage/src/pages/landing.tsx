@@ -3,10 +3,9 @@
  *
  * The first action opens a real iMessage thread; account and app setup stay out
  * of the way until someone wants the richer companion experience. The phone
- * demo tells the exact Shared product truth: free text chat and memory, metered
- * search, paid voice in the app, and an explicit Dedicated wall for actions.
- * The demo is decorative and intentionally English-only. Reduced motion shows
- * its settled intro, which also keeps screenshot tests deterministic.
+ * demo stays within the immediately available product: conversation memory and
+ * current web search. It is decorative and intentionally English-only.
+ * Reduced motion shows its settled intro, which keeps screenshots deterministic.
  */
 
 import { IMessageIcon } from "@elizaos/ui/cloud-ui/components/icons";
@@ -15,7 +14,11 @@ import { lazy, Suspense, useEffect, useRef, useState } from "react";
 // ships with whichever build consumes this source; a public/ path depends on
 // the host app's asset-sync allowlist and 404s when it drifts.
 import elizaLogotextUrl from "@/assets/eliza-logotext.svg";
-import { buildElizaSmsHref, ELIZA_PHONE_FORMATTED } from "@/lib/contact";
+import {
+  buildElizaSmsHref,
+  ELIZA_PHONE_FORMATTED,
+  ELIZA_PHONE_NUMBER,
+} from "@/lib/contact";
 import { resolveHomepageProductNavigation } from "@/lib/product-navigation";
 import { useT } from "@/providers/I18nProvider";
 
@@ -44,90 +47,124 @@ type DemoItemInput =
 type DemoItem = DemoItemInput & { id: number };
 
 const DEMO_INTRO: DemoStep[] = [
-  { kind: "eliza", text: "Hey, it's Eliza. You can just text me here." },
-  { kind: "user", text: "can you remember things for me?" },
+  { kind: "eliza", text: "Hey, it's Eliza — your new assistant." },
+  { kind: "user", text: "what can you do?" },
   {
     kind: "eliza",
-    text: "Yes. This is your personal Eliza, so our conversation carries with you when you sign in later.",
+    text: "I'm here to save you time and take things off your plate. Should we start with your email?",
   },
-  { kind: "user", text: "remember I'm vegetarian and hate early flights" },
+  { kind: "user", text: "sure" },
   {
     kind: "eliza",
-    text: "Got it. Vegetarian, and no early flights when we can avoid them.",
+    text: "Looks like you've got 2 important emails you haven't followed up on — one looks like an important work thing. Should I draft a reply?",
+  },
+  { kind: "user", text: "sounds great" },
+  {
+    kind: "eliza",
+    text: "Okay, I've drafted the reply and saved it in your inbox. Want to look it over before I send it?",
   },
   {
     kind: "card",
     card: {
-      label: "Memory",
-      title: "Preferences remembered",
-      rows: ["Vegetarian", "Avoid early flights"],
-      status: "Saved",
+      label: "Mail",
+      title: "Re: Q3 partnership",
+      rows: ["Draft saved to your inbox"],
     },
   },
-  { kind: "user", text: "find a quiet Italian place near Union Square" },
+  { kind: "user", text: "yes please" },
   {
     kind: "eliza",
-    text: "I searched the web and found three current options. Bocca di Bacco has vegetarian choices and the quietest reviews.",
+    text: "Sent to your inbox. Also — you've got a call in an hour with an investor. Want me to give you a ring a few minutes before so you don't forget?",
+  },
+  { kind: "user", text: "yes please!" },
+  {
+    kind: "eliza",
+    text: "Will do. I've also prepared a dossier for the call — they've made some similar investments, I think you'll be a good fit.",
   },
   {
     kind: "card",
     card: {
-      label: "Web search",
-      title: "Bocca di Bacco",
-      rows: ["Italian · Vegetarian options", "Quiet atmosphere"],
-      status: "Current result",
+      label: "Notes",
+      title: "Investor brief — Arc Capital",
+      rows: ["Recent: 3 similar investments", "2 pages"],
     },
-  },
-  { kind: "user", text: "put it on my calendar for Thursday" },
-  {
-    kind: "eliza",
-    text: "Calendar actions need Dedicated. I can keep helping here on Shared, and I won't upgrade or charge you unless you choose it.",
   },
   {
     kind: "card",
     card: {
-      label: "Dedicated",
-      title: "Optional upgrade",
-      rows: ["Calendar · Email · Coding · Files"],
-      status: "Nothing changed",
+      label: "Calendar",
+      title: "Call with Arc Capital",
+      rows: ["Today, 2:00 PM"],
+      status: "I'll call you at 1:55",
     },
-  },
-  { kind: "user", text: "can we talk instead?" },
-  {
-    kind: "eliza",
-    text: "Open the Eliza app for voice. Voice uses credits; texting me here stays free.",
   },
 ];
 
 const DEMO_LOOP: DemoStep[] = [
   {
     kind: "eliza",
-    text: "Want to keep planning Thursday?",
+    text: "How did the call go? Anything else I can take off your plate today?",
   },
   {
     kind: "user",
-    text: "what was the place you found?",
+    text: "can you book dinner for 4 on thursday? somewhere italian",
   },
   {
     kind: "eliza",
-    text: "Bocca di Bacco near Union Square — quiet, Italian, with vegetarian options.",
+    text: "Via Carota has one table for 4 left at 7:30 on Thursday. Should I book it?",
   },
-  { kind: "user", text: "nice. find me a friday flight to sf too" },
-  {
-    kind: "eliza",
-    text: "Searching current flights now. I'll favor later departures because you told me you hate early flights.",
-  },
+  { kind: "user", text: "book it" },
   {
     kind: "card",
     card: {
-      label: "Memory + search",
-      title: "Friday to San Francisco",
-      rows: ["3 later departures", "Preferences applied"],
-      status: "Shared",
+      label: "Reservation",
+      title: "Via Carota",
+      rows: ["Thursday, 7:30 PM", "Party of 4"],
+      status: "Booked",
     },
   },
-  { kind: "user", text: "I'll decide later" },
-  { kind: "eliza", text: "Perfect. I'll be right here in Messages." },
+  { kind: "eliza", text: "Done. Want me to send the details to the group?" },
+  { kind: "user", text: "oh and I fly to SF on friday" },
+  {
+    kind: "eliza",
+    text: "I see it — UA 512 out of JFK, 9:15 AM. Want me to check you in when it opens and grab your usual aisle seat?",
+  },
+  { kind: "user", text: "yes" },
+  {
+    kind: "card",
+    card: {
+      label: "Flight",
+      title: "UA 512 — JFK to SFO",
+      rows: ["Friday, 9:15 AM", "Seat 14C"],
+      status: "Check-in scheduled",
+    },
+  },
+  {
+    kind: "eliza",
+    text: "Set. One thing — your 9 AM standup overlaps with boarding. Should I move it?",
+  },
+  { kind: "user", text: "good catch, yeah" },
+  { kind: "user", text: "what was that wine we had at dinner last month?" },
+  {
+    kind: "eliza",
+    text: "The 2019 Barolo from Cascina Fontana. You mentioned wanting it for your dad's birthday — that's in 12 days. Should I order a bottle?",
+  },
+  { kind: "user", text: "you're the best. add a card too" },
+  {
+    kind: "card",
+    card: {
+      label: "Reminders",
+      title: "Dad's birthday",
+      rows: ["Barolo, Cascina Fontana '19", "Birthday card"],
+      status: "Reminder set",
+    },
+  },
+  {
+    kind: "eliza",
+    text: "Morning. Quick brief: 3 meetings today, rain at 4 so take a jacket. Inbox is triaged — nothing urgent.",
+  },
+  { kind: "user", text: "what would I do without you" },
+  { kind: "eliza", text: "Happy to help. What's next on your plate?" },
 ];
 
 // Keep only the most recent messages in the DOM; the thread stays pinned to
@@ -140,6 +177,20 @@ const PRE_USER_MS = 815;
 const PRE_ELIZA_MS = 815;
 const PRE_CARD_MS = 975;
 const SEND_HOLD_MS = 650;
+
+const LOCAL_CLOCK_FORMATTER = new Intl.DateTimeFormat(undefined, {
+  hour: "numeric",
+  minute: "2-digit",
+});
+
+function localClock(date: Date, includeDayPeriod: boolean): string {
+  const parts = LOCAL_CLOCK_FORMATTER.formatToParts(date);
+  return parts
+    .filter((part) => includeDayPeriod || part.type !== "dayPeriod")
+    .map((part) => part.value)
+    .join("")
+    .trim();
+}
 
 function settledIntroItems(): DemoItem[] {
   return DEMO_INTRO.map((step, index) =>
@@ -155,7 +206,7 @@ function DemoCardBubble({ card }: { card: DemoCard }) {
       <span className="landing-demo-card-label">{card.label}</span>
       <strong>{card.title}</strong>
       {card.rows.map((row) => (
-        <span key={row} className="landing-demo-card-row">
+        <span className="landing-demo-card-row" key={row}>
           {row}
         </span>
       ))}
@@ -168,12 +219,18 @@ function DemoCardBubble({ card }: { card: DemoCard }) {
 
 function PhoneMockup() {
   const t = useT();
+  const [clock, setClock] = useState(() => new Date());
   const [items, setItems] = useState<DemoItem[]>([]);
   const [phase, setPhase] = useState<"intro" | "looping" | "settled">("intro");
   const [elizaTyping, setElizaTyping] = useState(false);
   const [composerText, setComposerText] = useState("");
   const threadRef = useRef<HTMLDivElement>(null);
   const nextIdRef = useRef(DEMO_INTRO.length);
+
+  useEffect(() => {
+    const interval = window.setInterval(() => setClock(new Date()), 30_000);
+    return () => window.clearInterval(interval);
+  }, []);
 
   useEffect(() => {
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
@@ -259,10 +316,12 @@ function PhoneMockup() {
       <div className="landing-iphone-screen">
         <div className="landing-phone-top">
           <div className="landing-iphone-statusbar">
-            <span className="landing-iphone-time">4:15</span>
+            <span className="landing-iphone-time">
+              {localClock(clock, false)}
+            </span>
             <span className="landing-iphone-island" />
             <span className="landing-iphone-signal">
-              <svg viewBox="0 0 46 12" fill="currentColor" aria-hidden="true">
+              <svg viewBox="0 0 41 12" fill="currentColor" aria-hidden="true">
                 <rect x="0" y="7" width="3" height="5" rx="1" />
                 <rect x="5" y="5" width="3" height="7" rx="1" />
                 <rect x="10" y="3" width="3" height="9" rx="1" />
@@ -270,14 +329,21 @@ function PhoneMockup() {
                 <rect
                   x="24"
                   y="1"
-                  width="20"
+                  width="14"
                   height="10"
-                  rx="3"
+                  rx="2.6"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.2"
+                />
+                <rect x="25.7" y="2.7" width="10" height="6.6" rx="1.2" />
+                <path
+                  d="M39.2 4.1v3.8"
                   fill="none"
                   stroke="currentColor"
                   strokeWidth="1.5"
+                  strokeLinecap="round"
                 />
-                <rect x="26" y="3" width="14" height="6" rx="1.5" />
               </svg>
             </span>
           </div>
@@ -309,7 +375,9 @@ function PhoneMockup() {
         </div>
         <div className="landing-phone-thread" ref={threadRef}>
           <div className="landing-thread-preamble">
-            <span className="landing-thread-timestamp">Today 4:15 PM</span>
+            <span className="landing-thread-timestamp">
+              Today {localClock(clock, true)}
+            </span>
           </div>
           {items.map((item) =>
             item.kind === "card" ? (
@@ -481,6 +549,10 @@ const SESSION_STORAGE_KEY = "eliza_app_session";
 
 export default function LandingPage() {
   const t = useT();
+  const [phoneCopyState, setPhoneCopyState] = useState<
+    "idle" | "copied" | "error"
+  >("idle");
+  const phoneCopyResetRef = useRef<number | null>(null);
   const browserWindow = typeof window === "undefined" ? null : window;
   const signedIn =
     browserWindow !== null &&
@@ -488,6 +560,42 @@ export default function LandingPage() {
   const productNavigation = resolveHomepageProductNavigation(
     browserWindow?.location.hostname ?? "",
   );
+
+  useEffect(
+    () => () => {
+      if (phoneCopyResetRef.current !== null) {
+        window.clearTimeout(phoneCopyResetRef.current);
+      }
+    },
+    [],
+  );
+
+  const copyPhoneNumber = async () => {
+    try {
+      await navigator.clipboard.writeText(ELIZA_PHONE_NUMBER);
+      setPhoneCopyState("copied");
+    } catch {
+      setPhoneCopyState("error");
+    }
+    if (phoneCopyResetRef.current !== null) {
+      window.clearTimeout(phoneCopyResetRef.current);
+    }
+    phoneCopyResetRef.current = window.setTimeout(
+      () => setPhoneCopyState("idle"),
+      2_000,
+    );
+  };
+
+  const phoneCopyLabel =
+    phoneCopyState === "copied"
+      ? t("homepage_eliza.landing.phoneCopied", {
+          defaultValue: "Copied!",
+        })
+      : phoneCopyState === "error"
+        ? t("homepage_eliza.landing.phoneCopyFailed", {
+            defaultValue: "Couldn't copy",
+          })
+        : ELIZA_PHONE_FORMATTED;
   return (
     <div className="landing-page theme-app">
       <Suspense fallback={null}>
@@ -523,13 +631,13 @@ export default function LandingPage() {
         <div className="landing-hero-copy">
           <h1 className="landing-hero-heading">
             {t("homepage_eliza.landing.heroTitle", {
-              defaultValue: "Your personal Eliza starts with one message.",
+              defaultValue: "Four hours of your time back every week.",
             })}
           </h1>
           <p className="landing-hero-lede">
             {t("homepage_eliza.landing.heroLede", {
               defaultValue:
-                "No account, app, card, or setup. Text Eliza and start free on Shared.",
+                "Hey, I'm Eliza — your personal assistant. I'm here to save you time and take things off your plate.",
             })}
           </p>
           <div className="landing-hero-actions">
@@ -539,17 +647,20 @@ export default function LandingPage() {
             >
               <IMessageIcon className="size-5" />
               {t("homepage_eliza.landing.ctaText", {
-                defaultValue: "Message Eliza",
+                defaultValue: "Text Eliza",
               })}
             </a>
           </div>
-          <p className="landing-phone-number">{ELIZA_PHONE_FORMATTED}</p>
-          <p className="landing-continuity-note">
-            {t("homepage_eliza.landing.continuity", {
-              defaultValue:
-                "Mostly live in Messages. Sign in with the same number later for voice, history, and controls in the app.",
+          <button
+            type="button"
+            className="landing-phone-number"
+            onClick={() => void copyPhoneNumber()}
+            aria-label={t("homepage_eliza.landing.copyPhone", {
+              defaultValue: "Copy Eliza's phone number",
             })}
-          </p>
+          >
+            <span aria-live="polite">{phoneCopyLabel}</span>
+          </button>
         </div>
         <PhoneMockup />
       </main>

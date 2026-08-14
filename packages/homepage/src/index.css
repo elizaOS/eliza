@@ -1329,7 +1329,7 @@ body {
 
 /* ---------------------------------------------------------------------------
  * Landing page ("/"): a single orange-drenched viewport. One headline, the
- * iMessage entrypoint, and an iPhone-styled Shared preview. The only
+ * iMessage entrypoint, and an iPhone-styled assistant preview. The only
  * motion is the chat-bubble entrance, suppressed by the reduced-motion
  * override above.
  * ------------------------------------------------------------------------- */
@@ -1419,11 +1419,11 @@ body {
 }
 
 .landing-hero-lede {
-  margin: 1.25rem 0 0;
-  max-width: 31rem;
-  font-size: clamp(1.05rem, 1.6vw, 1.3rem);
+  margin: 1.5rem 0 0;
+  max-width: 30rem;
+  font-size: clamp(1.15rem, 1.8vw, 1.45rem);
   font-weight: 400;
-  line-height: 1.45;
+  line-height: 1.35;
   text-wrap: pretty;
 }
 
@@ -1437,19 +1437,29 @@ body {
 }
 
 .landing-phone-number {
+  display: inline-flex;
+  align-items: center;
+  min-height: 2.75rem;
   margin: 0.8rem 0 0;
+  padding: 0 0.75rem;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: #111;
   font-size: 0.92rem;
   font-weight: 650;
   letter-spacing: 0.02em;
+  cursor: pointer;
+  transition: background-color 160ms ease-out;
 }
 
-.landing-continuity-note {
-  margin: 1.15rem 0 0;
-  max-width: 29rem;
-  color: rgb(0 0 0 / 68%);
-  font-size: 0.92rem;
-  line-height: 1.45;
-  text-wrap: pretty;
+.landing-phone-number:hover {
+  background: rgb(255 255 255 / 48%);
+}
+
+.landing-phone-number:focus-visible {
+  outline: 3px solid #111;
+  outline-offset: 2px;
 }
 
 .landing-cta {
@@ -1562,17 +1572,31 @@ body {
 
 .landing-iphone-signal {
   display: inline-flex;
-  width: 2.9rem;
+  width: 2.75rem;
   color: #111;
 }
 
 .landing-iphone-homebar {
-  align-self: center;
+  position: relative;
+  flex: 0 0 1.35rem;
+  align-self: stretch;
+  width: 100%;
+  height: 1.35rem;
+  margin: 0;
+  background: #ffffff;
+  transition: background-color 320ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.landing-iphone-homebar::after {
+  position: absolute;
+  left: 50%;
+  bottom: 0.4rem;
   width: 7.5rem;
   height: 0.3rem;
-  margin: 0.35rem 0 0.55rem;
+  transform: translateX(-50%);
   border-radius: 999px;
   background: rgb(0 0 0 / 28%);
+  content: "";
 }
 
 .landing-phone-header {
@@ -1798,7 +1822,7 @@ body {
   height: 0.45rem;
   border-radius: 50%;
   background: #9a9aa0;
-  animation: landing-typing-bounce 1.2s ease-in-out infinite;
+  animation: landing-typing-pulse 1.2s ease-out infinite;
 }
 
 .landing-typing span:nth-child(2) {
@@ -1809,20 +1833,17 @@ body {
   animation-delay: 0.3s;
 }
 
-@keyframes landing-typing-bounce {
+@keyframes landing-typing-pulse {
   0%,
   60%,
   100% {
-    transform: translateY(0);
     opacity: 0.55;
   }
   30% {
-    transform: translateY(-3px);
     opacity: 1;
   }
 }
 
-/* iMessage-style embed cards */
 .landing-bubble-card {
   align-self: flex-start;
   max-width: 88%;
@@ -1844,31 +1865,45 @@ body {
 }
 
 .landing-demo-card-label {
+  color: #8e8e93;
   font-size: 0.68rem;
   font-weight: 600;
-  text-transform: uppercase;
   letter-spacing: 0.05em;
-  color: #8e8e93;
+  text-transform: uppercase;
 }
 
 .landing-demo-card strong {
   color: #111;
-  font-size: 0.95rem;
+  font-size: 0.96rem;
+  text-wrap: pretty;
 }
 
 .landing-demo-card-row {
   color: #5b5b60;
+  text-wrap: pretty;
 }
 
 .landing-demo-card-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
   margin-top: 0.25rem;
-  width: fit-content;
-  padding: 0.12rem 0.55rem;
-  border-radius: 999px;
-  background: rgb(52 199 89 / 14%);
-  color: #1d7a3d;
+  color: #5b5b60;
   font-size: 0.76rem;
   font-weight: 600;
+}
+
+.landing-demo-card-status::before {
+  display: inline-grid;
+  width: 0.9rem;
+  height: 0.9rem;
+  place-items: center;
+  border: 1px solid #8e8e93;
+  border-radius: 50%;
+  color: #5b5b60;
+  content: "✓";
+  font-size: 0.58rem;
+  line-height: 1;
 }
 
 /* iOS-style keyboard shown while the demo user is typing */
@@ -1885,6 +1920,10 @@ body {
 .landing-keyboard[data-open="true"] {
   max-height: 14rem;
   opacity: 1;
+}
+
+.landing-keyboard[data-open="true"] + .landing-iphone-homebar {
+  background: #d3d6dd;
 }
 
 .landing-keyboard-inner {

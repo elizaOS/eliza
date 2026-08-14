@@ -332,18 +332,25 @@ test("connected page exercises account menu, copy controls, link-phone form, and
 });
 
 test("landing makes iMessage the single zero-friction entrypoint", async ({
+  context,
   page,
 }) => {
+  await context.grantPermissions(["clipboard-write"]);
   await page.goto("/");
 
   await expect(
-    page.getByRole("heading", { name: /personal Eliza starts/ }),
+    page.getByRole("heading", { name: /Four hours of your time back/ }),
   ).toBeVisible({ timeout: 20_000 });
 
-  const textCta = page.getByRole("link", { name: "Message Eliza" });
+  const textCta = page.getByRole("link", { name: "Text Eliza" });
   await expect(textCta).toBeVisible();
   await expect(textCta).toHaveAttribute("href", /^sms:\+18087881821/);
-  await expect(page.getByText("+1 (808) 788-1821")).toBeVisible();
+  const phoneNumber = page.getByRole("button", {
+    name: "Copy Eliza's phone number",
+  });
+  await expect(phoneNumber).toHaveText("+1 (808) 788-1821");
+  await phoneNumber.click();
+  await expect(phoneNumber).toHaveText("Copied!");
   await expect(page.getByRole("link", { name: "Call" })).toHaveCount(0);
   await expect(page.locator(".landing-channel")).toHaveCount(0);
 });

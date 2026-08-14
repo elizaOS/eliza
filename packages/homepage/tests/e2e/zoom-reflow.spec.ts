@@ -62,7 +62,7 @@ for (const viewport of REFLOW_VIEWPORTS) {
     await expectNoUnreachableOverflow(page);
     // The zoomed page may scroll vertically; each control must be reachable
     // by scrolling and fit fully inside the viewport once scrolled to.
-    const textCta = page.getByRole("link", { name: "Message Eliza" });
+    const textCta = page.getByRole("link", { name: "Text Eliza" });
     await textCta.scrollIntoViewIfNeeded();
     await expectFullyInViewport(page, textCta);
     await expect(page.getByText("+1 (808) 788-1821")).toBeVisible();
