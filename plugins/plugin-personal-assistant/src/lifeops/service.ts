@@ -172,6 +172,11 @@ import type {
   UpdateLifeOpsWorkflowRequest,
 } from "../contracts/index.js";
 import { loadLifeOpsAppState } from "./app-state.js";
+import {
+  buildCommitmentRegretAudit,
+  type LifeOpsCommitmentKind,
+  type LifeOpsCommitmentSource,
+} from "./commitments/ledger.js";
 import { resolveDefaultTimeZone } from "./defaults.js";
 import { BrowserDomain } from "./domains/browser-service.js";
 import { CalendarDomain } from "./domains/calendar-service.js";
@@ -251,6 +256,27 @@ type ScreenTimeWeeklyAverageResponse = {
   totalSeconds: number;
   daysInWindow: number;
 };
+
+export interface LifeOpsCommitmentRegretAuditItem {
+  readonly id: string;
+  readonly source: LifeOpsCommitmentSource;
+  readonly kind: LifeOpsCommitmentKind;
+  readonly summary: string;
+  readonly counterparty: string | null;
+  readonly dueAt: string | null;
+  readonly confidence: number;
+  readonly status: "open" | "tracked";
+  readonly scheduledTaskId: string | null;
+  readonly score: number;
+  readonly reasons: readonly string[];
+}
+
+export interface LifeOpsCommitmentRegretAuditResponse {
+  readonly generatedAt: string;
+  readonly horizonDays: number;
+  readonly horizonEndAt: string;
+  readonly items: readonly LifeOpsCommitmentRegretAuditItem[];
+}
 
 type XReadOpts = {
   limit?: number;
@@ -1760,6 +1786,46 @@ export class LifeOpsService extends LifeOpsServiceBase {
 
   async getOverview(now = new Date()): Promise<LifeOpsOverview> {
     return this.goalsDomain.getOverview(now);
+  }
+
+  /**
+   * Rank the current agent's active commitments for owner review. The scoring
+   * horizon changes urgency reasons; it does not hide undated or later active
+   * obligations, so the response intentionally represents the complete active
+   * ledger. Persistence-only identity and metadata fields stay behind the
+   * service boundary rather than becoming part of the HTTP contract.
+   */
+  async getCommitmentRegretAudit(input: {
+    horizonDays: number;
+    nowIso?: string;
+  }): Promise<LifeOpsCommitmentRegretAuditResponse> {
+    const generatedAt = input.nowIso ?? new Date().toISOString();
+    const records = await this.repository.listCommitmentLedgerRecords(
+      this.agentId(),
+      { statuses: ["open", "tracked"] },
+    );
+    const audit = buildCommitmentRegretAudit(records, {
+      nowIso: generatedAt,
+      horizonDays: input.horizonDays,
+    });
+    return {
+      generatedAt: audit.generatedAt,
+      horizonDays: input.horizonDays,
+      horizonEndAt: audit.horizonEndAt,
+      items: audit.items.map(({ record, score, reasons }) => ({
+        id: record.id,
+        source: record.source,
+        kind: record.kind,
+        summary: record.summary,
+        counterparty: record.counterparty,
+        dueAt: record.dueAt,
+        confidence: record.confidence,
+        status: record.status,
+        scheduledTaskId: record.scheduledTaskId,
+        score,
+        reasons,
+      })),
+    };
   }
 
   /**

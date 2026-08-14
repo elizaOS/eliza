@@ -246,6 +246,32 @@ describe("LifeOps raw route owner/admin gate", () => {
     }
   });
 
+  it("mounts the commitment regret audit behind the owner/admin gate", async () => {
+    const route = findRoute("GET", "/api/lifeops/commitments/regret-audit");
+    const denied = createResponse();
+
+    expect(route.public).not.toBe(true);
+    await route.handler(
+      createRequest("/api/lifeops/commitments/regret-audit") as never,
+      denied as never,
+      createRuntime() as never,
+    );
+    expect(denied.statusCode).toBe(401);
+    expect(JSON.parse(denied.body)).toEqual({ error: "Unauthorized" });
+
+    process.env.ELIZA_API_TOKEN = "owner-token";
+    const allowed = createResponse();
+    await route.handler(
+      createRequest("/api/lifeops/commitments/regret-audit", {
+        authorization: "Bearer owner-token",
+      }) as never,
+      allowed as never,
+      createRuntime() as never,
+    );
+    expect(allowed.statusCode).toBe(200);
+    expect(allowed.writableEnded).toBe(false);
+  });
+
   it("does not wrap public OAuth callback routes with the owner/admin gate", async () => {
     const route = findRoute("GET", "/api/connectors/google/oauth/callback");
     const res = createResponse();

@@ -276,6 +276,7 @@ type RouteSpec = PrivateRouteSpec | PublicRouteSpec;
 const LIFEOPS_STATIC_ROUTES: RouteSpec[] = [
   { type: "GET", path: "/api/lifeops/app-state" },
   { type: "PUT", path: "/api/lifeops/app-state" },
+  { type: "GET", path: "/api/lifeops/commitments/regret-audit" },
   { type: "GET", path: "/api/lifeops/capabilities" },
   { type: "GET", path: "/api/lifeops/calendar/feed" },
   { type: "GET", path: "/api/lifeops/calendar/sources" },

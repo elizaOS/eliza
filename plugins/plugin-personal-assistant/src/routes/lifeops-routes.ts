@@ -245,6 +245,8 @@ type LifeOpsRateLimitOperation = keyof typeof LIFEOPS_RATE_LIMITS;
 
 const ACTIVITY_SIGNALS_DEFAULT_LIMIT = 200;
 const ACTIVITY_SIGNALS_MAX_LIMIT = 500;
+const COMMITMENT_REGRET_AUDIT_DEFAULT_HORIZON_DAYS = 7;
+const COMMITMENT_REGRET_AUDIT_MAX_HORIZON_DAYS = 365;
 const MS_PER_DAY = 86_400_000;
 const MAX_SCREEN_TIME_WINDOW_DAYS = 31;
 const MAX_SCREEN_TIME_WINDOW_MS = MAX_SCREEN_TIME_WINDOW_DAYS * MS_PER_DAY;
@@ -1180,6 +1182,22 @@ export async function handleLifeOpsRoutes(
     if (!runtime) return true;
     json(res, await loadLifeOpsAppState(runtime));
     return true;
+  }
+
+  if (
+    method === "GET" &&
+    pathname === "/api/lifeops/commitments/regret-audit"
+  ) {
+    res.setHeader("cache-control", "no-store");
+    return runRoute(ctx, async (service) => {
+      const horizonDays =
+        parsePositiveIntegerQuery(
+          url.searchParams.get("horizonDays"),
+          "horizonDays",
+          { max: COMMITMENT_REGRET_AUDIT_MAX_HORIZON_DAYS },
+        ) ?? COMMITMENT_REGRET_AUDIT_DEFAULT_HORIZON_DAYS;
+      json(res, await service.getCommitmentRegretAudit({ horizonDays }));
+    });
   }
 
   if (method === "POST" && pathname === "/api/lifeops/features/toggle") {

@@ -65,10 +65,15 @@ export interface DocumentObligationInput {
 }
 
 export interface CommitmentRegretAuditItem {
-  record: LifeOpsCommitmentLedgerRecord;
+  record: ActiveLifeOpsCommitmentLedgerRecord;
   score: number;
   reasons: string[];
 }
+
+export type ActiveLifeOpsCommitmentLedgerRecord =
+  LifeOpsCommitmentLedgerRecord & {
+    status: "open" | "tracked";
+  };
 
 export interface CommitmentRegretAudit {
   generatedAt: string;
@@ -274,7 +279,10 @@ export function buildCommitmentRegretAudit(
   const horizonEnd = addUtcDays(now, args.horizonDays ?? 7);
   const horizonEndAt = horizonEnd.toISOString();
   const items = records
-    .filter((record) => record.status === "open" || record.status === "tracked")
+    .filter(
+      (record): record is ActiveLifeOpsCommitmentLedgerRecord =>
+        record.status === "open" || record.status === "tracked",
+    )
     .map((record): CommitmentRegretAuditItem => {
       const reasons: string[] = [];
       let score = record.confidence;
