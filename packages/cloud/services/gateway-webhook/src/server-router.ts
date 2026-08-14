@@ -15,6 +15,12 @@ const AGENT_ID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const DNS_HOSTNAME_PATTERN =
   /^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)*[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/i;
+const CANONICAL_ROUTER_ORIGIN_BY_AGENT_DOMAIN: Readonly<
+  Record<string, string>
+> = Object.freeze({
+  "cloud.eliza.app": "eliza-production-1.eliza.app",
+  "cloud-staging.eliza.app": "eliza-staging-1.eliza.app",
+});
 
 interface CanonicalAgentFallbackTarget {
   baseUrl: string;
@@ -50,29 +56,35 @@ export function getCanonicalAgentFallbackTarget(
   if (!AGENT_ID_PATTERN.test(agentId)) return null;
   const normalizedAgentId = agentId.toLowerCase();
   const routerOriginHost = env.AGENT_ROUTER_ORIGIN_HOST?.trim();
-  if (!routerOriginHost) {
-    return {
-      baseUrl: `https://${normalizedAgentId}.elizacloud.ai/api`,
-    };
-  }
-  const agentBaseDomain =
-    env.ELIZA_CLOUD_AGENT_BASE_DOMAIN?.trim() || "cloud.eliza.app";
-  const forwardedHost = `${normalizedAgentId}.${agentBaseDomain.toLowerCase()}`;
+  const agentBaseDomain = env.ELIZA_CLOUD_AGENT_BASE_DOMAIN?.trim();
+  if (!routerOriginHost || !agentBaseDomain) return null;
+  const normalizedRouterOriginHost = routerOriginHost.toLowerCase();
+  const normalizedAgentBaseDomain = agentBaseDomain.toLowerCase();
   if (
-    !DNS_HOSTNAME_PATTERN.test(routerOriginHost) ||
+    CANONICAL_ROUTER_ORIGIN_BY_AGENT_DOMAIN[normalizedAgentBaseDomain] !==
+    normalizedRouterOriginHost
+  ) {
+    return null;
+  }
+  const forwardedHost = `${normalizedAgentId}.${normalizedAgentBaseDomain}`;
+  if (
+    !DNS_HOSTNAME_PATTERN.test(normalizedRouterOriginHost) ||
     !DNS_HOSTNAME_PATTERN.test(forwardedHost)
   ) {
     return null;
   }
   return {
-    baseUrl: `https://${routerOriginHost}/api`,
+    baseUrl: `https://${normalizedRouterOriginHost}/api`,
     forwardedHost,
   };
 }
 
 /** Returns the selected fallback base URL for compatibility callers. */
-export function getCanonicalAgentFallbackBase(agentId: string): string | null {
-  return getCanonicalAgentFallbackTarget(agentId)?.baseUrl ?? null;
+export function getCanonicalAgentFallbackBase(
+  agentId: string,
+  env: CanonicalAgentFallbackEnv = process.env,
+): string | null {
+  return getCanonicalAgentFallbackTarget(agentId, env)?.baseUrl ?? null;
 }
 
 export async function resolveIdentity(
