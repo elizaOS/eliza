@@ -164,12 +164,19 @@ try {
 
   assert(sink.errors.length === 0, `NO PAGE ERRORS (${JSON.stringify(sink.errors.slice(0, 4))})`);
 
+  // The renderer bridge is fire-and-forget. Disarm it before stop() emits its
+  // final state so no page.evaluate can race the page/context shutdown below.
+  manager.setSendToWebview(() => {});
   await manager.stop();
   await p.close();
   await ctx.close();
 } finally {
-  await browser.close();
-  await manager.stop().catch(() => {});
+  manager.setSendToWebview(() => {});
+  try {
+    await manager.stop();
+  } finally {
+    await browser.close();
+  }
 }
 
 await renameRecordedVideo({ videoDir, outDir, name: "fused-wake-integration.webm" });
