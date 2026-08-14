@@ -281,7 +281,9 @@ function buildStateFromRecord(
     accountId,
     TWITTER_ACCOUNT_ID: accountId,
     TWITTER_AUTH_MODE:
-      authMode === "oauth" || authMode === "env" ? authMode : undefined,
+      authMode === "oauth" || authMode === "env" || authMode === "broker"
+        ? authMode
+        : undefined,
     TWITTER_API_KEY: readRawField(record, ["TWITTER_API_KEY", "apiKey"]),
     TWITTER_API_SECRET_KEY: readRawField(record, [
       "TWITTER_API_SECRET_KEY",
@@ -321,7 +323,9 @@ function buildDefaultState(
     accountId,
     TWITTER_ACCOUNT_ID: accountId,
     TWITTER_AUTH_MODE:
-      authMode === "env" || authMode === "oauth" ? authMode : undefined,
+      authMode === "env" || authMode === "oauth" || authMode === "broker"
+        ? authMode
+        : undefined,
     TWITTER_API_KEY:
       state?.TWITTER_API_KEY ?? readSetting(runtime, state, "TWITTER_API_KEY"),
     TWITTER_API_SECRET_KEY:

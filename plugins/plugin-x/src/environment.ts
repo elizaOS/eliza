@@ -18,7 +18,7 @@ import { getSetting } from "./utils/settings";
  */
 export const twitterEnvSchema = z.object({
   // Auth mode
-  TWITTER_AUTH_MODE: z.enum(["env", "oauth"]).default("env"),
+  TWITTER_AUTH_MODE: z.enum(["env", "oauth", "broker"]).default("env"),
 
   // Account routing. TWITTER_ACCOUNTS may contain sensitive credentials.
   TWITTER_ACCOUNT_ID: z.string().default(""),
@@ -36,7 +36,11 @@ export const twitterEnvSchema = z.object({
   TWITTER_REDIRECT_URI: z.string().default(""),
   TWITTER_SCOPES: z
     .string()
-    .default("tweet.read tweet.write users.read offline.access"),
+    .default(
+      "tweet.read tweet.write users.read dm.read dm.write offline.access",
+    ),
+  TWITTER_BROKER_URL: z.string().default(""),
+  TWITTER_BROKER_TOKEN: z.string().default(""),
 
   // Core configuration
   TWITTER_DRY_RUN: z.string().default("false"),
@@ -45,6 +49,8 @@ export const twitterEnvSchema = z.object({
   // Feature toggles
   TWITTER_ENABLE_POST: z.string().default("false"),
   TWITTER_ENABLE_REPLIES: z.string().default("true"),
+  TWITTER_ENABLE_DMS: z.string().default("true"),
+  TWITTER_DM_POLL_INTERVAL_SECONDS: z.string().default("60"),
   TWITTER_ENABLE_ACTIONS: z.string().default("false"), // likes, retweets, quotes
 
   // Timing configuration (all in minutes)
@@ -140,10 +146,10 @@ export async function validateTwitterConfig(
       typeof rawMode === "string" && rawMode.trim() ? rawMode.trim() : "env";
 
     const isAuthMode = (v: string): v is TwitterConfig["TWITTER_AUTH_MODE"] =>
-      v === "env" || v === "oauth";
+      v === "env" || v === "oauth" || v === "broker";
     if (!isAuthMode(normalizedMode)) {
       throw new Error(
-        `Invalid TWITTER_AUTH_MODE=${normalizedMode}. Expected env|oauth.`,
+        `Invalid TWITTER_AUTH_MODE=${normalizedMode}. Expected env|oauth|broker.`,
       );
     }
 
@@ -186,7 +192,15 @@ export async function validateTwitterConfig(
       TWITTER_SCOPES:
         config.TWITTER_SCOPES ??
         getSetting(runtime, "TWITTER_SCOPES") ??
-        "tweet.read tweet.write users.read offline.access",
+        "tweet.read tweet.write users.read dm.read dm.write offline.access",
+      TWITTER_BROKER_URL:
+        config.TWITTER_BROKER_URL ??
+        getSetting(runtime, "TWITTER_BROKER_URL") ??
+        "",
+      TWITTER_BROKER_TOKEN:
+        config.TWITTER_BROKER_TOKEN ??
+        getSetting(runtime, "TWITTER_BROKER_TOKEN") ??
+        "",
       TWITTER_DRY_RUN: String(
         (
           config.TWITTER_DRY_RUN ??
@@ -211,6 +225,20 @@ export async function validateTwitterConfig(
           : (
               getSetting(runtime, "TWITTER_ENABLE_REPLIES") ?? "true"
             ).toLowerCase() === "true",
+      ),
+      TWITTER_ENABLE_DMS: String(
+        (
+          config.TWITTER_ENABLE_DMS ??
+          getSetting(runtime, "TWITTER_ENABLE_DMS") ??
+          "true"
+        ).toLowerCase() === "true",
+      ),
+      TWITTER_DM_POLL_INTERVAL_SECONDS: String(
+        safeParseInt(
+          config.TWITTER_DM_POLL_INTERVAL_SECONDS ??
+            getSetting(runtime, "TWITTER_DM_POLL_INTERVAL_SECONDS"),
+          60,
+        ),
       ),
       TWITTER_ENABLE_ACTIONS: String(
         (
@@ -320,9 +348,18 @@ export async function validateTwitterConfig(
           "Twitter OAuth is selected (TWITTER_AUTH_MODE=oauth). Please set TWITTER_CLIENT_ID and TWITTER_REDIRECT_URI",
         );
       }
+    } else if (mode === "broker") {
+      const brokerToken =
+        validatedConfig.TWITTER_BROKER_TOKEN ||
+        getSetting(runtime, "ELIZAOS_CLOUD_API_KEY");
+      if (!brokerToken) {
+        throw new Error(
+          "Twitter broker auth requires TWITTER_BROKER_TOKEN or ELIZAOS_CLOUD_API_KEY",
+        );
+      }
     } else {
       throw new Error(
-        `Invalid TWITTER_AUTH_MODE=${validatedConfig.TWITTER_AUTH_MODE}. Expected env|oauth.`,
+        `Invalid TWITTER_AUTH_MODE=${validatedConfig.TWITTER_AUTH_MODE}. Expected env|oauth|broker.`,
       );
     }
 
@@ -374,7 +411,7 @@ function getEnvConfig(): Partial<TwitterConfig> {
     const value = getConfig(typedKey);
     if (value !== undefined) {
       if (typedKey === "TWITTER_AUTH_MODE") {
-        if (value === "env" || value === "oauth") {
+        if (value === "env" || value === "oauth" || value === "broker") {
           config.TWITTER_AUTH_MODE = value;
         }
       } else {
@@ -400,7 +437,9 @@ function getDefaultConfig(): TwitterConfig {
 
   const rawAuthMode = getConfig("TWITTER_AUTH_MODE");
   const TWITTER_AUTH_MODE: TwitterConfig["TWITTER_AUTH_MODE"] =
-    rawAuthMode === "env" || rawAuthMode === "oauth" ? rawAuthMode : "env";
+    rawAuthMode === "env" || rawAuthMode === "oauth" || rawAuthMode === "broker"
+      ? rawAuthMode
+      : "env";
 
   return {
     TWITTER_AUTH_MODE,
@@ -415,11 +454,16 @@ function getDefaultConfig(): TwitterConfig {
     TWITTER_REDIRECT_URI: getConfig("TWITTER_REDIRECT_URI") || "",
     TWITTER_SCOPES:
       getConfig("TWITTER_SCOPES") ||
-      "tweet.read tweet.write users.read offline.access",
+      "tweet.read tweet.write users.read dm.read dm.write offline.access",
+    TWITTER_BROKER_URL: getConfig("TWITTER_BROKER_URL") || "",
+    TWITTER_BROKER_TOKEN: getConfig("TWITTER_BROKER_TOKEN") || "",
     TWITTER_DRY_RUN: getConfig("TWITTER_DRY_RUN") || "false",
     TWITTER_TARGET_USERS: getConfig("TWITTER_TARGET_USERS") || "",
     TWITTER_ENABLE_POST: getConfig("TWITTER_ENABLE_POST") || "false",
     TWITTER_ENABLE_REPLIES: getConfig("TWITTER_ENABLE_REPLIES") || "true",
+    TWITTER_ENABLE_DMS: getConfig("TWITTER_ENABLE_DMS") || "true",
+    TWITTER_DM_POLL_INTERVAL_SECONDS:
+      getConfig("TWITTER_DM_POLL_INTERVAL_SECONDS") || "60",
     TWITTER_ENABLE_ACTIONS: getConfig("TWITTER_ENABLE_ACTIONS") || "false",
     TWITTER_POST_INTERVAL: getConfig("TWITTER_POST_INTERVAL") || "120",
     TWITTER_POST_INTERVAL_MIN: getConfig("TWITTER_POST_INTERVAL_MIN") || "90",

@@ -126,6 +126,14 @@ export class Client {
   }
 
   /**
+   * Returns the authenticated API v2 client for connector-level capabilities
+   * that are not yet wrapped by this class, such as DM event polling.
+   */
+  public async getV2Client() {
+    return this.requireAuth().getV2Client();
+  }
+
+  /**
    * Fetches a Twitter profile.
    * @param username The Twitter username of the profile to fetch, without an `@` at the beginning.
    * @returns The requested {@link Profile}.

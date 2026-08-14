@@ -36,6 +36,7 @@ import {
 } from "../client/accounts.js";
 import { SearchMode } from "../client/index.js";
 import { materializeEnvAccountIfMissing } from "../connector-account-provider.js";
+import { TwitterDirectMessageClient } from "../direct-messages";
 import { TwitterDiscoveryClient } from "../discovery";
 import { validateTwitterConfig } from "../environment";
 import { TwitterInteractionClient } from "../interactions";
@@ -71,7 +72,7 @@ export interface XAccountCapabilityStatus {
   identity: Record<string, unknown> | null;
   grantedCapabilities: XAccountCapability[];
   grantedScopes: string[];
-  authMode: "env" | "oauth";
+  authMode: "env" | "oauth" | "broker";
 }
 
 type XMessageConnectorRegistration = Parameters<
@@ -189,7 +190,7 @@ function capabilitiesForXAuthState(state: TwitterClientState): {
   capabilities: XAccountCapability[];
   scopes: string[];
 } {
-  const mode = state.TWITTER_AUTH_MODE === "oauth" ? "oauth" : "env";
+  const mode = state.TWITTER_AUTH_MODE ?? "env";
   if (mode === "env") {
     return {
       capabilities: ["x.read", "x.write", "x.dm.read", "x.dm.write"],
@@ -230,6 +231,7 @@ export class TwitterClientInstance implements ITwitterClient {
   interaction?: TwitterInteractionClient;
   timeline?: TwitterTimelineClient;
   discovery?: TwitterDiscoveryClient;
+  directMessages?: TwitterDirectMessageClient;
   readonly accountId: string;
 
   constructor(runtime: IAgentRuntime, state: TwitterClientState) {
@@ -272,6 +274,20 @@ export class TwitterClientInstance implements ITwitterClient {
       );
     } else {
       logger.info("Twitter replies/interactions are DISABLED");
+    }
+
+    const directMessagesEnabled =
+      (getSetting(runtime, "TWITTER_ENABLE_DMS") ??
+        process.env.TWITTER_ENABLE_DMS) !== "false";
+    if (directMessagesEnabled) {
+      logger.info("Twitter direct-message replies are ENABLED");
+      this.directMessages = new TwitterDirectMessageClient(
+        this.client,
+        runtime,
+        state,
+      );
+    } else {
+      logger.info("Twitter direct-message replies are DISABLED");
     }
 
     // Timeline actions (likes, retweets, replies)
@@ -438,19 +454,24 @@ export class XService extends Service {
       state,
       accountIdInput,
     );
-    const authMode = state.TWITTER_AUTH_MODE === "oauth" ? "oauth" : "env";
+    const authMode = state.TWITTER_AUTH_MODE ?? "env";
     const missing =
-      authMode === "env"
-        ? [
-            ["TWITTER_API_KEY", state.TWITTER_API_KEY],
-            ["TWITTER_API_SECRET_KEY", state.TWITTER_API_SECRET_KEY],
-            ["TWITTER_ACCESS_TOKEN", state.TWITTER_ACCESS_TOKEN],
-            ["TWITTER_ACCESS_TOKEN_SECRET", state.TWITTER_ACCESS_TOKEN_SECRET],
-          ].filter(([, value]) => typeof value !== "string" || !value.trim())
-        : [
-            ["TWITTER_CLIENT_ID", state.TWITTER_CLIENT_ID],
-            ["TWITTER_REDIRECT_URI", state.TWITTER_REDIRECT_URI],
-          ].filter(([, value]) => typeof value !== "string" || !value.trim());
+      authMode === "broker"
+        ? []
+        : authMode === "env"
+          ? [
+              ["TWITTER_API_KEY", state.TWITTER_API_KEY],
+              ["TWITTER_API_SECRET_KEY", state.TWITTER_API_SECRET_KEY],
+              ["TWITTER_ACCESS_TOKEN", state.TWITTER_ACCESS_TOKEN],
+              [
+                "TWITTER_ACCESS_TOKEN_SECRET",
+                state.TWITTER_ACCESS_TOKEN_SECRET,
+              ],
+            ].filter(([, value]) => typeof value !== "string" || !value.trim())
+          : [
+              ["TWITTER_CLIENT_ID", state.TWITTER_CLIENT_ID],
+              ["TWITTER_REDIRECT_URI", state.TWITTER_REDIRECT_URI],
+            ].filter(([, value]) => typeof value !== "string" || !value.trim());
 
     if (missing.length > 0) {
       return {
@@ -519,6 +540,13 @@ export class XService extends Service {
         `💬 Starting Twitter interaction client for accountId=${instance.accountId}...`,
       );
       await instance.interaction.start();
+    }
+
+    if (instance.directMessages) {
+      logger.log(
+        `✉️ Starting Twitter direct-message client for accountId=${instance.accountId}...`,
+      );
+      await instance.directMessages.start();
     }
 
     if (instance.timeline) {
@@ -1200,12 +1228,7 @@ export class XService extends Service {
     };
   }> {
     const base = (await this.getTwitterClientForAccount(accountId)).client;
-    const auth = (base as { auth?: { getV2Client: () => Promise<unknown> } })
-      ?.auth;
-    if (!auth) {
-      throw new Error("X auth client not initialized");
-    }
-    return (await auth.getV2Client()) as {
+    return (await base.twitterClient.getV2Client()) as unknown as {
       v2: {
         sendDmToParticipant?: (
           participantId: string,
@@ -1506,6 +1529,10 @@ export class XService extends Service {
 
       if (client.discovery) {
         await client.discovery.stop();
+      }
+
+      if (client.directMessages) {
+        await client.directMessages.stop();
       }
     }
 

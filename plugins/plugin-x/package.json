@@ -92,7 +92,7 @@
     "pluginParameters": {
       "TWITTER_AUTH_MODE": {
         "type": "string",
-        "description": "Auth mode: 'env' (static keys/tokens) or 'oauth' (3-legged OAuth2 PKCE).",
+        "description": "Auth mode: 'broker' (Eliza Cloud), 'env' (static keys/tokens), or 'oauth' (3-legged OAuth2 PKCE).",
         "required": false,
         "default": "env",
         "sensitive": false
@@ -157,8 +157,21 @@
         "type": "string",
         "description": "OAuth2 scopes (space-separated).",
         "required": false,
-        "default": "tweet.read tweet.write users.read offline.access",
+        "default": "tweet.read tweet.write users.read dm.read dm.write offline.access",
         "sensitive": false
+      },
+      "TWITTER_BROKER_URL": {
+        "type": "string",
+        "description": "Eliza Cloud X broker base URL; override only for a self-hosted cloud API.",
+        "required": false,
+        "default": "https://cloud.eliza.app/api/v1/twitter",
+        "sensitive": false
+      },
+      "TWITTER_BROKER_TOKEN": {
+        "type": "string",
+        "description": "Optional broker credential; managed agents use ELIZAOS_CLOUD_API_KEY automatically.",
+        "required": false,
+        "sensitive": true
       },
       "TWITTER_TARGET_USERS": {
         "type": "string",
@@ -326,6 +339,20 @@
         "description": "Enable mention and reply handling.",
         "required": false,
         "default": true,
+        "sensitive": false
+      },
+      "TWITTER_ENABLE_DMS": {
+        "type": "boolean",
+        "description": "Enable inbound direct-message polling and agent replies.",
+        "required": false,
+        "default": true,
+        "sensitive": false
+      },
+      "TWITTER_DM_POLL_INTERVAL_SECONDS": {
+        "type": "number",
+        "description": "Interval in seconds between direct-message inbox polls (minimum 15).",
+        "required": false,
+        "default": 60,
         "sensitive": false
       },
       "TWITTER_ENABLE_DISCOVERY": {

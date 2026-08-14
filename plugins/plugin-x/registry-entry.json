@@ -58,7 +58,7 @@
       "type": "string",
       "required": false,
       "sensitive": false,
-      "default": "tweet.read tweet.write users.read offline.access",
+      "default": "tweet.read tweet.write users.read dm.read dm.write offline.access",
       "label": "OAuth Scopes",
       "help": "Space-separated OAuth2 scopes requested by plugin-twitter.",
       "advanced": true,
@@ -157,6 +157,24 @@
       "label": "Enable Replies",
       "help": "Allow the connector to reply to mentions and conversations.",
       "advanced": false
+    },
+    "TWITTER_ENABLE_DMS": {
+      "type": "boolean",
+      "required": false,
+      "sensitive": false,
+      "default": true,
+      "label": "Enable DM Replies",
+      "help": "Poll inbound direct messages and route them through the agent message loop.",
+      "advanced": false
+    },
+    "TWITTER_DM_POLL_INTERVAL_SECONDS": {
+      "type": "number",
+      "required": false,
+      "sensitive": false,
+      "default": 60,
+      "label": "DM Poll Interval",
+      "help": "Seconds between direct-message inbox polls (minimum 15).",
+      "advanced": true
     },
     "TWITTER_ENABLE_ACTIONS": {
       "type": "boolean",

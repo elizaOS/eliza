@@ -88,8 +88,21 @@ export const XPlugin: Plugin = {
       } else {
         logger.log("✅ X OAuth configuration found");
       }
+    } else if (mode === "broker") {
+      const token =
+        getSetting(runtime, "TWITTER_BROKER_TOKEN") ||
+        getSetting(runtime, "ELIZAOS_CLOUD_API_KEY");
+      if (!token) {
+        logger.warn(
+          "X broker auth needs TWITTER_BROKER_TOKEN or ELIZAOS_CLOUD_API_KEY",
+        );
+      } else {
+        logger.log("✅ X broker configuration found");
+      }
     } else {
-      logger.warn(`Invalid TWITTER_AUTH_MODE=${mode}. Expected env|oauth.`);
+      logger.warn(
+        `Invalid TWITTER_AUTH_MODE=${mode}. Expected env|oauth|broker.`,
+      );
     }
 
     // Register with the ConnectorAccountManager so the generic HTTP CRUD/OAuth

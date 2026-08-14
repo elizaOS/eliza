@@ -102,20 +102,24 @@ All vars are read via `getSetting(runtime, key)` which checks `runtime.getSettin
 
 | Variable | Required | Default | Description |
 |---|---|---|---|
-| `TWITTER_AUTH_MODE` | No | `env` | `env` = OAuth 1.0a static credentials; `oauth` = OAuth 2.0 PKCE interactive |
+| `TWITTER_AUTH_MODE` | No | `env` | `broker` = Eliza Cloud managed OAuth; `env` = OAuth 1.0a static credentials; `oauth` = OAuth 2.0 PKCE interactive |
+| `TWITTER_BROKER_URL` | No | Cloud X token endpoint | Managed broker base URL; override only for a self-hosted cloud API |
+| `TWITTER_BROKER_TOKEN` | No | `ELIZAOS_CLOUD_API_KEY` | Optional explicit broker credential |
 | `TWITTER_API_KEY` | env-mode | — | Consumer API key |
 | `TWITTER_API_SECRET_KEY` | env-mode | — | Consumer API secret |
 | `TWITTER_ACCESS_TOKEN` | env-mode | — | Access token (must have write permissions) |
 | `TWITTER_ACCESS_TOKEN_SECRET` | env-mode | — | Access token secret |
 | `TWITTER_CLIENT_ID` | oauth-mode | — | OAuth 2.0 Client ID |
 | `TWITTER_REDIRECT_URI` | oauth-mode | — | OAuth 2.0 redirect URI (loopback recommended) |
-| `TWITTER_SCOPES` | No | `tweet.read tweet.write users.read offline.access` | OAuth 2.0 scopes |
+| `TWITTER_SCOPES` | No | `tweet.read tweet.write users.read dm.read dm.write offline.access` | OAuth 2.0 scopes |
 | `TWITTER_ACCOUNT_ID` | No | `""` | Account ID for the default X account when connector account routing is enabled |
 | `TWITTER_DEFAULT_ACCOUNT_ID` | No | `default` | Default account ID for multi-account routing |
 | `TWITTER_ACCOUNTS` | No | — | JSON blob of account-scoped credentials for multi-account pilots |
 | `TWITTER_DRY_RUN` | No | `false` | Simulate all actions; nothing is actually posted |
 | `TWITTER_ENABLE_POST` | No | `false` | Enable autonomous tweet generation loop |
 | `TWITTER_ENABLE_REPLIES` | No | `true` | Enable mention/reply handling loop |
+| `TWITTER_ENABLE_DMS` | No | `true` | Poll inbound DMs and route them through the agent message loop |
+| `TWITTER_DM_POLL_INTERVAL_SECONDS` | No | `60` | DM polling interval in seconds (minimum 15) |
 | `TWITTER_ENABLE_ACTIONS` | No | `false` | Enable timeline action loop (like/retweet/quote) |
 | `TWITTER_ENABLE_DISCOVERY` | No | `false` | Enable discovery loop (follows + engagement) |
 | `TWITTER_TARGET_USERS` | No | `""` | Comma-separated usernames to target; empty = all; `*` = all |

@@ -8,10 +8,11 @@ The plugin auto-enables when a `connectors.x` (or legacy `connectors.twitter`) b
 
 ## Authentication
 
-Two auth modes, selected by `TWITTER_AUTH_MODE`:
+Three auth modes, selected by `TWITTER_AUTH_MODE`:
 
 - **`env` (default) — OAuth 1.0a static credentials.** Requires `TWITTER_API_KEY`, `TWITTER_API_SECRET_KEY`, `TWITTER_ACCESS_TOKEN`, `TWITTER_ACCESS_TOKEN_SECRET`. The Twitter app must have **Read and write** permissions; after enabling write, regenerate the access token + secret.
 - **`oauth` — OAuth 2.0 PKCE (login + approve).** Requires `TWITTER_CLIENT_ID` and `TWITTER_REDIRECT_URI` (loopback recommended). No client secret is used or stored. On first run the plugin prints an authorization URL and captures the callback; tokens persist per `accountId` via the runtime cache and connector credential store (no local token file).
+- **`broker` — Eliza Cloud managed OAuth.** The agent uses its existing `ELIZAOS_CLOUD_API_KEY` to request the connected agent-role token; raw upstream tokens are not copied into agent settings.
 
 ### Getting credentials
 
@@ -35,11 +36,16 @@ TWITTER_ACCESS_TOKEN_SECRET=...
 # TWITTER_AUTH_MODE=oauth
 # TWITTER_CLIENT_ID=...
 # TWITTER_REDIRECT_URI=http://127.0.0.1:8080/callback
-# TWITTER_SCOPES="tweet.read tweet.write users.read offline.access"
+# TWITTER_SCOPES="tweet.read tweet.write users.read dm.read dm.write offline.access"
 
-# Feature toggles (all opt-in except replies)
+# Eliza Cloud managed-agent alternative
+# TWITTER_AUTH_MODE=broker
+# TWITTER_BROKER_URL=https://cloud.eliza.app/api/v1/twitter
+
+# Feature toggles (posting/actions/discovery are opt-in)
 TWITTER_ENABLE_POST=false         # autonomous posting loop
 TWITTER_ENABLE_REPLIES=true       # mention/reply handling
+TWITTER_ENABLE_DMS=true           # poll inbound DMs and reply through the agent
 TWITTER_ENABLE_ACTIONS=false      # timeline likes/retweets/quotes
 TWITTER_ENABLE_DISCOVERY=         # defaults to true when ACTIONS=true, unless set false
 
@@ -50,6 +56,7 @@ TWITTER_TARGET_USERS=             # comma-separated usernames; empty or "*" = al
 TWITTER_NICKNAMES=                # comma-separated nicknames the agent answers to (TWITTER_IDENTITY provider)
 TWITTER_MAX_TWEET_LENGTH=280
 TWITTER_RETRY_LIMIT=5
+TWITTER_DM_POLL_INTERVAL_SECONDS=60 # minimum 15 seconds
 
 # Timing (minutes; MIN/MAX add randomness, else the fixed value is used)
 TWITTER_POST_INTERVAL=120
@@ -108,7 +115,7 @@ bun run --cwd plugins/plugin-x format          # biome format --write
 ## Troubleshooting
 
 - **403 on post or engagement** — app is read-only, or you're engaging a protected/own tweet. Set **Read and write** permissions, regenerate the access token + secret, and restart.
-- **"Could not authenticate you"** — credentials don't match the selected `TWITTER_AUTH_MODE`. In `env` mode use Consumer Keys + Authentication Tokens; in `oauth` mode use the OAuth 2.0 Client ID and a loopback redirect URI (no client secret).
+- **"Could not authenticate you"** — credentials don't match the selected `TWITTER_AUTH_MODE`. In `env` mode use Consumer Keys + Authentication Tokens; in `oauth` mode use the OAuth 2.0 Client ID and a loopback redirect URI (no client secret); in `broker` mode reconnect the agent-role X account in Eliza Cloud.
 - **Bot not posting** — confirm `TWITTER_ENABLE_POST=true`, the character has `bio`/`topics`/`messageExamples` for generation, and try `TWITTER_POST_IMMEDIATELY=true`.
 
 ## Resources

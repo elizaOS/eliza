@@ -25,6 +25,8 @@ const DEFAULT_SCOPES = [
   "tweet.read",
   "tweet.write",
   "users.read",
+  "dm.read",
+  "dm.write",
   "offline.access",
 ].join(" ");
 
