@@ -483,12 +483,18 @@ export function buildSlackMessagePermalink(
  *
  * The match is anchored at both ends, so prose-embedded or mrkdwn-wrapped
  * links must be extracted before they are passed in.
+ *
+ * The workspace label excludes `/` as well as `.`, so `.slack.com` has to sit
+ * in the authority rather than the path. Excluding only `.` still admitted
+ * `https://attacker/redirect.slack.com/archives/...`, which reports a non-Slack
+ * origin as the workspace domain. `parseSlackMessageLink` enforces the same
+ * boundary.
  */
 export function parseSlackMessagePermalink(
   link: string,
 ): { workspaceDomain: string; channelId: string; messageTs: string } | null {
   const match = link.match(
-    /^https?:\/\/([^.]+)\.slack\.com\/archives\/([A-Z0-9]+)\/p(\d{16}|\d{15}|\d{10})\/?(?:[?#].*)?$/i,
+    /^https?:\/\/([^./]+)\.slack\.com\/archives\/([A-Z0-9]+)\/p(\d{16}|\d{15}|\d{10})\/?(?:[?#].*)?$/i,
   );
   if (!match) {
     return null;

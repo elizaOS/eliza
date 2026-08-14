@@ -232,6 +232,33 @@ describe("permalink build/parse round-trip", () => {
       ),
     ).toBeNull();
   });
+
+  it("rejects a non-Slack origin that carries .slack.com in the path", () => {
+    // A workspace label excluding only `.` let the authority end at the first
+    // `/`, so these parsed and reported the attacker origin as the workspace.
+    expect(
+      parseSlackMessagePermalink(
+        "https://attacker/redirect.slack.com/archives/C12345678/p1700000000123456",
+      ),
+    ).toBeNull();
+    expect(
+      parseSlackMessagePermalink(
+        "https://evil-host/a.slack.com/archives/C12345678/p1700000000123456",
+      ),
+    ).toBeNull();
+    expect(
+      parseSlackMessagePermalink(
+        "https://evil.example/archives/C12345678/p1700000000123456",
+      ),
+    ).toBeNull();
+    // The same shape is already rejected by the sibling parser; pin both so the
+    // two helpers cannot drift apart again.
+    expect(
+      parseSlackMessageLink(
+        "https://attacker/redirect.slack.com/archives/C12345678/p1700000000123456",
+      ),
+    ).toBeNull();
+  });
 });
 
 describe("formatSlackDate", () => {
