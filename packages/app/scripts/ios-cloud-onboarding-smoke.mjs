@@ -14,7 +14,12 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { assertLiveReply } from "../test/liveness-contract.mjs";
+import {
+  assertLiveChallengeReply,
+  buildLivenessChallenge,
+  extractLivenessChallengeToken,
+} from "../test/liveness-contract.mjs";
+import { resolveRequiredFfmpeg } from "./lib/ffmpeg.mjs";
 import {
   captureIosSimulatorScreenshot,
   startIosSimulatorVideo,
@@ -247,14 +252,19 @@ function modesToRun() {
   throw new Error(`Unsupported --mode ${mode}`);
 }
 
-function takeScreenshot(udid, artifactDir, label) {
+// Issue #16936 requires the MP4 + JPG evidence bundle from these lanes. simctl
+// writes JPEG natively (--type=jpeg), so the stills are captured as JPG
+// directly; the video transcode (MOV → MP4) runs after the recording stops.
+function takeJpgScreenshot(udid, artifactDir, label) {
   try {
-    return captureIosSimulatorScreenshot({
+    const outPath = captureIosSimulatorScreenshot({
       target: udid,
       artifactDir,
-      filename: `${label}.png`,
+      filename: `${label}.jpg`,
+      type: "jpeg",
       log,
     });
+    return outPath;
   } catch (error) {
     log(
       `screenshot ${label} failed: ${
@@ -263,6 +273,38 @@ function takeScreenshot(udid, artifactDir, label) {
     );
     return null;
   }
+}
+
+function convertRecordingToMp4(recordingPath) {
+  if (!recordingPath || !fs.existsSync(recordingPath)) return null;
+  const ffmpeg = resolveRequiredFfmpeg({ log });
+  const outPath = recordingPath.replace(/\.mov$/, ".mp4");
+  const result = spawnSync(
+    ffmpeg,
+    [
+      "-hide_banner",
+      "-loglevel",
+      "error",
+      "-y",
+      "-i",
+      recordingPath,
+      "-c:v",
+      "libx264",
+      "-pix_fmt",
+      "yuv420p",
+      "-movflags",
+      "+faststart",
+      outPath,
+    ],
+    { encoding: "utf8" },
+  );
+  if (result.status !== 0 || !fs.existsSync(outPath)) {
+    log(
+      `mp4 transcode failed for ${recordingPath}: ${result.stderr?.trim() ?? ""}`,
+    );
+    return null;
+  }
+  return outPath;
 }
 
 function startVideo(udid, artifactDir, mode) {
@@ -321,9 +363,14 @@ async function runMode({ udid, appId, mode, privateKey }) {
 
   // Liveness contract (#14359 / #16936): strict non-stub liveness is intrinsic
   // to every SIWE cloud-onboarding lane — the cloud agent is SIWE-provisioned
-  // and live, so the harness always requests it. The run-unique challenge prompt
-  // proves the reply came from this exact run, not a cached response.
-  const livenessChallenge = `Reply with exactly this code to confirm you are live: ${randomBytes(3).toString("hex")}`;
+  // and live, so the harness always requests it. The run-unique challenge
+  // token proves the reply came from this exact run, not a cached response: the
+  // harness extracts the expected token from the exact prompt it wrote and the
+  // reply must echo it.
+  const livenessChallenge = buildLivenessChallenge(
+    randomBytes(3).toString("hex"),
+  );
+  const livenessToken = extractLivenessChallengeToken(livenessChallenge);
 
   defaultsWriteString(udid, appId, E2E_WALLET_KEY, privateKey);
   if (mode === "autologin") {
@@ -353,9 +400,9 @@ async function runMode({ udid, appId, mode, privateKey }) {
     log(`launching ${appId} for ${mode}`);
     simctl(["launch", udid, appId]);
     await new Promise((resolve) => setTimeout(resolve, 2_000));
-    takeScreenshot(udid, artifactDir, `${mode}-start`);
+    takeJpgScreenshot(udid, artifactDir, `${mode}-start`);
     const result = await pollResult(udid, appId, mode);
-    takeScreenshot(udid, artifactDir, `${mode}-home`);
+    takeJpgScreenshot(udid, artifactDir, `${mode}-home`);
     if (result.ok !== true) {
       throw new Error(
         `iOS cloud onboarding ${mode} completed with ok=false: ${JSON.stringify(result)}`,
@@ -370,12 +417,15 @@ async function runMode({ udid, appId, mode, privateKey }) {
       throw new Error("tap mode did not prove the sign-in greeting");
     }
     // Liveness contract (#14359 / #16936): strict non-stub liveness is
-    // intrinsic to the lane. A missing, empty, or stub-marked reply means the
-    // cloud agent did not produce a real answer, so the shared assertion — not
-    // a second hand-rolled copy of it — decides the lane.
-    assertLiveReply(result.livenessReply, {
+    // intrinsic to the lane, and the run-unique challenge token binds the
+    // accepted reply to this exact run — a pending status row ("Thinking"), a
+    // cached reply, or a wrong-code answer all fail here. The shared assertion
+    // — not a second hand-rolled copy of it — decides the lane.
+    assertLiveChallengeReply(result.livenessReply, {
+      challengeToken: livenessToken,
       label: `iOS cloud onboarding ${mode}`,
     });
+    takeJpgScreenshot(udid, artifactDir, `${mode}-reply`);
     fs.writeFileSync(
       path.join(artifactDir, "result.json"),
       `${JSON.stringify(result, null, 2)}\n`,
@@ -384,6 +434,10 @@ async function runMode({ udid, appId, mode, privateKey }) {
   } finally {
     const videoPath = await recording?.stop();
     if (videoPath) log(`video: ${videoPath}`);
+    // Issue #16936 evidence bundle: the acceptance bar names MP4 recordings;
+    // transcode the simulator MOV so the lane natively produces it.
+    const mp4Path = convertRecordingToMp4(videoPath);
+    if (mp4Path) log(`mp4: ${mp4Path}`);
   }
 }
 

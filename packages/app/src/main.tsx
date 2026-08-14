@@ -195,6 +195,12 @@ import { isEmbedPath, runEmbedHandshake } from "./embed-bootstrap";
 import { installMainWindowFirstRunBootPatches } from "./first-run-boot-patches";
 import { registerAppHostExternalImporters } from "./host-externals";
 import { runIosAttachmentSmokeIfRequested } from "./ios-attachment-smoke";
+import {
+  extractIosLivenessChallengeToken,
+  type IosCloudOnboardingSmokeRequest,
+  isIosLivenessReplyRow as isIosLivenessReplyRowFromContract,
+  parseIosCloudOnboardingSmokeRequest as parseIosCloudOnboardingSmokeRequestFromContract,
+} from "./ios-cloud-onboarding-smoke";
 import { runIosFullBunEntrypoint } from "./ios-full-bun-entrypoint";
 import {
   apiBaseToDeviceBridgeUrl,
@@ -1195,6 +1201,17 @@ function setReactTextareaValue(el: HTMLTextAreaElement, value: string): void {
  * live-provider host. The SIWE cloud lane always drives it (#16936); the
  * remote-connect lane still opts in with `liveness: true`, because that lane
  * also runs against the deterministic stub host.
+ *
+ * Fail-closed reply selection (#16936 review): only assistant rows that did
+ * not exist before the send are considered, and — when the prompt carries a
+ * run-unique challenge token — a row counts only once its text contains that
+ * token. The pending overlay row renders a status label ("Thinking") as its
+ * text content before any model token arrives; reading any non-empty new row
+ * would accept that placeholder, so the token requirement is what proves a
+ * real model answered this exact turn. A tokenless prompt (the remote-connect
+ * default hello) falls back to requiring a reply-phase body on the new row,
+ * which the pending row can never satisfy because the renderer marks it
+ * `data-phase="status"` until real content exists.
  */
 async function driveIosLivenessChatTurn(prompt: string): Promise<string> {
   const composer = await waitForIosOnboardingElement<HTMLTextAreaElement>(
@@ -1204,6 +1221,7 @@ async function driveIosLivenessChatTurn(prompt: string): Promise<string> {
   const priorReplies = document.querySelectorAll(
     IOS_LIVENESS_ASSISTANT_SELECTOR,
   ).length;
+  const expectedToken = extractIosLivenessChallengeToken(prompt);
 
   composer.focus();
   setReactTextareaValue(composer, prompt);
@@ -1223,9 +1241,16 @@ async function driveIosLivenessChatTurn(prompt: string): Promise<string> {
     const replies = document.querySelectorAll<HTMLElement>(
       IOS_LIVENESS_ASSISTANT_SELECTOR,
     );
-    if (replies.length > priorReplies) {
-      const text = replies[replies.length - 1]?.textContent?.trim() ?? "";
-      if (text.length > 0) return text;
+    for (let index = priorReplies; index < replies.length; index += 1) {
+      const text = replies[index]?.textContent?.trim() ?? "";
+      if (!text) continue;
+      if (expectedToken) {
+        // The run-unique token can only appear in text produced by something
+        // that saw this run's prompt — never in a status label or cached row.
+        if (text.toLowerCase().includes(expectedToken)) return text;
+      } else if (isIosLivenessReplyRow(replies[index])) {
+        return text;
+      }
     }
     await new Promise((resolve) => window.setTimeout(resolve, 250));
   }
@@ -1234,37 +1259,20 @@ async function driveIosLivenessChatTurn(prompt: string): Promise<string> {
   );
 }
 
-function parseIosCloudOnboardingSmokeRequest(raw: string | null): {
-  mode: "tap" | "autologin";
-  // Liveness contract (#14359 / #16936): liveness is intrinsic to every SIWE
-  // cloud-onboarding lane, so the request carries only the prompt — there is no
-  // opt-out field to parse. A bare request ("1") still drives the real turn.
-  livenessPrompt: string;
-} {
-  const fallback = {
-    mode: "tap" as const,
-    livenessPrompt: "In one short sentence, say hello.",
-  };
-  if (!raw || raw === "1") return fallback;
-  try {
-    const parsed = JSON.parse(raw) as {
-      mode?: unknown;
-      livenessPrompt?: unknown;
-    };
-    return {
-      mode: parsed.mode === "autologin" ? "autologin" : fallback.mode,
-      livenessPrompt:
-        typeof parsed.livenessPrompt === "string" &&
-        parsed.livenessPrompt.trim()
-          ? parsed.livenessPrompt.trim()
-          : fallback.livenessPrompt,
-    };
-  } catch (error) {
-    // error-policy:J2 corrupt smoke-request blob cannot drive a valid path
-    throw new Error("Invalid iOS cloud-onboarding smoke request", {
-      cause: error,
-    });
-  }
+/**
+ * Thin re-exports of the pure, unit-tested smoke contract in
+ * `ios-cloud-onboarding-smoke.ts`: fail-closed reply-row classification (the
+ * overlay's `data-phase` marker is authoritative) and the smoke-request parser
+ * whose behavior #16936's coverage bar names explicitly.
+ */
+function isIosLivenessReplyRow(row: Element | undefined): boolean {
+  return isIosLivenessReplyRowFromContract(row);
+}
+
+function parseIosCloudOnboardingSmokeRequest(
+  raw: string | null,
+): IosCloudOnboardingSmokeRequest {
+  return parseIosCloudOnboardingSmokeRequestFromContract(raw);
 }
 
 function installFirstRunPostCounter(): {

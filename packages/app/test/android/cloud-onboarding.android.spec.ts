@@ -14,7 +14,11 @@
 import { randomBytes } from "node:crypto";
 import path from "node:path";
 import { startAndroidScreenRecord } from "../../scripts/lib/android-capture.mjs";
-import { assertOnboardingLiveness } from "../liveness-contract";
+import {
+  assertOnboardingLiveness,
+  buildLivenessChallenge,
+  extractLivenessChallengeToken,
+} from "../liveness-contract";
 import { expect, ORIGIN, test } from "./android-harness";
 
 const ARTIFACT_DIR = path.join(
@@ -257,12 +261,14 @@ async function runCloudOnboardingMode({
     // Liveness contract (#14359 / #16936): every SIWE cloud-onboarding lane
     // ends with a real chat turn. Strict non-stub liveness is intrinsic to the
     // lane — the cloud agent is SIWE-provisioned and live, so a stub or empty
-    // reply means the lane fails. The run-unique challenge prompt proves the
-    // reply came from this exact run, not a cached response.
-    const challenge = `Reply with exactly this code to confirm you are live: ${randomBytes(3).toString("hex")}`;
+    // reply means the lane fails. The run-unique challenge token binds the
+    // accepted reply to this exact run: a pending status row, the first-run
+    // greeting, a cached reply, or a wrong-code answer all fail the wait.
+    const challenge = buildLivenessChallenge(randomBytes(3).toString("hex"));
     const reply = await assertOnboardingLiveness(page, {
       label: `android-cloud-onboarding-${mode}`,
       prompt: challenge,
+      challengeToken: extractLivenessChallengeToken(challenge),
     });
     await testInfo.attach(`liveness reply (${mode})`, {
       body: reply,
