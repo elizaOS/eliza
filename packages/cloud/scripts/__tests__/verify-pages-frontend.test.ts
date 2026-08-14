@@ -5,7 +5,7 @@
  * bundle, which leaves onboarding fixes absent from the user-facing app.
  */
 import { afterEach, describe, expect, it } from "bun:test";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -18,18 +18,24 @@ import { parseArgs } from "../verify-pages-frontend-cli.mjs";
 
 const tmpRoots: string[] = [];
 
-function makeDist(asset = "assets/index-fresh.js") {
+function makeDist(
+  asset = "assets/index-fresh.js",
+  contents = "Signing in to your agent\nCloudPairRelay",
+) {
   const dir = mkdtempSync(join(tmpdir(), "pages-frontend-"));
   tmpRoots.push(dir);
   writeFileSync(
     join(dir, "index.html"),
     `<html><head><script type="module" src="/${asset}"></script></head></html>`,
   );
+  mkdirSync(join(dir, "assets"), { recursive: true });
+  writeFileSync(join(dir, asset), contents);
   return dir;
 }
 
 function response(body: string, ok = true, status = ok ? 200 : 500) {
-  return { ok, status, text: async () => body };
+  const bytes = new TextEncoder().encode(body);
+  return { ok, status, arrayBuffer: async () => bytes.buffer };
 }
 
 afterEach(() => {
@@ -119,7 +125,10 @@ describe("verifyPagesFrontendOnce", () => {
   });
 
   it("fails when the served entry bundle misses required onboarding text", async () => {
-    const distDir = makeDist();
+    const distDir = makeDist(
+      "assets/index-fresh.js",
+      "Sign in with your password",
+    );
     const fetchImpl = (async (url: string) => {
       if (url.endsWith("/assets/index-fresh.js")) {
         return response("Sign in with your password");
@@ -142,6 +151,66 @@ describe("verifyPagesFrontendOnce", () => {
     expect(report.requiredTextResults).toEqual([
       { text: "Signing in to your agent", present: false },
     ]);
+  });
+
+  it("searches required text in lazy JavaScript while proving every emitted asset", async () => {
+    const entry = 'import("./AppContext-lazy.js");';
+    const lazy =
+      "Signing in to your agent\nThis tab will continue automatically";
+    const distDir = makeDist("assets/index-fresh.js", entry);
+    writeFileSync(join(distDir, "assets/AppContext-lazy.js"), lazy);
+    const fetchImpl = (async (url: string) => {
+      if (url === "https://app.elizacloud.ai/") {
+        return response(
+          '<script type="module" src="/assets/index-fresh.js"></script>',
+        );
+      }
+      if (url.endsWith("/assets/index-fresh.js")) return response(entry);
+      if (url.endsWith("/assets/AppContext-lazy.js")) return response(lazy);
+      throw new Error(`unexpected URL ${url}`);
+    }) as unknown as typeof fetch;
+
+    const report = await verifyPagesFrontendOnce({
+      servedUrl: "https://app.elizacloud.ai",
+      distDir,
+      requiredTexts: [
+        "Signing in to your agent",
+        "This tab will continue automatically",
+      ],
+      fetchImpl,
+      retrySleep: noSleep,
+    });
+
+    expect(report.ok).toBe(true);
+    expect(report.detail).toContain("2 emitted JavaScript asset(s)");
+  });
+
+  it("fails when a live lazy asset does not exactly match local bytes", async () => {
+    const distDir = makeDist("assets/index-fresh.js", "entry");
+    writeFileSync(join(distDir, "assets/AppContext-lazy.js"), "local lazy");
+    const fetchImpl = (async (url: string) => {
+      if (url === "https://app.elizacloud.ai/") {
+        return response(
+          '<script type="module" src="/assets/index-fresh.js"></script>',
+        );
+      }
+      if (url.endsWith("/assets/index-fresh.js")) return response("entry");
+      if (url.endsWith("/assets/AppContext-lazy.js")) {
+        return response("different live lazy");
+      }
+      throw new Error(`unexpected URL ${url}`);
+    }) as unknown as typeof fetch;
+
+    const report = await verifyPagesFrontendOnce({
+      servedUrl: "https://app.elizacloud.ai",
+      distDir,
+      fetchImpl,
+      retrySleep: noSleep,
+    });
+
+    expect(report.ok).toBe(false);
+    expect(report.reason).toBe("asset_bytes_mismatch");
+    expect(report.detail).toContain("assets/AppContext-lazy.js");
   });
 
   it("reports an unreachable live index", async () => {
