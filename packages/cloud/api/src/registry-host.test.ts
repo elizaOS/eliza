@@ -1,7 +1,7 @@
 /**
- * The registry host (`plugins.elizacloud.ai`) must serve the committed
- * registry artifacts from the worker itself: the wildcard `*.elizacloud.ai/*`
- * route shadows the host, so before this handler the canonical registry URL
+ * The registry hosts (`plugins.eliza.app` / `plugins-staging.eliza.app`) must
+ * serve the committed registry artifacts from the worker itself: the
+ * managed-agent wildcard route shadows the host, so before this handler the canonical registry URL
  * (`packages/registry` README) 404'd on the JSON router on every env.
  * Deterministic — upstream raw-GitHub fetch is stubbed via the global fetch;
  * no network.
@@ -37,9 +37,7 @@ const ENV = {} as Parameters<typeof serveRegistryHostRequest>[2];
 describe("serveRegistryHostRequest", () => {
   test("returns null for non-registry hosts (falls through to the router)", async () => {
     const { calls } = stubUpstream(() => new Response("{}"));
-    const [request, url] = req(
-      "https://api.elizacloud.ai/generated-registry.json",
-    );
+    const [request, url] = req("https://api.eliza.app/generated-registry.json");
     expect(await serveRegistryHostRequest(request, url, ENV)).toBeNull();
     expect(calls).toHaveLength(0);
   });
@@ -53,7 +51,7 @@ describe("serveRegistryHostRequest", () => {
         }),
     );
     const [request, url] = req(
-      "https://plugins.elizacloud.ai/generated-registry.json",
+      "https://plugins.eliza.app/generated-registry.json",
     );
     const response = await serveRegistryHostRequest(request, url, ENV);
     expect(response?.status).toBe(200);
@@ -68,18 +66,19 @@ describe("serveRegistryHostRequest", () => {
     );
   });
 
-  test("serves the staging host from the same allowlist", async () => {
-    stubUpstream(() => new Response("{}", { status: 200 }));
+  test("does not serve the staging host from a production deployment", async () => {
+    const { calls } = stubUpstream(() => new Response("{}", { status: 200 }));
     const [request, url] = req(
-      "https://plugins.staging.elizacloud.ai/generated-registry.json",
+      "https://plugins-staging.eliza.app/generated-registry.json",
     );
     const response = await serveRegistryHostRequest(request, url, ENV);
-    expect(response?.status).toBe(200);
+    expect(response).toBeNull();
+    expect(calls).toHaveLength(0);
   });
 
   test("404s paths outside the artifact allowlist without touching upstream", async () => {
     const { calls } = stubUpstream(() => new Response("{}"));
-    const [request, url] = req("https://plugins.elizacloud.ai/secrets.json");
+    const [request, url] = req("https://plugins.eliza.app/secrets.json");
     const response = await serveRegistryHostRequest(request, url, ENV);
     expect(response?.status).toBe(404);
     const body = (await response?.json()) as { code?: string };
@@ -90,7 +89,7 @@ describe("serveRegistryHostRequest", () => {
   test("fails closed on an upstream error instead of leaking it", async () => {
     stubUpstream(() => new Response("upstream boom", { status: 500 }));
     const [request, url] = req(
-      "https://plugins.elizacloud.ai/generated-registry.json",
+      "https://plugins.eliza.app/generated-registry.json",
     );
     const response = await serveRegistryHostRequest(request, url, ENV);
     expect(response?.status).toBe(404);
@@ -103,7 +102,7 @@ describe("serveRegistryHostRequest", () => {
       throw new TypeError("fetch failed: connection reset");
     });
     const [request, url] = req(
-      "https://plugins.elizacloud.ai/generated-registry.json",
+      "https://plugins.eliza.app/generated-registry.json",
     );
     const response = await serveRegistryHostRequest(request, url, ENV);
     expect(response?.status).toBe(404);
@@ -114,7 +113,7 @@ describe("serveRegistryHostRequest", () => {
   test("rejects writes with 405", async () => {
     stubUpstream(() => new Response("{}"));
     const [request, url] = req(
-      "https://plugins.elizacloud.ai/generated-registry.json",
+      "https://plugins.eliza.app/generated-registry.json",
       "POST",
     );
     const response = await serveRegistryHostRequest(request, url, ENV);
@@ -125,7 +124,7 @@ describe("serveRegistryHostRequest", () => {
   test("HEAD returns headers with an empty body", async () => {
     stubUpstream(() => new Response("{}", { status: 200 }));
     const [request, url] = req(
-      "https://plugins.elizacloud.ai/generated-registry.json",
+      "https://plugins.eliza.app/generated-registry.json",
       "HEAD",
     );
     const response = await serveRegistryHostRequest(request, url, ENV);
@@ -133,13 +132,13 @@ describe("serveRegistryHostRequest", () => {
     expect(await response?.text()).toBe("");
   });
 
-  test("honours a configured base domain", async () => {
+  test("selects the staging registry host from the configured agent domain", async () => {
     stubUpstream(() => new Response("{}", { status: 200 }));
     const [request, url] = req(
-      "https://plugins.example.dev/generated-registry.json",
+      "https://plugins-staging.eliza.app/generated-registry.json",
     );
     const response = await serveRegistryHostRequest(request, url, {
-      ELIZA_CLOUD_AGENT_BASE_DOMAIN: "example.dev",
+      ELIZA_CLOUD_AGENT_BASE_DOMAIN: "cloud-staging.eliza.app",
     } as typeof ENV);
     expect(response?.status).toBe(200);
   });
