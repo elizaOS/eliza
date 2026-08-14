@@ -104,6 +104,10 @@ function run(command, args) {
   const result = spawnSync(command, args, {
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"],
+    // SIGKILL, not the default SIGTERM: spawnSync keeps waiting when a child
+    // handles SIGTERM without exiting, and these probes are disposable — a
+    // stalled probe must die at the budget, not negotiate.
+    killSignal: "SIGKILL",
     ...(Number.isFinite(budgetMs) ? { timeout: budgetMs } : {}),
   });
   return {

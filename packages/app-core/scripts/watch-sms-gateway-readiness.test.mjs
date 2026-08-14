@@ -4,6 +4,9 @@
  */
 import { describe, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   DEFAULT_INTERVAL_SECONDS,
@@ -136,22 +139,26 @@ describe("watch-sms-gateway-readiness CLI timing boundary", () => {
     expect(elapsedMs).toBeLessThan(6_000);
   });
 
-  test("a stalled bridge-doctor probe cannot stretch the watch past its deadline", async () => {
-    // The doctor endpoint accepts the request and never responds. curl's
-    // independent 5s cap used to stretch a 1s watch to ~5s; the probe budget
-    // now clips every subprocess (curl --max-time included) to the remaining
-    // deadline. Port 8795 is the script's fixed doctor address.
-    let hang;
-    try {
-      hang = Bun.serve({
-        port: 8795,
-        fetch: () => new Promise(() => {}),
-      });
-    } catch {
-      // Port occupied on this machine — the environment cannot host the
-      // stall; the run()-level budget is still covered by the interval test.
-      return;
-    }
+  test("a TERM-ignoring stalled probe is killed at the watch deadline", () => {
+    // A controlled fake curl, first on PATH, traps SIGTERM and sleeps far
+    // past the watch window. spawnSync's default SIGTERM would wait forever
+    // on it (Node documents this); the probes use SIGKILL, so the watcher
+    // must exit near --timeout, the fake must provably have been invoked,
+    // and its process must be gone afterwards.
+    const fakeDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), "sms-watch-fakebin-"),
+    );
+    const markerDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), "sms-watch-marker-"),
+    );
+    const fakeCurl = path.join(fakeDir, "curl");
+    fs.writeFileSync(
+      fakeCurl,
+      // Busy-wait in the shell itself (no sleep child to orphan): SIGKILL on
+      // this pid must leave nothing behind.
+      `#!/bin/sh\ntrap '' TERM\necho $$ > "${markerDir}/curl.pid"\nwhile :; do :; done\n`,
+      { mode: 0o755 },
+    );
     try {
       const startedAt = Date.now();
       const result = spawnSync(
@@ -159,21 +166,33 @@ describe("watch-sms-gateway-readiness CLI timing boundary", () => {
         [SCRIPT, "--timeout", "1", "--interval", "2"],
         {
           encoding: "utf8",
-          timeout: 10_000,
-          env: { ...process.env, PATH: "/nonexistent" },
+          timeout: 15_000,
+          env: { ...process.env, PATH: `${fakeDir}:/usr/bin:/bin` },
         },
       );
       const elapsedMs = Date.now() - startedAt;
-      expect(result.signal).toBeNull();
+      expect(result.signal).toBeNull(); // exits on its own, not our timeout
       expect(result.status).not.toBe(0);
       expect(`${result.stdout}${result.stderr}`).toContain(
         "Timed out waiting 1s",
       );
-      // Close to the requested 1s deadline: one bounded probe pass of
-      // overshoot at most, nowhere near curl's old independent 5s cap.
-      expect(elapsedMs).toBeLessThan(3_000);
+      expect(elapsedMs).toBeLessThan(3_500);
+
+      // The fake probe really ran, and its process did not survive SIGKILL.
+      const pidFile = path.join(markerDir, "curl.pid");
+      expect(fs.existsSync(pidFile)).toBe(true);
+      const pid = Number(fs.readFileSync(pidFile, "utf8").trim());
+      expect(Number.isSafeInteger(pid)).toBe(true);
+      let alive = true;
+      try {
+        process.kill(pid, 0);
+      } catch {
+        alive = false;
+      }
+      expect(alive).toBe(false);
     } finally {
-      hang.stop(true);
+      fs.rmSync(fakeDir, { recursive: true, force: true });
+      fs.rmSync(markerDir, { recursive: true, force: true });
     }
   });
 });
