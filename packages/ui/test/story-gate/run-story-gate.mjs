@@ -1130,7 +1130,9 @@ if (
               shard: args.shard,
               generatedAt: new Date().toISOString(),
               totals: { stories: 0, failures: 1 },
-              failures: [{ kind: "fatal", detail: String(err?.message ?? err) }],
+              failures: [
+                { kind: "fatal", detail: String(err?.message ?? err) },
+              ],
               results: [],
             },
             null,
@@ -1138,7 +1140,10 @@ if (
           ),
         );
       } catch (writeError) {
-        console.error("story-gate: failed to write fatal shard report", writeError);
+        console.error(
+          "story-gate: failed to write fatal shard report",
+          writeError,
+        );
       }
     }
     console.error("story-gate: fatal", err);

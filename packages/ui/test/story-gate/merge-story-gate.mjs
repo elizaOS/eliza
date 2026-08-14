@@ -8,13 +8,7 @@
  * pass with a smaller manifest: a cancelled or truncated shard must never be
  * able to produce a green run.
  */
-import {
-  cp,
-  mkdir,
-  readFile,
-  rm,
-  writeFile,
-} from "node:fs/promises";
+import { cp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 
 const REPORT_SCHEMA = "eliza_story_gate_v1";
@@ -33,7 +27,9 @@ export function storyIdsFromCatalog(catalog) {
 
   const duplicates = ids.filter((id, index) => ids[index - 1] === id);
   if (duplicates.length) {
-    throw new Error(`duplicate catalog story ids: ${[...new Set(duplicates)].join(", ")}`);
+    throw new Error(
+      `duplicate catalog story ids: ${[...new Set(duplicates)].join(", ")}`,
+    );
   }
   return ids;
 }
@@ -62,7 +58,9 @@ function validateReports(reports, expectedShards) {
       throw new Error("invalid shard report");
     }
     if (report.schema !== REPORT_SCHEMA) {
-      throw new Error(`invalid shard report schema: ${report.schema ?? "missing"}`);
+      throw new Error(
+        `invalid shard report schema: ${report.schema ?? "missing"}`,
+      );
     }
     if (typeof report.shard !== "string" || !expected.has(report.shard)) {
       throw new Error(`unexpected shard report: ${report.shard ?? "missing"}`);
@@ -99,7 +97,8 @@ function validateReports(reports, expectedShards) {
   }
 
   const missing = expectedShards.filter((shard) => !seen.has(shard));
-  if (missing.length) throw new Error(`missing shard report: ${missing.join(", ")}`);
+  if (missing.length)
+    throw new Error(`missing shard report: ${missing.join(", ")}`);
 }
 
 function summarize(results) {
@@ -107,8 +106,10 @@ function summarize(results) {
     stories: results.length,
     good: results.filter((result) => result.verdict === "good").length,
     broken: results.filter((result) => result.verdict === "broken").length,
-    needsRuntime: results.filter((result) => result.verdict === "needs-runtime").length,
-    withConsoleErrors: results.filter((result) => result.consoleErrors?.length).length,
+    needsRuntime: results.filter((result) => result.verdict === "needs-runtime")
+      .length,
+    withConsoleErrors: results.filter((result) => result.consoleErrors?.length)
+      .length,
     withA11yViolations: results.filter((result) => result.a11y?.length).length,
     playExpected: results.filter((result) => result.play?.expected).length,
     playPrepared: results.filter((result) => result.play?.prepared).length,
@@ -123,7 +124,9 @@ function validateResult(result) {
     throw new Error("story result is missing an id");
   }
   if (!STORY_VERDICTS.has(result.verdict)) {
-    throw new Error(`invalid story verdict for ${result.id}: ${result.verdict ?? "missing"}`);
+    throw new Error(
+      `invalid story verdict for ${result.id}: ${result.verdict ?? "missing"}`,
+    );
   }
 }
 
@@ -150,10 +153,14 @@ export function mergeStoryGateReports({ catalog, reports, expectedShards }) {
   }
 
   if (duplicates.length) {
-    throw new Error(`duplicate story id: ${[...new Set(duplicates)].join(", ")}`);
+    throw new Error(
+      `duplicate story id: ${[...new Set(duplicates)].join(", ")}`,
+    );
   }
   if (unexpected.length) {
-    throw new Error(`unexpected story ids: ${[...new Set(unexpected)].join(", ")}`);
+    throw new Error(
+      `unexpected story ids: ${[...new Set(unexpected)].join(", ")}`,
+    );
   }
 
   const missing = catalogIds.filter((id) => !seen.has(id));
@@ -215,7 +222,9 @@ async function writeArtifacts(outDir, merged) {
   const withLogs = merged.results
     .filter(
       (result) =>
-        result.consoleErrors?.length || result.issues?.length || result.logCapture,
+        result.consoleErrors?.length ||
+        result.issues?.length ||
+        result.logCapture,
     )
     .map((result) => ({
       id: result.id,
@@ -232,14 +241,17 @@ async function writeArtifacts(outDir, merged) {
         schema: "eliza_story_gate_frontend_logs_v2",
         summary: {
           stories: merged.results.length,
-          withConsoleErrors: merged.results.filter((result) => result.consoleErrors?.length).length,
+          withConsoleErrors: merged.results.filter(
+            (result) => result.consoleErrors?.length,
+          ).length,
           withNetworkFailures: merged.results.filter(
             (result) =>
               (result.logCapture?.summary?.failedResponses ?? 0) +
                 (result.logCapture?.summary?.requestFailures ?? 0) >
               0,
           ).length,
-          broken: merged.results.filter((result) => result.verdict === "broken").length,
+          broken: merged.results.filter((result) => result.verdict === "broken")
+            .length,
         },
         stories: withLogs,
       },
@@ -262,7 +274,12 @@ async function readJson(path) {
   return JSON.parse(await readFile(path, "utf8"));
 }
 
-export async function mergeStoryGateArtifacts({ catalogPath, inputDir, outDir, shardCount }) {
+export async function mergeStoryGateArtifacts({
+  catalogPath,
+  inputDir,
+  outDir,
+  shardCount,
+}) {
   const expectedShards = Array.from(
     { length: shardCount },
     (_, index) => `${index + 1}/${shardCount}`,
@@ -272,7 +289,10 @@ export async function mergeStoryGateArtifacts({ catalogPath, inputDir, outDir, s
   let merged;
   try {
     for (let index = 1; index <= shardCount; index++) {
-      const shardDir = join(inputDir, `story-gate-shard-${index}-of-${shardCount}`);
+      const shardDir = join(
+        inputDir,
+        `story-gate-shard-${index}-of-${shardCount}`,
+      );
       const reportPath = join(shardDir, "report.json");
       const report = await readJson(reportPath).catch(() => {
         throw new Error(`missing shard report: ${index}/${shardCount}`);
@@ -349,7 +369,10 @@ function parseCli(argv) {
   };
 }
 
-if (process.argv[1] && resolve(process.argv[1]) === resolve(import.meta.filename)) {
+if (
+  process.argv[1] &&
+  resolve(process.argv[1]) === resolve(import.meta.filename)
+) {
   mergeStoryGateArtifacts(parseCli(process.argv.slice(2))).catch((error) => {
     console.error(`story-gate merge: ${error.message}`);
     process.exit(1);
