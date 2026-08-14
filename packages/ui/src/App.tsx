@@ -26,7 +26,6 @@ import {
   useCallback,
   useEffect,
   useMemo,
-  useRef,
   useState,
   useSyncExternalStore,
 } from "react";
@@ -1996,6 +1995,7 @@ function AppContent() {
     startupCoordinator.phase,
     firstRunCloudProvisionedContainer,
   );
+
   useEffect(() => {
     if (!isShellPaintableNow) return;
 
@@ -2081,38 +2081,6 @@ function AppContent() {
       (isAgentlessCloudOrigin &&
         firstRunOwnsLoginSurface(startupCoordinator.phase, firstRunComplete)),
   });
-  const topLevelAuthOwnsSurface = topLevelAuthGateOwnsSurface(
-    startupCoordinator.phase,
-    firstRunComplete,
-    authState.phase,
-    isAgentlessCloudOrigin,
-  );
-  // Remember only a shell painted while first-run owned the login surface.
-  // When completion flips, briefly replacing that live onboarding shell with
-  // StartupScreen destroys its FULL→HALF completion transition and remounts
-  // chat collapsed. This ref is cleared as soon as the auth probe resolves, so
-  // an ordinary later credential probe still holds the shell.
-  const onboardingShellMountedRef = useRef(false);
-  const firstRunOwnsAuthSurface = firstRunOwnsLoginSurface(
-    startupCoordinator.phase,
-    firstRunComplete,
-  );
-  useEffect(() => {
-    if (isShellPaintableNow && !bootstrapGateHolds && firstRunOwnsAuthSurface) {
-      onboardingShellMountedRef.current = true;
-    } else if (authState.phase !== "loading") {
-      onboardingShellMountedRef.current = false;
-    }
-  }, [
-    authState.phase,
-    bootstrapGateHolds,
-    firstRunOwnsAuthSurface,
-    isShellPaintableNow,
-  ]);
-  const preserveMountedOnboardingShell =
-    onboardingShellMountedRef.current &&
-    firstRunComplete === true &&
-    authState.phase === "loading";
   // #15132: after a dedicated cloud agent's container upgrade the persisted
   // agent credential is stale (every agent-subdomain call 401s) while the cloud
   // session is still valid. Rather than dead-end at the agent's internal
@@ -2694,13 +2662,21 @@ function AppContent() {
   // Restored sessions usually arrive here already decided: the restore phase
   // primes the probe (primeAuthStatusProbe) so it overlaps backend polling /
   // hydration instead of serializing an extra round-trip after first paint.
-  if (isShellPaintableNow && !isPopout && topLevelAuthOwnsSurface) {
+  if (
+    isShellPaintableNow &&
+    !isPopout &&
+    topLevelAuthGateOwnsSurface(
+      startupCoordinator.phase,
+      firstRunComplete,
+      authState.phase,
+      isAgentlessCloudOrigin,
+    )
+  ) {
     if (
       authProbeShouldHoldShell(
         startupCoordinator.phase,
         firstRunComplete,
         authState.phase,
-        preserveMountedOnboardingShell,
       )
     ) {
       return (

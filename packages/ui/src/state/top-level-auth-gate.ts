@@ -57,11 +57,9 @@ export function authProbeShouldHoldShell(
   coordinatorPhase: string,
   firstRunComplete: boolean | null | undefined,
   authPhase: string,
-  preserveMountedOnboardingShell = false,
 ): boolean {
   return (
     authPhase === "loading" &&
-    !preserveMountedOnboardingShell &&
     !firstRunOwnsLoginSurface(coordinatorPhase, firstRunComplete)
   );
 }
