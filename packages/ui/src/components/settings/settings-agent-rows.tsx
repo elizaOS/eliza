@@ -366,6 +366,7 @@ export interface SettingsInputRowProps {
   agentId: string;
   label: React.ReactNode;
   agentLabel?: string;
+  /** Field help rendered under the input, not under the label. */
   description?: React.ReactNode;
   icon?: LucideIcon;
   iconClassName?: string;
@@ -415,6 +416,10 @@ export function SettingsInputRow({
   const showError = Boolean(error);
   const isInvalid = invalid || showError;
   const errorId = `${agentId}-error`;
+  const helpId = description ? `${agentId}-help` : undefined;
+  const describedBy = [helpId, showError ? errorId : undefined]
+    .filter(Boolean)
+    .join(" ");
   const { ref, agentProps } = useAgentElement<HTMLInputElement>({
     id: agentId,
     role: type === "number" ? "number-input" : "text-input",
@@ -436,7 +441,6 @@ export function SettingsInputRow({
       icon={icon}
       iconClassName={iconClassName}
       label={label}
-      description={description}
       className={className}
       htmlFor={agentId}
       stacked
@@ -453,11 +457,16 @@ export function SettingsInputRow({
         autoComplete={autoComplete}
         disabled={disabled}
         aria-invalid={isInvalid || undefined}
-        aria-describedby={showError ? errorId : undefined}
+        aria-describedby={describedBy || undefined}
         data-testid={testId}
         className={cn(isInvalid && "border-danger", inputClassName)}
         {...rowAgentProps}
       />
+      {description ? (
+        <p id={helpId} className="mt-1 text-xs leading-relaxed text-muted">
+          {description}
+        </p>
+      ) : null}
       {showError ? (
         <p id={errorId} role="alert" className="mt-1 text-xs text-danger">
           {error}
@@ -471,6 +480,7 @@ export interface SettingsTextareaRowProps {
   agentId: string;
   label: React.ReactNode;
   agentLabel?: string;
+  /** Field help rendered under the textarea, not under the label. */
   description?: React.ReactNode;
   icon?: LucideIcon;
   iconClassName?: string;
@@ -502,6 +512,7 @@ export function SettingsTextareaRow({
   textareaClassName,
 }: SettingsTextareaRowProps) {
   const resolvedLabel = agentLabel ?? labelToString(label, agentId);
+  const helpId = description ? `${agentId}-help` : undefined;
   const { ref, agentProps } = useAgentElement<HTMLTextAreaElement>({
     id: agentId,
     role: "textarea",
@@ -522,7 +533,6 @@ export function SettingsTextareaRow({
       icon={icon}
       iconClassName={iconClassName}
       label={label}
-      description={description}
       className={className}
       htmlFor={agentId}
       stacked
@@ -535,9 +545,15 @@ export function SettingsTextareaRow({
         placeholder={placeholder}
         rows={rows}
         disabled={disabled}
+        aria-describedby={helpId}
         className={textareaClassName}
         {...textareaAgentProps}
       />
+      {description ? (
+        <p id={helpId} className="mt-1 text-xs leading-relaxed text-muted">
+          {description}
+        </p>
+      ) : null}
     </SettingsRow>
   );
 }

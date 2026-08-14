@@ -114,6 +114,12 @@ describe("ProfileForm", () => {
     ).toBeNull();
     expect(screen.getByRole("button", { name: "Save changes" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Cancel" })).toBeTruthy();
+    const help = screen.getByText(
+      "Email cannot be changed. Contact support if you need to update this.",
+    );
+    expect(
+      email.compareDocumentPosition(help) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
   });
 
   it("submits the name through PATCH /api/v1/user and reloads on success", async () => {
