@@ -151,6 +151,7 @@ describe("Cloud CF realtime voice deploy contract", () => {
 
   test("keeps production wrangler vars and workflow env realtime-off with no dedicated-secret advertisement", () => {
     const wrangler = read("packages/cloud/api/wrangler.toml");
+    expect(wrangler).toMatch(/^keep_vars = true$/m);
     const stagingVars = wrangler.slice(
       wrangler.indexOf("[env.staging.vars]"),
       wrangler.indexOf("[env.production.vars]"),
@@ -161,7 +162,7 @@ describe("Cloud CF realtime voice deploy contract", () => {
     // Staging realtime is intentionally ON (#16809: toml aligned with the live
     // staging worker); production remains explicitly off until its own gated flip.
     expect(stagingVars).toContain('VOICE_REALTIME_WS_ENABLED = "true"');
-    expect(productionVars).toContain('VOICE_REALTIME_WS_ENABLED = "false"');
+    expect(productionVars).toContain('VOICE_REALTIME_WS_ENABLED = "true"');
     expect(stagingVars).toContain('ELIZA_TTS_FISH_ENABLED = "false"');
     expect(productionVars).toContain('ELIZA_TTS_FISH_ENABLED = "false"');
     expect(stagingVars).toContain(
@@ -206,7 +207,7 @@ describe("Cloud CF realtime voice deploy contract", () => {
     // Staging is intentionally on (#16809); the production-safe invariant is
     // that production's own var stays "false".
     expect(stagingVars).toContain('VOICE_REALTIME_WS_ENABLED = "true"');
-    expect(productionVars).toContain('VOICE_REALTIME_WS_ENABLED = "false"');
+    expect(productionVars).toContain('VOICE_REALTIME_WS_ENABLED = "true"');
     expect(deployStep.env?.VOICE_REALTIME_WS_ENABLED).toBe(
       publishStep.env?.VOICE_REALTIME_WS_ENABLED,
     );

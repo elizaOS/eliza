@@ -17,6 +17,7 @@ import {
   runWithCloudBindingsAsync,
 } from "@/lib/runtime/cloud-bindings";
 import { handleCanonicalScopedAgentStream } from "@/lib/services/shared-runtime/canonical-scoped-stream";
+import { coordinateSharedConversationPrewarm } from "@/lib/services/shared-runtime/conversation-coordinator";
 import type { BridgeExecutionContext } from "@/lib/services/shared-runtime/shared-runtime-chat";
 import { logger } from "@/lib/utils/logger";
 import type {
@@ -129,11 +130,27 @@ export function createInternalElizaConversationFetchFactory(
     };
 
     const prewarm = async (): Promise<void> => {
-      if (!env.SHARED_RUNTIME_CONVERSATIONS || !executionCtx) return;
+      const namespace = env.SHARED_RUNTIME_CONVERSATIONS;
+      if (!namespace || !executionCtx) return;
       await runWithCloudBindingsAsync(
         env as unknown as Record<string, unknown>,
         async () => {
-          if (!(await readCachedAgent())) scheduleHydration();
+          let agent = await readCachedAgent();
+          if (!agent) {
+            scheduleHydration();
+            // Capture before awaiting: the hydration's finally block clears the
+            // shared slot. Joining this exact promise lets the first voice turn
+            // use the freshly cached scope without cache-miss polling/backoff.
+            const pendingHydration = hydrationPromise;
+            if (pendingHydration) await pendingHydration;
+            agent = await readCachedAgent();
+          }
+          if (!agent) return;
+          await coordinateSharedConversationPrewarm(
+            agent.id,
+            claims.conversationId,
+            { namespace },
+          );
         },
       );
     };

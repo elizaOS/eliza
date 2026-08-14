@@ -21,6 +21,7 @@ const ClaimsSchema = z.object({
   agentId: z.string().min(1),
   conversationId: z.string().uuid(),
   calledNumber: z.string().min(1),
+  returningCaller: z.boolean(),
 });
 
 const WireClaimsSchema = z.object({
@@ -35,6 +36,7 @@ const WireClaimsSchema = z.object({
   g: z.string().min(1),
   n: z.string().uuid(),
   p: z.string().min(1),
+  r: z.boolean(),
 });
 
 export type TwilioStreamTokenClaims = z.infer<typeof ClaimsSchema>;
@@ -95,6 +97,7 @@ export async function mintTwilioStreamToken(
         g: claims.agentId,
         n: claims.conversationId,
         p: claims.calledNumber,
+        r: claims.returningCaller,
       }),
     ),
   );
@@ -139,6 +142,7 @@ export async function verifyTwilioStreamToken(
       agentId: wire.data.g,
       conversationId: wire.data.n,
       calledNumber: wire.data.p,
+      returningCaller: wire.data.r,
     });
     if (!parsed.success) return null;
     const nowSeconds = Math.floor(now() / 1_000);
