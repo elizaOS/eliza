@@ -317,10 +317,21 @@ export function formatSlackDate(
   format: string = "{date_short_pretty} at {time}",
   fallbackText?: string,
 ): string {
-  const unix = Math.floor(
-    (typeof timestamp === "number" ? timestamp : timestamp.getTime()) / 1000,
-  );
-  const fallback = fallbackText || new Date(unix * 1000).toISOString();
+  const timeMs =
+    typeof timestamp === "number" ? timestamp : timestamp.getTime();
+  const date = new Date(timeMs);
+  if (!Number.isFinite(date.getTime())) {
+    return fallbackText || "Invalid date";
+  }
+  const unix = Math.floor(timeMs / 1000);
+  let fallback = fallbackText;
+  if (!fallback) {
+    try {
+      fallback = date.toISOString();
+    } catch {
+      return fallbackText || "Invalid date";
+    }
+  }
   return `<!date^${unix}^${format}|${fallback}>`;
 }
 
@@ -477,21 +488,15 @@ export function parseSlackMessagePermalink(
   link: string,
 ): { workspaceDomain: string; channelId: string; messageTs: string } | null {
   const match = link.match(
-    /^https?:\/\/([^.]+)\.slack\.com\/archives\/([A-Z0-9]+)\/p(\d+)/i,
+    /^https?:\/\/([^.]+)\.slack\.com\/archives\/([A-Z0-9]+)\/p(\d{10}|\d{16})(?:[/?#].*)?$/i,
   );
   if (!match) {
     return null;
   }
 
   const ts = match[3];
-  if (ts.length < 10) {
-    return null;
-  }
-
-  const fractional = ts.slice(10);
-  const messageTs = fractional
-    ? `${ts.slice(0, 10)}.${fractional}`
-    : ts.slice(0, 10);
+  const messageTs =
+    ts.length === 16 ? `${ts.slice(0, 10)}.${ts.slice(10)}` : `${ts}.000000`;
 
   return {
     workspaceDomain: match[1],

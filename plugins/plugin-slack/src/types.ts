@@ -388,13 +388,15 @@ export function parseSlackMessageLink(
   link: string,
 ): { channelId: string; messageTs: string } | null {
   // Format: https://workspace.slack.com/archives/C12345678/p1234567890123456
-  const match = link.match(/\/archives\/([CGD][A-Z0-9]+)\/p(\d+)/i);
+  const match = link.match(
+    /^https?:\/\/[^/]+\/archives\/([CGD][A-Z0-9]+)\/p(\d{10}|\d{16})(?:[/?#].*)?$/i,
+  );
   if (!match) return null;
 
   const channelId = match[1];
   const ts = match[2];
-  // Convert the timestamp: p1234567890123456 -> 1234567890.123456
-  const messageTs = `${ts.slice(0, 10)}.${ts.slice(10)}`;
+  const messageTs =
+    ts.length === 16 ? `${ts.slice(0, 10)}.${ts.slice(10)}` : `${ts}.000000`;
 
   return { channelId, messageTs };
 }
