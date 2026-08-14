@@ -1753,8 +1753,8 @@ async function initializeAgent(): Promise<void> {
 }
 
 async function initializePlatform(): Promise<void> {
-  await initializeStorageBridge();
-  initializeCapacitorBridge();
+  // Storage and Capacitor bridges are initialized in main() before mounting React.
+  // Do not reinitialize here to avoid double-boot issues (#19437).
   installNativeTranscriptPlatformBridge();
   void runIosFullBunSmokeFromDesktopShell();
   void runIosOnboardingSmokeIfRequested();
@@ -3344,6 +3344,10 @@ async function main(): Promise<void> {
   // render, and on native those keys only exist after the Preferences
   // hydration lands. The voice chunk (kicked off above) downloads in parallel
   // with this wait.
+  // CRITICAL: Do not call initializeStorageBridge or initializeCapacitorBridge
+  // again in initializePlatform() — the standalone shell path also initializes
+  // these bridges before mounting React (#19437). Double initialization causes
+  // page destruction on first click.
   await initializeStorageBridge();
   if (isIOS) {
     initializeCapacitorBridge();
