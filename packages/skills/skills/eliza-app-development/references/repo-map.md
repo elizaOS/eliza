@@ -67,4 +67,4 @@ bun run test:coverage
 
 ## Default skill seeding
 
-Shipped skills are bundled in `@elizaos/skills` and are seeded into the state-dir skills folder (e.g. `~/.eliza/skills` when `ELIZA_NAMESPACE=eliza`) by Eliza’s `scripts/ensure-skills.mjs`. They are default agent knowledge, not optional extras.
+Shipped skills are bundled in `@elizaos/skills` and are seeded into the state-dir skills folder (e.g. `~/.eliza/skills` when `ELIZA_NAMESPACE=eliza`) by Eliza’s `packages/app-core/scripts/ensure-skills.mjs`. They are default agent knowledge, not optional extras.

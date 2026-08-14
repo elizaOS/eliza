@@ -48,8 +48,8 @@ bun run test:e2e
 
 - Product and runtime behavior: `packages/app-core/src/`
 - Prompt, provider, and skill plumbing: `packages/agent/src/`
-- Onboarding and routing: `packages/app-core/src/onboarding/` and `packages/app-core/src/runtime/`
-- Shipped default skills: bundled in `@elizaos/skills`, seeded into the state-dir skills folder by `scripts/ensure-skills.mjs`
+- Onboarding and routing: `packages/ui/src/first-run/` and `packages/app-core/src/runtime/`
+- Shipped default skills: bundled in `@elizaos/skills`, seeded into the state-dir skills folder by `packages/app-core/scripts/ensure-skills.mjs`
 - Eliza Cloud backend or monetization: `eliza/cloud/` and the shipped `eliza-cloud` skill
 
 ## Cloud Default

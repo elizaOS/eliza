@@ -41,7 +41,7 @@ Plugin loading is runtime-managed. In this repo, check these areas first:
 
 - `packages/agent/` for app-side runtime glue and default plugin setup
 - `packages/app-core/` for CLI/API/config behavior that selects runtime and plugin sources
-- `packages/cli/` for commands that build, test, publish, or manage plugins
+- `packages/elizaos/` for the `elizaos` CLI commands that build, test, publish, or manage plugins
 - `packages/plugin-*` and `plugins/plugin-*` for existing plugin packages
 - the active config/onboarding path for enabled plugins and linked credentials
 

@@ -103,8 +103,6 @@ is real.
 
 ## Source Map
 
-- Platform review: `packages/cloud/APP_PLATFORM_REVIEW.md`
-- Agent-first experience plan: `packages/cloud/AGENT_FIRST_EXPERIENCE.md`
 - App routes: `packages/cloud/api/v1/apps/**/route.ts`
 - Frontend routes: `packages/cloud/api/v1/apps/[id]/frontend/**/route.ts`
 - Hosted frontend serve route:
