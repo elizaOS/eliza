@@ -13,9 +13,9 @@
  *     `CartesiaSonicTtsAdapter` (#15949). Phrase-aggregated deltas stream in;
  *     adapters' strict no-post-cancel guarantee makes barge-in correct.
  *
- * Interruption (contract §7.5): acoustic speech-start / Ink turn / explicit
- * `barge_in` -> under one `voiceTurnId`, cancel the active TTS stream (no
- * post-cancel frames), abort the Eliza SSE fetch, flush the downlink, drop pending phrase
+ * Interruption (contract §7.5): confirmed caller words / explicit `barge_in`
+ * -> under one `voiceTurnId`, cancel the active TTS stream (no post-cancel
+ * frames), abort the Eliza SSE fetch, flush the downlink, drop pending phrase
  * aggregation, emit `interrupted`, return to listening. Target <250ms.
  *
  * Metering (SEC-15): server-derived uplink duration only; the client is NEVER
@@ -105,6 +105,7 @@ const CACHE_WARMING_CODES = new Set([
   "shared_runtime_cache_warming",
   "conversation_cache_warming",
 ]);
+const SPOKEN_TRANSCRIPT_RE = /[\p{L}\p{N}]/u;
 
 // Cartesia's server buffers streamed transcript for up to 3000ms by default
 // before starting synthesis, which measured ~2.7s of the speaking_start gap on
@@ -144,6 +145,8 @@ export interface VoiceSessionConfig {
   fetchImpl?: typeof fetch;
   /** Session-start DB/tenancy warmup, injected only by the live Worker route. */
   prewarmElizaContext?: () => Promise<void>;
+  /** Optional provider-synthesized opener that runs while agent context warms. */
+  openingGreeting?: string;
   /** Deterministic test override; production uses bounded exponential backoff. */
   cacheWarmingRetryDelaysMs?: readonly number[];
 
@@ -320,6 +323,9 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
     const sessionTrace = this.mintTraceId("session");
     this.currentTraceId = sessionTrace;
     this.send({ t: "ready", sessionId: this.sessionId, traceId: sessionTrace });
+    if (this.config.openingGreeting?.trim()) {
+      this.speakOpeningGreeting(this.config.openingGreeting.trim());
+    }
   }
 
   /**
@@ -480,23 +486,24 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
         break;
       }
       case "start-of-turn": {
-        // A new user turn started. If the agent is mid-speech, this is a
-        // barge-in (acoustic speech-start via Ink's native turn detector).
-        if (this.state === "speaking" || this.state === "thinking") {
-          this.interrupt("acoustic");
-        }
+        // Ink's acoustic turn detector also fires for line noise, breathing,
+        // and speaker echo. Keep transcribing alongside the active response;
+        // only a non-empty transcript-update below proves caller speech and
+        // earns the right to cancel model/TTS work.
         this.resetSttPartialDelivery();
         this.activeSttTurn = true;
-        this.state = "transcribing";
+        if (!this.currentVoiceTurnId) this.state = "transcribing";
         break;
       }
       case "transcript-update": {
         if (this.activeSttTurn && event.transcript) {
+          this.interruptForConfirmedSpeech(event.transcript);
           this.queueSttPartial(event.transcript);
         }
         break;
       }
       case "eager-end-of-turn": {
+        this.interruptForConfirmedSpeech(event.transcript);
         this.flushSttPartial();
         this.send({
           t: "stt_eager_eot",
@@ -506,6 +513,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
       }
       case "end-of-turn": {
         if (!this.activeSttTurn) return;
+        this.interruptForConfirmedSpeech(event.transcript);
         this.activeSttTurn = false;
         this.resetSttPartialDelivery();
         // A missing transcript commits as "" on purpose: commitTurn's empty-
@@ -532,6 +540,15 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
         break;
       }
     }
+  }
+
+  /** Cancel an active response only after Ink has produced caller words. */
+  private interruptForConfirmedSpeech(transcript: string): void {
+    if (!this.currentVoiceTurnId || !SPOKEN_TRANSCRIPT_RE.test(transcript)) {
+      return;
+    }
+    this.interrupt("acoustic");
+    this.state = "transcribing";
   }
 
   /**
@@ -616,6 +633,63 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
     void this.runResponseTurn(transcript, traceId);
   }
 
+  /** Speak a fixed live opener while the first agent context is warming. */
+  private speakOpeningGreeting(text: string): void {
+    if (this.closed || this.currentVoiceTurnId) return;
+    const traceId = this.mintTraceId("turn");
+    this.currentTraceId = traceId;
+    this.currentVoiceTurnId = traceId;
+    this.turnTtsChars = text.length;
+    this.firstLlmTextEmitted = false;
+
+    const stream = this.createTtsStream(traceId, {
+      onFirstAudio: () => {
+        if (this.currentVoiceTurnId !== traceId) return;
+        this.state = "speaking";
+        this.send({ t: "speaking_start", traceId });
+      },
+      onAudioFrame: (frame) => {
+        if (this.currentVoiceTurnId !== traceId) return;
+        this.config.downlink.sendAudio(frame.bytes);
+      },
+      onComplete: () => {
+        if (this.currentVoiceTurnId !== traceId) return;
+        this.send({ t: "speaking_end", traceId });
+        this.finishTurn(traceId);
+      },
+      onProviderError: (error) => {
+        if (this.currentVoiceTurnId !== traceId) return;
+        this.send({
+          t: "error",
+          code: error.code ?? "tts_error",
+          retryable: true,
+        });
+        this.finishTurn(traceId);
+      },
+    });
+    this.ttsStream = stream;
+    void stream.opened.catch(() => undefined);
+    stream.sendPhrase({ text, continueContext: false });
+  }
+
+  private createTtsStream(
+    traceId: string,
+    callbacks: RealtimeTtsStreamCallbacks,
+  ): RealtimeTtsStream {
+    const createCartesia = () =>
+      this.cartesiaAdapter.createStream(
+        { traceId, maxBufferDelayMs: VOICE_TTS_MAX_BUFFER_DELAY_MS },
+        callbacks,
+      );
+    if (!this.fishAudioAdapter) return createCartesia();
+    return new FishPrimaryRealtimeTtsStream({
+      traceId,
+      fishAudioAdapter: this.fishAudioAdapter,
+      createCartesia,
+      callbacks,
+    });
+  }
+
   private async runResponseTurn(
     transcript: string,
     traceId: string,
@@ -668,21 +742,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
           this.finishTurn(traceId);
         },
       };
-      const createCartesia = () =>
-        this.cartesiaAdapter.createStream(
-          { traceId, maxBufferDelayMs: VOICE_TTS_MAX_BUFFER_DELAY_MS },
-          callbacks,
-        );
-      if (this.fishAudioAdapter) {
-        tts = new FishPrimaryRealtimeTtsStream({
-          traceId,
-          fishAudioAdapter: this.fishAudioAdapter,
-          createCartesia,
-          callbacks,
-        });
-      } else {
-        tts = createCartesia();
-      }
+      tts = this.createTtsStream(traceId, callbacks);
       this.ttsStream = tts;
       return tts;
     };

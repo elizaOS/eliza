@@ -4,9 +4,10 @@
  */
 
 import { randomUUID } from "node:crypto";
+import { and, eq } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
-import { dbWrite } from "@/db/helpers";
+import { dbRead, dbWrite } from "@/db/helpers";
 import { twilioInboundCalls } from "@/db/schemas";
 import { ObjectNamespaces } from "@/lib/storage/object-namespace";
 import { offloadJsonField } from "@/lib/storage/object-store";
@@ -113,6 +114,17 @@ app.post("/", async (c) => {
   }
 
   const id = randomUUID();
+  const [priorCall] = await dbRead
+    .select({ id: twilioInboundCalls.id })
+    .from(twilioInboundCalls)
+    .where(
+      and(
+        eq(twilioInboundCalls.from_number, normalizedFrom),
+        eq(twilioInboundCalls.to_number, normalizedTo),
+        eq(twilioInboundCalls.agent_id, phoneNumber.agentId),
+      ),
+    )
+    .limit(1);
   const rawPayload = await offloadJsonField<Record<string, string>>({
     namespace: ObjectNamespaces.TwilioInboundPayloads,
     organizationId: phoneNumber?.organizationId ?? "twilio",
@@ -155,6 +167,7 @@ app.post("/", async (c) => {
       agentId: phoneNumber.agentId,
       conversationId,
       calledNumber: normalizedTo,
+      returningCaller: Boolean(priorCall),
     },
     authToken,
   );
@@ -173,7 +186,6 @@ app.post("/", async (c) => {
       streamUrl: publicUrl.toString(),
       sessionId: minted.claims.sessionId,
       token: minted.token,
-      greeting: "Hi, you're connected to Eliza.",
     }),
     {
       headers: { "Content-Type": "text/xml" },

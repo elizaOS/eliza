@@ -12,11 +12,12 @@ describe("Twilio voice TwiML", () => {
       streamUrl: "wss://api.eliza.app/api/v1/twilio/voice/media",
       sessionId: "11111111-1111-4111-8111-111111111111",
       token: "signed",
-      greeting: "Hi, you're connected to Eliza.",
     });
 
-    expect(xml).toContain("<Say>Hi, you&apos;re connected to Eliza.</Say>");
-    expect(xml).toContain('<Connect><Stream url="wss://api.eliza.app/');
+    expect(xml).toContain(
+      '<Response><Connect><Stream url="wss://api.eliza.app/',
+    );
+    expect(xml).not.toContain("<Say>");
     expect(xml).toContain(
       'name="sessionId" value="11111111-1111-4111-8111-111111111111"',
     );
@@ -28,14 +29,12 @@ describe("Twilio voice TwiML", () => {
       streamUrl: "wss://example.test/a?x=1&y=<bad>",
       sessionId: '"session"',
       token: "token'one",
-      greeting: "A & B < C",
     });
 
     expect(xml).not.toContain("<bad>");
     expect(xml).toContain("x=1&amp;y=&lt;bad&gt;");
     expect(xml).toContain("&quot;session&quot;");
     expect(xml).toContain("token&apos;one");
-    expect(xml).toContain("A &amp; B &lt; C");
   });
 
   test("builds a terminal spoken response", () => {
