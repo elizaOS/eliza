@@ -75,7 +75,8 @@ export function parseArgs(argv) {
       }
       return value;
     };
-    if (arg === "--timeout") args.timeoutSeconds = parseWatchSeconds(next(), "--timeout");
+    if (arg === "--timeout")
+      args.timeoutSeconds = parseWatchSeconds(next(), "--timeout");
     else if (arg === "--interval")
       args.intervalSeconds = parseWatchSeconds(next(), "--interval");
     else if (arg === "--run-install") args.runInstall = true;
@@ -339,7 +340,13 @@ async function main() {
     console.log(
       `[sms-gateway-watch] waiting: adb=${adbSummary}; wireless=${wirelessSummary || "none"}${lastWireless}${connectProbe ? `; connect-probe=${connectProbe.detail}` : ""}; host-usb=${hostUsbDevices.join(", ") || "none"}; bridge=${bridgeDoctor?.status ?? "unknown"}${bridgeSummary ? ` (${bridgeSummary})` : ""}`,
     );
-    await sleep(Math.max(1, args.intervalSeconds) * 1000);
+    // Clip every wait to the remaining deadline: --timeout 1 --interval 86400
+    // must stop ~1s in, not sleep the whole accepted interval past the stop.
+    const remainingMs = deadline - Date.now();
+    if (remainingMs <= 0) break;
+    await sleep(
+      Math.min(Math.max(1, args.intervalSeconds) * 1000, remainingMs),
+    );
   }
 
   throw new Error(

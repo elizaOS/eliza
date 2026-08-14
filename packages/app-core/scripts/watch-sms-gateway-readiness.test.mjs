@@ -75,7 +75,9 @@ describe("parseArgs", () => {
     expect(() => parseArgs(["--timeout", "8abc"])).toThrow(/--timeout/);
     expect(() => parseArgs(["--timeout", "0"])).toThrow(/--timeout/);
     expect(() => parseArgs(["--interval", "1e3"])).toThrow(/--interval/);
-    expect(() => parseArgs(["--timeout"])).toThrow(/--timeout requires a value/);
+    expect(() => parseArgs(["--timeout"])).toThrow(
+      /--timeout requires a value/,
+    );
   });
 });
 
@@ -109,5 +111,28 @@ describe("watch-sms-gateway-readiness CLI timing boundary", () => {
     expect(result.status).toBe(0);
     expect(result.stdout).toContain("Usage:");
     expect(result.stdout).toContain("1-86400");
+  });
+
+  test("a short --timeout is honored even when --interval is far longer", () => {
+    // Both values parse independently; before the sleep clip, --timeout 1
+    // --interval 86400 slept the full accepted interval past the deadline.
+    // PATH=/nonexistent keeps every probe a fast failure, no adb required.
+    const startedAt = Date.now();
+    const result = spawnSync(
+      process.execPath,
+      [SCRIPT, "--timeout", "1", "--interval", "86400"],
+      {
+        encoding: "utf8",
+        timeout: 8_000,
+        env: { ...process.env, PATH: "/nonexistent" },
+      },
+    );
+    const elapsedMs = Date.now() - startedAt;
+    expect(result.signal).toBeNull(); // must exit on its own, not our timeout
+    expect(result.status).not.toBe(0);
+    expect(`${result.stdout}${result.stderr}`).toContain(
+      "Timed out waiting 1s",
+    );
+    expect(elapsedMs).toBeLessThan(6_000);
   });
 });
