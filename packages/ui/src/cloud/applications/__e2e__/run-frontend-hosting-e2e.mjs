@@ -462,6 +462,17 @@ assert(
   (await page.getByText("live").count()) === 1,
   "v1 row shows the live badge after publish",
 );
+const publishedState = await j(
+  "GET",
+  `/api/v1/apps/${APP_ID}/frontend`,
+  undefined,
+  KEY,
+);
+assert(
+  publishedState.s === 200 &&
+    publishedState.d?.deployments?.[0]?.build_meta?.source === "cloud",
+  "published deployment persists cloud provenance",
+);
 await snap("desktop-v1-live");
 
 // --- publish v2, then roll back to v1 ---------------------------------------
