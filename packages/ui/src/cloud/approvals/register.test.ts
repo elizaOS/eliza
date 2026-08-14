@@ -15,7 +15,7 @@ describe("approvals cloud-route registration", () => {
     expect(paths, `missing ${APPROVALS_ROUTE_PATH}`).toContain(
       APPROVALS_ROUTE_PATH,
     );
-    expect(APPROVALS_ROUTE_PATH).toBe("dashboard/approvals");
+    expect(APPROVALS_ROUTE_PATH).toBe("cloud/approvals");
   });
 
   it("resolves the approvals route to a renderable element", () => {
@@ -25,6 +25,6 @@ describe("approvals cloud-route registration", () => {
     );
     expect(route).toBeDefined();
     expect(route?.element).toBeTruthy();
-    expect(route?.group).toBe("dashboard");
+    expect(route?.group).toBe("cloud");
   });
 });

@@ -15,6 +15,7 @@ import {
   sharedRestMessageSend,
   sharedRestMessagesGet,
 } from "@/lib/services/shared-runtime/shared-rest-adapter";
+import { sharedTurnClientMessageId } from "@/lib/services/shared-runtime/shared-runtime-chat";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -62,9 +63,15 @@ app.get("/", async (c) => {
         {
           success: false,
           error: r.error,
+          ...(r.code ? { code: r.code } : {}),
           ...(r.status === 503 ? { retryable: true } : {}),
         },
-        { status: r.status },
+        {
+          status: r.status,
+          ...(r.retryAfterSeconds
+            ? { headers: { "Retry-After": String(r.retryAfterSeconds) } }
+            : {}),
+        },
       ),
       CORS_METHODS,
       origin,
@@ -131,9 +138,15 @@ app.post("/", async (c) => {
         {
           success: false,
           error: r.error,
+          ...(r.code ? { code: r.code } : {}),
           ...(r.status === 503 ? { retryable: true } : {}),
         },
-        { status: r.status },
+        {
+          status: r.status,
+          ...(r.retryAfterSeconds
+            ? { headers: { "Retry-After": String(r.retryAfterSeconds) } }
+            : {}),
+        },
       ),
       CORS_METHODS,
       origin,
@@ -166,6 +179,8 @@ app.post("/", async (c) => {
       r.agentName,
       worker.executionCtx,
       worker.namespace,
+      sharedTurnClientMessageId(raw),
+      "agentKind" in r ? "platform" : "organization-credits",
     );
   } catch (error) {
     // error-policy:J1 route boundary translates bridge/billing failures to HTTP responses.
@@ -181,7 +196,7 @@ app.post("/", async (c) => {
             code: "shared_runtime_cache_warming",
             retryable: true,
           },
-          { status: 503 },
+          { status: 503, headers: { "Retry-After": "1" } },
         ),
         CORS_METHODS,
         origin,
@@ -202,6 +217,23 @@ app.post("/", async (c) => {
               "Retry-After": String(error.retryAfter ?? 60),
             },
           },
+        ),
+        CORS_METHODS,
+        origin,
+      );
+    }
+    // A reused clientMessageId with different text must not replace the landed
+    // turn — non-retryable by contract; the caller picks a new id (#18045).
+    if (error instanceof Error && error.name === "SharedTurnConflictError") {
+      return applyCorsHeaders(
+        Response.json(
+          {
+            success: false,
+            error: error.message,
+            code: "client_message_conflict",
+            retryable: false,
+          },
+          { status: 409 },
         ),
         CORS_METHODS,
         origin,

@@ -22,7 +22,7 @@ Use a **project** for deployable product workspace state and container `projectN
 ## Quick Start
 
 ```bash
-curl -X POST "https://www.elizacloud.ai/api/v1/apps" \
+curl -X POST "https://api.eliza.app/api/v1/apps" \
   -H "Authorization: Bearer $ELIZA_CLOUD_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
@@ -65,7 +65,7 @@ Create the Cloud app with `name`, `app_url`, and optional metadata. If your cont
 <Step title="Enable monetization">
 
 ```bash
-curl -X PUT "https://www.elizacloud.ai/api/v1/apps/$APP_ID/monetization" \
+curl -X PUT "https://api.eliza.app/api/v1/apps/$APP_ID/monetization" \
   -H "Authorization: Bearer $ELIZA_CLOUD_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
@@ -86,7 +86,7 @@ Deploy your project as a container with `POST /api/v1/containers` or the SDK `cr
 <Step title="Patch the app URL">
 
 ```bash
-curl -X PATCH "https://www.elizacloud.ai/api/v1/apps/$APP_ID" \
+curl -X PATCH "https://api.eliza.app/api/v1/apps/$APP_ID" \
   -H "Authorization: Bearer $ELIZA_CLOUD_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
@@ -103,7 +103,7 @@ curl -X PATCH "https://www.elizacloud.ai/api/v1/apps/$APP_ID" \
 Route user chats through the Cloud app record:
 
 ```ts
-const response = await fetch(`https://www.elizacloud.ai/api/v1/apps/${APP_ID}/chat`, {
+const response = await fetch(`https://api.eliza.app/api/v1/apps/${APP_ID}/chat`, {
   method: "POST",
   headers: {
     "Content-Type": "application/json",
@@ -137,7 +137,7 @@ Older `enabled` plus nested `pricing` payloads are not accepted by the current a
 
 Creator markup lands in redeemable earnings. Daily container billing can use those earnings first, then organization credits, when the billing setting `payAsYouGoFromEarnings` is enabled.
 
-Redeem available earnings for elizaOS tokens from [Dashboard -> Earnings](https://elizacloud.ai/dashboard/earnings) or the [Redemptions API](/cloud/api/redemptions).
+Redeem available earnings for elizaOS tokens from [Cloud → Monetization](https://cloud.eliza.app/cloud/monetization) or the [Redemptions API](/cloud/api/redemptions).
 
 ## Best Practices
 
@@ -147,7 +147,7 @@ Redeem available earnings for elizaOS tokens from [Dashboard -> Earnings](https:
 - Patch `app_url` and `allowed_origins` after container deployment.
 - Treat `databaseMode: "isolated"` as the production default for apps that need
   persistence; verify the deployed image reads the injected `DATABASE_URL`.
-- Handle 402 responses by sending users to [Dashboard -> Billing](https://elizacloud.ai/dashboard/billing).
+- Handle 402 responses by sending users to [Cloud → Billing](https://cloud.eliza.app/cloud/billing).
 
 ## Next Steps
 

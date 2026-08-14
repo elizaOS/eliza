@@ -42,6 +42,10 @@ export interface WorkspacePlan {
 const DEFAULT_ROOT = "/opt/actions-runners";
 const DEFAULT_MIN_AGE_HOURS = 6;
 const MIN_AGE_HOURS_FLOOR = 1;
+const MILLISECONDS_PER_HOUR = 60 * 60_000;
+const MAX_MIN_AGE_HOURS = Math.floor(
+  Number.MAX_SAFE_INTEGER / MILLISECONDS_PER_HOUR,
+);
 /** Flags that take a value. Anything else is rejected rather than ignored. */
 const VALUE_FLAGS = new Set(["root", "min-age-hours"]);
 /**
@@ -109,8 +113,16 @@ export function parseRunnerWorkspacePruneArgs(
     flags.get("min-age-hours") ??
     env.RUNNER_WORKSPACE_MIN_AGE_HOURS ??
     String(DEFAULT_MIN_AGE_HOURS);
-  const minAgeHours = Number.parseInt(minAgeRaw, 10);
-  if (!Number.isInteger(minAgeHours) || minAgeHours < MIN_AGE_HOURS_FLOOR) {
+  const normalizedMinAge = minAgeRaw.trim();
+  if (!/^\+?\d+$/.test(normalizedMinAge)) {
+    throw new Error(`Invalid min-age-hours: ${minAgeRaw}`);
+  }
+  const minAgeHours = Number(normalizedMinAge);
+  if (
+    !Number.isSafeInteger(minAgeHours) ||
+    minAgeHours < MIN_AGE_HOURS_FLOOR ||
+    minAgeHours > MAX_MIN_AGE_HOURS
+  ) {
     throw new Error(`Invalid min-age-hours: ${minAgeRaw}`);
   }
 
@@ -192,7 +204,7 @@ export function buildRunnerWorkspacePrunePlan(input: {
   now: number;
   minAgeHours: number;
 }): WorkspacePlan {
-  const minAgeMs = input.minAgeHours * 60 * 60_000;
+  const minAgeMs = input.minAgeHours * MILLISECONDS_PER_HOUR;
   const workDirs = findRunnerWorkDirs(input.root);
   const entries: WorkspaceEntry[] = [];
   let skippedFresh = 0;

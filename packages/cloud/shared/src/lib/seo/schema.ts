@@ -25,7 +25,7 @@ export function generateOrganizationSchema() {
     contactPoint: {
       "@type": "ContactPoint",
       contactType: "Customer Support",
-      url: `${baseUrl}/dashboard/account`,
+      url: `${baseUrl}/cloud/account`,
     },
   };
 }

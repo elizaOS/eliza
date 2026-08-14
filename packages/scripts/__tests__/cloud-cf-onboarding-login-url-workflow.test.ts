@@ -5,7 +5,9 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, test } from "vitest";
 
-const workflow = readFileSync(".github/workflows/cloud-cf-deploy.yml", "utf8");
+// Worker secret migration runs inside the reusable release workflow invoked by
+// `cloud-cf-deploy.yml`, so the legacy-alias contract is read from there.
+const workflow = readFileSync(".github/workflows/cloud-cf-release.yml", "utf8");
 const wrangler = readFileSync("packages/cloud/api/wrangler.toml", "utf8");
 
 describe("staging onboarding login URL deployment", () => {
@@ -16,8 +18,8 @@ describe("staging onboarding login URL deployment", () => {
     expect(wrangler).toContain(
       'ELIZA_ONBOARDING_LOGIN_APP_URL = "https://eliza.app"',
     );
-    expect(wrangler).toContain("canonical deploy-homepage.yml workflow");
-    expect(wrangler).not.toContain("deploy-homepage-staging.yml");
+    expect(wrangler).toContain("host-aware eliza-app Pages artifact");
+    expect(wrangler).not.toContain("deploy-homepage.yml");
   });
 
   test("retires both legacy secret aliases immediately before staging deploy", () => {

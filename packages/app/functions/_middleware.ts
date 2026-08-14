@@ -30,6 +30,11 @@
 //   an edge-cached .js response has its browser TTL rewritten to the zone
 //   default (max-age=14400), which would delay SW update propagation by hours.
 
+import {
+  canonicalCloudPathForLegacyDashboard,
+  classifyElizaHostname,
+  ELIZA_DOMAIN_CONTRACTS,
+} from "@elizaos/shared/elizacloud/domain-contract";
 import { type PagesProxyEnv, proxyToApiWorker } from "./_proxy";
 
 interface MiddlewareContext {
@@ -38,7 +43,62 @@ interface MiddlewareContext {
   next: (input?: Request) => Promise<Response>;
 }
 
-const PROXY_PREFIXES = ["/api/", "/steward/"];
+const OIDC_PROTOCOL_PATHS = new Set([
+  "/.well-known/openid-configuration",
+  "/.well-known/oidc/jwks.json",
+]);
+
+function isProtocolPath(pathname: string): boolean {
+  return (
+    pathname === "/api" ||
+    pathname.startsWith("/api/") ||
+    pathname === "/steward" ||
+    pathname.startsWith("/steward/") ||
+    OIDC_PROTOCOL_PATHS.has(pathname)
+  );
+}
+
+/** Resolve browser-facing legacy aliases to their canonical host. */
+export function resolveCanonicalPageRedirect(
+  requestUrl: string,
+): string | null {
+  const url = new URL(requestUrl);
+  const classified = classifyElizaHostname(url.hostname);
+  if (!classified.environment) return null;
+
+  const contract = ELIZA_DOMAIN_CONTRACTS[classified.environment];
+  const canonicalDashboardPath = canonicalCloudPathForLegacyDashboard(
+    url.pathname,
+    url.search,
+  );
+  let origin: string | null = null;
+  if (classified.role === "legacy-marketing" && isProtocolPath(url.pathname)) {
+    origin = contract.cloudApiOrigin;
+  } else if (classified.role === "legacy-marketing" && canonicalDashboardPath) {
+    origin = contract.cloudAppOrigin;
+    url.pathname = canonicalDashboardPath;
+  } else if (classified.role === "marketing" && canonicalDashboardPath) {
+    origin = contract.cloudAppOrigin;
+    url.pathname = canonicalDashboardPath;
+  } else if (
+    classified.role === "legacy-marketing" ||
+    (classified.role === "marketing" &&
+      url.hostname !== new URL(contract.marketingOrigin).hostname)
+  ) {
+    origin = contract.marketingOrigin;
+  } else if (classified.role === "cloud-app" && canonicalDashboardPath) {
+    origin = contract.cloudAppOrigin;
+    url.pathname = canonicalDashboardPath;
+  } else if (classified.role === "legacy-cloud-app") {
+    origin = isProtocolPath(url.pathname)
+      ? contract.cloudApiOrigin
+      : contract.cloudAppOrigin;
+    if (canonicalDashboardPath) url.pathname = canonicalDashboardPath;
+  } else if (classified.role === "legacy-cloud-api") {
+    origin = contract.cloudApiOrigin;
+  }
+  return origin ? `${origin}${url.pathname}${url.search}` : null;
+}
 
 const ASSETS_PREFIX = "/assets/";
 const SERVICE_WORKER_PATH = "/sw.js";
@@ -127,10 +187,12 @@ export const onRequest = async (
 ): Promise<Response> => {
   const url = new URL(context.request.url);
 
-  const shouldProxy = PROXY_PREFIXES.some((prefix) =>
-    url.pathname.startsWith(prefix),
-  );
-  if (shouldProxy) {
+  const canonicalRedirect = resolveCanonicalPageRedirect(url.href);
+  if (canonicalRedirect) {
+    return Response.redirect(canonicalRedirect, 308);
+  }
+
+  if (isProtocolPath(url.pathname)) {
     return proxyToApiWorker(context);
   }
 

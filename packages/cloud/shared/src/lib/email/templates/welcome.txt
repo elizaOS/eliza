@@ -2,14 +2,11 @@
 
 Hi {{userName}}, we're excited to have you here!
 
-Your organization "{{organizationName}}" has been successfully created, and you're ready to start building amazing AI agents.
-
-🎁 STARTING BALANCE: ${{creditBalance}}
-Perfect for building your first agents!
+Your account "{{organizationName}}" has been created at a $0 balance. Shared chat is free; paid agent compute starts only after you add funds and explicitly activate it.
 
 GET STARTED IN 3 EASY STEPS:
 
-1. Explore Your Dashboard
+1. Explore Your Cloud View
    View your balance, usage analytics, and account settings
 
 2. Create Your First Agent
@@ -18,7 +15,7 @@ GET STARTED IN 3 EASY STEPS:
 3. Integrate with Your App
    Use our API to connect Eliza agents to your applications
 
-→ View Dashboard: {{dashboardUrl}}
+→ Open Eliza Cloud: {{dashboardUrl}}
 → Read Documentation: {{docsUrl}}
 
 NEED HELP?

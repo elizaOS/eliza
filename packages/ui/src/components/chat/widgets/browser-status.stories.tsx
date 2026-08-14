@@ -102,8 +102,8 @@ export const SingleTab: Story = {
   decorators: withTabs([
     tab({
       id: "only",
-      title: "Eliza Cloud — Dashboard",
-      url: "https://elizacloud.ai/dashboard",
+      title: "Eliza — Cloud",
+      url: "https://cloud.eliza.app/cloud",
       visible: true,
     }),
   ]),

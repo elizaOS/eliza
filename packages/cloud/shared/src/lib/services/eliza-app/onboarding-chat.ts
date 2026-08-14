@@ -18,6 +18,7 @@ import {
 import { logger } from "../../utils/logger";
 import { normalizePhoneNumber } from "../../utils/phone-normalization";
 import { launchManagedElizaAgent } from "../eliza-managed-launch";
+import { readOnboardingCoordinatorResult } from "./onboarding-coordinator-transport";
 import {
   enqueueDiscordProactiveGreeting,
   PROACTIVE_GREETING_QUEUE_PREFIX,
@@ -86,6 +87,7 @@ export interface OnboardingChatInput {
     userId: string;
     organizationId: string;
     telegramId?: string;
+    discordId?: string;
   } | null;
   trustedPlatformIdentity?: boolean;
   /** Requests fail-closed redemption of an existing trusted Telegram session. */
@@ -152,9 +154,9 @@ const MAX_HISTORY_MESSAGES = 200;
 const MAX_MESSAGE_LENGTH = 4000;
 // The Cloud app host. Serves the authenticated `/get-started` continuation
 // landing (Steward login -> identity confirm -> back-to-Discord handoff) that
-// the messaging Connect CTA now targets directly, plus dashboard/billing links.
-const DEFAULT_ONBOARDING_APP_URL = "https://app.elizacloud.ai";
-const ELIZA_APP_INITIAL_CREDIT_USD = "$5";
+// the messaging Connect CTA now targets directly, plus in-app Cloud links.
+const DEFAULT_ONBOARDING_APP_URL = "https://cloud.eliza.app";
+const ELIZA_APP_SHARED_OFFER = "shared chat is free, no card needed";
 /** Label for platforms that render the login link as a UI affordance. */
 const ONBOARDING_CTA_LABEL = "Connect";
 /**
@@ -183,7 +185,8 @@ function resultCacheKey(
     : "transport";
   const mode = input.continuationMode ?? "standard";
   const telegramId = input.authenticatedUser?.telegramId ?? "no-telegram";
-  return `eliza-app:onboarding-result:${sessionId}:${scope}:${mode}:${encodeURIComponent(telegramId)}:${idempotencyKey}`;
+  const discordId = input.authenticatedUser?.discordId ?? "no-discord";
+  return `eliza-app:onboarding-result:${sessionId}:${scope}:${mode}:${encodeURIComponent(telegramId)}:${encodeURIComponent(discordId)}:${idempotencyKey}`;
 }
 
 function nowIso(): string {
@@ -410,13 +413,24 @@ function isBrowserLinkableContinuationForAccount(
 /** Resolve an opaque messaging continuation without mutating or binding it. */
 export async function inspectOnboardingContinuation(
   continuationToken: string,
-  authenticatedAccount: { userId: string; organizationId: string },
+  authenticatedAccount: {
+    userId: string;
+    organizationId: string;
+    telegramId?: string;
+    discordId?: string;
+  },
 ): Promise<OnboardingContinuationPreview> {
   const sessionId = await resolveContinuationToken(continuationToken);
   const session = sessionId ? await loadOnboardingSessionForValidation(sessionId) : null;
   if (!isBrowserLinkableContinuationForAccount(session, authenticatedAccount)) {
     throw trustedBrowserContinuationError(session);
   }
+  // Preview is an authorization boundary too: it returns the attested platform
+  // identity before the mutating confirmation turn. A signed Discord or
+  // Telegram session for a different account must not learn that identity.
+  assertAuthenticatedPlatformIdentity(session, {
+    authenticatedUser: authenticatedAccount,
+  });
   return {
     platform: session.platform,
     platformUserId: session.platformUserId,
@@ -801,6 +815,12 @@ async function maybeLinkAuthenticatedPlatformIdentity(
       // Already linked (eliza-app JWT carries the signed Telegram id).
       return session;
     }
+    if (platform === "discord" && input.authenticatedUser.discordId === session.platformUserId) {
+      // Already linked (eliza-app JWT carries the signed Discord id): the user
+      // authenticated via Discord OAuth as the same account that sent the DM,
+      // so the identity is proven and no confirmation detour is needed.
+      return session;
+    }
     if (input.confirmPlatformLink !== true) {
       throw new ElizaError(
         `${platformLinkLabel(platform)} identity linking requires explicit confirmation`,
@@ -879,7 +899,7 @@ async function maybeLinkAuthenticatedPlatformIdentity(
   return session;
 }
 
-function assertAuthenticatedTelegramIdentity(
+function assertAuthenticatedPlatformIdentity(
   session: OnboardingSession,
   input: OnboardingChatInput,
 ): void {
@@ -894,21 +914,26 @@ function assertAuthenticatedTelegramIdentity(
     return;
   }
 
-  if (session.platform !== "telegram") {
+  if (session.platform !== "telegram" && session.platform !== "discord") {
     return;
   }
-  const signedPlatformId = input.authenticatedUser.telegramId;
+  const signedPlatformId =
+    session.platform === "discord"
+      ? input.authenticatedUser.discordId
+      : input.authenticatedUser.telegramId;
   if (signedPlatformId === session.platformUserId) {
     return;
   }
 
-  // A Steward browser continuation carries no signed Telegram identity — the
-  // opaque continuation token (delivered only inside the Telegram DM) plus the
+  // A Steward browser continuation carries no signed platform identity — the
+  // opaque continuation token (delivered only inside the platform DM) plus the
   // explicit confirmPlatformLink turn is the ownership proof, exactly like the
   // Discord continuation path (#18161). Strict trusted-telegram redemption
   // (the legacy widget auth route) always carries the signed id and never
-  // takes this branch. A caller whose token DOES carry a Telegram id that
-  // differs from the session's stays a hard mismatch.
+  // takes this branch. A caller whose token DOES carry a signed id for the
+  // session's platform that differs from the session's stays a hard mismatch:
+  // a Discord-OAuth (or Telegram-widget) authenticated browser that owns a
+  // DIFFERENT platform account must not adopt this DM session (#18058).
   if (signedPlatformId === undefined && input.continuationMode !== "trusted-telegram") {
     return;
   }
@@ -949,7 +974,7 @@ export function assertTrustedTelegramContinuation(
     throw trustedContinuationError(session);
   }
 
-  assertAuthenticatedTelegramIdentity(session, input);
+  assertAuthenticatedPlatformIdentity(session, input);
 }
 
 function getOnboardingAppUrl(): string {
@@ -968,8 +993,8 @@ function onboardingAppPath(path: string): string {
 
 /**
  * The messaging-continuation Connect CTA target: the Cloud app's own
- * `/get-started` (ELIZA_ONBOARDING_APP_URL — app.elizacloud.ai /
- * app-staging.elizacloud.ai), NOT the homepage.
+ * `/get-started` (ELIZA_ONBOARDING_APP_URL — cloud.eliza.app /
+ * cloud-staging.eliza.app), not the public homepage.
  *
  * That Cloud-app route is authenticated, so a signed-out visitor is bounced
  * straight to `/login?returnTo=/get-started` (the Steward auth flow) with the
@@ -1060,15 +1085,15 @@ function fallbackReply(args: {
     // Every no-name variant keeps the same product facts and always ends on
     // the name ask, so downstream name-capture logic sees a consistent state.
     if (intent === "hesitation") {
-      return `fair to ask. I'm Eliza - I set you up with your own private agent, no card needed, and your first ${ELIZA_APP_INITIAL_CREDIT_USD} is on me. if it's not for you, just stop replying. if you're curious - what should I call you?`;
+      return `fair to ask. I'm Eliza - I set you up with your own private agent, and ${ELIZA_APP_SHARED_OFFER}. if it's not for you, just stop replying. if you're curious - what should I call you?`;
     }
     if (intent === "question") {
-      return `good question - I'm Eliza, and this is where you get your own agent. it lives in this chat, remembers everything you talk about, and can do real work for you. your first ${ELIZA_APP_INITIAL_CREDIT_USD} is on me. what should I call you?`;
+      return `good question - I'm Eliza, and this is where you get your own agent. it lives in this chat, remembers everything you talk about, and can do real work for you. ${ELIZA_APP_SHARED_OFFER}. what should I call you?`;
     }
     if (intent === "greeting") {
-      return `hey! I'm Eliza. I can set you up with your own agent - it chats right here, remembers everything you talk about, and your first ${ELIZA_APP_INITIAL_CREDIT_USD} is on me. what should I call you?`;
+      return `hey! I'm Eliza. I can set you up with your own agent - it chats right here, remembers everything you talk about, and ${ELIZA_APP_SHARED_OFFER}. what should I call you?`;
     }
-    return `hey, I'm Eliza. I can get you set up with your own agent. it chats right here, remembers everything you talk about, and your first ${ELIZA_APP_INITIAL_CREDIT_USD} is on me. what should I call you?`;
+    return `hey, I'm Eliza. I can get you set up with your own agent. it chats right here, remembers everything you talk about, and ${ELIZA_APP_SHARED_OFFER}. what should I call you?`;
   }
   if (args.requiresLogin) {
     // "tap below" copy only when a CTA will actually render; otherwise the
@@ -1076,29 +1101,29 @@ function fallbackReply(args: {
     // login URL could not become a valid button - see buildLoginCta).
     if (args.preferredNameProvidedThisTurn !== false) {
       if (args.cta) {
-        return `nice to meet you, ${name}. tap below to connect your account and I'll spin up your agent. your first ${ELIZA_APP_INITIAL_CREDIT_USD} is on me.`;
+        return `nice to meet you, ${name}. tap below to connect your account and I'll spin up your agent. ${ELIZA_APP_SHARED_OFFER}.`;
       }
-      return `nice to meet you, ${name}. connect your account here and I'll spin up your agent, first ${ELIZA_APP_INITIAL_CREDIT_USD} on me: ${args.loginUrl}`;
+      return `nice to meet you, ${name}. connect your account here and I'll spin up your agent. ${ELIZA_APP_SHARED_OFFER}: ${args.loginUrl}`;
     }
     // The user kept chatting instead of connecting. Respond to what they
     // said, then steer back to the connect handoff - every turn ends on the
     // CTA so the next step is never ambiguous.
     if (intent === "question") {
       if (args.cta) {
-        return `good question, ${name}. connecting takes about ten seconds - it links this chat to your own agent so it remembers everything we've talked about. tap below and I'll spin it up, first ${ELIZA_APP_INITIAL_CREDIT_USD} on me.`;
+        return `good question, ${name}. connecting takes about ten seconds - it links this chat to your own agent so it remembers everything we've talked about. tap below and I'll spin it up. ${ELIZA_APP_SHARED_OFFER}.`;
       }
-      return `good question, ${name}. connecting takes about ten seconds - it links this chat to your own agent so it remembers everything we've talked about. here's your link, first ${ELIZA_APP_INITIAL_CREDIT_USD} on me: ${args.loginUrl}`;
+      return `good question, ${name}. connecting takes about ten seconds - it links this chat to your own agent so it remembers everything we've talked about. ${ELIZA_APP_SHARED_OFFER}: ${args.loginUrl}`;
     }
     if (intent === "hesitation") {
       if (args.cta) {
-        return `no pressure, ${name}. nothing happens until you connect, and your first ${ELIZA_APP_INITIAL_CREDIT_USD} is on me - no card. whenever you're ready, the button below is the way in.`;
+        return `no pressure, ${name}. nothing happens until you connect, and ${ELIZA_APP_SHARED_OFFER}. whenever you're ready, the button below is the way in.`;
       }
-      return `no pressure, ${name}. nothing happens until you connect, and your first ${ELIZA_APP_INITIAL_CREDIT_USD} is on me - no card. whenever you're ready: ${args.loginUrl}`;
+      return `no pressure, ${name}. nothing happens until you connect, and ${ELIZA_APP_SHARED_OFFER}. whenever you're ready: ${args.loginUrl}`;
     }
     if (args.cta) {
-      return `still here, ${name}! one step left: tap below to connect and I'll spin up your agent. your first ${ELIZA_APP_INITIAL_CREDIT_USD} is on me.`;
+      return `still here, ${name}! one step left: tap below to connect and I'll spin up your agent. ${ELIZA_APP_SHARED_OFFER}.`;
     }
-    return `still here, ${name}! one step left: connect your account and I'll spin up your agent, first ${ELIZA_APP_INITIAL_CREDIT_USD} on me: ${args.loginUrl}`;
+    return `still here, ${name}! one step left: connect your account and I'll spin up your agent. ${ELIZA_APP_SHARED_OFFER}: ${args.loginUrl}`;
   }
   if (args.handoffComplete) {
     return `you're in, ${name}. your agent is live and already knows everything from this chat. just keep talking here.`;
@@ -1113,7 +1138,7 @@ function fallbackReply(args: {
     return `last attempt failed, ${name}. I've queued another one, nothing for you to do. keep chatting here.`;
   }
   if (args.provisioning.status === "insufficient_credits") {
-    return `you're out of credits, ${name}. top up at ${onboardingAppPath("/dashboard/billing")} and I'll get your agent going.`;
+    return `you're out of credits, ${name}. top up at ${onboardingAppPath("/cloud/billing")} and I'll get your agent going.`;
   }
   return `on it, ${name}. your agent is spinning up now, takes a minute or two. keep chatting here in the meantime.`;
 }
@@ -1237,7 +1262,7 @@ async function copyTranscriptToManagedAgent(session: OnboardingSession): Promise
 }
 
 function controlPanelUrl(agentId?: string | null): string {
-  return onboardingAppPath(agentId ? `/dashboard/agents/${agentId}` : "/dashboard/agents");
+  return onboardingAppPath(agentId ? `/cloud/agents/${agentId}` : "/cloud/agents");
 }
 
 function newSession(id: string, input: OnboardingChatInput): OnboardingSession {
@@ -1335,7 +1360,7 @@ export async function runOnboardingChatWithStore(
 
   const wasUnboundBeforeThisTurn = !session.userId;
   if (input.authenticatedUser) {
-    assertAuthenticatedTelegramIdentity(session, input);
+    assertAuthenticatedPlatformIdentity(session, input);
     session = {
       ...session,
       userId: input.authenticatedUser.userId,
@@ -1534,19 +1559,12 @@ function onboardingCoordinator(): RuntimeDurableObjectNamespace | undefined {
   return getCloudBinding<RuntimeDurableObjectNamespace>("ONBOARDING_SESSIONS");
 }
 
-async function readCoordinatorResult(response: Response): Promise<OnboardingChatResult> {
-  if (!response.ok) {
-    throw new Error(`onboarding session coordinator failed (${response.status})`);
-  }
-  return (await response.json()) as OnboardingChatResult;
-}
-
 async function runViaCoordinator(
   stub: RuntimeDurableObjectStub,
   input: OnboardingChatInput,
   sessionId: string,
 ): Promise<OnboardingChatResult> {
-  return readCoordinatorResult(
+  return readOnboardingCoordinatorResult<OnboardingChatResult>(
     await stub.fetch("https://onboarding.internal/turn", {
       method: "POST",
       headers: { "content-type": "application/json" },

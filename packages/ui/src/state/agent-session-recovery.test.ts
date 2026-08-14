@@ -298,6 +298,16 @@ describe("shouldShowCloudAgentReauthNotice", () => {
     ).toBe(true);
   });
 
+  it("routes managed desktop Cloud targets to Cloud instead of the password wall", () => {
+    expect(
+      shouldShowCloudAgentReauthNotice({
+        isHostedLocation: false,
+        isNative: false,
+        activeServer: cloudServer("23766030-0000-0000-0000-000000000000"),
+      }),
+    ).toBe(true);
+  });
+
   it("preserves the password wall for native self-hosted targets", () => {
     expect(
       shouldShowCloudAgentReauthNotice({

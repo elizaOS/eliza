@@ -204,8 +204,8 @@ async function processContainerBilling(
             minute: "2-digit",
             timeZoneName: "short",
           }),
-          billingUrl: `${appUrl}/dashboard/billing`,
-          dashboardUrl: `${appUrl}/dashboard/containers/${containerId}`,
+          billingUrl: `${appUrl}/cloud/billing`,
+          dashboardUrl: `${appUrl}/cloud/containers/${containerId}`,
         });
 
         logger.info(
@@ -372,7 +372,7 @@ async function handleContainerBilling(c: AppContext): Promise<Response> {
   const startTime = Date.now();
   try {
     requireCronSecret(c);
-    const appUrl = c.env.NEXT_PUBLIC_APP_URL || "https://www.elizacloud.ai";
+    const appUrl = c.env.NEXT_PUBLIC_APP_URL || "https://cloud.eliza.app";
     // One timestamp for the whole run: the due-gate, the period, and the
     // row-lock idempotency guard must all agree on "now".
     const runNow = new Date();

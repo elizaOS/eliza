@@ -1,10 +1,19 @@
-# eliza-app
+# Homepage source module
 
-Static React + Vite SPA that serves as the elizaOS public homepage (`eliza.app`). Calls the Eliza Cloud API directly from the browser — no proxy, no Next.js, no server-side rendering.
+React source for the public marketing surfaces embedded in `packages/app`.
+This directory does not own a development server, production build, preview,
+or Cloudflare Pages project; `packages/app` is the only frontend composition
+root and deployable artifact for both `eliza.app` and `cloud.eliza.app`.
 
 ## Purpose / role
 
-This package builds and deploys the public-facing Eliza landing experience and user onboarding flow. It is not imported by any other package; it is a standalone Vite app that produces `dist/` for Cloudflare Pages. It consumes `@elizaos/ui` and `@elizaos/shared` from the monorepo workspace.
+This package owns the public landing/download components, their assets, and
+focused source and visual regression tests. `packages/app/src/main.tsx` imports
+the approved `embedded-home` and `embedded-downloads` entrypoints, and
+`packages/app/scripts/sync-homepage-assets.mjs` materializes the required public
+files into the unified app build. The older route harness remains test-only so
+its component coverage and reviewed visual baselines stay available; it is not
+a product build or deployment authority.
 
 ## Layout
 
@@ -17,8 +26,11 @@ packages/homepage/
     text-modules.d.ts             Exact-text manifest import type used by the Worker
     tsconfig.json                 Standalone strict typecheck for the edge Worker
   src/
-    main.tsx                    App entry — mounts <App> under StrictMode + I18nProvider
-    App.tsx                     Route table (BrowserRouter + React Router)
+    embedded-home.tsx           Public landing entrypoint imported by packages/app
+    embedded-downloads.tsx      Public downloads entrypoint imported by packages/app
+    embedded-surface.tsx        Providers/styles shared by embedded public surfaces
+    main.tsx                    Test-only legacy route-harness entry
+    App.tsx                     Test-only legacy route table
     index.css                   Global Tailwind v4 styles
     pages/
       landing.tsx               "/" and "/leaderboard" — animated onboarding + platform switcher
@@ -64,27 +76,23 @@ packages/homepage/
   scripts/
     generate-contact-sheet.mjs  Generates HTML contact sheet from Playwright screenshots
     verify-aasa-response.mjs    Separately gates exact origin and Apple CDN bytes, metadata, identity, and routes
-  vite.config.ts                Vite config — aliases and bundle visualizer
-  playwright.config.ts          Playwright config for e2e
+  vite.config.ts                Test-harness Vite config; never used for product builds
+  playwright.config.ts          Isolated visual-regression harness configuration
 ```
 
 ## Key exports / surface
 
-This package has no library exports. It is a private Vite application (`"private": true`). Other packages do not import from it.
+This package is private and has no published exports. `packages/app` consumes
+its embedded entrypoints through an explicit source alias; no other package may
+treat it as an application or deploy its output.
 
 **Internal alias `@/`** maps to `src/`. Vite aliases resolve `@elizaos/ui/*` sub-paths directly to source files in `packages/ui/src/` to avoid pulling the full barrel.
 
 ## Commands
 
-All scripts are run with `bun run --cwd packages/homepage <script>`.
+Source-validation scripts are run with `bun run --cwd packages/homepage <script>`.
 
 ```bash
-bun run --cwd packages/homepage dev            # Vite dev server on :4444 (runs predev first)
-bun run --cwd packages/homepage build          # Production build → dist/ (runs prebuild first)
-bun run --cwd packages/homepage deploy:preview # Build and publish a Cloudflare Pages preview
-bun run --cwd packages/homepage deploy:production # Build and publish to eliza.app
-bun run --cwd packages/homepage clean          # Remove dist/
-bun run --cwd packages/homepage preview        # Serve dist/ on :4444
 bun run --cwd packages/homepage typecheck      # tsc -b (generates release-data first)
 bun run --cwd packages/homepage lint           # Biome check --write --unsafe
 bun run --cwd packages/homepage lint:check     # Biome check (read-only)
@@ -94,45 +102,48 @@ bun run --cwd packages/homepage test           # Node --test smoke suite
 bun run --cwd packages/homepage test:aasa-edge # AASA body/header/origin-pass-through contract
 bun run --cwd packages/homepage typecheck:aasa-edge # Strict standalone edge Worker typecheck
 bun run --cwd packages/homepage deploy:aasa-edge # Deploy exact-path production Worker (requires Cloudflare credentials)
-bun run --cwd packages/homepage test:e2e       # Playwright e2e (all specs)
-bun run --cwd packages/homepage test:audit     # Aesthetic audit + contact sheet
+bun run --cwd packages/homepage test:e2e       # Optional isolated source visual harness; never deploys
+bun run --cwd packages/homepage test:audit     # Optional source aesthetic audit + contact sheet
 bun run --cwd packages/homepage check:release-data  # Validate generated release-data.ts
 ```
 
-**predev / prebuild** run automatically before `dev` and `build`:
-1. `node ../shared/scripts/sync-to-public.mjs ./public --logos --favicons --ogembeds` — syncs only the brand assets referenced by the homepage into `public/`.
-2. `node ../app-core/scripts/write-homepage-release-data.mjs` — fetches GitHub Releases and writes `src/generated/release-data.ts`.
-
-**postbuild** runs `scripts/prune-unused-static-assets.mjs` so optional artifact-bundle backgrounds and product concepts cannot inflate the Cloudflare Pages upload when a developer checkout has hydrated them into `public/`.
+Run the product surface through `bun run --cwd packages/app dev` and build it
+with `bun run --cwd packages/app build:web`. The app's `predev`/`prebuild`
+generates homepage release data and syncs the approved homepage assets before
+Vite starts. The Cloudflare workflow builds only that app artifact.
 
 ## Config / env vars
 
-All vars use the `VITE_` prefix (browser-exposed). Set in `.env.local`.
+These `VITE_` variables are read by the embedded source. Configure them on the
+`packages/app` build; `.env.local` in this package is only for the optional
+isolated visual harness.
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `VITE_ELIZACLOUD_API_URL` | `https://elizacloud.ai` | Eliza Cloud backend base URL |
-| `VITE_TELEGRAM_BOT_USERNAME` | — | Telegram bot username (from @BotFather) |
-| `VITE_TELEGRAM_BOT_ID` | — | Numeric Telegram bot ID |
-| `VITE_DISCORD_CLIENT_ID` | — | Discord Application ID for OAuth2 |
-| `VITE_WHATSAPP_PHONE_NUMBER` | `+14159611510` | WhatsApp Business number (E.164) |
+| `VITE_ELIZACLOUD_API_URL` | `https://api.eliza.app` | Eliza Cloud backend base URL |
+| `VITE_TELEGRAM_BOT_USERNAME` | `Elizav2_Bot` | Optional Telegram bot username override |
+| `VITE_TELEGRAM_BOT_ID` | `7684336618` | Optional numeric Telegram bot ID override |
+| `VITE_DISCORD_CLIENT_ID` | `1468649258654630063` | Optional Discord Application ID override |
+| `WHATSAPP_PUBLIC_ENABLED` | disabled | Deployment-only switch that admits the public WhatsApp CTA |
+| `VITE_WHATSAPP_PHONE_NUMBER` | — | Production WhatsApp Business sender (E.164); local/test code retains a fixture |
 
 Auth token is stored in `localStorage` under key `eliza_app_session`. The test signer hook is `window.__siwsTestSigner` (used by Playwright e2e to skip wallet interaction).
 
 ## How to extend
 
-**Add a new route:**
-1. Create `src/pages/<name>.tsx`.
-2. Add a `lazy(() => import("@/pages/<name>"))` in `src/App.tsx`.
-3. Add the `<Route>` entry; wrap in `<AuthedShell>` if auth is required.
-4. Add a Playwright route entry in `tests/e2e/route-coverage.spec.ts` and `aesthetic-audit.spec.ts`.
+**Add or change a public product route:** update the source component here,
+expose a narrow embedded entrypoint, and register that entrypoint in the
+`packages/app` web shell. Do not add a second application entry or deployment
+configuration. Authentication and Cloud management routes belong to the
+unified router in `@elizaos/ui`.
 
 **Add a new i18n locale:**
 1. Add `src/i18n/locales/<locale>.json` following the existing key structure.
 2. Register the locale in `src/providers/I18nProvider.tsx`.
 
 **Update release download data:**
-Run `node packages/app-core/scripts/write-homepage-release-data.mjs` — this is done automatically by predev/prebuild.
+Run `node packages/app-core/scripts/write-homepage-release-data.mjs` — this is
+done automatically by the `packages/app` predev/prebuild lifecycle.
 
 **Add a new API call:**
 Use `elizacloudFetch` (public) or `elizacloudAuthFetch` (sends Bearer token) from `src/lib/api/client.ts`. Do not call `fetch` directly.
@@ -142,8 +153,11 @@ Use `elizacloudFetch` (public) or `elizacloudAuthFetch` (sends Bearer token) fro
 - **`src/generated/release-data.ts` is auto-generated.** Never edit it by hand; it is overwritten on every `dev`/`build`. Run the generator script if you need fresh data.
 - **Vite aliases resolve `@elizaos/ui` sub-paths to source.** There is no bare `@elizaos/ui` alias; only explicit sub-path aliases (`@elizaos/ui/cloud-ui`, `@elizaos/ui/button`, `@elizaos/ui/input`, `@elizaos/ui/dropdown-menu`, `@elizaos/ui/i18n/region`, `@elizaos/ui/product-switcher`) map to `packages/ui/src/`. Use those sub-path imports; adding a new sub-path requires a new alias entry in `vite.config.ts`.
 - **ShaderBackground and VideoCall are lazy-loaded** in `landing.tsx` (`React.lazy()` + `Suspense`) so the route shell becomes interactive without waiting for the WebGL/canvas code. `ModelB` sits behind its own Suspense boundary because it drives the messaging surface but must not block the page chrome while its 3D asset loads.
-- **Cloudflare Pages is the only homepage host.** `public/_redirects` provides SPA fallback and `public/_headers` provides static response headers. Do not add Vercel or GitHub Pages deployment configuration.
-- **Dev server port is 4444** (not the standard 5173). `bun run dev` is required; `vite preview` alone will not have the correct env from the orchestrator.
+- **`packages/app` is the only frontend host.** Do not restore homepage
+  `dev`, `build`, `preview`, or Pages deployment scripts. Public headers,
+  redirects, assets, and Functions behavior must be emitted by the app.
+- **Port 4444 belongs only to the optional Playwright source harness.** Normal
+  development uses `packages/app`; `bun run dev:all` never launches this package.
 - **The production AASA response is owned by the exact-path Worker** in `edge/apple-app-site-association.ts`; it serves the exact bytes of the reviewed edge-only JSON manifest and forwards every non-exact request to the existing Pages origin. The public AASA file deliberately keeps its placeholder Team ID so `develop` Pages builds cannot publish production trust. `.github/workflows/deploy-aasa.yml` publishes only from protected `main`, rolls back an invalid origin before observing Apple's CDN in a separate job, and never treats cache-bypass behavior as release evidence.
 - **SIWS test signer:** Playwright e2e injects `window.__siwsTestSigner` to simulate Solana wallet sign-in without a real wallet extension.
 - For logging, architecture, and naming conventions see the root `CLAUDE.md`.
@@ -151,7 +165,6 @@ Use `elizacloudFetch` (public) or `elizacloudAuthFetch` (sends Bearer token) fro
 ## Verification
 
 Follow the repository-wide verification and evidence standard in the [root CLAUDE.md](../../CLAUDE.md). Run
-the package's relevant build, typecheck, lint, and test commands, then exercise
-the real integration boundary changed by the work. Inspect the produced domain
-artifacts and failure behavior; do not substitute mocked success for the system
-under test.
+the package's source typecheck/lint/tests and build `packages/app`, then exercise
+the real unified-host boundary. Inspect the produced app artifact and failure
+behavior; a test-harness Vite render is not deployment evidence.

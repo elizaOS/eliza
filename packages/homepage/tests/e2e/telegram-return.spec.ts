@@ -37,7 +37,7 @@ test("redeems a bot continuation inside signed Telegram auth", async ({
   await page.route("https://telegram.org/js/**", (route) =>
     route.fulfill({ contentType: "application/javascript", body: "" }),
   );
-  await page.route("https://elizacloud.ai/api/eliza-app/**", async (route) => {
+  await page.route("https://api.eliza.app/api/eliza-app/**", async (route) => {
     const request = route.request();
     const url = new URL(request.url());
     if (url.pathname === "/api/eliza-app/auth/telegram") {
@@ -142,7 +142,7 @@ test("does not return to Telegram unless the server confirms redemption", async 
   await page.route("https://telegram.org/js/**", (route) =>
     route.fulfill({ contentType: "application/javascript", body: "" }),
   );
-  await page.route("https://elizacloud.ai/api/eliza-app/**", async (route) => {
+  await page.route("https://api.eliza.app/api/eliza-app/**", async (route) => {
     const url = new URL(route.request().url());
     if (url.pathname === "/api/eliza-app/auth/telegram") {
       return route.fulfill({
@@ -207,7 +207,7 @@ test("a completed Telegram handoff offers a direct return to the bot", async ({
   await page.addInitScript((token) => {
     window.localStorage.setItem("eliza_app_session", token as string);
   }, TEST_TOKEN);
-  await page.route("https://elizacloud.ai/api/eliza-app/**", (route) => {
+  await page.route("https://api.eliza.app/api/eliza-app/**", (route) => {
     const url = new URL(route.request().url());
     if (url.pathname === "/api/eliza-app/user/me") {
       return route.fulfill({

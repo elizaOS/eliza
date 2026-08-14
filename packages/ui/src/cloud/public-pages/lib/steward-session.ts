@@ -55,15 +55,17 @@ async function readSessionError(response: Response): Promise<{
 
 /**
  * Steward JWT → HttpOnly cookie sync. Production cloud hosts post directly to
- * api.elizacloud.ai so auth callbacks do not depend on a same-origin redirect.
+ * api.eliza.app so auth callbacks do not depend on a same-origin redirect.
  */
 export async function syncStewardSessionCookie(
   token: string,
   refreshToken?: string | null,
+  options?: { verifiedPhone: string },
 ): Promise<void> {
   const response = await postAuthJson(STEWARD_SESSION_ENDPOINT, {
     token,
     ...(refreshToken ? { refreshToken } : {}),
+    ...(options ? { verifiedPhone: options.verifiedPhone } : {}),
   });
 
   if (!response.ok) {

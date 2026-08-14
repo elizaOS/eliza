@@ -65,6 +65,7 @@ import {
   isCloudPairAgentId,
   isCloudPairLoopbackOrigin,
 } from "@elizaos/shared/contracts";
+import { isElizaDedicatedAgentHostname } from "@elizaos/shared/elizacloud";
 import { client } from "@elizaos/ui/api";
 import { installAndroidNativeAgentFetchBridge } from "@elizaos/ui/api/android-native-agent-transport";
 import {
@@ -142,7 +143,7 @@ import {
   shouldInstallMainWindowFirstRunPatches,
   syncDetachedShellLocation,
 } from "@elizaos/ui/platform/window-shell";
-import { AppProvider } from "@elizaos/ui/state";
+import { AppProvider } from "@elizaos/ui/state/AppContext";
 import { upsertAndActivateAgentProfile } from "@elizaos/ui/state/agent-profiles";
 import { resolveDedicatedAgentId } from "@elizaos/ui/state/agent-session-recovery";
 import { initOcrBridge } from "@elizaos/ui/state/ocr-bridge";
@@ -1285,7 +1286,7 @@ async function waitForIosCloudSignInGreeting(): Promise<boolean> {
   const deadline = Date.now() + IOS_ONBOARDING_SMOKE_TIMEOUT_MS;
   while (Date.now() < deadline) {
     const text = document.body?.innerText ?? "";
-    if (/Sign in to Eliza Cloud/i.test(text)) return true;
+    if (/Sign in to Eliza(?: Cloud)?/i.test(text)) return true;
     await new Promise((resolve) => window.setTimeout(resolve, 250));
   }
   throw new Error("Timed out waiting for the Eliza Cloud sign-in greeting");
@@ -2535,9 +2536,24 @@ const CloudRouterShell = lazy(async () => {
     import("@elizaos/ui/cloud/shell/CloudRouterShell"),
   ]);
   // Public/auth only on shell boot. Private dashboard domains are loaded by
-  // CloudRouterShell when a dashboard/* path is visited — never from idle /login.
+  // CloudRouterShell when a /cloud/* path is visited — never from idle /login.
   registerPublicCloudSurfaces();
   return { default: mod.CloudRouterShell };
+});
+
+/** Approved marketing surfaces bundled only into the hosted web shell. */
+const MarketingHomePage = lazy(async () => {
+  if (__ELIZA_WEB_SHELL__ !== true) {
+    throw new Error("MarketingHomePage is web-build-only");
+  }
+  return import("@homepage/embedded-home");
+});
+
+const MarketingDownloadsPage = lazy(async () => {
+  if (__ELIZA_WEB_SHELL__ !== true) {
+    throw new Error("MarketingDownloadsPage is web-build-only");
+  }
+  return import("@homepage/embedded-downloads");
 });
 
 /**
@@ -2602,6 +2618,8 @@ function mountReactApp(): void {
       <ChatWidgetHarness />
     ) : shouldMountWebShell() && !isSpecialWindowShell ? (
       <CloudRouterShell
+        marketingHomeElement={<MarketingHomePage />}
+        downloadsElement={<MarketingDownloadsPage />}
         appElement={
           <AppProvider branding={APP_BRANDING}>{appSubtree}</AppProvider>
         }
@@ -2674,21 +2692,12 @@ function isLoopbackApiHost(host: string): boolean {
 }
 
 /**
- * Dedicated Cloud agents serve their full runtime at a per-agent subdomain
- * (`https://<agentId>.elizacloud.ai`). Trust those HTTPS subdomains so the join
- * flow can connect to a dedicated container's real `/ws` + `/api/conversations`
- * (the full Eliza experience) — the apex `elizacloud.ai` / `api.elizacloud.ai`
- * control-plane hosts are already trusted via `isConfiguredCloudApiHost` /
- * `isCurrentOriginHost`. Caller enforces `protocol === "https:"`.
+ * Dedicated Cloud agents serve their runtime on the canonical managed-agent
+ * hostname family. The shared classifier also recognizes legacy agent hosts
+ * during the DNS migration; control-plane hosts never match this predicate.
  */
 function isElizaCloudAgentSubdomain(host: string): boolean {
-  const normalized = host.toLowerCase();
-  return (
-    normalized.endsWith(".elizacloud.ai") &&
-    normalized !== "www.elizacloud.ai" &&
-    normalized !== "api.elizacloud.ai" &&
-    normalized !== "dev.elizacloud.ai"
-  );
+  return isElizaDedicatedAgentHostname(host);
 }
 
 function isNativeIosStoreBuild(): boolean {

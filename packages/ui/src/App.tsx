@@ -216,6 +216,8 @@ import { fetchWithCsrf } from "./api/csrf-client";
 // view, so importing through it folds all of them back into the main chunk.
 import {
   type AppShellPageRegistration,
+  appShellPageIsAvailable,
+  appShellPageMatchesPath,
   getAppShellPageRegistrySnapshot,
   listAppShellPages,
   subscribeAppShellPages,
@@ -226,6 +228,10 @@ import {
   resolveBuiltinRoutedViewManifest,
   resolveBuiltinTabId,
 } from "./builtin-tab-registry";
+import {
+  isManagedCloudRuntime,
+  managedCloudPageOwnsStartupFailure,
+} from "./cloud/managed-cloud-runtime";
 // DesktopTabBar stays static: it is already pulled
 // eagerly elsewhere in the app graph (plugin-loader / boot-config), so a
 // lazy() boundary here would only fold back into main. The remaining page
@@ -642,8 +648,16 @@ function WalletInventoryPage() {
 function visibleDynamicPage(
   page: ResolvedDynamicPage | null,
   enabledKinds: EnabledViewKinds,
+  managedCloudRuntime: boolean,
 ): page is ResolvedDynamicPage {
-  return Boolean(page && isViewVisible(page, enabledKinds));
+  return Boolean(
+    page &&
+      isViewVisible(page, enabledKinds) &&
+      (!page.registration ||
+        appShellPageIsAvailable(page.registration, {
+          managedCloud: managedCloudRuntime,
+        })),
+  );
 }
 
 /**
@@ -1020,9 +1034,8 @@ function renderRemoteView(view: ViewRegistryEntry, nav?: ReactNode): ReactNode {
 function findAppShellPageForRoute(
   navigationPath: string,
 ): AppShellPageRegistration | undefined {
-  const normalizedPath = trimmedNavigationPath(navigationPath);
-  return listAppShellPages().find(
-    (entry) => trimmedNavigationPath(entry.path) === normalizedPath,
+  return listAppShellPages().find((entry) =>
+    appShellPageMatchesPath(entry, navigationPath),
   );
 }
 
@@ -1370,6 +1383,7 @@ function renderViewRouterContent({
   availableViews,
   appSlug,
   nativeOsSurfaceEnabled,
+  managedCloudRuntime,
   settingsInitialSection,
   settingsNavigatePayload,
   settingsNavigateSequence,
@@ -1382,6 +1396,7 @@ function renderViewRouterContent({
   availableViews: ViewRegistryEntry[];
   appSlug: string | null;
   nativeOsSurfaceEnabled: boolean;
+  managedCloudRuntime: boolean;
   settingsInitialSection?: string | null;
   settingsNavigatePayload?: unknown;
   settingsNavigateSequence?: number;
@@ -1411,7 +1426,11 @@ function renderViewRouterContent({
   }
   const appShellPageForRoute = findAppShellPageForRoute(navigationPath);
   const visibleAppShellPage =
-    appShellPageForRoute && isViewVisible(appShellPageForRoute, enabledKinds)
+    appShellPageForRoute &&
+    appShellPageIsAvailable(appShellPageForRoute, {
+      managedCloud: managedCloudRuntime,
+    }) &&
+    isViewVisible(appShellPageForRoute, enabledKinds)
       ? appShellPageForRoute
       : undefined;
   const renderAppShellPage = (registration: AppShellPageRegistration) => (
@@ -1443,7 +1462,7 @@ function renderViewRouterContent({
     return renderAppShellPage(visibleAppShellPage);
   }
 
-  if (visibleDynamicPage(dynamicPage, enabledKinds)) {
+  if (visibleDynamicPage(dynamicPage, enabledKinds, managedCloudRuntime)) {
     return (
       <TabContentView
         reserveChatClearance={!surfaceOwnsViewport(dynamicPage.registration)}
@@ -1452,7 +1471,7 @@ function renderViewRouterContent({
       </TabContentView>
     );
   }
-  if (visibleDynamicPage(dynamicAppPage, enabledKinds)) {
+  if (visibleDynamicPage(dynamicAppPage, enabledKinds, managedCloudRuntime)) {
     return (
       <TabContentView
         reserveChatClearance={!surfaceOwnsViewport(dynamicAppPage.registration)}
@@ -1520,6 +1539,10 @@ function ViewRouter({
       : null;
   const dynamicAppPage = useResolvedDynamicPage(appSlug ?? "");
   const enabledKinds = useEnabledViewKinds();
+  const runtimeTarget = useAppSelector(
+    (state) => state.startupCoordinator.target,
+  );
+  const managedCloudRuntime = isManagedCloudRuntime(runtimeTarget);
 
   useEffect(() => {
     if (routeOverridePath) {
@@ -1547,6 +1570,7 @@ function ViewRouter({
     availableViews,
     appSlug,
     nativeOsSurfaceEnabled,
+    managedCloudRuntime,
     settingsInitialSection,
     settingsNavigatePayload,
     settingsNavigateSequence,
@@ -2248,6 +2272,10 @@ function AppContent() {
   const { views: availableViewsForDesktopTabs } = useRoutableViews();
   const [viewLayout, setViewLayout] = useState<ActiveViewLayout | null>(null);
   const navigationPath = useCurrentNavigationPath();
+  const cloudManagementOwnsStartupFailure = managedCloudPageOwnsStartupFailure(
+    navigationPath,
+    startupCoordinator.target,
+  );
   const screenBackgroundPolicy = useActiveScreenBackgroundPolicy({
     tab,
     navigationPath,
@@ -2640,7 +2668,10 @@ function AppContent() {
     );
   }
 
-  if (!isShellPaintableNow || bootstrapGateHolds) {
+  if (
+    (!isShellPaintableNow || bootstrapGateHolds) &&
+    !cloudManagementOwnsStartupFailure
+  ) {
     return (
       <BugReportProvider value={bugReport}>
         <StartupScreen />

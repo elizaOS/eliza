@@ -207,7 +207,7 @@ export function useElizaAppProvisioningChat(
       setMessages([WELCOME]);
       setIsLoading(false);
       if (timeoutRef.current) {
-        clearTimeout(timeoutRef.current);
+        window.clearTimeout(timeoutRef.current);
         timeoutRef.current = null;
       }
     }
@@ -327,7 +327,10 @@ export function useElizaAppProvisioningChat(
           !stoppedRef.current &&
           generation === generationRef.current
         ) {
-          timeoutRef.current = setTimeout(() => void poll(), POLL_INTERVAL_MS);
+          timeoutRef.current = window.setTimeout(
+            () => void poll(),
+            POLL_INTERVAL_MS,
+          );
         }
       }
     };
@@ -337,7 +340,7 @@ export function useElizaAppProvisioningChat(
       cancelled = true;
       stoppedRef.current = true;
       if (timeoutRef.current) {
-        clearTimeout(timeoutRef.current);
+        window.clearTimeout(timeoutRef.current);
         timeoutRef.current = null;
       }
     };

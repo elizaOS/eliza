@@ -70,7 +70,8 @@ Implementation requirements:
   produced by `packages/app-core/scripts/write-homepage-release-data.mjs`.
 - Add iOS TestFlight/App Store and Android Play Store/APK states without making
   a store badge clickable until a valid URL and review state exist.
-- Preserve static hosting constraints from `packages/homepage/README.md`.
+- Preserve the embedded-source constraints from `packages/homepage/README.md`
+  and the single-hosting boundary in `packages/app`.
 
 Acceptance criteria:
 
@@ -242,8 +243,8 @@ Acceptance criteria:
   internally consistent.
 - the release workflow contract tests pass before
   public release.
-- Homepage build uses freshly generated release data:
-  `bun run --cwd packages/homepage build`.
+- The unified app build uses freshly generated homepage release data:
+  `bun run --cwd packages/app build:web`.
 - Rollback instructions exist for desktop, iOS sideload, Android APK, and
   gateway services.
 

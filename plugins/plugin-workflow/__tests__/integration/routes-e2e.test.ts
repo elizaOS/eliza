@@ -1,12 +1,12 @@
 /**
- * Route-level e2e for plugin-workflow (issue #8802).
- *
- * Boots the plugin's relative and raw route tables through the real production
- * dispatcher (`tryHandleRuntimePluginRoute`) over a loopback `http.createServer`
- * — exercising the real auth gate, JSON body parsing, query/param parsing, and
- * handler dispatch — with a faked `WorkflowService` standing in for the only
- * external dependency. No mocked `json`/`status`: every assertion is on a real
- * HTTP response (status + parsed body).
+ * Route-level e2e for plugin-workflow's Smithers-backed `/api/workflow/*`
+ * surface (#19044, restoring the coverage removed with the Smithers Studio
+ * integration). Boots the plugin's rawPath route table through the real
+ * production dispatcher (`tryHandleRuntimePluginRoute`) over a loopback
+ * `http.createServer` — exercising the real auth gate, route matching, JSON
+ * body parsing, id-parameter dispatch, and error translation — with a fake
+ * `WorkflowService` standing in for the only external dependency. No mocked
+ * `json`/`status`: every assertion is on a real HTTP response.
  */
 
 import { afterEach, describe, expect, test } from 'bun:test';
@@ -17,10 +17,9 @@ import type { AgentRuntime } from '@elizaos/core';
 import { tryHandleRuntimePluginRoute } from '../../../../packages/agent/src/api/runtime-plugin-routes';
 import { workflowRoutePlugin } from '../../src/plugin-routes';
 import { workflowRoutes } from '../../src/routes/index';
-import { createValidWorkflow, createWorkflowResponse } from '../fixtures/workflows';
+import { WORKFLOW_SERVICE_TYPE } from '../../src/services/workflow-service';
 
 const servers: http.Server[] = [];
-const OWNER_ENTITY_ID = 'route-owner-test';
 
 afterEach(async () => {
   await Promise.all(
@@ -35,6 +34,30 @@ afterEach(async () => {
   servers.length = 0;
 });
 
+/** Minimal native Smithers workflow payload accepted by `workflowFrom`. */
+function smithersDefinition(overrides: Record<string, unknown> = {}) {
+  return {
+    name: 'Route Test Workflow',
+    source: 'export default async function main() { return 1; }',
+    language: 'typescript',
+    ...overrides,
+  };
+}
+
+function workflowResponse(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 'wf-001',
+    name: 'Route Test Workflow',
+    active: true,
+    language: 'typescript',
+    source: 'export default async function main() { return 1; }',
+    versionId: 'version-current',
+    createdAt: '2026-01-01T00:00:00.000Z',
+    updatedAt: '2026-01-01T00:00:00.000Z',
+    ...overrides,
+  };
+}
+
 interface ServiceCall {
   method: string;
   args: unknown[];
@@ -45,9 +68,10 @@ interface FakeServiceState {
 }
 
 /**
- * Build a fake `WorkflowService` covering only the methods the routes call.
- * Returns deterministic, JSON-serializable fixtures so the real HTTP round-trip
- * can be asserted end to end.
+ * Fake `WorkflowService` covering only the methods the exercised routes call.
+ * Deterministic, JSON-serializable results so the real HTTP round-trip can be
+ * asserted end to end; every call is recorded with its arguments so the tests
+ * can prove which service boundary each route hit and with which owner.
  */
 function makeWorkflowService(state: FakeServiceState) {
   const record =
@@ -59,55 +83,38 @@ function makeWorkflowService(state: FakeServiceState) {
 
   return {
     listWorkflows: record('listWorkflows', [
-      createWorkflowResponse({ id: 'wf-001', name: 'Workflow A', active: true }),
-      createWorkflowResponse({ id: 'wf-002', name: 'Workflow B', active: false }),
+      workflowResponse(),
+      workflowResponse({ id: 'wf-002', name: 'Second', active: false }),
     ]),
-    getWorkflow: record('getWorkflow', createWorkflowResponse({ id: 'wf-001' })),
-    deployWorkflow: record('deployWorkflow', {
-      id: 'wf-001',
-      name: 'Test Workflow',
-      active: true,
-      nodeCount: 2,
-      missingCredentials: [],
-    }),
-    activateWorkflow: record('activateWorkflow', undefined),
-    deactivateWorkflow: record('deactivateWorkflow', undefined),
+    getWorkflow: record('getWorkflow', workflowResponse()),
+    deployWorkflow: record('deployWorkflow', workflowResponse()),
     deleteWorkflow: record('deleteWorkflow', undefined),
-    listExecutions: record('listExecutions', {
-      data: [{ id: 'exec-001', status: 'success', workflowId: 'wf-001' }],
-      nextCursor: undefined,
+    startWorkflow: record('startWorkflow', {
+      id: 'exec-001',
+      workflowId: 'wf-001',
+      status: 'running',
+      mode: 'manual',
+      startedAt: '2026-01-01T12:00:00.000Z',
+    }),
+    cancelExecution: record('cancelExecution', {
+      id: 'exec-001',
+      workflowId: 'wf-001',
+      status: 'cancelled',
     }),
     getExecutionDetail: record('getExecutionDetail', {
       id: 'exec-001',
-      status: 'success',
       workflowId: 'wf-001',
-    }),
-    runWorkflow: record('runWorkflow', {
-      id: 'exec-001',
-      finished: true,
-      mode: 'manual',
-      startedAt: '2025-01-01T12:00:00.000Z',
-      stoppedAt: '2025-01-01T12:00:01.000Z',
       status: 'success',
-      workflowId: 'wf-001',
     }),
-    listWorkflowRevisions: record('listWorkflowRevisions', [
-      {
-        id: 'revision-001',
-        workflowId: 'wf-001',
-        versionId: 'version-old',
-        name: 'Test Workflow',
-        active: false,
-        workflow: createValidWorkflow(),
-        createdAt: '2025-01-01T00:00:00.000Z',
-        updatedAt: '2025-01-01T00:00:00.000Z',
-        capturedAt: '2025-01-01T01:00:00.000Z',
-        operation: 'update',
-      },
+    getWorkflowExecutions: record('getWorkflowExecutions', [
+      { id: 'exec-001', workflowId: 'wf-001', status: 'success' },
+    ]),
+    getWorkflowRevisions: record('getWorkflowRevisions', [
+      { id: 'revision-001', versionId: 'version-old' },
     ]),
     restoreWorkflowRevision: record(
       'restoreWorkflowRevision',
-      createWorkflowResponse({ id: 'wf-001', versionId: 'version-restored' })
+      workflowResponse({ versionId: 'version-old' })
     ),
   };
 }
@@ -115,18 +122,14 @@ function makeWorkflowService(state: FakeServiceState) {
 function makeRuntime(
   options: { withService?: boolean; state?: FakeServiceState } = {}
 ): AgentRuntime {
-  const { withService = true, state } = options;
-  const service = state ? makeWorkflowService(state) : makeWorkflowService({ calls: [] });
+  const { withService = true, state = { calls: [] } } = options;
+  const service = makeWorkflowService(state);
   return {
-    agentId: 'agent-test',
-    character: {
-      name: 'Route Test Agent',
-      settings: { ELIZA_ADMIN_ENTITY_ID: OWNER_ENTITY_ID },
-    },
+    agentId: 'agent-route-test',
+    character: { name: 'Route Test Agent', settings: {} },
     routes: [...workflowRoutes, ...(workflowRoutePlugin.routes ?? [])],
-    getSetting: (key: string) => (key === 'ELIZA_ADMIN_ENTITY_ID' ? OWNER_ENTITY_ID : null),
-    // The WorkflowService key is "workflow" (WORKFLOW_SERVICE_TYPE).
-    getService: (key: string) => (withService && key === 'workflow' ? service : null),
+    getSetting: () => null,
+    getService: (key: string) => (withService && key === WORKFLOW_SERVICE_TYPE ? service : null),
   } as unknown as AgentRuntime;
 }
 
@@ -164,155 +167,194 @@ async function postJson(base: string, path: string, body: unknown) {
   });
 }
 
-describe('plugin-workflow routes (real dispatch)', () => {
-  // Workflow CRUD is canonical on the rawPath `/api/workflow/*` surface; node
-  // validation and the legacy execution readers remain plugin-relative.
+/** Every exercised route resolves the same owner; capture it from any call. */
+function ownerArg(state: FakeServiceState, method: string): unknown {
+  const call = state.calls.find((candidate) => candidate.method === method);
+  return call?.args[call.args.length - 1];
+}
 
-  test('POST /api/workflow/workflows consumes the dispatcher-attached JSON body', async () => {
-    const state: FakeServiceState = { calls: [] };
-    const base = await startServer(makeRuntime({ state }));
-    const workflow = createValidWorkflow();
+describe('plugin-workflow rawPath routes through real dispatch (#19044)', () => {
+  test('GET /api/workflow/status answers the Smithers engine descriptor', async () => {
+    const base = await startServer(makeRuntime());
 
-    const res = await postJson(base, '/api/workflow/workflows', { workflow });
-
-    expect(res.status).toBe(200);
-    expect((await res.json()) as { id: string }).toMatchObject({ id: 'wf-001' });
-    const call = state.calls.find((candidate) => candidate.method === 'deployWorkflow');
-    expect(call?.args).toEqual([workflow, OWNER_ENTITY_ID, { activate: undefined }]);
-  });
-
-  test('POST /api/workflow/workflows/:id/run mounts the manual execution route', async () => {
-    const state: FakeServiceState = { calls: [] };
-    const base = await startServer(makeRuntime({ state }));
-
-    const res = await fetch(`${base}/api/workflow/workflows/wf-001/run`, { method: 'POST' });
+    const res = await fetch(`${base}/api/workflow/status`);
 
     expect(res.status).toBe(200);
-    expect((await res.json()) as { execution: { id: string } }).toMatchObject({
-      execution: { id: 'exec-001' },
+    expect(await res.json()).toMatchObject({
+      mode: 'cloud',
+      status: 'ready',
+      platform: 'cloud',
+      engine: 'smthrs',
     });
-    const call = state.calls.find((candidate) => candidate.method === 'runWorkflow');
-    expect(call?.args).toEqual([
-      'wf-001',
-      { mode: 'manual', throwOnError: false },
-      OWNER_ENTITY_ID,
-    ]);
   });
 
-  test('GET /api/workflow/executions/:id mounts execution detail', async () => {
+  test('GET /api/workflow/workflows lists via the service with a resolved owner', async () => {
+    const state: FakeServiceState = { calls: [] };
+    const base = await startServer(makeRuntime({ state }));
+
+    const res = await fetch(`${base}/api/workflow/workflows`);
+
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { workflows: Array<{ id: string }> };
+    expect(body.workflows.map((w) => w.id)).toEqual(['wf-001', 'wf-002']);
+    const owner = ownerArg(state, 'listWorkflows');
+    expect(typeof owner).toBe('string');
+    expect((owner as string).length).toBeGreaterThan(0);
+  });
+
+  test('POST /api/workflow/workflows deploys the parsed JSON body and answers 201', async () => {
+    const state: FakeServiceState = { calls: [] };
+    const base = await startServer(makeRuntime({ state }));
+
+    const res = await postJson(base, '/api/workflow/workflows', {
+      workflow: smithersDefinition(),
+      activate: true,
+    });
+
+    expect(res.status).toBe(201);
+    expect(await res.json()).toMatchObject({ id: 'wf-001' });
+    const deploy = state.calls.find((c) => c.method === 'deployWorkflow');
+    expect(deploy).toBeDefined();
+    expect(deploy?.args[0]).toMatchObject({ name: 'Route Test Workflow' });
+    expect(deploy?.args[2]).toMatchObject({ activate: true });
+  });
+
+  test('POST /api/workflow/workflows rejects a non-Smithers payload with 400', async () => {
+    const state: FakeServiceState = { calls: [] };
+    const base = await startServer(makeRuntime({ state }));
+
+    const res = await postJson(base, '/api/workflow/workflows', {
+      workflow: { name: 'missing source and language' },
+    });
+
+    expect(res.status).toBe(400);
+    expect(await res.json()).toMatchObject({
+      error: 'Native Smithers workflow payload is required',
+    });
+    expect(state.calls.find((c) => c.method === 'deployWorkflow')).toBeUndefined();
+  });
+
+  test('the dispatcher rejects malformed JSON before the workflow handler runs', async () => {
+    const state: FakeServiceState = { calls: [] };
+    const base = await startServer(makeRuntime({ state }));
+
+    const res = await fetch(`${base}/api/workflow/workflows`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: '{',
+    });
+
+    expect(res.status).toBe(400);
+    expect(await res.json()).toMatchObject({ error: 'Invalid JSON body' });
+    expect(state.calls).toEqual([]);
+  });
+
+  test('GET /api/workflow/workflows/:id dispatches the decoded id parameter', async () => {
+    const state: FakeServiceState = { calls: [] };
+    const base = await startServer(makeRuntime({ state }));
+
+    const res = await fetch(`${base}/api/workflow/workflows/wf%20one`);
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ id: 'wf-001' });
+    const call = state.calls.find((c) => c.method === 'getWorkflow');
+    expect(call?.args[0]).toBe('wf one');
+  });
+
+  test('POST /api/workflow/workflows/:id/run starts a manual execution and answers 202', async () => {
+    const state: FakeServiceState = { calls: [] };
+    const base = await startServer(makeRuntime({ state }));
+
+    const res = await postJson(base, '/api/workflow/workflows/wf-001/run', {
+      input: { greeting: 'hello' },
+    });
+
+    expect(res.status).toBe(202);
+    expect(await res.json()).toMatchObject({
+      execution: { id: 'exec-001', status: 'running' },
+    });
+    const call = state.calls.find((c) => c.method === 'startWorkflow');
+    expect(call?.args[0]).toBe('wf-001');
+    expect(call?.args[1]).toMatchObject({
+      mode: 'manual',
+      input: { greeting: 'hello' },
+    });
+  });
+
+  test('POST /api/workflow/executions/:id/cancel answers 202 with the cancelled execution', async () => {
+    const state: FakeServiceState = { calls: [] };
+    const base = await startServer(makeRuntime({ state }));
+
+    const res = await postJson(base, '/api/workflow/executions/exec-001/cancel', {});
+
+    expect(res.status).toBe(202);
+    expect(await res.json()).toMatchObject({
+      execution: { id: 'exec-001', status: 'cancelled' },
+    });
+    const call = state.calls.find((c) => c.method === 'cancelExecution');
+    expect(call?.args[0]).toBe('exec-001');
+  });
+
+  test('GET /api/workflow/executions/:id returns execution detail for the owner', async () => {
     const state: FakeServiceState = { calls: [] };
     const base = await startServer(makeRuntime({ state }));
 
     const res = await fetch(`${base}/api/workflow/executions/exec-001`);
 
     expect(res.status).toBe(200);
-    expect((await res.json()) as { execution: { id: string } }).toMatchObject({
-      execution: { id: 'exec-001' },
+    expect(await res.json()).toMatchObject({
+      execution: { id: 'exec-001', status: 'success' },
     });
     const call = state.calls.find((candidate) => candidate.method === 'getExecutionDetail');
-    expect(call?.args).toEqual(['exec-001', OWNER_ENTITY_ID]);
+    expect(call?.args[0]).toBe('exec-001');
+    expect(typeof call?.args[1]).toBe('string');
   });
 
-  test('GET revisions and POST restore mount the revision lifecycle routes', async () => {
+  test('POST /api/workflow/workflows/:id/revisions/:versionId/restore decodes both ids', async () => {
     const state: FakeServiceState = { calls: [] };
     const base = await startServer(makeRuntime({ state }));
 
-    const revisions = await fetch(`${base}/api/workflow/workflows/wf-001/revisions?limit=5`);
-    expect(revisions.status).toBe(200);
-    expect(
-      (await revisions.json()) as { currentVersionId: string; revisions: unknown[] }
-    ).toMatchObject({
-      currentVersionId: 'v1',
-      revisions: [{ versionId: 'version-old' }],
-    });
-    const listCall = state.calls.find((candidate) => candidate.method === 'listWorkflowRevisions');
-    expect(listCall?.args).toEqual(['wf-001', 5, OWNER_ENTITY_ID]);
-
-    const restore = await fetch(
-      `${base}/api/workflow/workflows/wf-001/revisions/version-old/restore`,
-      { method: 'POST' }
+    const res = await postJson(
+      base,
+      '/api/workflow/workflows/wf%20one/revisions/version%20old/restore',
+      {}
     );
-    expect(restore.status).toBe(200);
-    expect((await restore.json()) as { versionId: string }).toMatchObject({
-      versionId: 'version-restored',
-    });
-    const restoreCall = state.calls.find(
-      (candidate) => candidate.method === 'restoreWorkflowRevision'
-    );
-    expect(restoreCall?.args).toEqual(['wf-001', 'version-old', OWNER_ENTITY_ID]);
-  });
 
-  test('GET /executions lists executions and forwards query params', async () => {
-    const state: FakeServiceState = { calls: [] };
-    const base = await startServer(makeRuntime({ state }));
-
-    const res = await fetch(`${base}/executions?workflowId=wf-001&status=success&limit=10`);
     expect(res.status).toBe(200);
-    const body = (await res.json()) as {
-      success: boolean;
-      data: Array<{ id: string }>;
-    };
-    expect(body.success).toBe(true);
-    expect(body.data[0].id).toBe('exec-001');
-
-    const call = state.calls.find((c) => c.method === 'listExecutions');
-    expect(call?.args[0]).toMatchObject({ workflowId: 'wf-001', status: 'success', limit: 10 });
-    expect(call?.args[1]).toBe(OWNER_ENTITY_ID);
+    expect(await res.json()).toMatchObject({ id: 'wf-001', versionId: 'version-old' });
+    const call = state.calls.find((candidate) => candidate.method === 'restoreWorkflowRevision');
+    expect(call?.args[0]).toBe('wf one');
+    expect(call?.args[1]).toBe('version old');
+    expect(typeof call?.args[2]).toBe('string');
   });
 
-  test('GET /executions/:id returns execution detail', async () => {
+  test('the dispatcher auth gate rejects unauthenticated calls before any handler runs', async () => {
     const state: FakeServiceState = { calls: [] };
-    const base = await startServer(makeRuntime({ state }));
+    const base = await startServer(makeRuntime({ state }), () => false);
 
-    const res = await fetch(`${base}/executions/exec-001`);
-    expect(res.status).toBe(200);
-    const body = (await res.json()) as { success: boolean; data: { id: string } };
-    expect(body.success).toBe(true);
-    expect(body.data.id).toBe('exec-001');
+    const res = await fetch(`${base}/api/workflow/workflows`);
 
-    const call = state.calls.find((c) => c.method === 'getExecutionDetail');
-    expect(call?.args).toEqual(['exec-001', OWNER_ENTITY_ID]);
+    expect(res.status).toBe(401);
+    expect(await res.json()).toMatchObject({ error: 'Unauthorized' });
+    expect(state.calls).toEqual([]);
   });
 
-  test('POST /workflows/validate runs the real validator without a service', async () => {
-    // The validate handler never touches WorkflowService, so it must succeed
-    // even when the service is unavailable.
+  test('a missing WorkflowService degrades to a visible 503, not fabricated success', async () => {
     const base = await startServer(makeRuntime({ withService: false }));
 
-    const valid = await postJson(base, '/workflows/validate', createValidWorkflow());
-    expect(valid.status).toBe(200);
-    expect((await valid.json()) as { valid: boolean }).toMatchObject({ valid: true });
+    const res = await fetch(`${base}/api/workflow/workflows`);
 
-    const invalid = await postJson(base, '/workflows/validate', {
-      name: 'Empty',
-      nodes: [],
-      connections: {},
+    expect(res.status).toBe(503);
+    expect(await res.json()).toMatchObject({
+      error: 'Workflow service is unavailable',
     });
-    expect(invalid.status).toBe(200);
-    const invalidBody = (await invalid.json()) as { valid: boolean; errors: string[] };
-    expect(invalidBody.valid).toBe(false);
-    expect(invalidBody.errors.length).toBeGreaterThan(0);
-
-    // Missing the required `nodes` field → 400 from the real handler guard.
-    const malformed = await postJson(base, '/workflows/validate', { connections: {} });
-    expect(malformed.status).toBe(400);
-    expect((await malformed.json()) as { success: boolean }).toMatchObject({ success: false });
   });
 
-  test('enforces the auth gate on the non-public workflow routes', async () => {
-    // Every plugin-workflow route is auth-gated (none declare `public: true`),
-    // so a denied authorization yields 401 before any handler runs.
-    const base = await startServer(makeRuntime(), () => false);
-
-    const list = await fetch(`${base}/executions`);
-    expect(list.status).toBe(401);
-    expect((await list.json()) as { error: string }).toMatchObject({ error: 'Unauthorized' });
-  });
-
-  test('returns 404 for an unknown route path', async () => {
+  test('paths outside the route table fall through the dispatcher to 404', async () => {
     const base = await startServer(makeRuntime());
 
-    const res = await fetch(`${base}/nonexistent-workflow-subroute`);
+    const res = await fetch(`${base}/api/workflow/not-a-route`);
+
     expect(res.status).toBe(404);
   });
 });

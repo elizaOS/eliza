@@ -1,64 +1,452 @@
 /**
- * WorkflowEditor — text-first workflow editing surface.
- *
- * Layout: split-pane on desktop (JSON editor left, React Flow viewer
- * right). On narrow viewports the editor stacks above the viewer.
- *
- * The JSON editor uses the shared Textarea primitive; Monaco / CodeMirror are
- * too heavy for the few hundred lines of JSON a workflow contains, and neither
- * library is currently a dependency of `@elizaos/ui`.
- *
- * Reactivity: `value` is debounced via `useDebouncedValue`; on debounce
- * settle we parse the JSON. Valid → push to the viewer. Invalid → keep
- * the last valid graph rendered and surface the error inline.
- *
- * Toolbar: Format JSON, Save, Activate/Deactivate, Run now. Validation is
- * always-on via the debounced parse above (the status badge shows
- * Valid/Invalid live), so there is no separate manual "Validate" control.
+ * Native Smithers workflow studio for source authoring, visual structure,
+ * widgets, revisions, and live run inspection through elizaOS Cloud APIs.
  */
-
 import {
-  AlertTriangle,
-  CheckCircle2,
-  ClipboardList,
+  Activity,
+  ArchiveRestore,
+  Bot,
+  Braces,
+  Check,
+  CircleStop,
   Clock3,
-  Copy,
-  Pause,
-  PlayCircle,
-  Power,
+  FileInput,
+  FileOutput,
+  GitBranch,
+  History,
+  LayoutDashboard,
+  ListTree,
+  MessageSquareText,
+  Play,
   RefreshCw,
-  RotateCcw,
   Save,
-  Wand2,
+  Workflow as WorkflowIcon,
+  X,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useAgentElement } from "../../agent-surface";
 import { client } from "../../api";
 import type {
   WorkflowDefinition,
+  WorkflowDefinitionWriteRequest,
   WorkflowExecution,
   WorkflowRevision,
+  WorkflowStepManifest,
+  WorkflowWidgetManifest,
 } from "../../api/client-types-chat";
 import { dispatchChatPrefill } from "../../events";
-import { useDebouncedValue } from "../../hooks/useDebouncedValue";
-import {
-  buildWorkflowExecutionDiagnostics,
-  formatWorkflowEngineMetrics,
-  getWorkflowExecutionRunRows,
-  summarizeWorkflowExecution,
-} from "../../utils/workflow-executions";
-import {
-  parseWorkflowJson,
-  toWriteRequest,
-  type WorkflowJsonResult,
-  workflowToJsonText,
-} from "../../utils/workflow-json";
 import { PagePanel } from "../composites/page-panel";
 import { Button } from "../ui/button";
+import { Input } from "../ui/input";
 import { Spinner } from "../ui/spinner";
-import { StatusDot } from "../ui/status-badge";
 import { Textarea } from "../ui/textarea";
-import { WorkflowGraphViewer } from "./WorkflowGraphViewer";
+import { WorkflowTriggerPanel } from "./WorkflowTriggerPanel";
+
+type StudioTab = "build" | "source" | "runs" | "widgets" | "history";
+
+const STUDIO_TABS = [
+  ["build", "Build", WorkflowIcon],
+  ["source", "Source", Braces],
+  ["runs", "Runs", Activity],
+  ["widgets", "Widgets", LayoutDashboard],
+  ["history", "History", History],
+] as const;
+
+const EMPTY_SOURCE = `/** @jsxImportSource smthrs */
+import { createSmithers } from "smthrs/create";
+import { z } from "zod";
+
+const { Workflow, Task, smithers, outputs } = createSmithers(
+  { output: z.object({ message: z.string() }) },
+  { dbPath: process.env.ELIZA_SMTHRS_DB_PATH },
+);
+
+const agent = globalThis.__elizaSmithers.agent;
+
+export default smithers(() => (
+  <Workflow name="New workflow">
+    <Task id="run" output={outputs.output} agent={agent}>
+      Complete the requested workflow and return a concise result.
+    </Task>
+  </Workflow>
+));`;
+
+function newWorkflow(): WorkflowDefinition {
+  const now = new Date().toISOString();
+  return {
+    id: "",
+    name: "New workflow",
+    description: "",
+    active: false,
+    language: "tsx",
+    source: EMPTY_SOURCE,
+    steps: [{ id: "run", label: "Run", kind: "task", agent: "elizaOS" }],
+    widgets: [],
+    versionId: "",
+    createdAt: now,
+    updatedAt: now,
+  };
+}
+
+function terminal(status: WorkflowExecution["status"]): boolean {
+  return ["cancelled", "continued", "failed", "finished"].includes(status);
+}
+
+function statusDot(status: WorkflowExecution["status"]): string {
+  if (status === "finished") return "bg-emerald-500";
+  if (status === "failed" || status === "cancelled") return "bg-destructive";
+  if (status.startsWith("waiting")) return "bg-amber-500";
+  return "bg-primary";
+}
+
+function pretty(value: unknown): string {
+  if (value === undefined) return "—";
+  try {
+    return JSON.stringify(value, null, 2);
+  } catch {
+    return String(value);
+  }
+}
+
+function dataAtPath(value: unknown, path?: string): unknown {
+  if (!path) return value;
+  return path.split(".").reduce<unknown>((current, segment) => {
+    if (!current || typeof current !== "object") return undefined;
+    return (current as Record<string, unknown>)[segment];
+  }, value);
+}
+
+interface InputField {
+  key: string;
+  type: "string" | "number" | "integer" | "boolean";
+  title: string;
+  required: boolean;
+  defaultValue?: unknown;
+}
+
+function schemaFields(schema?: Record<string, unknown>): InputField[] {
+  const properties = schema?.properties;
+  if (!properties || typeof properties !== "object") return [];
+  const required = new Set(
+    Array.isArray(schema.required)
+      ? schema.required.filter(
+          (value): value is string => typeof value === "string",
+        )
+      : [],
+  );
+  return Object.entries(properties).flatMap(([key, raw]) => {
+    if (!raw || typeof raw !== "object") return [];
+    const property = raw as Record<string, unknown>;
+    const type = property.type;
+    if (
+      !(["string", "number", "integer", "boolean"] as const).includes(
+        type as never,
+      )
+    )
+      return [];
+    return [
+      {
+        key,
+        type: type as InputField["type"],
+        title: typeof property.title === "string" ? property.title : key,
+        required: required.has(key),
+        defaultValue: property.default,
+      },
+    ];
+  });
+}
+
+function hasObjectValues(value: unknown): boolean {
+  return Boolean(
+    value && typeof value === "object" && Object.keys(value).length > 0,
+  );
+}
+
+function StepIcon({ kind }: { kind: WorkflowStepManifest["kind"] }) {
+  if (kind === "branch") return <GitBranch className="h-4 w-4" />;
+  if (kind === "approval") return <Check className="h-4 w-4" />;
+  if (kind === "timer") return <Clock3 className="h-4 w-4" />;
+  if (kind === "ui") return <LayoutDashboard className="h-4 w-4" />;
+  return <Bot className="h-4 w-4" />;
+}
+
+function SmithersCanvas({
+  steps,
+  execution,
+}: {
+  steps: WorkflowStepManifest[];
+  execution: WorkflowExecution | null;
+}) {
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const eventTypes = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const event of execution?.events ?? []) {
+      if (event.nodeId) map.set(event.nodeId, event.type);
+    }
+    return map;
+  }, [execution]);
+  const rows = useMemo(() => {
+    const levelById = new Map<string, number>();
+    const grouped = new Map<number, WorkflowStepManifest[]>();
+    steps.forEach((step, index) => {
+      const dependencies = step.dependsOn ?? [];
+      const level =
+        dependencies.length > 0
+          ? Math.max(...dependencies.map((id) => levelById.get(id) ?? 0)) + 1
+          : index === 0
+            ? 0
+            : Math.max(...levelById.values()) + 1;
+      levelById.set(step.id, level);
+      grouped.set(level, [...(grouped.get(level) ?? []), step]);
+    });
+    return [...grouped.entries()].sort(([a], [b]) => a - b);
+  }, [steps]);
+  const selected = steps.find((step) => step.id === selectedId) ?? null;
+  if (steps.length === 0) {
+    return (
+      <div
+        className="grid h-full min-h-64 place-items-center rounded-xl bg-muted/10"
+        title="No visual steps"
+      >
+        <WorkflowIcon className="h-8 w-8 text-muted-foreground/50" />
+        <span className="sr-only">No visual steps</span>
+      </div>
+    );
+  }
+  return (
+    <div
+      data-testid="smithers-canvas"
+      className="min-h-0 overflow-auto bg-[radial-gradient(circle_at_1px_1px,hsl(var(--border)/0.38)_1px,transparent_0)] bg-[size:20px_20px] p-5"
+    >
+      <div className="mx-auto flex w-full max-w-3xl flex-col items-center">
+        {rows.map(([level, row], rowIndex) => (
+          <div key={level} className="contents">
+            {rowIndex > 0 ? <div className="h-7 w-px bg-border" /> : null}
+            <div className="flex max-w-full flex-wrap justify-center gap-3">
+              {row.map((step) => {
+                const eventType = eventTypes.get(step.id);
+                const active = Boolean(
+                  eventType && !/finish|complete|fail/i.test(eventType),
+                );
+                const failed = Boolean(
+                  eventType && /fail|error/i.test(eventType),
+                );
+                return (
+                  <button
+                    type="button"
+                    key={step.id}
+                    onClick={() =>
+                      setSelectedId((current) =>
+                        current === step.id ? null : step.id,
+                      )
+                    }
+                    aria-label={`Select step ${step.label}`}
+                    aria-pressed={selectedId === step.id}
+                    className={`w-fit min-w-44 max-w-full rounded-xl border bg-card p-3 text-left shadow-sm transition ${selectedId === step.id ? "border-primary/60 shadow-[0_0_0_2px_hsl(var(--primary)/0.1)]" : active ? "border-primary shadow-[0_0_0_2px_hsl(var(--primary)/0.12)]" : failed ? "border-destructive/60" : "border-border/60"}`}
+                    title={[
+                      step.kind,
+                      step.agent,
+                      step.description,
+                      step.dependsOn?.length
+                        ? `After ${step.dependsOn.join(", ")}`
+                        : null,
+                      eventType,
+                    ]
+                      .filter(Boolean)
+                      .join(" · ")}
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary">
+                        <StepIcon kind={step.kind} />
+                      </div>
+                      <p className="min-w-0 flex-1 truncate text-sm font-semibold">
+                        {step.label}
+                      </p>
+                      {eventType ? (
+                        <span
+                          className={`h-2.5 w-2.5 shrink-0 rounded-full ${failed ? "bg-destructive" : active ? "animate-pulse bg-primary" : "bg-emerald-500"}`}
+                        >
+                          <span className="sr-only">{eventType}</span>
+                        </span>
+                      ) : null}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        ))}
+        {selected ? (
+          <div className="mt-6 flex max-w-md items-center gap-3 rounded-xl border border-border/60 bg-card/95 px-3 py-2 shadow-lg">
+            <StepIcon kind={selected.kind} />
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-xs font-semibold">{selected.label}</p>
+              <p className="truncate text-[10px] text-muted-foreground">
+                {selected.agent ?? selected.kind}
+                {selected.dependsOn?.length
+                  ? ` · ${selected.dependsOn.join(" + ")}`
+                  : ""}
+              </p>
+            </div>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              aria-label="Edit selected step with Eliza"
+              onClick={() =>
+                dispatchChatPrefill({
+                  text: `Edit workflow step ${selected.id}: `,
+                })
+              }
+            >
+              <MessageSquareText className="h-3.5 w-3.5" />
+            </Button>
+          </div>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+function WorkflowWidget({
+  widget,
+  output,
+  runId,
+}: {
+  widget: WorkflowWidgetManifest;
+  output: unknown;
+  runId?: string;
+}) {
+  const value = dataAtPath(output, widget.dataPath);
+  const rows = Array.isArray(value)
+    ? value.filter(
+        (row): row is Record<string, unknown> =>
+          Boolean(row) && typeof row === "object",
+      )
+    : [];
+  const columns = rows.length > 0 ? Object.keys(rows[0]).slice(0, 6) : [];
+  const chartValues = rows
+    .map((row, index) => ({
+      label: String(row.label ?? row.name ?? index + 1),
+      value: Number(row.value ?? row.count ?? 0),
+    }))
+    .filter((item) => Number.isFinite(item.value));
+  const chartMax = Math.max(1, ...chartValues.map((item) => item.value));
+  return (
+    <div className="rounded-xl border border-border/60 bg-card p-4 shadow-sm">
+      <div className="flex items-start justify-between gap-3">
+        <p className="text-sm font-semibold" title={widget.description}>
+          {widget.title}
+        </p>
+        <span
+          className="mt-1 h-2.5 w-2.5 rounded-full bg-primary"
+          title={widget.component}
+        >
+          <span className="sr-only">{widget.component}</span>
+        </span>
+      </div>
+      <div className="mt-4 max-h-72 overflow-auto text-xs leading-relaxed">
+        {widget.component === "status" ? (
+          <div className="flex items-center gap-2 rounded-lg bg-muted/30 p-3">
+            <span
+              className={`h-2.5 w-2.5 rounded-full ${value === false || value === "failed" || value === "error" ? "bg-destructive" : "bg-emerald-500"}`}
+            />
+            <span className="font-medium">
+              {typeof value === "string" || typeof value === "number"
+                ? String(value)
+                : "Ready"}
+            </span>
+          </div>
+        ) : widget.component === "data-table" && columns.length > 0 ? (
+          <table className="w-full border-collapse">
+            <thead>
+              <tr>
+                {columns.map((column) => (
+                  <th
+                    key={column}
+                    className="border-b px-2 py-1 text-left font-medium text-muted-foreground"
+                  >
+                    {column}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row, index) => (
+                <tr key={String(row.id ?? index)}>
+                  {columns.map((column) => (
+                    <td
+                      key={column}
+                      className="border-b border-border/40 px-2 py-1.5"
+                    >
+                      {String(row[column] ?? "")}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        ) : widget.component === "chart" && chartValues.length > 0 ? (
+          <div className="space-y-2">
+            {chartValues.map((item) => (
+              <div
+                key={item.label}
+                className="grid grid-cols-[minmax(4rem,auto)_1fr_auto] items-center gap-2"
+              >
+                <span className="truncate text-muted-foreground">
+                  {item.label}
+                </span>
+                <span className="h-2 overflow-hidden rounded-full bg-muted">
+                  <span
+                    className="block h-full rounded-full bg-primary"
+                    style={{ width: `${(item.value / chartMax) * 100}%` }}
+                  />
+                </span>
+                <span className="tabular-nums">{item.value}</span>
+              </div>
+            ))}
+          </div>
+        ) : widget.component === "issue-list" && Array.isArray(value) ? (
+          <ul className="space-y-1.5">
+            {value.map((item) => (
+              <li
+                key={pretty(item)}
+                className="flex gap-2 rounded-lg bg-muted/30 p-2"
+              >
+                <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-primary" />
+                <span>{typeof item === "string" ? item : pretty(item)}</span>
+              </li>
+            ))}
+          </ul>
+        ) : widget.component === "markdown" && typeof value === "string" ? (
+          <div className="whitespace-pre-wrap rounded-lg bg-muted/30 p-3">
+            {value}
+          </div>
+        ) : (
+          <pre className="rounded-lg bg-muted/40 p-3">{pretty(value)}</pre>
+        )}
+      </div>
+      {widget.actions?.length ? (
+        <div className="mt-3 flex flex-wrap gap-2">
+          {widget.actions.map((action) => (
+            <Button
+              key={action.id}
+              size="sm"
+              disabled={!runId || !action.signal}
+              variant={action.style === "primary" ? "default" : "outline"}
+              onClick={() => {
+                if (runId && action.signal)
+                  void client.signalWorkflowExecution(runId, action.signal, {
+                    actionId: action.id,
+                  });
+              }}
+            >
+              {action.label}
+            </Button>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
 
 export interface WorkflowEditorProps {
   initial?: WorkflowDefinition | null;
@@ -71,951 +459,722 @@ export function WorkflowEditor({
   onSaved,
   onCancel,
 }: WorkflowEditorProps) {
-  const [text, setText] = useState(() => workflowToJsonText(initial));
-  const debouncedText = useDebouncedValue(text, 250);
-  const [lastValidWorkflow, setLastValidWorkflow] =
-    useState<WorkflowDefinition | null>(initial);
-  const [parseState, setParseState] = useState<WorkflowJsonResult>({
-    ok: true,
-    workflow: initial ?? {
-      id: "draft",
-      name: "New workflow",
-      active: false,
-      nodes: [],
-      connections: {},
-    },
-    settings: {},
-  });
-  const [persistedWorkflowId, setPersistedWorkflowId] = useState<string | null>(
-    () => initial?.id ?? null,
+  const [workflow, setWorkflow] = useState<WorkflowDefinition>(
+    () => initial ?? newWorkflow(),
+  );
+  const [tab, setTab] = useState<StudioTab>("build");
+  const [savedVersion, setSavedVersion] = useState(() =>
+    JSON.stringify(workflow),
   );
   const [saving, setSaving] = useState(false);
   const [running, setRunning] = useState(false);
-  const [saveError, setSaveError] = useState<string | null>(null);
-  const [executionError, setExecutionError] = useState<string | null>(null);
+  const [runInputOpen, setRunInputOpen] = useState(false);
+  const [runInput, setRunInput] = useState<Record<string, unknown>>({});
+  const [error, setError] = useState<string | null>(null);
   const [executions, setExecutions] = useState<WorkflowExecution[]>([]);
-  const [executionsLoading, setExecutionsLoading] = useState(false);
-  const [selectedExecutionId, setSelectedExecutionId] = useState<string | null>(
-    null,
-  );
-  const [diagnosticsCopying, setDiagnosticsCopying] = useState(false);
-  const [diagnosticsCopied, setDiagnosticsCopied] = useState(false);
-  const [evaluationSamplesCopying, setEvaluationSamplesCopying] =
-    useState(false);
-  const [evaluationSamplesCopied, setEvaluationSamplesCopied] = useState(false);
+  const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
   const [revisions, setRevisions] = useState<WorkflowRevision[]>([]);
-  const [currentVersionId, setCurrentVersionId] = useState<string | null>(
-    () => initial?.versionId ?? null,
-  );
-  const [revisionsLoading, setRevisionsLoading] = useState(false);
-  const [revisionsError, setRevisionsError] = useState<string | null>(null);
+  const [cancelArmedId, setCancelArmedId] = useState<string | null>(null);
+  const [restoreArmedId, setRestoreArmedId] = useState<string | null>(null);
 
   useEffect(() => {
-    setPersistedWorkflowId(initial?.id ?? null);
-    setText(workflowToJsonText(initial));
-    setLastValidWorkflow(initial);
-    setParseState({
-      ok: true,
-      workflow: initial ?? {
-        id: "draft",
-        name: "New workflow",
-        active: false,
-        nodes: [],
-        connections: {},
-      },
-      settings: {},
-    });
-    setSaveError(null);
-    setExecutionError(null);
-    setExecutions([]);
-    setSelectedExecutionId(null);
-    setDiagnosticsCopying(false);
-    setDiagnosticsCopied(false);
-    setEvaluationSamplesCopying(false);
-    setEvaluationSamplesCopied(false);
-    setRevisions([]);
-    setCurrentVersionId(initial?.versionId ?? null);
-    setRevisionsError(null);
+    const next = initial ?? newWorkflow();
+    setWorkflow(next);
+    setSavedVersion(JSON.stringify(next));
   }, [initial]);
-
-  // Re-parse on debounced text change.
-  useEffect(() => {
-    const result = parseWorkflowJson(debouncedText);
-    setParseState(result);
-    if (result.ok) setLastValidWorkflow(result.workflow);
-  }, [debouncedText]);
-
-  const isValid = parseState.ok;
-  const activeWorkflow = lastValidWorkflow ?? initial;
-  const workflowIsActive = activeWorkflow?.active === true;
-
-  const refreshExecutions = useCallback(async () => {
-    if (!persistedWorkflowId) {
-      setExecutions([]);
-      setSelectedExecutionId(null);
-      return;
-    }
-    setExecutionsLoading(true);
-    setExecutionError(null);
-    try {
-      const next = await client.getWorkflowExecutions(persistedWorkflowId, 20);
-      setExecutions(next);
-      setSelectedExecutionId((current) => current ?? next[0]?.id ?? null);
-    } catch (e) {
-      setExecutionError(
-        e instanceof Error ? e.message : "Failed to load workflow runs.",
-      );
-    } finally {
-      setExecutionsLoading(false);
-    }
-  }, [persistedWorkflowId]);
-
-  useEffect(() => {
-    void refreshExecutions();
-  }, [refreshExecutions]);
-
-  const selectedExecution =
-    executions.find((execution) => execution.id === selectedExecutionId) ??
-    executions[0] ??
-    null;
-
-  const loadRevisionsForWorkflow = useCallback(
-    async (workflowId: string | null, fallbackVersionId?: string | null) => {
-      if (!workflowId) {
-        setRevisions([]);
-        setCurrentVersionId(fallbackVersionId ?? null);
-        return;
-      }
-      setRevisionsLoading(true);
-      setRevisionsError(null);
-      try {
-        const next = await client.getWorkflowRevisions(workflowId, 10);
-        setCurrentVersionId(next.currentVersionId);
-        setRevisions(next.revisions);
-      } catch (e) {
-        setRevisionsError(
-          e instanceof Error ? e.message : "Failed to load workflow history.",
-        );
-      } finally {
-        setRevisionsLoading(false);
-      }
-    },
-    [],
+  const inputFields = useMemo(
+    () => schemaFields(workflow.inputSchema),
+    [workflow.inputSchema],
   );
+  const dirty = JSON.stringify(workflow) !== savedVersion;
+  const selectedRun =
+    executions.find((run) => run.id === selectedRunId) ?? executions[0] ?? null;
+
+  const refreshRuns = useCallback(async () => {
+    if (!workflow.id) return;
+    const next = await client.getWorkflowExecutions(workflow.id, 30);
+    setExecutions(next);
+    setSelectedRunId((current) => current ?? next[0]?.id ?? null);
+  }, [workflow.id]);
 
   const refreshRevisions = useCallback(async () => {
-    if (!persistedWorkflowId) {
-      setRevisions([]);
-      setCurrentVersionId(lastValidWorkflow?.versionId ?? null);
-      return;
-    }
-    await loadRevisionsForWorkflow(
-      persistedWorkflowId,
-      lastValidWorkflow?.versionId ?? null,
-    );
-  }, [
-    persistedWorkflowId,
-    lastValidWorkflow?.versionId,
-    loadRevisionsForWorkflow,
-  ]);
+    if (!workflow.id) return;
+    const next = await client.getWorkflowRevisions(workflow.id, 30);
+    setRevisions(next.revisions);
+  }, [workflow.id]);
 
   useEffect(() => {
+    void refreshRuns();
     void refreshRevisions();
-  }, [refreshRevisions]);
+  }, [refreshRuns, refreshRevisions]);
 
-  const handleFormat = useCallback(() => {
-    const result = parseWorkflowJson(text);
-    if (result.ok) {
-      setText(workflowToJsonText(result.workflow));
-    }
-  }, [text]);
-
-  const handleSave = useCallback(async () => {
-    if (!parseState.ok) {
-      const invalid = parseState as Extract<WorkflowJsonResult, { ok: false }>;
-      setSaveError(invalid.message);
-      return;
-    }
-    setSaveError(null);
-    setSaving(true);
-    try {
-      const req = toWriteRequest(parseState);
-      const saved = persistedWorkflowId
-        ? await client.updateWorkflowDefinition(persistedWorkflowId, req)
-        : await client.createWorkflowDefinition(req);
-      setPersistedWorkflowId(saved.id);
-      setCurrentVersionId(saved.versionId ?? null);
-      setLastValidWorkflow(saved);
-      setText(workflowToJsonText(saved));
-      onSaved?.(saved);
-      void refreshExecutions();
-      void loadRevisionsForWorkflow(saved.id, saved.versionId ?? null);
-    } catch (e) {
-      setSaveError(e instanceof Error ? e.message : "Failed to save workflow.");
-    } finally {
-      setSaving(false);
-    }
-  }, [
-    parseState,
-    persistedWorkflowId,
-    onSaved,
-    refreshExecutions,
-    loadRevisionsForWorkflow,
-  ]);
-
-  const handleToggleActive = useCallback(async () => {
-    if (!persistedWorkflowId) {
-      setSaveError("Save the workflow before changing its schedule state.");
-      return;
-    }
-    setSaving(true);
-    setSaveError(null);
-    try {
-      const updated = workflowIsActive
-        ? await client.deactivateWorkflowDefinition(persistedWorkflowId)
-        : await client.activateWorkflowDefinition(persistedWorkflowId);
-      setCurrentVersionId(updated.versionId ?? null);
-      setLastValidWorkflow(updated);
-      setText(workflowToJsonText(updated));
-      void refreshRevisions();
-    } catch (e) {
-      setSaveError(
-        e instanceof Error ? e.message : "Failed to update workflow state.",
-      );
-    } finally {
-      setSaving(false);
-    }
-  }, [persistedWorkflowId, workflowIsActive, refreshRevisions]);
-
-  const handleRunNow = useCallback(async () => {
-    if (!persistedWorkflowId) {
-      setSaveError("Save the workflow before running it.");
-      return;
-    }
-    setRunning(true);
-    setSaveError(null);
-    setExecutionError(null);
-    try {
-      const execution = await client.runWorkflowDefinition(persistedWorkflowId);
-      setExecutions((current) => [
-        execution,
-        ...current.filter((item) => item.id !== execution.id),
-      ]);
-      setSelectedExecutionId(execution.id);
-      setDiagnosticsCopied(false);
-      setEvaluationSamplesCopied(false);
-    } catch (e) {
-      setExecutionError(
-        e instanceof Error ? e.message : "Failed to run workflow.",
-      );
-    } finally {
-      setRunning(false);
-    }
-  }, [persistedWorkflowId]);
-
-  const handleRestoreRevision = useCallback(
-    async (versionId: string) => {
-      if (!persistedWorkflowId) return;
-      setSaving(true);
-      setSaveError(null);
-      setRevisionsError(null);
+  useEffect(() => {
+    if (!selectedRun || terminal(selectedRun.status)) return;
+    const timer = window.setInterval(async () => {
       try {
-        const restored = await client.restoreWorkflowRevision(
-          persistedWorkflowId,
-          versionId,
-        );
-        setCurrentVersionId(restored.versionId ?? null);
-        setLastValidWorkflow(restored);
-        setText(workflowToJsonText(restored));
-        onSaved?.(restored);
-        void refreshExecutions();
-        void refreshRevisions();
-      } catch (e) {
-        setRevisionsError(
-          e instanceof Error
-            ? e.message
-            : "Failed to restore workflow version.",
+        const updated = await client.getWorkflowExecution(selectedRun.id);
+        setExecutions((current) => [
+          updated,
+          ...current.filter((run) => run.id !== updated.id),
+        ]);
+      } catch {
+        // error-policy:J4 polling failures leave the last known live state visible.
+      }
+    }, 1_000);
+    return () => window.clearInterval(timer);
+  }, [selectedRun]);
+
+  const save = useCallback(async (): Promise<WorkflowDefinition | null> => {
+    setSaving(true);
+    setError(null);
+    try {
+      const request: WorkflowDefinitionWriteRequest = {
+        name: workflow.name,
+        description: workflow.description,
+        source: workflow.source,
+        language: workflow.language,
+        active: workflow.active,
+        inputSchema: workflow.inputSchema,
+        steps: workflow.steps,
+        widgets: workflow.widgets,
+        schedule: workflow.schedule,
+        metadata: workflow.metadata,
+      };
+      const saved = workflow.id
+        ? await client.updateWorkflowDefinition(workflow.id, request)
+        : await client.createWorkflowDefinition(request);
+      setWorkflow(saved);
+      setSavedVersion(JSON.stringify(saved));
+      onSaved?.(saved);
+      const next = await client.getWorkflowRevisions(saved.id, 30);
+      setRevisions(next.revisions);
+      return saved;
+    } catch (cause) {
+      setError(
+        cause instanceof Error ? cause.message : "Unable to save workflow.",
+      );
+      return null;
+    } finally {
+      setSaving(false);
+    }
+  }, [onSaved, workflow]);
+
+  const run = useCallback(
+    async (input: Record<string, unknown> = {}) => {
+      setRunning(true);
+      setError(null);
+      try {
+        const workflowId =
+          !workflow.id || dirty ? (await save())?.id : workflow.id;
+        if (!workflowId) return;
+        const execution = await client.runWorkflowDefinition(workflowId, input);
+        setExecutions((current) => [
+          execution,
+          ...current.filter((run) => run.id !== execution.id),
+        ]);
+        setSelectedRunId(execution.id);
+        setTab("runs");
+      } catch (cause) {
+        setError(
+          cause instanceof Error ? cause.message : "Unable to start workflow.",
         );
       } finally {
-        setSaving(false);
+        setRunning(false);
       }
     },
-    [persistedWorkflowId, onSaved, refreshExecutions, refreshRevisions],
+    [dirty, save, workflow.id],
   );
 
-  const handleCopyDiagnostics = useCallback(async () => {
-    if (!selectedExecution) return;
-    setDiagnosticsCopying(true);
-    setExecutionError(null);
-    try {
-      if (!navigator.clipboard?.writeText) {
-        throw new Error("Clipboard is not available in this browser.");
-      }
-      await navigator.clipboard.writeText(
-        buildWorkflowExecutionDiagnostics(selectedExecution),
-      );
-      setDiagnosticsCopied(true);
-    } catch (e) {
-      setExecutionError(
-        e instanceof Error ? e.message : "Failed to copy workflow diagnostics.",
-      );
-    } finally {
-      setDiagnosticsCopying(false);
+  const requestRun = useCallback(() => {
+    if (inputFields.length === 0) {
+      void run();
+      return;
     }
-  }, [selectedExecution]);
+    setRunInput(
+      Object.fromEntries(
+        inputFields.flatMap((field) =>
+          field.defaultValue === undefined
+            ? []
+            : [[field.key, field.defaultValue]],
+        ),
+      ),
+    );
+    setRunInputOpen(true);
+  }, [inputFields, run]);
 
-  const handleTroubleshootInChat = useCallback(() => {
-    if (!selectedExecution) return;
-    const workflowId =
-      persistedWorkflowId ?? selectedExecution.workflowId ?? "unknown";
-    const diagnostics = buildWorkflowExecutionDiagnostics(selectedExecution);
+  const toggleActive = useCallback(async () => {
+    setError(null);
+    try {
+      const current = dirty ? await save() : workflow;
+      if (!current?.id) return;
+      const updated = current.active
+        ? await client.deactivateWorkflowDefinition(current.id)
+        : await client.activateWorkflowDefinition(current.id);
+      setWorkflow(updated);
+      setSavedVersion(JSON.stringify(updated));
+      onSaved?.(updated);
+    } catch (cause) {
+      // error-policy:J4 activation failures preserve the saved workflow and surface the error.
+      setError(
+        cause instanceof Error ? cause.message : "Unable to update workflow.",
+      );
+    }
+  }, [dirty, onSaved, save, workflow]);
+
+  const openInChat = useCallback(() => {
     dispatchChatPrefill({
-      text: [
-        `Troubleshoot workflow ${workflowId} execution ${selectedExecution.id}.`,
-        "",
-        diagnostics,
-      ].join("\n"),
-      select: false,
+      text: workflow.id
+        ? `Edit workflow ${workflow.id}: `
+        : "Create a Smithers workflow that ",
     });
-  }, [persistedWorkflowId, selectedExecution]);
-
-  const handleEditInChat = useCallback(() => {
-    const workflowName = lastValidWorkflow?.name ?? "this workflow";
-    const workflowId =
-      persistedWorkflowId ?? lastValidWorkflow?.id ?? initial?.id ?? "draft";
-    const text =
-      workflowId === "draft"
-        ? "Create a workflow that "
-        : `Modify workflow ${workflowId} (${workflowName}). `;
-    dispatchChatPrefill({ text, select: false });
-  }, [initial?.id, lastValidWorkflow, persistedWorkflowId]);
-
-  const handleCopyEvaluationSamples = useCallback(async () => {
-    if (!persistedWorkflowId) return;
-    setEvaluationSamplesCopying(true);
-    setExecutionError(null);
-    try {
-      if (!navigator.clipboard?.writeText) {
-        throw new Error("Clipboard is not available in this browser.");
-      }
-      const suite = await client.getWorkflowEvaluationSamples(
-        persistedWorkflowId,
-        10,
-      );
-      if (suite.sampleCount === 0) {
-        throw new Error("Run this workflow before copying eval samples.");
-      }
-      await navigator.clipboard.writeText(suite.jsonl);
-      setEvaluationSamplesCopied(true);
-    } catch (e) {
-      setExecutionError(
-        e instanceof Error ? e.message : "Failed to copy eval samples.",
-      );
-    } finally {
-      setEvaluationSamplesCopying(false);
-    }
-  }, [persistedWorkflowId]);
-
-  const lineErrorBanner = useMemo(() => {
-    if (parseState.ok) return null;
-    const invalid = parseState as Extract<WorkflowJsonResult, { ok: false }>;
-    const where = invalid.line ? ` (line ${invalid.line})` : "";
-    return `${invalid.message}${where}`;
-  }, [parseState]);
-
-  const selectedExecutionSummary = selectedExecution
-    ? summarizeWorkflowExecution(selectedExecution)
-    : null;
-  const selectedEngineMetrics = selectedExecution
-    ? formatWorkflowEngineMetrics(selectedExecution)
-    : null;
-  const selectedRunRows = selectedExecution
-    ? getWorkflowExecutionRunRows(selectedExecution)
-    : [];
-
-  const jsonEditor = useAgentElement<HTMLTextAreaElement>({
-    id: "workflow-json",
-    role: "textarea",
-    label: "Workflow JSON",
-    group: "workflow-editor",
-    description: "The workflow definition as editable JSON.",
-    status: isValid ? "active" : "error",
-    getValue: () => text,
-    onFill: (value) => setText(value),
-  });
-
-  const editInChatButton = useAgentElement<HTMLButtonElement>({
-    id: "edit-workflow-in-chat",
-    role: "button",
-    label: "Edit workflow in chat",
-    group: "workflow-toolbar",
-    description: "Ask the page chat to create or modify this workflow.",
-    onActivate: handleEditInChat,
-  });
-
-  const formatButton = useAgentElement<HTMLButtonElement>({
-    id: "format-json",
-    role: "button",
-    label: "Format JSON",
-    group: "workflow-toolbar",
-    description: "Reformat the workflow JSON.",
-    onActivate: handleFormat,
-  });
-
-  const saveButton = useAgentElement<HTMLButtonElement>({
-    id: "save",
-    role: "button",
-    label: "Save",
-    group: "workflow-toolbar",
-    description: "Save the workflow definition.",
-    status: saving ? "busy" : undefined,
-    onActivate: () => void handleSave(),
-  });
-
-  const activateButton = useAgentElement<HTMLButtonElement>({
-    id: "toggle-active",
-    role: "button",
-    label: workflowIsActive ? "Deactivate workflow" : "Activate workflow",
-    group: "workflow-toolbar",
-    description: workflowIsActive
-      ? "Pause scheduled workflow runs."
-      : "Activate scheduled workflow runs.",
-    status: saving ? "busy" : undefined,
-    onActivate: () => void handleToggleActive(),
-  });
-
-  const runButton = useAgentElement<HTMLButtonElement>({
-    id: "run-now",
-    role: "button",
-    label: "Run workflow now",
-    group: "workflow-toolbar",
-    description: "Run the saved workflow once and show the execution.",
-    status: running ? "busy" : undefined,
-    onActivate: () => void handleRunNow(),
-  });
-
-  const refreshRunsButton = useAgentElement<HTMLButtonElement>({
-    id: "refresh-runs",
-    role: "button",
-    label: "Refresh workflow runs",
-    group: "workflow-executions",
-    description: "Reload recent workflow executions.",
-    status: executionsLoading ? "busy" : undefined,
-    onActivate: () => void refreshExecutions(),
-  });
-
-  const copyDiagnosticsButton = useAgentElement<HTMLButtonElement>({
-    id: "copy-run-diagnostics",
-    role: "button",
-    label: "Copy run diagnostics",
-    group: "workflow-executions",
-    description:
-      "Copy the selected workflow run status, node output, and error details.",
-    status: diagnosticsCopying
-      ? "busy"
-      : selectedExecution
-        ? "active"
-        : "inactive",
-    onActivate: () => void handleCopyDiagnostics(),
-  });
-
-  const troubleshootRunButton = useAgentElement<HTMLButtonElement>({
-    id: "troubleshoot-run-in-chat",
-    role: "button",
-    label: "Troubleshoot run in chat",
-    group: "workflow-executions",
-    description: "Send the selected workflow run diagnostics to the page chat.",
-    status: selectedExecution ? "active" : "inactive",
-    onActivate: handleTroubleshootInChat,
-  });
-
-  const copyEvaluationSamplesButton = useAgentElement<HTMLButtonElement>({
-    id: "copy-eval-samples",
-    role: "button",
-    label: "Copy eval samples",
-    group: "workflow-executions",
-    description:
-      "Copy JSONL workflow evaluation samples for Smithers eval and GEPA optimization.",
-    status: evaluationSamplesCopying
-      ? "busy"
-      : persistedWorkflowId && executions.length > 0
-        ? "active"
-        : "inactive",
-    onActivate: () => void handleCopyEvaluationSamples(),
-  });
-
-  const closeButton = useAgentElement<HTMLButtonElement>({
-    id: "close",
-    role: "button",
-    label: "Close",
-    group: "workflow-toolbar",
-    description: "Close the workflow editor.",
-    onActivate: () => onCancel?.(),
-  });
+  }, [workflow.id]);
 
   return (
-    /* Flat — no card/border. The shell owns the page's horizontal padding. */
-    <div className="flex h-full min-h-0 flex-col gap-3 overflow-auto pb-28 lg:overflow-hidden lg:pb-0">
-      {/* Toolbar */}
-      <div className="flex flex-wrap items-center gap-2 pb-3">
-        <div className="mr-auto flex items-center gap-2 min-w-0">
-          <h2 className="truncate text-base font-semibold tracking-[-0.01em] text-txt">
-            {lastValidWorkflow?.name ?? "New workflow"}
-          </h2>
-          <span
-            className={`inline-flex items-center gap-1.5 text-xs ${
-              isValid ? "text-ok" : "text-destructive"
-            }`}
+    <PagePanel
+      data-testid="workflow-studio"
+      className="relative flex min-h-0 flex-1 flex-col overflow-hidden p-0 pb-20"
+    >
+      <div className="flex flex-wrap items-center gap-1 border-b border-transparent bg-card/90 px-3 py-2 lg:border-border/70 lg:px-4">
+        <Input
+          value={workflow.name}
+          onChange={(event) =>
+            setWorkflow((current) => ({
+              ...current,
+              name: event.target.value,
+            }))
+          }
+          className="h-8 min-w-20 flex-1 border-0 bg-transparent px-0 text-sm font-semibold shadow-none sm:text-base"
+          aria-label="Workflow name"
+          title={workflow.description || undefined}
+        />
+        <nav
+          className="order-last flex basis-full items-center justify-center gap-2 pt-1 sm:order-none sm:basis-auto sm:gap-0.5 sm:pt-0"
+          aria-label="Workflow views"
+        >
+          {STUDIO_TABS.map(([value, label, Icon]) => (
+            <button
+              key={value}
+              type="button"
+              onClick={() => setTab(value)}
+              className={`grid h-8 w-8 place-items-center rounded-md transition ${tab === value ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-muted/60 hover:text-foreground"}`}
+              aria-label={label}
+              aria-current={tab === value ? "page" : undefined}
+              title={label}
+            >
+              <Icon className="h-4 w-4" />
+            </button>
+          ))}
+        </nav>
+        {workflow.id ? (
+          <button
+            type="button"
+            onClick={() => void toggleActive()}
+            className="grid h-8 w-8 place-items-center rounded-md hover:bg-muted/60"
+            aria-label={
+              workflow.active ? "Disable workflow" : "Enable workflow"
+            }
+            title={workflow.active ? "Enabled" : "Disabled"}
           >
-            <StatusDot tone={isValid ? "success" : "danger"} />
-            {isValid ? "Valid" : "Invalid JSON"}
+            <span
+              className={`h-2.5 w-2.5 rounded-full ${workflow.active ? "bg-emerald-500" : "bg-muted-foreground/40"}`}
+            />
+          </button>
+        ) : null}
+        {dirty ? (
+          <span
+            className="h-2 w-2 shrink-0 rounded-full bg-primary"
+            title="Unsaved changes"
+          >
+            <span className="sr-only">Unsaved changes</span>
           </span>
-        </div>
+        ) : null}
         <Button
-          ref={editInChatButton.ref}
-          {...editInChatButton.agentProps}
-          variant="outline"
-          size="sm"
-          onClick={handleEditInChat}
+          className="hidden sm:inline-flex"
+          variant="ghost"
+          size="icon-sm"
+          onClick={openInChat}
+          aria-label="Edit with Eliza"
+          title="Edit with Eliza"
         >
-          <ClipboardList className="mr-1.5 h-3.5 w-3.5" aria-hidden />
-          <span className="hidden sm:inline">Edit in chat</span>
-          <span className="sm:hidden">Chat</span>
+          <MessageSquareText className="h-4 w-4" />
         </Button>
         <Button
-          ref={formatButton.ref}
-          {...formatButton.agentProps}
-          variant="outline"
-          size="sm"
-          onClick={handleFormat}
-          disabled={!isValid}
-        >
-          <Wand2 className="mr-1.5 h-3.5 w-3.5" aria-hidden />
-          Format JSON
-        </Button>
-        <Button
-          ref={saveButton.ref}
-          {...saveButton.agentProps}
-          variant="default"
-          size="sm"
-          onClick={() => void handleSave()}
-          disabled={saving || !isValid}
+          data-agent-id="save-workflow"
+          variant="ghost"
+          size="icon-sm"
+          onClick={() => void save()}
+          disabled={saving}
+          aria-label="Save workflow"
+          title="Save workflow"
         >
           {saving ? (
-            <Spinner className="mr-1.5 h-3.5 w-3.5" />
+            <Spinner className="h-4 w-4" />
           ) : (
-            <Save className="mr-1.5 h-3.5 w-3.5" aria-hidden />
+            <Save className="h-4 w-4" />
           )}
-          Save
         </Button>
-        {persistedWorkflowId && (
-          <Button
-            ref={activateButton.ref}
-            {...activateButton.agentProps}
-            variant="outline"
-            size="sm"
-            onClick={() => void handleToggleActive()}
-            disabled={saving}
-          >
-            {workflowIsActive ? (
-              <Pause className="mr-1.5 h-3.5 w-3.5" aria-hidden />
-            ) : (
-              <Power className="mr-1.5 h-3.5 w-3.5" aria-hidden />
-            )}
-            {workflowIsActive ? "Deactivate" : "Activate"}
-          </Button>
-        )}
-        {persistedWorkflowId && (
-          <Button
-            ref={runButton.ref}
-            {...runButton.agentProps}
-            variant="outline"
-            size="sm"
-            onClick={() => void handleRunNow()}
-            disabled={running || saving}
-          >
-            {running ? (
-              <Spinner className="mr-1.5 h-3.5 w-3.5" />
-            ) : (
-              <PlayCircle className="mr-1.5 h-3.5 w-3.5" aria-hidden />
-            )}
-            Run now
-          </Button>
-        )}
-        {onCancel && (
-          <Button
-            ref={closeButton.ref}
-            {...closeButton.agentProps}
-            variant="ghost"
-            size="sm"
-            onClick={onCancel}
-          >
-            Close
-          </Button>
-        )}
-      </div>
-
-      {(saveError || lineErrorBanner) && (
-        <div className="rounded-sm border border-danger/20 bg-danger/10 p-2.5 text-xs text-danger">
-          {saveError ?? lineErrorBanner}
-        </div>
-      )}
-
-      {/* Split pane */}
-      <div className="grid min-h-0 flex-1 gap-3 lg:grid-cols-2">
-        <PagePanel
-          variant="inset"
-          className="flex min-h-0 flex-col overflow-hidden p-0"
+        <Button
+          size="icon-sm"
+          onClick={requestRun}
+          disabled={running}
+          aria-label="Run"
+          title="Run"
         >
-          <div className="flex items-center justify-between px-3 py-2 text-xs text-muted-strong">
-            <span className="font-medium text-txt">workflow.json</span>
-            <span>{text.split("\n").length} lines</span>
-          </div>
-          <Textarea
-            ref={jsonEditor.ref}
-            {...jsonEditor.agentProps}
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            spellCheck={false}
-            data-testid="workflow-editor-json"
-            className="min-h-[240px] flex-1 resize-none border-0 bg-transparent p-3 font-mono text-xs leading-relaxed text-txt sm:min-h-[320px]"
+          {running ? (
+            <Spinner className="h-4 w-4" />
+          ) : (
+            <Play className="h-4 w-4" />
+          )}
+        </Button>
+        {onCancel ? (
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={onCancel}
+            aria-label="Close workflow"
+          >
+            <X className="h-4 w-4" />
+          </Button>
+        ) : null}
+      </div>
+
+      <WorkflowTriggerPanel
+        workflowId={workflow.id}
+        workflowName={workflow.name}
+        onNeedsSave={async () =>
+          !workflow.id || dirty ? ((await save())?.id ?? null) : workflow.id
+        }
+      />
+
+      {error ? (
+        <div className="mx-4 mt-3 rounded-lg border border-destructive/25 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+          {error}
+        </div>
+      ) : null}
+
+      {tab === "build" ? (
+        <div className="min-h-0 flex-1 p-2">
+          <SmithersCanvas
+            steps={workflow.steps ?? []}
+            execution={selectedRun}
           />
-        </PagePanel>
+        </div>
+      ) : null}
 
-        <div className="flex min-h-0 flex-col gap-3">
-          <PagePanel
-            variant="inset"
-            className="flex min-h-[280px] flex-1 flex-col overflow-hidden"
-          >
-            <div className="px-3 py-2 text-xs font-medium text-txt">Graph</div>
-            <div className="flex-1 p-3">
-              <WorkflowGraphViewer
-                workflow={lastValidWorkflow}
-                loading={false}
-                isGenerating={false}
-                emptyStateHelpText="Draft in chat. Review the graph, runs, and logs here."
-              />
-            </div>
-          </PagePanel>
+      {tab === "source" ? (
+        <section className="relative flex min-h-0 flex-1 flex-col p-2 pb-24 lg:pb-2">
+          <Textarea
+            data-testid="smithers-source-editor"
+            value={workflow.source}
+            onChange={(event) =>
+              setWorkflow((current) => ({
+                ...current,
+                source: event.target.value,
+              }))
+            }
+            spellCheck={false}
+            aria-label="Smithers workflow source"
+            className="min-h-[420px] flex-1 resize-none rounded-xl border-0 bg-zinc-950 p-4 font-mono text-[12px] leading-5 text-zinc-100"
+          />
+        </section>
+      ) : null}
 
-          <PagePanel
-            variant="inset"
-            className="flex min-h-[260px] flex-col overflow-hidden"
-          >
-            <div className="flex flex-wrap items-center gap-2 px-3 py-2">
-              <div className="mr-auto min-w-0">
-                <div className="text-xs font-medium text-txt">Runs</div>
-                <div className="truncate text-2xs text-muted-strong">
-                  {persistedWorkflowId
-                    ? `${executions.length} recent execution${executions.length === 1 ? "" : "s"}`
-                    : "Save before running"}
-                </div>
-              </div>
-              <Button
-                ref={copyEvaluationSamplesButton.ref}
-                {...copyEvaluationSamplesButton.agentProps}
-                variant="ghost"
-                size="sm"
-                className="h-7 px-2 text-2xs"
-                onClick={() => void handleCopyEvaluationSamples()}
-                disabled={
-                  !persistedWorkflowId ||
-                  executions.length === 0 ||
-                  evaluationSamplesCopying
-                }
-                aria-label="Copy eval samples"
+      {tab === "runs" ? (
+        <div className="grid min-h-0 flex-1 lg:grid-cols-[220px_minmax(0,1fr)]">
+          <aside className="min-h-0 overflow-auto border-b border-border/70 p-2 lg:border-b-0 lg:border-r">
+            <div className="flex justify-end">
+              <button
+                type="button"
+                className="grid h-8 w-8 place-items-center rounded-md text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+                onClick={() => void refreshRuns()}
+                aria-label="Refresh runs"
+                title="Refresh"
               >
-                {evaluationSamplesCopying ? (
-                  <Spinner className="mr-1.5 h-3.5 w-3.5" />
-                ) : (
-                  <ClipboardList className="mr-1.5 h-3.5 w-3.5" aria-hidden />
-                )}
-                <span className="hidden sm:inline">
-                  {evaluationSamplesCopied ? "Copied" : "Copy samples"}
-                </span>
-              </Button>
-              <Button
-                ref={refreshRunsButton.ref}
-                {...refreshRunsButton.agentProps}
-                variant="ghost"
-                size="icon"
-                className="h-7 w-7"
-                onClick={() => void refreshExecutions()}
-                disabled={!persistedWorkflowId || executionsLoading}
-                aria-label="Refresh workflow runs"
-              >
-                {executionsLoading ? (
-                  <Spinner className="h-3.5 w-3.5" />
-                ) : (
-                  <RefreshCw className="h-3.5 w-3.5" aria-hidden />
-                )}
-              </Button>
+                <RefreshCw className="h-3.5 w-3.5" />
+              </button>
             </div>
-            {executionError && (
-              <div className="bg-danger/10 px-3 py-2 text-xs text-danger">
-                {executionError}
-              </div>
-            )}
-            <div className="grid min-h-0 flex-1 gap-3 md:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)]">
-              <div className="min-h-[96px] overflow-auto">
-                {executions.length === 0 ? (
-                  <div className="flex h-full min-h-[96px] items-center px-3 text-xs text-muted-strong">
-                    {persistedWorkflowId
-                      ? "No runs yet."
-                      : "Save the workflow to run it."}
-                  </div>
-                ) : (
-                  <div>
-                    {executions.map((execution) => {
-                      const summary = summarizeWorkflowExecution(execution);
-                      const selected = execution.id === selectedExecution?.id;
-                      return (
-                        <Button
-                          key={execution.id}
-                          variant="ghost"
-                          className={`flex h-auto w-full min-w-0 items-center justify-start gap-2 whitespace-normal rounded-none px-3 py-2 text-left font-normal hover:bg-bg-accent/50 ${
-                            selected ? "bg-bg-accent" : ""
-                          }`}
-                          onClick={() => {
-                            setSelectedExecutionId(execution.id);
-                            setDiagnosticsCopied(false);
-                          }}
-                        >
-                          {summary.tone === "success" ? (
-                            <CheckCircle2
-                              className="h-3.5 w-3.5 shrink-0 text-ok"
-                              aria-hidden
-                            />
-                          ) : summary.tone === "danger" ? (
-                            <AlertTriangle
-                              className="h-3.5 w-3.5 shrink-0 text-danger"
-                              aria-hidden
-                            />
-                          ) : (
-                            <Clock3
-                              className="h-3.5 w-3.5 shrink-0 text-muted-strong"
-                              aria-hidden
-                            />
-                          )}
-                          <span className="min-w-0 flex-1">
-                            <span className="block truncate text-xs font-medium text-txt">
-                              {summary.statusLabel}
-                            </span>
-                            <span className="block truncate text-2xs text-muted-strong">
-                              {new Date(execution.startedAt).toLocaleString(
-                                "en-US",
-                              )}{" "}
-                              / {summary.durationLabel}
-                            </span>
-                          </span>
-                        </Button>
-                      );
+            <div className="space-y-1">
+              {executions.map((execution) => (
+                <button
+                  type="button"
+                  key={execution.id}
+                  onClick={() => setSelectedRunId(execution.id)}
+                  className={`flex w-full items-center gap-2 rounded-lg border px-2.5 py-2 text-left transition ${selectedRun?.id === execution.id ? "border-primary/40 bg-primary/5" : "border-transparent hover:bg-muted/50"}`}
+                  title={`${execution.status} · ${execution.id}`}
+                >
+                  <span
+                    className={`h-2.5 w-2.5 shrink-0 rounded-full ${statusDot(execution.status)}`}
+                  >
+                    <span className="sr-only">{execution.status}</span>
+                  </span>
+                  <span className="min-w-0 flex-1 truncate font-mono text-[10px] text-muted-foreground">
+                    {execution.id.slice(0, 12)}
+                  </span>
+                  <span className="text-[10px] text-muted-foreground/70">
+                    {new Date(execution.startedAt).toLocaleTimeString([], {
+                      hour: "2-digit",
+                      minute: "2-digit",
                     })}
-                  </div>
-                )}
-              </div>
-              <div className="min-h-[156px] overflow-auto p-3">
-                {!selectedExecution || !selectedExecutionSummary ? (
-                  <div className="flex h-full min-h-[128px] items-center text-xs text-muted-strong">
-                    Select a run to inspect node output, logs, and errors.
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="inline-flex items-center gap-1.5 text-xs font-medium text-txt">
-                        <StatusDot tone={selectedExecutionSummary.tone} />
-                        {selectedExecutionSummary.statusLabel}
-                      </span>
-                      <span className="text-2xs text-muted-strong">
-                        {selectedExecutionSummary.nodeCount} node
-                        {selectedExecutionSummary.nodeCount === 1 ? "" : "s"} /{" "}
-                        {selectedExecutionSummary.durationLabel}
-                      </span>
-                      {selectedEngineMetrics && (
-                        <span className="text-2xs text-muted-strong">
-                          / {selectedEngineMetrics}
-                        </span>
-                      )}
-                      <Button
-                        ref={copyDiagnosticsButton.ref}
-                        {...copyDiagnosticsButton.agentProps}
-                        variant="ghost"
-                        size="sm"
-                        className="ml-auto h-7 px-2 text-2xs"
-                        onClick={() => void handleCopyDiagnostics()}
-                        disabled={!selectedExecution || diagnosticsCopying}
-                      >
-                        {diagnosticsCopying ? (
-                          <Spinner className="mr-1.5 h-3.5 w-3.5" />
-                        ) : (
-                          <Copy className="mr-1.5 h-3.5 w-3.5" aria-hidden />
-                        )}
-                        {diagnosticsCopied ? "Copied" : "Copy diagnostics"}
-                      </Button>
-                      <Button
-                        ref={troubleshootRunButton.ref}
-                        {...troubleshootRunButton.agentProps}
-                        variant="ghost"
-                        size="sm"
-                        className="h-7 px-2 text-2xs"
-                        aria-label="Troubleshoot run in chat"
-                        onClick={handleTroubleshootInChat}
-                        disabled={!selectedExecution}
-                      >
-                        <AlertTriangle
-                          className="mr-0 h-3.5 w-3.5 sm:mr-1.5"
-                          aria-hidden
-                        />
-                        <span className="hidden sm:inline">Troubleshoot</span>
-                      </Button>
-                    </div>
-                    {selectedExecutionSummary.error && (
-                      <div className="rounded-sm border border-danger/20 bg-danger/10 p-2 text-xs text-danger">
-                        {selectedExecutionSummary.error}
-                      </div>
-                    )}
-                    {selectedRunRows.length === 0 ? (
-                      <div className="text-xs text-muted-strong">
-                        This execution has no node output yet.
-                      </div>
-                    ) : (
-                      <div className="space-y-2">
-                        {selectedRunRows.map((row) => (
-                          <div
-                            key={`${row.nodeName}-${row.startTime ?? row.preview}`}
-                          >
-                            <div className="flex min-w-0 items-center gap-2">
-                              <span
-                                className={`inline-flex items-center gap-1.5 text-xs ${
-                                  row.status === "error"
-                                    ? "text-destructive"
-                                    : row.status === "success"
-                                      ? "text-ok"
-                                      : "text-muted-strong"
-                                }`}
-                              >
-                                <StatusDot
-                                  tone={
-                                    row.status === "error"
-                                      ? "danger"
-                                      : row.status === "success"
-                                        ? "success"
-                                        : "muted"
-                                  }
-                                />
-                                {row.status}
-                              </span>
-                              <span className="min-w-0 flex-1 truncate text-xs font-medium text-txt">
-                                {row.nodeName}
-                              </span>
-                              <span className="shrink-0 text-2xs text-muted-strong">
-                                {row.itemCount} item
-                                {row.itemCount === 1 ? "" : "s"}
-                              </span>
-                            </div>
-                            <pre className="mt-2 max-h-24 overflow-auto whitespace-pre-wrap break-words rounded-sm bg-bg-accent/50 p-2 text-2xs leading-relaxed text-muted-strong">
-                              {row.error ?? row.preview}
-                            </pre>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            </div>
-          </PagePanel>
-
-          <PagePanel
-            variant="inset"
-            className="flex min-h-[132px] flex-col overflow-hidden"
-          >
-            <div className="flex flex-wrap items-center gap-2 px-3 py-2">
-              <div className="mr-auto min-w-0">
-                <div className="text-xs font-medium text-txt">History</div>
-                <div className="truncate text-2xs text-muted-strong">
-                  {currentVersionId
-                    ? `Current ${currentVersionId.slice(0, 8)}`
-                    : "Unsaved draft"}
+                  </span>
+                </button>
+              ))}
+              {executions.length === 0 ? (
+                <div
+                  className="grid min-h-32 place-items-center"
+                  title="No runs"
+                >
+                  <Activity className="h-6 w-6 text-muted-foreground/40" />
+                  <span className="sr-only">No runs</span>
                 </div>
-              </div>
+              ) : null}
             </div>
-            {revisionsError && (
-              <div className="bg-danger/10 px-3 py-2 text-xs text-danger">
-                {revisionsError}
+          </aside>
+          <section className="min-h-0 overflow-auto p-3">
+            {selectedRun ? (
+              <div className="mx-auto max-w-4xl space-y-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span
+                    className={`h-2.5 w-2.5 rounded-full ${statusDot(selectedRun.status)}`}
+                    title={selectedRun.status}
+                  >
+                    <span className="sr-only">{selectedRun.status}</span>
+                  </span>
+                  <span className="font-mono text-xs text-muted-foreground">
+                    {selectedRun.id.slice(0, 12)}
+                  </span>
+                  <div className="flex-1" />
+                  {!terminal(selectedRun.status) ? (
+                    <Button
+                      variant={
+                        cancelArmedId === selectedRun.id
+                          ? "destructive"
+                          : "ghost"
+                      }
+                      size="icon-sm"
+                      aria-label={
+                        cancelArmedId === selectedRun.id
+                          ? "Confirm cancel run"
+                          : "Cancel run"
+                      }
+                      title={
+                        cancelArmedId === selectedRun.id ? "Confirm" : "Cancel"
+                      }
+                      onClick={() => {
+                        if (cancelArmedId !== selectedRun.id) {
+                          setCancelArmedId(selectedRun.id);
+                          return;
+                        }
+                        setCancelArmedId(null);
+                        void client
+                          .cancelWorkflowExecution(selectedRun.id)
+                          .then(refreshRuns);
+                      }}
+                    >
+                      <CircleStop className="h-4 w-4" />
+                    </Button>
+                  ) : null}
+                </div>
+                <div className="grid gap-3 md:grid-cols-2">
+                  {hasObjectValues(selectedRun.input) ? (
+                    <div className="rounded-xl border border-border/60 bg-card p-3">
+                      <FileInput
+                        className="mb-2 h-4 w-4 text-muted-foreground"
+                        aria-label="Input"
+                      />
+                      <pre className="max-h-64 overflow-auto text-xs">
+                        {pretty(selectedRun.input)}
+                      </pre>
+                    </div>
+                  ) : null}
+                  <div
+                    className={`rounded-xl border border-border/60 bg-card p-3 ${hasObjectValues(selectedRun.input) ? "" : "md:col-span-2"}`}
+                  >
+                    <FileOutput
+                      className="mb-2 h-4 w-4 text-muted-foreground"
+                      aria-label="Output"
+                    />
+                    <pre className="max-h-64 overflow-auto text-xs">
+                      {pretty(selectedRun.error ?? selectedRun.output)}
+                    </pre>
+                  </div>
+                </div>
+                <div className="rounded-xl border border-border/60 bg-card p-3">
+                  <ListTree
+                    className="mb-3 h-4 w-4 text-muted-foreground"
+                    aria-label="Events"
+                  />
+                  <div className="space-y-0">
+                    {(selectedRun.events ?? []).map((event) => (
+                      <div
+                        key={event.id}
+                        className="grid grid-cols-[22px_70px_minmax(0,1fr)] gap-2 border-l border-border pb-3 text-xs last:pb-0"
+                      >
+                        <div className="-ml-[5px] mt-1 h-2.5 w-2.5 rounded-full border-2 border-card bg-primary" />
+                        <span className="font-mono text-[10px] text-muted-foreground/70">
+                          {new Date(event.timestamp).toLocaleTimeString([], {
+                            hour: "2-digit",
+                            minute: "2-digit",
+                            second: "2-digit",
+                          })}
+                        </span>
+                        <div>
+                          <p className="font-medium">{event.type}</p>
+                          {event.nodeId ? (
+                            <p className="mt-0.5 text-muted-foreground">
+                              {event.nodeId}
+                            </p>
+                          ) : null}
+                        </div>
+                      </div>
+                    ))}
+                    {(selectedRun.events ?? []).length === 0 ? (
+                      <div className="h-2 w-2 animate-pulse rounded-full bg-primary" />
+                    ) : null}
+                  </div>
+                </div>
+                {selectedRun.status === "waiting-approval" ? (
+                  <div className="rounded-xl border border-amber-500/25 bg-amber-500/5 p-4">
+                    <div className="flex items-center gap-2">
+                      <span className="h-2.5 w-2.5 rounded-full bg-amber-500" />
+                      <p className="text-sm font-semibold">Approval required</p>
+                    </div>
+                    <div className="mt-3 flex gap-2">
+                      {(() => {
+                        const waiting = [...(selectedRun.events ?? [])]
+                          .reverse()
+                          .find(
+                            (event) =>
+                              event.nodeId &&
+                              /approval|waiting/i.test(event.type),
+                          );
+                        const nodeId = waiting?.nodeId;
+                        if (!nodeId)
+                          return (
+                            <span className="text-xs text-muted-foreground">
+                              Waiting for approval details…
+                            </span>
+                          );
+                        return (
+                          <>
+                            <Button
+                              size="icon-sm"
+                              aria-label="Approve"
+                              title="Approve"
+                              onClick={() =>
+                                void client
+                                  .decideWorkflowApproval(
+                                    selectedRun.id,
+                                    nodeId,
+                                    waiting.iteration ?? 0,
+                                    true,
+                                  )
+                                  .then(refreshRuns)
+                              }
+                            >
+                              <Check className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              size="icon-sm"
+                              variant="outline"
+                              aria-label="Deny"
+                              title="Deny"
+                              onClick={() =>
+                                void client
+                                  .decideWorkflowApproval(
+                                    selectedRun.id,
+                                    nodeId,
+                                    waiting.iteration ?? 0,
+                                    false,
+                                  )
+                                  .then(refreshRuns)
+                              }
+                            >
+                              <X className="h-4 w-4" />
+                            </Button>
+                          </>
+                        );
+                      })()}
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+            ) : (
+              <div
+                className="grid h-full place-items-center"
+                title="Select a run"
+              >
+                <Activity className="h-7 w-7 text-muted-foreground/40" />
+                <span className="sr-only">Select a run</span>
               </div>
             )}
-            <div className="min-h-0 flex-1 overflow-auto px-3 py-2">
-              {revisionsLoading ? (
-                <div className="flex items-center gap-2 text-xs text-muted-strong">
-                  <Spinner className="h-3.5 w-3.5" />
-                  Loading history
+          </section>
+        </div>
+      ) : null}
+
+      {tab === "widgets" ? (
+        <div className="min-h-0 flex-1 overflow-auto p-4">
+          <div className="mx-auto grid max-w-5xl gap-4 md:grid-cols-2">
+            {(workflow.widgets ?? []).map((widget) => (
+              <WorkflowWidget
+                key={widget.id}
+                widget={widget}
+                output={selectedRun?.output}
+                runId={selectedRun?.id}
+              />
+            ))}
+            {(workflow.widgets ?? []).length === 0 ? (
+              <div
+                className="col-span-full grid min-h-72 place-items-center"
+                title="No workflow widgets"
+              >
+                <LayoutDashboard className="h-8 w-8 text-muted-foreground/40" />
+                <span className="sr-only">No workflow widgets</span>
+              </div>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
+
+      {tab === "history" ? (
+        <div className="min-h-0 flex-1 overflow-auto p-4">
+          <div className="mx-auto max-w-3xl space-y-1">
+            {revisions.map((revision) => (
+              <div
+                key={revision.id}
+                className="flex items-center gap-3 rounded-lg border border-transparent bg-card px-3 py-2 hover:border-border/60"
+                title={revision.operation}
+              >
+                <div className="grid h-8 w-8 place-items-center rounded-lg bg-muted">
+                  <History className="h-4 w-4" />
                 </div>
-              ) : revisions.length === 0 ? (
-                <div className="text-xs text-muted-strong">
-                  Save an edit to create a restorable version.
+                <div className="min-w-0 flex-1">
+                  <p className="text-[11px] text-muted-foreground">
+                    {new Date(revision.capturedAt).toLocaleString("en-US")}
+                  </p>
                 </div>
-              ) : (
-                <div className="space-y-1.5">
-                  {revisions.slice(0, 4).map((revision) => (
-                    <WorkflowRevisionRow
-                      key={revision.id}
-                      revision={revision}
-                      disabled={!persistedWorkflowId || saving}
-                      onRestore={handleRestoreRevision}
-                    />
-                  ))}
-                </div>
-              )}
+                <Button
+                  variant={restoreArmedId === revision.id ? "default" : "ghost"}
+                  size="icon-sm"
+                  aria-label={
+                    restoreArmedId === revision.id
+                      ? "Confirm restore revision"
+                      : "Restore revision"
+                  }
+                  title={restoreArmedId === revision.id ? "Confirm" : "Restore"}
+                  onClick={() => {
+                    if (restoreArmedId !== revision.id) {
+                      setRestoreArmedId(revision.id);
+                      return;
+                    }
+                    setRestoreArmedId(null);
+                    void client
+                      .restoreWorkflowRevision(workflow.id, revision.versionId)
+                      .then((restored) => {
+                        setWorkflow(restored);
+                        setSavedVersion(JSON.stringify(restored));
+                        void refreshRevisions();
+                      });
+                  }}
+                >
+                  <ArchiveRestore className="h-4 w-4" />
+                </Button>
+              </div>
+            ))}
+            {revisions.length === 0 ? (
+              <div
+                className="grid min-h-72 place-items-center"
+                title="No saved revisions"
+              >
+                <History className="h-8 w-8 text-muted-foreground/40" />
+                <span className="sr-only">No saved revisions</span>
+              </div>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
+
+      {runInputOpen ? (
+        <div className="absolute inset-0 z-30 grid place-items-center bg-background/80 p-4">
+          <form
+            aria-label="Workflow input"
+            className="w-full max-w-md rounded-2xl border border-border/60 bg-card p-4 shadow-xl"
+            onSubmit={(event) => {
+              event.preventDefault();
+              setRunInputOpen(false);
+              void run(runInput);
+            }}
+          >
+            <div className="mb-3 flex items-center gap-2">
+              <FileInput className="h-4 w-4 text-primary" />
+              <span className="text-sm font-semibold">Input</span>
+              <div className="flex-1" />
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                aria-label="Close input"
+                onClick={() => setRunInputOpen(false)}
+              >
+                <X className="h-4 w-4" />
+              </Button>
             </div>
-          </PagePanel>
+            <div className="space-y-2.5">
+              {inputFields.map((field) => (
+                <label
+                  key={field.key}
+                  htmlFor={`workflow-input-${field.key}`}
+                  className="block"
+                >
+                  <span className="sr-only">{field.title}</span>
+                  {field.type === "boolean" ? (
+                    <span className="flex items-center justify-between rounded-lg bg-muted/35 px-3 py-2 text-sm">
+                      {field.title}
+                      <input
+                        id={`workflow-input-${field.key}`}
+                        type="checkbox"
+                        checked={Boolean(runInput[field.key])}
+                        onChange={(event) =>
+                          setRunInput((current) => ({
+                            ...current,
+                            [field.key]: event.target.checked,
+                          }))
+                        }
+                      />
+                    </span>
+                  ) : (
+                    <Input
+                      id={`workflow-input-${field.key}`}
+                      aria-label={field.title}
+                      required={field.required}
+                      type={field.type === "string" ? "text" : "number"}
+                      step={field.type === "integer" ? 1 : undefined}
+                      placeholder={field.title}
+                      value={String(runInput[field.key] ?? "")}
+                      onChange={(event) =>
+                        setRunInput((current) => ({
+                          ...current,
+                          [field.key]:
+                            field.type === "string"
+                              ? event.target.value
+                              : Number(event.target.value),
+                        }))
+                      }
+                    />
+                  )}
+                </label>
+              ))}
+            </div>
+            <Button type="submit" className="mt-4 w-full" disabled={running}>
+              {running ? (
+                <Spinner className="h-4 w-4" />
+              ) : (
+                <Play className="h-4 w-4" />
+              )}
+              <span className="sr-only">Run workflow</span>
+            </Button>
+          </form>
         </div>
-      </div>
-    </div>
-  );
-}
-
-function WorkflowRevisionRow({
-  revision,
-  disabled,
-  onRestore,
-}: {
-  revision: WorkflowRevision;
-  disabled: boolean;
-  onRestore: (versionId: string) => void;
-}) {
-  const capturedAt = new Date(revision.capturedAt).toLocaleString("en-US");
-  const versionLabel = revision.versionId.slice(0, 8);
-  const restoreAction = useAgentElement<HTMLButtonElement>({
-    id: `restore-workflow-version-${versionLabel}`,
-    role: "button",
-    label: `Restore ${revision.name}`,
-    group: "workflow-history",
-    description: `Restore workflow version ${versionLabel} captured after ${revision.operation}.`,
-    status: disabled ? "inactive" : "active",
-    onActivate: () => onRestore(revision.versionId),
-  });
-
-  return (
-    <div className="flex min-w-0 items-center gap-2 px-1 py-1 text-xs hover:bg-bg-accent/40">
-      <div className="min-w-0 flex-1">
-        <div className="truncate text-txt">{revision.name}</div>
-        <div className="truncate text-2xs text-muted-strong">
-          {revision.operation} / {capturedAt} / {versionLabel}
-        </div>
-      </div>
-      <Button
-        ref={restoreAction.ref}
-        {...restoreAction.agentProps}
-        variant="ghost"
-        size="icon"
-        className="h-7 w-7 shrink-0"
-        onClick={() => onRestore(revision.versionId)}
-        disabled={disabled}
-        aria-label={`Restore ${revision.name}`}
-      >
-        <RotateCcw className="h-3.5 w-3.5" aria-hidden />
-      </Button>
-    </div>
+      ) : null}
+    </PagePanel>
   );
 }

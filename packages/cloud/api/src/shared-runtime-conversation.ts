@@ -9,7 +9,12 @@
 import type { BridgeRequest } from "@/lib/services/eliza-sandbox";
 import type { CachedAgentSandbox } from "@/lib/services/shared-runtime/cached-agent-dates";
 import type { SharedTurnMessage } from "@/lib/services/shared-runtime/run-shared-agent-turn";
-import type { SharedRuntimeHistoryStore } from "@/lib/services/shared-runtime/shared-runtime-chat";
+import type { SharedRuntimeAgent } from "@/lib/services/shared-runtime/shared-runtime-agent";
+import type {
+  SharedRuntimeHistoryStore,
+  SharedTurnClaimStore,
+  SharedTurnTerminalResult,
+} from "@/lib/services/shared-runtime/shared-runtime-chat";
 import {
   MAX_HISTORY_MESSAGES,
   mergeSharedRuntimeHistoryMessages,
@@ -21,8 +26,27 @@ import type { AppEnv } from "@/types/cloud-worker-env";
 // service consumes the row (the CONVERSATIONS-500 defect class).
 type ConversationRequest =
   | { operation: "bridge"; agent: CachedAgentSandbox; rpc: BridgeRequest }
+  | {
+      operation: "personal-bridge";
+      agent: SharedRuntimeAgent;
+      rpc: BridgeRequest;
+    }
   | { operation: "stream"; agent: CachedAgentSandbox; rpc: BridgeRequest }
+  | {
+      operation: "personal-stream";
+      agent: SharedRuntimeAgent;
+      rpc: BridgeRequest;
+    }
   | { operation: "history"; agentId: string; roomId: string }
+  | {
+      operation: "cutover-seal";
+      agentId: string;
+      roomId: string;
+      token: string;
+      leaseMs: number;
+    }
+  | { operation: "cutover-release"; token: string }
+  | { operation: "cutover-commit"; token: string }
   | { operation: "delete"; agentId: string };
 
 interface StoredConversation {
@@ -34,7 +58,44 @@ interface StoredConversation {
 }
 
 const CONVERSATION_KEY = "conversation";
+const CUTOVER_SEAL_KEY = "personal-cutover-seal";
 const RETRY_DELAY_MS = 30_000;
+
+interface StoredCutoverSeal {
+  token: string;
+  expiresAt: number;
+  committed: boolean;
+}
+
+/**
+ * Durable claim ledger for client-keyed turns (#18045), stored as one bounded
+ * value. The room queue fully serializes turns, so read-modify-write is safe.
+ * Bounds keep the value under the storage limit; an evicted claim degrades to
+ * a fresh execution whose deterministic billing identities still dedupe the
+ * charge at the admission gate.
+ */
+const TURN_CLAIMS_KEY = "turn-claims";
+// ponytail: single bounded value = ~32-turn replay window; per-claim rows if a room ever needs more.
+const MAX_TURN_CLAIMS = 32;
+const MAX_TURN_CLAIMS_BYTES = 256_000;
+
+interface StoredTurnClaim {
+  key: string;
+  hash: string;
+  result?: SharedTurnTerminalResult;
+}
+
+function boundTurnClaims(claims: StoredTurnClaim[]): StoredTurnClaim[] {
+  let bounded = claims.slice(-MAX_TURN_CLAIMS);
+  while (
+    bounded.length > 1 &&
+    new TextEncoder().encode(JSON.stringify(bounded)).length >
+      MAX_TURN_CLAIMS_BYTES
+  ) {
+    bounded = bounded.slice(1);
+  }
+  return bounded;
+}
 
 /**
  * SQLite-backed Durable Object storage rejects values over 2 MiB. History is
@@ -224,9 +285,121 @@ export class SharedRuntimeConversation {
     };
   }
 
+  private turnClaims(): SharedTurnClaimStore {
+    return {
+      claim: async (key, payloadHash) => {
+        const claims =
+          (await this.state.storage.get<StoredTurnClaim[]>(TURN_CLAIMS_KEY)) ??
+          [];
+        const existing = claims.find((claim) => claim.key === key);
+        if (existing) {
+          if (existing.hash !== payloadHash) return { state: "conflict" };
+          if (existing.result) {
+            return { state: "replay", result: existing.result };
+          }
+          // Pending claim with a matching payload: the prior execution failed
+          // before landing (the room queue serializes turns, so nothing is in
+          // flight) — re-execution under the same claim is the recovery path.
+          return { state: "claimed" };
+        }
+        await this.state.storage.put(
+          TURN_CLAIMS_KEY,
+          boundTurnClaims([...claims, { key, hash: payloadHash }]),
+        );
+        return { state: "claimed" };
+      },
+      complete: async (key, result) => {
+        const claims =
+          (await this.state.storage.get<StoredTurnClaim[]>(TURN_CLAIMS_KEY)) ??
+          [];
+        await this.state.storage.put(
+          TURN_CLAIMS_KEY,
+          boundTurnClaims(
+            claims.map((claim) =>
+              claim.key === key ? { ...claim, result } : claim,
+            ),
+          ),
+        );
+      },
+    };
+  }
+
+  private async activeCutoverSeal(): Promise<StoredCutoverSeal | null> {
+    const seal =
+      (await this.state.storage.get<StoredCutoverSeal>(CUTOVER_SEAL_KEY)) ??
+      null;
+    // A pending lease expires so a crashed migration cannot strand Shared.
+    // A committed seal is the durable cutover authority: expiring it would let
+    // a stale browser/native session resume the archived Shared transcript.
+    if (!seal || seal.committed || seal.expiresAt > Date.now()) return seal;
+    await this.state.storage.delete(CUTOVER_SEAL_KEY);
+    return null;
+  }
+
   private async handle(request: Request): Promise<Response> {
     const payload = (await request.json()) as ConversationRequest;
     const historyStore = this.historyStore();
+    const turnClaims = this.turnClaims();
+    if (payload.operation === "cutover-seal") {
+      const existing = await this.activeCutoverSeal();
+      if (existing && existing.token !== payload.token) {
+        return Response.json(
+          {
+            success: false,
+            code: existing.committed
+              ? "personal_eliza_dedicated"
+              : "personal_cutover_in_progress",
+          },
+          { status: existing.committed ? 409 : 423 },
+        );
+      }
+      const seal: StoredCutoverSeal = {
+        token: payload.token,
+        expiresAt: Date.now() + payload.leaseMs,
+        committed: existing?.committed ?? false,
+      };
+      await this.state.storage.put(CUTOVER_SEAL_KEY, seal);
+      try {
+        const history = await this.runWithBindings(async () => {
+          const { sharedRuntimeChatService } = await import(
+            "@/lib/services/shared-runtime/shared-runtime-chat"
+          );
+          return await sharedRuntimeChatService.getHistory(
+            payload.agentId,
+            payload.roomId,
+            historyStore,
+          );
+        });
+        return Response.json({ success: true, history });
+      } catch (error) {
+        const current = await this.activeCutoverSeal();
+        if (current?.token === payload.token && !current.committed) {
+          await this.state.storage.delete(CUTOVER_SEAL_KEY);
+        }
+        throw error;
+      }
+    }
+    if (payload.operation === "cutover-release") {
+      const existing = await this.activeCutoverSeal();
+      if (existing?.token === payload.token && !existing.committed) {
+        await this.state.storage.delete(CUTOVER_SEAL_KEY);
+      }
+      return Response.json({ success: true });
+    }
+    if (payload.operation === "cutover-commit") {
+      const existing = await this.activeCutoverSeal();
+      if (!existing || existing.token !== payload.token) {
+        return Response.json(
+          { success: false, code: "personal_cutover_seal_lost" },
+          { status: 409 },
+        );
+      }
+      await this.state.storage.put(CUTOVER_SEAL_KEY, {
+        ...existing,
+        committed: true,
+      } satisfies StoredCutoverSeal);
+      return Response.json({ success: true });
+    }
     if (payload.operation === "history") {
       const history = await this.runWithBindings(async () => {
         const { sharedRuntimeChatService } = await import(
@@ -252,26 +425,65 @@ export class SharedRuntimeConversation {
       return Response.json({ success: true });
     }
 
+    const cutoverSeal = await this.activeCutoverSeal();
+    if (cutoverSeal) {
+      return Response.json(
+        {
+          success: false,
+          error: cutoverSeal.committed
+            ? "This personal Eliza is active on Dedicated."
+            : "Dedicated cutover is finishing. Retry this turn shortly.",
+          code: cutoverSeal.committed
+            ? "personal_eliza_dedicated"
+            : "personal_cutover_in_progress",
+          retryable: !cutoverSeal.committed,
+        },
+        {
+          status: cutoverSeal.committed ? 409 : 423,
+          headers: cutoverSeal.committed ? {} : { "Retry-After": "1" },
+        },
+      );
+    }
+
     return await this.runWithBindings(async () => {
-      const [{ sharedRuntimeChatService }, { rehydrateCachedAgentDates }] =
-        await Promise.all([
-          import("@/lib/services/shared-runtime/shared-runtime-chat"),
-          import("@/lib/services/shared-runtime/cached-agent-dates"),
-        ]);
-      const agent = rehydrateCachedAgentDates(payload.agent);
+      const { sharedRuntimeChatService } = await import(
+        "@/lib/services/shared-runtime/shared-runtime-chat"
+      );
+      const agent =
+        payload.operation === "personal-bridge" ||
+        payload.operation === "personal-stream"
+          ? payload.agent
+          : await import(
+              "@/lib/services/shared-runtime/cached-agent-dates"
+            ).then(({ rehydrateCachedAgentDates }) =>
+              rehydrateCachedAgentDates(payload.agent),
+            );
       const executionCtx = {
         waitUntil: (promise: Promise<unknown>) => this.state.waitUntil(promise),
       };
-      if (payload.operation === "stream") {
+      if (
+        payload.operation === "stream" ||
+        payload.operation === "personal-stream"
+      ) {
         return await sharedRuntimeChatService.stream(agent, payload.rpc, {
           abortSignal: request.signal,
           executionCtx,
           historyStore,
+          turnClaims,
+          funding:
+            payload.operation === "personal-stream"
+              ? "platform"
+              : "organization-credits",
         });
       }
       const result = await sharedRuntimeChatService.bridge(agent, payload.rpc, {
         executionCtx,
         historyStore,
+        turnClaims,
+        funding:
+          payload.operation === "personal-bridge"
+            ? "platform"
+            : "organization-credits",
       });
       return Response.json(result);
     });
@@ -335,6 +547,17 @@ export class SharedRuntimeConversation {
       // identity cannot survive the stub fetch boundary); every other failure
       // remains observable to Workers.
       release();
+      if (error instanceof Error && error.name === "SharedTurnConflictError") {
+        return Response.json(
+          {
+            success: false,
+            error: error.message,
+            code: "client_message_conflict",
+            retryable: false,
+          },
+          { status: 409 },
+        );
+      }
       if (
         error instanceof ConversationCacheWarmingError ||
         (error instanceof Error &&

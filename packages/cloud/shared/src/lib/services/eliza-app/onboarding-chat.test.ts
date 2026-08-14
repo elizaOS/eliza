@@ -133,7 +133,8 @@ describe("runOnboardingChat", () => {
     expect(ensureElizaAppProvisioning).not.toHaveBeenCalled();
     expect(findOrCreateByPhone).not.toHaveBeenCalled();
     expect(result.reply).toMatch(/what should I call you\?/i);
-    expect(result.reply).toContain("$5");
+    expect(result.reply).toContain("shared chat is free");
+    expect(result.reply).not.toContain("$5");
   });
 
   test("sends a login link after a trusted phone user provides a preferred name", async () => {
@@ -170,7 +171,7 @@ describe("runOnboardingChat", () => {
     const loginUrl = new URL(result.loginUrl);
     // Same continuation as Discord: straight to the Cloud app's /get-started
     // (Steward login), never the homepage sign-in card.
-    expect(loginUrl.origin).toBe("https://app.elizacloud.ai");
+    expect(loginUrl.origin).toBe("https://cloud.eliza.app");
     expect(loginUrl.pathname).toBe("/get-started");
     // No legacy method/link hints: those forced the homepage's Telegram
     // widget + phone-number flow instead of the Steward continuation.
@@ -656,7 +657,8 @@ describe("runOnboardingChat", () => {
     expect(result.reply).not.toContain(result.loginUrl);
     expect(result.reply).not.toContain("https://");
     expect(result.reply).toContain("Sam");
-    expect(result.reply).toContain("$5");
+    expect(result.reply).toContain("shared chat is free");
+    expect(result.reply).not.toContain("$5");
   });
 
   test("discord Connect CTA targets the Cloud app /get-started directly, not the homepage", async () => {
@@ -674,14 +676,14 @@ describe("runOnboardingChat", () => {
 
     const loginUrl = new URL(result.loginUrl);
     // Default cloud env => the Cloud *app* host, never the homepage (eliza.app).
-    expect(loginUrl.origin).toBe("https://app.elizacloud.ai");
+    expect(loginUrl.origin).toBe("https://cloud.eliza.app");
     expect(loginUrl.pathname).toBe("/get-started");
     expect(loginUrl.searchParams.get("onboardingSession")).toBeTruthy();
     expect(result.cta).toEqual({ label: "Connect", url: result.loginUrl });
   });
 
   test("discord Connect CTA follows ELIZA_ONBOARDING_APP_URL to the staging app host", async () => {
-    cloudEnv = { ELIZA_ONBOARDING_APP_URL: "https://app-staging.elizacloud.ai" };
+    cloudEnv = { ELIZA_ONBOARDING_APP_URL: "https://cloud-staging.eliza.app" };
     const result = await runOnboardingChat({
       message: "call me Sam",
       platform: "discord",
@@ -691,7 +693,7 @@ describe("runOnboardingChat", () => {
     });
 
     const loginUrl = new URL(result.loginUrl);
-    expect(loginUrl.origin).toBe("https://app-staging.elizacloud.ai");
+    expect(loginUrl.origin).toBe("https://cloud-staging.eliza.app");
     expect(loginUrl.pathname).toBe("/get-started");
   });
 
@@ -784,7 +786,8 @@ describe("runOnboardingChat", () => {
     expect(result.session.name).toBeUndefined();
     expect(result.reply).toMatch(/^hey!/);
     expect(result.reply).toMatch(/what should I call you\?/i);
-    expect(result.reply).toContain("$5");
+    expect(result.reply).toContain("shared chat is free");
+    expect(result.reply).not.toContain("$5");
   });
 
   test("keeps steering to the connect CTA when the user asks a question instead of connecting", async () => {
@@ -806,7 +809,8 @@ describe("runOnboardingChat", () => {
     expect(result.requiresLogin).toBe(true);
     expect(result.cta).toEqual({ label: "Connect", url: result.loginUrl });
     expect(result.reply).toContain("good question, Sam");
-    expect(result.reply).toContain("$5");
+    expect(result.reply).toContain("shared chat is free");
+    expect(result.reply).not.toContain("$5");
     // The button carries the URL; the message body must not repeat it.
     expect(result.reply).not.toContain(result.loginUrl);
   });
@@ -901,8 +905,9 @@ describe("runOnboardingChat", () => {
     expect(first.reply.replace(first.loginUrl, "<login>")).toBe(
       second.reply.replace(second.loginUrl, "<login>"),
     );
-    expect(first.reply).toContain("$5");
-    expect(first.reply.endsWith(`on me: ${first.loginUrl}`)).toBe(true);
+    expect(first.reply).toContain("shared chat is free");
+    expect(first.reply).not.toContain("$5");
+    expect(first.reply.endsWith(`no card needed: ${first.loginUrl}`)).toBe(true);
     expect(first.reply).not.toMatch(/[^\x09\x0A\x0D\x20-\x7E]/);
   });
 
@@ -1387,6 +1392,62 @@ describe("runOnboardingChat", () => {
       expect(ensureElizaAppProvisioning).not.toHaveBeenCalled();
     });
 
+    test("rejects a continuation whose signed Discord identity mismatches the session, even when confirmed", async () => {
+      const gatewayTurn = await runTrustedDiscordTurn("My name is Sam");
+
+      await expect(
+        runOnboardingChat({
+          sessionId: continuationToken(gatewayTurn),
+          platform: "web",
+          authenticatedUser: {
+            userId: "other-user",
+            organizationId: "other-org",
+            discordId: "111100000000000011",
+          },
+          confirmPlatformLink: true,
+        }),
+      ).rejects.toMatchObject({
+        code: "ONBOARDING_PLATFORM_IDENTITY_MISMATCH",
+      });
+      expect(linkDiscordToUser).not.toHaveBeenCalled();
+      expect(ensureElizaAppProvisioning).not.toHaveBeenCalled();
+    });
+
+    test("a signed Discord identity matching the session resumes it without a confirmation detour", async () => {
+      ensureElizaAppProvisioning.mockResolvedValue({
+        status: "provisioning",
+        agentId: "agent-d",
+        bridgeUrl: null,
+        sandbox: null,
+      });
+
+      const gatewayTurn = await runTrustedDiscordTurn("My name is Sam");
+      const continued = await runOnboardingChat({
+        sessionId: continuationToken(gatewayTurn),
+        platform: "web",
+        authenticatedUser: {
+          userId: "discord-oauth-user",
+          organizationId: "discord-oauth-org",
+          discordId: DISCORD_ID,
+        },
+      });
+
+      expect(continued.session.id).toBe(gatewayTurn.session.id);
+      expect(continued.session.userId).toBe("discord-oauth-user");
+      expect(
+        continued.session.history.some(
+          (m: OnboardingChatMessage) => m.content === "My name is Sam",
+        ),
+      ).toBe(true);
+      // Discord OAuth login already created the identity projection; the
+      // signed-id match is the ownership proof, so no re-link is issued.
+      expect(linkDiscordToUser).not.toHaveBeenCalled();
+      expect(ensureElizaAppProvisioning).toHaveBeenCalledWith({
+        userId: "discord-oauth-user",
+        organizationId: "discord-oauth-org",
+      });
+    });
+
     test("refuses confirmPlatformLink for a forged opaque session without a trusted Discord preview", async () => {
       await expect(
         runOnboardingChat({
@@ -1529,7 +1590,7 @@ describe("runOnboardingChat", () => {
       expect(second.session.name).toBe("Sam");
       expect(second.session.history).toHaveLength(4);
       for (const result of [first, second]) {
-        expect(result.reply).toContain(`on me: ${result.loginUrl}`);
+        expect(result.reply).toContain(`no card needed: ${result.loginUrl}`);
       }
     });
 
@@ -1747,7 +1808,7 @@ describe("runOnboardingChat", () => {
       expect(result.provisioning.status).toBe("insufficient_credits");
       expect(result.handoffComplete).toBe(false);
       expect(result.reply).toContain("you're out of credits, Sam");
-      expect(result.reply).toContain("/dashboard/billing");
+      expect(result.reply).toContain("/cloud/billing");
       expect(result.reply).not.toContain("agent is live");
       expect(result.reply).not.toContain("knows everything");
     });
@@ -1755,7 +1816,7 @@ describe("runOnboardingChat", () => {
     test("login-required fallback reply always ends with the exact login link", async () => {
       const result = await runTrustedPhoneTurn("My name is Sam");
       expect(result.requiresLogin).toBe(true);
-      expect(result.reply.endsWith(`on me: ${result.loginUrl}`)).toBe(true);
+      expect(result.reply.endsWith(`no card needed: ${result.loginUrl}`)).toBe(true);
     });
 
     test("a failed transcript handoff is retried on the next turn and copied exactly once", async () => {

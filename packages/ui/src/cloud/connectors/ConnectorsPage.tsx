@@ -2,7 +2,7 @@
  * Standalone Connectors console page mounted by the cloud router shell at
  * `dashboard/connectors` — the cloud-hosted connector management surface
  * (OAuth-redirect + token-credential connectors) on the apex console
- * (elizacloud.ai), where the in-app Settings view never mounts. Thin wrapper
+ * (`cloud.eliza.app`). Thin wrapper
  * around the self-loading {@link CloudConnectorsSection} (the same body the
  * connectors Settings section renders in the app). Backend OAuth-connect
  * return URLs (`dashboard/settings?tab=connections`) redirect here via the

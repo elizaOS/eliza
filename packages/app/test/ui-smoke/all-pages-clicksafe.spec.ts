@@ -316,12 +316,6 @@ const CORE_ROUTE_PROBES: readonly RouteProbe[] = [
     viewHeaderTitle: "Character",
   },
   {
-    name: "automation node catalog deep link",
-    path: "/automations/node-catalog",
-    readyChecks: [{ selector: '[data-testid="automations-shell"]' }],
-    timeoutMs: 60_000,
-  },
-  {
     // installDesktopPermissionsBridge injects __ELIZA_ELECTROBUN_RPC__, so
     // isElectrobunRuntime() is true here and /desktop renders the full desktop
     // workspace branch (not the "tools only available" fallback). Assert on the
@@ -431,7 +425,6 @@ const SETTING_SECTIONS_TO_CLICK: readonly {
   { label: /^Capabilities$/, expectedHash: "capabilities" },
   { label: /^Apps$/, expectedHash: "apps" },
   { label: /^Connectors$/, expectedHash: "connectors" },
-  { label: /^Cloud Connectors$/, expectedHash: "cloud-connectors" },
   { label: /^My Runtimes$/, expectedHash: "my-runtimes" },
   { label: /^Runtime$/, expectedHash: "runtime" },
   { label: /^Appearance$/, expectedHash: "appearance" },
@@ -439,8 +432,6 @@ const SETTING_SECTIONS_TO_CLICK: readonly {
   { label: /^Wallet & RPC\b/, expectedHash: "wallet-rpc" },
   { label: /^Updates$/, expectedHash: "updates" },
   { label: /^Backups$/, expectedHash: "advanced" },
-  { label: /^Overview$/, expectedHash: "cloud-overview" },
-  { label: /^Agents$/, expectedHash: "cloud-agents" },
 ];
 const SETTING_DEEP_LINKS: readonly {
   hash: string;

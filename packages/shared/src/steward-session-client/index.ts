@@ -3,7 +3,7 @@
  *
  * Single source of truth for:
  *  - the storage / cookie / endpoint key names used across os-homepage
- *    (`elizaos.ai`), cloud-frontend (`elizacloud.ai`), and the cloud-api
+ *    (`elizaos.ai`), unified frontend (`eliza.app`), and the cloud-api
  *    `/api/auth/steward-session` route handler;
  *  - the request / response / error shapes the route exchanges with the
  *    browser;
@@ -87,6 +87,8 @@ export const STEWARD_REFRESH_ENDPOINT = "/api/auth/steward-refresh";
 export interface StewardSessionRequest {
   token: string;
   refreshToken?: string | null;
+  /** Phone independently re-verified by the Cloud API against this bearer. */
+  verifiedPhone?: string;
 }
 
 export interface StewardSessionResponse {
@@ -122,6 +124,9 @@ export type StewardSessionErrorCode =
   | "sso_unavailable"
   | "server_secret_missing"
   | "steward_user_sync_failed"
+  | "verified_phone_invalid"
+  | "verified_phone_mismatch"
+  | "verified_phone_conflict"
   | "internal_error"
   // Nonce-exchange (response_type=code) outcomes. Surfaced both by the
   // cloud-api route and proxied through from Steward's /oauth/exchange.
@@ -153,7 +158,7 @@ export interface SyncOpts {
   /**
    * Absolute or relative URL to POST to. Defaults to STEWARD_SESSION_ENDPOINT
    * (same-origin). Pass an absolute URL when crossing origins
-   * (e.g. elizaos.ai -> api.elizacloud.ai).
+   * (e.g. elizaos.ai -> api.eliza.app).
    */
   endpoint?: string;
   /**
@@ -172,37 +177,32 @@ export interface ClearOpts {
 // localStorage helpers
 // ---------------------------------------------------------------------------
 
+/**
+ * Reads the canonical access token. Returns `null` for SSR or a missing token;
+ * storage access failures propagate so callers cannot mistake them for logout.
+ */
 export function readStoredStewardToken(): string | null {
   if (typeof window === "undefined") return null;
-  try {
-    return window.localStorage.getItem(STEWARD_TOKEN_KEY);
-  } catch {
-    return null;
-  }
+  return window.localStorage.getItem(STEWARD_TOKEN_KEY);
 }
 
+/** Persists the canonical token and publishes exactly one authority transition. */
 export function writeStoredStewardToken(token: string): void {
   if (typeof window === "undefined") return;
-  try {
-    window.localStorage.setItem(STEWARD_TOKEN_KEY, token);
-  } catch {
-    // localStorage may be disabled (private mode, quota, sandboxed iframe);
-    // callers that need durability should detect this themselves.
-    return;
-  }
+  window.localStorage.setItem(STEWARD_TOKEN_KEY, token);
   dispatchStewardSessionChange("present");
 }
 
+/**
+ * Clears canonical authority before draining the obsolete refresh-token key.
+ * Once the canonical removal succeeds, invalidation is published even if the
+ * legacy cleanup fails; either storage failure remains observable to callers.
+ */
 export function clearStoredStewardToken(): void {
   if (typeof window === "undefined") return;
-  try {
-    window.localStorage.removeItem(STEWARD_TOKEN_KEY);
-    window.localStorage.removeItem(STEWARD_REFRESH_TOKEN_KEY);
-  } catch {
-    // ignore
-    return;
-  }
+  window.localStorage.removeItem(STEWARD_TOKEN_KEY);
   dispatchStewardSessionChange("cleared");
+  window.localStorage.removeItem(STEWARD_REFRESH_TOKEN_KEY);
 }
 
 /**
@@ -220,6 +220,9 @@ function inferStewardCookieEnvironment(): string | null {
   if (typeof window === "undefined") return null;
   const hostname = window.location.hostname.toLowerCase();
   if (
+    hostname === "staging.eliza.app" ||
+    hostname === "cloud-staging.eliza.app" ||
+    hostname === "api-staging.eliza.app" ||
     hostname === "staging.elizacloud.ai" ||
     hostname === "app-staging.elizacloud.ai" ||
     hostname === "api-staging.elizacloud.ai"

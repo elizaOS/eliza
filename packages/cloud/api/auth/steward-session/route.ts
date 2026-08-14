@@ -11,6 +11,7 @@ import type {
 import { Hono } from "hono";
 import { deleteCookie, setCookie } from "hono/cookie";
 import { getAuditDispatcher } from "@/api-app/services/audit-dispatcher-singleton";
+import { checkElizaMutatingRequestOrigin } from "@/lib/auth/browser-origin-policy";
 import { cookieDomainForHost } from "@/lib/auth/cookie-domain";
 import { loadVerifiedStagingSessionUser } from "@/lib/auth/staging-session-binding";
 import {
@@ -24,7 +25,15 @@ import {
   rateLimit,
 } from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { isBlockedBySsoBridgeLogout } from "@/lib/services/sso-bridge-codes";
-import { describeSyncError, syncUserFromSteward } from "@/lib/steward-sync";
+import {
+  StewardPhoneOwnershipError,
+  verifyStewardBearerPhone,
+} from "@/lib/services/steward-client";
+import {
+  describeSyncError,
+  StewardPhoneAccountConflictError,
+  syncUserFromSteward,
+} from "@/lib/steward-sync";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -33,66 +42,6 @@ function stewardSecretConfigured(env: StewardVerifyEnv): boolean {
 }
 
 const STEWARD_REFRESH_COOKIE_MAX_AGE = 30 * 24 * 60 * 60;
-
-/**
- * Origins permitted to set / clear Steward session cookies. Anything else
- * gets a 403 — same-origin XHR from `*.elizacloud.ai` and the cross-origin
- * `elizaos.ai` checkout POST are the only two legitimate browser callers.
- * Explicit, exact hosts only. The `*.pages.dev` wildcard is intentionally
- * NOT included — anyone can deploy to `*.pages.dev`, so it's a CSRF surface
- * in production. Preview deploys use the explicit `dev.` / `staging.` hosts
- * already in the allowlist.
- */
-const PERMITTED_ORIGIN_HOSTS = new Set<string>([
-  "elizacloud.ai",
-  "www.elizacloud.ai",
-  "dev.elizacloud.ai",
-  "staging.elizacloud.ai",
-  "app-staging.elizacloud.ai",
-  "elizaos.ai",
-  "www.elizaos.ai",
-]);
-
-/**
- * Local development origins. Only honored when the worker is NOT running in
- * production. Production deploys never trust localhost as an Origin.
- */
-const LOCAL_DEV_ORIGIN_HOSTS = new Set<string>([
-  "localhost",
-  "127.0.0.1",
-  "0.0.0.0",
-]);
-
-function originHost(rawOrigin: string | undefined): string | null {
-  if (!rawOrigin) return null;
-  try {
-    return new URL(rawOrigin).hostname.toLowerCase();
-  } catch {
-    return null;
-  }
-}
-
-/**
- * Validate Origin / Referer against the request host to block cross-site
- * POST/DELETE. The cookie is SameSite=Lax (and the route is called via XHR,
- * which makes Lax effectively Strict for these requests), so this header
- * check is the second layer specifically for the cross-origin POST case
- * (elizaos.ai → api.elizacloud.ai).
- */
-function isPermittedOrigin(
-  origin: string | null,
-  requestHost: string | null,
-  isProduction: boolean,
-): boolean {
-  if (!origin) return false;
-  if (PERMITTED_ORIGIN_HOSTS.has(origin)) return true;
-  if (origin.endsWith(".elizacloud.ai") || origin.endsWith(".elizaos.ai")) {
-    return true;
-  }
-  if (requestHost && origin === requestHost) return true;
-  if (!isProduction && LOCAL_DEV_ORIGIN_HOSTS.has(origin)) return true;
-  return false;
-}
 
 /**
  * CSRF check. Modern browsers always send Origin on cross-origin POST/DELETE
@@ -107,23 +56,7 @@ function checkOrigin(
   c: { req: { header: (name: string) => string | undefined } },
   isProduction: boolean,
 ): { ok: true } | { ok: false; reason: string } {
-  const rawOrigin = c.req.header("origin");
-  const rawReferer = c.req.header("referer");
-  const origin = originHost(rawOrigin);
-  const referer = originHost(rawReferer);
-  const host = (c.req.header("host") ?? "").split(":")[0]?.toLowerCase() ?? "";
-  if (!origin && !referer) {
-    return { ok: false, reason: "missing_origin_and_referer" };
-  }
-  if (origin && isPermittedOrigin(origin, host, isProduction))
-    return { ok: true };
-  if (!origin && referer && isPermittedOrigin(referer, host, isProduction)) {
-    return { ok: true };
-  }
-  return {
-    ok: false,
-    reason: `origin=${origin ?? "null"} referer=${referer ?? "null"}`,
-  };
+  return checkElizaMutatingRequestOrigin(c.req, isProduction);
 }
 
 let stewardAuthMetricCounter = 0;
@@ -182,10 +115,23 @@ app.post("/", async (c) => {
       )) as Partial<StewardSessionRequest>;
     const token = body.token;
     const refreshToken = body.refreshToken;
+    const verifiedPhoneHint = body.verifiedPhone;
 
     if (!token || typeof token !== "string") {
       logStewardAuth("missing-token", null);
       return c.json(errorBody("Token required", "missing_token"), 400);
+    }
+
+    if (
+      verifiedPhoneHint !== undefined &&
+      (typeof verifiedPhoneHint !== "string" ||
+        verifiedPhoneHint.trim().length === 0)
+    ) {
+      logStewardAuth("verified-phone-invalid", null);
+      return c.json(
+        errorBody("Verified phone must be a string", "verified_phone_invalid"),
+        400,
+      );
     }
 
     if (!stewardSecretConfigured(c.env)) {
@@ -265,6 +211,51 @@ app.post("/", async (c) => {
       }
     }
 
+    let verifiedPhone: string | undefined;
+    if (verifiedPhoneHint) {
+      try {
+        const ownership = await verifyStewardBearerPhone({
+          env: c.env,
+          bearerToken: token,
+          tenantId: claims.tenantId,
+          phoneNumber: verifiedPhoneHint,
+        });
+        if (ownership.status !== "verified") {
+          logStewardAuth("verified-phone-mismatch", null);
+          return c.json(
+            errorBody(
+              "Phone is not linked to this Steward session",
+              "verified_phone_mismatch",
+            ),
+            403,
+          );
+        }
+        verifiedPhone = ownership.phoneNumber;
+      } catch (error) {
+        if (
+          error instanceof StewardPhoneOwnershipError &&
+          error.code === "invalid_phone"
+        ) {
+          logStewardAuth("verified-phone-invalid", null);
+          return c.json(
+            errorBody("Invalid phone number", "verified_phone_invalid"),
+            400,
+          );
+        }
+        logStewardAuth("verified-phone-upstream-unavailable", null);
+        logger.error("[steward-auth] Steward phone verification failed", {
+          error: error instanceof Error ? error.message : String(error),
+        });
+        return c.json(
+          errorBody(
+            "Could not verify phone ownership",
+            "steward_upstream_unavailable",
+          ),
+          503,
+        );
+      }
+    }
+
     let cloudUser: Awaited<ReturnType<typeof syncUserFromSteward>>;
     if (claims.stagingSessionBinding) {
       const boundCloudUser = await loadVerifiedStagingSessionUser({
@@ -283,8 +274,19 @@ app.post("/", async (c) => {
           email: claims.email,
           walletAddress: claims.walletAddress ?? claims.address,
           walletChainType: claims.walletChain,
+          verifiedPhone,
         });
       } catch (error) {
+        if (error instanceof StewardPhoneAccountConflictError) {
+          logStewardAuth("verified-phone-conflict", null);
+          return c.json(
+            errorBody(
+              "This phone account cannot be linked automatically",
+              "verified_phone_conflict",
+            ),
+            409,
+          );
+        }
         logStewardAuth("sync-failed", null);
         // Workers Logs indexes only the message STRING — an Error passed in the
         // context object is dropped entirely. Inline everything (same fix as the

@@ -84,7 +84,7 @@
           return suffix.charAt(0) === '?' ? `/${suffix}` : suffix || '/';
         }
         try {
-          const url = new URL(trimmed, window.location?.href ? window.location.href : 'https://app.elizacloud.ai');
+          const url = new URL(trimmed, window.location?.href ? window.location.href : 'https://cloud.eliza.app');
           if (
             isNativeCapacitorAgentHost() &&
             url.protocol === 'http:' &&
@@ -310,7 +310,7 @@
     /* The shell lives OUTSIDE the React mount root as a fixed overlay: React
        mounting must not wipe it, because with a lazy router shell the first
        commits render empty Suspense fallbacks into #root — the measured
-       ~1.4s blank on elizacloud.ai/login (#18256). An inline observer below
+       ~1.4s blank on the hosted /login route (#18256). An inline observer below
        removes it once #root paints meaningful content. */
     .eliza-preboot-shell {
       position: fixed;
@@ -391,28 +391,6 @@
     </div>
   </div>
   <script>
-    // One build serves the Eliza app hosts AND the Eliza Cloud console apex
-    // (see wrangler.toml); the console's surfaces are elizacloud-branded, so
-    // the preboot wordmark follows the host to avoid an elizaOS→elizacloud
-    // brand flip mid-boot (#18256 style drift). Host list mirrors
-    // APEX_UI_CONTROL_PLANE_HOSTS (packages/ui/src/cloud/shell/apex-host.ts).
-    (() => {
-      try {
-        const apexConsoleHosts = [
-          "elizacloud.ai",
-          "www.elizacloud.ai",
-          "dev.elizacloud.ai",
-          "staging.elizacloud.ai"
-        ];
-        if (!apexConsoleHosts.includes(window.location.hostname.toLowerCase())) return;
-        const name = document.querySelector(".eliza-preboot-shell__name");
-        const mark = document.querySelector(".eliza-preboot-shell__mark");
-        if (name) name.textContent = "elizacloud";
-        if (mark) mark.style.display = "none";
-      } catch (_) { }
-    })();
-  </script>
-  <script>
     // Remove the preboot shell only when #root paints MEANINGFUL content.
     // React's first commits under the lazy web router shell render empty
     // aria-busy Suspense fallbacks (#18256's ~1.4s blank once the old
@@ -424,7 +402,30 @@
     (() => {
       const shell = document.getElementById("eliza-preboot-shell");
       const root = document.getElementById("root");
-      if (!shell || !root || typeof MutationObserver !== "function") return;
+      if (!shell) return;
+      // Public marketing hosts render a static landing page, not the agent
+      // app, so there is nothing to boot and the branded "Booting up…" splash
+      // would only flash dark chrome over a light page. Drop it synchronously
+      // (this script runs immediately after the element parses, before any
+      // paint) and let the page's own background show. Hostnames mirror the
+      // marketing + legacy-marketing roles in
+      // packages/shared/src/elizacloud/domain-contract.ts.
+      const MARKETING_HOSTNAMES = [
+        "eliza.app",
+        "www.eliza.app",
+        "staging.eliza.app",
+        "elizacloud.ai",
+        "www.elizacloud.ai",
+        "dev.elizacloud.ai",
+      ];
+      const hostname = (location.hostname || "").toLowerCase().replace(/\.$/, "");
+      if (MARKETING_HOSTNAMES.indexOf(hostname) !== -1) {
+        shell.remove();
+        document.documentElement.style.background = "#fdfaf7";
+        document.body.style.background = "#fdfaf7";
+        return;
+      }
+      if (!root || typeof MutationObserver !== "function") return;
       const hasMeaningfulContent = () =>
         (root.textContent || "").trim().length > 0 ||
         root.querySelector("img,svg,canvas,video,iframe,input,button,textarea,select") !== null;
@@ -488,7 +489,7 @@
       };
     }
   </script>
-  <script type="module" src="/src/main.tsx"></script>
+  <script type="module" src="/src/entry.ts"></script>
 </body>
 
 </html>

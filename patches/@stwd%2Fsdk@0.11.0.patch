@@ -1,0 +1,63 @@
+--- a/dist/auth.d.ts
++++ b/dist/auth.d.ts
+@@ -109,7 +109,9 @@
+      * Requires a browser environment and `@simplewebauthn/browser` installed.
+      * Throws `StewardApiError` in Node or when the dependency is missing.
+      */
+-    signInWithPasskey(email: string): Promise<StewardAuthResult | StewardMfaRequiredResult>;
++    signInWithPasskey(email: string, options?: {
++        fallbackToRegistration?: boolean;
++    }): Promise<StewardAuthResult | StewardMfaRequiredResult>;
+     /**
+      * Register a new passkey for the given email, regardless of whether the
+      * user already has other passkeys on other relying parties (RPs).
+--- a/dist/auth.js
++++ b/dist/auth.js
+@@ -540,7 +540,7 @@
+      * Requires a browser environment and `@simplewebauthn/browser` installed.
+      * Throws `StewardApiError` in Node or when the dependency is missing.
+      */
+-    async signInWithPasskey(email) {
++    async signInWithPasskey(email, options = {}) {
+         if (!isBrowser()) {
+             throw new StewardApiError("Passkeys require a browser environment. Use signInWithEmail or signInWithSIWE in Node.", 0);
+         }
+@@ -564,8 +564,9 @@
+             // User exists with passkeys — run authentication flow
+             return this.completePasskeyLogin(email, loginOptsRes.data, browserLib);
+         }
+-        if (loginOptsRes.status === 404) {
+-            // No account or no passkeys — run registration flow
++        if (loginOptsRes.status === 404 && options.fallbackToRegistration !== false) {
++            // No account or no passkeys — run registration flow unless the caller
++            // needs to distinguish login from first-passkey enrollment.
+             return this.completePasskeyRegister(email, browserLib);
+         }
+         throw new StewardApiError(loginOptsRes.error, loginOptsRes.status);
+@@ -609,7 +610,7 @@
+         let authResponse;
+         try {
+             // Server-provided options; types are validated by the WebAuthn browser library.
+-            authResponse = await lib.startAuthentication(options);
++            authResponse = await lib.startAuthentication({ optionsJSON: options });
+         }
+         catch (err) {
+             throw new StewardApiError(`WebAuthn authentication cancelled or failed: ${err instanceof Error ? err.message : String(err)}`, 0);
+@@ -648,7 +649,7 @@
+         let regResponse;
+         try {
+             // Server-provided options; types are validated by the WebAuthn browser library.
+-            regResponse = await lib.startRegistration(regOptsRes.data);
++            regResponse = await lib.startRegistration({ optionsJSON: regOptsRes.data });
+         }
+         catch (err) {
+             throw new StewardApiError(`WebAuthn registration cancelled or failed: ${err instanceof Error ? err.message : String(err)}`, 0);
+@@ -1092,7 +1093,7 @@
+         }
+         let authResponse;
+         try {
+-            authResponse = await browserLib.startAuthentication(optionsRes.data);
++            authResponse = await browserLib.startAuthentication({ optionsJSON: optionsRes.data });
+         }
+         catch (err) {
+             throw new StewardApiError(`WebAuthn authentication cancelled or failed: ${err instanceof Error ? err.message : String(err)}`, 0);

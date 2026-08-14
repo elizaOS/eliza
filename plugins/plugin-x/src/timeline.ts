@@ -74,6 +74,13 @@ function normalizeTweet(tweet: Tweet): ActionableTweet | null {
       ? tweet.username
       : "unknown";
 
+  // Normalize the timestamp exactly once at this row boundary: absent values
+  // mean "observed now", present values are unit-normalized to epoch ms, and
+  // a present-but-unusable value fails the whole row closed so it can never
+  // surface as a fresh tweet or an undated memory (#18965).
+  const timestamp = getEpochMs(tweet.timestamp);
+  if (timestamp === undefined) return null;
+
   return {
     ...tweet,
     id: tweet.id,
@@ -82,7 +89,7 @@ function normalizeTweet(tweet: Tweet): ActionableTweet | null {
     name: tweet.name ?? username,
     conversationId: tweet.conversationId ?? tweet.id,
     text: tweet.text ?? "",
-    timestamp: tweet.timestamp ?? Date.now(),
+    timestamp,
   };
 }
 
@@ -279,9 +286,10 @@ export class TwitterTimelineClient {
       metadata: buildTwitterMessageMetadata(
         tweet,
         createUniqueUuid(runtime, tweet.userId),
+        tweet.timestamp,
         this.client.accountId,
       ),
-      createdAt: getEpochMs(tweet.timestamp),
+      createdAt: tweet.timestamp,
     };
   }
 
@@ -462,9 +470,10 @@ Choose any combination of [LIKE], [RETWEET], [QUOTE], and [REPLY] that are appro
         metadata: buildTwitterMessageMetadata(
           tweet,
           createUniqueUuid(this.runtime, tweet.userId),
+          tweet.timestamp,
           this.client.accountId,
         ),
-        createdAt: getEpochMs(tweet.timestamp),
+        createdAt: tweet.timestamp,
       };
 
       await createMemorySafe(this.runtime, tweetMemory, "messages");

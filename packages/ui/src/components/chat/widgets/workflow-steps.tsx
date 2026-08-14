@@ -5,8 +5,18 @@
  * presentational — the parser (`../message-workflow-parser.ts`) owns validation.
  */
 
-import { Circle, CircleCheck, CircleX, Loader2 } from "lucide-react";
-import { memo } from "react";
+import {
+  Circle,
+  CircleCheck,
+  CircleX,
+  ExternalLink,
+  Loader2,
+  Square,
+} from "lucide-react";
+import { memo, useEffect, useMemo, useState } from "react";
+import { client } from "../../../api";
+import type { WorkflowExecution } from "../../../api/client-types-chat";
+import { dispatchVisualizeWorkflow } from "../../pages/workflow-graph-events";
 import type {
   WorkflowSpec,
   WorkflowStepStatus,
@@ -38,9 +48,61 @@ export const WorkflowSteps = memo(function WorkflowSteps({
 }: {
   workflow: WorkflowSpec;
 }) {
-  const done = workflow.steps.filter((s) => s.status === "done").length;
-  const failed = workflow.steps.some((s) => s.status === "failed");
-  const complete = failed || done === workflow.steps.length;
+  const [execution, setExecution] = useState<WorkflowExecution | null>(null);
+  useEffect(() => {
+    if (!workflow.runId) return;
+    let active = true;
+    const load = async () => {
+      try {
+        const next = await client.getWorkflowExecution(
+          workflow.runId as string,
+        );
+        if (active) setExecution(next);
+        return ["cancelled", "continued", "failed", "finished"].includes(
+          next.status,
+        );
+      } catch {
+        // error-policy:J4 the emitted snapshot remains visible if live refresh is unavailable.
+        return false;
+      }
+    };
+    void load();
+    const timer = window.setInterval(async () => {
+      if (await load()) window.clearInterval(timer);
+    }, 1_000);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+    };
+  }, [workflow.runId]);
+  const steps = useMemo(() => {
+    if (!execution) return workflow.steps;
+    const latest = new Map<string, string>();
+    for (const event of execution.events ?? []) {
+      if (event.nodeId) latest.set(event.nodeId, event.type);
+    }
+    return workflow.steps.map((step) => {
+      const event = step.nodeId ? latest.get(step.nodeId) : undefined;
+      if (!event) return step;
+      if (/fail|error/i.test(event))
+        return { ...step, status: "failed" as const };
+      if (/finish|complete|success/i.test(event))
+        return { ...step, status: "done" as const };
+      return { ...step, status: "running" as const };
+    });
+  }, [execution, workflow.steps]);
+  const done = steps.filter((s) => s.status === "done").length;
+  const failed =
+    execution?.status === "failed" || steps.some((s) => s.status === "failed");
+  const complete =
+    Boolean(
+      execution &&
+        ["cancelled", "continued", "failed", "finished"].includes(
+          execution.status,
+        ),
+    ) ||
+    failed ||
+    done === steps.length;
   const title = workflow.title ?? "Workflow";
   return (
     <ChatWidgetShell
@@ -64,7 +126,7 @@ export const WorkflowSteps = memo(function WorkflowSteps({
         className="flex flex-col gap-2 py-1.5"
       >
         <ol className="flex flex-col gap-1">
-          {workflow.steps.map((step, i) => (
+          {steps.map((step, i) => (
             <li
               // biome-ignore lint/suspicious/noArrayIndexKey: steps have no stable id; index+label is stable within a snapshot render.
               key={`${i}-${step.label}`}
@@ -91,6 +153,54 @@ export const WorkflowSteps = memo(function WorkflowSteps({
             </li>
           ))}
         </ol>
+        {workflow.widgets?.map((widget) => (
+          <div
+            key={widget.id}
+            className="mt-2 rounded-lg border border-border/70 bg-muted/20 p-2.5"
+          >
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-xs font-medium text-txt">
+                {widget.title}
+              </span>
+              <span className="rounded bg-primary/10 px-1.5 py-0.5 text-[9px] uppercase text-primary">
+                {widget.component}
+              </span>
+            </div>
+            {execution?.output !== undefined ? (
+              <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap text-[11px] text-muted">
+                {JSON.stringify(execution.output, null, 2)}
+              </pre>
+            ) : null}
+          </div>
+        ))}
+        {workflow.workflowId || (workflow.runId && !complete) ? (
+          <div className="mt-2 flex gap-2 border-t border-border/60 pt-2">
+            {workflow.workflowId ? (
+              <button
+                type="button"
+                onClick={() =>
+                  dispatchVisualizeWorkflow(workflow.workflowId as string)
+                }
+                className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium text-primary hover:bg-primary/10"
+              >
+                <ExternalLink className="h-3.5 w-3.5" /> Open workflow
+              </button>
+            ) : null}
+            {workflow.runId && !complete ? (
+              <button
+                type="button"
+                onClick={() =>
+                  void client
+                    .cancelWorkflowExecution(workflow.runId as string)
+                    .then(setExecution)
+                }
+                className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium text-muted-foreground hover:bg-muted"
+              >
+                <Square className="h-3.5 w-3.5" /> Cancel run
+              </button>
+            ) : null}
+          </div>
+        ) : null}
       </div>
     </ChatWidgetShell>
   );

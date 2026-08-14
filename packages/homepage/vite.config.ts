@@ -45,10 +45,17 @@ export default defineConfig({
         find: "@elizaos/shared/brand",
         replacement: path.resolve(__dirname, "../shared/src/brand/index.ts"),
       },
-      // Keep this bare-package alias after the brand subpath: Vite string
+      {
+        find: "@elizaos/shared/elizacloud/domain-contract",
+        replacement: path.resolve(
+          __dirname,
+          "../shared/src/elizacloud/domain-contract.ts",
+        ),
+      },
+      // Keep this bare-package alias after the exact subpaths: Vite string
       // aliases also match slash-prefixed subpaths. The source-aliased UI
       // region helper imports only these dependency-free language primitives,
-      // so clean homepage builds neither require shared/dist nor bundle the
+      // so clean source-harness builds neither require shared/dist nor bundle the
       // full shared (and transitively core) barrel.
       {
         find: "@elizaos/shared",

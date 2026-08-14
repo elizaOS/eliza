@@ -5,7 +5,7 @@
  * The loadLogs callback reads all three filter values from state.
  */
 
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import type { LogEntry } from "../api";
 import { client } from "../api";
 
@@ -63,13 +63,24 @@ export function useLogsState() {
   const [logSourceFilter, setLogSourceFilter] = useState("");
   const [logLoadError, setLogLoadError] = useState<string | null>(null);
 
+  // Refs keep filter values readable at call-time without adding them to
+  // useCallback's dep array. Stable identity means the initial-load useEffect
+  // in LogsView fires exactly once on mount instead of on every filter change.
+  const logTagFilterRef = useRef(logTagFilter);
+  const logLevelFilterRef = useRef(logLevelFilter);
+  const logSourceFilterRef = useRef(logSourceFilter);
+  logTagFilterRef.current = logTagFilter;
+  logLevelFilterRef.current = logLevelFilter;
+  logSourceFilterRef.current = logSourceFilter;
+
   const loadLogs = useCallback(async () => {
     setLogLoadError(null);
     try {
       const filter: Record<string, string> = {};
-      if (logTagFilter) filter.tag = logTagFilter;
-      if (logLevelFilter) filter.level = logLevelFilter;
-      if (logSourceFilter) filter.source = logSourceFilter;
+      if (logTagFilterRef.current) filter.tag = logTagFilterRef.current;
+      if (logLevelFilterRef.current) filter.level = logLevelFilterRef.current;
+      if (logSourceFilterRef.current)
+        filter.source = logSourceFilterRef.current;
       const data = normalizeLogsPayload(
         await client.getLogs(
           Object.keys(filter).length > 0 ? filter : undefined,
@@ -83,7 +94,8 @@ export function useLogsState() {
         err instanceof Error ? err.message : "Failed to load logs.",
       );
     }
-  }, [logTagFilter, logLevelFilter, logSourceFilter]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- filter values read via refs; stable identity prevents spurious useEffect triggers
+  }, []);
 
   return {
     state: {

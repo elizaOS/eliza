@@ -85,23 +85,23 @@ describe("CloudPairRelay", () => {
 
   it("resolves the Cloud pair exchange endpoint from site and API bases", () => {
     expect(resolveCloudPairExchangeUrl("https://elizacloud.ai")).toBe(
-      "https://api.elizacloud.ai/api/auth/pair",
+      "https://api.eliza.app/api/auth/pair",
     );
     expect(
       resolveCloudPairExchangeUrl("https://api.elizacloud.ai/api/v1"),
-    ).toBe("https://api.elizacloud.ai/api/auth/pair");
+    ).toBe("https://api.eliza.app/api/auth/pair");
     expect(resolveCloudPairExchangeUrl("https://www.elizacloud.ai")).toBe(
-      "https://api.elizacloud.ai/api/auth/pair",
+      "https://api.eliza.app/api/auth/pair",
     );
     expect(resolveNativeCloudPairExchangeUrl("https://elizacloud.ai")).toBe(
-      "https://api.elizacloud.ai/api/auth/pair/native",
+      "https://api.eliza.app/api/auth/pair/native",
     );
     expect(
       resolveNativeCloudPairExchangeUrl("https://staging.elizacloud.ai"),
-    ).toBe("https://api-staging.elizacloud.ai/api/auth/pair/native");
+    ).toBe("https://api-staging.eliza.app/api/auth/pair/native");
     expect(
       resolveNativeCloudPairExchangeUrl("https://api.elizacloud.ai/api/v1"),
-    ).toBe("https://api.elizacloud.ai/api/auth/pair/native");
+    ).toBe("https://api.eliza.app/api/auth/pair/native");
   });
 
   it("detects Eliza Cloud-hosted surfaces without matching localhost", () => {
@@ -138,7 +138,7 @@ describe("CloudPairRelay", () => {
     ).resolves.toEqual({ apiKey: "agent-key", agentId: PAIR_AGENT_ID });
 
     expect(fetchFn).toHaveBeenCalledWith(
-      "https://api.elizacloud.ai/api/auth/pair",
+      "https://api.eliza.app/api/auth/pair",
       expect.objectContaining({
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -164,7 +164,7 @@ describe("CloudPairRelay", () => {
     ).resolves.toEqual({ apiKey: "native-key", agentId: PAIR_AGENT_ID });
 
     expect(fetchFn).toHaveBeenCalledWith(
-      "https://api.elizacloud.ai/api/auth/pair/native",
+      "https://api.eliza.app/api/auth/pair/native",
       expect.objectContaining({
         method: "POST",
         headers: {
@@ -384,7 +384,7 @@ describe("CloudPairRelay", () => {
       name: "Re-open from Eliza Cloud",
     });
     expect(link.getAttribute("href")).toBe(
-      "https://elizacloud.ai/dashboard/agents",
+      "https://cloud.eliza.app/cloud/agents",
     );
     expect(link.getAttribute("target")).toBe("_top");
     expect(screen.queryByText("Display name")).toBeNull();
@@ -397,17 +397,17 @@ describe("CloudPairRelay", () => {
       resolveCloudHostedAgentUrl({
         hostname: "agent-123.elizacloud.ai",
       }),
-    ).toBe("https://elizacloud.ai/dashboard/agents/agent-123");
+    ).toBe("https://cloud.eliza.app/cloud/agents/agent-123");
     expect(
       resolveCloudHostedAgentUrl({
         hostname: "agent-123.staging.elizacloud.ai",
       }),
-    ).toBe("https://staging.elizacloud.ai/dashboard/agents/agent-123");
+    ).toBe("https://cloud-staging.eliza.app/cloud/agents/agent-123");
     expect(
       resolveCloudHostedAgentUrl({
         hostname: "app-staging.elizacloud.ai",
       }),
-    ).toBe("https://staging.elizacloud.ai/dashboard/agents");
+    ).toBe("https://cloud-staging.eliza.app/cloud/agents");
   });
 });
 

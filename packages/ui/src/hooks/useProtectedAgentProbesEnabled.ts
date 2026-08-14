@@ -3,7 +3,7 @@
  * routes on mount.
  *
  * The one origin where the shell must NOT probe those routes before a session
- * exists is the shared Eliza Cloud web app (`app.elizacloud.ai` and the other
+ * exists is the shared Eliza Cloud web app (`cloud.eliza.app` and the other
  * control-plane hosts): its same-origin `/api/*` is the managed cloud endpoint,
  * so every protected GET fired during fresh onboarding 401s and Chromium logs
  * each as a console error — the first-run noise of #16242. The in-chat first-run

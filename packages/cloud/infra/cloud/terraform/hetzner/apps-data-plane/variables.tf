@@ -65,29 +65,43 @@ variable "ssh_public_keys" {
 }
 
 variable "cloudflare_zone_id" {
-  description = "Cloudflare zone for elizacloud.ai — used for the per-app ingress wildcard / node DNS."
+  description = "Legacy Cloudflare zone for elizacloud.ai — retained so old app hosts can redirect at the Worker edge."
   type        = string
 }
 
+variable "eliza_app_zone_id" {
+  description = "Canonical Cloudflare zone for eliza.app — used for per-app ingress."
+  type        = string
+}
+
+variable "legacy_apps_base_domain" {
+  description = "Legacy per-app base domain kept as proxied redirect ingress during migration."
+  type        = string
+  validation {
+    condition     = endswith(var.legacy_apps_base_domain, ".elizacloud.ai")
+    error_message = "legacy_apps_base_domain must be under elizacloud.ai"
+  }
+}
+
 variable "apps_base_domain" {
-  description = "Base domain apps are served under (CONTAINERS_PUBLIC_BASE_DOMAIN). Each app gets <shortid>.<base>. MUST be distinct per environment to avoid Cloudflare DNS collisions when both envs share the same zone — staging should be e.g. apps-staging.elizacloud.ai, prod e.g. apps.elizacloud.ai. No default: forces the workflow to supply it explicitly."
+  description = "Base domain apps are served under (CONTAINERS_PUBLIC_BASE_DOMAIN). Each app gets <shortid>.<base>. Staging uses apps-staging.eliza.app and production uses apps.eliza.app."
   type        = string
   validation {
     condition     = length(var.apps_base_domain) > 0 && !can(regex("\\s", var.apps_base_domain))
     error_message = "apps_base_domain must be a non-empty hostname (no whitespace)"
   }
   validation {
-    condition     = var.environment != "staging" || endswith(var.apps_base_domain, "-staging.elizacloud.ai") || startswith(var.apps_base_domain, "apps-staging.")
-    error_message = "staging apps_base_domain must end in '-staging.elizacloud.ai' (e.g. apps-staging.elizacloud.ai) to keep prod and staging DNS records distinct"
+    condition     = var.environment != "staging" || var.apps_base_domain == "apps-staging.eliza.app"
+    error_message = "staging apps_base_domain must be apps-staging.eliza.app"
   }
 }
 
 variable "cloud_api_origin" {
-  description = "Origin of THIS environment's cloud-api Worker (e.g. https://api-staging.elizacloud.ai staging, https://api.elizacloud.ai prod). Caddy's on-demand-TLS ask endpoint lives under it (/api/v1/apps-ingress/ask) — certs are only issued for hosts cloud-api vouches for. No default: must be the env-correct origin or staging would mint certs against prod state (and vice versa)."
+  description = "Origin of THIS environment's cloud-api Worker (https://api-staging.eliza.app staging, https://api.eliza.app prod). Caddy's on-demand-TLS ask endpoint lives under it."
   type        = string
   validation {
     condition     = can(regex("^https://[^/\\s]+$", var.cloud_api_origin))
-    error_message = "cloud_api_origin must be an https:// origin with no trailing slash or path (e.g. https://api-staging.elizacloud.ai)"
+    error_message = "cloud_api_origin must be an https:// origin with no trailing slash or path (e.g. https://api-staging.eliza.app)"
   }
 }
 

@@ -25,27 +25,23 @@ type TriggerSummary = {
   workflowName?: string;
 };
 
-type WorkflowNode = {
-  id: string;
-  name: string;
-  type: string;
-  typeVersion?: number;
-  position?: [number, number];
-  parameters?: Record<string, unknown>;
-  notes?: string;
-  notesInFlow?: boolean;
-};
-
 type Workflow = {
   id: string;
   name: string;
   active: boolean;
-  nodeCount?: number;
-  nodes?: WorkflowNode[];
-  connections?: Record<
-    string,
-    { main?: Array<Array<{ node: string; type: "main"; index: number }>> }
-  >;
+  description: string;
+  source: string;
+  language: "tsx";
+  steps: Array<{ id: string; label: string; kind: "task"; agent: string }>;
+  widgets: Array<{
+    id: string;
+    title: string;
+    surface: "both";
+    component: "status";
+  }>;
+  versionId: string;
+  createdAt: string;
+  updatedAt: string;
 };
 
 type WorkbenchTask = {
@@ -117,47 +113,34 @@ function workflowFixture(id: string, name: string, active = true): Workflow {
     id,
     name,
     active,
-    nodeCount: 3,
-    nodes: [
-      {
-        id: `${id}-trigger`,
-        name: "Message event",
-        type: "workflows-nodes-base.webhook",
-        typeVersion: 1,
-        position: [0, 0],
-        parameters: { path: "message.received" },
-        notes: "Receives a normalized message event.",
-        notesInFlow: true,
-      },
+    description: "Receives a message and creates a concise digest.",
+    language: "tsx",
+    source: `/** @jsxImportSource smthrs */\nimport { createSmithers } from "smthrs/create";\nexport default createSmithers({}).smithers(() => null);`,
+    steps: [
       {
         id: `${id}-summarize`,
-        name: "Summarize",
-        type: "workflows-nodes-base.code",
-        typeVersion: 1,
-        position: [320, 0],
-        parameters: { prompt: "Summarize the message." },
-        notes: "Turns the event payload into a short summary.",
-        notesInFlow: true,
+        label: "Summarize",
+        kind: "task",
+        agent: "elizaOS",
       },
       {
         id: `${id}-send`,
-        name: "Send digest",
-        type: "workflows-nodes-base.httpRequest",
-        typeVersion: 1,
-        position: [640, 0],
-        parameters: { channel: "inbox" },
-        notes: "Posts the summary to the destination channel.",
-        notesInFlow: true,
+        label: "Send digest",
+        kind: "task",
+        agent: "elizaOS",
       },
     ],
-    connections: {
-      "Message event": {
-        main: [[{ node: "Summarize", type: "main", index: 0 }]],
+    widgets: [
+      {
+        id: "status",
+        title: "Digest status",
+        surface: "both",
+        component: "status",
       },
-      Summarize: {
-        main: [[{ node: "Send digest", type: "main", index: 0 }]],
-      },
-    },
+    ],
+    versionId: `${id}-v1`,
+    createdAt: NOW_ISO,
+    updatedAt: NOW_ISO,
   };
 }
 
@@ -426,34 +409,16 @@ async function installAutomationsApi(
       automations,
       summary: automationSummary(automations),
       workflowStatus: {
-        mode: "local",
-        host: "http://127.0.0.1:5678",
+        mode: "cloud",
+        host: "eliza-cloud",
         status: "ready",
         cloudConnected: false,
-        localEnabled: true,
-        platform: "desktop",
-        cloudHealth: "unknown",
+        localEnabled: false,
+        platform: "cloud",
+        cloudHealth: "healthy",
+        engine: "smthrs",
       },
       workflowFetchError: null,
-    });
-  });
-
-  await page.route("**/api/automations/nodes", async (route) => {
-    await fulfillJson(route, {
-      nodes: [
-        {
-          id: "lifeops:message",
-          label: "Message Event",
-          description: "Normalized message input",
-          class: "trigger",
-          source: "lifeops_event",
-          backingCapability: "message.received",
-          ownerScoped: true,
-          requiresSetup: false,
-          availability: "enabled",
-        },
-      ],
-      summary: { total: 1, enabled: 1, disabled: 0 },
     });
   });
 
@@ -566,7 +531,7 @@ async function installAutomationsApi(
         ...automations.filter((item) => !item.isDraft),
         workflowItem(workflow),
       ];
-      await fulfillJson(route, workflow);
+      await fulfillJson(route, { workflow });
       return;
     }
 
@@ -716,7 +681,7 @@ test("automations empty state remains reachable beside chat in short landscape",
   await expect(headline).toBeVisible();
   await expect(
     page.getByText("Ask in chat to set up a workflow and it will run here."),
-  ).toBeVisible();
+  ).toHaveCount(0);
 
   const geometry = await page.evaluate(() => {
     const scroll = document.querySelector<HTMLElement>(
@@ -769,7 +734,7 @@ test("automations empty state remains reachable beside chat in short landscape",
   expect(geometry?.sidePadding).toBeGreaterThan(0);
 });
 
-test("automations can list tasks, create a task, and inspect workflow JSON", async ({
+test("automations can list tasks, create a task, and inspect Smithers source", async ({
   page,
 }) => {
   const workflow = workflowFixture(
@@ -802,14 +767,13 @@ test("automations can list tasks, create a task, and inspect workflow JSON", asy
   await expect(openMessagePipeline).toBeVisible();
 
   await openMessagePipeline.click();
-  await expect(
-    page.getByRole("heading", { name: "Message pipeline" }),
-  ).toBeVisible();
-  await expect(page.getByTestId("workflow-editor-json")).toHaveValue(
-    /Message pipeline/,
+  await expect(page.getByTestId("workflow-studio")).toBeVisible();
+  await expect(page.getByTestId("smithers-canvas")).toBeVisible();
+  await page.getByRole("button", { name: "Source" }).click();
+  await expect(page.getByTestId("smithers-source-editor")).toHaveValue(
+    /smthrs\/create/,
   );
-  await expect(page.getByText("Graph")).toBeVisible();
-  await page.getByRole("button", { name: "Close" }).click();
+  await page.getByRole("button", { name: "Close workflow" }).click();
 
   // The chooser was removed; open the New TaskEditor directly via the automations
   // hash deep-link (#automations/task/__new__, parsed by useAutomationDeepLink).

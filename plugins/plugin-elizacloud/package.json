@@ -129,7 +129,6 @@
     "format:check": "bunx @biomejs/biome format .",
     "test": "vitest run",
     "test:unit": "vitest run __tests__/unit/",
-    "test:integration": "vitest run __tests__/integration/",
     "lint:check": "bunx @biomejs/biome check .",
     "build": "node ../../packages/scripts/with-package-build-lock.mjs plugins/plugin-elizacloud -- bun run build:unlocked",
     "build:unlocked": "bun run build.ts && bun run build:views && node scripts/verify-built-package.mjs",
@@ -146,7 +145,7 @@
     "pluginParameters": {
       "ELIZAOS_CLOUD_API_KEY": {
         "type": "string",
-        "description": "API key used to authenticate requests to ElizaOS Cloud API (format: eliza_xxxxx). Get it from https://www.elizacloud.ai/dashboard/api-keys",
+        "description": "API key used to authenticate requests to the Eliza Cloud API (format: eliza_xxxxx). Manage it inside Eliza at https://cloud.eliza.app/cloud/api-keys",
         "required": true,
         "sensitive": true
       },
@@ -154,7 +153,7 @@
         "type": "string",
         "description": "Base URL for all ElizaOS Cloud API requests.",
         "required": false,
-        "default": "https://elizacloud.ai/api/v1",
+        "default": "https://api.eliza.app/api/v1",
         "sensitive": false
       },
       "ELIZAOS_CLOUD_NANO_MODEL": {

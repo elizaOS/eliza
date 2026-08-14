@@ -31,24 +31,24 @@ export interface ConsoleSurface {
 export const CONSOLE_OVERVIEW_NAV_ITEM = {
   id: "overview",
   label: "Overview",
-  href: "/dashboard",
+  href: "/cloud",
   icon: Home,
 } as const;
 
 export const CONSOLE_SURFACES: ReadonlyArray<ConsoleSurface> = [
   {
     id: "agents",
-    href: "/dashboard/agents",
+    href: "/cloud/agents",
     icon: Bot,
     label: "Agents",
     titleKey: "cloud.home.agents",
     titleDefault: "Agents",
     descKey: "cloud.home.agentsDesc",
-    descDefault: "Hosted agents: create, wake, sleep, logs.",
+    descDefault: "Dedicated compute and advanced agent controls.",
   },
   {
     id: "billing",
-    href: "/dashboard/billing",
+    href: "/cloud/billing",
     icon: CreditCard,
     label: "Billing",
     titleKey: "cloud.home.billing",
@@ -58,7 +58,7 @@ export const CONSOLE_SURFACES: ReadonlyArray<ConsoleSurface> = [
   },
   {
     id: "api-keys",
-    href: "/dashboard/api-keys",
+    href: "/cloud/api-keys",
     icon: KeyRound,
     label: "API Keys",
     titleKey: "cloud.home.apiKeys",
@@ -68,7 +68,7 @@ export const CONSOLE_SURFACES: ReadonlyArray<ConsoleSurface> = [
   },
   {
     id: "account",
-    href: "/dashboard/account",
+    href: "/cloud/account",
     icon: User,
     label: "Account",
     titleKey: "cloud.home.account",

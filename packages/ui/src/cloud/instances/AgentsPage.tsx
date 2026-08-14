@@ -1,5 +1,5 @@
 /**
- * Agents page (`/dashboard/agents`) — the hosted agent management table.
+ * Agents page (`/cloud/agents`) — the hosted agent management table.
  */
 
 import type { AgentListItemDto } from "@elizaos/cloud-shared/lib/types/cloud-api";

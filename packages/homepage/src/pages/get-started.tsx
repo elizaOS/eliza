@@ -10,7 +10,7 @@ import {
   TelegramIcon,
   WhatsAppIcon,
 } from "@elizaos/ui/cloud-ui/components/icons";
-import { ArrowLeft, Check, Copy, ExternalLink, Info, Send } from "lucide-react";
+import { ArrowLeft, Check, ExternalLink, Info, Send } from "lucide-react";
 import {
   type CSSProperties,
   lazy,
@@ -42,13 +42,12 @@ const ShaderBackground = lazy(
 
 import { elizacloudAuthFetch } from "@/lib/api/client";
 import {
-  buildElizaSmsHref,
   buildElizaTelegramHref,
-  ELIZA_PHONE_FORMATTED,
-  ELIZA_PHONE_NUMBER,
   getDiscordBotApplicationId,
+  getTelegramBotId,
   getTelegramBotUsername,
   getWhatsAppNumber,
+  openOrCopyElizaMessage,
 } from "@/lib/contact";
 import {
   getAuthToken,
@@ -133,12 +132,8 @@ type OnboardingStep =
   | "DISCORD_SETUP_GUIDE"
   | "PROVISIONING_CHAT";
 
-function getTelegramBotId(): string {
-  return (import.meta.env.VITE_TELEGRAM_BOT_ID || "").trim();
-}
-
 function getDiscordClientId(): string {
-  return (import.meta.env.VITE_DISCORD_CLIENT_ID || "").trim();
+  return getDiscordBotApplicationId();
 }
 
 const SANS = "Geist, system-ui, sans-serif";
@@ -495,7 +490,7 @@ function ProvisioningChatStep({
             className="ml-auto text-xs text-neutral-400 hover:text-neutral-600 underline underline-offset-2"
           >
             {t("homepage_eliza.getStarted.skipToDashboard", {
-              defaultValue: "Skip to dashboard",
+              defaultValue: "Skip to Eliza",
             })}
           </button>
         )}
@@ -633,7 +628,7 @@ function ProvisioningChatStep({
         >
           <Check className="size-4 mr-2" />
           {t("homepage_eliza.getStarted.continueToDashboard", {
-            defaultValue: "Continue to dashboard",
+            defaultValue: "Continue to Eliza",
           })}
         </Button>
       )}
@@ -710,13 +705,25 @@ export default function GetStartedPage() {
   const [isSubmittingPhone, setIsSubmittingPhone] = useState(false);
 
   const [suppressRedirect, setSuppressRedirect] = useState(false);
-  const [copied, setCopied] = useState(false);
+  const [messageNotice, setMessageNotice] = useState<
+    "idle" | "copied" | "error"
+  >("idle");
+  const messageNoticeResetRef = useRef<number | null>(null);
   const [showContent, setShowContent] = useState(false);
 
   useEffect(() => {
     const timer = setTimeout(() => setShowContent(true), 100);
     return () => clearTimeout(timer);
   }, []);
+
+  useEffect(
+    () => () => {
+      if (messageNoticeResetRef.current !== null) {
+        window.clearTimeout(messageNoticeResetRef.current);
+      }
+    },
+    [],
+  );
 
   const headerStyle: CSSProperties = {
     opacity: showContent ? 1 : 0,
@@ -741,6 +748,7 @@ export default function GetStartedPage() {
   });
 
   const countryOptions = useCountryOptions();
+  const whatsappNumber = getWhatsAppNumber();
 
   const hasPhoneNumber = phoneValue.trim().length > 0;
 
@@ -887,7 +895,7 @@ export default function GetStartedPage() {
       } else if (methodParam === "discord") {
         setSelectedMethod("discord");
         handleDiscordOAuthRedirect();
-      } else if (methodParam === "whatsapp") {
+      } else if (methodParam === "whatsapp" && whatsappNumber) {
         setSelectedMethod("whatsapp");
         setStep("WHATSAPP_DIRECT");
       }
@@ -904,6 +912,7 @@ export default function GetStartedPage() {
     isLinkMode,
     handleDiscordOAuthRedirect,
     t,
+    whatsappNumber,
   ]);
 
   useEffect(() => {
@@ -945,7 +954,7 @@ export default function GetStartedPage() {
       if (result.success) {
         if (onboardingSessionId && !isLinkMode) {
           // Platform continuation: continue into the identity-link handoff
-          // with the new credentials instead of bouncing to the dashboard.
+          // with the new credentials instead of leaving the onboarding flow.
           setSuppressRedirect(true);
           setStep("CONTINUATION_LINK");
           return;
@@ -988,7 +997,7 @@ export default function GetStartedPage() {
       if (!handleDiscordOAuthRedirect()) {
         setSelectedMethod(null);
       }
-    } else if (method === "whatsapp") {
+    } else if (method === "whatsapp" && whatsappNumber) {
       setStep("WHATSAPP_DIRECT");
     } else if (method === "solana") {
       void handleSolanaConnect();
@@ -1289,14 +1298,20 @@ export default function GetStartedPage() {
     await handleDiscordAuthSubmit();
   }, [handleDiscordAuthSubmit]);
 
-  const handleCopyNumber = async () => {
-    await navigator.clipboard.writeText(ELIZA_PHONE_NUMBER);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
-
-  const handleOpenMessages = () => {
-    window.location.href = buildElizaSmsHref();
+  const handleOpenMessages = async () => {
+    try {
+      const outcome = await openOrCopyElizaMessage(window);
+      setMessageNotice(outcome === "copied" ? "copied" : "idle");
+    } catch {
+      setMessageNotice("error");
+    }
+    if (messageNoticeResetRef.current !== null) {
+      window.clearTimeout(messageNoticeResetRef.current);
+    }
+    messageNoticeResetRef.current = window.setTimeout(
+      () => setMessageNotice("idle"),
+      2_000,
+    );
   };
 
   const handleContinueToConnected = () => {
@@ -1551,23 +1566,25 @@ export default function GetStartedPage() {
                   </div>
                 </button>
 
-                <button
-                  type="button"
-                  onClick={() => handleMethodSelect("whatsapp")}
-                  className={`w-full h-16 ${GLASS_TILE} hover:bg-white/60 rounded-full transition-colors flex items-center gap-4 pl-2.5 pr-6 cursor-pointer`}
-                  style={cardStyle(2)}
-                >
-                  <div className="size-11 rounded-full bg-white/60 flex items-center justify-center shrink-0">
-                    <WhatsAppIcon className="size-6 text-[#25D366]" />
-                  </div>
-                  <div className="flex-1 text-left">
-                    <p className="font-medium text-neutral-900">
-                      {t("homepage_eliza.getStarted.btnWhatsapp", {
-                        defaultValue: "WhatsApp",
-                      })}
-                    </p>
-                  </div>
-                </button>
+                {whatsappNumber && (
+                  <button
+                    type="button"
+                    onClick={() => handleMethodSelect("whatsapp")}
+                    className={`w-full h-16 ${GLASS_TILE} hover:bg-white/60 rounded-full transition-colors flex items-center gap-4 pl-2.5 pr-6 cursor-pointer`}
+                    style={cardStyle(2)}
+                  >
+                    <div className="size-11 rounded-full bg-white/60 flex items-center justify-center shrink-0">
+                      <WhatsAppIcon className="size-6 text-[#25D366]" />
+                    </div>
+                    <div className="flex-1 text-left">
+                      <p className="font-medium text-neutral-900">
+                        {t("homepage_eliza.getStarted.btnWhatsapp", {
+                          defaultValue: "WhatsApp",
+                        })}
+                      </p>
+                    </div>
+                  </button>
+                )}
 
                 <button
                   type="button"
@@ -1791,35 +1808,35 @@ export default function GetStartedPage() {
                 })}
               </p>
 
-              <div className={`w-full p-4 ${GLASS_TILE} rounded-2xl mb-6`}>
-                <div className="flex items-center justify-between gap-3">
-                  <span className="text-lg font-medium tabular-nums tracking-wide text-neutral-900">
-                    {ELIZA_PHONE_FORMATTED}
-                  </span>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={handleCopyNumber}
-                    className="shrink-0 text-neutral-500 hover:text-neutral-900 hover:bg-neutral-200/50"
-                  >
-                    {copied ? (
-                      <Check className="size-4 text-green-500" />
-                    ) : (
-                      <Copy className="size-4" />
-                    )}
-                  </Button>
-                </div>
-              </div>
-
               <Button
-                onClick={handleOpenMessages}
+                onClick={() => void handleOpenMessages()}
                 className="w-full h-[52px] rounded-full bg-neutral-900 hover:bg-neutral-800 text-white font-medium gap-2"
               >
                 <IMessageIcon className="size-5 text-[#34C759]" />
                 {t("homepage_eliza.getStarted.openImessage", {
-                  defaultValue: "Open iMessage",
+                  defaultValue: "Message Eliza",
                 })}
               </Button>
+
+              {messageNotice !== "idle" && (
+                <p
+                  role="status"
+                  aria-live="polite"
+                  className={`mt-3 text-center text-sm font-medium ${
+                    messageNotice === "copied"
+                      ? "text-green-700"
+                      : "text-red-700"
+                  }`}
+                >
+                  {messageNotice === "copied"
+                    ? t("homepage_eliza.getStarted.phoneCopied", {
+                        defaultValue: "Phone number copied",
+                      })
+                    : t("homepage_eliza.getStarted.phoneCopyFailed", {
+                        defaultValue: "Couldn't copy the phone number",
+                      })}
+                </p>
+              )}
 
               <button
                 type="button"
@@ -1836,7 +1853,7 @@ export default function GetStartedPage() {
             </>
           )}
 
-          {step === "WHATSAPP_DIRECT" && (
+          {step === "WHATSAPP_DIRECT" && whatsappNumber && (
             <>
               <div
                 className={`w-16 h-16 rounded-full ${GLASS_TILE} flex items-center justify-center mb-6`}
@@ -1858,7 +1875,7 @@ export default function GetStartedPage() {
 
               <Button
                 onClick={() => {
-                  const waNumber = getWhatsAppNumber().replace(/\D/g, "");
+                  const waNumber = whatsappNumber.replace(/\D/g, "");
                   window.open(`https://wa.me/${waNumber}`, "_blank");
                 }}
                 className="w-full h-[52px] rounded-full bg-neutral-900 hover:bg-neutral-800 text-white font-medium gap-2"

@@ -9,7 +9,7 @@ import { apiKeysService } from "./api-keys";
 import { findReservedEnvKeys, RESERVED_PLATFORM_ENV_KEYS } from "./reserved-env-keys";
 
 const DEFAULT_ELIZA_APP_URL = EXTERNAL_URLS.app;
-const DEFAULT_CLOUD_PUBLIC_URL = "https://www.elizacloud.ai";
+const DEFAULT_CLOUD_PUBLIC_URL = "https://cloud.eliza.app";
 const DEV_ELIZA_APP_ORIGINS = [
   "http://localhost:5173",
   "http://127.0.0.1:5173",
@@ -293,7 +293,7 @@ export async function prepareManagedElizaBaseEnvironment(
       ELIZA_ALLOW_WS_QUERY_TOKEN: "1",
       ELIZA_ALLOWED_ORIGINS: mergeManagedAllowedOrigins(existingEnv.ELIZA_ALLOWED_ORIGINS),
       // Public web UI on by default - users access it via the agent
-      // subdomain (https://<agent-id>.elizacloud.ai), gated by
+      // subdomain (https://<agent-id>.cloud.eliza.app), gated by
       // ELIZA_API_TOKEN at the agent-router. Set ELIZA_UI_ENABLE=false in
       // existingEnv to opt out per-agent.
       ELIZA_UI_ENABLE: existingEnv.ELIZA_UI_ENABLE ?? "true",

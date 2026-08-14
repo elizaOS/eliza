@@ -20,6 +20,7 @@ import {
   defineConfig,
   loadEnv,
   type Plugin,
+  type ProxyOptions,
   transformWithOxc,
 } from "vite";
 import { resolveAppBranding } from "../shared/src/config/app-config.ts";
@@ -642,6 +643,22 @@ function isExpectedApiProxyConnectError(
       ? (error as { code?: unknown }).code
       : undefined;
   return code === "ECONNREFUSED" || text.includes("ECONNREFUSED");
+}
+
+function createLocalApiProxy(apiPort: number): ProxyOptions {
+  return {
+    target: `http://127.0.0.1:${apiPort}`,
+    changeOrigin: true,
+    xfwd: true,
+    configure(proxy) {
+      proxy.on("error", (_err, _req, res) => {
+        if (!res.headersSent) {
+          res.writeHead(502, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "API server unavailable" }));
+        }
+      });
+    },
+  };
 }
 
 function stringifyBuildLogMessage(message: unknown): string {
@@ -1500,9 +1517,13 @@ const VENDOR_WALLET_TEST =
 // same bn.js/buffer core).
 const VENDOR_SOLANA_TEST = /\/node_modules\/@solana\//;
 
-// React runtime + scheduler + react-spring.
+// React runtime + scheduler + platform-neutral react-spring packages. The
+// three renderer is routed with the three.js graph below; grouping it with the
+// eager React runtime would make vendor-react import vendor-three at boot.
 const VENDOR_REACT_TEST =
   /\/node_modules\/(react|react-dom|react-is|scheduler|@react-spring)(\/|$)/;
+const VENDOR_REACT_SPRING_THREE_TEST =
+  /\/node_modules\/@react-spring\/three(\/|$)/;
 
 // three.js (three.module, three.webgpu, three.tsl, three.core, three/examples,
 // three/addons) + @pixiv/three-vrm collapsed into one shared async chunk to
@@ -1626,6 +1647,9 @@ function resolveManualChunk(id: string): string | undefined {
   }
 
   if (normalizedId.includes("/node_modules/")) {
+    if (VENDOR_REACT_SPRING_THREE_TEST.test(normalizedId)) {
+      return "vendor-three";
+    }
     if (VENDOR_REACT_TEST.test(normalizedId)) return "vendor-react";
     if (VENDOR_VRM_TEST.test(normalizedId)) return "vendor-vrm";
     if (VENDOR_THREE_TEST.test(normalizedId)) return "vendor-three";
@@ -2411,6 +2435,14 @@ export const INVALID_TRACER_PROVIDER = {};
       "buffer",
     ],
     alias: [
+      {
+        find: /^@homepage\//,
+        replacement: `${path.resolve(here, "../homepage/src")}/`,
+      },
+      {
+        find: /^@\//,
+        replacement: `${path.resolve(here, "../homepage/src")}/`,
+      },
       { find: /^react$/, replacement: reactEntry },
       { find: /^react\/index\.js$/, replacement: reactEntry },
       { find: /^react\/jsx-runtime$/, replacement: reactJsxRuntimeEntry },
@@ -3304,19 +3336,8 @@ export const INVALID_TRACER_PROVIDER = {};
             },
           }
         : {}),
-      "/api": {
-        target: `http://127.0.0.1:${apiPort}`,
-        changeOrigin: true,
-        xfwd: true,
-        configure: (proxy) => {
-          proxy.on("error", (_err, _req, res) => {
-            if (!res.headersSent) {
-              res.writeHead(502, { "Content-Type": "application/json" });
-              res.end(JSON.stringify({ error: "API server unavailable" }));
-            }
-          });
-        },
-      },
+      "/api": createLocalApiProxy(apiPort),
+      "/steward": createLocalApiProxy(apiPort),
       "/ws": {
         target: `ws://127.0.0.1:${apiPort}`,
         ws: true,

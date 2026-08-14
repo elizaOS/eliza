@@ -20,15 +20,19 @@ core smoke tests. It never publishes packages or creates releases.
 
 Several branch-scoped and path-scoped workflows run alongside the canonical CI
 gate for specific surfaces. This list is non-exhaustive; other specialized
-gates such as `gitleaks.yml`, `cloud-tests.yml`, `chat-shell-gestures.yml`, and
-the `pr.yaml` title check cover narrower contracts. None replaces the
-`CI / Required` status. Representative examples:
+gates such as `cloud-tests.yml`, `chat-shell-gestures.yml`, and the `pr.yaml`
+title check cover narrower contracts. None replaces the `CI / Required` status.
+Representative examples:
 
-- `develop-pr.yml` runs lint, typecheck, build, and changed-plugin tests for
-  `develop`-targeted PRs. `actionlint` reaches merge-critical workflows through
-  the pinned installer in `install-workflow-linters.sh`.
+- `develop-pr.yml` is called from canonical `ci.yml` for `develop`-targeted PRs
+  and runs lint, typecheck, build, changed-plugin tests, and pinned `actionlint`.
+  It has no direct pull-request trigger, so outside contributors encounter only
+  the canonical workflow's approval boundary.
+- `gitleaks.yml` scans protected-branch pushes. Canonical `ci.yml` owns the
+  equivalent diff-scoped pull-request secret scan on a hosted runner.
 - `quality.yml` supplies the extended homepage build and workspace format gate
-  for `main`-targeted PRs and post-merge pushes.
+  for `main`-targeted PRs and post-merge pushes, including the single
+  `packages/app` frontend artifact and embedded homepage source contracts.
 - `scenario-pr.yml` supplies the opt-in scenario-runner and browser matrix for
   `main`-targeted PRs carrying the `ci:full` label.
 - `ui-e2e-gate.yml` and `ui-fixture-e2e.yml` run the packages/ui Chromium and
@@ -49,6 +53,61 @@ the `pr.yaml` title check cover narrower contracts. None replaces the
   that commit, and uploads signed desktop assets without creating or replacing
   the release. `snap-publish.yml` owns Snap Store publication.
 - `infra.yml` is the only Terraform plan, apply, and state-edit entry point.
+  Each protected Environment supplies a distinct RSA public-key variable
+  `TERRAFORM_PLAN_ARTIFACT_PUBLIC_KEY` and apply-only private-key secret
+  `TERRAFORM_PLAN_ARTIFACT_PRIVATE_KEY`. Plan runs wrap a fresh AES-256-GCM key
+  with RSA-OAEP, encrypt the saved plan before it leaves the runner, and
+  authenticate its review metadata. An apply requires the exact plan run id,
+  run attempt, GitHub artifact id, and GitHub service digest shown in the plan
+  summary; it downloads by artifact id, decrypts only after every identity
+  check, and never creates a replacement plan. Plaintext plan files are
+  shredded on every plan/apply outcome.
+- `deploy-tunnel-proxy.yml` is the protected Railway + Headscale convergence
+  path for the customer tunnel proxy. It validates canonical staging/production
+  hosts, rotates the reusable `tag:eliza-proxy` enrollment key without logging
+  it, deploys the service, and verifies Railway domain/TLS state plus live
+  unsigned-host rejection. Cloudflare DNS is a separate credential boundary:
+  a first run may attach the domains and then stop while an operator copies the
+  returned records into `RAILWAY_TUNNEL_DNS_RECORDS_JSON` and applies the
+  `pages-domains` Terraform plan. That root owns the exact provider-generated
+  CNAME/TXT values as DNS-only records and imports existing records only by
+  reviewed Cloudflare id.
+- `deploy-gateway-webhook.yml` is the protected Railway release path for the
+  multi-platform webhook gateway. Staging dispatches must select `develop` and
+  production dispatches must select `main`. The workflow validates the exact
+  protected Railway project, environment, service, and public URL; uploads the
+  exact dispatch SHA from the repository root with a byte-identical root copy
+  of the tracked service `railway.toml`; follows the returned deployment id to
+  success; proves that exact id remains active around the public probes; and
+  verifies the applied Dockerfile/health manifest, live health, and canonical
+  cloud/agent fallback routing pair. It also sends a headerless `GET` to the
+  dedicated `/ready/forwarder-auth/eliza-app` contract and requires the exact
+  enforced-gate 401 response before reasserting the active deployment. A
+  disabled secret or mismatched forwarded project produces a distinct non-401
+  readiness failure; the probe never enters provider or message handling and
+  refuses supplied forwarder-secret headers without comparing them. Configure
+  environment variables
+  `RAILWAY_PROJECT_ID`, `RAILWAY_ENVIRONMENT_ID`,
+  `RAILWAY_SERVICE_ID_GATEWAY_WEBHOOK`, and
+  `ELIZA_APP_WEBHOOK_GATEWAY_URL`, with `RAILWAY_TOKEN` as an environment
+  secret. Existing sensitive service values stay in Railway and are checked by
+  name without being printed or rewritten, including the required
+  `ELIZA_APP_WEBHOOK_GATEWAY_SECRET` BFF-forwarding trust gate. Staging is
+  protected by the workflow's exact `develop` branch and environment-scoped
+  configuration gates but does not currently require a reviewer; production
+  retains its required-reviewer approval.
+
+  The dispatch choice and selected GitHub Environment use the same exact name;
+  Railway service names are separate targets:
+
+  | Dispatch / GitHub Environment | Source branch | Railway service |
+  | --- | --- | --- |
+  | `staging` | `develop` | `gateway-webhook-stg` |
+  | `production` | `main` | `gateway-webhook` |
+
+  The pinned Railway CLI is invoked without a relative path so its explicit
+  project selector archives the absolute current repository root. Passing `.`
+  with Railway CLI v5.38.0 fails its pre-upload archive-prefix check.
 - `voice-code-bench.yml` retains the bounded real-ASR benchmark.
 
 These workflows use `workflow_dispatch` and never run for pull requests.
@@ -58,6 +117,26 @@ These workflows use `workflow_dispatch` and never run for pull requests.
 Path-scoped deployment workflows may run after changes land on `develop` or
 `main`. They do not create pull-request checks. GitHub environments own
 production approvals and credentials.
+
+Cloudflare application deploys require Workers and Pages write access. The
+Terraform domain workflow additionally requires zone-scoped DNS write and
+`SSL and Certificates Write` access because it manages advanced wildcard
+certificate packs. Prefer separate environment-scoped deploy and DNS/TLS
+tokens so staging automation cannot mutate production zones.
+
+Cloudflare secret values are write-only and cannot be reconstructed into
+GitHub. Deploy workflows therefore publish shared Worker/control-plane secrets
+only when the selected protected environment explicitly supplies a value. When
+GitHub is blank, the live Worker or host value is preserved; names-only
+post-deploy inventories fail closed if a required binding is absent. This proves
+presence, not byte-for-byte parity, so parity still requires an intentional
+rotation to one newly generated environment-owned value.
+
+The protected `TUNNEL_HOSTNAME_SIGNING_SECRET` is intentionally shared by the
+Cloud Worker and Railway tunnel proxy. Configure one environment-owned value
+per environment; `cloud-cf-deploy.yml` publishes it to the Worker and
+`deploy-tunnel-proxy.yml` publishes the same value to Railway. Neither workflow
+reads a value back from a provider.
 
 ## Maintenance and assistance
 

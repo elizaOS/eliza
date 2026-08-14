@@ -1,0 +1,652 @@
+name: Deploy Tunnel Proxy
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Protected environment to converge
+        required: true
+        type: choice
+        options:
+          - staging
+          - production
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-tunnel-proxy-${{ inputs.environment }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy tunnel proxy (${{ inputs.environment }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    environment: ${{ inputs.environment }}
+    env:
+      TARGET_ENVIRONMENT: ${{ inputs.environment }}
+      DEPLOY_BRANCH: ${{ inputs.environment == 'production' && 'main' || 'develop' }}
+      HEADSCALE_PUBLIC_URL: ${{ vars.HEADSCALE_PUBLIC_URL }}
+      TUNNEL_PROXY_HOST: ${{ vars.TUNNEL_PROXY_HOST }}
+      RAILWAY_PROJECT_ID: ${{ vars.RAILWAY_PROJECT_ID }}
+      RAILWAY_ENVIRONMENT_ID: ${{ vars.RAILWAY_ENVIRONMENT_ID }}
+      RAILWAY_SERVICE_ID: ${{ vars.RAILWAY_SERVICE_ID_TUNNEL_PROXY }}
+      RAILWAY_TUNNEL_DNS_RECORDS_JSON: ${{ vars.RAILWAY_TUNNEL_DNS_RECORDS_JSON }}
+      RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+      DEPLOY_HOST: ${{ secrets.ELIZA_PROVISIONING_HOST }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+
+      - name: Validate protected canonical configuration
+        shell: bash
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.ELIZA_PROVISIONING_SSH_KEY }}
+          DEPLOY_SSH_KNOWN_HOSTS: ${{ secrets.ELIZA_PROVISIONING_SSH_KNOWN_HOSTS }}
+          TUNNEL_HOSTNAME_SIGNING_SECRET: ${{ secrets.TUNNEL_HOSTNAME_SIGNING_SECRET }}
+        run: |
+          set -euo pipefail
+
+          required_settings=(
+            HEADSCALE_PUBLIC_URL
+            TUNNEL_PROXY_HOST
+            RAILWAY_PROJECT_ID
+            RAILWAY_ENVIRONMENT_ID
+            RAILWAY_SERVICE_ID
+            RAILWAY_TOKEN
+            DEPLOY_HOST
+            DEPLOY_SSH_KEY
+            DEPLOY_SSH_KNOWN_HOSTS
+            TUNNEL_HOSTNAME_SIGNING_SECRET
+          )
+          missing=()
+          for name in "${required_settings[@]}"; do
+            value="${!name:-}"
+            if [ -z "${value//[[:space:]]/}" ]; then
+              missing+=("$name")
+            fi
+          done
+          if [ "${#missing[@]}" -gt 0 ]; then
+            echo "::error::Missing required tunnel-proxy setting name(s) on the protected $TARGET_ENVIRONMENT environment: ${missing[*]}"
+            exit 1
+          fi
+
+          require_exact() {
+            local name="$1"
+            local actual="$2"
+            local expected="$3"
+            if [ "$actual" != "$expected" ]; then
+              echo "::error::$name does not match the canonical $TARGET_ENVIRONMENT tunnel contract"
+              exit 1
+            fi
+          }
+
+          if [ "$TARGET_ENVIRONMENT" = "production" ]; then
+            require_exact HEADSCALE_PUBLIC_URL "$HEADSCALE_PUBLIC_URL" "https://headscale.eliza.app"
+            require_exact TUNNEL_PROXY_HOST "$TUNNEL_PROXY_HOST" "tunnel.eliza.app"
+          else
+            require_exact HEADSCALE_PUBLIC_URL "$HEADSCALE_PUBLIC_URL" "https://headscale-staging.eliza.app"
+            require_exact TUNNEL_PROXY_HOST "$TUNNEL_PROXY_HOST" "tunnel-staging.eliza.app"
+          fi
+          require_exact GITHUB_REF "$GITHUB_REF" "refs/heads/$DEPLOY_BRANCH"
+
+          for name in RAILWAY_PROJECT_ID RAILWAY_ENVIRONMENT_ID RAILWAY_SERVICE_ID; do
+            value="${!name}"
+            if [[ ! "$value" =~ ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$ ]]; then
+              echo "::error::$name must be a Railway UUID on the protected $TARGET_ENVIRONMENT environment"
+              exit 1
+            fi
+          done
+          if [ "${#TUNNEL_HOSTNAME_SIGNING_SECRET}" -lt 32 ]; then
+            echo "::error::TUNNEL_HOSTNAME_SIGNING_SECRET must contain at least 32 characters"
+            exit 1
+          fi
+          echo "Canonical tunnel configuration and required setting names are present; secret values were not printed."
+
+      - name: Install pinned Railway CLI
+        shell: bash
+        run: |
+          set -euo pipefail
+          cli_root="$RUNNER_TEMP/railway-cli"
+          archive="$RUNNER_TEMP/railway-v5.38.0.tar.gz"
+          mkdir -p "$cli_root"
+          curl \
+            --fail \
+            --location \
+            --silent \
+            --show-error \
+            --retry 3 \
+            --output "$archive" \
+            "https://github.com/railwayapp/cli/releases/download/v5.38.0/railway-v5.38.0-x86_64-unknown-linux-gnu.tar.gz"
+          printf '%s  %s\n' \
+            "72835c48a710c48c4542141bf12264823cf3a029b514f9e27994096c036c539e" \
+            "$archive" | sha256sum --check --status
+          tar -xzf "$archive" -C "$cli_root" railway
+          chmod 0755 "$cli_root/railway"
+          echo "$cli_root" >> "$GITHUB_PATH"
+          "$cli_root/railway" --version | grep -F "railway 5.38.0"
+
+      - name: Verify exact Railway target
+        shell: bash
+        run: |
+          set -euo pipefail
+          status_path="$RUNNER_TEMP/railway-status.json"
+          railway status \
+            --project "$RAILWAY_PROJECT_ID" \
+            --environment "$RAILWAY_ENVIRONMENT_ID" \
+            --json > "$status_path"
+
+          jq -e --arg id "$RAILWAY_PROJECT_ID" '.id == $id' "$status_path" >/dev/null || {
+            echo "::error::RAILWAY_PROJECT_ID did not resolve to the selected project"
+            exit 1
+          }
+          jq -e \
+            --arg id "$RAILWAY_ENVIRONMENT_ID" \
+            --arg name "$TARGET_ENVIRONMENT" \
+            'any(.environments.edges[]; .node.id == $id and .node.name == $name)' \
+            "$status_path" >/dev/null || {
+            echo "::error::RAILWAY_ENVIRONMENT_ID is not the canonical $TARGET_ENVIRONMENT Railway environment"
+            exit 1
+          }
+          jq -e \
+            --arg id "$RAILWAY_SERVICE_ID" \
+            'any(.services.edges[]; .node.id == $id and .node.name == "tunnel-proxy")' \
+            "$status_path" >/dev/null || {
+            echo "::error::RAILWAY_SERVICE_ID is not the tunnel-proxy service"
+            exit 1
+          }
+          echo "Railway project, environment, and tunnel-proxy service identities match."
+
+      - name: Install control-plane SSH identity
+        id: ssh
+        shell: bash
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.ELIZA_PROVISIONING_SSH_KEY }}
+          DEPLOY_SSH_KNOWN_HOSTS: ${{ secrets.ELIZA_PROVISIONING_SSH_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          key_path="$RUNNER_TEMP/tunnel-proxy-deploy-key"
+          known_hosts_path="$RUNNER_TEMP/tunnel-proxy-known-hosts"
+          umask 077
+          printf '%s\n' "$DEPLOY_SSH_KEY" > "$key_path"
+          printf '%s\n' "$DEPLOY_SSH_KNOWN_HOSTS" > "$known_hosts_path"
+          if ! ssh-keygen -F "$DEPLOY_HOST" -f "$known_hosts_path" >/dev/null; then
+            echo "::error::Protected known_hosts inventory has no entry for the control-plane host"
+            exit 1
+          fi
+          echo "key_path=$key_path" >> "$GITHUB_OUTPUT"
+          echo "known_hosts_path=$known_hosts_path" >> "$GITHUB_OUTPUT"
+
+      - name: Converge non-secret Railway variables and signing secret
+        shell: bash
+        env:
+          TUNNEL_HOSTNAME_SIGNING_SECRET: ${{ secrets.TUNNEL_HOSTNAME_SIGNING_SECRET }}
+        run: |
+          set -euo pipefail
+          railway variable set \
+            "HEADSCALE_PUBLIC_URL=$HEADSCALE_PUBLIC_URL" \
+            "TUNNEL_PROXY_HOST=$TUNNEL_PROXY_HOST" \
+            "TUNNEL_TAILNET_DOMAIN=tunnel.eliza.local" \
+            "TUNNEL_PROXY_HOSTNAME=eliza-$TARGET_ENVIRONMENT-tunnel-proxy" \
+            "TUNNEL_ALLOW_UNSIGNED_HOSTNAMES=false" \
+            "PORT=8080" \
+            --project "$RAILWAY_PROJECT_ID" \
+            --environment "$RAILWAY_ENVIRONMENT_ID" \
+            --service "$RAILWAY_SERVICE_ID" \
+            --skip-deploys \
+            --json >/dev/null
+          printf '%s' "$TUNNEL_HOSTNAME_SIGNING_SECRET" | railway variable set \
+            TUNNEL_HOSTNAME_SIGNING_SECRET \
+            --stdin \
+            --project "$RAILWAY_PROJECT_ID" \
+            --environment "$RAILWAY_ENVIRONMENT_ID" \
+            --service "$RAILWAY_SERVICE_ID" \
+            --skip-deploys \
+            --json >/dev/null
+          echo "Canonical non-secret variables and the protected signing secret were published without printing values."
+
+      - name: Converge persistent tsnet volume
+        shell: bash
+        run: |
+          set -euo pipefail
+          volume_args=(
+            --project "$RAILWAY_PROJECT_ID"
+            --environment "$RAILWAY_ENVIRONMENT_ID"
+            --service "$RAILWAY_SERVICE_ID"
+          )
+          volumes_path="$RUNNER_TEMP/railway-volumes.json"
+          target_mount="/var/lib/tunnel-proxy"
+
+          railway volume "${volume_args[@]}" list --json > "$volumes_path"
+          service_volume_count=$(jq \
+            '[.volumes[] | select(.deletedAt == null and .serviceName == "tunnel-proxy")] | length' \
+            "$volumes_path")
+          target_mount_count=$(jq --arg mount "$target_mount" \
+            '[.volumes[] | select(.deletedAt == null and .mountPath == $mount)] | length' \
+            "$volumes_path")
+
+          if [ "$service_volume_count" -gt 1 ] || [ "$target_mount_count" -gt 1 ]; then
+            echo "::error::tunnel-proxy must have exactly one persistent Railway volume"
+            exit 1
+          fi
+          if [ "$service_volume_count" = "1" ] && [ "$target_mount_count" = "0" ]; then
+            echo "::error::the existing tunnel-proxy volume is mounted at the wrong path"
+            exit 1
+          fi
+          if [ "$service_volume_count" = "0" ] && [ "$target_mount_count" = "0" ]; then
+            railway volume "${volume_args[@]}" add \
+              --mount-path "$target_mount" \
+              --json >/dev/null
+          fi
+
+          for attempt in $(seq 1 30); do
+            railway volume "${volume_args[@]}" list --json > "$volumes_path"
+            service_volume_count=$(jq \
+              '[.volumes[] | select(.deletedAt == null and .serviceName == "tunnel-proxy")] | length' \
+              "$volumes_path")
+            target_mount_count=$(jq --arg mount "$target_mount" \
+              '[.volumes[] | select(.deletedAt == null and .mountPath == $mount)] | length' \
+              "$volumes_path")
+            if [ "$service_volume_count" -gt 1 ] || [ "$target_mount_count" -gt 1 ]; then
+              echo "::error::tunnel-proxy volume convergence produced duplicate volumes"
+              exit 1
+            fi
+            if jq -e --arg mount "$target_mount" \
+              '[.volumes[] | select(
+                .deletedAt == null and
+                .serviceName == "tunnel-proxy" and
+                .mountPath == $mount and
+                .status == "Ready"
+              )] | length == 1' "$volumes_path" >/dev/null; then
+              echo "Persistent tsnet state volume is mounted at $target_mount."
+              break
+            fi
+            if [ "$attempt" = "30" ]; then
+              echo "::error::tunnel-proxy volume did not become ready at $target_mount"
+              exit 1
+            fi
+            sleep 2
+          done
+
+      - name: Mint proxy key and publish it without exposing the value
+        id: headscale_key
+        shell: bash
+        env:
+          DEPLOY_SSH_KEY_PATH: ${{ steps.ssh.outputs.key_path }}
+          DEPLOY_SSH_KNOWN_HOSTS_PATH: ${{ steps.ssh.outputs.known_hosts_path }}
+        run: |
+          set -euo pipefail
+          payload_path="$RUNNER_TEMP/tunnel-proxy-headscale-key.json"
+          umask 077
+          published=false
+          new_id=""
+
+          cleanup() {
+            local status="$?"
+            if [ "$published" != "true" ] && [[ "$new_id" =~ ^[0-9]+$ ]]; then
+              ssh \
+                -i "$DEPLOY_SSH_KEY_PATH" \
+                -o IdentitiesOnly=yes \
+                -o StrictHostKeyChecking=yes \
+                -o UserKnownHostsFile="$DEPLOY_SSH_KNOWN_HOSTS_PATH" \
+                -o ConnectTimeout=15 \
+                "deploy@$DEPLOY_HOST" \
+                "sudo headscale preauthkeys expire --id $new_id -o json >/dev/null" \
+                || echo "::warning::Could not expire the unpublished replacement Headscale key"
+            fi
+            if [ -f "$payload_path" ]; then
+              shred -u "$payload_path"
+            fi
+            exit "$status"
+          }
+          trap cleanup EXIT
+
+          ssh \
+            -i "$DEPLOY_SSH_KEY_PATH" \
+            -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile="$DEPLOY_SSH_KNOWN_HOSTS_PATH" \
+            -o ConnectTimeout=15 \
+            "deploy@$DEPLOY_HOST" \
+            'sudo bash -s' > "$payload_path" <<'REMOTE'
+          set -euo pipefail
+          command -v jq >/dev/null
+
+          users_json=$(headscale users list -o json 2>/dev/null)
+          tunnel_uid=$(printf '%s' "$users_json" | jq -er \
+            '[.[] | select(.name == "tunnel") | .id] | if length == 1 then .[0] else error("expected exactly one tunnel user") end')
+          old_ids=$(headscale preauthkeys list -o json 2>/dev/null | jq -c \
+            '[.[]
+              | select(.reusable == true)
+              | select((.acl_tags // []) | index("tag:eliza-proxy"))
+              | select((.expiration == null) or ((.expiration.seconds // 0) > now))
+              | .id]')
+          created=$(headscale preauthkeys create \
+            -u "$tunnel_uid" \
+            --reusable \
+            --expiration 8760h \
+            --tags tag:eliza-proxy \
+            -o json 2>/dev/null)
+          new_id=$(printf '%s' "$created" | jq -er '.id')
+          new_key=$(printf '%s' "$created" | jq -er '.key')
+          jq -nc \
+            --arg new_id "$new_id" \
+            --arg new_key "$new_key" \
+            --argjson old_ids "$old_ids" \
+            '{new_id: $new_id, new_key: $new_key, old_ids: $old_ids}'
+          REMOTE
+
+          new_id=$(jq -er '.new_id' "$payload_path")
+          new_key=$(jq -er '.new_key' "$payload_path")
+          old_ids=$(jq -r '.old_ids | map(tostring) | join(",")' "$payload_path")
+          if [[ ! "$new_id" =~ ^[0-9]+$ ]] || [ -z "$new_key" ]; then
+            echo "::error::Headscale did not return a valid replacement proxy key"
+            exit 1
+          fi
+          echo "::add-mask::$new_key"
+          printf '%s' "$new_key" | railway variable set \
+            TUNNEL_PROXY_TS_AUTHKEY \
+            --stdin \
+            --project "$RAILWAY_PROJECT_ID" \
+            --environment "$RAILWAY_ENVIRONMENT_ID" \
+            --service "$RAILWAY_SERVICE_ID" \
+            --skip-deploys \
+            --json >/dev/null
+          published=true
+          unset new_key
+          echo "old_ids=$old_ids" >> "$GITHUB_OUTPUT"
+          echo "A reusable tag:eliza-proxy key was minted and published without printing its value."
+
+      - name: Deploy tunnel-proxy source to Railway
+        working-directory: packages/cloud/services/tunnel-proxy
+        shell: bash
+        run: |
+          set -euo pipefail
+          railway up \
+            --project "$RAILWAY_PROJECT_ID" \
+            --environment "$RAILWAY_ENVIRONMENT_ID" \
+            --service "$RAILWAY_SERVICE_ID" \
+            --ci \
+            --json \
+            --message "tunnel-proxy $GITHUB_SHA ($TARGET_ENVIRONMENT)"
+
+      - name: Converge exact Railway custom domains
+        id: domains
+        shell: bash
+        run: |
+          set -euo pipefail
+          domain_args=(
+            --project "$RAILWAY_PROJECT_ID"
+            --environment "$RAILWAY_ENVIRONMENT_ID"
+            --service "$RAILWAY_SERVICE_ID"
+          )
+          domains_path="$RUNNER_TEMP/railway-domains.json"
+          created=false
+          for domain in "$TUNNEL_PROXY_HOST" "*.$TUNNEL_PROXY_HOST"; do
+            railway domain list "${domain_args[@]}" --json > "$domains_path"
+            if jq -e --arg domain "$domain" \
+              'any(.domains[]; .domain == $domain and .type == "custom" and .targetPort == 8080)' \
+              "$domains_path" >/dev/null; then
+              continue
+            fi
+            railway domain "$domain" \
+              --port 8080 \
+              "${domain_args[@]}" \
+              --json > "$RUNNER_TEMP/railway-domain-created.json"
+            created=true
+            echo "Attached Railway custom domain $domain; external DNS verification is still required."
+          done
+          echo "created=$created" >> "$GITHUB_OUTPUT"
+
+      - name: Validate reviewed Railway DNS handoff
+        shell: bash
+        run: |
+          set -euo pipefail
+          domain_args=(
+            --project "$RAILWAY_PROJECT_ID"
+            --environment "$RAILWAY_ENVIRONMENT_ID"
+            --service "$RAILWAY_SERVICE_ID"
+          )
+          apex_status="$RUNNER_TEMP/railway-tunnel-apex-status.json"
+          wildcard_status="$RUNNER_TEMP/railway-tunnel-wildcard-status.json"
+          inventory="$RUNNER_TEMP/railway-tunnel-dns-records.json"
+          configured="$RUNNER_TEMP/configured-railway-tunnel-dns-records.json"
+          normalized_inventory="$RUNNER_TEMP/normalized-railway-tunnel-dns-records.json"
+          normalized_configured="$RUNNER_TEMP/normalized-configured-railway-tunnel-dns-records.json"
+
+          railway domain status "$TUNNEL_PROXY_HOST" \
+            "${domain_args[@]}" --json > "$apex_status"
+          railway domain status "*.$TUNNEL_PROXY_HOST" \
+            "${domain_args[@]}" --json > "$wildcard_status"
+
+          jq -e -n \
+            --slurpfile apex "$apex_status" \
+            --slurpfile wildcard "$wildcard_status" \
+            --arg host "$TUNNEL_PROXY_HOST" '
+              def one_record($records; $purpose):
+                [$records[] | select(.purpose == $purpose)]
+                | if length == 1 then .[0]
+                  else error("expected exactly one Railway DNS record for \($purpose)")
+                  end;
+              def verification_value($token):
+                if ($token | startswith("railway-verify=")) then $token
+                else "railway-verify=\($token)"
+                end;
+              def fqdn($name; $zone):
+                if $name == "@" then $zone
+                elif $name == $zone or ($name | endswith(".\($zone)")) then $name
+                else "\($name).\($zone)"
+                end;
+
+              ($apex[0].domain) as $apex_domain
+              | ($wildcard[0].domain) as $wildcard_domain
+              | if $apex_domain.domain != $host then
+                  error("Railway apex status does not match the canonical tunnel host")
+                elif $wildcard_domain.domain != "*.\($host)" then
+                  error("Railway wildcard status does not match the canonical tunnel host")
+                elif (($apex_domain.verification.dnsHost // "") == "") or
+                     (($apex_domain.verification.token // "") == "") or
+                     (($wildcard_domain.verification.dnsHost // "") == "") or
+                     (($wildcard_domain.verification.token // "") == "") then
+                  error("Railway did not return both domain verification records")
+                else .
+                end
+              | (one_record($apex_domain.dnsRecords; "DNS_RECORD_PURPOSE_TRAFFIC_ROUTE")) as $apex_route
+              | (one_record($wildcard_domain.dnsRecords; "DNS_RECORD_PURPOSE_TRAFFIC_ROUTE")) as $wildcard_route
+              | (one_record($wildcard_domain.dnsRecords; "DNS_RECORD_PURPOSE_ACME_DNS01_CHALLENGE")) as $wildcard_acme
+              | if $apex_route.recordType != "DNS_RECORD_TYPE_CNAME" or
+                   $wildcard_route.recordType != "DNS_RECORD_TYPE_CNAME" or
+                   $wildcard_acme.recordType != "DNS_RECORD_TYPE_CNAME" then
+                  error("Railway tunnel routing and ACME records must be CNAMEs")
+                else [
+                  {
+                    role: "apex-routing",
+                    record: {
+                      name: $apex_route.fqdn,
+                      type: "CNAME",
+                      content: $apex_route.requiredValue
+                    }
+                  },
+                  {
+                    role: "apex-verification",
+                    record: {
+                      name: fqdn($apex_domain.verification.dnsHost; $apex_route.zone),
+                      type: "TXT",
+                      content: verification_value($apex_domain.verification.token)
+                    }
+                  },
+                  {
+                    role: "wildcard-routing",
+                    record: {
+                      name: $wildcard_route.fqdn,
+                      type: "CNAME",
+                      content: $wildcard_route.requiredValue
+                    }
+                  },
+                  {
+                    role: "wildcard-certificate",
+                    record: {
+                      name: $wildcard_acme.fqdn,
+                      type: "CNAME",
+                      content: $wildcard_acme.requiredValue
+                    }
+                  },
+                  {
+                    role: "wildcard-verification",
+                    record: {
+                      name: fqdn($wildcard_domain.verification.dnsHost; $wildcard_route.zone),
+                      type: "TXT",
+                      content: verification_value($wildcard_domain.verification.token)
+                    }
+                  }
+                ]
+                end
+              | sort_by([.record.name, .record.type, .record.content])
+              | group_by([.record.name, .record.type, .record.content])
+              | map(
+                  (map(.role) | sort) as $roles
+                  | {
+                      key: (
+                        if ($roles | length) == 1 then $roles[0]
+                        elif $roles == ["apex-verification", "wildcard-verification"] then
+                          "shared-verification"
+                        else error("unexpected Railway DNS role collision: \($roles | join(","))")
+                        end
+                      ),
+                      value: (.[0].record + {roles: $roles})
+                    }
+                )
+              | from_entries
+            ' > "$inventory"
+
+          {
+            echo "### Reviewed Railway tunnel DNS inventory"
+            echo
+            echo "These are public DNS requirements, not runtime secrets. Copy the exact object to the protected \`RAILWAY_TUNNEL_DNS_RECORDS_JSON\` variable."
+            echo
+            echo '```json'
+            jq . "$inventory"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [ -z "${RAILWAY_TUNNEL_DNS_RECORDS_JSON//[[:space:]]/}" ]; then
+            echo "::error::RAILWAY_TUNNEL_DNS_RECORDS_JSON is not configured on the protected $TARGET_ENVIRONMENT environment; copy the exact inventory from this run summary, apply pages-domains Terraform, and rerun."
+            exit 1
+          fi
+          printf '%s' "$RAILWAY_TUNNEL_DNS_RECORDS_JSON" > "$configured"
+          jq -S -e . "$inventory" > "$normalized_inventory"
+          jq -S -e . "$configured" > "$normalized_configured" || {
+            echo "::error::RAILWAY_TUNNEL_DNS_RECORDS_JSON is not valid JSON"
+            exit 1
+          }
+          if ! cmp -s "$normalized_inventory" "$normalized_configured"; then
+            echo "::error::RAILWAY_TUNNEL_DNS_RECORDS_JSON does not exactly match Railway's current provider-owned DNS inventory; review the run summary, update the protected variable, apply pages-domains Terraform, and rerun."
+            exit 1
+          fi
+          echo "Protected Railway tunnel DNS inventory exactly matches the provider response."
+
+      - name: Verify Railway domain ownership and certificates
+        shell: bash
+        run: |
+          set -euo pipefail
+          domain_args=(
+            --project "$RAILWAY_PROJECT_ID"
+            --environment "$RAILWAY_ENVIRONMENT_ID"
+            --service "$RAILWAY_SERVICE_ID"
+          )
+          for domain in "$TUNNEL_PROXY_HOST" "*.$TUNNEL_PROXY_HOST"; do
+            status_path="$RUNNER_TEMP/railway-domain-status.json"
+            ready=false
+            for _ in $(seq 1 30); do
+              railway domain status "$domain" "${domain_args[@]}" --json > "$status_path"
+              if jq -e --arg domain "$domain" \
+                '.domain.domain == $domain
+                  and .domain.type == "custom"
+                  and .domain.targetPort == 8080
+                  and .domain.syncStatus == "ACTIVE"
+                  and .domain.verification.verified == true
+                  and .domain.certificate.status == "CERTIFICATE_STATUS_TYPE_VALID"' \
+                "$status_path" >/dev/null; then
+                ready=true
+                break
+              fi
+              sleep 10
+            done
+            if [ "$ready" != "true" ]; then
+              echo "::error::Railway domain $domain is not DNS-verified with an issued certificate. Copy its exact CNAME/TXT inventory to the protected RAILWAY_TUNNEL_DNS_RECORDS_JSON variable, apply the pages-domains Terraform plan, then rerun."
+              exit 1
+            fi
+          done
+          echo "Both canonical Railway custom domains are verified with issued certificates."
+
+      - name: Verify canonical health and unsigned-host rejection
+        shell: bash
+        run: |
+          set -euo pipefail
+          health_url="https://$TUNNEL_PROXY_HOST/health"
+          for _ in $(seq 1 30); do
+            if body=$(curl --fail --silent --show-error --max-time 15 "$health_url") && \
+              printf '%s' "$body" | jq -e '.status == "pass"' >/dev/null; then
+              break
+            fi
+            sleep 10
+          done
+          if ! body=$(curl --fail --silent --show-error --max-time 15 "$health_url") || \
+            ! printf '%s' "$body" | jq -e '.status == "pass"' >/dev/null; then
+            echo "::error::Canonical tunnel-proxy health did not become ready"
+            exit 1
+          fi
+
+          unsigned_host="unsigned-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT.$TUNNEL_PROXY_HOST"
+          unsigned_status=$(curl \
+            --silent \
+            --show-error \
+            --max-time 15 \
+            --output /dev/null \
+            --write-out '%{http_code}' \
+            "https://$unsigned_host/")
+          if [ "$unsigned_status" != "404" ]; then
+            echo "::error::Arbitrary unsigned tunnel hostname was not rejected with HTTP 404"
+            exit 1
+          fi
+          echo "Canonical health passed and an arbitrary unsigned hostname returned HTTP 404."
+
+      - name: Expire superseded Headscale proxy keys
+        if: success() && steps.headscale_key.outputs.old_ids != ''
+        shell: bash
+        env:
+          DEPLOY_SSH_KEY_PATH: ${{ steps.ssh.outputs.key_path }}
+          DEPLOY_SSH_KNOWN_HOSTS_PATH: ${{ steps.ssh.outputs.known_hosts_path }}
+          OLD_HEADSCALE_KEY_IDS: ${{ steps.headscale_key.outputs.old_ids }}
+        run: |
+          set -euo pipefail
+          IFS=',' read -r -a old_ids <<< "$OLD_HEADSCALE_KEY_IDS"
+          for id in "${old_ids[@]}"; do
+            if [[ ! "$id" =~ ^[0-9]+$ ]]; then
+              echo "::error::Refusing to expire an invalid Headscale key id"
+              exit 1
+            fi
+            ssh \
+              -i "$DEPLOY_SSH_KEY_PATH" \
+              -o IdentitiesOnly=yes \
+              -o StrictHostKeyChecking=yes \
+              -o UserKnownHostsFile="$DEPLOY_SSH_KNOWN_HOSTS_PATH" \
+              -o ConnectTimeout=15 \
+              "deploy@$DEPLOY_HOST" \
+              "sudo headscale preauthkeys expire --id $id -o json >/dev/null"
+          done
+          echo "Superseded reusable tag:eliza-proxy keys were expired after live verification."
+
+      - name: Remove temporary credentials
+        if: always() && steps.ssh.outputs.key_path != ''
+        shell: bash
+        env:
+          DEPLOY_SSH_KEY_PATH: ${{ steps.ssh.outputs.key_path }}
+          DEPLOY_SSH_KNOWN_HOSTS_PATH: ${{ steps.ssh.outputs.known_hosts_path }}
+        run: |
+          set -euo pipefail
+          for path in "$DEPLOY_SSH_KEY_PATH" "$DEPLOY_SSH_KNOWN_HOSTS_PATH"; do
+            if [ -f "$path" ]; then
+              shred -u "$path"
+            fi
+          done

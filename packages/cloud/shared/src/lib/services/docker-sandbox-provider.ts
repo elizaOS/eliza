@@ -289,7 +289,7 @@ function resolveElizaCloudPublicUrl(): string {
     if (typeof candidate !== "string" || !candidate.trim()) continue;
     return trimTrailingSlash(candidate.trim());
   }
-  return "https://elizacloud.ai/api";
+  return "https://api.eliza.app/api";
 }
 
 function resolveStewardRefreshUrl(): string {
@@ -1630,10 +1630,10 @@ export class DockerSandboxProvider implements SandboxProvider {
         if (!allEnv.ELIZAOS_CLOUD_BASE_URL) {
           throw new Error(
             "[docker-sandbox] ELIZAOS_CLOUD_BASE_URL is not set in container env. " +
-              "Refusing to fall back to the hardcoded prod URL (https://elizacloud.ai/api/v1) — " +
+              "Refusing to fall back to the hardcoded prod URL (https://api.eliza.app/api/v1) — " +
               "this caused staging containers to silently call prod. " +
               "Configure ELIZAOS_CLOUD_BASE_URL in the daemon/Worker env (e.g. " +
-              "https://api-staging.elizacloud.ai/api/v1 for staging, https://api.elizacloud.ai/api/v1 for prod).",
+              "https://api-staging.eliza.app/api/v1 for staging, https://api.eliza.app/api/v1 for prod).",
           );
         }
         const elizaConfig = JSON.stringify(buildManagedElizaRuntimeConfig(allEnv));

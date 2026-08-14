@@ -1,12 +1,118 @@
 environment           = "staging"
 cloudflare_account_id = "<cloudflare-account-id>"
-cloudflare_zone_id    = "<zone-id-for-elizacloud.ai>"
+eliza_app_zone_id     = "<zone-id-for-eliza.app>"
+elizacloud_ai_zone_id = "<zone-id-for-elizacloud.ai>"
+
+# Inventory every record that already exists. Omit only genuinely new records.
+dns_record_import_ids = {
+  "pages/marketing"                                                   = "<record-id-for-staging.eliza.app>"
+  "pages/cloud_app"                                                   = "<record-id-for-cloud-staging.eliza.app>"
+  "pages/console"                                                     = "<record-id-for-staging.elizacloud.ai>"
+  "pages/app"                                                         = "<record-id-for-app-staging.elizacloud.ai>"
+  "pages/legacy_api"                                                  = "<record-id-for-api-staging.elizacloud.ai>"
+  "pages/legacy_blob"                                                 = "<record-id-for-blob-staging.elizacloud.ai>"
+  "pages/legacy_plugins"                                              = "<record-id-for-plugins.staging.elizacloud.ai>"
+  "pages/legacy_relay"                                                = "<record-id-for-relay-staging.elizacloud.ai>"
+  "pages/legacy_x402"                                                 = "<record-id-for-x402-staging.elizacloud.ai>"
+  "legacy-staging-agent/<first-current-origin-ipv4>"                  = "<record-id-for-first-legacy-agent-origin>"
+  "legacy-staging-agent/<second-current-origin-ipv4>"                 = "<record-id-for-second-legacy-agent-origin>"
+  "canonical-edge/*.cloud-staging.eliza.app|<first-current-origin-ipv4>" = "<record-id-for-first-canonical-agent-origin>"
+  "canonical-edge/*.cloud-staging.eliza.app|<second-current-origin-ipv4>" = "<record-id-for-second-canonical-agent-origin>"
+  "canonical-edge/*.sites-staging.eliza.app|<first-current-origin-ipv4>" = "<record-id-for-first-canonical-site-origin>"
+  "canonical-edge/*.sites-staging.eliza.app|<second-current-origin-ipv4>" = "<record-id-for-second-canonical-site-origin>"
+  "canonical-service/api-staging.eliza.app|<first-current-origin-ipv4>" = "<record-id-for-first-api-origin>"
+  "canonical-service/api-staging.eliza.app|<second-current-origin-ipv4>" = "<record-id-for-second-api-origin>"
+  "canonical-service/blob-staging.eliza.app|<first-current-origin-ipv4>" = "<record-id-for-first-blob-origin>"
+  "canonical-service/blob-staging.eliza.app|<second-current-origin-ipv4>" = "<record-id-for-second-blob-origin>"
+  "canonical-service/plugins-staging.eliza.app|<first-current-origin-ipv4>" = "<record-id-for-first-plugins-origin>"
+  "canonical-service/plugins-staging.eliza.app|<second-current-origin-ipv4>" = "<record-id-for-second-plugins-origin>"
+  "canonical-service/relay-staging.eliza.app|<first-current-origin-ipv4>" = "<record-id-for-first-relay-origin>"
+  "canonical-service/relay-staging.eliza.app|<second-current-origin-ipv4>" = "<record-id-for-second-relay-origin>"
+  "canonical-service/x402-staging.eliza.app|<first-current-origin-ipv4>" = "<record-id-for-first-x402-origin>"
+  "canonical-service/x402-staging.eliza.app|<second-current-origin-ipv4>" = "<record-id-for-second-x402-origin>"
+  "railway-tunnel/apex-routing"                                      = "<record-id-for-tunnel-apex-cname>"
+  "railway-tunnel/shared-verification"                               = "<record-id-for-shared-tunnel-verification-txt>"
+  "railway-tunnel/wildcard-routing"                                  = "<record-id-for-tunnel-wildcard-cname>"
+  "railway-tunnel/wildcard-certificate"                              = "<record-id-for-tunnel-wildcard-acme-cname>"
+  "legacy-edge/*.sites-staging.elizacloud.ai|<reviewed-redirect-origin-ipv4>" = "<record-id-for-legacy-sites-wildcard>"
+  "legacy-edge/*.tunnel-staging.elizacloud.ai|<reviewed-redirect-origin-ipv4>" = "<record-id-for-legacy-tunnel-wildcard>"
+}
+
+canonical_edge_wildcard_origins = [
+  "<first-current-origin-ipv4>",
+  "<second-current-origin-ipv4>",
+]
+
+canonical_service_origins = {
+  "api-staging.eliza.app"     = ["<first-current-origin-ipv4>", "<second-current-origin-ipv4>"]
+  "blob-staging.eliza.app"    = ["<first-current-origin-ipv4>", "<second-current-origin-ipv4>"]
+  "plugins-staging.eliza.app" = ["<first-current-origin-ipv4>", "<second-current-origin-ipv4>"]
+  "relay-staging.eliza.app"   = ["<first-current-origin-ipv4>", "<second-current-origin-ipv4>"]
+  "x402-staging.eliza.app"    = ["<first-current-origin-ipv4>", "<second-current-origin-ipv4>"]
+}
+
+# Copy these names and values exactly from Railway after attaching
+# tunnel-staging.eliza.app and *.tunnel-staging.eliza.app. The generated
+# targets and verification tokens are mutable provider inventory, not values
+# Terraform can derive from the Railway service id.
+railway_tunnel_dns_records = {
+  "apex-routing" = {
+    name    = "tunnel-staging.eliza.app"
+    type    = "CNAME"
+    content = "<exact-railway-apex-routing-target>"
+    roles   = ["apex-routing"]
+  }
+  "shared-verification" = {
+    name    = "<exact-railway-shared-verification-name>.tunnel-staging.eliza.app"
+    type    = "TXT"
+    content = "<exact-railway-shared-verification-token>"
+    roles   = ["apex-verification", "wildcard-verification"]
+  }
+  "wildcard-routing" = {
+    name    = "*.tunnel-staging.eliza.app"
+    type    = "CNAME"
+    content = "<exact-railway-wildcard-routing-target>"
+    roles   = ["wildcard-routing"]
+  }
+  "wildcard-certificate" = {
+    name    = "<exact-railway-acme-name>.tunnel-staging.eliza.app"
+    type    = "CNAME"
+    content = "<exact-railway-acme-target>"
+    roles   = ["wildcard-certificate"]
+  }
+}
+
+canonical_edge_certificate_packs = {
+  "canonical-staging-2026-08" = {
+    hosts = [
+      "eliza.app",
+      "*.cloud-staging.eliza.app",
+      "*.sites-staging.eliza.app",
+    ]
+  }
+}
+
+# Preserve this imported pack exactly. Never add hosts to this list in place.
 staging_agent_wildcard_origins = [
   "<first-current-origin-ipv4>",
   "<second-current-origin-ipv4>",
 ]
 staging_agent_certificate_pack_id = "<full-existing-pack-id-prefix-02490878>"
 staging_agent_certificate_hosts = [
-  "elizacloud.ai",
   "*.staging.elizacloud.ai",
 ]
+
+legacy_redirect_wildcard_origins = {
+  "*.sites-staging.elizacloud.ai"  = ["<reviewed-redirect-origin-ipv4>"]
+  "*.tunnel-staging.elizacloud.ai" = ["<reviewed-redirect-origin-ipv4>"]
+}
+
+legacy_redirect_certificate_packs = {
+  "legacy-staging-redirect-2026-08" = {
+    hosts = [
+      "elizacloud.ai",
+      "*.sites-staging.elizacloud.ai",
+      "*.tunnel-staging.elizacloud.ai",
+    ]
+  }
+}

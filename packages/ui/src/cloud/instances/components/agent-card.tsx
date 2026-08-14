@@ -134,7 +134,7 @@ function AgentCardInner({
             }),
           );
           window.dispatchEvent(new Event("characters-updated"));
-          navigate("/dashboard/my-agents");
+          navigate("/cloud/my-agents");
         } else {
           const error = await response.json();
           toast.error(
@@ -337,7 +337,7 @@ function AgentCardInner({
   );
 
   const openAgentAdmin = useCallback(() => {
-    navigate("/dashboard/agents");
+    navigate("/cloud/agents");
   }, [navigate]);
 
   const handleCardClick = useCallback(

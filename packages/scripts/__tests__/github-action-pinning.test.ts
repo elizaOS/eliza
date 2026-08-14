@@ -219,6 +219,7 @@ describe("GitHub action supply-chain references", () => {
     expect(source).toContain(
       "ELIZA_VAULT_PASSPHRASE: dev-smoke-headless-vault-only",
     );
+    expect(source.match(/cache-bun-install: "false"/g)).toHaveLength(2);
   });
 
   test("installs both app browser engines before deterministic smoke E2E", () => {
@@ -281,7 +282,7 @@ describe("GitHub action supply-chain references", () => {
     );
   });
 
-  test("provisions homepage Chromium without requiring self-hosted sudo", () => {
+  test("builds the consolidated frontend on a hosted runner", () => {
     const source = readFileSync(
       join(githubRoot, "workflows", "quality.yml"),
       "utf8",
@@ -289,7 +290,7 @@ describe("GitHub action supply-chain references", () => {
     const workflow = Bun.YAML.parse(source) as {
       jobs?: Record<string, { "runs-on"?: string; "timeout-minutes"?: number }>;
     };
-    const job = workflow.jobs?.["homepage-build"];
+    const job = workflow.jobs?.["consolidated-frontend-build"];
     const formatGate = workflow.jobs?.["format-check"];
     const staticGate = workflow.jobs?.["develop-static-gate"];
 
@@ -298,53 +299,59 @@ describe("GitHub action supply-chain references", () => {
     expect(formatGate?.["runs-on"]).toBe("ubuntu-24.04");
     expect(staticGate?.["runs-on"]).toBe("ubuntu-24.04");
     expect(staticGate?.["timeout-minutes"]).toBeGreaterThanOrEqual(15);
-    expect(source).toContain(
-      "PLAYWRIGHT_INSTALL_CWD=packages/homepage .github/scripts/install-playwright-browsers.sh chromium",
-    );
+    expect(source).toContain("Build the only deployable frontend");
+    expect(source).toContain("working-directory: packages/app");
+    expect(source).not.toContain("PLAYWRIGHT_INSTALL_CWD=packages/homepage");
     expect(source).not.toContain("playwright install --with-deps chromium");
   });
 
-  test("keeps production homepage deploys read-only and fully gated", () => {
+  test("routes homepage deploys through the consolidated Cloudflare workflow", () => {
+    // The entry workflow owns the homepage trigger paths and the unprivileged
+    // preview build; the Pages project it deploys into is bound in the reusable
+    // release workflow it calls.
     const source = readFileSync(
-      join(githubRoot, "workflows", "deploy-homepage.yml"),
+      join(githubRoot, "workflows", "cloud-cf-deploy.yml"),
       "utf8",
     );
-    const workflow = Bun.YAML.parse(source) as {
-      permissions?: { contents?: string };
-    };
-
-    expect(workflow.permissions?.contents).toBe("read");
-    expect(source).toContain("bun run test");
-    expect(source).toContain("bun run typecheck");
-    expect(source).toContain("bun run lint:check");
-    expect(source).toContain("bun run check:snapshot-inventory");
-    expect(source).toContain("bun run test:e2e");
-    expect(source).toContain(
-      "PLAYWRIGHT_INSTALL_CWD=packages/homepage .github/scripts/install-playwright-browsers.sh chromium",
+    const releaseSource = readFileSync(
+      join(githubRoot, "workflows", "cloud-cf-release.yml"),
+      "utf8",
     );
-    expect(source).not.toContain("playwright install --with-deps chromium");
-    expect(source).not.toContain("--update-snapshots");
-    expect(source).not.toContain("git push");
-    expect(source).not.toContain("continue-on-error");
-
-    const e2e = source.indexOf("bun run test:e2e");
-    const deploy = source.indexOf("wrangler@4.116.0 pages deploy dist");
-    expect(e2e).toBeGreaterThan(-1);
-    expect(deploy).toBeGreaterThan(e2e);
+    expect(source).toContain('      - "packages/homepage/**"');
+    expect(source).toContain("Build consolidated frontend artifact");
+    expect(releaseSource).toContain("Build consolidated frontend artifact");
+    expect(releaseSource).toContain("PAGES_PROJECT: eliza-app");
+    for (const workflowSource of [source, releaseSource]) {
+      expect(workflowSource).not.toContain("PAGES_PROJECT: eliza-app-home");
+      expect(workflowSource).not.toContain("git push");
+    }
   });
 
-  test("keeps the Docker smoke on a runner with a Docker daemon", () => {
+  test("keeps the Docker smoke classifier unconditionally hosted (SPOF guard)", () => {
     const source = readFileSync(
       join(githubRoot, "workflows", "docker-ci-smoke.yml"),
       "utf8",
     );
     const workflow = Bun.YAML.parse(source) as {
-      jobs?: Record<string, { "runs-on"?: string }>;
+      jobs?: Record<
+        string,
+        { "runs-on"?: string; uses?: string; with?: Record<string, unknown> }
+      >;
     };
     const classifier = workflow.jobs?.changes;
     const job = workflow.jobs?.["docker-ci-smoke"];
 
-    expect(classifier?.["runs-on"]).toBe("ubuntu-24.04");
+    // docker-ci-smoke.yml delegates to the reusable classify-paths workflow.
+    expect(classifier?.uses).toContain("classify-paths.yml");
+
+    // The classifier must pass force_hosted: true — docker-ci-smoke.yml was
+    // unconditionally ubuntu-24.04 before consolidation and has no
+    // pull_request trigger, so ALL its events are non-PR. Without
+    // force_hosted, the reusable workflow's fleet-aware conditional would
+    // route the classifier to self-hosted (#13617 SPOF regression).
+    expect(classifier?.with?.force_hosted).toBe(true);
+
+    // The actual smoke job stays on hosted runners (needs a Docker daemon).
     expect(job?.["runs-on"]).toBe("ubuntu-24.04");
   });
 });

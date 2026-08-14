@@ -13,6 +13,8 @@ let turn: Record<string, unknown>;
 let streamTurn: Record<string, unknown>;
 let turnError: Error | null;
 let streamTurnError: Error | null;
+let turnCalls = 0;
+let streamTurnCalls = 0;
 let admissionError: Error | null;
 let billError: Error | null;
 let billingGate: Promise<void> | null;
@@ -90,7 +92,8 @@ const getInferenceAdmissionSnapshotCacheOnly = mock(async () => admissionSnapsho
 mock.module("../inference-admission-snapshot", () => ({
   getInferenceAdmissionSnapshotCacheOnly,
   InferenceAdmissionSnapshotCacheWarmingError: TestInferenceAdmissionSnapshotCacheWarmingError,
-  inferenceRateLimitConfig: () => ({ windowMs: 60_000, maxRequests: 120 }),
+  inferenceRateLimitConfig: (snapshot: unknown) =>
+    snapshot ? { windowMs: 60_000, maxRequests: 120 } : undefined,
 }));
 
 const admitOrganizationInference = mock(
@@ -153,6 +156,7 @@ mock.module("../../../db/repositories/characters", () => ({
 mock.module("./run-shared-agent-turn", () => ({
   resolveSharedAgentTurnModel: () => "openai/gpt-oss-120b",
   runSharedAgentTurn: async (input: { messageIds?: { user: string; assistant: string } }) => {
+    turnCalls++;
     if (turnError) throw turnError;
     const history = Array.isArray(turn.history)
       ? turn.history.map((message, index) =>
@@ -166,6 +170,7 @@ mock.module("./run-shared-agent-turn", () => ({
     return { ...turn, history };
   },
   runSharedAgentTurnStream: async (input: { abortSignal?: AbortSignal }) => {
+    streamTurnCalls++;
     if (streamTurnError) throw streamTurnError;
     streamAbortSignal = input.abortSignal;
     return streamTurn;
@@ -318,6 +323,8 @@ beforeEach(() => {
   billError = null;
   turnError = null;
   streamTurnError = null;
+  turnCalls = 0;
+  streamTurnCalls = 0;
   characterReads = 0;
   enforceOrgRateLimit.mockClear();
   getInferenceAdmissionSnapshotCacheOnly.mockClear();
@@ -406,6 +413,116 @@ describe("SharedRuntimeChatService", () => {
     await Promise.all(h.background);
     expect(billCalls).toHaveLength(1);
     expect((billCalls[0] as unknown[])[2]).toBe(payoutAwareReservation);
+    expect(settleCalls).toEqual([0.004]);
+  });
+
+  test("platform-funded personal Shared keeps rate limiting but never touches account credits", async () => {
+    const service = new SharedRuntimeChatService();
+    const h = harness();
+
+    const response = await service.bridge(agent, rpc, {
+      executionCtx: h.executionCtx,
+      historyStore: h.historyStore,
+      funding: "platform",
+    });
+
+    expect(response.result?.text).toBe("hello back");
+    expect(enforceOrgRateLimit).toHaveBeenCalledWith(agent.organization_id, "completions", {
+      cacheOnly: true,
+      executionCtx: h.executionCtx,
+      config: undefined,
+    });
+    expect(getInferenceAdmissionSnapshotCacheOnly).not.toHaveBeenCalled();
+    expect(admitOrganizationInference).not.toHaveBeenCalled();
+    expect(billCalls).toHaveLength(0);
+    expect(settleCalls).toHaveLength(0);
+    expect(h.history()).toHaveLength(3);
+  });
+
+  test("returns and persists a typed Dedicated capability wall without provider billing", async () => {
+    const service = new SharedRuntimeChatService();
+    const h = harness();
+    turn = {
+      degraded: false,
+      reply: "Persistent notes require Dedicated.",
+      history: [
+        { role: "user", content: "save this as a note" },
+        { role: "assistant", content: "Persistent notes require Dedicated." },
+      ],
+      model: "capability-wall",
+      capabilityWall: {
+        capability: "notes",
+        label: "Notes",
+        reply: "Persistent notes require Dedicated.",
+      },
+    };
+
+    const response = await service.bridge(agent, rpc, {
+      executionCtx: h.executionCtx,
+      historyStore: h.historyStore,
+      funding: "platform",
+    });
+
+    expect(response.result).toMatchObject({
+      text: "Persistent notes require Dedicated.",
+      model: "capability-wall",
+      actionResults: [
+        {
+          actionName: "DEDICATED_CAPABILITY_REQUIRED",
+          success: false,
+          values: {
+            capability: "notes",
+            currentExecutionTier: "shared",
+            requiredExecutionTier: "dedicated-always",
+            automatic: false,
+          },
+        },
+      ],
+    });
+    expect(billCalls).toHaveLength(0);
+    expect(h.history()).toHaveLength(3);
+  });
+
+  test("returns the typed metered web-search receipt with a normal billed model turn", async () => {
+    const service = new SharedRuntimeChatService();
+    const h = harness();
+    turn = {
+      degraded: false,
+      reply: "According to the public sources, elizaOS shipped the update.",
+      history: [
+        { role: "user", content: "hello" },
+        {
+          role: "assistant",
+          content: "According to the public sources, elizaOS shipped the update.",
+        },
+      ],
+      model: "gpt-oss-120b",
+      webSearch: {
+        query: "search the web for elizaOS updates",
+        answer: "https://elizaos.ai/update",
+        provider: "exa",
+        metered: true,
+      },
+    };
+
+    const response = await service.bridge(agent, rpc, {
+      executionCtx: h.executionCtx,
+      historyStore: h.historyStore,
+    });
+
+    expect(response.result).toMatchObject({
+      actionResults: [
+        {
+          actionName: "WEB_SEARCH",
+          success: true,
+          values: {
+            provider: "exa",
+            metered: true,
+            currentExecutionTier: "shared",
+          },
+        },
+      ],
+    });
     expect(settleCalls).toEqual([0.004]);
   });
 
@@ -544,6 +661,28 @@ describe("SharedRuntimeChatService", () => {
     expect(h.history()).toHaveLength(3);
     await Promise.all(h.background);
     expect(settleCalls).toEqual([0.004]);
+  });
+
+  test("streams the typed capability wall and settles the deterministic turn at zero", async () => {
+    streamTurn = {
+      degraded: false,
+      model: "capability-wall",
+      capabilityWall: {
+        capability: "filesystem",
+        label: "Files",
+        reply: "File access requires Dedicated.",
+      },
+      parts: (async function* () {
+        yield { type: "text-delta", text: "File access requires Dedicated." };
+        yield { type: "finish", text: "File access requires Dedicated." };
+      })(),
+    };
+
+    const body = await (await new SharedRuntimeChatService().stream(agent, rpc, harness())).text();
+    expect(body).toContain("DEDICATED_CAPABILITY_REQUIRED");
+    expect(body).toContain('"capability":"filesystem"');
+    expect(settleCalls).toEqual([0]);
+    expect(billCalls).toHaveLength(0);
   });
 
   test("no-model degradation remains a complete canonical SSE turn", async () => {
@@ -741,5 +880,138 @@ describe("SharedRuntimeChatService", () => {
       interrupted: true,
     });
     expect(settleUnknownCalls).toBe(1);
+  });
+
+  // ---- durable claim/replay/conflict boundary for clientMessageId (#18045) ----
+
+  type ClaimRecord = { hash: string; result?: Record<string, unknown> };
+
+  function memoryTurnClaims() {
+    const claims = new Map<string, ClaimRecord>();
+    return {
+      claims,
+      store: {
+        claim: async (key: string, hash: string) => {
+          const existing = claims.get(key);
+          if (existing) {
+            if (existing.hash !== hash) return { state: "conflict" as const };
+            if (existing.result) {
+              return { state: "replay" as const, result: existing.result as never };
+            }
+            return { state: "claimed" as const };
+          }
+          claims.set(key, { hash });
+          return { state: "claimed" as const };
+        },
+        complete: async (key: string, result: Record<string, unknown>) => {
+          const existing = claims.get(key);
+          if (existing) existing.result = result;
+        },
+      },
+    };
+  }
+
+  const keyedRpc = {
+    jsonrpc: "2.0" as const,
+    id: "client-key-1",
+    method: "message.send",
+    params: { text: "hello", roomId: "room-1", clientMessageId: "client-key-1" },
+  };
+
+  test("a replayed clientMessageId admits, dispatches, and bills exactly once (#18045)", async () => {
+    const service = new SharedRuntimeChatService();
+    const h = harness();
+    const { store } = memoryTurnClaims();
+    const options = { ...h, turnClaims: store };
+
+    const first = await service.bridge(agent, keyedRpc, options);
+    await Promise.all(h.background);
+    const historyAfterFirst = h.history().length;
+    const second = await service.bridge(agent, keyedRpc, options);
+    await Promise.all(h.background);
+
+    expect(turnCalls).toBe(1);
+    expect(admitOrganizationInference).toHaveBeenCalledTimes(1);
+    expect(billCalls).toHaveLength(1);
+    expect(settleCalls).toEqual([0.004]);
+    expect(second.result).toEqual(first.result);
+    expect(second.id).toBe("client-key-1");
+    expect(h.history()).toHaveLength(historyAfterFirst);
+  });
+
+  test("a reused clientMessageId with different text is rejected before admission", async () => {
+    const service = new SharedRuntimeChatService();
+    const h = harness();
+    const { store } = memoryTurnClaims();
+    const options = { ...h, turnClaims: store };
+
+    await service.bridge(agent, keyedRpc, options);
+    await Promise.all(h.background);
+    const historyAfterFirst = h.history().length;
+
+    await expect(
+      service.bridge(
+        agent,
+        { ...keyedRpc, params: { ...keyedRpc.params, text: "edited text" } },
+        options,
+      ),
+    ).rejects.toMatchObject({ name: "SharedTurnConflictError" });
+
+    expect(turnCalls).toBe(1);
+    expect(admitOrganizationInference).toHaveBeenCalledTimes(1);
+    expect(h.history()).toHaveLength(historyAfterFirst);
+  });
+
+  test("a failed keyed turn re-executes under the SAME billing identities", async () => {
+    const service = new SharedRuntimeChatService();
+    const h = harness();
+    const { store } = memoryTurnClaims();
+    const options = { ...h, turnClaims: store };
+
+    turnError = new Error("provider connection lost");
+    await expect(service.bridge(agent, keyedRpc, options)).rejects.toThrow(
+      "provider connection lost",
+    );
+    await Promise.all(h.background);
+
+    turnError = null;
+    const retried = await service.bridge(agent, keyedRpc, options);
+    expect(retried.result?.text).toBe("hello back");
+    expect(turnCalls).toBe(2);
+    expect(admitOrganizationInference).toHaveBeenCalledTimes(2);
+
+    const firstContext = admitOrganizationInference.mock.calls[0]?.[0].context;
+    const secondContext = admitOrganizationInference.mock.calls[1]?.[0].context;
+    expect(firstContext?.requestId).toBe(secondContext?.requestId);
+    expect(firstContext?.metadata?.idempotencyKey).toBe(secondContext?.metadata?.idempotencyKey);
+    expect(firstContext?.metadata?.idempotencyKey).toBe(
+      `shared-runtime:${agent.id}:${firstContext?.metadata?.channelId}:client-key-1`,
+    );
+  });
+
+  test("a completed keyed stream turn replays its terminal frames without re-dispatch", async () => {
+    const service = new SharedRuntimeChatService();
+    const h = harness();
+    const { store } = memoryTurnClaims();
+    const options = { ...h, turnClaims: store };
+
+    const first = await service.stream(agent, keyedRpc, options);
+    const firstBody = await first.text();
+    await Promise.all(h.background);
+    const second = await service.stream(agent, keyedRpc, options);
+    const secondBody = await second.text();
+
+    expect(streamTurnCalls).toBe(1);
+    expect(admitOrganizationInference).toHaveBeenCalledTimes(1);
+    const doneFrame = (body: string) => {
+      const match = body.match(/event: done\ndata: (.*)\n/);
+      expect(match).toBeTruthy();
+      return JSON.parse(match![1]) as Record<string, unknown>;
+    };
+    const firstDone = doneFrame(firstBody);
+    const secondDone = doneFrame(secondBody);
+    expect(secondDone.fullText).toBe("hello back");
+    expect(secondDone.messageId).toBe(firstDone.messageId);
+    expect(secondDone.userMessageId).toBe(firstDone.userMessageId);
   });
 });

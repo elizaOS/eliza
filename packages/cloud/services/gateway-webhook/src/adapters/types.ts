@@ -7,6 +7,9 @@ export interface ChatEvent {
   platformRecordId?: string;
   chatId: string;
   chatType?: string;
+  channelId?: string;
+  channelType?: string;
+  protocol?: string;
   senderId: string;
   senderName?: string;
   text: string;

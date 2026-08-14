@@ -27,39 +27,227 @@ on:
         description: Exact address for state-rm; ignored otherwise
         required: false
         type: string
+      plan_run_id:
+        description: Successful Infrastructure plan run id required for apply
+        required: false
+        type: string
+      plan_run_attempt:
+        description: Exact run attempt that produced the reviewed plan
+        required: false
+        type: string
+      plan_artifact_id:
+        description: Exact GitHub artifact id shown by the reviewed plan run
+        required: false
+        type: string
+      plan_artifact_digest:
+        description: Exact sha256 artifact digest shown by the reviewed plan run
+        required: false
+        type: string
 
 concurrency:
   group: terraform-${{ inputs.component }}-${{ inputs.environment }}
   cancel-in-progress: false
 
 permissions:
+  actions: read
   contents: read
 
 jobs:
+  validate-source:
+    name: Validate canonical infrastructure source
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    steps:
+      - name: Validate canonical source ref
+        shell: bash
+        env:
+          SOURCE_REF: ${{ github.ref }}
+          TARGET_ENVIRONMENT: ${{ inputs.environment }}
+        run: |
+          set -euo pipefail
+          if [ "$TARGET_ENVIRONMENT" = "production" ]; then
+            expected_ref="refs/heads/main"
+          else
+            expected_ref="refs/heads/develop"
+          fi
+          if [ "$SOURCE_REF" != "$expected_ref" ]; then
+            echo "::error::$TARGET_ENVIRONMENT infrastructure must run from $expected_ref"
+            exit 1
+          fi
+
   terraform:
     name: ${{ inputs.operation }} ${{ inputs.component }} (${{ inputs.environment }})
+    needs: validate-source
     runs-on: ubuntu-24.04
     environment: ${{ inputs.environment }}
     timeout-minutes: 45
     env:
+      GH_TOKEN: ${{ github.token }}
       TF_IN_AUTOMATION: "true"
       HCLOUD_TOKEN: ${{ inputs.component == 'control-plane' && secrets.HCLOUD_TOKEN || secrets.HCLOUD_APPS_TOKEN }}
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       AWS_ACCESS_KEY_ID: ${{ secrets.R2_STATE_ACCESS_KEY_ID }}
       AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_STATE_SECRET_ACCESS_KEY }}
+      TERRAFORM_PLAN_ARTIFACT_PUBLIC_KEY: ${{ vars.TERRAFORM_PLAN_ARTIFACT_PUBLIC_KEY }}
       TF_VAR_environment: ${{ inputs.environment }}
       TF_VAR_cloudflare_account_id: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       TF_VAR_cloudflare_zone_id: ${{ secrets.APPS_CLOUDFLARE_ZONE_ID || vars.APPS_CLOUDFLARE_ZONE_ID }}
+      TF_VAR_eliza_app_zone_id: ${{ secrets.ELIZA_APP_CLOUDFLARE_ZONE_ID || vars.ELIZA_APP_CLOUDFLARE_ZONE_ID }}
+      TF_VAR_elizacloud_ai_zone_id: ${{ secrets.APPS_CLOUDFLARE_ZONE_ID || vars.APPS_CLOUDFLARE_ZONE_ID }}
       TF_VAR_ssh_public_keys: ${{ inputs.component == 'apps-shared' && format('["{0}"]', vars.APPS_SHARED_OPERATOR_SSH_KEY) || format('["{0}"]', vars.APPS_OPERATOR_SSH_KEY) }}
       TF_VAR_operator_ingress_cidrs: ${{ inputs.component == 'apps-shared' && vars.APPS_SHARED_OPERATOR_INGRESS_CIDRS || vars.OPERATOR_INGRESS_CIDRS }}
-      TF_VAR_apps_base_domain: ${{ vars.APPS_BASE_DOMAIN }}
-      TF_VAR_cloud_api_origin: ${{ vars.APPS_CLOUD_API_ORIGIN }}
-      TF_VAR_deploy_branch: ${{ vars.DEPLOY_BRANCH }}
+      TF_VAR_apps_base_domain: ${{ inputs.environment == 'production' && 'apps.eliza.app' || 'apps-staging.eliza.app' }}
+      TF_VAR_legacy_apps_base_domain: ${{ inputs.environment == 'production' && 'apps.elizacloud.ai' || 'apps-staging.elizacloud.ai' }}
+      TF_VAR_cloud_api_origin: ${{ inputs.environment == 'production' && 'https://api.eliza.app' || 'https://api-staging.eliza.app' }}
+      TF_VAR_headscale_hostname: ${{ inputs.environment == 'production' && 'headscale.elizacloud.ai' || 'headscale-staging.elizacloud.ai' }}
+      TF_VAR_canonical_headscale_hostname: ${{ inputs.environment == 'production' && 'headscale.eliza.app' || 'headscale-staging.eliza.app' }}
+      # Branch selection is part of the environment contract, not mutable
+      # operator inventory. Derive it here so a stale or missing GitHub variable
+      # can never bootstrap production from develop (or staging from main).
+      TF_VAR_deploy_branch: ${{ inputs.environment == 'production' && 'main' || 'develop' }}
+      TF_VAR_dns_record_import_ids: ${{ vars.DNS_RECORD_IMPORT_IDS_JSON || '{}' }}
+      TF_VAR_canonical_edge_wildcard_origins: ${{ vars.CANONICAL_EDGE_WILDCARD_ORIGINS_JSON || '[]' }}
+      TF_VAR_canonical_service_origins: ${{ vars.CANONICAL_SERVICE_ORIGINS_JSON || '{}' }}
+      TF_VAR_railway_tunnel_dns_records: ${{ vars.RAILWAY_TUNNEL_DNS_RECORDS_JSON || '{}' }}
+      TF_VAR_canonical_edge_certificate_packs: ${{ vars.CANONICAL_EDGE_CERTIFICATE_PACKS_JSON || '{}' }}
       TF_VAR_staging_agent_wildcard_origins: ${{ vars.STAGING_AGENT_WILDCARD_ORIGINS_JSON || '[]' }}
       TF_VAR_staging_agent_certificate_pack_id: ${{ vars.STAGING_AGENT_CERTIFICATE_PACK_ID }}
       TF_VAR_staging_agent_certificate_hosts: ${{ vars.STAGING_AGENT_CERTIFICATE_HOSTS_JSON || '[]' }}
+      TF_VAR_legacy_redirect_wildcard_origins: ${{ vars.LEGACY_REDIRECT_WILDCARD_ORIGINS_JSON || '{}' }}
+      TF_VAR_legacy_redirect_certificate_packs: ${{ vars.LEGACY_REDIRECT_CERTIFICATE_PACKS_JSON || '{}' }}
     steps:
+      - name: Validate reviewed plan run
+        if: inputs.operation == 'apply'
+        id: reviewed-plan-run
+        shell: bash
+        env:
+          PLAN_RUN_ID: ${{ inputs.plan_run_id }}
+          PLAN_RUN_ATTEMPT: ${{ inputs.plan_run_attempt }}
+          TARGET_ENVIRONMENT: ${{ inputs.environment }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$PLAN_RUN_ID" =~ ^[1-9][0-9]*$ ]]; then
+            echo "::error::apply requires the numeric run id of a successful Infrastructure plan"
+            exit 1
+          fi
+          if [[ ! "$PLAN_RUN_ATTEMPT" =~ ^[1-9][0-9]*$ ]]; then
+            echo "::error::apply requires the exact numeric attempt of the reviewed plan run"
+            exit 1
+          fi
+          if [ "$TARGET_ENVIRONMENT" = "production" ]; then
+            expected_branch="main"
+          else
+            expected_branch="develop"
+          fi
+          run_json=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$PLAN_RUN_ID")
+          RUN_JSON="$run_json" EXPECTED_BRANCH="$expected_branch" EXPECTED_RUN_ATTEMPT="$PLAN_RUN_ATTEMPT" node - <<'NODE'
+          const run = JSON.parse(process.env.RUN_JSON);
+          const failures = [];
+          if (run.name !== "Infrastructure") failures.push("workflow name");
+          if (run.path !== ".github/workflows/infra.yml") failures.push("workflow path");
+          if (run.event !== "workflow_dispatch") failures.push("event");
+          if (run.status !== "completed" || run.conclusion !== "success") failures.push("successful conclusion");
+          if (run.head_branch !== process.env.EXPECTED_BRANCH) failures.push("canonical source branch");
+          if (String(run.run_attempt) !== process.env.EXPECTED_RUN_ATTEMPT) failures.push("run attempt");
+          if (failures.length > 0) {
+            console.error(`::error::Reviewed plan run failed verification: ${failures.join(", ")}`);
+            process.exit(1);
+          }
+          console.log("Reviewed plan run identity verified; plan contents remain unprinted.");
+          NODE
+          source_sha=$(printf '%s' "$run_json" | jq -r '.head_sha')
+          echo "source_sha=$source_sha" >> "$GITHUB_OUTPUT"
+
+      - name: Resolve reviewed plan artifact
+        if: inputs.operation == 'apply'
+        shell: bash
+        env:
+          EXPECTED_ARTIFACT_ID: ${{ inputs.plan_artifact_id }}
+          EXPECTED_ARTIFACT_DIGEST: ${{ inputs.plan_artifact_digest }}
+          EXPECTED_RUN_ID: ${{ inputs.plan_run_id }}
+          EXPECTED_RUN_ATTEMPT: ${{ inputs.plan_run_attempt }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$EXPECTED_ARTIFACT_ID" =~ ^[1-9][0-9]*$ ]]; then
+            echo "::error::apply requires the exact numeric GitHub artifact id"
+            exit 1
+          fi
+          if [[ ! "$EXPECTED_ARTIFACT_DIGEST" =~ ^sha256:[a-f0-9]{64}$ ]]; then
+            echo "::error::apply requires the exact GitHub sha256 artifact digest"
+            exit 1
+          fi
+          artifact_json=$(gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$EXPECTED_ARTIFACT_ID")
+          ARTIFACT_JSON="$artifact_json" node - <<'NODE'
+          const artifact = JSON.parse(process.env.ARTIFACT_JSON);
+          const expectedName = `terraform-plan-${process.env.EXPECTED_RUN_ID}-${process.env.EXPECTED_RUN_ATTEMPT}`;
+          const failures = [];
+          if (String(artifact.id) !== process.env.EXPECTED_ARTIFACT_ID) failures.push("artifact id");
+          if (artifact.name !== expectedName) failures.push("attempt-scoped artifact name");
+          if (artifact.digest !== process.env.EXPECTED_ARTIFACT_DIGEST) failures.push("GitHub artifact digest");
+          if (artifact.expired !== false) failures.push("unexpired artifact");
+          if (String(artifact.workflow_run?.id) !== process.env.EXPECTED_RUN_ID) failures.push("workflow run id");
+          if (failures.length > 0) {
+            console.error(`::error::Reviewed GitHub artifact failed verification: ${failures.join(", ")}`);
+            process.exit(1);
+          }
+          console.log("Reviewed GitHub artifact identity and service digest verified.");
+          NODE
+
+      - name: Download reviewed plan artifact
+        if: inputs.operation == 'apply'
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          artifact-ids: ${{ inputs.plan_artifact_id }}
+          path: ${{ runner.temp }}/reviewed-terraform-plan
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ inputs.plan_run_id }}
+
+      - name: Validate reviewed plan artifact
+        if: inputs.operation == 'apply'
+        id: reviewed-plan
+        shell: bash
+        env:
+          EXPECTED_COMPONENT: ${{ inputs.component }}
+          EXPECTED_ENVIRONMENT: ${{ inputs.environment }}
+          EXPECTED_RUN_ID: ${{ inputs.plan_run_id }}
+          EXPECTED_RUN_ATTEMPT: ${{ inputs.plan_run_attempt }}
+          EXPECTED_SOURCE_SHA: ${{ steps.reviewed-plan-run.outputs.source_sha }}
+        run: |
+          set -euo pipefail
+          artifact_dir="$RUNNER_TEMP/reviewed-terraform-plan"
+          metadata_path="$artifact_dir/plan-metadata.json"
+          plan_path="$artifact_dir/selected.tfplan.enc"
+          [ -f "$metadata_path" ] || { echo "::error::Reviewed plan artifact has no metadata"; exit 1; }
+          [ -f "$plan_path" ] || { echo "::error::Reviewed plan artifact has no encrypted Terraform plan"; exit 1; }
+          [ ! -e "$artifact_dir/selected.tfplan" ] || { echo "::error::Reviewed artifact contains a plaintext Terraform plan"; exit 1; }
+          node - "$metadata_path" <<'NODE'
+          const fs = require("node:fs");
+          const metadata = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
+          const expected = {
+            component: process.env.EXPECTED_COMPONENT,
+            environment: process.env.EXPECTED_ENVIRONMENT,
+            operation: "plan",
+            runId: process.env.EXPECTED_RUN_ID,
+            runAttempt: process.env.EXPECTED_RUN_ATTEMPT,
+            sourceRef: `refs/heads/${process.env.EXPECTED_ENVIRONMENT === "production" ? "main" : "develop"}`,
+            sourceSha: process.env.EXPECTED_SOURCE_SHA,
+          };
+          const failures = Object.entries(expected)
+            .filter(([key, value]) => metadata[key] !== value)
+            .map(([key]) => key);
+          if (!/^[a-f0-9]{64}$/.test(metadata.planSha256)) failures.push("planSha256");
+          if (failures.length > 0) {
+            console.error(`::error::Reviewed plan artifact failed verification: ${failures.join(", ")}`);
+            process.exit(1);
+          }
+          console.log("Reviewed plan metadata verified; protected values were not printed.");
+          NODE
+          echo "source_sha=$EXPECTED_SOURCE_SHA" >> "$GITHUB_OUTPUT"
+
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ inputs.operation == 'apply' && steps.reviewed-plan.outputs.source_sha || github.sha }}
 
       - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e
         with:
@@ -91,6 +279,7 @@ jobs:
       - name: Validate credentials and state operation
         shell: bash
         env:
+          HAS_TERRAFORM_PLAN_ARTIFACT_PRIVATE_KEY: ${{ secrets.TERRAFORM_PLAN_ARTIFACT_PRIVATE_KEY != '' }}
           OPERATION: ${{ inputs.operation }}
           STATE_ADDRESS: ${{ inputs.state_address }}
         run: |
@@ -100,7 +289,39 @@ jobs:
           if [ "${{ inputs.component }}" = "pages-domains" ]; then
             [ -n "$CLOUDFLARE_API_TOKEN" ] || { echo "::error::CLOUDFLARE_API_TOKEN is required"; exit 1; }
             [ -n "$TF_VAR_cloudflare_account_id" ] || { echo "::error::CLOUDFLARE_ACCOUNT_ID is required"; exit 1; }
-            [ -n "$TF_VAR_cloudflare_zone_id" ] || { echo "::error::APPS_CLOUDFLARE_ZONE_ID is required"; exit 1; }
+            [ -n "$TF_VAR_eliza_app_zone_id" ] || { echo "::error::ELIZA_APP_CLOUDFLARE_ZONE_ID is required"; exit 1; }
+            [ -n "$TF_VAR_elizacloud_ai_zone_id" ] || { echo "::error::APPS_CLOUDFLARE_ZONE_ID is required for legacy redirects"; exit 1; }
+            node -e '
+              const required = [
+                ["DNS_RECORD_IMPORT_IDS_JSON", process.env.TF_VAR_dns_record_import_ids, "object"],
+                ["CANONICAL_EDGE_WILDCARD_ORIGINS_JSON", process.env.TF_VAR_canonical_edge_wildcard_origins, "array"],
+                ["CANONICAL_SERVICE_ORIGINS_JSON", process.env.TF_VAR_canonical_service_origins, "object"],
+                ["RAILWAY_TUNNEL_DNS_RECORDS_JSON", process.env.TF_VAR_railway_tunnel_dns_records, "object"],
+                ["CANONICAL_EDGE_CERTIFICATE_PACKS_JSON", process.env.TF_VAR_canonical_edge_certificate_packs, "object"],
+                ["LEGACY_REDIRECT_WILDCARD_ORIGINS_JSON", process.env.TF_VAR_legacy_redirect_wildcard_origins, "object"],
+                ["LEGACY_REDIRECT_CERTIFICATE_PACKS_JSON", process.env.TF_VAR_legacy_redirect_certificate_packs, "object"],
+              ];
+              const invalid = [];
+              for (const [name, source, expected] of required) {
+                try {
+                  const value = JSON.parse(source ?? "");
+                  const isExpected = expected === "array"
+                    ? Array.isArray(value) && value.length > 0
+                    : value && !Array.isArray(value) && Object.keys(value).length > 0;
+                  if (!isExpected) invalid.push(name);
+                } catch {
+                  invalid.push(name);
+                }
+              }
+              if (invalid.length > 0) {
+                console.error(`::error::Missing, empty, or malformed protected Pages inventory variable name(s): ${invalid.join(" ")}`);
+                process.exit(1);
+              }
+              console.log("Validated protected Pages inventory shapes; values were not printed.");
+            '
+          fi
+          if [ "${{ inputs.component }}" = "control-plane" ] || [ "${{ inputs.component }}" = "apps-data-plane" ]; then
+            [ -n "$TF_VAR_eliza_app_zone_id" ] || { echo "::error::ELIZA_APP_CLOUDFLARE_ZONE_ID is required"; exit 1; }
           fi
           if [ "$OPERATION" = "state-rm" ]; then
             [ -n "$STATE_ADDRESS" ] || { echo "::error::state_address is required for state-rm"; exit 1; }
@@ -108,6 +329,41 @@ jobs:
               echo "::error::state_address contains unsupported characters"
               exit 1
             fi
+          fi
+          if [ "$OPERATION" = "plan" ] || [ "$OPERATION" = "apply" ]; then
+            [ -n "$TERRAFORM_PLAN_ARTIFACT_PUBLIC_KEY" ] || { echo "::error::TERRAFORM_PLAN_ARTIFACT_PUBLIC_KEY is required"; exit 1; }
+          fi
+          if [ "$OPERATION" = "apply" ]; then
+            [ "$HAS_TERRAFORM_PLAN_ARTIFACT_PRIVATE_KEY" = "true" ] || { echo "::error::TERRAFORM_PLAN_ARTIFACT_PRIVATE_KEY is required"; exit 1; }
+          fi
+
+      - name: Validate canonical environment contract
+        shell: bash
+        env:
+          TARGET_ENVIRONMENT: ${{ inputs.environment }}
+        run: |
+          set -euo pipefail
+
+          require_exact() {
+            local name="$1"
+            local actual="$2"
+            local expected="$3"
+            if [ "$actual" != "$expected" ]; then
+              echo "::error::$name does not match the canonical $TARGET_ENVIRONMENT environment contract"
+              exit 1
+            fi
+          }
+
+          if [ "$TARGET_ENVIRONMENT" = "production" ]; then
+            require_exact TF_VAR_deploy_branch "$TF_VAR_deploy_branch" "main"
+            require_exact TF_VAR_apps_base_domain "$TF_VAR_apps_base_domain" "apps.eliza.app"
+            require_exact TF_VAR_cloud_api_origin "$TF_VAR_cloud_api_origin" "https://api.eliza.app"
+            require_exact TF_VAR_canonical_headscale_hostname "$TF_VAR_canonical_headscale_hostname" "headscale.eliza.app"
+          else
+            require_exact TF_VAR_deploy_branch "$TF_VAR_deploy_branch" "develop"
+            require_exact TF_VAR_apps_base_domain "$TF_VAR_apps_base_domain" "apps-staging.eliza.app"
+            require_exact TF_VAR_cloud_api_origin "$TF_VAR_cloud_api_origin" "https://api-staging.eliza.app"
+            require_exact TF_VAR_canonical_headscale_hostname "$TF_VAR_canonical_headscale_hostname" "headscale-staging.eliza.app"
           fi
 
       - name: Format and initialize
@@ -118,9 +374,94 @@ jobs:
           terraform validate -no-color
 
       - name: Plan
-        if: inputs.operation == 'plan' || inputs.operation == 'apply'
+        if: inputs.operation == 'plan'
         working-directory: ${{ steps.root.outputs.directory }}
         run: terraform plan -no-color -input=false -out=selected.tfplan
+
+      - name: Package reviewed plan
+        if: inputs.operation == 'plan'
+        working-directory: ${{ steps.root.outputs.directory }}
+        env:
+          COMPONENT: ${{ inputs.component }}
+          TARGET_ENVIRONMENT: ${{ inputs.environment }}
+        run: |
+          set -euo pipefail
+          artifact_dir="$RUNNER_TEMP/terraform-plan-artifact"
+          install -d -m 0700 "$artifact_dir"
+          plan_digest=$(sha256sum selected.tfplan | awk '{print $1}')
+          jq -n \
+            --arg component "$COMPONENT" \
+            --arg environment "$TARGET_ENVIRONMENT" \
+            --arg operation "plan" \
+            --arg runId "$GITHUB_RUN_ID" \
+            --arg runAttempt "$GITHUB_RUN_ATTEMPT" \
+            --arg sourceRef "$GITHUB_REF" \
+            --arg sourceSha "$GITHUB_SHA" \
+            --arg planSha256 "$plan_digest" \
+            '{component:$component,environment:$environment,operation:$operation,runId:$runId,runAttempt:$runAttempt,sourceRef:$sourceRef,sourceSha:$sourceSha,planSha256:$planSha256}' \
+            > "$artifact_dir/plan-metadata.json"
+          node "$GITHUB_WORKSPACE/packages/scripts/terraform-plan-envelope.mjs" \
+            encrypt \
+            selected.tfplan \
+            "$artifact_dir/selected.tfplan.enc" \
+            "$artifact_dir/plan-metadata.json"
+
+      - name: Upload reviewed plan artifact
+        if: inputs.operation == 'plan'
+        id: upload-plan
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: terraform-plan-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/terraform-plan-artifact
+          if-no-files-found: error
+          retention-days: 3
+
+      - name: Summarize reviewed plan identity
+        if: inputs.operation == 'plan' && success()
+        shell: bash
+        env:
+          ARTIFACT_ID: ${{ steps.upload-plan.outputs.artifact-id }}
+          ARTIFACT_DIGEST: ${{ steps.upload-plan.outputs.artifact-digest }}
+        run: |
+          {
+            echo "### Protected Terraform plan"
+            echo "- Run id: $GITHUB_RUN_ID"
+            echo "- Run attempt: $GITHUB_RUN_ATTEMPT"
+            echo "- Artifact id: $ARTIFACT_ID"
+            echo "- Artifact digest: sha256:$ARTIFACT_DIGEST"
+            echo ""
+            echo "Supply all four exact values to the protected apply dispatch."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Remove plaintext planned state
+        if: always() && inputs.operation == 'plan' && steps.root.outcome == 'success'
+        working-directory: ${{ steps.root.outputs.directory }}
+        shell: bash
+        run: |
+          if [ -f selected.tfplan ]; then
+            shred -u selected.tfplan
+          fi
+
+      - name: Decrypt reviewed plan
+        if: inputs.operation == 'apply'
+        working-directory: ${{ steps.root.outputs.directory }}
+        shell: bash
+        env:
+          TERRAFORM_PLAN_ARTIFACT_PRIVATE_KEY: ${{ secrets.TERRAFORM_PLAN_ARTIFACT_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          artifact_dir="$RUNNER_TEMP/reviewed-terraform-plan"
+          node "$GITHUB_WORKSPACE/packages/scripts/terraform-plan-envelope.mjs" \
+            decrypt \
+            "$artifact_dir/selected.tfplan.enc" \
+            selected.tfplan \
+            "$artifact_dir/plan-metadata.json"
+          expected_digest=$(jq -r '.planSha256' "$artifact_dir/plan-metadata.json")
+          actual_digest=$(sha256sum selected.tfplan | awk '{print $1}')
+          if [ "$actual_digest" != "$expected_digest" ]; then
+            echo "::error::Decrypted Terraform plan digest does not match reviewed metadata"
+            exit 1
+          fi
 
       - name: Apply reviewed plan
         if: inputs.operation == 'apply'
@@ -132,7 +473,10 @@ jobs:
         working-directory: ${{ steps.root.outputs.directory }}
         run: |
           terraform output -json pages_domains > "$RUNNER_TEMP/pages-domains.json"
-          terraform output -json staging_agent_edge > "$RUNNER_TEMP/staging-agent-edge.json"
+          terraform output -json canonical_edge > "$RUNNER_TEMP/canonical-edge.json"
+          terraform output -json railway_tunnel_dns > "$RUNNER_TEMP/railway-tunnel-dns.json"
+          terraform output -json redirect_dns > "$RUNNER_TEMP/redirect-dns.json"
+          terraform output -json legacy_certificate_packs > "$RUNNER_TEMP/legacy-certificate-packs.json"
           node -e '
             const fs = require("node:fs");
             const domains = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
@@ -140,16 +484,71 @@ jobs:
               if (entry.status !== "active") throw new Error(`${key} domain is ${entry.status}, expected active`);
               if (!entry.certificate_authority) throw new Error(`${key} has no issued certificate authority`);
             }
-            const agentEdge = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
+
+            const canonical = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
+            const tunnel = JSON.parse(fs.readFileSync(process.argv[3], "utf8"));
+            const redirect = JSON.parse(fs.readFileSync(process.argv[4], "utf8"));
+            const legacyPacks = JSON.parse(fs.readFileSync(process.argv[5], "utf8"));
+
+            const requireProxiedRecords = (label, records) => {
+              const entries = Object.entries(records ?? {});
+              if (entries.length === 0) throw new Error(`${label} has no managed DNS records`);
+              for (const [key, record] of entries) {
+                if (!record.id) throw new Error(`${label}.${key} has no Cloudflare record id`);
+                if (record.proxied !== true) throw new Error(`${label}.${key} is not proxied`);
+              }
+            };
+            const requireActivePacks = (label, packs) => {
+              const entries = Object.entries(packs ?? {});
+              if (entries.length === 0) throw new Error(`${label} has no certificate generations`);
+              for (const [key, pack] of entries) {
+                if (pack.status !== "active") throw new Error(`${label}.${key} certificate is ${pack.status}, expected active`);
+              }
+            };
+            const requireDnsOnlyRecords = (label, records) => {
+              const entries = Object.entries(records ?? {});
+              if (entries.length === 0) throw new Error(`${label} has no managed DNS records`);
+              const requiredRoles = [
+                "apex-routing",
+                "apex-verification",
+                "wildcard-routing",
+                "wildcard-certificate",
+                "wildcard-verification",
+              ];
+              for (const [key, record] of entries) {
+                if (!record.id) throw new Error(`${label}.${key} has no Cloudflare record id`);
+                if (record.proxied !== false) throw new Error(`${label}.${key} must remain DNS-only`);
+                if (!['CNAME', 'TXT'].includes(record.type)) throw new Error(`${label}.${key} has unsupported type ${record.type}`);
+              }
+              for (const role of requiredRoles) {
+                const count = entries.filter(([, record]) => record.roles?.includes(role)).length;
+                if (count !== 1) throw new Error(`${label} must cover ${role} exactly once, found ${count}`);
+              }
+            };
+
+            requireProxiedRecords("canonical_edge.dns_records", canonical.dns_records);
+            requireProxiedRecords("canonical_edge.service_dns_records", canonical.service_dns_records);
+            requireActivePacks("canonical_edge.certificate_packs", canonical.certificate_packs);
+            requireDnsOnlyRecords("railway_tunnel_dns", tunnel);
+            requireProxiedRecords("redirect_dns.exact", redirect.exact);
+            requireProxiedRecords("redirect_dns.deep_wildcards", redirect.deep_wildcards);
+            requireActivePacks("legacy_certificate_packs.redirect", legacyPacks.redirect);
             if (process.env.TF_VAR_environment === "staging") {
-              if (Object.keys(agentEdge.dns_records).length !== 2) throw new Error("staging agent wildcard does not have two DNS records");
-              if (agentEdge.certificate_pack.status !== "active") throw new Error(`staging agent certificate is ${agentEdge.certificate_pack.status}, expected active`);
+              requireProxiedRecords("redirect_dns.staging_agent", redirect.staging_agent);
+              if (legacyPacks.staging_agent?.status !== "active") {
+                throw new Error(`legacy staging agent certificate is ${legacyPacks.staging_agent?.status ?? "missing"}, expected active`);
+              }
             }
-          ' "$RUNNER_TEMP/pages-domains.json" "$RUNNER_TEMP/staging-agent-edge.json"
+          ' \
+            "$RUNNER_TEMP/pages-domains.json" \
+            "$RUNNER_TEMP/canonical-edge.json" \
+            "$RUNNER_TEMP/railway-tunnel-dns.json" \
+            "$RUNNER_TEMP/redirect-dns.json" \
+            "$RUNNER_TEMP/legacy-certificate-packs.json"
 
       - name: Verify staging agent wildcard TLS
         if: inputs.component == 'pages-domains' && inputs.operation == 'apply' && inputs.environment == 'staging'
-        run: curl --silent --show-error --output /dev/null https://terraform-probe.staging.elizacloud.ai/api/health
+        run: curl --silent --show-error --output /dev/null https://terraform-probe.cloud-staging.eliza.app/api/health
 
       - name: Verify live environment routing
         if: inputs.component == 'pages-domains' && inputs.operation == 'apply'
@@ -161,3 +560,12 @@ jobs:
         env:
           STATE_ADDRESS: ${{ inputs.state_address }}
         run: terraform state rm "$STATE_ADDRESS"
+
+      - name: Remove plaintext reviewed plan
+        if: always() && inputs.operation == 'apply' && steps.root.outcome == 'success'
+        working-directory: ${{ steps.root.outputs.directory }}
+        shell: bash
+        run: |
+          if [ -f selected.tfplan ]; then
+            shred -u selected.tfplan
+          fi

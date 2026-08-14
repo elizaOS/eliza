@@ -1,9 +1,9 @@
 /**
- * Mounts the authenticated join page at the real production apex origin and
- * proves its app-host handoff wins before any agent selection or provisioning.
+ * Mounts the authenticated join page at the canonical production auth origin
+ * and proves its app-host handoff preserves /join before identity resolution.
  */
 // @vitest-environment jsdom
-// @vitest-environment-options {"url": "https://elizacloud.ai/join"}
+// @vitest-environment-options {"url": "https://eliza.app/join"}
 
 import { cleanup, render, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -45,13 +45,13 @@ afterEach(() => {
 });
 
 describe("JoinPage apex app handoff", () => {
-  it("replaces to the paired app origin before provisioning", async () => {
+  it("replaces to the paired app origin before identity resolution", async () => {
     render(<JoinPage />);
 
     await waitFor(() => {
-      expect(replacedUrls).toEqual(["https://app.elizacloud.ai/"]);
+      expect(replacedUrls).toEqual(["https://cloud.eliza.app/join"]);
     });
-    expect(window.location.hostname).toBe("elizacloud.ai");
+    expect(window.location.hostname).toBe("eliza.app");
     expect(runJoinFlowMock).not.toHaveBeenCalled();
   });
 });

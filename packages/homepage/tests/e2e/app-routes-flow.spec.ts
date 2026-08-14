@@ -3,7 +3,6 @@
  */
 
 import { expect, type Page, test } from "playwright/test";
-import { ELIZA_PHONE_FORMATTED } from "../../src/lib/contact";
 import { waitForLandingIntro } from "./landing-readiness";
 
 const TEST_TOKEN = "homepage-e2e-token";
@@ -31,7 +30,7 @@ const mockUser = {
 async function installHomepageApiMocks(page: Page) {
   let linkedPhone: string | null = null;
 
-  await page.route("https://elizacloud.ai/api/eliza-app/**/chat", (route) =>
+  await page.route("https://api.eliza.app/api/eliza-app/**/chat", (route) =>
     route.fulfill({
       json: {
         messages: [
@@ -46,7 +45,7 @@ async function installHomepageApiMocks(page: Page) {
     }),
   );
 
-  await page.route("https://elizacloud.ai/api/eliza-app/**", (route) => {
+  await page.route("https://api.eliza.app/api/eliza-app/**", (route) => {
     const url = new URL(route.request().url());
     const path = url.pathname;
 
@@ -319,169 +318,85 @@ test("connected page exercises account menu, copy controls, link-phone form, and
   await page.getByLabel("Phone number").fill("416 555 0123");
   await page.getByRole("button", { name: "Link Phone" }).click();
   await expect(page.getByLabel("Phone number", { exact: true })).toHaveCount(0);
-  await expect(
-    page.getByRole("button", {
-      name: new RegExp(
-        `iMessage ${ELIZA_PHONE_FORMATTED.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`,
-      ),
-    }),
-  ).toBeVisible();
+  await expect(page.getByRole("button", { name: /^iMessage$/ })).toBeVisible();
+  await expect(page.getByText("+1 (808) 788-1821")).toHaveCount(0);
 
   await page.getByRole("button", { name: "Connect Discord" }).click();
   await expect(page).toHaveURL(/\/get-started\?method=discord&link=true/);
 });
 
-test("landing page renders its animated shell and primary entrypoint", async ({
+test("landing leads with iMessage and keeps secondary channels available", async ({
+  context,
   page,
 }) => {
-  // Full landing readiness (shader + phone model + message replay) can take
-  // minutes on a starved fleet runner.
-  test.setTimeout(240_000);
+  await context.grantPermissions(["clipboard-write"]);
   await page.goto("/");
 
-  await expect(page.getByLabel("Eliza", { exact: true })).toBeVisible({
+  await expect(
+    page.getByRole("heading", { name: /Four hours of your time back/ }),
+  ).toBeVisible({ timeout: 20_000 });
+
+  const textCta = page.getByRole("button", { name: "Message Eliza" });
+  await expect(textCta).toBeVisible();
+  await textCta.click();
+  await expect(page.getByRole("status")).toHaveText("Phone number copied");
+  await expect(page.getByText("+1 (808) 788-1821")).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "Call" })).toHaveAttribute(
+    "href",
+    "tel:+18087881821",
+  );
+  await expect(
+    page.locator(".landing-secondary-channels .landing-channel"),
+  ).toHaveCount(3);
+  await expect(
+    page.getByRole("link", { name: "Message Eliza on Telegram" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "Message Eliza on WhatsApp" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "Message Eliza on Discord" }),
+  ).toHaveAttribute("href", "discord://-/users/1468649258654630063");
+  const channelRow = await page
+    .locator(".landing-secondary-channels")
+    .boundingBox();
+  expect(channelRow).not.toBeNull();
+
+  const keyboard = page.locator(".landing-keyboard");
+  await expect(keyboard).toHaveAttribute("data-open", "true", {
     timeout: 20_000,
   });
-  await expect(page.getByRole("button", { name: "Try Now" })).toBeVisible({
-    timeout: 20_000,
+  const phoneInsets = await page.evaluate(() => {
+    const composer = document.querySelector(".landing-phone-composer");
+    const keyboard = document.querySelector(".landing-keyboard");
+    const thread = document.querySelector(".landing-phone-thread");
+    if (!composer || !keyboard || !thread) throw new Error("Phone UI missing");
+    return {
+      composerToKeyboard:
+        keyboard.getBoundingClientRect().top -
+        composer.getBoundingClientRect().bottom,
+      threadMask: getComputedStyle(thread).maskImage,
+    };
   });
-  await waitForLandingIntro(page);
+  expect(phoneInsets.composerToKeyboard).toBeGreaterThanOrEqual(7);
+  expect(phoneInsets.threadMask).toContain("linear-gradient");
 });
 
-test("landing swipe keeps pointer direction and surface-scoped drag prevention", async ({
+test("landing keeps content reachable on a small viewport", async ({
   page,
 }) => {
-  test.setTimeout(120_000);
-  await page.goto("/", { waitUntil: "domcontentloaded" });
-
-  const surface = page.locator("div.theme-app").first();
-  const imessage = page.getByRole("button", { name: "iMessage" });
-  const telegram = page.getByRole("button", { name: "Telegram" });
-  await expect(surface).toBeVisible();
-  await expect(imessage).toHaveAttribute("aria-pressed", "true");
-
-  const drag = async (fromRatio: number, toRatio: number) => {
-    const box = await surface.boundingBox();
-    if (!box) throw new Error("Landing swipe surface has no bounds");
-    const y = box.y + box.height / 2;
-    await page.mouse.move(box.x + box.width * fromRatio, y);
-    await page.mouse.down();
-    await page.mouse.move(box.x + box.width * toRatio, y, { steps: 2 });
-    await page.mouse.up();
-  };
-
-  await drag(0.7, 0.3);
-  await expect(telegram).toHaveAttribute("aria-pressed", "true");
-  await drag(0.3, 0.7);
-  await expect(imessage).toHaveAttribute("aria-pressed", "true");
-
-  const dragGuard = await surface.evaluate((root) => {
-    const target = root.querySelector("img, a");
-    if (!(target instanceof HTMLElement)) {
-      return { foundTarget: false, defaultPrevented: false };
-    }
-    const event = new DragEvent("dragstart", {
-      bubbles: true,
-      cancelable: true,
-    });
-    target.dispatchEvent(event);
-    return { foundTarget: true, defaultPrevented: event.defaultPrevented };
-  });
-  expect(dragGuard).toEqual({ foundTarget: true, defaultPrevented: true });
-});
-
-test("landing composer is inert while hidden and stays in-viewport when active", async ({
-  page,
-}) => {
-  // Three platform swipes each trigger the phone-model spin animation, and on
-  // CI's software GL those animation frames run seconds-per-frame; the default
-  // 60s budget is not enough for the full imessage → try traversal.
-  test.setTimeout(240_000);
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/");
   await waitForLandingIntro(page);
 
-  const composer = page.locator('[data-landing-chrome="composer"]');
-  await expect(composer).toHaveAttribute(
-    "data-landing-chrome-visible",
-    "false",
-  );
-  await expect(composer).toHaveAttribute("inert", "");
-  await expect(composer).toHaveAttribute("aria-hidden", "true");
-
-  // Opacity-only hide must not leave the message field in the tab order.
-  const tabTargetsWhileHidden = await page.evaluate(() => {
-    const root = document.querySelector('[data-landing-chrome="composer"]');
-    if (!(root instanceof HTMLElement)) {
-      return { error: "missing-composer" };
-    }
-    const focusables = [
-      ...root.querySelectorAll("textarea, button, a, select, input"),
-    ] as HTMLElement[];
-    return {
-      count: focusables.length,
-      anyIsFocusable: focusables.some((el) => {
-        el.focus();
-        return document.activeElement === el;
-      }),
-    };
+  // No horizontal overflow at mobile width.
+  const overflow = await page.evaluate(() => {
+    const doc = document.documentElement;
+    return doc.scrollWidth - doc.clientWidth;
   });
-  expect(tabTargetsWhileHidden).toMatchObject({ anyIsFocusable: false });
+  expect(overflow).toBeLessThanOrEqual(0);
 
-  // Swipe imessage → telegram → discord → try to reveal the composer. Each
-  // mouse.move step waits for a rendered frame, and CI's software-GL frames
-  // for the full-viewport shader are seconds long — so keep the drag to the
-  // minimum pointer dispatches the gesture recognizer needs. A loaded
-  // renderer can also drop an individual gesture, so drive by state: keep
-  // swiping until the composer reports visible instead of assuming exactly
-  // three perfect swipes.
-  for (let i = 0; i < 10; i++) {
-    await page.mouse.move(320, 420);
-    await page.mouse.down();
-    await page.mouse.move(40, 420, { steps: 2 });
-    await page.mouse.up();
-    await page.waitForTimeout(300);
-    const visible = await composer.getAttribute("data-landing-chrome-visible");
-    if (visible === "true") break;
-  }
-
-  await expect(composer).toHaveAttribute(
-    "data-landing-chrome-visible",
-    "true",
-    {
-      timeout: 10_000,
-    },
-  );
-  await expect(composer).not.toHaveAttribute("inert", "");
-  await expect(composer).not.toHaveAttribute("aria-hidden", "true");
-
-  const message = page.getByRole("textbox", { name: "Message Eliza" }).first();
-  await expect(message).toBeVisible();
-  await message.focus();
-  await expect(message).toBeFocused();
-
-  const bounds = await message.evaluate((el) => {
-    const rect = el.getBoundingClientRect();
-    return {
-      top: rect.top,
-      bottom: rect.bottom,
-      // The composer sits under a deliberate perspective/rotateX tilt, which
-      // shrinks the projected rect slightly; the touch-target floor applies to
-      // the layout box, so measure offsetHeight rather than rect.height.
-      layoutHeight: (el as HTMLElement).offsetHeight,
-      viewportHeight: window.innerHeight,
-    };
-  });
-  expect(bounds.layoutHeight).toBeGreaterThanOrEqual(44);
-  expect(bounds.top).toBeGreaterThanOrEqual(0);
-  expect(bounds.bottom).toBeLessThanOrEqual(bounds.viewportHeight + 0.5);
-
-  const voice = page.getByRole("button", { name: /voice input|Send message/i });
-  const voiceBox = await voice.boundingBox();
-  expect(voiceBox).not.toBeNull();
-  if (voiceBox) {
-    expect(voiceBox.height).toBeGreaterThanOrEqual(44);
-    expect(voiceBox.width).toBeGreaterThanOrEqual(44);
-    expect(voiceBox.y + voiceBox.height).toBeLessThanOrEqual(844 + 0.5);
-  }
+  const composer = page.locator(".landing-phone-composer");
+  await composer.scrollIntoViewIfNeeded();
+  await expect(composer).toBeVisible();
 });

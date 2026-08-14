@@ -145,13 +145,18 @@ describe("agent bridge dispatches both tiers", () => {
     resolveSharedAgent.mockResolvedValue({
       error: "Agent authorization cache is warming. Retry shortly.",
       status: 503,
+      code: "agent_cache_warming",
+      retryAfterSeconds: 1,
     });
 
     const res = await post();
 
     expect(res.status).toBe(503);
     expect(res.headers.get("Retry-After")).toBe("1");
-    expect(await res.json()).toMatchObject({ retryable: true });
+    expect(await res.json()).toMatchObject({
+      code: "agent_cache_warming",
+      retryable: true,
+    });
     expect(sandboxBridge).not.toHaveBeenCalled();
   });
 });

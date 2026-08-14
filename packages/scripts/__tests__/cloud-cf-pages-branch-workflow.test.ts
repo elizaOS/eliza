@@ -3,7 +3,7 @@
  *
  * Pull requests build unprivileged artifacts. A default-branch workflow_run
  * consumer validates the source, stages static output without PR-authored
- * Functions/configuration, and deploys both surfaces to `pr-<number>`.
+ * Functions/configuration, and deploys the unified frontend to `pr-<number>`.
  */
 import { describe, expect, test } from "bun:test";
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
@@ -19,6 +19,13 @@ const producerSource = readFileSync(
 );
 const consumerSource = readFileSync(
   new URL(".github/workflows/cloud-cf-pr-preview-deploy.yml", repoRoot),
+  "utf8",
+);
+// The unprivileged pull-request producer stays in the entry workflow. Canonical
+// Pages deployment moved into the reusable release workflow the entry calls
+// after admission, so its API gate is asserted there.
+const releaseSource = readFileSync(
+  new URL(".github/workflows/cloud-cf-release.yml", repoRoot),
   "utf8",
 );
 
@@ -37,6 +44,7 @@ interface WorkflowJob {
   if?: string;
   needs?: string | string[];
   steps?: WorkflowStep[];
+  uses?: string;
   strategy?: {
     matrix?: {
       include?: Array<Record<string, string>>;
@@ -64,7 +72,8 @@ interface Workflow {
 
 const producer = Bun.YAML.parse(producerSource) as Workflow;
 const consumer = Bun.YAML.parse(consumerSource) as Workflow;
-const deployJobs = ["deploy-console", "deploy-app"] as const;
+const release = Bun.YAML.parse(releaseSource) as Workflow;
+const deployJobs = ["deploy-app"] as const;
 const GNU_BASH = resolveGnuBash();
 const executedDescribe = GNU_BASH ? describe : describe.skip;
 
@@ -90,7 +99,6 @@ interface ResolverInput {
   sourceEvent?: string;
   sourceRunAttempt?: string;
   sourceRunId?: string;
-  surface?: "app" | "console";
 }
 
 function injectCanonicalPrResult(script: string, branch: "develop" | "main") {
@@ -119,14 +127,9 @@ function runTrustedResolver(
 
   const directory = mkdtempSync(join(tmpdir(), "cloud-cf-pages-branch-"));
   const outputPath = join(directory, "github-output");
-  const surface = input.surface ?? "console";
-  const expandedScript = step.run.replaceAll(
-    "$" + "{{ matrix.surface }}",
-    surface,
-  );
   const script = faultBranch
-    ? injectCanonicalPrResult(expandedScript, faultBranch)
-    : expandedScript;
+    ? injectCanonicalPrResult(step.run, faultBranch)
+    : step.run;
 
   try {
     const result = spawnSync(GNU_BASH, ["-c", script], {
@@ -165,17 +168,31 @@ describe("Cloud CF PR preview workflow contract", () => {
 
   test("keeps PR builds reachable and gates canonical Pages on the API", () => {
     const buildJob = producer.jobs?.["build-pages"];
-    expect(buildJob?.needs).toBe("migrate-db");
-    expect(buildJob?.if).toContain(
-      "github.event_name == 'pull_request' && needs.migrate-db.result == 'skipped'",
+    expect(buildJob?.needs).toEqual([
+      "validate-deploy-source",
+      "resolve-pages-preview-config",
+    ]);
+    expect(buildJob?.if).toBe(
+      "$" +
+        "{{ github.event_name == 'pull_request' && needs.resolve-pages-preview-config.result == 'success' }}",
     );
     expect(
       namedStep(producer, "build-pages", "Validate PR preview identity").if,
     ).toBe("github.event_name == 'pull_request'");
     expect(JSON.stringify(buildJob)).not.toContain("secrets.");
 
+    // The entry workflow owns no Cloudflare mutation of its own: every deploy
+    // job lives behind the approved release call, which pull requests can
+    // never reach.
+    for (const jobId of [...deployJobs, "deploy-api", "migrate-db"] as const) {
+      expect(producer.jobs?.[jobId]).toBeUndefined();
+    }
+    const releaseCall = producer.jobs?.release;
+    expect(releaseCall?.uses).toBe("./.github/workflows/cloud-cf-release.yml");
+    expect(releaseCall?.if).toContain("github.event_name != 'pull_request'");
+
     for (const jobId of deployJobs) {
-      const job = producer.jobs?.[jobId];
+      const job = release.jobs?.[jobId];
       expect(job?.needs).toEqual(["deploy-api", "build-pages"]);
       expect(job?.if).toBe(
         "$" +
@@ -219,14 +236,8 @@ describe("Cloud CF PR preview workflow contract", () => {
     expect(stage.run).toContain('find "$ARTIFACT_DIR/dist" -name _worker.js');
   });
 
-  test("binds both final Wrangler deploys to the intended project and resolved branch", () => {
-    expect(
-      consumer.jobs?.["deploy-preview"]?.strategy?.matrix?.include,
-    ).toEqual([
-      { surface: "console", project: "eliza-cloud" },
-      { surface: "app", project: "eliza-app" },
-    ]);
-
+  test("binds the final Wrangler deploy to the unified project and resolved branch", () => {
+    expect(consumer.jobs?.["deploy-preview"]?.strategy).toBeUndefined();
     const deploy = namedStep(
       consumer,
       "deploy-preview",
@@ -234,7 +245,7 @@ describe("Cloud CF PR preview workflow contract", () => {
     );
     expect(deploy.env).toMatchObject({
       PAGES_BRANCH: "$" + "{{ steps.source.outputs.branch }}",
-      PAGES_PROJECT: "$" + "{{ matrix.project }}",
+      PAGES_PROJECT: "eliza-app",
     });
     expect(deploy.run).toContain(
       'wrangler@4.100.0 pages deploy ./dist --project-name="$PAGES_PROJECT" --branch="$PAGES_BRANCH"',
@@ -243,16 +254,14 @@ describe("Cloud CF PR preview workflow contract", () => {
 });
 
 executedDescribe("trusted Cloud CF PR preview resolver", () => {
-  test("isolates ordinary and develop-to-main PRs for both surfaces", () => {
-    for (const surface of ["console", "app"] as const) {
-      for (const prNumber of ["18088", "18028"]) {
-        const result = runTrustedResolver({ prNumber, surface });
-        expect(result.status).toBe(0);
-        expect(result.output).toBe(
-          `branch=pr-${prNumber}\nartifact=pages-${surface}-123456-2\n`,
-        );
-        expect(result.output).not.toMatch(/branch=(?:main|develop)\n/);
-      }
+  test("isolates ordinary and develop-to-main PRs", () => {
+    for (const prNumber of ["18088", "18028"]) {
+      const result = runTrustedResolver({ prNumber });
+      expect(result.status).toBe(0);
+      expect(result.output).toBe(
+        `branch=pr-${prNumber}\nartifact=pages-app-123456-2\n`,
+      );
+      expect(result.output).not.toMatch(/branch=(?:main|develop)\n/);
     }
   });
 

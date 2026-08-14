@@ -119,6 +119,7 @@ Arm Headscale on a control-plane host.
 Required:
   --host <ip-or-host>                  Control-plane SSH host.
   --ssh-key <path>                     Deploy-user SSH private key.
+  --ssh-known-hosts <path>             Independently verified known_hosts inventory.
   --headscale-public-url <https-url>   Public Headscale URL.
   --headscale-api-key <key>            Existing Headscale API key.
 
@@ -150,6 +151,11 @@ CLI flags for secret material.
 
 const host = readArg(args, "host", "DEPLOY_HOST");
 const sshKey = readArg(args, "ssh-key", "DEPLOY_SSH_KEY");
+const sshKnownHosts = readArg(
+  args,
+  "ssh-known-hosts",
+  "DEPLOY_SSH_KNOWN_HOSTS",
+);
 const publicUrl = readArg(args, "headscale-public-url", "HEADSCALE_PUBLIC_URL");
 const apiUrl =
   readArg(args, "headscale-api-url", "HEADSCALE_API_URL") ??
@@ -182,6 +188,10 @@ const skipCpRouter = args["skip-cp-router"] === true;
 if (!host) die("--host or DEPLOY_HOST is required");
 if (!sshKey) die("--ssh-key or DEPLOY_SSH_KEY is required");
 if (!existsSync(sshKey)) die(`SSH key not found: ${sshKey}`);
+if (!sshKnownHosts)
+  die("--ssh-known-hosts or DEPLOY_SSH_KNOWN_HOSTS is required");
+if (!existsSync(sshKnownHosts))
+  die(`SSH known_hosts inventory not found: ${sshKnownHosts}`);
 if (!publicUrl)
   die("--headscale-public-url or HEADSCALE_PUBLIC_URL is required");
 if (!apiKey) die("--headscale-api-key or HEADSCALE_API_KEY is required");
@@ -200,8 +210,8 @@ if (!/^\d+$/.test(headscalePort ?? ""))
   die(`could not derive headscale port from listen_addr '${listenAddr}'`);
 
 // CP router hostname: cp-<env>-router. Derive <env> from the public hostname
-// when not given explicitly: headscale-staging.elizacloud.ai → staging,
-// headscale.elizacloud.ai → production. Falls back to the literal first DNS
+// when not given explicitly: headscale-staging.eliza.app → staging,
+// headscale.eliza.app → production. Falls back to the literal first DNS
 // label otherwise, so an unexpected hostname still yields a deterministic name
 // rather than throwing.
 function deriveCpRouterHostname(fqdn) {
@@ -401,6 +411,22 @@ command -v headscale >/dev/null 2>&1 || {
   exit 1
 }
 
+if ! getent group headscale >/dev/null; then
+  sudo groupadd --system headscale
+fi
+if ! id -u headscale >/dev/null 2>&1; then
+  sudo useradd \\
+    --system \\
+    --gid headscale \\
+    --home-dir ${HEADSCALE_STATE_DIR} \\
+    --no-create-home \\
+    --shell /usr/sbin/nologin \\
+    headscale
+elif ! id -nG headscale | grep -Eq '(^|[[:space:]])headscale([[:space:]]|$)'; then
+  echo "existing headscale user is not a member of the headscale group"
+  exit 1
+fi
+
 sudo install -d -m 0755 /etc/headscale
 sudo install -d -o headscale -g headscale -m 0750 ${HEADSCALE_STATE_DIR}
 
@@ -529,7 +555,11 @@ const result = spawnSync(
     "-o",
     "IdentitiesOnly=yes",
     "-o",
-    "StrictHostKeyChecking=accept-new",
+    "StrictHostKeyChecking=yes",
+    "-o",
+    `UserKnownHostsFile=${sshKnownHosts}`,
+    "-o",
+    "GlobalKnownHostsFile=/dev/null",
     "-o",
     "ConnectTimeout=15",
     `deploy@${host}`,

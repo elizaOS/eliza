@@ -26,10 +26,18 @@ export interface Bindings {
   /**
    * Wrangler environment name (`"production"` | `"staging"`); unset in local
    * dev/tests. Drives environment-scoped behavior that must not collide across
-   * envs sharing the elizacloud.ai cookie zone — e.g. Steward auth cookie
-   * names (`lib/auth/steward-cookies.ts`) and cache key prefixes.
+   * envs and previews — e.g. Steward auth cookie names
+   * (`lib/auth/steward-cookies.ts`) and cache key prefixes.
    */
   ENVIRONMENT?: string;
+  /** Public eliza.app agent used only when its exact Twilio line is called. */
+  ELIZA_APP_DEFAULT_AGENT_ID?: string;
+  /** Exact E.164 Twilio number allowed to route to the public default agent. */
+  ELIZA_APP_TWILIO_PHONE_NUMBER?: string;
+  /** Maximum unauthenticated Twilio media sockets awaiting a signed start frame. */
+  TWILIO_VOICE_MAX_PENDING_BOOTSTRAPS?: string;
+  /** Milliseconds allowed for a Twilio media socket to provide its signed start frame. */
+  TWILIO_VOICE_BOOTSTRAP_TIMEOUT_MS?: string;
   /** Staging-only QA session bridge kill switch; absent/anything but "true" is off. */
   STAGING_SESSION_EXCHANGE_ENABLED?: string;
   /** Exact runtime/code contract version; currently only "v1" is accepted. */
@@ -236,12 +244,12 @@ export interface Bindings {
   VERCEL_OIDC_TOKEN?: string;
   /**
    * Public hostname that serves the BLOB R2 bucket. Used to construct sample
-   * URLs returned to clients. Defaults to "blob.elizacloud.ai" if unset.
+   * URLs returned to clients. Defaults to "blob.eliza.app" if unset.
    */
   R2_PUBLIC_HOST?: string;
   /**
    * Base domain for managed frontend hosting system hosts. When set (e.g.
-   * "sites.elizacloud.ai"), a request to `<app-slug>.<suffix>` is served from
+   * "sites.eliza.app"), a request to `<app-slug>.<suffix>` is served from
    * the app's active frontend deployment by the Worker entry (see
    * `getHostedFrontendServeRewrite` in `packages/cloud/api/src/index.ts`).
    */
@@ -287,7 +295,7 @@ export interface Bindings {
    * token, and the only host the OIDC endpoints answer on. Relying parties
    * byte-compare it, so a trailing slash or host change invalidates every
    * existing account link. Must be a host this Worker is routed for — the
-   * apex `elizacloud.ai` is the SPA and never reaches the Worker.
+   * public homepage is a Pages app and never reaches the Worker directly.
    */
   OIDC_ISSUER_URL?: string;
   /**
@@ -456,6 +464,7 @@ export interface Bindings {
  */
 export interface AuthedUser {
   id: string;
+  created_at?: Date | string;
   email?: string | null;
   /** Whether `email` is verified — gates the @elizalabs.ai super_admin grant. */
   email_verified?: boolean | null;

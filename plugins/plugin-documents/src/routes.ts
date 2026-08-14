@@ -39,6 +39,7 @@ import {
   actorFromAccessContext,
   fetchDocumentFromUrl,
   isYouTubeUrl,
+  normalizeDocumentContentType,
   ServiceType,
 } from "@elizaos/core";
 import { parseClampedFloat, parsePositiveInteger } from "@elizaos/shared";
@@ -132,12 +133,13 @@ function isTextBackedContentType(
   contentType: string,
   filename: string,
 ): boolean {
-  if (contentType.startsWith("text/")) return true;
+  const normalizedContentType = normalizeDocumentContentType(contentType);
+  if (normalizedContentType.startsWith("text/")) return true;
   if (
-    contentType === "application/json" ||
-    contentType === "application/xml" ||
-    contentType === "application/javascript" ||
-    contentType === "text/markdown"
+    normalizedContentType === "application/json" ||
+    normalizedContentType === "application/xml" ||
+    normalizedContentType === "application/javascript" ||
+    normalizedContentType === "text/markdown"
   ) {
     return true;
   }
@@ -1106,7 +1108,8 @@ export async function handleDocumentsRoutes(
     // image → description text), so the linked original-bytes file is faithful.
     const originalContent = document.content;
     const originalContentType = document.contentType || "text/plain";
-    let contentType = originalContentType;
+    let contentType =
+      normalizeDocumentContentType(originalContentType) || "text/plain";
     const warnings: string[] = [];
     const textBacked = isTextBackedContentType(
       originalContentType,

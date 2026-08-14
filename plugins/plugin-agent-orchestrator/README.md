@@ -159,14 +159,20 @@ second credential broker, and child trajectories retain their session join key.
 | `ELIZA_OPENCODE_ACP_COMMAND` | bundled shim or `opencode acp` | Native OpenCode ACP command override. |
 | `ELIZA_ACP_DEFAULT_APPROVAL` | `autonomous` | Approval preset (`read-only`, `auto`, `permissive`, `autonomous`, `full-access`). |
 | `ELIZA_ACP_PROMPT_TIMEOUT_MS` / `ACPX_DEFAULT_TIMEOUT_MS` | `300000` (5m) | Per-prompt timeout. |
+| `ELIZA_SMITHERS_TIMEOUT_MS` | `300000` (5m) | Maximum Smithers durable-run wall-clock time. Values must be exact decimal integers from `1` through `2147483647`; missing/blank uses the default, and invalid environment or request overrides fail before a worker starts. |
 | `ELIZA_ACP_STATE_DIR` | `~/.eliza/plugin-acp` | Where to persist session state when no runtime DB. |
 | `ACPX_DEFAULT_CWD` | runtime cwd | Base directory for spawned agent workdirs. |
 | `ELIZA_ACP_MAX_SESSIONS` | `8` | Concurrent session cap. |
+| `ACP_COMMIT_LOCK_POLL_MS` | `25` | Poll cadence for the shared-worktree git commit lock. Values must be exact integers from `1` through `2147483647`; invalid values use the default, and each sleep is clipped to the remaining acquisition deadline. |
+| `ACP_COMMIT_LOCK_WAIT_MS` | `120000` | Maximum time to acquire the shared-worktree git commit lock. Values use the same bounded exact-integer contract. |
+| `ACP_COMMIT_LOCK_STALE_MS` | `30000` | Age after which an unrefreshed commit lock can be reclaimed. Values use the same bounded exact-integer contract; live holders refresh the lock through a heartbeat. |
 | `ACPX_SUB_AGENT_ROUTER_DISABLED` | unset | Set to `1` to keep the router service registered but unbound (test/staging). |
 | `ACPX_SUB_AGENT_ROUND_TRIP_CAP` | `32` | Per-session inject cap before force-stop to prevent ping-pong loops. |
 | `ACPX_PROGRESS_MODE` / `ELIZA_SUB_AGENT_PROGRESS_MODE` | `compact` | Sub-agent progress UX: `compact` delays and edits one status message, `threaded` preserves per-task threads, `silent` disables visible progress. |
 | `ACPX_PROGRESS_DELAY_MS` / `ELIZA_SUB_AGENT_PROGRESS_DELAY_MS` | `15000` | Delay before the first visible progress message, so short tasks only show the final answer. |
 | `ACPX_PROGRESS_REACTIONS` / `ELIZA_SUB_AGENT_PROGRESS_REACTIONS` | unset | Set to `1` to add progress reactions in `threaded` mode. |
+| `SMITHERS_DB_PROVIDER` | `sqlite` | Smithers task storage: `sqlite` or `postgres`. `pglite` fails closed with `SMITHERS_PGLITE_INCOMPATIBLE` until the upstream Smithers adapter dependency closure is compatible. |
+| `SMITHERS_DB_URL` | unset | Required PostgreSQL connection string when `SMITHERS_DB_PROVIDER=postgres`. |
 
 ### Native transport status
 

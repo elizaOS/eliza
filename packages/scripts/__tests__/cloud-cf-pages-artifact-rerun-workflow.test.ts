@@ -13,8 +13,17 @@ import { join } from "node:path";
 import { resolveGnuBash } from "../lib/gnu-shell.mjs";
 import { spawnSync } from "../lib/spawn-sync-captured.mjs";
 
+// The canonical producer/consumer pair (build-pages -> deploy-app) lives in the
+// reusable release workflow invoked by `cloud-cf-deploy.yml`; the entry
+// workflow keeps only the credential-free pull-request producer, whose artifact
+// is consumed by `cloud-cf-pr-preview-deploy.yml`. Both producers are asserted
+// so neither can drift away from the immutable-identity contract.
 const repoRoot = new URL("../../../", import.meta.url);
 const workflowSource = readFileSync(
+  new URL(".github/workflows/cloud-cf-release.yml", repoRoot),
+  "utf8",
+);
+const entrySource = readFileSync(
   new URL(".github/workflows/cloud-cf-deploy.yml", repoRoot),
   "utf8",
 );
@@ -40,19 +49,16 @@ interface Workflow {
 }
 
 const workflow = Bun.YAML.parse(workflowSource) as Workflow;
+const entryWorkflow = Bun.YAML.parse(entrySource) as Workflow;
 const buildJob = workflow.jobs?.["build-pages"];
+const entryBuildJob = entryWorkflow.jobs?.["build-pages"];
 const deployJobs = [
-  {
-    artifactPrefix: "pages-console",
-    download: "Download immutable console artifact",
-    jobId: "deploy-console",
-    resolver: "Resolve immutable console artifact",
-  },
   {
     artifactPrefix: "pages-app",
     download: "Download immutable app artifact",
     jobId: "deploy-app",
     resolver: "Resolve immutable app artifact",
+    upload: "Upload consolidated frontend artifact",
   },
 ] as const;
 
@@ -108,40 +114,60 @@ const GNU_BASH = resolveGnuBash();
 const executedDescribe = GNU_BASH ? describe : describe.skip;
 
 describe("Cloud CF Pages artifact metadata", () => {
-  test("exports immutable producer identity and uses it for both uploads", () => {
+  test("exports immutable producer identity and uses it for the unified upload", () => {
     expect(buildJob?.outputs).toEqual({
       artifact_run_id: "$" + "{{ steps.pages-artifact.outputs.run_id }}",
       artifact_run_attempt:
         "$" + "{{ steps.pages-artifact.outputs.run_attempt }}",
       artifact_source_sha:
         "$" + "{{ steps.pages-artifact.outputs.source_sha }}",
+      telegram_bot_id:
+        "$" +
+        "{{ needs.resolve-pages-environment-config.outputs.telegram_bot_id }}",
+      telegram_bot_username:
+        "$" +
+        "{{ needs.resolve-pages-environment-config.outputs.telegram_bot_username }}",
+    });
+    expect(entryBuildJob?.outputs).toEqual({
+      artifact_run_id: "$" + "{{ steps.pages-artifact.outputs.run_id }}",
+      artifact_run_attempt:
+        "$" + "{{ steps.pages-artifact.outputs.run_attempt }}",
+      artifact_source_sha:
+        "$" + "{{ steps.pages-artifact.outputs.source_sha }}",
+      telegram_bot_id:
+        "$" +
+        "{{ needs.resolve-pages-preview-config.outputs.telegram_bot_id }}",
+      telegram_bot_username:
+        "$" +
+        "{{ needs.resolve-pages-preview-config.outputs.telegram_bot_username }}",
     });
 
-    const metadata = namedStep(
-      buildJob,
-      "Bind Pages artifacts to this producer attempt",
-    );
-    expect(metadata.id).toBe("pages-artifact");
-    expect(metadata.env).toEqual({
-      PRODUCER_RUN_ID: "$" + "{{ github.run_id }}",
-      PRODUCER_RUN_ATTEMPT: "$" + "{{ github.run_attempt }}",
-      PRODUCER_SOURCE_SHA: "$" + "{{ github.sha }}",
-    });
-
-    for (const { artifactPrefix } of deployJobs) {
-      const surface = artifactPrefix === "pages-console" ? "console" : "app";
-      const upload = namedStep(buildJob, `Upload ${surface} artifact`);
-      expect(upload.with?.name).toBe(
-        `${artifactPrefix}-` +
-          "$" +
-          "{{ steps.pages-artifact.outputs.run_id }}-" +
-          "$" +
-          "{{ steps.pages-artifact.outputs.run_attempt }}",
+    for (const producer of [buildJob, entryBuildJob]) {
+      const metadata = namedStep(
+        producer,
+        "Bind Pages artifacts to this producer attempt",
       );
+      expect(metadata.id).toBe("pages-artifact");
+      expect(metadata.env).toEqual({
+        PRODUCER_RUN_ID: "$" + "{{ github.run_id }}",
+        PRODUCER_RUN_ATTEMPT: "$" + "{{ github.run_attempt }}",
+        PRODUCER_SOURCE_SHA: "$" + "{{ github.sha }}",
+      });
+
+      for (const { artifactPrefix, upload: uploadName } of deployJobs) {
+        const upload = namedStep(producer, uploadName);
+        expect(upload.with?.name).toBe(
+          `${artifactPrefix}-` +
+            "$" +
+            "{{ steps.pages-artifact.outputs.run_id }}-" +
+            "$" +
+            "{{ steps.pages-artifact.outputs.run_attempt }}",
+        );
+      }
     }
   });
 
-  test("uses the same fail-closed resolver contract for App and Console", () => {
+  test("uses a fail-closed resolver contract for the unified frontend", () => {
     for (const { download, jobId, resolver } of deployJobs) {
       const job = workflow.jobs?.[jobId];
       const resolveStep = namedStep(job, resolver);
@@ -188,7 +214,7 @@ describe("Cloud CF Pages artifact metadata", () => {
 });
 
 executedDescribe("Cloud CF Pages artifact resolver", () => {
-  test("failed-only attempt 2 consumes attempt 1 for App and Console", () => {
+  test("failed-only attempt 2 consumes attempt 1", () => {
     for (const { artifactPrefix, jobId, resolver } of deployJobs) {
       const result = runResolver(namedStep(workflow.jobs?.[jobId], resolver), {
         consumerAttempt: "2",
@@ -199,7 +225,7 @@ executedDescribe("Cloud CF Pages artifact resolver", () => {
     }
   });
 
-  test("full rerun attempt 3 consumes attempt 3 for App and Console", () => {
+  test("full rerun attempt 3 consumes attempt 3", () => {
     for (const { artifactPrefix, jobId, resolver } of deployJobs) {
       const result = runResolver(namedStep(workflow.jobs?.[jobId], resolver), {
         consumerAttempt: "3",

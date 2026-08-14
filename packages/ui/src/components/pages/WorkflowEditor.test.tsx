@@ -1,10 +1,5 @@
-/**
- * jsdom tests for `WorkflowEditor` over a mocked `client` API: renders the graph,
- * runs a saved workflow and shows node output, keeps the editor open after a new
- * save, and restores a selected version from history.
- */
+/** Exercises the native Smithers studio over mocked elizaOS Cloud workflow APIs. */
 // @vitest-environment jsdom
-
 import {
   cleanup,
   fireEvent,
@@ -14,352 +9,325 @@ import {
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { client } from "../../api";
-import type {
-  WorkflowDefinition,
-  WorkflowExecution,
-} from "../../api/client-types-chat";
+import type { WorkflowDefinition } from "../../api/client-types-chat";
 import { WorkflowEditor } from "./WorkflowEditor";
 
 vi.mock("../../api", () => ({
   client: {
     activateWorkflowDefinition: vi.fn(),
+    cancelWorkflowExecution: vi.fn(),
+    createTrigger: vi.fn(),
     createWorkflowDefinition: vi.fn(),
     deactivateWorkflowDefinition: vi.fn(),
-    generateWorkflowDefinition: vi.fn(),
-    getWorkflowEvaluationSamples: vi.fn(),
+    deleteTrigger: vi.fn(),
+    decideWorkflowApproval: vi.fn(),
+    getWorkflowExecution: vi.fn(),
     getWorkflowExecutions: vi.fn(),
     getWorkflowRevisions: vi.fn(),
-    runWorkflowDefinition: vi.fn(),
+    getTriggers: vi.fn(),
     restoreWorkflowRevision: vi.fn(),
+    runWorkflowDefinition: vi.fn(),
+    signalWorkflowExecution: vi.fn(),
     updateWorkflowDefinition: vi.fn(),
   },
 }));
 
-const clientMock = client as unknown as {
-  activateWorkflowDefinition: ReturnType<typeof vi.fn>;
-  createWorkflowDefinition: ReturnType<typeof vi.fn>;
-  deactivateWorkflowDefinition: ReturnType<typeof vi.fn>;
-  generateWorkflowDefinition: ReturnType<typeof vi.fn>;
-  getWorkflowEvaluationSamples: ReturnType<typeof vi.fn>;
-  getWorkflowExecutions: ReturnType<typeof vi.fn>;
-  getWorkflowRevisions: ReturnType<typeof vi.fn>;
-  runWorkflowDefinition: ReturnType<typeof vi.fn>;
-  restoreWorkflowRevision: ReturnType<typeof vi.fn>;
-  updateWorkflowDefinition: ReturnType<typeof vi.fn>;
-};
+const api = client as unknown as Record<string, ReturnType<typeof vi.fn>>;
+const now = "2026-08-12T12:00:00.000Z";
 
-const clipboardWriteText = vi.fn();
-
-vi.mock("./WorkflowGraphViewer", () => ({
-  WorkflowGraphViewer: ({
-    workflow,
-  }: {
-    workflow: WorkflowDefinition | null;
-  }) => (
-    <div data-testid="workflow-graph">
-      {workflow?.nodes?.map((node) => node.name).join(" -> ") || "empty graph"}
-    </div>
-  ),
-}));
-
-function workflowFixture(): WorkflowDefinition {
+function workflow(): WorkflowDefinition {
   return {
     id: "workflow-1",
-    name: "Cerebras review workflow",
-    active: false,
-    versionId: "version-current",
-    nodes: [
+    name: "Digest",
+    description: "Native digest",
+    source: 'import { createSmithers } from "smthrs/create"; export default {}',
+    language: "tsx",
+    active: true,
+    steps: [
+      { id: "digest", label: "Build digest", kind: "task", agent: "elizaOS" },
+    ],
+    widgets: [
       {
-        id: "manual",
-        name: "Manual Trigger",
-        type: "workflows-nodes-base.manualTrigger",
-        typeVersion: 1,
-        position: [0, 0],
-        parameters: {},
-      },
-      {
-        id: "set",
-        name: "Add Review Fields",
-        type: "workflows-nodes-base.set",
-        typeVersion: 1,
-        position: [220, 0],
-        parameters: {
-          assignments: {
-            assignments: [
-              { name: "source", value: "cerebras" },
-              { name: "verified", value: true },
-            ],
-          },
-        },
+        id: "status",
+        title: "Digest status",
+        surface: "both",
+        component: "status",
       },
     ],
-    connections: {
-      "Manual Trigger": {
-        main: [[{ node: "Add Review Fields", type: "main", index: 0 }]],
-      },
-    },
-  };
-}
-
-function executionFixture(
-  overrides: Partial<WorkflowExecution> = {},
-): WorkflowExecution {
-  return {
-    id: "execution-1",
-    workflowId: "workflow-1",
-    mode: "manual",
-    status: "success",
-    startedAt: "2026-06-19T19:01:00.000Z",
-    stoppedAt: "2026-06-19T19:01:01.500Z",
-    data: {
-      resultData: {
-        engine: {
-          provider: "smithers",
-          nodes: 2,
-          levels: 2,
-          maxConcurrency: 1,
-          started: 2,
-          finished: 2,
-          failed: 0,
-          skipped: 0,
-          retries: 0,
-        },
-        runData: {
-          "Add Review Fields": [
-            {
-              startTime: "2026-06-19T19:01:00.500Z",
-              executionTime: 8,
-              data: {
-                main: [
-                  [
-                    {
-                      json: {
-                        source: "cerebras",
-                        verified: true,
-                      },
-                    },
-                  ],
-                ],
-              },
-            },
-          ],
-        },
-      },
-    },
-    ...overrides,
+    versionId: "v1",
+    createdAt: now,
+    updatedAt: now,
   };
 }
 
 beforeEach(() => {
   vi.clearAllMocks();
-  Object.defineProperty(navigator, "clipboard", {
-    configurable: true,
-    value: { writeText: clipboardWriteText },
-  });
-  clientMock.getWorkflowExecutions.mockResolvedValue([]);
-  clientMock.getWorkflowEvaluationSamples.mockResolvedValue({
-    workflowId: "workflow-1",
-    workflowName: "Cerebras review workflow",
-    workflowVersionId: "version-current",
-    generatedAt: "2026-06-20T12:00:00.000Z",
-    sampleCount: 1,
-    samples: [],
-    jsonl: '{"id":"workflow-1:execution-1"}',
-    optimizer: {
-      engine: "smithers-gepa",
-      target: "workflow-generation",
-      suiteName: "cerebras-review-workflow",
-      caseFile: "evals/cerebras-review-workflow.jsonl",
-      recommendedCommand:
-        "bunx smithers-orchestrator eval <workflow.tsx> --cases evals/cerebras-review-workflow.jsonl --suite cerebras-review-workflow",
-      recommendedEvalCommand:
-        "bunx smithers-orchestrator eval <workflow.tsx> --cases evals/cerebras-review-workflow.jsonl --suite cerebras-review-workflow",
-      recommendedOptimizeCommand: "bunx smithers-orchestrator optimize",
-      recommendedObservabilityCommand:
-        "bunx smithers-orchestrator observability --detach",
-      recommendedMetricsCommand:
-        "bunx smithers-orchestrator up <workflow.tsx> --serve --metrics",
-      notes: [],
-    },
-  });
-  clientMock.getWorkflowRevisions.mockResolvedValue({
-    currentVersionId: "version-current",
+  api.getWorkflowExecutions.mockResolvedValue([]);
+  api.getTriggers.mockResolvedValue({ triggers: [] });
+  api.createTrigger.mockResolvedValue({ trigger: { id: "trigger-1" } });
+  api.getWorkflowRevisions.mockResolvedValue({
+    currentVersionId: "v1",
     revisions: [],
   });
-  clientMock.runWorkflowDefinition.mockResolvedValue(executionFixture());
+  api.createWorkflowDefinition.mockResolvedValue(workflow());
+  api.updateWorkflowDefinition.mockResolvedValue(workflow());
+  api.cancelWorkflowExecution.mockResolvedValue({});
+  api.decideWorkflowApproval.mockResolvedValue({});
+  api.restoreWorkflowRevision.mockResolvedValue(workflow());
+  api.runWorkflowDefinition.mockResolvedValue({
+    id: "run-1",
+    workflowId: "workflow-1",
+    mode: "manual",
+    status: "queued",
+    finished: false,
+    startedAt: now,
+    stoppedAt: null,
+    input: {},
+    events: [],
+  });
 });
 
-afterEach(() => cleanup());
+afterEach(cleanup);
 
 describe("WorkflowEditor", () => {
-  it("renders the graph, runs a saved workflow, and shows node output", async () => {
-    render(<WorkflowEditor initial={workflowFixture()} />);
-
-    expect(screen.getByTestId("workflow-graph").textContent).toContain(
-      "Manual Trigger -> Add Review Fields",
-    );
-    expect(
-      screen.getByRole("button", { name: /run workflow now/i }),
-    ).toBeTruthy();
-    expect(
-      screen.queryByRole("button", { name: /generate from prompt/i }),
-    ).toBeNull();
-
-    const editPrefill = vi.fn();
-    window.addEventListener("eliza:chat:prefill", editPrefill as EventListener);
+  it("renders native source, visual triggers, and typed widgets", async () => {
+    render(<WorkflowEditor initial={workflow()} />);
+    expect(screen.getByText("Build digest")).toBeTruthy();
+    expect(screen.getByTitle("Manual")).toBeTruthy();
     fireEvent.click(
-      screen.getByRole("button", { name: /edit workflow in chat/i }),
+      screen.getByRole("button", { name: "Add workflow trigger" }),
     );
-    expect(editPrefill).toHaveBeenCalledTimes(1);
-    const editEvent = editPrefill.mock.calls[0]?.[0] as CustomEvent<{
-      text: string;
-      select: boolean;
-    }>;
-    expect(editEvent.detail.select).toBe(false);
-    expect(editEvent.detail.text).toBe(
-      "Modify workflow workflow-1 (Cerebras review workflow). ",
-    );
-    window.removeEventListener(
-      "eliza:chat:prefill",
-      editPrefill as EventListener,
-    );
-
-    fireEvent.click(screen.getByRole("button", { name: /run workflow now/i }));
-
-    await waitFor(() => {
-      expect(clientMock.runWorkflowDefinition).toHaveBeenCalledWith(
-        "workflow-1",
-      );
+    fireEvent.click(screen.getByRole("button", { name: "Repeat" }));
+    fireEvent.change(screen.getByLabelText("Interval minutes"), {
+      target: { value: "30" },
     });
-    expect(await screen.findByText("Add Review Fields")).toBeTruthy();
-    expect(
-      screen.getByText('{"source":"cerebras","verified":true}'),
-    ).toBeTruthy();
-    expect(
-      screen.getByText(/2 nodes \/ 2 levels \/ 1 max parallel/),
-    ).toBeTruthy();
-
-    fireEvent.click(
-      screen.getByRole("button", { name: /copy run diagnostics/i }),
-    );
-
-    await waitFor(() => {
-      expect(clipboardWriteText).toHaveBeenCalledWith(
-        expect.stringContaining("Workflow execution execution-1"),
-      );
-    });
-    expect(clipboardWriteText.mock.calls[0]?.[0]).toContain(
-      "Engine: 2 nodes / 2 levels / 1 max parallel",
-    );
-    expect(clipboardWriteText.mock.calls[0]?.[0]).toContain(
-      "Add Review Fields: success; 1 item",
-    );
-
-    const chatPrefill = vi.fn();
-    window.addEventListener("eliza:chat:prefill", chatPrefill as EventListener);
-    fireEvent.click(
-      screen.getByRole("button", { name: /troubleshoot run in chat/i }),
-    );
-    expect(chatPrefill).toHaveBeenCalledTimes(1);
-    const event = chatPrefill.mock.calls[0]?.[0] as CustomEvent<{
-      text: string;
-      select: boolean;
-    }>;
-    expect(event.detail.select).toBe(false);
-    expect(event.detail.text).toContain(
-      "Troubleshoot workflow workflow-1 execution execution-1.",
-    );
-    expect(event.detail.text).toContain(
-      "Engine: 2 nodes / 2 levels / 1 max parallel",
-    );
-    window.removeEventListener(
-      "eliza:chat:prefill",
-      chatPrefill as EventListener,
-    );
-
-    clipboardWriteText.mockClear();
-    fireEvent.click(screen.getByRole("button", { name: /copy eval samples/i }));
-
-    await waitFor(() => {
-      expect(clientMock.getWorkflowEvaluationSamples).toHaveBeenCalledWith(
-        "workflow-1",
-        10,
-      );
-    });
-    expect(clipboardWriteText).toHaveBeenCalledWith(
-      '{"id":"workflow-1:execution-1"}',
-    );
-  });
-
-  it("keeps the editor open after saving a new workflow so it can be inspected", async () => {
-    const saved = workflowFixture();
-    clientMock.createWorkflowDefinition.mockResolvedValue(saved);
-    const onSaved = vi.fn();
-
-    render(<WorkflowEditor onSaved={onSaved} />);
-
-    fireEvent.change(screen.getByTestId("workflow-editor-json"), {
-      target: { value: JSON.stringify(saved, null, 2) },
-    });
-    fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
-
-    await waitFor(() => {
-      expect(clientMock.createWorkflowDefinition).toHaveBeenCalled();
-    });
-    expect(onSaved).toHaveBeenCalledWith(saved);
-    expect(
-      await screen.findByRole("button", { name: /run workflow now/i }),
-    ).toBeTruthy();
-  });
-
-  it("restores a selected saved workflow version from history", async () => {
-    const restored = {
-      ...workflowFixture(),
-      name: "Restored workflow",
-      versionId: "version-restored",
-    };
-    clientMock.getWorkflowRevisions.mockResolvedValue({
-      currentVersionId: "version-current",
-      revisions: [
-        {
-          id: "revision-2",
+    fireEvent.click(screen.getByRole("button", { name: "Save trigger" }));
+    await waitFor(() =>
+      expect(api.createTrigger).toHaveBeenCalledWith(
+        expect.objectContaining({
+          kind: "workflow",
           workflowId: "workflow-1",
-          versionId: "version-newer",
-          name: "Newer workflow",
-          active: false,
-          createdAt: "2026-06-19T19:00:00.000Z",
-          updatedAt: "2026-06-19T19:02:00.000Z",
-          capturedAt: "2026-06-19T19:07:00.000Z",
-          operation: "activate",
+          triggerType: "interval",
+          intervalMs: 1_800_000,
+        }),
+      ),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Source" }));
+    expect(
+      (screen.getByTestId("smithers-source-editor") as HTMLTextAreaElement)
+        .value,
+    ).toMatch(/smthrs\/create/);
+    fireEvent.click(screen.getByRole("button", { name: "Widgets" }));
+    expect(await screen.findByText("Digest status")).toBeTruthy();
+    await waitFor(() => expect(api.getWorkflowExecutions).toHaveBeenCalled());
+    await waitFor(() => expect(api.getWorkflowRevisions).toHaveBeenCalled());
+  });
+
+  it("persists a new workflow before starting its first run", async () => {
+    render(<WorkflowEditor />);
+    fireEvent.click(screen.getByRole("button", { name: "Run" }));
+    await waitFor(() =>
+      expect(api.createWorkflowDefinition).toHaveBeenCalledTimes(1),
+    );
+    await waitFor(() =>
+      expect(api.runWorkflowDefinition).toHaveBeenCalledWith("workflow-1", {}),
+    );
+    await waitFor(() => expect(api.getWorkflowRevisions).toHaveBeenCalled());
+  });
+
+  it("collects JSON-schema inputs before a run", async () => {
+    const configured = workflow();
+    configured.inputSchema = {
+      type: "object",
+      required: ["topic"],
+      properties: {
+        topic: { type: "string", title: "Topic" },
+        limit: { type: "integer", title: "Limit", default: 5 },
+      },
+    };
+    render(<WorkflowEditor initial={configured} />);
+    fireEvent.click(screen.getByRole("button", { name: "Run" }));
+    fireEvent.change(screen.getByLabelText("Topic"), {
+      target: { value: "release" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Run workflow" }));
+    await waitFor(() =>
+      expect(api.runWorkflowDefinition).toHaveBeenCalledWith("workflow-1", {
+        topic: "release",
+        limit: 5,
+      }),
+    );
+  });
+
+  it("saves dirty source before running the active definition", async () => {
+    render(<WorkflowEditor initial={workflow()} />);
+    fireEvent.change(screen.getByLabelText("Workflow name"), {
+      target: { value: "Updated digest" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Run" }));
+    await waitFor(() =>
+      expect(api.updateWorkflowDefinition).toHaveBeenCalled(),
+    );
+    await waitFor(() => expect(api.runWorkflowDefinition).toHaveBeenCalled());
+    expect(
+      api.updateWorkflowDefinition.mock.invocationCallOrder[0],
+    ).toBeLessThan(api.runWorkflowDefinition.mock.invocationCallOrder[0]);
+  });
+
+  it("renders Smithers widget contracts as native visual surfaces", async () => {
+    const configured = workflow();
+    configured.widgets = [
+      {
+        id: "markdown",
+        title: "Summary",
+        surface: "both",
+        component: "markdown",
+        dataPath: "summary",
+      },
+      {
+        id: "table",
+        title: "Rows",
+        surface: "both",
+        component: "data-table",
+        dataPath: "rows",
+      },
+      {
+        id: "chart",
+        title: "Chart",
+        surface: "both",
+        component: "chart",
+        dataPath: "chart",
+      },
+      {
+        id: "issues",
+        title: "Issues",
+        surface: "both",
+        component: "issue-list",
+        dataPath: "issues",
+      },
+    ];
+    api.getWorkflowExecutions.mockResolvedValue([
+      {
+        id: "run-finished",
+        workflowId: "workflow-1",
+        mode: "manual",
+        status: "finished",
+        finished: true,
+        startedAt: now,
+        stoppedAt: now,
+        input: {},
+        events: [],
+        output: {
+          summary: "Release ready",
+          rows: [{ name: "Alpha", score: 9 }],
+          chart: [{ label: "Passed", value: 7 }],
+          issues: ["Review copy"],
         },
+      },
+    ]);
+    render(<WorkflowEditor initial={configured} />);
+    fireEvent.click(screen.getByRole("button", { name: "Widgets" }));
+    expect(await screen.findByText("Release ready")).toBeTruthy();
+    expect(screen.getByText("Alpha")).toBeTruthy();
+    expect(screen.getByText("Passed")).toBeTruthy();
+    expect(screen.getByText("Review copy")).toBeTruthy();
+  });
+
+  it("arms destructive run cancellation and revision restore", async () => {
+    api.getWorkflowExecutions.mockResolvedValue([
+      {
+        id: "run-live",
+        workflowId: "workflow-1",
+        mode: "manual",
+        status: "running",
+        finished: false,
+        startedAt: now,
+        stoppedAt: null,
+        input: {},
+        events: [],
+      },
+    ]);
+    api.getWorkflowRevisions.mockResolvedValue({
+      currentVersionId: "v1",
+      revisions: [
         {
           id: "revision-1",
           workflowId: "workflow-1",
-          versionId: "version-previous",
-          name: "Previous workflow",
+          versionId: "v0",
+          name: "Digest",
           active: false,
-          createdAt: "2026-06-19T19:00:00.000Z",
-          updatedAt: "2026-06-19T19:00:00.000Z",
-          capturedAt: "2026-06-19T19:05:00.000Z",
+          createdAt: now,
+          updatedAt: now,
+          capturedAt: now,
           operation: "update",
         },
       ],
     });
-    clientMock.restoreWorkflowRevision.mockResolvedValue(restored);
+    render(<WorkflowEditor initial={workflow()} />);
+    fireEvent.click(screen.getByRole("button", { name: "Runs" }));
+    expect(
+      await screen.findByRole("button", { name: "Cancel run" }),
+    ).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Cancel run" }));
+    expect(api.cancelWorkflowExecution).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Confirm cancel run" }));
+    await waitFor(() =>
+      expect(api.cancelWorkflowExecution).toHaveBeenCalledWith("run-live"),
+    );
 
-    render(<WorkflowEditor initial={workflowFixture()} />);
-
-    const restoreButton = await screen.findByRole("button", {
-      name: "Restore Previous workflow",
-    });
-    fireEvent.click(restoreButton);
-
-    await waitFor(() => {
-      expect(clientMock.restoreWorkflowRevision).toHaveBeenCalledWith(
+    fireEvent.click(screen.getByRole("button", { name: "History" }));
+    expect(
+      await screen.findByRole("button", { name: "Restore revision" }),
+    ).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Restore revision" }));
+    expect(api.restoreWorkflowRevision).not.toHaveBeenCalled();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Confirm restore revision" }),
+    );
+    await waitFor(() =>
+      expect(api.restoreWorkflowRevision).toHaveBeenCalledWith(
         "workflow-1",
-        "version-previous",
-      );
-    });
-    expect(await screen.findByText("Restored workflow")).toBeTruthy();
+        "v0",
+      ),
+    );
+  });
+
+  it("submits the exact Smithers approval node and iteration", async () => {
+    api.getWorkflowExecutions.mockResolvedValue([
+      {
+        id: "run-approval",
+        workflowId: "workflow-1",
+        mode: "manual",
+        status: "waiting-approval",
+        finished: false,
+        startedAt: now,
+        stoppedAt: null,
+        input: {},
+        events: [
+          {
+            id: "event-approval",
+            sequence: 1,
+            runId: "run-approval",
+            workflowId: "workflow-1",
+            timestamp: now,
+            type: "node.waiting-approval",
+            nodeId: "publish",
+            iteration: 2,
+            payload: {},
+          },
+        ],
+      },
+    ]);
+    render(<WorkflowEditor initial={workflow()} />);
+    fireEvent.click(screen.getByRole("button", { name: "Runs" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Approve" }));
+    await waitFor(() =>
+      expect(api.decideWorkflowApproval).toHaveBeenCalledWith(
+        "run-approval",
+        "publish",
+        2,
+        true,
+      ),
+    );
   });
 });

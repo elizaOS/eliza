@@ -18,12 +18,8 @@ export interface CreditGateResult {
   balance: number;
   error?: string;
   /**
-   * Set when this org's balance is zero BECAUSE the signup welcome bonus was
-   * withheld by the anti-sybil per-IP grant cap (recorded on the org's
-   * settings at signup — see `welcomeBonusWithheldSettingsPatch`). Lets the
-   * canonical 402 body explain "this network reached the daily free-credit
-   * limit" instead of a bare "Insufficient credits", which a genuine user
-   * behind CGNAT reads as a broken app.
+   * Set only for organizations carrying historical welcome-credit withholding
+   * metadata. New accounts start at zero and never write this legacy state.
    */
   welcomeBonusWithheldReason?: SignupGrantWithheldReason;
   welcomeBonusWithheldMessage?: string;
@@ -165,7 +161,7 @@ async function runCreditGate(
 export async function checkAgentCreditGate(organizationId: string): Promise<CreditGateResult> {
   return runCreditGate(organizationId, AGENT_PRICING.MINIMUM_DEPOSIT, (balance) => {
     const deficit = Math.max(AGENT_PRICING.MINIMUM_DEPOSIT - balance, 0.01);
-    return `Insufficient credits. A balance greater than $${AGENT_PRICING.MINIMUM_DEPOSIT.toFixed(2)} is required to create or run Eliza agents. Please add at least $${deficit.toFixed(2)} to your account at /dashboard/billing.`;
+    return `Insufficient credits. A balance greater than $${AGENT_PRICING.MINIMUM_DEPOSIT.toFixed(2)} is required to create or run Eliza agents. Please add at least $${deficit.toFixed(2)} to your account at /cloud/billing.`;
   });
 }
 
@@ -183,6 +179,6 @@ export async function checkAgentTierUpgradeCreditGate(
   const minimum = AGENT_PRICING.UPGRADE_MINIMUM_BALANCE;
   return runCreditGate(organizationId, minimum, (balance) => {
     const deficit = Math.max(minimum - balance, 0.01);
-    return `Insufficient credits to upgrade. A dedicated agent costs $${AGENT_PRICING.DAILY_RUNNING_COST.toFixed(2)}/day of hosting, and upgrading requires a balance above $${minimum.toFixed(2)} (${AGENT_PRICING.UPGRADE_MIN_HOSTING_DAYS} days of hosting). Please add at least $${deficit.toFixed(2)} to your account at /dashboard/billing.`;
+    return `Insufficient credits to upgrade. A dedicated agent costs $${AGENT_PRICING.DAILY_RUNNING_COST.toFixed(2)}/day of hosting, and upgrading requires a balance above $${minimum.toFixed(2)} (${AGENT_PRICING.UPGRADE_MIN_HOSTING_DAYS} days of hosting). Please add at least $${deficit.toFixed(2)} to your account at /cloud/billing.`;
   });
 }

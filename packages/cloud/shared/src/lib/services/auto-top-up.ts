@@ -428,7 +428,7 @@ export class AutoTopUpService {
       }
     }
 
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://www.elizacloud.ai";
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://cloud.eliza.app";
     const emailData = {
       email: recipientEmail,
       organizationName: org.name,
@@ -436,8 +436,8 @@ export class AutoTopUpService {
       previousBalance,
       newBalance,
       paymentMethod: paymentMethodDisplay,
-      invoiceUrl: `${appUrl}/dashboard/invoices/${paymentIntentId}`,
-      billingUrl: `${appUrl}/dashboard/settings`,
+      invoiceUrl: `${appUrl}/cloud/invoices/${paymentIntentId}`,
+      billingUrl: `${appUrl}/cloud/settings`,
     };
 
     logger.info(`[AutoTopUp] Calling emailService.sendAutoTopUpSuccessEmail with:`);
@@ -460,13 +460,13 @@ export class AutoTopUpService {
       return;
     }
 
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://www.elizacloud.ai";
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://cloud.eliza.app";
     await emailService.sendAutoTopUpDisabledEmail({
       email: recipientEmail,
       organizationName: org.name,
       reason,
       currentBalance: Number(org.credit_balance || 0),
-      settingsUrl: `${appUrl}/dashboard/settings`,
+      settingsUrl: `${appUrl}/cloud/settings`,
     });
   }
 

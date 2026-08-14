@@ -16,12 +16,12 @@
  * item, so no conversation index is needed.
  */
 
-import type { AgentSandbox } from "../../../db/repositories/agent-sandboxes";
 import type { RuntimeDurableObjectNamespace } from "../../../types/cloud-worker-env";
 import { InsufficientCreditsError } from "../../api/errors";
 import type { BridgeRequest } from "../eliza-sandbox-bridge";
 import { coordinateSharedBridge, coordinateSharedHistory } from "./conversation-coordinator";
 import type { SharedAgentCharacter } from "./run-shared-agent-turn";
+import type { SharedRuntimeAgent } from "./shared-runtime-agent";
 import { type BridgeExecutionContext, sharedRuntimeChatService } from "./shared-runtime-chat";
 
 const BRIDGE_INSUFFICIENT_CREDITS_CODE = -32002;
@@ -415,7 +415,7 @@ export function sharedRestAuthMe(
  * Postgres in the request.
  */
 export async function sharedRestCharacter(
-  agent: AgentSandbox,
+  agent: SharedRuntimeAgent,
   agentName: string,
   executionCtx: BridgeExecutionContext,
 ): Promise<{ character: SharedAgentCharacter; agentName: string }> {
@@ -504,25 +504,39 @@ export async function sharedRestMessagesGet(
 /**
  * POST .../api/conversations/:id/messages — forward the user text to the shared
  * bridge `message.send` (which runs the turn, persists history, and bills), then
- * return the assistant reply in the REST send-result shape.
+ * return the assistant reply in the REST send-result shape. A caller-supplied
+ * `clientMessageId` becomes the RPC id so a retried send de-dupes against a
+ * turn that already landed (#18045); absent, each send gets a fresh id.
  */
 export async function sharedRestMessageSend(
-  agent: AgentSandbox,
+  agent: SharedRuntimeAgent,
   conversationId: string,
   text: string,
   agentName: string,
   executionCtx: BridgeExecutionContext,
   namespace: RuntimeDurableObjectNamespace,
+  clientMessageId?: string,
+  funding: "organization-credits" | "platform" = "organization-credits",
 ): Promise<{ text: string; agentName: string }> {
   const rpc: BridgeRequest = {
     jsonrpc: "2.0",
-    id: crypto.randomUUID(),
+    id: clientMessageId ?? crypto.randomUUID(),
     method: "message.send",
-    params: { text, roomId: conversationId },
+    // params.clientMessageId marks the id as CLIENT-supplied: only those enter
+    // the coordinator's durable claim/replay/conflict boundary (#18045).
+    params: {
+      text,
+      roomId: conversationId,
+      ...(clientMessageId ? { clientMessageId } : {}),
+    },
   };
   // The production coordinator and Worker lifetime are required together so a
   // missing binding cannot select an inline legacy bridge or billing path.
-  const response = await coordinateSharedBridge(agent, rpc, { executionCtx, namespace });
+  const response = await coordinateSharedBridge(agent, rpc, {
+    executionCtx,
+    namespace,
+    ...(funding === "platform" ? { agentKind: "personal" as const } : {}),
+  });
   if (response.error) {
     // A credit-reserve rejection is a permanent add-credits condition, not a
     // transient bridge failure — surface it typed so the route boundary can

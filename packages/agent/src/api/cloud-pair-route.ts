@@ -12,6 +12,8 @@ import {
   renderCloudPairHandoffHtml,
   resolveCloudPairAgentIdFromEnv,
 } from "@elizaos/shared/contracts";
+import { isLoopbackBindHost } from "@elizaos/shared/runtime-env";
+import { resolveRequestOrigin } from "./request-origin.js";
 
 const RELAY_TIMEOUT_MS = 15_000;
 const RATE_LIMIT_WINDOW_MS = 60_000;
@@ -48,7 +50,7 @@ function resolveCloudApiBaseUrl(): string {
   const raw =
     process.env.ELIZAOS_CLOUD_BASE_URL ||
     process.env.NEXT_PUBLIC_API_URL ||
-    "https://api.elizacloud.ai/api/v1";
+    "https://api.eliza.app/api/v1";
   return raw.replace(/\/+$/, "");
 }
 
@@ -56,27 +58,9 @@ function resolveCloudAuthRoot(): string {
   return resolveCloudApiBaseUrl().replace(/\/api\/v1\/?$/, "");
 }
 
-function resolveRequestOrigin(req: http.IncomingMessage): string {
-  const proto =
-    (req.headers["x-forwarded-proto"] as string | undefined) ||
-    (req.socket && "encrypted" in req.socket && req.socket.encrypted
-      ? "https"
-      : "http");
-  const host =
-    (req.headers["x-forwarded-host"] as string | undefined) || req.headers.host;
-  return host ? `${proto}://${host}` : "";
-}
-
 function isLoopbackOrigin(origin: string): boolean {
   try {
-    const hostname = new URL(origin).hostname
-      .toLowerCase()
-      .replace(/^\[|\]$/g, "");
-    return (
-      hostname === "localhost" ||
-      hostname === "::1" ||
-      /^127(?:\.\d{1,3}){3}$/.test(hostname)
-    );
+    return isLoopbackBindHost(new URL(origin).hostname);
   } catch {
     // error-policy:J3 malformed request origins are never trusted as loopback.
     return false;
@@ -103,6 +87,9 @@ function escapeHtml(value: string): string {
  * Update both if the canonical staging host set changes.
  */
 const STAGING_CLOUD_HOSTS: ReadonlySet<string> = new Set([
+  "staging.eliza.app",
+  "api-staging.eliza.app",
+  "cloud-staging.eliza.app",
   "staging.elizacloud.ai",
   "api-staging.elizacloud.ai",
   "app-staging.elizacloud.ai",
@@ -111,7 +98,9 @@ const STAGING_CLOUD_HOSTS: ReadonlySet<string> = new Set([
 function isStagingCloudHostname(hostname: string): boolean {
   const host = hostname.toLowerCase();
   return (
-    STAGING_CLOUD_HOSTS.has(host) || host.endsWith(".staging.elizacloud.ai")
+    STAGING_CLOUD_HOSTS.has(host) ||
+    host.endsWith(".cloud-staging.eliza.app") ||
+    host.endsWith(".staging.elizacloud.ai")
   );
 }
 
@@ -126,12 +115,12 @@ function resolveCloudConsoleUrl(): string {
   try {
     const hostname = new URL(resolveCloudAuthRoot()).hostname.toLowerCase();
     if (isStagingCloudHostname(hostname)) {
-      return "https://staging.elizacloud.ai/dashboard/agents";
+      return "https://cloud-staging.eliza.app/cloud/agents";
     }
   } catch {
     // error-policy:J3 malformed auth root yields the production default.
   }
-  return "https://www.elizacloud.ai/dashboard/agents";
+  return "https://cloud.eliza.app/cloud/agents";
 }
 
 function renderErrorHtml(

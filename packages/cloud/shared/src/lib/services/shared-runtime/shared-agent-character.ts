@@ -4,9 +4,9 @@
  * key that the first turn later consumes.
  */
 
-import type { AgentSandbox } from "../../../db/repositories/agent-sandboxes";
 import type { UserCharacter } from "../../../db/repositories/characters";
 import type { SharedAgentCharacter } from "./run-shared-agent-turn";
+import type { SharedRuntimeAgent } from "./shared-runtime-agent";
 
 function stringValue(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
@@ -24,7 +24,7 @@ function record(value: unknown): Record<string, unknown> | undefined {
 
 /** Build the shared-turn character with linked, nested, then top-level precedence. */
 export function projectSharedAgentCharacter(
-  agent: AgentSandbox,
+  agent: SharedRuntimeAgent,
   linked?: UserCharacter | null,
 ): SharedAgentCharacter {
   if (linked && linked.organization_id !== agent.organization_id) {

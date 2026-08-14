@@ -36,6 +36,20 @@ function isElectrobunHost(): boolean {
   );
 }
 
+const AUTH_NAVIGATION_PATH_RE =
+  /^\/(?:login(?:\/|$)|auth(?:\/|$)|oidc\/continue(?:\/|$))/;
+
+/** Auth callbacks and bridges are one-time navigations that updates must not replay. */
+export function isAuthNavigationUrl(rawUrl: string): boolean {
+  try {
+    return AUTH_NAVIGATION_PATH_RE.test(new URL(rawUrl).pathname);
+  } catch {
+    // error-policy:J3 an unparseable current URL is treated as auth-sensitive;
+    // skipping an update reload is safer than replaying an unknown navigation.
+    return true;
+  }
+}
+
 /**
  * When a NEW service worker reaches `installed` while an existing controller is
  * present, a fresh renderer was just deployed. The new SW's own `activate`
@@ -45,15 +59,22 @@ function isElectrobunHost(): boolean {
  * Guarded so the FIRST install (no prior controller) does NOT reload — that is a
  * normal first paint, not an update (CONVERSATIONS-500-2026-07-22 fix #1).
  */
-function wireServiceWorkerUpdateReload(
+export function wireServiceWorkerUpdateReload(
   registration: ServiceWorkerRegistration,
+  serviceWorkers: ServiceWorkerContainer = navigator.serviceWorker,
+  reload: () => void = () => globalThis.location.reload(),
+  currentUrl: () => string = () => globalThis.location.href,
 ): void {
+  // Snapshot before `controllerchange`: first-install claim changes this from
+  // null to the new worker, while an update already has the previous worker.
+  // Only the latter represents a stale renderer that needs a reload.
+  const isUpdate = Boolean(serviceWorkers.controller);
   let reloading = false;
   const reloadOnControllerChange = () => {
-    if (reloading) return;
+    if (!isUpdate || reloading || isAuthNavigationUrl(currentUrl())) return;
     reloading = true;
     // The new worker is now controlling this page → load the new renderer.
-    globalThis.location.reload();
+    reload();
   };
 
   const trackInstalling = (worker: ServiceWorker | null) => {
@@ -61,7 +82,7 @@ function wireServiceWorkerUpdateReload(
     worker.addEventListener("statechange", () => {
       // A worker reaching `installed` with an existing controller = an UPDATE
       // (not the first install). Ask it to activate immediately.
-      if (worker.state === "installed" && navigator.serviceWorker.controller) {
+      if (worker.state === "installed" && serviceWorkers.controller) {
         try {
           worker.postMessage({ type: "SKIP_WAITING" });
         } catch {
@@ -72,7 +93,7 @@ function wireServiceWorkerUpdateReload(
   };
 
   // A worker already waiting at registration time (installed between sessions).
-  if (registration.waiting && navigator.serviceWorker.controller) {
+  if (registration.waiting && serviceWorkers.controller) {
     try {
       registration.waiting.postMessage({ type: "SKIP_WAITING" });
     } catch {
@@ -84,11 +105,8 @@ function wireServiceWorkerUpdateReload(
     trackInstalling(registration.installing);
   });
 
-  // Reload exactly once when control passes to the new worker.
-  navigator.serviceWorker.addEventListener(
-    "controllerchange",
-    reloadOnControllerChange,
-  );
+  // On an update, reload exactly once when control passes to the new worker.
+  serviceWorkers.addEventListener("controllerchange", reloadOnControllerChange);
 }
 
 /**
