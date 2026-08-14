@@ -477,11 +477,21 @@ export interface Action {
 	 * coding sub-agent) and the user-visible result arrives later through a
 	 * separate delivery path.
 	 *
-	 * The message service uses this to decide whether a Stage-1 pre-planner
-	 * early ack is warranted on latency-sensitive channels (voice): only turns
-	 * whose candidate actions include an async-handoff action get an early
-	 * ack, so synchronous retrieval turns deliver one reply — the answer — on
-	 * every channel. Promoted subactions inherit the parent's flag.
+	 * The message service uses this in two places, both asking the same
+	 * question — does this turn's work outlive the turn?
+	 *
+	 *   - Whether a Stage-1 pre-planner early ack is warranted on
+	 *     latency-sensitive channels (voice): only turns whose candidate
+	 *     actions include an async-handoff action get an early ack, so
+	 *     synchronous retrieval turns deliver one reply — the answer — on
+	 *     every channel.
+	 *   - Whether a turn that ran tool work and produced no planner prose may
+	 *     end on an ack instead of reporting an outcome. Only an executed
+	 *     async-handoff action licenses that; a synchronous turn must report
+	 *     the tool's result or say plainly that it produced none, because no
+	 *     further work follows the turn.
+	 *
+	 * Promoted subactions inherit the parent's flag.
 	 */
 	asyncHandoff?: boolean;
 

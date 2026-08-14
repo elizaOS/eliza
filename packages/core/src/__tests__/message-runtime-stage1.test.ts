@@ -4369,6 +4369,10 @@ describe("runV5MessageRuntimeStage1", () => {
 				name: "TASKS_SPAWN_AGENT",
 				description: "Spawn a coding task.",
 				contexts: ["general"],
+				// The flag the real TASKS action carries: the spawned work keeps
+				// running after the turn returns, which is what licenses the ack to
+				// stand as this turn's outcome.
+				asyncHandoff: true,
 				validate: vi.fn(async () => true),
 				handler: vi.fn(async () => ({
 					success: true,

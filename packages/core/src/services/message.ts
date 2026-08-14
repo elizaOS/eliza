@@ -1903,6 +1903,72 @@ export function preservedSettledToolResult(
 	return undefined;
 }
 
+/**
+ * Ack retained when an `asyncHandoff` action carries this turn's work past the
+ * turn boundary and Stage 1 drafted no ack of its own.
+ */
+const ASYNC_HANDOFF_ACK_MESSAGE = "on it, working on that now.";
+
+/**
+ * Terminal line for a synchronous tool turn that produced nothing user-facing.
+ * The planner does not run after the turn returns, so the only honest report
+ * is that the work yielded no result — never a progress ack, which would claim
+ * an outcome is still coming when nothing further will run.
+ */
+export const NO_REPORTABLE_TOOL_OUTCOME_MESSAGE =
+	"I ran that, but it finished without producing a result I can report back.";
+
+/**
+ * Terminal text for the answerless floor: the planner loop finished with no
+ * final message, no substantive Stage-1 answer survived, and real tool work
+ * ran this turn.
+ *
+ * The Stage-1 ack is drafted BEFORE the first tool call, so by construction it
+ * cannot report what those tools found. Shipping it here promotes an interim
+ * "on it" into the turn's entire answer — the live shape: addressed turns that
+ * ran several real tool calls and delivered only `"On it."` /
+ * `"checking your week"`, with no outcome and no failure. Precedence:
+ *
+ *   1. A completed tool's own undelivered `userFacingText` — the outcome the
+ *      turn actually produced and the planner failed to relay.
+ *   2. Silence, when an action already delivered visible text through its own
+ *      callback: the user has the outcome, and a trailing ack would be a
+ *      redundant, out-of-order second bubble.
+ *   3. The ack, ONLY when an action flagged `asyncHandoff` actually executed
+ *      this turn. That work continues after the turn returns, so "on it" is
+ *      the honest outcome and the real result arrives in a later message.
+ *   4. Otherwise a plain statement that the work produced nothing reportable.
+ *
+ * Keyed on turn shape — did tools run, did anything reach the user, does the
+ * executed work outlive the turn — never on the wording of the drafted ack.
+ */
+export function answerlessToolTurnReport(args: {
+	settledToolResults: ReadonlyArray<{
+		name: string;
+		result: PlannerToolResult;
+	}>;
+	deliveredVisibleTexts: ReadonlySet<string>;
+	actionResults: readonly ActionResult[];
+	actions: readonly Action[] | undefined;
+	stageOneAck: string;
+}): string {
+	const preserved = preservedSettledToolResult(
+		args.settledToolResults,
+		args.deliveredVisibleTexts,
+	);
+	if (preserved) return preserved.userFacingText;
+	if (args.deliveredVisibleTexts.size > 0) return "";
+	const executedActionNames = args.actionResults
+		.map((result) =>
+			typeof result.data?.actionName === "string" ? result.data.actionName : "",
+		)
+		.filter((name) => name.length > 0);
+	if (candidateActionsIncludeAsyncHandoff(args.actions, executedActionNames)) {
+		return args.stageOneAck || ASYNC_HANDOFF_ACK_MESSAGE;
+	}
+	return NO_REPORTABLE_TOOL_OUTCOME_MESSAGE;
+}
+
 /** Zerollama/OpenAI-style async media endpoints should be delivered as attachments, not echoed as chat copy. */
 const MEDIA_CONTENT_URL_RE =
 	/<?\s*https?:\/\/[^\s<>]+\/v1\/(?:videos|images|audio)\/[^\s<>/]+\/content\s*>?/gi;
@@ -3687,13 +3753,13 @@ export function evaluatePlannedReplyEgress(args: {
 }
 
 /**
- * True when any of the turn's candidate actions resolves to a registered
- * action flagged `asyncHandoff` — work whose execution continues after the
- * turn returns (sub-agent spawn class). This is the structural gate for the
- * Stage-1 pre-planner early ack: an ack ahead of the final reply is only
- * warranted when the routed work is an async handoff; synchronous retrieval
- * turns deliver a single reply (the answer) on every channel. Candidates are
- * matched against canonical names AND similes because Stage 1 routinely
+ * True when any of the supplied action names resolves to a registered action
+ * flagged `asyncHandoff` — work whose execution continues after the turn
+ * returns (sub-agent spawn class). This is the structural gate for both places
+ * an ack may legitimately stand in for an outcome: the Stage-1 pre-planner
+ * early ack (called with Stage 1's candidate names) and the answerless
+ * delivery floor (called with the names actually executed this turn). Names
+ * are matched against canonical names AND similes because Stage 1 routinely
  * hints an action by one of its similes.
  */
 export function candidateActionsIncludeAsyncHandoff(
@@ -8770,12 +8836,15 @@ export async function runV5MessageRuntimeStage1(args: {
 					normalizeVisibleTextForDuplicateCheck(earlyReplyText))
 				? prePatchStageOneReply
 				: "";
-		// The ack fallback is a delivery floor for turns that DID real tool work
-		// (async handoffs and action turns whose result text got lost) — callers
-		// must not render a blank for work that genuinely happened. A turn that
-		// ran NO action must not "fix" its silence into a work-is-underway ack:
-		// no work follows this turn, so the ack would be a lie. Prefer the
-		// preserved stage-0 answer over any ack in every case.
+		// The answerless floor is a delivery guarantee for turns that DID real
+		// tool work — callers must not render a blank for work that genuinely
+		// happened. A turn that ran NO action must not "fix" its silence into a
+		// work-is-underway ack: no work follows this turn, so the ack would be a
+		// lie. Prefer the preserved stage-0 answer over any floor text in every
+		// case; otherwise `answerlessToolTurnReport` decides what the tool work
+		// is allowed to say (the tool's own outcome, silence when an action
+		// already delivered one, the ack only for work that outlives the turn,
+		// else a plain no-result report).
 		// A media deliverable delivered through an action's own callback
 		// (GENERATE_MEDIA posts an attachment-only, text:"" callback) IS the turn's
 		// answer. The answerless-final floor must not then resurrect the Stage-1
@@ -8787,7 +8856,13 @@ export async function runV5MessageRuntimeStage1(args: {
 			!plannedText && !earlyReplySent && !suppressesPlannerReply
 				? preservedAnswerFallback ||
 					(ranNonSilentAction && !mediaDeliverableShipped
-						? stageOneAck || "on it, working on that now."
+						? answerlessToolTurnReport({
+								settledToolResults: settledPlannerToolResults,
+								deliveredVisibleTexts,
+								actionResults,
+								actions: args.runtime.actions,
+								stageOneAck,
+							})
 						: "")
 				: preservedAnswerFallback;
 		let effectiveReplyText = plannedText || ackFallback;
