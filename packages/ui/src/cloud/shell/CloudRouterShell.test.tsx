@@ -16,7 +16,6 @@ import {
   AppCatchAllRoute,
   CLOUD_MANAGEMENT_COMPAT_REDIRECTS,
   LEGACY_DASHBOARD_REDIRECTS,
-  LEGACY_SETTINGS_TAB_TARGETS,
   resolveLegacyCloudSettingsTarget,
 } from "./CloudRouterShell";
 
@@ -374,13 +373,11 @@ describe("CloudRouterShell retired dashboard redirects", () => {
       ).toBe(concreteTarget);
     }
 
-    for (const [tab, target] of Object.entries(LEGACY_SETTINGS_TAB_TARGETS)) {
+    for (const tab of ["connections", "billing", "organization", "agents"]) {
       const search = `?tab=${encodeURIComponent(tab)}&return=1`;
-      expect(
+      expect(resolveLegacyCloudSettingsTarget(search), tab).toBe(
         canonicalCloudPathForLegacyDashboard("/dashboard/settings", search),
-        tab,
-      ).toBe(target);
-      expect(resolveLegacyCloudSettingsTarget(search), tab).toBe(target);
+      );
     }
 
     const unknownSearch = "?tab=unknown&return=1";

@@ -129,7 +129,7 @@ function ParamRedirect({ to }: { to: string }): React.JSX.Element {
  * Settings-tab URLs issued by older OAuth and billing flows map onto their
  * canonical managed Cloud pages. Unknown/absent tabs land on Cloud home.
  */
-export const LEGACY_SETTINGS_TAB_TARGETS: Readonly<Record<string, string>> = {
+const LEGACY_SETTINGS_TAB_TARGETS: Readonly<Record<string, string>> = {
   connections: "/cloud/connectors",
   billing: "/cloud/billing",
   organization: "/cloud/organization",
