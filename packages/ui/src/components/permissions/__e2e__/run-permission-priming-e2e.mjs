@@ -83,9 +83,10 @@ const stubClient = {
 //
 // `ElizaError` is the one exception and must be a real constructor. The graph
 // reaches `api/client-cloud.ts`, which evaluates `class CloudAgentWakeError
-// extends ElizaError` at module scope. A class heritage clause runs on load
-// even though the modal never constructs it, so an empty core stub prevents
-// React from mounting and leaves the runner waiting for the first card.
+// extends ElizaError` at module scope — a class heritage clause runs on load
+// even though the modal never constructs it. With core stubbed to `{}` that
+// threw `Class extends value undefined`, killing the bundle before React
+// mounted and leaving the runner to time out on the first card's selector.
 const coreStub = join(outDir, "core-stub.cjs");
 await writeFile(
   coreStub,

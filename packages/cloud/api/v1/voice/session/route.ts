@@ -6,11 +6,6 @@ import { agentSandboxesRepository } from "@/db/repositories/agent-sandboxes";
 import { userCharactersRepository } from "@/db/repositories/characters";
 import { conversationsRepository } from "@/db/repositories/conversations";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
-import { creditsService } from "@/lib/services/credits";
-import {
-  isPersonalSharedAgentId,
-  personalSharedAgentId,
-} from "@/lib/services/shared-runtime/personal-shared-agent";
 import { logger } from "@/lib/utils/logger";
 import {
   isVoiceRealtimeWsEnabled,
@@ -41,16 +36,9 @@ import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
  */
 
 const MintBody = z.object({
-  // Row-backed agents use UUIDs; the reserved personal identity is validated
-  // separately so it can never reach a Postgres UUID query.
-  agentId: z.union([
-    z.string().uuid(),
-    z
-      .string()
-      .regex(
-        /^personal:[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
-      ),
-  ]),
+  // UUID-validated so a malformed id is a clean 400 here, never a 500 from a
+  // Postgres invalid-uuid error when the repository queries a uuid column.
+  agentId: z.string().uuid(),
   conversationId: z.string().uuid(),
   transport: z.literal("websocket").optional(),
   /** Server-enforced consent nonce (SEC-21). Required to mint. */
@@ -96,27 +84,14 @@ app.post("/", async (c) => {
   // older callers submit the character UUID. A dedicated sandbox does not need
   // a linked character, so direct sandbox IDs authorize against the sandbox
   // owner itself. The legacy character path still resolves both records.
-  let voiceAgentId: string;
-  let sandboxAgent = isPersonalSharedAgentId(body.agentId)
-    ? undefined
-    : await agentSandboxesRepository.findById(body.agentId);
-  if (isPersonalSharedAgentId(body.agentId)) {
-    const expected = personalSharedAgentId({
-      userId: auth.id,
-      organizationId: auth.organization_id,
-    });
-    if (body.agentId !== expected) {
-      return c.json({ error: "agent not found", code: "agent_not_found" }, 404);
-    }
-    voiceAgentId = expected;
-  } else if (sandboxAgent) {
+  let sandboxAgent = await agentSandboxesRepository.findById(body.agentId);
+  if (sandboxAgent) {
     if (
       sandboxAgent.organization_id !== auth.organization_id ||
       sandboxAgent.user_id !== auth.id
     ) {
       return c.json({ error: "agent not found", code: "agent_not_found" }, 404);
     }
-    voiceAgentId = sandboxAgent.id;
   } else {
     const agent = await userCharactersRepository.findByIdInOrganization(
       body.agentId,
@@ -139,7 +114,6 @@ app.post("/", async (c) => {
         404,
       );
     }
-    voiceAgentId = sandboxAgent.id;
   }
 
   // A supplied conversationId that exists must belong to the caller (org AND
@@ -159,23 +133,6 @@ app.post("/", async (c) => {
     );
   }
 
-  // Shared text chat is platform-funded, while realtime audio invokes paid
-  // STT/TTS infrastructure. A positive account balance is therefore an
-  // explicit server-owned voice precondition; it never grants credits or
-  // starts Dedicated compute. Check before consuming the one-use consent.
-  const balance = await creditsService.getOrganizationBalanceSnapshot(
-    auth.organization_id,
-  );
-  if (balance.balanceUsd <= 0) {
-    return c.json(
-      {
-        error: "Add credits to use voice. Shared text chat remains available.",
-        code: "voice_credits_required",
-      },
-      402,
-    );
-  }
-
   // SEC-21: consent is a server-enforced mint precondition. A missing store, a
   // missing/expired/replayed nonce all refuse the mint — we never fabricate it.
   const consented = await consumeConsentNonce(auth.id, body.consentNonce);
@@ -189,7 +146,7 @@ app.post("/", async (c) => {
       sessionId,
       organizationId: auth.organization_id,
       userId: auth.id,
-      agentId: voiceAgentId,
+      agentId: sandboxAgent.id,
       conversationId: body.conversationId,
     });
 

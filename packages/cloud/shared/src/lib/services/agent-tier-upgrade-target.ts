@@ -51,11 +51,7 @@ import { jobs } from "../../db/schemas/jobs";
 import { logger } from "../utils/logger";
 import { encryptAgentEnvVarsForStorage } from "./agent-env-crypto";
 import { apiKeysService } from "./api-keys";
-import {
-  AGENT_PERSONAL_CUTOVER_KEY,
-  AGENT_UPGRADED_FROM_KEY,
-  readPersonalElizaCutover,
-} from "./eliza-agent-config";
+import { AGENT_UPGRADED_FROM_KEY } from "./eliza-agent-config";
 import {
   configureElizaLifecycleTransaction,
   elizaAgentCreateAdvisoryLockSql,
@@ -137,121 +133,6 @@ export async function findLiveTierUpgradeTarget(
     .orderBy(desc(agentSandboxes.created_at))
     .limit(1);
   return existing ?? null;
-}
-
-/**
- * Resolve the Dedicated target that has completed the personal-Eliza cutover.
- * A merely running migration target is not authoritative: Shared continues to
- * serve until transcript import and this server-owned marker both succeed.
- * Afterward the marker stays authoritative through sleep/error/restart states;
- * silently falling back would split later turns into the archived Shared log.
- */
-export async function findActivePersonalDedicatedTarget(
-  organizationId: string,
-  sourceAgentId: string,
-): Promise<AgentSandbox | null> {
-  const [target] = await dbWrite
-    .select()
-    .from(agentSandboxes)
-    .where(
-      and(
-        eq(agentSandboxes.organization_id, organizationId),
-        eq(agentSandboxes.execution_tier, "dedicated-always"),
-        sql`${agentSandboxes.agent_config} ->> ${AGENT_UPGRADED_FROM_KEY} = ${sourceAgentId}`,
-      ),
-    )
-    .orderBy(desc(agentSandboxes.created_at))
-    .limit(1);
-  if (!target) return null;
-  const cutover = readPersonalElizaCutover(target.agent_config as Record<string, unknown> | null);
-  return cutover?.sourceAgentId === sourceAgentId ? target : null;
-}
-
-/**
- * Atomically make one healthy Dedicated migration target authoritative after
- * the caller has completed the server-owned transcript import. The per-source
- * lock serializes completion with retry/reprovision activity, and an exact
- * existing marker is an idempotent success.
- */
-export async function finalizePersonalTierUpgradeCutover(params: {
-  organizationId: string;
-  userId: string;
-  sourceAgentId: string;
-  dedicatedAgentId: string;
-  cutoverToken: string;
-  sharedMessageCount: number;
-}): Promise<AgentSandbox> {
-  return dbWrite.transaction(async (tx) => {
-    await configureElizaLifecycleTransaction(tx);
-    await tx.execute(
-      elizaAgentTierUpgradeAdvisoryLockSql(params.organizationId, params.sourceAgentId),
-    );
-    const [target] = await tx
-      .select()
-      .from(agentSandboxes)
-      .where(
-        and(
-          liveTargetWhere(params.organizationId, params.sourceAgentId),
-          eq(agentSandboxes.id, params.dedicatedAgentId),
-          eq(agentSandboxes.user_id, params.userId),
-          eq(agentSandboxes.status, "running"),
-        ),
-      )
-      .for("update")
-      .limit(1);
-    if (!target) {
-      throw new ElizaError(
-        "Dedicated cutover target is not healthy or does not own this personal Eliza",
-        {
-          code: "PERSONAL_DEDICATED_CUTOVER_TARGET_INVALID",
-          context: {
-            sourceAgentId: params.sourceAgentId,
-            dedicatedAgentId: params.dedicatedAgentId,
-            organizationId: params.organizationId,
-          },
-        },
-      );
-    }
-
-    const existing = readPersonalElizaCutover(
-      target.agent_config as Record<string, unknown> | null,
-    );
-    const sameCutover =
-      existing?.sourceAgentId === params.sourceAgentId &&
-      existing.cutoverToken === params.cutoverToken;
-    if (sameCutover && existing.sharedMessageCount === params.sharedMessageCount) {
-      return target;
-    }
-
-    const [updated] = await tx
-      .update(agentSandboxes)
-      .set({
-        agent_config: {
-          ...((target.agent_config as Record<string, unknown> | null) ?? {}),
-          [AGENT_PERSONAL_CUTOVER_KEY]: {
-            mode: "dedicated",
-            sourceAgentId: params.sourceAgentId,
-            conversationId: params.sourceAgentId,
-            cutoverToken: params.cutoverToken,
-            sharedMessageCount: params.sharedMessageCount,
-            activatedAt: sameCutover ? existing.activatedAt : new Date().toISOString(),
-          },
-        },
-        updated_at: new Date(),
-      })
-      .where(eq(agentSandboxes.id, target.id))
-      .returning();
-    if (!updated) {
-      throw new ElizaError("Failed to finalize personal Dedicated cutover", {
-        code: "PERSONAL_DEDICATED_CUTOVER_UPDATE_FAILED",
-        context: {
-          sourceAgentId: params.sourceAgentId,
-          dedicatedAgentId: params.dedicatedAgentId,
-        },
-      });
-    }
-    return updated;
-  });
 }
 
 /**

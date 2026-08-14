@@ -353,13 +353,7 @@ describe("shared agent messages/stream", () => {
       String(coordinatorFetch.mock.calls[0]?.[1]?.body),
     ) as Record<string, unknown>;
     expect(envelope).toMatchObject({
-      operation: "personal-stream",
-      agent: {
-        id: AGENT,
-        organization_id: ORG,
-        user_id: "user-voice",
-        execution_tier: "shared",
-      },
+      operation: "stream",
       rpc: {
         jsonrpc: "2.0",
         method: "message.send",

@@ -14,7 +14,6 @@ import {
 } from "./start-tier-upgrade";
 
 const SHARED_ID = "11111111-1111-4111-8111-111111111111";
-const PERSONAL_ID = "personal:00000000-0000-5000-8000-000000000001";
 const DEDICATED_ID = "22222222-2222-4222-8222-222222222222";
 const CLOUD_BASE = "https://api.cloud.test";
 const TOKEN = "steward-token";
@@ -37,21 +36,11 @@ function makeClient(
     },
   );
   const deleteSharedBridgeAgent = vi.fn(async () => deletion);
-  const finalizePersonalDedicatedCutover = vi.fn(async () => ({
-    runtime: "dedicated" as const,
-    apiBase: `https://${DEDICATED_ID}.cloud.test`,
-  }));
   const client = {
     startCloudAgentHandoff,
     deleteSharedBridgeAgent,
-    finalizePersonalDedicatedCutover,
   } as unknown as TierUpgradeHandoffClient;
-  return {
-    client,
-    startCloudAgentHandoff,
-    deleteSharedBridgeAgent,
-    finalizePersonalDedicatedCutover,
-  };
+  return { client, startCloudAgentHandoff, deleteSharedBridgeAgent };
 }
 
 describe("runSharedToDedicatedUpgradeHandoff", () => {
@@ -72,7 +61,7 @@ describe("runSharedToDedicatedUpgradeHandoff", () => {
     expect(outcome).toEqual({
       status: "switched",
       imported: 4,
-      sourceCleanup: "deleted-row",
+      sharedBridgeDeleted: true,
     });
     expect(onSwitch).toHaveBeenCalledWith(`https://${DEDICATED_ID}.cloud.test`);
     // The handoff must target the SHARED adapter base + canonical conversation
@@ -108,7 +97,7 @@ describe("runSharedToDedicatedUpgradeHandoff", () => {
     });
 
     expect(outcome.status).toBe("switched-empty");
-    expect(outcome.sourceCleanup).toBe("deleted-row");
+    expect(outcome.sharedBridgeDeleted).toBe(true);
     expect(deleteSharedBridgeAgent).toHaveBeenCalledTimes(1);
   });
 
@@ -129,7 +118,7 @@ describe("runSharedToDedicatedUpgradeHandoff", () => {
     expect(outcome).toEqual({
       status: "timed-out",
       imported: 0,
-      sourceCleanup: "unchanged",
+      sharedBridgeDeleted: false,
     });
     expect(deleteSharedBridgeAgent).not.toHaveBeenCalled();
   });
@@ -151,7 +140,7 @@ describe("runSharedToDedicatedUpgradeHandoff", () => {
 
     expect(outcome.status).toBe("failed");
     expect(outcome.error).toBe("shared messages read failed (HTTP 500)");
-    expect(outcome.sourceCleanup).toBe("unchanged");
+    expect(outcome.sharedBridgeDeleted).toBe(false);
     expect(deleteSharedBridgeAgent).not.toHaveBeenCalled();
   });
 
@@ -171,43 +160,7 @@ describe("runSharedToDedicatedUpgradeHandoff", () => {
 
     expect(outcome.status).toBe("switched");
     expect(outcome.imported).toBe(2);
-    expect(outcome.sourceCleanup).toBe("not-cleaned");
+    expect(outcome.sharedBridgeDeleted).toBe(false);
     expect(outcome.error).toBe("shared bridge delete failed (HTTP 500)");
-  });
-
-  it("finalizes a rowless personal cutover before switching and preserves Shared as fallback", async () => {
-    const {
-      client,
-      finalizePersonalDedicatedCutover,
-      deleteSharedBridgeAgent,
-    } = makeClient({ status: "switched", imported: 4 });
-    const onSwitch = vi.fn();
-
-    const outcome = await runSharedToDedicatedUpgradeHandoff({
-      sharedAgentId: PERSONAL_ID,
-      dedicatedAgentId: DEDICATED_ID,
-      cloudApiBase: CLOUD_BASE,
-      authToken: TOKEN,
-      client,
-      onSwitch,
-    });
-
-    expect(finalizePersonalDedicatedCutover).toHaveBeenCalledWith({
-      personalElizaId: PERSONAL_ID,
-      dedicatedAgentId: DEDICATED_ID,
-      cloudApiBase: CLOUD_BASE,
-      authToken: TOKEN,
-    });
-    expect(
-      finalizePersonalDedicatedCutover.mock.invocationCallOrder[0],
-    ).toBeLessThan(
-      onSwitch.mock.invocationCallOrder[0] ?? Number.MAX_SAFE_INTEGER,
-    );
-    expect(deleteSharedBridgeAgent).not.toHaveBeenCalled();
-    expect(outcome).toEqual({
-      status: "switched",
-      imported: 4,
-      sourceCleanup: "preserved-rowless",
-    });
   });
 });

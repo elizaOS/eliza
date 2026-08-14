@@ -379,13 +379,15 @@ function resolveStewardRefreshEndpoint(): string | undefined {
   if (!isCapacitorNativeRuntime() && !isElectrobunRuntime()) return undefined;
   const cloudBase =
     getBootConfig().cloudApiBase?.trim() || DEFAULT_DIRECT_CLOUD_BASE_URL;
+  const apiBase = resolveDirectCloudAuthApiBase(cloudBase);
   try {
-    return `${resolveDirectCloudAuthApiBase(cloudBase)}${STEWARD_REFRESH_PATH}`;
+    new URL(apiBase);
   } catch {
     // error-policy:J3 malformed cloud base URL → use the shared default
     // refresh endpoint (the documented `undefined` contract of this helper).
     return undefined;
   }
+  return `${apiBase}${STEWARD_REFRESH_PATH}`;
 }
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -1524,15 +1526,18 @@ export function useCloudState({
       // No `exp` (opaque token / device-code session) → nothing to refresh.
       if (secs === null) return;
       if (secs >= STEWARD_REFRESH_AHEAD_SECS) return;
-      // error-policy:J4 pre-emptive token refresh; a failed refresh keeps the
-      // still-valid stored token until it actually expires (the next authed
-      // call then surfaces the re-auth path). No token rotation on failure.
-      const result = await refreshCloudStewardSession({
-        endpoint: resolveStewardRefreshEndpoint(),
-      }).catch((err: unknown) => {
+      let result: Awaited<ReturnType<typeof refreshCloudStewardSession>>;
+      try {
+        result = await refreshCloudStewardSession({
+          endpoint: resolveStewardRefreshEndpoint(),
+        });
+      } catch (err: unknown) {
+        // error-policy:J4 pre-emptive token refresh; a resolution or transport
+        // failure is reported and keeps the stored token until the next authed
+        // call surfaces the re-auth path. No token rotation on failure.
         logger.warn({ err }, "[useCloudState] steward session refresh failed");
-        return null;
-      });
+        return;
+      }
       if (disposed) return;
       if (result?.token) {
         writeStoredStewardToken(result.token);

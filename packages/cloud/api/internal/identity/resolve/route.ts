@@ -10,8 +10,6 @@ import {
 } from "@/db/repositories/users";
 import { agentSandboxes } from "@/db/schemas/agent-sandboxes";
 import { failureResponse, jsonError } from "@/lib/api/cloud-worker-errors";
-import { findActivePersonalDedicatedTarget } from "@/lib/services/agent-tier-upgrade-target";
-import { personalSharedAgentId } from "@/lib/services/shared-runtime/personal-shared-agent";
 import type { AppEnv } from "@/types/cloud-worker-env";
 import { requireInternalAuth } from "../../_auth";
 
@@ -78,28 +76,12 @@ app.post("/", async (c) => {
       );
     }
 
-    const personalSourceId = personalSharedAgentId({
-      userId: user.id,
-      organizationId,
-    });
-    const personalDedicated =
-      provider === "phone"
-        ? await findActivePersonalDedicatedTarget(
-            organizationId,
-            personalSourceId,
-          )
-        : null;
-    const [legacySandbox] = personalDedicated
-      ? [personalDedicated]
-      : provider === "phone"
-        ? []
-        : await dbRead
-            .select()
-            .from(agentSandboxes)
-            .where(eq(agentSandboxes.organization_id, organizationId))
-            .orderBy(desc(agentSandboxes.created_at))
-            .limit(1);
-    const sandbox = personalDedicated ?? legacySandbox;
+    const [sandbox] = await dbRead
+      .select()
+      .from(agentSandboxes)
+      .where(eq(agentSandboxes.organization_id, organizationId))
+      .orderBy(desc(agentSandboxes.created_at))
+      .limit(1);
 
     return c.json({
       success: true,

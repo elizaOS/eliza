@@ -112,9 +112,9 @@ export interface Bindings {
   /**
    * Server-side Cartesia API key. When set, un-pinned/default cloud TTS
    * synthesizes with Cartesia Sonic (MP3 via the REST bytes endpoint, WAV via
-   * the streaming adapter for codec-less clients) and batch STT defaults to
-   * Cartesia's `/stt` ink-whisper endpoint. Unset falls back to the
-   * Kokoro/ElevenLabs TTS chain and the Whisper/ElevenLabs STT chain.
+   * the streaming adapter for codec-less clients). Batch STT uses Cartesia
+   * only when VOICE_BATCH_STT_PROVIDER=cartesia; otherwise Whisper remains the
+   * unpinned default. Unset falls back to the Kokoro/ElevenLabs TTS chain.
    */
   CARTESIA_API_KEY?: string;
   /** Overrides the default Cartesia voice id used for un-pinned requests. */
@@ -475,7 +475,6 @@ export interface Bindings {
  */
 export interface AuthedUser {
   id: string;
-  created_at?: Date | string;
   email?: string | null;
   /** Whether `email` is verified — gates the @elizalabs.ai super_admin grant. */
   email_verified?: boolean | null;

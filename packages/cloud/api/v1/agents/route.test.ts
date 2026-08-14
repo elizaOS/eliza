@@ -15,6 +15,19 @@ const findOrCreateUserByWalletAddress = mock(async (walletAddress: string) => ({
     wallet_address: walletAddress,
   },
 }));
+type InitialCreditGrantMockResult = {
+  initialCreditsGranted: boolean;
+  initialFreeCreditsUsd: number;
+  welcomeBonusWithheld?: boolean;
+  welcomeBonusWithheldReason?: "ip_daily_cap" | "count_unavailable";
+  welcomeBonusWithheldMessage?: string;
+};
+const grantInitialCreditsToWalletAccount = mock(
+  async (): Promise<InitialCreditGrantMockResult> => ({
+    initialCreditsGranted: true,
+    initialFreeCreditsUsd: 5,
+  }),
+);
 type CreditGateResult = { allowed: boolean; balance: number; error?: string };
 
 const checkAgentCreditGate = mock(
@@ -87,7 +100,9 @@ mock.module("@/lib/auth/service-key-hono-worker", () => ({
 }));
 
 mock.module("@/lib/services/wallet-signup", () => ({
+  INITIAL_FREE_CREDITS: 5,
   findOrCreateUserByWalletAddress,
+  grantInitialCreditsToWalletAccount,
 }));
 
 mock.module("@/lib/services/agent-billing-gate", () => ({
@@ -147,6 +162,7 @@ describe("service agent provisioning route", () => {
   beforeEach(() => {
     requireServiceKey.mockClear();
     findOrCreateUserByWalletAddress.mockClear();
+    grantInitialCreditsToWalletAccount.mockClear();
     checkAgentCreditGate.mockClear();
     checkAgentCreditGate.mockResolvedValue({
       allowed: true,
@@ -178,7 +194,7 @@ describe("service agent provisioning route", () => {
     enqueueAgentProvision.mockClear();
   });
 
-  test("creates a funded wallet-owned cloud agent without minting signup credit", async () => {
+  test("creates a wallet-owned cloud agent and returns account/free-credit metadata", async () => {
     const response = await app.fetch(
       new Request("https://api.example.test/", {
         method: "POST",
@@ -260,15 +276,19 @@ describe("service agent provisioning route", () => {
         organizationId: "agent-wallet-org",
         userId: "agent-wallet-user",
         isNewAccount: true,
-        initialCreditsGranted: false,
-        initialFreeCreditsUsd: 0,
-        welcomeBonusWithheld: false,
+        initialFreeCreditsUsd: 5,
       },
     });
     expect(requireServiceKey).toHaveBeenCalledTimes(1);
     expect(findOrCreateUserByWalletAddress).toHaveBeenCalledWith(
       "0x0000000000000000000000000000000000000001",
+      { grantInitialCredits: false },
     );
+    expect(grantInitialCreditsToWalletAccount).toHaveBeenCalledWith({
+      organizationId: "agent-wallet-org",
+      walletAddress: "0x0000000000000000000000000000000000000001",
+      requireInitialCredits: true,
+    });
     expect(checkAgentCreditGate).toHaveBeenCalledWith("agent-wallet-org");
     expect(createCharacter).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -448,7 +468,7 @@ describe("service agent provisioning route", () => {
         agentConfig: expect.objectContaining({
           billing: {
             mode: "owner_credits",
-            initialReserveUsd: 0,
+            initialReserveUsd: 5,
           },
           access: expect.objectContaining({
             guestTokenThreshold: 1000,
@@ -638,6 +658,49 @@ describe("service agent provisioning route", () => {
     expect(enqueueAgentProvision).not.toHaveBeenCalled();
   });
 
+  test("cleans up the reserved token character when required wallet free-credit grant fails", async () => {
+    grantInitialCreditsToWalletAccount.mockRejectedValueOnce(
+      new Error("initial credit grant failed"),
+    );
+
+    const response = await app.fetch(
+      new Request("https://api.example.test/", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "X-Service-Key": "svc",
+        },
+        body: JSON.stringify({
+          tokenContractAddress: "0x0000000000000000000000000000000000000009",
+          chain: "bsc",
+          chainId: 56,
+          tokenName: "Waifu Smoke",
+          tokenTicker: "WSMOKE",
+          launchType: "native",
+          character: { name: "Smoke Agent" },
+          account: {
+            primaryWalletAddress: "0x0000000000000000000000000000000000000001",
+            chainType: "evm",
+          },
+          billing: {
+            mode: "owner_credits",
+            initialReserveUsd: 5,
+          },
+          container: {
+            image: "registry.example.test/waifu-agent:latest",
+          },
+        }),
+      }),
+      { WAIFU_SERVICE_KEY: "svc" },
+    );
+
+    expect(response.status).toBe(500);
+    expect(createCharacter).toHaveBeenCalledTimes(1);
+    expect(deleteCharacter).toHaveBeenCalledWith("character-1");
+    expect(createAgent).not.toHaveBeenCalled();
+    expect(enqueueAgentProvision).not.toHaveBeenCalled();
+  });
+
   test("does not create cloud resources when the agent wallet org has insufficient credits", async () => {
     findOrCreateUserByWalletAddress.mockResolvedValueOnce({
       isNewAccount: false,
@@ -697,6 +760,70 @@ describe("service agent provisioning route", () => {
     expect(checkAgentCreditGate).toHaveBeenCalledWith("agent-wallet-org");
     expect(checkProvisioningWorkerHealth).toHaveBeenCalledTimes(1);
     expect(createCharacter).toHaveBeenCalledTimes(1);
+    expect(deleteCharacter).toHaveBeenCalledWith("character-1");
+    expect(createAgent).not.toHaveBeenCalled();
+    expect(enqueueAgentProvision).not.toHaveBeenCalled();
+  });
+
+  test("explains insufficient credits after a same-session welcome bonus withhold", async () => {
+    grantInitialCreditsToWalletAccount.mockResolvedValueOnce({
+      initialCreditsGranted: false,
+      initialFreeCreditsUsd: 0,
+      welcomeBonusWithheld: true,
+      welcomeBonusWithheldReason: "ip_daily_cap",
+      welcomeBonusWithheldMessage:
+        "Welcome credit unavailable because this network reached the daily free-credit limit. Add funds to start an agent.",
+    });
+    checkAgentCreditGate.mockResolvedValueOnce({
+      allowed: false,
+      balance: 0,
+      error: "Insufficient credits",
+    });
+
+    const response = await app.fetch(
+      new Request("https://api.example.test/", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "X-Service-Key": "svc",
+        },
+        body: JSON.stringify({
+          tokenContractAddress: "0x0000000000000000000000000000000000000009",
+          chain: "bsc",
+          chainId: 56,
+          tokenName: "Waifu Smoke",
+          tokenTicker: "WSMOKE",
+          launchType: "native",
+          character: { name: "Smoke Agent" },
+          account: {
+            primaryWalletAddress: "0x0000000000000000000000000000000000000001",
+            chainType: "evm",
+          },
+          billing: {
+            mode: "owner_credits",
+            initialReserveUsd: 5,
+          },
+          container: {
+            image: "registry.example.test/waifu-agent:latest",
+          },
+        }),
+      }),
+      { WAIFU_SERVICE_KEY: "svc" },
+    );
+
+    expect(response.status).toBe(402);
+    await expect(response.json()).resolves.toMatchObject({
+      success: false,
+      code: "insufficient_credits",
+      error:
+        "Welcome credit unavailable because this network reached the daily free-credit limit. Add funds to start an agent.",
+      requiredBalance: 0.1,
+      currentBalance: 0,
+      welcomeBonusWithheld: true,
+      welcomeBonusWithheldReason: "ip_daily_cap",
+    });
+    expect(grantInitialCreditsToWalletAccount).toHaveBeenCalledTimes(1);
+    expect(checkAgentCreditGate).toHaveBeenCalledWith("agent-wallet-org");
     expect(deleteCharacter).toHaveBeenCalledWith("character-1");
     expect(createAgent).not.toHaveBeenCalled();
     expect(enqueueAgentProvision).not.toHaveBeenCalled();
@@ -845,7 +972,9 @@ describe("service agent provisioning route", () => {
     });
     expect(findOrCreateUserByWalletAddress).toHaveBeenCalledWith(
       "0x0000000000000000000000000000000000000001",
+      { grantInitialCredits: false },
     );
+    expect(grantInitialCreditsToWalletAccount).not.toHaveBeenCalled();
     expect(checkAgentCreditGate).not.toHaveBeenCalled();
     expect(createAgent).not.toHaveBeenCalled();
     expect(enqueueAgentProvision).not.toHaveBeenCalled();

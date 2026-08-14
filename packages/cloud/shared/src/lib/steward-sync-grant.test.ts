@@ -1,4 +1,17 @@
-/** Proves Steward account creation starts at $0 without touching the credit ledger. */
+/**
+ * Tests for the signup initial-credits grant fallback in syncUserFromSteward.
+ *
+ * When a brand-new Steward user signs up (branch 5: create user + org), the
+ * org is created with a zero balance and the welcome bonus is granted via
+ * creditsService.addCredits (which writes a credit-ledger row AND the balance).
+ * If that ledger write fails, the grant must NOT be converted into an unledgered
+ * direct balance write: the code logs the failure, rolls back the organization,
+ * and propagates the error so the signup can retry cleanly.
+ *
+ * These tests drive the real syncUserFromSteward through to branch 5 with every
+ * touched service mocked, then assert the grant-vs-fallback decision in
+ * isolation (#8427 / cloud-launch tracker E4).
+ */
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 
@@ -135,33 +148,73 @@ const baseParams = {
   name: "alice",
 };
 
-describe("syncUserFromSteward — zero-credit account creation", () => {
+describe("syncUserFromSteward — initial-credits grant fallback", () => {
   beforeEach(() => {
     addCreditsCalls.length = 0;
     orgUpdateCalls.length = 0;
     orgDeleteCalls.length = 0;
     loggerErrorCalls.length = 0;
+    // Default to the happy path; failure tests override this.
     addCreditsImpl = async (params) => {
       addCreditsCalls.push(params);
       return { success: true };
     };
+    // Pin the grant amount so String(initialCredits) === "5".
+    process.env.INITIAL_FREE_CREDITS = "5";
   });
 
-  test("creates the account without a grant, balance write, or withheld state", async () => {
+  test("happy path: addCredits succeeds → no fallback update, no error logged", async () => {
     const { syncUserFromSteward } = await import("./steward-sync");
 
     const result = await syncUserFromSteward(baseParams);
 
-    expect(addCreditsCalls).toHaveLength(0);
+    // The grant went through the ledger.
+    expect(addCreditsCalls).toHaveLength(1);
+    expect(addCreditsCalls[0]).toMatchObject({
+      organizationId: "org-new-1",
+      amount: 5,
+      metadata: { type: "initial_free_credits", source: "signup" },
+    });
+    // No direct-balance fallback write for the grant.
     expect(
       orgUpdateCalls.filter((c) => (c.data as { credit_balance?: string }).credit_balance),
     ).toHaveLength(0);
-    expect(orgDeleteCalls).toHaveLength(0);
-    expect(loggerErrorCalls).toHaveLength(0);
+    // No grant failure surfaced.
+    expect(loggerErrorCalls.some((c) => c.message.includes("addCredits failed"))).toBe(false);
     expect(result).toMatchObject({
       ...finalUserWithOrg,
-      initialCreditsGranted: false,
-      initialFreeCreditsUsd: 0,
+      initialCreditsGranted: true,
+      initialFreeCreditsUsd: 5,
     });
+  });
+
+  test("ledger failure: rolls back the org and does not write an unledgered balance", async () => {
+    addCreditsImpl = async (params) => {
+      addCreditsCalls.push(params);
+      throw new Error("ledger write failed");
+    };
+
+    const { syncUserFromSteward } = await import("./steward-sync");
+
+    await expect(syncUserFromSteward(baseParams)).rejects.toThrow("ledger write failed");
+
+    // addCredits was attempted.
+    expect(addCreditsCalls).toHaveLength(1);
+
+    // No fallback wrote the balance directly as String(initialCredits).
+    const directBalanceUpdate = orgUpdateCalls.find(
+      (c) => (c.data as { credit_balance?: string }).credit_balance !== undefined,
+    );
+    expect(directBalanceUpdate).toBeUndefined();
+    expect(orgDeleteCalls).toEqual(["org-new-1"]);
+
+    const grantError = loggerErrorCalls.find((c) =>
+      c.message.includes("addCredits failed for new org"),
+    );
+    expect(grantError).toBeDefined();
+    // The failure detail is inlined in the message string — Workers Logs drops
+    // logger context objects, which is how this failure stayed invisible.
+    expect(grantError!.message).toContain("org-new-1");
+    expect(grantError!.message).toContain("ledger write failed");
   });
 });

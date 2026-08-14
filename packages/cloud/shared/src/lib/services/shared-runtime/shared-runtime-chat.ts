@@ -7,6 +7,7 @@
  */
 
 import crypto from "node:crypto";
+import type { AgentSandbox } from "../../../db/repositories/agent-sandboxes";
 import type { UserCharacter } from "../../../db/repositories/characters";
 import {
   InsufficientCreditsError as InsufficientCreditsApiError,
@@ -54,22 +55,9 @@ import {
   type SharedTurnMessage,
 } from "./run-shared-agent-turn";
 import { projectSharedAgentCharacter } from "./shared-agent-character";
-import {
-  capabilityWallActionResult,
-  resolveSharedCapabilityWall,
-  type SharedCapabilityWall,
-} from "./shared-capability-wall";
-import { navIntentActionResult, type SharedNavIntent } from "./shared-nav-intent";
-import type { SharedRuntimeAgent } from "./shared-runtime-agent";
+import { navIntentActionResult } from "./shared-nav-intent";
 import { SharedRuntimeCacheWarmingError, SharedTurnConflictError } from "./shared-runtime-errors";
 import { MAX_HISTORY_MESSAGES } from "./shared-runtime-history-policy";
-import {
-  executeMeteredSharedWebSearch,
-  resolveSharedWebSearchQuery,
-  type SharedWebSearchContext,
-  SharedWebSearchRateLimitError,
-  webSearchActionResult,
-} from "./shared-web-search";
 
 export { MAX_HISTORY_MESSAGES } from "./shared-runtime-history-policy";
 
@@ -79,53 +67,6 @@ const linkedCharacterMemoryCache = new InMemoryLRUCache<UserCharacter>(256, 60_0
 export type BridgeExecutionContext = {
   waitUntil(promise: Promise<unknown>): void;
 };
-
-function turnActionResults(turn: {
-  navIntent?: SharedNavIntent;
-  capabilityWall?: SharedCapabilityWall;
-  webSearch?: SharedWebSearchContext;
-}): unknown[] | undefined {
-  if (turn.capabilityWall) {
-    return [capabilityWallActionResult(turn.capabilityWall)];
-  }
-  if (turn.navIntent) return [navIntentActionResult(turn.navIntent)];
-  if (turn.webSearch) return [webSearchActionResult(turn.webSearch)];
-  return undefined;
-}
-
-function isDeterministicFreeTurn(turn: {
-  navIntent?: SharedNavIntent;
-  capabilityWall?: SharedCapabilityWall;
-}): boolean {
-  return Boolean(turn.navIntent || turn.capabilityWall);
-}
-
-async function searchContextForTurn(
-  agent: SharedRuntimeAgent,
-  text: string,
-  executionCtx: BridgeExecutionContext | undefined,
-): Promise<SharedWebSearchContext | undefined> {
-  if (resolveSharedCapabilityWall(text)) return undefined;
-  const query = resolveSharedWebSearchQuery(text);
-  if (!query) return undefined;
-  try {
-    return await executeMeteredSharedWebSearch({
-      organizationId: agent.organization_id,
-      query,
-      executionCtx,
-    });
-  } catch (error) {
-    if (error instanceof OrgRateLimitCacheNotReadyError) {
-      throw new SharedRuntimeCacheWarmingError(
-        "Shared web search meter is warming. Retry shortly.",
-      );
-    }
-    if (error instanceof SharedWebSearchRateLimitError) {
-      throw new RateLimitError(error.message, error.retryAfterSeconds);
-    }
-    throw error;
-  }
-}
 
 export interface SharedRuntimeHistoryStore {
   load(agentId: string, channelId: string): Promise<SharedTurnMessage[]>;
@@ -180,8 +121,6 @@ export interface SharedRuntimeChatOptions {
   executionCtx?: BridgeExecutionContext;
   historyStore?: SharedRuntimeHistoryStore;
   turnClaims?: SharedTurnClaimStore;
-  /** Who funds provider work. Personal Shared chat is platform-funded. */
-  funding?: "organization-credits" | "platform";
 }
 
 export {
@@ -321,7 +260,7 @@ async function mergeHistory(
 }
 
 async function characterFor(
-  agent: SharedRuntimeAgent,
+  agent: AgentSandbox,
   options: {
     cacheOnly: boolean;
     executionCtx?: BridgeExecutionContext;
@@ -429,14 +368,13 @@ interface BillingTurn {
 }
 
 async function admitTurn(
-  agent: SharedRuntimeAgent,
+  agent: AgentSandbox,
   character: SharedAgentCharacter,
   history: SharedTurnMessage[],
   text: string,
   roomId: string,
   executionCtx?: BridgeExecutionContext,
   turnKey?: string,
-  funding: SharedRuntimeChatOptions["funding"] = "organization-credits",
 ): Promise<BillingTurn | null> {
   const model = resolveSharedAgentTurnModel(character.model);
   if (!model) return null;
@@ -467,7 +405,7 @@ async function admitTurn(
   };
   let rateLimited: Response | null;
   let admissionSnapshot: InferenceAdmissionSnapshot | undefined;
-  if (executionCtx && funding === "organization-credits") {
+  if (executionCtx) {
     try {
       admissionSnapshot = await getInferenceAdmissionSnapshotCacheOnly(
         agent.organization_id,
@@ -512,10 +450,6 @@ async function admitTurn(
       "Rate-limit authorization is unavailable. Retry shortly.",
     );
   }
-  // Account-native Shared is a platform service. It keeps the same abuse
-  // limiter and durable turn identity, but never reserves or debits the user's
-  // balance; Dedicated remains the explicit paid-compute boundary.
-  if (funding === "platform") return null;
   let admission: Awaited<ReturnType<typeof admitOrganizationInference>>;
   try {
     admission = await admitOrganizationInference({
@@ -545,7 +479,7 @@ async function admitTurn(
 }
 
 async function finishBilling(
-  agent: SharedRuntimeAgent,
+  agent: AgentSandbox,
   billing: BillingTurn,
   reply: string,
   prompt: string,
@@ -595,7 +529,7 @@ async function finishBilling(
 }
 
 async function settleAmbiguousProviderWork(
-  agent: SharedRuntimeAgent,
+  agent: AgentSandbox,
   billing: BillingTurn,
   reason: string,
 ): Promise<void> {
@@ -614,7 +548,7 @@ async function settleAmbiguousProviderWork(
 }
 
 function settleAmbiguousProviderWorkOffPath(
-  agent: SharedRuntimeAgent,
+  agent: AgentSandbox,
   billing: BillingTurn | null,
   executionCtx: BridgeExecutionContext | undefined,
   reason: string,
@@ -634,7 +568,7 @@ function isProvablyZeroProviderFailure(error: unknown): boolean {
 }
 
 function settleFailedProviderWorkOffPath(
-  agent: SharedRuntimeAgent,
+  agent: AgentSandbox,
   billing: BillingTurn | null,
   executionCtx: BridgeExecutionContext | undefined,
   error: unknown,
@@ -666,14 +600,14 @@ export class SharedRuntimeChatService {
   }
 
   async getCharacter(
-    agent: SharedRuntimeAgent,
+    agent: AgentSandbox,
     executionCtx: BridgeExecutionContext,
   ): Promise<SharedAgentCharacter> {
     return await characterFor(agent, { cacheOnly: true, executionCtx });
   }
 
   async bridge(
-    agent: SharedRuntimeAgent,
+    agent: AgentSandbox,
     rpc: BridgeRequest,
     options: SharedRuntimeChatOptions = {},
   ): Promise<BridgeResponse> {
@@ -735,7 +669,6 @@ export class SharedRuntimeChatService {
         roomId,
         options.executionCtx,
         claimKey,
-        options.funding,
       );
     } catch (error) {
       // error-policy:J1 translate the money boundary to the JSON-RPC protocol.
@@ -751,15 +684,6 @@ export class SharedRuntimeChatService {
       }
       throw error;
     }
-    let webSearch: SharedWebSearchContext | undefined;
-    try {
-      webSearch = resolveSharedAgentTurnModel(character.model)
-        ? await searchContextForTurn(agent, text, options.executionCtx)
-        : undefined;
-    } catch (error) {
-      await billing?.settle(0);
-      throw error;
-    }
 
     const messageIds = turnMessageIds(agent.id, roomId, rpc);
     let turn: RunSharedAgentTurnResult;
@@ -770,7 +694,6 @@ export class SharedRuntimeChatService {
         message: text,
         messageIds,
         onProviderDispatch: billing?.markProviderDispatched,
-        webSearch,
       });
     } catch (error) {
       await settleFailedProviderWorkOffPath(
@@ -786,8 +709,7 @@ export class SharedRuntimeChatService {
     let turnCompleted = false;
     let turnIsProvablyFree = false;
     try {
-      turnIsProvablyFree = turn.degraded || isDeterministicFreeTurn(turn);
-      const actionResults = turnActionResults(turn);
+      turnIsProvablyFree = turn.degraded || Boolean(turn.navIntent);
       const result: SharedTurnTerminalResult = {
         text: turn.reply,
         messageId: messageIds.assistant,
@@ -798,7 +720,7 @@ export class SharedRuntimeChatService {
         degraded: turn.degraded,
         runtime: "shared",
         transport: "shared-runtime",
-        ...(actionResults ? { actionResults } : {}),
+        ...(turn.navIntent ? { actionResults: [navIntentActionResult(turn.navIntent)] } : {}),
       };
       if (turn.degraded) {
         await billing?.settle(0);
@@ -818,7 +740,7 @@ export class SharedRuntimeChatService {
         if (claimKey && options.turnClaims) {
           await options.turnClaims.complete(claimKey, result);
         }
-        if (isDeterministicFreeTurn(turn)) {
+        if (turn.navIntent) {
           await billing?.settle(0);
         } else if (billing) {
           await settleOffResponsePath(options.executionCtx, () =>
@@ -850,7 +772,7 @@ export class SharedRuntimeChatService {
   }
 
   async stream(
-    agent: SharedRuntimeAgent,
+    agent: AgentSandbox,
     rpc: BridgeRequest,
     options: SharedRuntimeChatOptions = {},
   ): Promise<Response> {
@@ -899,7 +821,6 @@ export class SharedRuntimeChatService {
         roomId,
         options.executionCtx,
         claimKey,
-        options.funding,
       );
     } catch (error) {
       // error-policy:J1 translate the money boundary to the HTTP stream boundary.
@@ -908,15 +829,6 @@ export class SharedRuntimeChatService {
           `Insufficient credits. Required: $${error.required.toFixed(4)}, Available: $${error.available.toFixed(4)}`,
         );
       }
-      throw error;
-    }
-    let webSearch: SharedWebSearchContext | undefined;
-    try {
-      webSearch = resolveSharedAgentTurnModel(character.model)
-        ? await searchContextForTurn(agent, text, options.executionCtx)
-        : undefined;
-    } catch (error) {
-      await billing?.settle(0);
       throw error;
     }
     const messageIds = turnMessageIds(agent.id, roomId, rpc);
@@ -942,7 +854,6 @@ export class SharedRuntimeChatService {
         message: text,
         messageIds,
         onProviderDispatch: billing?.markProviderDispatched,
-        webSearch,
       });
     } catch (error) {
       detachRequestAbort();
@@ -1017,7 +928,7 @@ export class SharedRuntimeChatService {
     const settleInterruptedTurn = async (reason: string): Promise<void> => {
       if (terminalSettlementStarted) return;
       terminalSettlementStarted = true;
-      if (isDeterministicFreeTurn(turn)) {
+      if (turn.navIntent) {
         await billing?.settle(0);
         return;
       }
@@ -1089,7 +1000,6 @@ export class SharedRuntimeChatService {
               );
               continue;
             }
-            const actionResults = turnActionResults(turn);
             await finalizeMessages(finalReply, false, async () => {
               // Durable claim completion before the done frame: a lost/dropped
               // terminal frame replays this result on retry instead of
@@ -1105,10 +1015,12 @@ export class SharedRuntimeChatService {
                   degraded: false,
                   runtime: "shared",
                   transport: "shared-runtime",
-                  ...(actionResults ? { actionResults } : {}),
+                  ...(turn.navIntent
+                    ? { actionResults: [navIntentActionResult(turn.navIntent)] }
+                    : {}),
                 });
               }
-              if (isDeterministicFreeTurn(turn)) {
+              if (turn.navIntent) {
                 terminalSettlementStarted = true;
                 await billing?.settle(0);
               } else if (billing) {
@@ -1118,13 +1030,13 @@ export class SharedRuntimeChatService {
                 );
               }
             });
-            const done = actionResults
+            const done = turn.navIntent
               ? {
                   messageId: messageIds.assistant,
                   userMessageId: messageIds.user,
                   text: finalReply,
                   fullText: finalReply,
-                  actionResults,
+                  actionResults: [navIntentActionResult(turn.navIntent)],
                 }
               : {
                   messageId: messageIds.assistant,

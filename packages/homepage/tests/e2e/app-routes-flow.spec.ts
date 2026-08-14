@@ -325,11 +325,11 @@ test("connected page exercises account menu, copy controls, link-phone form, and
   await expect(page).toHaveURL(/\/get-started\?method=discord&link=true/);
 });
 
-test("landing leads with iMessage and keeps secondary channels available", async ({
+test("landing page renders its hero and messaging entrypoints", async ({
   context,
   page,
 }) => {
-  await context.grantPermissions(["clipboard-write"]);
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
   await page.goto("/");
 
   await expect(
@@ -340,51 +340,35 @@ test("landing leads with iMessage and keeps secondary channels available", async
   await expect(textCta).toBeVisible();
   await textCta.click();
   await expect(page.getByRole("status")).toHaveText("Phone number copied");
+  await expect
+    .poll(() => page.evaluate(() => navigator.clipboard.readText()))
+    .toBe("+18087881821");
+  await page.waitForTimeout(2_250);
+  await expect(page.getByRole("status")).toHaveText("Phone number copied");
   await expect(page.getByText("+1 (808) 788-1821")).toHaveCount(0);
   await expect(page.getByRole("link", { name: "Call" })).toHaveAttribute(
     "href",
     "tel:+18087881821",
   );
+  // Every alternate channel is reachable with a real deep link.
+  const channels = page.locator(".landing-hero-actions");
   await expect(
-    page.locator(".landing-secondary-channels .landing-channel"),
-  ).toHaveCount(3);
+    channels.getByRole("link", { name: /Telegram/ }),
+  ).toHaveAttribute("href", /^https:\/\/t\.me\//);
+  await expect(channels.getByRole("link", { name: /Discord/ })).toHaveAttribute(
+    "href",
+    /^https:\/\/discord\.com\//,
+  );
   await expect(
-    page.getByRole("link", { name: "Message Eliza on Telegram" }),
-  ).toBeVisible();
-  await expect(
-    page.getByRole("link", { name: "Message Eliza on WhatsApp" }),
-  ).toBeVisible();
-  await expect(
-    page.getByRole("link", { name: "Message Eliza on Discord" }),
-  ).toHaveAttribute("href", "discord://-/users/1468649258654630063");
-  const channelRow = await page
-    .locator(".landing-secondary-channels")
-    .boundingBox();
-  expect(channelRow).not.toBeNull();
-
-  const keyboard = page.locator(".landing-keyboard");
-  await expect(keyboard).toHaveAttribute("data-open", "true", {
-    timeout: 20_000,
-  });
-  const phoneInsets = await page.evaluate(() => {
-    const composer = document.querySelector(".landing-phone-composer");
-    const keyboard = document.querySelector(".landing-keyboard");
-    const thread = document.querySelector(".landing-phone-thread");
-    if (!composer || !keyboard || !thread) throw new Error("Phone UI missing");
-    return {
-      composerToKeyboard:
-        keyboard.getBoundingClientRect().top -
-        composer.getBoundingClientRect().bottom,
-      threadMask: getComputedStyle(thread).maskImage,
-    };
-  });
-  expect(phoneInsets.composerToKeyboard).toBeGreaterThanOrEqual(7);
-  expect(phoneInsets.threadMask).toContain("linear-gradient");
+    channels.getByRole("link", { name: /WhatsApp/ }),
+  ).toHaveAttribute("href", /^https:\/\/wa\.me\//);
 });
 
 test("landing keeps content reachable on a small viewport", async ({
+  context,
   page,
 }) => {
+  await context.grantPermissions(["clipboard-write"]);
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/");
   await waitForLandingIntro(page);
@@ -399,4 +383,31 @@ test("landing keeps content reachable on a small viewport", async ({
   const composer = page.locator(".landing-phone-composer");
   await composer.scrollIntoViewIfNeeded();
   await expect(composer).toBeVisible();
+
+  await page.getByRole("button", { name: "Message Eliza" }).click();
+  await expect(page.getByRole("status")).toHaveText("Phone number copied");
+  await page.waitForTimeout(2_250);
+  await expect(page.getByRole("status")).toHaveText("Phone number copied");
+});
+
+test("landing keeps clipboard rejection visible", async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: {
+        writeText: () =>
+          Promise.reject(new DOMException("denied", "NotAllowedError")),
+      },
+    });
+  });
+  await page.goto("/");
+
+  await page.getByRole("button", { name: "Message Eliza" }).click();
+  await expect(page.getByRole("alert")).toHaveText(
+    "Couldn't copy the phone number",
+  );
+  await page.waitForTimeout(2_250);
+  await expect(page.getByRole("alert")).toHaveText(
+    "Couldn't copy the phone number",
+  );
 });
