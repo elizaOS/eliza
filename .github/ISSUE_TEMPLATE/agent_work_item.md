@@ -13,7 +13,7 @@ assignees: ""
 - Coordination Discussion:
 - Suggested lane tag:
 
-## Contribution Provenance
+## Contribution provenance
 
 <!--
 The rows below default to a human-only issue and are valid as-is. If AI helped
