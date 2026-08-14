@@ -8,6 +8,10 @@
 import { hostname } from "node:os";
 import { serve } from "@hono/node-server";
 import { Hono } from "hono";
+import {
+  createDiscordPublicKeyResolver,
+  handleDiscordEventWebhook,
+} from "./discord-event-webhook";
 import { GatewayManager } from "./gateway-manager";
 import { logger } from "./logger";
 
@@ -56,6 +60,36 @@ const gatewayManager = new GatewayManager({
   redisUrl: process.env.REDIS_URL ?? process.env.KV_REST_API_URL,
   redisToken: process.env.KV_REST_API_TOKEN,
   project,
+});
+
+const elizaAppBotToken = process.env.ELIZA_APP_DISCORD_BOT_TOKEN?.trim();
+const elizaAppApplicationId =
+  process.env.ELIZA_APP_DISCORD_APPLICATION_ID?.trim() ?? "1474591626759376967";
+const resolveDiscordPublicKey = elizaAppBotToken
+  ? createDiscordPublicKeyResolver({
+      botToken: elizaAppBotToken,
+      configuredPublicKey: process.env.ELIZA_APP_DISCORD_PUBLIC_KEY,
+    })
+  : null;
+
+app.post("/discord/event-webhook", async (c) => {
+  if (!elizaAppBotToken || !resolveDiscordPublicKey) {
+    return c.json({ error: "Discord app bot is not configured" }, 503);
+  }
+  try {
+    return await handleDiscordEventWebhook(c.req.raw, {
+      applicationId: elizaAppApplicationId,
+      botToken: elizaAppBotToken,
+      getPublicKey: resolveDiscordPublicKey,
+    });
+  } catch (error) {
+    // error-policy:J1 The HTTP webhook boundary acknowledges only completed
+    // delivery so Discord retries transient API failures.
+    logger.error("Discord application event webhook failed", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return c.json({ error: "Discord webhook processing failed" }, 502);
+  }
 });
 
 // Liveness check - is the pod alive and should NOT be restarted?
