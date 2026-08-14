@@ -7,6 +7,7 @@ import {
   isCloudAuthHandoffSurface,
   publishCloudAuthComplete,
   subscribeCloudAuthComplete,
+  subscribeCloudAuthCompleteViaOpener,
 } from "./cloud-auth-complete-signal";
 
 let originalName = "";
@@ -81,6 +82,92 @@ describe("publish / subscribe", () => {
   it("publish and subscribe are safe no-ops or callable without throw", () => {
     const unsub = subscribeCloudAuthComplete(() => {});
     expect(() => publishCloudAuthComplete("sess-bc")).not.toThrow();
+    expect(() => unsub()).not.toThrow();
+  });
+});
+
+describe("subscribeCloudAuthCompleteViaOpener", () => {
+  it("returns an unsubscribe function that does not throw", () => {
+    const unsub = subscribeCloudAuthCompleteViaOpener("sess-1", () => {});
+    expect(typeof unsub).toBe("function");
+    expect(() => unsub()).not.toThrow();
+  });
+
+  it("calls the callback when a matching postMessage is received from opener", async () => {
+    const callback = vi.fn();
+    const unsub = subscribeCloudAuthCompleteViaOpener("sess-1", callback);
+
+    // Simulate a postMessage from the opener (cross-origin, so no origin check here)
+    const event = new MessageEvent("message", {
+      data: {
+        type: "eliza-cloud-auth-complete",
+        sessionId: "sess-1",
+      },
+    });
+    window.dispatchEvent(event);
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(callback).toHaveBeenCalledWith({
+      type: "eliza-cloud-auth-complete",
+      sessionId: "sess-1",
+    });
+    unsub();
+  });
+
+  it("ignores messages with mismatched session ID", async () => {
+    const callback = vi.fn();
+    const unsub = subscribeCloudAuthCompleteViaOpener("sess-1", callback);
+
+    const event = new MessageEvent("message", {
+      data: {
+        type: "eliza-cloud-auth-complete",
+        sessionId: "sess-2",
+      },
+    });
+    window.dispatchEvent(event);
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(callback).not.toHaveBeenCalled();
+    unsub();
+  });
+
+  it("ignores non-matching message types", async () => {
+    const callback = vi.fn();
+    const unsub = subscribeCloudAuthCompleteViaOpener("sess-1", callback);
+
+    const event = new MessageEvent("message", {
+      data: {
+        type: "other-message",
+        sessionId: "sess-1",
+      },
+    });
+    window.dispatchEvent(event);
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(callback).not.toHaveBeenCalled();
+    unsub();
+  });
+
+  it("does not call callback after unsubscribe", async () => {
+    const callback = vi.fn();
+    const unsub = subscribeCloudAuthCompleteViaOpener("sess-1", callback);
+    unsub();
+
+    const event = new MessageEvent("message", {
+      data: {
+        type: "eliza-cloud-auth-complete",
+        sessionId: "sess-1",
+      },
+    });
+    window.dispatchEvent(event);
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(callback).not.toHaveBeenCalled();
+  });
+
+  it("handles empty session ID gracefully", () => {
+    const callback = vi.fn();
+    const unsub = subscribeCloudAuthCompleteViaOpener("", callback);
     expect(() => unsub()).not.toThrow();
   });
 });

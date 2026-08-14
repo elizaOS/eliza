@@ -446,6 +446,19 @@ export function useCloudState({
     string | null
   >(null);
   /**
+   * True while polling for device-code / CLI login completion. This state
+   * separates the polling lifecycle from the initial login-busy state, so UI
+   * can show contextual "Waiting for sign-in..." messaging while the device
+   * populates its credentials in the auth flow (browser OAuth, passkey entry,
+   * etc.). Cleared when polling stops (authenticated, errored, timed out).
+   *
+   * The renderer uses this to show a different message or loading indicator
+   * in login buttons / status displays while the opener waits for the auth
+   * surface to complete, distinguishing this from the setup phase.
+   */
+  const [elizaCloudLoginWaitingForSignIn, setElizaCloudLoginWaitingForSignIn] =
+    useState(false);
+  /**
    * Verification URL returned by `POST /api/cloud/login`, shown to the user
    * as a manual fallback while the device-code flow is awaiting completion.
    *
@@ -920,6 +933,9 @@ export function useCloudState({
         // open without crashing but never surface a usable window.
         if (resp.browserUrl) {
           setElizaCloudLoginFallbackUrl(resp.browserUrl);
+          // Start polling — set "waiting for sign-in" state so UI can show
+          // contextual messaging while the auth surface populates credentials.
+          setElizaCloudLoginWaitingForSignIn(true);
           if (prePoppedWindow) {
             navigatePreOpenedWindow(prePoppedWindow, resp.browserUrl, {
               preserveOpener: true,
@@ -953,6 +969,8 @@ export function useCloudState({
           removeCloudAuthMessageListener();
           elizaCloudLoginBusyRef.current = false;
           setElizaCloudLoginBusy(false);
+          // Clear the waiting-for-sign-in state when polling stops.
+          setElizaCloudLoginWaitingForSignIn(false);
           // Clear the manual-link fallback once the device-code session is
           // no longer active — the URL is single-use and showing a stale
           // link after timeout / cancellation is misleading.
@@ -1169,6 +1187,8 @@ export function useCloudState({
             lastError ??
               "Eliza Cloud login did not finish. Please sign in again.",
           );
+          // Clear waiting state when polling completes (success or timeout).
+          setElizaCloudLoginWaitingForSignIn(false);
         }
       } catch (err) {
         if (!cancelled) {
@@ -1177,6 +1197,7 @@ export function useCloudState({
               ? err.message
               : "Eliza Cloud login did not finish. Please sign in again.",
           );
+          setElizaCloudLoginWaitingForSignIn(false);
         }
       } finally {
         if (!cancelled) {
@@ -1592,6 +1613,8 @@ export function useCloudState({
     setElizaCloudLoginError,
     elizaCloudLoginFallbackUrl,
     setElizaCloudLoginFallbackUrl,
+    elizaCloudLoginWaitingForSignIn,
+    setElizaCloudLoginWaitingForSignIn,
     elizaCloudDisconnecting,
     setElizaCloudDisconnecting,
     // Refs (exposed for cleanup in AppContext's startup effect and for forward ref)

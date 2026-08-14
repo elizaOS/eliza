@@ -14,6 +14,7 @@ import {
   isCloudAuthHandoffSurface,
   publishCloudAuthComplete,
   subscribeCloudAuthComplete,
+  subscribeCloudAuthCompleteViaOpener,
 } from "../../../auth/cloud-auth-complete-signal";
 import { ApiError, apiFetch } from "../../../lib/api-client";
 import { useSessionAuth } from "../../../lib/use-session-auth";
@@ -217,16 +218,35 @@ export default function CliLoginPage() {
   // Another Cloud tab already finished this session — stop showing a live
   // sign-in / completing state on this orphan surface. Ignore events after
   // this tab has already started completion (avoids same-tab BroadcastChannel
-  // self-echo double-close).
+  // self-echo double-close). Subscribe to both BroadcastChannel (same-origin
+  // Cloud tabs) and postMessage (cross-origin opener) so orphaned tabs receive
+  // the signal regardless of origin relationship to the completion source.
   useEffect(() => {
     if (!sessionId) return;
-    return subscribeCloudAuthComplete((message) => {
-      if (message.sessionId !== sessionId) return;
+    const handlers: Array<() => void> = [];
+    const handleAuthComplete = () => {
       if (completionFiredRef.current) return;
       completionFiredRef.current = true;
       setCompletion({ status: "success", apiKeyPrefix: "" });
       tryCloseAuthWindow();
-    });
+    };
+
+    // Same-origin Cloud surfaces signal via BroadcastChannel
+    handlers.push(
+      subscribeCloudAuthComplete((message) => {
+        if (message.sessionId !== sessionId) return;
+        handleAuthComplete();
+      }),
+    );
+
+    // Cross-origin opener (e.g., localhost first-run) signals via postMessage
+    handlers.push(
+      subscribeCloudAuthCompleteViaOpener(sessionId, handleAuthComplete),
+    );
+
+    return () => {
+      handlers.forEach((unsubscribe) => unsubscribe());
+    };
   }, [sessionId]);
 
   useEffect(() => {

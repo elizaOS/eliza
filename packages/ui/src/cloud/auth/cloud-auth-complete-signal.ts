@@ -10,7 +10,9 @@
  *
  * Localhost openers do not share origin with Cloud, so they still rely on
  * polling + `window.opener` postMessage; this channel is for Cloud-origin
- * surfaces talking to each other.
+ * surfaces talking to each other. Auth tabs also subscribe to `postMessage`
+ * events from the opener to detect completion even when the opener is
+ * cross-origin (COOP/CORS barrier prevents accessing window.opener directly).
  */
 
 export const CLOUD_AUTH_COMPLETE_MESSAGE_TYPE = "eliza-cloud-auth-complete";
@@ -83,6 +85,49 @@ export function subscribeCloudAuthComplete(
     try {
       channel.removeEventListener("message", handler);
       channel.close();
+    } catch (error) {
+      void error;
+      // error-policy:J6 teardown only.
+    }
+  };
+}
+
+/**
+ * Subscribe to auth completion via postMessage from the opener window. This
+ * handles cross-origin cases where BroadcastChannel is unavailable (the opener
+ * is on a different origin). Returns an unsubscribe function.
+ *
+ * Use case: An orphaned auth tab (named popup or tab with `window.opener`)
+ * receives completion signal from localhost opener even though COOP/CORS
+ * prevents direct access to `window.opener`. The opener posts a message; this
+ * tab listens for it.
+ *
+ * No-ops when window or window.opener is unavailable (SSR / standalone tab).
+ */
+export function subscribeCloudAuthCompleteViaOpener(
+  sessionId: string,
+  onComplete: (message: CloudAuthCompleteMessage) => void,
+): () => void {
+  if (typeof window === "undefined" || !sessionId.trim()) {
+    return () => {};
+  }
+
+  const handler = (event: MessageEvent) => {
+    if (!isCloudAuthCompleteMessage(event.data, sessionId)) return;
+    onComplete(event.data);
+  };
+
+  try {
+    window.addEventListener("message", handler);
+  } catch (error) {
+    void error;
+    // error-policy:J6 message event listener install is best-effort.
+    return () => {};
+  }
+
+  return () => {
+    try {
+      window.removeEventListener("message", handler);
     } catch (error) {
       void error;
       // error-policy:J6 teardown only.
