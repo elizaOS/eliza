@@ -164,6 +164,14 @@ vi.mock("../settings/settings-sections", async () => {
     SETTINGS_SECTIONS: sections,
     backFromConnectorDetail,
     getAllSettingsSections: () => sections,
+    getFilteredSettingsSections: (
+      _filterKey: string,
+      filter: (s: typeof sections) => typeof sections,
+    ) => filter(sections),
+    subscribeToSettingsSections: (listener: () => void) => {
+      // Stub subscription for testing: just return a no-op unsubscribe.
+      return () => {};
+    },
     // Group the stub sections the way the real helper does (bucket by group,
     // ordered by SETTINGS_GROUP_ORDER) so the folded section-nav renders.
     groupSettingsSections: (input: typeof sections) => {

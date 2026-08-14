@@ -1,14 +1,4 @@
 /**
- * Owns the dynamic settings-section registry shared by built-ins, hosts, and
- * plugins so the Settings view can render declared sections in one order.
- */
-import type { ViewKind } from "@elizaos/core";
-import type { LucideIcon } from "lucide-react";
-import type { ComponentType, LazyExoticComponent } from "react";
-import { getUiRegistryStore } from "../../registry-host";
-import type { SettingsSectionGroup } from "./settings-section-meta";
-
-/**
  * Pluggable settings-section registry.
  *
  * Built-in sections (`settings-sections.ts`) and host apps / plugins both
@@ -19,7 +9,17 @@ import type { SettingsSectionGroup } from "./settings-section-meta";
  *
  * This is what makes settings modular: an app adds a section with one
  * `registerSettingsSection(...)` call at boot, no edits to the view.
+ *
+ * External store subscription (`subscribeToSettingsSections`) enables reactive
+ * updates in React components via `useSyncExternalStore`, so async Cloud
+ * sections registering after the view mounts become visible immediately.
  */
+
+import type { ViewKind } from "@elizaos/core";
+import type { LucideIcon } from "lucide-react";
+import type { ComponentType, LazyExoticComponent } from "react";
+import { getUiRegistryStore } from "../../registry-host";
+import type { SettingsSectionGroup } from "./settings-section-meta";
 
 export type SettingsSectionTone =
   | "ok"
@@ -99,6 +99,10 @@ export interface SettingsSectionDef {
 interface SettingsSectionRegistryStore {
   entries: Map<string, SettingsSectionDef>;
   seq: number;
+  subscribers: Set<() => void>;
+  cachedList: SettingsSectionDef[] | null;
+  lastFilterKey: string | null;
+  lastFilteredList: SettingsSectionDef[] | null;
 }
 
 const SETTINGS_SECTION_REGISTRY_STORE = "settings-sections";
@@ -107,7 +111,36 @@ function getStore(): SettingsSectionRegistryStore {
   return getUiRegistryStore(SETTINGS_SECTION_REGISTRY_STORE, () => ({
     entries: new Map<string, SettingsSectionDef>(),
     seq: 0,
+    subscribers: new Set<() => void>(),
+    cachedList: null,
+    lastFilterKey: null,
+    lastFilteredList: null,
   }));
+}
+
+/**
+ * Subscribe to registry changes. Returns an unsubscribe function.
+ * Used by SettingsView via useSyncExternalStore for reactive updates.
+ */
+export function subscribeToSettingsSections(listener: () => void): () => void {
+  const store = getStore();
+  store.subscribers.add(listener);
+  return () => {
+    store.subscribers.delete(listener);
+  };
+}
+
+/**
+ * Notify all subscribers that the registry has changed.
+ */
+function notifySubscribers(): void {
+  const store = getStore();
+  store.cachedList = null; // Invalidate cache
+  store.lastFilterKey = null;
+  store.lastFilteredList = null;
+  for (const subscriber of store.subscribers) {
+    subscriber();
+  }
 }
 
 /**
@@ -119,13 +152,36 @@ export function registerSettingsSection(section: SettingsSectionDef): void {
   const order = section.order ?? store.seq;
   store.seq += 1;
   store.entries.set(section.id, { ...section, order });
+  notifySubscribers();
 }
 
 /** All registered sections, sorted by `order` then registration sequence. */
 export function listSettingsSections(): SettingsSectionDef[] {
-  return [...getStore().entries.values()].sort(
-    (a, b) => (a.order ?? 0) - (b.order ?? 0),
-  );
+  const store = getStore();
+  if (store.cachedList === null) {
+    store.cachedList = [...store.entries.values()].sort(
+      (a, b) => (a.order ?? 0) - (b.order ?? 0),
+    );
+  }
+  return store.cachedList;
+}
+
+/**
+ * Get filtered sections with caching based on a filter key.
+ * Returns the same reference if the key hasn't changed and the registry hasn't been modified.
+ */
+export function getFilteredSettingsSections(
+  filterKey: string,
+  filter: (sections: SettingsSectionDef[]) => SettingsSectionDef[],
+): SettingsSectionDef[] {
+  const store = getStore();
+  if (store.lastFilterKey === filterKey && store.lastFilteredList !== null) {
+    return store.lastFilteredList;
+  }
+  const filtered = filter(listSettingsSections());
+  store.lastFilterKey = filterKey;
+  store.lastFilteredList = filtered;
+  return filtered;
 }
 
 export function getSettingsSection(id: string): SettingsSectionDef | undefined {

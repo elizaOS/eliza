@@ -9,7 +9,13 @@
  */
 import { isViewVisible } from "@elizaos/core";
 import { isPermissionId, type PermissionId } from "@elizaos/shared";
-import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import {
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 import { useAgentElement } from "../../agent-surface";
 import { isManagedCloudRuntime } from "../../cloud/managed-cloud-runtime";
 import { useMediaQuery } from "../../hooks/useMediaQuery";
@@ -32,6 +38,7 @@ import {
   readSettingsHashSection,
   replaceConnectorDetailHash,
   replaceSettingsHash,
+  subscribeToSettingsSections,
   type SettingsRoute,
   type SettingsSectionDef,
   settingsSectionLabel,
@@ -246,6 +253,9 @@ export function SettingsView({
     null,
   );
 
+  // Subscribe to registry changes and compute visible sections reactively.
+  // The memoization layer ensures the filtered array is stable across renders
+  // when dependencies and registry haven't changed.
   const visibleSections = useMemo(() => {
     return getAllSettingsSections().filter((section) => {
       if (section.id === "wallet-rpc" && walletEnabled === false) return false;
@@ -255,6 +265,15 @@ export function SettingsView({
       return true;
     });
   }, [walletEnabled, managedCloudRuntime, enabledKinds]);
+
+  // Trigger re-renders when the registry changes.
+  const [, setRegistryVersion] = useState(0);
+  useEffect(() => {
+    return subscribeToSettingsSections(() => {
+      setRegistryVersion((v) => v + 1);
+    });
+  }, []);
+
   const visibleSectionIds = useMemo(
     () => new Set(visibleSections.map((section) => section.id)),
     [visibleSections],
