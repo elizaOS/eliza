@@ -10,6 +10,7 @@
 import { logger } from "@elizaos/logger";
 import { writeStoredStewardToken } from "@elizaos/shared/steward-session-client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { DEFAULT_DIRECT_CLOUD_API_BASE_URL } from "../api/direct-cloud-endpoints";
 import { DEFAULT_BOOT_CONFIG, setBootConfig } from "../config/boot-config";
 import { shellLocalStorage } from "../surface-realm-channel";
 import { ELIZA_CLOUD_CONTROL_PLANE_HOSTS } from "../utils/cloud-agent-base";
@@ -237,7 +238,7 @@ describe("Cloud active server persistence", () => {
       clientRef: { setBaseUrl, setToken },
     });
 
-    const expectedApiBase = `https://${agentId}.elizacloud.ai`;
+    const expectedApiBase = `https://${agentId}.cloud.eliza.app`;
     expect(setBaseUrl).toHaveBeenCalledWith(expectedApiBase);
     expect(setToken).toHaveBeenCalledWith("cloud-token");
     expect(loadPersistedActiveServer()).toEqual(
@@ -249,7 +250,7 @@ describe("Cloud active server persistence", () => {
     );
   });
 
-  it("preserves a shared adapter until server-authoritative tier selection", async () => {
+  it("drops a shared adapter when no Steward owner session can authorize restore", async () => {
     const server = createPersistedActiveServer({
       kind: "cloud",
       id: `cloud:${agentId}`,
@@ -266,16 +267,11 @@ describe("Cloud active server persistence", () => {
       clientRef: { setBaseUrl, setToken },
     });
 
-    const expectedApiBase = `https://api.elizacloud.ai/api/v1/eliza/agents/${agentId}`;
+    const expectedApiBase = `${DEFAULT_DIRECT_CLOUD_API_BASE_URL}/api/v1/eliza/agents/${agentId}`;
     expect(setBaseUrl).toHaveBeenCalledWith(expectedApiBase);
-    expect(setToken).toHaveBeenCalledWith("cloud-token");
-    expect(loadPersistedActiveServer()).toEqual(
-      expect.objectContaining({
-        id: `cloud:${agentId}`,
-        kind: "cloud",
-        apiBase: expectedApiBase,
-      }),
-    );
+    expect(setToken).toHaveBeenLastCalledWith(null);
+    expect(setBaseUrl).toHaveBeenLastCalledWith(null);
+    expect(loadPersistedActiveServer()).toBeNull();
   });
 
   it("preserves the injected desktop API base when restoring a local session", async () => {
