@@ -16,7 +16,15 @@ if (mode === 'ignore-termination') {
   spawn(process.execPath, ['--eval', 'setTimeout(() => {}, 5000)'], {
     stdio: ['ignore', 'inherit', 'inherit'],
   }).unref();
-  process.exit(0);
+  setTimeout(() => process.exit(0), Number(payload.input.exitDelayMs ?? 0));
+} else if (mode === 'exit-with-pending-agent-request') {
+  emit({
+    kind: 'agent-request',
+    requestId: 'never-answered',
+    prompt: 'request that outlives the worker',
+    structured: false,
+  });
+  setTimeout(() => process.exit(0), 10);
 } else if (mode === 'closed-input-result') {
   process.stdin.destroy();
   setTimeout(() => {

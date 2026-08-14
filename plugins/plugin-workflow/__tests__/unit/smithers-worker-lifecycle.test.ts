@@ -34,16 +34,24 @@ function workflow(): WorkflowDefinitionResponse {
   };
 }
 
-async function run(mode: string, options: { signal?: AbortSignal; timeoutMs?: number } = {}) {
+async function run(
+  mode: string,
+  options: {
+    signal?: AbortSignal;
+    timeoutMs?: number;
+    input?: Record<string, unknown>;
+    generate?: () => Promise<unknown>;
+  } = {}
+) {
   return runSmithersWorkflow({
     tenantId,
     workflow: workflow(),
     runId: `run-${mode}-${Date.now()}`,
     mode: 'manual',
-    input: { fixtureMode: mode },
+    input: { fixtureMode: mode, ...options.input },
     timeoutMs: options.timeoutMs ?? 20_000,
     ...(options.signal ? { signal: options.signal } : {}),
-    generate: async () => 'done',
+    generate: options.generate ?? (async () => 'done'),
   });
 }
 
@@ -87,6 +95,34 @@ describe('Smithers worker lifecycle', () => {
     const startedAt = Date.now();
     await expect(run('exit-with-inherited-pipe')).rejects.toMatchObject({
       code: 'SMTHRS_RESULT_MISSING',
+    });
+    expect(Date.now() - startedAt).toBeLessThan(3_000);
+  });
+
+  test('does not relabel an exited worker as timed out while inherited pipes drain', async () => {
+    await expect(
+      run('exit-with-inherited-pipe', {
+        timeoutMs: 250,
+        input: { exitDelayMs: 100 },
+      })
+    ).rejects.toMatchObject({ code: 'SMTHRS_RESULT_MISSING' });
+  });
+
+  test('bounds protocol work when a worker exits during an unresolved agent request', async () => {
+    const startedAt = Date.now();
+    await expect(
+      run('exit-with-pending-agent-request', {
+        generate: () => new Promise(() => {}),
+      })
+    ).rejects.toMatchObject({ code: 'SMTHRS_RESULT_MISSING' });
+    expect(Date.now() - startedAt).toBeLessThan(3_000);
+  });
+
+  test('reports spawn failure even when the configured timeout is shorter than drain grace', async () => {
+    process.env.BUN_BIN = `${fixturePath}.missing`;
+    const startedAt = Date.now();
+    await expect(run('ignore-termination', { timeoutMs: 250 })).rejects.toMatchObject({
+      code: 'SMTHRS_WORKER_SPAWN_FAILED',
     });
     expect(Date.now() - startedAt).toBeLessThan(3_000);
   });
