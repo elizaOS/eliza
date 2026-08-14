@@ -11,6 +11,12 @@
  * mounting the app — callers skip the voice wiring and boot on.
  */
 
+// Register the lazy Swabble web/native implementation before React mounts so
+// useWakeController's first capability probe can see it. Registration does not
+// request microphone access or start listening; the persisted opt-in controller
+// remains the sole owner of start/stop.
+import "@elizaos/capacitor-swabble";
+
 export type VoiceModule = typeof import("@elizaos/ui/voice");
 
 let voiceModuleLoad: Promise<VoiceModule | null> | null = null;

@@ -8,6 +8,15 @@
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+const swabbleRegistration = vi.hoisted(() => ({
+  evaluated: vi.fn(),
+}));
+
+vi.mock("@elizaos/capacitor-swabble", () => {
+  swabbleRegistration.evaluated();
+  return {};
+});
+
 async function freshLoader() {
   vi.resetModules();
   const mod = await import("../src/boot-voice-load");
@@ -19,6 +28,12 @@ afterEach(() => {
 });
 
 describe("startVoiceModuleLoad", () => {
+  it("registers the lazy Swabble implementation before wake capability probing", async () => {
+    await freshLoader();
+
+    expect(swabbleRegistration.evaluated).toHaveBeenCalledOnce();
+  });
+
   it("starts the import once and shares the promise across await sites", async () => {
     const startVoiceModuleLoad = await freshLoader();
     const voiceModule = { installAecLoopHarness: () => {} };
