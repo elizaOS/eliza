@@ -2033,3 +2033,205 @@ body {
   width: 1.35rem;
   height: 1.35rem;
 }
+
+/* Header rails are a mobile affordance; desktop keeps the centered contact. */
+.landing-header-rail {
+  display: none;
+}
+
+.landing-header-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.25rem;
+  border: 0;
+  background: none;
+  color: var(--brand-black);
+  cursor: pointer;
+}
+
+/* ---------------------------------------------------------------------------
+ * Mobile: the page is the conversation. The thread fills the viewport and the
+ * ways to reach Eliza sit on the contact row itself — messaging on the left
+ * where iOS puts Back, the rest on the right — so the only chrome is the
+ * header a real thread already has.
+ * ------------------------------------------------------------------------- */
+@media (max-width: 640px) {
+  .landing-page {
+    height: 100svh;
+    overflow: hidden;
+    background: #ffffff;
+  }
+
+  /* an opaque thread covers them, so do not pay for WebGL or grain on a phone */
+  .landing-grain,
+  [data-shader-background] {
+    display: none;
+  }
+
+  .landing-header {
+    display: none;
+  }
+
+  /* the pitch stays the document's h1 for search and assistive tech */
+  .landing-hero-copy {
+    display: contents;
+  }
+
+  .landing-hero-heading {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    clip-path: inset(50%);
+  }
+
+  /* the header rail owns these entry points; no duplicates below the fold */
+  .landing-hero-actions,
+  .landing-secondary-channels,
+  .landing-phone-number,
+  .landing-hero-lede {
+    display: none;
+  }
+
+  .landing-hero {
+    display: flex;
+    align-items: stretch;
+    flex: 1;
+    min-height: 0;
+    width: 100%;
+    max-width: none;
+    margin: 0;
+    padding: 0;
+    gap: 0;
+  }
+
+  .landing-phone-stage {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+    width: 100%;
+    max-width: none;
+    margin: 0;
+    padding: 0;
+  }
+
+  /* desktop centers and scales the device inside the stage; mobile fills it */
+  .landing-phone-stage > .landing-iphone {
+    position: static;
+    transform: none;
+  }
+
+  .landing-iphone {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+    width: 100%;
+    margin: 0;
+    padding: 0;
+    border-radius: 0;
+    background: none;
+    box-shadow: none;
+  }
+
+  .landing-iphone-screen {
+    display: flex;
+    /* the page is the screen: height comes from the viewport, not a device */
+    aspect-ratio: auto;
+    flex: 1;
+    min-height: 0;
+    border-radius: 0;
+  }
+
+  /* the real status bar and home indicator are the phone's own */
+  .landing-iphone-statusbar,
+  .landing-iphone-homebar {
+    display: none;
+  }
+
+  .landing-phone-top {
+    position: static;
+    padding: 0;
+    background: none;
+    border-bottom: 0;
+  }
+
+  .landing-phone-header {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 0.5rem;
+    padding: max(0.5rem, env(safe-area-inset-top)) 0.75rem 0.6rem;
+  }
+
+  .landing-header-rail {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+  }
+
+  .landing-header-rail--right {
+    justify-content: flex-end;
+  }
+
+  .landing-header-icon svg {
+    width: 1.35rem;
+    height: 1.35rem;
+  }
+
+  .landing-header-icon--account {
+    color: #6b7280;
+  }
+
+  .landing-phone-thread {
+    flex: 1;
+    min-height: 0;
+    padding: 0.25rem 0.9rem 0.5rem;
+  }
+
+  /* messages settle against the composer like a real thread; the auto margin
+     keeps the top reachable once the thread overflows */
+  .landing-phone-thread::before {
+    content: "";
+    margin-top: auto;
+  }
+
+  .landing-bubble {
+    max-width: 78%;
+    padding: 0.5rem 0.8rem;
+    font-size: 0.98rem;
+    line-height: 1.32;
+  }
+
+  .landing-demo-card {
+    font-size: 0.92rem;
+  }
+  .landing-demo-card strong {
+    font-size: 0.98rem;
+  }
+  .landing-demo-card-row {
+    font-size: 0.9rem;
+  }
+  .landing-thread-timestamp {
+    font-size: 0.75rem;
+  }
+
+  .landing-composer-row {
+    margin: 0;
+    padding: 0.4rem 0.9rem max(0.7rem, env(safe-area-inset-bottom));
+  }
+
+  .landing-phone-composer {
+    padding: 0.5rem 0.55rem 0.5rem 1rem;
+    font-size: 0.95rem;
+  }
+
+  .landing-keyboard[data-open="true"] {
+    max-height: 15rem;
+  }
+}
