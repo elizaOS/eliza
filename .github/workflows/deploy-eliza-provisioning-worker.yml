@@ -133,9 +133,9 @@ jobs:
       # Headscale wiring for the provisioning worker (the CONSUMER of the
       # control plane). These are reconciled into /opt/eliza/cloud/.env.local
       # on every deploy so the box can never silently drift to a stale,
-      # hand-edited headscale URL/key again. Reuse the canonical GH names
-      # already established by arm-headscale-control-plane.yml.
-      HEADSCALE_API_URL: ${{ vars.HEADSCALE_API_URL }}
+      # hand-edited headscale URL/key again. The daemon API URL is derived from
+      # the protected environment below and stays loopback-only; it is not an
+      # operator variable that can redirect the protected bearer key.
       HEADSCALE_PUBLIC_URL: ${{ vars.HEADSCALE_PUBLIC_URL }}
       HEADSCALE_API_KEY: ${{ secrets.HEADSCALE_API_KEY }}
       # Base64 private key used by the daemon to reach dedicated-agent nodes.
@@ -198,7 +198,6 @@ jobs:
           required_deploy_settings=(
             DEPLOY_HOST
             DEPLOY_SSH_KEY
-            HEADSCALE_API_URL
             HEADSCALE_PUBLIC_URL
             HEADSCALE_API_KEY
             DATABASE_URL
@@ -235,16 +234,17 @@ jobs:
 
           if [ "$TARGET_ENVIRONMENT" = "production" ]; then
             require_exact DEPLOY_BRANCH "$DEPLOY_BRANCH" "main"
-            require_exact HEADSCALE_API_URL "$HEADSCALE_API_URL" "https://headscale.eliza.app"
             require_exact HEADSCALE_PUBLIC_URL "$HEADSCALE_PUBLIC_URL" "https://headscale.eliza.app"
             require_exact ELIZA_CLOUD_AGENT_BASE_DOMAIN "$ELIZA_CLOUD_AGENT_BASE_DOMAIN" "cloud.eliza.app"
+            resolved_headscale_api_url="http://127.0.0.1:8081"
           else
             require_exact DEPLOY_BRANCH "$DEPLOY_BRANCH" "develop"
-            require_exact HEADSCALE_API_URL "$HEADSCALE_API_URL" "https://headscale-staging.eliza.app"
             require_exact HEADSCALE_PUBLIC_URL "$HEADSCALE_PUBLIC_URL" "https://headscale-staging.eliza.app"
             require_exact ELIZA_CLOUD_AGENT_BASE_DOMAIN "$ELIZA_CLOUD_AGENT_BASE_DOMAIN" "cloud-staging.eliza.app"
+            resolved_headscale_api_url="http://127.0.0.1:8080"
           fi
 
+          echo "HEADSCALE_API_URL=$resolved_headscale_api_url" >> "$GITHUB_ENV"
           echo "configured=true" >> "$GITHUB_OUTPUT"
 
       - name: Ensure host prereqs (Node 24, swap, bunx symlink)
