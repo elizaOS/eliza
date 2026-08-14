@@ -8,10 +8,12 @@
 import { randomUUID } from "node:crypto";
 import path from "node:path";
 import {
+  composeToolDiagnosticRedactor,
   logger as coreLogger,
   ElizaError,
   type IAgentRuntime,
   type JsonValue,
+  projectToolDiagnosticValue,
   Service,
   sanitizeTrajectoryJsonObject,
 } from "@elizaos/core";
@@ -516,6 +518,38 @@ function startChildTrajectoryStep(
   return stepId;
 }
 
+/**
+ * Final persistence boundary for the agent DB bridge: every patched
+ * `completeStep` caller funnels through here, so tool-call parameters and
+ * result/failure metadata are projected through the composed runtime-known +
+ * tool-shape redaction before the row is written. Identity, numeric, and
+ * boolean fields survive untouched for correlation.
+ */
+export function projectSettledActionDiagnostics(
+  runtime: IAgentRuntime,
+  action: TrajectoryActionAttempt,
+): TrajectoryActionAttempt {
+  const redactDiagnosticText = composeToolDiagnosticRedactor(runtime);
+  return {
+    ...action,
+    parameters: projectToolDiagnosticValue(
+      action.parameters,
+      redactDiagnosticText,
+    ) as TrajectoryActionAttempt["parameters"],
+    ...(action.result !== undefined
+      ? {
+          result: projectToolDiagnosticValue(
+            action.result,
+            redactDiagnosticText,
+          ) as TrajectoryActionAttempt["result"],
+        }
+      : {}),
+    ...(typeof action.error === "string"
+      ? { error: redactDiagnosticText(action.error) }
+      : {}),
+  };
+}
+
 function completeTrajectoryAction(
   runtime: IAgentRuntime,
   trajectoryId: string,
@@ -537,7 +571,10 @@ function completeTrajectoryAction(
     );
   }
   rememberTrajectoryStep(runtime, normalizedTrajectoryId, normalizedStepId);
-  const action = normalizeSettledAction(actionValue, rewardInfo);
+  const action = projectSettledActionDiagnostics(
+    runtime,
+    normalizeSettledAction(actionValue, rewardInfo),
+  );
   const rewardComponentsValue = asRecord(rewardInfo)?.components;
   const rewardComponents =
     rewardComponentsValue === undefined
