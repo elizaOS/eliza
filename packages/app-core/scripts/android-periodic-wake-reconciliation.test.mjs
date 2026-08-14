@@ -85,26 +85,25 @@ describe("Android periodic wake reconciliation (#17874)", () => {
     expect(service).toMatch(
       /writeLocalAgentTokenFile\(token\);\s*ElizaWorkScheduler\.credentialProvisioned/,
     );
-    expect(service).toMatch(
-      /ElizaWorkScheduler\.runtimeStopped\(getApplicationContext\(\)\);\s*deleteLocalAgentTokenFile\(\)/,
-    );
     expect(scheduler).toContain("putBoolean(RUNTIME_STOPPED_KEY, true)");
     expect(scheduler).toMatch(
       /ElizaAgentService\.localAgentToken\(context\),\s*ownershipPrefs\(context\)\.getBoolean\(RUNTIME_STOPPED_KEY, false\)/,
     );
     expect(service).toMatch(
-      /if \(restartFirst\) \{\s*stopAgentProcess\(false\);\s*\}\s*startAgentProcess\(\)/,
+      /if \(restartFirst\) \{\s*stopAgentProcess\(false\);\s*\}\s*startAgentProcess\(!restartFirst\)/,
     );
     expect(service).toMatch(
-      /if \(terminalStop\) \{\s*ElizaWorkScheduler\.runtimeStopped\(getApplicationContext\(\)\);\s*deleteLocalAgentTokenFile\(\);\s*\}/,
+      /ElizaWorkScheduler\.runtimeStopped\(getApplicationContext\(\)\);[\s\S]*?deleteLocalAgentTokenFile\(\)/,
     );
     expect(service).toMatch(
-      /if \(isLocalAgentSocketListening\(\)\) \{[\s\S]*restoreAdoptedRuntimeOwnership\(\);[\s\S]*return;/,
+      /if \(allowAdoption && isLocalAgentSocketListening\(\)\) \{[\s\S]*restoreAdoptedRuntimeOwnership\(\);[\s\S]*return;/,
     );
     expect(service).toMatch(
       /restoreAdoptedRuntimeOwnership\(\)[\s\S]*localAgentToken\(context\)[\s\S]*ElizaWorkScheduler\.credentialProvisioned\(context\)/,
     );
-    expect(service).not.toContain("stopAgentProcess();");
+    expect(service).toMatch(
+      /stopAgentProcess\(false\);\s*scheduleRestart\(true\)/,
+    );
   });
 
   it("serializes decisions and bounds socket retries by one deadline", () => {

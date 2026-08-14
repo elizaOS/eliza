@@ -1761,7 +1761,7 @@ public class ElizaAgentService extends Service {
                     if (restartFirst) {
                         stopAgentProcess(false);
                     }
-                    startAgentProcess();
+                    startAgentProcess(!restartFirst);
                 } finally {
                     synchronized (processLock) {
                         startWorker = null;
@@ -1773,6 +1773,10 @@ public class ElizaAgentService extends Service {
     }
 
     private void startAgentProcess() {
+        startAgentProcess(true);
+    }
+
+    private void startAgentProcess(boolean allowAdoption) {
         synchronized (processLock) {
             if (agentProcess != null && agentProcess.isAlive()) {
                 return;
@@ -1797,7 +1801,7 @@ public class ElizaAgentService extends Service {
             // pkill a perfectly healthy surviving agent (the exact churn the
             // comment above describes). Mark the instance detached on adopt so
             // an explicit ACTION_STOP still tears the adopted agent down.
-            if (isLocalAgentSocketListening()) {
+            if (allowAdoption && isLocalAgentSocketListening()) {
                 detachedAgentMode = true;
                 restoreAdoptedRuntimeOwnership();
                 if (!"running".equals(currentStatus)) {
@@ -2749,15 +2753,15 @@ public class ElizaAgentService extends Service {
             wasDetached = detachedAgentMode;
             detachedAgentMode = false;
             detachedLaunchStartedAtMs = 0L;
-            if (terminalStop) {
-                currentLocalAgentToken = null;
-                currentTerminalRunToken = null;
-            }
+            currentLocalAgentToken = null;
+            currentTerminalRunToken = null;
         }
-        if (terminalStop) {
-            ElizaWorkScheduler.runtimeStopped(getApplicationContext());
-            deleteLocalAgentTokenFile();
-        }
+        ElizaWorkScheduler.runtimeStopped(getApplicationContext());
+        appendDiagnosticEvent(
+            terminalStop ? "runtime-ownership-stopped" : "runtime-ownership-restarting",
+            null
+        );
+        deleteLocalAgentTokenFile();
         persistDetachedLaunchTimestamp(0L);
         if (wasDetached) {
             appendDiagnosticEvent("stop-detached-agent", null);
@@ -3415,6 +3419,10 @@ public class ElizaAgentService extends Service {
     }
 
     private void scheduleRestart() {
+        scheduleRestart(false);
+    }
+
+    private void scheduleRestart(boolean requireFreshProcess) {
         if (shuttingDown) return;
         ElizaAgentWatchdogPolicy.RestartDecision decision =
             ElizaAgentWatchdogPolicy.nextRestart(restartAttempts, MAX_RESTART_ATTEMPTS);
@@ -3445,7 +3453,7 @@ public class ElizaAgentService extends Service {
                 return;
             }
             if (shuttingDown) return;
-            startAgentProcess();
+            startAgentProcess(!requireFreshProcess);
         }, "ElizaAgent-restart").start();
     }
 
@@ -3709,7 +3717,7 @@ public class ElizaAgentService extends Service {
                     if (decision.restartRequired) {
                         Log.w(TAG, "Agent unresponsive — force-restarting.");
                         stopAgentProcess(false);
-                        scheduleRestart();
+                        scheduleRestart(true);
                     }
                 }
             }
