@@ -167,7 +167,7 @@ describe("managed-native stale-session cold boot", () => {
             { status: 200, headers: { "content-type": "application/json" } },
           );
         }
-        if (url === "https://api.eliza.app/api/auth/pair/native") {
+        if (url === "https://api.elizacloud.ai/api/auth/pair/native") {
           return new Response(
             JSON.stringify({
               apiKey: "fresh-agent-bearer",

@@ -18,8 +18,12 @@ export interface CreditGateResult {
   balance: number;
   error?: string;
   /**
-   * Set only for organizations carrying historical welcome-credit withholding
-   * metadata. New accounts start at zero and never write this legacy state.
+   * Set when this org's balance is zero BECAUSE the signup welcome bonus was
+   * withheld by the anti-sybil per-IP grant cap (recorded on the org's
+   * settings at signup — see `welcomeBonusWithheldSettingsPatch`). Lets the
+   * canonical 402 body explain "this network reached the daily free-credit
+   * limit" instead of a bare "Insufficient credits", which a genuine user
+   * behind CGNAT reads as a broken app.
    */
   welcomeBonusWithheldReason?: SignupGrantWithheldReason;
   welcomeBonusWithheldMessage?: string;

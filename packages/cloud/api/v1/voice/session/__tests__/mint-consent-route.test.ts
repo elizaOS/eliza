@@ -4,7 +4,7 @@
  * (jwt sign, nonce consume) is real.
  */
 
-import { beforeAll, beforeEach, describe, expect, mock, test } from "bun:test";
+import { beforeAll, describe, expect, mock, test } from "bun:test";
 import { Hono } from "hono";
 
 const fakeLogger = {
@@ -21,15 +21,6 @@ mock.module("@/lib/auth/workers-hono-auth", () => ({
     id: "user-1",
     organization_id: "org-1",
   }),
-}));
-let balanceUsd = 10;
-mock.module("@/lib/services/credits", () => ({
-  creditsService: {
-    getOrganizationBalanceSnapshot: async () => ({
-      balanceUsd,
-      revision: "test",
-    }),
-  },
 }));
 // Tenancy repos: the caller owns agent-1; conversation is new (not found).
 mock.module("@/db/repositories/characters", () => ({
@@ -99,7 +90,6 @@ mock.module("@/lib/voice-session/consent-nonce", () => ({
   },
 }));
 
-import { personalSharedAgentId } from "../../../../../shared/src/lib/services/shared-runtime/personal-shared-agent";
 import { verifyVoiceSessionToken } from "../../../../../shared/src/lib/voice-session/jwt";
 import { installVoiceSessionTestSigningKey } from "../../../../../shared/src/lib/voice-session/test-signing";
 
@@ -108,10 +98,6 @@ const { default: consentRoute } = await import("../consent/route");
 
 beforeAll(async () => {
   await installVoiceSessionTestSigningKey();
-});
-
-beforeEach(() => {
-  balanceUsd = 10;
 });
 
 function appWithFlag(flag: string | undefined) {
@@ -228,70 +214,6 @@ describe("voice-session mint route", () => {
       headers: { "Content-Type": "application/json" },
     });
     expect(replay.status).toBe(403);
-  });
-
-  test("requires purchased credits for voice without consuming consent or disabling Shared text", async () => {
-    const app = appWithFlag("true");
-    const consentRes = await app.request("/api/v1/voice/session/consent", {
-      method: "POST",
-    });
-    const { consentNonce } = (await consentRes.json()) as {
-      consentNonce: string;
-    };
-    const agentId = personalSharedAgentId({
-      userId: "user-1",
-      organizationId: "org-1",
-    });
-    balanceUsd = 0;
-
-    const denied = await app.request("/api/v1/voice/session", {
-      method: "POST",
-      body: JSON.stringify({
-        agentId,
-        conversationId: "22222222-2222-4222-8222-222222222222",
-        consentNonce,
-      }),
-      headers: { "Content-Type": "application/json" },
-    });
-    expect(denied.status).toBe(402);
-    expect(await denied.json()).toMatchObject({
-      code: "voice_credits_required",
-      error: expect.stringContaining("Shared text chat remains available"),
-    });
-
-    balanceUsd = 2;
-    const allowed = await app.request("/api/v1/voice/session", {
-      method: "POST",
-      body: JSON.stringify({
-        agentId,
-        conversationId: "22222222-2222-4222-8222-222222222222",
-        consentNonce,
-      }),
-      headers: { "Content-Type": "application/json" },
-    });
-    expect(allowed.status).toBe(200);
-    const minted = (await allowed.json()) as { token: string };
-    expect((await verifyVoiceSessionToken(minted.token)).claims.agentId).toBe(
-      agentId,
-    );
-  });
-
-  test("hides another account's rowless personal Shared identity", async () => {
-    const app = appWithFlag("true");
-    const res = await app.request("/api/v1/voice/session", {
-      method: "POST",
-      body: JSON.stringify({
-        agentId: personalSharedAgentId({
-          userId: "user-2",
-          organizationId: "org-1",
-        }),
-        conversationId: "22222222-2222-4222-8222-222222222222",
-        consentNonce: "unused",
-      }),
-      headers: { "Content-Type": "application/json" },
-    });
-    expect(res.status).toBe(404);
-    expect(await res.json()).toMatchObject({ code: "agent_not_found" });
   });
 
   test("accepts the sandbox UUID persisted by the managed-cloud UI", async () => {

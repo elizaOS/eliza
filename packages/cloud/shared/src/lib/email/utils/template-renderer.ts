@@ -61,6 +61,7 @@ export function renderWelcomeTemplate(data: WelcomeEmailData): {
   const templateData = {
     userName: data.userName,
     organizationName: data.organizationName,
+    creditBalance: data.creditBalance.toLocaleString(),
     dashboardUrl: data.dashboardUrl,
     docsUrl: "https://docs.elizaos.ai/cloud",
     baseUrl: baseUrl,

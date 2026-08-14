@@ -3,8 +3,7 @@
  *
  * Manages user accounts for Eliza App authentication.
  * Primary auth: Telegram OAuth + phone number (entered by user in frontend).
- * Auto-creates $0 organizations for new users. Shared access is independent of
- * paid credits; explicit promotion codes and purchased top-ups remain separate.
+ * Auto-creates organizations for new users with initial credit balance.
  *
  * Cross-platform support:
  * - Telegram bot: lookup by telegram_id
@@ -18,10 +17,13 @@ import type { NewUser, User } from "../../../db/schemas/users";
 import { isUniqueConstraintError } from "../../utils/db-errors";
 import { isValidEmail, maskEmailForLogging } from "../../utils/email-validation";
 import { logger } from "../../utils/logger";
-import { isValidE164, normalizePhoneNumber } from "../../utils/phone-normalization";
+import { normalizePhoneNumber } from "../../utils/phone-normalization";
 import { apiKeysService } from "../api-keys";
+import { creditsService } from "../credits";
 import { redeemSignupCode } from "../signup-code";
 import type { TelegramAuthData } from "./telegram-auth";
+
+const ELIZA_APP_INITIAL_CREDITS = 5.0;
 
 export interface FindOrCreateResult {
   user: User;
@@ -97,6 +99,15 @@ async function createUserWithOrganization(params: {
     slug,
     credit_balance: "0.00",
   });
+
+  if (ELIZA_APP_INITIAL_CREDITS > 0) {
+    await creditsService.addCredits({
+      organizationId: organization.id,
+      amount: ELIZA_APP_INITIAL_CREDITS,
+      description: "Eliza App - Welcome bonus",
+      metadata: { type: "initial_free_credits", source: "eliza-app-signup" },
+    });
+  }
 
   const user = await usersRepository.create({
     ...userData,
@@ -339,30 +350,55 @@ class ElizaAppUserService {
 
   async findOrCreateByPhone(phoneNumber: string): Promise<FindOrCreateResult> {
     const normalizedPhone = normalizePhoneNumber(phoneNumber);
-    if (!isValidE164(normalizedPhone)) {
-      throw new Error("Trusted phone transport supplied an invalid phone number");
+    const existingUser = await usersRepository.findByPhoneNumberWithOrganization(normalizedPhone);
+
+    if (existingUser && existingUser.organization) {
+      if (!existingUser.phone_verified) {
+        await usersRepository.update(existingUser.id, {
+          phone_verified: true,
+          updated_at: new Date(),
+        });
+      }
+      logger.info("[ElizaAppUserService] Linked phone to existing user (iMessage)", {
+        userId: existingUser.id,
+        phone: `***${normalizedPhone.slice(-4)}`,
+      });
+      return {
+        user: existingUser,
+        organization: existingUser.organization,
+        isNew: false,
+      };
     }
 
     const lastFour = normalizedPhone.slice(-4);
     const displayName = `User ***${lastFour}`;
     const organizationName = `User ***${lastFour}'s Workspace`;
-    const result = await usersRepository.findOrCreatePhonePersonalAccount({
-      phoneNumber: normalizedPhone,
-      displayName,
-      organizationName,
-      organizationSlug: generateSlugFromPhone(normalizedPhone),
-    });
-    logger.info(
-      result.isNew
-        ? "[ElizaAppUserService] Created phone-first personal account"
-        : "[ElizaAppUserService] Reused phone-first personal account",
-      {
-        userId: result.user.id,
-        organizationId: result.organization.id,
-        phone: `***${normalizedPhone.slice(-4)}`,
-      },
-    );
-    return result;
+
+    try {
+      return await createUserWithOrganization({
+        userData: {
+          steward_user_id: `phone:${normalizedPhone}`,
+          phone_number: normalizedPhone,
+          phone_verified: true,
+          name: displayName,
+          is_anonymous: false,
+        },
+        organizationName,
+        slugGenerator: () => generateSlugFromPhone(normalizedPhone),
+      });
+    } catch (error) {
+      // Handle race condition: another request created the user first
+      if (isUniqueConstraintError(error)) {
+        const user = await usersRepository.findByPhoneNumberWithOrganization(normalizedPhone);
+        if (user && user.organization) {
+          logger.info("[ElizaAppUserService] Recovered from race condition", {
+            phone: `***${normalizedPhone.slice(-2)}`,
+          });
+          return { user, organization: user.organization, isNew: false };
+        }
+      }
+      throw error;
+    }
   }
 
   /**

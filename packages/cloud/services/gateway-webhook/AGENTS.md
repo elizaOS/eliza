@@ -25,13 +25,9 @@ system) from trusted in-cluster callers and forwards those to agents.
   `PlatformAdapter`, `WebhookConfig` contracts). An adapter implements
   `verifyWebhook` / `extractEvent` / `sendReply` / `sendTypingIndicator`.
 - `src/webhook-handler.ts` — the core flow: sync phase (resolve config → verify
-  signature → extract event → durable enqueue), then an asynchronous phase
-  (resolve identity → route → send reply). A trusted first Twilio/Blooio turn
-  creates or reuses the phone-owned Cloud account and enters its rowless
-  personal Shared conversation; other unlinked platforms use onboarding chat.
-- `src/webhook-outbox.ts` — Redis-atomic pending delivery queue, worker leases,
-  retry scheduling, and the no-replay barrier written before runtime/provider
-  egress. `index.ts` polls this queue so acknowledged work survives restarts.
+  signature → extract event → dedup), then a fire-and-forget async phase
+  (resolve identity → forward to agent-server → send reply). Unlinked senders
+  are routed to the cloud onboarding chat.
 - `src/server-router.ts` — `resolveIdentity`, `resolveAgentServer`,
   `forwardToServer` / `forwardEventToServer` (retry + fallback + KEDA
   wake-on-zero), and `refreshKedaActivity`.
@@ -177,18 +173,16 @@ Other:
 - **Stateless service.** All shared state lives in Redis (dedup keys, identity
   cache, webhook-config cache, KEDA activity, agent→server routing). The hash
   ring is rebuilt from k8s EndpointSlices, not persisted.
-- **Ack fast, recover later.** Platform webhooks verify and atomically enqueue
-  the normalized event in Redis before returning 200. A leased immediate worker
-  handles the common path; the poller reclaims pre-egress crashes. Runtime and
-  provider egress first write a no-replay barrier, so an ambiguous external
-  outcome stays visible for operator repair instead of sending twice. Telegram
-  remains synchronous through its existing no-replay egress claim.
+- **Ack fast, work later.** Webhook and internal-event handlers do the minimum
+  synchronously and return 200 immediately, then process in a detached promise.
+  Errors in the async phase are logged, not surfaced to the caller — watch the
+  `[gateway-webhook]` logs for `Forward to server failed`, `No server found for
+  agent`, etc. There is no dead-letter queue.
 - **Two auth paths, do not confuse them:** outbound calls to the cloud API use
   the JWT from `auth.ts` (`getAuthHeader()`); inbound `/internal/event` is
   gated by `internal-auth.ts` (`X-Internal-Secret`, constant-time compare).
-- **Dedup** is keyed on `webhook:<platform>:<messageId>` (or the adapter's
-  account-scoped variant). Delivery ownership lives for 30 days; queued job
-  payloads expire after 7 days. Adapters must produce a stable `messageId`.
+- **Dedup** is keyed on `webhook:<platform>:<messageId>` with a 5-minute TTL;
+  adapters must produce a stable `messageId` in `extractEvent`.
 - **Routing hash key is `userId`, not `agentId`** — same user's messages and
   events stick to the same agent-server pod for hot session affinity.
 - **Twilio acks differ:** `ackResponse` returns empty TwiML for `twilio` and
