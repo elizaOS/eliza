@@ -67,7 +67,13 @@
  */
 
 import { spawn, spawnSync } from "node:child_process";
+import {
+  accessSync,
+  constants,
+  existsSync,
+} from "node:fs";
 import fs from "node:fs";
+import { homedir } from "node:os";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -92,7 +98,70 @@ import { expandWorkspaceGlobs, listWorkspaceDirs } from "./lib/workspaces.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, "..", "..");
-const bunCmd = process.env.npm_execpath || process.env.BUN || "bun";
+
+// Helper to check if a file is executable
+function isExecutable(filePath) {
+  try {
+    accessSync(filePath, constants.X_OK);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// Get common bun installation directories
+function getBunSearchPaths() {
+  const paths = [];
+  const home = process.env.HOME || process.env.USERPROFILE || homedir();
+
+  if (home) {
+    paths.push(path.join(home, ".bun", "bin"));
+  }
+
+  paths.push(path.join(process.cwd(), "node_modules", ".bin"));
+
+  if (process.platform !== "win32") {
+    paths.push("/opt/homebrew/bin");
+    paths.push("/usr/local/bin");
+  }
+
+  return paths.filter(p => existsSync(p));
+}
+
+// Search for bun executable in PATH and common directories
+function findBunExecutable() {
+  // Only use npm_execpath if it's actually bun
+  if (process.env.npm_execpath && process.env.npm_execpath.includes("bun")) {
+    return process.env.npm_execpath;
+  }
+  if (process.env.BUN) {
+    return process.env.BUN;
+  }
+
+  const bunExeName = process.platform === "win32" ? "bun.exe" : "bun";
+
+  // Search in PATH directories
+  const pathEnv = process.env.PATH || "";
+  for (const dir of pathEnv.split(path.delimiter).filter(Boolean)) {
+    const candidate = path.join(dir, bunExeName);
+    if (isExecutable(candidate)) {
+      return candidate;
+    }
+  }
+
+  // Search in common bun directories
+  for (const dir of getBunSearchPaths()) {
+    const candidate = path.join(dir, bunExeName);
+    if (isExecutable(candidate)) {
+      return candidate;
+    }
+  }
+
+  // Return the bare command and let spawn try to find it
+  return bunExeName;
+}
+
+const bunCmd = findBunExecutable();
 
 // ---------------------------------------------------------------------------
 // CLI flag parsing
