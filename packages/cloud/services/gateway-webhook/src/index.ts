@@ -11,6 +11,7 @@ import { handleInternalEvent } from "./internal-event-handler";
 import { logger } from "./logger";
 import { initProjectConfig, shutdownProjectConfig } from "./project-config";
 import { createRedis } from "./redis";
+import { requireCanonicalAgentRoutingConfiguration } from "./server-router";
 import {
   getSharedWhatsAppVerifyToken,
   resolveWebhookConfig,
@@ -161,6 +162,7 @@ app.post("/webhook/:project/:platform/:agentId", async (c) => {
 });
 
 async function start() {
+  requireCanonicalAgentRoutingConfiguration();
   logger.info("Starting webhook gateway", { pod: POD_NAME, port: PORT });
 
   await initProjectConfig();
