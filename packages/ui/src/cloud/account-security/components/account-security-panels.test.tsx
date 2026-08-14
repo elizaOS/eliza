@@ -53,7 +53,9 @@ vi.mock("../../../cloud-ui", () => ({
 
 vi.mock("lucide-react", () => ({
   Camera: () => <span data-testid="icon-camera" />,
+  ChevronRight: () => <span data-testid="icon-chevron" />,
   Download: () => <span data-testid="icon-download" />,
+  KeyRound: () => <span data-testid="icon-key" />,
   Lock: () => <span data-testid="icon-lock" />,
   ScrollText: () => <span data-testid="icon-scroll-text" />,
   Trash2: () => <span data-testid="icon-trash" />,
@@ -78,6 +80,7 @@ vi.mock("sonner", () => ({
 }));
 
 import { ActiveSessionsPanel } from "./active-sessions-panel";
+import { ApiKeysLink } from "./api-keys-link";
 import { MfaPanel } from "./mfa-panel";
 import { RecentAuditEvents } from "./recent-audit-events";
 
@@ -141,6 +144,33 @@ describe("account-security panels", () => {
     ).toBeTruthy();
     expect(screen.queryByText(/Session listing is unavailable/i)).toBeNull();
     expect(apiMock).toHaveBeenCalledWith("/api/v1/sessions");
+  });
+
+  it("renders a ready session inventory as settings rows", async () => {
+    apiMock.mockResolvedValueOnce({
+      sessions: [
+        {
+          id: "sess-1",
+          device: "MacBook Pro",
+          ip: "100.64.1.9",
+          last_seen: "2026-08-14T12:00:00.000Z",
+          current: true,
+        },
+      ],
+    });
+
+    render(<ActiveSessionsPanel />);
+
+    expect(await screen.findByText("MacBook Pro")).toBeTruthy();
+    expect(screen.getByText("current")).toBeTruthy();
+    expect(screen.queryByText(/No other active sessions found/i)).toBeNull();
+    expect(screen.queryByText(/Session listing is unavailable/i)).toBeNull();
+  });
+
+  it("routes the API keys nav row to the cloud-api-keys hash", () => {
+    render(<ApiKeysLink />);
+    const link = screen.getByRole("link", { name: "Manage keys" });
+    expect(link.getAttribute("href")).toBe("#cloud-api-keys");
   });
 
   it("renders malformed session DTOs as errors, not healthy empty state", async () => {
