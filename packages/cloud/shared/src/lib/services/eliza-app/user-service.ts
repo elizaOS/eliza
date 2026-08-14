@@ -3,7 +3,8 @@
  *
  * Manages user accounts for Eliza App authentication.
  * Primary auth: Telegram OAuth + phone number (entered by user in frontend).
- * Auto-creates organizations for new users with initial credit balance.
+ * Auto-creates $0 organizations for new users. Shared access is independent of
+ * paid credits; explicit promotion codes and purchased top-ups remain separate.
  *
  * Cross-platform support:
  * - Telegram bot: lookup by telegram_id
@@ -14,16 +15,14 @@ import { organizationsRepository } from "../../../db/repositories/organizations"
 import { type UserWithOrganization, usersRepository } from "../../../db/repositories/users";
 import type { Organization } from "../../../db/schemas/organizations";
 import type { NewUser, User } from "../../../db/schemas/users";
+import { SIGNUP_CREDIT_POLICY } from "../../signup-credits";
 import { isUniqueConstraintError } from "../../utils/db-errors";
 import { isValidEmail, maskEmailForLogging } from "../../utils/email-validation";
 import { logger } from "../../utils/logger";
 import { isValidE164, normalizePhoneNumber } from "../../utils/phone-normalization";
 import { apiKeysService } from "../api-keys";
-import { creditsService } from "../credits";
 import { redeemSignupCode } from "../signup-code";
 import type { TelegramAuthData } from "./telegram-auth";
-
-const ELIZA_APP_INITIAL_CREDITS = 5.0;
 
 export interface FindOrCreateResult {
   user: User;
@@ -97,17 +96,8 @@ async function createUserWithOrganization(params: {
   const organization = await organizationsRepository.create({
     name: organizationName,
     slug,
-    credit_balance: "0.00",
+    credit_balance: SIGNUP_CREDIT_POLICY.openingBalanceUsd,
   });
-
-  if (ELIZA_APP_INITIAL_CREDITS > 0) {
-    await creditsService.addCredits({
-      organizationId: organization.id,
-      amount: ELIZA_APP_INITIAL_CREDITS,
-      description: "Eliza App - Welcome bonus",
-      metadata: { type: "initial_free_credits", source: "eliza-app-signup" },
-    });
-  }
 
   const user = await usersRepository.create({
     ...userData,

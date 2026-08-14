@@ -34,13 +34,14 @@ describe("email template renderer", () => {
       email: "user@example.com",
       userName: "Ada",
       organizationName: "Acme Robotics",
-      creditBalance: 100,
       dashboardUrl: "https://cloud.example/dashboard",
     });
 
     expect(html.length).toBeGreaterThan(0);
     expect(text.length).toBeGreaterThan(0);
     expect(html).toContain("Welcome to Cloud");
+    expect(text).toContain("Shared chat is free");
+    expect(text).not.toContain("STARTING BALANCE");
     // No un-interpolated placeholders leak through.
     expect(html).not.toMatch(/\{\{\w+\}\}/);
   });

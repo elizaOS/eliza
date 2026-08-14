@@ -2186,9 +2186,8 @@ ElizaClient.prototype.createCloudCompatAgent = async function (
     body: JSON.stringify({
       agentName: opts.agentName,
       // The Eliza app provisions a DEDICATED (own-container, always-on) agent —
-      // the full experience, and the paid tier. New users have the signup credit
-      // grant so they get a real agent; out-of-credit users get the cloud's
-      // 402 add-credits prompt (the monetization path) rather than a shared agent.
+      // the paid tier. Zero-balance users get the cloud's 402 add-credits prompt
+      // rather than silently receiving paid compute.
       // (With the Phase-0 shared-tier flag on, `alwaysOn` is dropped so the
       // backend derives a SHARED agent instead — see tierFields above.)
       ...tierFields,

@@ -37,9 +37,8 @@ export const organizations = pgTable(
     slug: text("slug").notNull().unique(),
     credit_balance: numeric("credit_balance", { precision: 12, scale: 6 })
       .notNull()
-      // Default to $0. The signup path grants DEFAULT_INITIAL_CREDITS ($5) explicitly
-      // (steward-sync.ts), so this only affects orgs created via other paths — which
-      // must not start with free credit. The old $100 default was a give-away footgun.
+      // Accounts start at $0. Shared service access is not represented as paid
+      // balance; only explicit funding and promotion paths add ledger credits.
       .default("0.000000"),
     // A database trigger advances this sequence-backed revision on every
     // credit-balance mutation. Cache-only inference admission uses it to reject

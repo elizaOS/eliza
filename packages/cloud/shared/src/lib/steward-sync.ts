@@ -18,29 +18,21 @@ import { ELIZA_DOMAIN_CONTRACTS } from "@elizaos/shared/elizacloud";
 import { normalizeWallet } from "../db/crypto/field-crypto";
 import { organizationInvitesRepository } from "../db/repositories/organization-invites";
 import { usersRepository } from "../db/repositories/users";
-import { getClientIp } from "./runtime/request-context";
 import { apiKeysService } from "./services/api-keys";
 import { charactersService } from "./services/characters/characters";
-import { creditsService } from "./services/credits";
 import { discordService } from "./services/discord";
 import { emailService } from "./services/email";
 import { invitesService } from "./services/invites";
 import { organizationsService } from "./services/organizations";
-import {
-  runWithSignupGrantIpCapDetailed,
-  type SignupGrantWithheldReason,
-  welcomeBonusWithheldSettingsPatch,
-} from "./services/signup-grant-guard";
+import type { SignupGrantWithheldReason } from "./services/signup-grant-guard";
 import { ensureStewardTenant } from "./services/steward-tenant-config";
 import { usersService } from "./services/users";
-import { getInitialCredits } from "./signup-credits";
+import { SIGNUP_CREDIT_POLICY } from "./signup-credits";
 import type { UserWithOrganization } from "./types";
 import { getDefaultElizaCharacterData } from "./utils/default-eliza-character";
 import { getRandomUserAvatar } from "./utils/default-user-avatar";
 import { logger } from "./utils/logger";
 import { isValidE164, normalizePhoneNumber } from "./utils/phone-normalization";
-
-export { DEFAULT_INITIAL_CREDITS, getInitialCredits } from "./signup-credits";
 
 export interface SignupWelcomeBonusMetadata {
   initialCreditsGranted?: boolean;
@@ -640,71 +632,13 @@ export async function syncUserFromSteward(params: StewardSyncParams): Promise<St
   const organization = await organizationsService.create({
     name: `${name}'s Organization`,
     slug: orgSlug,
-    credit_balance: "0.00",
+    credit_balance: SIGNUP_CREDIT_POLICY.openingBalanceUsd,
   });
 
-  // Add initial free credits — withheld when this IP has already hit the daily
-  // free-grant cap (anti-sybil). Withholding is not a failure: the org is still
-  // created (at $0) and the signup proceeds.
-  const initialCredits = getInitialCredits();
-  const signupIp = getClientIp();
-  let initialCreditsGranted = false;
-  let initialFreeCreditsUsd = 0;
-  let welcomeBonusWithheld: SignupWelcomeBonusMetadata | null = null;
-
-  if (initialCredits > 0) {
-    try {
-      // The cap check and the grant run under a per-IP advisory lock so
-      // concurrent same-IP signups cannot each pass the cap before any commits.
-      const grantDecision = await runWithSignupGrantIpCapDetailed(signupIp, async (tx) => {
-        await creditsService.addCredits({
-          organizationId: organization.id,
-          amount: initialCredits,
-          description: "Initial free credits - Welcome bonus",
-          metadata: {
-            type: "initial_free_credits",
-            source: "signup",
-            ip_address: signupIp,
-          },
-          db: tx,
-        });
-      });
-      initialCreditsGranted = grantDecision.granted;
-      initialFreeCreditsUsd = grantDecision.granted ? initialCredits : 0;
-      if (grantDecision.withheldReason) {
-        welcomeBonusWithheld = {
-          welcomeBonusWithheld: true,
-          welcomeBonusWithheldReason: grantDecision.withheldReason,
-          welcomeBonusWithheldMessage: grantDecision.withheldMessage,
-        };
-        // Record the withheld decision on the org so the agent credit gate can
-        // explain the $0-balance 402 this signup will hit at /join — the auth
-        // response is discarded long before provisioning runs. Service update
-        // (not a raw repo write) so the org cache stays coherent. The org was
-        // created moments ago with default `{}` settings, so overwriting is safe.
-        const withheldPatch = welcomeBonusWithheldSettingsPatch({
-          withheldReason: grantDecision.withheldReason,
-          withheldMessage: grantDecision.withheldMessage,
-        });
-        if (withheldPatch) {
-          await organizationsService.update(organization.id, { settings: withheldPatch });
-        }
-      }
-    } catch (error) {
-      logger.error(
-        `[StewardSync] addCredits failed for new org ${organization.id} (initialCredits=${initialCredits}); rolling back signup organization: ${describeSyncError(error)}`,
-      );
-      try {
-        await organizationsService.delete(organization.id);
-      } catch (rollbackError) {
-        logger.error("[StewardSync] Failed to delete organization after welcome-credit failure", {
-          organizationId: organization.id,
-          error: rollbackError instanceof Error ? rollbackError.message : String(rollbackError),
-        });
-      }
-      throw error;
-    }
-  }
+  // Cloud identity is created at $0. Shared service access is not a credit
+  // grant, and purchased credits remain exclusive to explicit funding paths.
+  const initialCreditsGranted = false;
+  const initialFreeCreditsUsd = SIGNUP_CREDIT_POLICY.automaticGrantUsd;
 
   // Create user, handle race conditions
   let createdUser: Awaited<ReturnType<typeof usersService.create>> | undefined;
@@ -844,7 +778,6 @@ export async function syncUserFromSteward(params: StewardSyncParams): Promise<St
       email: recipientEmail,
       userName: name || "there",
       organizationName: userWithOrg.organization?.name || "",
-      creditBalance: initialFreeCreditsUsd,
     }).catch((error) => {
       logger.error("[StewardSync] Failed to send welcome email:", { error });
     });
@@ -911,7 +844,6 @@ export async function syncUserFromSteward(params: StewardSyncParams): Promise<St
     ...userWithOrg,
     initialCreditsGranted,
     initialFreeCreditsUsd,
-    ...(welcomeBonusWithheld ?? {}),
   };
 }
 
@@ -969,7 +901,6 @@ async function queueWelcomeEmail(data: {
   email: string;
   userName: string;
   organizationName: string;
-  creditBalance: number;
 }): Promise<void> {
   await emailService.sendWelcomeEmail({
     ...data,

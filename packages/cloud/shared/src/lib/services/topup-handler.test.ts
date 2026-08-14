@@ -17,6 +17,20 @@ const settle = mock(async () => ({
   network: "eip155:8453",
   errorReason: "not configured",
 }));
+const addCredits = mock(async () => ({
+  transaction: { id: "credit-tx-1" },
+  newBalance: 10,
+}));
+const findOrCreateUserByWalletAddress = mock(async (walletAddress: string) => ({
+  user: {
+    id: "user-1",
+    organization_id: "org-1",
+    wallet_address: walletAddress,
+  },
+  isNewAccount: true,
+  initialCreditsGranted: false,
+  initialFreeCreditsUsd: 0,
+}));
 
 mock.module("./x402-facilitator", () => ({
   x402FacilitatorService: {
@@ -46,9 +60,7 @@ mock.module("../utils/logger", () => ({
 
 mock.module("./credits", () => ({
   creditsService: {
-    addCredits: mock(async () => {
-      throw new Error("not exercised");
-    }),
+    addCredits,
   },
 }));
 
@@ -68,9 +80,7 @@ mock.module("./referrals", () => ({
 }));
 
 mock.module("./wallet-signup", () => ({
-  findOrCreateUserByWalletAddress: mock(async () => {
-    throw new Error("not exercised");
-  }),
+  findOrCreateUserByWalletAddress,
 }));
 
 const { createTopupHandler } = await import("./topup-handler");
@@ -137,4 +147,69 @@ test("exact_permit quote fails closed when facilitator setup fails despite a con
   });
   expect(initialize).toHaveBeenCalledTimes(1);
   expect(getSignerAddress).not.toHaveBeenCalled();
+});
+
+test("a settled top-up creates a zero-balance wallet account then credits only the paid amount", async () => {
+  settle.mockResolvedValueOnce({
+    success: true,
+    transaction: "0xpaid",
+    network: "eip155:8453",
+    payer: "0x3333333333333333333333333333333333333333",
+  });
+  findOrCreateUserByWalletAddress.mockClear();
+  addCredits.mockClear();
+
+  const walletAddress = "0x1111111111111111111111111111111111111111";
+  const handler = createTopupHandler({
+    amount: 10,
+    getSourceId: (wallet, paymentId) => `${wallet}:${paymentId}`,
+  });
+  const response = await handler(
+    new Request("https://api.example.test/api/v1/topup/10", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "X-PAYMENT": JSON.stringify({
+          x402Version: 2,
+          accepted: {
+            scheme: "exact",
+            network: "eip155:8453",
+            asset: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+            amount: "10000000",
+            payTo: "0x2222222222222222222222222222222222222222",
+          },
+          payload: {
+            signature: "0xsigned",
+            authorization: {
+              from: walletAddress,
+              to: "0x2222222222222222222222222222222222222222",
+              value: "10000000",
+              validAfter: "0",
+              validBefore: "9999999999",
+              nonce: "1",
+            },
+          },
+        }),
+      },
+      body: JSON.stringify({ walletAddress }),
+    }),
+    { X402_RECIPIENT_ADDRESS: "0x2222222222222222222222222222222222222222" },
+  );
+
+  expect(response.status).toBe(200);
+  expect(findOrCreateUserByWalletAddress).toHaveBeenCalledWith(walletAddress);
+  expect(addCredits).toHaveBeenCalledTimes(1);
+  expect(addCredits).toHaveBeenCalledWith(
+    expect.objectContaining({
+      organizationId: "org-1",
+      amount: 10,
+      description: "x402 wallet top-up: $10",
+      stripePaymentIntentId: "x402:eip155:8453:0xpaid",
+    }),
+  );
+  expect(await response.json()).toMatchObject({
+    success: true,
+    amount: 10,
+    newBalance: 10,
+  });
 });
