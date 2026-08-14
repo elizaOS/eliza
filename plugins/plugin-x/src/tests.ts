@@ -68,8 +68,6 @@ export class ClientBaseTestSuite implements TestSuite {
       TWITTER_MAX_ENGAGEMENTS_PER_RUN: "10",
       TWITTER_MAX_TWEET_LENGTH: "280",
       TWITTER_RETRY_LIMIT: "5",
-      TWITTER_BROKER_URL: "https://api.eliza.app/api/v1/twitter",
-      TWITTER_BROKER_TOKEN: "",
     };
   }
 
