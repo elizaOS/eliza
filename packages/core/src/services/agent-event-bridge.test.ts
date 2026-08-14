@@ -291,6 +291,11 @@ describe("agent-event-bridge", () => {
 
 	it("bridges MESSAGE_RECEIVED to activity plus a guarded connector notification", async () => {
 		const { runtime, events, notificationService } = await createCtx();
+		registerConnectorSourceMetadata("discord", {
+			aliases: ["discord"],
+			sourceKind: "passive",
+			isPassive: true,
+		});
 		await bridgeMessageReceivedToStreams(messagePayload(runtime));
 
 		const messageEvent = events.find((e) => e.stream === "message");
@@ -443,7 +448,7 @@ describe("agent-event-bridge", () => {
 		expect(notificationService.list()).toHaveLength(1);
 	});
 
-	it("allows a registered connector extension on a user-facing channel", async () => {
+	it("rejects a registered active connector on a user-facing channel", async () => {
 		const { runtime, notificationService } = await createCtx();
 		registerConnectorSourceMetadata("custom-gateway", {
 			aliases: ["custom-gateway"],
@@ -463,7 +468,7 @@ describe("agent-event-bridge", () => {
 			} as Partial<MessagePayload>),
 		);
 		if (!notificationService) throw new Error("NotificationService not loaded");
-		expect(notificationService.list()).toHaveLength(1);
+		expect(notificationService.list()).toHaveLength(0);
 	});
 
 	it("bridges raw connector message events that lack canonical Memory payloads", async () => {

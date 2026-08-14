@@ -273,7 +273,7 @@ describe("executeTriggerTask", () => {
     expect(handle.notifyCalls).toHaveLength(0);
   });
 
-  it("still notifies on failure for a legacy trigger that never persisted notifyOnOutcome", async () => {
+  it("does not notify on failure for a legacy trigger without explicit provenance", async () => {
     handle.setDispatchResult({ ok: false, error: "workflow blew up" });
     const task = makeTriggerTask({
       triggerType: "interval",
@@ -290,11 +290,7 @@ describe("executeTriggerTask", () => {
     });
 
     expect(result.status).toBe("error");
-    expect(handle.notifyCalls).toHaveLength(1);
-    expect(handle.notifyCalls[0].title).toBe(
-      'Automation "Legacy nightly backup" failed',
-    );
-    expect(handle.notifyCalls[0].priority).toBe("high");
+    expect(handle.notifyCalls).toHaveLength(0);
   });
 
   it("allows an explicit per-runtime diagnostic override", async () => {
@@ -332,6 +328,7 @@ describe("executeTriggerTask", () => {
     const task = makeTriggerTask({
       triggerType: "interval",
       displayName: "Nightly backup",
+      notifyOnOutcome: true,
     });
 
     const result = await executeTriggerTask(handle.runtime, task, {
@@ -686,6 +683,7 @@ describe("executeTriggerTask", () => {
     const task = makeTriggerTask({
       triggerType: "interval",
       displayName: "Device health check",
+      notifyOnOutcome: true,
     });
 
     const result = await executeTriggerTask(handle.runtime, task, {

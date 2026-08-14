@@ -4,7 +4,7 @@
  * in present observers are reported without interrupting the message loop.
  */
 
-import { getConnectorSourceMetadata } from "../connectors.ts";
+import { isPassiveConnectorSource } from "../connectors.ts";
 import { logger } from "../logger.ts";
 import type { MessageEventData } from "../types/agentEvent.ts";
 import type {
@@ -301,8 +301,8 @@ function isBotMessage(metadata: Record<string, unknown>): boolean {
  * conversation. `Content.channelType` is optional and several shipped
  * connectors never stamp it (Slack carries the type on the Room and a
  * platform-specific `metadata.chatType`; Signal stamps none at all), so an
- * absent channel type must not disqualify a message. Registration in the
- * connector-source registry is the trust anchor; the channel type only vetoes.
+ * absent channel type must not disqualify a message. A passive classification
+ * in the connector-source registry is the trust anchor; channel type only vetoes.
  */
 const NON_USER_FACING_CHANNEL_TYPES: ReadonlySet<string> = new Set(
 	[ChannelType.API, ChannelType.AUTONOMOUS, ChannelType.SELF].map((value) =>
@@ -314,10 +314,10 @@ function hasTrustedNotificationProvenance(
 	payload: MessagePayload,
 	source: string,
 ): boolean {
-	const connector = getConnectorSourceMetadata(source);
-	// A non-empty alias set is what registration guarantees; API, web, and other
-	// internal senders never register, so they fail closed here.
-	if (!connector?.aliases?.length) return false;
+	// Passive is the connector registry's explicit classification for inbound
+	// human conversation. Registration alone is not notification authority:
+	// active/internal extensions can also register aliases and must fail closed.
+	if (!isPassiveConnectorSource(source)) return false;
 	const channelType = resolveMessageChannel(payload, source);
 	return !NON_USER_FACING_CHANNEL_TYPES.has(channelType.toLowerCase());
 }

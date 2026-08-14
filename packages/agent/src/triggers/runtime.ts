@@ -104,12 +104,11 @@ export function triggerNotificationsEnabled(runtime: IAgentRuntime): boolean {
 }
 
 /**
- * Gates only the low-priority SUCCESS notification. Failures stay unconditional:
- * `notifyOnOutcome` is optional and absent on every trigger persisted before it
- * existed, so gating failures on it would silently strip the one signal a user
- * has that a scheduled automation broke while they were out of the chat loop.
+ * User-facing creation paths persist `notifyOnOutcome`; internal, migrated, and
+ * legacy triggers omit it and therefore stay off the notification rail. The
+ * diagnostic override is deliberately explicit and per-runtime.
  */
-function shouldNotifyForTriggerSuccess(
+function shouldNotifyForTriggerOutcome(
   runtime: IAgentRuntime,
   trigger: TriggerConfig,
 ): boolean {
@@ -623,31 +622,33 @@ export async function executeTriggerTask(
     // Scheduled automations run without the user in the chat loop, so a
     // dispatch failure is otherwise invisible. Surface it on the notification
     // rail (fire-and-forget; never let a notify failure mask the trigger error).
-    void getNotifier(runtime)
-      ?.notify({
-        title: workflowGone
-          ? `Automation "${trigger.displayName}" disabled`
-          : `Automation "${trigger.displayName}" failed`,
-        body: workflowGone
-          ? "Its workflow no longer exists, so the schedule was removed. Recreate the automation if you still need it."
-          : errorMessage.slice(0, 200),
-        category: "workflow",
-        priority: "high",
-        source: "trigger",
-        groupKey: `trigger:${task.id ?? trigger.triggerId}`,
-        data: {
-          taskId: task.id,
-          triggerId: trigger.triggerId,
-          error: errorMessage,
-        },
-      })
-      .catch((error) => {
-        // error-policy:J7 notification diagnostics must not mask dispatch failure.
-        runtime.reportError("TriggerRuntime.notifyFailure", error, {
-          taskId: task.id,
-          triggerId: trigger.triggerId,
+    if (shouldNotifyForTriggerOutcome(runtime, trigger)) {
+      void getNotifier(runtime)
+        ?.notify({
+          title: workflowGone
+            ? `Automation "${trigger.displayName}" disabled`
+            : `Automation "${trigger.displayName}" failed`,
+          body: workflowGone
+            ? "Its workflow no longer exists, so the schedule was removed. Recreate the automation if you still need it."
+            : errorMessage.slice(0, 200),
+          category: "workflow",
+          priority: "high",
+          source: "trigger",
+          groupKey: `trigger:${task.id ?? trigger.triggerId}`,
+          data: {
+            taskId: task.id,
+            triggerId: trigger.triggerId,
+            error: errorMessage,
+          },
+        })
+        .catch((error) => {
+          // error-policy:J7 notification diagnostics must not mask dispatch failure.
+          runtime.reportError("TriggerRuntime.notifyFailure", error, {
+            taskId: task.id,
+            triggerId: trigger.triggerId,
+          });
         });
-      });
+    }
   }
 
   if (status === "success") {
@@ -668,7 +669,7 @@ export async function executeTriggerTask(
     // can see the agent finished the task. Grouped per trigger so a frequently
     // scheduled automation updates ONE rail entry instead of spamming, and
     // fire-and-forget so a notify failure never masks the successful run.
-    if (shouldNotifyForTriggerSuccess(runtime, trigger)) {
+    if (shouldNotifyForTriggerOutcome(runtime, trigger)) {
       void getNotifier(runtime)
         ?.notify({
           title: `Automation "${trigger.displayName}" completed`,
