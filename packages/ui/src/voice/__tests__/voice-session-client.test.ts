@@ -478,6 +478,99 @@ describe("voice-session client (real framing/state/barge-in/reconnect)", () => {
     await client.stop();
   });
 
+  it.each(["no_response", "error"] as const)(
+    "returns from thinking when turn_end reports %s without speaking audio",
+    async (outcome) => {
+      const mint = makeMintFetch();
+      const ws = makeWsFactory();
+      const marks: VoiceTraceMark[] = [];
+      const client = createVoiceSessionClient({
+        agentId: "11111111-1111-1111-1111-111111111111",
+        conversationId: "22222222-2222-2222-2222-222222222222",
+        getConsentNonce: async () => "terminal",
+        fetch: mint.fetch,
+        webSocketFactory: ws.factory,
+        getUserMedia: fakeGetUserMedia(),
+        createMicAudioContext: () => new FakeMicAudioContext(16_000),
+        createPlaybackAudioContext: () => new FakePlaybackAudioContext(16_000),
+        onTraceMark: (mark) => marks.push(mark),
+      });
+      await client.start();
+      await flush();
+      const sock = ws.last();
+      sock.emitOpen();
+      sock.emitControl({
+        t: "ready",
+        sessionId: "sess-terminal",
+        traceId: "T-terminal",
+      });
+      await flush();
+
+      sock.emitControl({
+        t: "stt_final",
+        text: "please respond",
+        traceId: "T-terminal",
+      });
+      expect(client.state.phase).toBe("thinking");
+
+      sock.emitControl({ t: "turn_end", outcome, traceId: "T-terminal" });
+
+      expect(client.state.phase).toBe("listening");
+      expect(marks.map((mark) => mark.name)).toContain(`turn_end(${outcome})`);
+      await client.stop();
+    },
+  );
+
+  it("recovers from a malformed turn_end at terminal usage without stranding Thinking", async () => {
+    const mint = makeMintFetch();
+    const ws = makeWsFactory();
+    const marks: VoiceTraceMark[] = [];
+    const client = createVoiceSessionClient({
+      agentId: "11111111-1111-1111-1111-111111111111",
+      conversationId: "22222222-2222-2222-2222-222222222222",
+      getConsentNonce: async () => "malformed",
+      fetch: mint.fetch,
+      webSocketFactory: ws.factory,
+      getUserMedia: fakeGetUserMedia(),
+      createMicAudioContext: () => new FakeMicAudioContext(16_000),
+      createPlaybackAudioContext: () => new FakePlaybackAudioContext(16_000),
+      onTraceMark: (mark) => marks.push(mark),
+    });
+    await client.start();
+    await flush();
+    const sock = ws.last();
+    sock.emitOpen();
+    sock.emitControl({
+      t: "ready",
+      sessionId: "sess-malformed",
+      traceId: "T-malformed",
+    });
+    await flush();
+
+    sock.emitControl({
+      t: "stt_final",
+      text: "please respond",
+      traceId: "T-malformed",
+    });
+    expect(client.state.phase).toBe("thinking");
+
+    sock.emitControl({ t: "turn_end", traceId: "T-malformed" });
+
+    expect(client.state.phase).toBe("thinking");
+    expect(marks.map((mark) => mark.name)).toContain(
+      "not_reached(unparseable_control)",
+    );
+
+    sock.emitControl({
+      t: "usage",
+      sttMs: 100,
+      ttsChars: 0,
+      traceId: "T-malformed",
+    });
+    expect(client.state.phase).toBe("listening");
+    await client.stop();
+  });
+
   it("barge-in flushes local playback BEFORE the server interrupted ack, then reconciles", async () => {
     const mint = makeMintFetch();
     const ws = makeWsFactory();
@@ -519,6 +612,445 @@ describe("voice-session client (real framing/state/barge-in/reconnect)", () => {
     // Now the server's authoritative interrupted arrives → reconcile (idempotent).
     sock.emitControl({ t: "interrupted", reason: "explicit", traceId: "T1" });
     expect(client.state.phase).toBe("listening");
+    await client.stop();
+  });
+
+  it("provisionally pauses on local speech and resumes retained audio after no server confirmation", async () => {
+    const mint = makeMintFetch();
+    const ws = makeWsFactory();
+    const micCtx = new FakeMicAudioContext(16_000);
+    const pbCtx = new FakePlaybackAudioContext(16_000);
+    const marks: VoiceTraceMark[] = [];
+    const client = createVoiceSessionClient({
+      agentId: "11111111-1111-1111-1111-111111111111",
+      conversationId: "22222222-2222-2222-2222-222222222222",
+      getConsentNonce: async () => "n",
+      fetch: mint.fetch,
+      webSocketFactory: ws.factory,
+      getUserMedia: fakeGetUserMedia(),
+      createMicAudioContext: () => micCtx,
+      createPlaybackAudioContext: () => pbCtx,
+      onTraceMark: (mark) => marks.push(mark),
+      provisionalBargeIn: { confirmationTimeoutMs: 350 },
+    });
+    await client.start();
+    await flush();
+    const sock = ws.last();
+    sock.emitOpen();
+    sock.emitControl({ t: "ready", sessionId: "s", traceId: "T-local" });
+    await flush();
+    await client.unlockPlayback();
+    sock.emitControl({ t: "speaking_start", traceId: "T-local" });
+    sock.emitAudio(floatSpeaking(200));
+
+    vi.useFakeTimers();
+    try {
+      micCtx.scriptNode?.feed(new Float32Array(4096).fill(0.1));
+      expect(marks.map((mark) => mark.name)).toContain("local_speech_start");
+      expect(
+        playbackScriptNodeOf(pbCtx)
+          .render(100)
+          .every((value) => value === 0),
+      ).toBe(true);
+      expect(sock.sentControls().some((frame) => frame.t === "barge_in")).toBe(
+        false,
+      );
+
+      await vi.advanceTimersByTimeAsync(350);
+      const resumed = playbackScriptNodeOf(pbCtx).render(100);
+      expect(resumed.some((value) => value !== 0)).toBe(true);
+      expect(marks.map((mark) => mark.name)).toContain(
+        "local_speech_start_unconfirmed",
+      );
+    } finally {
+      vi.useRealTimers();
+      await client.stop();
+    }
+  });
+
+  it("flushes provisionally paused audio when server STT confirms speech", async () => {
+    const mint = makeMintFetch();
+    const ws = makeWsFactory();
+    const micCtx = new FakeMicAudioContext(16_000);
+    const pbCtx = new FakePlaybackAudioContext(16_000);
+    const marks: VoiceTraceMark[] = [];
+    const client = createVoiceSessionClient({
+      agentId: "11111111-1111-1111-1111-111111111111",
+      conversationId: "22222222-2222-2222-2222-222222222222",
+      getConsentNonce: async () => "n",
+      fetch: mint.fetch,
+      webSocketFactory: ws.factory,
+      getUserMedia: fakeGetUserMedia(),
+      createMicAudioContext: () => micCtx,
+      createPlaybackAudioContext: () => pbCtx,
+      onTraceMark: (mark) => marks.push(mark),
+    });
+    await client.start();
+    await flush();
+    const sock = ws.last();
+    sock.emitOpen();
+    sock.emitControl({ t: "ready", sessionId: "s", traceId: "T-confirm" });
+    await flush();
+    await client.unlockPlayback();
+    sock.emitControl({ t: "speaking_start", traceId: "T-confirm" });
+    sock.emitAudio(floatSpeaking(200));
+    micCtx.scriptNode?.feed(new Float32Array(4096).fill(0.1));
+
+    sock.emitControl({
+      t: "stt_partial",
+      text: "wait",
+      traceId: "T-confirm",
+    });
+
+    expect(
+      playbackScriptNodeOf(pbCtx)
+        .render(200)
+        .every((value) => value === 0),
+    ).toBe(true);
+    expect(marks.map((mark) => mark.name)).toContain(
+      "local_speech_start_confirmed",
+    );
+    expect(sock.sentControls().some((frame) => frame.t === "barge_in")).toBe(
+      false,
+    );
+    await client.stop();
+  });
+
+  it("resumes a buffered tail when punctuation-only STT ends no_response", async () => {
+    const mint = makeMintFetch();
+    const ws = makeWsFactory();
+    const micCtx = new FakeMicAudioContext(16_000);
+    const pbCtx = new FakePlaybackAudioContext(16_000);
+    const marks: VoiceTraceMark[] = [];
+    const client = createVoiceSessionClient({
+      agentId: "11111111-1111-1111-1111-111111111111",
+      conversationId: "22222222-2222-2222-2222-222222222222",
+      getConsentNonce: async () => "punctuation-false-start",
+      fetch: mint.fetch,
+      webSocketFactory: ws.factory,
+      getUserMedia: fakeGetUserMedia(),
+      createMicAudioContext: () => micCtx,
+      createPlaybackAudioContext: () => pbCtx,
+      onTraceMark: (mark) => marks.push(mark),
+      provisionalBargeIn: { confirmationTimeoutMs: 350 },
+    });
+    await client.start();
+    await flush();
+    const sock = ws.last();
+    sock.emitOpen();
+    sock.emitControl({ t: "ready", sessionId: "s", traceId: "T-old" });
+    await flush();
+    await client.unlockPlayback();
+    sock.emitControl({ t: "speaking_start", traceId: "T-old" });
+    sock.emitAudio(floatSpeaking(300));
+    sock.emitControl({ t: "speaking_end", traceId: "T-old" });
+
+    vi.useFakeTimers();
+    try {
+      micCtx.scriptNode?.feed(new Float32Array(4096).fill(0.1));
+      expect(marks.map((mark) => mark.name)).toContain("local_speech_start");
+      expect(
+        playbackScriptNodeOf(pbCtx)
+          .render(100)
+          .every((value) => value === 0),
+      ).toBe(true);
+
+      sock.emitControl({ t: "stt_final", text: "...", traceId: "T-noise" });
+      sock.emitControl({
+        t: "usage",
+        sttMs: 100,
+        ttsChars: 0,
+        traceId: "T-noise",
+      });
+      sock.emitControl({
+        t: "turn_end",
+        outcome: "no_response",
+        traceId: "T-noise",
+      });
+
+      const resumed = playbackScriptNodeOf(pbCtx).render(300);
+      expect(resumed.some((value) => value !== 0)).toBe(true);
+      expect(marks.map((mark) => mark.name)).toContain(
+        "local_speech_start_unconfirmed",
+      );
+      expect(marks.map((mark) => mark.name)).not.toContain(
+        "local_speech_start_confirmed",
+      );
+      expect(marks.map((mark) => mark.name)).not.toContain(
+        "server_speech_start_confirmed",
+      );
+    } finally {
+      vi.useRealTimers();
+      await client.stop();
+    }
+  });
+
+  it("flushes buffered audio when authoritative STT arrives after the provisional timeout", async () => {
+    const mint = makeMintFetch();
+    const ws = makeWsFactory();
+    const micCtx = new FakeMicAudioContext(16_000);
+    const pbCtx = new FakePlaybackAudioContext(16_000);
+    const marks: VoiceTraceMark[] = [];
+    const client = createVoiceSessionClient({
+      agentId: "11111111-1111-1111-1111-111111111111",
+      conversationId: "22222222-2222-2222-2222-222222222222",
+      getConsentNonce: async () => "late-confirm",
+      fetch: mint.fetch,
+      webSocketFactory: ws.factory,
+      getUserMedia: fakeGetUserMedia(),
+      createMicAudioContext: () => micCtx,
+      createPlaybackAudioContext: () => pbCtx,
+      onTraceMark: (mark) => marks.push(mark),
+      provisionalBargeIn: { confirmationTimeoutMs: 350 },
+    });
+    await client.start();
+    await flush();
+    const sock = ws.last();
+    sock.emitOpen();
+    sock.emitControl({ t: "ready", sessionId: "s", traceId: "T-late" });
+    await flush();
+    await client.unlockPlayback();
+    sock.emitControl({ t: "speaking_start", traceId: "T-late" });
+    sock.emitAudio(floatSpeaking(300));
+
+    vi.useFakeTimers();
+    try {
+      micCtx.scriptNode?.feed(new Float32Array(4096).fill(0.1));
+      await vi.advanceTimersByTimeAsync(350);
+      expect(
+        playbackScriptNodeOf(pbCtx)
+          .render(50)
+          .some((value) => value !== 0),
+      ).toBe(true);
+
+      sock.emitControl({
+        t: "stt_partial",
+        text: "late but authoritative",
+        traceId: "T-next",
+      });
+
+      expect(
+        playbackScriptNodeOf(pbCtx)
+          .render(400)
+          .every((value) => value === 0),
+      ).toBe(true);
+      expect(marks.map((mark) => mark.name)).toContain(
+        "server_speech_start_confirmed",
+      );
+    } finally {
+      vi.useRealTimers();
+      await client.stop();
+    }
+  });
+
+  it.each(["stt_partial", "stt_final", "interrupted"] as const)(
+    "flushes a buffered tail on authoritative %s when local onset detection misses",
+    async (eventType) => {
+      const mint = makeMintFetch();
+      const ws = makeWsFactory();
+      const pbCtx = new FakePlaybackAudioContext(16_000);
+      const marks: VoiceTraceMark[] = [];
+      const client = createVoiceSessionClient({
+        agentId: "11111111-1111-1111-1111-111111111111",
+        conversationId: "22222222-2222-2222-2222-222222222222",
+        getConsentNonce: async () => `detector-miss-${eventType}`,
+        fetch: mint.fetch,
+        webSocketFactory: ws.factory,
+        getUserMedia: fakeGetUserMedia(),
+        createMicAudioContext: () => new FakeMicAudioContext(16_000),
+        createPlaybackAudioContext: () => pbCtx,
+        onTraceMark: (mark) => marks.push(mark),
+      });
+      await client.start();
+      await flush();
+      const sock = ws.last();
+      sock.emitOpen();
+      sock.emitControl({
+        t: "ready",
+        sessionId: "s",
+        traceId: "T-missed",
+      });
+      await flush();
+      await client.unlockPlayback();
+      sock.emitControl({ t: "speaking_start", traceId: "T-old" });
+      sock.emitAudio(floatSpeaking(300));
+      sock.emitControl({ t: "speaking_end", traceId: "T-old" });
+
+      sock.emitControl(
+        eventType === "interrupted"
+          ? { t: eventType, reason: "acoustic", traceId: "T-old" }
+          : { t: eventType, text: "next turn", traceId: "T-next" },
+      );
+
+      expect(
+        playbackScriptNodeOf(pbCtx)
+          .render(400)
+          .every((value) => value === 0),
+      ).toBe(true);
+      expect(marks.map((mark) => mark.name)).toContain(
+        "server_speech_start_confirmed",
+      );
+      await client.stop();
+    },
+  );
+
+  it("forces old buffered response audio silent on turn_end(stopped)", async () => {
+    const mint = makeMintFetch();
+    const ws = makeWsFactory();
+    const pbCtx = new FakePlaybackAudioContext(16_000);
+    const client = createVoiceSessionClient({
+      agentId: "11111111-1111-1111-1111-111111111111",
+      conversationId: "22222222-2222-2222-2222-222222222222",
+      getConsentNonce: async () => "stopped-terminal",
+      fetch: mint.fetch,
+      webSocketFactory: ws.factory,
+      getUserMedia: fakeGetUserMedia(),
+      createMicAudioContext: () => new FakeMicAudioContext(16_000),
+      createPlaybackAudioContext: () => pbCtx,
+    });
+    await client.start();
+    await flush();
+    const sock = ws.last();
+    sock.emitOpen();
+    sock.emitControl({ t: "ready", sessionId: "s", traceId: "T-stop" });
+    await flush();
+    await client.unlockPlayback();
+    sock.emitControl({ t: "speaking_start", traceId: "T-old" });
+    sock.emitAudio(floatSpeaking(300));
+    sock.emitControl({ t: "speaking_end", traceId: "T-old" });
+
+    sock.emitControl({ t: "turn_end", outcome: "stopped", traceId: "T-old" });
+
+    expect(client.state.phase).toBe("listening");
+    expect(
+      playbackScriptNodeOf(pbCtx)
+        .render(400)
+        .every((value) => value === 0),
+    ).toBe(true);
+    await client.stop();
+  });
+
+  it("does not provisionally interrupt playback while the microphone is muted", async () => {
+    const mint = makeMintFetch();
+    const ws = makeWsFactory();
+    const micCtx = new FakeMicAudioContext(16_000);
+    const pbCtx = new FakePlaybackAudioContext(16_000);
+    const marks: VoiceTraceMark[] = [];
+    const client = createVoiceSessionClient({
+      agentId: "11111111-1111-1111-1111-111111111111",
+      conversationId: "22222222-2222-2222-2222-222222222222",
+      getConsentNonce: async () => "muted-onset",
+      fetch: mint.fetch,
+      webSocketFactory: ws.factory,
+      getUserMedia: fakeGetUserMedia(),
+      createMicAudioContext: () => micCtx,
+      createPlaybackAudioContext: () => pbCtx,
+      onTraceMark: (mark) => marks.push(mark),
+    });
+    await client.start();
+    await flush();
+    const sock = ws.last();
+    sock.emitOpen();
+    sock.emitControl({ t: "ready", sessionId: "s", traceId: "T-muted" });
+    await flush();
+    await client.unlockPlayback();
+    sock.emitControl({ t: "speaking_start", traceId: "T-muted" });
+    sock.emitAudio(floatSpeaking(200));
+    client.setMicrophoneMuted(true);
+
+    micCtx.scriptNode?.feed(new Float32Array(4096).fill(0.1));
+
+    expect(marks.map((mark) => mark.name)).not.toContain("local_speech_start");
+    expect(
+      playbackScriptNodeOf(pbCtx)
+        .render(100)
+        .some((value) => value !== 0),
+    ).toBe(true);
+    await client.stop();
+  });
+
+  it("keeps buffered browser audio interruptible after server speaking_end", async () => {
+    const mint = makeMintFetch();
+    const ws = makeWsFactory();
+    const micCtx = new FakeMicAudioContext(16_000);
+    const pbCtx = new FakePlaybackAudioContext(16_000);
+    const marks: VoiceTraceMark[] = [];
+    const client = createVoiceSessionClient({
+      agentId: "11111111-1111-1111-1111-111111111111",
+      conversationId: "22222222-2222-2222-2222-222222222222",
+      getConsentNonce: async () => "tail",
+      fetch: mint.fetch,
+      webSocketFactory: ws.factory,
+      getUserMedia: fakeGetUserMedia(),
+      createMicAudioContext: () => micCtx,
+      createPlaybackAudioContext: () => pbCtx,
+      onTraceMark: (mark) => marks.push(mark),
+    });
+    await client.start();
+    await flush();
+    const sock = ws.last();
+    sock.emitOpen();
+    sock.emitControl({ t: "ready", sessionId: "s", traceId: "T-tail" });
+    await flush();
+    await client.unlockPlayback();
+    sock.emitControl({ t: "speaking_start", traceId: "T-tail" });
+    sock.emitAudio(floatSpeaking(300));
+    sock.emitControl({ t: "speaking_end", traceId: "T-tail" });
+    expect(client.state.phase).toBe("listening");
+
+    micCtx.scriptNode?.feed(new Float32Array(4096).fill(0.1));
+    expect(marks.map((mark) => mark.name)).toContain("local_speech_start");
+    expect(
+      playbackScriptNodeOf(pbCtx)
+        .render(100)
+        .every((value) => value === 0),
+    ).toBe(true);
+
+    sock.emitControl({ t: "stt_partial", text: "wait", traceId: "T-next" });
+    expect(marks.map((mark) => mark.name)).toContain(
+      "local_speech_start_confirmed",
+    );
+    expect(
+      playbackScriptNodeOf(pbCtx)
+        .render(300)
+        .every((value) => value === 0),
+    ).toBe(true);
+    await client.stop();
+  });
+
+  it("disarms tail interruption after the browser playback queue drains", async () => {
+    const mint = makeMintFetch();
+    const ws = makeWsFactory();
+    const micCtx = new FakeMicAudioContext(16_000);
+    const pbCtx = new FakePlaybackAudioContext(16_000);
+    const marks: VoiceTraceMark[] = [];
+    const client = createVoiceSessionClient({
+      agentId: "11111111-1111-1111-1111-111111111111",
+      conversationId: "22222222-2222-2222-2222-222222222222",
+      getConsentNonce: async () => "drained-tail",
+      fetch: mint.fetch,
+      webSocketFactory: ws.factory,
+      getUserMedia: fakeGetUserMedia(),
+      createMicAudioContext: () => micCtx,
+      createPlaybackAudioContext: () => pbCtx,
+      onTraceMark: (mark) => marks.push(mark),
+    });
+    await client.start();
+    await flush();
+    const sock = ws.last();
+    sock.emitOpen();
+    sock.emitControl({ t: "ready", sessionId: "s", traceId: "T-drained" });
+    await flush();
+    await client.unlockPlayback();
+    sock.emitControl({ t: "speaking_start", traceId: "T-drained" });
+    sock.emitAudio(floatSpeaking(100));
+    sock.emitControl({ t: "speaking_end", traceId: "T-drained" });
+    playbackScriptNodeOf(pbCtx).render(300);
+    expect(marks.map((mark) => mark.name)).toContain("playback_drained");
+
+    micCtx.scriptNode?.feed(new Float32Array(4096).fill(0.1));
+
+    expect(marks.map((mark) => mark.name)).not.toContain("local_speech_start");
     await client.stop();
   });
 

@@ -151,7 +151,10 @@ export interface UseRealtimeVoiceSessionState {
   transcriptPartial: string;
   /** Committed final transcript for the current turn (server `stt_final`). */
   transcriptFinal: string;
-  /** True while the agent is audibly speaking (phase `speaking`). */
+  /**
+   * True while the server is speaking OR browser-buffered response audio is
+   * still audible after the server has ended the turn.
+   */
   agentSpeaking: boolean;
   /** True when queued realtime audio is waiting for a browser autoplay tap. */
   needsUnlock: boolean;
@@ -322,6 +325,8 @@ export function useRealtimeVoiceSession(
   // clears a stale timer before scheduling its own.
   const readyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const micOwnedRef = useRef(false);
+  const serverAgentSpeakingRef = useRef(false);
+  const playbackActiveRef = useRef(false);
   const startOutcomeRef = useRef<{
     generation: number;
     settled: boolean;
@@ -414,11 +419,17 @@ export function useRealtimeVoiceSession(
     const stoppedGeneration = ++sessionGenRef.current;
     startingRef.current = false;
     micOwnedRef.current = false;
+    serverAgentSpeakingRef.current = false;
+    playbackActiveRef.current = false;
     resolveStartOutcome(stoppedGeneration - 1, { kind: "unavailable" });
     clearReadyTimer();
-    await teardownClient();
+    // Detach ownership synchronously, then publish idle before AudioContext and
+    // MediaStream close promises settle. A slow device teardown must never make
+    // the stop control look ignored or keep the speaking UI latched.
+    const teardown = teardownClient();
     // A newer lifecycle may start while an old AudioContext close is pending.
-    // Only the generation that initiated this teardown may clear UI state.
+    // Only the generation that initiated this teardown may publish idle state;
+    // after the await there are deliberately no state writes to clobber it.
     if (sessionGenRef.current === stoppedGeneration) {
       setActive(false);
       setConnecting(false);
@@ -429,6 +440,7 @@ export function useRealtimeVoiceSession(
       setStatus("idle");
       setTranscriptPartial("");
     }
+    await teardown;
     return stoppedGeneration;
   }, [clearReadyTimer, resolveStartOutcome, teardownClient]);
 
@@ -450,6 +462,8 @@ export function useRealtimeVoiceSession(
 
     startingRef.current = true;
     micOwnedRef.current = false;
+    serverAgentSpeakingRef.current = false;
+    playbackActiveRef.current = false;
     setMicrophoneMuted(false);
     setError(null);
     setFallbackReason(null);
@@ -477,6 +491,8 @@ export function useRealtimeVoiceSession(
       // late open/ready cannot resurrect state for a session we just failed.
       sessionGenRef.current += 1;
       startingRef.current = false;
+      serverAgentSpeakingRef.current = false;
+      playbackActiveRef.current = false;
       failedThisSession = true;
       resolveStartOutcome(gen, {
         kind: "fallback-to-batch",
@@ -526,7 +542,10 @@ export function useRealtimeVoiceSession(
       onState: (state, unifiedStatus) => {
         if (!isCurrent()) return;
         setStatus(unifiedStatus);
-        setAgentSpeaking(state.phase === "speaking");
+        serverAgentSpeakingRef.current = state.phase === "speaking";
+        setAgentSpeaking(
+          serverAgentSpeakingRef.current || playbackActiveRef.current,
+        );
         // `active` derives ONLY from the client's phase: live means the socket
         // opened, the server sent `ready`, and the mic is capturing. Pre-live
         // phases (re)arm the watchdog; a teardown back to idle clears both.
@@ -554,6 +573,14 @@ export function useRealtimeVoiceSession(
         if (!isCurrent()) return;
         setNeedsUnlock(required);
         clientOptionsRef.current?.onPlaybackUnlockChange?.(required);
+      },
+      onPlaybackActivityChange: (playbackActive) => {
+        if (!isCurrent()) return;
+        playbackActiveRef.current = playbackActive;
+        setAgentSpeaking(
+          serverAgentSpeakingRef.current || playbackActiveRef.current,
+        );
+        clientOptionsRef.current?.onPlaybackActivityChange?.(playbackActive);
       },
       onServerEvent: (event) => {
         if (!isCurrent()) return;

@@ -104,6 +104,20 @@ export interface ServerSpeakingEndEvent {
   traceId: string;
 }
 
+export type ServerTurnOutcome =
+  | "spoken"
+  | "displayed"
+  | "no_response"
+  | "error"
+  | "stopped";
+
+/** Authoritative terminal event for a committed turn that was not cancelled. */
+export interface ServerTurnEndEvent {
+  t: "turn_end";
+  outcome: ServerTurnOutcome;
+  traceId: string;
+}
+
 export interface ServerNavigateViewEvent {
   t: "navigate_view";
   viewId: string;
@@ -127,12 +141,18 @@ export interface ServerErrorEvent {
   traceId?: string;
   /** Optional human-readable detail; never authoritative for control flow. */
   message?: string;
+  /** Bounded upstream HTTP status forwarded for provider diagnostics. */
+  upstreamStatus?: number;
+  /** Bounded public upstream message forwarded by the voice bridge. */
+  upstreamMessage?: string;
+  /** Bounded, sanitized upstream response prefix for diagnostics. */
+  upstreamSnippet?: string;
 }
 
 export interface ServerUsageEvent {
   t: "usage";
-  sttMs?: number;
-  ttsChars?: number;
+  sttMs: number;
+  ttsChars: number;
   traceId: string;
 }
 
@@ -144,6 +164,7 @@ export type ServerControlFrame =
   | ServerLlmFirstTextEvent
   | ServerSpeakingStartEvent
   | ServerSpeakingEndEvent
+  | ServerTurnEndEvent
   | ServerNavigateViewEvent
   | ServerInterruptedEvent
   | ServerErrorEvent
@@ -194,37 +215,114 @@ export function parseServerControl(raw: string): ServerControlFrame | null {
     return null;
   }
   if (!parsed || typeof parsed !== "object") return null;
-  const t = (parsed as { t?: unknown }).t;
+  const frame = parsed as Record<string, unknown>;
+  const t = frame.t;
   if (typeof t !== "string") return null;
   if (!isKnownServerType(t)) return null;
-  if (t === "navigate_view") {
-    const viewId = readBoundedString((parsed as { viewId?: unknown }).viewId);
-    const traceId = readBoundedString(
-      (parsed as { traceId?: unknown }).traceId,
-    );
-    const rawViewPath = (parsed as { viewPath?: unknown }).viewPath;
-    const viewPath =
-      rawViewPath === undefined ? null : readBoundedString(rawViewPath);
-    const rawSubview = (parsed as { subview?: unknown }).subview;
-    const subview =
-      rawSubview === undefined ? null : readBoundedString(rawSubview);
-    if (
-      !viewId ||
-      !traceId ||
-      (rawViewPath !== undefined && !viewPath) ||
-      (rawSubview !== undefined && !subview)
-    ) {
-      return null;
+  const traceId = readBoundedString(frame.traceId);
+
+  switch (t) {
+    case "ready": {
+      const sessionId = readBoundedString(frame.sessionId);
+      return sessionId && traceId ? { t, sessionId, traceId } : null;
     }
-    return {
-      t,
-      viewId,
-      ...(viewPath ? { viewPath } : {}),
-      ...(subview ? { subview } : {}),
-      traceId,
-    };
+    case "stt_partial":
+    case "stt_final": {
+      const text = readFrameText(frame.text);
+      return text !== null && traceId ? { t, text, traceId } : null;
+    }
+    case "stt_eager_eot":
+    case "llm_first_text":
+    case "speaking_start":
+    case "speaking_end":
+      return traceId ? { t, traceId } : null;
+    case "turn_end": {
+      const outcome = frame.outcome;
+      return traceId && isServerTurnOutcome(outcome)
+        ? { t, outcome, traceId }
+        : null;
+    }
+    case "navigate_view": {
+      const viewId = readBoundedString(frame.viewId);
+      const rawViewPath = frame.viewPath;
+      const viewPath =
+        rawViewPath === undefined ? null : readBoundedString(rawViewPath);
+      const rawSubview = frame.subview;
+      const subview =
+        rawSubview === undefined ? null : readBoundedString(rawSubview);
+      if (
+        !viewId ||
+        !traceId ||
+        (rawViewPath !== undefined && !viewPath) ||
+        (rawSubview !== undefined && !subview)
+      ) {
+        return null;
+      }
+      return {
+        t,
+        viewId,
+        ...(viewPath ? { viewPath } : {}),
+        ...(subview ? { subview } : {}),
+        traceId,
+      };
+    }
+    case "interrupted": {
+      const reason = frame.reason;
+      return traceId && (reason === "acoustic" || reason === "explicit")
+        ? { t, reason, traceId }
+        : null;
+    }
+    case "error": {
+      const code = readBoundedString(frame.code);
+      const retryable = frame.retryable;
+      const rawTraceId = frame.traceId;
+      const optionalTraceId =
+        rawTraceId === undefined ? null : readBoundedString(rawTraceId);
+      const rawMessage = frame.message;
+      const message =
+        rawMessage === undefined ? null : readFrameText(rawMessage, 2_048);
+      const rawUpstreamStatus = frame.upstreamStatus;
+      const upstreamStatus = readOptionalHttpStatus(rawUpstreamStatus);
+      const rawUpstreamMessage = frame.upstreamMessage;
+      const upstreamMessage =
+        rawUpstreamMessage === undefined
+          ? null
+          : readFrameText(rawUpstreamMessage, 512);
+      const rawUpstreamSnippet = frame.upstreamSnippet;
+      const upstreamSnippet =
+        rawUpstreamSnippet === undefined
+          ? null
+          : readFrameText(rawUpstreamSnippet, 512);
+      if (
+        !code ||
+        typeof retryable !== "boolean" ||
+        (rawTraceId !== undefined && !optionalTraceId) ||
+        (rawMessage !== undefined && message === null) ||
+        upstreamStatus === false ||
+        (rawUpstreamMessage !== undefined && upstreamMessage === null) ||
+        (rawUpstreamSnippet !== undefined && upstreamSnippet === null)
+      ) {
+        return null;
+      }
+      return {
+        t,
+        code,
+        retryable,
+        ...(optionalTraceId ? { traceId: optionalTraceId } : {}),
+        ...(message !== null ? { message } : {}),
+        ...(upstreamStatus !== null ? { upstreamStatus } : {}),
+        ...(upstreamMessage !== null ? { upstreamMessage } : {}),
+        ...(upstreamSnippet !== null ? { upstreamSnippet } : {}),
+      };
+    }
+    case "usage": {
+      const sttMs = readNonNegativeNumber(frame.sttMs);
+      const ttsChars = readNonNegativeInteger(frame.ttsChars);
+      return traceId && sttMs !== null && ttsChars !== null
+        ? { t, sttMs, ttsChars, traceId }
+        : null;
+    }
   }
-  return parsed as ServerControlFrame;
 }
 
 const SERVER_TYPES: ReadonlySet<string> = new Set<ServerControlType>([
@@ -235,6 +333,7 @@ const SERVER_TYPES: ReadonlySet<string> = new Set<ServerControlType>([
   "llm_first_text",
   "speaking_start",
   "speaking_end",
+  "turn_end",
   "navigate_view",
   "interrupted",
   "error",
@@ -249,6 +348,41 @@ function readBoundedString(value: unknown): string | null {
   if (typeof value !== "string") return null;
   const normalized = value.trim();
   return normalized.length > 0 && normalized.length <= 256 ? normalized : null;
+}
+
+function readFrameText(value: unknown, maxLength = 32_768): string | null {
+  return typeof value === "string" && value.length <= maxLength ? value : null;
+}
+
+function isServerTurnOutcome(value: unknown): value is ServerTurnOutcome {
+  return (
+    value === "spoken" ||
+    value === "displayed" ||
+    value === "no_response" ||
+    value === "error" ||
+    value === "stopped"
+  );
+}
+
+function readNonNegativeNumber(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0
+    ? value
+    : null;
+}
+
+function readNonNegativeInteger(value: unknown): number | null {
+  const parsed = readNonNegativeNumber(value);
+  return parsed !== null && Number.isInteger(parsed) ? parsed : null;
+}
+
+function readOptionalHttpStatus(value: unknown): number | null | false {
+  if (value === undefined) return null;
+  return typeof value === "number" &&
+    Number.isInteger(value) &&
+    value >= 100 &&
+    value <= 599
+    ? value
+    : false;
 }
 
 /** Type guard: is this mint response usable (has url + token + sessionId). */
