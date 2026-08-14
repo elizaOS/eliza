@@ -40,6 +40,7 @@ function loadRegistry(entries: Record<string, unknown>[]): void {
 
 afterEach(() => {
   delete process.env.OIDC_CLIENTS;
+  delete process.env.OIDC_REDIRECT_URI_ALIASES;
   _resetOidcClientCacheForTests();
 });
 
@@ -62,6 +63,95 @@ describe("defaults", () => {
     expect(
       parseOidcClientEntry(entry({ wallet_email_fallback: "true" })).wallet_email_fallback,
     ).toBe(false);
+  });
+});
+
+describe("redirect URI aliases", () => {
+  test("adds an exact HTTPS callback to an existing client without changing its policy", () => {
+    process.env.OIDC_CLIENTS = JSON.stringify([entry({ client_id: "elizahub" })]);
+    process.env.OIDC_REDIRECT_URI_ALIASES = JSON.stringify({
+      elizahub: ["https://git.slop.cash/user/oauth2/elizacloud/callback"],
+    });
+
+    const client = getOidcClient("elizahub");
+    expect(client?.redirect_uris).toEqual([
+      "https://hub.example/user/oauth2/elizacloud/callback",
+      "https://git.slop.cash/user/oauth2/elizacloud/callback",
+    ]);
+    expect(client?.secret_hashes).toEqual([SECRET_HASH]);
+    expect(client?.allowed_scopes).toEqual(["openid", "email", "profile", "groups"]);
+  });
+
+  test("an unset overlay leaves every registered client byte-for-byte unchanged", () => {
+    process.env.OIDC_CLIENTS = JSON.stringify([entry()]);
+    expect(getOidcClient("elizahub-forgejo")?.redirect_uris).toEqual([
+      "https://hub.example/user/oauth2/elizacloud/callback",
+    ]);
+  });
+
+  test("changing only the overlay invalidates the isolate cache", () => {
+    process.env.OIDC_CLIENTS = JSON.stringify([entry({ client_id: "elizahub" })]);
+    process.env.OIDC_REDIRECT_URI_ALIASES = JSON.stringify({
+      elizahub: ["https://git.slop.cash/user/oauth2/elizacloud/callback"],
+    });
+    expect(getOidcClient("elizahub")?.redirect_uris.at(-1)).toBe(
+      "https://git.slop.cash/user/oauth2/elizacloud/callback",
+    );
+
+    process.env.OIDC_REDIRECT_URI_ALIASES = JSON.stringify({
+      elizahub: ["https://next.slop.cash/user/oauth2/elizacloud/callback"],
+    });
+    expect(getOidcClient("elizahub")?.redirect_uris.at(-1)).toBe(
+      "https://next.slop.cash/user/oauth2/elizacloud/callback",
+    );
+  });
+
+  test("malformed, empty, array, and oversized overlay sources fail closed", () => {
+    process.env.OIDC_CLIENTS = JSON.stringify([entry()]);
+    for (const source of ["{", "{}", "[]", `{"x":"${"x".repeat(16_384)}"}`]) {
+      process.env.OIDC_REDIRECT_URI_ALIASES = source;
+      _resetOidcClientCacheForTests();
+      expect(() => getOidcClient("elizahub-forgejo")).toThrow(/OIDC_REDIRECT_URI_ALIASES/);
+    }
+  });
+
+  test("an alias cannot create a client or collide with any primary callback", () => {
+    process.env.OIDC_CLIENTS = JSON.stringify([
+      entry(),
+      entry({ client_id: "other-app", redirect_uris: ["https://other.example/callback"] }),
+    ]);
+    for (const aliases of [
+      { missing: ["https://missing.example/callback"] },
+      { "other-app": ["https://hub.example/user/oauth2/elizacloud/callback"] },
+      { "elizahub-forgejo": ["https://hub.example/user/oauth2/elizacloud/callback"] },
+    ]) {
+      process.env.OIDC_REDIRECT_URI_ALIASES = JSON.stringify(aliases);
+      _resetOidcClientCacheForTests();
+      expect(() => getOidcClient("elizahub-forgejo")).toThrow(
+        /unregistered client_id|already registered/,
+      );
+    }
+  });
+
+  test("aliases reject insecure, credentialed, fragmented, duplicate, and empty callbacks", () => {
+    process.env.OIDC_CLIENTS = JSON.stringify([entry()]);
+    const invalidAliases = [
+      ["http://git.slop.cash/callback"],
+      ["https:git.slop.cash/callback"],
+      ["https://user:secret@git.slop.cash/callback"],
+      ["https://git.slop.cash/callback#fragment"],
+      ["https://git.slop.cash/callback", "https://git.slop.cash/callback"],
+      [],
+    ];
+    for (const aliases of invalidAliases) {
+      process.env.OIDC_REDIRECT_URI_ALIASES = JSON.stringify({
+        "elizahub-forgejo": aliases,
+      });
+      _resetOidcClientCacheForTests();
+      expect(() => getOidcClient("elizahub-forgejo")).toThrow(
+        /HTTPS|already registered|between 1 and/,
+      );
+    }
   });
 });
 
