@@ -127,7 +127,15 @@ export function mergeStreamingText(existing: string, incoming: string): string {
       return incoming.length === 1 ? `${existing}${incoming}` : existing;
     }
 
-    return `${existing.slice(0, existing.length - (existingNorm.length - existingTrimmedLength))}${incoming.slice(overlap)}`;
+    // The overlap index is measured against the NFC-normalized strings, so it
+    // must slice the NORMALIZED incoming: slicing the raw string at an NFC
+    // index misaligns whenever incoming carries decomposed sequences before
+    // the cut (e.g. "e" + U+0301), duplicating combining marks in the merged
+    // text. The appended suffix is canonically equivalent to the raw one. The
+    // existing-side arithmetic stays raw-safe because trailing whitespace is
+    // NFC-stable, so the trimmed-length delta counts the same characters in
+    // both forms.
+    return `${existing.slice(0, existing.length - (existingNorm.length - existingTrimmedLength))}${incomingNorm.slice(overlap)}`;
   }
 
   // Some providers revise earlier words in-place while still sending the full
