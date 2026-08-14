@@ -24,10 +24,10 @@ prompts containing secrets, tokens, private session IDs, or hidden reasoning.
 Use exact `provider/model-id` values; `GPT`, `Claude`, or `AI` are not specific
 enough. Human-only work must say so explicitly.
 
-The row labels below must **not** reuse the terminal eliza.army footer labels
+The row labels below must **not** reuse the standard footer labels
 (`Client / agent tooling`, `Skill revision` / `Contribution skill revision`,
-`Attribution status`). Duplicating those strings makes the scoring validator
-reject the machine marker (#17855). Keep the `<!-- attribution-row:* -->`
+`Attribution status`). Duplicating those strings makes the validation check
+reject the machine marker. Keep the `<!-- attribution-row:* -->`
 markers; only the human-readable prefixes changed. After filling these rows,
 append the standard footer once at the end of the PR body (do not repeat the
 visible footer lines here).
