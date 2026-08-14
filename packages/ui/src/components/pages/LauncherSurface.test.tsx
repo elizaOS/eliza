@@ -105,6 +105,7 @@ beforeEach(() => {
   __setAppValueForTests({
     appRuns: [],
     elizaCloudConnected: false,
+    startupCoordinator: { target: "embedded-local" },
     setActionNotice: setActionNoticeMock,
     setState: setStateMock,
     setTab: setTabMock,
