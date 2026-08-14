@@ -121,7 +121,7 @@ export function evaluatePublicSurface(surface, config) {
     "message-copy-fallback",
     surface.messageButtonCount === 1 &&
       surface.copiedPhone === expectedGatewayNumber &&
-      surface.copyNotice === "Phone number copied",
+      surface.copyNotice === "Copied!",
     `buttons=${surface.messageButtonCount} clipboard=${surface.copiedPhone || "empty"} notice=${surface.copyNotice || "missing"}`,
   );
   check(

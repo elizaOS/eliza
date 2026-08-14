@@ -321,6 +321,12 @@ export interface Bindings {
    */
   OIDC_CLIENTS?: string;
   /**
+   * Public JSON object of client_id → additional exact HTTPS callbacks used
+   * during canonical-domain migrations. The client must already exist in
+   * OIDC_CLIENTS; this overlay cannot create or otherwise modify a client.
+   */
+  OIDC_REDIRECT_URI_ALIASES?: string;
+  /**
    * Domain that wallet-derived no-reply identities are minted on, for relying
    * parties registered with `wallet_email_fallback`. Defaults to
    * `users.noreply.<OIDC_ISSUER_URL hostname>` and is normally left unset.
@@ -475,6 +481,7 @@ export interface Bindings {
  */
 export interface AuthedUser {
   id: string;
+  created_at?: Date | string;
   email?: string | null;
   /** Whether `email` is verified — gates the @elizalabs.ai super_admin grant. */
   email_verified?: boolean | null;
