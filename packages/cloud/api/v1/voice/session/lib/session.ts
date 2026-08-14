@@ -41,6 +41,7 @@ import type {
   VoiceUsageLimits,
   VoiceUsageStore,
 } from "@/lib/services/voice-usage-meter";
+import { logger } from "@/lib/utils/logger";
 import {
   ElizaSseBridgeError,
   streamElizaConversation,
@@ -835,6 +836,14 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
       if (this.currentVoiceTurnId !== traceId) return;
       const bridgeError =
         error instanceof ElizaSseBridgeError ? error : undefined;
+      logger.warn("[voice-session] Eliza response turn failed", {
+        traceId,
+        code: bridgeError?.upstreamCode ?? bridgeError?.code,
+        status: bridgeError?.status,
+        message:
+          bridgeError?.upstreamMessage ??
+          (error instanceof Error ? error.message : String(error)),
+      });
       this.send({
         t: "error",
         code: bridgeError
