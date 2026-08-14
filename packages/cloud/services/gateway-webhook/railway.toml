@@ -6,6 +6,7 @@
 # Required env vars / secrets:
 #   GATEWAY_INTERNAL_SECRET     Shared secret for internal routes from cloud-api.
 #   AGENT_SERVER_SHARED_SECRET  Shared secret for forwards to agent-server.
+#   ELIZA_APP_WEBHOOK_GATEWAY_SECRET  Shared secret required on BFF forwards.
 #   REDIS_URL                   Upstash Redis REST URL (or KV_REST_API_URL).
 #   KV_REST_API_TOKEN           Upstash Redis REST token.
 #
