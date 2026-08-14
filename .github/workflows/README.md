@@ -62,6 +62,15 @@ Representative examples:
   summary; it downloads by artifact id, decrypts only after every identity
   check, and never creates a replacement plan. Plaintext plan files are
   shredded on every plan/apply outcome.
+- `arm-headscale-control-plane.yml` is the protected Hetzner Headscale
+  convergence path. Its default operation converges the environment-fixed
+  canonical/legacy overlap. Staging additionally exposes a read-only inspection
+  of the exact reviewed `/etc/nginx/conf.d/headscale-staging.conf` artifact and
+  a separate explicit retirement operation. The latter validates the regular
+  root-owned legacy-only two-listener contract, requires the exact SHA-256
+  emitted by the reviewed inspection, backs up both nginx files, and
+  restores them on any ownership, SAN, nginx, reload, or public-health failure.
+  Production has no legacy-file cleanup path.
 - `deploy-tunnel-proxy.yml` is the protected Railway + Headscale convergence
   path for the customer tunnel proxy. It validates canonical staging/production
   hosts, rotates the reusable `tag:eliza-proxy` enrollment key without logging

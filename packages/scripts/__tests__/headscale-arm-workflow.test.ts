@@ -9,6 +9,7 @@ import {
   mkdtempSync,
   readFileSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -46,6 +47,7 @@ const scriptPath = fileURLToPath(
 );
 
 interface WorkflowStep {
+  if?: string;
   name?: string;
   run?: string;
   uses?: string;
@@ -63,6 +65,7 @@ interface Workflow {
 
 const workflow = Bun.YAML.parse(workflowSource) as Workflow;
 const arm = workflow.jobs?.arm;
+const reviewedLegacyVhostSha256 = "a".repeat(64);
 
 function step(name: string): WorkflowStep {
   const found = arm?.steps?.find((candidate) => candidate.name === name);
@@ -79,7 +82,11 @@ function expectBashSyntax(source: string) {
   expect(syntax.stderr).toBe("");
 }
 
-function runDryArm(publicUrl: string, legacyPublicUrl: string) {
+function runDryArm(
+  publicUrl: string,
+  legacyPublicUrl: string,
+  extraArgs: string[] = [],
+) {
   const fixtureDir = mkdtempSync(join(tmpdir(), "headscale-arm-test-"));
   const sshKey = join(fixtureDir, "deploy-key");
   const knownHosts = join(fixtureDir, "known-hosts");
@@ -104,6 +111,7 @@ function runDryArm(publicUrl: string, legacyPublicUrl: string) {
         "--headscale-api-key",
         "test-only-api-key",
         "--skip-cp-router",
+        ...extraArgs,
         "--dry-run",
       ],
       {
@@ -120,12 +128,101 @@ function runDryArm(publicUrl: string, legacyPublicUrl: string) {
 
 function ownershipAwkProgram(remoteScript: string) {
   const startMarker = '-v legacy="$HS_LEGACY_HOST" \'\n';
-  const start = remoteScript.indexOf(startMarker);
+  const start = remoteScript.lastIndexOf(startMarker);
   if (start === -1) throw new Error("Missing Headscale ownership awk start");
   const bodyStart = start + startMarker.length;
   const end = remoteScript.indexOf("\n')", bodyStart);
   if (end === -1) throw new Error("Missing Headscale ownership awk end");
   return remoteScript.slice(bodyStart, end);
+}
+
+function legacyVhostValidationFunction(remoteScript: string) {
+  const startMarker = "validate_retirable_legacy_vhost() {\n";
+  const start = remoteScript.indexOf(startMarker);
+  if (start === -1) throw new Error("Missing legacy vhost validator start");
+  const endMarker = "\n}\n\nvalidate_retirable_legacy_vhost";
+  const end = remoteScript.indexOf(endMarker, start);
+  if (end === -1) throw new Error("Missing legacy vhost validator end");
+  return remoteScript.slice(start, end + 2);
+}
+
+function runLegacyVhostValidation(options: {
+  source?: string;
+  loadedConfig?: string;
+  owner?: string;
+  symlink?: boolean;
+  writable?: boolean;
+  reviewedSha256?: string;
+  requireFile?: boolean;
+  enforceDirectiveAllowlist?: boolean;
+}) {
+  const dry = runDryArm(
+    "https://headscale-staging.eliza.app",
+    "https://headscale-staging.elizacloud.ai",
+    [
+      "--retire-retirable-legacy-vhost",
+      "--retirable-legacy-vhost-sha256",
+      reviewedLegacyVhostSha256,
+    ],
+  );
+  expect(dry.status).toBe(0);
+  const fixtureDir = mkdtempSync(
+    join(tmpdir(), "headscale-legacy-vhost-test-"),
+  );
+  const legacyVhost = join(fixtureDir, "headscale-staging.conf");
+  const target = join(fixtureDir, "target.conf");
+  if (options.source !== undefined) {
+    if (options.symlink) {
+      writeFileSync(target, options.source, { mode: 0o644 });
+      symlinkSync(target, legacyVhost);
+    } else {
+      writeFileSync(legacyVhost, options.source, { mode: 0o644 });
+    }
+  }
+  const validator = legacyVhostValidationFunction(dry.stdout).replaceAll(
+    "/etc/nginx/conf.d/headscale-staging.conf",
+    legacyVhost,
+  );
+  const harness = `
+set -euo pipefail
+HS_HOST=headscale-staging.eliza.app
+HS_LEGACY_HOST=headscale-staging.elizacloud.ai
+HS_RETIRABLE_LEGACY_VHOST=${JSON.stringify(legacyVhost)}
+HS_REVIEWED_LEGACY_VHOST_SHA256=${JSON.stringify(options.reviewedSha256 ?? "")}
+HS_REQUIRE_RETIRABLE_LEGACY_VHOST=${options.requireFile ? "true" : "false"}
+HS_ENFORCE_LEGACY_VHOST_DIRECTIVE_ALLOWLIST=${options.enforceDirectiveAllowlist ? "true" : "false"}
+sudo() {
+  case "$1" in
+    stat) printf '%s\\n' "$TEST_FILE_OWNER" ;;
+    find)
+      if [ "$TEST_FILE_WRITABLE" = "true" ]; then
+        printf '%s\\n' "$HS_RETIRABLE_LEGACY_VHOST"
+      fi
+      ;;
+    *) "$@" ;;
+  esac
+}
+nginx() { printf '%s\\n' "$TEST_NGINX_CONFIG"; }
+${validator}
+validate_retirable_legacy_vhost
+`;
+
+  try {
+    return spawnSync("bash", ["-c", harness], {
+      encoding: "utf8",
+      env: {
+        PATH: process.env.PATH ?? "",
+        TEST_FILE_OWNER: options.owner ?? "root:root",
+        TEST_FILE_WRITABLE: options.writable ? "true" : "false",
+        TEST_NGINX_CONFIG: (options.loadedConfig ?? "").replaceAll(
+          "REPLACE_LEGACY_PATH",
+          legacyVhost,
+        ),
+      },
+    });
+  } finally {
+    rmSync(fixtureDir, { recursive: true, force: true });
+  }
 }
 
 function renewalHookScript(remoteScript: string) {
@@ -201,9 +298,7 @@ describe("protected Headscale arm workflow", () => {
     expect(install).toContain("printf '%s\\n' \"$DEPLOY_SSH_KNOWN_HOSTS\"");
     expect(install).toContain('ssh-keygen -F "$DEPLOY_HOST"');
 
-    const converge = step(
-      "Converge Headscale, canonical TLS, and control-plane router",
-    ).run;
+    const converge = step("Inspect or converge Headscale control plane").run;
     expect(converge).toContain("--ssh-known-hosts");
   });
 
@@ -256,18 +351,31 @@ describe("protected Headscale arm workflow", () => {
       "resolved_legacy_public_url=$expected_legacy_public_url",
     );
 
-    const converge = step(
-      "Converge Headscale, canonical TLS, and control-plane router",
-    ).run;
+    const converge = step("Inspect or converge Headscale control plane").run;
     expect(converge).toContain("--headscale-legacy-public-url");
     expect(converge).toContain('"$resolved_legacy_public_url"');
-    expect(
-      converge
-        ?.trimEnd()
-        .endsWith(
-          '--headscale-legacy-public-url "$resolved_legacy_public_url"',
-        ),
-    ).toBe(true);
+    expect(converge).toContain("--inspect-retirable-legacy-vhost");
+    expect(converge).toContain("--retire-retirable-legacy-vhost");
+    expect(converge).toContain("--retirable-legacy-vhost-sha256");
+    expect(converge).toContain('"$' + '{args[@]}"');
+  });
+
+  test("separates read-only inspection from explicit staging retirement", () => {
+    expect(workflowSource).toContain("inspect-legacy-vhost");
+    expect(workflowSource).toContain("retire-legacy-vhost-and-converge");
+    expect(workflowSource).toContain("reviewed_legacy_vhost_sha256");
+    const sourceGate = step("Validate protected deploy source").run;
+    expect(sourceGate).toContain('if [ "$TARGET_ENVIRONMENT" != "staging" ]');
+    expect(sourceGate).toContain(
+      "is registered only for the reviewed staging legacy vhost",
+    );
+    expect(sourceGate).toContain("^[0-9a-f]{64}$");
+    expect(sourceGate).toContain(
+      "retirement requires the exact lowercase SHA-256",
+    );
+    expect(step("Verify dual-SAN public identity and health").if).toContain(
+      "inputs.operation != 'inspect-legacy-vhost'",
+    );
   });
 
   test("does not accept dispatch overrides for loopback API or listen addresses", () => {
@@ -351,6 +459,27 @@ describe("protected Headscale arm workflow", () => {
 });
 
 describe("Headscale migration-overlap remote script", () => {
+  const expectedLegacySource = `server {
+  listen 80;
+  listen [::]:80;
+  server_name headscale-staging.elizacloud.ai;
+  return 301 https://$host$request_uri;
+}
+server {
+  listen 443 ssl;
+  listen [::]:443 ssl;
+  server_name headscale-staging.elizacloud.ai;
+  proxy_pass http://127.0.0.1:8080;
+}
+`;
+  const expectedLoadedConfig = `# configuration file /etc/nginx/conf.d/headscale.conf:
+server_name headscale-staging.eliza.app headscale-staging.elizacloud.ai;
+server_name headscale-staging.eliza.app headscale-staging.elizacloud.ai;
+# configuration file REPLACE_LEGACY_PATH:
+server_name headscale-staging.elizacloud.ai;
+server_name headscale-staging.elizacloud.ai;
+`;
+
   test.each([
     [
       "production",
@@ -386,7 +515,7 @@ describe("Headscale migration-overlap remote script", () => {
       expect(result.stdout).toContain(
         "Leaving unknown nginx configs untouched and restoring the prior $HS_VHOST",
       );
-      expect(result.stdout).toContain("rollback_headscale_vhost()");
+      expect(result.stdout).toContain("rollback_headscale_vhosts()");
       const acmeTrap = result.stdout.indexOf("trap restore_acme_vhost EXIT");
       const acmeInstall = result.stdout.indexOf(
         'sudo install -o root -g root -m 0644 "$HS_ACME_STAGE" "$HS_ACME_VHOST"',
@@ -396,7 +525,7 @@ describe("Headscale migration-overlap remote script", () => {
       expect(acmeTrap).toBeLessThan(acmeInstall);
 
       const finalTrap = result.stdout.indexOf(
-        "trap rollback_headscale_vhost EXIT",
+        "trap rollback_headscale_vhosts EXIT",
       );
       const finalInstall = result.stdout.indexOf(
         'sudo install -o root -g root -m 0644 "$HS_VHOST_STAGE" "$HS_VHOST"',
@@ -429,6 +558,213 @@ describe("Headscale migration-overlap remote script", () => {
       expectBashSyntax(result.stdout);
     },
   );
+
+  test("retires the reviewed staging file only inside the rollback transaction", () => {
+    const result = runDryArm(
+      "https://headscale-staging.eliza.app",
+      "https://headscale-staging.elizacloud.ai",
+      [
+        "--retire-retirable-legacy-vhost",
+        "--retirable-legacy-vhost-sha256",
+        reviewedLegacyVhostSha256,
+      ],
+    );
+    expect(result.status).toBe(0);
+    expect(result.stderr).toBe("");
+    expect(result.stdout).toContain(
+      "HS_RETIRABLE_LEGACY_VHOST='/etc/nginx/conf.d/headscale-staging.conf'",
+    );
+    expect(result.stdout).toContain("HS_RETIRE_REVIEWED_LEGACY_VHOST='true'");
+    expect(result.stdout).toContain(
+      `HS_REVIEWED_LEGACY_VHOST_SHA256='${reviewedLegacyVhostSha256}'`,
+    );
+    const validation = result.stdout.indexOf(
+      "validate_retirable_legacy_vhost\n",
+    );
+    const trap = result.stdout.indexOf("trap rollback_headscale_vhosts EXIT");
+    const install = result.stdout.indexOf(
+      'sudo install -o root -g root -m 0644 "$HS_VHOST_STAGE" "$HS_VHOST"',
+    );
+    const removal = result.stdout.indexOf(
+      'sudo rm -f -- "$HS_RETIRABLE_LEGACY_VHOST"',
+    );
+    const finalValidation = result.stdout.lastIndexOf(
+      "validate_retirable_legacy_vhost",
+      removal,
+    );
+    const ownership = result.stdout.indexOf(
+      "effective_nginx_config=$(sudo nginx -T 2>&1)",
+      removal,
+    );
+    const timerProof = result.stdout.indexOf(
+      "sudo systemctl is-active --quiet certbot.timer",
+    );
+    const publicHealthProof = result.stdout.indexOf(
+      '"https://$public_host/health"',
+      timerProof,
+    );
+    const publicSniProof = result.stdout.indexOf(
+      '-servername "$public_host"',
+      publicHealthProof,
+    );
+    const transactionCommit = result.stdout.lastIndexOf("trap - EXIT");
+    expect(validation).toBeGreaterThan(-1);
+    expect(trap).toBeGreaterThan(validation);
+    expect(install).toBeGreaterThan(trap);
+    expect(removal).toBeGreaterThan(install);
+    expect(finalValidation).toBeGreaterThan(install);
+    expect(finalValidation).toBeLessThan(removal);
+    expect(ownership).toBeGreaterThan(removal);
+    expect(timerProof).toBeGreaterThan(ownership);
+    expect(publicHealthProof).toBeGreaterThan(timerProof);
+    expect(publicSniProof).toBeGreaterThan(publicHealthProof);
+    expect(transactionCommit).toBeGreaterThan(publicSniProof);
+    expect(transactionCommit).toBeGreaterThan(timerProof);
+    expect(result.stdout).toContain(
+      'sudo install -o root -g root -m "$HS_RETIRABLE_LEGACY_VHOST_MODE"',
+    );
+    expectBashSyntax(result.stdout);
+  });
+
+  test("inspects only the exact reviewed staging file without generating convergence", () => {
+    const result = runDryArm(
+      "https://headscale-staging.eliza.app",
+      "https://headscale-staging.elizacloud.ai",
+      ["--inspect-retirable-legacy-vhost"],
+    );
+    expect(result.status).toBe(0);
+    expect(result.stderr).toBe("");
+    expect(result.stdout).toContain(
+      "Legacy Headscale vhost passed the read-only retirement preflight",
+    );
+    expect(result.stdout).toContain("reviewed-sha256=$legacy_vhost_sha256");
+    expect(result.stdout).toContain(
+      "directive-name inventory (values withheld)",
+    );
+    const publicDirectiveReport = result.stdout.slice(
+      result.stdout.indexOf("--- reviewed public routing/TLS directives ---"),
+      result.stdout.indexOf(
+        "Legacy Headscale vhost passed the read-only retirement preflight",
+      ),
+    );
+    expect(publicDirectiveReport).not.toContain("proxy_set_header");
+    expect(result.stdout).not.toContain("sudo systemctl restart headscale");
+    expect(result.stdout).not.toContain("sudo rm -f --");
+    expectBashSyntax(result.stdout);
+  });
+
+  test("rejects inspection or retirement for production without a reviewed path", () => {
+    const result = runDryArm(
+      "https://headscale.eliza.app",
+      "https://headscale.elizacloud.ai",
+      ["--inspect-retirable-legacy-vhost"],
+    );
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain(
+      "no reviewed legacy nginx vhost is registered for headscale.eliza.app",
+    );
+  });
+
+  test("requires retirement to bind the exact inspected file digest", () => {
+    const missing = runDryArm(
+      "https://headscale-staging.eliza.app",
+      "https://headscale-staging.elizacloud.ai",
+      ["--retire-retirable-legacy-vhost"],
+    );
+    expect(missing.status).toBe(1);
+    expect(missing.stderr).toContain(
+      "must be the exact lowercase SHA-256 from inspection",
+    );
+
+    const changed = runLegacyVhostValidation({
+      source: expectedLegacySource,
+      loadedConfig: expectedLoadedConfig,
+      reviewedSha256: reviewedLegacyVhostSha256,
+    });
+    expect(changed.status).toBe(1);
+    expect(changed.stdout).toContain("bytes changed after inspection");
+
+    const absent = runLegacyVhostValidation({ requireFile: true });
+    expect(absent.status).toBe(1);
+    expect(absent.stdout).toContain("is absent; refusing retirement");
+
+    const unrelatedDirective = runLegacyVhostValidation({
+      source: expectedLegacySource.replace(
+        "  return 301",
+        "  auth_basic off;\n  return 301",
+      ),
+      loadedConfig: expectedLoadedConfig,
+      enforceDirectiveAllowlist: true,
+    });
+    expect(unrelatedDirective.status).toBe(1);
+    expect(unrelatedDirective.stdout).toContain(
+      "directives outside the reviewed retirement allowlist",
+    );
+  });
+
+  test("accepts only the reviewed regular legacy-only two-listener contract", () => {
+    const valid = runLegacyVhostValidation({
+      source: expectedLegacySource,
+      loadedConfig: expectedLoadedConfig,
+    });
+    expect(valid.status).toBe(0);
+    expect(valid.stderr).toBe("");
+
+    const absent = runLegacyVhostValidation({});
+    expect(absent.status).toBe(0);
+
+    const symlink = runLegacyVhostValidation({
+      source: expectedLegacySource,
+      loadedConfig: "",
+      symlink: true,
+    });
+    expect(symlink.status).not.toBe(0);
+    expect(symlink.stdout).toContain("non-regular legacy Headscale vhost");
+
+    const unexpectedHost = runLegacyVhostValidation({
+      source: expectedLegacySource.replace(
+        "headscale-staging.elizacloud.ai;",
+        "unrelated.example.com;",
+      ),
+      loadedConfig: "",
+    });
+    expect(unexpectedHost.status).not.toBe(0);
+    expect(unexpectedHost.stdout).toContain(
+      "exactly two expected legacy-only server blocks",
+    );
+
+    const wrongOwner = runLegacyVhostValidation({
+      source: expectedLegacySource,
+      loadedConfig: expectedLoadedConfig,
+      owner: "deploy:deploy",
+    });
+    expect(wrongOwner.status).not.toBe(0);
+    expect(wrongOwner.stdout).toContain(
+      "must be root-owned and not group/world writable",
+    );
+
+    const writable = runLegacyVhostValidation({
+      source: expectedLegacySource,
+      loadedConfig: expectedLoadedConfig,
+      writable: true,
+    });
+    expect(writable.status).not.toBe(0);
+    expect(writable.stdout).toContain(
+      "must be root-owned and not group/world writable",
+    );
+
+    const missingLoadedOwner = runLegacyVhostValidation({
+      source: expectedLegacySource,
+      loadedConfig: expectedLoadedConfig.replace(
+        "# configuration file REPLACE_LEGACY_PATH:",
+        "# configuration file /tmp/not-the-reviewed-vhost:",
+      ),
+    });
+    expect(missingLoadedOwner.status).not.toBe(0);
+    expect(missingLoadedOwner.stdout).toContain(
+      "ownership no longer matches the reviewed two-listener contract",
+    );
+  });
 
   test("enumerates multiline exact hostname owners by loaded nginx config", () => {
     const result = runDryArm(

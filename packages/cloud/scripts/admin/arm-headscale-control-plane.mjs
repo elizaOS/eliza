@@ -44,6 +44,7 @@ const HEADSCALE_ENVIRONMENT_BY_CANONICAL_HOST = new Map([
       legacyHostname: "headscale.elizacloud.ai",
       apiUrl: "http://127.0.0.1:8081",
       listenAddr: "127.0.0.1:8081",
+      retirableLegacyVhost: undefined,
     },
   ],
   [
@@ -52,6 +53,7 @@ const HEADSCALE_ENVIRONMENT_BY_CANONICAL_HOST = new Map([
       legacyHostname: "headscale-staging.elizacloud.ai",
       apiUrl: "http://127.0.0.1:8080",
       listenAddr: "127.0.0.1:8080",
+      retirableLegacyVhost: "/etc/nginx/conf.d/headscale-staging.conf",
     },
   ],
 ]);
@@ -70,6 +72,8 @@ const BOOL_FLAGS = new Set([
   "dry-run",
   "help",
   "h",
+  "inspect-retirable-legacy-vhost",
+  "retire-retirable-legacy-vhost",
   "skip-nginx-cert",
   "skip-cp-router",
 ]);
@@ -163,6 +167,12 @@ Optional:
                                        by the 'tunnel' headscale user.
   --certbot-email <email>              Email for the Let's Encrypt account / expiry
                                        notices (default ops@elizalabs.ai).
+  --inspect-retirable-legacy-vhost     Read-only validation/report for the exact
+                                       environment-derived legacy nginx file.
+  --retire-retirable-legacy-vhost      Retire that reviewed file transactionally
+                                       while installing the canonical vhost.
+  --retirable-legacy-vhost-sha256 <h>  Exact lowercase SHA-256 emitted by the
+                                       read-only inspection; required to retire.
   --skip-nginx-cert                    Skip the nginx vhost + LE cert step.
   --skip-cp-router                     Skip the CP self-enrollment step.
   --agent-token-private-key-pem <pem>  Upsert daemon env when already generated.
@@ -214,6 +224,14 @@ const cpRouterHostnameArg = readArg(
 );
 const skipNginxCert = args["skip-nginx-cert"] === true;
 const skipCpRouter = args["skip-cp-router"] === true;
+const inspectRetirableLegacyVhost =
+  args["inspect-retirable-legacy-vhost"] === true;
+const retireRetirableLegacyVhost =
+  args["retire-retirable-legacy-vhost"] === true;
+const reviewedLegacyVhostSha256 = readArg(
+  args,
+  "retirable-legacy-vhost-sha256",
+);
 
 if (!host) die("--host or DEPLOY_HOST is required");
 if (!sshKey) die("--ssh-key or DEPLOY_SSH_KEY is required");
@@ -251,7 +269,31 @@ const {
   legacyHostname: expectedLegacyHostname,
   apiUrl,
   listenAddr,
+  retirableLegacyVhost,
 } = environmentConfig;
+if (inspectRetirableLegacyVhost && retireRetirableLegacyVhost) {
+  die("legacy vhost inspection and retirement modes are mutually exclusive");
+}
+if (retireRetirableLegacyVhost && skipNginxCert) {
+  die("legacy vhost retirement cannot be combined with --skip-nginx-cert");
+}
+if (
+  retireRetirableLegacyVhost &&
+  !/^[0-9a-f]{64}$/.test(reviewedLegacyVhostSha256 ?? "")
+) {
+  die(
+    "--retirable-legacy-vhost-sha256 must be the exact lowercase SHA-256 from inspection",
+  );
+}
+if (!retireRetirableLegacyVhost && reviewedLegacyVhostSha256) {
+  die("--retirable-legacy-vhost-sha256 is accepted only with retirement mode");
+}
+if (
+  (inspectRetirableLegacyVhost || retireRetirableLegacyVhost) &&
+  !retirableLegacyVhost
+) {
+  die(`no reviewed legacy nginx vhost is registered for ${headscaleHostname}`);
+}
 const legacyHeadscaleHostname = parsedLegacyPublicUrl.hostname;
 if (legacyHeadscaleHostname !== expectedLegacyHostname) {
   die(
@@ -306,6 +348,145 @@ const upserts = Object.entries(daemonEnv)
   })
   .join("\n");
 
+const legacyVhostValidationFunction = `
+validate_retirable_legacy_vhost() {
+  if [ -z "$HS_RETIRABLE_LEGACY_VHOST" ] \\
+      || ! sudo test -e "$HS_RETIRABLE_LEGACY_VHOST"; then
+    if [ "\${HS_REQUIRE_RETIRABLE_LEGACY_VHOST:-false}" = "true" ]; then
+      echo "reviewed legacy Headscale vhost is absent; refusing retirement"
+      return 1
+    fi
+    return 0
+  fi
+  if sudo test -L "$HS_RETIRABLE_LEGACY_VHOST" \\
+      || ! sudo test -f "$HS_RETIRABLE_LEGACY_VHOST"; then
+    echo "refusing to inspect or retire a non-regular legacy Headscale vhost: $HS_RETIRABLE_LEGACY_VHOST"
+    return 1
+  fi
+  legacy_vhost_owner=$(sudo stat -c '%U:%G' "$HS_RETIRABLE_LEGACY_VHOST")
+  if [ "$legacy_vhost_owner" != "root:root" ] \\
+      || sudo find "$HS_RETIRABLE_LEGACY_VHOST" -maxdepth 0 -perm /022 \\
+        -print -quit | grep -q .; then
+    echo "legacy Headscale vhost must be root-owned and not group/world writable"
+    return 1
+  fi
+
+  legacy_vhost_source=$(sudo cat -- "$HS_RETIRABLE_LEGACY_VHOST")
+  legacy_vhost_sha256=$(sudo sha256sum -- "$HS_RETIRABLE_LEGACY_VHOST" \\
+    | awk '{print $1}')
+  if [ -n "\${HS_REVIEWED_LEGACY_VHOST_SHA256:-}" ] \\
+      && [ "$legacy_vhost_sha256" != "$HS_REVIEWED_LEGACY_VHOST_SHA256" ]; then
+    echo "legacy Headscale vhost bytes changed after inspection; refusing retirement"
+    return 1
+  fi
+  legacy_vhost_directives=$(printf '%s\\n' "$legacy_vhost_source" | awk '
+    {
+      line = $0
+      sub(/[[:space:]]*#.*/, "", line)
+      sub(/^[[:space:]]+/, "", line)
+      if (line == "" || line ~ /^[{}]/) next
+      split(line, fields, /[[:space:]]+/)
+      directive = fields[1]
+      sub(/;.*$/, "", directive)
+      if (directive ~ /^[[:alpha:]_][[:alnum:]_]*$/) print directive
+    }
+  ')
+  unexpected_legacy_directives=$(printf '%s\\n' "$legacy_vhost_directives" \\
+    | awk '$0 !~ /^(server|listen|server_name|location|root|default_type|try_files|return|ssl_certificate|ssl_certificate_key|proxy_pass|proxy_http_version|proxy_set_header|proxy_buffering|proxy_read_timeout|proxy_send_timeout)$/ { print }')
+  if [ "\${HS_ENFORCE_LEGACY_VHOST_DIRECTIVE_ALLOWLIST:-false}" = "true" ] \\
+      && [ -n "$unexpected_legacy_directives" ]; then
+    echo "legacy Headscale vhost contains directives outside the reviewed retirement allowlist:"
+    printf '%s\\n' "$unexpected_legacy_directives"
+    return 1
+  fi
+  legacy_server_block_count=$(printf '%s\\n' "$legacy_vhost_source" \\
+    | awk '/^[[:space:]]*server[[:space:]]*\\{/ { count += 1 } END { print count + 0 }')
+  legacy_server_names=$(printf '%s\\n' "$legacy_vhost_source" | awk '
+    function inspect_names(text, fields, count, i, name) {
+      count = split(text, fields, /[[:space:]]+/)
+      for (i = 1; i <= count; i += 1) {
+        name = fields[i]
+        if (name == "") continue
+        if (name ~ /;$/) collecting = 0
+        sub(/;$/, "", name)
+        gsub(/^"|"$/, "", name)
+        if (name != "") print name
+      }
+    }
+    {
+      line = $0
+      sub(/[[:space:]]*#.*/, "", line)
+      if (collecting) {
+        inspect_names(line)
+        next
+      }
+      if (line ~ /^[[:space:]]*server_name[[:space:]]+/) {
+        sub(/^[[:space:]]*server_name[[:space:]]+/, "", line)
+        collecting = 1
+        inspect_names(line)
+      }
+    }
+  ')
+  legacy_server_name_count=$(printf '%s\\n' "$legacy_server_names" \\
+    | awk 'NF { count += 1 } END { print count + 0 }')
+  unexpected_legacy_server_names=$(printf '%s\\n' "$legacy_server_names" \\
+    | awk -v expected="$HS_LEGACY_HOST" 'NF && $0 != expected { print }')
+  if [ "$legacy_server_block_count" -ne 2 ] \\
+      || [ "$legacy_server_name_count" -ne 2 ] \\
+      || [ -n "$unexpected_legacy_server_names" ]; then
+    echo "legacy Headscale vhost does not contain exactly two expected legacy-only server blocks"
+    return 1
+  fi
+
+  loaded_legacy_owners=$(sudo nginx -T 2>&1 | awk \\
+    -v target="$HS_RETIRABLE_LEGACY_VHOST" \\
+    -v canonical="$HS_HOST" \\
+    -v legacy="$HS_LEGACY_HOST" '
+    function inspect_names(text, fields, count, i, name) {
+      count = split(text, fields, /[[:space:]]+/)
+      for (i = 1; i <= count; i += 1) {
+        name = fields[i]
+        if (name == "") continue
+        if (name ~ /;$/) collecting = 0
+        sub(/;$/, "", name)
+        gsub(/^"|"$/, "", name)
+        if (config_file == target && (name == canonical || name == legacy)) {
+          print name
+        }
+      }
+    }
+    /^# configuration file / {
+      config_file = $0
+      sub(/^# configuration file /, "", config_file)
+      sub(/:$/, "", config_file)
+      collecting = 0
+      next
+    }
+    {
+      line = $0
+      sub(/[[:space:]]*#.*/, "", line)
+      if (collecting) {
+        inspect_names(line)
+        next
+      }
+      if (line ~ /^[[:space:]]*server_name[[:space:]]+/) {
+        sub(/^[[:space:]]*server_name[[:space:]]+/, "", line)
+        collecting = 1
+        inspect_names(line)
+      }
+    }
+  ')
+  loaded_legacy_count=$(printf '%s\\n' "$loaded_legacy_owners" \\
+    | awk -v host="$HS_LEGACY_HOST" '$0 == host { count += 1 } END { print count + 0 }')
+  loaded_canonical_count=$(printf '%s\\n' "$loaded_legacy_owners" \\
+    | awk -v host="$HS_HOST" '$0 == host { count += 1 } END { print count + 0 }')
+  if [ "$loaded_legacy_count" -ne 2 ] || [ "$loaded_canonical_count" -ne 0 ]; then
+    echo "legacy Headscale vhost ownership no longer matches the reviewed two-listener contract"
+    return 1
+  fi
+}
+`;
+
 // ── nginx vhost + Let's Encrypt migration-overlap certificate ────────────────
 // The canonical hostname owns Headscale identity and daemon configuration. The
 // legacy exact hostname remains an additive TLS/vhost alias only while clients
@@ -325,6 +506,13 @@ echo "--- nginx vhost + Let's Encrypt cert for ${headscaleHostname} and ${legacy
 HS_HOST=${shellQuote(headscaleHostname)}
 HS_LEGACY_HOST=${shellQuote(legacyHeadscaleHostname)}
 HS_PORT=${shellQuote(headscalePort)}
+HS_RETIRABLE_LEGACY_VHOST=${shellQuote(retirableLegacyVhost ?? "")}
+HS_RETIRE_REVIEWED_LEGACY_VHOST=${shellQuote(
+      retireRetirableLegacyVhost ? "true" : "false",
+    )}
+HS_REQUIRE_RETIRABLE_LEGACY_VHOST=$HS_RETIRE_REVIEWED_LEGACY_VHOST
+HS_ENFORCE_LEGACY_VHOST_DIRECTIVE_ALLOWLIST=$HS_RETIRE_REVIEWED_LEGACY_VHOST
+HS_REVIEWED_LEGACY_VHOST_SHA256=${shellQuote(reviewedLegacyVhostSha256 ?? "")}
 CERTBOT_EMAIL=${shellQuote(certbotEmail)}
 HS_VHOST=/etc/nginx/conf.d/headscale.conf
 HS_ACME_VHOST=/etc/nginx/conf.d/00-headscale-acme.conf
@@ -349,6 +537,9 @@ certificate_covers_overlap() {
   certificate_has_exact_san "$HS_HOST" \\
     && certificate_has_exact_san "$HS_LEGACY_HOST"
 }
+
+${legacyVhostValidationFunction}
+validate_retirable_legacy_vhost
 
 if certificate_covers_overlap; then
   echo "LE cert already covers canonical and legacy Headscale hosts; skipping issuance"
@@ -421,17 +612,33 @@ fi
 HS_VHOST_BACKUP=$(mktemp)
 HS_VHOST_STAGE=$(mktemp)
 HS_VHOST_EXISTED=false
+HS_RETIRABLE_LEGACY_VHOST_BACKUP=""
+HS_RETIRABLE_LEGACY_VHOST_EXISTED=false
+HS_RETIRABLE_LEGACY_VHOST_MODE=""
 if sudo test -f "$HS_VHOST"; then
   sudo cp "$HS_VHOST" "$HS_VHOST_BACKUP"
   HS_VHOST_EXISTED=true
 fi
+if [ "$HS_RETIRE_REVIEWED_LEGACY_VHOST" = "true" ] \\
+    && sudo test -f "$HS_RETIRABLE_LEGACY_VHOST"; then
+  HS_RETIRABLE_LEGACY_VHOST_BACKUP=$(mktemp)
+  HS_RETIRABLE_LEGACY_VHOST_MODE=$(sudo stat -c '%a' \\
+    "$HS_RETIRABLE_LEGACY_VHOST")
+  sudo cp -- "$HS_RETIRABLE_LEGACY_VHOST" \\
+    "$HS_RETIRABLE_LEGACY_VHOST_BACKUP"
+  HS_RETIRABLE_LEGACY_VHOST_EXISTED=true
+fi
 
-rollback_headscale_vhost() {
+rollback_headscale_vhosts() {
   trap - EXIT
   if [ "$HS_VHOST_EXISTED" = "true" ]; then
     sudo cp "$HS_VHOST_BACKUP" "$HS_VHOST"
   else
     sudo rm -f "$HS_VHOST"
+  fi
+  if [ "$HS_RETIRABLE_LEGACY_VHOST_EXISTED" = "true" ]; then
+    sudo install -o root -g root -m "$HS_RETIRABLE_LEGACY_VHOST_MODE" \\
+      "$HS_RETIRABLE_LEGACY_VHOST_BACKUP" "$HS_RETIRABLE_LEGACY_VHOST"
   fi
   if sudo nginx -t; then
     sudo systemctl reload nginx
@@ -439,8 +646,11 @@ rollback_headscale_vhost() {
     echo "rollback restored the previous Headscale vhost bytes, but nginx validation failed"
   fi
   rm -f "$HS_VHOST_BACKUP" "$HS_VHOST_STAGE"
+  if [ -n "$HS_RETIRABLE_LEGACY_VHOST_BACKUP" ]; then
+    rm -f "$HS_RETIRABLE_LEGACY_VHOST_BACKUP"
+  fi
 }
-trap rollback_headscale_vhost EXIT
+trap rollback_headscale_vhosts EXIT
 
 tee "$HS_VHOST_STAGE" >/dev/null <<NGINX
 # headscale control-protocol (TS2021/noise) needs the Upgrade header passed
@@ -484,6 +694,10 @@ server {
 }
 NGINX
 sudo install -o root -g root -m 0644 "$HS_VHOST_STAGE" "$HS_VHOST"
+if [ "$HS_RETIRABLE_LEGACY_VHOST_EXISTED" = "true" ]; then
+  validate_retirable_legacy_vhost
+  sudo rm -f -- "$HS_RETIRABLE_LEGACY_VHOST"
+fi
 sudo nginx -t
 
 effective_nginx_config=$(sudo nginx -T 2>&1)
@@ -549,9 +763,6 @@ certificate_has_exact_san "$HS_HOST"
 certificate_has_exact_san "$HS_LEGACY_HOST"
 sudo systemctl reload nginx
 
-rm -f "$HS_VHOST_BACKUP" "$HS_VHOST_STAGE"
-trap - EXIT
-
 # Certbot's webroot renewal updates the certificate files in place. Install a
 # deploy hook on every arm, including no-op certificate runs, so nginx adopts
 # only a leaf that still covers both migration-overlap names. The hook is
@@ -596,6 +807,64 @@ sudo systemctl enable --now certbot.timer
 sudo systemctl is-enabled --quiet certbot.timer
 sudo systemctl is-active --quiet certbot.timer
 echo "certbot.timer active (auto-renewal wired)"
+
+# Keep the rollback transaction active through the public edge proof. Local
+# certificate files and nginx ownership are necessary but not sufficient when
+# another listener or stale SNI route can still win externally.
+expected_public_fingerprint=""
+for public_host in "$HS_HOST" "$HS_LEGACY_HOST"; do
+  public_healthy=false
+  for _ in $(seq 1 30); do
+    if curl --fail --silent --show-error --max-time 10 \\
+        "https://$public_host/health" >/dev/null; then
+      public_healthy=true
+      break
+    fi
+    sleep 5
+  done
+  if [ "$public_healthy" != "true" ]; then
+    echo "public Headscale health did not become ready at https://$public_host"
+    exit 1
+  fi
+
+  public_leaf=$(openssl s_client \\
+    -connect "$public_host:443" \\
+    -servername "$public_host" \\
+    -verify_hostname "$public_host" \\
+    -verify_return_error \\
+    -showcerts </dev/null 2>/dev/null \\
+    | openssl x509 -outform PEM)
+  for required_host in "$HS_HOST" "$HS_LEGACY_HOST"; do
+    if ! printf '%s\\n' "$public_leaf" \\
+      | openssl x509 -noout -ext subjectAltName \\
+      | tr ',' '\\n' \\
+      | sed -n 's/^[[:space:]]*DNS://p' \\
+      | grep -Fx -- "$required_host" >/dev/null; then
+      echo "$public_host did not serve a leaf with exact SAN $required_host"
+      exit 1
+    fi
+  done
+  public_fingerprint=$(printf '%s\\n' "$public_leaf" \\
+    | openssl x509 -outform DER \\
+    | openssl dgst -sha256 -r \\
+    | awk '{print $1}')
+  if [ -z "$expected_public_fingerprint" ]; then
+    expected_public_fingerprint="$public_fingerprint"
+  elif [ "$public_fingerprint" != "$expected_public_fingerprint" ]; then
+    echo "canonical and legacy Headscale SNI served different certificate leaves"
+    exit 1
+  fi
+done
+echo "public Headscale overlap is healthy on one exact dual-SAN leaf"
+
+rm -f "$HS_VHOST_BACKUP" "$HS_VHOST_STAGE"
+if [ -n "$HS_RETIRABLE_LEGACY_VHOST_BACKUP" ]; then
+  rm -f "$HS_RETIRABLE_LEGACY_VHOST_BACKUP"
+fi
+if [ "$HS_RETIRABLE_LEGACY_VHOST_EXISTED" = "true" ]; then
+  echo "Retired validated legacy Headscale vhost $HS_RETIRABLE_LEGACY_VHOST"
+fi
+trap - EXIT
 `;
 
 // ── CP self-enrollment as a tailscale node (cp-<env>-router) ─────────────────
@@ -645,7 +914,36 @@ sudo tailscale status 2>/dev/null | grep -F "$CP_ROUTER_HOST" \\
   || echo "WARN: $CP_ROUTER_HOST not visible in tailscale status yet"
 `;
 
-const remote = `
+const legacyVhostInspectionRemote = `
+set -euo pipefail
+HS_HOST=${shellQuote(headscaleHostname)}
+HS_LEGACY_HOST=${shellQuote(legacyHeadscaleHostname)}
+HS_RETIRABLE_LEGACY_VHOST=${shellQuote(retirableLegacyVhost ?? "")}
+HS_REQUIRE_RETIRABLE_LEGACY_VHOST=true
+HS_ENFORCE_LEGACY_VHOST_DIRECTIVE_ALLOWLIST=false
+HS_REVIEWED_LEGACY_VHOST_SHA256=""
+
+if [ -z "$HS_RETIRABLE_LEGACY_VHOST" ] \\
+    || ! sudo test -e "$HS_RETIRABLE_LEGACY_VHOST"; then
+  echo "reviewed legacy Headscale vhost is not present"
+  exit 1
+fi
+
+${legacyVhostValidationFunction}
+validate_retirable_legacy_vhost
+sudo stat -c 'type=%F owner=%U group=%G mode=%a bytes=%s path=%n' \\
+  "$HS_RETIRABLE_LEGACY_VHOST"
+echo "reviewed-sha256=$legacy_vhost_sha256"
+echo "--- reviewed nginx directive-name inventory (values withheld) ---"
+printf '%s\\n' "$legacy_vhost_directives" | sort | uniq -c
+echo "--- reviewed public routing/TLS directives ---"
+sudo grep -En \\
+  '^[[:space:]]*(listen|server_name|location|root|return|proxy_pass|ssl_certificate|ssl_certificate_key|include)[[:space:]]' \\
+  "$HS_RETIRABLE_LEGACY_VHOST" || true
+echo "Legacy Headscale vhost passed the read-only retirement preflight"
+`;
+
+const convergeRemote = `
 set -euo pipefail
 PUBLIC_URL=${shellQuote(publicUrl)}
 API_URL=${shellQuote(apiUrl)}
@@ -787,6 +1085,10 @@ systemctl is-active headscale
 systemctl is-active ${SYSTEMD_UNIT}
 `;
 
+const remote = inspectRetirableLegacyVhost
+  ? legacyVhostInspectionRemote
+  : convergeRemote;
+
 if (args["dry-run"]) {
   console.log("# DRY RUN - remote script that WOULD run on", host, ":\n");
   console.log(remote);
@@ -817,6 +1119,10 @@ const result = spawnSync(
 if (result.status !== 0)
   die(`remote Headscale arm failed (exit ${result.status})`);
 
-console.log(
-  "\nHeadscale armed. Next: set matching Worker secrets, then run one provision E2E.",
-);
+if (inspectRetirableLegacyVhost) {
+  console.log("\nReviewed legacy Headscale vhost inspection passed.");
+} else {
+  console.log(
+    "\nHeadscale armed. Next: set matching Worker secrets, then run one provision E2E.",
+  );
+}
