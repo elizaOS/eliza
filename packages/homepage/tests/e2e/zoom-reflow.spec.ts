@@ -80,13 +80,16 @@ for (const viewport of REFLOW_VIEWPORTS) {
     await expectNoUnreachableOverflow(page);
     // The zoomed page may scroll vertically; each control must be reachable
     // by scrolling and fit fully inside the viewport once scrolled to.
-    const textCta = page.getByRole("link", { name: "Text" });
+    const textCta = page.getByRole("button", {
+      name: /^(Text|Message Eliza)$/,
+    });
     const callCta = page.getByRole("link", { name: "Call" });
     await textCta.scrollIntoViewIfNeeded();
     await expectFullyInViewport(page, textCta);
     await callCta.scrollIntoViewIfNeeded();
     await expectFullyInViewport(page, callCta);
     await expectControlsNotToOverlap(textCta, callCta);
+    await expect(page.getByText("+1 (808) 788-1821")).toHaveCount(0);
   });
 
   test(`downloads reflows at 200% in ${viewport.width}x${viewport.height}`, async ({

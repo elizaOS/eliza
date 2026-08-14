@@ -1425,7 +1425,30 @@ body {
   margin-top: 2.25rem;
 }
 
+.landing-copy-notice {
+  position: fixed;
+  left: 50%;
+  bottom: max(1rem, env(safe-area-inset-bottom));
+  z-index: 40;
+  display: inline-flex;
+  align-items: center;
+  min-height: 2.25rem;
+  padding: 0 0.75rem;
+  border-radius: 999px;
+  background: rgb(255 255 255 / 76%);
+  color: #166534;
+  font-size: 0.92rem;
+  font-weight: 650;
+  box-shadow: 0 8px 24px rgb(0 0 0 / 14%);
+  transform: translateX(-50%);
+}
+
+.landing-copy-notice--error {
+  color: #991b1b;
+}
+
 .landing-cta {
+  border: 0;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1435,6 +1458,8 @@ body {
   border-radius: 999px;
   font-weight: 600;
   font-size: 1.05rem;
+  font-family: inherit;
+  cursor: pointer;
   text-decoration: none;
   white-space: nowrap;
   max-width: 100%;
