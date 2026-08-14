@@ -85,10 +85,13 @@ export async function sendChatAndReadReply(
   await chatSendButton(page).click();
 
   // Only rows beyond the pre-send snapshot can satisfy the turn: the pre-existing
-  // greeting or a cached reply must never be read as this run's answer. When a
-  // challenge token is set, additionally require the row to echo it — a pending
-  // status row ("Thinking", "Thinking · 1s", "Replying") or a streaming prefix
-  // cannot contain a fresh random token, so the poll keeps waiting.
+  // greeting or a cached reply must never be read as this run's answer. A row
+  // counts only when it is not a pending placeholder — the overlay publishes
+  // `data-phase="status"` while the "Thinking"/"Running …" label occupies the
+  // row — and, when a challenge token is set, when the row echoes it: a fresh
+  // random token cannot appear in status chrome or any pre-send text. The
+  // transcript only appends during a turn, so indices ≥ the snapshot are
+  // exactly this run's rows.
   const token = options.challengeToken?.trim().toLowerCase();
   let replyText: string | null = null;
   await expect
@@ -96,7 +99,24 @@ export async function sendChatAndReadReply(
       async () => {
         const count = await assistantRows.count();
         for (let i = priorCount; i < count; i += 1) {
-          const text = (await assistantRows.nth(i).textContent())?.trim() ?? "";
+          const row = assistantRows.nth(i);
+          // Mirror the iOS driver's classification: a row whose overlay body
+          // is explicitly in the status phase is the pending placeholder; a
+          // row with no overlay marker at all is a plain chat surface (the
+          // typing indicator renders as a sibling there, never as a row), so
+          // any matched row counts.
+          const overlayBodies = await row
+            .locator('[data-testid="overlay-assistant-turn-body"]')
+            .count();
+          if (overlayBodies > 0) {
+            const replyBodies = await row
+              .locator(
+                '[data-testid="overlay-assistant-turn-body"][data-phase="reply"]',
+              )
+              .count();
+            if (replyBodies === 0) continue;
+          }
+          const text = (await row.textContent())?.trim() ?? "";
           if (!text) continue;
           if (token && !text.toLowerCase().includes(token)) continue;
           replyText = text;
@@ -108,7 +128,7 @@ export async function sendChatAndReadReply(
         timeout: replyTimeoutMs,
         message: token
           ? `assistant reply echoing challenge token appeared in a new row${options.label ? ` (${options.label})` : ""}`
-          : "assistant reply appeared in a new row",
+          : `assistant reply appeared in a new row${options.label ? ` (${options.label})` : ""}`,
       },
     )
     .toMatch(/\S/);

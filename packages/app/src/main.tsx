@@ -1237,18 +1237,25 @@ async function driveIosLivenessChatTurn(prompt: string): Promise<string> {
   }
 
   const deadline = Date.now() + IOS_ONBOARDING_SMOKE_TIMEOUT_MS;
+  // Invariant: the overlay transcript only appends rows during a turn, so
+  // indices at or beyond the pre-send snapshot are exactly this run's rows.
   while (Date.now() < deadline) {
     const replies = document.querySelectorAll<HTMLElement>(
       IOS_LIVENESS_ASSISTANT_SELECTOR,
     );
     for (let index = priorReplies; index < replies.length; index += 1) {
-      const text = replies[index]?.textContent?.trim() ?? "";
+      const row = replies[index];
+      // A pending row (status phase) can never be the reply — its text is the
+      // "Thinking"/"Running …" placeholder. This also blocks status chrome
+      // that echoes the prompt text from satisfying the token gate.
+      if (!isIosLivenessReplyRow(row)) continue;
+      const text = row?.textContent?.trim() ?? "";
       if (!text) continue;
       if (expectedToken) {
         // The run-unique token can only appear in text produced by something
         // that saw this run's prompt — never in a status label or cached row.
         if (text.toLowerCase().includes(expectedToken)) return text;
-      } else if (isIosLivenessReplyRow(replies[index])) {
+      } else {
         return text;
       }
     }

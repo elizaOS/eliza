@@ -264,7 +264,7 @@ async function runCloudOnboardingMode({
     // reply means the lane fails. The run-unique challenge token binds the
     // accepted reply to this exact run: a pending status row, the first-run
     // greeting, a cached reply, or a wrong-code answer all fail the wait.
-    const challenge = buildLivenessChallenge(randomBytes(3).toString("hex"));
+    const challenge = buildLivenessChallenge(randomBytes(4).toString("hex"));
     const reply = await assertOnboardingLiveness(page, {
       label: `android-cloud-onboarding-${mode}`,
       prompt: challenge,

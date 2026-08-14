@@ -8,6 +8,7 @@
 // wrong-code answers — must fail.
 import { describe, expect, it } from "vitest";
 
+import { extractIosLivenessChallengeToken } from "../src/ios-cloud-onboarding-smoke";
 import {
   assertLiveChallengeReply,
   assertLiveReply,
@@ -58,6 +59,22 @@ describe("liveness challenge construction and extraction", () => {
       "Reply with exactly this code to confirm you are live: a1b2c3",
     );
     expect(extractLivenessChallengeToken(prompt)).toBe("a1b2c3");
+  });
+
+  it("keeps the in-app iOS token extraction in lockstep with the shared contract", () => {
+    // src/ios-cloud-onboarding-smoke.ts cannot import from test/ (the bundled
+    // renderer must not depend on test files), so this pins the duplicated
+    // marker: if either side drifts, the iOS driver silently degrades to the
+    // weaker phase-only gate and this test goes red.
+    for (const token of ["a1b2c3", "DEADBeef42", "0"]) {
+      const prompt = buildLivenessChallenge(token);
+      expect(extractIosLivenessChallengeToken(prompt)).toBe(
+        extractLivenessChallengeToken(prompt),
+      );
+    }
+    expect(
+      extractIosLivenessChallengeToken("In one short sentence, say hello."),
+    ).toBe("");
   });
 
   it("normalizes case and surrounding whitespace, and matches the LAST marker", () => {

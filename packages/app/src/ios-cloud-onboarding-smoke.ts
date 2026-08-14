@@ -32,9 +32,14 @@ export function extractIosLivenessChallengeToken(prompt: string): string {
  * turn placeholder. The overlay marks its assistant-turn body
  * `data-phase="status"` while the turn is pending (a "Thinking" placeholder
  * occupies the row) and `"reply"` once real content exists, so that marker is
- * authoritative wherever it appears. Surfaces without the marker render their
- * typing indicator as a sibling element that never matches the assistant-row
- * selector, so any row there is a real message and counts.
+ * authoritative wherever it appears (renderer authority:
+ * packages/ui/src/components/shell/chat-overlay-transcript.tsx,
+ * `OverlayAssistantTurnBody`). Surfaces without the marker render their
+ * pending-turn indicator outside any assistant-attributed row —
+ * `ChatSurface` swaps the TypingIndicator in *for* the empty-assistant bubble
+ * (no `data-role` row exists), and `ChatTranscript` appends it as a sibling
+ * after the message list — so a row matching the assistant selector there is
+ * always a real, completed message and counts.
  */
 export function isIosLivenessReplyRow(
   row: Element | undefined | null,
