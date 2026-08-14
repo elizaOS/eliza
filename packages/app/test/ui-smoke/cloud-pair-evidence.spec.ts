@@ -24,11 +24,14 @@
  *   ELIZA_UI_SMOKE_REUSE_SERVER=1 bun x playwright test cloud-pair-evidence --config playwright.ui-smoke.config.ts
  */
 import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { builtinModules } from "node:module";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { expect, type Page, test } from "@playwright/test";
-import { build, type Plugin as EsbuildPlugin, transform } from "esbuild";
+import { build, transform } from "esbuild";
+import {
+  stubElizaCore,
+  stubNodeBuiltins,
+} from "../../../ui/src/testing/e2e-runner/esbuild-stubs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 // HERE = packages/app/test/ui-smoke → up 2 = packages/app
@@ -46,52 +49,6 @@ let evidenceBundlePromise: Promise<string> | null = null;
 function evidenceModulesBundle(): Promise<string> {
   evidenceBundlePromise ??= (async () => {
     const ui = join(REPO_ROOT, "packages", "ui", "src");
-    // Node-builtin imports reached through transitive dependency chains become
-    // inert proxies (mirrors the reviewed accounts-ui e2e bundler): the
-    // modules under test are browser storage/auth code and never call them.
-    const nodeBuiltins = new Set([
-      ...builtinModules,
-      ...builtinModules.map((name) => `node:${name}`),
-    ]);
-    // `@elizaos/core` is never imported by the modules under test (verified —
-    // it only enters transitively through i18n/api barrel collaterals), and
-    // its plugin-manager subtree is node-only, so the whole package becomes an
-    // inert proxy as well.
-    const stubElizaCore: EsbuildPlugin = {
-      name: "stub-eliza-core",
-      setup(b) {
-        b.onResolve({ filter: /^@elizaos\/core(\/.*)?$/ }, (args) => ({
-          path: args.path,
-          namespace: "eliza-core-stub",
-        }));
-        b.onLoad({ filter: /.*/, namespace: "eliza-core-stub" }, () => ({
-          contents:
-            "const n=()=>noop;const noop=new Proxy(n,{get:()=>noop});module.exports=noop;",
-          loader: "js",
-        }));
-      },
-    };
-    const stubNodeBuiltins: EsbuildPlugin = {
-      name: "stub-node-builtins",
-      setup(b) {
-        b.onResolve({ filter: /.*/ }, (args) => {
-          const bare = args.path.replace(/^node:/, "").split("/")[0] ?? "";
-          if (
-            args.path.startsWith("node:") ||
-            nodeBuiltins.has(args.path) ||
-            builtinModules.includes(bare)
-          ) {
-            return { path: args.path, namespace: "node-stub" };
-          }
-          return null;
-        });
-        b.onLoad({ filter: /.*/, namespace: "node-stub" }, () => ({
-          contents:
-            "const n=()=>noop;const noop=new Proxy(n,{get:()=>noop});module.exports=noop;",
-          loader: "js",
-        }));
-      },
-    };
     const entry = [
       `export * as relay from ${JSON.stringify(join(ui, "components/auth/CloudPairRelay.tsx"))};`,
       `export * as tokenState from ${JSON.stringify(join(ui, "state/cloud-pair-token.ts"))};`,
@@ -124,7 +81,7 @@ function evidenceModulesBundle(): Promise<string> {
         ".woff": "empty",
         ".woff2": "empty",
       },
-      plugins: [stubElizaCore, stubNodeBuiltins],
+      plugins: [stubElizaCore(), stubNodeBuiltins()],
       absWorkingDir: REPO_ROOT,
       logLevel: "silent",
     });
