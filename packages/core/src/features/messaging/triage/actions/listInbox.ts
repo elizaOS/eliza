@@ -24,6 +24,7 @@ import { getDefaultTriageService } from "../triage-service.ts";
 import { ALL_MESSAGE_SOURCES } from "../types.ts";
 import {
 	describeMessageScope,
+	type MessageCoverage,
 	parseListInboxParams,
 	validateMessageAction,
 } from "./_shared.ts";
@@ -100,16 +101,27 @@ export const listInboxAction: Action = {
 				? cached.filter((m) => requestedSources.includes(m.source))
 				: cached;
 
+			// Coverage has to come from whichever path actually ran. The cached
+			// branch contacts no adapter at all, so it can only speak for the
+			// sources its own rows came from; the fallback branch reports the
+			// sweep receipt, which knows what was skipped or failed.
+			let coverage: MessageCoverage;
 			let usedTriageFallback = false;
 			if (messages.length === 0) {
 				usedTriageFallback = true;
-				messages = await service.triage(runtime, {
+				const swept = await service.triageWithReceipt(runtime, {
 					sources: params.sources,
 					sinceMs: params.sinceMs,
 					limit: params.limit,
 				});
+				messages = swept.refs;
+				coverage = { kind: "swept", receipt: swept.receipt };
 			} else {
 				messages = rankScored(messages);
+				coverage = {
+					kind: "cache",
+					sources: [...new Set(messages.map((m) => m.source))],
+				};
 			}
 
 			const unread = messages.filter((m) => !m.isRead);
@@ -139,6 +151,7 @@ export const listInboxAction: Action = {
 			const scope = describeMessageScope({
 				requestedSources: params.sources,
 				registeredSources: service.listRegisteredSources(),
+				coverage,
 				...(usedTriageFallback ? { sinceMs: params.sinceMs } : {}),
 				limit: params.limit,
 			});

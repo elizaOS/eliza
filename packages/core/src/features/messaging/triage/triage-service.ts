@@ -31,6 +31,27 @@ import type {
 	SearchMessagesFilters,
 } from "./types.ts";
 
+/**
+ * What a cross-source sweep actually touched, measured during the sweep.
+ *
+ * `requested` is what the caller asked for; the four outcome lists partition it.
+ * A caller that states coverage to a user must read `succeeded` — the registry
+ * only says what COULD have been queried, and a source that was skipped or
+ * threw is still in it.
+ */
+export interface MessageSweepReceipt {
+	/** Sources the sweep set out to query. */
+	requested: readonly MessageSource[];
+	/** Sources that returned a batch (possibly empty). */
+	succeeded: readonly MessageSource[];
+	/** Requested but no adapter is registered for them. */
+	unregistered: readonly MessageSource[];
+	/** Registered but the adapter reported itself unavailable. */
+	unavailable: readonly MessageSource[];
+	/** Queried and threw; the sweep continued without them. */
+	failed: readonly { source: MessageSource; error: string }[];
+}
+
 export interface TriageOptions {
 	sources?: MessageSource[];
 	worldIds?: string[];
@@ -120,12 +141,32 @@ export class TriageService {
 		runtime: IAgentRuntime,
 		opts: TriageOptions = {},
 	): Promise<MessageRef[]> {
+		return (await this.triageWithReceipt(runtime, opts)).refs;
+	}
+
+	/**
+	 * `triage` plus the receipt of what the sweep actually touched.
+	 *
+	 * The sweep already distinguishes a source it queried from one it skipped
+	 * (unregistered) and one that threw, but returning bare `MessageRef[]`
+	 * discarded that. A caller then had no way to describe its own coverage and
+	 * could only fall back to "every registered source" — which reports a
+	 * skipped or failed connector as searched. Anything that states scope to a
+	 * user must render it from this receipt, not from the registry.
+	 */
+	async triageWithReceipt(
+		runtime: IAgentRuntime,
+		opts: TriageOptions = {},
+	): Promise<{ refs: MessageRef[]; receipt: MessageSweepReceipt }> {
 		const requested = opts.sources ?? this.listRegisteredSources();
 		const all: MessageRef[] = [];
 		const failures: Array<{ source: MessageSource; error: unknown }> = [];
+		const succeeded: MessageSource[] = [];
+		const unregistered: MessageSource[] = [];
 		for (const source of requested) {
 			const adapter = this.adapters.get(source);
 			if (!adapter) {
+				unregistered.push(source);
 				logger.info(
 					`[TriageService] No adapter registered for source "${source}"; skipping`,
 				);
@@ -154,6 +195,7 @@ export class TriageService {
 			for (const ref of batch) {
 				this.trackAdapterForMessage(ref.source, ref.id);
 			}
+			succeeded.push(source);
 			all.push(...batch);
 		}
 		if (all.length === 0 && failures.length > 0) {
@@ -162,7 +204,19 @@ export class TriageService {
 
 		const scored = await scoreMessages(runtime, all, { nowMs: opts.nowMs });
 		this.store.saveMessages(scored);
-		return rankScored(scored);
+		return {
+			refs: rankScored(scored),
+			receipt: {
+				requested,
+				succeeded,
+				unregistered,
+				unavailable: [],
+				failed: failures.map(({ source, error }) => ({
+					source,
+					error: error instanceof Error ? error.message : String(error),
+				})),
+			},
+		};
 	}
 
 	/**
@@ -174,13 +228,35 @@ export class TriageService {
 		runtime: IAgentRuntime,
 		filters: SearchMessagesFilters,
 	): Promise<MessageRef[]> {
+		return (await this.searchWithReceipt(runtime, filters)).refs;
+	}
+
+	/**
+	 * `search` plus the receipt of what the fan-out actually queried. See
+	 * {@link TriageService.triageWithReceipt} — search skips for two distinct
+	 * reasons (no adapter registered, adapter registered but not available), and
+	 * both are invisible in a bare `MessageRef[]`.
+	 */
+	async searchWithReceipt(
+		runtime: IAgentRuntime,
+		filters: SearchMessagesFilters,
+	): Promise<{ refs: MessageRef[]; receipt: MessageSweepReceipt }> {
 		const requested = filters.sources ?? this.listRegisteredSources();
 		const merged: MessageRef[] = [];
 		const failures: Array<{ source: MessageSource; error: unknown }> = [];
+		const succeeded: MessageSource[] = [];
+		const unregistered: MessageSource[] = [];
+		const unavailable: MessageSource[] = [];
 		for (const source of requested) {
 			const adapter = this.adapters.get(source);
-			if (!adapter) continue;
-			if (!adapter.isAvailable(runtime)) continue;
+			if (!adapter) {
+				unregistered.push(source);
+				continue;
+			}
+			if (!adapter.isAvailable(runtime)) {
+				unavailable.push(source);
+				continue;
+			}
 			let hits: MessageRef[];
 			try {
 				hits =
@@ -208,6 +284,7 @@ export class TriageService {
 			for (const ref of hits) {
 				this.trackAdapterForMessage(ref.source, ref.id);
 			}
+			succeeded.push(source);
 			merged.push(...hits);
 		}
 		if (merged.length === 0 && failures.length > 0) {
@@ -216,7 +293,19 @@ export class TriageService {
 		this.store.saveMessages(merged);
 		merged.sort((a, b) => b.receivedAtMs - a.receivedAtMs);
 		const limit = filters.limit ?? merged.length;
-		return merged.slice(0, limit);
+		return {
+			refs: merged.slice(0, limit),
+			receipt: {
+				requested,
+				succeeded,
+				unregistered,
+				unavailable,
+				failed: failures.map(({ source, error }) => ({
+					source,
+					error: error instanceof Error ? error.message : String(error),
+				})),
+			},
+		};
 	}
 
 	async manage(

@@ -120,7 +120,10 @@ export const searchMessagesAction: Action = {
 	): Promise<ActionResult> => {
 		const filters = parseSearchMessagesParams(options);
 		const service = getDefaultTriageService();
-		const hits = await service.search(runtime, filters);
+		const { refs: hits, receipt } = await service.searchWithReceipt(
+			runtime,
+			filters,
+		);
 
 		const sourcesHit = new Set(hits.map((m) => m.source));
 		// The filters are the search: an empty result that claims coverage
@@ -130,6 +133,7 @@ export const searchMessagesAction: Action = {
 		const scope = describeMessageScope({
 			requestedSources: filters.sources,
 			registeredSources: service.listRegisteredSources(),
+			coverage: { kind: "swept", receipt },
 			worldIds: filters.worldIds,
 			channelIds: filters.channelIds,
 			sender: filters.sender,

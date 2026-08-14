@@ -15,6 +15,7 @@ import type {
 	State,
 } from "../../../../types/index.ts";
 import { hasActionContext } from "../../../../utils/action-validation.ts";
+import type { MessageSweepReceipt } from "../triage-service.ts";
 import {
 	ALL_MESSAGE_SOURCES,
 	type ManageOperation,
@@ -36,12 +37,23 @@ export function validateMessageAction(
 	return hasActionContext(message, state, { contexts });
 }
 
+/**
+ * How the rows in hand were obtained. Coverage is a MEASUREMENT, never an
+ * inference from the registry: a registered source may have been skipped or
+ * have thrown, and the cached read contacts no source at all.
+ */
+export type MessageCoverage =
+	| { kind: "swept"; receipt: MessageSweepReceipt }
+	| { kind: "cache"; sources: readonly MessageSource[] };
+
 /** Everything that can narrow a triage read, as measured at the call site. */
 export interface MessageScope {
 	/** Sources the planner asked for; absent means every registered source. */
 	requestedSources?: readonly MessageSource[];
 	/** Sources actually registered with the triage service. */
 	registeredSources: readonly MessageSource[];
+	/** What was really queried. Omit only when no source read happened. */
+	coverage?: MessageCoverage;
 	worldIds?: readonly string[];
 	channelIds?: readonly string[];
 	sender?: SearchMessagesFilters["sender"];
@@ -50,6 +62,38 @@ export interface MessageScope {
 	sinceMs?: number;
 	untilMs?: number;
 	limit?: number;
+}
+
+/**
+ * Describe what a sweep actually reached, from its receipt.
+ *
+ * Naming the REQUESTED sources (or worse, the registered ones) states that a
+ * skipped, unavailable, or failed connector was searched. Only `succeeded`
+ * sources were read; everything else is reported as a gap in the same sentence
+ * so a partial sweep can never read as a complete one.
+ */
+function describeSweptCoverage(
+	receipt: MessageSweepReceipt,
+	registered: number,
+): string {
+	const gaps: string[] = [];
+	if (receipt.unregistered.length > 0) {
+		gaps.push(`${receipt.unregistered.join(",")} not connected`);
+	}
+	if (receipt.unavailable.length > 0) {
+		gaps.push(`${receipt.unavailable.join(",")} unavailable`);
+	}
+	if (receipt.failed.length > 0) {
+		gaps.push(`${receipt.failed.map((f) => f.source).join(",")} failed`);
+	}
+	const gapNote = gaps.length > 0 ? ` — NOT checked: ${gaps.join("; ")}` : "";
+	if (receipt.succeeded.length === 0) {
+		return `no source was successfully checked${gapNote}`;
+	}
+	const complete = gaps.length === 0 && receipt.succeeded.length === registered;
+	return complete
+		? `all ${registered} connected source(s)`
+		: `checked=${receipt.succeeded.join(",")} (${receipt.succeeded.length} of ${registered} connected)${gapNote}`;
 }
 
 /**
@@ -63,11 +107,25 @@ export interface MessageScope {
 export function describeMessageScope(scope: MessageScope): string {
 	const clauses: string[] = [];
 	const registered = scope.registeredSources.length;
-	clauses.push(
-		scope.requestedSources && scope.requestedSources.length > 0
-			? `sources=${scope.requestedSources.join(",")} (${scope.requestedSources.length} of ${registered} connected)`
-			: `all ${registered} connected source(s)`,
-	);
+	if (scope.coverage?.kind === "cache") {
+		// The cached read queries nothing. Saying "all N connected source(s)"
+		// here presents rows that happen to be in a process-local store as a
+		// live sweep of every platform.
+		const from = scope.coverage.sources;
+		clauses.push(
+			from.length > 0
+				? `from cached messages only (${from.join(",")}); no source was queried`
+				: "from cached messages only; no source was queried",
+		);
+	} else if (scope.coverage?.kind === "swept") {
+		clauses.push(describeSweptCoverage(scope.coverage.receipt, registered));
+	} else {
+		clauses.push(
+			scope.requestedSources && scope.requestedSources.length > 0
+				? `sources=${scope.requestedSources.join(",")} (${scope.requestedSources.length} of ${registered} connected)`
+				: `all ${registered} connected source(s)`,
+		);
+	}
 	if (scope.worldIds && scope.worldIds.length > 0) {
 		clauses.push(`${scope.worldIds.length} account filter(s)`);
 	}
@@ -236,13 +294,32 @@ function parseMessageLookupHints(
 	};
 }
 
+/**
+ * ECMA-262 caps a representable `Date` at ±8.64e15 ms. `Number.isFinite`
+ * accepts far larger values, so a schema-valid `"1e100"` parsed to a finite
+ * number and then threw `RangeError: Invalid time value` the moment anything
+ * formatted it. Reject out-of-range instants HERE rather than at each
+ * formatter: a timestamp no `Date` can represent is not a valid timestamp, and
+ * one boundary check keeps every consumer safe instead of the one that happened
+ * to crash.
+ */
+const MAX_TIMESTAMP_MS = 8.64e15;
+
+function isRepresentableInstant(value: number): boolean {
+	return Number.isFinite(value) && Math.abs(value) <= MAX_TIMESTAMP_MS;
+}
+
 function asTimestampMs(value: unknown): number | undefined {
-	if (typeof value === "number" && Number.isFinite(value)) return value;
+	if (typeof value === "number") {
+		return isRepresentableInstant(value) ? value : undefined;
+	}
 	if (typeof value === "string") {
 		const n = Number(value);
-		if (Number.isFinite(n)) return n;
+		if (Number.isFinite(n)) {
+			return isRepresentableInstant(n) ? n : undefined;
+		}
 		const parsed = Date.parse(value);
-		if (Number.isFinite(parsed)) return parsed;
+		if (isRepresentableInstant(parsed)) return parsed;
 	}
 	return undefined;
 }
@@ -262,7 +339,7 @@ export function parseTriageParams(
 		sources: asSourceList(params.sources ?? params.source),
 		worldIds: asStringList(params.worldIds),
 		channelIds: asStringList(params.channelIds),
-		sinceMs: asNumber(params.sinceMs),
+		sinceMs: asTimestampMs(params.sinceMs),
 		limit: asNumber(params.limit),
 	};
 }
@@ -283,7 +360,7 @@ export function parseListInboxParams(
 		worldIds: asStringList(params.worldIds),
 		channelIds: asStringList(params.channelIds),
 		limit: asNumber(params.limit),
-		sinceMs: asNumber(params.sinceMs),
+		sinceMs: asTimestampMs(params.sinceMs),
 	};
 }
 

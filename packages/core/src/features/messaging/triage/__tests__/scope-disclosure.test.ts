@@ -58,6 +58,42 @@ class StubDiscordAdapter extends BaseMessageAdapter {
 	}
 }
 
+/** A second connector, so "all connected sources" has something to be wrong about. */
+class StubGmailAdapter extends BaseMessageAdapter {
+	readonly source: MessageSource = "gmail";
+
+	isAvailable(runtime: IAgentRuntime): boolean {
+		return runtime.getService("gmail") != null;
+	}
+
+	protected async listMessagesImpl(
+		_runtime: IAgentRuntime,
+		_opts: ListOptions,
+	): Promise<MessageRef[]> {
+		return [
+			messageRef({
+				id: "gmail-1",
+				externalId: "g1",
+				source: "gmail",
+				receivedAtMs: 3_000,
+			}),
+		];
+	}
+}
+
+/** Available, but its read throws — the partial-degrade path. */
+class ThrowingGmailAdapter extends BaseMessageAdapter {
+	readonly source: MessageSource = "gmail";
+
+	isAvailable(): boolean {
+		return true;
+	}
+
+	protected async listMessagesImpl(): Promise<MessageRef[]> {
+		throw new Error("gmail upstream 503");
+	}
+}
+
 const runtimeWithDiscord = (): IAgentRuntime =>
 	createFakeRuntime({ availableServices: new Set(["discord"]) });
 
@@ -91,8 +127,11 @@ describe("triage read actions disclose their scope", () => {
 		expect(result.text).not.toBe(
 			"No unread messages across connected platforms.",
 		);
-		expect(result.text).toContain("sources=gmail");
-		expect(result.text).toContain("1 connected");
+		// gmail has no adapter registered here, so it was NOT checked. Naming it
+		// as a searched source — "sources=gmail (1 of 1 connected)" — asserted a
+		// sweep that never happened.
+		expect(result.text).toContain("gmail not connected");
+		expect(result.text).toContain("no source was successfully checked");
 		expect(result.text).toContain("drop the filters");
 	});
 
@@ -128,7 +167,8 @@ describe("triage read actions disclose their scope", () => {
 		expect(result.text).not.toBe(
 			"No matching messages found across connected channels.",
 		);
-		expect(result.text).toContain("sources=gmail");
+		// Same as the inbox case: gmail is unregistered, so it was not searched.
+		expect(result.text).toContain("gmail not connected");
 		expect(result.text).toContain("a content keyword");
 		expect(result.text).toContain("since ");
 		// The keyword itself is named, never echoed.
@@ -146,5 +186,115 @@ describe("triage read actions disclose their scope", () => {
 		expect((result.data as { count: number }).count).toBe(1);
 		expect(result.text).toContain("limit 1");
 		expect(result.text).toContain("limit was reached");
+	});
+
+	// A schema-valid number is not necessarily a representable instant. `1e100`
+	// is finite, so it parsed cleanly and then threw RangeError the moment the
+	// scope text formatted it — a crash introduced by describing the scope at
+	// all. Rejected at the parse boundary now, so every consumer is safe.
+	it("drops an out-of-range timestamp instead of crashing the render", async () => {
+		const result = await searchMessagesAction.handler(
+			runtimeWithDiscord(),
+			messageRef({ id: "turn" }) as never,
+			undefined,
+			{ parameters: { since: "1e100" } } as never,
+		);
+
+		expect(result.success).toBe(true);
+		expect(result.text).not.toContain("since ");
+		expect(result.text).not.toContain("Invalid Date");
+	});
+
+	it("keeps a representable timestamp at the boundary", async () => {
+		const result = await searchMessagesAction.handler(
+			runtimeWithDiscord(),
+			messageRef({ id: "turn" }) as never,
+			undefined,
+			{ parameters: { since: 8.64e15 } } as never,
+		);
+
+		expect(result.success).toBe(true);
+		expect(result.text).toContain("since +275760-09-13T00:00:00.000Z");
+	});
+
+	// Coverage must be a measurement of what the read actually reached. These
+	// four pin the ways a source can go unqueried while still being registered
+	// — each previously rendered as "all N connected source(s)".
+	describe("coverage is measured, never inferred from the registry", () => {
+		it("says a cache-served inbox queried no source at all", async () => {
+			// Two adapters registered, but a cached discord row short-circuits the
+			// sweep: nothing is queried, so claiming the connected sources were
+			// checked would be false.
+			getDefaultTriageService().register(new StubGmailAdapter());
+			getDefaultMessageRefStore().saveMessages([
+				messageRef({ id: "discord-1", externalId: "1" }),
+			]);
+
+			const result = await listInboxAction.handler(
+				runtimeWithDiscord(),
+				messageRef({ id: "turn" }) as never,
+				undefined,
+				{ parameters: {} } as never,
+			);
+
+			expect(result.success).toBe(true);
+			expect(result.text).toContain("from cached messages only");
+			expect(result.text).toContain("no source was queried");
+			expect(result.text).not.toContain("all 2 connected source(s)");
+		});
+
+		it("reports a registered-but-unavailable source as not checked", async () => {
+			getDefaultTriageService().register(new StubGmailAdapter());
+			// The runtime offers discord only, so the gmail adapter reports itself
+			// unavailable and search skips it without error.
+			const result = await searchMessagesAction.handler(
+				runtimeWithDiscord(),
+				messageRef({ id: "turn" }) as never,
+				undefined,
+				{ parameters: { content: "launch" } } as never,
+			);
+
+			expect(result.success).toBe(true);
+			expect(result.text).toContain("gmail unavailable");
+			expect(result.text).toContain("checked=discord");
+			expect(result.text).not.toContain("all 2 connected source(s)");
+		});
+
+		it("reports a throwing source as failed while keeping the partial result", async () => {
+			getDefaultTriageService().register(new ThrowingGmailAdapter());
+
+			const result = await searchMessagesAction.handler(
+				createFakeRuntime({
+					availableServices: new Set(["discord", "gmail"]),
+				}),
+				messageRef({ id: "turn" }) as never,
+				undefined,
+				{ parameters: {} } as never,
+			);
+
+			expect(result.success).toBe(true);
+			// The discord hits still come back — a partial sweep is useful — but it
+			// must not read as a complete one.
+			expect(result.text).toContain("gmail failed");
+			expect(result.text).toContain("checked=discord");
+			expect(result.text).not.toContain("all 2 connected source(s)");
+		});
+
+		it("still says all connected sources when every one succeeded", async () => {
+			getDefaultTriageService().register(new StubGmailAdapter());
+
+			const result = await searchMessagesAction.handler(
+				createFakeRuntime({
+					availableServices: new Set(["discord", "gmail"]),
+				}),
+				messageRef({ id: "turn" }) as never,
+				undefined,
+				{ parameters: {} } as never,
+			);
+
+			expect(result.success).toBe(true);
+			expect(result.text).toContain("all 2 connected source(s)");
+			expect(result.text).not.toContain("NOT checked");
+		});
 	});
 });
