@@ -65,20 +65,37 @@ async function fetchText(url, options = {}) {
     fetchImpl = globalThis.fetch,
     timeoutMs = DEFAULT_TIMEOUT_MS,
     maxBytes = MAX_INDEX_BYTES,
+    signal,
   } = options;
   const controller = new AbortController();
+  let cancelled = false;
+  let timedOut = false;
   let timeout;
   const timeoutFailure = new Promise((_, reject) => {
     timeout = setTimeout(() => {
+      timedOut = true;
       controller.abort();
       reject(new Error(`request timed out after ${timeoutMs}ms`));
     }, timeoutMs);
   });
-  try {
-    const response = await Promise.race([
-      fetchImpl(url, { signal: controller.signal }),
-      timeoutFailure,
-    ]);
+  let detachCancellation = () => {};
+  const cancellationFailure = signal
+    ? new Promise((_, reject) => {
+        const cancel = () => {
+          cancelled = true;
+          controller.abort(signal.reason);
+          reject(new Error("request cancelled after sibling failure"));
+        };
+        if (signal.aborted) cancel();
+        else {
+          signal.addEventListener("abort", cancel, { once: true });
+          detachCancellation = () =>
+            signal.removeEventListener("abort", cancel);
+        }
+      })
+    : null;
+  const readResponse = async () => {
+    const response = await fetchImpl(url, { signal: controller.signal });
     const contentLength = Number(response.headers?.get?.("content-length"));
     if (Number.isFinite(contentLength) && contentLength > maxBytes) {
       controller.abort();
@@ -87,7 +104,21 @@ async function fetchText(url, options = {}) {
         bytes: null,
         text: "",
         limitExceeded: true,
+        cancelled: false,
+        timedOut: false,
         detail: `response declares ${contentLength} bytes; limit is ${maxBytes}`,
+      };
+    }
+    if (!response.ok) {
+      controller.abort();
+      return {
+        ok: false,
+        bytes: null,
+        text: "",
+        limitExceeded: false,
+        cancelled: false,
+        timedOut: false,
+        detail: `HTTP ${response.status}`,
       };
     }
 
@@ -108,6 +139,8 @@ async function fetchText(url, options = {}) {
             bytes: null,
             text: "",
             limitExceeded: true,
+            cancelled: false,
+            timedOut: false,
             detail: `response exceeded ${maxBytes} bytes`,
           };
         }
@@ -123,27 +156,29 @@ async function fetchText(url, options = {}) {
           bytes: null,
           text: "",
           limitExceeded: true,
+          cancelled: false,
+          timedOut: false,
           detail: `response returned ${bytes.length} bytes; limit is ${maxBytes}`,
         };
       }
     }
     const text = bytes.toString("utf8");
-    if (response.ok) {
-      return {
-        ok: true,
-        bytes,
-        text,
-        limitExceeded: false,
-        detail: `HTTP ${response.status}`,
-      };
-    }
     return {
-      ok: false,
-      bytes: null,
-      text: "",
+      ok: true,
+      bytes,
+      text,
       limitExceeded: false,
-      detail: `HTTP ${response.status}: ${text.slice(0, 200)}`,
+      cancelled: false,
+      timedOut: false,
+      detail: `HTTP ${response.status}`,
     };
+  };
+  try {
+    return await Promise.race(
+      cancellationFailure
+        ? [readResponse(), timeoutFailure, cancellationFailure]
+        : [readResponse(), timeoutFailure],
+    );
   } catch (err) {
     // error-policy:J1 boundary translation - network failures become verifier failure details.
     return {
@@ -151,10 +186,13 @@ async function fetchText(url, options = {}) {
       bytes: null,
       text: "",
       limitExceeded: false,
+      cancelled,
+      timedOut,
       detail: err instanceof Error ? err.message : String(err),
     };
   } finally {
     clearTimeout(timeout);
+    detachCancellation();
   }
 }
 
@@ -322,7 +360,10 @@ async function verifyPagesFrontendOnce(options) {
         requiredTextResults,
       };
     }
+    const deadlineBounded = remainingMs() <= fetchTimeoutMs;
     const batchTimeoutMs = Math.min(fetchTimeoutMs, remainingMs());
+    const batchController = new AbortController();
+    let firstBatchFailure = null;
     const batchResults = await Promise.all(
       batch.map(async (asset) => {
         const assetUrl = new URL(asset.path, baseUrl);
@@ -332,41 +373,56 @@ async function verifyPagesFrontendOnce(options) {
             fetchImpl,
             timeoutMs: batchTimeoutMs,
             maxBytes: asset.size,
+            signal: batchController.signal,
           }),
         ]);
-        return { asset: asset.path, localBytes, ...bundleFetch };
+        const bundle = { asset: asset.path, localBytes, ...bundleFetch };
+        let failure = null;
+        if (!bundle.ok && !bundle.limitExceeded && !bundle.cancelled) {
+          failure = {
+            reason:
+              bundle.timedOut && deadlineBounded
+                ? "verification_timeout"
+                : "javascript_asset_unreachable",
+            bundle,
+          };
+        } else if (
+          bundle.limitExceeded ||
+          (bundle.ok && !bundle.localBytes.equals(bundle.bytes))
+        ) {
+          failure = { reason: "asset_bytes_mismatch", bundle };
+        }
+        if (failure && firstBatchFailure === null) {
+          firstBatchFailure = failure;
+          batchController.abort();
+        }
+        return bundle;
       }),
     );
-    if (remainingMs() === 0) {
+    if (firstBatchFailure?.reason === "verification_timeout") {
       return {
         ok: false,
         reason: "verification_timeout",
-        detail: `Verification exceeded ${verificationTimeoutMs}ms while fetching ${batch[0].path}`,
+        detail: `Verification exceeded ${verificationTimeoutMs}ms while fetching ${firstBatchFailure.bundle.asset}`,
         expectedAssets,
         servedAssets,
         missingExpectedAssets,
         requiredTextResults,
       };
     }
-    const failedBundle = batchResults.find(
-      (bundle) => !bundle.ok && !bundle.limitExceeded,
-    );
-    if (failedBundle) {
+    if (firstBatchFailure?.reason === "javascript_asset_unreachable") {
       return {
         ok: false,
         reason: "javascript_asset_unreachable",
-        detail: `${failedBundle.asset}: ${failedBundle.detail}`,
+        detail: `${firstBatchFailure.bundle.asset}: ${firstBatchFailure.bundle.detail}`,
         expectedAssets,
         servedAssets,
         missingExpectedAssets,
         requiredTextResults,
       };
     }
-    const mismatchedBundle = batchResults.find(
-      (bundle) =>
-        bundle.limitExceeded || !bundle.localBytes.equals(bundle.bytes),
-    );
-    if (mismatchedBundle) {
+    if (firstBatchFailure?.reason === "asset_bytes_mismatch") {
+      const mismatchedBundle = firstBatchFailure.bundle;
       const sizeDetail = mismatchedBundle.limitExceeded
         ? mismatchedBundle.detail
         : `${mismatchedBundle.bytes.length} live, ${mismatchedBundle.localBytes.length} local`;

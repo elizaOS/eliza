@@ -239,7 +239,7 @@ describe("verifyPagesFrontendOnce", () => {
     expect(report.detail).toContain("sw.js");
   });
 
-  it("returns a structured timeout when a live asset never settles", async () => {
+  it("returns a structured timeout when a live asset body never settles", async () => {
     const distDir = makeDist("assets/index-fresh.js", "entry");
     const fetchImpl = ((url: string) => {
       if (url === "https://app.elizacloud.ai/") {
@@ -249,7 +249,11 @@ describe("verifyPagesFrontendOnce", () => {
           ),
         );
       }
-      return new Promise(() => {});
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        arrayBuffer: () => new Promise(() => {}),
+      });
     }) as unknown as typeof fetch;
 
     const startedAt = Date.now();
@@ -262,6 +266,47 @@ describe("verifyPagesFrontendOnce", () => {
 
     expect(report.ok).toBe(false);
     expect(report.reason).toBe("verification_timeout");
+    expect(Date.now() - startedAt).toBeLessThan(250);
+  });
+
+  it("cancels a hanging sibling when another asset fails", async () => {
+    const distDir = makeDist("assets/index-fresh.js", "entry");
+    writeFileSync(join(distDir, "assets/a-fail.js"), "bad");
+    writeFileSync(join(distDir, "assets/b-hang.js"), "hang");
+    const fetchImpl = ((url: string) => {
+      if (url === "https://app.elizacloud.ai/") {
+        return Promise.resolve(
+          response(
+            '<script type="module" src="/assets/index-fresh.js"></script>',
+          ),
+        );
+      }
+      if (url.endsWith("/a-fail.js"))
+        return Promise.resolve(response("", false, 404));
+      if (url.endsWith("/b-hang.js")) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          arrayBuffer: () => new Promise(() => {}),
+        });
+      }
+      if (url.endsWith("/assets/index-fresh.js"))
+        return Promise.resolve(response("entry"));
+      throw new Error(`unexpected URL ${url}`);
+    }) as unknown as typeof fetch;
+
+    const startedAt = Date.now();
+    const report = await verifyPagesFrontendOnce({
+      servedUrl: "https://app.elizacloud.ai",
+      distDir,
+      fetchImpl,
+      fetchTimeoutMs: 1_000,
+      verificationTimeoutMs: 2_000,
+    });
+
+    expect(report.ok).toBe(false);
+    expect(report.reason).toBe("javascript_asset_unreachable");
+    expect(report.detail).toContain("assets/a-fail.js");
     expect(Date.now() - startedAt).toBeLessThan(250);
   });
 
