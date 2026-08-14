@@ -3,29 +3,33 @@
  *
  * `app-client-handoff-success.spec.ts` proves the handoff machinery with a
  * hand-inserted dedicated row; this spec drives the PRODUCT flow instead: the
- * user chats on a shared agent, reads the server-owned Dedicated quote, then
+ * user chats on their rowless account-native Shared Eliza, reads the
+ * server-owned Dedicated quote, then
  * explicitly confirms that exact quote to mint the migration target with the
  * identity copied SERVER-side and a real provision job. The mock control-plane
  * boots it to running, and the ui-package upgrade
  * handoff module (`runSharedToDedicatedUpgradeHandoff` — the exact code the
  * console's "Upgrade to Dedicated" action runs) moves the conversation and
- * deletes the shared bridge only after the confirmed switch.
+ * seals Shared, imports the exact transcript, and atomically switches the
+ * account to Dedicated only after the confirmed import.
  *
  * Asserted, in order:
  *   - the runway credit gate: a balance above the create minimum but below
  *     3 days of hosting is refused with the canonical 402 carrying the
  *     ENFORCED threshold, and mints nothing,
  *   - another org's key cannot upgrade the agent (404, no cross-org oracle),
- *   - the funded upgrade copies agent_name/agent_config server-side onto a
- *     dedicated-always row and enqueues a real provision job,
+ *   - the Shared identity has no agent_sandboxes row,
+ *   - the funded upgrade creates exactly one dedicated-always row and
+ *     enqueues a real provision job,
  *   - an immediate retry reattaches to the SAME in-flight target (no second
  *     container),
  *   - chat continuity: every shared turn lands on the dedicated agent in
  *     order with the conversation id preserved,
- *   - the shared bridge is deleted ONLY after the confirmed switch, and the
- *     deleted id then reads as 404 for further upgrades.
+ *   - the rowless Shared archive remains intact after the switch, while every
+ *     new phone/app turn resolves to the Dedicated runtime instead of splitting.
  */
 
+import { personalSharedAgentId } from "@elizaos/cloud-shared/lib/services/shared-runtime/personal-shared-agent";
 import {
   clearStoredStewardToken,
   readStoredStewardToken,
@@ -38,22 +42,15 @@ import { getBootConfig, setBootConfig } from "@elizaos/ui/config";
 // a DIRECT @playwright/test import — without one it would run this file under
 // `bun test`. Type-only and empty, so it costs nothing at runtime.
 import type {} from "@playwright/test";
-// Relative source import (Playwright transpiles the two-file TS graph): the
-// `./cloud/*` subpath of @elizaos/ui resolves to dist, which is built from the
-// primary checkout and may not carry this module yet. `ElizaClient` above still
-// comes from the package build — the module takes it as an injected client.
 import { runSharedToDedicatedUpgradeHandoff } from "../../../ui/src/cloud/handoff/start-tier-upgrade";
 import { authedClient } from "../src/helpers/monetization";
 import { pollSandboxStatus } from "../src/helpers/provisioning";
-import { seedModelPricing } from "../src/helpers/seed-pricing";
 import { retrySharedRuntimeWarming } from "../src/helpers/shared-runtime";
 import { expect, test } from "../src/helpers/test-fixtures";
 
-// Context-echo mock LLM: the shared turns must produce a REAL transcript or
-// there is nothing whose continuity can be asserted. API-only (no browser).
-test.use({ stackOptions: { frontend: false, mockLlmEchoContext: true } });
-
-const MODEL = "openai/gpt-4o-mini";
+// API-only (no browser). The transcript uses deterministic capability-wall
+// turns so this integration proof never needs a provider or a paid action.
+test.use({ stackOptions: { frontend: false } });
 
 interface DedicatedQuote {
   action: "activate_dedicated";
@@ -83,64 +80,61 @@ test.describe("shared→dedicated tier upgrade", () => {
     setBootConfig({ ...prevBoot, cloudApiBase });
     writeStoredStewardToken(authToken);
 
-    // Price the shared turn's model so the in-Worker billing path can settle a
-    // real debit (no live provider key) — without it the shared turn 500s
-    // before any transcript exists to migrate.
-    await seedModelPricing({
-      model: MODEL,
-      billingSource: "bitrouter",
-      provider: "openai",
-    });
-
     try {
-      // ── 1. The shared agent the user chats on. ─────────────────────────
-      const sharedCreate = await c<{
-        data?: { id?: string; agentId?: string; executionTier?: string };
-      }>("POST", "/api/v1/eliza/agents", {
-        agentName: `Upgrade Front ${Date.now().toString(36)}`,
-        agentConfig: {
-          character: {
-            name: "Front",
-            system: "You are the instant shared front agent.",
-            model: MODEL,
-          },
-        },
+      // ── 1. The account-native Shared identity has no sandbox row. ──────
+      const sharedAgentId = personalSharedAgentId({
+        userId: seededUser.userId,
+        organizationId: seededUser.organizationId,
       });
-      expect([200, 201]).toContain(sharedCreate.status);
-      const sharedAgentId =
-        sharedCreate.json.data?.id ?? sharedCreate.json.data?.agentId;
-      expect(sharedAgentId, "shared agent has an id").toBeTruthy();
-      if (!sharedAgentId) throw new Error("no shared agent id");
-      expect(sharedCreate.json.data?.executionTier).toBe("shared");
+      const { agentSandboxesRepository } = await import(
+        "@elizaos/cloud-shared/db/repositories/agent-sandboxes"
+      );
+      expect(
+        (
+          await agentSandboxesRepository.listByOrganization(
+            seededUser.organizationId,
+          )
+        ).some((row) => row.id === sharedAgentId),
+        "personal Shared remains rowless",
+      ).toBe(false);
 
-      // ── 2. A real conversation on the shared agent. ────────────────────
+      // ── 2. A real conversation on the account-scoped Shared route. ─────
       // Shared-tier routes resolve scope/billing `cacheOnly`, so a brand-new
       // agent answers the retryable warming 503 until each cache is hydrated
       // under waitUntil. Poll that documented signal (and only it).
-      const convoUrl = `/api/v1/eliza/agents/${sharedAgentId}/api/conversations/${sharedAgentId}/messages`;
-      const FIRST = "Remember: my project is codenamed Aurora.";
-      const SECOND = "What is my project codenamed?";
-      const sendTurn = (text: string) =>
-        retrySharedRuntimeWarming(() => c("POST", convoUrl, { text }));
-      const firstTurn = await sendTurn(FIRST);
+      const convoUrl = "/api/v1/eliza/shared/messages";
+      const FIRST = "save this as a note";
+      const SECOND = "set a reminder for Friday";
+      const sendTurn = (text: string, clientMessageId: string) =>
+        retrySharedRuntimeWarming(() =>
+          c("POST", convoUrl, { text, clientMessageId }),
+        );
+      const firstTurn = await sendTurn(FIRST, "personal-upgrade-1");
       expect(
         firstTurn.status,
         `first shared turn: ${JSON.stringify(firstTurn.json)}`,
       ).toBe(200);
-      const secondTurn = await sendTurn(SECOND);
+      const secondTurn = await sendTurn(SECOND, "personal-upgrade-2");
       expect(
         secondTurn.status,
         `second shared turn: ${JSON.stringify(secondTurn.json)}`,
       ).toBe(200);
       const sharedHistory = await retrySharedRuntimeWarming(() =>
         c<{
-          messages?: Array<{ role: string; text: string }>;
+          data?: {
+            identity?: { id?: string; runtime?: string };
+            messages?: Array<{ role: string; text: string }>;
+          };
         }>("GET", convoUrl),
       );
       expect(
-        sharedHistory.json.messages?.length,
+        sharedHistory.json.data?.messages?.length,
         "shared transcript has both turns (user+assistant ×2)",
       ).toBe(4);
+      expect(sharedHistory.json.data?.identity).toMatchObject({
+        id: sharedAgentId,
+        runtime: "shared",
+      });
 
       // ── 3. Runway credit gate: refused BELOW 3 days of hosting. ────────
       // $0.50 clears the $0.10 create minimum — the gate the create/provision
@@ -221,31 +215,17 @@ test.describe("shared→dedicated tier upgrade", () => {
         "a real provision job exists",
       ).toBeTruthy();
 
-      const { agentSandboxesRepository } = await import(
-        "@elizaos/cloud-shared/db/repositories/agent-sandboxes"
-      );
-      const sharedRow = await agentSandboxesRepository.findByIdAndOrg(
-        sharedAgentId,
-        seededUser.organizationId,
-      );
       const dedicatedRow = await agentSandboxesRepository.findByIdAndOrg(
         dedicatedAgentId,
         seededUser.organizationId,
       );
       expect(dedicatedRow, "dedicated row is org-owned").toBeTruthy();
       expect(dedicatedRow?.execution_tier).toBe("dedicated-always");
-      expect(sharedRow?.agent_name, "shared source still exists").toBeTruthy();
-      expect(dedicatedRow?.agent_name, "agent name copied server-side").toBe(
-        sharedRow?.agent_name ?? "",
-      );
+      expect(dedicatedRow?.agent_name).toBe("Eliza");
       const dedicatedConfig = dedicatedRow?.agent_config as Record<
         string,
         unknown
       > | null;
-      expect(
-        (dedicatedConfig?.character as { system?: string } | undefined)?.system,
-        "character config copied server-side",
-      ).toBe("You are the instant shared front agent.");
       expect(
         dedicatedConfig?.__agentUpgradedFrom,
         "server-side reattach marker recorded",
@@ -279,12 +259,50 @@ test.describe("shared→dedicated tier upgrade", () => {
 
       // ── 8. Chat continuity: the console's handoff module, for real. ─────
       let switchedBase: string | null = null;
+      const baseClient = new ElizaClient(cloudApiBase, authToken);
       const outcome = await runSharedToDedicatedUpgradeHandoff({
         sharedAgentId,
         dedicatedAgentId,
         cloudApiBase,
         authToken,
-        client: new ElizaClient(cloudApiBase, authToken),
+        client: {
+          startCloudAgentHandoff: (options) =>
+            baseClient.startCloudAgentHandoff(options),
+          deleteSharedBridgeAgent: (agentId, options) =>
+            baseClient.deleteSharedBridgeAgent(agentId, options),
+          finalizePersonalDedicatedCutover: async (options) => {
+            const response = await c<{
+              data?: {
+                personalElizaId?: string;
+                activeAgentId?: string;
+                runtime?: "dedicated";
+                apiBase?: string;
+              };
+            }>(
+              "POST",
+              `/api/v1/eliza/agents/${encodeURIComponent(options.personalElizaId)}/upgrade-tier/cutover`,
+              { dedicatedAgentId: options.dedicatedAgentId },
+            );
+            if (response.status !== 200) {
+              throw new Error(
+                `cutover failed (${response.status}): ${JSON.stringify(response.json)}`,
+              );
+            }
+            const data = response.json.data;
+            if (
+              data?.runtime !== "dedicated" ||
+              data.personalElizaId !== options.personalElizaId ||
+              data.activeAgentId !== options.dedicatedAgentId ||
+              !data.apiBase
+            ) {
+              throw new Error("cutover returned an invalid Dedicated identity");
+            }
+            return {
+              runtime: data.runtime,
+              apiBase: data.apiBase,
+            };
+          },
+        },
         intervalMs: 250,
         timeoutMs: 30_000,
         onSwitch: (base) => {
@@ -318,21 +336,42 @@ test.describe("shared→dedicated tier upgrade", () => {
       expect(dedicatedTranscript[0]?.text).toBe(FIRST);
       expect(dedicatedTranscript[2]?.text).toBe(SECOND);
 
-      // ── 9. The shared bridge is gone ONLY now (post-switch), for real. ──
+      // ── 9. Shared stays archived; every new turn resolves Dedicated. ────
       expect(
         outcome.sourceCleanup,
-        "shared bridge deleted after the confirmed switch",
-      ).toBe("deleted-row");
-      const sharedAfter = await agentSandboxesRepository.findByIdAndOrg(
-        sharedAgentId,
-        seededUser.organizationId,
-      );
-      expect(sharedAfter, "shared agent row removed").toBeFalsy();
-      const upgradeDeleted = await c<{ error?: string }>(
-        "GET",
-        `/api/v1/eliza/agents/${sharedAgentId}/upgrade-tier`,
-      );
-      expect(upgradeDeleted.status, "deleted shared id reads as 404").toBe(404);
+        "the rowless Shared archive survives the confirmed switch",
+      ).toBe("preserved-rowless");
+      expect(
+        (
+          await agentSandboxesRepository.listByOrganization(
+            seededUser.organizationId,
+          )
+        ).some((row) => row.id === sharedAgentId),
+        "no Shared row was introduced",
+      ).toBe(false);
+
+      const active = await c<{
+        data?: {
+          identity?: {
+            id?: string;
+            runtime?: string;
+            activeAgentId?: string;
+          };
+        };
+      }>("GET", convoUrl);
+      expect(active.status).toBe(200);
+      expect(active.json.data?.identity).toMatchObject({
+        id: sharedAgentId,
+        runtime: "dedicated",
+        activeAgentId: dedicatedAgentId,
+      });
+
+      const splitTurn = await c<{ code?: string }>("POST", convoUrl, {
+        text: "This must not create a new Shared turn.",
+        clientMessageId: "personal-after-cutover",
+      });
+      expect(splitTurn.status).toBe(409);
+      expect(splitTurn.json.code).toBe("personal_eliza_dedicated");
     } finally {
       setBootConfig(prevBoot);
       if (prevToken === null) {
