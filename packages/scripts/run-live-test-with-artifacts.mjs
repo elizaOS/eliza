@@ -9,7 +9,7 @@
 import { spawn, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const REPO_ROOT = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -18,6 +18,40 @@ const REPO_ROOT = path.resolve(
 );
 const DEFAULT_REPORT_ROOT = path.join(REPO_ROOT, "reports", "live-test-runs");
 const TERMINATION_GRACE_MS = 5_000;
+
+/**
+ * Node clamps `setTimeout` delays above this 32-bit ceiling to 1 ms, which
+ * would kill the child almost immediately with `timedOut=true`. Reject such
+ * values at the boundary instead of letting the timer silently misfire.
+ */
+export const MAX_TIMER_DELAY_MS = 2_147_483_647;
+
+/**
+ * Parse `--timeout-ms` at the CLI boundary. Requires a positive decimal
+ * integer no greater than Node's timer ceiling so a value can never pass
+ * validation and then clamp to 1 ms (rejects fractions, scientific notation,
+ * hex, trailing garbage, empty, negatives, and zero).
+ * @param {string} raw
+ * @returns {number}
+ */
+export function parseTimeoutMs(raw) {
+  if (typeof raw !== "string" || !/^[1-9]\d*$/.test(raw)) {
+    throw new Error(
+      `--timeout-ms must be a positive decimal integer from 1 to ${MAX_TIMER_DELAY_MS}`,
+    );
+  }
+  const timeoutMs = Number(raw);
+  if (
+    !Number.isSafeInteger(timeoutMs) ||
+    timeoutMs < 1 ||
+    timeoutMs > MAX_TIMER_DELAY_MS
+  ) {
+    throw new Error(
+      `--timeout-ms must be a positive decimal integer from 1 to ${MAX_TIMER_DELAY_MS}`,
+    );
+  }
+  return timeoutMs;
+}
 
 function timestampId() {
   return new Date().toISOString().replace(/[:.]/g, "-");
@@ -31,7 +65,7 @@ function slug(value) {
     .slice(0, 80);
 }
 
-function parseArgs(argv) {
+export function parseArgs(argv) {
   const options = {
     label: "",
     reportRoot: DEFAULT_REPORT_ROOT,
@@ -62,11 +96,7 @@ function parseArgs(argv) {
     if (arg === "--timeout-ms") {
       const next = argv[index + 1];
       if (!next) throw new Error("--timeout-ms requires a value");
-      const timeoutMs = Number(next);
-      if (!Number.isFinite(timeoutMs) || timeoutMs < 0) {
-        throw new Error("--timeout-ms must be a non-negative number");
-      }
-      options.timeoutMs = timeoutMs;
+      options.timeoutMs = parseTimeoutMs(next);
       index += 2;
       continue;
     }
@@ -450,7 +480,14 @@ async function main() {
   process.exit(exitCode);
 }
 
-main().catch((error) => {
-  console.error(error instanceof Error ? error.message : String(error));
-  process.exit(2);
-});
+if (
+  process.argv[1] !== undefined &&
+  import.meta.url === pathToFileURL(process.argv[1]).href
+) {
+  main().catch((error) => {
+    // error-policy:J1 CLI boundary — invalid arguments or a fatal run failure
+    // surface as one diagnostic and a non-zero exit before/around the run.
+    console.error(error instanceof Error ? error.message : String(error));
+    process.exit(2);
+  });
+}
