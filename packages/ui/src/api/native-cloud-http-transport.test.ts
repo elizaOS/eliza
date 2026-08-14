@@ -22,7 +22,7 @@ import { DEFAULT_DIRECT_CLOUD_API_BASE_URL } from "./direct-cloud-endpoints";
 import { nativeCloudHttpTransportForUrl } from "./native-cloud-http-transport";
 
 const AGENT_URL =
-  "https://82e92cc6-6fab-4c4a-a1dc-7c1605aebfeb.elizacloud.ai/api/conversations/abc/messages/stream";
+  "https://82e92cc6-6fab-4c4a-a1dc-7c1605aebfeb.cloud.eliza.app/api/conversations/abc/messages/stream";
 const API_URL = `${DEFAULT_DIRECT_CLOUD_API_BASE_URL}/api/v1/eliza/agents`;
 
 let webFetchMock: ReturnType<typeof vi.fn>;
@@ -213,7 +213,7 @@ describe("non-streaming requests are unchanged", () => {
 
   it("routes non-SSE agent-subdomain calls through the patched global fetch", async () => {
     const agentNonStream =
-      "https://82e92cc6-6fab-4c4a-a1dc-7c1605aebfeb.elizacloud.ai/api/agents";
+      "https://82e92cc6-6fab-4c4a-a1dc-7c1605aebfeb.cloud.eliza.app/api/agents";
     const transport = nativeCloudHttpTransportForUrl(agentNonStream);
     await transport?.request(agentNonStream, { method: "GET", headers: {} });
     expect(globalFetchMock).toHaveBeenCalledTimes(1);

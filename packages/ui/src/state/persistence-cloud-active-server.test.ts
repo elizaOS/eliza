@@ -250,7 +250,7 @@ describe("Cloud active server persistence", () => {
     );
   });
 
-  it("drops a shared adapter when no Steward owner session can authorize restore", async () => {
+  it("canonicalizes then drops a shared adapter without Steward owner authority", async () => {
     const server = createPersistedActiveServer({
       kind: "cloud",
       id: `cloud:${agentId}`,
@@ -269,6 +269,7 @@ describe("Cloud active server persistence", () => {
 
     const expectedApiBase = `${DEFAULT_DIRECT_CLOUD_API_BASE_URL}/api/v1/eliza/agents/${agentId}`;
     expect(setBaseUrl).toHaveBeenCalledWith(expectedApiBase);
+    expect(setToken).toHaveBeenCalledWith("cloud-token");
     expect(setToken).toHaveBeenLastCalledWith(null);
     expect(setBaseUrl).toHaveBeenLastCalledWith(null);
     expect(loadPersistedActiveServer()).toBeNull();

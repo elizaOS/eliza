@@ -61,6 +61,7 @@ vi.mock("../../api/client", () => ({
 
 const invokeDesktopBridgeRequest = vi.fn();
 vi.mock("../../bridge/electrobun-rpc", () => ({
+  getElectrobunRendererRpc: vi.fn(() => null),
   invokeDesktopBridgeRequest: (...args: unknown[]) =>
     invokeDesktopBridgeRequest(...args),
 }));
