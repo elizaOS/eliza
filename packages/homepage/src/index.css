@@ -2320,9 +2320,10 @@ html:has(.landing-page)::-webkit-scrollbar-thumb:hover {
   }
 
   .landing-phone-top {
-    position: static;
+    position: relative;
+    z-index: 2;
     padding: 0;
-    background: none;
+    background: #ffffff;
     border-bottom: 0;
   }
 

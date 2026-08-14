@@ -59,9 +59,9 @@ const DEMO_LOOP: readonly DemoStep[] = LANDING_DEMO_LOOP;
 // the bottom so pruning older rows is invisible.
 const MAX_RENDERED_ITEMS = 14;
 // The phone should read as an ongoing relationship on first paint, especially
-// in the taller desktop frame. Playback continues from this truthful context
-// instead of spending half a minute growing an empty transcript.
-const INITIAL_RENDERED_ITEMS = 7;
+// in a tall mobile viewport. Playback continues from this truthful context
+// instead of leaving either end of the thread visibly empty.
+const INITIAL_RENDERED_ITEMS = 10;
 const USER_KEYSTROKE_MS = 62;
 const ELIZA_TYPING_MS = 2275;
 const BEAT_PAUSE_MS = 1465;
