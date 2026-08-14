@@ -1622,66 +1622,6 @@ html:has(.landing-page)::-webkit-scrollbar-thumb:hover {
   transform-origin: center;
 }
 
-@media (max-width: 640px) {
-  .landing-header {
-    padding: 0.75rem 1rem 0;
-  }
-
-  .landing-brand-mark {
-    width: 2.25rem;
-    height: 2.25rem;
-  }
-
-  .landing-brand-wordmark {
-    height: 1.75rem;
-  }
-
-  .landing-header-cta {
-    min-height: 2.75rem;
-    padding-inline: 1.15rem;
-    font-size: 0.95rem;
-  }
-
-  .landing-hero {
-    gap: 0.55rem;
-    padding: 0.55rem 0.75rem 0.75rem;
-  }
-
-  .landing-hero-heading {
-    max-width: 17ch;
-    font-size: clamp(1.65rem, 8vw, 2rem);
-  }
-
-  .landing-hero-actions {
-    gap: 0.5rem;
-    margin-top: 0.8rem;
-  }
-
-  .landing-hero-actions .landing-cta {
-    min-height: 2.75rem;
-    padding-inline: 1.15rem;
-    font-size: 0.95rem;
-  }
-
-  .landing-secondary-channels {
-    margin-top: 0.35rem;
-  }
-
-  .landing-channel {
-    width: 2.4rem;
-    height: 2.4rem;
-  }
-
-  /* The conversation settles against the composer when it has spare room.
-     Device chrome remains visible because the phone is the product preview,
-     not a second full-screen application surface. */
-  .landing-phone-thread::before {
-    content: "";
-    flex: 0 0 auto;
-    margin-top: auto;
-  }
-}
-
 .landing-iphone img {
   -webkit-user-drag: none;
 }
@@ -2190,4 +2130,274 @@ html:has(.landing-page)::-webkit-scrollbar-thumb:hover {
 .landing-kb-bottom svg {
   width: 1.35rem;
   height: 1.35rem;
+}
+
+.landing-tap-target {
+  display: none;
+}
+
+.landing-sheet {
+  width: min(100%, 26rem);
+  padding: 0;
+  border: 0;
+  border-radius: 1.4rem;
+  background: #ffffff;
+  color: var(--brand-black);
+  box-shadow: 0 30px 80px rgb(0 0 0 / 28%);
+}
+
+.landing-sheet::backdrop {
+  background: rgb(10 10 12 / 45%);
+  backdrop-filter: blur(3px);
+}
+
+.landing-sheet-body {
+  display: grid;
+  gap: 1rem;
+  padding: 1.4rem 1.25rem 1.1rem;
+}
+
+.landing-sheet-head {
+  display: grid;
+  justify-items: center;
+  gap: 0.2rem;
+  text-align: center;
+}
+
+.landing-sheet-avatar {
+  width: 3.4rem;
+  height: 3.4rem;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.landing-sheet-head strong {
+  font-size: 1.05rem;
+}
+
+.landing-sheet-head span {
+  max-width: 22rem;
+  color: rgb(0 0 0 / 60%);
+  font-size: 0.9rem;
+  line-height: 1.35;
+}
+
+.landing-sheet-options {
+  display: grid;
+  gap: 0.4rem;
+}
+
+.landing-sheet-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  width: 100%;
+  min-height: 3rem;
+  padding: 0 0.9rem;
+  border: 1px solid rgb(0 0 0 / 8%);
+  border-radius: 0.9rem;
+  background: #ffffff;
+  color: var(--brand-black);
+  font: inherit;
+  font-size: 0.98rem;
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.landing-sheet-row:hover,
+.landing-sheet-row:focus-visible {
+  background: rgb(0 0 0 / 4%);
+}
+
+.landing-sheet-row--account {
+  margin-top: 0.35rem;
+  border-color: rgb(0 0 0 / 14%);
+  font-weight: 600;
+}
+
+.landing-sheet-close {
+  min-height: 2.75rem;
+  border: 0;
+  border-radius: 0.9rem;
+  background: rgb(0 0 0 / 6%);
+  color: var(--brand-black);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+@media (max-width: 640px) {
+  .landing-page {
+    height: 100svh;
+    overflow: hidden;
+    background: #ffffff;
+  }
+
+  .landing-grain,
+  [data-shader-background] {
+    display: none;
+  }
+
+  .landing-header {
+    display: none;
+  }
+
+  .landing-hero-copy {
+    display: contents;
+  }
+
+  .landing-hero-heading {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    clip-path: inset(50%);
+  }
+
+  .landing-hero-actions,
+  .landing-secondary-channels,
+  .landing-phone-number,
+  .landing-hero-lede {
+    display: none;
+  }
+
+  .landing-hero {
+    display: flex;
+    align-items: stretch;
+    flex: 1;
+    min-height: 0;
+    width: 100%;
+    max-width: none;
+    margin: 0;
+    padding: 0;
+    gap: 0;
+  }
+
+  .landing-phone-stage {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+    width: 100%;
+    max-width: none;
+    margin: 0;
+    padding: 0;
+  }
+
+  .landing-phone-stage > .landing-iphone {
+    position: static;
+    transform: none;
+  }
+
+  .landing-iphone {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+    width: 100%;
+    margin: 0;
+    padding: 0;
+    border-radius: 0;
+    background: none;
+    box-shadow: none;
+  }
+
+  .landing-iphone-screen {
+    display: flex;
+    aspect-ratio: auto;
+    flex: 1;
+    min-height: 0;
+    border-radius: 0;
+  }
+
+  .landing-iphone-statusbar,
+  .landing-iphone-homebar {
+    display: none;
+  }
+
+  .landing-phone-top {
+    position: static;
+    padding: 0;
+    background: none;
+    border-bottom: 0;
+  }
+
+  .landing-phone-header {
+    padding: max(0.5rem, env(safe-area-inset-top)) 0.75rem 0.6rem;
+  }
+
+  .landing-sheet {
+    width: 100%;
+    max-width: none;
+    margin: auto 0 0;
+    border-radius: 1.4rem 1.4rem 0 0;
+  }
+
+  .landing-sheet-body {
+    padding-bottom: max(1.1rem, env(safe-area-inset-bottom));
+  }
+
+  .landing-tap-target {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 5;
+    border: 0;
+    padding: 0;
+    background: transparent;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .landing-phone-thread {
+    flex: 1;
+    min-height: 0;
+    padding: 0.25rem 0.9rem 0.5rem;
+  }
+
+  .landing-phone-thread::before {
+    content: "";
+    margin-top: auto;
+  }
+
+  .landing-bubble {
+    max-width: 78%;
+    padding: 0.5rem 0.8rem;
+    font-size: 0.98rem;
+    line-height: 1.32;
+  }
+
+  .landing-demo-card {
+    font-size: 0.92rem;
+  }
+
+  .landing-demo-card strong {
+    font-size: 0.98rem;
+  }
+
+  .landing-demo-card-row {
+    font-size: 0.9rem;
+  }
+
+  .landing-thread-timestamp {
+    font-size: 0.75rem;
+  }
+
+  .landing-composer-row {
+    margin: 0;
+    padding: 0.4rem 0.9rem max(0.7rem, env(safe-area-inset-bottom));
+  }
+
+  .landing-phone-composer {
+    padding: 0.5rem 0.55rem 0.5rem 1rem;
+    font-size: 0.95rem;
+  }
+
+  .landing-keyboard[data-open="true"] {
+    max-height: 15rem;
+  }
 }

@@ -45,7 +45,7 @@ describe("landing Shared-agent capability contract", () => {
   });
 
   test("keeps the deterministic reduced-motion composition stable", () => {
-    expect(LANDING_DEMO_INTRO).toHaveLength(14);
+    expect(LANDING_DEMO_INTRO).toHaveLength(17);
     expect(
       LANDING_DEMO_INTRO.filter((step) => step.kind === "card"),
     ).toHaveLength(3);

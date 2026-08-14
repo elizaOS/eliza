@@ -120,6 +120,7 @@ export interface LandingDemoCard {
 export type LandingDemoStep =
   | {
       capability: LandingDemoCapability;
+      continuation?: boolean;
       kind: "eliza";
       text: string;
     }
@@ -140,7 +141,13 @@ export const LANDING_DEMO_INTRO: readonly LandingDemoStep[] = [
   {
     capability: "conversation-memory",
     kind: "eliza",
-    text: "Got it: Rome in October with your dad. What kind of places does he enjoy?",
+    text: "Got it: Rome in October with your dad.",
+  },
+  {
+    capability: "conversation-memory",
+    continuation: true,
+    kind: "eliza",
+    text: "What kind of places does he enjoy?",
   },
   { kind: "user", text: "quiet streets, old bookstores, great coffee" },
   {
@@ -152,7 +159,13 @@ export const LANDING_DEMO_INTRO: readonly LandingDemoStep[] = [
   {
     capability: "conversation-memory",
     kind: "eliza",
-    text: "Understood. Here's the context you've shared so far.",
+    text: "Understood.",
+  },
+  {
+    capability: "conversation-memory",
+    continuation: true,
+    kind: "eliza",
+    text: "Here's the context you've shared so far.",
   },
   {
     capability: "conversation-memory",
@@ -191,7 +204,13 @@ export const LANDING_DEMO_INTRO: readonly LandingDemoStep[] = [
   {
     capability: "conversation-memory",
     kind: "eliza",
-    text: "Rome in October with your dad. He likes quiet streets, old bookstores, great coffee, and early mornings without crowds.",
+    text: "Rome in October with your dad.",
+  },
+  {
+    capability: "conversation-memory",
+    continuation: true,
+    kind: "eliza",
+    text: "He likes quiet streets, old bookstores, great coffee, and early mornings without crowds.",
   },
   { kind: "user", text: "perfect, we'll start with Monti" },
   {

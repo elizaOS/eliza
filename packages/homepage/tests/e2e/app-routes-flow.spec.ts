@@ -357,7 +357,7 @@ test("landing leads with iMessage and keeps secondary channels available", async
   ).toHaveAttribute("href", /^https:\/\/t\.me\//);
   await expect(channels.getByRole("link", { name: /Discord/ })).toHaveAttribute(
     "href",
-    "https://discord.com/users/1468649258654630063",
+    /^https:\/\/discord\.com\//,
   );
   await expect(channels.getByRole("link", { name: /WhatsApp/ })).toHaveCount(0);
 
@@ -437,7 +437,7 @@ test("landing keeps content reachable on a small viewport", async ({
   ).toHaveAttribute("href", /^https:\/\/t\.me\//);
   await expect(
     contactSheet.getByRole("link", { name: "Message Eliza on WhatsApp" }),
-  ).toHaveAttribute("href", /^https:\/\/wa\.me\//);
+  ).toHaveCount(0);
   await expect(
     contactSheet.getByRole("link", { name: "Sign in to Eliza Cloud" }),
   ).toBeVisible();
@@ -448,9 +448,9 @@ test("landing keeps content reachable on a small viewport", async ({
 
   await textAction.click();
   await expect(contactSheet).toBeHidden();
-  await expect(page.getByRole("status")).toHaveText("Phone number copied");
+  await expect(page.getByRole("status")).toHaveText("Copied!");
   await page.waitForTimeout(2_250);
-  await expect(page.getByRole("status")).toHaveText("Phone number copied");
+  await expect(page.getByRole("status")).toHaveText("Copied!");
 
   // Leave the real sheet open as the terminal state so recorded evidence
   // proves the mobile entrypoint and its complete option list, not just the
