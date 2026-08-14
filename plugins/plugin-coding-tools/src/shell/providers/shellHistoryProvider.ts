@@ -13,6 +13,7 @@ import {
   type State,
 } from "@elizaos/core";
 import { requireProviderSpec } from "../generated/specs/spec-helpers";
+import { redactShellText } from "../redaction";
 import type { ShellService } from "../services/shellService";
 import type { CommandHistoryEntry, FileOperation } from "../types";
 
@@ -62,28 +63,39 @@ export const shellHistoryProvider: Provider = {
         };
       }
       const history = shellService.getCommandHistory(conversationId, 10);
-      const cwd = shellService.getCurrentDirectory(conversationId);
-      const allowedDir = shellService.getAllowedDirectory();
+      const cwd = redactShellText(
+        runtime,
+        shellService.getCurrentDirectory(conversationId),
+      );
+      const allowedDir = redactShellText(
+        runtime,
+        shellService.getAllowedDirectory(),
+      );
 
       let historyText = "No commands in history.";
       if (history.length > 0) {
         historyText = history
           .map((entry: CommandHistoryEntry) => {
-            let entryStr = `[${new Date(entry.timestamp).toISOString()}] ${entry.workingDirectory}> ${entry.command}`;
+            const stdout = redactShellText(runtime, entry.stdout ?? "");
+            const stderr = redactShellText(runtime, entry.stderr ?? "");
+            let entryStr = redactShellText(
+              runtime,
+              `[${new Date(entry.timestamp).toISOString()}] ${entry.workingDirectory}> ${entry.command}`,
+            );
 
-            if (entry.stdout) {
-              if (entry.stdout.length > MAX_OUTPUT_LENGTH) {
-                entryStr += `\n  Output: ${entry.stdout.substring(0, TRUNCATE_SEGMENT_LENGTH)}\n  ... [TRUNCATED] ...\n  ${entry.stdout.substring(entry.stdout.length - TRUNCATE_SEGMENT_LENGTH)}`;
+            if (stdout) {
+              if (stdout.length > MAX_OUTPUT_LENGTH) {
+                entryStr += `\n  Output: ${stdout.substring(0, TRUNCATE_SEGMENT_LENGTH)}\n  ... [TRUNCATED] ...\n  ${stdout.substring(stdout.length - TRUNCATE_SEGMENT_LENGTH)}`;
               } else {
-                entryStr += `\n  Output: ${entry.stdout}`;
+                entryStr += `\n  Output: ${stdout}`;
               }
             }
 
-            if (entry.stderr) {
-              if (entry.stderr.length > MAX_OUTPUT_LENGTH) {
-                entryStr += `\n  Error: ${entry.stderr.substring(0, TRUNCATE_SEGMENT_LENGTH)}\n  ... [TRUNCATED] ...\n  ${entry.stderr.substring(entry.stderr.length - TRUNCATE_SEGMENT_LENGTH)}`;
+            if (stderr) {
+              if (stderr.length > MAX_OUTPUT_LENGTH) {
+                entryStr += `\n  Error: ${stderr.substring(0, TRUNCATE_SEGMENT_LENGTH)}\n  ... [TRUNCATED] ...\n  ${stderr.substring(stderr.length - TRUNCATE_SEGMENT_LENGTH)}`;
               } else {
-                entryStr += `\n  Error: ${entry.stderr}`;
+                entryStr += `\n  Error: ${stderr}`;
               }
             }
 
@@ -93,9 +105,9 @@ export const shellHistoryProvider: Provider = {
               entryStr += "\n  File Operations:";
               entry.fileOperations.forEach((op: FileOperation) => {
                 if (op.secondaryTarget) {
-                  entryStr += `\n    - ${op.type}: ${op.target} → ${op.secondaryTarget}`;
+                  entryStr += `\n    - ${op.type}: ${redactShellText(runtime, op.target)} → ${redactShellText(runtime, op.secondaryTarget)}`;
                 } else {
-                  entryStr += `\n    - ${op.type}: ${op.target}`;
+                  entryStr += `\n    - ${op.type}: ${redactShellText(runtime, op.target)}`;
                 }
               });
             }
@@ -122,9 +134,9 @@ export const shellHistoryProvider: Provider = {
             recentFileOps
               .map((op: FileOperation) => {
                 if (op.secondaryTarget) {
-                  return `- ${op.type}: ${op.target} → ${op.secondaryTarget}`;
+                  return `- ${op.type}: ${redactShellText(runtime, op.target)} → ${redactShellText(runtime, op.secondaryTarget)}`;
                 }
-                return `- ${op.type}: ${op.target}`;
+                return `- ${op.type}: ${redactShellText(runtime, op.target)}`;
               })
               .join("\n"),
           );
@@ -165,7 +177,10 @@ ${addHeader("# Shell History (Last 10)", historyText)}${fileOpsText}`;
       // become observable to the agent), and drives owner escalation. It never
       // throws. Fall back to logger.error on runtimes/test doubles that predate
       // it so the failure is never silently swallowed.
-      const errMsg = error instanceof Error ? error.message : String(error);
+      const errMsg = redactShellText(
+        runtime,
+        error instanceof Error ? error.message : String(error),
+      );
       if (typeof runtime?.reportError === "function") {
         runtime.reportError("shellHistoryProvider", error, {
           roomId: message.roomId,
@@ -173,7 +188,7 @@ ${addHeader("# Shell History (Last 10)", historyText)}${fileOpsText}`;
         });
       } else {
         logger.error(
-          { src: "shellHistoryProvider", error },
+          { src: "shellHistoryProvider", error: errMsg },
           `[shellHistoryProvider] Failed to build shell history context: ${errMsg}`,
         );
       }
