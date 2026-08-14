@@ -83,13 +83,64 @@ let cutoverHistory = [
   },
 ];
 const cutoverCoordinatorOperations: string[] = [];
+const cutoverCoordinatorTokens: string[] = [];
+let cutoverSealToken: string | null = null;
+let cutoverSealCommitted = false;
+let cutoverCommitFailuresRemaining = 0;
+let observeMarkerAtCommit = false;
+let markerObservedAtCommit: unknown;
 const cutoverCoordinatorFetch = mock(
   async (_input: RequestInfo | URL, init?: RequestInit) => {
-    const body = JSON.parse(String(init?.body)) as { operation: string };
+    const body = JSON.parse(String(init?.body)) as {
+      operation: string;
+      token?: string;
+    };
     cutoverCoordinatorOperations.push(body.operation);
-    return body.operation === "cutover-seal"
-      ? Response.json({ success: true, history: cutoverHistory })
-      : Response.json({ success: true });
+    if (body.token) cutoverCoordinatorTokens.push(body.token);
+    if (body.operation === "cutover-seal") {
+      if (cutoverSealToken && cutoverSealToken !== body.token) {
+        return Response.json(
+          { success: false, code: "personal_cutover_in_progress" },
+          { status: 423 },
+        );
+      }
+      cutoverSealToken = body.token ?? null;
+      return Response.json({ success: true, history: cutoverHistory });
+    }
+    if (body.operation === "cutover-release") {
+      if (!cutoverSealCommitted && cutoverSealToken === body.token) {
+        cutoverSealToken = null;
+      }
+      return Response.json({ success: true });
+    }
+    if (body.operation === "cutover-commit") {
+      if (observeMarkerAtCommit) {
+        const { dbWrite } = await import("@/db/client");
+        const { agentSandboxes } = await import("@/db/schemas/agent-sandboxes");
+        const [target] = await dbWrite
+          .select()
+          .from(agentSandboxes)
+          .where(eq(agentSandboxes.id, CUTOVER_TARGET));
+        markerObservedAtCommit = (
+          target?.agent_config as Record<string, unknown> | null
+        )?.__agentPersonalCutover;
+      }
+      if (cutoverCommitFailuresRemaining > 0) {
+        cutoverCommitFailuresRemaining -= 1;
+        return Response.json(
+          { success: false, code: "temporary_commit_failure" },
+          { status: 503 },
+        );
+      }
+      if (!cutoverSealToken || cutoverSealToken !== body.token) {
+        return Response.json(
+          { success: false, code: "personal_cutover_seal_lost" },
+          { status: 409 },
+        );
+      }
+      cutoverSealCommitted = true;
+    }
+    return Response.json({ success: true });
   },
 );
 const cutoverNamespace = {
@@ -932,6 +983,12 @@ describe("POST /api/v1/eliza/agents/:agentId/upgrade-tier", () => {
 
     try {
       cutoverCoordinatorOperations.length = 0;
+      cutoverCoordinatorTokens.length = 0;
+      cutoverSealToken = null;
+      cutoverSealCommitted = false;
+      cutoverCommitFailuresRemaining = 0;
+      observeMarkerAtCommit = false;
+      markerObservedAtCommit = undefined;
       const refused = await cutover(PERSONAL_C, CUTOVER_TARGET);
       expect(refused.status).toBe(503);
       expect(await refused.json()).toMatchObject({
@@ -958,6 +1015,26 @@ describe("POST /api/v1/eliza/agents/:agentId/upgrade-tier", () => {
           skipped: 0,
         }),
       );
+      cutoverCommitFailuresRemaining = 1;
+      cutoverCoordinatorOperations.length = 0;
+      const commitRefused = await cutover(PERSONAL_C, CUTOVER_TARGET);
+      expect(commitRefused.status).toBeGreaterThanOrEqual(500);
+      const [afterCommitFailure] = await dbWrite
+        .select()
+        .from(agentSandboxes)
+        .where(eq(agentSandboxes.id, CUTOVER_TARGET));
+      expect(
+        (afterCommitFailure?.agent_config as Record<string, unknown> | null)
+          ?.__agentPersonalCutover,
+      ).toBeUndefined();
+      expect(cutoverCoordinatorOperations).toEqual([
+        "cutover-seal",
+        "cutover-commit",
+        "cutover-release",
+      ]);
+
+      observeMarkerAtCommit = true;
+      markerObservedAtCommit = undefined;
       cutoverCoordinatorOperations.length = 0;
       const activated = await cutover(PERSONAL_C, CUTOVER_TARGET);
       expect(activated.status).toBe(200);
@@ -998,6 +1075,8 @@ describe("POST /api/v1/eliza/agents/:agentId/upgrade-tier", () => {
         "cutover-seal",
         "cutover-commit",
       ]);
+      expect(markerObservedAtCommit).toBeUndefined();
+      expect(new Set(cutoverCoordinatorTokens).size).toBe(1);
 
       const [after] = await dbWrite
         .select()
@@ -1007,12 +1086,14 @@ describe("POST /api/v1/eliza/agents/:agentId/upgrade-tier", () => {
         ?.__agentPersonalCutover as
         | {
             sourceAgentId?: string;
+            cutoverToken?: string;
             sharedMessageCount?: number;
             activatedAt?: string;
           }
         | undefined;
       expect(marker).toMatchObject({
         sourceAgentId: PERSONAL_C,
+        cutoverToken: `personal-cutover:${PERSONAL_C}:${CUTOVER_TARGET}`,
         sharedMessageCount: 2,
       });
       expect(marker?.activatedAt).toBeTruthy();
@@ -1020,8 +1101,8 @@ describe("POST /api/v1/eliza/agents/:agentId/upgrade-tier", () => {
       cutoverCoordinatorOperations.length = 0;
       const retried = await cutover(PERSONAL_C, CUTOVER_TARGET);
       expect(retried.status).toBe(200);
-      expect(cutoverCoordinatorOperations).toEqual([]);
-      expect(importFetch).toHaveBeenCalledTimes(2);
+      expect(cutoverCoordinatorOperations).toEqual(["cutover-commit"]);
+      expect(importFetch).toHaveBeenCalledTimes(3);
       const [afterRetry] = await dbWrite
         .select()
         .from(agentSandboxes)
@@ -1032,6 +1113,42 @@ describe("POST /api/v1/eliza/agents/:agentId/upgrade-tier", () => {
             ?.__agentPersonalCutover as { activatedAt?: string } | undefined
         )?.activatedAt,
       ).toBe(marker?.activatedAt);
+
+      const interruptedConfig = {
+        ...((afterRetry?.agent_config as Record<string, unknown> | null) ?? {}),
+      };
+      delete interruptedConfig.__agentPersonalCutover;
+      await dbWrite
+        .update(agentSandboxes)
+        .set({ agent_config: interruptedConfig })
+        .where(eq(agentSandboxes.id, CUTOVER_TARGET));
+      importFetch.mockImplementation(async () =>
+        Response.json({
+          complete: true,
+          sourceMessageCount: cutoverHistory.length,
+          inserted: 0,
+          skipped: cutoverHistory.length,
+        }),
+      );
+      cutoverCoordinatorOperations.length = 0;
+      const recoveredAfterCommit = await cutover(PERSONAL_C, CUTOVER_TARGET);
+      expect(recoveredAfterCommit.status).toBe(200);
+      expect(cutoverCoordinatorOperations).toEqual([
+        "cutover-seal",
+        "cutover-commit",
+      ]);
+      const [afterCommittedRecovery] = await dbWrite
+        .select()
+        .from(agentSandboxes)
+        .where(eq(agentSandboxes.id, CUTOVER_TARGET));
+      expect(
+        (afterCommittedRecovery?.agent_config as Record<string, unknown> | null)
+          ?.__agentPersonalCutover,
+      ).toMatchObject({
+        sourceAgentId: PERSONAL_C,
+        cutoverToken: `personal-cutover:${PERSONAL_C}:${CUTOVER_TARGET}`,
+        sharedMessageCount: cutoverHistory.length,
+      });
 
       await dbWrite
         .update(agentSandboxes)
@@ -1067,6 +1184,13 @@ describe("POST /api/v1/eliza/agents/:agentId/upgrade-tier", () => {
           createdAt: 20,
         },
       ];
+      cutoverCoordinatorOperations.length = 0;
+      cutoverCoordinatorTokens.length = 0;
+      cutoverSealToken = null;
+      cutoverSealCommitted = false;
+      cutoverCommitFailuresRemaining = 0;
+      observeMarkerAtCommit = false;
+      markerObservedAtCommit = undefined;
     }
   });
 });
