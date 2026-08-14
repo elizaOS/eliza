@@ -13,6 +13,8 @@ system) from trusted in-cluster callers and forwards those to agents.
   the platform adapters, and registers routes:
   - `GET /health`, `GET /ready`, `POST /drain` — liveness / readiness /
     graceful-drain (KEDA / k8s lifecycle).
+  - `GET /ready/forwarder-auth/:project` — read-only forwarder-gate readiness;
+    a headerless 401 is reserved for an enforced gate on that project.
   - `POST /internal/event` — internal event delivery (auth via
     `X-Internal-Secret`).
   - `GET /webhook/:project/whatsapp[/:agentId]` — WhatsApp `hub.challenge`
@@ -36,7 +38,9 @@ system) from trusted in-cluster callers and forwards those to agents.
   `GATEWAY_BOOTSTRAP_SECRET` and auto-refreshes it; `getAuthHeader()` supplies
   the `Authorization` header for cloud calls.
 - `src/internal-auth.ts` — constant-time `X-Internal-Secret` validation for
-  `/internal/event`.
+  `/internal/event` and shared BFF-forwarder gate state/enforcement.
+- `src/forwarder-auth-readiness.ts` — non-mutating forwarder-gate readiness
+  route; it never accepts a secret or enters provider/message handling.
 - `src/internal-event-handler.ts` — zod-validated internal event ingestion
   (64KB cap), then background forward.
 - `src/webhook-config.ts` / `src/project-config.ts` — per-agent webhook config
@@ -72,18 +76,47 @@ service depends on the `@elizaos/cloud-services-common` workspace package, and
 
 ```bash
 docker build -f packages/cloud/services/gateway-webhook/Dockerfile .
-railway up            # run from the repository root
 ```
 
 The deps stage writes a pruned workspace root containing only this service and
 the package it needs, so the install resolves the workspace link without pulling
 the whole monorepo (32 packages, not several thousand).
 
-This service has **no repo trigger on Railway** — nothing deploys it on push, so
-merging a change to it does not ship it. Until that is wired, a release is a
-manual `railway up` from the repository root, and the running image is whatever
-was last built. `__tests__/dockerfile-workspace-context.test.ts` guards the
-workspace-resolution half of this; nothing yet guards the deploy half.
+This service has **no Railway repo trigger** — merging a change does not ship
+it. Deploy staging or production only through the protected
+`.github/workflows/deploy-gateway-webhook.yml` dispatcher. The workflow accepts
+`develop` for staging and `main` for production, checks out and uploads the
+exact dispatch SHA from the repository root, validates the protected Railway
+project/environment/service ids and public URL, materializes the tracked
+service manifest byte-for-byte at the root config path Railway expects, and
+waits for that exact deployment id before proving its applied manifest and
+active identity around live health and canonical fallback checks.
+It then proves the dedicated headerless `/ready/forwarder-auth/eliza-app`
+contract returns the exact enforced-gate 401 and reasserts the exact active
+deployment. The route returns distinct non-401 states when the secret is
+disabled or the configured forwarded project does not match, never enters
+provider/message handling, and rejects any supplied forwarder-secret header
+without comparing it.
+The pinned Railway CLI is invoked with no path argument from the repository
+root; do not change this to relative `.` because v5.38.0 cannot strip its
+absolute archive prefix from that relative project path when `--project` is
+explicit.
+
+Each protected GitHub Environment supplies `RAILWAY_PROJECT_ID`,
+`RAILWAY_ENVIRONMENT_ID`, `RAILWAY_SERVICE_ID_GATEWAY_WEBHOOK`, and
+`ELIZA_APP_WEBHOOK_GATEWAY_URL` as variables plus `RAILWAY_TOKEN` as a secret.
+The workflow validates the existing Railway variable names and canonical
+non-secret values without printing or rewriting sensitive values. Keep runtime
+secrets in Railway; do not copy their values into workflow YAML or logs. The
+names-only inventory requires `ELIZA_APP_WEBHOOK_GATEWAY_SECRET`, which keeps
+the cloud BFF forwarding trust gate enabled. Staging is branch/configuration
+gated but currently has no required reviewer; production retains reviewer
+approval.
+
+`__tests__/dockerfile-workspace-context.test.ts` guards the workspace build
+context. The repository-level
+`packages/scripts/__tests__/gateway-webhook-deploy-workflow.test.ts` guards the
+protected deploy contract.
 
 ## Environment
 
@@ -92,6 +125,12 @@ Required (the process throws on startup if these are missing):
 - `ELIZA_CLOUD_URL` — base URL of the cloud API (identity resolve, webhook
   config, onboarding chat, auth token endpoints).
 - `GATEWAY_BOOTSTRAP_SECRET` — bootstrap secret used to acquire the gateway JWT.
+
+Required production forwarding trust (the protected deploy fails closed when
+this Railway variable is absent or blank):
+
+- `ELIZA_APP_WEBHOOK_GATEWAY_SECRET` — shared trust secret required on cloud
+  BFF forwards; it must match the Cloud Worker secret of the same name.
 
 Redis (at least one of these must resolve, or `createRedis()` throws):
 
