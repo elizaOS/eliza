@@ -56,7 +56,7 @@ import { createSmithers } from "smthrs/create";
 import { z } from "zod";
 
 const { Workflow, Task, smithers, outputs } = createSmithers(
-  { result: z.object({ message: z.string() }) },
+  { output: z.object({ message: z.string() }) },
   { dbPath: process.env.ELIZA_SMTHRS_DB_PATH },
 );
 
@@ -64,7 +64,7 @@ const agent = globalThis.__elizaSmithers.agent;
 
 export default smithers(() => (
   <Workflow name="New workflow">
-    <Task id="run" output={outputs.result} agent={agent}>
+    <Task id="run" output={outputs.output} agent={agent}>
       Complete the requested workflow and return a concise result.
     </Task>
   </Workflow>
