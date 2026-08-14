@@ -8,6 +8,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createCharacter } from "../character";
 import { InMemoryDatabaseAdapter } from "../database/inMemoryAdapter";
 import { AgentRuntime } from "../runtime";
+import { TurnAbortedError } from "../runtime/turn-controller";
+import {
+	attestDeliveryAudienceFromCanonicalRoom,
+	authorizeOwnerExclusiveDisclosure,
+} from "../security";
 import type {
 	Action,
 	Content,
@@ -347,5 +352,140 @@ describe("DefaultMessageService transcript visibility integration", () => {
 		]);
 		expect(harness.callbacks).not.toHaveLength(0);
 		expect(harness.callbackActionNames).toContain("VIEWS");
+	});
+
+	it("does not let an earlier action delivery authorize a cancelled final reply persistence", async () => {
+		const actionText = "The view lookup is underway.";
+		const finalText = "The available views are ready.";
+		const harness = await createHarness(finalText, actionText);
+		const message = makeMessage(harness.runtime, "List the available apps.");
+		await harness.runtime.ensureConnection({
+			entityId: message.entityId,
+			roomId: message.roomId,
+			worldId: harness.runtime.agentId,
+			userName: "owner",
+			name: "owner",
+			source: "test",
+			type: ChannelType.DM,
+		});
+		harness.runtime.setSetting("ELIZA_ADMIN_ENTITY_ID", message.entityId);
+		await attestDeliveryAudienceFromCanonicalRoom(harness.runtime, message);
+		expect(
+			await authorizeOwnerExclusiveDisclosure(harness.runtime, message),
+		).toMatchObject({ allowed: true });
+
+		let simpleHookSeen = false;
+		let simpleAudienceReads = 0;
+		let releaseFinalAudience: (() => void) | undefined;
+		const finalAudienceGate = new Promise<void>((resolve) => {
+			releaseFinalAudience = resolve;
+		});
+		let finalAudienceStarted: (() => void) | undefined;
+		const finalAudienceLookup = new Promise<void>((resolve) => {
+			finalAudienceStarted = resolve;
+		});
+		const realApplyPipelineHooks = harness.runtime.applyPipelineHooks.bind(
+			harness.runtime,
+		);
+		harness.runtime.applyPipelineHooks = (async (phase, context) => {
+			if (
+				phase === "outgoing_before_deliver" &&
+				(context as { source?: string }).source === "simple"
+			) {
+				simpleHookSeen = true;
+			}
+			return realApplyPipelineHooks(phase, context);
+		}) as AgentRuntime["applyPipelineHooks"];
+		const realGetRoom = harness.runtime.getRoom.bind(harness.runtime);
+		harness.runtime.getRoom = (async (roomId) => {
+			if (simpleHookSeen) {
+				simpleAudienceReads += 1;
+				// The first two reads prepare the final response and its memory.
+				// The third is the callback wrapper's last awaited precommit check.
+				if (simpleAudienceReads === 3) {
+					finalAudienceStarted?.();
+					await finalAudienceGate;
+				}
+			}
+			return realGetRoom(roomId);
+		}) as AgentRuntime["getRoom"];
+
+		const exactAbort = new AbortController();
+		const reason = new TurnAbortedError(
+			"cancelled while final audience was revalidated",
+		);
+		const turn = new DefaultMessageService().handleMessage(
+			harness.runtime,
+			message,
+			harness.callback,
+			{ assistantCommitAbortSignal: exactAbort.signal },
+		);
+		await finalAudienceLookup;
+		exactAbort.abort(reason);
+		releaseFinalAudience?.();
+
+		await expect(turn).rejects.toBe(reason);
+		expect(harness.callbacks.map((content) => content.text)).toEqual([
+			actionText,
+		]);
+		const persisted = await assistantMemories(harness.runtime);
+		expect(persisted.map((memory) => memory.content.text)).toEqual([]);
+	});
+
+	it("does not persist a final reply when its last audience check fails before delivery", async () => {
+		const finalText = "The available views are ready.";
+		const harness = await createHarness(finalText);
+		const message = makeMessage(harness.runtime, "List the available apps.");
+		await harness.runtime.ensureConnection({
+			entityId: message.entityId,
+			roomId: message.roomId,
+			worldId: harness.runtime.agentId,
+			userName: "owner",
+			name: "owner",
+			source: "test",
+			type: ChannelType.DM,
+		});
+		harness.runtime.setSetting("ELIZA_ADMIN_ENTITY_ID", message.entityId);
+		await attestDeliveryAudienceFromCanonicalRoom(harness.runtime, message);
+		expect(
+			await authorizeOwnerExclusiveDisclosure(harness.runtime, message),
+		).toMatchObject({ allowed: true });
+
+		let simpleHookSeen = false;
+		let simpleAudienceReads = 0;
+		const sentinel = new Error("audience store unavailable at commit boundary");
+		harness.runtime.reportError = ((source) => {
+			if (source === "TrustedDeliveryAudience.revalidate") throw sentinel;
+		}) as AgentRuntime["reportError"];
+		const realApplyPipelineHooks = harness.runtime.applyPipelineHooks.bind(
+			harness.runtime,
+		);
+		harness.runtime.applyPipelineHooks = (async (phase, context) => {
+			if (
+				phase === "outgoing_before_deliver" &&
+				(context as { source?: string }).source === "simple"
+			) {
+				simpleHookSeen = true;
+			}
+			return realApplyPipelineHooks(phase, context);
+		}) as AgentRuntime["applyPipelineHooks"];
+		const realGetRoom = harness.runtime.getRoom.bind(harness.runtime);
+		harness.runtime.getRoom = (async (roomId) => {
+			if (simpleHookSeen) {
+				simpleAudienceReads += 1;
+				if (simpleAudienceReads === 3) throw sentinel;
+			}
+			return realGetRoom(roomId);
+		}) as AgentRuntime["getRoom"];
+
+		await expect(
+			new DefaultMessageService().handleMessage(
+				harness.runtime,
+				message,
+				harness.callback,
+			),
+		).rejects.toBe(sentinel);
+		expect(harness.callbacks).toEqual([]);
+		expect(await assistantMemories(harness.runtime)).toEqual([]);
 	});
 });

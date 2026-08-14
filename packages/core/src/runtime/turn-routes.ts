@@ -7,9 +7,19 @@
  *
  * Routes:
  *   POST /api/turns/:roomId/abort
- *     body: { reason?: string }
- *     200 { aborted: true }   — the active turn was aborted
- *     200 { aborted: false }  — no active turn (idempotent)
+ *     body: { reason?: string, clientMessageId?: string }
+ *     With `clientMessageId`, cancellation targets one exact request. If that
+ *     request has not registered yet, a bounded tombstone closes the race and
+ *     the route settles immediately without blocking a newer request id.
+ *     Exact 200 { requestObserved, requestArmed, requestArmRejected,
+ *                 requestAborted, requestIngressState,
+ *                 requestIngressFailure, requestSettled,
+ *                 ...legacyRoomStatus }
+ *     Room-only 200 { aborted, observed, settled }
+ *       `settled:true` proves the exact turn + room owner observed by this
+ *       request released. `aborted:false, settled:false` is the expected
+ *       pre-registration status while an SSE route owns the room but has not
+ *       installed its TurnController yet; callers may retry under a deadline.
  *
  *   GET /api/turns/:roomId
  *     200 { active: boolean, hasSignal: boolean }
@@ -18,6 +28,38 @@
  */
 
 import type { Route } from "../types/plugin";
+
+const TURN_ABORT_SETTLEMENT_TIMEOUT_MS = 750;
+const MAX_CLIENT_MESSAGE_ID_LENGTH = 128;
+
+function normalizeClientMessageId(value: unknown): string | null {
+	if (typeof value !== "string") return null;
+	const normalized = value.trim();
+	return normalized.length > 0 &&
+		normalized.length <= MAX_CLIENT_MESSAGE_ID_LENGTH
+		? normalized
+		: null;
+}
+
+async function waitForSettlementBounded(
+	settlements: readonly Promise<void>[],
+): Promise<boolean> {
+	if (settlements.length === 0) return true;
+	let timeout: ReturnType<typeof setTimeout> | undefined;
+	try {
+		return await Promise.race([
+			Promise.all(settlements).then(() => true),
+			new Promise<false>((resolve) => {
+				timeout = setTimeout(
+					() => resolve(false),
+					TURN_ABORT_SETTLEMENT_TIMEOUT_MS,
+				);
+			}),
+		]);
+	} finally {
+		if (timeout) clearTimeout(timeout);
+	}
+}
 
 const TURN_ABORT_ROUTE: Route = {
 	type: "POST",
@@ -37,8 +79,70 @@ const TURN_ABORT_ROUTE: Route = {
 			typeof body.reason === "string" && body.reason.length > 0
 				? body.reason
 				: "external_request";
+		const clientMessageId = normalizeClientMessageId(body.clientMessageId);
+		if (body.clientMessageId !== undefined && clientMessageId === null) {
+			res.status(400).json({
+				error:
+					"clientMessageId must be a non-empty string of at most 128 characters",
+			});
+			return;
+		}
+		if (clientMessageId) {
+			const exact = runtime.turnControllers.abortRequestAdmission(
+				roomId,
+				clientMessageId,
+				reason,
+			);
+			const requestSettled = exact.requestArmRejected
+				? false
+				: await waitForSettlementBounded([exact.settlement]);
+			res.status(200).json({
+				requestAborted: exact.requestAborted,
+				requestObserved: exact.requestObserved,
+				requestArmed: exact.requestArmed,
+				requestArmRejected: exact.requestArmRejected,
+				requestIngressState: exact.requestIngressState,
+				requestIngressFailure: exact.requestIngressFailure,
+				requestSettled,
+				// Exact cancellation never claims or mutates room-level authority.
+				// Preserve the legacy response keys as explicit neutral values so an
+				// old caller fails closed instead of confusing request settlement for
+				// proof that the room's current turn was aborted.
+				aborted: false,
+				observed: false,
+				settled: false,
+				active: runtime.turnControllers.hasActiveTurn(roomId),
+				queuePending: runtime.roomHandlerQueue.pendingFor(roomId),
+				roomId,
+				clientMessageId,
+				reason,
+			});
+			return;
+		}
+		// Snapshot both capabilities before firing abort. A fast abort may settle
+		// synchronously enough that looking them up afterward loses the proof.
+		const turnSettlement = runtime.turnControllers.settlementFor(roomId);
+		const ownerSettlement =
+			runtime.roomHandlerQueue.currentOwnerSettlement(roomId);
+		const observed = turnSettlement !== null;
 		const aborted = runtime.turnControllers.abortTurn(roomId, reason);
-		res.status(200).json({ aborted, roomId, reason });
+		const shouldAwaitSettlement = aborted || observed;
+		const settled = shouldAwaitSettlement
+			? await waitForSettlementBounded(
+					[turnSettlement, ownerSettlement].filter(
+						(value): value is Promise<void> => value !== null,
+					),
+				)
+			: ownerSettlement === null;
+		res.status(200).json({
+			aborted,
+			observed,
+			settled,
+			active: runtime.turnControllers.hasActiveTurn(roomId),
+			queuePending: runtime.roomHandlerQueue.pendingFor(roomId),
+			roomId,
+			reason,
+		});
 	},
 };
 

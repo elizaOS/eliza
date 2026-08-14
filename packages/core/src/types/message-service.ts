@@ -37,6 +37,17 @@ export interface MessageProcessingOptions {
 	/** Signal to abort message processing */
 	abortSignal?: AbortSignal;
 	/**
+	 * Exact-request cancellation gate for assistant side effects only.
+	 *
+	 * Unlike `abortSignal`, this does not cancel or roll back the incoming user
+	 * memory. The message service samples it synchronously after all assistant
+	 * precommit awaits and before the first persistence/delivery side effect in a
+	 * batch. Once that boundary is crossed, the batch finishes truthfully.
+	 * Hosts must only provide this for an exact request identity (for example a
+	 * realtime-voice turn admission), never for a generic transport disconnect.
+	 */
+	assistantCommitAbortSignal?: AbortSignal;
+	/**
 	 * Exact room ownership held by a host whose persistence boundary outlives
 	 * this service invocation. Required when async-local context is unavailable.
 	 */

@@ -40,16 +40,387 @@ export class TurnAbortedError extends Error {
 	}
 }
 
+export class DuplicateTurnRequestAdmissionError extends Error {
+	readonly code = "DUPLICATE_TURN_REQUEST_ADMISSION";
+	readonly roomId: string;
+	readonly clientMessageId: string;
+
+	constructor(roomId: string, clientMessageId: string) {
+		super(
+			`Turn request already admitted: room=${roomId} clientMessageId=${clientMessageId}`,
+		);
+		this.roomId = roomId;
+		this.clientMessageId = clientMessageId;
+	}
+}
+
+export type TurnRequestIngressState = "pending" | "committed" | "failed";
+
+export type TurnRequestIngressFailure =
+	| "request_finished_before_ingress"
+	| "abort_tombstone_expired"
+	| "abort_tombstone_capacity";
+
+export interface TurnRequestAdmission {
+	readonly roomId: string;
+	readonly clientMessageId: string;
+	readonly signal: AbortSignal;
+	readonly settlement: Promise<void>;
+	readonly requestIngressState: TurnRequestIngressState;
+	readonly requestIngressFailure: TurnRequestIngressFailure | null;
+	/** Idempotently record that the exact user ingress is durable. */
+	markIngressCommitted(): boolean;
+	/** Idempotently fail ingress before the request capability is released. */
+	markIngressFailed(reason: TurnRequestIngressFailure): boolean;
+	/** Idempotently release this exact request capability. */
+	finish(): void;
+}
+
+export interface TurnRequestAbortResult {
+	/** This call newly aborted the exact already-registered request. */
+	readonly requestAborted: boolean;
+	/** The exact request was already registered when abort was requested. */
+	readonly requestObserved: boolean;
+	/** A bounded pre-registration cancellation tombstone owns this key. */
+	readonly requestArmed: boolean;
+	/** Capacity refusal means no cancellation tombstone was installed. */
+	readonly requestArmRejected: boolean;
+	readonly requestIngressState: TurnRequestIngressState;
+	readonly requestIngressFailure: TurnRequestIngressFailure | null;
+	/** Resolves only after exact ingress and all request work settle. */
+	readonly settlement: Promise<void>;
+}
+
+export interface TurnControllerRegistryOptions {
+	/** Injectable only for bounded tombstone expiry tests. */
+	requestAdmissionNow?: () => number;
+	requestAbortTombstoneTtlMs?: number;
+	requestAbortTombstoneCapacity?: number;
+}
+
+interface ActiveRequestAdmission {
+	roomId: string;
+	clientMessageId: string;
+	controller: AbortController;
+	lifecycle: RequestAdmissionLifecycle;
+}
+
+interface RequestAbortTombstone {
+	reason: string;
+	expiresAt: number;
+	lifecycle: RequestAdmissionLifecycle;
+}
+
+interface RequestAdmissionLifecycle {
+	ingressState: TurnRequestIngressState;
+	ingressFailure: TurnRequestIngressFailure | null;
+	settled: Promise<void>;
+	markSettled: () => void;
+	settledDone: boolean;
+}
+
+interface RequestTerminalReceipt {
+	requestObserved: boolean;
+	ingressState: Exclude<TurnRequestIngressState, "pending">;
+	ingressFailure: TurnRequestIngressFailure | null;
+	expiresAt: number;
+}
+
+const DEFAULT_REQUEST_ABORT_TOMBSTONE_TTL_MS = 30_000;
+const DEFAULT_REQUEST_ABORT_TOMBSTONE_CAPACITY = 1_024;
+
+function boundedPositiveInteger(value: number | undefined, fallback: number) {
+	if (typeof value !== "number" || !Number.isFinite(value)) return fallback;
+	const integer = Math.floor(value);
+	return integer > 0 ? integer : fallback;
+}
+
+function requestAdmissionKey(roomId: string, clientMessageId: string): string {
+	return JSON.stringify([roomId, clientMessageId]);
+}
+
 interface ActiveTurn {
 	roomId: string;
 	controller: AbortController;
 	startedAt: number;
+	settled: Promise<void>;
+	markSettled: () => void;
 	reason?: string;
 }
 
 export class TurnControllerRegistry {
 	private active = new Map<string, ActiveTurn>();
+	private activeRequestAdmissions = new Map<string, ActiveRequestAdmission>();
+	private requestAbortTombstones = new Map<string, RequestAbortTombstone>();
+	private requestTerminalReceipts = new Map<string, RequestTerminalReceipt>();
 	private listeners = new Set<(event: TurnEvent) => void>();
+	private readonly requestAdmissionNow: () => number;
+	private readonly requestAbortTombstoneTtlMs: number;
+	private readonly requestAbortTombstoneCapacity: number;
+
+	constructor(options: TurnControllerRegistryOptions = {}) {
+		this.requestAdmissionNow = options.requestAdmissionNow ?? Date.now;
+		this.requestAbortTombstoneTtlMs = boundedPositiveInteger(
+			options.requestAbortTombstoneTtlMs,
+			DEFAULT_REQUEST_ABORT_TOMBSTONE_TTL_MS,
+		);
+		this.requestAbortTombstoneCapacity = boundedPositiveInteger(
+			options.requestAbortTombstoneCapacity,
+			DEFAULT_REQUEST_ABORT_TOMBSTONE_CAPACITY,
+		);
+	}
+
+	/**
+	 * Register an exact inbound request before it enters asynchronous admission.
+	 * A matching pre-abort tombstone is consumed and the returned signal starts
+	 * aborted, closing the cancel-before-registration race.
+	 */
+	registerRequestAdmission(
+		roomId: string,
+		clientMessageId: string,
+	): TurnRequestAdmission {
+		if (!roomId || !clientMessageId) {
+			throw new TypeError("roomId and clientMessageId are required");
+		}
+		this.purgeExpiredRequestAbortTombstones();
+		const key = requestAdmissionKey(roomId, clientMessageId);
+		if (
+			this.activeRequestAdmissions.has(key) ||
+			this.requestTerminalReceipts.has(key)
+		) {
+			throw new DuplicateTurnRequestAdmissionError(roomId, clientMessageId);
+		}
+
+		const controller = new AbortController();
+		const tombstone = this.requestAbortTombstones.get(key);
+		const lifecycle = tombstone?.lifecycle ?? this.createRequestLifecycle();
+		const admission: ActiveRequestAdmission = {
+			roomId,
+			clientMessageId,
+			controller,
+			lifecycle,
+		};
+		this.activeRequestAdmissions.set(key, admission);
+
+		if (tombstone) {
+			this.requestAbortTombstones.delete(key);
+			controller.abort(new TurnAbortedError(tombstone.reason));
+		}
+
+		let finished = false;
+		return {
+			roomId,
+			clientMessageId,
+			signal: controller.signal,
+			settlement: lifecycle.settled,
+			get requestIngressState() {
+				return lifecycle.ingressState;
+			},
+			get requestIngressFailure() {
+				return lifecycle.ingressFailure;
+			},
+			markIngressCommitted: () =>
+				this.setRequestIngress(lifecycle, "committed", null),
+			markIngressFailed: (reason) =>
+				this.setRequestIngress(lifecycle, "failed", reason),
+			finish: () => {
+				if (finished) return;
+				finished = true;
+				if (lifecycle.ingressState === "pending") {
+					this.setRequestIngress(
+						lifecycle,
+						"failed",
+						"request_finished_before_ingress",
+					);
+				}
+				if (this.activeRequestAdmissions.get(key) === admission) {
+					this.activeRequestAdmissions.delete(key);
+				}
+				this.storeTerminalReceipt(key, true, lifecycle);
+				this.settleRequestLifecycle(lifecycle);
+			},
+		};
+	}
+
+	/** Abort one exact request, or arm a bounded tombstone before registration. */
+	abortRequestAdmission(
+		roomId: string,
+		clientMessageId: string,
+		reason: string,
+	): TurnRequestAbortResult {
+		if (!roomId || !clientMessageId) {
+			throw new TypeError("roomId and clientMessageId are required");
+		}
+		this.purgeExpiredRequestAbortTombstones();
+		const key = requestAdmissionKey(roomId, clientMessageId);
+		const admission = this.activeRequestAdmissions.get(key);
+		if (admission) {
+			const aborted = !admission.controller.signal.aborted;
+			if (aborted) {
+				admission.controller.abort(new TurnAbortedError(reason));
+			}
+			return this.requestAbortResult({
+				requestAborted: aborted,
+				requestObserved: true,
+				requestArmed: false,
+				requestArmRejected: false,
+				lifecycle: admission.lifecycle,
+			});
+		}
+
+		const receipt = this.requestTerminalReceipts.get(key);
+		if (receipt) {
+			const lifecycle = this.createRequestLifecycle();
+			lifecycle.ingressState = receipt.ingressState;
+			lifecycle.ingressFailure = receipt.ingressFailure;
+			this.settleRequestLifecycle(lifecycle);
+			return this.requestAbortResult({
+				requestAborted: false,
+				requestObserved: receipt.requestObserved,
+				requestArmed: false,
+				requestArmRejected: false,
+				lifecycle,
+			});
+		}
+
+		const existingTombstone = this.requestAbortTombstones.get(key);
+		if (existingTombstone) {
+			return this.requestAbortResult({
+				requestAborted: false,
+				requestObserved: false,
+				requestArmed: true,
+				requestArmRejected: false,
+				lifecycle: existingTombstone.lifecycle,
+			});
+		}
+
+		if (
+			this.requestAbortTombstones.size >= this.requestAbortTombstoneCapacity
+		) {
+			const lifecycle = this.createRequestLifecycle();
+			this.setRequestIngress(lifecycle, "failed", "abort_tombstone_capacity");
+			this.settleRequestLifecycle(lifecycle);
+			return this.requestAbortResult({
+				requestAborted: false,
+				requestObserved: false,
+				requestArmed: false,
+				requestArmRejected: true,
+				lifecycle,
+			});
+		}
+		const lifecycle = this.createRequestLifecycle();
+		this.requestAbortTombstones.set(key, {
+			reason,
+			expiresAt: this.requestAdmissionNow() + this.requestAbortTombstoneTtlMs,
+			lifecycle,
+		});
+		return this.requestAbortResult({
+			requestAborted: false,
+			requestObserved: false,
+			requestArmed: true,
+			requestArmRejected: false,
+			lifecycle,
+		});
+	}
+
+	hasRequestAdmission(roomId: string, clientMessageId: string): boolean {
+		return this.activeRequestAdmissions.has(
+			requestAdmissionKey(roomId, clientMessageId),
+		);
+	}
+
+	private purgeExpiredRequestAbortTombstones(): void {
+		const now = this.requestAdmissionNow();
+		for (const [key, tombstone] of this.requestAbortTombstones) {
+			if (tombstone.expiresAt <= now) {
+				this.requestAbortTombstones.delete(key);
+				this.setRequestIngress(
+					tombstone.lifecycle,
+					"failed",
+					"abort_tombstone_expired",
+				);
+				this.storeTerminalReceipt(key, false, tombstone.lifecycle);
+				this.settleRequestLifecycle(tombstone.lifecycle);
+			}
+		}
+		for (const [key, receipt] of this.requestTerminalReceipts) {
+			if (receipt.expiresAt <= now) this.requestTerminalReceipts.delete(key);
+		}
+	}
+
+	private createRequestLifecycle(): RequestAdmissionLifecycle {
+		let markSettled: (() => void) | undefined;
+		const settled = new Promise<void>((resolve) => {
+			markSettled = resolve;
+		});
+		return {
+			ingressState: "pending",
+			ingressFailure: null,
+			settled,
+			markSettled: () => markSettled?.(),
+			settledDone: false,
+		};
+	}
+
+	private setRequestIngress(
+		lifecycle: RequestAdmissionLifecycle,
+		state: Exclude<TurnRequestIngressState, "pending">,
+		failure: TurnRequestIngressFailure | null,
+	): boolean {
+		if (lifecycle.ingressState !== "pending") return false;
+		lifecycle.ingressState = state;
+		lifecycle.ingressFailure = failure;
+		return true;
+	}
+
+	private settleRequestLifecycle(lifecycle: RequestAdmissionLifecycle): void {
+		if (lifecycle.settledDone) return;
+		lifecycle.settledDone = true;
+		lifecycle.markSettled();
+	}
+
+	private storeTerminalReceipt(
+		key: string,
+		requestObserved: boolean,
+		lifecycle: RequestAdmissionLifecycle,
+	): void {
+		if (lifecycle.ingressState === "pending") return;
+		while (
+			this.requestTerminalReceipts.size >= this.requestAbortTombstoneCapacity
+		) {
+			const oldestKey = this.requestTerminalReceipts.keys().next().value;
+			if (typeof oldestKey !== "string") break;
+			this.requestTerminalReceipts.delete(oldestKey);
+		}
+		this.requestTerminalReceipts.set(key, {
+			requestObserved,
+			ingressState: lifecycle.ingressState,
+			ingressFailure: lifecycle.ingressFailure,
+			expiresAt: this.requestAdmissionNow() + this.requestAbortTombstoneTtlMs,
+		});
+	}
+
+	private requestAbortResult(input: {
+		requestAborted: boolean;
+		requestObserved: boolean;
+		requestArmed: boolean;
+		requestArmRejected: boolean;
+		lifecycle: RequestAdmissionLifecycle;
+	}): TurnRequestAbortResult {
+		return {
+			requestAborted: input.requestAborted,
+			requestObserved: input.requestObserved,
+			requestArmed: input.requestArmed,
+			requestArmRejected: input.requestArmRejected,
+			get requestIngressState() {
+				return input.lifecycle.ingressState;
+			},
+			get requestIngressFailure() {
+				return input.lifecycle.ingressFailure;
+			},
+			settlement: input.lifecycle.settled,
+		};
+	}
 
 	/**
 	 * Run `fn` inside a turn-scoped AbortController. The signal is passed to
@@ -66,10 +437,16 @@ export class TurnControllerRegistry {
 		fn: (signal: AbortSignal) => Promise<T>,
 	): Promise<T> {
 		const controller = new AbortController();
+		let markSettled: (() => void) | undefined;
+		const settled = new Promise<void>((resolve) => {
+			markSettled = resolve;
+		});
 		const turn: ActiveTurn = {
 			roomId,
 			controller,
 			startedAt: Date.now(),
+			settled,
+			markSettled: () => markSettled?.(),
 		};
 		this.active.set(roomId, turn);
 		this.emit({ type: "started", roomId, startedAt: turn.startedAt });
@@ -104,6 +481,7 @@ export class TurnControllerRegistry {
 			if (this.active.get(roomId) === turn) {
 				this.active.delete(roomId);
 			}
+			turn.markSettled();
 		}
 	}
 
@@ -156,6 +534,11 @@ export class TurnControllerRegistry {
 	 */
 	signalFor(roomId: string): AbortSignal | null {
 		return this.active.get(roomId)?.controller.signal ?? null;
+	}
+
+	/** Snapshot cleanup of the turn active at this instant, if any. */
+	settlementFor(roomId: string): Promise<void> | null {
+		return this.active.get(roomId)?.settled ?? null;
 	}
 
 	/**
