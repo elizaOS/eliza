@@ -5,9 +5,12 @@
  */
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { ElizaError } from "@elizaos/core";
 import { Hono } from "hono";
+import type { PostResult } from "@/lib/services/telegram-automation/app-automation";
 
 const replies: string[] = [];
+const boundaryErrors: unknown[] = [];
 interface TestMessage {
   message_id: number;
   text: string;
@@ -60,7 +63,9 @@ class FakeTelegraf {
 mock.module("telegraf", () => ({ Telegraf: FakeTelegraf }));
 
 const activeApps = mock(async () => [] as TestApp[]);
-const handleIncomingMessage = mock(async () => undefined);
+const handleIncomingMessage = mock(
+  async (): Promise<PostResult> => ({ success: true }),
+);
 mock.module("@/lib/services/telegram-automation/app-automation", () => ({
   telegramAppAutomationService: {
     getAppsWithActiveAutomation: activeApps,
@@ -77,7 +82,7 @@ mock.module("@/lib/services/telegram-automation", () => ({
 
 interface TestRouteResult {
   handled: boolean;
-  reason: "unknown_owner";
+  reason: "unknown_owner" | "owner_org_mismatch";
   replyText?: string;
 }
 
@@ -100,11 +105,13 @@ mock.module("@/db/repositories/telegram-chats", () => ({
   },
 }));
 
+const tryCreate = mock(async () => ({
+  created: true,
+  event: { id: "event" },
+}));
+const deleteByEventId = mock(async () => undefined);
 mock.module("@/db/repositories/webhook-events", () => ({
-  webhookEventsRepository: {
-    tryCreate: mock(async () => ({ created: true, event: { id: "event" } })),
-    deleteByEventId: mock(async () => undefined),
-  },
+  webhookEventsRepository: { tryCreate, deleteByEventId },
 }));
 
 mock.module("@/lib/auth/cron", () => ({
@@ -118,9 +125,13 @@ mock.module("@/lib/api/hono-next-style-params", () => ({
   }),
 }));
 mock.module("@/lib/api/cloud-worker-errors", () => ({
-  failureResponse: (context: {
-    json: (body: unknown, status: number) => Response;
-  }) => context.json({ error: "internal" }, 500),
+  failureResponse: (
+    context: { json: (body: unknown, status: number) => Response },
+    error: unknown,
+  ) => {
+    boundaryErrors.push(error);
+    return context.json({ error: "internal" }, 500);
+  },
 }));
 mock.module("@/lib/utils/telegram-helpers", () => ({
   isCommand: (text: string) => text.startsWith("/"),
@@ -171,10 +182,16 @@ async function deliver(): Promise<Response> {
 describe("per-organization Telegram first-contact precedence", () => {
   beforeEach(() => {
     replies.length = 0;
+    boundaryErrors.length = 0;
     textHandler = undefined;
     activeApps.mockReset();
     activeApps.mockResolvedValue([]);
-    handleIncomingMessage.mockClear();
+    handleIncomingMessage.mockReset();
+    handleIncomingMessage.mockResolvedValue({ success: true });
+    tryCreate.mockReset();
+    tryCreate.mockResolvedValue({ created: true, event: { id: "event" } });
+    deleteByEventId.mockReset();
+    deleteByEventId.mockResolvedValue(undefined);
     routeTelegramMessage.mockClear();
     routeTelegramMessage.mockResolvedValue({
       handled: true,
@@ -220,5 +237,74 @@ describe("per-organization Telegram first-contact precedence", () => {
     );
     expect(handleIncomingMessage).not.toHaveBeenCalled();
     expect(replies).toEqual(["Connect your Eliza account"]);
+  });
+
+  test("failed onboarding rolls back the replay marker and reaches the boundary", async () => {
+    routeTelegramMessage.mockRejectedValue(new Error("onboarding unavailable"));
+
+    expect((await deliver()).status).toBe(500);
+    expect(deleteByEventId).toHaveBeenCalledWith(
+      "telegram:org-1:1001",
+      "telegram",
+    );
+    expect(boundaryErrors).toHaveLength(1);
+    expect(boundaryErrors[0]).toEqual(
+      expect.objectContaining({ message: "onboarding unavailable" }),
+    );
+    expect(replies).toEqual([]);
+  });
+
+  test("failed active-app delivery rolls back instead of returning success", async () => {
+    activeApps.mockResolvedValue([appAutomation(true)]);
+    routeTelegramMessage.mockResolvedValue({
+      handled: false,
+      reason: "unknown_owner",
+      replyText: undefined,
+    });
+    handleIncomingMessage.mockResolvedValue({
+      success: false,
+      error: "Telegram API unavailable",
+    });
+
+    expect((await deliver()).status).toBe(500);
+    expect(deleteByEventId).toHaveBeenCalledWith(
+      "telegram:org-1:1001",
+      "telegram",
+    );
+    expect(boundaryErrors[0]).toBeInstanceOf(ElizaError);
+    expect((boundaryErrors[0] as ElizaError).code).toBe(
+      "TELEGRAM_APP_AUTOMATION_REPLY_FAILED",
+    );
+  });
+
+  test("preserves handler and rollback failures when both operations fail", async () => {
+    routeTelegramMessage.mockRejectedValue(new Error("onboarding unavailable"));
+    deleteByEventId.mockRejectedValue(new Error("dedupe unavailable"));
+
+    expect((await deliver()).status).toBe(500);
+    const boundaryError = boundaryErrors[0];
+    expect(boundaryError).toBeInstanceOf(ElizaError);
+    expect((boundaryError as ElizaError).code).toBe(
+      "TELEGRAM_WEBHOOK_ROLLBACK_FAILED",
+    );
+    const aggregate = (boundaryError as ElizaError).cause;
+    expect(aggregate).toBeInstanceOf(AggregateError);
+    expect((aggregate as AggregateError).errors).toEqual([
+      expect.objectContaining({ message: "onboarding unavailable" }),
+      expect.objectContaining({ message: "dedupe unavailable" }),
+    ]);
+  });
+
+  test("an owner linked to another organization remains fail-closed", async () => {
+    routeTelegramMessage.mockResolvedValue({
+      handled: false,
+      reason: "owner_org_mismatch",
+      replyText: undefined,
+    });
+
+    expect((await deliver()).status).toBe(200);
+    expect(handleIncomingMessage).not.toHaveBeenCalled();
+    expect(replies).toEqual([]);
+    expect(deleteByEventId).not.toHaveBeenCalled();
   });
 });

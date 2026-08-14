@@ -1593,3 +1593,60 @@ describe("conversation-route chat idempotency wiring", () => {
     });
   });
 });
+
+describe("conversation handoff import — exact source identities", () => {
+  it("idempotently appends only newly observed Shared messages", async () => {
+    const { state, storedMemories } = createHarness();
+    const firstMessages = [
+      { sourceId: "shared-u1", role: "user", text: "hello", timestamp: 10 },
+      {
+        sourceId: "shared-a1",
+        role: "assistant",
+        text: "hello back",
+        timestamp: 20,
+      },
+    ];
+
+    const first = await runRoute(
+      "POST",
+      "/api/conversations/conv-1/import",
+      state,
+      { messages: firstMessages },
+    );
+    expect(first.captured.payload).toMatchObject({
+      complete: true,
+      sourceMessageCount: 2,
+      inserted: 2,
+      skipped: 0,
+    });
+
+    const retry = await runRoute(
+      "POST",
+      "/api/conversations/conv-1/import",
+      state,
+      {
+        messages: [
+          ...firstMessages,
+          {
+            sourceId: "shared-u2",
+            role: "user",
+            text: "one more thing",
+            timestamp: 30,
+          },
+        ],
+      },
+    );
+    expect(retry.captured.payload).toMatchObject({
+      complete: true,
+      sourceMessageCount: 3,
+      inserted: 1,
+      skipped: 2,
+    });
+    expect(storedMemories).toHaveLength(3);
+    expect(storedMemories.map((memory) => memory.content.text)).toEqual([
+      "hello",
+      "hello back",
+      "one more thing",
+    ]);
+  });
+});

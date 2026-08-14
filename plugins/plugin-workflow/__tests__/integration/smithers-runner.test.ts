@@ -25,12 +25,12 @@ const workflow: WorkflowDefinitionResponse = {
 import { createSmithers } from "smthrs/create";
 import { z } from "zod";
 const { Workflow, Task, smithers, outputs } = createSmithers({
-  result: z.object({ message: z.string() }),
+  output: z.object({ message: z.string() }),
 }, { dbPath: process.env.ELIZA_SMTHRS_DB_PATH });
 const agent = globalThis.__elizaSmithers.agent;
 export default smithers(() => (
   <Workflow name="integration">
-    <Task id="run" output={outputs.result} agent={agent}>Return a message.</Task>
+    <Task id="run" output={outputs.output} agent={agent}>Return a message.</Task>
   </Workflow>
 ));`,
   steps: [{ id: 'run', label: 'Run', kind: 'task', agent: 'elizaOS' }],
@@ -66,6 +66,7 @@ describe('real Smithers runner', () => {
     });
 
     expect(result.status).toBe('finished');
+    expect(result.output).toEqual([expect.objectContaining({ message: 'done' })]);
     expect(modelRequests).toHaveLength(1);
     expect(events.length).toBeGreaterThan(0);
     expect(result.events.length).toBe(events.length);
@@ -88,7 +89,7 @@ describe('real Smithers runner', () => {
       const persistedOutput = database
         .query<{ message: string }, [string, string]>(
           `SELECT message
-             FROM result
+             FROM "output"
             WHERE run_id = ? AND node_id = ?`
         )
         .get(runId, 'run');

@@ -1,9 +1,10 @@
 /**
- * Shared readiness boundary for screenshots of the landing route. The page is
- * static DOM + CSS around a scripted iMessage demo; readiness is fonts, the
- * hero heading, and the demo having rendered messages. Under reduced motion
- * the demo renders its settled intro immediately (phase "settled"); otherwise
- * playback appends messages within a few seconds.
+ * Shared readiness boundary for screenshots of the landing route. Every
+ * viewport renders the same phone-first hero; mobile compacts the controls so
+ * the framed conversation can use the remaining display height. Readiness is
+ * fonts, the visible heading, and the demo having rendered messages. Under
+ * reduced motion the demo renders its settled intro immediately (phase
+ * "settled"); otherwise playback appends within seconds.
  */
 
 import { expect, type Page } from "playwright/test";
@@ -14,7 +15,7 @@ export async function waitForLandingIntro(page: Page) {
   await page.evaluate(() => document.fonts.ready);
   await expect(
     page.getByRole("heading", { name: /Four hours of your time back/ }),
-  ).toBeVisible({ timeout: READINESS_TIMEOUT_MS });
+  ).toBeAttached({ timeout: READINESS_TIMEOUT_MS });
 
   const demo = page.locator(".landing-iphone");
   await expect

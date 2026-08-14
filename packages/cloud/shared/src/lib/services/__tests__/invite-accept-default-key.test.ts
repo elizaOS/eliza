@@ -84,8 +84,8 @@ interface SeedResult {
 /**
  * Seeds an inviting org (owner = inviter, who holds their own default key
  * there — the per-user mint must not be satisfied by a teammate's key) plus an
- * invitee who already owns a solo org with the default key signup gave them,
- * and a pending invite addressed to the invitee's email.
+ * invitee who already owns a solo org with a pre-existing personal default
+ * key, and a pending invite addressed to the invitee's email.
  */
 async function seedInviteScenario(): Promise<SeedResult> {
   const inviterOrgId = uid();
@@ -101,7 +101,7 @@ async function seedInviteScenario(): Promise<SeedResult> {
       id: inviteeOrgId,
       name: "Solo Org",
       slug: `solo-${inviteeOrgId}`,
-      credit_balance: "5.000000",
+      credit_balance: "0.000000",
     },
   ]);
   await dbWrite.insert(schemas.users).values([

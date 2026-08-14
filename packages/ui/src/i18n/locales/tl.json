@@ -7008,6 +7008,7 @@
   "cloud.affiliates.feeMarkupSetting": "Setting ng Fee Markup",
   "cloud.affiliates.feeMarkupDesc": "Itakda ang eksaktong porsyento na gusto mong singilin sa iyong mga referred na user sa ibabaw ng mga base na presyo ng elizaOS. Ang bayaring ito ay nalalapat sa mga credit top-up at eksaktong gastos sa paggamit para sa mga MCP/Agent.",
   "cloud.affiliates.markupPercentLabel": "Ang Iyong Markup Percentage (0 - 1000%)",
+  "cloud.affiliates.markupPercentHelp": "0–1000. Idinaragdag sa batayang presyo para sa mga ni-refer na user.",
   "cloud.affiliates.devApiTitle": "Integrasyon ng Developer API (SKUs)",
   "cloud.affiliates.devApiDesc": "I-embed ang iyong affiliate code nang direkta sa iyong mga API call. Ang lahat ng user na nagpapasa ng iyong code header ay awtomatikong makakabuo ng naka-markup na kita para sa iyo sa bawat inference.",
   "cloud.notFound.title": "Hindi nahanap",

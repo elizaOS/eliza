@@ -1,11 +1,7 @@
 /**
- * Unit tests for Smithers database backend selection in plugin-agent-orchestrator.
- *
- * The selection logic lives in `resolveSmithersDbConfig` (env → payload) and
- * the inline subprocess script (payload.dbConfig → Smithers layer). These tests
- * exercise:
- *   1. resolveSmithersDbConfig: valid backends and required connection details
- *   2. Subprocess layer selection fails instead of silently changing storage.
+ * Verifies Smithers setup boundaries for database selection and execution
+ * deadlines. Tests cover environment-to-payload storage configuration, exact
+ * timeout parsing, and the subprocess layer selection without a live worker.
  */
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -65,12 +61,19 @@ describe("resolveSmithersDbConfig", () => {
     );
   });
 
-  it("returns provider=pglite and dataDir when SMITHERS_DB_PROVIDER=pglite", () => {
+  it("fails closed with a typed incompatibility before selecting Smithers.pglite", () => {
     process.env.SMITHERS_DB_PROVIDER = "pglite";
     process.env.SMITHERS_DB_DATA_DIR = "/tmp/pglite-data";
-    const config = resolveSmithersDbConfig();
-    expect(config.provider).toBe("pglite");
-    expect(config.dataDir).toBe("/tmp/pglite-data");
+    expect.assertions(2);
+    try {
+      resolveSmithersDbConfig();
+    } catch (error) {
+      expect(error).toMatchObject({ code: "SMITHERS_PGLITE_INCOMPATIBLE" });
+      expect(error).toHaveProperty(
+        "message",
+        expect.stringContaining("temporarily unsupported"),
+      );
+    }
   });
 
   it("rejects an unknown SMITHERS_DB_PROVIDER value", () => {
@@ -85,14 +88,6 @@ describe("resolveSmithersDbConfig", () => {
     delete process.env.SMITHERS_DB_URL;
     expect(() => resolveSmithersDbConfig()).toThrow(
       "SMITHERS_DB_URL is required",
-    );
-  });
-
-  it("requires a data directory for pglite", () => {
-    process.env.SMITHERS_DB_PROVIDER = "pglite";
-    delete process.env.SMITHERS_DB_DATA_DIR;
-    expect(() => resolveSmithersDbConfig()).toThrow(
-      "SMITHERS_DB_DATA_DIR is required",
     );
   });
 });
@@ -118,6 +113,21 @@ describe("resolveTaskDbPath", () => {
 });
 
 describe("Smithers worker isolation", () => {
+  let previousTimeout: string | undefined;
+
+  beforeEach(() => {
+    previousTimeout = process.env.ELIZA_SMITHERS_TIMEOUT_MS;
+    delete process.env.ELIZA_SMITHERS_TIMEOUT_MS;
+  });
+
+  afterEach(() => {
+    if (previousTimeout === undefined) {
+      delete process.env.ELIZA_SMITHERS_TIMEOUT_MS;
+    } else {
+      process.env.ELIZA_SMITHERS_TIMEOUT_MS = previousTimeout;
+    }
+  });
+
   it("does not forward provider credentials or task payloads through the environment", () => {
     const previousSecret = process.env.ANTHROPIC_API_KEY;
     const previousPayload = process.env.ELIZA_TASK_RUN_PAYLOAD;
@@ -146,8 +156,84 @@ describe("Smithers worker isolation", () => {
     }
   });
 
-  it("rejects invalid execution timeouts", () => {
-    expect(() => resolveSmithersTimeoutMs(0)).toThrow("positive number");
+  it.each([
+    ["zero", 0],
+    ["negative", -1],
+    ["fractional", 1.5],
+    ["non-finite", Number.POSITIVE_INFINITY],
+    ["unsafe", Number.MAX_SAFE_INTEGER],
+    ["above the timer ceiling", 2_147_483_648],
+  ])(
+    "rejects an explicitly configured %s execution timeout",
+    (_name, value) => {
+      expect(() => resolveSmithersTimeoutMs(value)).toThrow(
+        "integer from 1 through",
+      );
+    },
+  );
+
+  it.each([1, 1234, 2_147_483_647])(
+    "accepts an explicit execution timeout at %i ms",
+    (value) => {
+      expect(resolveSmithersTimeoutMs(value)).toBe(value);
+    },
+  );
+
+  it.each([
+    "0",
+    "-1",
+    "1.5",
+    "1e3",
+    "1E3",
+    "1e+3",
+    "1e4",
+    "01",
+    "+1000",
+    " 1000",
+    "1000 ",
+    "2147483648",
+    "Infinity",
+    "NaN",
+  ])("rejects the non-canonical environment token %j", (raw) => {
+    process.env.ELIZA_SMITHERS_TIMEOUT_MS = raw;
+
+    expect(() => resolveSmithersTimeoutMs()).toThrow("integer from 1 through");
+  });
+
+  it("preserves the invalid environment token in structured error context", () => {
+    process.env.ELIZA_SMITHERS_TIMEOUT_MS = "1e3";
+
+    try {
+      resolveSmithersTimeoutMs();
+      throw new Error("expected timeout validation to fail");
+    } catch (error) {
+      expect(error).toMatchObject({
+        name: "ElizaError",
+        code: "SMITHERS_TIMEOUT_INVALID",
+        context: {
+          configured: "1e3",
+          minimum: 1,
+          maximum: 2_147_483_647,
+        },
+      });
+    }
+  });
+
+  it("uses the default when the setting is absent or blank", () => {
+    expect(resolveSmithersTimeoutMs()).toBe(300_000);
+    process.env.ELIZA_SMITHERS_TIMEOUT_MS = "";
+    expect(resolveSmithersTimeoutMs()).toBe(300_000);
+  });
+
+  it("accepts both live environment bounds", () => {
+    process.env.ELIZA_SMITHERS_TIMEOUT_MS = "1";
+    expect(resolveSmithersTimeoutMs()).toBe(1);
+    process.env.ELIZA_SMITHERS_TIMEOUT_MS = "2147483647";
+    expect(resolveSmithersTimeoutMs()).toBe(2_147_483_647);
+  });
+
+  it("gives a request override precedence over an invalid environment token", () => {
+    process.env.ELIZA_SMITHERS_TIMEOUT_MS = "invalid";
     expect(resolveSmithersTimeoutMs(1234)).toBe(1234);
   });
 });
@@ -182,9 +268,6 @@ function selectSmithersLayer(
       method: "postgres",
       arg: { connectionString: dbConfig.connectionString },
     };
-  }
-  if (provider === "pglite" && typeof Smithers.pglite === "function") {
-    return { method: "pglite", arg: { dataDir: dbConfig.dataDir } };
   }
   throw new Error(`Configured Smithers backend is unavailable: ${provider}`);
 }
@@ -226,18 +309,23 @@ describe("subprocess layer-selection logic", () => {
     });
   });
 
-  it("selects pglite when provider=pglite and Smithers.pglite is a function", () => {
+  it("never calls Smithers.pglite even if the dependency exports it", () => {
+    let calls = 0;
     const Smithers = {
       sqlite: () => "sqlite-layer",
-      pglite: () => "pglite-layer",
+      pglite: () => {
+        calls += 1;
+        return "pglite-layer";
+      },
     };
-    const result = selectSmithersLayer(
-      Smithers,
-      { provider: "pglite", dataDir: "/tmp/pglite" },
-      DB_PATH,
-    );
-    expect(result.method).toBe("pglite");
-    expect(result.arg).toEqual({ dataDir: "/tmp/pglite" });
+    expect(() =>
+      selectSmithersLayer(
+        Smithers,
+        { provider: "pglite", dataDir: "/tmp/pglite" },
+        DB_PATH,
+      ),
+    ).toThrow("Configured Smithers backend is unavailable");
+    expect(calls).toBe(0);
   });
 
   it("fails when provider=postgres but Smithers.postgres is absent", () => {
@@ -251,7 +339,7 @@ describe("subprocess layer-selection logic", () => {
     ).toThrow("Configured Smithers backend is unavailable");
   });
 
-  it("fails when provider=pglite but Smithers.pglite is absent", () => {
+  it("fails when provider=pglite and Smithers.pglite is absent", () => {
     const Smithers = { sqlite: () => "sqlite-layer" };
     expect(() =>
       selectSmithersLayer(

@@ -51,6 +51,7 @@ vi.mock("../hooks/useAuthStatus", () => ({
   useIsAuthenticated: () => false,
 }));
 
+import { DEFAULT_DIRECT_CLOUD_API_BASE_URL } from "../api/direct-cloud-endpoints";
 import { getBootConfig, setBootConfig } from "../config/boot-config";
 import { useAgentSessionRecovery } from "../hooks/useAgentSessionRecovery";
 import { getActiveProfile, loadAgentProfileRegistry } from "./agent-profiles";
@@ -167,7 +168,9 @@ describe("managed-native stale-session cold boot", () => {
             { status: 200, headers: { "content-type": "application/json" } },
           );
         }
-        if (url === "https://api.elizacloud.ai/api/auth/pair/native") {
+        if (
+          url === `${DEFAULT_DIRECT_CLOUD_API_BASE_URL}/api/auth/pair/native`
+        ) {
           return new Response(
             JSON.stringify({
               apiKey: "fresh-agent-bearer",

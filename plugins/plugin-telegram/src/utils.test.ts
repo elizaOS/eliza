@@ -31,6 +31,54 @@ describe("convertMarkdownToTelegram", () => {
     expect(convertMarkdownToTelegram("a-b!")).toBe("a\\-b\\!");
   });
 
+  it("escapes intra-word underscores instead of italicizing identifiers (#19373)", () => {
+    // Prose naming an identifier must reach Telegram verbatim. The old
+    // unanchored italic pattern consumed `_id_` as formatting, so the reserved
+    // underscores went out unescaped and rendered as italic "id".
+    expect(convertMarkdownToTelegram("call the user_id_field helper")).toBe(
+      "call the user\\_id\\_field helper",
+    );
+    expect(convertMarkdownToTelegram("set MAX_RETRY_COUNT today")).toBe(
+      "set MAX\\_RETRY\\_COUNT today",
+    );
+  });
+
+  it("keeps flanked underscore italic working", () => {
+    expect(convertMarkdownToTelegram("_actually italic_")).toBe(
+      "_actually italic_",
+    );
+    expect(convertMarkdownToTelegram("say _hi_ now")).toBe("say _hi_ now");
+    expect(convertMarkdownToTelegram("(_parenthesized_)")).toBe(
+      "\\(_parenthesized_\\)",
+    );
+  });
+
+  it("treats canonically equivalent flanks identically (#19373 review)", () => {
+    // A decomposed word flank (e + U+0301) must suppress the delimiter exactly
+    // like its precomposed form: marks are word continuations.
+    expect(convertMarkdownToTelegram("caf\u00e9_id_")).toBe(
+      "caf\u00e9\\_id\\_",
+    );
+    expect(convertMarkdownToTelegram("cafe\u0301_id_")).toBe(
+      "cafe\u0301\\_id\\_",
+    );
+  });
+
+  it("suppresses the delimiter after non-Latin combining-mark clusters", () => {
+    // Devanagari KA + virama: the mark ends the flank word, so the underscores
+    // are identifier characters, not italic delimiters.
+    expect(convertMarkdownToTelegram("\u0915\u094d_id_")).toBe(
+      "\u0915\u094d\\_id\\_",
+    );
+  });
+
+  it("keeps single intra-word underscores escaped and __x__ inner italic unchanged", () => {
+    expect(convertMarkdownToTelegram("snake_case")).toBe("snake\\_case");
+    // Historical behavior: double-underscore delimiters still produce the
+    // inner italic because underscore flanks remain permitted.
+    expect(convertMarkdownToTelegram("__x__")).toBe("\\__x_\\_");
+  });
+
   it("preserves links (url chars other than ) and \\ stay raw)", () => {
     expect(convertMarkdownToTelegram("[docs](http://x.com)")).toBe(
       "[docs](http://x.com)",

@@ -77,6 +77,13 @@ export class ChannelTopicsService extends Service {
 	private readonly topicsByRoom = new Map<UUID, string[]>();
 	/** Rooms whose metadata has already been hydrated into the cache. */
 	private readonly hydrated = new Set<UUID>();
+	/**
+	 * Serializes every room state transition, including cold hydration and
+	 * read-modify-write persistence. Without this, a concurrent cold read can
+	 * replace a newer cache generation even when writes themselves are ordered.
+	 */
+	private readonly roomQueues = new Map<UUID, Promise<unknown>>();
+	private stopping = false;
 
 	private reportDatabaseFailure(
 		operation: "hydrate" | "persist",
@@ -103,8 +110,42 @@ export class ChannelTopicsService extends Service {
 	}
 
 	override async stop(): Promise<void> {
+		this.stopping = true;
+		while (this.roomQueues.size > 0) {
+			await Promise.allSettled(this.roomQueues.values());
+		}
 		this.topicsByRoom.clear();
 		this.hydrated.clear();
+		this.roomQueues.clear();
+		this.stopping = false;
+	}
+
+	private enqueueRoomOperation<T>(
+		roomId: UUID,
+		operation: () => Promise<T>,
+	): Promise<T> {
+		if (this.stopping) {
+			return Promise.reject(
+				new ElizaError("Channel topic service is stopping", {
+					code: "CHANNEL_TOPICS_STOPPING",
+					context: { roomId },
+					severity: "ephemeral",
+				}),
+			);
+		}
+		const previous = this.roomQueues.get(roomId) ?? Promise.resolve();
+		const current = previous
+			// error-policy:J5 The failed prior writer already rejects its own caller;
+			// continue this room's queue so later enrichment can retry durability.
+			.catch(() => undefined)
+			.then(operation);
+		this.roomQueues.set(roomId, current);
+
+		return current.finally(() => {
+			if (this.roomQueues.get(roomId) === current) {
+				this.roomQueues.delete(roomId);
+			}
+		});
 	}
 
 	/**
@@ -204,9 +245,12 @@ export class ChannelTopicsService extends Service {
 		if (!roomId || !Array.isArray(topics) || topics.length === 0) {
 			return;
 		}
-		await this.hydrateRoom(roomId);
-		const next = this.applyTopics(roomId, topics);
-		await this.persistRoom(roomId, next);
+
+		return this.enqueueRoomOperation(roomId, async () => {
+			await this.hydrateRoom(roomId);
+			const next = this.applyTopics(roomId, topics);
+			await this.persistRoom(roomId, next);
+		});
 	}
 
 	/**
@@ -226,8 +270,10 @@ export class ChannelTopicsService extends Service {
 	 * persisted state on a cold cache (after restart).
 	 */
 	async ensureHydrated(roomId: UUID): Promise<string[]> {
-		await this.hydrateRoom(roomId);
-		return this.getTopicsForRoom(roomId);
+		return this.enqueueRoomOperation(roomId, async () => {
+			await this.hydrateRoom(roomId);
+			return this.getTopicsForRoom(roomId);
+		});
 	}
 
 	/**

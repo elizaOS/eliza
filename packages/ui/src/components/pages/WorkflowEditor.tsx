@@ -5,14 +5,11 @@
 import {
   Activity,
   ArchiveRestore,
-  Bot,
   Braces,
   Check,
   CircleStop,
-  Clock3,
   FileInput,
   FileOutput,
-  GitBranch,
   History,
   LayoutDashboard,
   ListTree,
@@ -30,7 +27,6 @@ import type {
   WorkflowDefinitionWriteRequest,
   WorkflowExecution,
   WorkflowRevision,
-  WorkflowStepManifest,
   WorkflowWidgetManifest,
 } from "../../api/client-types-chat";
 import { dispatchChatPrefill } from "../../events";
@@ -39,6 +35,7 @@ import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Spinner } from "../ui/spinner";
 import { Textarea } from "../ui/textarea";
+import { WorkflowCanvas } from "./WorkflowCanvas";
 import { WorkflowTriggerPanel } from "./WorkflowTriggerPanel";
 
 type StudioTab = "build" | "source" | "runs" | "widgets" | "history";
@@ -56,7 +53,7 @@ import { createSmithers } from "smthrs/create";
 import { z } from "zod";
 
 const { Workflow, Task, smithers, outputs } = createSmithers(
-  { result: z.object({ message: z.string() }) },
+  { output: z.object({ message: z.string() }) },
   { dbPath: process.env.ELIZA_SMTHRS_DB_PATH },
 );
 
@@ -64,7 +61,7 @@ const agent = globalThis.__elizaSmithers.agent;
 
 export default smithers(() => (
   <Workflow name="New workflow">
-    <Task id="run" output={outputs.result} agent={agent}>
+    <Task id="run" output={outputs.output} agent={agent}>
       Complete the requested workflow and return a concise result.
     </Task>
   </Workflow>
@@ -158,151 +155,6 @@ function schemaFields(schema?: Record<string, unknown>): InputField[] {
 function hasObjectValues(value: unknown): boolean {
   return Boolean(
     value && typeof value === "object" && Object.keys(value).length > 0,
-  );
-}
-
-function StepIcon({ kind }: { kind: WorkflowStepManifest["kind"] }) {
-  if (kind === "branch") return <GitBranch className="h-4 w-4" />;
-  if (kind === "approval") return <Check className="h-4 w-4" />;
-  if (kind === "timer") return <Clock3 className="h-4 w-4" />;
-  if (kind === "ui") return <LayoutDashboard className="h-4 w-4" />;
-  return <Bot className="h-4 w-4" />;
-}
-
-function SmithersCanvas({
-  steps,
-  execution,
-}: {
-  steps: WorkflowStepManifest[];
-  execution: WorkflowExecution | null;
-}) {
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const eventTypes = useMemo(() => {
-    const map = new Map<string, string>();
-    for (const event of execution?.events ?? []) {
-      if (event.nodeId) map.set(event.nodeId, event.type);
-    }
-    return map;
-  }, [execution]);
-  const rows = useMemo(() => {
-    const levelById = new Map<string, number>();
-    const grouped = new Map<number, WorkflowStepManifest[]>();
-    steps.forEach((step, index) => {
-      const dependencies = step.dependsOn ?? [];
-      const level =
-        dependencies.length > 0
-          ? Math.max(...dependencies.map((id) => levelById.get(id) ?? 0)) + 1
-          : index === 0
-            ? 0
-            : Math.max(...levelById.values()) + 1;
-      levelById.set(step.id, level);
-      grouped.set(level, [...(grouped.get(level) ?? []), step]);
-    });
-    return [...grouped.entries()].sort(([a], [b]) => a - b);
-  }, [steps]);
-  const selected = steps.find((step) => step.id === selectedId) ?? null;
-  if (steps.length === 0) {
-    return (
-      <div
-        className="grid h-full min-h-64 place-items-center rounded-xl bg-muted/10"
-        title="No visual steps"
-      >
-        <WorkflowIcon className="h-8 w-8 text-muted-foreground/50" />
-        <span className="sr-only">No visual steps</span>
-      </div>
-    );
-  }
-  return (
-    <div
-      data-testid="smithers-canvas"
-      className="min-h-0 overflow-auto bg-[radial-gradient(circle_at_1px_1px,hsl(var(--border)/0.38)_1px,transparent_0)] bg-[size:20px_20px] p-5"
-    >
-      <div className="mx-auto flex w-full max-w-3xl flex-col items-center">
-        {rows.map(([level, row], rowIndex) => (
-          <div key={level} className="contents">
-            {rowIndex > 0 ? <div className="h-7 w-px bg-border" /> : null}
-            <div className="flex max-w-full flex-wrap justify-center gap-3">
-              {row.map((step) => {
-                const eventType = eventTypes.get(step.id);
-                const active = Boolean(
-                  eventType && !/finish|complete|fail/i.test(eventType),
-                );
-                const failed = Boolean(
-                  eventType && /fail|error/i.test(eventType),
-                );
-                return (
-                  <button
-                    type="button"
-                    key={step.id}
-                    onClick={() =>
-                      setSelectedId((current) =>
-                        current === step.id ? null : step.id,
-                      )
-                    }
-                    aria-label={`Select step ${step.label}`}
-                    aria-pressed={selectedId === step.id}
-                    className={`w-fit min-w-44 max-w-full rounded-xl border bg-card p-3 text-left shadow-sm transition ${selectedId === step.id ? "border-primary/60 shadow-[0_0_0_2px_hsl(var(--primary)/0.1)]" : active ? "border-primary shadow-[0_0_0_2px_hsl(var(--primary)/0.12)]" : failed ? "border-destructive/60" : "border-border/60"}`}
-                    title={[
-                      step.kind,
-                      step.agent,
-                      step.description,
-                      step.dependsOn?.length
-                        ? `After ${step.dependsOn.join(", ")}`
-                        : null,
-                      eventType,
-                    ]
-                      .filter(Boolean)
-                      .join(" · ")}
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary">
-                        <StepIcon kind={step.kind} />
-                      </div>
-                      <p className="min-w-0 flex-1 truncate text-sm font-semibold">
-                        {step.label}
-                      </p>
-                      {eventType ? (
-                        <span
-                          className={`h-2.5 w-2.5 shrink-0 rounded-full ${failed ? "bg-destructive" : active ? "animate-pulse bg-primary" : "bg-emerald-500"}`}
-                        >
-                          <span className="sr-only">{eventType}</span>
-                        </span>
-                      ) : null}
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        ))}
-        {selected ? (
-          <div className="mt-6 flex max-w-md items-center gap-3 rounded-xl border border-border/60 bg-card/95 px-3 py-2 shadow-lg">
-            <StepIcon kind={selected.kind} />
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-xs font-semibold">{selected.label}</p>
-              <p className="truncate text-[10px] text-muted-foreground">
-                {selected.agent ?? selected.kind}
-                {selected.dependsOn?.length
-                  ? ` · ${selected.dependsOn.join(" + ")}`
-                  : ""}
-              </p>
-            </div>
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              aria-label="Edit selected step with Eliza"
-              onClick={() =>
-                dispatchChatPrefill({
-                  text: `Edit workflow step ${selected.id}: `,
-                })
-              }
-            >
-              <MessageSquareText className="h-3.5 w-3.5" />
-            </Button>
-          </div>
-        ) : null}
-      </div>
-    </div>
   );
 }
 
@@ -592,11 +444,14 @@ export function WorkflowEditor({
     }
     setRunInput(
       Object.fromEntries(
-        inputFields.flatMap((field) =>
-          field.defaultValue === undefined
-            ? []
-            : [[field.key, field.defaultValue]],
-        ),
+        inputFields.flatMap((field) => {
+          if (field.defaultValue !== undefined) {
+            return [[field.key, field.defaultValue]];
+          }
+          return field.type === "boolean" && field.required
+            ? [[field.key, false]]
+            : [];
+        }),
       ),
     );
     setRunInputOpen(true);
@@ -754,9 +609,21 @@ export function WorkflowEditor({
 
       {tab === "build" ? (
         <div className="min-h-0 flex-1 p-2">
-          <SmithersCanvas
+          <WorkflowCanvas
             steps={workflow.steps ?? []}
             execution={selectedRun}
+            onAddStep={() =>
+              dispatchChatPrefill({
+                text: workflow.id
+                  ? `Add a step to workflow ${workflow.id}: `
+                  : "Create a Smithers workflow with ",
+              })
+            }
+            onEditStep={(step) =>
+              dispatchChatPrefill({
+                text: `Edit step ${step.id} in workflow ${workflow.id || workflow.name}: `,
+              })
+            }
           />
         </div>
       ) : null}

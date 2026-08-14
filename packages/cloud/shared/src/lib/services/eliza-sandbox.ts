@@ -3538,6 +3538,54 @@ export class ElizaSandboxService {
     return await this.fetchAgentTarget(rec, target, init);
   }
 
+  private async fetchCanonicalConversationApi(
+    rec: AgentApiTarget,
+    path: string,
+    init: RequestInit,
+    canonicalBridgeBase: unknown,
+  ): Promise<Response> {
+    const requestedBase =
+      typeof canonicalBridgeBase === "string"
+        ? canonicalBridgeBase.trim().replace(/\/+$/, "")
+        : null;
+    const storedBase = rec.bridge_url?.trim().replace(/\/+$/, "") ?? null;
+    if (requestedBase && requestedBase === storedBase) {
+      const url = new URL(requestedBase);
+      const isLoopback =
+        url.hostname === "localhost" || url.hostname === "127.0.0.1" || url.hostname === "[::1]";
+      if ((url.protocol === "http:" || url.protocol === "https:") && isLoopback) {
+        // The local control plane deliberately multiplexes sandboxes beneath a
+        // path-prefixed loopback URL. Only the exact DB-owned target may bypass
+        // outbound SSRF validation; preserving its prefix reaches the same
+        // canonical conversation that accepted the cutover import.
+        return await this.fetchAgentTarget(rec, { url: `${requestedBase}${path}` }, init);
+      }
+    }
+
+    const baseDomain = this.getConfiguredAgentBaseDomain();
+    if (baseDomain) {
+      const workerTarget = this.getWorkerAgentRouterFetchTarget(rec, path);
+      if (workerTarget) {
+        return await this.fetchAgentTarget(rec, workerTarget, init);
+      }
+      const publicEndpoint = getElizaAgentPublicWebUiUrl(rec, {
+        baseDomain,
+        path,
+      });
+      if (publicEndpoint) {
+        return await this.fetchAgentTarget(rec, { url: publicEndpoint }, init);
+      }
+    }
+
+    return await this.fetchAgentTarget(
+      rec,
+      {
+        url: await this.getSafeBridgeEndpoint(rec, path),
+      },
+      init,
+    );
+  }
+
   private async getAgentWebFetchTarget(
     rec: AgentNetworkTarget,
     path: string,
@@ -5276,6 +5324,18 @@ export class ElizaSandboxService {
       };
     }
 
+    const canonicalConversationId =
+      typeof params.conversationId === "string" && params.conversationId.trim()
+        ? params.conversationId.trim()
+        : null;
+    if (canonicalConversationId) {
+      // Cutover connectors name the imported conversation explicitly. Do not
+      // fall through to a newly-created REST conversation or another bridge
+      // surface: either this exact history accepts the turn, or delivery fails
+      // closed and the provider retries the same clientMessageId.
+      return await this.bridgeConversationMessageSend(rec, rpc, params, canonicalConversationId);
+    }
+
     const attempts = [
       // Try the cloud-agent image's native /bridge JSON-RPC first. This is
       // the canonical surface served by packages/app-core/deploy/cloud-agent-shared.ts.
@@ -5427,17 +5487,19 @@ export class ElizaSandboxService {
     rec: AgentSandbox,
     rpc: BridgeRequest,
     params: Record<string, unknown>,
+    canonicalConversationId?: string,
   ): Promise<BridgeResponse> {
-    const conversationId = await this.createBridgeConversation(rec, params);
-    const res = await this.fetchAgentApi(
-      rec,
-      `/api/conversations/${encodeURIComponent(conversationId)}/messages`,
-      {
-        method: "POST",
-        body: JSON.stringify(this.buildBridgeConversationMessageBody(params)),
-        signal: AbortSignal.timeout(60_000),
-      },
-    );
+    const conversationId =
+      canonicalConversationId ?? (await this.createBridgeConversation(rec, params));
+    const path = `/api/conversations/${encodeURIComponent(conversationId)}/messages`;
+    const init = {
+      method: "POST",
+      body: JSON.stringify(this.buildBridgeConversationMessageBody(params)),
+      signal: AbortSignal.timeout(60_000),
+    } satisfies RequestInit;
+    const res = canonicalConversationId
+      ? await this.fetchCanonicalConversationApi(rec, path, init, params.canonicalBridgeBase)
+      : await this.fetchAgentApi(rec, path, init);
     if (!res.ok) {
       return {
         jsonrpc: "2.0",
@@ -5754,6 +5816,9 @@ export class ElizaSandboxService {
     } else {
       body.conversationMode = "simple";
     }
+    if (typeof params.clientMessageId === "string" && params.clientMessageId.trim()) {
+      body.clientMessageId = params.clientMessageId.trim();
+    }
     return body;
   }
 
@@ -6025,7 +6090,7 @@ export class ElizaSandboxService {
       if (!res.ok) return null;
       const body = await res.json().catch(() => ({}));
       const messages = this.getBridgeMessages(body);
-      for (const message of messages.toReversed()) {
+      for (const message of messages.slice().reverse()) {
         const record = this.nestedBridgeRecord(message);
         if (!record || !this.isBridgeAgentMessage(record, runtimeAgentId)) continue;
         const text = this.extractBridgeMessageText(record);
@@ -6054,7 +6119,7 @@ export class ElizaSandboxService {
       if (!res.ok) return null;
       const body = await res.json().catch(() => ({}));
       const messages = this.getBridgeMessages(body);
-      for (const message of messages.toReversed()) {
+      for (const message of messages.slice().reverse()) {
         const record = this.nestedBridgeRecord(message);
         if (!record || !this.isBridgeAgentMessage(record, runtimeAgentId)) continue;
         const text = this.extractBridgeMessageText(record);

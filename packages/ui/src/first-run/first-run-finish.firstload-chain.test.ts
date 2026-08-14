@@ -1,25 +1,5 @@
-/** Verifies listOrAutoProvisionCloudAgent — no serial status probe before the agents list through the package's configured test harness. */
+/** Verifies Cloud first-run binds the rowless account identity without provisioning compute. */
 // @vitest-environment jsdom
-
-/**
- * Regression for the post-login first-load resolution chain (first-5 strike,
- * FIRSTLOAD-REAL-2026-07-22). On staging the canary's post-token stall was a
- * SERIAL chain: /api/v1/user status probe (~0.8s) → /api/v1/eliza/agents
- * (~1.8s) → bind → cold agent-base /api/auth/me (~2.3s). Three structural
- * invariants pin the fix (structural, not timing-based, so they cannot flake):
- *
- *  1. A stored bearer skips the /api/v1/user status probe entirely — the
- *     agents list IS the connectivity probe, and its result is REUSED as
- *     `knownAgents` for the bind (exactly one list fetch, zero status probes).
- *  2. After `handleInteractiveCloudLogin` lands a bearer, no post-login status re-probe
- *     runs — the token is the proof; the probe only runs when no token landed.
- *  3. The bind warms the just-bound agent base with a fire-and-forget
- *     conversations fetch so the post-ready hydrate hits a warm container —
- *     and a client shim without that chat surface is a safe no-op.
- *
- * The stale-token degrade (list fails → status probe → login re-entry) is
- * pinned too, so the fast path can never strand a revoked session.
- */
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { FirstRunProfileDraft } from "./first-run";
@@ -32,14 +12,8 @@ import {
 const SHARED_AGENT_ID = "23766030-c096-4a14-932a-a4e43c562432";
 const SHARED_AGENT_BASE = `https://staging.elizacloud.ai/api/v1/eliza/agents/${SHARED_AGENT_ID}`;
 
-const RUNNING_AGENT = {
-  agent_id: SHARED_AGENT_ID,
-  agent_name: "Eliza",
-  status: "running",
-  created_at: "2026-07-01T00:00:00Z",
-};
-
 const clientStub = vi.hoisted(() => ({
+  getPersonalSharedEliza: vi.fn(),
   selectOrProvisionCloudAgent: vi.fn(),
   submitFirstRun: vi.fn(async () => {}),
   setBaseUrl: vi.fn(),
@@ -48,7 +22,6 @@ const clientStub = vi.hoisted(() => ({
   createCloudCompatAgent: vi.fn(),
   startCloudAgentHandoff: vi.fn(),
   deleteSharedBridgeAgent: vi.fn(async () => ({ success: true })),
-  getCloudCompatAgents: vi.fn(),
   getCloudStatus: vi.fn(async () => ({ connected: false })),
   getRestAuthToken: vi.fn(() => null as string | null),
   listConversations: vi.fn(async () => ({ conversations: [] })) as
@@ -158,45 +131,29 @@ beforeEach(() => {
   window.localStorage.clear();
   clientStub.listConversations = vi.fn(async () => ({ conversations: [] }));
   clientStub.getCloudStatus.mockResolvedValue({ connected: false });
-  clientStub.getCloudCompatAgents.mockResolvedValue({
-    success: true,
-    data: [RUNNING_AGENT],
+  clientStub.getPersonalSharedEliza.mockResolvedValue({
+    personalElizaId: SHARED_AGENT_ID,
+    agentId: SHARED_AGENT_ID,
+    activeAgentId: SHARED_AGENT_ID,
+    agentName: "Eliza",
+    apiBase: SHARED_AGENT_BASE,
+    runtime: "shared",
   });
   stubSelection();
 });
 
-describe("listOrAutoProvisionCloudAgent — no serial status probe before the agents list", () => {
-  it("with a stored bearer: skips getCloudStatus entirely, fetches the agents list ONCE, and reuses it as knownAgents for the bind", async () => {
+describe("listOrAutoProvisionCloudAgent — rowless personal Eliza", () => {
+  it("binds the personal identity directly when a bearer is already present", async () => {
     storeStewardToken();
     const { ports: p } = ports();
     const outcome = await listOrAutoProvisionCloudAgent(draft(), p);
     expect(outcome.kind).toBe("done");
-    // The user/status probe is OFF the chain — the agents list is the probe.
     expect(clientStub.getCloudStatus).not.toHaveBeenCalled();
-    // Exactly one list fetch, no duplicate in the bind.
-    expect(clientStub.getCloudCompatAgents).toHaveBeenCalledTimes(1);
-    expect(clientStub.selectOrProvisionCloudAgent).toHaveBeenCalledTimes(1);
-    expect(
-      clientStub.selectOrProvisionCloudAgent.mock.calls[0][0].knownAgents,
-    ).toEqual([RUNNING_AGENT]);
+    expect(clientStub.getPersonalSharedEliza).toHaveBeenCalledTimes(1);
+    expect(clientStub.selectOrProvisionCloudAgent).not.toHaveBeenCalled();
   });
 
-  it("stale bearer degrade: a failed list falls back to the status probe and re-enters login instead of stranding", async () => {
-    storeStewardToken("stale-jwt");
-    clientStub.getCloudCompatAgents
-      .mockResolvedValueOnce({ success: false, data: [], error: "401" })
-      .mockResolvedValueOnce({ success: true, data: [RUNNING_AGENT] });
-    const { ports: p, handleInteractiveCloudLogin } = ports();
-    const outcome = await listOrAutoProvisionCloudAgent(draft(), p);
-    expect(outcome.kind).toBe("done");
-    // The failure path consulted the status probe (legacy semantics kept)…
-    expect(clientStub.getCloudStatus).toHaveBeenCalled();
-    // …and re-entered login rather than treating the dead list as connected.
-    expect(handleInteractiveCloudLogin).toHaveBeenCalledTimes(1);
-    expect(clientStub.getCloudCompatAgents).toHaveBeenCalledTimes(2);
-  });
-
-  it("after handleInteractiveCloudLogin lands a bearer there is NO post-login status re-probe — one probe total on the no-token entry", async () => {
+  it("lands a new interactive bearer without any agent-list or status probe", async () => {
     const { ports: p, handleInteractiveCloudLogin } = ports();
     handleInteractiveCloudLogin.mockImplementation(async () => {
       storeStewardToken("fresh-jwt");
@@ -204,22 +161,22 @@ describe("listOrAutoProvisionCloudAgent — no serial status probe before the ag
     const outcome = await listOrAutoProvisionCloudAgent(draft(), p);
     expect(outcome.kind).toBe("done");
     expect(handleInteractiveCloudLogin).toHaveBeenCalledTimes(1);
-    // Exactly ONE status probe (the pre-login connectivity check). The old
-    // code issued a second one after login whose result was overridden by the
-    // token check anyway — that serial round trip must not come back.
-    expect(clientStub.getCloudStatus).toHaveBeenCalledTimes(1);
-    expect(clientStub.getCloudCompatAgents).toHaveBeenCalledTimes(1);
+    expect(clientStub.getCloudStatus).not.toHaveBeenCalled();
+    expect(clientStub.getPersonalSharedEliza).toHaveBeenCalledWith({
+      cloudApiBase: "https://staging.elizacloud.ai",
+      authToken: "fresh-jwt",
+    });
+    expect(clientStub.selectOrProvisionCloudAgent).not.toHaveBeenCalled();
   });
 
-  it("returns needs-cloud-login when login lands no token and the probe stays disconnected", async () => {
+  it("returns needs-cloud-login when interactive auth lands no bearer", async () => {
     const { ports: p, handleInteractiveCloudLogin } = ports();
     const outcome = await listOrAutoProvisionCloudAgent(draft(), p);
     expect(outcome.kind).toBe("needs-cloud-login");
     expect(handleInteractiveCloudLogin).toHaveBeenCalledTimes(1);
-    // Pre-login probe + post-login probe (no token landed, so the probe is
-    // still the only evidence available).
-    expect(clientStub.getCloudStatus).toHaveBeenCalledTimes(2);
-    expect(clientStub.getCloudCompatAgents).not.toHaveBeenCalled();
+    expect(clientStub.getCloudStatus).not.toHaveBeenCalled();
+    expect(clientStub.getPersonalSharedEliza).not.toHaveBeenCalled();
+    expect(clientStub.selectOrProvisionCloudAgent).not.toHaveBeenCalled();
   });
 });
 

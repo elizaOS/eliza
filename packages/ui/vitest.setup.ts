@@ -139,6 +139,17 @@ if (typeof Element !== "undefined") {
   }
 }
 
+// jsdom has no layout observer. Components backed by React Flow and Radix
+// still install one during effects, so provide the inert browser contract for
+// tests that do not explicitly drive resize callbacks.
+if (typeof globalThis.ResizeObserver === "undefined") {
+  globalThis.ResizeObserver = class {
+    observe(): void {}
+    unobserve(): void {}
+    disconnect(): void {}
+  } as unknown as typeof ResizeObserver;
+}
+
 // Real browsers stamp events on the same monotonic clock `performance.now()`
 // reads (a DOMHighResTimeStamp relative to timeOrigin); jsdom stamps them with
 // epoch wall-clock milliseconds from its own internal clock instead. Gesture

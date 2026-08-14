@@ -3,9 +3,10 @@
  * controls on the agent detail page.
  *
  * **Upgrade to Dedicated** (shared-tier agents only, #15355) drives the whole
- * shared→dedicated tier upgrade from this page: a confirm dialog spells out the
- * continuous hosting burn and the server-enforced credit runway, then
- * `POST /upgrade-tier` mints + provisions the dedicated migration target
+ * Shared→Dedicated activation from this page: GET loads the server-owned
+ * price/balance/runway quote, a confirm dialog renders it without client math,
+ * then POST carries that exact quote plus the explicit activation action and
+ * mints + provisions the dedicated migration target
  * (identity copied server-side) and the handoff module moves the conversation
  * and — only on a confirmed switch — removes the shared bridge before this
  * page navigates to the new agent.
@@ -18,9 +19,7 @@
  * confirm dialog that spells out the billing consequences. **Reactivate**
  * (`POST /wake`) re-provisions compute and restores the backup — it can take a
  * few minutes, so the tracked-job progress line carries wake-specific copy.
- * Both ride the existing 202 + jobId poll path. Pricing figures shown in the
- * dialog come from the cloud-shared `AGENT_PRICING` constants (the same source
- * the billing cron charges from) — the client only displays them.
+ * Both ride the existing 202 + jobId poll path.
  */
 "use client";
 
@@ -71,6 +70,28 @@ interface ElizaAgentActionsProps {
   webUiUrl: string | null;
 }
 
+interface DedicatedActivationQuote {
+  quoteId: string;
+  sourceAgentId: string;
+  hourlyRateUsd: number;
+  dailyRateUsd: number;
+  minimumBalanceUsd: number;
+  minimumRunwayDays: number;
+  balanceUsd: number;
+  deficitUsd: number;
+  canActivate: boolean;
+  requiresConfirmation: true;
+  action: "activate_dedicated";
+  unavailableReason?: string;
+  activation:
+    | { state: "available" }
+    | {
+        state: "in_progress";
+        dedicatedAgentId: string;
+        status: string;
+      };
+}
+
 export function ElizaAgentActions({
   agentId,
   executionTier,
@@ -83,6 +104,8 @@ export function ElizaAgentActions({
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showDeactivateConfirm, setShowDeactivateConfirm] = useState(false);
   const [showUpgradeConfirm, setShowUpgradeConfirm] = useState(false);
+  const [upgradeQuote, setUpgradeQuote] =
+    useState<DedicatedActivationQuote | null>(null);
   // Set for the whole shared→dedicated upgrade span (provision + transcript
   // move); the id is the dedicated migration target this page navigates to on
   // a confirmed switch.
@@ -305,6 +328,30 @@ export function ElizaAgentActions({
     }
   }
 
+  async function reviewDedicatedQuote() {
+    setLoading("upgrade-quote");
+    try {
+      const { status: httpStatus, data } = await apiWithStatus<{
+        success?: boolean;
+        data?: DedicatedActivationQuote;
+        error?: string;
+      }>(`/api/v1/eliza/agents/${encodeURIComponent(agentId)}/upgrade-tier`, {
+        method: "GET",
+      });
+      if (httpStatus < 200 || httpStatus >= 300 || !data?.data) {
+        throw new Error(data?.error ?? `HTTP ${httpStatus}`);
+      }
+      setUpgradeQuote(data.data);
+      setShowUpgradeConfirm(true);
+    } catch (err) {
+      toast.error(
+        `${t("cloud.containers.agentActions.upgradeQuoteFailed", { defaultValue: "Could not load the current Dedicated quote" })}: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    } finally {
+      setLoading(null);
+    }
+  }
+
   /**
    * Shared→dedicated tier upgrade (#15355), end to end from this page:
    * `POST /upgrade-tier` mints + provisions the dedicated migration target
@@ -316,13 +363,40 @@ export function ElizaAgentActions({
    * action can simply be retried.
    */
   async function doUpgrade() {
+    if (!upgradeQuote) return;
     setLoading("upgrade-tier");
     setShowUpgradeConfirm(false);
     try {
       const { status: httpStatus, data } = await apiWithStatus<{
-        data?: { dedicatedAgentId?: string; jobId?: string };
+        data?:
+          | { dedicatedAgentId?: string; jobId?: string }
+          | DedicatedActivationQuote;
+        code?: string;
         error?: string;
-      }>(`/api/v1/eliza/agents/${agentId}/upgrade-tier`, { method: "POST" });
+      }>(`/api/v1/eliza/agents/${encodeURIComponent(agentId)}/upgrade-tier`, {
+        method: "POST",
+        json: {
+          action: "activate_dedicated",
+          quoteId: upgradeQuote.quoteId,
+        },
+      });
+
+      if (
+        httpStatus === 409 &&
+        data?.code === "dedicated_quote_changed" &&
+        data.data &&
+        "quoteId" in data.data
+      ) {
+        setUpgradeQuote(data.data);
+        setShowUpgradeConfirm(true);
+        toast.info(
+          t("cloud.containers.agentActions.upgradeQuoteChanged", {
+            defaultValue:
+              "Your balance or Dedicated price changed. Review the updated quote before confirming.",
+          }),
+        );
+        return;
+      }
 
       if (httpStatus === 402) {
         // The canonical insufficient-credits body carries the real enforced
@@ -340,11 +414,15 @@ export function ElizaAgentActions({
         throw new Error(data?.error ?? `HTTP ${httpStatus}`);
       }
 
-      const dedicatedAgentId = data?.data?.dedicatedAgentId;
+      const dedicatedAgentId =
+        data?.data && "dedicatedAgentId" in data.data
+          ? data.data.dedicatedAgentId
+          : undefined;
       if (!dedicatedAgentId) {
         throw new Error("Upgrade did not return a dedicated agent id");
       }
-      const jobId = data?.data?.jobId;
+      const jobId =
+        data?.data && "jobId" in data.data ? data.data.jobId : undefined;
       if (jobId) {
         upgradePoller.track(agentId, jobId);
       }
@@ -387,7 +465,7 @@ export function ElizaAgentActions({
               "Upgrade complete — your conversation moved to the dedicated agent.",
           }),
         );
-        if (!outcome.sharedBridgeDeleted) {
+        if (outcome.sourceCleanup === "not-cleaned") {
           // The user is switched either way; a leaked shared row is only a
           // duplicate list entry, so tell them instead of hiding it.
           toast.info(
@@ -472,7 +550,7 @@ export function ElizaAgentActions({
               <BrandButton
                 variant="primary"
                 size="sm"
-                onClick={() => setShowUpgradeConfirm(true)}
+                onClick={() => void reviewDedicatedQuote()}
                 disabled={!!loading || isBusy}
                 data-testid="agent-upgrade-tier-button"
                 title={t("cloud.containers.agentActions.upgradeHint", {
@@ -480,7 +558,7 @@ export function ElizaAgentActions({
                     "Move this agent to its own always-on container. Your conversation moves with it.",
                 })}
               >
-                {loading === "upgrade-tier" ? (
+                {loading === "upgrade-tier" || loading === "upgrade-quote" ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
                 ) : (
                   <Rocket className="h-4 w-4" />
@@ -714,11 +792,8 @@ export function ElizaAgentActions({
         )}
       </div>
 
-      {/* Upgrade confirm — the billing consequence (continuous hosting burn +
-          the server-enforced runway minimum) is shown BEFORE anything changes.
-          Figures come from the cloud-shared AGENT_PRICING constants, the same
-          source the billing cron charges and the upgrade-tier gate enforces
-          from — the client only displays them. */}
+      {/* Upgrade confirmation renders the immutable server quote. No compute
+          starts until the user confirms that exact quote. */}
       <AlertDialog
         open={showUpgradeConfirm}
         onOpenChange={setShowUpgradeConfirm}
@@ -730,30 +805,43 @@ export function ElizaAgentActions({
                 defaultValue: "Upgrade to a dedicated agent?",
               })}
             </AlertDialogTitle>
-            <AlertDialogDescription className="text-muted">
-              <span className="block">
-                {t("cloud.containers.agentActions.upgradeBody1", {
-                  defaultValue:
-                    "Your agent moves to its own always-on container. Unlike the shared runtime, dedicated hosting consumes credits continuously — {{daily}}/day ({{rate}}) while running.",
-                  daily: formatUSD(AGENT_PRICING.DAILY_RUNNING_COST),
-                  rate: formatHourlyRate(AGENT_PRICING.RUNNING_HOURLY_RATE),
-                })}
-              </span>
-              <span className="block mt-2">
-                {t("cloud.containers.agentActions.upgradeBody2", {
-                  defaultValue:
-                    "Upgrading requires a balance above {{minimum}} ({{days}} days of hosting). If your balance is too low the upgrade is refused before anything changes.",
-                  minimum: formatUSD(AGENT_PRICING.UPGRADE_MINIMUM_BALANCE),
-                  days: String(AGENT_PRICING.UPGRADE_MIN_HOSTING_DAYS),
-                })}
-              </span>
-              <span className="block mt-2">
-                {t("cloud.containers.agentActions.upgradeBody3", {
-                  defaultValue:
-                    "Your conversation history moves to the new agent; the shared agent is removed only after the move is confirmed. You can deactivate or delete the dedicated agent anytime to stop the hosting burn.",
-                })}
-              </span>
-            </AlertDialogDescription>
+            {upgradeQuote ? (
+              <AlertDialogDescription className="text-muted">
+                <span className="block">
+                  {t("cloud.containers.agentActions.upgradeBody1", {
+                    defaultValue:
+                      "Your Eliza moves to private, always-on compute. Dedicated hosting uses {{daily}} per day ({{rate}}) while running.",
+                    daily: formatUSD(upgradeQuote.dailyRateUsd),
+                    rate: formatHourlyRate(upgradeQuote.hourlyRateUsd),
+                  })}
+                </span>
+                <span className="mt-3 block text-txt-strong">
+                  {t("cloud.containers.agentActions.upgradeBalance", {
+                    defaultValue:
+                      "Current balance: {{balance}} · Required before activation: {{minimum}} ({{days}} days)",
+                    balance: formatUSD(upgradeQuote.balanceUsd),
+                    minimum: formatUSD(upgradeQuote.minimumBalanceUsd),
+                    days: String(upgradeQuote.minimumRunwayDays),
+                  })}
+                </span>
+                <span className="mt-3 block">
+                  {t("cloud.containers.agentActions.upgradeBody3", {
+                    defaultValue:
+                      "Shared keeps working while Dedicated starts. Your conversation moves only after the new Eliza is healthy; if setup fails, nothing switches.",
+                  })}
+                </span>
+                {!upgradeQuote.canActivate ? (
+                  <span className="mt-3 block text-destructive" role="alert">
+                    {upgradeQuote.unavailableReason ??
+                      t("cloud.containers.agentActions.upgradeNeedsCredits", {
+                        defaultValue:
+                          "Add {{deficit}} in credits before activating Dedicated.",
+                        deficit: formatUSD(upgradeQuote.deficitUsd),
+                      })}
+                  </span>
+                ) : null}
+              </AlertDialogDescription>
+            ) : null}
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel className="border-border bg-transparent text-txt hover:bg-surface">
@@ -761,21 +849,39 @@ export function ElizaAgentActions({
                 defaultValue: "Cancel",
               })}
             </AlertDialogCancel>
-            <Button
-              type="button"
-              disabled={!!loading || isBusy}
-              onClick={() => void doUpgrade()}
-              data-testid="agent-upgrade-tier-confirm"
-            >
-              {loading === "upgrade-tier" ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <Rocket className="h-4 w-4" />
-              )}
-              {t("cloud.containers.agentActions.upgradeConfirm", {
-                defaultValue: "Yes, upgrade",
-              })}
-            </Button>
+            {upgradeQuote?.canActivate ? (
+              <Button
+                type="button"
+                disabled={!!loading || isBusy}
+                onClick={() => void doUpgrade()}
+                data-testid="agent-upgrade-tier-confirm"
+              >
+                {loading === "upgrade-tier" ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Rocket className="h-4 w-4" />
+                )}
+                {upgradeQuote.activation.state === "in_progress"
+                  ? t("cloud.containers.agentActions.upgradeContinue", {
+                      defaultValue: "Continue activation",
+                    })
+                  : t("cloud.containers.agentActions.upgradeConfirm", {
+                      defaultValue: "Activate Dedicated",
+                    })}
+              </Button>
+            ) : (
+              <Button
+                type="button"
+                onClick={() => {
+                  setShowUpgradeConfirm(false);
+                  navigate("/cloud/billing");
+                }}
+              >
+                {t("cloud.containers.agentActions.addCredits", {
+                  defaultValue: "Add credits",
+                })}
+              </Button>
+            )}
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

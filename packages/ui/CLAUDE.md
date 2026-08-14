@@ -13,7 +13,7 @@ homepage, and many plugin UI packages (`plugin-wallet`,
 `plugin-messages`, `plugin-notes`, etc.).
 Plugins consume the agent-surface hooks, the registries (`app-shell-registry`,
 widgets, overlay-apps), and the component/primitive exports. React/react-dom are
-**peer** deps (19.2.5) — the host owns React; plugin view bundles externalise
+**peer** deps (19.2.7) — the host owns React; plugin view bundles externalise
 `@elizaos/ui` + `react` so hooks resolve to the host singleton.
 
 ## Layout

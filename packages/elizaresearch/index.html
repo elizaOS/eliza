@@ -2,9 +2,10 @@
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="theme-color" content="#ff5800" />
 <title>Eliza Research — AI and people</title>
-<meta name="description" content="Eliza Research builds products at the intersection of AI and people: Eliza, a personal superagent and open source operating system, and slop.cash, a swarm contribution platform." />
+<meta name="description" content="Eliza Research builds products at the intersection of AI and people: Eliza, a personal agent and open source operating system, and slop.cash, a swarm contribution platform." />
 <meta property="og:title" content="Eliza Research" />
 <meta property="og:description" content="Products at the intersection of AI and people." />
 <meta property="og:url" content="https://elizaresearch.ai" />
@@ -45,13 +46,17 @@
     --z-nav: 10;
   }
   * { margin: 0; padding: 0; box-sizing: border-box; }
-  html { scroll-behavior: smooth; }
+  html { scroll-behavior: smooth; background: var(--orange); }
   body {
     font-family: "Geist", Arial, sans-serif;
-    background: var(--bg);
+    background: var(--orange);
     color: var(--ink);
     line-height: 1.55;
     -webkit-font-smoothing: antialiased;
+    -webkit-tap-highlight-color: transparent;
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
   }
   h1, h2, h3 { text-wrap: balance; line-height: 1.02; }
   p { text-wrap: pretty; max-width: 62ch; }
@@ -67,10 +72,9 @@
     padding: 1.1rem clamp(1.25rem, 4vw, 3rem);
     color: white;
   }
-  nav .mark { display: inline-flex; align-items: center; gap: 0.6rem; font-weight: 800; font-size: 1.05rem; letter-spacing: -0.01em; text-decoration: none; }
-  nav .mark img { height: 1.7rem; width: auto; display: block; }
+  nav .mark { display: inline-flex; min-height: 44px; align-items: center; font-weight: 800; font-size: 1.05rem; letter-spacing: -0.01em; text-decoration: none; }
   nav .links { display: flex; gap: 1.75rem; }
-  nav .links a { text-decoration: none; font-weight: 600; font-size: 0.92rem; opacity: 0.85; transition: opacity 0.2s; }
+  nav .links a { display: inline-flex; min-height: 44px; align-items: center; text-decoration: none; font-weight: 600; font-size: 0.92rem; opacity: 0.85; transition: opacity 0.2s; }
   nav .links a:hover { opacity: 1; }
 
   /* ---------- hero ---------- */
@@ -80,7 +84,7 @@
     color: white; overflow: hidden;
     display: grid; align-content: end;
   }
-  #swarm { position: absolute; inset: 0; width: 100%; height: 100%; }
+  #swarm { position: absolute; inset: 0; width: 100%; height: 100%; background: var(--orange); touch-action: pan-y; }
   .hero-inner { position: relative; padding-block: clamp(3rem, 8vh, 6rem); }
   .hero-inner h1 {
     font-size: clamp(2.6rem, 8.5vw, 5.8rem);
@@ -90,25 +94,25 @@
   }
   .hero-inner .tag {
     margin-top: 1.4rem; font-size: clamp(1.05rem, 2vw, 1.35rem);
-    font-weight: 500; max-width: 44ch; color: rgba(255,255,255,0.94);
+    font-weight: 500; max-width: 44ch; color: #351208;
   }
   .hero-inner .down {
     display: inline-flex; align-items: center; gap: 0.5rem;
     margin-top: 2.2rem; font-weight: 700; text-decoration: none;
-    border: 2px solid white; border-radius: 999px;
+    border: 2px solid var(--black); border-radius: 999px; background: var(--black); color: white;
     padding: 0.7rem 1.4rem; font-size: 0.95rem;
     transition: background 0.2s, color 0.2s;
   }
-  .hero-inner .down:hover { background: white; color: var(--orange-deep); }
+  .hero-inner .down:hover { background: #351208; color: white; }
 
   /* ---------- statement ---------- */
-  .statement { padding-block: clamp(5rem, 14vh, 10rem); }
+  .statement { background: var(--bg); padding-block: clamp(4rem, 10vh, 7rem); text-align: center; }
   .statement p {
     font-size: clamp(1.5rem, 3.4vw, 2.5rem);
     font-weight: 640; letter-spacing: -0.02em; line-height: 1.22;
-    max-width: 26ch;
+    max-width: 30ch; margin-inline: auto;
   }
-  .statement em { font-style: normal; color: var(--orange); }
+  .statement em { font-style: normal; color: var(--orange-deep); }
 
   /* ---------- products ---------- */
   .product { padding-block: clamp(4rem, 10vh, 7rem); }
@@ -130,9 +134,9 @@
   }
   .product .cta:hover { opacity: 0.65; }
 
-  #eliza { border-top: 1px solid var(--line); }
-  #eliza .role { color: var(--orange); }
-  #eliza .cta { color: var(--orange); }
+  #eliza { border-top: 1px solid var(--line); background: var(--bg); }
+  #eliza .role { color: var(--orange-deep); }
+  #eliza .cta { color: var(--orange-deep); }
 
   .figure {
     aspect-ratio: 4 / 3; border-radius: 1.25rem; overflow: hidden;
@@ -165,6 +169,7 @@
     margin-top: clamp(2.5rem, 6vh, 4rem);
     display: flex; flex-wrap: wrap; gap: 1rem 2rem; justify-content: space-between;
     font-size: 0.9rem; color: #a89f9a;
+    align-items: center;
   }
   footer .row a { color: inherit; text-decoration: none; }
   footer .row a:hover { color: #eae5e2; }
@@ -178,14 +183,14 @@
 <body>
 
 <nav aria-label="Main">
-  <a class="mark" href="#"><img src="assets/logo_white_nobg.svg" alt="" />Eliza&nbsp;Research</a>
+  <a class="mark" href="#top">Eliza&nbsp;Research</a>
   <div class="links">
     <a href="#eliza">Products</a>
     <a href="#contact">Contact</a>
   </div>
 </nav>
 
-<header>
+<header id="top">
   <canvas id="swarm" aria-hidden="true"></canvas>
   <div class="wrap hero-inner">
     <h1>AI, built around people.</h1>
@@ -194,8 +199,10 @@
   </div>
 </header>
 
-<section class="statement wrap">
-  <p>Intelligence is getting cheap. <em>Agency</em> is the scarce thing — software that acts for you, answers to you, and belongs to everyone.</p>
+<section class="statement">
+  <div class="wrap">
+    <p>Intelligence is getting cheap. <em>Agency</em> is the scarce thing: software that acts for you, answers to you, and belongs to everyone.</p>
+  </div>
 </section>
 
 <section class="product" id="eliza">
@@ -205,9 +212,9 @@
     </div>
     <div>
       <h2>Eliza</h2>
-      <p class="role">Your personal superagent — and an open source operating system.</p>
-      <p class="body">Eliza is an agent that lives with you: it remembers, schedules, connects to your tools, and acts on your behalf across every device you own. Underneath it is elizaOS, a fully open source operating system for agents — auditable, extensible, and yours to run anywhere, from a laptop to a phone to your own metal.</p>
-      <a class="cta" href="https://github.com/elizaOS/eliza">Explore elizaOS on GitHub →</a>
+      <p class="role">Your personal agent and an open source operating system.</p>
+      <p class="body">Eliza is an agent that lives with you: it remembers, schedules, connects to your tools, and acts on your behalf across every device you own. Underneath it is elizaOS, a fully open source operating system for agents. It is auditable, extensible, and yours to run anywhere, from a laptop to a phone to your own metal.</p>
+      <a class="cta" href="https://github.com/elizaOS/eliza">Explore Eliza on GitHub →</a>
     </div>
   </div>
 </section>
@@ -215,12 +222,12 @@
 <section class="product" id="slop">
   <div class="wrap grid">
     <div class="figure">
-      <img src="assets/slop-og.png" alt="slop.cash — MAKE MONEY MAKING SLOP" />
+      <img src="assets/slop-og-clean.png" alt="MAKE MONEY SHIPPING SLOP" />
     </div>
     <div>
       <h2>slop.cash</h2>
       <p class="role">A swarm contribution platform.</p>
-      <p class="body">Some problems are too big for any one machine or any one team. slop.cash incentivizes compute applied to swarm problems: post a problem, fund it, and let a swarm of contributors — human and machine — earn by moving it forward. Contribution is measured, rewarded, and open to anyone with cycles to spare.</p>
+      <p class="body">Some problems are too big for any one machine or any one team. slop.cash incentivizes compute applied to swarm problems: post a problem, fund it, and let a swarm of contributors, human and machine, earn by moving it forward. Contribution is measured, rewarded, and open to anyone with cycles to spare.</p>
       <a class="cta" href="https://slop.cash">Visit slop.cash →</a>
     </div>
   </div>
@@ -242,20 +249,58 @@
 </footer>
 
 <script>
-// Hero: particles assemble the Eliza face wireframe, drift apart in pieces,
-// periodically re-form, and react to pointer/touch (hover repels, drag shoves).
+// Particles take one calm orbit through a virtual 3D camera before resolving
+// into the detailed face. A deterministic entrance keeps the authored pace
+// consistent across reloads while shimmer and pointer response stay live.
 (() => {
   const canvas = document.getElementById("swarm");
   const header = canvas.parentElement;
   const ctx = canvas.getContext("2d");
   const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
-  let W = 0, H = 0, dpr = 1;
+  let W = 0, H = 0, dpr = 1, frame = 0, resizeFrame = 0;
   const boids = [];
   let targets = [];
-  let linkD2 = 88 * 88;
-  const FADE_MS = 2600, MERGE_DELAY_MS = 0, MERGE_MS = 4000;
-  let born = 0;                       // timestamp of last formation
-  const pointer = { x: -1e4, y: -1e4, vx: 0, vy: 0, down: false, t: 0 };
+  let born = 0;
+  let entranceStarted = false;
+  let entranceComplete = reduced;
+  const ENTER_MS = 4200, ENTER_STAGGER_MS = 900;
+  const FADE_FRAMES = 75;            // ~1.25s fade in and out per dot
+  const ALPHA_LEVELS = 8;            // bucketed so per-dot alpha stays one state change per level
+  let order = new Int32Array(0);
+  let level = new Uint8Array(0);
+  const counts = new Int32Array(ALPHA_LEVELS);
+  const starts = new Int32Array(ALPHA_LEVELS);
+  const LANE_COUNT = 16;
+  const laneEase = new Float32Array(LANE_COUNT);
+  const laneCos = new Float32Array(LANE_COUNT);
+  const laneSin = new Float32Array(LANE_COUNT);
+  const laneTiltCos = new Float32Array(LANE_COUNT);
+  const laneTiltSin = new Float32Array(LANE_COUNT);
+  const laneRollCos = new Float32Array(LANE_COUNT);
+  const laneRollSin = new Float32Array(LANE_COUNT);
+
+  // Sine lookup keeps the per-particle float cheap at tens of thousands of dots.
+  const SIN_N = 1024;
+  const SIN = new Float32Array(SIN_N);
+  for (let i = 0; i < SIN_N; i++) SIN[i] = Math.sin((i / SIN_N) * Math.PI * 2);
+  const wave = (turns) => SIN[((turns * SIN_N) | 0) & (SIN_N - 1)];
+  const smootherstep = (progress) => progress * progress * progress * (progress * (progress * 6 - 15) + 10);
+  // settle curve: smootherstep eases the departure, quintic ease-out stretches
+  // the landing, so particles leave gently and glide a long way onto the face
+  const easeSettle = (progress) => {
+    const s = smootherstep(progress);
+    const inv = 1 - s;
+    return 1 - inv * inv;
+  };
+  let entranceSeed = 0;
+  function entranceRandom() {
+    entranceSeed += 0x6d2b79f5;
+    let value = entranceSeed;
+    value = Math.imul(value ^ (value >>> 15), value | 1);
+    value ^= value + Math.imul(value ^ (value >>> 7), value | 61);
+    return ((value ^ (value >>> 14)) >>> 0) / 4294967296;
+  }
+  const pointer = { x: -1e4, y: -1e4, down: false, touch: false };
 
   function resize() {
     dpr = Math.min(devicePixelRatio || 1, 2);
@@ -264,13 +309,19 @@
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   }
   resize();
-  addEventListener("resize", resize);
 
-  // Sample particle targets from the face logo rendered offscreen.
+  // The offscreen alpha mask preserves the logo's smallest facial details
+  // without adding a visible SVG layer behind the particle field.
   const img = new Image();
   img.src = "assets/logo_white_nobg.svg";
   img.onload = () => { tryInit(); };
+  addEventListener("resize", () => {
+    if (matchMedia("(pointer: coarse)").matches && canvas.clientWidth === W) return;
+    cancelAnimationFrame(resizeFrame);
+    resizeFrame = requestAnimationFrame(() => { resize(); tryInit(); });
+  });
   function sampleFace() {
+    entranceSeed = (Math.imul(W, 73856093) ^ Math.imul(H, 19349663) ^ 0x9e3779b9) >>> 0;
     const scale = Math.min(W, H) * 1.0;
     const ow = Math.round(scale * (img.width / img.height)), oh = Math.round(scale);
     const off = document.createElement("canvas");
@@ -279,163 +330,231 @@
     octx.drawImage(img, 0, 0, ow, oh);
     const data = octx.getImageData(0, 0, ow, oh).data;
     const pts = [];
-    const stride = Math.max(4, Math.round(scale / 78));
     const solid = (x, y) => {
       if (x < 0 || y < 0 || x >= ow || y >= oh) return false;
       return data[((y | 0) * ow + (x | 0)) * 4 + 3] > 128;
     };
-    const e = Math.max(3, stride * 0.45);
     const push = (x, y) => pts.push({
-      x: x + (W - ow) / 2 + (Math.random() - 0.5) * 2,
-      y: y + (H - oh) * 0.38 - H * 0.10 + (Math.random() - 0.5) * 2,
+      x: x + (W - ow) / 2,
+      y: y + (H - oh) * 0.38 - H * 0.10,
     });
-    const isEdge = (x, y) =>
-      !solid(x - e, y) || !solid(x + e, y) || !solid(x, y - e) || !solid(x, y + e);
-    // dense contour pass keeps the outline legible as connected wire
-    const fine = Math.max(3, Math.round(stride * 0.62));
-    for (let y = 0; y < oh; y += fine) {
-      for (let x = 0; x < ow; x += fine) {
-        if (solid(x, y) && isEdge(x, y)) push(x, y);
+    const coarse = matchMedia("(pointer: coarse)").matches;
+    const count = Math.min(
+      Math.floor(7000 * 2.75 * Math.sqrt((W * H) / (1920 * 1080))),
+      coarse ? 6000 : 20000,
+    );
+    for (let i = 0; i < count; i++) {
+      for (let attempt = 0; attempt < 100; attempt++) {
+        const x = Math.floor(entranceRandom() * ow);
+        const y = Math.floor(entranceRandom() * oh);
+        if (solid(x, y)) { push(x, y); break; }
       }
     }
-    // sparse interior mesh
-    for (let y = 0; y < oh; y += stride) {
-      for (let x = 0; x < ow; x += stride) {
-        if (solid(x, y) && !isEdge(x, y) && Math.random() < 0.42) push(x, y);
-      }
-    }
-    linkD2 = Math.pow(stride * 2.3, 2);
     return pts;
   }
 
   function tryInit() {
     if (!img.complete || !img.naturalWidth || W === 0) return;
     targets = sampleFace();
-    let minx = 1e9, miny = 1e9, maxx = -1e9, maxy = -1e9;
-    for (const t of targets) {
-      if (t.x < minx) minx = t.x; if (t.x > maxx) maxx = t.x;
-      if (t.y < miny) miny = t.y; if (t.y > maxy) maxy = t.y;
-    }
     boids.length = 0;
-    const origins = [];
+    if (!entranceStarted && !reduced) {
+      born = performance.now();
+      entranceStarted = true;
+    }
+    const cx = W / 2, cy = H / 2, reach = Math.max(W, H);
     for (const t of targets) {
-      // group = 3x3 cell over the face; each group spawns as one clustered piece
-      const gx = Math.min(2, ((t.x - minx) / (maxx - minx + 1) * 3) | 0);
-      const gy = Math.min(2, ((t.y - miny) / (maxy - miny + 1) * 3) | 0);
-      const gi = gy * 3 + gx;
-      if (!origins[gi]) {
-        // spawn each piece near the face region it belongs to, nudged outward
-        const gcx = minx + (gx + 0.5) * (maxx - minx) / 3;
-        const gcy = miny + (gy + 0.5) * (maxy - miny) / 3;
-        const oa = Math.random() * Math.PI * 2;
-        const od = Math.min(W, H) * (0.10 + Math.random() * 0.14);
-        origins[gi] = { x: gcx + Math.cos(oa) * od, y: gcy + Math.sin(oa) * od };
-      }
-      const a = Math.random() * Math.PI * 2;
-      const sx = origins[gi].x + (Math.random() - 0.5) * 235;
-      const sy = origins[gi].y + (Math.random() - 0.5) * 235;
+      const a = entranceRandom() * Math.PI * 2;
+      const r = reach * (0.55 + entranceRandom() * 0.5);
+      const sx = entranceComplete ? t.x : cx + Math.cos(a) * r;
+      const sy = entranceComplete ? t.y : cy + Math.sin(a) * r;
       boids.push({
         x: sx, y: sy, sx, sy,
-        vx: Math.cos(a) * 0.3, vy: Math.sin(a) * 0.3, tx: t.x, ty: t.y,
-        jp: Math.random() * Math.PI * 2 });
+        tx: t.x, ty: t.y,
+        sz: entranceComplete ? 0 : Math.min(W, H) * (0.35 + entranceRandom() * 0.55) * (entranceRandom() < 0.5 ? -1 : 1),
+        lane: (entranceRandom() * LANE_COUNT) | 0,
+        offsetX: 0, offsetY: 0, depthScale: 1,
+        size: entranceRandom() * 1.15 + 1.05, life: entranceRandom() * 100, age: 0,
+        ph: entranceRandom(), phy: entranceRandom(),
+        fs: 0.6 + entranceRandom() * 0.8, amp: 1.1 + entranceRandom() * 2.6 });
     }
-    born = performance.now();
-    if (reduced) draw(born + FADE_MS);
+    if (reduced) { step(performance.now()); draw(performance.now()); }
   }
 
-  // Pointer interaction on the header (canvas sits behind the copy).
+  // The header owns input because the decorative canvas sits behind the copy
+  // and must never intercept its links or block vertical touch scrolling.
   function toLocal(e) {
     const r = canvas.getBoundingClientRect();
     return { x: e.clientX - r.left, y: e.clientY - r.top };
   }
   header.addEventListener("pointermove", (e) => {
+    if (e.pointerType !== "mouse" && !pointer.down) return;
     const p = toLocal(e);
-    const now = performance.now();
-    const dt = Math.max(16, now - pointer.t);
-    pointer.vx = (p.x - pointer.x) / dt * 16;
-    pointer.vy = (p.y - pointer.y) / dt * 16;
-    pointer.x = p.x; pointer.y = p.y; pointer.t = now;
+    pointer.x = p.x; pointer.y = p.y;
+    pointer.touch = e.pointerType !== "mouse";
+    if (!pointer.touch) pointer.down = true;
   }, { passive: true });
   header.addEventListener("pointerdown", (e) => {
     pointer.down = true;
+    pointer.touch = e.pointerType !== "mouse";
     const p = toLocal(e);
-    pointer.x = p.x; pointer.y = p.y; pointer.t = performance.now();
+    pointer.x = p.x; pointer.y = p.y;
   }, { passive: true });
-  addEventListener("pointerup", () => { pointer.down = false; }, { passive: true });
+  addEventListener("pointerup", (e) => { if (e.pointerType !== "mouse") pointer.down = false; }, { passive: true });
+  addEventListener("pointercancel", (e) => { if (e.pointerType !== "mouse") pointer.down = false; pointer.x = pointer.y = -1e4; }, { passive: true });
+  addEventListener("scroll", () => {
+    if (!pointer.touch || !pointer.down) return;
+    pointer.down = false; pointer.x = pointer.y = -1e4;
+  }, { passive: true });
   header.addEventListener("pointerleave", () => {
-    pointer.x = -1e4; pointer.y = -1e4; pointer.vx = pointer.vy = 0;
+    pointer.x = -1e4; pointer.y = -1e4;
   }, { passive: true });
+  for (const type of ["contextmenu", "selectstart", "dragstart"]) {
+    document.body.addEventListener(type, (event) => event.preventDefault());
+  }
 
   function step(now) {
     if (!boids.length) { tryInit(); return; }
-    for (const b of boids) {
-      const p = Math.min(1, Math.max(0, (now - born - MERGE_DELAY_MS) / MERGE_MS));
-      const e = p * p * (3 - 2 * p);
-      const wob = 2 + e * 8;
-      const jx = Math.sin(now * 0.00055 + b.jp) * wob;
-      const jy = Math.cos(now * 0.00042 + b.jp * 1.7) * wob;
-      const gx = b.sx + (b.tx - b.sx) * e + jx;
-      const gy = b.sy + (b.ty - b.sy) * e + jy;
-      b.vx += (gx - b.x) * 0.0022;
-      b.vy += (gy - b.y) * 0.0022;
-      b.vx *= 0.94; b.vy *= 0.94;
-
-      // pointer force: gentle repel on hover, strong shove while dragging
-      const px = b.x - pointer.x, py = b.y - pointer.y;
-      const pd2 = px * px + py * py;
-      const R = pointer.down ? 190 : 120;
-      if (pd2 < R * R && pd2 > 1) {
-        const pd = Math.sqrt(pd2);
-        const f = (1 - pd / R) * (pointer.down ? 1.6 : 0.5);
-        b.vx += (px / pd) * f + pointer.vx * f * 0.25;
-        b.vy += (py / pd) * f + pointer.vy * f * 0.25;
+    const faceSize = Math.min(W, H);
+    const centerX = W / 2;
+    const centerY = (H - faceSize) * 0.38 - H * 0.10 + faceSize / 2;
+    const camera = faceSize * 2.4;
+    const tf = now / 1000;
+    if (!entranceComplete) {
+      let forming = false;
+      for (let lane = 0; lane < LANE_COUNT; lane++) {
+        const delay = lane / (LANE_COUNT - 1) * ENTER_STAGGER_MS;
+        const progress = Math.min(1, Math.max(0, (now - born - delay) / (ENTER_MS - delay)));
+        const spin = smootherstep(progress);
+        const angle = spin * Math.PI * 2;
+        const tilt = Math.sin(spin * Math.PI) * 0.24;
+        const roll = Math.sin(spin * Math.PI) * 0.28 * (lane % 2 ? -1 : 1);
+        laneEase[lane] = easeSettle(progress);
+        laneCos[lane] = Math.cos(angle);
+        laneSin[lane] = Math.sin(angle);
+        laneTiltCos[lane] = Math.cos(tilt);
+        laneTiltSin[lane] = Math.sin(tilt);
+        laneRollCos[lane] = Math.cos(roll);
+        laneRollSin[lane] = Math.sin(roll);
+        if (progress < 1) forming = true;
       }
-
-      b.x += b.vx; b.y += b.vy;
+      if (!forming) entranceComplete = true;
+    }
+    // whole face breathes: slow expand/contract around its center
+    const breathe = reduced ? 1 : 1 + wave(tf * 0.07) * 0.03;
+    for (let i = 0; i < boids.length; i++) {
+      const b = boids[i];
+      const targetX = centerX + (b.tx - centerX) * breathe;
+      const targetY = centerY + (b.ty - centerY) * breathe;
+      let baseX = targetX;
+      let baseY = targetY;
+      let entranceMix = 1;
+      if (!entranceComplete) {
+        entranceMix = laneEase[b.lane];
+        const relX = b.sx + (targetX - b.sx) * entranceMix - centerX;
+        const relY = b.sy + (targetY - b.sy) * entranceMix - centerY;
+        const z = b.sz * (1 - entranceMix);
+        const rotatedX = relX * laneCos[b.lane] + z * laneSin[b.lane];
+        const rotatedZ = -relX * laneSin[b.lane] + z * laneCos[b.lane];
+        const rotatedY = relY * laneTiltCos[b.lane] - rotatedZ * laneTiltSin[b.lane];
+        const depth = relY * laneTiltSin[b.lane] + rotatedZ * laneTiltCos[b.lane];
+        const cameraX = rotatedX * laneRollCos[b.lane] - rotatedY * laneRollSin[b.lane];
+        const cameraY = rotatedX * laneRollSin[b.lane] + rotatedY * laneRollCos[b.lane];
+        const perspective = Math.min(1.55, Math.max(0.68, camera / (camera + depth)));
+        baseX = centerX + cameraX * perspective;
+        baseY = centerY + cameraY * perspective;
+        b.depthScale = perspective;
+      } else {
+        b.depthScale = 1;
+      }
+      const idleMix = reduced ? 0 : entranceMix;
+      const gx = baseX + wave(tf * 0.02 * b.fs + b.ph) * b.amp * idleMix;
+      const gy = baseY + wave(tf * 0.016 * b.fs + b.phy) * b.amp * idleMix;
+      const px = pointer.x - gx, py = pointer.y - gy;
+      const pd2 = px * px + py * py;
+      const R = 105;
+      let desiredX = 0;
+      let desiredY = 0;
+      if (pointer.down && pd2 < R * R && pd2 > 1) {
+        const pd = Math.sqrt(pd2);
+        const f = (R - pd) / R;
+        desiredX = -(px / pd) * f * 24;
+        desiredY = -(py / pd) * f * 24;
+      }
+      const response = pointer.down ? 0.22 : 0.12;
+      b.offsetX += (desiredX - b.offsetX) * response;
+      b.offsetY += (desiredY - b.offsetY) * response;
+      b.x = gx + b.offsetX;
+      b.y = gy + b.offsetY;
+      if (entranceComplete && !reduced) {
+        b.age++;
+        if (--b.life <= 0) {
+          // move only once fully faded out, so the jump is never visible
+          const t = targets[(Math.random() * targets.length) | 0];
+          b.x = b.sx = b.tx = t.x; b.y = b.sy = b.ty = t.y;
+          b.offsetX = 0; b.offsetY = 0;
+          b.life = Math.random() * 150 + 90 + FADE_FRAMES * 2;
+          b.age = 0;
+        }
+      }
     }
   }
 
   function draw(now) {
-    ctx.clearRect(0, 0, W, H);
-    ctx.globalAlpha = reduced ? 1 : Math.min(1, (now - born) / FADE_MS);
-    ctx.strokeStyle = "rgba(255,255,255,0.22)";
-    ctx.lineWidth = 1;
-    // uniform grid keeps the link pass linear in particle count
-    const LINK = linkD2;
-    const cell = Math.sqrt(LINK);
-    const cols = Math.max(1, Math.ceil(W / cell) + 2);
-    const grid = new Map();
-    const key = (cx, cy) => cy * cols + cx;
-    for (const b of boids) {
-      const k = key(((b.x / cell) | 0) + 1, ((b.y / cell) | 0) + 1);
-      const bucket = grid.get(k);
-      if (bucket) bucket.push(b); else grid.set(k, [b]);
+    ctx.fillStyle = "#ff5800";
+    ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = "#fff";
+    const arrivalProgress = entranceComplete ? 1 : Math.min(1, Math.max(0, (now - born) / ENTER_MS));
+    const arrivalScale = 0.64 + easeSettle(arrivalProgress) * 0.36;
+    const n = boids.length;
+    if (order.length !== n) { order = new Int32Array(n); level = new Uint8Array(n); }
+    counts.fill(0);
+    for (let i = 0; i < n; i++) {
+      const b = boids[i];
+      // fade in on arrival, fade out before the dot re-seeds elsewhere
+      const a = entranceComplete && !reduced
+        ? Math.min(1, Math.min(b.age, b.life) / FADE_FRAMES)
+        : 1;
+      const idx = a >= 1 ? ALPHA_LEVELS - 1 : (a * ALPHA_LEVELS) | 0;
+      level[i] = idx;
+      counts[idx]++;
     }
-    ctx.beginPath();
-    for (const b of boids) {
-      const cx = ((b.x / cell) | 0) + 1, cy = ((b.y / cell) | 0) + 1;
-      for (let oy = 0; oy <= 1; oy++) {
-        for (let ox = (oy === 0 ? 0 : -1); ox <= 1; ox++) {
-          const bucket = grid.get(key(cx + ox, cy + oy));
-          if (!bucket) continue;
-          for (const o of bucket) {
-            if (o === b) continue;
-            if (ox === 0 && oy === 0 && o.x < b.x) continue; // each pair once
-            const dx = b.x - o.x, dy = b.y - o.y;
-            if (dx * dx + dy * dy < LINK) { ctx.moveTo(b.x, b.y); ctx.lineTo(o.x, o.y); }
-          }
-        }
+    let running = 0;
+    for (let k = 0; k < ALPHA_LEVELS; k++) { starts[k] = running; running += counts[k]; }
+    for (let i = 0; i < n; i++) order[starts[level[i]]++] = i;
+    let from = 0;
+    for (let k = 0; k < ALPHA_LEVELS; k++) {
+      const to = starts[k];
+      if (to === from) continue;
+      ctx.globalAlpha = (k + 1) / ALPHA_LEVELS;
+      for (let j = from; j < to; j++) {
+        const b = boids[order[j]];
+        const shimmer = 0.88 + (1 - Math.abs((((now / 1000) * 0.28 * b.fs + b.ph) % 1) * 2 - 1)) * 0.2;
+        const size = b.size * arrivalScale * shimmer * b.depthScale;
+        ctx.fillRect(b.x - (size - b.size) / 2, b.y - (size - b.size) / 2, size, size);
       }
+      from = to;
     }
-    ctx.stroke();
-    ctx.fillStyle = "rgba(255,255,255,0.9)";
-    for (const b of boids) {
-      ctx.beginPath(); ctx.arc(b.x, b.y, 1.7, 0, Math.PI * 2); ctx.fill();
-    }
+    ctx.globalAlpha = 1;
   }
 
-  function loop(now) { step(now); draw(now); requestAnimationFrame(loop); }
-  if (!reduced) requestAnimationFrame(loop);
+  function loop(now) {
+    frame = 0;
+    step(now);
+    draw(now);
+    if (!document.hidden) frame = requestAnimationFrame(loop);
+  }
+  function start() {
+    if (!reduced && !document.hidden && !frame) frame = requestAnimationFrame(loop);
+  }
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) {
+      cancelAnimationFrame(frame);
+      frame = 0;
+    } else {
+      start();
+    }
+  });
+  start();
 })();
 
 </script>

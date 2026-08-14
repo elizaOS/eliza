@@ -36,6 +36,10 @@ import googlePlugin, {
   scopesForGoogleCapabilities,
 } from "./index.js";
 
+function expectIncrementalGrantingDisabled(url: URL): void {
+  expect(url.searchParams.get("include_granted_scopes")).toBe("false");
+}
+
 describe("google plugin", () => {
   afterEach(() => {
     vi.restoreAllMocks();
@@ -82,7 +86,7 @@ describe("google plugin", () => {
     ).toEqual(GOOGLE_CAPABILITIES);
   });
 
-  it("normalizes capability input and preserves opt-in OAuth metadata", () => {
+  it("normalizes capability input and preserves opt-in OAuth metadata without incremental grants", () => {
     const config = getGoogleOAuthProviderConfig(
       normalizeGoogleCapabilities(["drive.read", "drive.read", "meet.read", "unknown"])
     );
@@ -92,7 +96,7 @@ describe("google plugin", () => {
     expect(config.scopes).toContain(GOOGLE_OAUTH_SCOPES.drive.read);
     expect(config.scopes).toContain(GOOGLE_OAUTH_SCOPES.meet.read);
     expect(config.scopes).not.toContain(GOOGLE_OAUTH_SCOPES.gmail.send);
-    expect(config.authorizationParams.include_granted_scopes).toBe("true");
+    expect(config.authorizationParams.include_granted_scopes).toBe("false");
   });
 
   it("rejects unknown connector OAuth capabilities instead of widening access", async () => {
@@ -240,6 +244,7 @@ describe("google plugin", () => {
 
     expect(getAccount).toHaveBeenCalledWith("google", "acct-reauth-1");
     const url = new URL(result?.authUrl ?? "");
+    expectIncrementalGrantingDisabled(url);
     const requestedScopes = new Set(
       (url.searchParams.get("scope") ?? "").split(" ").filter(Boolean)
     );
@@ -372,6 +377,7 @@ describe("google plugin", () => {
 
     expect(getAccount).not.toHaveBeenCalled();
     const url = new URL(result?.authUrl ?? "");
+    expectIncrementalGrantingDisabled(url);
     const requestedScopes = new Set(
       (url.searchParams.get("scope") ?? "").split(" ").filter(Boolean)
     );
@@ -408,6 +414,7 @@ describe("google plugin", () => {
       {} as never
     );
     const url = new URL(result?.authUrl ?? "");
+    expectIncrementalGrantingDisabled(url);
     const requestedScopes = new Set(
       (url.searchParams.get("scope") ?? "").split(" ").filter(Boolean)
     );
@@ -458,6 +465,7 @@ describe("google plugin", () => {
       {} as never
     );
     const url = new URL(result?.authUrl ?? "");
+    expectIncrementalGrantingDisabled(url);
     const requestedScopes = new Set(
       (url.searchParams.get("scope") ?? "").split(" ").filter(Boolean)
     );
@@ -848,6 +856,114 @@ describe("google plugin", () => {
     expect(
       vault.get("connector.agent-1.google.acct_google_incremental_grant.oauth_tokens")
     ).toContain(providerAddedScope);
+  });
+
+  it("does not record or re-request a compound capability from a partial provider grant", async () => {
+    const vault = new Map<string, string>();
+    const runtime = {
+      agentId: "agent-1",
+      getSetting: (key: string) =>
+        ({
+          GOOGLE_CLIENT_ID: "google-client",
+          GOOGLE_CLIENT_SECRET: "google-secret",
+          GOOGLE_REDIRECT_URI: "http://localhost:31437/api/connectors/google/oauth/callback",
+        })[key],
+      getService: (serviceType: string) =>
+        serviceType === "vault"
+          ? {
+              set: async (key: string, value: string) => {
+                vault.set(key, value);
+              },
+            }
+          : null,
+    } as never;
+    const manager = createOAuthCallbackManager(
+      "google",
+      "acct_google_partial_compound",
+      vi.fn(async () => undefined)
+    );
+    const provider = createGoogleConnectorAccountProvider(runtime);
+    const returnedScopes = [
+      GOOGLE_OAUTH_SCOPES.profile.openid,
+      GOOGLE_OAUTH_SCOPES.profile.email,
+      GOOGLE_OAUTH_SCOPES.gmail.read,
+      GOOGLE_OAUTH_SCOPES.gmail.manage,
+    ];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string | URL | Request) => {
+        const href = String(url);
+        if (href.includes("oauth2.googleapis.com/token")) {
+          return new Response(
+            JSON.stringify({
+              access_token: "google-access-token",
+              refresh_token: "google-refresh-token",
+              expires_in: 3600,
+              scope: returnedScopes.join(" "),
+              token_type: "Bearer",
+              id_token: createUnsignedJwt({
+                sub: "google-subject",
+                email: "ada@example.com",
+              }),
+            }),
+            { status: 200, headers: { "content-type": "application/json" } }
+          );
+        }
+        throw new Error(`Unexpected fetch ${href}`);
+      })
+    );
+
+    const result = await provider.completeOAuth?.(
+      {
+        provider: "google",
+        code: "oauth-code",
+        query: {},
+        flow: {
+          id: "flow-partial-compound",
+          provider: "google",
+          state: "state-partial-compound",
+          status: "pending",
+          codeVerifier: "verifier",
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+          metadata: {
+            requestedCapabilities: ["gmail.read", "gmail.manage"],
+            requestedScopes: scopesForGoogleCapabilities(["gmail.read", "gmail.manage"]),
+          },
+        },
+      },
+      manager as never
+    );
+
+    const account = result?.account as ConnectorAccount;
+    const metadata = account.metadata as Record<string, unknown>;
+    expect(metadata.grantedCapabilities).toEqual(["gmail.read"]);
+    expect(metadata.grantedCapabilities).not.toContain("gmail.manage");
+    expect(metadata.grantedScopes).toEqual(returnedScopes);
+
+    const reauthResult = await provider.startOAuth?.(
+      {
+        provider: "google",
+        accountId: account.id,
+        flow: {
+          id: "flow-partial-compound-reauth",
+          provider: "google",
+          state: "state-partial-compound-reauth",
+          status: "pending",
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+        },
+      },
+      {
+        getAccount: vi.fn(async () => account),
+      } as never
+    );
+    const requestedScopes = new Set(
+      new URL(reauthResult?.authUrl ?? "").searchParams.get("scope")?.split(" ") ?? []
+    );
+    expect(requestedScopes).toContain(GOOGLE_OAUTH_SCOPES.gmail.read);
+    expect(requestedScopes).not.toContain(GOOGLE_OAUTH_SCOPES.gmail.manage);
+    expect(requestedScopes).not.toContain(GOOGLE_OAUTH_SCOPES.gmail.settings);
   });
 
   it("fails an OAuth callback that grants identity but no connector capability", async () => {

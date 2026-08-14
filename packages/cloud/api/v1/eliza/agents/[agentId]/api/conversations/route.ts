@@ -34,7 +34,7 @@ app.get("/", async (c) => {
   const body = sharedRestConversationsList(
     r.agentId,
     r.agent.agent_name ?? "Eliza",
-    r.agent.created_at.toISOString(),
+    ("createdAt" in r ? r.createdAt : r.agent.created_at).toISOString(),
   );
   return applyCorsHeaders(Response.json(body), CORS_METHODS);
 });
@@ -50,7 +50,7 @@ app.post("/", async (c) => {
   const body = sharedRestConversationCreate(
     r.agentId,
     r.agent.agent_name ?? "Eliza",
-    r.agent.created_at.toISOString(),
+    ("createdAt" in r ? r.createdAt : r.agent.created_at).toISOString(),
   );
   return applyCorsHeaders(Response.json(body), CORS_METHODS);
 });

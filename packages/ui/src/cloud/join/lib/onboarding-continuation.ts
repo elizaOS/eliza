@@ -1,16 +1,18 @@
 /**
  * Onboarding continuation hand-through for the messaging → cloud signup funnel.
  *
- * A messaging transport (Discord DM today) hands the browser an opaque
+ * A messaging transport hands the browser an opaque
  * continuation token (`?onboardingSession=<token>`) proving ownership of the
  * platform-scoped onboarding session. The token must survive the Steward login
  * round trip (OAuth popup, email magic link, OTP) that loses URL params, so it
  * is persisted here — mirroring the pending-OAuth `returnTo` pattern in
  * `public-pages/lib/login-return-to.ts` — and redeemed exactly once after
  * authentication by POSTing the onboarding chat endpoint with the Steward
- * bearer. That server-side exchange is what binds the session to the account,
- * links the attested platform identity (e.g. discord_id), and kicks agent
- * provisioning. The redirect itself is never trusted with any of that.
+ * bearer. Ordinary continuations are explicitly confirmed after login. A
+ * Telegram personal-account claim is purpose-marked separately and consumed by
+ * Steward sync before generic account creation, preserving its existing user,
+ * organization, and transcript. The purpose marker is routing metadata only;
+ * the server validates all authority from the opaque token.
  *
  * Client-side single-use: the stored token is cleared only after the exchange
  * succeeds, so a transient failure keeps it for retry. Server-side the token
@@ -21,6 +23,8 @@
 import { api } from "../../lib/api-client";
 
 const PENDING_ONBOARDING_SESSION_KEY = "eliza.join.onboardingSession";
+export const TELEGRAM_ACCOUNT_CLAIM_PURPOSE = "telegram-account-claim" as const;
+type PendingOnboardingPurpose = "link" | typeof TELEGRAM_ACCOUNT_CLAIM_PURPOSE;
 /** Long enough for an email magic-link round trip; short enough not to haunt
  * the browser for weeks. The server enforces its own (longer) session TTL. */
 const PENDING_ONBOARDING_SESSION_TTL_MS = 60 * 60 * 1000;
@@ -31,6 +35,7 @@ const ONBOARDING_TOKEN_PATTERN = /^[a-zA-Z0-9:+_-]{8,180}$/;
 interface StoredPendingOnboardingSession {
   token: string;
   expiresAt: number;
+  purpose?: PendingOnboardingPurpose;
 }
 
 /**
@@ -65,34 +70,46 @@ function eachStorage(): Storage[] {
   return storages;
 }
 
-/** Persist the pending continuation token across the login round trip. */
-export function storePendingOnboardingSession(token: string): void {
+/** Persist the pending continuation and its post-login execution path. */
+export function storePendingOnboardingSession(
+  token: string,
+  purpose: PendingOnboardingPurpose = "link",
+): boolean {
   const sanitized = sanitizeOnboardingSessionToken(token);
-  if (!sanitized) return;
+  if (!sanitized) return false;
   const stored = JSON.stringify({
     token: sanitized,
     expiresAt: Date.now() + PENDING_ONBOARDING_SESSION_TTL_MS,
+    purpose,
   } satisfies StoredPendingOnboardingSession);
+  let persisted = false;
   for (const storage of eachStorage()) {
     try {
       storage.setItem(PENDING_ONBOARDING_SESSION_KEY, stored);
+      persisted = true;
     } catch {
       // error-policy:J3 unwritable storage — losing the pending token degrades
       // to a signup without the messaging link, never a failed login.
     }
   }
+  return persisted;
 }
 
-function parseStored(value: string | null): string | null {
+function parseStored(
+  value: string | null,
+): StoredPendingOnboardingSession | null {
   if (!value) return null;
   try {
     const parsed = JSON.parse(value) as Partial<StoredPendingOnboardingSession>;
+    const purpose = parsed.purpose ?? "link";
     if (
       typeof parsed.token === "string" &&
       typeof parsed.expiresAt === "number" &&
-      parsed.expiresAt >= Date.now()
+      parsed.expiresAt >= Date.now() &&
+      (purpose === "link" || purpose === TELEGRAM_ACCOUNT_CLAIM_PURPOSE)
     ) {
-      return sanitizeOnboardingSessionToken(parsed.token);
+      const token = sanitizeOnboardingSessionToken(parsed.token);
+      return token ? { token, expiresAt: parsed.expiresAt, purpose } : null;
     }
     return null;
   } catch {
@@ -101,13 +118,17 @@ function parseStored(value: string | null): string | null {
 }
 
 /** Read the pending token WITHOUT consuming it (cleared only on success). */
-export function peekPendingOnboardingSession(): string | null {
+export function peekPendingOnboardingSession(
+  purpose?: PendingOnboardingPurpose,
+): string | null {
   for (const storage of eachStorage()) {
     try {
-      const token = parseStored(
+      const pending = parseStored(
         storage.getItem(PENDING_ONBOARDING_SESSION_KEY),
       );
-      if (token) return token;
+      if (pending && (!purpose || pending.purpose === purpose)) {
+        return pending.token;
+      }
     } catch {
       // error-policy:J3 unreadable storage reads as no pending token.
     }

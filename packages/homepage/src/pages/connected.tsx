@@ -16,7 +16,7 @@ import {
   DropdownMenuTrigger,
 } from "@elizaos/ui/dropdown-menu";
 import { Check, Copy, Info, LogOut } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { ElizaLogo } from "@/components/brand/eliza-logo";
 import {
@@ -26,12 +26,11 @@ import {
 } from "@/components/login/phone-number-input";
 import {
   buildElizaDiscordHref,
-  buildElizaSmsHref,
   buildElizaTelegramHref,
   buildElizaWhatsAppHref,
-  ELIZA_PHONE_FORMATTED,
   ELIZA_PHONE_NUMBER,
   getTelegramBotUsername,
+  openOrCopyElizaMessage,
 } from "@/lib/contact";
 import { useAuth } from "@/lib/context/auth-context";
 import { type Translator, useT } from "@/providers/I18nProvider";
@@ -90,7 +89,10 @@ export default function ConnectedPage() {
   const t = useT();
   const { user, organization, isAuthenticated, isLoading, logout, linkPhone } =
     useAuth();
-  const [copiedPhone, setCopiedPhone] = useState(false);
+  const [phoneCopyState, setPhoneCopyState] = useState<
+    "idle" | "handoff" | "copied" | "error"
+  >("idle");
+  const phoneCopyOperation = useRef(0);
   const [copiedTelegram, setCopiedTelegram] = useState(false);
   const [copiedWhatsApp, setCopiedWhatsApp] = useState(false);
 
@@ -101,6 +103,7 @@ export default function ConnectedPage() {
   const [isLinkingPhone, setIsLinkingPhone] = useState(false);
 
   const countryOptions = useCountryOptions();
+  const whatsappHref = buildElizaWhatsAppHref();
 
   const getFullPhoneNumber = useCallback(() => {
     return buildFullPhoneNumber(phoneValue, selectedCountry, countryOptions);
@@ -159,9 +162,14 @@ export default function ConnectedPage() {
   }, [isAuthenticated, isLoading, navigate]);
 
   const handleCopyPhone = async () => {
-    await navigator.clipboard.writeText(ELIZA_PHONE_NUMBER);
-    setCopiedPhone(true);
-    setTimeout(() => setCopiedPhone(false), 2000);
+    const operation = ++phoneCopyOperation.current;
+    try {
+      await navigator.clipboard.writeText(ELIZA_PHONE_NUMBER);
+      if (operation === phoneCopyOperation.current) setPhoneCopyState("copied");
+    } catch {
+      // error-policy:J4 Clipboard rejection stays visible as a distinct UI error.
+      if (operation === phoneCopyOperation.current) setPhoneCopyState("error");
+    }
   };
 
   const handleCopyTelegram = async () => {
@@ -171,7 +179,8 @@ export default function ConnectedPage() {
   };
 
   const handleCopyWhatsApp = async () => {
-    await navigator.clipboard.writeText(buildElizaWhatsAppHref());
+    if (!whatsappHref) return;
+    await navigator.clipboard.writeText(whatsappHref);
     setCopiedWhatsApp(true);
     setTimeout(() => setCopiedWhatsApp(false), 2000);
   };
@@ -190,11 +199,18 @@ export default function ConnectedPage() {
   };
 
   const handleOpenWhatsApp = () => {
-    window.open(buildElizaWhatsAppHref(), "_blank");
+    if (whatsappHref) window.open(whatsappHref, "_blank");
   };
 
-  const handleOpenMessages = () => {
-    window.location.href = buildElizaSmsHref();
+  const handleOpenMessages = async () => {
+    const operation = ++phoneCopyOperation.current;
+    try {
+      const outcome = await openOrCopyElizaMessage(window);
+      if (operation === phoneCopyOperation.current) setPhoneCopyState(outcome);
+    } catch {
+      // error-policy:J4 Clipboard rejection stays visible as a distinct UI error.
+      if (operation === phoneCopyOperation.current) setPhoneCopyState("error");
+    }
   };
 
   if (isLoading) {
@@ -247,6 +263,35 @@ export default function ConnectedPage() {
       className="theme-app brand-section brand-section--orange relative flex min-h-screen flex-col items-center px-4 pb-6 pt-24"
       style={{ fontFamily: "Geist, system-ui, sans-serif" }}
     >
+      {phoneCopyState !== "idle" && (
+        <div
+          className={`fixed bottom-4 left-1/2 z-50 -translate-x-1/2 rounded-full bg-white px-4 py-2 text-sm font-medium shadow-lg ${
+            phoneCopyState === "copied"
+              ? "text-green-700"
+              : phoneCopyState === "error"
+                ? "text-red-700"
+                : "text-neutral-700"
+          }`}
+        >
+          <span
+            role={phoneCopyState === "error" ? "alert" : "status"}
+            aria-live="polite"
+          >
+            {phoneCopyState === "copied"
+              ? t("homepage_eliza.connected.phoneCopied", {
+                  defaultValue: "Phone number copied",
+                })
+              : phoneCopyState === "handoff"
+                ? t("homepage_eliza.common.messageHandoff", {
+                    defaultValue:
+                      "Opening Messages. If nothing happens, copy the number.",
+                  })
+                : t("homepage_eliza.connected.phoneCopyFailed", {
+                    defaultValue: "Couldn't copy the phone number",
+                  })}
+          </span>
+        </div>
+      )}
       <header className="absolute top-0 inset-x-0 z-10 p-4 flex items-center justify-between pointer-events-none">
         <Link
           to="/"
@@ -445,7 +490,7 @@ export default function ConnectedPage() {
             <div className="w-full h-[72px] bg-white hover:bg-black hover:text-white text-black flex items-center px-5 transition-colors group">
               <button
                 type="button"
-                onClick={handleOpenMessages}
+                onClick={() => void handleOpenMessages()}
                 className="flex h-full min-w-0 flex-1 cursor-pointer items-center gap-4 border-0 bg-transparent p-0 text-left text-black group-hover:text-white"
               >
                 <div className="w-8 h-8 shrink-0 flex items-center justify-center">
@@ -456,9 +501,6 @@ export default function ConnectedPage() {
                     {t("homepage_eliza.connected.imessageLabel", {
                       defaultValue: "iMessage",
                     })}
-                  </span>
-                  <span className="text-sm text-black/70 group-hover:text-white/80">
-                    {ELIZA_PHONE_FORMATTED}
                   </span>
                 </div>
               </button>
@@ -478,7 +520,7 @@ export default function ConnectedPage() {
                   defaultValue: "Copy phone number",
                 })}
               >
-                {copiedPhone ? (
+                {phoneCopyState === "copied" ? (
                   <Check className="size-5 text-green-400" />
                 ) : (
                   <Copy className="size-5" />
@@ -554,12 +596,56 @@ export default function ConnectedPage() {
             </div>
           )}
 
-          {user.whatsapp_id ? (
-            <div className="w-full h-[72px] bg-white hover:bg-black hover:text-white text-black flex items-center px-5 transition-colors group">
+          {whatsappHref &&
+            (user.whatsapp_id ? (
+              <div className="w-full h-[72px] bg-white hover:bg-black hover:text-white text-black flex items-center px-5 transition-colors group">
+                <button
+                  type="button"
+                  onClick={handleOpenWhatsApp}
+                  className="flex h-full min-w-0 flex-1 cursor-pointer items-center gap-4 border-0 bg-transparent p-0 text-left text-black group-hover:text-white"
+                >
+                  <div className="w-8 h-8 shrink-0 flex items-center justify-center">
+                    <WhatsAppIcon className="size-8 text-[#25D366]" />
+                  </div>
+                  <div className="flex flex-col items-start flex-1">
+                    <span className="text-lg font-medium">
+                      {t("homepage_eliza.connected.whatsappLabel", {
+                        defaultValue: "WhatsApp",
+                      })}
+                    </span>
+                    <span className="text-sm text-black/70 group-hover:text-white/80">
+                      {user.whatsapp_name ||
+                        t("homepage_eliza.connected.openWhatsapp", {
+                          defaultValue: "Open WhatsApp",
+                        })}
+                    </span>
+                  </div>
+                </button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleCopyWhatsApp();
+                  }}
+                  className="shrink-0 text-black/70 group-hover:text-white/80 hover:text-white hover:bg-white/10"
+                  title={t("homepage_eliza.connected.copyWhatsappTitle", {
+                    defaultValue: "Copy WhatsApp link",
+                  })}
+                >
+                  {copiedWhatsApp ? (
+                    <Check className="size-5 text-green-400" />
+                  ) : (
+                    <Copy className="size-5" />
+                  )}
+                </Button>
+              </div>
+            ) : (
               <button
                 type="button"
+                className="w-full h-[72px] bg-white hover:bg-black hover:text-white text-black flex items-center gap-4 px-5 cursor-pointer transition-colors"
                 onClick={handleOpenWhatsApp}
-                className="flex h-full min-w-0 flex-1 cursor-pointer items-center gap-4 border-0 bg-transparent p-0 text-left text-black group-hover:text-white"
               >
                 <div className="w-8 h-8 shrink-0 flex items-center justify-center">
                   <WhatsAppIcon className="size-8 text-[#25D366]" />
@@ -570,52 +656,9 @@ export default function ConnectedPage() {
                       defaultValue: "WhatsApp",
                     })}
                   </span>
-                  <span className="text-sm text-black/70 group-hover:text-white/80">
-                    {user.whatsapp_name ||
-                      t("homepage_eliza.connected.openWhatsapp", {
-                        defaultValue: "Open WhatsApp",
-                      })}
-                  </span>
                 </div>
               </button>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleCopyWhatsApp();
-                }}
-                className="shrink-0 text-black/70 group-hover:text-white/80 hover:text-white hover:bg-white/10"
-                title={t("homepage_eliza.connected.copyWhatsappTitle", {
-                  defaultValue: "Copy WhatsApp link",
-                })}
-              >
-                {copiedWhatsApp ? (
-                  <Check className="size-5 text-green-400" />
-                ) : (
-                  <Copy className="size-5" />
-                )}
-              </Button>
-            </div>
-          ) : (
-            <button
-              type="button"
-              className="w-full h-[72px] bg-white hover:bg-black hover:text-white text-black flex items-center gap-4 px-5 cursor-pointer transition-colors"
-              onClick={handleOpenWhatsApp}
-            >
-              <div className="w-8 h-8 shrink-0 flex items-center justify-center">
-                <WhatsAppIcon className="size-8 text-[#25D366]" />
-              </div>
-              <div className="flex flex-col items-start flex-1">
-                <span className="text-lg font-medium">
-                  {t("homepage_eliza.connected.whatsappLabel", {
-                    defaultValue: "WhatsApp",
-                  })}
-                </span>
-              </div>
-            </button>
-          )}
+            ))}
 
           {user.discord_id ? (
             <div className="w-full h-[72px] bg-white hover:bg-black hover:text-white text-black flex items-center px-5 transition-colors group">
