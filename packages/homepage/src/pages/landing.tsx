@@ -313,7 +313,7 @@ function PhoneMockup() {
             </div>
           ) : null}
         </div>
-        <div className="landing-composer-row" aria-hidden="true">
+        <div className="landing-composer-row">
           <span className="landing-composer-plus">
             <svg
               viewBox="0 0 24 24"
@@ -494,150 +494,6 @@ function DemoKeyboard({ composerText }: { composerText: string }) {
 }
 
 const SESSION_STORAGE_KEY = "eliza_app_session";
-
-/**
- * Every way to reach Eliza, plus the account door — opened by tapping the
- * contact in the thread header, where iOS puts contact details. Uses a native
- * dialog so Escape, backdrop dismissal, and focus containment come for free.
- */
-function ContactSheet({
-  open,
-  onClose,
-  onText,
-  whatsappHref,
-  accountHref,
-  accountLabel,
-}: {
-  open: boolean;
-  onClose: () => void;
-  onText: () => void;
-  whatsappHref: string | null;
-  accountHref: string;
-  accountLabel: string;
-}) {
-  const t = useT();
-  const dialogRef = useRef<HTMLDialogElement>(null);
-
-  useEffect(() => {
-    const dialog = dialogRef.current;
-    if (!dialog) return;
-    if (open && !dialog.open) dialog.showModal();
-    if (!open && dialog.open) dialog.close();
-  }, [open]);
-
-  // A click that lands on the dialog element itself is a click on the
-  // backdrop — the body panel is what fills the visible sheet.
-  useEffect(() => {
-    const dialog = dialogRef.current;
-    if (!dialog) return;
-    const dismissOnBackdrop = (event: MouseEvent) => {
-      if (event.target === dialog) onClose();
-    };
-    dialog.addEventListener("click", dismissOnBackdrop);
-    return () => dialog.removeEventListener("click", dismissOnBackdrop);
-  }, [onClose]);
-
-  return (
-    <dialog ref={dialogRef} className="landing-sheet" onClose={onClose}>
-      <div className="landing-sheet-body">
-        <header className="landing-sheet-head">
-          <img
-            className="landing-sheet-avatar"
-            src="/brand/logos/logo_white_orangebg.svg"
-            alt=""
-            width={423}
-            height={423}
-          />
-          <strong>Eliza</strong>
-          <span>
-            {t("homepage_eliza.landing.contactSheetSubtitle", {
-              defaultValue: "Reach me wherever you already message.",
-            })}
-          </span>
-        </header>
-        <div className="landing-sheet-options">
-          <button type="button" className="landing-sheet-row" onClick={onText}>
-            <IMessageIcon className="size-6" style={{ color: "#34C759" }} />
-            {t("homepage_eliza.landing.channelImessage", {
-              defaultValue: "Text Eliza on iMessage",
-            })}
-          </button>
-          <a className="landing-sheet-row" href={`tel:${ELIZA_PHONE_NUMBER}`}>
-            <svg
-              viewBox="0 0 24 24"
-              fill="currentColor"
-              className="size-6"
-              aria-hidden="true"
-            >
-              <path d="M6.62 10.79a15.05 15.05 0 0 0 6.59 6.59l2.2-2.2a1 1 0 0 1 1.02-.24 11.36 11.36 0 0 0 3.57.57 1 1 0 0 1 1 1V20a1 1 0 0 1-1 1A17 17 0 0 1 3 4a1 1 0 0 1 1-1h3.5a1 1 0 0 1 1 1 11.36 11.36 0 0 0 .57 3.57 1 1 0 0 1-.25 1.02Z" />
-            </svg>
-            {t("homepage_eliza.landing.channelPhone", {
-              defaultValue: "Call Eliza",
-            })}
-          </a>
-          {whatsappHref ? (
-            <a
-              className="landing-sheet-row"
-              href={whatsappHref}
-              target="_blank"
-              rel="noreferrer"
-            >
-              <WhatsAppIcon className="size-6" style={{ color: "#25D366" }} />
-              {t("homepage_eliza.landing.channelWhatsapp", {
-                defaultValue: "Message Eliza on WhatsApp",
-              })}
-            </a>
-          ) : null}
-          <a
-            className="landing-sheet-row"
-            href={buildElizaTelegramHref()}
-            target="_blank"
-            rel="noreferrer"
-          >
-            <TelegramIcon className="size-6" style={{ color: "#2AABEE" }} />
-            {t("homepage_eliza.landing.channelTelegram", {
-              defaultValue: "Message Eliza on Telegram",
-            })}
-          </a>
-          <a
-            className="landing-sheet-row"
-            href={buildElizaDiscordHref()}
-            target="_blank"
-            rel="noreferrer"
-          >
-            <DiscordIcon className="size-6" style={{ color: "#5865F2" }} />
-            {t("homepage_eliza.landing.channelDiscord", {
-              defaultValue: "Message Eliza on Discord",
-            })}
-          </a>
-          <a
-            className="landing-sheet-row landing-sheet-row--account"
-            href={accountHref}
-          >
-            <svg
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.7"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              className="size-6"
-              aria-hidden="true"
-            >
-              <path d="M17.5 19a4.5 4.5 0 0 0 .4-8.98 6 6 0 0 0-11.63-1.4A4.25 4.25 0 0 0 6.5 19h11Z" />
-            </svg>
-            {accountLabel}
-          </a>
-        </div>
-        <button type="button" className="landing-sheet-close" onClick={onClose}>
-          {t("homepage_eliza.landing.contactSheetClose", {
-            defaultValue: "Close",
-          })}
-        </button>
-      </div>
-    </dialog>
-  );
-}
 
 export default function LandingPage() {
   const t = useT();
@@ -822,29 +678,6 @@ export default function LandingPage() {
         </div>
         <ResponsivePhoneMockup />
       </main>
-      <ContactSheet
-        open={contactSheetOpen}
-        onClose={() => setContactSheetOpen(false)}
-        onText={() => {
-          setContactSheetOpen(false);
-          void handleMessageEliza();
-        }}
-        whatsappHref={whatsappHref}
-        accountHref={
-          signedIn
-            ? productNavigation.dashboardUrl
-            : productNavigation.signInUrl
-        }
-        accountLabel={
-          signedIn
-            ? t("homepage_eliza.landing.dashboard", {
-                defaultValue: "Open your dashboard",
-              })
-            : t("homepage_eliza.landing.signInCloud", {
-                defaultValue: "Sign in to Eliza Cloud",
-              })
-        }
-      />
     </div>
   );
 }
