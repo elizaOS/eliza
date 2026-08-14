@@ -145,4 +145,17 @@ describe("Android periodic wake reconciliation (#17874)", () => {
     expect(worker).not.toContain('"eliza:device-secret"');
     expect(worker).not.toContain('"eliza:agent-base"');
   });
+
+  it("returns repeated service starts before the cold-boot process lock", () => {
+    const service = source("ElizaAgentService.java");
+    const requestStartBody = service.match(
+      /private void requestAgentStart\(boolean restartFirst\) \{([\s\S]*?)\n    \}\n\n    private void startAgentProcess/,
+    )?.[1];
+
+    expect(service).toContain("private volatile Thread startWorker");
+    expect(requestStartBody).toBeDefined();
+    expect(requestStartBody).toMatch(
+      /Thread activeStartWorker = startWorker;[\s\S]*activeStartWorker != null[\s\S]*activeStartWorker\.isAlive\(\)[\s\S]*return;[\s\S]*synchronized \(processLock\)/,
+    );
+  });
 });

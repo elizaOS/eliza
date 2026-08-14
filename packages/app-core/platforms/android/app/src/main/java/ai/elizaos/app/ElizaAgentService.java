@@ -198,7 +198,7 @@ public class ElizaAgentService extends Service {
     private WatchdogThread watchdog;
     /** In-process bionic GPU inference host; non-null only when delegating. */
     private volatile ElizaBionicInferenceServer bionicInferenceServer;
-    private Thread startWorker;
+    private volatile Thread startWorker;
     private volatile boolean shuttingDown;
     private volatile boolean foregroundStartDenied;
     private volatile boolean detachedAgentMode;
@@ -1771,6 +1771,15 @@ public class ElizaAgentService extends Service {
         // start, before the agent-already-running guards below — so it binds
         // even when the agent is adopted rather than freshly spawned.
         ensureBionicVoiceHost();
+
+        // Android may redeliver the sticky service start while a cold boot is
+        // still extracting assets. That worker holds processLock, so waiting
+        // for the lock here would block the main thread and trigger a service
+        // ANR merely to discover that a start is already in progress.
+        Thread activeStartWorker = startWorker;
+        if (activeStartWorker != null && activeStartWorker.isAlive()) {
+            return;
+        }
         synchronized (processLock) {
             if (!restartFirst && agentProcess != null && agentProcess.isAlive()) {
                 return;
