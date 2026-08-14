@@ -1762,8 +1762,12 @@ export function useShellController(): ShellController {
   // unrelated coding-agent PTY sessions; here we just want to stop the speech.
   const stopTurn = React.useCallback(() => {
     if (chatSending) handleChatStop();
-    if (realtimeVoiceRef.current.agentSpeaking) {
-      realtimeVoiceRef.current.bargeIn();
+    const realtime = realtimeVoiceRef.current;
+    if (realtime.status === "thinking" || realtime.agentSpeaking) {
+      // Thinking is an interruptible server response even before any browser
+      // playout exists. `agentSpeaking` remains the separate truth for active
+      // or buffered-tail playout after the server phase has moved on.
+      realtime.bargeIn();
     }
     voiceOutput.stopSpeaking();
   }, [chatSending, handleChatStop, voiceOutput.stopSpeaking]);

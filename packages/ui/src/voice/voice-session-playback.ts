@@ -13,6 +13,8 @@
  *   - `enqueue(bytes)` pushes a downlink frame; playback pulls at the context
  *     rate. `flush()` empties the queue immediately for barge-in (do NOT wait
  *     for the server `interrupted` event to stop audible output).
+ *   - `pause()` stops consuming queued audio for provisional acoustic barge-in;
+ *     `resume()` continues from the same sample if the server does not confirm.
  *   - iOS autoplay: the AudioContext starts suspended until a user gesture calls
  *     `unlock()`. `enqueue` before unlock buffers; nothing is dropped, but a
  *     caller should surface "tap to enable sound" via `needsUnlock`.
@@ -122,8 +124,8 @@ export interface VoiceSessionPlaybackOptions {
   unlockOnCreate?: boolean;
   /** Notified when queued audio starts/stops waiting for an unlock gesture. */
   onUnlockChange?: (needsUnlock: boolean) => void;
-  /** Notified when the queue drains to empty (utterance finished playing). */
-  onDrained?: () => void;
+  /** Notified with the exact newest enqueue sequence that drained. */
+  onDrained?: (sequence: number) => void;
 }
 
 const PLAYBACK_WORKLET_NAME = "eliza-voice-session-downlink";
@@ -181,9 +183,15 @@ export interface VoiceSessionPlayback {
   readonly unlocked: boolean;
   /** True if audio has been enqueued while still suspended (surface a prompt). */
   readonly needsUnlock: boolean;
+  /** Whether playout is provisionally silent without consuming queued audio. */
+  readonly paused: boolean;
   readonly backend: "audioworklet" | "scriptprocessor";
-  /** Push a pcm16 downlink frame for streaming playback. */
-  enqueue(bytes: Uint8Array): void;
+  /** Push a pcm16 frame and return its monotonic playout sequence. */
+  enqueue(bytes: Uint8Array): number | null;
+  /** Provisionally silence playback while retaining the queue. Idempotent. */
+  pause(): void;
+  /** Continue retained playback after an unconfirmed local speech trigger. */
+  resume(): void;
   /** Empty the playback queue IMMEDIATELY (barge-in). */
   flush(): void;
   /** Resume the AudioContext on a user gesture (iOS autoplay unlock). */
@@ -228,6 +236,7 @@ export async function createVoiceSessionPlayback(
       : null;
 
   let stopped = false;
+  let paused = false;
   let needsUnlock = false;
   const setNeedsUnlock = (next: boolean): void => {
     if (needsUnlock === next) return;
@@ -241,16 +250,33 @@ export async function createVoiceSessionPlayback(
   };
   // Pre-unlock queue (frames enqueued while suspended); flushed into the sink
   // once running so no audio is dropped, only deferred.
-  const preUnlockQueue: Float32Array[] = [];
+  interface QueuedPlaybackFrame {
+    samples: Float32Array;
+    sequence: number;
+  }
+  const preUnlockQueue: QueuedPlaybackFrame[] = [];
+
+  // AudioWorklet messages cross an asynchronous port in each direction. A
+  // `drained` notification for an old queue can therefore arrive after the
+  // main thread has enqueued newer audio. Sequence every queue mutation so a
+  // stale notification can never clear the newer response's activity state.
+  let activitySequence = 0;
+  let latestActivitySequence = 0;
+  const nextActivitySequence = (): number => {
+    activitySequence += 1;
+    latestActivitySequence = activitySequence;
+    return activitySequence;
+  };
 
   let backend: "audioworklet" | "scriptprocessor";
   let workletNode: PlaybackWorkletNodeLike | null = null;
   let scriptNode: PlaybackScriptNodeLike | null = null;
 
   // ScriptProcessor-side JS queue (used only for the fallback backend).
-  const jsQueue: Float32Array[] = [];
+  const jsQueue: QueuedPlaybackFrame[] = [];
   let jsReadOffset = 0;
   let jsHadAudio = false;
+  let jsLatestSequence = 0;
 
   try {
     if (hasPlaybackWorkletSupport(ctx)) {
@@ -271,8 +297,17 @@ export async function createVoiceSessionPlayback(
       workletNode = node;
       throwIfPlaybackCancelled(signal);
       node.port.onmessage = (event) => {
-        const d = event.data as { type?: string } | undefined;
-        if (d?.type === "drained") options.onDrained?.();
+        const d = event.data as
+          | { type?: string; sequence?: unknown }
+          | undefined;
+        if (
+          d?.type === "drained" &&
+          typeof d.sequence === "number" &&
+          Number.isSafeInteger(d.sequence) &&
+          d.sequence === latestActivitySequence
+        ) {
+          options.onDrained?.(d.sequence);
+        }
       };
       node.connect(ctx.destination);
     } else if (typeof ctx.createScriptProcessor === "function") {
@@ -282,8 +317,18 @@ export async function createVoiceSessionPlayback(
       scriptNode.onaudioprocess = (event) => {
         const outBuf = event.outputBuffer;
         const ch = outBuf.getChannelData(0);
+        if (paused) {
+          ch.fill(0);
+          for (let c = 1; c < outBuf.numberOfChannels; c += 1) {
+            outBuf.getChannelData(c).fill(0);
+          }
+          return;
+        }
         for (let i = 0; i < ch.length; i += 1) {
-          while (jsQueue.length > 0 && jsReadOffset >= jsQueue[0].length) {
+          while (
+            jsQueue.length > 0 &&
+            jsReadOffset >= jsQueue[0].samples.length
+          ) {
             jsQueue.shift();
             jsReadOffset = 0;
           }
@@ -291,10 +336,10 @@ export async function createVoiceSessionPlayback(
             ch[i] = 0;
             if (jsHadAudio) {
               jsHadAudio = false;
-              options.onDrained?.();
+              options.onDrained?.(jsLatestSequence);
             }
           } else {
-            ch[i] = jsQueue[0][jsReadOffset];
+            ch[i] = jsQueue[0].samples[jsReadOffset];
             jsReadOffset += 1;
           }
         }
@@ -326,6 +371,7 @@ export async function createVoiceSessionPlayback(
   const stop = async (): Promise<void> => {
     if (stopPromise) return stopPromise;
     stopped = true;
+    paused = false;
     if (onAbort && signal) signal.removeEventListener("abort", onAbort);
     if (workletNode) {
       workletNode.port.onmessage = null;
@@ -351,21 +397,23 @@ export async function createVoiceSessionPlayback(
   }
   signal?.addEventListener("abort", onAbort, { once: true });
 
-  const pushSamples = (samples: Float32Array): void => {
+  const pushSamples = (frame: QueuedPlaybackFrame): void => {
     if (backend === "audioworklet" && workletNode) {
-      workletNode.port.postMessage({ type: "pcm", pcm: samples }, [
-        samples.buffer,
-      ]);
+      workletNode.port.postMessage(
+        { type: "pcm", pcm: frame.samples, sequence: frame.sequence },
+        [frame.samples.buffer],
+      );
     } else {
-      jsQueue.push(samples);
+      jsQueue.push(frame);
       jsHadAudio = true;
+      jsLatestSequence = frame.sequence;
     }
   };
 
   const drainPreUnlock = (): void => {
     while (preUnlockQueue.length > 0) {
-      const s = preUnlockQueue.shift();
-      if (s) pushSamples(s);
+      const frame = preUnlockQueue.shift();
+      if (frame) pushSamples(frame);
     }
   };
 
@@ -389,29 +437,53 @@ export async function createVoiceSessionPlayback(
     get needsUnlock() {
       return needsUnlock;
     },
+    get paused() {
+      return paused;
+    },
     get backend() {
       return backend;
     },
     enqueue(bytes: Uint8Array) {
-      if (stopped) return;
+      if (stopped) return null;
       const samples = int16BytesToFloatPcm(bytes);
-      if (samples.length === 0) return;
+      if (samples.length === 0) return null;
+      const frame = { samples, sequence: nextActivitySequence() };
       if (!isRunning()) {
         // Buffer until unlocked; do not drop.
         setNeedsUnlock(true);
-        preUnlockQueue.push(samples);
-        return;
+        preUnlockQueue.push(frame);
+        return frame.sequence;
       }
-      pushSamples(samples);
+      pushSamples(frame);
+      return frame.sequence;
+    },
+    pause() {
+      if (stopped || paused) return;
+      paused = true;
+      if (backend === "audioworklet" && workletNode) {
+        workletNode.port.postMessage({ type: "pause" });
+      }
+    },
+    resume() {
+      if (stopped || !paused) return;
+      paused = false;
+      if (backend === "audioworklet" && workletNode) {
+        workletNode.port.postMessage({ type: "resume" });
+      }
     },
     flush() {
       // Immediate silence for barge-in — clear BOTH the deferred and live queues.
+      paused = false;
+      const flushSequence = nextActivitySequence();
       preUnlockQueue.length = 0;
       // A flush discards every frame that was waiting for a gesture, so the UI
       // must not keep advertising an unlock for audio that no longer exists.
       setNeedsUnlock(false);
       if (backend === "audioworklet" && workletNode) {
-        workletNode.port.postMessage({ type: "flush" });
+        workletNode.port.postMessage({
+          type: "flush",
+          sequence: flushSequence,
+        });
       } else {
         jsQueue.length = 0;
         jsReadOffset = 0;
