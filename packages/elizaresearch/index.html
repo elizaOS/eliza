@@ -49,7 +49,7 @@
   html { scroll-behavior: smooth; background: var(--orange); }
   body {
     font-family: "Geist", Arial, sans-serif;
-    background: var(--bg);
+    background: var(--orange);
     color: var(--ink);
     line-height: 1.55;
     -webkit-font-smoothing: antialiased;
@@ -107,11 +107,11 @@
   .hero-inner .down:hover { background: #351208; color: white; }
 
   /* ---------- statement ---------- */
-  .statement { display: grid; place-items: center; padding-block: clamp(4rem, 10vh, 7rem); text-align: center; }
+  .statement { background: var(--bg); padding-block: clamp(4rem, 10vh, 7rem); text-align: center; }
   .statement p {
     font-size: clamp(1.5rem, 3.4vw, 2.5rem);
     font-weight: 640; letter-spacing: -0.02em; line-height: 1.22;
-    max-width: 30ch;
+    max-width: 30ch; margin-inline: auto;
   }
   .statement em { font-style: normal; color: var(--orange-deep); }
 
@@ -135,7 +135,7 @@
   }
   .product .cta:hover { opacity: 0.65; }
 
-  #eliza { border-top: 1px solid var(--line); }
+  #eliza { border-top: 1px solid var(--line); background: var(--bg); }
   #eliza .role { color: var(--orange-deep); }
   #eliza .cta { color: var(--orange-deep); }
 
@@ -200,8 +200,10 @@
   </div>
 </header>
 
-<section class="statement wrap">
-  <p>Intelligence is getting cheap. <em>Agency</em> is the scarce thing: software that acts for you, answers to you, and belongs to everyone.</p>
+<section class="statement">
+  <div class="wrap">
+    <p>Intelligence is getting cheap. <em>Agency</em> is the scarce thing: software that acts for you, answers to you, and belongs to everyone.</p>
+  </div>
 </section>
 
 <section class="product" id="eliza">
