@@ -72,6 +72,8 @@ const METER_FLUSH_SECONDS = 5;
 const ADMISSION_MINUTES = METER_FLUSH_SECONDS / 60;
 /** Cap pre-admission buffered frames so an in-flight check can't be flooded. */
 const MAX_PREADMISSION_FRAMES = 64; // ~5s of 80ms frames.
+/** Cover provider WebSocket setup without dropping the user's first words. */
+const MAX_PROVIDER_PENDING_FRAMES = 128; // ~12.8s of 100ms Ink frames.
 /** How often a live session polls the durable revocation store (SEC-6). */
 const REVOCATION_POLL_MS = 400;
 /**
@@ -174,6 +176,8 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
   private readonly usageIdentity: VoiceUsageIdentity;
 
   private stt: CartesiaInkRealtimeSession | null = null;
+  private sttReady = false;
+  private readonly providerPendingFrames: ArrayBuffer[] = [];
   private readonly cartesiaAdapter: CartesiaSonicTtsAdapter;
   private readonly fishAudioAdapter: FishAudioTtsAdapter | null = null;
   private ttsStream: RealtimeTtsStream | null = null;
@@ -353,14 +357,33 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
       return;
     }
 
-    for (const frame of frames) {
-      try {
-        this.stt.sendAudioChunk(frame);
-      } catch {
-        // error-policy:J6 best-effort teardown race — a closed/closing Ink
-        // socket after a concurrent sever; stop forwarding.
-        return;
+    for (const frame of frames) if (!this.forwardSttFrame(frame)) return;
+  }
+
+  /** Queue audio until Ink is ready, then preserve its original frame order. */
+  private forwardSttFrame(frame: ArrayBuffer): boolean {
+    if (this.closed || !this.stt) return false;
+    if (!this.sttReady) {
+      this.providerPendingFrames.push(frame);
+      if (this.providerPendingFrames.length <= MAX_PROVIDER_PENDING_FRAMES) {
+        return true;
       }
+      this.meteredExhausted = true;
+      this.send({
+        t: "error",
+        code: "provider_unavailable",
+        retryable: true,
+      });
+      this.teardown("error");
+      return false;
+    }
+    try {
+      this.stt.sendAudioChunk(frame);
+      return true;
+    } catch {
+      // error-policy:J6 best-effort teardown race — a closed/closing Ink
+      // socket after a concurrent sever; stop forwarding.
+      return false;
     }
   }
 
@@ -395,15 +418,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
         this.turnSttMs += Math.round(ADMISSION_MINUTES * 60_000);
         // Release the buffered frames now that we are admitted.
         const buffered = this.preAdmissionFrames.splice(0);
-        for (const frame of buffered) {
-          try {
-            this.stt?.sendAudioChunk(frame);
-          } catch {
-            // error-policy:J6 best-effort teardown race — Ink socket closed by
-            // a concurrent sever while releasing the buffer; stop forwarding.
-            break;
-          }
-        }
+        for (const frame of buffered) if (!this.forwardSttFrame(frame)) break;
       } catch {
         // error-policy:J4 fail-closed degrade — a metering-store failure must
         // not admit unpaid audio: surface metering_unavailable and sever.
@@ -445,6 +460,9 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
       case "connected": {
         // Provider readiness is transport metadata; the client-facing session
         // has already emitted its own authenticated `ready` frame.
+        this.sttReady = true;
+        const buffered = this.providerPendingFrames.splice(0);
+        for (const frame of buffered) if (!this.forwardSttFrame(frame)) break;
         break;
       }
       case "start-of-turn": {

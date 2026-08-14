@@ -5,6 +5,7 @@
 
 import { Hono } from "hono";
 import { z } from "zod";
+import { runWithCloudBindingsAsync } from "@/lib/runtime/cloud-bindings";
 import type { BridgeExecutionContext } from "@/lib/services/shared-runtime/shared-runtime-chat";
 import {
   createDurableVoiceUsageStore,
@@ -48,7 +49,10 @@ import {
 } from "../lib/twilio-media-codec";
 
 const app = new Hono<AppEnv>();
-const MAX_PENDING_MEDIA_FRAMES = 64;
+// Twilio sends 20 ms frames immediately after `start`. A cold Hyperdrive
+// target lookup can take several seconds, so retain a bounded 10.24-second
+// window instead of terminating ordinary first calls before setup completes.
+const MAX_PENDING_MEDIA_FRAMES = 512;
 const DEFAULT_MAX_CALL_SECONDS = 30 * 60;
 
 const TwilioStreamEventSchema = z.discriminatedUnion("event", [
@@ -114,6 +118,7 @@ function resolveMaxCallSeconds(env: VoiceRealtimeEnv): number {
 
 app.get("/", async (c) => {
   const env = c.env as unknown as VoiceRealtimeEnv;
+  const workerBindings = c.env as unknown as Record<string, unknown>;
   if (!isVoiceRealtimeWsEnabled(env)) {
     return c.json({ error: "voice realtime session not enabled" }, 404);
   }
@@ -245,6 +250,20 @@ app.get("/", async (c) => {
       if (frame.t === "interrupted" && streamSid) {
         sendEvent({ event: "clear", streamSid });
       }
+      if (frame.t === "error") {
+        logger.warn("[twilio-media] voice session error", {
+          code: frame.code,
+          retryable: frame.retryable,
+        });
+      }
+      if (frame.t === "stt_final") {
+        logger.info("[twilio-media] caller turn transcribed", {
+          textLength: frame.text.length,
+        });
+      }
+      if (frame.t === "llm_first_text") {
+        logger.info("[twilio-media] Eliza response started");
+      }
     },
     sendAudio(bytes) {
       if (!streamSid) return;
@@ -354,7 +373,9 @@ app.get("/", async (c) => {
     }
     const event = parsed.data;
     if (event.event === "start") {
-      void startSession(event).catch((error) => {
+      void runWithCloudBindingsAsync(workerBindings, () =>
+        startSession(event),
+      ).catch((error) => {
         // error-policy:J1 async setup failures terminate the provider boundary.
         logger.error("[twilio-media] session setup failed", {
           error: error instanceof Error ? error.message : String(error),
