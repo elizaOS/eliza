@@ -425,7 +425,7 @@ describe("CodingWorkspaceService workspace lifecycle seams", () => {
     expect(service.listScratchWorkspaces()).toEqual([]);
   });
 
-  it.each(["1.5", "1e3", "01", "2147483648", "0", "-1", "not-a-number"])(
+  it.each(["1.5", "2147483648", "0", "-1", "not-a-number", "Infinity"])(
     "rejects invalid scratch decision TTL %s before scheduling cleanup",
     async (configuredTtl) => {
       const root = tmpRoot("workspace-service-invalid-scratch-ttl-");
@@ -455,7 +455,54 @@ describe("CodingWorkspaceService workspace lifecycle seams", () => {
     },
   );
 
-  it("accepts the maximum scratch decision TTL without changing valid behavior", async () => {
+  it.each([
+    ["01", 1],
+    ["1e3", 1000],
+    ["+1000", 1000],
+    [" 2147483647 ", 2_147_483_647],
+  ])(
+    "accepts the same safe-integer spellings Number() already accepted for %s",
+    async (configuredTtl, expectedMs) => {
+      const root = tmpRoot("workspace-service-compat-scratch-ttl-");
+      const source = await makeScratchDir(root, "task-source");
+      const runtime = {
+        getSetting: vi.fn((key: string) =>
+          key === "ELIZA_SCRATCH_RETENTION"
+            ? "pending_decision"
+            : key === "ELIZA_SCRATCH_DECISION_TTL_MS"
+              ? configuredTtl
+              : undefined,
+        ),
+        reportError: vi.fn(),
+      } as unknown as IAgentRuntime;
+      const service = new CodingWorkspaceService(runtime, { baseDir: root });
+      const setTimeoutSpy = vi.spyOn(globalThis, "setTimeout");
+      const before = Date.now();
+
+      const pending = await service.registerScratchWorkspace(
+        `session-compat-ttl-${expectedMs}`,
+        source,
+        "Feature Branch",
+        "task_complete",
+      );
+
+      expect(pending?.expiresAt).toBeDefined();
+      expect((pending?.expiresAt ?? 0) - before).toBeGreaterThanOrEqual(
+        expectedMs,
+      );
+      expect((pending?.expiresAt ?? 0) - before).toBeLessThan(
+        expectedMs + 1_000,
+      );
+      const cleanupCall = setTimeoutSpy.mock.calls.find(
+        (call) => call[1] === expectedMs,
+      );
+      expect(cleanupCall).toBeDefined();
+      setTimeoutSpy.mockRestore();
+      await service.keepScratchWorkspace(`session-compat-ttl-${expectedMs}`);
+    },
+  );
+
+  it("schedules cleanup at the exact configured TTL, not the default", async () => {
     const root = tmpRoot("workspace-service-valid-scratch-ttl-");
     const source = await makeScratchDir(root, "task-source");
     const runtime = {
@@ -469,6 +516,7 @@ describe("CodingWorkspaceService workspace lifecycle seams", () => {
       reportError: vi.fn(),
     } as unknown as IAgentRuntime;
     const service = new CodingWorkspaceService(runtime, { baseDir: root });
+    const setTimeoutSpy = vi.spyOn(globalThis, "setTimeout");
 
     const pending = await service.registerScratchWorkspace(
       "session-valid-ttl",
@@ -481,6 +529,13 @@ describe("CodingWorkspaceService workspace lifecycle seams", () => {
       status: "pending_decision",
       expiresAt: expect.any(Number),
     });
+    // Mutation-resistant: fails if the resolver's return value were swapped
+    // for the 24h default, or if the timer weren't wired to it at all.
+    const cleanupCall = setTimeoutSpy.mock.calls.find(
+      (call) => call[1] === 2_147_483_647,
+    );
+    expect(cleanupCall).toBeDefined();
+    setTimeoutSpy.mockRestore();
     await service.keepScratchWorkspace("session-valid-ttl");
   });
 

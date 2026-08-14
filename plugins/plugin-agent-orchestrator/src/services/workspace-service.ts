@@ -1523,12 +1523,10 @@ export class CodingWorkspaceService {
 
     const normalized =
       typeof configured === "string" ? configured.trim() : configured;
+    if (normalized === "") return DEFAULT_SCRATCH_DECISION_TTL_MS;
+
     const parsed =
-      typeof normalized === "number"
-        ? normalized
-        : /^[1-9]\d*$/.test(normalized)
-          ? Number(normalized)
-          : Number.NaN;
+      typeof normalized === "number" ? normalized : Number(normalized);
     if (
       !Number.isSafeInteger(parsed) ||
       parsed < 1 ||
