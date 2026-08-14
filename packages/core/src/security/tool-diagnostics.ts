@@ -30,6 +30,48 @@ export const TOOL_DIAGNOSTIC_MASK = "[REDACTED]";
  */
 const MAX_TOOL_DIAGNOSTIC_DEPTH = 8;
 
+/** JSON Schema keys whose object keys are schema identifiers, not values. */
+const JSON_SCHEMA_DEFINITION_MAP_KEYS = new Set([
+	"$defs",
+	"definitions",
+	"dependencies",
+	"dependentSchemas",
+	"patternProperties",
+	"properties",
+]);
+
+/** JSON Schema keys containing one nested schema. */
+const JSON_SCHEMA_SINGLE_SCHEMA_KEYS = new Set([
+	"additionalProperties",
+	"contains",
+	"else",
+	"if",
+	"items",
+	"not",
+	"propertyNames",
+	"then",
+	"unevaluatedItems",
+	"unevaluatedProperties",
+]);
+
+/** JSON Schema keys containing an array of nested schemas. */
+const JSON_SCHEMA_SCHEMA_ARRAY_KEYS = new Set([
+	"allOf",
+	"anyOf",
+	"oneOf",
+	"prefixItems",
+]);
+
+/** Tool-definition fields whose values are JSON Schemas. */
+const TOOL_DEFINITION_SCHEMA_KEYS = new Set([
+	"inputSchema",
+	"input_schema",
+	"parameters",
+	"responseSchema",
+	"response_schema",
+	"schema",
+]);
+
 /** Scrubs one string for diagnostic output. */
 export type ToolDiagnosticTextRedactor = (text: string) => string;
 
@@ -126,6 +168,178 @@ function projectValue(
 	}
 }
 
+function projectJsonSchemaDefinitionMap(
+	value: unknown,
+	redactText: ToolDiagnosticTextRedactor,
+	seen: WeakSet<object>,
+	depth: number,
+): unknown {
+	if (!value || typeof value !== "object" || Array.isArray(value)) {
+		return projectValue(value, redactText, seen, depth);
+	}
+	if (depth >= MAX_TOOL_DIAGNOSTIC_DEPTH || seen.has(value)) {
+		return TOOL_DIAGNOSTIC_MASK;
+	}
+	seen.add(value);
+	try {
+		let changed = false;
+		const projected: Record<string, unknown> = {};
+		for (const [propertyName, propertySchema] of Object.entries(value)) {
+			// Property/definition names are executable schema identifiers. Treating
+			// names such as `apiKey`, `token`, or `secret` as credential containers
+			// would replace their schema object and make the recorded request
+			// unreplayable. Values inside each schema still receive the full pass.
+			const next =
+				Array.isArray(propertySchema) &&
+				propertySchema.every((name) => typeof name === "string")
+					? propertySchema
+					: projectJsonSchemaNode(propertySchema, redactText, seen, depth + 1);
+			if (next !== propertySchema) changed = true;
+			projected[propertyName] = next;
+		}
+		return changed ? projected : value;
+	} finally {
+		seen.delete(value);
+	}
+}
+
+function projectJsonSchemaNode(
+	value: unknown,
+	redactText: ToolDiagnosticTextRedactor,
+	seen: WeakSet<object>,
+	depth: number,
+): unknown {
+	if (!value || typeof value !== "object" || Array.isArray(value)) {
+		return projectValue(value, redactText, seen, depth);
+	}
+	if (depth >= MAX_TOOL_DIAGNOSTIC_DEPTH || seen.has(value)) {
+		return TOOL_DIAGNOSTIC_MASK;
+	}
+	seen.add(value);
+	try {
+		let changed = false;
+		const projected: Record<string, unknown> = {};
+		for (const [key, entry] of Object.entries(value)) {
+			let next: unknown;
+			if (JSON_SCHEMA_DEFINITION_MAP_KEYS.has(key)) {
+				next = projectJsonSchemaDefinitionMap(
+					entry,
+					redactText,
+					seen,
+					depth + 1,
+				);
+			} else if (JSON_SCHEMA_SINGLE_SCHEMA_KEYS.has(key)) {
+				if (key === "items" && Array.isArray(entry)) {
+					next = entry.map((item) =>
+						projectJsonSchemaNode(item, redactText, seen, depth + 1),
+					);
+				} else {
+					next = projectJsonSchemaNode(entry, redactText, seen, depth + 1);
+				}
+			} else if (
+				JSON_SCHEMA_SCHEMA_ARRAY_KEYS.has(key) &&
+				Array.isArray(entry)
+			) {
+				next = entry.map((item) =>
+					projectJsonSchemaNode(item, redactText, seen, depth + 1),
+				);
+			} else if (
+				key === "required" &&
+				Array.isArray(entry) &&
+				entry.every((propertyName) => typeof propertyName === "string")
+			) {
+				// Required entries are references to property identifiers. Preserve
+				// them byte-exact so they continue to match the property map above.
+				next = entry;
+			} else if (
+				key === "dependentRequired" &&
+				entry &&
+				typeof entry === "object" &&
+				!Array.isArray(entry) &&
+				Object.values(entry).every(
+					(propertyNames) =>
+						Array.isArray(propertyNames) &&
+						propertyNames.every(
+							(propertyName) => typeof propertyName === "string",
+						),
+				)
+			) {
+				// Both map keys and array values are schema property identifiers.
+				next = entry;
+			} else if (isSensitiveKeyName(key)) {
+				next = TOOL_DIAGNOSTIC_MASK;
+			} else {
+				next = projectValue(entry, redactText, seen, depth + 1);
+			}
+			if (next !== entry) changed = true;
+			projected[key] = next;
+		}
+		return changed ? projected : value;
+	} finally {
+		seen.delete(value);
+	}
+}
+
+function projectModelToolDefinition(
+	value: unknown,
+	redactText: ToolDiagnosticTextRedactor,
+	seen: WeakSet<object>,
+	depth: number,
+): unknown {
+	if (Array.isArray(value)) {
+		if (depth >= MAX_TOOL_DIAGNOSTIC_DEPTH || seen.has(value)) {
+			return TOOL_DIAGNOSTIC_MASK;
+		}
+		seen.add(value);
+		try {
+			let changed = false;
+			const projected = value.map((entry) => {
+				const next = projectModelToolDefinition(
+					entry,
+					redactText,
+					seen,
+					depth + 1,
+				);
+				if (next !== entry) changed = true;
+				return next;
+			});
+			return changed ? projected : value;
+		} finally {
+			seen.delete(value);
+		}
+	}
+	if (!value || typeof value !== "object") {
+		return projectValue(value, redactText, seen, depth);
+	}
+	if (depth >= MAX_TOOL_DIAGNOSTIC_DEPTH || seen.has(value)) {
+		return TOOL_DIAGNOSTIC_MASK;
+	}
+	seen.add(value);
+	try {
+		let changed = false;
+		const projected: Record<string, unknown> = {};
+		for (const [key, entry] of Object.entries(value)) {
+			let next: unknown;
+			if (TOOL_DEFINITION_SCHEMA_KEYS.has(key)) {
+				next = projectJsonSchemaNode(entry, redactText, seen, depth + 1);
+			} else if (key === "function") {
+				// OpenAI-style definitions nest name/description/parameters below a
+				// `function` object instead of exposing the neutral ToolDefinition.
+				next = projectModelToolDefinition(entry, redactText, seen, depth + 1);
+			} else if (isSensitiveKeyName(key)) {
+				next = TOOL_DIAGNOSTIC_MASK;
+			} else {
+				next = projectValue(entry, redactText, seen, depth + 1);
+			}
+			if (next !== entry) changed = true;
+			projected[key] = next;
+		}
+		return changed ? projected : value;
+	} finally {
+		seen.delete(value);
+	}
+}
+
 /**
  * Projects one value for diagnostic egress. The input is never mutated; the
  * result is safe to embed in planner context, events, stream payloads,
@@ -139,6 +353,51 @@ export function projectToolDiagnosticValue(
 	redactText: ToolDiagnosticTextRedactor,
 ): unknown {
 	return projectValue(value, redactText, new WeakSet<object>(), 0);
+}
+
+/**
+ * Projects a complete model-call record without corrupting its executable JSON
+ * Schemas. Model messages, responses, provider payloads, and tool-call values
+ * use the normal credential-key pass. Schema property/definition names remain
+ * exact identifiers, while descriptions, defaults, examples, and other schema
+ * values are still scrubbed. Both neutral and OpenAI-style tool definitions
+ * are supported.
+ */
+export function projectModelCallDiagnosticValue(
+	value: Record<string, unknown>,
+	redactText: ToolDiagnosticTextRedactor,
+): Record<string, unknown> {
+	const projected = projectToolDiagnosticValue(value, redactText) as Record<
+		string,
+		unknown
+	>;
+	let next = projected;
+	for (const schemaKey of ["responseSchema", "response_schema"] as const) {
+		if (!(schemaKey in value)) continue;
+		const projectedSchema = projectJsonSchemaNode(
+			value[schemaKey],
+			redactText,
+			new WeakSet<object>(),
+			0,
+		);
+		if (projectedSchema !== projected[schemaKey]) {
+			if (next === projected) next = { ...projected };
+			next[schemaKey] = projectedSchema;
+		}
+	}
+	if ("tools" in value) {
+		const projectedTools = projectModelToolDefinition(
+			value.tools,
+			redactText,
+			new WeakSet<object>(),
+			0,
+		);
+		if (projectedTools !== projected.tools) {
+			if (next === projected) next = { ...projected };
+			next.tools = projectedTools;
+		}
+	}
+	return next;
 }
 
 /**

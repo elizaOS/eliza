@@ -6509,6 +6509,7 @@ async function executeV5PlannedToolCall(
 			action,
 			actionResult,
 			toolCall.params,
+			args.runtime,
 		),
 	});
 }

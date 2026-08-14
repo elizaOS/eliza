@@ -9,6 +9,7 @@
 import { describe, expect, it } from "vitest";
 import {
 	composeToolDiagnosticRedactor,
+	projectModelCallDiagnosticValue,
 	projectToolDiagnosticArgs,
 	projectToolDiagnosticValue,
 	TOOL_DIAGNOSTIC_MASK,
@@ -53,6 +54,8 @@ describe("projectToolDiagnosticValue", () => {
 	it("preserves numbers, booleans, and null exactly", () => {
 		const args = {
 			retries: 3,
+			tokenCount: 12,
+			maxTokens: 4096,
 			ratio: 0.25,
 			dryRun: false,
 			enabled: true,
@@ -63,10 +66,15 @@ describe("projectToolDiagnosticValue", () => {
 
 	it("fully masks values under credential-named keys", () => {
 		const projected = projectToolDiagnosticValue(
-			{ apiKey: "short", nested: { authorization: { deep: 1 } } },
+			{
+				apiKey: "short",
+				accessTokens: ["short"],
+				nested: { authorization: { deep: 1 } },
+			},
 			redactor,
 		) as Record<string, unknown>;
 		expect(projected.apiKey).toBe(TOOL_DIAGNOSTIC_MASK);
+		expect(projected.accessTokens).toBe(TOOL_DIAGNOSTIC_MASK);
 		expect((projected.nested as Record<string, unknown>).authorization).toBe(
 			TOOL_DIAGNOSTIC_MASK,
 		);
@@ -142,6 +150,78 @@ describe("projectToolDiagnosticValue", () => {
 		expect(projected.name).toBe("ToolFailure");
 		expect(projected.message).not.toContain(FLAG_CANARY);
 		expect(projected.stack ?? "").not.toContain(FLAG_CANARY);
+	});
+});
+
+describe("projectModelCallDiagnosticValue", () => {
+	it("preserves schema identifiers while scrubbing schema values and tool metadata", () => {
+		const raw = {
+			responseSchema: {
+				type: "object",
+				properties: {
+					apiKey: {
+						type: "string",
+						description: `Never echo --token=${FLAG_CANARY}`,
+					},
+					secret: { type: "string" },
+				},
+				required: ["apiKey", "secret"],
+				default: { apiKey: "short-canary" },
+			},
+			tools: [
+				{
+					name: "authenticate",
+					parameters: {
+						type: "object",
+						properties: {
+							token: { type: "string" },
+						},
+						required: ["token"],
+					},
+					metadata: { apiKey: "short-canary" },
+				},
+				{
+					type: "function",
+					function: {
+						name: "nested_authenticate",
+						parameters: {
+							type: "object",
+							properties: {
+								accessToken: { type: "string" },
+							},
+							required: ["accessToken"],
+						},
+					},
+				},
+			],
+			providerOptions: { apiKey: "short-canary" },
+		};
+
+		const projected = projectModelCallDiagnosticValue(
+			raw,
+			redactor,
+		) as typeof raw;
+		expect(projected.responseSchema.properties.apiKey).toEqual({
+			type: "string",
+			description: expect.not.stringContaining(FLAG_CANARY),
+		});
+		expect(projected.responseSchema.properties.secret).toEqual({
+			type: "string",
+		});
+		expect(projected.responseSchema.required).toEqual(["apiKey", "secret"]);
+		expect(projected.responseSchema.default.apiKey).toBe(TOOL_DIAGNOSTIC_MASK);
+		expect(projected.tools[0]?.parameters.properties.token).toEqual({
+			type: "string",
+		});
+		expect(projected.tools[0]?.parameters.required).toEqual(["token"]);
+		expect(projected.tools[0]?.metadata.apiKey).toBe(TOOL_DIAGNOSTIC_MASK);
+		expect(
+			projected.tools[1]?.function.parameters.properties.accessToken,
+		).toEqual({ type: "string" });
+		expect(projected.providerOptions.apiKey).toBe(TOOL_DIAGNOSTIC_MASK);
+		expect(raw.responseSchema.properties.apiKey.description).toContain(
+			FLAG_CANARY,
+		);
 	});
 });
 

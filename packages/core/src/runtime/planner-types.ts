@@ -35,6 +35,8 @@ export interface EvaluatorRuntime {
 		error: unknown,
 		context?: Record<string, unknown>,
 	): void;
+	/** Runtime-known-secret redaction composed into model-bound tool history. */
+	redactSecrets?(text: string): string;
 	useModel(
 		modelType: TextGenerationModelType,
 		params: {

@@ -152,6 +152,7 @@ export {
 } from "./spawn-env-policy.js";
 export {
 	composeToolDiagnosticRedactor,
+	projectModelCallDiagnosticValue,
 	projectToolDiagnosticArgs,
 	projectToolDiagnosticValue,
 	TOOL_DIAGNOSTIC_MASK,

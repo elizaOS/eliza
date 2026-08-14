@@ -54,7 +54,11 @@ import {
 import { resolveStateDir } from "../utils/state-dir";
 import { isPlainObject } from "../utils/type-guards";
 import { tailWellFormed, truncateWellFormed } from "../utils/well-formed";
-import { computePrefixHashes, stableJsonStringify } from "./context-hash";
+import {
+	computePrefixHashes,
+	hashString,
+	stableJsonStringify,
+} from "./context-hash";
 import { appendContextEvent } from "./context-object";
 import {
 	buildStageChatMessages,
@@ -681,11 +685,17 @@ async function runPlannerLoopIterations(
 						trajectory,
 						iteration,
 					);
-					trajectory.evaluatorOutputs.push(evaluator);
+					trajectory.evaluatorOutputs.push(
+						projectToolDiagnosticValue(
+							evaluator,
+							redactDiagnosticText,
+						) as EvaluatorOutput,
+					);
 					trajectory.context = appendEvaluationEvent({
 						context: trajectory.context,
 						iteration,
 						evaluator,
+						redactDiagnosticText,
 					});
 					const protocolFailureRelay =
 						deterministicEvaluatorProtocolFailureRelay(evaluator, trajectory);
@@ -945,11 +955,17 @@ async function runPlannerLoopIterations(
 				// — the happy path tests assert this.
 				const shouldRecordTerminalEvaluation =
 					trajectory.evaluatorOutputs.length > 0;
-				trajectory.evaluatorOutputs.push(terminalEvaluator);
+				trajectory.evaluatorOutputs.push(
+					projectToolDiagnosticValue(
+						terminalEvaluator,
+						redactDiagnosticText,
+					) as EvaluatorOutput,
+				);
 				trajectory.context = appendEvaluationEvent({
 					context: trajectory.context,
 					iteration,
 					evaluator: terminalEvaluator,
+					redactDiagnosticText,
 				});
 				if (shouldRecordTerminalEvaluation) {
 					const terminalEvalStartedAt = Date.now();
@@ -1238,11 +1254,17 @@ async function runPlannerLoopIterations(
 		});
 		if (gatedDecision) {
 			const { output: gated, reason } = gatedDecision;
-			trajectory.evaluatorOutputs.push(gated);
+			trajectory.evaluatorOutputs.push(
+				projectToolDiagnosticValue(
+					gated,
+					redactDiagnosticText,
+				) as EvaluatorOutput,
+			);
 			trajectory.context = appendEvaluationEvent({
 				context: trajectory.context,
 				iteration,
 				evaluator: gated,
+				redactDiagnosticText,
 			});
 			await recordGatedEvaluationStage({
 				runtime: params.runtime,
@@ -1317,8 +1339,18 @@ async function runPlannerLoopIterations(
 				),
 			};
 		}
-		trajectory.evaluatorOutputs.push(evaluator);
-		appendEvaluatorContextEvent(trajectory, evaluator, iteration);
+		trajectory.evaluatorOutputs.push(
+			projectToolDiagnosticValue(
+				evaluator,
+				redactDiagnosticText,
+			) as EvaluatorOutput,
+		);
+		appendEvaluatorContextEvent(
+			trajectory,
+			evaluator,
+			iteration,
+			redactDiagnosticText,
+		);
 		const protocolFailureRelay = deterministicEvaluatorProtocolFailureRelay(
 			evaluator,
 			trajectory,
@@ -1434,6 +1466,7 @@ function renderPlannerModelInput(params: {
 	).trim();
 	const stepMessages = trajectoryStepsToMessages(params.trajectory.steps, {
 		maxToolResultChars: params.maxToolResultChars,
+		redactText: composeToolDiagnosticRedactor(params.runtime),
 	});
 	// Action names + parameter schemas now ride directly on the tools array
 	// (each Action is exposed as its own native tool), so there is no separate
@@ -2383,9 +2416,20 @@ function summarizePlannerStep(
 				)}`
 			: "";
 	const result = step.result
-		? ` result=${compactText(toolMessageContent(step.result), 360)}`
+		? ` result=${compactText(
+				toolMessageContent(
+					projectToolDiagnosticValue(
+						step.result,
+						redactDiagnosticText,
+					) as PlannerToolResult,
+				),
+				360,
+			)}`
 		: step.terminalMessage
-			? ` message=${compactText(step.terminalMessage, 240)}`
+			? ` message=${compactText(
+					redactDiagnosticText(step.terminalMessage),
+					240,
+				)}`
 			: "";
 	return `iter ${step.iteration} ${name} ${status}${args}${result}`;
 }
@@ -2704,8 +2748,13 @@ function appendEvaluationEvent(args: {
 	context: ContextObject;
 	iteration: number;
 	evaluator: EvaluatorOutput;
+	redactDiagnosticText?: ToolDiagnosticTextRedactor;
 }): ContextObject {
 	const createdAt = Date.now();
+	const evaluator = projectToolDiagnosticValue(
+		args.evaluator,
+		args.redactDiagnosticText ?? composeToolDiagnosticRedactor(),
+	) as EvaluatorOutput;
 	return appendContextEvent(args.context, {
 		id: `evaluation:${args.iteration}:${createdAt}`,
 		type: "evaluation",
@@ -2713,13 +2762,13 @@ function appendEvaluationEvent(args: {
 		createdAt,
 		metadata: {
 			iteration: args.iteration,
-			success: args.evaluator.success,
-			decision: args.evaluator.decision,
-			thought: args.evaluator.thought,
-			messageToUser: args.evaluator.messageToUser,
-			recommendedToolCallId: args.evaluator.recommendedToolCallId,
-			protocolFailure: args.evaluator.protocolFailure,
-			parseError: args.evaluator.parseError,
+			success: evaluator.success,
+			decision: evaluator.decision,
+			thought: evaluator.thought,
+			messageToUser: evaluator.messageToUser,
+			recommendedToolCallId: evaluator.recommendedToolCallId,
+			protocolFailure: evaluator.protocolFailure,
+			parseError: evaluator.parseError,
 		},
 	});
 }
@@ -2728,11 +2777,13 @@ function appendEvaluatorContextEvent(
 	trajectory: PlannerTrajectory,
 	evaluator: EvaluatorOutput,
 	iteration: number,
+	redactDiagnosticText?: ToolDiagnosticTextRedactor,
 ): void {
 	trajectory.context = appendEvaluationEvent({
 		context: trajectory.context,
 		iteration,
 		evaluator,
+		redactDiagnosticText,
 	});
 }
 
@@ -2917,9 +2968,20 @@ async function executeQueuedToolCall(params: {
 		metadata: { iteration: params.iteration },
 	});
 
-	await params.params.onToolCallEnqueued?.(params.toolCall, {
-		iteration: params.iteration,
-	});
+	await params.params.onToolCallEnqueued?.(
+		{
+			...params.toolCall,
+			...(params.toolCall.params !== undefined
+				? {
+						params: projectToolDiagnosticArgs(
+							params.toolCall.params,
+							redactDiagnosticText,
+						),
+					}
+				: {}),
+		},
+		{ iteration: params.iteration },
+	);
 
 	const startedAt = Date.now();
 	let result: PlannerToolResult;
@@ -2954,12 +3016,13 @@ async function executeQueuedToolCall(params: {
 	const isParameterValidationFailure = Array.isArray(
 		(result.data as { parameterErrors?: unknown } | undefined)?.parameterErrors,
 	);
+	const failureError = isParameterValidationFailure
+		? "parameter_validation_failed"
+		: (result.error ?? diagnosticFailureReason(result));
 	const failure = {
 		toolName: params.toolCall.name,
 		success: result.success,
-		error: isParameterValidationFailure
-			? "parameter_validation_failed"
-			: (result.error ?? diagnosticFailureReason(result)),
+		error: projectToolDiagnosticValue(failureError, redactDiagnosticText),
 		repeatKey: isParameterValidationFailure
 			? "parameter_validation"
 			: toolFailureRepeatKey(params.toolCall),
@@ -3850,7 +3913,7 @@ function synthesisReceiptSummary(
 			const operation = compactText(receipt.operation, 120);
 			const resourceKind = compactText(receipt.resource.kind, 80);
 			const resourceId = compactText(receipt.resource.id, 160);
-			return `receipt outcome=${receipt.outcome} operation=${operation} resource=${resourceKind}:${resourceId}`;
+			return `receipt outcome=${receipt.outcome} operation=${operation} resource_kind=${resourceKind} resource_id=${resourceId}`;
 		})
 		.join("\n");
 }
@@ -4262,13 +4325,18 @@ async function rescueReplyFromSuccessfulResults(
 	params: PlannerLoopParams,
 	trajectory: PlannerTrajectory,
 ): Promise<string | undefined> {
+	const redactDiagnosticText = composeToolDiagnosticRedactor(params.runtime);
 	const successfulExcerpts: string[] = [];
 	for (const step of [...trajectory.archivedSteps, ...trajectory.steps]) {
 		if (!step.toolCall || isTerminalToolCall(step.toolCall)) continue;
 		if (step.result?.success !== true) continue;
+		const diagnosticResult = projectToolDiagnosticValue(
+			step.result,
+			redactDiagnosticText,
+		) as PlannerToolResult;
 		const text =
-			getNonEmptyString(step.result.userFacingText) ??
-			getNonEmptyString(step.result.text);
+			getNonEmptyString(diagnosticResult.userFacingText) ??
+			getNonEmptyString(diagnosticResult.text);
 		if (!text) continue;
 		successfulExcerpts.push(
 			[
@@ -4284,7 +4352,8 @@ async function rescueReplyFromSuccessfulResults(
 		latestUnresolvedFailedNonTerminalToolStep(trajectory) ??
 		latestFailedToolStep(trajectory);
 	const failedCause = failedStep
-		? failedStepCauseForPrompt(failedStep)
+		? redactDiagnosticText(failedStepCauseForPrompt(failedStep) ?? "") ||
+			undefined
 		: undefined;
 	const instructions = [
 		"You are finishing a chat turn. Compose the final reply to the user from the tool results in the next message.",
@@ -4937,7 +5006,9 @@ function splitUnavailableToolCalls(
 }
 
 function toolFailureRepeatKey(toolCall: PlannerToolCall): string {
-	return `${toolCall.name}:${stringifyForModel(toolCall.params ?? {})}`;
+	return `${toolCall.name}:${hashString(
+		stableJsonStringify(toolCall.params ?? {}),
+	)}`;
 }
 
 /**
@@ -5611,12 +5682,20 @@ export function summarizeActionResultForPlanner(
 	action: Pick<Action, "summarize"> | undefined,
 	result: ActionResult,
 	params: Record<string, unknown> = {},
+	runtime?: Pick<PlannerRuntime, "redactSecrets">,
 ): string | undefined {
 	if (result.success !== true || typeof action?.summarize !== "function") {
 		return undefined;
 	}
-	const summary = action.summarize(result, params)?.trim();
-	return summary || undefined;
+	const redactDiagnosticText = composeToolDiagnosticRedactor(runtime);
+	const diagnosticResult = projectToolDiagnosticValue(
+		result,
+		redactDiagnosticText,
+	) as ActionResult;
+	const diagnosticParams =
+		projectToolDiagnosticArgs(params, redactDiagnosticText) ?? {};
+	const summary = action.summarize(diagnosticResult, diagnosticParams)?.trim();
+	return summary ? redactDiagnosticText(summary) : undefined;
 }
 
 function getNonEmptyString(value: unknown): string | undefined {

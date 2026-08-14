@@ -46,7 +46,10 @@ import {
 } from "./trace-correlation";
 import { resolveTrajectoryGate } from "./trajectory-gate";
 import type { TrajectoryProviderAttribution } from "./trajectory-provider-attribution";
-import { omitUnvalidatedProviderSpans } from "./trajectory-provider-attribution";
+import {
+	canonicalPromptForModelCall,
+	omitUnvalidatedProviderSpans,
+} from "./trajectory-provider-attribution";
 
 // ---------------------------------------------------------------------------
 // Schema (mirrors PLAN.md §18.1)
@@ -1190,10 +1193,10 @@ export function annotateStageCost(
  * handler, and any future generic caller) is protected here rather than at
  * its own call site: tool arguments, tool result/error, captured tool I/O,
  * and model-stage tool-call arguments are projected through the composed
- * redaction before the stage reaches disk. Mutates the (already cloned)
- * stage in place. Model prompt/message text is deliberately untouched:
- * provider attributions index into the flattened persisted messages by span,
- * so rewriting that text would corrupt attribution provenance.
+ * redaction before the stage reaches disk. Mutates the (already cloned) stage
+ * in place. Model prompt/message text is projected as well; when message bytes
+ * change, provider-attribution offsets are dropped through the canonical
+ * fallback so they never index text different from the persisted messages.
  */
 export function projectRecordedStageToolDiagnostics(
 	stage: RecordedStage,
@@ -1220,6 +1223,10 @@ export function projectRecordedStageToolDiagnostics(
 		}
 	}
 	if (stage.model) {
+		const attributionInputBefore = canonicalPromptForModelCall({
+			messages: stage.model.messages,
+			prompt: stage.model.prompt,
+		});
 		if (stage.model.toolCalls?.length) {
 			stage.model.toolCalls = stage.model.toolCalls.map((toolCall) => ({
 				...toolCall,
@@ -1235,7 +1242,10 @@ export function projectRecordedStageToolDiagnostics(
 		// no longer provable against the persisted prompt — drop the offsets via
 		// the canonical fallback and keep contribution identity.
 		if (typeof stage.model.prompt === "string") {
-			stage.model.prompt = redactText(stage.model.prompt);
+			const projectedPrompt = redactText(stage.model.prompt);
+			if (projectedPrompt !== stage.model.prompt) {
+				stage.model.prompt = projectedPrompt;
+			}
 		}
 		stage.model.response = redactText(stage.model.response);
 		if (Array.isArray(stage.model.messages)) {
@@ -1245,12 +1255,19 @@ export function projectRecordedStageToolDiagnostics(
 			) as RecordedModelCall["messages"];
 			if (projectedMessages !== stage.model.messages) {
 				stage.model.messages = projectedMessages;
-				if (stage.model.providerAttributions?.length) {
-					stage.model.providerAttributions = omitUnvalidatedProviderSpans(
-						stage.model.providerAttributions,
-					);
-				}
 			}
+		}
+		const attributionInputAfter = canonicalPromptForModelCall({
+			messages: stage.model.messages,
+			prompt: stage.model.prompt,
+		});
+		if (
+			attributionInputAfter !== attributionInputBefore &&
+			stage.model.providerAttributions?.length
+		) {
+			stage.model.providerAttributions = omitUnvalidatedProviderSpans(
+				stage.model.providerAttributions,
+			);
 		}
 	}
 	if (stage.evaluation) {

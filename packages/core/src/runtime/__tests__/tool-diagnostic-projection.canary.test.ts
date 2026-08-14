@@ -19,7 +19,10 @@ import { runWithTrajectoryContext } from "../../trajectory-context";
 import type { Action, IAgentRuntime, Memory } from "../../types";
 import { EventType } from "../../types";
 import { executePlannedToolCall } from "../execute-planned-tool-call";
-import { runPlannerLoop } from "../planner-loop";
+import {
+	runPlannerLoop,
+	summarizeActionResultForPlanner,
+} from "../planner-loop";
 import { createJsonFileTrajectoryRecorder } from "../trajectory-recorder";
 
 const RAW_SENTINEL = "SYNTHETIC-CANARY-RAW-SENTINEL-000000";
@@ -212,9 +215,11 @@ describe("tool-call diagnostic projection canaries", () => {
 		});
 
 		let plannerCall = 0;
+		const modelInputs: unknown[] = [];
 		const runtime = {
 			redactSecrets: redactRuntimeSecrets,
-			useModel: vi.fn(async () => {
+			useModel: vi.fn(async (_modelType: unknown, input: unknown) => {
+				modelInputs.push(input);
 				plannerCall += 1;
 				if (plannerCall === 1) {
 					return {
@@ -224,7 +229,10 @@ describe("tool-call diagnostic projection canaries", () => {
 						],
 					};
 				}
-				return { text: "", toolCalls: [] };
+				return {
+					text: '{"thought":"Done.","messageToUser":"Done.","toolCalls":[]}',
+					toolCalls: [],
+				};
 			}),
 		};
 		const executeToolCall = vi.fn(async () => ({
@@ -232,14 +240,22 @@ describe("tool-call diagnostic projection canaries", () => {
 			text: `ran ${CANARY_PARAMS.command}`,
 			data: { echoedTarget: CANARY_PARAMS.target },
 		}));
-		const evaluate = vi.fn(async () => ({
-			success: true,
-			decision: "FINISH" as const,
-			thought: "Done.",
-			messageToUser: "Done.",
-		}));
+		const evaluate = vi
+			.fn()
+			.mockResolvedValueOnce({
+				success: true,
+				decision: "CONTINUE" as const,
+				thought: `Continue without ${RUNTIME_SECRET}.`,
+			})
+			.mockResolvedValue({
+				success: true,
+				decision: "FINISH" as const,
+				thought: `Finish without ${RUNTIME_SECRET}.`,
+				messageToUser: "Done.",
+			});
 
 		const streamedToolCalls: unknown[] = [];
+		const enqueuedToolCalls: unknown[] = [];
 		const loopResult = await runWithStreamingContext(
 			{
 				onStreamChunk: vi.fn(),
@@ -262,6 +278,9 @@ describe("tool-call diagnostic projection canaries", () => {
 					},
 					executeToolCall,
 					evaluate,
+					onToolCallEnqueued: (toolCall) => {
+						enqueuedToolCalls.push(toolCall);
+					},
 					recorder,
 					trajectoryId,
 				}),
@@ -283,6 +302,17 @@ describe("tool-call diagnostic projection canaries", () => {
 		expectNoCanaries(JSON.stringify(pending));
 		expect(pending.toolCall.id).toBe("call-1");
 		expect(pending.toolCall.arguments.retries).toBe(3);
+		expectNoCanaries(JSON.stringify(enqueuedToolCalls));
+		expect(enqueuedToolCalls).toHaveLength(1);
+
+		// The second planner request receives native assistant/tool history, but
+		// both the prior call arguments and its result are diagnostic projections.
+		const secondModelInput = modelInputs[1];
+		if (!secondModelInput) throw new Error("Expected a second planner input");
+		const secondModelSurface = JSON.stringify(secondModelInput);
+		expectNoCanaries(secondModelSurface);
+		expect(secondModelSurface).toContain(RAW_SENTINEL);
+		expect(secondModelSurface).toContain('"retries":3');
 
 		// Planner queue and context events: diagnostic copies exclude canaries;
 		// the raw sentinel and scalars survive for correlation and debugging.
@@ -318,5 +348,23 @@ describe("tool-call diagnostic projection canaries", () => {
 		expect(persisted).toContain(RAW_SENTINEL);
 
 		await fs.rm(trajectoryRoot, { recursive: true, force: true });
+	});
+
+	it("projects action-owned summaries before they can become model or user diagnostics", () => {
+		const summary = summarizeActionResultForPlanner(
+			{
+				summarize: (_result, params) =>
+					`ran ${String(params.command)} against ${String(params.target)}`,
+			},
+			{
+				success: true,
+				text: `result contains ${RUNTIME_SECRET}`,
+			},
+			CANARY_PARAMS,
+			{ redactSecrets: redactRuntimeSecrets },
+		);
+		if (!summary) throw new Error("Expected an action summary");
+		expectNoCanaries(summary);
+		expect(summary).toContain("ran");
 	});
 });
