@@ -98,6 +98,27 @@ describe("runDeploy", () => {
     );
   });
 
+  it.each(["", "-1", "1.5", "1e3", "01000", "2147483648", " 1000 "])(
+    "rejects malformed poll interval %s before any network call",
+    async (interval) => {
+      process.env.ELIZAOS_CLOUD_API_KEY = "eliza_test_key";
+      process.env.ELIZAOS_DEPLOY_POLL_INTERVAL_MS = interval;
+      const fetchMock = vi.fn();
+      globalThis.fetch = fetchMock as unknown as typeof fetch;
+      const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+      const code = await runDeploy({ appId: "app-1" });
+
+      expect(code).toBe(1);
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(errorSpy).toHaveBeenCalledWith(
+        expect.stringContaining(
+          "ELIZAOS_DEPLOY_POLL_INTERVAL_MS must be a base-10 integer between 0 and 2147483647",
+        ),
+      );
+    },
+  );
+
   it("attaches a custom domain after queueing the deploy", async () => {
     process.env.ELIZAOS_CLOUD_API_KEY = "eliza_test_key";
     process.env.ELIZA_CLOUD_API_BASE_URL = "https://cloud.example.test";

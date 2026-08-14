@@ -21,6 +21,7 @@ const DOMAIN_REGEX = /^([a-z0-9]([a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,}$/;
 const DEFAULT_API_BASE_URL = "https://api.eliza.app/api/v1";
 const DEFAULT_POLL_INTERVAL_MS = 5_000;
 const DEFAULT_POLL_TIMEOUT_MS = 10 * 60_000;
+const MAX_TIMER_DELAY_MS = 2_147_483_647;
 const APP_ID_KEYS = [
   "appId",
   "cloudAppId",
@@ -220,10 +221,20 @@ function metadataNameCandidates(
 }
 
 function pollIntervalMs(): number {
-  const value = Number(process.env.ELIZAOS_DEPLOY_POLL_INTERVAL_MS);
-  return Number.isFinite(value) && value >= 0
-    ? value
-    : DEFAULT_POLL_INTERVAL_MS;
+  const raw = process.env.ELIZAOS_DEPLOY_POLL_INTERVAL_MS;
+  if (raw === undefined) return DEFAULT_POLL_INTERVAL_MS;
+  if (!/^(0|[1-9]\d*)$/.test(raw)) {
+    throw new Error(
+      "ELIZAOS_DEPLOY_POLL_INTERVAL_MS must be a base-10 integer between 0 and 2147483647.",
+    );
+  }
+  const value = Number(raw);
+  if (!Number.isSafeInteger(value) || value > MAX_TIMER_DELAY_MS) {
+    throw new Error(
+      "ELIZAOS_DEPLOY_POLL_INTERVAL_MS must be a base-10 integer between 0 and 2147483647.",
+    );
+  }
+  return value;
 }
 
 function pollTimeoutMs(): number {
@@ -335,10 +346,10 @@ async function pollDeploymentStatus(
   apiBaseUrl: string,
   apiKey: string,
   appId: string,
+  intervalMs: number,
 ): Promise<DeployStatusResponse> {
   const startedAt = Date.now();
   const timeoutMs = pollTimeoutMs();
-  const intervalMs = pollIntervalMs();
   while (true) {
     const status = await cloudRequest<DeployStatusResponse>(
       apiBaseUrl,
@@ -392,6 +403,7 @@ export async function runDeploy(options: DeployOptions): Promise<number> {
   }
 
   try {
+    const intervalMs = pollIntervalMs();
     const apiKey = resolveApiKey();
     if (!apiKey) {
       throw new Error(
@@ -418,7 +430,12 @@ export async function runDeploy(options: DeployOptions): Promise<number> {
       await attachDomain(apiBaseUrl, apiKey, appId, options.domain);
     }
 
-    const finalStatus = await pollDeploymentStatus(apiBaseUrl, apiKey, appId);
+    const finalStatus = await pollDeploymentStatus(
+      apiBaseUrl,
+      apiKey,
+      appId,
+      intervalMs,
+    );
     if (finalStatus.status === "ERROR") {
       console.error(
         pc.red(`Deploy failed: ${finalStatus.error ?? "unknown error"}`),
