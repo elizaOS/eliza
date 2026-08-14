@@ -162,19 +162,27 @@ function buildLocalAvatarPathCandidates(source: string): string[] {
 async function readAvatarBytesFromLocalCandidates(
 	source: string,
 ): Promise<Buffer> {
-	let lastError: unknown = null;
-	for (const candidate of buildLocalAvatarPathCandidates(source)) {
+	const candidates = buildLocalAvatarPathCandidates(source);
+	for (const candidate of candidates) {
 		try {
 			return await fs.readFile(candidate);
-		} catch (error) {
-			lastError = error;
+		} catch {
+			// error-policy:J3 each miss is expected while probing the candidate
+			// list; the aggregate failure below is the real, reported outcome.
 		}
 	}
 
-	if (lastError instanceof Error) {
-		throw lastError;
-	}
-	throw new Error(`Unable to resolve Discord profile avatar source: ${source}`);
+	// Report the SOURCE and every path tried, not one arbitrary candidate's
+	// ENOENT. Rethrowing the last miss named a single file the reader then went
+	// hunting for — the live warning read `ENOENT ... open
+	// '<repo>/public/avatars/eliza.png'`, which describes neither the real
+	// input (`/avatars/eliza.png`, a web path served from blob storage, with no
+	// local file anywhere) nor the fact that several roots were probed.
+	throw new Error(
+		candidates.length === 0
+			? `Unable to resolve Discord profile avatar source: ${source}`
+			: `Unable to resolve Discord profile avatar source "${source}" — none of ${candidates.length} candidate path(s) exist: ${candidates.join(", ")}`,
+	);
 }
 
 async function loadDiscordProfileAvatarBytes(
