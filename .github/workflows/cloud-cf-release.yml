@@ -1650,8 +1650,8 @@ jobs:
     name: Verify ${{ inputs.target_environment }} routing
     needs: [deploy-api, deploy-app]
     # Custom domains only exist for the real environments -- PR previews deploy to
-    # a preview branch alias, so skip them. Require all three deploys to have
-    # landed (the beacon is served by the API Worker; both frontend domains by
+    # a preview branch alias, so skip them. Require both deploys to have landed
+    # (the beacon is served by the API Worker; both frontend domains by
     # one Pages project), else there is nothing trustworthy to probe.
     if: ${{ !cancelled() && github.event_name != 'pull_request' && needs.deploy-api.result == 'success' && needs.deploy-app.result == 'success' }}
     runs-on: ubuntu-latest
@@ -1670,9 +1670,18 @@ jobs:
 
       - name: Resolve deployed environment
         id: env
+        env:
+          TARGET_ENVIRONMENT: ${{ inputs.target_environment }}
         run: |
-          echo "environment=${{ inputs.target_environment }}" >> "$GITHUB_OUTPUT"
-          echo "environment=$env" >> "$GITHUB_OUTPUT"
+          set -euo pipefail
+          case "$TARGET_ENVIRONMENT" in
+            staging|production) ;;
+            *)
+              echo "::error::Unsupported deployed environment: ${TARGET_ENVIRONMENT:-<missing>}"
+              exit 1
+              ;;
+          esac
+          echo "environment=$TARGET_ENVIRONMENT" >> "$GITHUB_OUTPUT"
 
       - name: Verify the just-deployed environment serves itself
         # This run built AND deployed the beacon-carrying Worker for this env, so

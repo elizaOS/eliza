@@ -80,6 +80,9 @@ const ENVELOPE_WARNING_NEEDLE =
   "security notice: the following content is from an external, untrusted source";
 const MARKER_PROXIMITY_WINDOW = 64;
 const INVISIBLE_CODE_POINTS = /[\u200B-\u200D\u2060\uFEFF\u00AD]/g;
+const FULLWIDTH_ASCII_OFFSET = 0xfee0;
+const FULLWIDTH_LEFT_ANGLE = 0xff1c;
+const FULLWIDTH_RIGHT_ANGLE = 0xff1e;
 
 // Cyrillic/Greek letters that render as the Latin letters of the envelope
 // vocabulary. Mirrors CONFUSABLE_TO_LATIN in core's external-content.ts.
@@ -148,6 +151,63 @@ const CONFUSABLE_PATTERN = new RegExp(
   `[${Object.keys(CONFUSABLE_TO_LATIN).join("")}]`,
   "g",
 );
+
+function foldMarkerText(input: string): string {
+  return input.replace(/[\uFF21-\uFF3A\uFF41-\uFF5A\uFF1C\uFF1E]/g, (char) => {
+    const code = char.charCodeAt(0);
+    if (code >= 0xff21 && code <= 0xff3a) {
+      return String.fromCharCode(code - FULLWIDTH_ASCII_OFFSET);
+    }
+    if (code >= 0xff41 && code <= 0xff5a) {
+      return String.fromCharCode(code - FULLWIDTH_ASCII_OFFSET);
+    }
+    if (code === FULLWIDTH_LEFT_ANGLE) return "<";
+    if (code === FULLWIDTH_RIGHT_ANGLE) return ">";
+    return char;
+  });
+}
+
+function replaceExternalMarkers(content: string): string {
+  const folded = foldMarkerText(content);
+  if (!/external_untrusted_content/i.test(folded)) return content;
+  const replacements: Array<{ start: number; end: number; value: string }> = [];
+  for (const [regex, value] of [
+    [/<<<EXTERNAL_UNTRUSTED_CONTENT>>>/gi, "[[MARKER_SANITIZED]]"],
+    [/<<<END_EXTERNAL_UNTRUSTED_CONTENT>>>/gi, "[[END_MARKER_SANITIZED]]"],
+  ] as const) {
+    regex.lastIndex = 0;
+    let match = regex.exec(folded);
+    while (match) {
+      replacements.push({
+        start: match.index,
+        end: match.index + match[0].length,
+        value,
+      });
+      match = regex.exec(folded);
+    }
+  }
+  replacements.sort((a, b) => a.start - b.start);
+  let cursor = 0;
+  let output = "";
+  for (const replacement of replacements) {
+    if (replacement.start < cursor) continue;
+    output += content.slice(cursor, replacement.start);
+    output += replacement.value;
+    cursor = replacement.end;
+  }
+  return output + content.slice(cursor);
+}
+
+/** Worker-safe mirror of core's web-search external-content boundary. */
+export function wrapWebContent(content: string): string {
+  return [
+    EXTERNAL_CONTENT_START,
+    "Source: Web Search",
+    "---",
+    replaceExternalMarkers(content),
+    EXTERNAL_CONTENT_END,
+  ].join("\n");
+}
 
 function buildEnvelopeDetectionSkeleton(text: string): string {
   return text

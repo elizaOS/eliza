@@ -16,11 +16,13 @@ interface WorkflowStep {
   id?: string;
   name?: string;
   run?: string;
-  with?: { script?: string };
+  uses?: string;
+  with?: Record<string, string>;
 }
 
 interface WorkflowJob {
   env?: Record<string, string>;
+  needs?: string | string[];
   steps?: WorkflowStep[];
 }
 
@@ -76,6 +78,97 @@ const requiredAuthWorkerSecretNames = [
 ] as const;
 
 describe("canonical cloud deployment environment contract", () => {
+  test("gates protected Terraform operations on the canonical source ref", () => {
+    expect(infra.jobs?.terraform?.needs).toBe("validate-source");
+    const validate = step(
+      infra,
+      "validate-source",
+      "Validate canonical source ref",
+    );
+    expect(validate.run).toContain('expected_ref="refs/heads/main"');
+    expect(validate.run).toContain('expected_ref="refs/heads/develop"');
+    expect(validate.run).toContain('if [ "$SOURCE_REF" != "$expected_ref" ]');
+  });
+
+  test("applies only an encrypted, service-bound artifact from a successful plan attempt", () => {
+    const plan = step(infra, "terraform", "Plan");
+    expect(plan.run).toContain("terraform plan");
+    const packagePlan = step(infra, "terraform", "Package reviewed plan");
+    expect(packagePlan.run).toContain("sha256sum selected.tfplan");
+    expect(packagePlan.run).toContain("plan-metadata.json");
+    expect(packagePlan.run).toContain("selected.tfplan.enc");
+    expect(packagePlan.run).toContain("terraform-plan-envelope.mjs");
+    expect(packagePlan.run).not.toContain(
+      'cp selected.tfplan "$artifact_dir/selected.tfplan"',
+    );
+    const validateRun = step(infra, "terraform", "Validate reviewed plan run");
+    expect(validateRun.run).toContain('run.name !== "Infrastructure"');
+    expect(validateRun.run).toContain(
+      'run.path !== ".github/workflows/infra.yml"',
+    );
+    expect(validateRun.run).toContain('run.conclusion !== "success"');
+    expect(validateRun.run).toContain("run.run_attempt");
+    const resolveArtifact = step(
+      infra,
+      "terraform",
+      "Resolve reviewed plan artifact",
+    );
+    expect(resolveArtifact.run).toContain(
+      "actions/artifacts/$EXPECTED_ARTIFACT_ID",
+    );
+    expect(resolveArtifact.run).toContain("artifact.digest");
+    expect(resolveArtifact.run).toContain("artifact.workflow_run?.id");
+    expect(resolveArtifact.run).toContain("EXPECTED_RUN_ATTEMPT");
+    const downloadArtifact = step(
+      infra,
+      "terraform",
+      "Download reviewed plan artifact",
+    );
+    expect(downloadArtifact.with?.["artifact-ids"]).toContain(
+      "inputs.plan_artifact_id",
+    );
+    expect(downloadArtifact.with).not.toHaveProperty("name");
+    const validateArtifact = step(
+      infra,
+      "terraform",
+      "Validate reviewed plan artifact",
+    );
+    expect(validateArtifact.run).toContain("selected.tfplan.enc");
+    expect(validateArtifact.run).toContain(
+      "Reviewed artifact contains a plaintext Terraform plan",
+    );
+    expect(validateArtifact.run).toContain("EXPECTED_SOURCE_SHA");
+    const decrypt = step(infra, "terraform", "Decrypt reviewed plan");
+    expect(decrypt.run).toContain("terraform-plan-envelope.mjs");
+    expect(decrypt.run).toContain("actual_digest");
+    const apply = step(infra, "terraform", "Apply reviewed plan");
+    expect(apply.run).toContain("terraform apply");
+    expect(apply.run).not.toContain("terraform plan");
+    const upload = step(infra, "terraform", "Upload reviewed plan artifact");
+    expect(upload.with?.name).toBe(
+      "terraform-plan-$" + "{{ github.run_id }}-$" + "{{ github.run_attempt }}",
+    );
+    expect(
+      infra.jobs?.terraform?.env?.TERRAFORM_PLAN_ARTIFACT_PUBLIC_KEY,
+    ).toContain("vars.TERRAFORM_PLAN_ARTIFACT_PUBLIC_KEY");
+    expect(infra.jobs?.terraform?.env).not.toHaveProperty(
+      "TERRAFORM_PLAN_ARTIFACT_PRIVATE_KEY",
+    );
+    expect(decrypt.env?.TERRAFORM_PLAN_ARTIFACT_PRIVATE_KEY).toContain(
+      "secrets.TERRAFORM_PLAN_ARTIFACT_PRIVATE_KEY",
+    );
+    expect(infraSource).not.toContain("TERRAFORM_PLAN_ARTIFACT_KEY");
+    const summary = step(
+      infra,
+      "terraform",
+      "Summarize reviewed plan identity",
+    );
+    expect(summary.run).toContain("Artifact digest: sha256:$ARTIFACT_DIGEST");
+    expect(infraSource).not.toContain(
+      "$RUNNER_TEMP/terraform-plan-artifact/selected.tfplan\n",
+    );
+  });
+
   test("derives Terraform deploy branches from the selected environment", () => {
     const deployBranch = infra.jobs?.terraform?.env?.TF_VAR_deploy_branch;
     expect(deployBranch).toContain("inputs.environment == 'production'");
@@ -338,5 +431,32 @@ describe("canonical cloud deployment environment contract", () => {
     expect(cloudSource).not.toContain(
       "pages project create eliza-app --production-branch=main 2>/dev/null || true",
     );
+  });
+
+  test("scopes post-deploy routing verification to the deployed environment", () => {
+    const resolve = step(
+      cloud,
+      "verify-routing",
+      "Resolve deployed environment",
+    );
+    expect(resolve.env?.TARGET_ENVIRONMENT).toContain(
+      "inputs.target_environment",
+    );
+    expect(resolve.run).toContain("set -euo pipefail");
+    expect(resolve.run).toContain("staging|production");
+    expect(resolve.run).toContain(
+      'echo "environment=$TARGET_ENVIRONMENT" >> "$GITHUB_OUTPUT"',
+    );
+    expect(resolve.run).not.toContain('echo "environment=$env"');
+
+    const verify = step(
+      cloud,
+      "verify-routing",
+      "Verify the just-deployed environment serves itself",
+    );
+    expect(verify.run).toContain(
+      '--environment "${' + '{ steps.env.outputs.environment }}"',
+    );
+    expect(verify.run).toContain("--require-beacon");
   });
 });
