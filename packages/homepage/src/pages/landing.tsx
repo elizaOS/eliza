@@ -218,8 +218,28 @@ function DemoCardBubble({ card }: { card: DemoCard }) {
   );
 }
 
+/** Frozen at mount so the whole demo reads as one continuous session. */
+function useSessionClock() {
+  const [clock] = useState(() => {
+    const now = new Date();
+    return {
+      short: now.toLocaleTimeString(undefined, {
+        hour: "numeric",
+        minute: "2-digit",
+        hour12: false,
+      }),
+      long: now.toLocaleTimeString(undefined, {
+        hour: "numeric",
+        minute: "2-digit",
+      }),
+    };
+  });
+  return clock;
+}
+
 function PhoneMockup() {
   const t = useT();
+  const clock = useSessionClock();
   const [items, setItems] = useState<DemoItem[]>([]);
   const [phase, setPhase] = useState<"intro" | "looping" | "settled">("intro");
   const [elizaTyping, setElizaTyping] = useState(false);
@@ -311,7 +331,7 @@ function PhoneMockup() {
       <div className="landing-iphone-screen">
         <div className="landing-phone-top">
           <div className="landing-iphone-statusbar">
-            <span className="landing-iphone-time">4:15</span>
+            <span className="landing-iphone-time">{clock.short}</span>
             <span className="landing-iphone-island" />
             <span className="landing-iphone-signal">
               <svg viewBox="0 0 46 12" fill="currentColor" aria-hidden="true">
@@ -361,7 +381,12 @@ function PhoneMockup() {
         </div>
         <div className="landing-phone-thread" ref={threadRef}>
           <div className="landing-thread-preamble">
-            <span className="landing-thread-timestamp">Today 4:15 PM</span>
+            <span className="landing-thread-timestamp">
+              {t("homepage_eliza.landing.threadStamp", {
+                defaultValue: "Today {{time}}",
+                time: clock.long,
+              })}
+            </span>
           </div>
           {items.map((item) =>
             item.kind === "card" ? (
@@ -576,6 +601,90 @@ export default function LandingPage() {
         <ShaderBackground />
       </Suspense>
       <div aria-hidden="true" className="landing-grain" />
+      <nav
+        className="landing-topbar"
+        aria-label={t("homepage_eliza.landing.topbarAria", {
+          defaultValue: "Reach Eliza",
+        })}
+      >
+        <span className="landing-topbar-channels">
+          <a
+            className="landing-channel"
+            href={buildElizaSmsHref()}
+            aria-label={t("homepage_eliza.landing.channelImessage", {
+              defaultValue: "Text Eliza on iMessage",
+            })}
+          >
+            <IMessageIcon className="size-6" style={{ color: "#34C759" }} />
+            <span className="sr-only">iMessage</span>
+          </a>
+          <a
+            className="landing-channel"
+            href={`tel:${ELIZA_PHONE_NUMBER}`}
+            aria-label={t("homepage_eliza.landing.channelPhone", {
+              defaultValue: "Call Eliza",
+            })}
+          >
+            <svg
+              viewBox="0 0 24 24"
+              fill="currentColor"
+              className="size-6"
+              aria-hidden="true"
+            >
+              <path d="M6.62 10.79a15.05 15.05 0 0 0 6.59 6.59l2.2-2.2a1 1 0 0 1 1.02-.24 11.36 11.36 0 0 0 3.57.57 1 1 0 0 1 1 1V20a1 1 0 0 1-1 1A17 17 0 0 1 3 4a1 1 0 0 1 1-1h3.5a1 1 0 0 1 1 1 11.36 11.36 0 0 0 .57 3.57 1 1 0 0 1-.25 1.02Z" />
+            </svg>
+            <span className="sr-only">Call</span>
+          </a>
+          {channels.map((channel) => (
+            <a
+              key={channel.key}
+              className="landing-channel"
+              href={channel.href}
+              aria-label={channel.label}
+              target={channel.external ? "_blank" : undefined}
+              rel={channel.external ? "noreferrer" : undefined}
+            >
+              {channel.icon}
+              <span className="sr-only">{channel.label}</span>
+            </a>
+          ))}
+        </span>
+        <a
+          className="landing-account"
+          href={
+            signedIn
+              ? productNavigation.dashboardUrl
+              : productNavigation.signInUrl
+          }
+          aria-label={
+            signedIn
+              ? t("homepage_eliza.landing.dashboard", {
+                  defaultValue: "Dashboard",
+                })
+              : t("homepage_eliza.landing.signIn", { defaultValue: "Sign in" })
+          }
+        >
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.7"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            className="size-6"
+            aria-hidden="true"
+          >
+            <path d="M17.5 19a4.5 4.5 0 0 0 .4-8.98 6 6 0 0 0-11.63-1.4A4.25 4.25 0 0 0 6.5 19h11Z" />
+          </svg>
+          <span className="sr-only">
+            {signedIn
+              ? t("homepage_eliza.landing.dashboard", {
+                  defaultValue: "Dashboard",
+                })
+              : t("homepage_eliza.landing.signIn", { defaultValue: "Sign in" })}
+          </span>
+        </a>
+      </nav>
       <header className="landing-header">
         <a
           className="landing-brand"
