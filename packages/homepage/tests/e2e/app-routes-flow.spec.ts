@@ -3,7 +3,6 @@
  */
 
 import { expect, type Page, test } from "playwright/test";
-import { ELIZA_PHONE_FORMATTED } from "../../src/lib/contact";
 import { waitForLandingIntro } from "./landing-readiness";
 
 const TEST_TOKEN = "homepage-e2e-token";
@@ -319,13 +318,8 @@ test("connected page exercises account menu, copy controls, link-phone form, and
   await page.getByLabel("Phone number").fill("416 555 0123");
   await page.getByRole("button", { name: "Link Phone" }).click();
   await expect(page.getByLabel("Phone number", { exact: true })).toHaveCount(0);
-  await expect(
-    page.getByRole("button", {
-      name: new RegExp(
-        `iMessage ${ELIZA_PHONE_FORMATTED.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`,
-      ),
-    }),
-  ).toBeVisible();
+  await expect(page.getByRole("button", { name: /^iMessage$/ })).toBeVisible();
+  await expect(page.getByText("+1 (808) 788-1821")).toHaveCount(0);
 
   await page.getByRole("button", { name: "Connect Discord" }).click();
   await expect(page).toHaveURL(/\/get-started\?method=discord&link=true/);
@@ -342,20 +336,18 @@ test("landing leads with iMessage and keeps secondary channels available", async
     page.getByRole("heading", { name: /Four hours of your time back/ }),
   ).toBeVisible({ timeout: 20_000 });
 
-  const textCta = page.getByRole("link", { name: "Text Eliza" });
+  const textCta = page.getByRole("button", { name: "Message Eliza" });
   await expect(textCta).toBeVisible();
-  await expect(textCta).toHaveAttribute("href", /^sms:\+18087881821/);
-  const phoneNumber = page.getByRole("button", {
-    name: "Copy Eliza's phone number",
-  });
-  await expect(phoneNumber).toHaveText("+1 (808) 788-1821");
-  await phoneNumber.click();
-  await expect(phoneNumber).toHaveText("Copied!");
+  await textCta.click();
+  await expect(page.getByRole("status")).toHaveText("Phone number copied");
+  await expect(page.getByText("+1 (808) 788-1821")).toHaveCount(0);
   await expect(page.getByRole("link", { name: "Call" })).toHaveAttribute(
     "href",
     "tel:+18087881821",
   );
-  await expect(page.locator(".landing-channel")).toHaveCount(3);
+  await expect(
+    page.locator(".landing-secondary-channels .landing-channel"),
+  ).toHaveCount(3);
   await expect(
     page.getByRole("link", { name: "Message Eliza on Telegram" }),
   ).toBeVisible();
@@ -368,12 +360,7 @@ test("landing leads with iMessage and keeps secondary channels available", async
   const channelRow = await page
     .locator(".landing-secondary-channels")
     .boundingBox();
-  const phoneNumberBox = await phoneNumber.boundingBox();
   expect(channelRow).not.toBeNull();
-  expect(phoneNumberBox).not.toBeNull();
-  expect(phoneNumberBox?.y).toBeGreaterThanOrEqual(
-    (channelRow?.y ?? 0) + (channelRow?.height ?? 0),
-  );
 
   const keyboard = page.locator(".landing-keyboard");
   await expect(keyboard).toHaveAttribute("data-open", "true", {

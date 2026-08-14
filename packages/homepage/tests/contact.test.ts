@@ -8,21 +8,21 @@ import {
   buildElizaSmsHref,
   buildElizaTelegramHref,
   buildElizaWhatsAppHref,
+  canOpenElizaSmsLink,
   ELIZA_DISCORD_APPLICATION_ID,
-  ELIZA_PHONE_FORMATTED,
   ELIZA_PHONE_NUMBER,
   ELIZA_TELEGRAM_BOT_ID,
   ELIZA_TELEGRAM_BOT_USERNAME,
   getDiscordBotApplicationId,
   getTelegramBotId,
   getWhatsAppNumber,
+  openOrCopyElizaMessage,
   resolveWhatsAppNumber,
 } from "../src/lib/contact";
 
 describe("Eliza contact links", () => {
   test("builds an SMS link to the hosted Blooio number", () => {
     expect(ELIZA_PHONE_NUMBER).toBe("+18087881821");
-    expect(ELIZA_PHONE_FORMATTED).toBe("+1 (808) 788-1821");
     expect(buildElizaSmsHref()).toBe(
       `sms:${ELIZA_PHONE_NUMBER}?&body=Hey%20Eliza%2C%20what%20can%20you%20do%3F`,
     );
@@ -54,5 +54,56 @@ describe("Eliza contact links", () => {
     );
     expect(getTelegramBotId()).toBe(ELIZA_TELEGRAM_BOT_ID);
     expect(getDiscordBotApplicationId()).toBe(ELIZA_DISCORD_APPLICATION_ID);
+  });
+
+  test("opens the native SMS handler only on supported platforms", async () => {
+    for (const platform of ["iPhone", "iPad", "MacIntel", "Android"]) {
+      expect(canOpenElizaSmsLink({ platform })).toBe(true);
+    }
+    expect(canOpenElizaSmsLink({ platform: "Win32" })).toBe(false);
+    expect(canOpenElizaSmsLink({ platform: "Linux x86_64" })).toBe(false);
+
+    const location = { href: "https://eliza.app/" };
+    const clipboardWrites: string[] = [];
+    await expect(
+      openOrCopyElizaMessage({
+        location,
+        navigator: {
+          platform: "MacIntel",
+          clipboard: {
+            writeText: async (value) => {
+              clipboardWrites.push(value);
+            },
+          },
+        },
+      }),
+    ).resolves.toBe("opened");
+    expect(location.href).toBe(buildElizaSmsHref());
+    expect(clipboardWrites).toEqual([]);
+  });
+
+  test("copies the sender on unsupported platforms and fails visibly without a clipboard", async () => {
+    const clipboardWrites: string[] = [];
+    await expect(
+      openOrCopyElizaMessage({
+        location: { href: "https://eliza.app/" },
+        navigator: {
+          platform: "Win32",
+          clipboard: {
+            writeText: async (value) => {
+              clipboardWrites.push(value);
+            },
+          },
+        },
+      }),
+    ).resolves.toBe("copied");
+    expect(clipboardWrites).toEqual([ELIZA_PHONE_NUMBER]);
+
+    await expect(
+      openOrCopyElizaMessage({
+        location: { href: "https://eliza.app/" },
+        navigator: { platform: "Linux x86_64" },
+      }),
+    ).rejects.toThrow("Clipboard access is unavailable");
   });
 });
