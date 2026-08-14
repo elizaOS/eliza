@@ -77,6 +77,7 @@ import { allocateFirstFreeLoopbackPort } from "./lib/allocate-loopback-port.mjs"
 import { createApiSupervisor } from "./lib/api-supervisor.mjs";
 import { resolveMainAppDir } from "./lib/app-dir.mjs";
 import { resolveDesktopStartupEmbeddingWarmupPolicy } from "./lib/desktop-startup-embedding-warmup-policy.mjs";
+import { resolveViteCommand } from "./lib/dev-ui-vite.mjs";
 import { signalSpawnedProcessTree } from "./lib/kill-process-tree.mjs";
 import { killUiListenPort } from "./lib/kill-ui-listen-port.mjs";
 import { resolveMacNativeEffectsDevPlan } from "./lib/macos-native-effects-dev.mjs";
@@ -434,7 +435,11 @@ if (rendererBuildAction === "build") {
       "  Tip: `bun dev:desktop:watch` uses Vite HMR and skips this build.",
     ),
   );
-  execFileSync(BUN_EXECUTABLE, ["--bun", "run", "vite", "build"], {
+  const viteBuild = resolveViteCommand({
+    appDir,
+    viteArgs: ["build"],
+  });
+  execFileSync(viteBuild.command, viteBuild.args, {
     cwd: appDir,
     env: { ...process.env },
     stdio: "inherit",
@@ -978,36 +983,31 @@ async function launch() {
         "[eliza] Vite --force (ELIZA_VITE_FORCE=1): re-optimizing dependencies.\n",
       );
     }
-    pushChild(
-      "vite",
-      "bun",
-      viteDepForce
-        ? ["--bun", "run", "vite", "--", "--force"]
-        : ["--bun", "run", "vite"],
+    const viteCommand = resolveViteCommand({
       appDir,
-      {
-        NODE_ENV: "development",
-        ELIZA_VITE_LOOPBACK_ORIGIN: "1",
-        ELIZA_PORT: String(uiDevPort),
-        ELIZA_UI_PORT: String(uiDevPort),
-        ELIZA_API_PORT: apiPort,
-        ELIZA_NAMESPACE: process.env.ELIZA_NAMESPACE ?? defaultElizaNamespace,
-      },
-    );
+      force: viteDepForce,
+      port: uiDevPort,
+    });
+    pushChild("vite", viteCommand.command, viteCommand.args, appDir, {
+      NODE_ENV: "development",
+      ELIZA_VITE_LOOPBACK_ORIGIN: "1",
+      ELIZA_PORT: String(uiDevPort),
+      ELIZA_UI_PORT: String(uiDevPort),
+      ELIZA_API_PORT: apiPort,
+      ELIZA_NAMESPACE: process.env.ELIZA_NAMESPACE ?? defaultElizaNamespace,
+    });
     await waitForPort(uiDevPort);
     console.log(`[eliza] Vite ready on ${rendererUrlForShell}\n`);
   }
 
   if (viteRollupWatch) {
-    pushChild(
-      "vite",
-      "bun",
-      ["--bun", "run", "vite", "build", "--watch"],
+    const viteWatchCommand = resolveViteCommand({
       appDir,
-      {
-        ELIZA_DESKTOP_VITE_FAST_DIST: "1",
-      },
-    );
+      viteArgs: ["build", "--watch"],
+    });
+    pushChild("vite", viteWatchCommand.command, viteWatchCommand.args, appDir, {
+      ELIZA_DESKTOP_VITE_FAST_DIST: "1",
+    });
   }
 
   const electrobunChild = pushChild(
