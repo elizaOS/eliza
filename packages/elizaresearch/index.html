@@ -264,7 +264,6 @@
   let born = 0;
   let entranceStarted = false;
   let entranceComplete = reduced;
-  let handoffFrame = -1;  // tracks the frame when entranceComplete became true
   const ENTER_MS = 4200, ENTER_STAGGER_MS = 900;
   const FADE_FRAMES = 75;            // ~1.25s fade in and out per dot
   const ALPHA_LEVELS = 8;            // bucketed so per-dot alpha stays one state change per level
@@ -442,7 +441,7 @@
       if (!forming) {
         if (!entranceComplete) {
           entranceComplete = true;
-          handoffFrame = frame;
+          for (const b of boids) b.age = FADE_FRAMES;
         }
       }
     }
@@ -518,11 +517,8 @@
     for (let i = 0; i < n; i++) {
       const b = boids[i];
       // fade in on arrival, fade out before the dot re-seeds elsewhere
-      // Handoff continuity: if entrance just completed this frame or the previous frame,
-      // particles with age 0/1 should stay at full opacity instead of dropping to bucket 0.
-      const justCompleted = handoffFrame >= 0 && (frame === handoffFrame || frame === handoffFrame + 1);
       const a = (entranceComplete && !reduced)
-        ? (justCompleted && b.age <= 1 ? 1 : Math.min(1, Math.min(b.age, b.life) / FADE_FRAMES))
+        ? Math.min(1, Math.min(b.age, b.life) / FADE_FRAMES)
         : 1;
       const idx = a >= 1 ? ALPHA_LEVELS - 1 : (a * ALPHA_LEVELS) | 0;
       level[i] = idx;
@@ -535,7 +531,7 @@
     for (let k = 0; k < ALPHA_LEVELS; k++) {
       const to = starts[k];
       if (to === from) continue;
-      ctx.globalAlpha = (k + 1) / ALPHA_LEVELS;
+      ctx.globalAlpha = k / (ALPHA_LEVELS - 1);
       for (let j = from; j < to; j++) {
         const b = boids[order[j]];
         const shimmer = 0.88 + (1 - Math.abs((((now / 1000) * 0.28 * b.fs + b.ph) % 1) * 2 - 1)) * 0.2;
