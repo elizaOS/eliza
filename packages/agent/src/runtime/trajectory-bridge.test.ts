@@ -15,6 +15,7 @@ import {
   enqueueStepWrite,
   ensureTrajectoriesTable,
   normalizeLlmCallPayload,
+  normalizeProviderAccessPayload,
 } from "./trajectory-internals.ts";
 import { installDatabaseTrajectoryLogger } from "./trajectory-persistence.ts";
 import { loadPersistedTrajectoryRows } from "./trajectory-query.ts";
@@ -1412,5 +1413,72 @@ describe("budgeted LLM capture completeness", () => {
     ]);
 
     expect(normalized?.params.response).toBe("ok");
+  });
+});
+
+describe("budgeted provider capture completeness", () => {
+  // The canonical producer shape (TrajectoriesService.logProviderAccess) emits
+  // `data` before the required `purpose` string, so a context-heavy provider
+  // payload exhausted the shared row budget first and `purpose` was bounded
+  // into a truncation marker. Re-validating that snapshot then discarded the
+  // whole provider access, which is the opposite of what the record is for.
+  const oversizedProviderData = () =>
+    Object.fromEntries(
+      Array.from({ length: 20 }, (_, index) => [
+        `chunk-${index}`,
+        "x".repeat(70_000),
+      ]),
+    );
+
+  it("retains required fields when data exhausts the global row budget", () => {
+    const normalized = normalizeProviderAccessPayload([
+      {
+        stepId: "step-provider-budget",
+        providerName: "KNOWLEDGE",
+        data: oversizedProviderData(),
+        purpose: "Provider KNOWLEDGE accessed for context",
+      },
+    ]);
+
+    expect(normalized?.params).toMatchObject({
+      providerName: "KNOWLEDGE",
+      purpose: "Provider KNOWLEDGE accessed for context",
+    });
+    // `data` stays an object so the capture keeps its shape while degrading.
+    expect(normalized?.params.data).toBeTypeOf("object");
+    expect(
+      new TextEncoder().encode(JSON.stringify(normalized?.params)).byteLength,
+    ).toBeLessThanOrEqual(1024 * 1024);
+  });
+
+  it("retains required fields through the (stepId, details) overload", () => {
+    const normalized = normalizeProviderAccessPayload([
+      "step-provider-budget-positional",
+      {
+        providerName: "KNOWLEDGE",
+        data: oversizedProviderData(),
+        purpose: "Provider KNOWLEDGE accessed for context",
+      },
+    ]);
+
+    expect(normalized?.stepId).toBe("step-provider-budget-positional");
+    expect(normalized?.params).toMatchObject({
+      providerName: "KNOWLEDGE",
+      purpose: "Provider KNOWLEDGE accessed for context",
+    });
+  });
+
+  it("leaves a small provider payload byte-identical", () => {
+    const normalized = normalizeProviderAccessPayload([
+      {
+        stepId: "step-provider-small",
+        providerName: "KNOWLEDGE",
+        data: { text: "ok", success: true },
+        purpose: "action",
+      },
+    ]);
+
+    expect(normalized?.params.data).toEqual({ text: "ok", success: true });
+    expect(normalized?.params.purpose).toBe("action");
   });
 });
