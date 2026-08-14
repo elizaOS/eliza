@@ -45,7 +45,7 @@ import {
 import { AdvancedToggle } from "./AdvancedToggle";
 import { useAdvancedSettingsEnabled } from "./AdvancedToggle.hooks";
 import { SettingsInputRow } from "./settings-agent-rows";
-import { SettingsGroup, SettingsStack } from "./settings-layout";
+import { SettingsGroup, SettingsRow, SettingsStack } from "./settings-layout";
 
 function formatRelativeTime(ms: number | null): string {
   if (ms == null) return "local only";
@@ -226,15 +226,17 @@ function AccessInfoRow({
   detail: string;
 }) {
   return (
-    <div className="grid gap-1 py-2 sm:grid-cols-[10rem_minmax(0,1fr)] sm:gap-3">
-      <div className="text-xs font-medium text-muted">{label}</div>
-      <div className="min-w-0 space-y-0.5">
-        <div className="break-words text-sm font-medium text-txt-strong">
-          {value}
-        </div>
-        <p className="text-xs leading-5 text-muted">{detail}</p>
-      </div>
-    </div>
+    <SettingsRow
+      label={label}
+      description={
+        <span className="flex min-w-0 flex-col gap-0.5">
+          <span className="break-words text-sm font-medium text-txt-strong">
+            {value}
+          </span>
+          <span>{detail}</span>
+        </span>
+      }
+    />
   );
 }
 
@@ -706,63 +708,68 @@ const SessionRow = memo(function SessionRow({
       onActivate: () => onRevoke(session.id),
     });
   return (
-    <div className="flex items-start gap-3 py-3">
-      <DeviceIcon userAgent={session.userAgent} />
-      <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-        <div className="flex items-center gap-2">
-          <span className="text-sm font-medium capitalize text-txt-strong">
-            {session.kind}
-          </span>
-          {session.current && (
-            <span className="rounded-full border border-ok/35 bg-ok/12 px-2 py-0.5 text-xs font-medium text-ok">
+    <SettingsRow
+      icon={() => <DeviceIcon userAgent={session.userAgent} />}
+      active={session.current}
+      label={
+        <span className="flex min-w-0 flex-wrap items-center gap-2">
+          <span className="capitalize">{session.kind}</span>
+          {session.current ? (
+            <span className="rounded-full border border-border px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted">
               {t("security.sessions.thisSession", {
                 defaultValue: "This session",
               })}
             </span>
-          )}
-        </div>
-        <p className="truncate text-xs text-muted">
-          {session.ip ??
-            t("security.sessions.unknownIp", {
-              defaultValue: "Unknown IP",
-            })}{" "}
-          &middot;{" "}
-          {session.userAgent
-            ? session.userAgent.slice(0, 60)
-            : t("security.sessions.unknownClient", {
-                defaultValue: "Unknown client",
-              })}
-        </p>
-        <p className="text-xs text-muted">
-          {t("security.sessions.lastSeenExpires", {
-            lastSeen: formatRelativeTime(session.lastSeenAt),
-            expires: formatRelativeTime(session.expiresAt),
-            defaultValue: "Last seen {{lastSeen}} · expires {{expires}}",
-          })}
-        </p>
-      </div>
-
-      {!session.current && (
-        <Button
-          ref={revokeRef}
-          {...revokeAgentProps}
-          variant="ghost"
-          size="sm"
-          disabled={revoking}
-          onClick={() => onRevoke(session.id)}
-          className="shrink-0 text-xs text-danger hover:bg-danger/10 hover:text-danger"
-          aria-label={t("security.sessions.revoke", {
-            defaultValue: "Revoke this session",
-          })}
-        >
-          {revoking ? (
-            <Loader2 className="h-3 w-3 animate-spin" />
-          ) : (
-            <Trash2 className="h-3 w-3" />
-          )}
-        </Button>
-      )}
-    </div>
+          ) : null}
+        </span>
+      }
+      description={
+        <span className="flex min-w-0 flex-col gap-0.5">
+          <span className="truncate">
+            {session.ip ??
+              t("security.sessions.unknownIp", {
+                defaultValue: "Unknown IP",
+              })}{" "}
+            &middot;{" "}
+            {session.userAgent
+              ? session.userAgent.slice(0, 60)
+              : t("security.sessions.unknownClient", {
+                  defaultValue: "Unknown client",
+                })}
+          </span>
+          <span>
+            {t("security.sessions.lastSeenExpires", {
+              lastSeen: formatRelativeTime(session.lastSeenAt),
+              expires: formatRelativeTime(session.expiresAt),
+              defaultValue: "Last seen {{lastSeen}} · expires {{expires}}",
+            })}
+          </span>
+        </span>
+      }
+      control={
+        session.current ? undefined : (
+          <Button
+            ref={revokeRef}
+            {...revokeAgentProps}
+            variant="ghost"
+            size="sm"
+            disabled={revoking}
+            onClick={() => onRevoke(session.id)}
+            className="shrink-0 text-xs text-danger hover:bg-danger/10 hover:text-danger"
+            aria-label={t("security.sessions.revoke", {
+              defaultValue: "Revoke this session",
+            })}
+            data-testid={`security-session-revoke-${session.id}`}
+          >
+            {revoking ? (
+              <Loader2 className="h-3 w-3 animate-spin" />
+            ) : (
+              <Trash2 className="h-3 w-3" />
+            )}
+          </Button>
+        )
+      }
+    />
   );
 });
 

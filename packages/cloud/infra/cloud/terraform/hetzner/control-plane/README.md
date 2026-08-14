@@ -108,13 +108,12 @@ For the normal staging/prod path, use the idempotent workflow:
 
 ```bash
 gh workflow run arm-headscale-control-plane.yml --repo elizaOS/eliza --ref main \
-  -f environment=production \
-  -f headscale_api_url=http://127.0.0.1:8081 \
-  -f listen_addr=127.0.0.1:8081
+  -f environment=production
 ```
 
-That workflow installs the committed ACL, converges `server_url` and
-`listen_addr`, ensures the `agent`/`tunnel` users exist, upserts the daemon's
+That workflow installs the committed ACL, converges `server_url` and the fixed
+environment-specific loopback `listen_addr`, ensures the `agent`/`tunnel`
+users exist, upserts the daemon's
 Headscale env in `/opt/eliza/cloud/.env.local`, restarts both services, and
 checks local `/health`. It also converges the last-mile public-edge bits that
 used to be hand-run on every CP (and lost on a rebuild — a DR gap):
@@ -122,9 +121,10 @@ used to be hand-run on every CP (and lost on a rebuild — a DR gap):
 - the **nginx vhost + Let's Encrypt cert** that front the public headscale URL
   (`/etc/nginx/conf.d/headscale.conf` → `127.0.0.1:<listen-port>`), as a
   no-http2 vhost with `Upgrade`/`Connection` passthrough + 86400s timeouts (the
-  TS2021/noise control protocol needs it). Renewal rides certbot's own
-  `certbot.timer`. Cert issuance is idempotent (`certbot certonly`, skipped when
-  a valid cert already exists).
+  TS2021/noise control protocol needs it). Renewal rides the required
+  `certbot.timer`; a root-owned deploy hook verifies the renewed leaf still has
+  both exact SANs and validates nginx before reloading it. Cert issuance is
+  idempotent (`certbot certonly`, skipped when a valid cert already exists).
 - the **`cp-<env>-router` tailscale self-enrollment** (`tag:eliza-proxy`, owned
   by the `tunnel` user) so the daemon on the CP can reach agent `tag:agent`
   `100.64.x` IPs. Idempotent (skips if already enrolled).
