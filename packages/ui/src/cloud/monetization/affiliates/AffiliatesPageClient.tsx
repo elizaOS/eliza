@@ -70,6 +70,7 @@ export function AffiliatesPageClient() {
   const [loading, setLoading] = useState(true);
 
   const [markupPercent, setMarkupPercent] = useState<string>("20.00");
+  const [markupError, setMarkupError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const { copied, markCopied: markAffiliateCopied } = useCopyFeedback();
   const { copied: referralCopied, markCopied: markReferralCopied } =
@@ -140,13 +141,15 @@ export function AffiliatesPageClient() {
   const handleSaveMarkup = async () => {
     const numericValue = parseFloat(markupPercent);
     if (Number.isNaN(numericValue) || numericValue < 0 || numericValue > 1000) {
-      toast.error(
+      setMarkupError(
         t("cloud.affiliates.invalidMarkup", {
-          defaultValue: "Invalid markup. Must be between 0 and 1000%.",
+          defaultValue: "Enter a percentage from 0 to 1000",
         }),
       );
+      document.getElementById("cloud-affiliates-markup-percent")?.focus();
       return;
     }
+    setMarkupError(null);
 
     setIsSaving(true);
     try {
@@ -160,7 +163,7 @@ export function AffiliatesPageClient() {
       }
       toast.success(
         t("cloud.affiliates.markupUpdated", {
-          defaultValue: "Markup percentage updated!",
+          defaultValue: "Markup saved",
         }),
       );
     } catch (e) {
@@ -448,12 +451,17 @@ export function AffiliatesPageClient() {
             })}
             description={t("cloud.affiliates.markupPercentHelp", {
               defaultValue:
-                "0 to 1000. Added on top of base elizaOS prices for referred users.",
+                "0–1000. Added on top of base prices for referred users.",
             })}
             value={markupPercent}
-            onValueChange={setMarkupPercent}
+            onValueChange={(next) => {
+              setMarkupError(null);
+              setMarkupPercent(next);
+            }}
             disabled={isSaving}
+            error={markupError ?? undefined}
             placeholder="20.00"
+            inputClassName="text-base tabular-nums sm:text-sm"
             testId="cloud-affiliates-markup-percent"
           />
           <div className="flex justify-end">
@@ -465,9 +473,9 @@ export function AffiliatesPageClient() {
               className="min-w-[100px]"
             >
               {isSaving
-                ? t("cloud.affiliates.saving", { defaultValue: "Saving..." })
+                ? t("cloud.affiliates.saving", { defaultValue: "Saving" })
                 : t("cloud.affiliates.saveConfig", {
-                    defaultValue: "Save Config",
+                    defaultValue: "Save markup",
                   })}
             </Button>
           </div>

@@ -93,7 +93,13 @@ describe("AutoTopUpCard", () => {
 
     const alert = await screen.findByRole("alert");
     expect(alert.id).toBe("cloud-billing-auto-top-up-amount-error");
-    expect(alert.textContent).toMatch(/Amount must be at least/i);
+    expect(alert.textContent).toMatch(/Enter at least/i);
+    const save = screen.getByRole("button", { name: /save/i });
+    expect(save).toHaveProperty("disabled", false);
+    fireEvent.click(save);
+    expect(document.activeElement).toBe(
+      screen.getByTestId("cloud-billing-auto-top-up-amount"),
+    );
   });
 
   it("keeps the toggle as draft until Save PUTs the autoTopUp payload", async () => {

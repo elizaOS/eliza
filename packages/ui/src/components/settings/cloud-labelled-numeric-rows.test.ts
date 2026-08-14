@@ -37,6 +37,6 @@ describe("labelled numeric settings rows", () => {
     expect(source).toContain("<SettingsInputRow");
     expect(source).not.toMatch(/<Input[\s>]/);
     expect(source).toContain("BrandCard");
-    expect(source).toContain("Save Config");
+    expect(source).toContain("Save markup");
   });
 });

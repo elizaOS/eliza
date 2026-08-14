@@ -84,12 +84,12 @@ export function AutoTopUpCard() {
     if (!Number.isFinite(parsedAmount) || parsedAmount < limits.minAmount)
       return t("cloud.autoTopUp.amountMin", {
         min: limits.minAmount,
-        defaultValue: "Amount must be at least $" + "{{min}}",
+        defaultValue: "Enter at least {{min}} USD",
       });
     if (parsedAmount > limits.maxAmount)
       return t("cloud.autoTopUp.amountMax", {
         max: limits.maxAmount,
-        defaultValue: "Amount can't exceed $" + "{{max}}",
+        defaultValue: "Enter at most {{max}} USD",
       });
     return null;
   }, [enabled, limits, parsedAmount, t]);
@@ -102,21 +102,23 @@ export function AutoTopUpCard() {
     )
       return t("cloud.autoTopUp.thresholdMin", {
         min: limits.minThreshold,
-        defaultValue: "Threshold must be ≥ $" + "{{min}}",
+        defaultValue: "Enter at least {{min}} USD",
       });
     if (parsedThreshold > limits.maxThreshold)
       return t("cloud.autoTopUp.thresholdMax", {
         max: limits.maxThreshold,
-        defaultValue: "Threshold can't exceed $" + "{{max}}",
+        defaultValue: "Enter at most {{max}} USD",
       });
     return null;
   }, [enabled, limits, parsedThreshold, t]);
 
-  const validationError = amountError ?? thresholdError;
-
   const handleSave = async () => {
-    if (validationError) {
-      toast.error(validationError);
+    if (amountError) {
+      document.getElementById("cloud-billing-auto-top-up-amount")?.focus();
+      return;
+    }
+    if (thresholdError) {
+      document.getElementById("cloud-billing-auto-top-up-threshold")?.focus();
       return;
     }
     setSaving(true);
@@ -234,6 +236,7 @@ export function AutoTopUpCard() {
             disabled={saving || !enabled || !!noPaymentMethod}
             error={amountError ?? undefined}
             placeholder="0.00"
+            inputClassName="text-base tabular-nums sm:text-sm"
             testId="cloud-billing-auto-top-up-amount"
           />
           <SettingsInputRow
@@ -254,6 +257,7 @@ export function AutoTopUpCard() {
             disabled={saving || !enabled || !!noPaymentMethod}
             error={thresholdError ?? undefined}
             placeholder="0.00"
+            inputClassName="text-base tabular-nums sm:text-sm"
             testId="cloud-billing-auto-top-up-threshold"
           />
         </div>
@@ -262,7 +266,7 @@ export function AutoTopUpCard() {
           <Button
             type="button"
             onClick={handleSave}
-            disabled={saving || !!validationError || !!noPaymentMethod}
+            disabled={saving || !!noPaymentMethod}
             className="bg-txt hover:bg-txt/90 text-bg font-mono"
           >
             {saving ? (
