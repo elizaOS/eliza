@@ -1,11 +1,12 @@
 /**
  * eliza.app landing page: a single-viewport, personal-feeling lander.
  *
- * The first action opens a real iMessage thread; account and app setup stay out
- * of the way until someone wants the richer companion experience. The phone
- * demo stays within the immediately available product: conversation memory and
- * current web search. It is decorative and intentionally English-only.
- * Reduced motion shows its settled intro, which keeps screenshots deterministic.
+ * The first action opens a native message handler where supported and copies
+ * the number elsewhere; account and app setup stay out of the way until someone
+ * wants the richer companion experience. The phone demo stays within the
+ * immediately available product: conversation memory and current web search.
+ * It is decorative and intentionally English-only. Reduced motion shows its
+ * settled intro, which keeps screenshots deterministic.
  */
 
 import {
@@ -619,7 +620,6 @@ export default function LandingPage() {
   const [phoneCopyState, setPhoneCopyState] = useState<
     "idle" | "copied" | "error"
   >("idle");
-  const phoneCopyResetRef = useRef<number | null>(null);
   const whatsappHref = buildElizaWhatsAppHref();
   const browserWindow = typeof window === "undefined" ? null : window;
   const signedIn =
@@ -661,29 +661,14 @@ export default function LandingPage() {
     },
   ];
 
-  useEffect(
-    () => () => {
-      if (phoneCopyResetRef.current !== null) {
-        window.clearTimeout(phoneCopyResetRef.current);
-      }
-    },
-    [],
-  );
-
   const handleMessageEliza = async () => {
     try {
       const outcome = await openOrCopyElizaMessage(window);
       setPhoneCopyState(outcome === "copied" ? "copied" : "idle");
     } catch {
+      // error-policy:J4 Clipboard rejection stays visible as a distinct UI error.
       setPhoneCopyState("error");
     }
-    if (phoneCopyResetRef.current !== null) {
-      window.clearTimeout(phoneCopyResetRef.current);
-    }
-    phoneCopyResetRef.current = window.setTimeout(
-      () => setPhoneCopyState("idle"),
-      2_000,
-    );
   };
 
   const phoneCopyLabel =
@@ -778,7 +763,7 @@ export default function LandingPage() {
           {phoneCopyState !== "idle" && (
             <div
               className={`landing-copy-notice landing-copy-notice--${phoneCopyState}`}
-              role="status"
+              role={phoneCopyState === "error" ? "alert" : "status"}
               aria-live="polite"
             >
               {phoneCopyLabel}
