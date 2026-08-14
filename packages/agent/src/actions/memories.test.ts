@@ -514,7 +514,7 @@ describe("MEMORY op:search windowed-read disclosure", () => {
 
   it("states that every stored row was inside the window when nothing was cut", async () => {
     const { runtime, rows } = makeRuntime();
-    seedFact(rows, { text: "nubs plays guitar", entityId: USER_ID });
+    seedFact(rows, { text: "the user plays guitar", entityId: USER_ID });
 
     const result = await runAction(runtime, makeMessage(), {
       action: "search",
@@ -530,7 +530,7 @@ describe("MEMORY op:search windowed-read disclosure", () => {
   it("reports the number of lines actually rendered, not the number collected", async () => {
     const { runtime, rows } = makeRuntime();
     for (let i = 0; i < 30; i++) {
-      seedFact(rows, { text: `nubs plays guitar ${i}`, entityId: USER_ID });
+      seedFact(rows, { text: `the user plays guitar ${i}`, entityId: USER_ID });
     }
 
     const result = await runAction(runtime, makeMessage(), {

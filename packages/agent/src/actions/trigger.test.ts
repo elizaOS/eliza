@@ -1574,7 +1574,7 @@ describe("a trigger failure carries a user-safe explanation", () => {
       undefined,
       { parameters: { action: "delete", name: "oven" } },
     );
-    expect(result.success).toBe(false);
+    expect(result?.success).toBe(false);
     const shown = (result as { userFacingText?: string }).userFacingText ?? "";
     expect(shown.length).toBeGreaterThan(0);
     expect(shown).not.toContain("taskId");

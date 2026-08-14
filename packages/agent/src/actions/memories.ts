@@ -607,10 +607,6 @@ export const memoryAction: Action = {
     "SEARCH_MEMORY",
     "REMOVE_MEMORY",
     "MODIFY_MEMORY",
-    // Note-taking vocabulary: a "note" is a memory record. Without these the
-    // planner found no note-capable tool and fell through to DATABASE, where
-    // it hand-wrote INSERT statements against the memories table that failed
-    // on schema mismatch (live capture: "make a note: launch checklist …").
   ],
   description:
     "Manage agent memory records. op:create stores a new memory; op:search filters by type/entityId/roomId/query; op:update edits text and re-embeds (requires confirm:true); op:delete removes a memory by memoryId or by query text match (requires confirm:true).",

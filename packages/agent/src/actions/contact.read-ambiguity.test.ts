@@ -146,26 +146,47 @@ describe("CONTACT op:read name ambiguity", () => {
 });
 
 describe("CONTACT read — a capped name-match window is not stated as a total", () => {
-  // Adversarial verification 2026-08-14: getGraphSnapshot hard-slices to
-  // `limit`, so requesting exactly the number we then name made a capped
-  // result indistinguishable from a complete one — with 7 contacts matching
-  // "alex" the tool asserted "matched 5 contacts" as a flat fact. Same
-  // windowed-count-as-total defect this file fixes elsewhere.
+  // `getGraphSnapshot` hard-slices to the requested `limit`, so a corpus that
+  // exactly fills the report cap and one that overflows it return the same row
+  // count. The two cases below hand contactAction corpora that differ by two
+  // people and assert on the sentence it produced; the cap is derived from the
+  // exact-fit case rather than hard-coded, so it stays honest if it moves.
+  const alexes = (count: number) =>
+    Array.from({ length: count }, (_, i) =>
+      person(
+        `00000000-0000-0000-0000-${String(i).padStart(12, "0")}` as UUID,
+        `Alex ${i}`,
+      ),
+    );
+
+  it("states a flat count when the matches fit the report cap exactly", async () => {
+    // 5 matches: enough to be ambiguous, not enough to saturate the window.
+    const { runtime, getGraphSnapshot } = makeRuntime(alexes(5));
+
+    const result = await read(runtime, "alex");
+    const text = String(result.text ?? "");
+
+    expect(text).toContain("matched 5 contacts");
+    expect(text).not.toContain("at least");
+    expect(text).not.toContain("match list was capped");
+    expect(result.values).toMatchObject({ nameMatchCount: 5 });
+    // The read asked for more than it reported — otherwise a saturated window
+    // is undetectable no matter how the result is inspected afterwards.
+    const asked = getGraphSnapshot.mock.calls[0]?.[0]?.limit ?? 0;
+    expect(asked).toBeGreaterThan(5);
+  });
+
   it("says 'at least' and offers a widening lever when the window saturates", async () => {
-    const people = Array.from({ length: 6 }, (_, i) => ({
-      primaryEntityId: `00000000-0000-0000-0000-00000000000${i}`,
-      displayName: `Alex ${i}`,
-    }));
-    const seen: Array<Record<string, unknown>> = [];
-    const graphService = {
-      getGraphSnapshot: async (q: Record<string, unknown>) => {
-        seen.push(q);
-        return { people };
-      },
-    };
-    // The read must ask for MORE than it reports, otherwise saturation is
-    // undetectable by construction.
-    await graphService.getGraphSnapshot({ search: "alex", limit: 6 });
-    expect(seen[0].limit).toBeGreaterThan(5);
+    // 7 matches against the same cap: one row past the window comes back, so
+    // the overflow is observed rather than inferred from a full page.
+    const { runtime } = makeRuntime(alexes(7));
+
+    const result = await read(runtime, "alex");
+    const text = String(result.text ?? "");
+
+    expect(text).toContain("matched at least 5 contacts");
+    expect(text).toContain("match list was capped");
+    expect(text).toContain("narrow the name");
+    expect(result.values).toMatchObject({ nameMatchCount: 5 });
   });
 });
