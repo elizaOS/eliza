@@ -15,14 +15,7 @@ import {
   TelegramIcon,
   WhatsAppIcon,
 } from "@elizaos/ui/cloud-ui/components/icons";
-import {
-  lazy,
-  type ReactNode,
-  Suspense,
-  useEffect,
-  useRef,
-  useState,
-} from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 // Imported through the bundler (not referenced from public/) so the wordmark
 // ships with whichever build consumes this source; a public/ path depends on
 // the host app's asset-sync allowlist and 404s when it drifts.
@@ -241,14 +234,7 @@ function useSessionClock() {
   return clock;
 }
 
-function PhoneMockup({
-  headerLeft,
-  headerRight,
-}: {
-  /** Mobile-only channel rails that share the contact row, iOS-style. */
-  headerLeft?: ReactNode;
-  headerRight?: ReactNode;
-}) {
+function PhoneMockup() {
   const t = useT();
   const clock = useSessionClock();
   const [items, setItems] = useState<DemoItem[]>([]);
@@ -335,13 +321,12 @@ function PhoneMockup({
   return (
     <div
       className="landing-iphone"
-      aria-hidden="true"
       data-demo-phase={phase}
       data-demo-messages={items.length}
     >
       <div className="landing-iphone-screen">
         <div className="landing-phone-top">
-          <div className="landing-iphone-statusbar">
+          <div className="landing-iphone-statusbar" aria-hidden="true">
             <span className="landing-iphone-time">{clock.short}</span>
             <span className="landing-iphone-island" />
             <span className="landing-iphone-signal">
@@ -365,9 +350,6 @@ function PhoneMockup({
             </span>
           </div>
           <div className="landing-phone-header">
-            <span className="landing-header-rail landing-header-rail--left">
-              {headerLeft}
-            </span>
             <span className="landing-phone-contact">
               <img
                 className="landing-phone-avatar"
@@ -391,12 +373,13 @@ function PhoneMockup({
                 </svg>
               </span>
             </span>
-            <span className="landing-header-rail landing-header-rail--right">
-              {headerRight}
-            </span>
           </div>
         </div>
-        <div className="landing-phone-thread" ref={threadRef}>
+        <div
+          className="landing-phone-thread"
+          ref={threadRef}
+          aria-hidden="true"
+        >
           <div className="landing-thread-preamble">
             <span className="landing-thread-timestamp">
               {t("homepage_eliza.landing.threadStamp", {
@@ -427,7 +410,7 @@ function PhoneMockup({
             </div>
           ) : null}
         </div>
-        <div className="landing-composer-row">
+        <div className="landing-composer-row" aria-hidden="true">
           <span className="landing-composer-plus">
             <svg
               viewBox="0 0 24 24"
@@ -573,6 +556,150 @@ function DemoKeyboard({ composerText }: { composerText: string }) {
 
 const SESSION_STORAGE_KEY = "eliza_app_session";
 
+/**
+ * Every way to reach Eliza, plus the account door — opened by tapping the
+ * contact in the thread header, where iOS puts contact details. Uses a native
+ * dialog so Escape, backdrop dismissal, and focus containment come for free.
+ */
+function ContactSheet({
+  open,
+  onClose,
+  onText,
+  whatsappHref,
+  accountHref,
+  accountLabel,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onText: () => void;
+  whatsappHref: string | null;
+  accountHref: string;
+  accountLabel: string;
+}) {
+  const t = useT();
+  const dialogRef = useRef<HTMLDialogElement>(null);
+
+  useEffect(() => {
+    const dialog = dialogRef.current;
+    if (!dialog) return;
+    if (open && !dialog.open) dialog.showModal();
+    if (!open && dialog.open) dialog.close();
+  }, [open]);
+
+  // A click that lands on the dialog element itself is a click on the
+  // backdrop — the body panel is what fills the visible sheet.
+  useEffect(() => {
+    const dialog = dialogRef.current;
+    if (!dialog) return;
+    const dismissOnBackdrop = (event: MouseEvent) => {
+      if (event.target === dialog) onClose();
+    };
+    dialog.addEventListener("click", dismissOnBackdrop);
+    return () => dialog.removeEventListener("click", dismissOnBackdrop);
+  }, [onClose]);
+
+  return (
+    <dialog ref={dialogRef} className="landing-sheet" onClose={onClose}>
+      <div className="landing-sheet-body">
+        <header className="landing-sheet-head">
+          <img
+            className="landing-sheet-avatar"
+            src="/brand/logos/logo_white_orangebg.svg"
+            alt=""
+            width={423}
+            height={423}
+          />
+          <strong>Eliza</strong>
+          <span>
+            {t("homepage_eliza.landing.contactSheetSubtitle", {
+              defaultValue: "Reach me wherever you already message.",
+            })}
+          </span>
+        </header>
+        <div className="landing-sheet-options">
+          <button type="button" className="landing-sheet-row" onClick={onText}>
+            <IMessageIcon className="size-6" style={{ color: "#34C759" }} />
+            {t("homepage_eliza.landing.channelImessage", {
+              defaultValue: "Text Eliza on iMessage",
+            })}
+          </button>
+          <a className="landing-sheet-row" href={`tel:${ELIZA_PHONE_NUMBER}`}>
+            <svg
+              viewBox="0 0 24 24"
+              fill="currentColor"
+              className="size-6"
+              aria-hidden="true"
+            >
+              <path d="M6.62 10.79a15.05 15.05 0 0 0 6.59 6.59l2.2-2.2a1 1 0 0 1 1.02-.24 11.36 11.36 0 0 0 3.57.57 1 1 0 0 1 1 1V20a1 1 0 0 1-1 1A17 17 0 0 1 3 4a1 1 0 0 1 1-1h3.5a1 1 0 0 1 1 1 11.36 11.36 0 0 0 .57 3.57 1 1 0 0 1-.25 1.02Z" />
+            </svg>
+            {t("homepage_eliza.landing.channelPhone", {
+              defaultValue: "Call Eliza",
+            })}
+          </a>
+          {whatsappHref ? (
+            <a
+              className="landing-sheet-row"
+              href={whatsappHref}
+              target="_blank"
+              rel="noreferrer"
+            >
+              <WhatsAppIcon className="size-6" style={{ color: "#25D366" }} />
+              {t("homepage_eliza.landing.channelWhatsapp", {
+                defaultValue: "Message Eliza on WhatsApp",
+              })}
+            </a>
+          ) : null}
+          <a
+            className="landing-sheet-row"
+            href={buildElizaTelegramHref()}
+            target="_blank"
+            rel="noreferrer"
+          >
+            <TelegramIcon className="size-6" style={{ color: "#2AABEE" }} />
+            {t("homepage_eliza.landing.channelTelegram", {
+              defaultValue: "Message Eliza on Telegram",
+            })}
+          </a>
+          <a
+            className="landing-sheet-row"
+            href={buildElizaDiscordHref()}
+            target="_blank"
+            rel="noreferrer"
+          >
+            <DiscordIcon className="size-6" style={{ color: "#5865F2" }} />
+            {t("homepage_eliza.landing.channelDiscord", {
+              defaultValue: "Message Eliza on Discord",
+            })}
+          </a>
+          <a
+            className="landing-sheet-row landing-sheet-row--account"
+            href={accountHref}
+          >
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.7"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className="size-6"
+              aria-hidden="true"
+            >
+              <path d="M17.5 19a4.5 4.5 0 0 0 .4-8.98 6 6 0 0 0-11.63-1.4A4.25 4.25 0 0 0 6.5 19h11Z" />
+            </svg>
+            {accountLabel}
+          </a>
+        </div>
+        <button type="button" className="landing-sheet-close" onClick={onClose}>
+          {t("homepage_eliza.landing.contactSheetClose", {
+            defaultValue: "Close",
+          })}
+        </button>
+      </div>
+    </dialog>
+  );
+}
+
 export default function LandingPage() {
   const t = useT();
   const [phoneCopyState, setPhoneCopyState] = useState<
@@ -586,6 +713,7 @@ export default function LandingPage() {
     browserWindow?.location.hostname ?? "",
   );
   const whatsappHref = buildElizaWhatsAppHref();
+  const [contactSheetOpen, setContactSheetOpen] = useState(false);
   const channels = [
     {
       key: "telegram",
@@ -729,124 +857,39 @@ export default function LandingPage() {
             </div>
           )}
         </div>
-        <PhoneMockup
-          headerLeft={
-            <>
-              <button
-                type="button"
-                className="landing-header-icon"
-                onClick={() => void handleMessageEliza()}
-                aria-label={t("homepage_eliza.landing.channelImessage", {
-                  defaultValue: "Text Eliza on iMessage",
-                })}
-              >
-                <IMessageIcon className="size-5" style={{ color: "#34C759" }} />
-              </button>
-              <a
-                className="landing-header-icon"
-                href={`tel:${ELIZA_PHONE_NUMBER}`}
-                aria-label={t("homepage_eliza.landing.channelPhone", {
-                  defaultValue: "Call Eliza",
-                })}
-              >
-                <svg
-                  viewBox="0 0 24 24"
-                  fill="currentColor"
-                  className="size-5"
-                  aria-hidden="true"
-                >
-                  <path d="M6.62 10.79a15.05 15.05 0 0 0 6.59 6.59l2.2-2.2a1 1 0 0 1 1.02-.24 11.36 11.36 0 0 0 3.57.57 1 1 0 0 1 1 1V20a1 1 0 0 1-1 1A17 17 0 0 1 3 4a1 1 0 0 1 1-1h3.5a1 1 0 0 1 1 1 11.36 11.36 0 0 0 .57 3.57 1 1 0 0 1-.25 1.02Z" />
-                </svg>
-                <span className="sr-only">Call</span>
-              </a>
-              {whatsappHref ? (
-                <a
-                  className="landing-header-icon"
-                  href={whatsappHref}
-                  target="_blank"
-                  rel="noreferrer"
-                  aria-label={t("homepage_eliza.landing.channelWhatsapp", {
-                    defaultValue: "Message Eliza on WhatsApp",
-                  })}
-                >
-                  <WhatsAppIcon
-                    className="size-5"
-                    style={{ color: "#25D366" }}
-                  />
-                  <span className="sr-only">WhatsApp</span>
-                </a>
-              ) : null}
-            </>
-          }
-          headerRight={
-            <>
-              <a
-                className="landing-header-icon"
-                href={buildElizaDiscordHref()}
-                target="_blank"
-                rel="noreferrer"
-                aria-label={t("homepage_eliza.landing.channelDiscord", {
-                  defaultValue: "Message Eliza on Discord",
-                })}
-              >
-                <DiscordIcon className="size-5" style={{ color: "#5865F2" }} />
-                <span className="sr-only">Discord</span>
-              </a>
-              <a
-                className="landing-header-icon"
-                href={buildElizaTelegramHref()}
-                target="_blank"
-                rel="noreferrer"
-                aria-label={t("homepage_eliza.landing.channelTelegram", {
-                  defaultValue: "Message Eliza on Telegram",
-                })}
-              >
-                <TelegramIcon className="size-5" style={{ color: "#2AABEE" }} />
-                <span className="sr-only">Telegram</span>
-              </a>
-              <a
-                className="landing-header-icon landing-header-icon--account"
-                href={
-                  signedIn
-                    ? productNavigation.dashboardUrl
-                    : productNavigation.signInUrl
-                }
-                aria-label={
-                  signedIn
-                    ? t("homepage_eliza.landing.dashboard", {
-                        defaultValue: "Dashboard",
-                      })
-                    : t("homepage_eliza.landing.signIn", {
-                        defaultValue: "Sign in",
-                      })
-                }
-              >
-                <svg
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.7"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  className="size-5"
-                  aria-hidden="true"
-                >
-                  <path d="M17.5 19a4.5 4.5 0 0 0 .4-8.98 6 6 0 0 0-11.63-1.4A4.25 4.25 0 0 0 6.5 19h11Z" />
-                </svg>
-                <span className="sr-only">
-                  {signedIn
-                    ? t("homepage_eliza.landing.dashboard", {
-                        defaultValue: "Dashboard",
-                      })
-                    : t("homepage_eliza.landing.signIn", {
-                        defaultValue: "Sign in",
-                      })}
-                </span>
-              </a>
-            </>
-          }
+        <PhoneMockup />
+        <button
+          type="button"
+          className="landing-tap-target"
+          onClick={() => setContactSheetOpen(true)}
+          aria-label={t("homepage_eliza.landing.contactSheetOpen", {
+            defaultValue: "All the ways to reach Eliza",
+          })}
         />
       </main>
+      <ContactSheet
+        open={contactSheetOpen}
+        onClose={() => setContactSheetOpen(false)}
+        onText={() => {
+          setContactSheetOpen(false);
+          void handleMessageEliza();
+        }}
+        whatsappHref={whatsappHref}
+        accountHref={
+          signedIn
+            ? productNavigation.dashboardUrl
+            : productNavigation.signInUrl
+        }
+        accountLabel={
+          signedIn
+            ? t("homepage_eliza.landing.dashboard", {
+                defaultValue: "Open your dashboard",
+              })
+            : t("homepage_eliza.landing.signInCloud", {
+                defaultValue: "Sign in to Eliza Cloud",
+              })
+        }
+      />
     </div>
   );
 }

@@ -2034,19 +2034,101 @@ body {
   height: 1.35rem;
 }
 
-/* Header rails are a mobile affordance; desktop keeps the centered contact. */
-.landing-header-rail {
+/* On a phone the whole conversation is the call to action: tapping anywhere
+   opens the contact sheet. Desktop keeps its labelled hero buttons instead. */
+.landing-tap-target {
   display: none;
 }
 
-.landing-header-icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0.25rem;
+/* Contact sheet */
+.landing-sheet {
+  width: min(100%, 26rem);
+  padding: 0;
   border: 0;
-  background: none;
+  border-radius: 1.4rem;
+  background: #ffffff;
   color: var(--brand-black);
+  box-shadow: 0 30px 80px rgb(0 0 0 / 28%);
+}
+
+.landing-sheet::backdrop {
+  background: rgb(10 10 12 / 45%);
+  backdrop-filter: blur(3px);
+}
+
+.landing-sheet-body {
+  display: grid;
+  gap: 1rem;
+  padding: 1.4rem 1.25rem 1.1rem;
+}
+
+.landing-sheet-head {
+  display: grid;
+  justify-items: center;
+  gap: 0.2rem;
+  text-align: center;
+}
+
+.landing-sheet-avatar {
+  width: 3.4rem;
+  height: 3.4rem;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.landing-sheet-head strong {
+  font-size: 1.05rem;
+}
+
+.landing-sheet-head span {
+  max-width: 22rem;
+  color: rgb(0 0 0 / 60%);
+  font-size: 0.9rem;
+  line-height: 1.35;
+}
+
+.landing-sheet-options {
+  display: grid;
+  gap: 0.4rem;
+}
+
+.landing-sheet-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  width: 100%;
+  min-height: 3rem;
+  padding: 0 0.9rem;
+  border: 1px solid rgb(0 0 0 / 8%);
+  border-radius: 0.9rem;
+  background: #ffffff;
+  color: var(--brand-black);
+  font: inherit;
+  font-size: 0.98rem;
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.landing-sheet-row:hover,
+.landing-sheet-row:focus-visible {
+  background: rgb(0 0 0 / 4%);
+}
+
+.landing-sheet-row--account {
+  margin-top: 0.35rem;
+  border-color: rgb(0 0 0 / 14%);
+  font-weight: 600;
+}
+
+.landing-sheet-close {
+  min-height: 2.75rem;
+  border: 0;
+  border-radius: 0.9rem;
+  background: rgb(0 0 0 / 6%);
+  color: var(--brand-black);
+  font: inherit;
+  font-weight: 600;
   cursor: pointer;
 }
 
@@ -2162,30 +2244,31 @@ body {
   }
 
   .landing-phone-header {
-    display: grid;
-    grid-template-columns: auto minmax(0, 1fr) auto;
-    align-items: center;
-    gap: 0.5rem;
     padding: max(0.5rem, env(safe-area-inset-top)) 0.75rem 0.6rem;
   }
 
-  .landing-header-rail {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.35rem;
+  .landing-sheet {
+    /* a sheet, not a card: it belongs to the bottom edge on a phone */
+    width: 100%;
+    max-width: none;
+    margin: auto 0 0;
+    border-radius: 1.4rem 1.4rem 0 0;
   }
 
-  .landing-header-rail--right {
-    justify-content: flex-end;
+  .landing-sheet-body {
+    padding-bottom: max(1.1rem, env(safe-area-inset-bottom));
   }
 
-  .landing-header-icon svg {
-    width: 1.35rem;
-    height: 1.35rem;
-  }
-
-  .landing-header-icon--account {
-    color: #6b7280;
+  .landing-tap-target {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 5;
+    border: 0;
+    padding: 0;
+    background: transparent;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
   }
 
   .landing-phone-thread {
