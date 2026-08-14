@@ -28,11 +28,9 @@ describe("resolveCostBuffer", () => {
   );
 
   test("rejects non-canonical spellings even when Number() would parse them", () => {
-    // scientific notation, leading '+', and leading '.' are rejected outright
-    // by the canonical-grammar check (lalalune's review asked for a bounded
-    // canonical grammar here, unlike the millisecond-timer PRs in this batch
-    // where Number()-compatible spellings were deliberately preserved).
-    for (const value of ["1e1", "+10", ".5", "1_000"]) {
+    // One auditable operator spelling excludes exponent notation, signs,
+    // omitted integer parts, separators, and redundant leading zeroes.
+    for (const value of ["1e1", "+10", ".5", "1_000", "01", "0001.5"]) {
       expect(() => resolveCostBuffer({ CREDIT_COST_BUFFER: value })).toThrow(
         /CREDIT_COST_BUFFER must be a canonical decimal number from 1 through 1000/,
       );

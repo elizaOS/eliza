@@ -9,7 +9,7 @@ const MIN_COST_BUFFER = 1;
 /** Generous ceiling that keeps `estimatedCost * COST_BUFFER` far from any
  * finite-precision or overflow concern for realistic dollar-scale estimates. */
 const MAX_COST_BUFFER = 1000;
-const CANONICAL_DECIMAL_PATTERN = /^\d+(\.\d+)?$/;
+const CANONICAL_DECIMAL_PATTERN = /^[1-9]\d*(\.\d+)?$/;
 
 export function resolveCostBuffer(env: NodeJS.ProcessEnv = process.env): number {
   const raw = env.CREDIT_COST_BUFFER;
