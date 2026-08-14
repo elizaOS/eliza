@@ -50,6 +50,7 @@ import {
 import { runAgentSessionRecovery } from "../state/agent-session-recovery-runner";
 import type { CloudLoginOptions } from "../state/types";
 import { isCloudStatusAuthenticated } from "../utils";
+import { isPersonalSharedElizaId } from "../utils/cloud-agent-base";
 import { reportRendererDiagnostic } from "../utils/renderer-diagnostics";
 import { autoDownloadRecommendedLocalModelInBackground } from "./auto-download-recommended";
 import { assertDeviceRamTierAllowsLocalRuntime } from "./device-ram-gate";
@@ -717,6 +718,9 @@ export async function bindCloudAgent(
               containerBase,
               dedicatedAgentId,
               authToken,
+              ...(isPersonalSharedElizaId(sharedAgentId)
+                ? { personalElizaId: sharedAgentId }
+                : {}),
             });
           },
         });
@@ -792,6 +796,8 @@ export async function listOrAutoProvisionCloudAgent(
     kind: "cloud",
     label: selected.agentName,
     cloudAgentId: selected.agentId,
+    cloudRuntimeAgentId: selected.activeAgentId,
+    cloudRuntime: selected.runtime,
     apiBase: selected.apiBase,
     accessToken: authToken,
   });

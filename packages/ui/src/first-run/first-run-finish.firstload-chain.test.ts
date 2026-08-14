@@ -132,9 +132,12 @@ beforeEach(() => {
   clientStub.listConversations = vi.fn(async () => ({ conversations: [] }));
   clientStub.getCloudStatus.mockResolvedValue({ connected: false });
   clientStub.getPersonalSharedEliza.mockResolvedValue({
+    personalElizaId: SHARED_AGENT_ID,
     agentId: SHARED_AGENT_ID,
+    activeAgentId: SHARED_AGENT_ID,
     agentName: "Eliza",
     apiBase: SHARED_AGENT_BASE,
+    runtime: "shared",
   });
   stubSelection();
 });

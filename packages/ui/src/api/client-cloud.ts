@@ -19,6 +19,7 @@ import {
 } from "../cloud/handoff/cloud-handoff-supervisor";
 import { isRetryableHandoffHttpStatus } from "../cloud/handoff/conversation-handoff";
 import { getBootConfig } from "../config/boot-config";
+import { isTrustedCloudApiBaseUrl } from "../state/runtime-url-trust";
 import {
   buildCloudSharedAgentApiBase,
   buildDedicatedCloudAgentApiBase,
@@ -1645,7 +1646,12 @@ declare module "./client-base" {
       authToken: string;
       signal?: AbortSignal;
     }): Promise<{
+      /** Stable account-native identity; never changes when hosting tier changes. */
+      personalElizaId: string;
+      /** Backward-compatible logical identity alias used by join callers. */
       agentId: string;
+      /** Runtime currently serving the logical identity. */
+      activeAgentId: string;
       agentName: string;
       apiBase: string;
       runtime: "shared" | "dedicated";
@@ -4130,14 +4136,17 @@ ElizaClient.prototype.getPersonalSharedEliza = async (options) => {
       !activeAgentId ||
       !apiBase ||
       !parsedBase ||
-      (parsedBase.protocol !== "https:" && parsedBase.protocol !== "http:")
+      (parsedBase.protocol !== "https:" && parsedBase.protocol !== "http:") ||
+      !isTrustedCloudApiBaseUrl(apiBase, activeAgentId)
     ) {
       throw new Error(
         "Eliza Cloud returned an invalid Dedicated connection for this personal Eliza.",
       );
     }
     return {
-      agentId: activeAgentId,
+      personalElizaId,
+      agentId: personalElizaId,
+      activeAgentId,
       agentName,
       apiBase,
       runtime: "dedicated",
@@ -4147,7 +4156,9 @@ ElizaClient.prototype.getPersonalSharedEliza = async (options) => {
     throw new Error("Eliza Cloud returned an unknown personal Eliza runtime.");
   }
   return {
+    personalElizaId,
     agentId: personalElizaId,
+    activeAgentId: personalElizaId,
     agentName,
     apiBase: buildCloudSharedAgentApiBase(cloudApiBase, personalElizaId),
     runtime: "shared",

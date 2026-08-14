@@ -13,7 +13,9 @@ export interface JoinFlowClient {
     authToken: string;
     signal?: AbortSignal;
   }): Promise<{
+    personalElizaId: string;
     agentId: string;
+    activeAgentId: string;
     agentName: string;
     apiBase: string;
     runtime: "shared" | "dedicated";
@@ -30,6 +32,8 @@ export interface JoinFlowEffects {
     label: string;
     apiBase?: string;
     accessToken?: string;
+    cloudRuntimeAgentId?: string;
+    cloudRuntime?: "shared" | "dedicated";
   }): void;
   savePersistedFirstRunComplete(complete: boolean): void;
 }
@@ -44,7 +48,9 @@ export interface RunJoinFlowArgs {
 }
 
 export interface JoinFlowResult {
+  personalElizaId: string;
   agentId: string;
+  activeAgentId: string;
   agentName: string;
   apiBase: string;
   runtime: "shared" | "dedicated";
@@ -65,7 +71,11 @@ export async function runJoinFlow(
   });
   signal?.throwIfAborted();
 
-  if (!selected.agentId) {
+  if (
+    !selected.personalElizaId ||
+    selected.agentId !== selected.personalElizaId ||
+    !selected.activeAgentId
+  ) {
     throw new Error("Cloud did not return a personal Eliza to connect to.");
   }
 
@@ -78,11 +88,15 @@ export async function runJoinFlow(
     label: selected.agentName || "Eliza",
     apiBase: selected.apiBase,
     accessToken: authToken,
+    cloudRuntimeAgentId: selected.activeAgentId,
+    cloudRuntime: selected.runtime,
   });
   effects.savePersistedFirstRunComplete(true);
 
   return {
+    personalElizaId: selected.personalElizaId,
     agentId: selected.agentId,
+    activeAgentId: selected.activeAgentId,
     agentName: selected.agentName || "Eliza",
     apiBase: selected.apiBase,
     runtime: selected.runtime,
