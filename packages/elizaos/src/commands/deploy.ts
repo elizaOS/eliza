@@ -220,6 +220,12 @@ function metadataNameCandidates(
 }
 
 function pollIntervalMs(): number {
+  // Parse using Number() to accept all valid JavaScript number formats:
+  // - decimal: "1234", "12.34"
+  // - leading zeros: "0123" (octal in strict mode, but Number() coerces to decimal)
+  // - exponent notation: "1e3", "1.2e+3"
+  // - whitespace: " 1234 " (Number() trims)
+  // Reject with explicit bounds check instead of strict regex.
   const value = Number(process.env.ELIZAOS_DEPLOY_POLL_INTERVAL_MS);
   return Number.isFinite(value) && value >= 0
     ? value
@@ -227,6 +233,8 @@ function pollIntervalMs(): number {
 }
 
 function pollTimeoutMs(): number {
+  // Parse using Number() to accept all valid JavaScript number formats.
+  // Reject with explicit bounds check instead of strict regex.
   const value = Number(process.env.ELIZAOS_DEPLOY_TIMEOUT_MS);
   return Number.isFinite(value) && value > 0 ? value : DEFAULT_POLL_TIMEOUT_MS;
 }

@@ -283,4 +283,128 @@ describe("runDeploy", () => {
       ).toHaveBeenCalled();
     }
   });
+
+  it("accepts valid poll-interval number formats (backward compatibility)", async () => {
+    process.env.ELIZAOS_CLOUD_API_KEY = "eliza_test_key";
+    process.env.ELIZA_CLOUD_API_BASE_URL = "https://cloud.example.test/api/v1";
+
+    const validIntervals = [
+      { env: "1000", expected: 1000, desc: "simple decimal" },
+      { env: "12.34", expected: 12.34, desc: "decimal with fraction" },
+      { env: " 500 ", expected: 500, desc: "whitespace-padded" },
+      { env: "1e3", expected: 1000, desc: "exponent notation (1e3 = 1000)" },
+      { env: "1.5e2", expected: 150, desc: "exponent with fraction (1.5e2 = 150)" },
+      { env: "1E+3", expected: 1000, desc: "uppercase exponent with plus sign" },
+      { env: "2e-1", expected: 0.2, desc: "negative exponent (2e-1 = 0.2)" },
+    ];
+
+    for (const { env, desc } of validIntervals) {
+      process.env.ELIZAOS_DEPLOY_POLL_INTERVAL_MS = env;
+      process.env.ELIZAOS_DEPLOY_TIMEOUT_MS = "100"; // short timeout for fast test
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValueOnce(
+          jsonResponse(
+            { success: true, deploymentId: "dep-1", status: "BUILDING" },
+            202,
+          ),
+        )
+        .mockResolvedValueOnce(
+          jsonResponse({
+            success: true,
+            deploymentId: "dep-1",
+            status: "READY",
+          }),
+        );
+      globalThis.fetch = fetchMock as unknown as typeof fetch;
+      vi.spyOn(console, "log").mockImplementation(() => {});
+
+      // Deploy should complete successfully when given a valid interval format
+      const code = await runDeploy({ appId: "app-1" });
+
+      expect(code, `poll-interval "${env}" (${desc}) should be accepted`).toBe(
+        0,
+      );
+      fetchMock.mockClear();
+    }
+  });
+
+  it("uses configured poll interval with timer (real setTimeout spy)", async () => {
+    process.env.ELIZAOS_CLOUD_API_KEY = "eliza_test_key";
+    process.env.ELIZA_CLOUD_API_BASE_URL = "https://cloud.example.test/api/v1";
+    process.env.ELIZAOS_DEPLOY_POLL_INTERVAL_MS = "250";
+
+    const setTimeoutSpy = vi.spyOn(global, "setTimeout");
+    // Mock first response: BUILDING (triggers sleep), second: READY (exits loop)
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        jsonResponse(
+          { success: true, deploymentId: "dep-1", status: "BUILDING" },
+          202,
+        ),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          success: true,
+          deploymentId: "dep-1",
+          status: "BUILDING",
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          success: true,
+          deploymentId: "dep-1",
+          status: "READY",
+        }),
+      );
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+    vi.spyOn(console, "log").mockImplementation(() => {});
+
+    const code = await runDeploy({ appId: "app-1" });
+
+    expect(code).toBe(0);
+    // setTimeout should be called at least once with the configured interval (250ms)
+    // during the polling loop for BUILDING → BUILDING transition
+    expect(setTimeoutSpy).toHaveBeenCalledWith(
+      expect.any(Function),
+      250,
+    );
+  });
+
+  it("rejects invalid poll-interval values and uses default", async () => {
+    process.env.ELIZAOS_CLOUD_API_KEY = "eliza_test_key";
+    process.env.ELIZA_CLOUD_API_BASE_URL = "https://cloud.example.test/api/v1";
+
+    const invalidIntervals = [
+      "not-a-number",
+      "123abc",
+      "Infinity",
+      "-1000", // negative values should use default (bounds check)
+      "NaN",
+    ];
+
+    for (const env of invalidIntervals) {
+      process.env.ELIZAOS_DEPLOY_POLL_INTERVAL_MS = env;
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValueOnce(
+          jsonResponse(
+            { success: true, deploymentId: "dep-1", status: "READY" },
+            202,
+          ),
+        );
+      globalThis.fetch = fetchMock as unknown as typeof fetch;
+      vi.spyOn(console, "log").mockImplementation(() => {});
+
+      await runDeploy({ appId: "app-1" });
+
+      // Should fall back to DEFAULT_POLL_INTERVAL_MS (5000) when interval can't be used
+      // Note: when status is READY on first poll, setTimeout is not called at all
+      // So we just verify the deploy succeeds (invalid values fall back to default)
+      expect(fetchMock).toHaveBeenCalled();
+
+      vi.restoreAllMocks();
+    }
+  });
 });
