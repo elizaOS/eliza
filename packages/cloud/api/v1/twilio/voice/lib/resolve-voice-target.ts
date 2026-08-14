@@ -2,9 +2,13 @@
  * Resolves only the exact public eliza.app Twilio line to its configured agent.
  */
 
-import { agentSandboxesRepository } from "@/db/repositories/agent-sandboxes";
+import {
+  type AgentSandbox,
+  agentSandboxesRepository,
+} from "@/db/repositories/agent-sandboxes";
 
 export interface TwilioVoiceTarget {
+  agent: AgentSandbox;
   agentId: string;
   organizationId: string;
   userId: string;
@@ -35,6 +39,7 @@ export async function resolveTwilioVoiceTarget(
     (await agentSandboxesRepository.findLatestByCharacterId(defaultAgentId));
   return sandbox
     ? {
+        agent: sandbox,
         agentId: sandbox.id,
         organizationId: sandbox.organization_id,
         userId: sandbox.user_id,
