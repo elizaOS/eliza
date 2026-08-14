@@ -1590,6 +1590,108 @@ describe("v5 planner loop skeleton", () => {
 		expect(result.finalMessage).toContain("42");
 	});
 
+	it("bounds forced synthesis to safe observations and compact receipt authority", async () => {
+		const compactionDiagnostic = "COMPACTION_DIAGNOSTIC_DO_NOT_LEAK";
+		const mutationSecret = "MUTATION_PROVIDER_SECRET_DO_NOT_LEAK";
+		const readTail = "READ_TAIL_SHOULD_BE_TRUNCATED";
+		const userFacingTail = "USER_FACING_TAIL_SHOULD_BE_TRUNCATED";
+		const readCall = {
+			id: "read-1",
+			name: "WEB_SEARCH",
+			arguments: { query: "release status" },
+		};
+		const mutationCall = {
+			id: "mutation-1",
+			name: "UPDATE_SECRET",
+			arguments: { value: "planner-parameter-secret" },
+		};
+		const useModel = vi
+			.fn()
+			.mockResolvedValueOnce({ text: "", toolCalls: [readCall] })
+			.mockResolvedValueOnce({ text: "", toolCalls: [mutationCall] })
+			.mockResolvedValueOnce({ text: "", toolCalls: [mutationCall] })
+			.mockResolvedValueOnce({ text: "", toolCalls: [mutationCall] })
+			.mockResolvedValueOnce({
+				text: '{"thought":"Use only safe evidence.","messageToUser":"Done safely.","toolCalls":[]}',
+			});
+		const receipts = Array.from({ length: 6 }, (_, index) => ({
+			receiptId: `receipt-${index}`,
+			operation: `vault.secret.update-${index}`,
+			resource: { kind: "vault.secret", id: `secret-${index}` },
+			artifacts: [],
+			idempotency: { key: `operation-${index}`, replayed: false },
+			observedAt: "2026-08-13T00:00:00.000Z",
+			outcome: "applied" as const,
+			commit: {
+				kind: "durable" as const,
+				id: `provider-commit-secret-${index}`,
+				committedAt: "2026-08-13T00:00:00.000Z",
+			},
+		}));
+		const executeToolCall = vi
+			.fn()
+			.mockResolvedValueOnce({
+				success: true,
+				text: `SAFE_READ_OBSERVATION ${"r".repeat(1_800)} ${readTail}`,
+			})
+			.mockResolvedValueOnce({
+				success: true,
+				text: mutationSecret,
+				userFacingText: `Updated the secret safely. ${"u".repeat(900)} ${userFacingTail}`,
+				effectReceipts: receipts,
+			});
+
+		const result = await runPlannerLoop({
+			runtime: { useModel, logger: { debug: vi.fn(), warn: vi.fn() } },
+			context: {
+				id: "ctx",
+				events: [
+					{
+						id: "old-compaction",
+						type: "segment",
+						source: "planner-loop",
+						segment: {
+							id: "old-compaction",
+							label: "compaction",
+							content: compactionDiagnostic,
+							stable: false,
+						},
+					},
+				],
+			},
+			tools: [
+				{ name: "WEB_SEARCH", description: "Read current status." },
+				{ name: "UPDATE_SECRET", description: "Update a secret." },
+			],
+			config: { maxRepeatedToolCalls: 1 },
+			executeToolCall,
+			evaluate: vi.fn(async () => ({
+				success: true,
+				decision: "CONTINUE" as const,
+				thought: "Continue.",
+			})),
+		});
+
+		expect(executeToolCall).toHaveBeenCalledTimes(2);
+		expect(result.finalMessage).toBe("Done safely.");
+		const synthesisParams = useModel.mock.calls.at(-1)?.[1] as {
+			messages?: Array<{ content?: unknown }>;
+		};
+		const synthesisInput = JSON.stringify(synthesisParams);
+		expect(synthesisInput).toContain("SAFE_READ_OBSERVATION");
+		expect(synthesisInput).toContain("Updated the secret safely.");
+		expect(synthesisInput).toContain(
+			"receipt outcome=applied operation=vault.secret.update-5 resource=vault.secret:secret-5",
+		);
+		expect(synthesisInput).not.toContain(mutationSecret);
+		expect(synthesisInput).not.toContain("planner-parameter-secret");
+		expect(synthesisInput).not.toContain("provider-commit-secret");
+		expect(synthesisInput).not.toContain("vault.secret.update-0");
+		expect(synthesisInput).not.toContain("r".repeat(1_800));
+		expect(synthesisInput).not.toContain("u".repeat(900));
+		expect(synthesisInput).not.toContain(compactionDiagnostic);
+	});
+
 	it("does not re-execute an identical call that failed with retryable:false and forces a terminal synthesis", async () => {
 		// Live regression: PAGE_DELEGATE returned "CREATE_HABIT is not available
 		// on the owner page" and the planner re-issued the SAME page+action call

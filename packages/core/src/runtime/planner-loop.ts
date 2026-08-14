@@ -3624,10 +3624,38 @@ async function finishWithForcedSynthesis(params: {
 				"user now from the tool results already in this trajectory; if they do not " +
 				"contain the answer, say plainly what you found and what was missing.",
 	});
+	// A final user-wire synthesis must not receive the full archival trajectory:
+	// compaction may hold an unbounded number of old raw diagnostics, and mutation
+	// wrappers are observations rather than authority to claim an effect. Keep a
+	// bounded chronological native suffix. Read/search/list/get tools may provide
+	// a scrubbed observation for synthesis; mutations contribute only their
+	// action-owned user-facing projection and receipt-backed status.
+	const synthesisSteps = [...trajectory.archivedSteps, ...trajectory.steps]
+		.slice(-FINAL_SYNTHESIS_MAX_STEPS)
+		.map(projectStepForFinalSynthesis);
+	const synthesisContext = {
+		...trajectory.context,
+		events: trajectory.context.events.filter(
+			(event) =>
+				!(
+					event.type === "segment" &&
+					event.source === "planner-loop" &&
+					"segment" in event &&
+					(event.segment as { label?: unknown }).label === "compaction"
+				),
+		),
+	};
+	const synthesisTrajectory: PlannerTrajectory = {
+		...trajectory,
+		context: synthesisContext,
+		steps: synthesisSteps,
+		archivedSteps: [],
+		plannedQueue: [],
+	};
 	const synthOutput = await callPlanner({
 		runtime: loop.runtime,
-		context: trajectory.context,
-		trajectory,
+		context: synthesisContext,
+		trajectory: synthesisTrajectory,
 		config,
 		modelType: loop.modelType,
 		provider: loop.provider,
@@ -3665,6 +3693,65 @@ async function finishWithForcedSynthesis(params: {
 			),
 			trajectory,
 		),
+	};
+}
+
+const SYNTHESIS_OBSERVATION_TOOL =
+	/(?:^|_)(?:READ|SEARCH|LIST|GET|FETCH|LOOKUP|QUERY|STATUS|INSPECT)(?:_|$)/i;
+
+const FINAL_SYNTHESIS_MAX_STEPS = 12;
+const FINAL_SYNTHESIS_MAX_RECEIPTS = 4;
+
+function synthesisReceiptSummary(
+	result: PlannerToolResult,
+): string | undefined {
+	const receipts = result.effectReceipts?.slice(-FINAL_SYNTHESIS_MAX_RECEIPTS);
+	if (!receipts?.length) return undefined;
+	return receipts
+		.map((receipt) => {
+			const operation = compactText(receipt.operation, 120);
+			const resourceKind = compactText(receipt.resource.kind, 80);
+			const resourceId = compactText(receipt.resource.id, 160);
+			return `receipt outcome=${receipt.outcome} operation=${operation} resource=${resourceKind}:${resourceId}`;
+		})
+		.join("\n");
+}
+
+function projectStepForFinalSynthesis(step: PlannerStep): PlannerStep {
+	if (!step.toolCall || !step.result) {
+		return { ...step, thought: undefined };
+	}
+	const result = step.result;
+	const userFacingText = getNonEmptyString(result.userFacingText);
+	const observation =
+		result.success === true &&
+		SYNTHESIS_OBSERVATION_TOOL.test(step.toolCall.name)
+			? getNonEmptyString(result.text)
+			: undefined;
+	const receiptSummary = synthesisReceiptSummary(result);
+	const primaryProjection = observation
+		? compactText(observation, 1_500)
+		: userFacingText
+			? compactText(userFacingText, 750)
+			: result.success
+				? "Tool completed; no synthesis-safe observation was published."
+				: "Tool failed; no synthesis-safe diagnostic was published.";
+	return {
+		iteration: step.iteration,
+		toolCall: {
+			id: step.toolCall.id,
+			name: step.toolCall.name,
+			params: {},
+		},
+		result: {
+			success: result.success,
+			text: receiptSummary
+				? `${primaryProjection}\n${receiptSummary}`
+				: primaryProjection,
+			...(userFacingText
+				? { userFacingText: compactText(userFacingText, 750) }
+				: {}),
+		},
 	};
 }
 
