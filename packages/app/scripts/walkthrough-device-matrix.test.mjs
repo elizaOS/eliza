@@ -133,6 +133,14 @@ describe("walkthrough device matrix required lanes", () => {
         /--duration/,
         `expected --duration ${overflowing} to be rejected`,
       );
+      // The paired half of the acceptance criterion: each regression value must
+      // independently exceed the Node timer ceiling once converted to
+      // milliseconds — otherwise a later edit to this list could keep the
+      // rejection green while no longer proving the overflow relationship.
+      assert.ok(
+        Number(overflowing) * 1000 > 2_147_483_647,
+        `${overflowing}s must exceed the timer ceiling once converted to ms`,
+      );
     }
   });
 
