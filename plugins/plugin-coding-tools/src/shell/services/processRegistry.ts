@@ -6,10 +6,12 @@
  */
 
 import type { FinishedSession, ProcessSession, ProcessStatus } from "../types";
+import {
+  DEFAULT_JOB_TTL_MS,
+  MAX_JOB_TTL_MS,
+  MIN_JOB_TTL_MS,
+} from "../utils/config";
 
-const DEFAULT_JOB_TTL_MS = 30 * 60 * 1000; // 30 minutes
-const MIN_JOB_TTL_MS = 60 * 1000; // 1 minute
-const MAX_JOB_TTL_MS = 3 * 60 * 60 * 1000; // 3 hours
 const DEFAULT_PENDING_OUTPUT_CHARS = 30_000;
 
 function clampTtl(value: number | undefined): number {

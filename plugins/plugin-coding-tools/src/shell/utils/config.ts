@@ -14,9 +14,9 @@ const MAX_TIMER_DELAY_MS = 2_147_483_647;
 const MAX_OUTPUT_CHARS = 1_000_000;
 const MIN_BACKGROUND_MS = 10;
 const MAX_BACKGROUND_MS = 120_000;
-const DEFAULT_JOB_TTL_MS = 30 * 60 * 1000;
-const MIN_JOB_TTL_MS = 60 * 1000;
-const MAX_JOB_TTL_MS = 3 * 60 * 60 * 1000;
+export const DEFAULT_JOB_TTL_MS = 30 * 60 * 1000;
+export const MIN_JOB_TTL_MS = 60 * 1000;
+export const MAX_JOB_TTL_MS = 3 * 60 * 60 * 1000;
 
 const configSchema = z.object({
   enabled: z.boolean(),
