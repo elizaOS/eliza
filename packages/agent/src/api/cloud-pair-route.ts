@@ -160,8 +160,10 @@ function sendHtml(
   res: http.ServerResponse,
   status: number,
   body: string,
+  extraHeaders?: Record<string, string>,
 ): void {
   res.writeHead(status, {
+    ...extraHeaders,
     "content-type": "text/html; charset=utf-8",
     "cache-control": "no-store, no-cache, must-revalidate, proxy-revalidate",
     "content-security-policy":
@@ -278,8 +280,10 @@ export async function handleStandaloneCloudPairRoute(
       );
     }
   } catch (err) {
+    // error-policy:J1 transport/abort failures become a structured 503 page.
+    const timedOut = err instanceof Error && err.name === "AbortError";
     logger.error(
-      `[cloud-pair] exchange failed url=${exchangeUrl} error=${
+      `[cloud-pair] exchange ${timedOut ? "timed out" : "failed"} url=${exchangeUrl} error=${
         err instanceof Error ? err.message : String(err)
       }`,
     );
@@ -288,8 +292,11 @@ export async function handleStandaloneCloudPairRoute(
       503,
       renderErrorHtml(
         "Eliza Cloud is unreachable",
-        "We could not reach Eliza Cloud to verify your sign-in link. Try again in a minute.",
+        timedOut
+          ? "Eliza Cloud did not respond in time, so your sign-in link was never verified. Open your agent again from Eliza Cloud to get a fresh link."
+          : "We could not reach Eliza Cloud, so your sign-in link was never verified. Open your agent again from Eliza Cloud to get a fresh link.",
       ),
+      { "retry-after": "60" },
     );
     return true;
   }
@@ -326,13 +333,36 @@ export async function handleStandaloneCloudPairRoute(
     return true;
   }
 
+  if (status >= 500) {
+    // Upstream 5xx means Cloud failed before verifying anything — it never
+    // accepted the link, so the copy must not claim it did. Pairing tokens are
+    // short-lived one-time secrets, so recovery is a fresh link, not a retry
+    // of this URL; Retry-After signals when the upstream is worth trying again.
+    sendHtml(
+      res,
+      502,
+      renderErrorHtml(
+        "Eliza Cloud hit an error",
+        "Eliza Cloud had an internal error before your sign-in link could be verified, so the link was not accepted. Wait a moment, then open your agent again from Eliza Cloud to get a fresh link.",
+      ),
+      { "retry-after": "60" },
+    );
+    return true;
+  }
+
   if (!exchanged) {
+    // Two remaining failure shapes: a 2xx whose body failed session parsing
+    // (Cloud really did accept the link), or an unexpected non-2xx status.
+    // Neither is recoverable by re-visiting this one-time URL.
+    const accepted = status >= 200 && status < 300;
     sendHtml(
       res,
       502,
       renderErrorHtml(
         "Sign-in failed",
-        "Eliza Cloud accepted the link but did not return a valid agent session. Try again from the dashboard.",
+        accepted
+          ? "Eliza Cloud accepted the link but did not return a valid agent session. Open your agent again from Eliza Cloud to get a fresh link."
+          : `Eliza Cloud returned an unexpected response (status ${status}), so your sign-in link could not be verified. Open your agent again from Eliza Cloud to get a fresh link.`,
       ),
     );
     return true;
