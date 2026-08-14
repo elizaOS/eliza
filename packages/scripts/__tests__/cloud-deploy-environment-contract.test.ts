@@ -16,11 +16,14 @@ interface WorkflowStep {
   id?: string;
   name?: string;
   run?: string;
-  with?: { script?: string };
+  uses?: string;
+  with?: Record<string, string>;
 }
 
 interface WorkflowJob {
   env?: Record<string, string>;
+  environment?: string;
+  needs?: string | string[];
   steps?: WorkflowStep[];
 }
 
@@ -45,8 +48,11 @@ function step(workflow: Workflow, jobId: string, name: string): WorkflowStep {
 // `cloud-cf-release.yml` it calls, so the mutation contracts are read there.
 const cloudSource = read(".github/workflows/cloud-cf-release.yml");
 const cloud = parse(".github/workflows/cloud-cf-release.yml");
+const cloudApiWranglerSource = read("packages/cloud/api/wrangler.toml");
 const infraSource = read(".github/workflows/infra.yml");
 const infra = parse(".github/workflows/infra.yml");
+const slopHubSource = read(".github/workflows/slophub-cutover.yml");
+const slopHub = parse(".github/workflows/slophub-cutover.yml");
 const provisioning = parse(
   ".github/workflows/deploy-eliza-provisioning-worker.yml",
 );
@@ -76,6 +82,82 @@ const requiredAuthWorkerSecretNames = [
 ] as const;
 
 describe("canonical cloud deployment environment contract", () => {
+  test("keeps the fixed SlopHub cutover behind a reviewed production plan", () => {
+    const triggerBlock = slopHubSource.slice(
+      slopHubSource.indexOf("on:"),
+      slopHubSource.indexOf("\nconcurrency:"),
+    );
+    expect(triggerBlock).toContain("workflow_dispatch:");
+    expect(triggerBlock).toContain("default: plan");
+    for (const forbiddenTrigger of ["push:", "pull_request:", "schedule:"]) {
+      expect(triggerBlock).not.toContain(forbiddenTrigger);
+    }
+    for (const forbiddenTargetInput of [
+      "dns_name:",
+      "zone_name:",
+      "server_id:",
+      "firewall_id:",
+      "target_ipv4:",
+    ]) {
+      expect(triggerBlock).not.toContain(forbiddenTargetInput);
+    }
+
+    expect(slopHub.jobs?.cutover?.needs).toBe("validate-source");
+    expect(slopHub.jobs?.cutover?.environment).toBe("production");
+    expect(slopHub.jobs?.cutover?.env).toBeUndefined();
+    expect(
+      step(slopHub, "validate-source", "Require production main").run,
+    ).toContain('"refs/heads/main"');
+    const reviewedRun = step(slopHub, "cutover", "Validate reviewed plan run");
+    expect(reviewedRun.run).toContain(
+      'run.path !== ".github/workflows/slophub-cutover.yml"',
+    );
+    expect(reviewedRun.run).toContain("run.run_attempt");
+    const artifact = step(slopHub, "cutover", "Resolve reviewed plan artifact");
+    expect(artifact.run).toContain("artifact.digest");
+    expect(artifact.run).toContain("artifact.workflow_run?.id");
+    expect(artifact.run).toContain("EXPECTED_RUN_ATTEMPT");
+    const checkout = slopHub.jobs?.cutover?.steps?.find((candidate) =>
+      candidate.uses?.startsWith("actions/checkout@"),
+    );
+    expect(checkout?.with?.ref).toContain(
+      "steps.reviewed-run.outputs.source_sha",
+    );
+    for (const name of ["Plan fixed cutover", "Apply reviewed cutover"]) {
+      const operator = step(slopHub, "cutover", name);
+      expect(operator.env?.CLOUDFLARE_ACCOUNT_ID).toContain(
+        "secrets.CLOUDFLARE_ACCOUNT_ID",
+      );
+      expect(operator.env?.CLOUDFLARE_API_TOKEN).toContain(
+        "secrets.CLOUDFLARE_API_TOKEN",
+      );
+      expect(operator.env?.HCLOUD_TOKEN).toContain("secrets.HCLOUD_TOKEN");
+    }
+    for (const action of slopHub.jobs?.cutover?.steps?.filter(
+      (candidate) => candidate.uses,
+    ) ?? []) {
+      expect(action.env?.CLOUDFLARE_API_TOKEN).toBeUndefined();
+      expect(action.env?.HCLOUD_TOKEN).toBeUndefined();
+    }
+    expect(slopHubSource).toContain(
+      "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+    );
+    expect(slopHubSource).toContain(
+      "actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c",
+    );
+    expect(slopHubSource).toContain(
+      "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a",
+    );
+    expect(slopHubSource).not.toMatch(/wallet|payment|payout|settlement/i);
+    expect(cloudApiWranglerSource).toContain(
+      `OIDC_REDIRECT_URI_ALIASES = '{"elizahub":["https://git.slop.cash/user/oauth2/elizacloud/callback"]}'`,
+    );
+    expect(requiredAuthWorkerSecretNames).toContain("OIDC_CLIENTS");
+    expect([...requiredAuthWorkerSecretNames]).not.toContain(
+      "OIDC_REDIRECT_URI_ALIASES",
+    );
+    expect(cloudSource).not.toContain("secrets.OIDC_REDIRECT_URI_ALIASES");
+  });
   test("derives Terraform deploy branches from the selected environment", () => {
     const deployBranch = infra.jobs?.terraform?.env?.TF_VAR_deploy_branch;
     expect(deployBranch).toContain("inputs.environment == 'production'");
