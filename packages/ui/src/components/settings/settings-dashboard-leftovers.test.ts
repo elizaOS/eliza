@@ -34,26 +34,6 @@ const SETTINGS_MOUNTED_DIRS = [
  */
 const BRANDCARD_ALLOWLIST = new Map<string, string>([
   [
-    "cloud/account-security/components/profile-form.tsx",
-    "account name/email save-cancel form (next 1:1 SettingsInputRow class)",
-  ],
-  [
-    "cloud/account-security/components/incident-report-panel.tsx",
-    "incident textarea + submit + mailto form (next SettingsTextareaRow class)",
-  ],
-  [
-    "cloud/account-security/components/mfa-panel.tsx",
-    "pending #19497 status-only SettingsRow conversion",
-  ],
-  [
-    "cloud/account-security/components/recent-audit-events.tsx",
-    "pending #19497 unavailable SettingsRow conversion",
-  ],
-  [
-    "cloud/billing/components/pay-as-you-go-card.tsx",
-    "pending #19497 SettingsStack wrapper around SettingsSwitchRow",
-  ],
-  [
     "cloud/billing/components/auto-top-up-card.tsx",
     "billing multi-field editor (switch + amounts + save)",
   ],
@@ -67,7 +47,7 @@ const BRANDCARD_ALLOWLIST = new Map<string, string>([
   ],
   [
     "cloud/organization/organization-tab.tsx",
-    "org hero tile + tabs; empty state pending #19497",
+    "org hero tile + tabs; empty state already converted",
   ],
   [
     "cloud/monetization/affiliates/AffiliatesPageClient.tsx",
