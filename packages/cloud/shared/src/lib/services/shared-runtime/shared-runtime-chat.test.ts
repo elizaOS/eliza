@@ -92,8 +92,7 @@ const getInferenceAdmissionSnapshotCacheOnly = mock(async () => admissionSnapsho
 mock.module("../inference-admission-snapshot", () => ({
   getInferenceAdmissionSnapshotCacheOnly,
   InferenceAdmissionSnapshotCacheWarmingError: TestInferenceAdmissionSnapshotCacheWarmingError,
-  inferenceRateLimitConfig: (snapshot: unknown) =>
-    snapshot ? { windowMs: 60_000, maxRequests: 120 } : undefined,
+  inferenceRateLimitConfig: () => ({ windowMs: 60_000, maxRequests: 120 }),
 }));
 
 const admitOrganizationInference = mock(
@@ -416,116 +415,6 @@ describe("SharedRuntimeChatService", () => {
     expect(settleCalls).toEqual([0.004]);
   });
 
-  test("platform-funded personal Shared keeps rate limiting but never touches account credits", async () => {
-    const service = new SharedRuntimeChatService();
-    const h = harness();
-
-    const response = await service.bridge(agent, rpc, {
-      executionCtx: h.executionCtx,
-      historyStore: h.historyStore,
-      funding: "platform",
-    });
-
-    expect(response.result?.text).toBe("hello back");
-    expect(enforceOrgRateLimit).toHaveBeenCalledWith(agent.organization_id, "completions", {
-      cacheOnly: true,
-      executionCtx: h.executionCtx,
-      config: undefined,
-    });
-    expect(getInferenceAdmissionSnapshotCacheOnly).not.toHaveBeenCalled();
-    expect(admitOrganizationInference).not.toHaveBeenCalled();
-    expect(billCalls).toHaveLength(0);
-    expect(settleCalls).toHaveLength(0);
-    expect(h.history()).toHaveLength(3);
-  });
-
-  test("returns and persists a typed Dedicated capability wall without provider billing", async () => {
-    const service = new SharedRuntimeChatService();
-    const h = harness();
-    turn = {
-      degraded: false,
-      reply: "Persistent notes require Dedicated.",
-      history: [
-        { role: "user", content: "save this as a note" },
-        { role: "assistant", content: "Persistent notes require Dedicated." },
-      ],
-      model: "capability-wall",
-      capabilityWall: {
-        capability: "notes",
-        label: "Notes",
-        reply: "Persistent notes require Dedicated.",
-      },
-    };
-
-    const response = await service.bridge(agent, rpc, {
-      executionCtx: h.executionCtx,
-      historyStore: h.historyStore,
-      funding: "platform",
-    });
-
-    expect(response.result).toMatchObject({
-      text: "Persistent notes require Dedicated.",
-      model: "capability-wall",
-      actionResults: [
-        {
-          actionName: "DEDICATED_CAPABILITY_REQUIRED",
-          success: false,
-          values: {
-            capability: "notes",
-            currentExecutionTier: "shared",
-            requiredExecutionTier: "dedicated-always",
-            automatic: false,
-          },
-        },
-      ],
-    });
-    expect(billCalls).toHaveLength(0);
-    expect(h.history()).toHaveLength(3);
-  });
-
-  test("returns the typed metered web-search receipt with a normal billed model turn", async () => {
-    const service = new SharedRuntimeChatService();
-    const h = harness();
-    turn = {
-      degraded: false,
-      reply: "According to the public sources, elizaOS shipped the update.",
-      history: [
-        { role: "user", content: "hello" },
-        {
-          role: "assistant",
-          content: "According to the public sources, elizaOS shipped the update.",
-        },
-      ],
-      model: "gpt-oss-120b",
-      webSearch: {
-        query: "search the web for elizaOS updates",
-        answer: "https://elizaos.ai/update",
-        provider: "exa",
-        metered: true,
-      },
-    };
-
-    const response = await service.bridge(agent, rpc, {
-      executionCtx: h.executionCtx,
-      historyStore: h.historyStore,
-    });
-
-    expect(response.result).toMatchObject({
-      actionResults: [
-        {
-          actionName: "WEB_SEARCH",
-          success: true,
-          values: {
-            provider: "exa",
-            metered: true,
-            currentExecutionTier: "shared",
-          },
-        },
-      ],
-    });
-    expect(settleCalls).toEqual([0.004]);
-  });
-
   test("rate denial and policy warming stop before billing admission or provider dispatch", async () => {
     const service = new SharedRuntimeChatService();
     const h = harness();
@@ -661,28 +550,6 @@ describe("SharedRuntimeChatService", () => {
     expect(h.history()).toHaveLength(3);
     await Promise.all(h.background);
     expect(settleCalls).toEqual([0.004]);
-  });
-
-  test("streams the typed capability wall and settles the deterministic turn at zero", async () => {
-    streamTurn = {
-      degraded: false,
-      model: "capability-wall",
-      capabilityWall: {
-        capability: "filesystem",
-        label: "Files",
-        reply: "File access requires Dedicated.",
-      },
-      parts: (async function* () {
-        yield { type: "text-delta", text: "File access requires Dedicated." };
-        yield { type: "finish", text: "File access requires Dedicated." };
-      })(),
-    };
-
-    const body = await (await new SharedRuntimeChatService().stream(agent, rpc, harness())).text();
-    expect(body).toContain("DEDICATED_CAPABILITY_REQUIRED");
-    expect(body).toContain('"capability":"filesystem"');
-    expect(settleCalls).toEqual([0]);
-    expect(billCalls).toHaveLength(0);
   });
 
   test("no-model degradation remains a complete canonical SSE turn", async () => {

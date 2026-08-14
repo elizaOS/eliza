@@ -147,7 +147,7 @@ Wallet-based auth supports agents and headless clients that cannot use browser s
 
 1. **GET /api/auth/siwe/nonce** — Returns `{ nonce, domain, uri, chainId, version, statement }`. Nonce is one-time, 5 min TTL (Redis). **Why nonce?** Prevents replay; timestamp-only can be replayed within the window.
 2. Build the EIP-4361 message with the nonce and sign it with the wallet.
-3. **POST /api/auth/siwe/verify** — Body `{ message, signature }`. Server validates domain and signature, consumes the nonce, then finds or creates a zero-balance user/org and returns **`apiKey`** with `user` and `organization`. Credits are added only through explicit funding or promotion-code redemption.
+3. **POST /api/auth/siwe/verify** — Body `{ message, signature }`. Server validates domain and signature, consumes the nonce, then finds or creates user/org and returns **`apiKey`** with `user` and `organization`. New wallets get initial free credits (configurable via `INITIAL_FREE_CREDITS`).
 4. Use the returned API key: `X-API-Key: <key>` or `Authorization: Bearer <key>` on subsequent requests.
 
 ### Wallet header signature (no API key)
@@ -167,7 +167,7 @@ If the wallet is unknown, the first valid signed request **creates** the account
 **POST /api/v1/topup/10**, **/50**, **/100** (x402 payment-gated):
 
 - With **wallet sig headers**: credits go to the signer’s wallet (no body `walletAddress` needed).
-- Without wallet sig: send **body.walletAddress**; that wallet’s org is credited. New wallets start at zero (payment only).
+- Without wallet sig: send **body.walletAddress**; that wallet’s org is credited. New wallets are created without initial free credits (payment only).
 
 See [Wallet API](/cloud/wallet-api) for full reference, WHYs, and file list.
 

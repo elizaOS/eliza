@@ -1,32 +1,27 @@
 #!/usr/bin/env node
 /**
- * Check whether the public eliza.app entry point is ready for the shared
- * Eliza Cloud phone gateway.
- *
- * This is intentionally read-only. It verifies the deploy target, DNS records,
- * and the published GitHub Pages bundle that users hit before texting the
- * shared gateway number.
+ * Validates the rendered public homepage against the admitted Cloudflare and
+ * Blooio messaging configuration. The check is read-only and writes evidence
+ * that distinguishes a disabled WhatsApp surface from a verified live sender.
  */
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { chromium } from "playwright";
 
-const scriptDir = path.dirname(fileURLToPath(import.meta.url));
+const scriptPath = fileURLToPath(import.meta.url);
+const scriptDir = path.dirname(scriptPath);
 const repoRoot = path.resolve(scriptDir, "..", "..", "..");
-const repo = "elizaOS/elizaos.github.io";
-const expectedDomain = "eliza.app";
-const expectedGatewayNumber = "+14159611510";
-const expectedFormattedNumber = "+1 (415) 961-1510";
-const disallowedNumbers = ["+14153024399", "4153024399", "415-302-4399"];
-const expectedApexRecords = new Set([
-  "185.199.108.153",
-  "185.199.109.153",
-  "185.199.110.153",
-  "185.199.111.153",
-]);
-const expectedWwwCname = "elizaos.github.io.";
-const registryRdapUrl = `https://pubapi.registry.google/rdap/domain/${expectedDomain}`;
+const repo = "elizaOS/eliza";
+const defaultOrigin = "https://eliza.app";
+const expectedGatewayNumber = "+18087881821";
+const expectedFormattedNumber = "+1 (808) 788-1821";
+const rejectedWhatsAppNumbers = [
+  "+14155238886",
+  "+15551649988",
+  "+14159611510",
+];
 const defaultEvidencePath = path.join(
   repoRoot,
   ".eliza-local",
@@ -38,15 +33,14 @@ function usage() {
     "Usage: node packages/app-core/scripts/check-homepage-public-readiness.mjs [options]",
     "",
     "Options:",
-    "  --evidence <path>  Write structured proof JSON. Defaults to .eliza-local/homepage-public-readiness-latest.json.",
+    "  --origin <url>     Public origin. Defaults to https://eliza.app.",
+    "  --evidence <path>  Write proof JSON. Defaults to .eliza-local/homepage-public-readiness-latest.json.",
     "  --no-evidence      Do not write a proof JSON file.",
   ].join("\n");
 }
 
 function parseArgs(argv) {
-  const args = {
-    evidencePath: defaultEvidencePath,
-  };
+  const args = { evidencePath: defaultEvidencePath, origin: defaultOrigin };
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
     const next = () => {
@@ -54,7 +48,8 @@ function parseArgs(argv) {
       if (!value) throw new Error(`${arg} requires a value`);
       return value;
     };
-    if (arg === "--evidence") args.evidencePath = path.resolve(next());
+    if (arg === "--origin") args.origin = new URL(next()).origin;
+    else if (arg === "--evidence") args.evidencePath = path.resolve(next());
     else if (arg === "--no-evidence") args.evidencePath = null;
     else if (arg === "--help" || arg === "-h") {
       console.log(usage());
@@ -71,302 +66,222 @@ function run(command, args) {
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"],
   });
-  return {
-    status: result.status ?? (result.error ? 1 : 0),
-    stdout: result.stdout ?? "",
-    stderr: result.stderr ?? (result.error ? String(result.error) : ""),
-  };
-}
-
-function sleepSync(ms) {
-  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
-}
-
-const evidenceChecks = [];
-
-function check(name, passed, detail) {
-  evidenceChecks.push({ name, passed, detail });
-  console.log(
-    `[homepage-public] ${passed ? "PASS" : "BLOCKED"} ${name}: ${detail}`,
-  );
-  return passed;
-}
-
-function ghJson(path, jq) {
-  const args = ["api", path];
-  if (jq) args.push("--jq", jq);
-  let lastResult = null;
-  for (let attempt = 1; attempt <= 3; attempt += 1) {
-    lastResult = run("gh", args);
-    if (lastResult.status === 0) return lastResult.stdout.trim();
-    if (attempt < 3) sleepSync(500 * attempt);
-  }
-  throw new Error(
-    lastResult?.stderr.trim() || lastResult?.stdout.trim() || "gh api failed",
-  );
-}
-
-function decodeGhContent(path) {
-  const content = ghJson(path, ".content");
-  return Buffer.from(content, "base64").toString("utf8");
-}
-
-function dig(name, type = null) {
-  const args = ["+short"];
-  if (type) args.push(type);
-  args.push(name);
-  const result = run("dig", args);
-  if (result.status !== 0) return [];
-  return result.stdout
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter(Boolean);
-}
-
-function fetchJson(url) {
-  const result = run("curl", ["-sS", "--max-time", "10", url]);
   if (result.status !== 0) {
     throw new Error(
-      result.stderr.trim() || result.stdout.trim() || "curl failed",
+      result.stderr?.trim() ||
+        result.stdout?.trim() ||
+        `${command} exited with ${result.status}`,
     );
   }
-  return JSON.parse(result.stdout);
+  return result.stdout.trim();
 }
 
-function setEquals(a, b) {
-  if (a.size !== b.size) return false;
-  for (const value of a) {
-    if (!b.has(value)) return false;
-  }
-  return true;
+function getRepoVariable(name) {
+  return run("gh", ["variable", "get", name, "--repo", repo]).trim();
 }
 
-function findJsAssets() {
-  const output = ghJson(
-    `repos/${repo}/git/trees/gh-pages?recursive=1`,
-    ".tree[].path",
+function normalizePhone(value) {
+  const trimmed = value.trim();
+  return /^\+[1-9]\d{7,14}$/.test(trimmed) ? trimmed : null;
+}
+
+export function evaluatePublicSurface(surface, config) {
+  const checks = [];
+  const check = (name, passed, detail) => {
+    checks.push({ name, passed, detail });
+  };
+  const expectedTelHref = `tel:${expectedGatewayNumber}`;
+  const expectedWhatsAppHref = `https://wa.me/${expectedGatewayNumber.slice(1)}`;
+
+  check(
+    "cloudflare-origin",
+    surface.server.toLowerCase() === "cloudflare",
+    `server=${surface.server || "missing"}`,
   );
-  return output
-    .split(/\r?\n/)
-    .filter((path) =>
-      /^assets\/(get-started|connected|contact)-.*\.js$/.test(path),
+  check(
+    "canonical-origin",
+    surface.finalUrl === `${config.origin ?? defaultOrigin}/`,
+    `url=${surface.finalUrl}`,
+  );
+  check(
+    "message-copy-fallback",
+    surface.messageButtonCount === 1 &&
+      surface.copiedPhone === expectedGatewayNumber &&
+      surface.copyNotice === "Phone number copied",
+    `buttons=${surface.messageButtonCount} clipboard=${surface.copiedPhone || "empty"} notice=${surface.copyNotice || "missing"}`,
+  );
+  check(
+    "call-target",
+    surface.telHrefs.includes(expectedTelHref),
+    surface.telHrefs.length ? surface.telHrefs.join(", ") : "missing",
+  );
+  check(
+    "phone-not-rendered",
+    !surface.bodyText.includes(expectedFormattedNumber),
+    surface.bodyText.includes(expectedFormattedNumber)
+      ? `visible text contains ${expectedFormattedNumber}`
+      : "formatted number absent from visible text",
+  );
+
+  const configuredWhatsApp = normalizePhone(config.whatsAppNumber);
+  const configSafe =
+    configuredWhatsApp === expectedGatewayNumber &&
+    !rejectedWhatsAppNumbers.includes(configuredWhatsApp);
+  check(
+    "whatsapp-sender-config",
+    configSafe,
+    `configured=${configuredWhatsApp ?? "invalid"}`,
+  );
+
+  if (config.whatsAppEnabled) {
+    check(
+      "whatsapp-public-admission",
+      surface.whatsAppHrefs.length === 1 &&
+        surface.whatsAppHrefs[0] === expectedWhatsAppHref,
+      surface.whatsAppHrefs.length
+        ? surface.whatsAppHrefs.join(", ")
+        : "enabled but rendered CTA is missing",
     );
+  } else {
+    check(
+      "whatsapp-fail-closed",
+      surface.whatsAppHrefs.length === 0,
+      surface.whatsAppHrefs.length
+        ? `disabled but rendered ${surface.whatsAppHrefs.join(", ")}`
+        : "disabled and no WhatsApp CTA rendered",
+    );
+  }
+
+  check(
+    "browser-console",
+    surface.consoleErrors.length === 0,
+    surface.consoleErrors.length
+      ? surface.consoleErrors.join(" | ")
+      : "no console errors",
+  );
+
+  return { ok: checks.every((entry) => entry.passed), checks };
 }
 
-function writeEvidence({ evidencePath, ok, next, details }) {
+async function inspectPublicSurface(origin) {
+  const browser = await chromium.launch({ headless: true });
+  try {
+    const context = await browser.newContext({
+      permissions: ["clipboard-read", "clipboard-write"],
+      userAgent:
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/140.0.0.0 Safari/537.36",
+    });
+    const page = await context.newPage();
+    const consoleErrors = [];
+    page.on("console", (message) => {
+      if (message.type() === "error") consoleErrors.push(message.text());
+    });
+    page.on("pageerror", (error) => consoleErrors.push(error.message));
+
+    const response = await page.goto(`${origin}/`, {
+      waitUntil: "domcontentloaded",
+      timeout: 30_000,
+    });
+    if (!response) throw new Error("homepage navigation returned no response");
+    await page.waitForSelector('a[href^="tel:"]', {
+      timeout: 20_000,
+    });
+
+    const collectHrefs = (selector) =>
+      page
+        .locator(selector)
+        .evaluateAll((elements) =>
+          elements
+            .map((element) => element.getAttribute("href"))
+            .filter((value) => typeof value === "string"),
+        );
+
+    const messageButton = page.getByRole("button", { name: "Message Eliza" });
+    const messageButtonCount = await messageButton.count();
+    let copiedPhone = "";
+    let copyNotice = "";
+    if (messageButtonCount === 1) {
+      await messageButton.click();
+      const status = page.getByRole("status");
+      await status.waitFor({ state: "visible", timeout: 5_000 });
+      copyNotice = await status.innerText();
+      copiedPhone = await page.evaluate(() => navigator.clipboard.readText());
+    }
+
+    return {
+      finalUrl: page.url(),
+      server: response.headers().server ?? "",
+      bodyText: await page.locator("body").innerText(),
+      messageButtonCount,
+      copiedPhone,
+      copyNotice,
+      telHrefs: await collectHrefs('a[href^="tel:"]'),
+      whatsAppHrefs: await collectHrefs('a[href^="https://wa.me/"]'),
+      consoleErrors,
+    };
+  } finally {
+    await browser.close();
+  }
+}
+
+function writeEvidence(evidencePath, evidence) {
   if (!evidencePath) return;
   fs.mkdirSync(path.dirname(evidencePath), { recursive: true });
-  const evidence = {
-    ok,
-    checkedAt: new Date().toISOString(),
-    domain: expectedDomain,
-    expectedGatewayNumber,
-    expectedFormattedNumber,
-    expectedApexRecords: [...expectedApexRecords],
-    expectedWwwCname,
-    checks: evidenceChecks,
-    next: next ?? null,
-    details,
-  };
   fs.writeFileSync(evidencePath, `${JSON.stringify(evidence, null, 2)}\n`);
   console.log(`[homepage-public] evidence=${evidencePath}`);
 }
 
-function main() {
+async function main() {
   const args = parseArgs(process.argv.slice(2));
-  let allPassed = true;
-  let pagesSummary = null;
-  let assetSummary = null;
-
-  try {
-    const pages = JSON.parse(
-      ghJson(
-        `repos/${repo}/pages`,
-        "{status,cname,html_url,source,protected_domain_state,pending_domain_unverified_at}",
-      ),
-    );
-    allPassed =
-      check(
-        "pages-source",
-        pages.status === "built" &&
-          pages.cname === expectedDomain &&
-          pages.source?.branch === "gh-pages" &&
-          pages.source?.path === "/",
-        `status=${pages.status} cname=${pages.cname ?? "none"} source=${pages.source?.branch ?? "none"}:${pages.source?.path ?? "none"}`,
-      ) && allPassed;
-    pagesSummary = pages;
-  } catch (error) {
-    allPassed =
-      check(
-        "pages-source",
-        false,
-        error instanceof Error ? error.message : String(error),
-      ) && allPassed;
-  }
-
-  try {
-    const cname = decodeGhContent(
-      `repos/${repo}/contents/CNAME?ref=gh-pages`,
-    ).trim();
-    allPassed =
-      check(
-        "gh-pages-cname",
-        cname === expectedDomain,
-        `CNAME=${cname || "empty"}`,
-      ) && allPassed;
-  } catch (error) {
-    allPassed =
-      check(
-        "gh-pages-cname",
-        false,
-        error instanceof Error ? error.message : String(error),
-      ) && allPassed;
-  }
-
-  try {
-    const assets = findJsAssets();
-    if (!assets.some((asset) => /^assets\/get-started-.*\.js$/.test(asset))) {
-      throw new Error("no get-started asset found on gh-pages");
-    }
-    const bundle = assets
-      .map((asset) =>
-        decodeGhContent(`repos/${repo}/contents/${asset}?ref=gh-pages`),
-      )
-      .join("\n");
-    const hasGateway =
-      bundle.includes(expectedGatewayNumber) &&
-      bundle.includes(expectedFormattedNumber);
-    const hasPersonalNumber = disallowedNumbers.some((value) =>
-      bundle.includes(value),
-    );
-    assetSummary = {
-      count: assets.length,
-      assets,
-      hasGateway,
-      hasPersonalNumber,
-    };
-    allPassed =
-      check(
-        "homepage-bundle",
-        hasGateway && !hasPersonalNumber,
-        `${assets.length} js assets gateway=${hasGateway ? "yes" : "no"} personal-number=${hasPersonalNumber ? "yes" : "no"}`,
-      ) && allPassed;
-  } catch (error) {
-    allPassed =
-      check(
-        "homepage-bundle",
-        false,
-        error instanceof Error ? error.message : String(error),
-      ) && allPassed;
-  }
-
-  const delegatedNameservers = dig(expectedDomain, "NS");
-  let registryStatuses = [];
-  let registryNameservers = [];
-  try {
-    const rdap = fetchJson(registryRdapUrl);
-    registryStatuses = Array.isArray(rdap.status) ? rdap.status : [];
-    registryNameservers = Array.isArray(rdap.nameservers)
-      ? rdap.nameservers
-          .map((entry) =>
-            typeof entry?.ldhName === "string"
-              ? entry.ldhName.toLowerCase()
-              : "",
-          )
-          .filter(Boolean)
-      : [];
-    const clientHold = registryStatuses.includes("client hold");
-    allPassed =
-      check(
-        "registry-status",
-        !clientHold,
-        registryStatuses.length
-          ? registryStatuses.join(", ")
-          : "no status flags",
-      ) && allPassed;
-  } catch (error) {
-    allPassed =
-      check(
-        "registry-status",
-        false,
-        error instanceof Error ? error.message : String(error),
-      ) && allPassed;
-  }
-
-  allPassed =
-    check(
-      "domain-delegation",
-      delegatedNameservers.length > 0,
-      delegatedNameservers.length
-        ? delegatedNameservers.join(", ")
-        : registryNameservers.length
-          ? `registry lists ${registryNameservers.join(", ")} but delegation is withheld`
-          : "no delegated nameservers at .app registry",
-    ) && allPassed;
-
-  const apexRecords = new Set(dig(expectedDomain));
-  allPassed =
-    check(
-      "apex-dns",
-      setEquals(apexRecords, expectedApexRecords),
-      apexRecords.size ? [...apexRecords].join(", ") : "no A records",
-    ) && allPassed;
-
-  const wwwCnames = dig(`www.${expectedDomain}`, "CNAME");
-  allPassed =
-    check(
-      "www-dns",
-      wwwCnames.includes(expectedWwwCname),
-      wwwCnames.length ? wwwCnames.join(", ") : "no CNAME records",
-    ) && allPassed;
-
-  if (!allPassed) {
-    const dnsRecordInstructions =
-      `A ${expectedDomain} -> ${[...expectedApexRecords].join(", ")}; ` +
-      `CNAME www.${expectedDomain} -> ${expectedWwwCname}`;
-    const next = registryStatuses.includes("client hold")
-      ? `clear client hold at Porkbun/registrar, then add GitHub Pages DNS records (${dnsRecordInstructions}). With Porkbun API credentials, run: bun run --cwd packages/app-core sms-gateway:homepage:dns -- --apply. Then rerun this script.`
-      : `delegate eliza.app to DNS nameservers, add GitHub Pages DNS records (${dnsRecordInstructions}). With Porkbun API credentials, run: bun run --cwd packages/app-core sms-gateway:homepage:dns -- --apply. Then rerun this script.`;
-    console.error(`[homepage-public] next: ${next}`);
-    writeEvidence({
-      evidencePath: args.evidencePath,
-      ok: false,
-      next,
-      details: {
-        pages: pagesSummary,
-        assets: assetSummary,
-        registryStatuses,
-        registryNameservers,
-        delegatedNameservers,
-        apexRecords: [...apexRecords],
-        wwwCnames,
-      },
-    });
-    process.exitCode = 1;
-    return;
-  }
-
-  writeEvidence({
-    evidencePath: args.evidencePath,
-    ok: true,
-    next: null,
-    details: {
-      pages: pagesSummary,
-      assets: assetSummary,
-      registryStatuses,
-      registryNameservers,
-      delegatedNameservers,
-      apexRecords: [...apexRecords],
-      wwwCnames,
-    },
+  const whatsAppEnabled = getRepoVariable("WHATSAPP_PUBLIC_ENABLED") === "true";
+  const whatsAppNumber = getRepoVariable("VITE_WHATSAPP_PHONE_NUMBER");
+  const surface = await inspectPublicSurface(args.origin);
+  const result = evaluatePublicSurface(surface, {
+    origin: args.origin,
+    whatsAppEnabled,
+    whatsAppNumber,
   });
+
+  for (const entry of result.checks) {
+    console.log(
+      `[homepage-public] ${entry.passed ? "PASS" : "BLOCKED"} ${entry.name}: ${entry.detail}`,
+    );
+  }
+
+  const evidence = {
+    ok: result.ok,
+    checkedAt: new Date().toISOString(),
+    origin: args.origin,
+    expectedGatewayNumber,
+    whatsAppEnabled,
+    whatsAppNumber,
+    checks: result.checks,
+    surface: {
+      finalUrl: surface.finalUrl,
+      server: surface.server,
+      messageButtonCount: surface.messageButtonCount,
+      copiedPhone: surface.copiedPhone,
+      copyNotice: surface.copyNotice,
+      telHrefs: surface.telHrefs,
+      whatsAppHrefs: surface.whatsAppHrefs,
+      consoleErrors: surface.consoleErrors,
+    },
+  };
+  writeEvidence(args.evidencePath, evidence);
+
+  if (!result.ok) {
+    console.error(
+      "[homepage-public] next: deploy the current main Cloudflare Pages artifact; keep WHATSAPP_PUBLIC_ENABLED=false until Blooio exposes an active WhatsApp channel and a real handset inbound/reply round trip passes.",
+    );
+    process.exitCode = 1;
+  }
 }
 
-try {
-  main();
-} catch (error) {
-  console.error(
-    `[homepage-public] ${error instanceof Error ? error.message : String(error)}`,
-  );
-  process.exit(1);
+if (process.argv[1] && path.resolve(process.argv[1]) === scriptPath) {
+  main().catch((error) => {
+    console.error(
+      `[homepage-public] ${error instanceof Error ? error.message : String(error)}`,
+    );
+    process.exit(1);
+  });
 }

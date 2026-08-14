@@ -34,7 +34,11 @@ import {
   checkProvisioningWorkerHealth,
   provisioningWorkerFailureBody,
 } from "@/lib/services/provisioning-worker-health";
-import { findOrCreateUserByWalletAddress } from "@/lib/services/wallet-signup";
+import {
+  findOrCreateUserByWalletAddress,
+  grantInitialCreditsToWalletAccount,
+  INITIAL_FREE_CREDITS,
+} from "@/lib/services/wallet-signup";
 import { isUniqueConstraintError } from "@/lib/utils/db-errors";
 import { logger } from "@/lib/utils/logger";
 import { normalizeTokenAddress } from "@/lib/utils/token-address";
@@ -205,7 +209,7 @@ app.post("/", async (c) => {
     }
     const billingConfig = p.billing ?? {
       mode: "owner_credits" as const,
-      initialReserveUsd: 0,
+      initialReserveUsd: INITIAL_FREE_CREDITS,
     };
     const invalidAdminWallet = adminWallets.find(
       (wallet) => !isAddress(wallet),
@@ -223,7 +227,9 @@ app.post("/", async (c) => {
     const walletAccount = p.account?.primaryWalletAddress
       ? // No `walletProven`: the address is a provisioning parameter, not a
         // signature, so the account it opens must not claim a verified wallet.
-        await findOrCreateUserByWalletAddress(p.account.primaryWalletAddress)
+        await findOrCreateUserByWalletAddress(p.account.primaryWalletAddress, {
+          grantInitialCredits: false,
+        })
       : null;
     const owner = walletAccount?.user
       ? {
@@ -303,15 +309,32 @@ app.post("/", async (c) => {
       throw error;
     }
 
-    const initialCreditsGranted = false;
-    const initialFreeCreditsUsd = 0;
-    const welcomeBonusWithheld = false;
-    const welcomeBonusWithheldReason = undefined;
-    const welcomeBonusWithheldMessage = undefined;
+    let initialCreditsGranted = false;
+    let initialFreeCreditsUsd = 0;
+    let welcomeBonusWithheld = false;
+    // Track the grant service's own withheld-reason type so a new reason (e.g.
+    // "count_unavailable") doesn't silently drop here.
+    let welcomeBonusWithheldReason: Awaited<
+      ReturnType<typeof grantInitialCreditsToWalletAccount>
+    >["welcomeBonusWithheldReason"];
+    let welcomeBonusWithheldMessage: string | undefined;
     let agent: Awaited<
       ReturnType<typeof elizaSandboxService.createAgent>
     >["agent"];
     try {
+      if (walletAccount?.isNewAccount && p.account?.primaryWalletAddress) {
+        const creditGrant = await grantInitialCreditsToWalletAccount({
+          organizationId: ownerOrganizationId,
+          walletAddress: p.account.primaryWalletAddress,
+          requireInitialCredits: true,
+        });
+        initialCreditsGranted = creditGrant.initialCreditsGranted;
+        initialFreeCreditsUsd = creditGrant.initialFreeCreditsUsd;
+        welcomeBonusWithheld = creditGrant.welcomeBonusWithheld === true;
+        welcomeBonusWithheldReason = creditGrant.welcomeBonusWithheldReason;
+        welcomeBonusWithheldMessage = creditGrant.welcomeBonusWithheldMessage;
+      }
+
       const creditCheck = await checkAgentCreditGate(ownerOrganizationId);
       if (!creditCheck.allowed) {
         await charactersService.delete(character.id);

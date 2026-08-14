@@ -46,7 +46,7 @@ test("Smithers uses one peer-compatible Effect and React closure", () => {
   const hostReact = String(dependencies.react);
   expect(hostReact).toBe("19.2.7");
   expect(dependencies["react-dom"]).toBe(hostReact);
-  expect(overrides["@effect/platform-node-shared"]).toBe("4.0.0-beta.102");
+  expect(overrides["@effect/platform-node-shared"]).toBe("4.0.0-beta.105");
 
   const lock = object(
     Bun.JSONC.parse(readFileSync(path.join(repoRoot, "bun.lock"), "utf8")),
@@ -57,7 +57,7 @@ test("Smithers uses one peer-compatible Effect and React closure", () => {
     if (!Array.isArray(raw) || typeof raw[0] !== "string") continue;
     const resolution = raw[0];
     if (resolution.startsWith("effect@") || resolution.startsWith("@effect/")) {
-      expect(versionOf(resolution), key).toBe("4.0.0-beta.102");
+      expect(versionOf(resolution), key).toBe("4.0.0-beta.105");
     }
   }
 
@@ -93,7 +93,7 @@ test("unsupported Smithers PGlite configuration remains fail-closed", () => {
       pluginManifest.dependencies,
       `${pluginManifestPath} dependencies`,
     );
-    expect(dependencies.smthrs, pluginManifestPath).toBe("0.33.0");
+    expect(dependencies.smthrs, pluginManifestPath).toBe("0.34.0");
   }
 
   const lock = object(
@@ -102,7 +102,7 @@ test("unsupported Smithers PGlite configuration remains fail-closed", () => {
   );
   const packages = object(lock.packages, "bun.lock.packages");
   const engine = packageTuple(packages, "@smthrs/engine");
-  expect(versionOf(engine[0])).toBe("0.33.0");
+  expect(versionOf(engine[0])).toBe("0.34.0");
   const optionalDependencies = object(
     engine[2]?.optionalDependencies,
     "Smithers optional deps",

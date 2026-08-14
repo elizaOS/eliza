@@ -2,12 +2,25 @@
  * Renders the prop-driven runtime switcher used by Settings and the coding
  * cockpit to show local, cloud, and remote Eliza agent runtimes.
  */
-import { Check, Cloud, HardDrive, Server } from "lucide-react";
+import {
+  Check,
+  Cloud,
+  HardDrive,
+  KeyRound,
+  Link2,
+  Server,
+  Tag,
+} from "lucide-react";
 import { useState } from "react";
 import { cn } from "../../lib/utils";
 import type { AgentProfile } from "../../state/agent-profile-types";
+import { SettingsInputRow } from "../settings/settings-agent-rows";
+import {
+  SettingsGroup,
+  SettingsRow,
+  SettingsStack,
+} from "../settings/settings-layout";
 import { Button } from "../ui/button";
-import { Input } from "../ui/input";
 
 type RuntimeKind = AgentProfile["kind"];
 
@@ -92,32 +105,20 @@ export function MyRuntimesSection({
   };
 
   return (
-    <section
-      data-testid="my-runtimes"
-      className={cn("flex flex-col gap-3", className)}
-    >
-      <h2 className="text-sm font-semibold text-txt">My Runtimes</h2>
-
-      <ul className="flex flex-col gap-2">
+    <SettingsStack data-testid="my-runtimes" className={className}>
+      <SettingsGroup title="My Runtimes">
         {sorted.map((rt) => {
           const meta = KIND_META[rt.kind];
           const Icon = meta.icon;
           const isActive = rt.id === activeId;
           return (
-            <li key={rt.id}>
-              <div
-                data-testid={`runtime-${rt.id}`}
-                className={cn(
-                  "flex items-center gap-3 rounded-md border px-3 py-2.5",
-                  isActive ? "border-accent bg-accent-subtle" : "border-border",
-                )}
-              >
-                <Icon className="h-4 w-4 shrink-0 text-muted" />
-                <span className="flex min-w-0 flex-col">
-                  <span className="flex items-center gap-2">
-                    <span className="truncate text-sm font-semibold text-txt">
-                      {rt.label}
-                    </span>
+            <div key={rt.id} data-testid={`runtime-${rt.id}`}>
+              <SettingsRow
+                icon={Icon}
+                active={isActive}
+                label={
+                  <span className="flex min-w-0 items-center gap-2">
+                    <span className="truncate">{rt.label}</span>
                     <span
                       className={cn(
                         "shrink-0 rounded-full border px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide",
@@ -127,80 +128,94 @@ export function MyRuntimesSection({
                       {meta.label}
                     </span>
                   </span>
-                  {rt.apiBase ? (
-                    <span className="truncate text-xs text-muted">
-                      {rt.apiBase}
+                }
+                description={rt.apiBase}
+                control={
+                  isActive ? (
+                    <span
+                      data-testid={`runtime-${rt.id}-active`}
+                      className="flex shrink-0 items-center gap-1 text-xs font-semibold text-accent"
+                    >
+                      <Check className="h-3.5 w-3.5" aria-hidden /> Active
                     </span>
-                  ) : null}
-                </span>
-                {isActive ? (
-                  <span
-                    data-testid={`runtime-${rt.id}-active`}
-                    className="ml-auto flex shrink-0 items-center gap-1 text-xs font-semibold text-accent"
-                  >
-                    <Check className="h-3.5 w-3.5" /> Active
-                  </span>
-                ) : (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    data-testid={`runtime-${rt.id}-use`}
-                    disabled={busy}
-                    onClick={() => onSwitch(rt.id)}
-                    className="ml-auto shrink-0"
-                  >
-                    Use
-                  </Button>
-                )}
-              </div>
-            </li>
+                  ) : (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      data-testid={`runtime-${rt.id}-use`}
+                      disabled={busy}
+                      onClick={() => onSwitch(rt.id)}
+                    >
+                      Use
+                    </Button>
+                  )
+                }
+              />
+            </div>
           );
         })}
-      </ul>
+      </SettingsGroup>
 
       {onAddRemote ? (
         <form
           data-testid="add-remote-runtime"
-          className="flex flex-col gap-2 rounded-md border border-border p-3"
-          onSubmit={(e) => {
-            e.preventDefault();
+          onSubmit={(event) => {
+            event.preventDefault();
             submitRemote();
           }}
         >
-          <span className="text-xs font-semibold text-muted">
-            Add a VPS / remote runtime
-          </span>
-          <Input
-            data-testid="add-remote-label"
-            value={label}
-            onChange={(e) => setLabel(e.target.value)}
-            placeholder="Label (e.g. my VPS)"
-          />
-          <Input
-            data-testid="add-remote-url"
-            value={url}
-            onChange={(e) => setUrl(e.target.value)}
-            placeholder="https://… or http://100.x.y.z:port (tailscale)"
-            inputMode="url"
-          />
-          <Input
-            data-testid="add-remote-token"
-            value={token}
-            onChange={(e) => setToken(e.target.value)}
-            placeholder="Access token (optional)"
-            type="password"
-          />
-          <Button
-            type="submit"
-            size="sm"
-            data-testid="add-remote-submit"
-            disabled={!canAdd}
-          >
-            Add runtime
-          </Button>
+          <SettingsGroup title="Add a VPS / remote runtime">
+            <SettingsInputRow
+              agentId="my-runtimes-add-label"
+              group="my-runtimes-add"
+              icon={Tag}
+              label="Label"
+              value={label}
+              onValueChange={setLabel}
+              placeholder="e.g. my VPS"
+              testId="add-remote-label"
+              autoComplete="off"
+            />
+            <SettingsInputRow
+              agentId="my-runtimes-add-url"
+              group="my-runtimes-add"
+              icon={Link2}
+              label="URL"
+              type="url"
+              inputMode="url"
+              value={url}
+              onValueChange={setUrl}
+              placeholder="https://… or http://100.x.y.z:port (tailscale)"
+              testId="add-remote-url"
+              autoComplete="off"
+            />
+            <SettingsInputRow
+              agentId="my-runtimes-add-token"
+              group="my-runtimes-add"
+              icon={KeyRound}
+              label="Access token"
+              description="Optional. Leave blank when the runtime does not require one."
+              type="password"
+              value={token}
+              onValueChange={setToken}
+              placeholder="Access token (optional)"
+              testId="add-remote-token"
+              autoComplete="new-password"
+            />
+            <div className="pt-1">
+              <Button
+                type="submit"
+                size="sm"
+                data-testid="add-remote-submit"
+                disabled={!canAdd}
+              >
+                Add runtime
+              </Button>
+            </div>
+          </SettingsGroup>
         </form>
       ) : null}
-    </section>
+    </SettingsStack>
   );
 }

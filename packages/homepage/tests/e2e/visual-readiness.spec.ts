@@ -35,13 +35,15 @@ for (const viewport of [
     }) => {
       await page.goto("/", { waitUntil: "domcontentloaded" });
       await waitForLandingIntro(page);
-      const landingHero = await page.locator(".landing-hero-copy").innerText();
+      const landingHero = await page
+        .locator("h1")
+        .evaluate((el) => el.textContent);
 
       await page.goto("/leaderboard", { waitUntil: "domcontentloaded" });
       await waitForLandingIntro(page);
       const leaderboardHero = await page
-        .locator(".landing-hero-copy")
-        .innerText();
+        .locator("h1")
+        .evaluate((el) => el.textContent);
 
       expect(leaderboardHero).toEqual(landingHero);
     });
@@ -73,25 +75,4 @@ test("landing has no horizontal overflow at mobile width", async ({ page }) => {
     return doc.scrollWidth - doc.clientWidth;
   });
   expect(overflow).toBeLessThanOrEqual(0);
-});
-
-test("landing keeps the document scrollbar slim and translucent", async ({
-  page,
-}) => {
-  await page.goto("/");
-
-  await expect
-    .poll(() =>
-      page.evaluate(
-        () => getComputedStyle(document.documentElement).scrollbarWidth,
-      ),
-    )
-    .toBe("thin");
-  await expect
-    .poll(() =>
-      page.evaluate(
-        () => getComputedStyle(document.documentElement).scrollbarColor,
-      ),
-    )
-    .toContain("rgba(17, 17, 17, 0.3)");
 });

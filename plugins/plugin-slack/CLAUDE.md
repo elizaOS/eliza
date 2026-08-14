@@ -13,7 +13,6 @@ Loaded via `@elizaos/plugin-slack`. Auto-enabled when `config.connectors.slack` 
 **Services** (registered in `services: [...]`):
 
 - `SlackService` — Socket Mode connection manager. Handles one or more Slack workspace accounts (multi-account). Registers the message connector and all send/receive/mutation handlers with the runtime. Service type: `"slack"` (`SLACK_SERVICE_NAME`).
-- `SlackWorkflowCredentialProvider` — Duck-typed `workflow_credential_provider` service. Supplies `slackApi` (bot token `xoxb-`) and `slackOAuth2Api` (user token `xoxp-`) credentials to the workflow plugin without a compile-time dependency.
 
 **Actions:** none (the plugin registers no discrete actions; Slack messaging is handled via the core `MessageConnector` interface).
 
@@ -53,7 +52,6 @@ plugins/plugin-slack/
     config.ts                    Character-settings config shape types (SlackConfig, SlackThreadConfig)
     connector-account-provider.ts  ConnectorAccountManager bridge — lists, creates, patches, deletes accounts; OAuth v2 flow
     connector-credential-refs.ts   Persists connector credential references
-    workflow-credential-provider.ts  SlackWorkflowCredentialProvider service
     formatting.ts                Slack mrkdwn formatting utilities (markdownToSlackMrkdwn, chunkSlackText, escapeSlackMrkdwn, etc.)
     accounts.test.ts             Unit tests for account helpers
     connector-account-provider.test.ts

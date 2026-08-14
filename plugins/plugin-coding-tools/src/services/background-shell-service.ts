@@ -18,6 +18,7 @@ import {
   signalHostProcessGroup,
   startBackgroundShellOnHost,
 } from "../lib/run-shell.js";
+import { redactShellText } from "../shell/redaction.js";
 import { BACKGROUND_SHELL_SERVICE, CODING_TOOLS_LOG_PREFIX } from "../types.js";
 
 const DEFAULT_BUFFER_CHARS = 64_000;
@@ -175,7 +176,7 @@ export class BackgroundShellService extends Service {
       appendRing(session.stderr, error.message, this.bufferChars);
     });
     this.sessions.set(handle, session);
-    return snapshot(session);
+    return snapshot(this.runtime, session);
   }
 
   poll(args: {
@@ -186,16 +187,16 @@ export class BackgroundShellService extends Service {
   }): BackgroundShellPollResult {
     const session = this.requireSession(args.conversationId, args.handle);
     return {
-      ...snapshot(session),
-      stdout: readRing(session.stdout, args.stdoutOffset),
-      stderr: readRing(session.stderr, args.stderrOffset),
+      ...snapshot(this.runtime, session),
+      stdout: readRing(this.runtime, session.stdout, args.stdoutOffset),
+      stderr: readRing(this.runtime, session.stderr, args.stderrOffset),
     };
   }
 
   list(conversationId: string): BackgroundShellSessionSnapshot[] {
     return [...this.sessions.values()]
       .filter((session) => session.conversationId === conversationId)
-      .map((session) => snapshot(session));
+      .map((session) => snapshot(this.runtime, session));
   }
 
   write(args: {
@@ -223,7 +224,7 @@ export class BackgroundShellService extends Service {
       );
     }
     session.process.stdin.write(args.stdin);
-    return snapshot(session);
+    return snapshot(this.runtime, session);
   }
 
   async kill(args: {
@@ -232,13 +233,13 @@ export class BackgroundShellService extends Service {
   }): Promise<BackgroundShellSessionSnapshot> {
     const session = this.requireSession(args.conversationId, args.handle);
     await this.killSession(session);
-    return snapshot(session);
+    return snapshot(this.runtime, session);
   }
 
   private async killSession(
     session: BackgroundShellSession,
   ): Promise<BackgroundShellSessionSnapshot> {
-    if (session.status !== "running") return snapshot(session);
+    if (session.status !== "running") return snapshot(this.runtime, session);
     session.status = "killed";
     signalHostProcessGroup(session.process, "SIGTERM");
     try {
@@ -271,7 +272,7 @@ export class BackgroundShellService extends Service {
     coreLogger.debug(
       `${CODING_TOOLS_LOG_PREFIX} background SHELL reaped handle=${session.handle} pid=${session.pid ?? "unknown"}`,
     );
-    return snapshot(session);
+    return snapshot(this.runtime, session);
   }
 
   private ensureCapacity(conversationId: string): void {
@@ -341,6 +342,7 @@ function appendRing(ring: StreamRing, text: string, cap: number): void {
 }
 
 function readRing(
+  runtime: IAgentRuntime,
   ring: StreamRing,
   requestedOffset?: number,
 ): BackgroundShellChunk {
@@ -350,22 +352,32 @@ function readRing(
       : Math.max(0, Math.floor(requestedOffset));
   const start = Math.max(offset, ring.startOffset);
   const index = start - ring.startOffset;
+  const redactedFull = redactShellText(runtime, ring.text);
+  const redactedPrefix = redactShellText(runtime, ring.text.slice(0, index));
+  // A credential can straddle the requested offset. When redacting the full
+  // retained ring changes the prefix, replay the sanitized retained window
+  // rather than risk returning a partial secret.
+  const canSliceAtRequestedOffset = redactedFull.startsWith(redactedPrefix);
+  const text = canSliceAtRequestedOffset
+    ? redactedFull.slice(redactedPrefix.length)
+    : redactedFull;
   return {
-    text: ring.text.slice(index),
-    startOffset: start,
+    text,
+    startOffset: canSliceAtRequestedOffset ? start : ring.startOffset,
     endOffset: ring.endOffset,
     truncatedBefore: ring.truncatedBefore,
   };
 }
 
 function snapshot(
+  runtime: IAgentRuntime,
   session: BackgroundShellSession,
 ): BackgroundShellSessionSnapshot {
   return {
     handle: session.handle,
     conversationId: session.conversationId,
-    command: session.command,
-    cwd: session.cwd,
+    command: redactShellText(runtime, session.command),
+    cwd: redactShellText(runtime, session.cwd),
     pid: session.pid,
     status: session.status,
     exitCode: session.exitCode,

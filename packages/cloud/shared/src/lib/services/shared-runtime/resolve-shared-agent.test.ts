@@ -21,11 +21,6 @@ const requireUserOrApiKeyWithOrgLookup = mock(
   }),
 );
 const findByIdAndOrg = mock(async () => null);
-const requireUserOrApiKeyWithOrg = mock(async () => ({
-  id: "user-1",
-  organization_id: "org-1",
-  created_at: new Date("2026-01-01T00:00:00.000Z"),
-}));
 
 // Scope-cache key derivation for the CURRENT request. Default: an API-key
 // request whose hash-prefix is stable, so hit/miss can be exercised.
@@ -45,7 +40,6 @@ let stagingSessionCandidateBehavior = false;
 const isStagingSessionScopeCandidate = mock(() => stagingSessionCandidateBehavior);
 
 mock.module("../../auth/workers-hono-auth", () => ({
-  requireUserOrApiKeyWithOrg,
   requireUserOrApiKeyWithOrgLookup,
   apiKeyScopeHashPrefix,
   sessionScopeHashPrefix,
@@ -120,7 +114,6 @@ mock.module("../../utils/logger", () => ({
 
 const { resolveSharedAgent, resetSharedAgentScopeMemoryCacheForTests, seedSharedAgentScopeCache } =
   await import("./resolve-shared-agent");
-const { personalSharedAgentId } = await import("./personal-shared-agent");
 const { CacheTTL, CacheKeys } = await import("../../cache/keys");
 
 function contextWithAgentId(agentId?: string, headers: Record<string, string> = {}) {
@@ -165,7 +158,6 @@ function agent(overrides: Record<string, unknown> = {}) {
 
 beforeEach(() => {
   resetSharedAgentScopeMemoryCacheForTests();
-  requireUserOrApiKeyWithOrg.mockClear();
   requireUserOrApiKeyWithOrgLookup.mockReset();
   requireUserOrApiKeyWithOrgLookup.mockImplementation(
     async <T>(_: unknown, lookup: (organizationId: string) => Promise<T>) => ({
@@ -212,36 +204,6 @@ describe("resolveSharedAgent", () => {
       agentName: "Shared Agent",
     });
     expect(findByIdAndOrg).toHaveBeenCalledWith("agent-1", "org-1");
-  });
-
-  test("resolves the account's namespaced personal identity without a sandbox row", async () => {
-    const agentId = personalSharedAgentId({
-      userId: "user-1",
-      organizationId: "org-1",
-    });
-
-    await expect(resolveSharedAgent(contextWithAgentId(agentId) as never)).resolves.toMatchObject({
-      agentId,
-      orgId: "org-1",
-      agentName: "Eliza",
-      agentKind: "personal",
-      createdAt: new Date("2026-01-01T00:00:00.000Z"),
-    });
-    expect(requireUserOrApiKeyWithOrg).toHaveBeenCalledTimes(1);
-    expect(findByIdAndOrg).not.toHaveBeenCalled();
-  });
-
-  test("hides another account's personal identity as not found", async () => {
-    const otherAccountId = personalSharedAgentId({
-      userId: "user-2",
-      organizationId: "org-2",
-    });
-
-    await expect(resolveSharedAgent(contextWithAgentId(otherAccountId) as never)).resolves.toEqual({
-      error: "Agent not found",
-      status: 404,
-    });
-    expect(findByIdAndOrg).not.toHaveBeenCalled();
   });
 
   test("cache-only miss warms in waitUntil and performs no inline DB hydration", async () => {

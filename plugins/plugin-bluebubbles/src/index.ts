@@ -19,7 +19,6 @@ import {
 	blueBubblesSetupRoutes,
 	resolveBlueBubblesWebhookPath,
 } from "./setup-routes.js";
-import { BlueBubblesWorkflowCredentialProvider } from "./workflow-credential-provider.js";
 
 // Account management exports
 export {
@@ -68,7 +67,7 @@ const blueBubblesPlugin: Plugin = {
 		},
 	],
 
-	services: [BlueBubblesService, BlueBubblesWorkflowCredentialProvider],
+	services: [BlueBubblesService],
 	actions: [],
 	providers: [],
 	routes: [...blueBubblesSetupRoutes, ...blueBubblesDataRoutes],

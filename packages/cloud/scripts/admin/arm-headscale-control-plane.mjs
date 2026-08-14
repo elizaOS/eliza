@@ -6,9 +6,10 @@
  *   - converge /etc/headscale/config.yaml to the public URL + loopback listener
  *   - install the committed ACL policy
  *   - ensure the `agent` and `tunnel` users exist
- *   - provision the nginx vhost + Let's Encrypt cert that fronts the public
- *     Headscale URL (TS2021/noise needs a no-http2 vhost with Upgrade/Connection
- *     passthrough + long timeouts — a CF-proxied or h2 origin breaks it)
+ *   - provision the nginx vhost + Let's Encrypt cert that front the canonical
+ *     and temporary legacy Headscale names during the eliza.app migration
+ *     (TS2021/noise needs a no-http2 vhost with Upgrade/Connection passthrough
+ *     + long timeouts — a CF-proxied or h2 origin breaks it)
  *   - enroll the CP itself as a tailscale node (cp-<env>-router, tag:eliza-proxy)
  *     against its local Headscale, so the daemon can reach agent 100.64.x IPs
  *   - upsert the daemon env that makes sandbox provisioning require Headscale
@@ -35,6 +36,25 @@ const HEADSCALE_CONFIG = "/etc/headscale/config.yaml";
 const HEADSCALE_ACL = "/etc/headscale/acl.hujson";
 const HEADSCALE_STATE_DIR = "/var/lib/headscale";
 const SYSTEMD_UNIT = "eliza-provisioning-worker.service";
+
+const HEADSCALE_ENVIRONMENT_BY_CANONICAL_HOST = new Map([
+  [
+    "headscale.eliza.app",
+    {
+      legacyHostname: "headscale.elizacloud.ai",
+      apiUrl: "http://127.0.0.1:8081",
+      listenAddr: "127.0.0.1:8081",
+    },
+  ],
+  [
+    "headscale-staging.eliza.app",
+    {
+      legacyHostname: "headscale-staging.elizacloud.ai",
+      apiUrl: "http://127.0.0.1:8080",
+      listenAddr: "127.0.0.1:8080",
+    },
+  ],
+]);
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(scriptDir, "../../../..");
@@ -102,12 +122,23 @@ function envValueQuote(value) {
     .replaceAll('"', '\\"')}"`;
 }
 
-function validateHttpsUrl(name, value) {
+function parseHttpsOrigin(name, value) {
   try {
     const url = new URL(value);
-    if (url.protocol !== "https:") throw new Error("must be https");
+    if (
+      url.protocol !== "https:" ||
+      url.username !== "" ||
+      url.password !== "" ||
+      url.port !== "" ||
+      url.pathname !== "/" ||
+      url.search !== "" ||
+      url.hash !== ""
+    ) {
+      throw new Error("must be an exact HTTPS origin");
+    }
+    return url;
   } catch {
-    die(`${name} must be an https URL (received ${value})`);
+    die(`${name} must be an exact HTTPS origin (received ${value})`);
   }
 }
 
@@ -121,11 +152,10 @@ Required:
   --ssh-key <path>                     Deploy-user SSH private key.
   --ssh-known-hosts <path>             Independently verified known_hosts inventory.
   --headscale-public-url <https-url>   Public Headscale URL.
+  --headscale-legacy-public-url <url>  Temporary legacy HTTPS overlap URL.
   --headscale-api-key <key>            Existing Headscale API key.
 
 Optional:
-  --headscale-api-url <url>            Daemon API URL (default http://127.0.0.1:8081).
-  --listen-addr <addr:port>            Headscale listen_addr (default 127.0.0.1:8081).
   --headscale-user <user>              User for agent preauth keys (default agent).
   --cp-router-hostname <name>          Tailscale hostname the CP enrolls itself as
                                        (default derived from the public URL, e.g.
@@ -157,12 +187,12 @@ const sshKnownHosts = readArg(
   "DEPLOY_SSH_KNOWN_HOSTS",
 );
 const publicUrl = readArg(args, "headscale-public-url", "HEADSCALE_PUBLIC_URL");
-const apiUrl =
-  readArg(args, "headscale-api-url", "HEADSCALE_API_URL") ??
-  "http://127.0.0.1:8081";
+const legacyPublicUrl = readArg(
+  args,
+  "headscale-legacy-public-url",
+  "HEADSCALE_LEGACY_PUBLIC_URL",
+);
 const apiKey = readArg(args, "headscale-api-key", "HEADSCALE_API_KEY");
-const listenAddr =
-  readArg(args, "listen-addr", "HEADSCALE_LISTEN_ADDR") ?? "127.0.0.1:8081";
 const headscaleUser =
   readArg(args, "headscale-user", "HEADSCALE_USER") ?? "agent";
 const agentTokenPrivateKey = readArg(
@@ -194,15 +224,40 @@ if (!existsSync(sshKnownHosts))
   die(`SSH known_hosts inventory not found: ${sshKnownHosts}`);
 if (!publicUrl)
   die("--headscale-public-url or HEADSCALE_PUBLIC_URL is required");
+if (!legacyPublicUrl)
+  die(
+    "--headscale-legacy-public-url or HEADSCALE_LEGACY_PUBLIC_URL is required",
+  );
 if (!apiKey) die("--headscale-api-key or HEADSCALE_API_KEY is required");
 if (!existsSync(aclPath)) die(`ACL file not found: ${aclPath}`);
-validateHttpsUrl("HEADSCALE_PUBLIC_URL", publicUrl);
+const parsedPublicUrl = parseHttpsOrigin("HEADSCALE_PUBLIC_URL", publicUrl);
+const parsedLegacyPublicUrl = parseHttpsOrigin(
+  "HEADSCALE_LEGACY_PUBLIC_URL",
+  legacyPublicUrl,
+);
 
-// The nginx vhost fronts the public hostname (host part of the URL) and proxies
-// to the loopback port headscale listens on (port part of listen_addr). Both
-// are already env-correct on the workflow inputs — staging is :8080, prod :8081
-// — so the vhost upstream tracks listen_addr automatically with no extra flag.
-const headscaleHostname = new URL(publicUrl).hostname;
+// The canonical hostname selects the whole environment contract. Loopback API
+// and listener values are deliberately not operator inputs: accepting an
+// external daemon API URL could exfiltrate the protected Headscale bearer key.
+const headscaleHostname = parsedPublicUrl.hostname;
+const environmentConfig =
+  HEADSCALE_ENVIRONMENT_BY_CANONICAL_HOST.get(headscaleHostname);
+if (!environmentConfig) {
+  die(
+    `HEADSCALE_PUBLIC_URL must use a canonical Headscale hostname (received ${headscaleHostname})`,
+  );
+}
+const {
+  legacyHostname: expectedLegacyHostname,
+  apiUrl,
+  listenAddr,
+} = environmentConfig;
+const legacyHeadscaleHostname = parsedLegacyPublicUrl.hostname;
+if (legacyHeadscaleHostname !== expectedLegacyHostname) {
+  die(
+    `HEADSCALE_LEGACY_PUBLIC_URL must be https://${expectedLegacyHostname} for ${headscaleHostname}`,
+  );
+}
 // .pop() on the colon-split yields the port for "addr:port" and the whole
 // string for a bare "port" — no need to branch on includes(":").
 const headscalePort = listenAddr.split(":").pop();
@@ -251,61 +306,143 @@ const upserts = Object.entries(daemonEnv)
   })
   .join("\n");
 
-// ── nginx vhost + Let's Encrypt cert for the public Headscale URL ────────────
-// Reproduces the proven-good /etc/nginx/conf.d/headscale.conf that was hand-
-// written on each CP (the DR gap). The vhost MUST be no-http2 with Upgrade/
-// Connection passthrough + 86400s timeouts — the headscale TS2021/noise control
-// protocol rides a long-lived HTTP/1.1 Upgrade that an h2 origin (RFC 7540) or
-// a short proxy timeout drops. Upstream port tracks the headscale listen_addr.
+// ── nginx vhost + Let's Encrypt migration-overlap certificate ────────────────
+// The canonical hostname owns Headscale identity and daemon configuration. The
+// legacy exact hostname remains an additive TLS/vhost alias only while clients
+// migrate. Both names terminate on the same no-http2 nginx listener because the
+// TS2021/noise control protocol needs Upgrade/Connection passthrough and long
+// timeouts. Upstream port tracks the Headscale listen_addr.
 //
-// Cert flow: write an HTTP-only bootstrap vhost so certbot's nginx authenticator
-// can solve HTTP-01, run `certbot certonly` (idempotent — no-op if a valid cert
-// already exists), THEN drop the final TLS vhost referencing the LE cert paths.
-// `certonly` (not `--nginx` install) keeps the final vhost fully deterministic
-// here instead of letting certbot rewrite it. Renewal is certbot's own
-// systemd certbot.timer (installed by the certbot package) — no cron added.
+// Cert flow: retain the currently loaded TLS vhost while an earlier-loading,
+// HTTP-only webroot vhost answers ACME for both names. A certificate directory
+// is not proof of correctness, so every run checks both hostnames against the
+// live leaf certificate and expands/reissues when either SAN is absent. The
+// final port-80 vhost keeps the webroot challenge path for certbot.timer renewal.
 const nginxCertSteps = skipNginxCert
   ? `echo "skip-nginx-cert set: leaving nginx vhost + LE cert untouched"`
   : `
-echo "--- nginx vhost + Let's Encrypt cert for ${headscaleHostname} ---"
+echo "--- nginx vhost + Let's Encrypt cert for ${headscaleHostname} and ${legacyHeadscaleHostname} ---"
 HS_HOST=${shellQuote(headscaleHostname)}
+HS_LEGACY_HOST=${shellQuote(legacyHeadscaleHostname)}
 HS_PORT=${shellQuote(headscalePort)}
 CERTBOT_EMAIL=${shellQuote(certbotEmail)}
 HS_VHOST=/etc/nginx/conf.d/headscale.conf
+HS_ACME_VHOST=/etc/nginx/conf.d/00-headscale-acme.conf
+HS_RENEW_HOOK=/etc/letsencrypt/renewal-hooks/deploy/eliza-headscale-nginx-reload
+ACME_WEBROOT=/var/lib/letsencrypt
 LE_LIVE=/etc/letsencrypt/live/$HS_HOST
+LE_FULLCHAIN=$LE_LIVE/fullchain.pem
+LE_PRIVKEY=$LE_LIVE/privkey.pem
 
-command -v certbot >/dev/null 2>&1 || sudo apt-get install -y certbot python3-certbot-nginx
+command -v openssl >/dev/null 2>&1 || { echo "openssl is required to verify Headscale certificate SANs"; exit 1; }
+command -v certbot >/dev/null 2>&1 || sudo apt-get install -y certbot
 
-# 1. Bootstrap HTTP-only vhost so certbot --nginx can answer the HTTP-01
-#    challenge on :80. Overwritten by the final vhost below once the cert
-#    exists. Idempotent: re-running just rewrites the same bytes.
-sudo tee "$HS_VHOST" >/dev/null <<NGINX
+certificate_has_exact_san() {
+  sudo test -s "$LE_FULLCHAIN" \\
+    && sudo openssl x509 -in "$LE_FULLCHAIN" -noout -ext subjectAltName 2>/dev/null \\
+      | tr ',' '\\n' \\
+      | sed -n 's/^[[:space:]]*DNS://p' \\
+      | grep -Fx -- "$1" >/dev/null
+}
+
+certificate_covers_overlap() {
+  certificate_has_exact_san "$HS_HOST" \\
+    && certificate_has_exact_san "$HS_LEGACY_HOST"
+}
+
+if certificate_covers_overlap; then
+  echo "LE cert already covers canonical and legacy Headscale hosts; skipping issuance"
+else
+  sudo install -d -o root -g root -m 0755 "$ACME_WEBROOT"
+  HS_ACME_BACKUP=$(mktemp)
+  HS_ACME_STAGE=$(mktemp)
+  HS_ACME_VHOST_EXISTED=false
+  if sudo test -f "$HS_ACME_VHOST"; then
+    sudo cp "$HS_ACME_VHOST" "$HS_ACME_BACKUP"
+    HS_ACME_VHOST_EXISTED=true
+  fi
+  tee "$HS_ACME_STAGE" >/dev/null <<NGINX
 server {
     listen 80;
     listen [::]:80;
-    server_name $HS_HOST;
+    server_name $HS_HOST $HS_LEGACY_HOST;
+    location ^~ /.well-known/acme-challenge/ {
+        root $ACME_WEBROOT;
+        default_type text/plain;
+        try_files \\$uri =404;
+    }
     location / { return 404; }
 }
 NGINX
-sudo nginx -t
-sudo systemctl reload nginx
 
-# 2. Obtain the cert if absent / not yet valid. certonly is idempotent and
-#    exits 0 when a live cert is already present and not near expiry, so a
-#    re-arm never re-issues (and never trips LE rate limits). --nginx
-#    authenticator reuses the running nginx for the HTTP-01 challenge.
-if sudo test -d "$LE_LIVE"; then
-  echo "LE cert already present for $HS_HOST; skipping issuance"
-else
-  sudo certbot certonly --nginx --non-interactive --agree-tos \\
-    -m "$CERTBOT_EMAIL" -d "$HS_HOST"
+  restore_acme_vhost() {
+    trap - EXIT
+    if [ "$HS_ACME_VHOST_EXISTED" = "true" ]; then
+      sudo cp "$HS_ACME_BACKUP" "$HS_ACME_VHOST"
+    else
+      sudo rm -f "$HS_ACME_VHOST"
+    fi
+    rm -f "$HS_ACME_BACKUP" "$HS_ACME_STAGE"
+    sudo nginx -t
+    sudo systemctl reload nginx
+  }
+  trap restore_acme_vhost EXIT
+
+  sudo install -o root -g root -m 0644 "$HS_ACME_STAGE" "$HS_ACME_VHOST"
+  sudo nginx -t
+  sudo systemctl reload nginx
+
+  certbot_args=(
+    certonly
+    --webroot
+    --webroot-path "$ACME_WEBROOT"
+    --non-interactive
+    --agree-tos
+    --cert-name "$HS_HOST"
+    -m "$CERTBOT_EMAIL"
+    -d "$HS_HOST"
+    -d "$HS_LEGACY_HOST"
+  )
+  if sudo test -s "$LE_FULLCHAIN"; then
+    certbot_args+=(--expand)
+  fi
+  sudo certbot "\${certbot_args[@]}"
+
+  if ! certificate_covers_overlap; then
+    echo "issued Headscale certificate does not cover both required hostnames"
+    exit 1
+  fi
+  restore_acme_vhost
 fi
 
-# 3. Final no-http2 TLS vhost: 80→443 redirect + 443 proxy to the headscale
+# Final no-http2 TLS vhost: 80→443 redirect + 443 proxy to Headscale
 #    loopback listener, with the Upgrade/Connection map + long timeouts the
-#    noise protocol needs. This is the byte-for-byte proven-good prod/staging
-#    vhost, templated for env hostname + port.
-sudo tee "$HS_VHOST" >/dev/null <<NGINX
+#    noise protocol needs. Both exact hostnames stay available during migration.
+HS_VHOST_BACKUP=$(mktemp)
+HS_VHOST_STAGE=$(mktemp)
+HS_VHOST_EXISTED=false
+if sudo test -f "$HS_VHOST"; then
+  sudo cp "$HS_VHOST" "$HS_VHOST_BACKUP"
+  HS_VHOST_EXISTED=true
+fi
+
+rollback_headscale_vhost() {
+  trap - EXIT
+  if [ "$HS_VHOST_EXISTED" = "true" ]; then
+    sudo cp "$HS_VHOST_BACKUP" "$HS_VHOST"
+  else
+    sudo rm -f "$HS_VHOST"
+  fi
+  if sudo nginx -t; then
+    sudo systemctl reload nginx
+  else
+    echo "rollback restored the previous Headscale vhost bytes, but nginx validation failed"
+  fi
+  rm -f "$HS_VHOST_BACKUP" "$HS_VHOST_STAGE"
+}
+trap rollback_headscale_vhost EXIT
+
+tee "$HS_VHOST_STAGE" >/dev/null <<NGINX
 # headscale control-protocol (TS2021/noise) needs the Upgrade header passed
 # through on HTTP/1.1. NO http2 on this vhost: an h2 client connection would
 # drop the Upgrade header (RFC 7540), which is exactly what broke headscale
@@ -317,15 +454,20 @@ map \\$http_upgrade \\$hs_connection_upgrade {
 server {
     listen 80;
     listen [::]:80;
-    server_name $HS_HOST;
-    return 301 https://\\$host\\$request_uri;
+    server_name $HS_HOST $HS_LEGACY_HOST;
+    location ^~ /.well-known/acme-challenge/ {
+        root $ACME_WEBROOT;
+        default_type text/plain;
+        try_files \\$uri =404;
+    }
+    location / { return 301 https://\\$host\\$request_uri; }
 }
 server {
     listen 443 ssl;
     listen [::]:443 ssl;
-    server_name $HS_HOST;
-    ssl_certificate     /etc/letsencrypt/live/$HS_HOST/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/$HS_HOST/privkey.pem;
+    server_name $HS_HOST $HS_LEGACY_HOST;
+    ssl_certificate     $LE_FULLCHAIN;
+    ssl_certificate_key $LE_PRIVKEY;
     location / {
         proxy_pass http://127.0.0.1:$HS_PORT;
         proxy_http_version 1.1;
@@ -341,15 +483,119 @@ server {
     }
 }
 NGINX
+sudo install -o root -g root -m 0644 "$HS_VHOST_STAGE" "$HS_VHOST"
 sudo nginx -t
+
+effective_nginx_config=$(sudo nginx -T 2>&1)
+overlap_warnings=$(printf '%s\n' "$effective_nginx_config" \
+  | grep -F 'conflicting server name' \
+  | grep -F -e "$HS_HOST" -e "$HS_LEGACY_HOST" || true)
+hostname_owners=$(printf '%s\n' "$effective_nginx_config" | awk \
+  -v canonical="$HS_HOST" \
+  -v legacy="$HS_LEGACY_HOST" '
+  function inspect_names(text, fields, count, i, name) {
+    count = split(text, fields, /[[:space:]]+/)
+    for (i = 1; i <= count; i += 1) {
+      name = fields[i]
+      if (name == "") continue
+      if (name ~ /;$/) collecting = 0
+      sub(/;$/, "", name)
+      gsub(/^"|"$/, "", name)
+      if (name == canonical || name == legacy) print config_file "\t" name
+    }
+  }
+  /^# configuration file / {
+    config_file = $0
+    sub(/^# configuration file /, "", config_file)
+    sub(/:$/, "", config_file)
+    collecting = 0
+    next
+  }
+  {
+    line = $0
+    sub(/[[:space:]]*#.*/, "", line)
+    if (collecting) {
+      inspect_names(line)
+      next
+    }
+    if (line ~ /^[[:space:]]*server_name[[:space:]]+/) {
+      sub(/^[[:space:]]*server_name[[:space:]]+/, "", line)
+      collecting = 1
+      inspect_names(line)
+    }
+  }
+')
+unexpected_owners=$(printf '%s\n' "$hostname_owners" \
+  | awk -F '\t' -v expected="$HS_VHOST" 'NF == 2 && $1 != expected { print }')
+canonical_owner_count=$(printf '%s\n' "$hostname_owners" \
+  | awk -F '\t' -v host="$HS_HOST" '$2 == host { count += 1 } END { print count + 0 }')
+legacy_owner_count=$(printf '%s\n' "$hostname_owners" \
+  | awk -F '\t' -v host="$HS_LEGACY_HOST" '$2 == host { count += 1 } END { print count + 0 }')
+if [ -n "$overlap_warnings" ] \
+    || [ -n "$unexpected_owners" ] \
+    || [ "$canonical_owner_count" -ne 2 ] \
+    || [ "$legacy_owner_count" -ne 2 ]; then
+  if [ -n "$overlap_warnings" ]; then
+    echo "nginx reported conflicting Headscale server names:"
+    printf '%s\n' "$overlap_warnings"
+  fi
+  echo "Headscale hostname ownership is not exclusive to $HS_VHOST:"
+  printf '%s\n' "$hostname_owners"
+  echo "Leaving unknown nginx configs untouched and restoring the prior $HS_VHOST"
+  exit 1
+fi
+
+certificate_has_exact_san "$HS_HOST"
+certificate_has_exact_san "$HS_LEGACY_HOST"
 sudo systemctl reload nginx
 
-# Confirm the cert renewal timer is active (renewal is certbot's own systemd
-# timer, not a cron entry we manage). Non-fatal: surfaces a warning if the
-# distro shipped certbot without the timer.
-sudo systemctl is-active certbot.timer >/dev/null 2>&1 \\
-  && echo "certbot.timer active (auto-renewal wired)" \\
-  || echo "WARN: certbot.timer not active — check auto-renewal on this host"
+rm -f "$HS_VHOST_BACKUP" "$HS_VHOST_STAGE"
+trap - EXIT
+
+# Certbot's webroot renewal updates the certificate files in place. Install a
+# deploy hook on every arm, including no-op certificate runs, so nginx adopts
+# only a leaf that still covers both migration-overlap names. The hook is
+# root-owned and validates both the certificate and nginx before reloading.
+HS_RENEW_HOOK_STAGE=$(mktemp)
+tee "$HS_RENEW_HOOK_STAGE" >/dev/null <<'HOOK'
+#!/usr/bin/env bash
+set -euo pipefail
+
+EXPECTED_LINEAGE=${shellQuote(`/etc/letsencrypt/live/${headscaleHostname}`)}
+CANONICAL_HOST=${shellQuote(headscaleHostname)}
+LEGACY_HOST=${shellQuote(legacyHeadscaleHostname)}
+
+if [ "\${RENEWED_LINEAGE:-}" != "$EXPECTED_LINEAGE" ]; then
+  exit 0
+fi
+
+leaf_has_exact_san() {
+  test -s "$EXPECTED_LINEAGE/fullchain.pem" \\
+    && openssl x509 -in "$EXPECTED_LINEAGE/fullchain.pem" -noout -ext subjectAltName 2>/dev/null \\
+      | tr ',' '\\n' \\
+      | sed -n 's/^[[:space:]]*DNS://p' \\
+      | grep -Fx -- "$1" >/dev/null
+}
+
+if ! leaf_has_exact_san "$CANONICAL_HOST" \\
+    || ! leaf_has_exact_san "$LEGACY_HOST"; then
+  echo "renewed Headscale certificate does not cover both required hostnames" >&2
+  exit 1
+fi
+
+nginx -t
+systemctl reload nginx
+HOOK
+sudo install -d -o root -g root -m 0755 "$(dirname "$HS_RENEW_HOOK")"
+sudo install -o root -g root -m 0755 "$HS_RENEW_HOOK_STAGE" "$HS_RENEW_HOOK"
+rm -f "$HS_RENEW_HOOK_STAGE"
+
+# Renewal is part of the converged contract, not an advisory. Ensure certbot's
+# systemd schedule exists, is enabled, and is running before the arm succeeds.
+sudo systemctl enable --now certbot.timer
+sudo systemctl is-enabled --quiet certbot.timer
+sudo systemctl is-active --quiet certbot.timer
+echo "certbot.timer active (auto-renewal wired)"
 `;
 
 // ── CP self-enrollment as a tailscale node (cp-<env>-router) ─────────────────

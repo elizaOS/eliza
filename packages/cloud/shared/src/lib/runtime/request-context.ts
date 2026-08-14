@@ -2,9 +2,9 @@
  * Per-request context for shared `packages/lib` code.
  *
  * The Cloud API wraps every request in `runWithRequestContext({ clientIp }, …)`
- * so library code deep in the call tree can read the originating client IP
- * without threading it through every intermediate function. Mirrors the ambient
- * pattern in `cloud-bindings.ts`.
+ * so library code deep in the call tree (e.g. signup credit grants) can read the
+ * originating client IP for anti-sybil checks without threading it through every
+ * intermediate function. Mirrors the ambient pattern in `cloud-bindings.ts`.
  *
  * Outside a Worker request (no store), `getClientIp()` returns `undefined`.
  */

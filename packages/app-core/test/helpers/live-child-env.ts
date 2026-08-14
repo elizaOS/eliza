@@ -30,12 +30,21 @@ function ensureSelfControlTestHostsPath(env: NodeJS.ProcessEnv): string | null {
   return hostsFilePath;
 }
 
+/** Cloud onboarding owns the one live lane that must leave first-run incomplete. */
+export function shouldSkipLiveStackAutoFirstRun(
+  env: NodeJS.ProcessEnv = process.env,
+): boolean {
+  return env.ELIZA_UI_SMOKE_CLOUD_LIVE === "1";
+}
+
 export function createLiveRuntimeChildEnv(
   overrides: Record<string, string | undefined>,
 ): NodeJS.ProcessEnv {
   const ambientCloudApiKey = process.env.ELIZAOS_CLOUD_API_KEY;
+  const cloudOnboardingLive = process.env.ELIZA_UI_SMOKE_CLOUD_LIVE === "1";
+  const cloudMediaLive = process.env.ELIZA_UI_SMOKE_CLOUD_MEDIA_LIVE === "1";
   const preserveAmbientCloudApiKey =
-    process.env.ELIZA_UI_SMOKE_CLOUD_LIVE === "1" &&
+    (cloudOnboardingLive || cloudMediaLive) &&
     hasNonWhitespaceValue(ambientCloudApiKey);
   const liveProviderOverrides = Object.fromEntries(
     Object.entries(overrides).filter(
@@ -50,10 +59,19 @@ export function createLiveRuntimeChildEnv(
       : { ...process.env };
 
   // Provider isolation deliberately blanks every unselected credential. The
-  // app Cloud-live lane is the sole exception: its onboarding runtime needs the
-  // workflow-validated Cloud bearer in addition to the selected model provider.
+  // Cloud onboarding and live-media lanes are the only exceptions: both need
+  // the workflow-validated Cloud bearer beside the selected model provider.
   if (preserveAmbientCloudApiKey) {
     env.ELIZAOS_CLOUD_API_KEY = ambientCloudApiKey;
+  }
+
+  // The live voice lane uses Cloud only for STT/TTS. Make that ownership
+  // explicit so preserving the bearer cannot also register Cloud's higher-
+  // priority text handlers over the provider selected by first-run.
+  if (cloudMediaLive && preserveAmbientCloudApiKey) {
+    env.ELIZAOS_CLOUD_USE_INFERENCE = "false";
+    env.ELIZAOS_CLOUD_USE_STT = "true";
+    env.ELIZAOS_CLOUD_USE_TTS = "true";
   }
 
   for (const key of Object.keys(env)) {
