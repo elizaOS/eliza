@@ -459,6 +459,16 @@ function validateRendererStamp(stamp, label) {
   return stamp;
 }
 
+const FULL_GIT_SHA = /^[0-9a-f]{40}$/i;
+
+function hasExactCommit(stamp, expectedCommit) {
+  return (
+    FULL_GIT_SHA.test(stamp?.commit ?? "") &&
+    FULL_GIT_SHA.test(expectedCommit ?? "") &&
+    stamp.commit.toLowerCase() === expectedCommit.toLowerCase()
+  );
+}
+
 export function readFreshAndroidRendererStamp(
   rendererDist = process.env.ELIZA_ANDROID_RENDERER_DIST ??
     DEFAULT_RENDERER_DIST,
@@ -534,22 +544,29 @@ export function androidDistNeedsBuild({
     };
   }
   if (
-    headCommit &&
-    freshStamp.commit &&
-    !String(headCommit).startsWith(String(freshStamp.commit)) &&
-    !String(freshStamp.commit).startsWith(String(headCommit))
+    !FULL_GIT_SHA.test(headCommit ?? "") ||
+    !hasExactCommit(freshStamp, headCommit)
   ) {
     return {
       build: true,
-      reason: `dist commit=${freshStamp.commit} but HEAD=${headCommit}`,
+      reason: `dist commit=${freshStamp.commit ?? "missing"} but HEAD=${headCommit ?? "missing"}`,
     };
   }
   return { build: false, reason: "dist renderer stamp is usable" };
 }
 
-export function androidInstallDecision({ freshStamp, installedStamp } = {}) {
+export function androidInstallDecision({
+  freshStamp,
+  installedStamp,
+  expectedCommit = freshStamp?.commit,
+} = {}) {
   if (!freshStamp) {
     throw new Error("fresh Android renderer stamp is required before install.");
+  }
+  if (!hasExactCommit(freshStamp, expectedCommit)) {
+    throw new Error(
+      `fresh Android renderer commit ${freshStamp.commit ?? "missing"} does not match expected HEAD ${expectedCommit ?? "missing"}.`,
+    );
   }
   if (!installedStamp) {
     return {
@@ -563,16 +580,31 @@ export function androidInstallDecision({ freshStamp, installedStamp } = {}) {
       reason: `installed ${installedStamp.buildId} != fresh ${freshStamp.buildId}`,
     };
   }
+  if (!hasExactCommit(installedStamp, freshStamp.commit)) {
+    return {
+      install: true,
+      reason: `installed commit ${installedStamp.commit ?? "missing"} != fresh ${freshStamp.commit}`,
+    };
+  }
   return {
     install: false,
-    reason: `installed buildId matches fresh ${freshStamp.buildId}`,
+    reason: `installed buildId and commit match fresh ${freshStamp.buildId}`,
   };
 }
 
-export function androidApkNeedsBuild({ freshStamp, apkStamp } = {}) {
+export function androidApkNeedsBuild({
+  freshStamp,
+  apkStamp,
+  expectedCommit = freshStamp?.commit,
+} = {}) {
   if (!freshStamp) {
     throw new Error(
       "fresh Android renderer stamp is required before APK check.",
+    );
+  }
+  if (!hasExactCommit(freshStamp, expectedCommit)) {
+    throw new Error(
+      `fresh Android renderer commit ${freshStamp.commit ?? "missing"} does not match expected HEAD ${expectedCommit ?? "missing"}.`,
     );
   }
   if (!apkStamp) {
@@ -587,9 +619,15 @@ export function androidApkNeedsBuild({ freshStamp, apkStamp } = {}) {
       reason: `APK ${apkStamp.buildId} != fresh ${freshStamp.buildId}`,
     };
   }
+  if (!hasExactCommit(apkStamp, freshStamp.commit)) {
+    return {
+      build: true,
+      reason: `APK commit ${apkStamp.commit ?? "missing"} != fresh ${freshStamp.commit}`,
+    };
+  }
   return {
     build: false,
-    reason: `APK buildId matches fresh ${freshStamp.buildId}`,
+    reason: `APK buildId and commit match fresh ${freshStamp.buildId}`,
   };
 }
 

@@ -63,6 +63,9 @@ Focused slices used by the retained device-CI shell scripts run through
 `scripts/android-playwright-e2e.mjs`. Like the full orchestrator, they print a
 final `bundle:` line and accept `--output <dir>` after the package command; the
 bundle is finalized before a failing slice exits non-zero.
+Passing bundles require the installed renderer's full 40-character commit to
+equal the runner's Git `HEAD`, plus decodable inline JPEG and H.264 MP4 proof;
+matching build IDs or filename extensions alone are not sufficient.
 
 ## Prerequisites (env)
 

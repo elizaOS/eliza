@@ -8,12 +8,17 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { parseAndroidPlaywrightE2eArgs } from "./android-playwright-e2e.mjs";
+import {
+  parseAndroidPlaywrightE2eArgs,
+  verifyInstalledAndroidBuild,
+} from "./android-playwright-e2e.mjs";
 
 const scriptsDir = path.dirname(fileURLToPath(import.meta.url));
 const appDir = path.resolve(scriptsDir, "..");
 const repoRoot = path.resolve(appDir, "..", "..");
 const tempDirs = [];
+const CURRENT_COMMIT = "a".repeat(40);
+const STALE_COMMIT = "b".repeat(40);
 
 function tempDir() {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "android-playwright-e2e-"));
@@ -59,6 +64,35 @@ describe("focused Android Playwright bundle runner", () => {
     expect(() => parseAndroidPlaywrightE2eArgs(["--serial", "--grep"])).toThrow(
       /--serial requires a value/,
     );
+  });
+
+  it("accepts only the exact installed commit before Playwright starts", () => {
+    const bundle = { build: {}, expectedCommit: CURRENT_COMMIT };
+    expect(
+      verifyInstalledAndroidBuild(bundle, {
+        buildId: "build-current",
+        commit: CURRENT_COMMIT,
+      }),
+    ).toEqual({ buildId: "build-current", commit: CURRENT_COMMIT });
+
+    expect(() =>
+      verifyInstalledAndroidBuild(
+        { build: {}, expectedCommit: CURRENT_COMMIT },
+        { buildId: "build-stale", commit: STALE_COMMIT },
+      ),
+    ).toThrow(/does not match expected HEAD/);
+    expect(() =>
+      verifyInstalledAndroidBuild(
+        { build: {}, expectedCommit: CURRENT_COMMIT },
+        { buildId: "build-short", commit: CURRENT_COMMIT.slice(0, 12) },
+      ),
+    ).toThrow(/not a full SHA-1/);
+    expect(() =>
+      verifyInstalledAndroidBuild(
+        { build: {}, expectedCommit: CURRENT_COMMIT },
+        null,
+      ),
+    ).toThrow(/not a full SHA-1/);
   });
 
   it("keeps every focused Android lane used by device CI behind a bundler", () => {

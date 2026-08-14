@@ -5,11 +5,13 @@
  * contract: output directory selection, inline-ready artifact collection,
  * summary writing, and JUnit generation on both passing and failed steps.
  */
+import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  assertExactBundleCommit,
   captureFailureForensics,
   collectBundleArtifacts,
   createDeviceE2eBundle,
@@ -21,25 +23,80 @@ import {
   parseOutputDirArg,
   recordBundleArtifact,
   recordBundleRunnerFailure,
+  resolveBundleExpectedCommit,
   runBundledCommand,
   startBundleStep,
 } from "./lib/device-e2e-bundle.mjs";
+import {
+  isRenderableVideo,
+  resolveMediaProbeBinary,
+} from "./lib/device-video.mjs";
 
 const tempDirs = [];
+const EXPECTED_COMMIT = "0123456789abcdef0123456789abcdef01234567";
+const STALE_COMMIT = "89abcdef0123456789abcdef0123456789abcdef";
 const ONE_BY_ONE_PNG = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAACXBIWXMAAAPoAAAD6AG1e1JrAAAADUlEQVQImWP4z8DwHwAFAAH/q842iQAAAABJRU5ErkJggg==",
   "base64",
 );
-const FINALIZED_MP4 = (() => {
-  const fileType = Buffer.alloc(12);
-  fileType.writeUInt32BE(12, 0);
-  fileType.write("ftyp", 4, "ascii");
-  fileType.write("isom", 8, "ascii");
-  const movie = Buffer.alloc(8);
-  movie.writeUInt32BE(8, 0);
-  movie.write("moov", 4, "ascii");
-  return Buffer.concat([fileType, movie]);
-})();
+const TINY_JPEG = Buffer.from(
+  "/9j/4AAQSkZJRgABAgAAAQABAAD//gAQTGF2YzYyLjExLjEwMAD/2wBDAAgEBAQEBAUFBQUFBQYGBgYGBgYGBgYGBgYHBwcICAgHBwcGBgcHCAgICAkJCQgICAgJCQoKCgwMCwsODg4RERT/xABLAAEBAAAAAAAAAAAAAAAAAAAACAEBAAAAAAAAAAAAAAAAAAAAABABAAAAAAAAAAAAAAAAAAAAABEBAAAAAAAAAAAAAAAAAAAAAP/AABEIAAIAAgMBIgACEQADEQD/2gAMAwEAAhEDEQA/AJ/AB//Z",
+  "base64",
+);
+
+function mp4Box(type, payload = Buffer.alloc(0)) {
+  const box = Buffer.alloc(8 + payload.length);
+  box.writeUInt32BE(box.length, 0);
+  box.write(type, 4, "ascii");
+  payload.copy(box, 8);
+  return box;
+}
+
+const EMPTY_MP4_SHELL = Buffer.concat([
+  mp4Box("ftyp", Buffer.from("isom")),
+  mp4Box("moov"),
+]);
+const UNDECODABLE_MP4 = Buffer.concat([
+  mp4Box("ftyp", Buffer.from("isom")),
+  mp4Box("moov"),
+  mp4Box("mdat", Buffer.from("not-a-video-frame")),
+]);
+
+function writePlayableH264Mp4(outputPath) {
+  const ffmpeg = resolveMediaProbeBinary();
+  if (!ffmpeg) {
+    throw new Error("ffmpeg is required to generate the H.264 test fixture");
+  }
+  const result = spawnSync(
+    ffmpeg,
+    [
+      "-v",
+      "error",
+      "-nostdin",
+      "-y",
+      "-f",
+      "lavfi",
+      "-i",
+      "color=c=black:s=16x16:r=25:d=0.08",
+      "-frames:v",
+      "2",
+      "-c:v",
+      "libx264",
+      "-pix_fmt",
+      "yuv420p",
+      "-movflags",
+      "+faststart",
+      outputPath,
+    ],
+    { encoding: "utf8", timeout: 15_000 },
+  );
+  if (result.status !== 0) {
+    throw new Error(
+      `could not generate H.264 fixture: ${result.stderr?.trim() || result.error?.message || `exit ${result.status}`}`,
+    );
+  }
+  return outputPath;
+}
 
 function tempRoot() {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "device-e2e-bundle-"));
@@ -70,6 +127,40 @@ describe("device-e2e bundle assembly", () => {
     );
   });
 
+  it("resolves and enforces one immutable full repository commit", () => {
+    const calls = [];
+    expect(
+      resolveBundleExpectedCommit("/repo/packages/app", {
+        execFileSync: (command, args, options) => {
+          calls.push({ command, args, options });
+          return `${EXPECTED_COMMIT.toUpperCase()}\n`;
+        },
+      }),
+    ).toBe(EXPECTED_COMMIT);
+    expect(calls).toEqual([
+      {
+        command: "git",
+        args: ["rev-parse", "HEAD"],
+        options: expect.objectContaining({ cwd: "/repo/packages/app" }),
+      },
+    ]);
+    expect(
+      resolveBundleExpectedCommit("/repo", {
+        execFileSync: () => "short\n",
+      }),
+    ).toBeNull();
+    expect(
+      resolveBundleExpectedCommit("/repo", {
+        execFileSync: () => {
+          throw new Error("git unavailable");
+        },
+      }),
+    ).toBeNull();
+    expect(assertExactBundleCommit(EXPECTED_COMMIT, EXPECTED_COMMIT)).toBe(
+      EXPECTED_COMMIT,
+    );
+  });
+
   it("writes summary, junit, and inline copies for existing JPG/MP4 artifacts", () => {
     const root = tempRoot();
     const bundle = createDeviceE2eBundle({
@@ -77,15 +168,16 @@ describe("device-e2e bundle assembly", () => {
       lane: "android",
       outputDir: path.join(root, "bundle"),
       device: { serial: "device-1" },
-      build: { buildId: "build-1", commit: "abc123" },
+      build: { buildId: "build-1", commit: EXPECTED_COMMIT },
+      expectedCommit: EXPECTED_COMMIT,
     });
 
     const sourceDir = path.join(root, "source");
     fs.mkdirSync(sourceDir, { recursive: true });
     const jpg = path.join(sourceDir, "screen.jpg");
     const mp4 = path.join(sourceDir, "walkthrough.mp4");
-    fs.writeFileSync(jpg, "jpg");
-    fs.writeFileSync(mp4, FINALIZED_MP4);
+    fs.writeFileSync(jpg, TINY_JPEG);
+    writePlayableH264Mp4(mp4);
 
     const step = startBundleStep(bundle, "route coverage");
     recordBundleArtifact(bundle, jpg, "screenshot", step);
@@ -110,6 +202,8 @@ describe("device-e2e bundle assembly", () => {
     expect(summary.result).toBe("passed");
     expect(summary.device.serial).toBe("device-1");
     expect(summary.build.buildId).toBe("build-1");
+    expect(summary.build.commit).toBe(EXPECTED_COMMIT);
+    expect(summary.build.expectedCommit).toBe(EXPECTED_COMMIT);
     expect(summary.steps).toHaveLength(1);
     expect(fs.existsSync(path.join(bundleRoot, "junit.xml"))).toBe(true);
     expect(fs.existsSync(path.join(bundleRoot, "inline", "screen.jpg"))).toBe(
@@ -129,14 +223,15 @@ describe("device-e2e bundle assembly", () => {
     const root = tempRoot();
     const sourceDir = path.join(root, "workflow-evidence");
     fs.mkdirSync(sourceDir);
-    fs.writeFileSync(path.join(sourceDir, "walkthrough.mp4"), FINALIZED_MP4);
-    fs.writeFileSync(path.join(sourceDir, "screen.jpg"), "jpg");
+    writePlayableH264Mp4(path.join(sourceDir, "walkthrough.mp4"));
+    fs.writeFileSync(path.join(sourceDir, "screen.jpg"), TINY_JPEG);
     fs.writeFileSync(path.join(sourceDir, "runner.log"), "complete\n");
     const bundle = createDeviceE2eBundle({
       appDir: root,
       lane: "ios-sim",
       outputDir: path.join(root, "bundle"),
-      build: { buildId: "build-1", commit: "abc123" },
+      build: { buildId: "build-1", commit: EXPECTED_COMMIT },
+      expectedCommit: EXPECTED_COMMIT,
     });
     const step = startBundleStep(bundle, "simulator smoke");
     finishBundleStep(bundle, step, "passed");
@@ -177,6 +272,7 @@ describe("device-e2e bundle assembly", () => {
       lane: "ios-sim",
       outputDir: path.join(root, "bundle"),
       build: { buildId: "build-1", commit: null },
+      expectedCommit: EXPECTED_COMMIT,
     });
     const step = startBundleStep(bundle, "simulator smoke");
     finishBundleStep(bundle, step, "passed");
@@ -197,7 +293,7 @@ describe("device-e2e bundle assembly", () => {
     const junit = fs.readFileSync(path.join(bundle.root, "junit.xml"), "utf8");
     expect(summary.result).toBe("failed");
     expect(summary.validationErrors).toEqual([
-      "build.commit is missing",
+      "build.commit is missing or is not a full SHA-1",
       "inline JPG screenshot is missing",
       "inline MP4 walkthrough is missing",
       "logs/ has no non-empty log",
@@ -212,16 +308,162 @@ describe("device-e2e bundle assembly", () => {
     );
   });
 
-  it("rejects a non-empty MP4 that has no finalized movie box", () => {
+  it.each([
+    [
+      "a malformed commit",
+      "not-a-sha",
+      "build.commit is missing or is not a full SHA-1",
+    ],
+    [
+      "a stale commit",
+      STALE_COMMIT,
+      `build.commit ${STALE_COMMIT} does not match expected HEAD ${EXPECTED_COMMIT}`,
+    ],
+  ])(
+    "rejects %s when exact-head evidence is required",
+    (_case, commit, error) => {
+      const root = tempRoot();
+      const bundle = createDeviceE2eBundle({
+        appDir: root,
+        lane: "android",
+        outputDir: path.join(root, "bundle"),
+        build: { buildId: "build-1", commit },
+        expectedCommit: EXPECTED_COMMIT,
+      });
+
+      finalizeDeviceE2eBundle(bundle, "passed", {
+        requiredEvidence: { commit: true },
+      });
+
+      const summary = JSON.parse(
+        fs.readFileSync(path.join(bundle.root, "summary.json"), "utf8"),
+      );
+      expect(summary.result).toBe("failed");
+      expect(summary.validationErrors).toEqual([error]);
+    },
+  );
+
+  it.each([
+    ["arbitrary bytes", Buffer.from("jpg")],
+    ["a truncated JPEG signature", Buffer.from([0xff, 0xd8, 0xff])],
+  ])("rejects %s as inline JPEG evidence", (_case, contents) => {
     const root = tempRoot();
     const bundle = createDeviceE2eBundle({
       appDir: root,
       lane: "android",
       outputDir: path.join(root, "bundle"),
-      build: { buildId: "build-1", commit: "abc123" },
     });
-    const video = path.join(bundle.rawDir, "interrupted.mp4");
-    fs.writeFileSync(video, "not-a-finalized-container");
+    const screenshot = path.join(bundle.rawDir, "invalid.jpg");
+    fs.writeFileSync(screenshot, contents);
+    recordBundleArtifact(bundle, screenshot, "screenshot");
+
+    finalizeDeviceE2eBundle(bundle, "passed", {
+      requiredEvidence: { inlineScreenshot: true },
+    });
+
+    const summary = JSON.parse(
+      fs.readFileSync(path.join(bundle.root, "summary.json"), "utf8"),
+    );
+    expect(summary.result).toBe("failed");
+    expect(summary.validationErrors).toEqual([
+      "inline JPG screenshot is missing",
+    ]);
+    expect(fs.readdirSync(bundle.inlineDir)).toEqual([]);
+    expect(summary.warnings).toEqual([
+      `could not publish unrenderable JPEG inline: ${screenshot}`,
+    ]);
+  });
+
+  it.each([
+    ["a non-H.264 stream", "hevc", 0.08, 16, 16],
+    ["a zero-duration stream", "h264", 0, 16, 16],
+    ["a zero-width stream", "h264", 0.08, 0, 16],
+  ])(
+    "rejects %s even when a decoder would return success",
+    (_case, codecName, duration, width, height) => {
+      const root = tempRoot();
+      const video = path.join(root, "metadata-only.mp4");
+      fs.writeFileSync(video, "non-empty");
+      const spawnCalls = [];
+      const spawnSyncStub = (command) => {
+        spawnCalls.push(command);
+        if (command === "ffprobe") {
+          return {
+            status: 0,
+            stdout: JSON.stringify({
+              streams: [
+                {
+                  codec_name: codecName,
+                  duration: String(duration),
+                  width,
+                  height,
+                },
+              ],
+              format: { duration: String(duration) },
+            }),
+          };
+        }
+        return { status: 0 };
+      };
+
+      expect(
+        isRenderableVideo(video, {
+          metadataProbeBinary: "ffprobe",
+          probeBinary: "ffmpeg",
+          spawnSync: spawnSyncStub,
+        }),
+      ).toBe(false);
+      expect(spawnCalls).toEqual(["ffprobe"]);
+    },
+  );
+
+  it("requires both positive H.264 metadata and a decodable frame", () => {
+    const root = tempRoot();
+    const video = path.join(root, "valid.mp4");
+    fs.writeFileSync(video, "non-empty");
+    const spawnCalls = [];
+    const spawnSyncStub = (command) => {
+      spawnCalls.push(command);
+      return command === "ffprobe"
+        ? {
+            status: 0,
+            stdout: JSON.stringify({
+              streams: [
+                {
+                  codec_name: "h264",
+                  duration: "N/A",
+                  width: 16,
+                  height: 16,
+                },
+              ],
+              format: { duration: "0.08" },
+            }),
+          }
+        : { status: 0 };
+    };
+
+    expect(
+      isRenderableVideo(video, {
+        metadataProbeBinary: "ffprobe",
+        probeBinary: "ffmpeg",
+        spawnSync: spawnSyncStub,
+      }),
+    ).toBe(true);
+    expect(spawnCalls).toEqual(["ffprobe", "ffmpeg"]);
+  });
+
+  it.each([
+    ["an empty ftyp+moov shell", EMPTY_MP4_SHELL],
+    ["a structurally plausible but non-decodable container", UNDECODABLE_MP4],
+  ])("rejects %s as inline MP4 evidence", (_case, contents) => {
+    const root = tempRoot();
+    const bundle = createDeviceE2eBundle({
+      appDir: root,
+      lane: "android",
+      outputDir: path.join(root, "bundle"),
+    });
+    const video = path.join(bundle.rawDir, "invalid.mp4");
+    fs.writeFileSync(video, contents);
     recordBundleArtifact(bundle, video, "video");
 
     finalizeDeviceE2eBundle(bundle, "passed", {

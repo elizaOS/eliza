@@ -21,6 +21,7 @@ import {
   resolveSerial,
 } from "./lib/android-device.mjs";
 import {
+  assertExactBundleCommit,
   captureFailureForensics,
   createDeviceE2eBundle,
   finalizeDeviceE2eBundle,
@@ -119,6 +120,19 @@ function finishFailedStep(bundle, step, context) {
   finishBundleStep(bundle, step, "failed", context.error);
 }
 
+export function verifyInstalledAndroidBuild(bundle, installedStamp) {
+  setBundleBuild(bundle, {
+    buildId: installedStamp?.buildId ?? null,
+    commit: installedStamp?.commit ?? null,
+  });
+  assertExactBundleCommit(
+    installedStamp?.commit,
+    bundle.expectedCommit,
+    "installed Android build",
+  );
+  return bundle.build;
+}
+
 export async function runAndroidPlaywrightE2e(argv = process.argv.slice(2)) {
   const flags = parseAndroidPlaywrightE2eArgs(argv);
   if (flags.playwrightArgs.length === 0) {
@@ -153,6 +167,16 @@ export async function runAndroidPlaywrightE2e(argv = process.argv.slice(2)) {
       waitMs: flags.noWait ? 0 : undefined,
       log,
     });
+
+    const stampStep = startBundleStep(bundle, "verify installed Android build");
+    try {
+      const installedStamp = readInstalledRendererStamp(adb, serial, { log });
+      verifyInstalledAndroidBuild(bundle, installedStamp);
+      finishBundleStep(bundle, stampStep, "passed");
+    } catch (error) {
+      finishFailedStep(bundle, stampStep, { adb, serial, error });
+      throw error;
+    }
 
     runBundledCommand(
       bundle,

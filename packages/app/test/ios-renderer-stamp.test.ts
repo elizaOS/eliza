@@ -12,6 +12,8 @@ import {
 } from "../scripts/lib/ios-renderer-stamp.mjs";
 
 const tempDirs: string[] = [];
+const CURRENT_COMMIT = "a".repeat(40);
+const STALE_COMMIT = "b".repeat(40);
 
 function tempDir() {
   const dir = mkdtempSync(path.join(os.tmpdir(), "ios-renderer-stamp-"));
@@ -29,11 +31,12 @@ describe("iOS renderer stamp", () => {
   it("accepts matching fresh and installed build ids", () => {
     expect(
       compareRendererBuildIds({
-        fresh: { buildId: "abc", commit: "deadbeef", builtAt: "now" },
-        installed: { buildId: "abc", commit: "deadbeef" },
+        fresh: { buildId: "abc", commit: CURRENT_COMMIT, builtAt: "now" },
+        installed: { buildId: "abc", commit: CURRENT_COMMIT },
         label: "candidate app",
+        expectedCommit: CURRENT_COMMIT,
       }),
-    ).toEqual({ buildId: "abc", commit: "deadbeef", builtAt: "now" });
+    ).toEqual({ buildId: "abc", commit: CURRENT_COMMIT, builtAt: "now" });
   });
 
   it("rejects stale installed renderer manifests", () => {
@@ -42,6 +45,7 @@ describe("iOS renderer stamp", () => {
         fresh: { buildId: "fresh" },
         installed: { buildId: "old" },
         label: "installed app",
+        expectedCommit: CURRENT_COMMIT,
       }),
     ).toThrow(/stale UI install/);
   });
@@ -49,20 +53,41 @@ describe("iOS renderer stamp", () => {
   it("rejects equal build ids carrying different commits", () => {
     expect(() =>
       compareRendererBuildIds({
-        fresh: { buildId: "same", commit: "fresh" },
-        installed: { buildId: "same", commit: "stale" },
+        fresh: { buildId: "same", commit: CURRENT_COMMIT },
+        installed: { buildId: "same", commit: STALE_COMMIT },
         label: "installed app",
+        expectedCommit: CURRENT_COMMIT,
       }),
     ).toThrow(/inconsistent build stamp/);
   });
 
-  it("does not infer an absent installed commit from the fresh manifest", () => {
-    expect(
+  it("rejects an absent installed commit when exact-head evidence is required", () => {
+    expect(() =>
       compareRendererBuildIds({
-        fresh: { buildId: "same", commit: "deadbeef" },
+        fresh: { buildId: "same", commit: CURRENT_COMMIT },
         installed: { buildId: "same", commit: null },
+        expectedCommit: CURRENT_COMMIT,
       }),
-    ).toEqual({ buildId: "same", commit: null, builtAt: null });
+    ).toThrow(/has no full commit SHA/);
+  });
+
+  it("rejects stale or malformed commits even when build ids match", () => {
+    for (const commit of [STALE_COMMIT, CURRENT_COMMIT.slice(0, 12), null]) {
+      expect(() =>
+        compareRendererBuildIds({
+          fresh: { buildId: "same", commit: CURRENT_COMMIT },
+          installed: { buildId: "same", commit },
+          expectedCommit: CURRENT_COMMIT,
+        }),
+      ).toThrow();
+    }
+    expect(() =>
+      compareRendererBuildIds({
+        fresh: { buildId: "same", commit: CURRENT_COMMIT },
+        installed: { buildId: "same", commit: CURRENT_COMMIT },
+        expectedCommit: "not-a-sha",
+      }),
+    ).toThrow(/not a full SHA-1/);
   });
 
   it("compares a candidate app bundle against the freshly built dist manifest", () => {
@@ -75,7 +100,7 @@ describe("iOS renderer stamp", () => {
       rendererManifestPathFromAppPath(appPath),
       JSON.stringify({
         buildId: "same",
-        commit: "deadbeef",
+        commit: CURRENT_COMMIT,
         builtAt: "2026-07-04T00:00:00.000Z",
       }),
     );
@@ -83,16 +108,47 @@ describe("iOS renderer stamp", () => {
       path.join(dist, "eliza-renderer-build.json"),
       JSON.stringify({
         buildId: "same",
-        commit: "deadbeef",
+        commit: CURRENT_COMMIT,
         builtAt: "later",
       }),
     );
 
-    expect(assertIosAppRendererFresh({ appPath, repoRoot })).toEqual({
+    expect(
+      assertIosAppRendererFresh({
+        appPath,
+        repoRoot,
+        expectedCommit: CURRENT_COMMIT,
+      }),
+    ).toEqual({
       buildId: "same",
-      commit: "deadbeef",
+      commit: CURRENT_COMMIT,
       builtAt: "later",
     });
+  });
+
+  it("rejects consistently stale dist and app bundles", () => {
+    const repoRoot = tempDir();
+    const appPath = path.join(repoRoot, "Candidate.app");
+    const dist = path.join(repoRoot, "packages", "app", "dist");
+    mkdirSync(dist, { recursive: true });
+    mkdirSync(path.join(appPath, "public"), { recursive: true });
+    for (const manifestPath of [
+      rendererManifestPathFromAppPath(appPath),
+      path.join(dist, "eliza-renderer-build.json"),
+    ]) {
+      writeFileSync(
+        manifestPath,
+        JSON.stringify({ buildId: "same", commit: STALE_COMMIT }),
+      );
+    }
+
+    expect(() =>
+      assertIosAppRendererFresh({
+        appPath,
+        repoRoot,
+        expectedCommit: CURRENT_COMMIT,
+      }),
+    ).toThrow(/must both match HEAD/);
   });
 });
 

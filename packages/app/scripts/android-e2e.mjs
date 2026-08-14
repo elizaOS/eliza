@@ -323,7 +323,11 @@ function ensureFreshApkInstalled(bundle, adb, serial) {
 
   let apk = resolveApk(process.env.ELIZA_ANDROID_APK);
   let apkStamp = readApkRendererStamp(apk);
-  let apkDecision = androidApkNeedsBuild({ freshStamp, apkStamp });
+  let apkDecision = androidApkNeedsBuild({
+    freshStamp,
+    apkStamp,
+    expectedCommit: headCommit,
+  });
   if (apkDecision.build) {
     if (skipBuild) {
       throw new Error(
@@ -341,7 +345,11 @@ function ensureFreshApkInstalled(bundle, adb, serial) {
       }
       apk = resolveApk(process.env.ELIZA_ANDROID_APK);
       apkStamp = readApkRendererStamp(apk);
-      apkDecision = androidApkNeedsBuild({ freshStamp, apkStamp });
+      apkDecision = androidApkNeedsBuild({
+        freshStamp,
+        apkStamp,
+        expectedCommit: headCommit,
+      });
     }
   }
   if (apkDecision.build) {
@@ -354,7 +362,11 @@ function ensureFreshApkInstalled(bundle, adb, serial) {
   const installedStamp = readInstalledRendererStamp(adb, serial, { log });
   const installDecision = forceBuild
     ? { install: true, reason: "--force-build/--build requested" }
-    : androidInstallDecision({ freshStamp, installedStamp });
+    : androidInstallDecision({
+        freshStamp,
+        installedStamp,
+        expectedCommit: headCommit,
+      });
   if (installDecision.install) {
     log(`${installDecision.reason} — installing ${apk}`);
     const step = startBundleStep(bundle, "install Android APK");

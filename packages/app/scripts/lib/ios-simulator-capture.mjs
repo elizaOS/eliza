@@ -5,7 +5,7 @@
 import { spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import { isFinalizedMp4 } from "./device-video.mjs";
+import { isFinalizedMp4, isRenderableVideo } from "./device-video.mjs";
 
 const RECORDING_CLOSE_TIMEOUT_MS = 15_000;
 const RECORDING_KILL_TIMEOUT_MS = 5_000;
@@ -224,11 +224,13 @@ export function startIosSimulatorVideo({
           log(`iOS simulator recording stderr: ${stderr.trim()}`);
         return null;
       }
-      if (
-        path.extname(localPath).toLowerCase() === ".mp4" &&
-        !isFinalizedMp4(localPath)
-      ) {
-        log(`iOS simulator recording is not a finalized MP4: ${localPath}`);
+      const extension = path.extname(localPath).toLowerCase();
+      const isRenderable =
+        extension === ".mp4"
+          ? isFinalizedMp4(localPath)
+          : isRenderableVideo(localPath);
+      if (!isRenderable) {
+        log(`iOS simulator recording is not renderable: ${localPath}`);
         return null;
       }
       log(`wrote iOS simulator recording: ${localPath}`);

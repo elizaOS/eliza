@@ -223,7 +223,7 @@ function ensureSimulatorBooted(deviceName) {
   return udid;
 }
 
-function installBuiltSimulatorApp(udid, appId) {
+function installBuiltSimulatorApp(udid, appId, expectedCommit) {
   const appPath = flags.appPath ?? findLatestBuiltIosSimulatorApp();
   if (!appPath) {
     throw new Error(
@@ -236,6 +236,7 @@ function installBuiltSimulatorApp(udid, appId) {
     bundleId: appId,
     repoRoot,
     log,
+    expectedCommit,
   });
   trySimctl(["terminate", udid, appId]);
   trySimctl(["uninstall", udid, appId]);
@@ -250,6 +251,7 @@ function installBuiltSimulatorApp(udid, appId) {
     bundleId: appId,
     repoRoot,
     log,
+    expectedCommit,
   });
 }
 
@@ -319,7 +321,11 @@ function runStep(bundle, step, { udid, appId, urlScheme }) {
     case "install": {
       const installStep = startBundleStep(bundle, step.label);
       try {
-        const stamp = installBuiltSimulatorApp(udid, appId);
+        const stamp = installBuiltSimulatorApp(
+          udid,
+          appId,
+          bundle.expectedCommit,
+        );
         const approval = ensureSimulatorSchemeApproval(udid, appId, urlScheme);
         if (approval.changed) {
           log(

@@ -1,9 +1,14 @@
 /**
- * Container-level validation shared by Android and iOS device recorders. A
- * non-empty `.mp4` is not sufficient evidence: interrupted recorders commonly
- * leave media without the closing `moov` box, which GitHub cannot render.
+ * Renderability validation shared by Android and iOS evidence bundles. A
+ * filename, non-empty file, or plausible MP4 box list is not proof that GitHub
+ * can render the artifact, so media must also decode through the repository's
+ * available ffmpeg binary before it is published inline.
  */
+import { spawnSync } from "node:child_process";
 import fs from "node:fs";
+import { createRequire } from "node:module";
+
+const require = createRequire(import.meta.url);
 
 function isNonEmptyFile(filePath) {
   try {
@@ -13,7 +18,205 @@ function isNonEmptyFile(filePath) {
   }
 }
 
-export function isFinalizedMp4(filePath) {
+function commandWorks(command, spawnSyncDep) {
+  return (
+    typeof command === "string" &&
+    command.length > 0 &&
+    spawnSyncDep(command, ["-version"], {
+      stdio: "ignore",
+      timeout: 5_000,
+    }).status === 0
+  );
+}
+
+export function resolveMediaProbeBinary({
+  env = process.env,
+  require: requireDep = require,
+  spawnSync: spawnSyncDep = spawnSync,
+} = {}) {
+  const explicit =
+    env.ELIZA_FFMPEG_BIN?.trim() ||
+    env.ELIZA_FFMPEG_PATH?.trim() ||
+    env.FFMPEG_PATH?.trim();
+  if (explicit) return commandWorks(explicit, spawnSyncDep) ? explicit : null;
+
+  const candidates = ["ffmpeg"];
+  try {
+    const bundled = requireDep("ffmpeg-static");
+    candidates.push(
+      typeof bundled === "string" ? bundled : (bundled?.default ?? null),
+    );
+  } catch {
+    // error-policy:J3 An absent optional probe is an explicit invalid result.
+  }
+  for (const candidate of new Set(candidates.filter(Boolean))) {
+    if (commandWorks(candidate, spawnSyncDep)) return candidate;
+  }
+  return null;
+}
+
+export function resolveMediaMetadataProbeBinary({
+  env = process.env,
+  require: requireDep = require,
+  spawnSync: spawnSyncDep = spawnSync,
+} = {}) {
+  const explicit =
+    env.ELIZA_FFPROBE_BIN?.trim() || env.ELIZA_FFPROBE_PATH?.trim();
+  if (explicit) return commandWorks(explicit, spawnSyncDep) ? explicit : null;
+
+  const candidates = ["ffprobe"];
+  try {
+    const bundled = requireDep("ffprobe-static");
+    candidates.push(
+      typeof bundled === "string"
+        ? bundled
+        : (bundled?.path ?? bundled?.default?.path ?? null),
+    );
+  } catch {
+    // error-policy:J3 An absent optional metadata probe is an invalid result.
+  }
+  for (const candidate of new Set(candidates.filter(Boolean))) {
+    if (commandWorks(candidate, spawnSyncDep)) return candidate;
+  }
+  return null;
+}
+
+function hasRenderableH264Stream(
+  filePath,
+  { metadataProbeBinary, require: requireDep, spawnSync: spawnSyncDep },
+) {
+  const ffprobe =
+    metadataProbeBinary ??
+    resolveMediaMetadataProbeBinary({
+      require: requireDep,
+      spawnSync: spawnSyncDep,
+    });
+  if (!ffprobe) return false;
+  const result = spawnSyncDep(
+    ffprobe,
+    [
+      "-v",
+      "error",
+      "-select_streams",
+      "v:0",
+      "-show_entries",
+      "stream=codec_name,width,height,duration:format=duration",
+      "-of",
+      "json",
+      filePath,
+    ],
+    { encoding: "utf8", timeout: 15_000 },
+  );
+  if (result.status !== 0) return false;
+  try {
+    const parsed = JSON.parse(result.stdout);
+    const stream = parsed?.streams?.[0];
+    const duration = [stream?.duration, parsed?.format?.duration]
+      .map(Number)
+      .find((value) => Number.isFinite(value) && value > 0);
+    return (
+      stream?.codec_name === "h264" &&
+      Number(stream?.width) > 0 &&
+      Number(stream?.height) > 0 &&
+      duration !== undefined
+    );
+  } catch {
+    return false;
+  }
+}
+
+function decodesVideoFrame(
+  filePath,
+  { probeBinary, require: requireDep, spawnSync: spawnSyncDep },
+) {
+  const ffmpeg =
+    probeBinary ??
+    resolveMediaProbeBinary({ require: requireDep, spawnSync: spawnSyncDep });
+  if (!ffmpeg) return false;
+  const result = spawnSyncDep(
+    ffmpeg,
+    [
+      "-v",
+      "error",
+      "-nostdin",
+      "-i",
+      filePath,
+      "-map",
+      "0:v:0",
+      "-frames:v",
+      "1",
+      "-f",
+      "null",
+      "-",
+    ],
+    { stdio: "ignore", timeout: 15_000 },
+  );
+  return result.status === 0;
+}
+
+export function isRenderableVideo(
+  filePath,
+  {
+    metadataProbeBinary,
+    probeBinary,
+    require: requireDep = require,
+    spawnSync: spawnSyncDep = spawnSync,
+  } = {},
+) {
+  return (
+    isNonEmptyFile(filePath) &&
+    hasRenderableH264Stream(filePath, {
+      metadataProbeBinary,
+      require: requireDep,
+      spawnSync: spawnSyncDep,
+    }) &&
+    decodesVideoFrame(filePath, {
+      probeBinary,
+      require: requireDep,
+      spawnSync: spawnSyncDep,
+    })
+  );
+}
+
+export function isRenderableJpeg(
+  filePath,
+  {
+    probeBinary,
+    require: requireDep = require,
+    spawnSync: spawnSyncDep = spawnSync,
+  } = {},
+) {
+  if (!isNonEmptyFile(filePath)) return false;
+  const fd = fs.openSync(filePath, "r");
+  try {
+    const signature = Buffer.alloc(3);
+    if (fs.readSync(fd, signature, 0, signature.length, 0) !== 3) return false;
+    if (
+      signature[0] !== 0xff ||
+      signature[1] !== 0xd8 ||
+      signature[2] !== 0xff
+    ) {
+      return false;
+    }
+  } finally {
+    fs.closeSync(fd);
+  }
+  return decodesVideoFrame(filePath, {
+    probeBinary,
+    require: requireDep,
+    spawnSync: spawnSyncDep,
+  });
+}
+
+export function isFinalizedMp4(
+  filePath,
+  {
+    metadataProbeBinary,
+    probeBinary,
+    require: requireDep = require,
+    spawnSync: spawnSyncDep = spawnSync,
+  } = {},
+) {
   if (!isNonEmptyFile(filePath)) return false;
 
   const fd = fs.openSync(filePath, "r");
@@ -23,6 +226,7 @@ export function isFinalizedMp4(filePath) {
     let offset = 0;
     let sawFileType = false;
     let sawMovie = false;
+    let sawMediaData = false;
 
     while (offset + 8 <= fileSize) {
       const bytesRead = fs.readSync(fd, header, 0, 16, offset);
@@ -45,11 +249,20 @@ export function isFinalizedMp4(filePath) {
       if (boxSize < headerSize || offset + boxSize > fileSize) return false;
       if (type === "ftyp") sawFileType = true;
       if (type === "moov") sawMovie = true;
+      if (type === "mdat" && boxSize > headerSize) sawMediaData = true;
       offset += boxSize;
     }
 
-    return sawFileType && sawMovie && offset === fileSize;
+    if (!(sawFileType && sawMovie && sawMediaData && offset === fileSize)) {
+      return false;
+    }
   } finally {
     fs.closeSync(fd);
   }
+  return isRenderableVideo(filePath, {
+    metadataProbeBinary,
+    probeBinary,
+    require: requireDep,
+    spawnSync: spawnSyncDep,
+  });
 }

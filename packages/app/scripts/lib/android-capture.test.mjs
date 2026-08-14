@@ -4,10 +4,12 @@
  */
 
 import { afterEach, describe, expect, test } from "bun:test";
+import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { isFinalizedMp4 } from "./android-capture.mjs";
+import { resolveMediaProbeBinary } from "./device-video.mjs";
 
 const files = [];
 
@@ -33,9 +35,48 @@ function writeRecording(...boxes) {
   return file;
 }
 
+function writePlayableH264Recording() {
+  const ffmpeg = resolveMediaProbeBinary();
+  if (!ffmpeg) throw new Error("ffmpeg is required for the MP4 fixture");
+  const file = path.join(
+    os.tmpdir(),
+    `eliza-android-recording-${process.pid}-${files.length}.mp4`,
+  );
+  const result = spawnSync(
+    ffmpeg,
+    [
+      "-v",
+      "error",
+      "-nostdin",
+      "-y",
+      "-f",
+      "lavfi",
+      "-i",
+      "color=c=black:s=16x16:r=25:d=0.08",
+      "-frames:v",
+      "2",
+      "-c:v",
+      "libx264",
+      "-pix_fmt",
+      "yuv420p",
+      "-movflags",
+      "+faststart",
+      file,
+    ],
+    { encoding: "utf8", timeout: 15_000 },
+  );
+  if (result.status !== 0) {
+    throw new Error(
+      `could not generate H.264 fixture: ${result.stderr?.trim() || result.error?.message || `exit ${result.status}`}`,
+    );
+  }
+  files.push(file);
+  return file;
+}
+
 describe("Android screenrecord finalization", () => {
   test("accepts a complete MP4 with file type and movie metadata", () => {
-    const file = writeRecording(box("ftyp"), box("mdat"), box("moov"));
+    const file = writePlayableH264Recording();
     expect(isFinalizedMp4(file)).toBe(true);
   });
 
