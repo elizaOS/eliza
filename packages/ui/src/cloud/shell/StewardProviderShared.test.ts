@@ -8,7 +8,15 @@
  * JWT `exp` claim.
  */
 
+import {
+  STEWARD_REFRESH_TOKEN_KEY,
+  STEWARD_TOKEN_KEY,
+} from "@elizaos/shared/steward-session-client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  loadAgentProfileRegistry,
+  saveAgentProfileRegistry,
+} from "../../state/agent-profiles";
 import {
   loadPersistedActiveServer,
   savePersistedActiveServer,
@@ -156,6 +164,57 @@ describe("clearStaleStewardSession", () => {
       label: "Eliza Cloud",
       apiBase: "https://dedicated-agent.eliza.app",
     });
+  });
+
+  it("finishes credential teardown before rethrowing obsolete refresh-key cleanup failure", () => {
+    localStorage.setItem(STEWARD_TOKEN_KEY, "expired-steward-token");
+    localStorage.setItem(STEWARD_REFRESH_TOKEN_KEY, "obsolete-refresh-token");
+    savePersistedActiveServer({
+      id: "cloud:dedicated-agent",
+      kind: "cloud",
+      label: "Eliza Cloud",
+      apiBase: "https://dedicated-agent.eliza.app",
+      accessToken: "active-server-mirror",
+    });
+    saveAgentProfileRegistry({
+      version: 1,
+      activeProfileId: "profile-1",
+      profiles: [
+        {
+          id: "profile-1",
+          label: "Remote agent",
+          kind: "remote",
+          apiBase: "https://remote.example.test",
+          accessToken: "profile-mirror",
+          createdAt: "2026-08-13T00:00:00.000Z",
+        },
+      ],
+    });
+    const storageFailure = new Error("legacy refresh storage unavailable");
+    const originalRemoveItem = Storage.prototype.removeItem;
+    const removeItem = vi
+      .spyOn(Storage.prototype, "removeItem")
+      .mockImplementation(function (this: Storage, key: string) {
+        if (key === STEWARD_REFRESH_TOKEN_KEY) throw storageFailure;
+        return Reflect.apply(originalRemoveItem, this, [key]);
+      });
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(new Response(null, { status: 204 }));
+
+    try {
+      expect(() => clearStaleStewardSession()).toThrow(storageFailure);
+    } finally {
+      removeItem.mockRestore();
+    }
+
+    expect(localStorage.getItem(STEWARD_TOKEN_KEY)).toBeNull();
+    expect(loadPersistedActiveServer()?.accessToken).toBeUndefined();
+    expect(loadAgentProfileRegistry().profiles[0]?.accessToken).toBeUndefined();
+    expect(fetchSpy).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({ method: "DELETE", credentials: "include" }),
+    );
   });
 });
 
