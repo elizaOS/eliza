@@ -11,6 +11,7 @@ export const ObjectNamespaces = {
   SeoPayloads: "seo-payloads",
   VertexTuningPayloads: "vertex-tuning-payloads",
   AgentSandboxBackups: "agent-sandbox-backups",
+  AgentSandboxPredeletionBackups: "agent-sandbox-predeletion-backups",
   AppFrontends: "app-frontends",
 } as const;
 

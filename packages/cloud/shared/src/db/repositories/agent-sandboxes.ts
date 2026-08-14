@@ -58,11 +58,14 @@ import {
   type AgentBackupStoredStateData,
   type AgentSandbox,
   type AgentSandboxBackup,
+  type AgentSandboxPredeletionBackup,
   type AgentSandboxStatus,
   agentSandboxBackups,
   agentSandboxes,
+  agentSandboxPredeletionBackups,
   type NewAgentSandbox,
   type NewAgentSandboxBackup,
+  type NewAgentSandboxPredeletionBackup,
   type StoredAgentSandboxBackup,
   UPGRADE_FAILURE_TARGET_MARKER_PREFIX,
   WARM_POOL_ORG_ID,
@@ -309,6 +312,65 @@ export async function prepareAgentBackupInsertData(
     state_data_storage: stateData.storage,
     state_data_key: stateData.key,
   };
+}
+
+/**
+ * Encrypt + offload a cascade-immune pre-deletion retention row (#18517),
+ * mirroring {@link prepareAgentBackupInsertData}'s lifecycle under its own
+ * object namespace. Waiver rows (`capture_unsupported`) carry the empty
+ * state and skip offload entirely.
+ */
+export async function preparePredeletionBackupInsertData(
+  data: NewAgentSandboxPredeletionBackup,
+): Promise<NewAgentSandboxPredeletionBackup> {
+  const id = data.id ?? randomUUID();
+  const createdAt = data.created_at ?? new Date();
+  if (data.capture_unsupported) {
+    return { ...data, id, created_at: createdAt, state_data: EMPTY_BACKUP_STATE };
+  }
+  const encryptedStateData = await encryptAgentBackupStateData(
+    data.organization_id,
+    id,
+    data.state_data as AgentBackupStateData,
+  );
+  const stateData = await offloadJsonField<AgentBackupStoredStateData>({
+    namespace: ObjectNamespaces.AgentSandboxPredeletionBackups,
+    organizationId: data.organization_id,
+    objectId: id,
+    field: "state_data",
+    createdAt,
+    value: encryptedStateData,
+    inlineValueWhenOffloaded: EMPTY_BACKUP_STATE,
+  });
+  return {
+    ...data,
+    id,
+    created_at: createdAt,
+    state_data: stateData.value ?? EMPTY_BACKUP_STATE,
+    state_data_storage: stateData.storage,
+    state_data_key: stateData.key,
+  };
+}
+
+/** Decrypt (and fetch, when offloaded) a retention row's state payload —
+ *  the retrieval path for a deleted agent's final capture (#18517). */
+export async function hydratePredeletionBackup(
+  row: AgentSandboxPredeletionBackup,
+): Promise<AgentSandboxPredeletionBackup> {
+  if (row.capture_unsupported) return row;
+  let stateData = row.state_data;
+  if (row.state_data_storage === "r2") {
+    if (!row.state_data_key) {
+      throw new Error(`Pre-deletion backup ${row.id} is missing state_data_key`);
+    }
+    const raw = await getObjectText(row.state_data_key);
+    if (!raw) {
+      throw new Error(`Pre-deletion backup payload not found: ${row.state_data_key}`);
+    }
+    stateData = JSON.parse(raw) as AgentBackupStoredStateData;
+  }
+  const decrypted = await decryptAgentBackupStateData(row.id, stateData);
+  return { ...row, state_data: decrypted };
 }
 
 /**
@@ -2027,6 +2089,27 @@ export class AgentSandboxesRepository {
    * `executeDowngrade` to find the `pre-upgrade` restore point captured right
    * before the most recent fleet upgrade.
    */
+  /** Newest cascade-immune retention row for one agent + deletion attempt
+   *  (#18517); rows survive the sandbox row's deletion by design. Metadata
+   *  only — retrieval consumers decrypt via {@link hydratePredeletionBackup}. */
+  async getPredeletionBackup(
+    agentId: string,
+    deletionAttemptId: string,
+  ): Promise<AgentSandboxPredeletionBackup | undefined> {
+    const [r] = await dbRead
+      .select()
+      .from(agentSandboxPredeletionBackups)
+      .where(
+        and(
+          eq(agentSandboxPredeletionBackups.agent_id, agentId),
+          eq(agentSandboxPredeletionBackups.deletion_attempt_id, deletionAttemptId),
+        ),
+      )
+      .orderBy(desc(agentSandboxPredeletionBackups.created_at))
+      .limit(1);
+    return r ?? undefined;
+  }
+
   async getLatestBackupByType(
     sandboxRecordId: string,
     snapshotType: AgentBackupSnapshotType,

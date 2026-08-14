@@ -375,7 +375,6 @@ export type AgentBackupSnapshotType =
   | "auto"
   | "manual"
   | "pre-shutdown"
-  | "pre-delete"
   | "pre-upgrade"
   | "pre-move";
 
@@ -543,6 +542,46 @@ export const agentSandboxBackups = pgTable(
     parent_backup_idx: index("agent_sandbox_backups_parent_idx").on(table.parent_backup_id),
   }),
 );
+
+/**
+ * Cascade-immune retention for the fail-closed pre-deletion capture (#18517):
+ * `agent_sandbox_backups` cascades away when its sandbox row is deleted, so a
+ * completed delete would destroy the very backup taken to survive it. This
+ * table deliberately carries NO foreign key to `agent_sandboxes`; rows are
+ * organization-scoped recovery artifacts bound to one deletion attempt and
+ * container generation. A `capture_unsupported` row is the persisted waiver
+ * for images with no snapshot endpoint, so a post-teardown retry converges
+ * without contacting the dead bridge. `state_data` uses the same encrypt +
+ * offload lifecycle as `agent_sandbox_backups` (empty for waiver rows).
+ */
+export const agentSandboxPredeletionBackups = pgTable(
+  "agent_sandbox_predeletion_backups",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organization_id: uuid("organization_id").notNull(),
+    agent_id: uuid("agent_id").notNull(),
+    deletion_attempt_id: uuid("deletion_attempt_id").notNull(),
+    lifecycle_revision: bigint("lifecycle_revision", { mode: "number" }).notNull(),
+    sandbox_id: text("sandbox_id"),
+    bridge_url: text("bridge_url"),
+    capture_unsupported: boolean("capture_unsupported").notNull().default(false),
+    state_data: jsonb("state_data").$type<AgentBackupStoredStateData>().notNull(),
+    state_data_storage: text("state_data_storage").notNull().default("inline"),
+    state_data_key: text("state_data_key"),
+    size_bytes: bigint("size_bytes", { mode: "number" }),
+    created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    agent_attempt_idx: index("agent_sandbox_predeletion_agent_attempt_idx").on(
+      table.agent_id,
+      table.deletion_attempt_id,
+    ),
+    org_idx: index("agent_sandbox_predeletion_org_idx").on(table.organization_id),
+  }),
+);
+
+export type AgentSandboxPredeletionBackup = typeof agentSandboxPredeletionBackups.$inferSelect;
+export type NewAgentSandboxPredeletionBackup = typeof agentSandboxPredeletionBackups.$inferInsert;
 
 /**
  * Machine-readable trailer appended to `agent_sandboxes.error_message` when an

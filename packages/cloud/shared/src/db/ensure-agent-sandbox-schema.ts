@@ -214,6 +214,34 @@ async function runEnsureAgentSandboxSchema(): Promise<void> {
       ADD COLUMN IF NOT EXISTS "verification_error" text
   `);
 
+  // Cascade-immune pre-deletion retention (#18517): deliberately NO foreign
+  // key to agent_sandboxes — these rows must survive the parent row's delete.
+  await dbWrite.execute(sql`
+    CREATE TABLE IF NOT EXISTS "agent_sandbox_predeletion_backups" (
+      "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      "organization_id" uuid NOT NULL,
+      "agent_id" uuid NOT NULL,
+      "deletion_attempt_id" uuid NOT NULL,
+      "lifecycle_revision" bigint NOT NULL,
+      "sandbox_id" text,
+      "bridge_url" text,
+      "capture_unsupported" boolean NOT NULL DEFAULT false,
+      "state_data" jsonb NOT NULL,
+      "state_data_storage" text NOT NULL DEFAULT 'inline',
+      "state_data_key" text,
+      "size_bytes" bigint,
+      "created_at" timestamptz NOT NULL DEFAULT now()
+    )
+  `);
+  await dbWrite.execute(sql`
+    CREATE INDEX IF NOT EXISTS "agent_sandbox_predeletion_agent_attempt_idx"
+      ON "agent_sandbox_predeletion_backups" ("agent_id", "deletion_attempt_id")
+  `);
+  await dbWrite.execute(sql`
+    CREATE INDEX IF NOT EXISTS "agent_sandbox_predeletion_org_idx"
+      ON "agent_sandbox_predeletion_backups" ("organization_id")
+  `);
+
   await dbWrite.execute(sql`
     CREATE INDEX IF NOT EXISTS "agent_sandbox_backups_parent_idx"
       ON "agent_sandbox_backups" ("parent_backup_id")

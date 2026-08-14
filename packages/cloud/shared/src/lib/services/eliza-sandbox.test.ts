@@ -3714,7 +3714,7 @@ describe("ElizaSandboxService.deleteAgent fail-closed pre-deletion capture (#185
     getAgentForWrite: (agentId: string, orgId: string) => Promise<unknown>;
     fetchSnapshotState: (rec: unknown) => Promise<unknown>;
     prepareAgentDelete: (...args: unknown[]) => Promise<unknown>;
-    persistSnapshotWithinTransaction: (...args: unknown[]) => Promise<void>;
+    persistPredeletionRetentionWithinTransaction: (...args: unknown[]) => Promise<void>;
     lockLifecycle: (...args: unknown[]) => Promise<void>;
     getAgentForLifecycleMutation: (...args: unknown[]) => Promise<unknown>;
     hasActiveProvisionJobTx: (...args: unknown[]) => Promise<boolean>;
@@ -3840,7 +3840,7 @@ describe("ElizaSandboxService.deleteAgent fail-closed pre-deletion capture (#185
       deletion_started_at: new Date("2026-08-13T00:00:00.000Z"),
     };
     const getForWrite = spyOn(spyTarget, "getAgentForWrite").mockResolvedValue(rec);
-    const priorBackup = spyOn(agentSandboxesRepository, "getLatestBackupByType").mockResolvedValue(
+    const priorBackup = spyOn(agentSandboxesRepository, "getPredeletionBackup").mockResolvedValue(
       undefined,
     );
     const fetchSnap = spyOn(spyTarget, "fetchSnapshotState").mockRejectedValue(
@@ -3877,8 +3877,9 @@ describe("ElizaSandboxService.deleteAgent fail-closed pre-deletion capture (#185
       deletion_started_at: new Date("2026-08-13T00:00:00.000Z"),
     };
     const getForWrite = spyOn(spyTarget, "getAgentForWrite").mockResolvedValue(rec);
-    const priorBackup = spyOn(agentSandboxesRepository, "getLatestBackupByType").mockResolvedValue({
-      created_at: new Date("2026-08-13T00:05:00.000Z"),
+    const priorBackup = spyOn(agentSandboxesRepository, "getPredeletionBackup").mockResolvedValue({
+      sandbox_id: "sandbox-e06bb509",
+      deletion_attempt_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
     } as never);
     const fetchSnap = spyOn(spyTarget, "fetchSnapshotState");
     const prepare = spyOn(spyTarget, "prepareAgentDelete").mockResolvedValue({
@@ -3948,7 +3949,7 @@ describe("ElizaSandboxService.deleteAgent fail-closed pre-deletion capture (#185
       deletion_started_at: new Date("2026-08-13T00:00:00.000Z"),
     };
     const getForWrite = spyOn(spyTarget, "getAgentForWrite").mockResolvedValue(rec);
-    const priorBackup = spyOn(agentSandboxesRepository, "getLatestBackupByType").mockResolvedValue(
+    const priorBackup = spyOn(agentSandboxesRepository, "getPredeletionBackup").mockResolvedValue(
       undefined,
     );
     const snapshot = {
@@ -3977,6 +3978,53 @@ describe("ElizaSandboxService.deleteAgent fail-closed pre-deletion capture (#185
     }
   });
 
+  test("a data-bearing row with no reachable bridge refuses instead of deleting uncaptured", async () => {
+    // `disconnected`/`error` rows can still own a data-bearing container; the
+    // gate keys on placement, not healthy-status labels, and with no bridge
+    // to capture from the delete fails closed.
+    const { svc, spyTarget } = await makeCaptureSvc();
+    const rec = { ...customSandbox(), status: "error" as const, bridge_url: null };
+    const getForWrite = spyOn(spyTarget, "getAgentForWrite").mockResolvedValue(rec);
+    const fetchSnap = spyOn(spyTarget, "fetchSnapshotState");
+    const prepare = spyOn(spyTarget, "prepareAgentDelete");
+    try {
+      const result = await svc.deleteAgent(rec.id, rec.organization_id, {
+        authorization: "user_request",
+      });
+      expect(result.success).toBe(false);
+      expect(result.success === false && result.error).toContain("no reachable bridge");
+      expect(fetchSnap).not.toHaveBeenCalled();
+      expect(prepare).not.toHaveBeenCalled();
+    } finally {
+      getForWrite.mockRestore();
+      fetchSnap.mockRestore();
+      prepare.mockRestore();
+    }
+  });
+
+  test("executeDeletion propagates the retryable transient-capture refusal to the job layer", async () => {
+    const { svc, spyTarget } = await makeCaptureSvc();
+    const del = spyOn(
+      spyTarget as unknown as { deleteAgent: (...args: unknown[]) => Promise<unknown> },
+      "deleteAgent",
+    ).mockResolvedValue({
+      success: false,
+      retryable: true,
+      error: "Refusing to delete without a current backup: transient",
+    });
+    try {
+      await expect(svc.executeDeletion("agent-1", "org-1", "user_request")).resolves.toEqual({
+        success: false,
+        containerStopped: false,
+        rowDeleted: false,
+        error: "Refusing to delete without a current backup: transient",
+        retryable: true,
+      });
+    } finally {
+      del.mockRestore();
+    }
+  });
+
   test("prepareAgentDelete refuses when the lifecycle generation moved after the capture", async () => {
     const { svc, spyTarget } = await makeCaptureSvc();
     const live = customSandbox();
@@ -3986,7 +4034,7 @@ describe("ElizaSandboxService.deleteAgent fail-closed pre-deletion capture (#185
     const activeReplacement = spyOn(spyTarget, "hasActiveReplacementJobTx").mockResolvedValue(
       false,
     );
-    const persist = spyOn(spyTarget, "persistSnapshotWithinTransaction");
+    const persist = spyOn(spyTarget, "persistPredeletionRetentionWithinTransaction");
     const update = mock(() => ({
       set: mock(() => ({ where: mock(() => ({ returning: mock(async () => []) })) })),
     }));
@@ -4031,9 +4079,10 @@ describe("ElizaSandboxService.deleteAgent fail-closed pre-deletion capture (#185
     const activeReplacement = spyOn(spyTarget, "hasActiveReplacementJobTx").mockResolvedValue(
       false,
     );
-    const persist = spyOn(spyTarget, "persistSnapshotWithinTransaction").mockResolvedValue(
-      undefined,
-    );
+    const persist = spyOn(
+      spyTarget,
+      "persistPredeletionRetentionWithinTransaction",
+    ).mockResolvedValue(undefined);
     const stateData = { tables: { memories: 3 } };
     const update = mock(() => ({
       set: mock(() => ({
@@ -4062,7 +4111,13 @@ describe("ElizaSandboxService.deleteAgent fail-closed pre-deletion capture (#185
       expect(result.ok).toBe(true);
       expect(persist).toHaveBeenCalledTimes(1);
       const call = persist.mock.calls[0] as unknown[];
-      expect(call.slice(1)).toEqual([live.id, live.organization_id, "pre-delete", stateData, 34]);
+      expect(call[1]).toBe(live);
+      expect(call[2]).toEqual({
+        deletionAttemptId: "attempt-18517",
+        lifecycleRevision: 7,
+        snapshot: { stateData, sizeBytes: 34, bridgeUrl: live.bridge_url },
+        captureUnsupported: false,
+      });
     } finally {
       upgradeTransactionImpl = null;
       lockLifecycle.mockRestore();
@@ -4183,9 +4238,9 @@ describe("ElizaSandboxService.deleteAgent teardown cap (#9066)", () => {
     // (#18517); persistence itself is covered by the dedicated capture tests.
     const persist = spyOn(
       svc as unknown as {
-        persistSnapshotWithinTransaction: (...args: unknown[]) => Promise<void>;
+        persistPredeletionRetentionWithinTransaction: (...args: unknown[]) => Promise<void>;
       },
-      "persistSnapshotWithinTransaction",
+      "persistPredeletionRetentionWithinTransaction",
     ).mockResolvedValue(undefined);
     const update = mock(() => ({
       set: mock(() => ({
