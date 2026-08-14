@@ -18,10 +18,14 @@ import {
 import { resolveWebhookConfig } from "./webhook-config";
 
 const DEDUP_TTL_SECONDS = 300;
-const PROCESSING_TTL_SECONDS = 60;
+// Must outlive the 75s non-idempotent message-forward budget plus Telegram
+// egress. Otherwise a provider retry can reclaim the update while the first
+// worker is still generating and execute the same user turn twice.
+const PROCESSING_TTL_SECONDS = 120;
 const TELEGRAM_DELIVERY_TTL_SECONDS = 30 * 24 * 60 * 60;
 const TELEGRAM_EGRESS_STARTED = "egress_started";
 const TELEGRAM_DELIVERED = "delivered";
+const TELEGRAM_TYPING_REFRESH_MS = 4_000;
 
 class TelegramEgressAlreadyClaimedError extends Error {
   override readonly name = "TelegramEgressAlreadyClaimedError";
@@ -240,6 +244,8 @@ async function processMessage(
   explicitAgentId?: string,
   beforeEgress?: () => Promise<void>,
 ): Promise<void> {
+  const startedAt = Date.now();
+  let stageStartedAt = startedAt;
   const { redis, cloudBaseUrl, getAuthHeader } = deps;
   const reauth = deps.reacquireAuthHeader ?? reacquireAuthHeader;
   const authHeader = getAuthHeader();
@@ -253,6 +259,8 @@ async function processMessage(
     event.senderName,
     reauth,
   );
+  const identityMs = Date.now() - stageStartedAt;
+  stageStartedAt = Date.now();
 
   if (!identity) {
     logger.info("Identity not linked; routing message to onboarding chat", {
@@ -289,6 +297,7 @@ async function processMessage(
   const server = agentId
     ? await resolveAgentServer(redis, agentId)
     : ({ kind: "unregistered" } as const);
+  const routingMs = Date.now() - stageStartedAt;
 
   if (!agentId || server.kind !== "ready") {
     if (explicitAgentId || server.kind === "unreachable") {
@@ -309,12 +318,18 @@ async function processMessage(
     return;
   }
 
-  adapter.sendTypingIndicator(config, event).catch((err) => {
-    logger.debug("sendTypingIndicator failed", {
-      platform: adapter.platform,
-      error: err instanceof Error ? err.message : String(err),
+  const stopTyping =
+    adapter.platform === "telegram"
+      ? startTypingRefreshLoop(adapter, config, event)
+      : () => undefined;
+  if (adapter.platform !== "telegram") {
+    adapter.sendTypingIndicator(config, event).catch((err) => {
+      logger.debug("sendTypingIndicator failed", {
+        platform: adapter.platform,
+        error: err instanceof Error ? err.message : String(err),
+      });
     });
-  });
+  }
   refreshKedaActivity(redis, server.serverName).catch((err) => {
     logger.warn("refreshKedaActivity failed", {
       serverName: server.serverName,
@@ -323,6 +338,7 @@ async function processMessage(
   });
 
   let responseText: string;
+  stageStartedAt = Date.now();
   try {
     responseText = await forwardToServer(
       server.serverUrl,
@@ -347,7 +363,10 @@ async function processMessage(
       agentId,
     });
     throw err;
+  } finally {
+    stopTyping();
   }
+  const forwardMs = Date.now() - stageStartedAt;
 
   // An empty responseText is a deliberate no-response from the agent (mute /
   // shouldRespond=no), not content: forwarding it would make platform adapters
@@ -364,8 +383,20 @@ async function processMessage(
   }
 
   try {
+    stageStartedAt = Date.now();
     await beforeEgress?.();
     await adapter.sendReply(config, event, responseText);
+    logger.info("Connector message completed", {
+      project,
+      platform: adapter.platform,
+      agentId,
+      messageId: event.messageId,
+      identityMs,
+      routingMs,
+      forwardMs,
+      egressMs: Date.now() - stageStartedAt,
+      totalMs: Date.now() - startedAt,
+    });
   } catch (err) {
     logger.error("Failed to send reply", {
       error: err instanceof Error ? err.message : String(err),
@@ -373,6 +404,45 @@ async function processMessage(
     });
     throw err;
   }
+}
+
+/**
+ * Telegram expires a `typing` action after roughly five seconds. Refresh it
+ * while the agent turn is in flight so a slow but healthy response never looks
+ * like a dead bot. The loop is presentation-only and never enters the egress
+ * dedupe boundary.
+ */
+export function startTypingRefreshLoop(
+  adapter: PlatformAdapter,
+  config: WebhookConfig,
+  event: ChatEvent,
+  intervalMs = TELEGRAM_TYPING_REFRESH_MS,
+): () => void {
+  let stopped = false;
+  let sending = false;
+
+  const send = async (): Promise<void> => {
+    if (stopped || sending) return;
+    sending = true;
+    try {
+      await adapter.sendTypingIndicator(config, event);
+    } catch (err) {
+      logger.debug("sendTypingIndicator failed", {
+        platform: adapter.platform,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    } finally {
+      sending = false;
+    }
+  };
+
+  void send();
+  const timer = setInterval(() => void send(), intervalMs);
+  timer.unref?.();
+  return () => {
+    stopped = true;
+    clearInterval(timer);
+  };
 }
 
 async function sendOnboardingReply(
