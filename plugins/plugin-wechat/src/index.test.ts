@@ -6,8 +6,10 @@
 import { describe, expect, it, vi } from "vitest";
 import { Bot } from "./bot";
 import { normalizePayload } from "./callback-server";
+import { WechatDeliveryError } from "./delivery-error";
 import type { ProxyClient } from "./proxy-client";
 import { ReplyDispatcher } from "./reply-dispatcher";
+import { deliverIncomingWechatMessage } from "./runtime-bridge";
 import type { WechatMessageContext } from "./types";
 
 describe("@elizaos/plugin-wechat", () => {
@@ -102,6 +104,103 @@ describe("@elizaos/plugin-wechat", () => {
     bot.stop();
 
     expect(onMessage).toHaveBeenCalledTimes(2);
+  });
+
+  it("makes concurrent duplicates share the owning delivery failure", async () => {
+    let rejectOwner: ((error: Error) => void) | undefined;
+    const ownerResult = new Promise<void>((_resolve, reject) => {
+      rejectOwner = reject;
+    });
+    const onMessage = vi.fn(() => ownerResult);
+    const bot = new Bot({ onMessage });
+    const message: WechatMessageContext = {
+      id: "msg-concurrent",
+      type: "text",
+      sender: "wxid_alice",
+      recipient: "wxid_bot",
+      content: "deliver once",
+      timestamp: 1_700_000_000,
+      raw: {},
+    };
+
+    const owner = bot.handleIncoming(message);
+    const duplicate = bot.handleIncoming(message);
+    const failure = new Error("runtime unavailable");
+    rejectOwner?.(failure);
+
+    await expect(owner).rejects.toBe(failure);
+    await expect(duplicate).rejects.toBe(failure);
+    expect(onMessage).toHaveBeenCalledTimes(1);
+    bot.stop();
+  });
+
+  it("does not retry a message after its outbound side effect committed", async () => {
+    const failure = new WechatDeliveryError("post-send persistence failed", {
+      cause: new Error("database unavailable"),
+      sideEffectCommitted: true,
+    });
+    const onMessage = vi.fn().mockRejectedValue(failure);
+    const bot = new Bot({ onMessage });
+    const message: WechatMessageContext = {
+      id: "msg-committed",
+      type: "text",
+      sender: "wxid_alice",
+      recipient: "wxid_bot",
+      content: "reply once",
+      timestamp: 1_700_000_000,
+      raw: {},
+    };
+
+    await expect(bot.handleIncoming(message)).rejects.toBe(failure);
+    await expect(bot.handleIncoming(message)).resolves.toBeUndefined();
+    expect(onMessage).toHaveBeenCalledTimes(1);
+    bot.stop();
+  });
+
+  it("marks a failure after sending a reply as non-retryable", async () => {
+    const sendText = vi.fn(async () => undefined);
+    const persistenceFailure = new Error("database unavailable");
+    const runtime = {
+      agentId: "00000000-0000-4000-8000-000000000001",
+      createMemory: vi.fn(async () => {
+        throw persistenceFailure;
+      }),
+      elizaOS: {
+        sendMessage: async (
+          _runtime: unknown,
+          _message: unknown,
+          options?: {
+            onResponse?: (content: { text: string }) => Promise<unknown>;
+          },
+        ) => {
+          await options?.onResponse?.({ text: "hello back" });
+          return undefined;
+        },
+      },
+    };
+
+    const delivery = deliverIncomingWechatMessage({
+      runtime,
+      accountId: "main",
+      message: {
+        id: "msg-runtime-committed",
+        type: "text",
+        sender: "wxid_alice",
+        recipient: "wxid_bot",
+        content: "hello",
+        timestamp: 1_700_000_000,
+        raw: {},
+      },
+      sendText,
+    });
+
+    await expect(delivery).rejects.toEqual(
+      expect.objectContaining({
+        cause: persistenceFailure,
+        sideEffectCommitted: true,
+      }),
+    );
+    expect(sendText).toHaveBeenCalledTimes(1);
   });
 
   it("chunks long outgoing text through the proxy client", async () => {

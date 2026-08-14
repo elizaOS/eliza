@@ -26,7 +26,7 @@ export interface ChannelOptions {
     accountId: string,
     msg: WechatMessageContext,
   ) => void | Promise<void>;
-  onDeliveryError: (error: unknown, accountId: string) => void;
+  onDeliveryError?: (error: unknown, accountId: string) => void | Promise<void>;
 }
 
 export class WechatChannel {
@@ -35,7 +35,10 @@ export class WechatChannel {
     accountId: string,
     msg: WechatMessageContext,
   ) => void | Promise<void>;
-  private readonly onDeliveryError: (error: unknown, accountId: string) => void;
+  private readonly onDeliveryError: (
+    error: unknown,
+    accountId: string,
+  ) => void | Promise<void>;
   private readonly accounts = new Map<
     string,
     {
@@ -55,7 +58,7 @@ export class WechatChannel {
   constructor(options: ChannelOptions) {
     this.config = options.config;
     this.onMessage = options.onMessage;
-    this.onDeliveryError = options.onDeliveryError;
+    this.onDeliveryError = options.onDeliveryError ?? (() => undefined);
   }
 
   async start(): Promise<void> {

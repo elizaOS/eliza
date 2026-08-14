@@ -135,7 +135,8 @@ mapping to `WECHAT_TYPE_MAP` in `src/callback-server.ts`.
   dropped. Delivery failures return HTTP 500 and are reported through the
   runtime instead of being mislabeled as malformed requests.
 - **Message dedup.** `Bot` tracks seen message IDs in a 30-minute window (max
-  1 000 entries) to prevent double-processing webhook retries.
+  1 000 entries), makes concurrent duplicates await the owning delivery, and
+  keeps a failed delivery claimed when an outbound side effect already occurred.
 - **Chunking.** `ReplyDispatcher` breaks outgoing text at 2 000-character
   boundaries (newline > space > hard cut) because WeChat enforces a per-message
   size limit.

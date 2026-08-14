@@ -41,7 +41,7 @@ export interface CallbackServerOptions {
     accountId: string,
     msg: WechatMessageContext,
   ) => void | Promise<void>;
-  onDeliveryError: (error: unknown, accountId: string) => void;
+  onDeliveryError?: (error: unknown, accountId: string) => void | Promise<void>;
   signal?: AbortSignal;
   maxBodyBytes?: number;
 }
@@ -56,7 +56,7 @@ export async function startCallbackServer(
     port,
     accounts,
     onMessage,
-    onDeliveryError,
+    onDeliveryError = () => undefined,
     signal,
     maxBodyBytes = DEFAULT_MAX_REQUEST_BODY_BYTES,
   } = options;
@@ -120,7 +120,18 @@ export async function startCallbackServer(
         // the runtime callback owns diagnostic reporting for the failed event.
         res.writeHead(500);
         res.end("Internal Server Error");
-        onDeliveryError(error, account.accountId);
+        try {
+          await onDeliveryError(error, account.accountId);
+        } catch (diagnosticError) {
+          // error-policy:J7 diagnostics must never escape the HTTP boundary or
+          // replace the delivery failure that the 500 response represents.
+          console.error("[wechat] Delivery error reporter failed", {
+            error:
+              diagnosticError instanceof Error
+                ? diagnosticError.message
+                : String(diagnosticError),
+          });
+        }
         return;
       }
 

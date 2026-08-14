@@ -9,7 +9,8 @@
  */
 
 import { request } from "node:http";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { Bot } from "./bot";
 import { normalizePayload, startCallbackServer } from "./callback-server";
 import type { WechatMessageContext } from "./types";
 
@@ -292,5 +293,126 @@ describe("webhook server malformed-path handling (#19060)", () => {
     expect(failures).toHaveLength(1);
     expect(failures[0]?.accountId).toBe("main");
     expect(failures[0]?.error).toEqual(new Error("delivery exploded"));
+  });
+
+  it("keeps the legacy omitted diagnostic callback safe", async () => {
+    const handle = await startCallbackServer({
+      port: 0,
+      accounts: [{ accountId: "main", apiKey: "key-main" }],
+      onMessage: async () => {
+        throw new Error("delivery exploded");
+      },
+    });
+    closers.push(handle.close);
+
+    const res = await requestRaw(handle.port, "/webhook/wechat/main", {
+      headers: { "x-api-key": "key-main" },
+      body: JSON.stringify(basePayload()),
+    });
+
+    expect(res).toEqual({ body: "Internal Server Error", status: 500 });
+  });
+
+  it("contains a throwing diagnostic callback after returning 500", async () => {
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => undefined);
+    const handle = await startCallbackServer({
+      port: 0,
+      accounts: [{ accountId: "main", apiKey: "key-main" }],
+      onMessage: async () => {
+        throw new Error("delivery exploded");
+      },
+      onDeliveryError: async () => {
+        throw new Error("reporter exploded");
+      },
+    });
+    closers.push(handle.close);
+
+    const res = await requestRaw(handle.port, "/webhook/wechat/main", {
+      headers: { "x-api-key": "key-main" },
+      body: JSON.stringify(basePayload()),
+    });
+
+    expect(res).toEqual({ body: "Internal Server Error", status: 500 });
+    expect(consoleError).toHaveBeenCalledWith(
+      "[wechat] Delivery error reporter failed",
+      { error: "reporter exploded" },
+    );
+    consoleError.mockRestore();
+  });
+
+  it("makes simultaneous HTTP duplicates await one successful delivery", async () => {
+    let resolveOwner: (() => void) | undefined;
+    const ownerResult = new Promise<void>((resolve) => {
+      resolveOwner = resolve;
+    });
+    const runtimeDelivery = vi.fn(() => ownerResult);
+    const bot = new Bot({ onMessage: runtimeDelivery });
+    let boundaryCalls = 0;
+    const handle = await startCallbackServer({
+      port: 0,
+      accounts: [{ accountId: "main", apiKey: "key-main" }],
+      onMessage: async (_accountId, message) => {
+        boundaryCalls += 1;
+        await bot.handleIncoming(message);
+      },
+    });
+    closers.push(async () => {
+      bot.stop();
+      await handle.close();
+    });
+
+    const options = {
+      headers: { "x-api-key": "key-main" },
+      body: JSON.stringify(basePayload({ msgId: "concurrent-success" })),
+    };
+    const owner = requestRaw(handle.port, "/webhook/wechat/main", options);
+    const duplicate = requestRaw(handle.port, "/webhook/wechat/main", options);
+    await vi.waitFor(() => expect(boundaryCalls).toBe(2));
+    expect(runtimeDelivery).toHaveBeenCalledTimes(1);
+    resolveOwner?.();
+
+    await expect(Promise.all([owner, duplicate])).resolves.toEqual([
+      { body: "OK", status: 200 },
+      { body: "OK", status: 200 },
+    ]);
+  });
+
+  it("makes simultaneous HTTP duplicates share one failed delivery", async () => {
+    let rejectOwner: ((error: Error) => void) | undefined;
+    const ownerResult = new Promise<void>((_resolve, reject) => {
+      rejectOwner = reject;
+    });
+    const runtimeDelivery = vi.fn(() => ownerResult);
+    const bot = new Bot({ onMessage: runtimeDelivery });
+    let boundaryCalls = 0;
+    const handle = await startCallbackServer({
+      port: 0,
+      accounts: [{ accountId: "main", apiKey: "key-main" }],
+      onMessage: async (_accountId, message) => {
+        boundaryCalls += 1;
+        await bot.handleIncoming(message);
+      },
+    });
+    closers.push(async () => {
+      bot.stop();
+      await handle.close();
+    });
+
+    const options = {
+      headers: { "x-api-key": "key-main" },
+      body: JSON.stringify(basePayload({ msgId: "concurrent-failure" })),
+    };
+    const owner = requestRaw(handle.port, "/webhook/wechat/main", options);
+    const duplicate = requestRaw(handle.port, "/webhook/wechat/main", options);
+    await vi.waitFor(() => expect(boundaryCalls).toBe(2));
+    expect(runtimeDelivery).toHaveBeenCalledTimes(1);
+    rejectOwner?.(new Error("runtime unavailable"));
+
+    await expect(Promise.all([owner, duplicate])).resolves.toEqual([
+      { body: "Internal Server Error", status: 500 },
+      { body: "Internal Server Error", status: 500 },
+    ]);
   });
 });
