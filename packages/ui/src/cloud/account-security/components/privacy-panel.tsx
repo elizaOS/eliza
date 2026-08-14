@@ -10,12 +10,13 @@
 
 import { Camera, Download, ScrollText, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
-import { BrandButton, BrandCard, CornerBrackets } from "../../../cloud-ui";
 import { SettingsSwitchRow } from "../../../components/settings/settings-agent-rows";
 import {
   SettingsGroup,
+  SettingsRow,
   SettingsStack,
 } from "../../../components/settings/settings-layout";
+import { Button } from "../../../components/ui/button";
 import { useCloudT } from "../../shell/CloudI18nProvider";
 import { emitAuditEvent } from "../data/audit-client";
 import {
@@ -50,128 +51,98 @@ export function PrivacyPanel() {
   };
 
   return (
-    <BrandCard className="relative">
-      <CornerBrackets size="sm" className="opacity-50" />
-      <div className="relative z-10 space-y-4">
-        <div>
-          <h3 className="text-lg font-bold text-txt-strong">
-            {t("cloud.privacyPanel.title", { defaultValue: "Privacy" })}
-          </h3>
-          <p className="text-sm text-muted">
-            {t("cloud.privacyPanel.subtitle", {
-              defaultValue:
-                "Control optional data capture and exercise your data rights.",
-            })}
-          </p>
-        </div>
-
-        <SettingsStack>
-          <SettingsGroup>
-            <SettingsSwitchRow
-              agentId="cloud-privacy-vision"
-              group="cloud-privacy"
-              icon={Camera}
-              testId="vision-toggle"
-              label={t("cloud.privacyPanel.visionTitle", {
-                defaultValue: "Allow vision / screen capture",
-              })}
-              description={t("cloud.privacyPanel.visionDescription", {
+    <SettingsStack data-testid="cloud-privacy-panel">
+      <SettingsGroup
+        title={t("cloud.privacyPanel.title", { defaultValue: "Privacy" })}
+        description={t("cloud.privacyPanel.subtitle", {
+          defaultValue:
+            "Control optional data capture and exercise your data rights.",
+        })}
+      >
+        <SettingsSwitchRow
+          agentId="cloud-privacy-vision"
+          group="cloud-privacy"
+          icon={Camera}
+          testId="vision-toggle"
+          label={t("cloud.privacyPanel.visionTitle", {
+            defaultValue: "Allow vision / screen capture",
+          })}
+          description={t("cloud.privacyPanel.visionDescription", {
+            defaultValue:
+              "Off by default. When on, plugins may request screen frames or webcam capture. Remote models charge per image — review your model's per-call fee in Settings → Billing before enabling.",
+          })}
+          checked={vision}
+          onCheckedChange={onVisionChange}
+        />
+        <SettingsSwitchRow
+          agentId="cloud-privacy-trajectory"
+          group="cloud-privacy"
+          icon={ScrollText}
+          testId="trajectory-toggle"
+          label={t("cloud.privacyPanel.trajectoryTitle", {
+            defaultValue: "Trajectory logging",
+          })}
+          description={t("cloud.privacyPanel.trajectoryDescription", {
+            defaultValue:
+              "Off by default. When on, Eliza records per-step plan/action traces locally with a 30-day retention. Redacted content is marked separately from raw.",
+          })}
+          checked={trajectory}
+          onCheckedChange={onTrajectoryChange}
+        />
+        <SettingsRow
+          icon={Download}
+          label={t("cloud.privacyPanel.downloadTitle", {
+            defaultValue: "Download my data",
+          })}
+          description={t("cloud.privacyPanel.downloadDescription", {
+            defaultValue:
+              "Bundle your conversations, agents, and connector data into a portable archive (GDPR / CCPA right-to-export).",
+          })}
+          control={
+            <Button
+              size="sm"
+              variant="outline"
+              disabled
+              title={t("cloud.privacyPanel.exportComingSoon", {
                 defaultValue:
-                  "Off by default. When on, plugins may request screen frames or webcam capture. Remote models charge per image — review your model's per-call fee in Settings → Billing before enabling.",
+                  "Data export is coming soon — not yet available on this server.",
               })}
-              checked={vision}
-              onCheckedChange={onVisionChange}
-            />
-            <SettingsSwitchRow
-              agentId="cloud-privacy-trajectory"
-              group="cloud-privacy"
-              icon={ScrollText}
-              testId="trajectory-toggle"
-              label={t("cloud.privacyPanel.trajectoryTitle", {
-                defaultValue: "Trajectory logging",
+            >
+              {t("cloud.privacyPanel.exportUnavailable", {
+                defaultValue: "Export unavailable",
               })}
-              description={t("cloud.privacyPanel.trajectoryDescription", {
+            </Button>
+          }
+        />
+        <SettingsRow
+          icon={Trash2}
+          tone="danger"
+          label={t("cloud.privacyPanel.deleteTitle", {
+            defaultValue: "Delete my account",
+          })}
+          description={t("cloud.privacyPanel.deleteDescription", {
+            defaultValue:
+              "Schedules a 30-day soft-delete. You can sign back in during the window to cancel. After 30 days, all data is purged.",
+          })}
+          control={
+            <Button
+              size="sm"
+              variant="outline"
+              className="border-danger/40 text-danger"
+              disabled
+              title={t("cloud.privacyPanel.deletionComingSoon", {
                 defaultValue:
-                  "Off by default. When on, Eliza records per-step plan/action traces locally with a 30-day retention. Redacted content is marked separately from raw.",
+                  "Account deletion is coming soon — not yet available on this server.",
               })}
-              checked={trajectory}
-              onCheckedChange={onTrajectoryChange}
-            />
-          </SettingsGroup>
-        </SettingsStack>
-
-        {/* DSR — Export */}
-        <div className="flex items-start justify-between gap-3 rounded-sm border border-border bg-surface p-4">
-          <div className="flex items-start gap-3">
-            <div className="rounded-sm border border-green-500/40 bg-green-500/20 p-2">
-              <Download className="h-4 w-4 text-green-700 dark:text-green-300" />
-            </div>
-            <div className="space-y-1">
-              <p className="text-sm font-medium text-txt-strong">
-                {t("cloud.privacyPanel.downloadTitle", {
-                  defaultValue: "Download my data",
-                })}
-              </p>
-              <p className="text-xs text-muted">
-                {t("cloud.privacyPanel.downloadDescription", {
-                  defaultValue:
-                    "Bundle your conversations, agents, and connector data into a portable archive (GDPR / CCPA right-to-export).",
-                })}
-              </p>
-            </div>
-          </div>
-          <BrandButton
-            size="sm"
-            variant="outline"
-            disabled
-            title={t("cloud.privacyPanel.exportComingSoon", {
-              defaultValue:
-                "Data export is coming soon — not yet available on this server.",
-            })}
-          >
-            {t("cloud.privacyPanel.exportUnavailable", {
-              defaultValue: "Export unavailable",
-            })}
-          </BrandButton>
-        </div>
-
-        {/* DSR — Delete */}
-        <div className="flex items-start justify-between gap-3 rounded-sm border border-red-500/30 bg-red-500/5 p-4">
-          <div className="flex items-start gap-3">
-            <div className="rounded-sm border border-red-500/40 bg-red-500/20 p-2">
-              <Trash2 className="h-4 w-4 text-red-600 dark:text-red-300" />
-            </div>
-            <div className="space-y-1">
-              <p className="text-sm font-medium text-txt-strong">
-                {t("cloud.privacyPanel.deleteTitle", {
-                  defaultValue: "Delete my account",
-                })}
-              </p>
-              <p className="text-xs text-muted">
-                {t("cloud.privacyPanel.deleteDescription", {
-                  defaultValue:
-                    "Schedules a 30-day soft-delete. You can sign back in during the window to cancel. After 30 days, all data is purged.",
-                })}
-              </p>
-            </div>
-          </div>
-          <BrandButton
-            size="sm"
-            variant="outline"
-            className="border-red-500/40 text-red-600 dark:text-red-300"
-            disabled
-            title={t("cloud.privacyPanel.deletionComingSoon", {
-              defaultValue:
-                "Account deletion is coming soon — not yet available on this server.",
-            })}
-            data-testid="delete-account-trigger"
-          >
-            {t("cloud.privacyPanel.deleteUnavailable", {
-              defaultValue: "Deletion unavailable",
-            })}
-          </BrandButton>
-        </div>
-      </div>
-    </BrandCard>
+              data-testid="delete-account-trigger"
+            >
+              {t("cloud.privacyPanel.deleteUnavailable", {
+                defaultValue: "Deletion unavailable",
+              })}
+            </Button>
+          }
+        />
+      </SettingsGroup>
+    </SettingsStack>
   );
 }
