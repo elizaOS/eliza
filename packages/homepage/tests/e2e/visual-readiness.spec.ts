@@ -61,8 +61,19 @@ test("reduced motion renders the settled intro conversation", async ({
   // screenshot determinism.
   const demo = page.locator(".landing-iphone");
   await expect(demo).toHaveAttribute("data-demo-phase", "settled");
-  await expect(demo).toHaveAttribute("data-demo-messages", "15");
+  await expect(demo).toHaveAttribute("data-demo-messages", "18");
   await expect(page.locator(".landing-demo-card")).toHaveCount(3);
+
+  const assistantMessages = await page
+    .locator(".landing-bubble--eliza")
+    .allTextContents();
+  expect(assistantMessages).toContain(
+    "Looks like you've got 2 important emails you haven't followed up on.",
+  );
+  expect(assistantMessages).toContain(
+    "One looks like an important work thing. Should I draft a reply?",
+  );
+  expect(assistantMessages.join(" ")).not.toContain("—");
 });
 
 test("landing has no horizontal overflow at mobile width", async ({ page }) => {

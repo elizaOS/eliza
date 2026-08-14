@@ -22,21 +22,31 @@ for (const viewport of VIEWPORTS) {
     await page.goto("/", { waitUntil: "domcontentloaded" });
     await waitForLandingIntro(page);
 
-    const layout = await page.evaluate(() => ({
-      viewportWidth: window.innerWidth,
-      viewportHeight: window.innerHeight,
-      documentWidth: document.documentElement.scrollWidth,
-      documentHeight: document.documentElement.scrollHeight,
-      phone: document
-        .querySelector(".landing-iphone")
-        ?.getBoundingClientRect()
-        .toJSON(),
-    }));
+    const layout = await page.evaluate(() => {
+      const phone = document.querySelector<HTMLElement>(".landing-iphone");
+      if (!phone) throw new Error("Landing phone missing");
+      const phoneStyle = getComputedStyle(phone);
+      return {
+        viewportWidth: window.innerWidth,
+        viewportHeight: window.innerHeight,
+        documentWidth: document.documentElement.scrollWidth,
+        documentHeight: document.documentElement.scrollHeight,
+        phone: phone.getBoundingClientRect().toJSON(),
+        phoneFrame: {
+          borderRadius: phoneStyle.borderRadius,
+          paddingTop: phoneStyle.paddingTop,
+        },
+      };
+    });
 
     expect(layout.documentWidth).toBe(layout.viewportWidth);
     expect(layout.documentHeight).toBe(layout.viewportHeight);
     expect(layout.phone).toBeDefined();
     expect(layout.phone?.top).toBeGreaterThanOrEqual(0);
     expect(layout.phone?.bottom).toBeLessThanOrEqual(layout.viewportHeight);
+    expect(Number.parseFloat(layout.phoneFrame.paddingTop)).toBeGreaterThan(0);
+    expect(Number.parseFloat(layout.phoneFrame.borderRadius)).toBeGreaterThan(
+      0,
+    );
   });
 }
