@@ -24,6 +24,32 @@ export interface ConnectorHealthMonitorOptions {
 }
 
 const DEFAULT_INTERVAL_MS = 60_000;
+const MIN_INTERVAL_MS = 10_000;
+const MAX_INTERVAL_MS = 2_147_483_647;
+const CANONICAL_INTEGER_PATTERN = /^(0|[1-9]\d*)$/;
+
+export function resolveConnectorHealthIntervalMs(
+  envVal = process.env.CONNECTOR_HEALTH_INTERVAL_MS,
+): number {
+  if (envVal === undefined || envVal === "") return DEFAULT_INTERVAL_MS;
+  if (!CANONICAL_INTEGER_PATTERN.test(envVal)) {
+    throw new Error(
+      "CONNECTOR_HEALTH_INTERVAL_MS must be a canonical decimal integer",
+    );
+  }
+
+  const parsed = Number(envVal);
+  if (
+    !Number.isSafeInteger(parsed) ||
+    parsed < MIN_INTERVAL_MS ||
+    parsed > MAX_INTERVAL_MS
+  ) {
+    throw new Error(
+      `CONNECTOR_HEALTH_INTERVAL_MS must be between ${MIN_INTERVAL_MS} and ${MAX_INTERVAL_MS}`,
+    );
+  }
+  return parsed;
+}
 
 /**
  * Maps connector config keys to the service/client name the plugin registers.
@@ -82,7 +108,7 @@ export class ConnectorHealthMonitor {
     this.runtime = opts.runtime;
     this.config = opts.config;
     this.broadcastWs = opts.broadcastWs;
-    this.intervalMs = opts.intervalMs ?? this.resolveIntervalMs();
+    this.intervalMs = opts.intervalMs ?? resolveConnectorHealthIntervalMs();
   }
 
   start(): void {
@@ -104,14 +130,6 @@ export class ConnectorHealthMonitor {
       result[name] = status;
     }
     return result;
-  }
-
-  private resolveIntervalMs(): number {
-    const envVal = process.env.CONNECTOR_HEALTH_INTERVAL_MS;
-    if (!envVal) return DEFAULT_INTERVAL_MS;
-    const parsed = Number.parseInt(envVal, 10);
-    if (Number.isNaN(parsed) || parsed < 10_000) return DEFAULT_INTERVAL_MS;
-    return parsed;
   }
 
   private getConfiguredConnectors(): string[] {
