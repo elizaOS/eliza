@@ -29,6 +29,7 @@ import {
 import { resumePendingCloudHandoff } from "../cloud/handoff/resume-pending-handoff";
 import { runCloudAgentHandoff } from "../cloud/handoff/run-cloud-agent-handoff";
 import { silentlyRepointToDedicated } from "../cloud/handoff/silent-repoint";
+import { runJoinFlow } from "../cloud/join/lib/run-join-flow";
 import { getBootConfig } from "../config/boot-config";
 import type { UiLanguage } from "../i18n";
 import { clearForceFreshFirstRun } from "../platform/first-run-reset";
@@ -500,6 +501,43 @@ async function finishLocal(
 // ── Cloud runtime finish ─────────────────────────────────────────────────────
 
 /**
+ * Bind a native companion to the account-native personal Eliza. The web shell
+ * reaches the same controller through `/join`; Capacitor mounts the app tree
+ * directly, so its first-run path must call the controller here instead of
+ * falling back to the row-backed Cloud agent selector.
+ */
+async function bindNativePersonalEliza(
+  authToken: string,
+  ports: FirstRunFinishPorts,
+): Promise<FirstRunFinishOutcome> {
+  const cloudApiBase = getBootConfig().cloudApiBase || "https://eliza.app";
+  const selected = await runJoinFlow({
+    client,
+    effects: {
+      savePersistedActiveServer,
+      savePersistedFirstRunComplete,
+    },
+    cloudApiBase,
+    authToken,
+    onProgress: (status, detail) => ports.onStatus?.(detail ?? status, status),
+  });
+
+  addAgentProfile({
+    kind: "cloud",
+    label: selected.agentName,
+    cloudAgentId: selected.agentId,
+    apiBase: selected.apiBase,
+    accessToken: authToken,
+  });
+  persistMobileRuntimeModeForServerTarget("elizacloud");
+  clearForceFreshFirstRun();
+  clearPersistedFirstRunState();
+  ports.onStatus?.(null);
+  ports.completeFirstRun("chat");
+  return { kind: "done" };
+}
+
+/**
  * The provisioning tail of the cloud flow — both the silent auto-create path (0
  * agents) and the picker's pick / create-new feed their choice
  * (preferAgentId / forceCreate) into the SAME provisioning call.
@@ -858,6 +896,12 @@ export async function listOrAutoProvisionCloudAgent(
   const authToken = getCloudAuthToken(client) ?? "";
   if (!authToken) {
     return { kind: "needs-cloud-login" };
+  }
+  // Capacitor does not mount the web-only `/join` router. Resolve the same
+  // account-native identity here and never list, select, wake, or provision a
+  // row-backed Cloud agent merely because the user installed the companion.
+  if (isNative && !isDesktopPlatform()) {
+    return bindNativePersonalEliza(authToken, ports);
   }
   let list = agentsList;
   if (!list) {
