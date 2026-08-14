@@ -18,6 +18,7 @@ const androidManifest = path.resolve(
   scriptsDir,
   "../platforms/android/app/src/main/AndroidManifest.xml",
 );
+const mobileBuildScript = path.resolve(scriptsDir, "run-mobile-build.mjs");
 
 function source(name) {
   return fs.readFileSync(path.join(javaRoot, name), "utf8");
@@ -63,6 +64,15 @@ describe("Android periodic wake reconciliation (#17874)", () => {
     expect(overlaid).toContain("android.intent.action.BOOT_COMPLETED");
     expect(overlaid).toContain("android.intent.action.MY_PACKAGE_REPLACED");
     expect(overlaid.match(/ElizaBootReceiver/g)).toHaveLength(1);
+
+    const buildSource = fs.readFileSync(mobileBuildScript, "utf8");
+    const overlayBody = buildSource.match(
+      /function overlayAndroid\([\s\S]*?\n}\n\nfunction /,
+    )?.[0];
+    expect(overlayBody).toBeDefined();
+    expect(overlayBody).toContain(
+      "xml = ensureElizaBootReceiverManifest(xml, androidPackage)",
+    );
   });
 
   it("reconciles runtime/background preference changes while the app is alive", () => {
@@ -115,7 +125,12 @@ describe("Android periodic wake reconciliation (#17874)", () => {
       "static synchronized void credentialProvisioned",
     );
     expect(scheduler).toContain("static synchronized void runtimeStopped");
-    expect(service).toContain("remainingSocketTimeout(deadlineElapsedMs)");
+    expect(service).toMatch(
+      /readFrameLine\([\s\S]*?socket\.setSoTimeout\(remainingSocketTimeout\(deadlineElapsedMs\)\);[\s\S]*?int b = in\.read\(\)/,
+    );
+    expect(service).toMatch(
+      /for \([\s\S]*readFrameLine\(socket, in, deadlineElapsedMs\)[\s\S]*line = readFrameLine\(socket, in, deadlineElapsedMs\)/,
+    );
     expect(service).toContain("Math.min(250L * (attempt + 1), remainingMs)");
   });
 

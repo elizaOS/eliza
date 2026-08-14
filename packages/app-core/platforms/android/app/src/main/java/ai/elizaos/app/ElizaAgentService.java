@@ -493,10 +493,13 @@ public class ElizaAgentService extends Service {
         long deadlineElapsedMs = SystemClock.elapsedRealtime() + timeoutMs;
         LocalSocket socket = connectLocalAgentSocket(deadlineElapsedMs);
         try {
-            socket.setSoTimeout(remainingSocketTimeout(deadlineElapsedMs));
             writeFrameLine(socket.getOutputStream(), frame);
             InputStream in = socket.getInputStream();
-            for (String line = readFrameLine(in); line != null; line = readFrameLine(in)) {
+            for (
+                String line = readFrameLine(socket, in, deadlineElapsedMs);
+                line != null;
+                line = readFrameLine(socket, in, deadlineElapsedMs)
+            ) {
                 if (line.isEmpty()) continue;
                 JSONObject response = new JSONObject(line);
                 String phase = response.optString("stream", "");
@@ -571,9 +574,12 @@ public class ElizaAgentService extends Service {
         long deadlineElapsedMs = SystemClock.elapsedRealtime() + timeoutMs;
         LocalSocket socket = connectLocalAgentSocket(deadlineElapsedMs);
         try {
-            socket.setSoTimeout(remainingSocketTimeout(deadlineElapsedMs));
             writeFrameLine(socket.getOutputStream(), frame);
-            String line = readFrameLine(socket.getInputStream());
+            String line = readFrameLine(
+                socket,
+                socket.getInputStream(),
+                deadlineElapsedMs
+            );
             if (line == null || line.isEmpty()) {
                 throw new IOException("local agent closed the connection with no response");
             }
@@ -648,10 +654,19 @@ public class ElizaAgentService extends Service {
      * without the trailing newline, or null at end-of-stream. Caps a single
      * frame at the response-byte budget so a runaway agent can't exhaust memory.
      */
-    private static String readFrameLine(InputStream in) throws IOException {
+    private static String readFrameLine(
+        LocalSocket socket,
+        InputStream in,
+        long deadlineElapsedMs
+    ) throws IOException {
         ByteArrayOutputStream buffer = new ByteArrayOutputStream();
-        int b;
-        while ((b = in.read()) != -1) {
+        while (true) {
+            // Android's SO_TIMEOUT applies to each read. Recompute it for every
+            // byte so a peer cannot extend the request indefinitely by slowly
+            // dripping bytes or frames just inside a per-read timeout.
+            socket.setSoTimeout(remainingSocketTimeout(deadlineElapsedMs));
+            int b = in.read();
+            if (b == -1) break;
             if (b == '\n') {
                 return buffer.toString(StandardCharsets.UTF_8.name());
             }
