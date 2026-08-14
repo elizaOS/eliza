@@ -156,7 +156,7 @@ const MAX_MESSAGE_LENGTH = 4000;
 // landing (Steward login -> identity confirm -> back-to-Discord handoff) that
 // the messaging Connect CTA now targets directly, plus in-app Cloud links.
 const DEFAULT_ONBOARDING_APP_URL = "https://cloud.eliza.app";
-const ELIZA_APP_SHARED_OFFER = "shared chat is free, no card needed";
+const ELIZA_APP_INITIAL_CREDIT_USD = "$5";
 /** Label for platforms that render the login link as a UI affordance. */
 const ONBOARDING_CTA_LABEL = "Connect";
 /**
@@ -1085,15 +1085,15 @@ function fallbackReply(args: {
     // Every no-name variant keeps the same product facts and always ends on
     // the name ask, so downstream name-capture logic sees a consistent state.
     if (intent === "hesitation") {
-      return `fair to ask. I'm Eliza - I set you up with your own private agent, and ${ELIZA_APP_SHARED_OFFER}. if it's not for you, just stop replying. if you're curious - what should I call you?`;
+      return `fair to ask. I'm Eliza - I set you up with your own private agent, no card needed, and your first ${ELIZA_APP_INITIAL_CREDIT_USD} is on me. if it's not for you, just stop replying. if you're curious - what should I call you?`;
     }
     if (intent === "question") {
-      return `good question - I'm Eliza, and this is where you get your own agent. it lives in this chat, remembers everything you talk about, and can do real work for you. ${ELIZA_APP_SHARED_OFFER}. what should I call you?`;
+      return `good question - I'm Eliza, and this is where you get your own agent. it lives in this chat, remembers everything you talk about, and can do real work for you. your first ${ELIZA_APP_INITIAL_CREDIT_USD} is on me. what should I call you?`;
     }
     if (intent === "greeting") {
-      return `hey! I'm Eliza. I can set you up with your own agent - it chats right here, remembers everything you talk about, and ${ELIZA_APP_SHARED_OFFER}. what should I call you?`;
+      return `hey! I'm Eliza. I can set you up with your own agent - it chats right here, remembers everything you talk about, and your first ${ELIZA_APP_INITIAL_CREDIT_USD} is on me. what should I call you?`;
     }
-    return `hey, I'm Eliza. I can get you set up with your own agent. it chats right here, remembers everything you talk about, and ${ELIZA_APP_SHARED_OFFER}. what should I call you?`;
+    return `hey, I'm Eliza. I can get you set up with your own agent. it chats right here, remembers everything you talk about, and your first ${ELIZA_APP_INITIAL_CREDIT_USD} is on me. what should I call you?`;
   }
   if (args.requiresLogin) {
     // "tap below" copy only when a CTA will actually render; otherwise the
@@ -1101,29 +1101,29 @@ function fallbackReply(args: {
     // login URL could not become a valid button - see buildLoginCta).
     if (args.preferredNameProvidedThisTurn !== false) {
       if (args.cta) {
-        return `nice to meet you, ${name}. tap below to connect your account and I'll spin up your agent. ${ELIZA_APP_SHARED_OFFER}.`;
+        return `nice to meet you, ${name}. tap below to connect your account and I'll spin up your agent. your first ${ELIZA_APP_INITIAL_CREDIT_USD} is on me.`;
       }
-      return `nice to meet you, ${name}. connect your account here and I'll spin up your agent. ${ELIZA_APP_SHARED_OFFER}: ${args.loginUrl}`;
+      return `nice to meet you, ${name}. connect your account here and I'll spin up your agent, first ${ELIZA_APP_INITIAL_CREDIT_USD} on me: ${args.loginUrl}`;
     }
     // The user kept chatting instead of connecting. Respond to what they
     // said, then steer back to the connect handoff - every turn ends on the
     // CTA so the next step is never ambiguous.
     if (intent === "question") {
       if (args.cta) {
-        return `good question, ${name}. connecting takes about ten seconds - it links this chat to your own agent so it remembers everything we've talked about. tap below and I'll spin it up. ${ELIZA_APP_SHARED_OFFER}.`;
+        return `good question, ${name}. connecting takes about ten seconds - it links this chat to your own agent so it remembers everything we've talked about. tap below and I'll spin it up, first ${ELIZA_APP_INITIAL_CREDIT_USD} on me.`;
       }
-      return `good question, ${name}. connecting takes about ten seconds - it links this chat to your own agent so it remembers everything we've talked about. ${ELIZA_APP_SHARED_OFFER}: ${args.loginUrl}`;
+      return `good question, ${name}. connecting takes about ten seconds - it links this chat to your own agent so it remembers everything we've talked about. here's your link, first ${ELIZA_APP_INITIAL_CREDIT_USD} on me: ${args.loginUrl}`;
     }
     if (intent === "hesitation") {
       if (args.cta) {
-        return `no pressure, ${name}. nothing happens until you connect, and ${ELIZA_APP_SHARED_OFFER}. whenever you're ready, the button below is the way in.`;
+        return `no pressure, ${name}. nothing happens until you connect, and your first ${ELIZA_APP_INITIAL_CREDIT_USD} is on me - no card. whenever you're ready, the button below is the way in.`;
       }
-      return `no pressure, ${name}. nothing happens until you connect, and ${ELIZA_APP_SHARED_OFFER}. whenever you're ready: ${args.loginUrl}`;
+      return `no pressure, ${name}. nothing happens until you connect, and your first ${ELIZA_APP_INITIAL_CREDIT_USD} is on me - no card. whenever you're ready: ${args.loginUrl}`;
     }
     if (args.cta) {
-      return `still here, ${name}! one step left: tap below to connect and I'll spin up your agent. ${ELIZA_APP_SHARED_OFFER}.`;
+      return `still here, ${name}! one step left: tap below to connect and I'll spin up your agent. your first ${ELIZA_APP_INITIAL_CREDIT_USD} is on me.`;
     }
-    return `still here, ${name}! one step left: connect your account and I'll spin up your agent. ${ELIZA_APP_SHARED_OFFER}: ${args.loginUrl}`;
+    return `still here, ${name}! one step left: connect your account and I'll spin up your agent, first ${ELIZA_APP_INITIAL_CREDIT_USD} on me: ${args.loginUrl}`;
   }
   if (args.handoffComplete) {
     return `you're in, ${name}. your agent is live and already knows everything from this chat. just keep talking here.`;

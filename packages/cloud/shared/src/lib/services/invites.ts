@@ -13,6 +13,7 @@ import { userCharactersRepository } from "../../db/repositories/characters";
 import { containersRepository } from "../../db/repositories/containers";
 import { conversationsRepository } from "../../db/repositories/conversations";
 import { parseOrganizationCreditBalance } from "../../db/repositories/organizations-credit-balance-numeric";
+import { getInitialCredits } from "../signup-credits";
 import { generateInviteToken, hashInviteToken } from "../utils/invite-tokens";
 import { logger } from "../utils/logger";
 import { apiKeysService } from "./api-keys";
@@ -22,7 +23,7 @@ import { organizationsService } from "./organizations";
 import { usersService } from "./users";
 
 const SOLO_ORG_CREDITS_BLOCK_MESSAGE =
-  "You cannot join another organization while your current organization holds credits. Contact support to transfer them first.";
+  "You cannot join another organization while your current organization holds credits beyond the signup grant. Contact support to transfer them first.";
 
 /**
  * Parameters for creating an organization invite.
@@ -184,8 +185,8 @@ export class InvitesService {
     // Every self-signup provisions its user as the OWNER of a fresh solo org
     // (steward-sync), so a blanket owner block would dead-end every existing
     // account (#11332). An owner may accept iff their current org is an empty
-    // solo org: no other members, no deployed apps/agents/domains, and no
-    // credits. Anything richer keeps the block with an
+    // solo org: no other members, no deployed apps/agents/domains, and no more
+    // credits than the signup grant. Anything richer keeps the block with an
     // actionable error — abandoning a real org needs an explicit path.
     const vacatedSoloOrgId = user.role === "owner" ? user.organization_id : null;
     if (vacatedSoloOrgId) {
@@ -267,10 +268,10 @@ export class InvitesService {
     if (organization) {
       // Fail closed on a corrupt `credit_balance` (#13415). This guard exists to
       // stop an owner vacating (and thereby auto-deleting) a solo org that still
-      // holds purchased or promotional credits. `credit_balance` is a Postgres
+      // holds credits beyond the signup grant. `credit_balance` is a Postgres
       // NUMERIC (string at read); the previous bare `Number(...)` failed OPEN on
       // an unreadable value (`'NaN'::numeric` migration artifact / manual edit
-      // reads back `"NaN"`): `NaN > 0` is FALSE, so the guard
+      // reads back `"NaN"`): `NaN > getInitialCredits()` is FALSE, so the guard
       // was bypassed and the org — with whatever real credits it held — was
       // vacated and deleted downstream (`cleanUpVacatedSoloOrganization` ->
       // `organizationsService.delete`), silently destroying the balance. Parsing
@@ -287,7 +288,7 @@ export class InvitesService {
         // vacate path instead of falling through as a generic storage failure.
         throw new Error(SOLO_ORG_CREDITS_BLOCK_MESSAGE, { cause: error });
       }
-      if (creditBalance > 0) {
+      if (creditBalance > getInitialCredits()) {
         throw new Error(SOLO_ORG_CREDITS_BLOCK_MESSAGE);
       }
     }

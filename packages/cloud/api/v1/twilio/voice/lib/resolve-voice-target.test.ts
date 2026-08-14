@@ -8,6 +8,22 @@ interface SandboxRow {
   id: string;
   organization_id: string;
   user_id: string;
+  character_id: string | null;
+  agent_name: string | null;
+  agent_config: Record<string, unknown> | null;
+  execution_tier: "shared";
+}
+
+function sandboxRow(id: string): SandboxRow {
+  return {
+    id,
+    organization_id: "org-public",
+    user_id: "user-public",
+    character_id: "character-public",
+    agent_name: "Eliza",
+    agent_config: null,
+    execution_tier: "shared",
+  };
 }
 
 const findById = mock(
@@ -42,15 +58,13 @@ beforeEach(() => {
 
 describe("resolveTwilioVoiceTarget", () => {
   test("resolves the exact public number to the configured sandbox", async () => {
-    findById.mockImplementation(async () => ({
-      id: DEFAULT_AGENT_ID,
-      organization_id: "org-public",
-      user_id: "user-public",
-    }));
+    const agent = sandboxRow(DEFAULT_AGENT_ID);
+    findById.mockImplementation(async () => agent);
 
     await expect(
       resolveTwilioVoiceTarget(publicEnv, PUBLIC_NUMBER),
     ).resolves.toEqual({
+      agent: agent as never,
       agentId: DEFAULT_AGENT_ID,
       organizationId: "org-public",
       userId: "user-public",
@@ -59,15 +73,13 @@ describe("resolveTwilioVoiceTarget", () => {
   });
 
   test("supports a legacy character id for the configured public agent", async () => {
-    findLatestByCharacterId.mockImplementation(async () => ({
-      id: "agent-from-character",
-      organization_id: "org-public",
-      user_id: "user-public",
-    }));
+    const agent = sandboxRow("agent-from-character");
+    findLatestByCharacterId.mockImplementation(async () => agent);
 
     await expect(
       resolveTwilioVoiceTarget(publicEnv, PUBLIC_NUMBER),
     ).resolves.toEqual({
+      agent: agent as never,
       agentId: "agent-from-character",
       organizationId: "org-public",
       userId: "user-public",

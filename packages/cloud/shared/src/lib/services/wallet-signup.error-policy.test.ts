@@ -9,6 +9,7 @@
 
 import { afterEach, beforeAll, beforeEach, describe, expect, mock, test } from "bun:test";
 
+process.env.INITIAL_FREE_CREDITS = "0";
 process.env.NODE_ENV ||= "test";
 
 const EVM_ADDRESS = `0x${"cd".repeat(20)}`;
@@ -64,6 +65,23 @@ mock.module("./users", () => ({
     findBySolanaWalletAddressWithOrganization: (a: string) => getByWallet(a),
   },
 }));
+mock.module("./credits", () => ({
+  creditsService: {
+    addCredits: () => {
+      throw new Error("credits must not be touched with grantInitialCredits:false");
+    },
+  },
+}));
+mock.module("./signup-grant-guard", () => ({
+  runWithSignupGrantIpCapDetailed: () => {
+    throw new Error("grant guard must not run with grantInitialCredits:false");
+  },
+  recordWelcomeBonusWithheldOnOrg: () => {
+    throw new Error("withheld recording must not run with grantInitialCredits:false");
+  },
+}));
+mock.module("../runtime/request-context", () => ({ getClientIp: () => "1.2.3.4" }));
+
 let walletSignup: typeof import("./wallet-signup");
 
 beforeAll(async () => {
@@ -88,16 +106,33 @@ afterEach(() => {
 });
 
 describe("wallet-signup fail-closed error policy", () => {
+  test("rejects malformed INITIAL_FREE_CREDITS instead of accepting a partial parse", async () => {
+    process.env.INITIAL_FREE_CREDITS = "12abc";
+
+    await expect(import(`./wallet-signup.ts?bad-credits-${Date.now()}`)).rejects.toThrow(
+      /INITIAL_FREE_CREDITS/,
+    );
+  });
+
+  test("rejects negative INITIAL_FREE_CREDITS instead of falling back to the default", async () => {
+    process.env.INITIAL_FREE_CREDITS = "-1";
+
+    await expect(import(`./wallet-signup.ts?negative-credits-${Date.now()}`)).rejects.toThrow(
+      /INITIAL_FREE_CREDITS/,
+    );
+  });
+
   test("internal DB failure during org creation PROPAGATES (not swallowed into a fake user)", async () => {
+    process.env.INITIAL_FREE_CREDITS = "0";
     getByWallet = async () => null;
     findBySlug = async () => null;
     orgCreate = async () => {
       throw new Error("connection terminated unexpectedly");
     };
 
-    await expect(walletSignup.findOrCreateUserByWalletAddress(EVM_ADDRESS)).rejects.toThrow(
-      "connection terminated unexpectedly",
-    );
+    await expect(
+      walletSignup.findOrCreateUserByWalletAddress(EVM_ADDRESS, { grantInitialCredits: false }),
+    ).rejects.toThrow("connection terminated unexpectedly");
   });
 
   test("org create conflict is a DESIGNED race recovery to the winning org", async () => {
@@ -111,13 +146,13 @@ describe("wallet-signup fail-closed error policy", () => {
       role: input.role,
     });
 
-    const res = await walletSignup.findOrCreateUserByWalletAddress(EVM_ADDRESS);
+    const res = await walletSignup.findOrCreateUserByWalletAddress(EVM_ADDRESS, {
+      grantInitialCredits: false,
+    });
 
     expect(res.isNewAccount).toBe(true);
     expect(res.user.organization).toBe(racedOrg as never);
     expect(res.user.organization_id).toBe("org-raced");
-    expect(res.initialCreditsGranted).toBe(false);
-    expect(res.initialFreeCreditsUsd).toBe(0);
   });
 
   test("internal DB failure during user creation PROPAGATES", async () => {
@@ -128,9 +163,9 @@ describe("wallet-signup fail-closed error policy", () => {
       throw new Error("deadlock detected");
     };
 
-    await expect(walletSignup.findOrCreateUserByWalletAddress(EVM_ADDRESS)).rejects.toThrow(
-      "deadlock detected",
-    );
+    await expect(
+      walletSignup.findOrCreateUserByWalletAddress(EVM_ADDRESS, { grantInitialCredits: false }),
+    ).rejects.toThrow("deadlock detected");
   });
 
   test("user-create conflict with unrecoverable re-fetch RETHROWS (never fabricates a user)", async () => {
@@ -143,16 +178,18 @@ describe("wallet-signup fail-closed error policy", () => {
       throw new Error("duplicate key value violates unique constraint users_wallet_address");
     };
 
-    await expect(walletSignup.findOrCreateUserByWalletAddress(EVM_ADDRESS)).rejects.toThrow(
-      "duplicate key value violates unique constraint",
-    );
+    await expect(
+      walletSignup.findOrCreateUserByWalletAddress(EVM_ADDRESS, { grantInitialCredits: false }),
+    ).rejects.toThrow("duplicate key value violates unique constraint");
   });
 
   test("a genuinely-found existing user returns distinctly (isNewAccount=false, no creation)", async () => {
     const existing = { id: "u-existing", organization: { id: "o-existing" }, role: "owner" };
     getByWallet = async () => existing;
 
-    const res = await walletSignup.findOrCreateUserByWalletAddress(EVM_ADDRESS);
+    const res = await walletSignup.findOrCreateUserByWalletAddress(EVM_ADDRESS, {
+      grantInitialCredits: false,
+    });
 
     expect(res.isNewAccount).toBe(false);
     expect(res.user).toBe(existing as never);

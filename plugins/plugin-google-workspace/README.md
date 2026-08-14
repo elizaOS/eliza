@@ -6,7 +6,7 @@ Google Workspace integration for [elizaOS](https://github.com/elizaOS/eliza) age
 
 This plugin adds `GoogleWorkspaceService` to an Eliza agent runtime. The service exposes typed methods for reading and writing to Gmail, Calendar, Drive (including Docs and Sheets), and Meet. Authentication is account-scoped: every method call includes an `accountId` that maps to a stored OAuth token, so one agent can operate across multiple Google accounts simultaneously.
 
-The plugin also registers with the elizaOS `ConnectorAccountManager` so the built-in connector HTTP routes can manage Google accounts (list, create, delete) and run the OAuth flow (PKCE, offline access, incremental consent) without extra integration work.
+The plugin also registers with the elizaOS `ConnectorAccountManager` so the built-in connector HTTP routes can manage Google accounts (list, create, delete) and run the OAuth flow (PKCE, offline access, explicit least-privilege consent) without extra integration work.
 
 The plugin also ships the Google Chat connector (`src/chat/`): `GoogleChatService` registers a runtime `MessageConnector` for sending/receiving messages in Chat spaces, DMs, and threads, and `GoogleChatWorkflowCredentialProvider` supplies `googleChatOAuth2Api` credentials to the workflow plugin. Chat authenticates with a **service account** (`GOOGLE_CHAT_SERVICE_ACCOUNT[_FILE]` or `GOOGLE_APPLICATION_CREDENTIALS`, scope `https://www.googleapis.com/auth/chat.bot`) — a deliberately separate auth model from the Workspace OAuth grant. The plugin auto-enables when a `connectors.googlechat` block is configured (see `auto-enable.ts`); the Workspace side remains opt-in.
 

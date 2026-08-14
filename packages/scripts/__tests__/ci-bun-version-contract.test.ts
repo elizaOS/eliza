@@ -57,7 +57,12 @@ interface InventorySite {
 const CANONICAL = "1.3.14";
 const SHA = "0c5077e51419868618aeaa5fe8019c62421857d6";
 
-const GATE_WORKFLOWS = ["test.yml", "develop-pr.yml", "cloud-cf-deploy.yml"];
+const GATE_WORKFLOWS = [
+  "test.yml",
+  "develop-pr.yml",
+  "cloud-cf-deploy.yml",
+  "cloud-cf-release.yml",
+];
 
 // A gate stub that pins via a BUN_VERSION env literal and references it from
 // the step by expression — the shape the real gates use. The comment naming
@@ -213,6 +218,16 @@ describe("ci-bun-version-contract", () => {
     expectViolation(
       buildRepo({ overrides: { "cloud-cf-deploy.yml": null } }),
       /cloud-cf-deploy\.yml/,
+    );
+  });
+
+  test("fails loudly when the canonical release workflow is missing (#19183)", () => {
+    // After #18996 split the canary deploy from the canonical release, the
+    // release workflow publishes to production. A missing release gate must
+    // fail loudly the same way a missing canary gate does, not silently pass.
+    expectViolation(
+      buildRepo({ overrides: { "cloud-cf-release.yml": null } }),
+      /cloud-cf-release\.yml/,
     );
   });
 

@@ -1,6 +1,6 @@
 /**
- * Real-DB regression suite for transactional phone account creation and
- * `UsersRepository.linkTelegramAndPhoneIdentity`: both must update the canonical
+ * Real-DB regression suite for `UsersRepository.linkTelegramAndPhoneIdentity`
+ * (PR #18101): a session-based Telegram+phone link must update the canonical
  * `users` row AND the `user_identities` projection in one transaction, because
  * sessionless auth (`findByTelegramIdWithOrganization`,
  * `findByPhoneNumberWithOrganization`) resolves users through
@@ -99,112 +99,6 @@ describe("UsersRepository.linkTelegramAndPhoneIdentity (real PGlite)", () => {
   afterAll(async () => {
     await closeDatabaseConnectionsForTests();
   });
-
-  test("concurrent trusted first texts create one zero-balance personal account", async () => {
-    const phone = "+14155550100";
-    const attempts = await Promise.all(
-      Array.from({ length: 8 }, (_, index) =>
-        usersRepository.findOrCreatePhonePersonalAccount({
-          phoneNumber: phone,
-          displayName: "User ***0100",
-          organizationName: "User ***0100's Workspace",
-          organizationSlug: uniq(`phone-0100-${index}`),
-        }),
-      ),
-    );
-
-    expect(new Set(attempts.map((result) => result.user.id))).toEqual(
-      new Set([attempts[0]?.user.id]),
-    );
-    expect(attempts.filter((result) => result.isNew)).toHaveLength(1);
-    expect(attempts[0]?.organization.credit_balance).toBe("0.000000");
-    expect(await dbWrite.select().from(users)).toHaveLength(1);
-    expect(await dbWrite.select().from(userIdentities)).toHaveLength(1);
-    expect(await dbWrite.select().from(organizations)).toHaveLength(1);
-
-    const resolved = await usersRepository.findByPhoneNumberWithOrganization(phone);
-    expect(resolved?.id).toBe(attempts[0]?.user.id);
-    expect(resolved?.phone_verified).toBe(true);
-  });
-
-  test.each([
-    {
-      unavailableAccount: "a deleted user",
-      userChanges: { deleted_at: new Date("2026-08-12T00:00:00.000Z") },
-      organizationActive: true,
-      expectedCode: "PHONE_PERSONAL_ACCOUNT_DELETED",
-    },
-    {
-      unavailableAccount: "an inactive user",
-      userChanges: { is_active: false },
-      organizationActive: true,
-      expectedCode: "PHONE_PERSONAL_ACCOUNT_INACTIVE",
-    },
-    {
-      unavailableAccount: "an inactive organization",
-      userChanges: {},
-      organizationActive: false,
-      expectedCode: "PHONE_PERSONAL_ACCOUNT_ORGANIZATION_INACTIVE",
-    },
-  ])(
-    "trusted first-text retry fails closed for $unavailableAccount without verifying or replacing it",
-    async ({ userChanges, organizationActive, expectedCode }) => {
-      const phone = "+14155550111";
-      const original = await usersRepository.findOrCreatePhonePersonalAccount({
-        phoneNumber: phone,
-        displayName: "User ***0111",
-        organizationName: "User ***0111's Workspace",
-        organizationSlug: uniq("phone-0111"),
-      });
-      await dbWrite
-        .update(users)
-        .set({ ...userChanges, phone_verified: false })
-        .where(eq(users.id, original.user.id));
-      await dbWrite
-        .update(userIdentities)
-        .set({ phone_verified: false })
-        .where(eq(userIdentities.user_id, original.user.id));
-      await dbWrite
-        .update(organizations)
-        .set({ is_active: organizationActive })
-        .where(eq(organizations.id, original.organization.id));
-
-      const error = await usersRepository
-        .findOrCreatePhonePersonalAccount({
-          phoneNumber: phone,
-          displayName: "Replacement",
-          organizationName: "Replacement Workspace",
-          organizationSlug: uniq("replacement-0111"),
-        })
-        .then(
-          () => undefined,
-          (cause: unknown) => cause,
-        );
-
-      expect(error).toMatchObject({ code: expectedCode });
-      const [canonical] = await dbWrite.select().from(users);
-      const [projection] = await dbWrite.select().from(userIdentities);
-      const [organization] = await dbWrite.select().from(organizations);
-      expect(canonical).toMatchObject({
-        id: original.user.id,
-        phone_number: phone,
-        phone_verified: false,
-        ...userChanges,
-      });
-      expect(projection).toMatchObject({
-        user_id: original.user.id,
-        phone_number: phone,
-        phone_verified: false,
-      });
-      expect(organization).toMatchObject({
-        id: original.organization.id,
-        is_active: organizationActive,
-      });
-      expect(await dbWrite.select().from(users)).toHaveLength(1);
-      expect(await dbWrite.select().from(userIdentities)).toHaveLength(1);
-      expect(await dbWrite.select().from(organizations)).toHaveLength(1);
-    },
-  );
 
   test("linking writes users AND user_identities so sessionless lookups resolve the user", async () => {
     const user = await createUser();

@@ -17,7 +17,7 @@ Use an Ethereum wallet to sign in, get an API key, or authenticate each request 
 
 **Onboarding (pick one):**
 
-- **SIWE**: `GET /api/auth/siwe/nonce` → sign message → `POST /api/auth/siwe/verify` → receive `apiKey`, `user`, `organization`. New accounts start at zero; funding is explicit.
+- **SIWE**: `GET /api/auth/siwe/nonce` → sign message → `POST /api/auth/siwe/verify` → receive `apiKey`, `user`, `organization`. New accounts get initial free credits.
 - **Wallet header**: first request with valid wallet sig headers creates the account (same slug/credits as SIWE).
 - **x402 topup**: `POST /api/v1/topup/10|50|100` with payment; send `walletAddress` in body or use wallet sig headers to credit the signer. New accounts get no free credits (payment only).
 
@@ -52,7 +52,7 @@ Any route that uses `requireAuthOrApiKey` accepts wallet-header auth. If the wal
 **POST /api/v1/topup/10**, **/50**, **/100** (x402 payment required):
 
 - With wallet sig headers: credits go to the signer; no body `walletAddress` needed.
-- Without: send **body.walletAddress**; that wallet’s org is credited. New wallets created here start at zero.
+- Without: send **body.walletAddress**; that wallet’s org is credited. New wallets created here do not receive initial free credits.
 
 ## CORS and proxy
 

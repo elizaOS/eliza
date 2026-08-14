@@ -1,12 +1,9 @@
 /**
- * GET/POST /api/v1/eliza/agents/[agentId]/upgrade-tier
+ * POST /api/v1/eliza/agents/[agentId]/upgrade-tier
  *
- * First-class Shared→Dedicated activation (#15355). GET returns the current
- * server-owned price/balance/runway quote without mutation. POST requires the
- * exact quote plus `activate_dedicated`, then mints and provisions the separate
- * Dedicated migration target. The rowless account-native personal Eliza and
- * older row-backed Shared agents use the same single-flight target service.
- * The Shared service keeps serving the user throughout; client handoff machinery
+ * First-class shared→dedicated tier upgrade (#15355). The shared agent keeps
+ * serving the user throughout: this route only mints and provisions the
+ * SEPARATE dedicated migration target; the client-side handoff machinery
  * (readiness poll → idempotent transcript import → repoint, see
  * `packages/ui/src/cloud/handoff/`) performs the actual switch once the
  * container is running, and only a confirmed switch deletes the shared bridge.
@@ -37,7 +34,6 @@
  */
 
 import { Hono } from "hono";
-import { z } from "zod";
 import { errorToResponse } from "@/lib/api/errors";
 import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
 import { AGENT_PRICING } from "@/lib/constants/agent-pricing";
@@ -59,20 +55,10 @@ import {
 } from "@/lib/services/provisioning-worker-health";
 import { applyCorsHeaders, handleCorsOptions } from "@/lib/services/proxy/cors";
 import { stripReservedEnvKeys } from "@/lib/services/reserved-env-keys";
-import {
-  isPersonalSharedAgentId,
-  personalSharedAgentId,
-} from "@/lib/services/shared-runtime/personal-shared-agent";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
-const CORS_METHODS = "GET, POST, OPTIONS";
-const DEDICATED_QUOTE_VERSION = "personal-dedicated-v1";
-
-const ActivationBody = z.object({
-  action: z.literal("activate_dedicated"),
-  quoteId: z.string().regex(/^[a-f0-9]{64}$/),
-});
+const CORS_METHODS = "POST, OPTIONS";
 
 type AgentRow = NonNullable<
   Awaited<ReturnType<typeof elizaSandboxService.getAgentForWrite>>
@@ -81,16 +67,6 @@ type AgentRow = NonNullable<
 type AuthedUser = Awaited<
   ReturnType<typeof requireAuthOrApiKeyWithOrg>
 >["user"];
-
-interface UpgradeSource {
-  id: string;
-  agentName: string;
-  executionTier: "shared" | "dedicated-lazy" | "dedicated-always" | "custom";
-  status: AgentRow["status"];
-  agentConfig: Record<string, unknown>;
-  environmentVars: Record<string, string>;
-  characterId?: string;
-}
 
 function json(body: unknown, status = 200): Response {
   return applyCorsHeaders(Response.json(body, { status }), CORS_METHODS);
@@ -119,135 +95,6 @@ function asEnvRecord(value: unknown): Record<string, string> {
   );
 }
 
-async function resolveUpgradeSource(
-  agentId: string,
-  user: AuthedUser,
-): Promise<UpgradeSource | null> {
-  if (isPersonalSharedAgentId(agentId)) {
-    const expected = personalSharedAgentId({
-      userId: user.id,
-      organizationId: user.organization_id,
-    });
-    if (agentId !== expected) return null;
-    return {
-      id: expected,
-      agentName: "Eliza",
-      executionTier: "shared",
-      status: "running",
-      agentConfig: { character: { name: "Eliza" } },
-      environmentVars: {},
-    };
-  }
-
-  const row = await elizaSandboxService.getAgentForWrite(
-    agentId,
-    user.organization_id,
-  );
-  if (!row) return null;
-  return {
-    id: row.id,
-    agentName: row.agent_name ?? row.id,
-    executionTier: row.execution_tier,
-    status: row.status,
-    agentConfig: asConfigRecord(row.agent_config),
-    environmentVars: stripReservedEnvKeys(asEnvRecord(row.environment_vars)),
-    ...(row.character_id ? { characterId: row.character_id } : {}),
-  };
-}
-
-async function quoteIdFor(
-  organizationId: string,
-  sourceAgentId: string,
-  balance: number,
-): Promise<string> {
-  const input = [
-    DEDICATED_QUOTE_VERSION,
-    organizationId,
-    sourceAgentId,
-    balance.toFixed(6),
-    AGENT_PRICING.RUNNING_HOURLY_RATE.toFixed(6),
-    AGENT_PRICING.UPGRADE_MINIMUM_BALANCE.toFixed(6),
-  ].join(":");
-  const digest = await crypto.subtle.digest(
-    "SHA-256",
-    new TextEncoder().encode(input),
-  );
-  return Array.from(new Uint8Array(digest), (byte) =>
-    byte.toString(16).padStart(2, "0"),
-  ).join("");
-}
-
-async function dedicatedQuote(
-  source: UpgradeSource,
-  user: AuthedUser,
-  existingTarget: AgentRow | null,
-) {
-  const credit = await checkAgentTierUpgradeCreditGate(user.organization_id);
-  const minimumBalanceUsd = AGENT_PRICING.UPGRADE_MINIMUM_BALANCE;
-  const balanceUsd = credit.balance;
-  const reattachWithoutStartingCompute = Boolean(
-    existingTarget &&
-      existingTarget.status !== "stopped" &&
-      existingTarget.status !== "sleeping",
-  );
-  const deficitUsd = Math.max(
-    0,
-    Math.round((minimumBalanceUsd - balanceUsd) * 100) / 100,
-  );
-  return {
-    quoteId: await quoteIdFor(user.organization_id, source.id, balanceUsd),
-    quoteVersion: DEDICATED_QUOTE_VERSION,
-    sourceAgentId: source.id,
-    currentMode: "shared" as const,
-    targetMode: "dedicated" as const,
-    hourlyRateUsd: AGENT_PRICING.RUNNING_HOURLY_RATE,
-    dailyRateUsd: AGENT_PRICING.DAILY_RUNNING_COST,
-    minimumBalanceUsd,
-    minimumRunwayDays: AGENT_PRICING.UPGRADE_MIN_HOSTING_DAYS,
-    balanceUsd,
-    deficitUsd,
-    canActivate: credit.allowed || reattachWithoutStartingCompute,
-    requiresConfirmation: true,
-    action: "activate_dedicated" as const,
-    activation: existingTarget
-      ? {
-          state: "in_progress" as const,
-          dedicatedAgentId: existingTarget.id,
-          status: existingTarget.status,
-        }
-      : { state: "available" as const },
-    ...(!credit.allowed && !reattachWithoutStartingCompute && credit.error
-      ? { unavailableReason: credit.error }
-      : {}),
-  };
-}
-
-function invalidUpgradeSource(source: UpgradeSource): Response | null {
-  if (source.executionTier !== "shared") {
-    return json(
-      {
-        success: false,
-        code: "not_shared_tier",
-        error:
-          "Only Shared Eliza can be activated as Dedicated. This Eliza already runs on dedicated compute.",
-      },
-      409,
-    );
-  }
-  if (source.status !== "running") {
-    return json(
-      {
-        success: false,
-        code: "agent_not_running",
-        error:
-          "Shared Eliza is not available for Dedicated activation right now.",
-      },
-      409,
-    );
-  }
-  return null;
-}
-
 /**
  * Respond for a live migration target that already owns this upgrade — both
  * the pre-checked reattach and the race loser whose single-flight call
@@ -264,7 +111,6 @@ async function respondToLiveTarget(
   sharedAgentId: string,
   user: AuthedUser,
   env: AppEnv["Bindings"],
-  confirmedQuoteId: string,
 ): Promise<Response> {
   logger.info("[agent-upgrade-tier] Reattaching to in-flight upgrade", {
     sharedAgentId,
@@ -307,22 +153,6 @@ async function respondToLiveTarget(
         402,
       );
     }
-    const currentQuoteId = await quoteIdFor(
-      user.organization_id,
-      sharedAgentId,
-      resumeCreditCheck.balance,
-    );
-    if (confirmedQuoteId !== currentQuoteId) {
-      return json(
-        {
-          success: false,
-          code: "dedicated_quote_changed",
-          error:
-            "Your Dedicated quote changed before reactivation. Review the latest balance and pricing, then confirm again.",
-        },
-        409,
-      );
-    }
   }
   // pending/provisioning (or stopped/sleeping after an interrupted boot):
   // hand back the active provision job — enqueue reuses an in-flight job
@@ -361,32 +191,6 @@ async function respondToLiveTarget(
   );
 }
 
-async function __hono_GET(
-  request: Request,
-  { params }: { params: Promise<{ agentId: string }> },
-) {
-  try {
-    const { user } = await requireAuthOrApiKeyWithOrg(request);
-    const { agentId } = await params;
-    const source = await resolveUpgradeSource(agentId, user);
-    if (!source) {
-      return json({ success: false, error: "Agent not found" }, 404);
-    }
-    const sourceError = invalidUpgradeSource(source);
-    if (sourceError) return sourceError;
-    const existingTarget = await findLiveTierUpgradeTarget(
-      user.organization_id,
-      source.id,
-    );
-    return json({
-      success: true,
-      data: await dedicatedQuote(source, user, existingTarget),
-    });
-  } catch (error) {
-    return applyCorsHeaders(errorToResponse(error), CORS_METHODS);
-  }
-}
-
 async function __hono_POST(
   request: Request,
   env: AppEnv["Bindings"],
@@ -396,41 +200,46 @@ async function __hono_POST(
     const { user } = await requireAuthOrApiKeyWithOrg(request);
     const { agentId } = await params;
 
-    const source = await resolveUpgradeSource(agentId, user);
-    if (!source) {
+    const shared = await elizaSandboxService.getAgentForWrite(
+      agentId,
+      user.organization_id,
+    );
+    if (!shared) {
       return json({ success: false, error: "Agent not found" }, 404);
     }
-    const sourceError = invalidUpgradeSource(source);
-    if (sourceError) return sourceError;
 
-    const confirmation = ActivationBody.safeParse(
-      await request.json().catch(() => null),
-    );
-    if (!confirmation.success) {
+    if (shared.execution_tier !== "shared") {
       return json(
         {
           success: false,
-          code: "dedicated_confirmation_required",
+          code: "not_shared_tier",
           error:
-            "Review the current Dedicated quote and explicitly confirm activation before compute starts.",
+            "Only shared-tier agents can be upgraded to dedicated. This agent already runs on its own container.",
         },
-        400,
+        409,
+      );
+    }
+
+    // A shared row is `running` from creation; anything else (deletion in
+    // flight, error) is not a healthy source to migrate a user off of.
+    if (shared.status !== "running") {
+      return json(
+        {
+          success: false,
+          code: "agent_not_running",
+          error: "Agent is not running and cannot be upgraded right now.",
+        },
+        409,
       );
     }
 
     // ── Reattach: an upgrade for this shared agent is already under way. ──
     const existingTarget = await findLiveTierUpgradeTarget(
       user.organization_id,
-      source.id,
+      agentId,
     );
     if (existingTarget) {
-      return await respondToLiveTarget(
-        existingTarget,
-        source.id,
-        user,
-        env,
-        confirmation.data.quoteId,
-      );
+      return await respondToLiveTarget(existingTarget, agentId, user, env);
     }
 
     // ── Credit gate: N days of dedicated hosting runway, not the bare create
@@ -444,27 +253,10 @@ async function __hono_POST(
         insufficientCredits402(
           creditCheck,
           "[agent-upgrade-tier] Upgrade blocked: insufficient hosting runway",
-          { sharedAgentId: source.id, orgId: user.organization_id },
+          { sharedAgentId: agentId, orgId: user.organization_id },
           { requiredBalance: AGENT_PRICING.UPGRADE_MINIMUM_BALANCE },
         ),
         402,
-      );
-    }
-    const currentQuoteId = await quoteIdFor(
-      user.organization_id,
-      source.id,
-      creditCheck.balance,
-    );
-    if (confirmation.data.quoteId !== currentQuoteId) {
-      return json(
-        {
-          success: false,
-          code: "dedicated_quote_changed",
-          error:
-            "Your Dedicated quote changed before activation. Review the latest balance and pricing, then confirm again.",
-          data: await dedicatedQuote(source, user, null),
-        },
-        409,
       );
     }
 
@@ -478,7 +270,7 @@ async function __hono_POST(
       logger.warn(
         "[agent-upgrade-tier] Upgrade blocked: provisioning worker unavailable",
         {
-          sharedAgentId: source.id,
+          sharedAgentId: agentId,
           orgId: user.organization_id,
           code: workerHealth.code,
         },
@@ -497,18 +289,22 @@ async function __hono_POST(
     // same-org materialization path decrypts — survives verbatim. Environment
     // preparation, target insert, and provision enqueue all happen inside the
     // service's single-flight boundary.
+    const sourceConfig = asConfigRecord(shared.agent_config);
+    const sourceEnv = stripReservedEnvKeys(
+      asEnvRecord(shared.environment_vars),
+    );
     let result: Awaited<
       ReturnType<typeof createTierUpgradeTargetWithProvision>
     >;
     try {
       result = await createTierUpgradeTargetWithProvision({
-        sourceAgentId: source.id,
+        sourceAgentId: agentId,
         organizationId: user.organization_id,
         userId: user.id,
-        agentName: source.agentName,
-        ...(source.characterId ? { characterId: source.characterId } : {}),
-        agentConfig: source.agentConfig,
-        environmentVars: source.environmentVars,
+        agentName: shared.agent_name ?? agentId,
+        ...(shared.character_id ? { characterId: shared.character_id } : {}),
+        agentConfig: sourceConfig,
+        environmentVars: sourceEnv,
         maxNonTerminalAgents: getMaxNonTerminalAgentsForOrg(
           creditCheck.balance,
         ),
@@ -516,7 +312,7 @@ async function __hono_POST(
     } catch (error) {
       if (error instanceof AgentQuotaExceededError) {
         logger.warn("[agent-upgrade-tier] Upgrade blocked: org quota", {
-          sharedAgentId: source.id,
+          sharedAgentId: agentId,
           orgId: user.organization_id,
           count: error.count,
           max: error.max,
@@ -538,13 +334,7 @@ async function __hono_POST(
     // Race loser: another request committed the target (and its job) while
     // this one was in flight — reattach to that durable state.
     if (!result.created) {
-      return await respondToLiveTarget(
-        result.agent,
-        source.id,
-        user,
-        env,
-        confirmation.data.quoteId,
-      );
+      return await respondToLiveTarget(result.agent, agentId, user, env);
     }
     const dedicated = result.agent;
     const job = result.job;
@@ -555,7 +345,7 @@ async function __hono_POST(
     });
 
     logger.info("[agent-upgrade-tier] Upgrade started", {
-      sharedAgentId: source.id,
+      sharedAgentId: agentId,
       dedicatedAgentId: dedicated.id,
       orgId: user.organization_id,
       jobId: job.id,
@@ -572,7 +362,7 @@ async function __hono_POST(
           id: dedicated.id,
           agentId: dedicated.id,
           dedicatedAgentId: dedicated.id,
-          sharedAgentId: source.id,
+          sharedAgentId: agentId,
           agentName: dedicated.agent_name,
           status: job.status,
           jobId: job.id,
@@ -590,11 +380,6 @@ async function __hono_POST(
 
 const __hono_app = new Hono<AppEnv>();
 __hono_app.options("/", () => handleCorsOptions(CORS_METHODS));
-__hono_app.get("/", async (c) =>
-  __hono_GET(c.req.raw, {
-    params: Promise.resolve({ agentId: c.req.param("agentId")! }),
-  }),
-);
 __hono_app.post("/", async (c) =>
   __hono_POST(c.req.raw, c.env, {
     params: Promise.resolve({ agentId: c.req.param("agentId")! }),

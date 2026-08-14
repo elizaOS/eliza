@@ -77,6 +77,11 @@ export const LEGACY_ELIZA_DOMAIN_CONTRACTS = Object.freeze({
       "elizacloud.ai",
       "www.elizacloud.ai",
       "dev.elizacloud.ai",
+      // A/B variant of the public landing. Served by the `eliza-app-b` Pages
+      // project from the same app build, so it must classify as marketing or
+      // the shell boots the agent app and shows a login wall instead.
+      "b.eliza.app",
+      "eliza-app-b.pages.dev",
     ]),
     cloudAppHostnames: Object.freeze(["app.elizacloud.ai"]),
     cloudApiHostnames: Object.freeze(["api.elizacloud.ai"]),

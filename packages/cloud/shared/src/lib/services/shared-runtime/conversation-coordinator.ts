@@ -6,12 +6,12 @@
  * deployment fault cannot fall through to repository-backed execution.
  */
 
+import type { AgentSandbox } from "../../../db/repositories/agent-sandboxes";
 import type { RuntimeDurableObjectNamespace } from "../../../types/cloud-worker-env";
 import { InsufficientCreditsError, RateLimitError } from "../../api/errors";
 import { logger } from "../../utils/logger";
 import type { BridgeRequest, BridgeResponse } from "../eliza-sandbox-bridge";
 import type { SharedTurnMessage } from "./run-shared-agent-turn";
-import type { SharedRuntimeAgent } from "./shared-runtime-agent";
 import type { BridgeExecutionContext } from "./shared-runtime-chat";
 import { SharedRuntimeCacheWarmingError, SharedTurnConflictError } from "./shared-runtime-errors";
 
@@ -19,17 +19,34 @@ export interface SharedConversationCoordinatorOptions {
   namespace: RuntimeDurableObjectNamespace;
   executionCtx: BridgeExecutionContext;
   abortSignal?: AbortSignal;
-  /** Selects the rowless personal-Eliza envelope and platform funding. */
-  agentKind?: "sandbox" | "personal";
 }
 
 export interface SharedConversationHistoryCoordinatorOptions {
   namespace: RuntimeDurableObjectNamespace;
 }
 
-export interface SharedCutoverSeal {
-  token: string;
-  leaseMs: number;
+/**
+ * Hydrate one conversation object's read-only history and turn-ingress modules.
+ * Voice startup uses this under its fixed greeting; no message is created.
+ */
+export async function coordinateSharedConversationPrewarm(
+  agentId: string,
+  roomId: string,
+  options: SharedConversationHistoryCoordinatorOptions,
+): Promise<void> {
+  const namespace = requireHistoryCoordinator(options);
+  const response = await coordinatorStub(namespace, agentId, roomId).fetch(
+    "https://shared-runtime.internal/prewarm",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ operation: "prewarm", agentId, roomId }),
+    },
+  );
+  await requireCoordinatorResponse(response, "conversation prewarm");
+  // The Durable Object releases its per-room queue when the response body is
+  // consumed. Drain this tiny acknowledgement before the first real turn.
+  await response.arrayBuffer();
 }
 
 /**
@@ -125,7 +142,7 @@ async function requireCoordinatorResponse(response: Response, surface: string): 
 }
 
 export async function coordinateSharedBridge(
-  agent: SharedRuntimeAgent,
+  agent: AgentSandbox,
   rpc: BridgeRequest,
   options: SharedConversationCoordinatorOptions,
 ): Promise<BridgeResponse> {
@@ -135,18 +152,14 @@ export async function coordinateSharedBridge(
     .fetch("https://shared-runtime.internal/bridge", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        operation: options.agentKind === "personal" ? "personal-bridge" : "bridge",
-        agent,
-        rpc,
-      }),
+      body: JSON.stringify({ operation: "bridge", agent, rpc }),
     });
   await requireCoordinatorResponse(response, "conversation");
   return (await response.json()) as BridgeResponse;
 }
 
 export async function coordinateSharedStream(
-  agent: SharedRuntimeAgent,
+  agent: AgentSandbox,
   rpc: BridgeRequest,
   options: SharedConversationCoordinatorOptions,
 ): Promise<Response> {
@@ -156,11 +169,7 @@ export async function coordinateSharedStream(
     .fetch("https://shared-runtime.internal/stream", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        operation: options.agentKind === "personal" ? "personal-stream" : "stream",
-        agent,
-        rpc,
-      }),
+      body: JSON.stringify({ operation: "stream", agent, rpc }),
       ...(options.abortSignal ? { signal: options.abortSignal } : {}),
     });
   return await requireCoordinatorResponse(response, "stream");
@@ -238,74 +247,4 @@ export async function coordinateSharedHistory(
   await requireCoordinatorResponse(response, "conversation history");
   const body = (await response.json()) as { history: SharedTurnMessage[] };
   return body.history;
-}
-
-/**
- * Queue behind any in-flight Shared turn, seal admission for later turns, and
- * return the exact authoritative snapshot covered by that seal. The bounded
- * lease prevents a crashed cutover request from stranding Shared forever.
- */
-export async function coordinateSharedCutoverSeal(
-  agentId: string,
-  roomId: string,
-  seal: SharedCutoverSeal,
-  options: SharedConversationHistoryCoordinatorOptions,
-): Promise<SharedTurnMessage[]> {
-  const namespace = requireHistoryCoordinator(options);
-  const response = await coordinatorStub(namespace, agentId, roomId).fetch(
-    "https://shared-runtime.internal/cutover-seal",
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        operation: "cutover-seal",
-        agentId,
-        roomId,
-        token: seal.token,
-        leaseMs: seal.leaseMs,
-      }),
-    },
-  );
-  await requireCoordinatorResponse(response, "personal cutover seal");
-  const body = (await response.json()) as { history: SharedTurnMessage[] };
-  return body.history;
-}
-
-async function coordinateSharedCutoverTransition(
-  agentId: string,
-  roomId: string,
-  token: string,
-  operation: "cutover-release" | "cutover-commit",
-  options: SharedConversationHistoryCoordinatorOptions,
-): Promise<void> {
-  const namespace = requireHistoryCoordinator(options);
-  const response = await coordinatorStub(namespace, agentId, roomId).fetch(
-    `https://shared-runtime.internal/${operation}`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ operation, token }),
-    },
-  );
-  await requireCoordinatorResponse(response, `personal ${operation}`);
-}
-
-/** Release a failed cutover's exact lease so Shared resumes immediately. */
-export async function coordinateSharedCutoverRelease(
-  agentId: string,
-  roomId: string,
-  token: string,
-  options: SharedConversationHistoryCoordinatorOptions,
-): Promise<void> {
-  await coordinateSharedCutoverTransition(agentId, roomId, token, "cutover-release", options);
-}
-
-/** Permanently close Shared admission after the Dedicated marker commits. */
-export async function coordinateSharedCutoverCommit(
-  agentId: string,
-  roomId: string,
-  token: string,
-  options: SharedConversationHistoryCoordinatorOptions,
-): Promise<void> {
-  await coordinateSharedCutoverTransition(agentId, roomId, token, "cutover-commit", options);
 }

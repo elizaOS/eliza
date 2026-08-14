@@ -97,5 +97,5 @@ export function buildElizaTelegramHref(): string {
 }
 
 export function buildElizaDiscordHref(): string {
-  return `discord://-/users/${getDiscordBotApplicationId()}`;
+  return `https://discord.com/users/${getDiscordBotApplicationId()}`;
 }

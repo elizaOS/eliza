@@ -87,8 +87,6 @@ export const STEWARD_REFRESH_ENDPOINT = "/api/auth/steward-refresh";
 export interface StewardSessionRequest {
   token: string;
   refreshToken?: string | null;
-  /** Phone independently re-verified by the Cloud API against this bearer. */
-  verifiedPhone?: string;
 }
 
 export interface StewardSessionResponse {
@@ -124,9 +122,6 @@ export type StewardSessionErrorCode =
   | "sso_unavailable"
   | "server_secret_missing"
   | "steward_user_sync_failed"
-  | "verified_phone_invalid"
-  | "verified_phone_mismatch"
-  | "verified_phone_conflict"
   | "internal_error"
   // Nonce-exchange (response_type=code) outcomes. Surfaced both by the
   // cloud-api route and proxied through from Steward's /oauth/exchange.
