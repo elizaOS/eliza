@@ -151,11 +151,15 @@ export function convertMarkdownToTelegram(markdown: string): string {
   //    unanchored pattern consumed `_id_` as formatting, so the reserved
   //    underscores were re-emitted unescaped and Telegram rendered the
   //    identifier with italic "id" and the underscores eaten (#19373).
-  //    Underscore flanks stay permitted so the historical `__x__` inner-italic
-  //    behavior is unchanged; a preceding backslash means an already-escaped
-  //    delimiter and never opens italic.
+  //    Word characters include marks and the ZWJ/ZWNJ join controls, so a
+  //    decomposed flank (cafe + U+0301) or an Indic cluster suppresses the
+  //    delimiter exactly like its precomposed form — canonically equivalent
+  //    inputs must not diverge into italic (#19373 review). Underscore flanks
+  //    stay permitted so the historical `__x__` inner-italic behavior is
+  //    unchanged; a preceding backslash means an already-escaped delimiter and
+  //    never opens italic.
   converted = converted.replace(
-    /(?<![\p{L}\p{N}\\])_([^_\n]+)_(?![\p{L}\p{N}])/gu,
+    /(?<![\p{L}\p{N}\p{M}\u200c\u200d\\])_([^_\n]+)_(?![\p{L}\p{N}\p{M}\u200c\u200d])/gu,
     (_match, content) => {
       const formattedContent = escapePlainText(content);
       const formatted = `_${formattedContent}_`;
