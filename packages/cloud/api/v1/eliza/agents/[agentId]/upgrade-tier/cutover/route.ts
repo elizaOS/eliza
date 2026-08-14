@@ -81,6 +81,22 @@ app.post("/", async (c) => {
     if (c.req.param("agentId") !== sourceAgentId) {
       return json({ success: false, error: "Agent not found" }, 404);
     }
+    const conversationNamespace = c.env.SHARED_RUNTIME_CONVERSATIONS;
+    if (
+      !conversationNamespace ||
+      typeof conversationNamespace.getByName !== "function"
+    ) {
+      return json(
+        {
+          success: false,
+          code: "shared_history_unavailable",
+          error:
+            "Shared history is temporarily unavailable. Shared remains active.",
+        },
+        503,
+      );
+    }
+    const sealToken = `personal-cutover:${sourceAgentId}:${parsed.data.dedicatedAgentId}`;
     const active = await findActivePersonalDedicatedTarget(
       user.organization_id,
       sourceAgentId,
@@ -96,17 +112,28 @@ app.post("/", async (c) => {
         active,
         c.env.ELIZA_CLOUD_AGENT_BASE_DOMAIN,
       );
-      if (marker && activeBase) {
-        return json({
-          success: true,
-          data: {
-            personalElizaId: sourceAgentId,
-            activeAgentId: active.id,
-            runtime: "dedicated" as const,
-            apiBase: activeBase,
-            importedMessages: marker.sharedMessageCount,
-          },
-        });
+      if (marker?.cutoverToken === sealToken && activeBase) {
+        try {
+          await coordinateSharedCutoverCommit(
+            sourceAgentId,
+            sourceAgentId,
+            sealToken,
+            { namespace: conversationNamespace },
+          );
+          return json({
+            success: true,
+            data: {
+              personalElizaId: sourceAgentId,
+              activeAgentId: active.id,
+              runtime: "dedicated" as const,
+              apiBase: activeBase,
+              importedMessages: marker.sharedMessageCount,
+            },
+          });
+        } catch {
+          // error-policy:J4 An old or interrupted marker is not accepted as a
+          // healthy success until the full sealed import below repairs it.
+        }
       }
     }
     const target = await findLiveTierUpgradeTarget(
@@ -130,22 +157,6 @@ app.post("/", async (c) => {
       );
     }
 
-    const conversationNamespace = c.env.SHARED_RUNTIME_CONVERSATIONS;
-    if (
-      !conversationNamespace ||
-      typeof conversationNamespace.getByName !== "function"
-    ) {
-      return json(
-        {
-          success: false,
-          code: "shared_history_unavailable",
-          error:
-            "Shared history is temporarily unavailable. Shared remains active.",
-        },
-        503,
-      );
-    }
-
     const base = personalDedicatedAgentApiBase(
       target,
       c.env.ELIZA_CLOUD_AGENT_BASE_DOMAIN,
@@ -161,7 +172,6 @@ app.post("/", async (c) => {
         409,
       );
     }
-    const sealToken = crypto.randomUUID();
     const history = await coordinateSharedCutoverSeal(
       sourceAgentId,
       sourceAgentId,
@@ -243,20 +253,21 @@ app.post("/", async (c) => {
         }
       }
 
-      const activeTarget = await finalizePersonalTierUpgradeCutover({
-        organizationId: user.organization_id,
-        userId: user.id,
-        sourceAgentId,
-        dedicatedAgentId: target.id,
-        sharedMessageCount: history.length,
-      });
-      activated = true;
       await coordinateSharedCutoverCommit(
         sourceAgentId,
         sourceAgentId,
         sealToken,
         { namespace: conversationNamespace },
       );
+      const activeTarget = await finalizePersonalTierUpgradeCutover({
+        organizationId: user.organization_id,
+        userId: user.id,
+        sourceAgentId,
+        dedicatedAgentId: target.id,
+        cutoverToken: sealToken,
+        sharedMessageCount: history.length,
+      });
+      activated = true;
       return json({
         success: true,
         data: {

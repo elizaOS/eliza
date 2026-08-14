@@ -178,6 +178,7 @@ export async function finalizePersonalTierUpgradeCutover(params: {
   userId: string;
   sourceAgentId: string;
   dedicatedAgentId: string;
+  cutoverToken: string;
   sharedMessageCount: number;
 }): Promise<AgentSandbox> {
   return dbWrite.transaction(async (tx) => {
@@ -215,7 +216,12 @@ export async function finalizePersonalTierUpgradeCutover(params: {
     const existing = readPersonalElizaCutover(
       target.agent_config as Record<string, unknown> | null,
     );
-    if (existing?.sourceAgentId === params.sourceAgentId) return target;
+    const sameCutover =
+      existing?.sourceAgentId === params.sourceAgentId &&
+      existing.cutoverToken === params.cutoverToken;
+    if (sameCutover && existing.sharedMessageCount === params.sharedMessageCount) {
+      return target;
+    }
 
     const [updated] = await tx
       .update(agentSandboxes)
@@ -226,8 +232,9 @@ export async function finalizePersonalTierUpgradeCutover(params: {
             mode: "dedicated",
             sourceAgentId: params.sourceAgentId,
             conversationId: params.sourceAgentId,
+            cutoverToken: params.cutoverToken,
             sharedMessageCount: params.sharedMessageCount,
-            activatedAt: new Date().toISOString(),
+            activatedAt: sameCutover ? existing.activatedAt : new Date().toISOString(),
           },
         },
         updated_at: new Date(),
