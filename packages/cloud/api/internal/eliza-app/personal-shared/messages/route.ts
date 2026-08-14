@@ -124,7 +124,12 @@ app.post("/", async (c) => {
             userId: account.user.id,
             clientMessageId: parsed.data.messageId,
             platformName: parsed.data.platform,
-            senderName: parsed.data.displayName ?? parsed.data.telegramUsername,
+            ...(parsed.data.platform === "telegram"
+              ? {
+                  senderName:
+                    parsed.data.displayName ?? parsed.data.telegramUsername,
+                }
+              : {}),
           },
         },
       );
