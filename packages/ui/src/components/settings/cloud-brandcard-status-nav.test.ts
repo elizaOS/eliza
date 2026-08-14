@@ -54,4 +54,22 @@ describe("cloud BrandCard status/nav leftovers use Settings primitives", () => {
     expect(source).not.toContain("BrandCard");
     expect(source).not.toContain("CornerBrackets");
   });
+
+  it("MFA status panel is SettingsRows, not a BrandCard", () => {
+    const source = read("cloud/account-security/components/mfa-panel.tsx");
+    expect(source).toContain("<SettingsStack");
+    expect(source).toContain("<SettingsRow");
+    expect(source).toContain("MFA enrollment is unavailable on this server.");
+    expect(source).not.toContain("BrandCard");
+    expect(source).not.toContain("CornerBrackets");
+  });
+
+  it("organization empty state is a SettingsRow", () => {
+    const source = read("cloud/organization/organization-tab.tsx");
+    expect(source).toContain('data-testid="cloud-organization-empty"');
+    expect(source).toContain("No organization found");
+    expect(source).toMatch(
+      /if \(!user\.organization\) \{[\s\S]*<SettingsRow label="No organization found"/,
+    );
+  });
 });
