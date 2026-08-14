@@ -124,6 +124,12 @@ describe("Cartesia Ink realtime adapter", () => {
     expect(url.searchParams.get("turn_end_timeout_ms")).toBe(
       String(CARTESIA_INK_TURN_END_TIMEOUT_MILLISECONDS),
     );
+    expect(CARTESIA_INK_TURN_START_THRESHOLD).toBeGreaterThan(
+      CARTESIA_INK_TURN_EAGER_END_THRESHOLD,
+    );
+    expect(CARTESIA_INK_TURN_EAGER_END_THRESHOLD).toBeGreaterThan(
+      CARTESIA_INK_TURN_END_THRESHOLD,
+    );
     expect(url.searchParams.get("cartesia_version")).toBe(
       CARTESIA_INK_API_VERSION,
     );
