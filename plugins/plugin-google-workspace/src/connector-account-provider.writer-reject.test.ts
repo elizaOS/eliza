@@ -119,16 +119,18 @@ describe("google provider completion with a rejecting durable credential writer 
     expect(thrown).toBeInstanceOf(ElizaError);
     const typed = thrown as ElizaError;
     expect(typed.code).toBe("CONNECTOR_OAUTH_COMPLETION_FAILED");
-    expect(typed.message).toContain(WRITER_ERROR);
+    // The public message is generic; the raw writer failure rides the cause.
+    expect(typed.message).not.toContain(WRITER_ERROR);
+    expect((typed.cause as Error).message).toContain(WRITER_ERROR);
     expect(typed.context).toMatchObject({ provider: "google", flowId: flow.id });
     expect(putSecret).toHaveBeenCalledOnce();
     expect(fetchStub).toHaveBeenCalledOnce();
 
-    // The stored flow is terminal `failed` with the actionable writer error —
-    // not `pending` with no error.
+    // The stored flow is terminal `failed` with a generic public message —
+    // not `pending` with no error, and not the raw writer exception text.
     const stored = await manager.getOAuthFlow("google", flow.id);
     expect(stored?.status).toBe("failed");
-    expect(stored?.error).toContain(WRITER_ERROR);
+    expect(stored?.error).not.toContain(WRITER_ERROR);
     expect(stored?.error).toMatch(/start the flow again/i);
 
     // The one-time state was consumed by the first attempt and cannot be
