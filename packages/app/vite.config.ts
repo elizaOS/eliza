@@ -20,6 +20,7 @@ import {
   defineConfig,
   loadEnv,
   type Plugin,
+  type ProxyOptions,
   transformWithOxc,
 } from "vite";
 import { resolveAppBranding } from "../shared/src/config/app-config.ts";
@@ -642,6 +643,22 @@ function isExpectedApiProxyConnectError(
       ? (error as { code?: unknown }).code
       : undefined;
   return code === "ECONNREFUSED" || text.includes("ECONNREFUSED");
+}
+
+function createLocalApiProxy(apiPort: number): ProxyOptions {
+  return {
+    target: `http://127.0.0.1:${apiPort}`,
+    changeOrigin: true,
+    xfwd: true,
+    configure(proxy) {
+      proxy.on("error", (_err, _req, res) => {
+        if (!res.headersSent) {
+          res.writeHead(502, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "API server unavailable" }));
+        }
+      });
+    },
+  };
 }
 
 function stringifyBuildLogMessage(message: unknown): string {
@@ -3319,19 +3336,8 @@ export const INVALID_TRACER_PROVIDER = {};
             },
           }
         : {}),
-      "/api": {
-        target: `http://127.0.0.1:${apiPort}`,
-        changeOrigin: true,
-        xfwd: true,
-        configure: (proxy) => {
-          proxy.on("error", (_err, _req, res) => {
-            if (!res.headersSent) {
-              res.writeHead(502, { "Content-Type": "application/json" });
-              res.end(JSON.stringify({ error: "API server unavailable" }));
-            }
-          });
-        },
-      },
+      "/api": createLocalApiProxy(apiPort),
+      "/steward": createLocalApiProxy(apiPort),
       "/ws": {
         target: `ws://127.0.0.1:${apiPort}`,
         ws: true,

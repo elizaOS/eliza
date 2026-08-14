@@ -17,7 +17,10 @@ import {
   getSharedWhatsAppVerifyToken,
   resolveWebhookConfig,
 } from "./webhook-config";
-import { handleWebhook } from "./webhook-handler";
+import {
+  handleWebhook,
+  recoverQueuedWebhookDeliveries,
+} from "./webhook-handler";
 
 const PORT = Number(process.env.PORT ?? 3000);
 const POD_NAME =
@@ -33,6 +36,7 @@ function requireEnv(name: string): string {
 
 const ELIZA_CLOUD_URL = requireEnv("ELIZA_CLOUD_URL");
 const GATEWAY_BOOTSTRAP_SECRET = requireEnv("GATEWAY_BOOTSTRAP_SECRET");
+const DELIVERY_POLL_INTERVAL_MS = 1_000;
 
 const adapters: Record<Platform, PlatformAdapter> = {
   telegram: telegramAdapter,
@@ -44,10 +48,35 @@ const adapters: Record<Platform, PlatformAdapter> = {
 const SUPPORTED_PLATFORMS = new Set<string>(Object.keys(adapters));
 
 let draining = false;
+let deliveryRecoveryRunning = false;
+let deliveryRecoveryTimer: ReturnType<typeof setInterval> | undefined;
 
 const redis = createRedis();
 
 const app = new Hono();
+
+async function recoverPendingWebhookDeliveries(): Promise<void> {
+  if (draining || deliveryRecoveryRunning) return;
+  deliveryRecoveryRunning = true;
+  try {
+    const recovered = await recoverQueuedWebhookDeliveries(adapters, {
+      redis,
+      cloudBaseUrl: ELIZA_CLOUD_URL,
+      getAuthHeader,
+    });
+    if (recovered > 0) {
+      logger.info("Recovered queued webhook deliveries", { recovered });
+    }
+  } catch (error) {
+    // error-policy:J7 The durable Redis queue survives this polling pass; the
+    // next interval is the observable retry boundary.
+    logger.error("Webhook delivery recovery pass failed", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+  } finally {
+    deliveryRecoveryRunning = false;
+  }
+}
 
 app.get("/health", (c) =>
   c.json({ status: draining ? "draining" : "healthy", pod: POD_NAME }),
@@ -179,6 +208,12 @@ async function start() {
     fetch: app.fetch,
   });
 
+  void recoverPendingWebhookDeliveries();
+  deliveryRecoveryTimer = setInterval(
+    recoverPendingWebhookDeliveries,
+    DELIVERY_POLL_INTERVAL_MS,
+  );
+
   if (!process.env.GATEWAY_INTERNAL_SECRET) {
     logger.warn(
       "GATEWAY_INTERNAL_SECRET is not configured — POST /internal/event will reject all requests",
@@ -191,6 +226,7 @@ async function start() {
 function shutdown(signal: string) {
   logger.info("Shutdown signal received", { signal });
   draining = true;
+  if (deliveryRecoveryTimer) clearInterval(deliveryRecoveryTimer);
   shutdownProjectConfig();
   shutdownAuth();
   const quitPromise = redis.quit?.();

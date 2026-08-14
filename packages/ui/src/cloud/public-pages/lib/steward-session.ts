@@ -60,10 +60,12 @@ async function readSessionError(response: Response): Promise<{
 export async function syncStewardSessionCookie(
   token: string,
   refreshToken?: string | null,
+  options?: { verifiedPhone: string },
 ): Promise<void> {
   const response = await postAuthJson(STEWARD_SESSION_ENDPOINT, {
     token,
     ...(refreshToken ? { refreshToken } : {}),
+    ...(options ? { verifiedPhone: options.verifiedPhone } : {}),
   });
 
   if (!response.ok) {

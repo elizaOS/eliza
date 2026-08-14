@@ -10,10 +10,13 @@
  * Default export for `React.lazy` code-splitting from the route registration.
  */
 
+import { ArrowRight, MessageCircle, Sparkles } from "lucide-react";
 import { Link } from "react-router-dom";
 import { DashboardLoadingState } from "../../cloud-ui/components/dashboard/route-placeholders";
 import { useSetPageHeader } from "../../cloud-ui/components/layout";
+import { ElizaAgentActions } from "../instances/components/agent-actions";
 import { useCreditsBalance } from "../instances/lib/data/credits";
+import { usePersonalEliza } from "../instances/lib/data/personal-eliza";
 import { formatUsd } from "../lib/format-usd";
 import { useDocumentTitle } from "../lib/use-document-title";
 import { useSessionAuth } from "../lib/use-session-auth";
@@ -90,6 +93,110 @@ function BalanceCard() {
   );
 }
 
+function PersonalElizaCard() {
+  const t = useCloudT();
+  const personal = usePersonalEliza();
+
+  if (personal.isLoading) {
+    return (
+      <div
+        aria-busy="true"
+        aria-label={t("cloud.home.personalLoading", {
+          defaultValue: "Loading your Eliza",
+        })}
+        className="min-h-56 animate-pulse rounded-lg border border-border bg-card"
+        role="status"
+      />
+    );
+  }
+  if (personal.isError || !personal.data) {
+    return (
+      <div className="flex min-h-56 flex-col justify-center rounded-lg border border-danger/30 bg-card p-6">
+        <p className="text-sm font-medium text-danger">
+          {t("cloud.home.personalUnavailable", {
+            defaultValue: "Your Eliza status is unavailable.",
+          })}
+        </p>
+        <button
+          type="button"
+          className="mt-3 w-fit text-sm text-txt-strong underline underline-offset-4"
+          onClick={() => void personal.refetch()}
+        >
+          {t("cloud.home.tryAgain", { defaultValue: "Try again" })}
+        </button>
+      </div>
+    );
+  }
+
+  const identity = personal.data;
+  const dedicated = identity.runtime === "dedicated";
+  return (
+    <section className="rounded-lg border border-border bg-card p-5 md:p-6">
+      <div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
+        <div className="flex min-w-0 items-start gap-4">
+          <span className="flex size-11 shrink-0 items-center justify-center rounded-full bg-accent text-accent-foreground">
+            <Sparkles className="size-5" aria-hidden />
+          </span>
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 className="text-xl font-semibold text-txt-strong">
+                {identity.displayName}
+              </h2>
+              <span className="rounded-full border border-border px-2 py-0.5 text-xs text-muted-strong">
+                {dedicated
+                  ? t("cloud.home.dedicated", { defaultValue: "Dedicated" })
+                  : t("cloud.home.shared", { defaultValue: "Shared" })}
+              </span>
+            </div>
+            <p className="mt-1 max-w-xl text-sm leading-6 text-muted">
+              {dedicated
+                ? t("cloud.home.dedicatedDescription", {
+                    defaultValue:
+                      "Your conversation and memory are running on private, always-on compute.",
+                  })
+                : t("cloud.home.sharedDescription", {
+                    defaultValue:
+                      "Ready in Messages and the app. Shared uses no dedicated compute and has no hourly hosting charge.",
+                  })}
+            </p>
+          </div>
+        </div>
+        <div className="flex shrink-0 flex-wrap gap-2">
+          <Link
+            to="/"
+            className="inline-flex min-h-11 items-center gap-2 rounded-md bg-accent px-4 text-sm font-medium text-accent-foreground transition-colors hover:bg-accent/85"
+          >
+            <MessageCircle className="size-4" aria-hidden />
+            {t("cloud.home.chatWithEliza", { defaultValue: "Chat with Eliza" })}
+          </Link>
+          {dedicated ? (
+            <Link
+              to={`/cloud/agents/${identity.activeAgentId}`}
+              className="inline-flex min-h-11 items-center gap-2 rounded-md border border-border px-4 text-sm font-medium text-txt-strong transition-colors hover:bg-surface"
+            >
+              {t("cloud.home.manageDedicated", {
+                defaultValue: "Manage Dedicated",
+              })}
+              <ArrowRight className="size-4" aria-hidden />
+            </Link>
+          ) : null}
+        </div>
+      </div>
+      {!dedicated ? (
+        <div className="mt-5 border-t border-border pt-5">
+          <ElizaAgentActions
+            agentId={identity.id}
+            executionTier="shared"
+            status="running"
+            webUiUrl={null}
+            personalRowless
+          />
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
 export function DashboardHomePage() {
   const t = useCloudT();
   const session = useSessionAuth();
@@ -98,7 +205,7 @@ export function DashboardHomePage() {
   useSetPageHeader({
     title: t("cloud.home.title", { defaultValue: "Overview" }),
     description: t("cloud.home.subtitle", {
-      defaultValue: "Manage your agents, credits, keys, and account.",
+      defaultValue: "Your Eliza, balance, and account.",
     }),
   });
 
@@ -112,8 +219,11 @@ export function DashboardHomePage() {
 
   return (
     <div className="mx-auto w-full max-w-5xl">
-      <BalanceCard />
-      <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      <PersonalElizaCard />
+      <div className="mt-4">
+        <BalanceCard />
+      </div>
+      <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
         {CONSOLE_SURFACES.map((surface) => (
           <SurfaceCard key={surface.href} surface={surface} />
         ))}

@@ -29,6 +29,7 @@ import {
 import { resumePendingCloudHandoff } from "../cloud/handoff/resume-pending-handoff";
 import { runCloudAgentHandoff } from "../cloud/handoff/run-cloud-agent-handoff";
 import { silentlyRepointToDedicated } from "../cloud/handoff/silent-repoint";
+import { runJoinFlow } from "../cloud/join/lib/run-join-flow";
 import { getBootConfig } from "../config/boot-config";
 import type { UiLanguage } from "../i18n";
 import { clearForceFreshFirstRun } from "../platform/first-run-reset";
@@ -73,7 +74,6 @@ import {
 import { resolveFirstRunLocalAgentApiBase } from "./runtime-target";
 
 const FIRST_RUN_AGENT_WAIT_MS = 180_000;
-const RUNNING_CLOUD_AGENT_STATUS = "running";
 
 // ── Injected ports — the store seams the finish logic needs ──────────────────
 
@@ -232,28 +232,6 @@ function canProbeCloudStatus(): boolean {
     return false;
   }
   return true;
-}
-
-function runningCloudAgents(
-  agents: readonly CloudCompatAgent[],
-): CloudCompatAgent[] {
-  return agents
-    .filter((agent) => agent.status === RUNNING_CLOUD_AGENT_STATUS)
-    .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
-}
-
-function preferredRunningCloudAgentId(
-  running: readonly CloudCompatAgent[],
-): string | null {
-  const active = loadPersistedActiveServer();
-  if (active?.kind !== "cloud") return null;
-  const persistedAgentId = active.id?.startsWith("cloud:")
-    ? active.id.slice("cloud:".length).trim()
-    : "";
-  if (!persistedAgentId || persistedAgentId.includes("/")) return null;
-  return running.some((agent) => agent.agent_id === persistedAgentId)
-    ? persistedAgentId
-    : null;
 }
 
 async function getCloudStatusIfSupported() {
@@ -498,6 +476,42 @@ async function finishLocal(
 }
 
 // ── Cloud runtime finish ─────────────────────────────────────────────────────
+
+/**
+ * Bind every first-run Cloud surface to the account-native personal Eliza.
+ * `/join`, browser onboarding, and native companions share this controller so
+ * completing first run can never create or wake paid compute implicitly.
+ */
+async function bindPersonalEliza(
+  authToken: string,
+  ports: FirstRunFinishPorts,
+): Promise<FirstRunFinishOutcome> {
+  const cloudApiBase = getBootConfig().cloudApiBase || "https://eliza.app";
+  const selected = await runJoinFlow({
+    client,
+    effects: {
+      savePersistedActiveServer,
+      savePersistedFirstRunComplete,
+    },
+    cloudApiBase,
+    authToken,
+    onProgress: (status, detail) => ports.onStatus?.(detail ?? status, status),
+  });
+
+  addAgentProfile({
+    kind: "cloud",
+    label: selected.agentName,
+    cloudAgentId: selected.agentId,
+    apiBase: selected.apiBase,
+    accessToken: authToken,
+  });
+  persistMobileRuntimeModeForServerTarget("elizacloud");
+  clearForceFreshFirstRun();
+  clearPersistedFirstRunState();
+  ports.onStatus?.(null);
+  ports.completeFirstRun("chat");
+  return { kind: "done" };
+}
 
 /**
  * The provisioning tail of the cloud flow — both the silent auto-create path (0
@@ -792,99 +806,15 @@ export async function listOrAutoProvisionCloudAgent(
     firstRunRuntimeTarget("cloud"),
   );
   ports.setRuntimeState("firstRunProvider", "elizacloud");
-  // One shared list fetch shape: never throws — a rejected lookup collapses to
-  // the same `success:false` the error path below renders (the throw-through
-  // behavior is unchanged for callers via that path).
-  const listAgents = () =>
-    client.getCloudCompatAgents().catch((cause: unknown) => ({
-      success: false as const,
-      data: [] as CloudCompatAgent[],
-      error: cause instanceof Error ? cause.message : undefined,
-    }));
-  let agentsList: Awaited<ReturnType<typeof listAgents>> | null = null;
-  let cloudConnectedForFinish = ports.elizaCloudConnected;
-  if (!cloudConnectedForFinish) {
-    if (getCloudAuthToken(client)) {
-      // A stored bearer makes the agents list itself the authoritative
-      // connectivity probe — and the list is the data the bind step needs
-      // anyway. Fetch it NOW instead of serializing a /api/v1/user status
-      // round trip before it: on staging the old user->agents chain was
-      // ~2.6s of the measured post-token first-load stall
-      // (FIRSTLOAD-REAL-2026-07-22). The status probe runs only when the
-      // list fails (stale/revoked token), preserving the legacy login
-      // re-entry semantics on that path.
-      const early = await listAgents();
-      if (early.success) {
-        agentsList = early;
-        cloudConnectedForFinish = true;
-      } else {
-        const cloudStatus = await getCloudStatusIfSupported();
-        cloudConnectedForFinish = isCloudStatusAuthenticated(
-          Boolean(cloudStatus?.connected),
-          cloudStatus?.reason,
-        );
-      }
-    } else {
-      const cloudStatus = await getCloudStatusIfSupported();
-      cloudConnectedForFinish = isCloudStatusAuthenticated(
-        Boolean(cloudStatus?.connected),
-        cloudStatus?.reason,
-      );
-    }
-  }
-  if (
-    firstRunNeedsCloudConnect(sourceDraft, cloudConnectedForFinish) ||
-    !getCloudAuthToken(client)
-  ) {
+  let authToken = getCloudAuthToken(client);
+  if (!authToken) {
     await ports.handleInteractiveCloudLogin({ requireClientAuth: true });
-    // A landed bearer IS the proof every following step runs on — the old
-    // post-login status re-probe's result was overridden by exactly this
-    // token check, so the extra /api/v1/user round trip (~0.8s on staging)
-    // bought nothing. Probe only when no token landed (server-side-key
-    // logins), where the probe result still decides the outcome.
-    if (getCloudAuthToken(client)) {
-      cloudConnectedForFinish = true;
-    } else {
-      const cloudStatus = await getCloudStatusIfSupported();
-      cloudConnectedForFinish = isCloudStatusAuthenticated(
-        Boolean(cloudStatus?.connected),
-        cloudStatus?.reason,
-      );
-    }
-    if (!cloudConnectedForFinish) {
-      return { kind: "needs-cloud-login" };
-    }
+    authToken = getCloudAuthToken(client);
   }
-  const authToken = getCloudAuthToken(client) ?? "";
   if (!authToken) {
     return { kind: "needs-cloud-login" };
   }
-  let list = agentsList;
-  if (!list) {
-    ports.onStatus?.("Finding your agents...", "listing");
-    list = await listAgents();
-  }
-  if (!list.success) {
-    return {
-      kind: "error",
-      message:
-        list.error ||
-        "Couldn't reach Eliza Cloud to find your agents. Check your connection and try again.",
-    };
-  }
-  const running = runningCloudAgents(list.data);
-  const preferredAgentId = preferredRunningCloudAgentId(running);
-  const agentId = preferredAgentId ?? running[0]?.agent_id ?? null;
-  return bindCloudAgent(
-    sourceDraft,
-    authToken,
-    {
-      forceCreate: false,
-      ...(agentId ? { preferAgentId: agentId } : {}),
-      knownAgents: list.data,
-    },
-    ports,
-  );
+  return bindPersonalEliza(authToken, ports);
 }
 
 // ── Router entry — validate + route by runtime ───────────────────────────────
