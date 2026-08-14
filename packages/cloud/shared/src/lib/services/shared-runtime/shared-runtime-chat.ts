@@ -62,6 +62,7 @@ import { MAX_HISTORY_MESSAGES } from "./shared-runtime-history-policy";
 export { MAX_HISTORY_MESSAGES } from "./shared-runtime-history-policy";
 
 const BRIDGE_INSUFFICIENT_CREDITS_CODE = -32002;
+const PROVIDER_CANCELLATION_OBSERVE_MS = 5_000;
 const linkedCharacterMemoryCache = new InMemoryLRUCache<UserCharacter>(256, 60_000);
 
 export type BridgeExecutionContext = {
@@ -557,6 +558,48 @@ function settleAmbiguousProviderWorkOffPath(
   return settleOffResponsePath(executionCtx, () =>
     settleAmbiguousProviderWork(agent, billing, reason),
   );
+}
+
+/**
+ * Observe provider teardown without keeping the response-body cancel path open.
+ *
+ * The Durable Object releases its per-room turn lock only after the response
+ * body cancel resolves. Provider reader cancellation is best-effort after the
+ * generation AbortSignal has fired and can itself hang in an SDK/transport.
+ * Waiting for it here would wedge every later room turn even after interrupted
+ * history is durable. Keep the teardown under waitUntil for one bounded
+ * observation window while the caller waits only for persistence.
+ */
+function observeProviderCancellationOffPath(
+  agentId: string,
+  cancellation: Promise<void>,
+  executionCtx: BridgeExecutionContext | undefined,
+): void {
+  void settleOffResponsePath(executionCtx, async () => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const outcome = await Promise.race([
+      cancellation.then(
+        () => ({ state: "settled" as const }),
+        // error-policy:J6 provider teardown is best-effort after the durable
+        // interrupted turn has released the room lock; keep failure observable.
+        (error: unknown) => ({ state: "rejected" as const, error }),
+      ),
+      new Promise<{ state: "timed_out" }>((resolve) => {
+        timer = setTimeout(() => resolve({ state: "timed_out" }), PROVIDER_CANCELLATION_OBSERVE_MS);
+      }),
+    ]);
+    if (timer !== undefined) clearTimeout(timer);
+    if (outcome.state === "settled") return;
+    logger.warn("[SharedRuntimeChatService] provider stream cancellation did not settle cleanly", {
+      agentId,
+      outcome: outcome.state,
+      ...(outcome.state === "rejected"
+        ? {
+            error: outcome.error instanceof Error ? outcome.error.message : String(outcome.error),
+          }
+        : {}),
+    });
+  });
 }
 
 function isProvablyZeroProviderFailure(error: unknown): boolean {
@@ -1097,21 +1140,24 @@ export class SharedRuntimeChatService {
       },
       cancel: async (reason) => {
         consumerCanceled = true;
-        const persistence = finalizeMessages(streamedReply, true, () =>
+        // Snapshot exactly the bytes authorized before cancellation. A provider
+        // that ignores abort may still produce late deltas, but they cannot
+        // change this interrupted turn or write again after finalization.
+        const interruptedReply = streamedReply;
+        generationAbort.abort(reason);
+        const providerCancellation = Promise.resolve()
+          .then(async () => {
+            await turn.cancel?.(reason);
+          })
+          .then(() => undefined);
+        observeProviderCancellationOffPath(agent.id, providerCancellation, options.executionCtx);
+
+        // The room may advance only after interrupted history is durable. It
+        // must not wait for provider teardown: abort is already signalled and
+        // consumerCanceled fences all late output from persistence/delivery.
+        await finalizeMessages(interruptedReply, true, () =>
           settleInterruptedTurn("consumer canceled stream"),
         );
-        generationAbort.abort(reason);
-        const providerCancellation = turn.cancel?.(reason) ?? Promise.resolve();
-        const [providerResult, persistenceResult] = await Promise.allSettled([
-          providerCancellation,
-          persistence,
-        ]);
-        if (persistenceResult.status === "rejected") {
-          throw persistenceResult.reason;
-        }
-        if (providerResult.status === "rejected") {
-          throw providerResult.reason;
-        }
       },
     });
     return new Response(stream, {
