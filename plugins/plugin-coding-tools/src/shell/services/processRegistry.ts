@@ -7,40 +7,10 @@
 
 import type { FinishedSession, ProcessSession, ProcessStatus } from "../types";
 
-const env = process.env;
-
-const DEFAULT_JOB_TTL_MS = 30 * 60 * 1000; // 30 minutes (also the unset/blank default)
+const DEFAULT_JOB_TTL_MS = 30 * 60 * 1000; // 30 minutes
 const MIN_JOB_TTL_MS = 60 * 1000; // 1 minute
 const MAX_JOB_TTL_MS = 3 * 60 * 60 * 1000; // 3 hours
-const CANONICAL_DECIMAL_INTEGER = /^(?:0|[1-9]\d*)$/;
 const DEFAULT_PENDING_OUTPUT_CHARS = 30_000;
-
-/**
- * Strictly parse `SHELL_JOB_TTL_MS` to a bounded canonical integer, matching
- * the shaped-error contract used by the other folded ShellService numeric
- * compatibility settings (#19303). A missing or empty value falls back to
- * {@link DEFAULT_JOB_TTL_MS}; any non-canonical string, fraction, negative,
- * unsafe-integer, or out-of-range value returns a typed error so the plugin
- * boot fails loudly instead of silently clamping to the minimum.
- */
-export function parseJobTtlMs(
-  raw: string | undefined,
-  env: Readonly<Record<string, string | undefined>> = process.env,
-): { value: number } | { error: string } | undefined {
-  if (raw == null || raw === "") return undefined;
-  if (!CANONICAL_DECIMAL_INTEGER.test(raw)) {
-    return {
-      error: `SHELL_JOB_TTL_MS must be a canonical decimal integer between ${MIN_JOB_TTL_MS} and ${MAX_JOB_TTL_MS}.`,
-    };
-  }
-  const value = Number(raw);
-  if (!Number.isSafeInteger(value) || value < MIN_JOB_TTL_MS || value > MAX_JOB_TTL_MS) {
-    return {
-      error: `SHELL_JOB_TTL_MS must be a canonical decimal integer between ${MIN_JOB_TTL_MS} and ${MAX_JOB_TTL_MS}.`,
-    };
-  }
-  return { value };
-}
 
 function clampTtl(value: number | undefined): number {
   if (!value || Number.isNaN(value)) {
@@ -49,11 +19,7 @@ function clampTtl(value: number | undefined): number {
   return Math.min(Math.max(value, MIN_JOB_TTL_MS), MAX_JOB_TTL_MS);
 }
 
-const initialTtl = parseJobTtlMs(env.SHELL_JOB_TTL_MS);
-if (initialTtl && "error" in initialTtl) {
-  throw new Error(initialTtl.error);
-}
-let jobTtlMs = clampTtl(initialTtl?.value);
+let jobTtlMs = DEFAULT_JOB_TTL_MS;
 
 const runningSessions = new Map<string, ProcessSession>();
 const finishedSessions = new Map<string, FinishedSession>();
@@ -385,15 +351,19 @@ export function resetProcessRegistryForTests(): void {
   runningSessions.clear();
   finishedSessions.clear();
   stopSweeper();
+  jobTtlMs = DEFAULT_JOB_TTL_MS;
 }
 
 export function setJobTtlMs(value?: number): void {
   if (value === undefined || Number.isNaN(value)) {
     return;
   }
+  const restartSweeper = sweeper !== null;
   jobTtlMs = clampTtl(value);
-  stopSweeper();
-  startSweeper();
+  if (restartSweeper) {
+    stopSweeper();
+    startSweeper();
+  }
 }
 
 function pruneFinishedSessions(): void {

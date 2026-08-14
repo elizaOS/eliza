@@ -1,7 +1,8 @@
 /** Verifies typed shell configuration failures, live numeric bounds, defaults, and startup diagnostics. */
 import path from "node:path";
-import { ElizaError, logger } from "@elizaos/core";
+import { ElizaError, type IAgentRuntime, logger } from "@elizaos/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { ShellService } from "../services/shellService.js";
 import { loadShellConfig } from "./config.js";
 
 function captureConfigError(): ElizaError {
@@ -66,6 +67,7 @@ describe("loadShellConfig", () => {
     ["SHELL_MAX_OUTPUT_CHARS", "1e3", 1, 1_000_000],
     ["SHELL_PENDING_MAX_OUTPUT_CHARS", " 200000", 1, 1_000_000],
     ["SHELL_BACKGROUND_MS", "9007199254740992", 10, 120_000],
+    ["SHELL_JOB_TTL_MS", "123junk", 60_000, 10_800_000],
   ])(
     "rejects malformed positive integer %s values",
     (name, value, minimum, maximum) => {
@@ -85,13 +87,42 @@ describe("loadShellConfig", () => {
     vi.stubEnv("SHELL_MAX_OUTPUT_CHARS", "250000");
     vi.stubEnv("SHELL_PENDING_MAX_OUTPUT_CHARS", "150000");
     vi.stubEnv("SHELL_BACKGROUND_MS", "12000");
+    vi.stubEnv("SHELL_JOB_TTL_MS", "1800000");
 
     expect(loadShellConfig()).toMatchObject({
       timeout: 45000,
       maxOutputChars: 250000,
       pendingMaxOutputChars: 150000,
       defaultBackgroundMs: 12000,
+      jobTtlMs: 1_800_000,
     });
+  });
+
+  it("rejects an invalid job TTL through the real service startup boundary", async () => {
+    vi.stubEnv("SHELL_JOB_TTL_MS", "1.5");
+
+    await expect(ShellService.start({} as IAgentRuntime)).rejects.toMatchObject(
+      {
+        code: "SHELL_CONFIG_INTEGER_INVALID",
+        context: {
+          setting: "SHELL_JOB_TTL_MS",
+          received: "1.5",
+          minimum: 60_000,
+          maximum: 10_800_000,
+        },
+        severity: "fatal",
+      },
+    );
+  });
+
+  it("defaults blank job TTL values and accepts both live boundaries", () => {
+    expect(loadShellConfig().jobTtlMs).toBe(1_800_000);
+    vi.stubEnv("SHELL_JOB_TTL_MS", "");
+    expect(loadShellConfig().jobTtlMs).toBe(1_800_000);
+    vi.stubEnv("SHELL_JOB_TTL_MS", "60000");
+    expect(loadShellConfig().jobTtlMs).toBe(60_000);
+    vi.stubEnv("SHELL_JOB_TTL_MS", "10800000");
+    expect(loadShellConfig().jobTtlMs).toBe(10_800_000);
   });
 
   it.each(["0", "-1"])(
@@ -111,6 +142,8 @@ describe("loadShellConfig", () => {
     ["SHELL_PENDING_MAX_OUTPUT_CHARS", "1000001", 1, 1_000_000],
     ["SHELL_BACKGROUND_MS", "9", 10, 120_000],
     ["SHELL_BACKGROUND_MS", "120001", 10, 120_000],
+    ["SHELL_JOB_TTL_MS", "59999", 60_000, 10_800_000],
+    ["SHELL_JOB_TTL_MS", "10800001", 60_000, 10_800_000],
   ])("rejects out-of-range %s=%s", (name, value, minimum, maximum) => {
     vi.stubEnv(name, value);
 
@@ -125,12 +158,14 @@ describe("loadShellConfig", () => {
     vi.stubEnv("SHELL_MAX_OUTPUT_CHARS", "1000000");
     vi.stubEnv("SHELL_PENDING_MAX_OUTPUT_CHARS", "1");
     vi.stubEnv("SHELL_BACKGROUND_MS", "120000");
+    vi.stubEnv("SHELL_JOB_TTL_MS", "10800000");
 
     expect(loadShellConfig()).toMatchObject({
       timeout: 2_147_483_647,
       maxOutputChars: 1_000_000,
       pendingMaxOutputChars: 1,
       defaultBackgroundMs: 120_000,
+      jobTtlMs: 10_800_000,
     });
   });
 });

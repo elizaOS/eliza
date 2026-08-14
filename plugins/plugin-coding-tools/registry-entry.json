@@ -3,22 +3,10 @@
   "name": "Coding Tools",
   "description": "Native coding tools (FILE, SHELL, WORKTREE) running directly in the agent. AST-validated commands, mtime-gated writes, sealed workspace roots, optional per-OS process sandboxing (sandbox-exec on macOS, bwrap on Linux).",
   "npmName": "@elizaos/plugin-coding-tools",
-  "shortIds": [
-    "coding-agent",
-    "codingAgent",
-    "coding-tools",
-    "codingTools"
-  ],
+  "shortIds": ["coding-agent", "codingAgent", "coding-tools", "codingTools"],
   "version": "0.1.0",
   "source": "bundled",
-  "tags": [
-    "coding",
-    "filesystem",
-    "shell",
-    "git",
-    "code",
-    "claude-code"
-  ],
+  "tags": ["coding", "filesystem", "shell", "git", "code", "claude-code"],
   "config": {
     "CODING_TOOLS_WORKSPACE_ROOTS": {
       "type": "string",
@@ -70,7 +58,7 @@
       "required": false,
       "sensitive": false,
       "label": "Finished-session TTL",
-      "help": "How long finished-process records are kept before the registry sweeper evicts them. Must be a canonical decimal integer from 60000 through 10800000; invalid values fail before the plugin starts.",
+      "help": "How long finished-process records are kept before the registry sweeper evicts them. Defaults to 1800000 ms; must be a canonical decimal integer from 60000 through 10800000, and invalid values fail before the plugin starts.",
       "advanced": true,
       "min": 60000,
       "max": 10800000,
@@ -84,10 +72,7 @@
     "icon": "Puzzle",
     "group": "devtools",
     "groupOrder": 5,
-    "actions": [
-      "enable",
-      "configure"
-    ]
+    "actions": ["enable", "configure"]
   },
   "resources": {
     "homepage": "https://github.com/elizaos/eliza#readme",

@@ -12,7 +12,6 @@ export {
   listRunningSessions,
   markBackgrounded,
   markExited,
-  parseJobTtlMs,
   resetProcessRegistryForTests,
   setJobTtlMs,
   tail,
