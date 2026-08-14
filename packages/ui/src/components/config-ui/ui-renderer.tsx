@@ -251,11 +251,11 @@ function referencesSensitiveState(
 function sensitiveStatePaths(ctx: UiRendererContext): ReadonlySet<string> {
   const paths = new Set<string>();
   for (const element of Object.values(ctx.spec.elements)) {
-    const statePath = element.props.statePath;
+    const props = element.props ?? {};
+    const statePath = props.statePath;
     if (typeof statePath !== "string") continue;
-    const props = element.props as { secret?: unknown; sensitive?: unknown };
     if (
-      element.props.type === "password" ||
+      props.type === "password" ||
       props.secret === true ||
       props.sensitive === true
     ) {

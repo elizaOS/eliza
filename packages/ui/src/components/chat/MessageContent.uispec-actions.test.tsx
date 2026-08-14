@@ -291,6 +291,32 @@ describe("MessageUiSpecBlock plugin actions", () => {
     );
   });
 
+  it("dispatches an action when another element omits props", async () => {
+    const spec = pluginConfigSpec();
+    (spec.elements.application as { props?: Record<string, unknown> }).props =
+      undefined;
+    spec.elements.save.on = {
+      press: {
+        action: "inspect",
+        params: { network: "bsc" },
+      },
+    };
+    const { sendActionMessage } = withApp(
+      <MessageUiSpecBlock spec={spec} raw={JSON.stringify(spec)} />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Save configuration" }));
+
+    await waitFor(() => {
+      expect(sendActionMessage).toHaveBeenCalledWith(
+        '[action:inspect] {"network":"bsc"}',
+      );
+    });
+    expect(
+      screen.queryByRole("alert", { name: "Interactive action unavailable" }),
+    ).toBeNull();
+  });
+
   it("redacts a secret-declared field that is not a password input", async () => {
     // A seed phrase in a Textarea, or a text Input labelled "Private key",
     // cannot use `type: "password"`. Declaring `secret` must keep it out of
