@@ -151,6 +151,13 @@ export {
 	sanitizeSpawnEnv,
 } from "./spawn-env-policy.js";
 export {
+	composeToolDiagnosticRedactor,
+	projectToolDiagnosticArgs,
+	projectToolDiagnosticValue,
+	TOOL_DIAGNOSTIC_MASK,
+	type ToolDiagnosticTextRedactor,
+} from "./tool-diagnostics.js";
+export {
 	attestAuthenticatedApiDeliveryAudience,
 	attestDeliveryAudienceFromCanonicalRoom,
 	authorizeOwnerExclusiveDisclosure,
