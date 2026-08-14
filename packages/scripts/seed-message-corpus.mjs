@@ -215,7 +215,17 @@ function iso(ms) {
 }
 
 async function main() {
-  const options = parseArgs(process.argv.slice(2));
+  let options;
+  try {
+    options = parseArgs(process.argv.slice(2));
+  } catch (err) {
+    // error-policy:J1 CLI usage boundary — malformed flags exit 2 per the
+    // #19601 contract; runtime/network failures below keep exit 1.
+    process.stderr.write(
+      `${err instanceof Error ? err.message : String(err)}\n`,
+    );
+    process.exit(2);
+  }
   const base = `http://${options.host}:${options.apiPort}`;
 
   process.stdout.write(`Seeding backdated message corpus via ${base} ...\n`);

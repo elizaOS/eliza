@@ -151,6 +151,10 @@ describe("dev-all CLI boundary", () => {
       ["DEV_ALL_FRONTEND_PORT", "abc"],
       ["DEV_ALL_CLOUD_API_PORT", "080"],
       ["DEV_ALL_CLOUD_DB_PORT", "0"],
+      // envDefault's trim used to normalize these before the canonical
+      // parser saw them, so " 4242 " completed a dry-run with exit 0.
+      ["DEV_ALL_FRONTEND_PORT", " 4242 "],
+      ["DEV_ALL_AGENT_API_PORT", "\t31337"],
     ]) {
       const result = runCli(["--dry-run", "--no-prepare"], { [key]: value });
       expect(result.status).toBe(2);
@@ -159,5 +163,13 @@ describe("dev-all CLI boundary", () => {
       expect(result.stderr).not.toContain("at parseCanonicalInt");
       expect(result.stderr).not.toContain("Bun v");
     }
+  });
+
+  test("blank port envs keep defaults while whitespace-padded values fail", () => {
+    const result = runCli(["--dry-run", "--no-prepare"], {
+      DEV_ALL_FRONTEND_PORT: "   ",
+    });
+    expect(result.status).toBe(0);
+    expect(`${result.stdout}${result.stderr}`).toContain("localhost:2138");
   });
 });

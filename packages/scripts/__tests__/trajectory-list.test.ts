@@ -145,7 +145,7 @@ describe("trajectory list", () => {
       // "flag omitted"), so both used to succeed with the wrong row count.
       for (const bad of ["1e3", "abc", "20foo", "-5", "0x10", "0", " 2 "]) {
         const result = runList(directory, ["--limit", bad]);
-        expect(result.status).not.toBe(0);
+        expect(result.status).toBe(2);
         expect(result.stderr).toContain("--limit");
         expect(result.stdout).not.toContain("row-");
       }
@@ -165,7 +165,7 @@ describe("trajectory list", () => {
         ["--limit="],
       ]) {
         const result = runList(directory, args);
-        expect(result.status).not.toBe(0);
+        expect(result.status).toBe(2);
         expect(result.stderr).toContain("--limit requires a value");
         expect(result.stdout).not.toContain("must-not-list");
       }

@@ -59,8 +59,11 @@ const DEFAULT_PORT = 31338;
 const HOST = "127.0.0.1";
 
 function resolveConsolePort(env = process.env) {
-  const raw = env.ELIZA_TEST_CONSOLE_PORT?.trim();
-  return raw ? parseTcpPort(raw, "ELIZA_TEST_CONSOLE_PORT") : DEFAULT_PORT;
+  const raw = env.ELIZA_TEST_CONSOLE_PORT;
+  // Trim decides only present-vs-blank; the raw value reaches the canonical
+  // parser untouched so " 65431 " is rejected instead of silently accepted.
+  if (raw === undefined || raw.trim() === "") return DEFAULT_PORT;
+  return parseTcpPort(raw, "ELIZA_TEST_CONSOLE_PORT");
 }
 
 export const runManager = new RunManager();

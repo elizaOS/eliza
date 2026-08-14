@@ -111,28 +111,23 @@ export function resolveServiceStartupTimeoutMs(env = process.env) {
   );
 }
 
+// Ports must not reuse envDefault: its trim would normalize " 4242 " before
+// the canonical parser could reject it. Unset/blank keeps the default; any
+// present value reaches parseTcpPort exactly as the operator wrote it.
+function portEnv(name, fallback) {
+  const raw = process.env[name];
+  if (raw === undefined || raw.trim() === "")
+    return parseTcpPort(fallback, name);
+  return parseTcpPort(raw, name);
+}
+
 function resolvePorts() {
   return {
-    agentApi: parseTcpPort(
-      envDefault("DEV_ALL_AGENT_API_PORT", "31337"),
-      "DEV_ALL_AGENT_API_PORT",
-    ),
-    frontend: parseTcpPort(
-      envDefault("DEV_ALL_FRONTEND_PORT", "2138"),
-      "DEV_ALL_FRONTEND_PORT",
-    ),
-    cloudWeb: parseTcpPort(
-      envDefault("DEV_ALL_CLOUD_WEB_PORT", "3000"),
-      "DEV_ALL_CLOUD_WEB_PORT",
-    ),
-    cloudApi: parseTcpPort(
-      envDefault("DEV_ALL_CLOUD_API_PORT", "8787"),
-      "DEV_ALL_CLOUD_API_PORT",
-    ),
-    cloudDb: parseTcpPort(
-      envDefault("DEV_ALL_CLOUD_DB_PORT", "55432"),
-      "DEV_ALL_CLOUD_DB_PORT",
-    ),
+    agentApi: portEnv("DEV_ALL_AGENT_API_PORT", "31337"),
+    frontend: portEnv("DEV_ALL_FRONTEND_PORT", "2138"),
+    cloudWeb: portEnv("DEV_ALL_CLOUD_WEB_PORT", "3000"),
+    cloudApi: portEnv("DEV_ALL_CLOUD_API_PORT", "8787"),
+    cloudDb: portEnv("DEV_ALL_CLOUD_DB_PORT", "55432"),
   };
 }
 

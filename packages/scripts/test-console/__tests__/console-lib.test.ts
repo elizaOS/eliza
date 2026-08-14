@@ -312,21 +312,25 @@ describe("server entrypoint", () => {
 
   test("rejects an invalid configured port through the startup boundary", () => {
     const serverPath = fileURLToPath(new URL("../server.mjs", import.meta.url));
-    const result = spawnSync("node", [serverPath], {
-      encoding: "utf8",
-      env: {
-        ...process.env,
-        ELIZA_TEST_CONSOLE_PORT: "1e4",
-      },
-    });
+    // " 65431 " is here because a pre-parse trim used to normalize it and the
+    // server started listening on 65431 instead of failing usage.
+    for (const value of ["1e4", " 65431 ", "\t31338"]) {
+      const result = spawnSync("node", [serverPath], {
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          ELIZA_TEST_CONSOLE_PORT: value,
+        },
+      });
 
-    expect(result.status).toBe(2);
-    expect(result.stdout).toBe("");
-    expect(result.stderr).toContain(
-      "[TestConsole] ELIZA_TEST_CONSOLE_PORT must be a whole decimal integer from 1 to 65535",
-    );
-    expect(result.stderr).not.toContain("at parseCanonicalInt");
-    expect(result.stderr).not.toContain("Node.js v");
+      expect(result.status).toBe(2);
+      expect(result.stdout).toBe("");
+      expect(result.stderr).toContain(
+        "[TestConsole] ELIZA_TEST_CONSOLE_PORT must be a whole decimal integer from 1 to 65535",
+      );
+      expect(result.stderr).not.toContain("at parseCanonicalInt");
+      expect(result.stderr).not.toContain("Node.js v");
+    }
   });
 });
 

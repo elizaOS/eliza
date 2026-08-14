@@ -158,7 +158,7 @@ describe("seed-message-corpus CLI boundary", () => {
       "1.5",
     ]) {
       const result = runCli([`--api-port=${value}`]);
-      expect(result.status).not.toBe(0);
+      expect(result.status).toBe(2);
       const combined = `${result.stdout}${result.stderr}`;
       expect(combined).toMatch(
         /--api-port must be a TCP port integer from 1 to 65535/,
@@ -170,7 +170,7 @@ describe("seed-message-corpus CLI boundary", () => {
   test("rejects invalid ELIZA_API_PORT before any seed request", () => {
     for (const value of ["0", "notaport", "31337junk", " 31337 ", "99999"]) {
       const result = runCli([], { ELIZA_API_PORT: value });
-      expect(result.status).not.toBe(0);
+      expect(result.status).toBe(2);
       const combined = `${result.stdout}${result.stderr}`;
       expect(combined).toMatch(
         /ELIZA_API_PORT must be a TCP port integer from 1 to 65535/,
@@ -184,7 +184,7 @@ describe("seed-message-corpus CLI boundary", () => {
       ELIZA_API_PORT: "notaport",
     });
     const combined = `${result.stdout}${result.stderr}`;
-    expect(result.status).not.toBe(0);
+    expect(result.status).toBe(2);
     expect(combined).toContain("--messages must be an integer");
     expect(combined).not.toContain("ELIZA_API_PORT must be");
     expect(combined).not.toContain("Seeding backdated message corpus");
