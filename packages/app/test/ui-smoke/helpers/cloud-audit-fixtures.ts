@@ -163,6 +163,13 @@ const prefix = (p: string) => (pathname: string) => pathname.startsWith(p);
 
 // NOTE: table order matters — first match wins.
 const STUB_RULES: StubRule[] = [
+  // StewardProviderRuntime mirrors the seeded browser token into the server's
+  // HttpOnly session cookie before protected Cloud routes render.
+  {
+    method: "POST",
+    match: path_("/api/auth/steward-session"),
+    body: { success: true },
+  },
   // Normal app-shell hydration follows the selected managed agent's dedicated
   // origin. Keep that real request path deterministic while Cloud management
   // pages mount inside the shell.
@@ -265,6 +272,19 @@ const STUB_RULES: StubRule[] = [
         lastActiveAt: NOW_ISO,
       },
     },
+  },
+  {
+    match: path_("/api/v1/eliza/agents/agent-smoke-1/backups"),
+    body: { success: true, data: [] },
+  },
+  {
+    match: path_("/api/compat/agents/agent-smoke-1/logs"),
+    body: { success: true, data: "" },
+  },
+  {
+    method: "POST",
+    match: path_("/api/views/cloud/elements"),
+    body: { success: true },
   },
   // my-agents characters/saved lists.
   {

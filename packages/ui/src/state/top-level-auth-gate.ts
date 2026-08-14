@@ -57,9 +57,11 @@ export function authProbeShouldHoldShell(
   coordinatorPhase: string,
   firstRunComplete: boolean | null | undefined,
   authPhase: string,
+  shellAlreadyMounted = false,
 ): boolean {
   return (
     authPhase === "loading" &&
+    !shellAlreadyMounted &&
     !firstRunOwnsLoginSurface(coordinatorPhase, firstRunComplete)
   );
 }

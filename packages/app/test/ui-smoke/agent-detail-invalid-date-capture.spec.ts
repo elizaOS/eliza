@@ -8,12 +8,25 @@
  */
 import { expect, test } from "@playwright/test";
 import {
+  expectNoPageDiagnostics,
+  installDefaultAppRoutes,
+  installPageDiagnosticsGuard,
+  seedAppStorage,
+} from "./helpers";
+import {
   installCloudApiStubs,
   seedStewardToken,
 } from "./helpers/cloud-audit-fixtures";
-import { installDefaultAppRoutes, seedAppStorage } from "./helpers";
 
 test.use({ video: "on" });
+
+test.beforeEach(({ page }) => {
+  installPageDiagnosticsGuard(page);
+});
+
+test.afterEach(async ({ page }, testInfo) => {
+  await expectNoPageDiagnostics(page, testInfo.title);
+});
 
 test("agent detail page renders explicit fallbacks for a malformed agent timestamp", async ({
   page,

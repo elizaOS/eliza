@@ -26,6 +26,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   useSyncExternalStore,
 } from "react";
@@ -1826,7 +1827,13 @@ function ShellFoundationMount() {
  * including the /chat route's ambient home. Returns null until a controller
  * provider is present.
  */
-function ChatOverlayMount(): ReactNode {
+function ChatOverlayMount({
+  releaseFirstRunToHalf,
+  onFirstRunReleaseHandled,
+}: {
+  releaseFirstRunToHalf: boolean;
+  onFirstRunReleaseHandled: () => void;
+}): ReactNode {
   const controller = useShellControllerContext();
   const { characterData, agentStatus, firstRunComplete } =
     useAppSelectorShallow((s) => ({
@@ -1855,6 +1862,8 @@ function ChatOverlayMount(): ReactNode {
       agentName={agentName}
       slash={slash}
       firstRunOpen={firstRunComplete === false}
+      releaseFirstRunToHalf={releaseFirstRunToHalf}
+      onFirstRunReleaseHandled={onFirstRunReleaseHandled}
     />
   );
 }
@@ -1995,6 +2004,36 @@ function AppContent() {
     startupCoordinator.phase,
     firstRunCloudProvisionedContainer,
   );
+  // The first-run chat must survive its completion edge. Completion starts an
+  // auth probe, but replacing the already-painted shell with StartupScreen
+  // remounts ChatOverlay and loses its FULL -> HALF transition state. Returning
+  // sessions still hold before their first shell paint; only a shell that
+  // actually hosted onboarding may remain mounted while this probe resolves.
+  const firstRunShellPaintedRef = useRef(false);
+  // Record during render rather than an effect: stored-session adoption can
+  // complete onboarding in the same commit that first paints the shell, so an
+  // effect would run too late to protect the immediately-following auth probe.
+  if (
+    isShellPaintableNow &&
+    !bootstrapGateHolds &&
+    firstRunComplete === false
+  ) {
+    firstRunShellPaintedRef.current = true;
+  }
+  // Runtime-target adoption can remount the shell on the exact render where
+  // first-run completes. Retain that completion edge above the remount and let
+  // the next ChatOverlay acknowledge it after applying the HALF detent.
+  const firstRunWasIncompleteRef = useRef(firstRunComplete === false);
+  const firstRunReleasePendingRef = useRef(false);
+  if (firstRunComplete === false) {
+    firstRunWasIncompleteRef.current = true;
+  } else if (firstRunComplete === true && firstRunWasIncompleteRef.current) {
+    firstRunWasIncompleteRef.current = false;
+    firstRunReleasePendingRef.current = true;
+  }
+  const handleFirstRunReleaseHandled = useCallback(() => {
+    firstRunReleasePendingRef.current = false;
+  }, []);
 
   useEffect(() => {
     if (!isShellPaintableNow) return;
@@ -2677,6 +2716,7 @@ function AppContent() {
         startupCoordinator.phase,
         firstRunComplete,
         authState.phase,
+        firstRunShellPaintedRef.current,
       )
     ) {
       return (
@@ -2939,7 +2979,10 @@ function AppContent() {
           is pointer-events-none except its own composer/messages, so the view
           behind stays live.
         */}
-        <ChatOverlayMount />
+        <ChatOverlayMount
+          releaseFirstRunToHalf={firstRunReleasePendingRef.current}
+          onFirstRunReleaseHandled={handleFirstRunReleaseHandled}
+        />
         {/* In-chat first-run conductor (headless) — while firstRunComplete is
             false it seeds the onboarding greeting + choices into the SAME live
             transcript the overlay renders and routes first-run picks to the
