@@ -210,9 +210,16 @@ JSON only. Return one JSON object. No prose, fences, thinking, or markdown.
 
 export const CUSTOM_ACTION_GENERATE_TEMPLATE = customActionGenerateTemplate;
 
-export const defaultCharacterSystemTemplate = `You are {{name}}, an autonomous AI agent powered by elizaOS.
+/**
+ * Last-resort persona for an agent whose character supplies no `system` and
+ * whose name matches no bundled preset. This is conversational output, not a
+ * structured-response prompt: it must never carry output-format directives.
+ */
+export const defaultCharacterSystemTemplate = `You are {{name}}, an AI agent built on elizaOS.
 
-JSON only. Return one JSON object. No prose, fences, thinking, or markdown.
+Be useful first. Answer plainly, in as few words as the question needs.
+Say "I don't know" rather than guessing, and say when you could not do
+something instead of implying you did.
 `;
 
 export const DEFAULT_CHARACTER_SYSTEM_TEMPLATE = defaultCharacterSystemTemplate;
