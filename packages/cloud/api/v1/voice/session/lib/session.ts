@@ -93,6 +93,17 @@ const MAX_OUTSTANDING_METER_WINDOWS = 2;
 const VOICE_TTS_FIRST_CLAUSE_CHARS = 24;
 /** Human-readable interim captions do not benefit from provider-rate redraws. */
 const STT_PARTIAL_EMIT_INTERVAL_MS = 40;
+/**
+ * Cold shared-runtime turns can cross several independent cache boundaries.
+ * Retry the same trace/idempotency key long enough for their waitUntil fills to
+ * land, while keeping the total first-turn penalty bounded below eight seconds.
+ */
+const CACHE_WARMING_RETRY_DELAYS_MS = [250, 500, 1_000, 2_000, 4_000] as const;
+const CACHE_WARMING_CODES = new Set([
+  "agent_cache_warming",
+  "shared_runtime_cache_warming",
+  "conversation_cache_warming",
+]);
 
 // Cartesia's server buffers streamed transcript for up to 3000ms by default
 // before starting synthesis, which measured ~2.7s of the speaking_start gap on
@@ -132,6 +143,8 @@ export interface VoiceSessionConfig {
   fetchImpl?: typeof fetch;
   /** Session-start DB/tenancy warmup, injected only by the live Worker route. */
   prewarmElizaContext?: () => Promise<void>;
+  /** Deterministic test override; production uses bounded exponential backoff. */
+  cacheWarmingRetryDelaysMs?: readonly number[];
 
   // Metering (SEC-15). Server-derived only.
   usageStore: VoiceUsageStore;
@@ -685,49 +698,85 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
       // adapter, so consume that designed rejection on fast teardown.
       void prewarmedTts.opened.catch(() => undefined);
 
-      const result = await streamElizaConversation(
-        {
-          endpoint: this.config.elizaEndpoint,
-          authorization: this.config.elizaAuthorization,
-          model: this.config.elizaModel,
-          transcript,
-          agentId: this.config.agentId,
-          conversationId: this.config.conversationId,
-          organizationId: this.config.organizationId,
-          userId: this.config.userId,
-          traceId,
-          signal: abort.signal,
-          fetchImpl: this.config.fetchImpl,
-        },
-        (delta) => {
-          if (this.currentVoiceTurnId !== traceId) return;
-          if (!this.firstLlmTextEmitted) {
-            this.firstLlmTextEmitted = true;
-            this.send({ t: "llm_first_text", traceId });
+      const request = {
+        endpoint: this.config.elizaEndpoint,
+        authorization: this.config.elizaAuthorization,
+        model: this.config.elizaModel,
+        transcript,
+        agentId: this.config.agentId,
+        conversationId: this.config.conversationId,
+        organizationId: this.config.organizationId,
+        userId: this.config.userId,
+        traceId,
+        signal: abort.signal,
+        fetchImpl: this.config.fetchImpl,
+      };
+      const onDelta = (delta: string) => {
+        if (this.currentVoiceTurnId !== traceId) return;
+        if (!this.firstLlmTextEmitted) {
+          this.firstLlmTextEmitted = true;
+          this.send({ t: "llm_first_text", traceId });
+        }
+        // Cartesia closes a synthesis context via the FINAL non-empty phrase
+        // carrying continue:false. Holding a whole sentence until LLM stream
+        // completion added seconds to first audio for one-sentence replies.
+        // Send the speakable prefix immediately and retain only its last word
+        // as the eventual terminal phrase. A following phrase first flushes
+        // the retained suffix with continue:true.
+        const phrases = phrase.push(delta);
+        for (const p of phrases) {
+          this.turnTtsChars += p.length;
+          const stream = ensureTts();
+          if (pendingPhrase !== null) {
+            stream.sendPhrase({ text: pendingPhrase, continueContext: true });
           }
-          // Cartesia closes a synthesis context via the FINAL non-empty phrase
-          // carrying continue:false. Holding a whole sentence until LLM stream
-          // completion added seconds to first audio for one-sentence replies.
-          // Send the speakable prefix immediately and retain only its last word
-          // as the eventual terminal phrase. A following phrase first flushes
-          // the retained suffix with continue:true.
-          const phrases = phrase.push(delta);
-          for (const p of phrases) {
-            this.turnTtsChars += p.length;
-            const stream = ensureTts();
-            if (pendingPhrase !== null) {
-              stream.sendPhrase({ text: pendingPhrase, continueContext: true });
-            }
-            const split = splitTerminalSuffix(p);
-            if (split) {
-              stream.sendPhrase({ text: split.prefix, continueContext: true });
-              pendingPhrase = split.suffix;
-            } else {
-              pendingPhrase = p;
-            }
+          const split = splitTerminalSuffix(p);
+          if (split) {
+            stream.sendPhrase({ text: split.prefix, continueContext: true });
+            pendingPhrase = split.suffix;
+          } else {
+            pendingPhrase = p;
           }
-        },
-      );
+        }
+      };
+      const retryDelays =
+        this.config.cacheWarmingRetryDelaysMs ?? CACHE_WARMING_RETRY_DELAYS_MS;
+      let result: Awaited<ReturnType<typeof streamElizaConversation>>;
+      for (let attempt = 0; ; attempt += 1) {
+        try {
+          result = await streamElizaConversation(request, onDelta);
+          break;
+        } catch (error) {
+          const bridgeError =
+            error instanceof ElizaSseBridgeError ? error : undefined;
+          const retryDelay = retryDelays[attempt];
+          if (
+            retryDelay === undefined ||
+            !bridgeError?.retryable ||
+            bridgeError.status !== 503 ||
+            !bridgeError.upstreamCode ||
+            !CACHE_WARMING_CODES.has(bridgeError.upstreamCode) ||
+            abort.signal.aborted ||
+            this.currentVoiceTurnId !== traceId
+          ) {
+            throw error;
+          }
+          await new Promise<void>((resolve) => {
+            const timeout = setTimeout(resolve, retryDelay);
+            abort.signal.addEventListener(
+              "abort",
+              () => {
+                clearTimeout(timeout);
+                resolve();
+              },
+              { once: true },
+            );
+          });
+          if (abort.signal.aborted || this.currentVoiceTurnId !== traceId) {
+            return;
+          }
+        }
+      }
 
       if (this.currentVoiceTurnId !== traceId) return; // interrupted mid-stream.
 
