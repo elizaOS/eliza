@@ -111,7 +111,13 @@ describe("deterministic canaries", () => {
     );
 
     try {
-      const result = spawnSync(process.execPath, [linkedScript], {
+      // Pinned to "node", not process.execPath: this required lane runs under
+      // Bun (run-script-tests.mjs hands every discovered test to Bun), so
+      // process.execPath resolves to the Bun binary. The production
+      // entrypoint (.github/workflows/security-advisory-gate.yml) always runs
+      // under Node - pinning here is what makes this test actually exercise
+      // the import.meta.main guard on the runtime it needs to work on.
+      const result = spawnSync("node", [linkedScript], {
         encoding: "utf8",
         env: { ...process.env, CANARY_SCENARIO: "bypass" },
       });
