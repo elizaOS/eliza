@@ -19,14 +19,6 @@ function tempDir() {
   return dir;
 }
 
-function writeAppManifest(appPath: string, buildId: string) {
-  mkdirSync(path.join(appPath, "public"), { recursive: true });
-  writeFileSync(
-    rendererManifestPathFromAppPath(appPath),
-    JSON.stringify({ buildId, builtAt: "2026-07-04T00:00:00.000Z" }),
-  );
-}
-
 afterEach(() => {
   for (const dir of tempDirs.splice(0)) {
     rmSync(dir, { recursive: true, force: true });
@@ -37,11 +29,11 @@ describe("iOS renderer stamp", () => {
   it("accepts matching fresh and installed build ids", () => {
     expect(
       compareRendererBuildIds({
-        fresh: { buildId: "abc", builtAt: "now" },
-        installed: { buildId: "abc" },
+        fresh: { buildId: "abc", commit: "deadbeef", builtAt: "now" },
+        installed: { buildId: "abc", commit: "deadbeef" },
         label: "candidate app",
       }),
-    ).toEqual({ buildId: "abc", builtAt: "now" });
+    ).toEqual({ buildId: "abc", commit: "deadbeef", builtAt: "now" });
   });
 
   it("rejects stale installed renderer manifests", () => {
@@ -54,19 +46,51 @@ describe("iOS renderer stamp", () => {
     ).toThrow(/stale UI install/);
   });
 
+  it("rejects equal build ids carrying different commits", () => {
+    expect(() =>
+      compareRendererBuildIds({
+        fresh: { buildId: "same", commit: "fresh" },
+        installed: { buildId: "same", commit: "stale" },
+        label: "installed app",
+      }),
+    ).toThrow(/inconsistent build stamp/);
+  });
+
+  it("does not infer an absent installed commit from the fresh manifest", () => {
+    expect(
+      compareRendererBuildIds({
+        fresh: { buildId: "same", commit: "deadbeef" },
+        installed: { buildId: "same", commit: null },
+      }),
+    ).toEqual({ buildId: "same", commit: null, builtAt: null });
+  });
+
   it("compares a candidate app bundle against the freshly built dist manifest", () => {
     const repoRoot = tempDir();
     const appPath = path.join(repoRoot, "Candidate.app");
     const dist = path.join(repoRoot, "packages", "app", "dist");
     mkdirSync(dist, { recursive: true });
-    writeAppManifest(appPath, "same");
+    mkdirSync(path.join(appPath, "public"), { recursive: true });
+    writeFileSync(
+      rendererManifestPathFromAppPath(appPath),
+      JSON.stringify({
+        buildId: "same",
+        commit: "deadbeef",
+        builtAt: "2026-07-04T00:00:00.000Z",
+      }),
+    );
     writeFileSync(
       path.join(dist, "eliza-renderer-build.json"),
-      JSON.stringify({ buildId: "same", builtAt: "later" }),
+      JSON.stringify({
+        buildId: "same",
+        commit: "deadbeef",
+        builtAt: "later",
+      }),
     );
 
     expect(assertIosAppRendererFresh({ appPath, repoRoot })).toEqual({
       buildId: "same",
+      commit: "deadbeef",
       builtAt: "later",
     });
   });

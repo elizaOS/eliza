@@ -88,8 +88,20 @@ export function compareRendererBuildIds({
       `${label} renderer buildId ${installed.buildId} != freshly built ${fresh.buildId} - stale UI install.`,
     );
   }
+  const freshCommit = fresh.commit ?? null;
+  const installedCommit = installed.commit ?? null;
+  if (
+    freshCommit !== null &&
+    installedCommit !== null &&
+    freshCommit !== installedCommit
+  ) {
+    throw new Error(
+      `${label} renderer commit ${installedCommit} != freshly built ${freshCommit} - inconsistent build stamp.`,
+    );
+  }
   return {
     buildId: fresh.buildId,
+    commit: installedCommit,
     builtAt: fresh.builtAt ?? null,
   };
 }

@@ -13,7 +13,8 @@
 //
 // Flags: --device <name|udid>  --app-path <App.app>  --skip-build
 //        --skip-local-chat  --skip-auth  --cloud  --no-wait  --output <dir>
-import { execFileSync, spawn, spawnSync } from "node:child_process";
+//        --artifact-source <file|dir> (repeatable; copied into the bundle)
+import { execFileSync, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -41,7 +42,9 @@ import {
   finalizeDeviceE2eBundle,
   finishBundleStep,
   formatFailureForensicsBlock,
+  getDeviceE2eBundleFinalizationError,
   recordBundleArtifact,
+  recordBundleRunnerFailure,
   runBundledCommand,
   setBundleBuild,
   setBundleDevice,
@@ -54,12 +57,12 @@ import {
 } from "./lib/ios-renderer-stamp.mjs";
 import { clearIosSmokeDefaults } from "./lib/ios-sim-defaults-hygiene.mjs";
 import { findLatestBuiltIosSimulatorApp } from "./lib/ios-simulator-app-product.mjs";
+import { startIosSimulatorVideo } from "./lib/ios-simulator-capture.mjs";
 
 const appDir = path.resolve(fileURLToPath(import.meta.url), "..", "..");
 const repoRoot = path.resolve(appDir, "..", "..");
 const flags = parseIosE2eArgs(process.argv);
 const log = (m) => console.log(`[ios-e2e] ${m}`);
-const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 function readAppIdentity() {
   const configPath = path.join(appDir, "app.config.ts");
@@ -150,29 +153,16 @@ function captureSimulatorScreenshot(bundle, udid) {
 }
 
 async function recordSimulatorVideo(bundle, udid, durationSeconds = 3) {
-  const outPath = path.join(bundle.rawDir, "ios-final.mov");
-  const recorder = spawn(
-    "xcrun",
-    [
-      "simctl",
-      "io",
-      udid,
-      "recordVideo",
-      "--codec",
-      "h264",
-      "--force",
-      outPath,
-    ],
-    { stdio: "ignore" },
+  const recording = startIosSimulatorVideo({
+    target: udid,
+    artifactDir: bundle.rawDir,
+    filename: "ios-final.mp4",
+    log,
+  });
+  await new Promise((resolve) =>
+    setTimeout(resolve, Math.max(1, durationSeconds) * 1000),
   );
-  await delay(Math.max(1, durationSeconds) * 1000);
-  recorder.kill("SIGINT");
-  await Promise.race([
-    new Promise((resolve) => recorder.once("close", resolve)),
-    delay(5_000),
-  ]);
-  if (!fs.existsSync(outPath)) return null;
-  return outPath;
+  return recording.stop();
 }
 
 function captureSimulatorLog(bundle, udid, appId) {
@@ -416,6 +406,7 @@ async function main() {
   });
   let finalResult = "failed";
   let finalError = null;
+  let finalizationError = null;
   let lease = null;
   let udid = null;
   let appId = null;
@@ -452,7 +443,7 @@ async function main() {
     log("ALL iOS E2E PASSED ✅");
   } catch (error) {
     finalError = error;
-    throw error;
+    recordBundleRunnerFailure(bundle, error);
   } finally {
     if (udid && appId) {
       try {
@@ -490,16 +481,40 @@ async function main() {
       }
     }
     if (udid && appId) {
-      clearIosSmokeDefaults({ udid, bundleId: appId, log });
+      try {
+        clearIosSmokeDefaults({ udid, bundleId: appId, log });
+      } catch (error) {
+        bundle.warnings.push(
+          `iOS smoke-default cleanup failed: ${error?.message ?? error}`,
+        );
+      }
     }
-    lease?.release();
-    const bundleRoot = finalizeDeviceE2eBundle(bundle, finalResult);
+    try {
+      lease?.release();
+    } catch (error) {
+      bundle.warnings.push(
+        `iOS simulator lease release failed: ${error?.message ?? error}`,
+      );
+    }
+    const bundleRoot = finalizeDeviceE2eBundle(bundle, finalResult, {
+      sourceDirs: flags.artifactSources,
+      requiredEvidence: {
+        buildId: true,
+        commit: true,
+        inlineScreenshot: true,
+        inlineVideo: true,
+        logs: true,
+      },
+    });
+    finalizationError = getDeviceE2eBundleFinalizationError(bundle);
     if (finalError) {
       const block = formatFailureForensicsBlock(bundle, finalError);
       if (block) process.stderr.write(`\n${block}`);
     }
     log(`bundle: ${bundleRoot}`);
   }
+  if (finalError) throw finalError;
+  if (finalizationError) throw finalizationError;
 }
 main().catch((error) => {
   console.error(`[ios-e2e] FAILED: ${error?.message ?? error}`);

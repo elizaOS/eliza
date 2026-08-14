@@ -11,6 +11,7 @@ import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
+import { isFinalizedMp4 } from "./device-video.mjs";
 
 const require = createRequire(import.meta.url);
 
@@ -80,6 +81,7 @@ function slugifyStepName(name) {
 
 function walkFiles(root) {
   if (!root || !fs.existsSync(root)) return [];
+  if (isFile(root)) return [root];
   const files = [];
   const stack = [root];
   while (stack.length > 0) {
@@ -208,7 +210,10 @@ export function createDeviceE2eBundle({
     steps: [],
     artifacts: [],
     warnings: [],
+    validationErrors: [],
+    result: "running",
     _activeStep: null,
+    _finalizationError: null,
   };
   ensureDir(root);
   writeJson(path.join(root, "summary.json"), buildSummary(bundle, "running"));
@@ -254,8 +259,19 @@ export function failureDirForStep(bundle, step) {
 }
 
 export function recordBundleArtifact(bundle, filePath, kind, step = null) {
-  const absolute = path.resolve(filePath);
-  if (!isFile(absolute)) return null;
+  const sourcePath = path.resolve(filePath);
+  if (!isFile(sourcePath)) return null;
+  const sourceRelative = path.relative(bundle.root, sourcePath);
+  const isExternal =
+    sourceRelative === ".." ||
+    sourceRelative.startsWith(`..${path.sep}`) ||
+    path.isAbsolute(sourceRelative);
+  let absolute = sourcePath;
+  if (isExternal) {
+    const destinationDir = kind === "log" ? bundle.logsDir : bundle.rawDir;
+    absolute = uniquePath(destinationDir, path.basename(sourcePath));
+    fs.copyFileSync(sourcePath, absolute);
+  }
   const artifact = {
     kind,
     path: absolute,
@@ -318,6 +334,20 @@ export function formatFailureForensicsBlock(bundle, error) {
 
 export function appendRunnerLog(bundle, chunk) {
   fs.appendFileSync(path.join(bundle.logsDir, "runner.log"), chunk);
+}
+
+export function recordBundleRunnerFailure(bundle, error) {
+  const message = error?.message ?? error;
+  appendRunnerLog(bundle, `runner failure: ${message}\n`);
+  const activeStep = bundle._activeStep;
+  if (activeStep?.status === "running") {
+    finishBundleStep(bundle, activeStep, "failed", error);
+    return activeStep;
+  }
+  const existingFailure = bundle.steps.find((step) => step.status === "failed");
+  if (existingFailure) return existingFailure;
+  const step = startBundleStep(bundle, "runner failure");
+  return finishBundleStep(bundle, step, "failed", error);
 }
 
 export function runBundledCommand(
@@ -391,6 +421,12 @@ export function prepareInlineArtifacts(bundle) {
   for (const artifact of [...bundle.artifacts]) {
     const ext = path.extname(artifact.path).toLowerCase();
     if (INLINE_EXTENSIONS.has(ext)) {
+      if (ext === ".mp4" && !isFinalizedMp4(artifact.path)) {
+        bundle.warnings.push(
+          `could not publish unfinalized MP4 inline: ${artifact.path}`,
+        );
+        continue;
+      }
       const dest = uniquePath(bundle.inlineDir, path.basename(artifact.path));
       if (path.resolve(artifact.path) !== path.resolve(dest)) {
         fs.copyFileSync(artifact.path, dest);
@@ -478,22 +514,94 @@ function buildSummary(bundle, result) {
       sizeBytes: artifact.sizeBytes,
     })),
     warnings: bundle.warnings,
+    validationErrors: bundle.validationErrors,
     result,
   };
 }
 
-export function finalizeDeviceE2eBundle(bundle, result) {
+function hasInlineArtifact(bundle, extensions) {
+  return bundle.artifacts.some((artifact) => {
+    const relativePath = artifact.relativePath.replaceAll(path.sep, "/");
+    const extension = path.extname(artifact.path).toLowerCase();
+    return (
+      relativePath.startsWith("inline/") &&
+      extensions.has(extension) &&
+      (extension === ".mp4"
+        ? isFinalizedMp4(artifact.path)
+        : isNonEmptyFile(artifact.path))
+    );
+  });
+}
+
+function validateRequiredEvidence(bundle, requiredEvidence) {
+  const findings = [];
+  if (
+    requiredEvidence.buildId &&
+    (typeof bundle.build.buildId !== "string" ||
+      bundle.build.buildId.trim().length === 0)
+  ) {
+    findings.push("build.buildId is missing");
+  }
+  if (
+    requiredEvidence.commit &&
+    (typeof bundle.build.commit !== "string" ||
+      bundle.build.commit.trim().length === 0)
+  ) {
+    findings.push("build.commit is missing");
+  }
+  if (
+    requiredEvidence.inlineScreenshot &&
+    !hasInlineArtifact(bundle, new Set([".jpg", ".jpeg"]))
+  ) {
+    findings.push("inline JPG screenshot is missing");
+  }
+  if (
+    requiredEvidence.inlineVideo &&
+    !hasInlineArtifact(bundle, new Set([".mp4"]))
+  ) {
+    findings.push("inline MP4 walkthrough is missing");
+  }
+  if (
+    requiredEvidence.logs &&
+    !walkFiles(bundle.logsDir).some(isNonEmptyFile)
+  ) {
+    findings.push("logs/ has no non-empty log");
+  }
+  return findings;
+}
+
+export function getDeviceE2eBundleFinalizationError(bundle) {
+  return bundle._finalizationError;
+}
+
+export function finalizeDeviceE2eBundle(
+  bundle,
+  result,
+  { sourceDirs = [], requiredEvidence = {} } = {},
+) {
   collectBundleArtifacts(bundle, [
     bundle.rawDir,
     bundle.logsDir,
     bundle.reportsDir,
     path.join(bundle.root, "test-results"),
+    ...sourceDirs,
   ]);
   prepareInlineArtifacts(bundle);
-  writeBundleJunit(bundle, result);
+  bundle.validationErrors = validateRequiredEvidence(bundle, requiredEvidence);
+  let effectiveResult = result;
+  bundle._finalizationError = null;
+  if (result === "passed" && bundle.validationErrors.length > 0) {
+    const message = `device evidence bundle is incomplete: ${bundle.validationErrors.join("; ")}`;
+    const step = startBundleStep(bundle, "validate evidence bundle");
+    finishBundleStep(bundle, step, "failed", message);
+    effectiveResult = "failed";
+    bundle._finalizationError = new Error(message);
+  }
+  bundle.result = effectiveResult;
+  writeBundleJunit(bundle, effectiveResult);
   writeJson(
     path.join(bundle.root, "summary.json"),
-    buildSummary(bundle, result),
+    buildSummary(bundle, effectiveResult),
   );
   return bundle.root;
 }

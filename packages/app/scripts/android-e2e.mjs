@@ -41,8 +41,10 @@ import {
   finalizeDeviceE2eBundle,
   finishBundleStep,
   formatFailureForensicsBlock,
+  getDeviceE2eBundleFinalizationError,
   parseOutputDirArg,
   recordBundleArtifact,
+  recordBundleRunnerFailure,
   runBundledCommand,
   setBundleBuild,
   setBundleDevice,
@@ -60,6 +62,7 @@ const val = (flag, fb) => {
   return i >= 0 ? process.argv[i + 1] : fb;
 };
 const log = (m) => console.log(`[android-e2e] ${m}`);
+const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 // These lists are intentionally explicit. The hosted x86_64 emulator must not
 // accidentally inherit a new local-runtime, destructive lifecycle, or voice
@@ -369,15 +372,15 @@ function ensureFreshApkInstalled(bundle, adb, serial) {
     // the already-validated local `apkStamp` and no `adb pull` readback of the
     // whole APK is needed.
     setBundleBuild(bundle, {
-      buildId: apkStamp?.buildId ?? freshStamp.buildId,
-      commit: apkStamp?.commit ?? freshStamp.commit ?? null,
+      buildId: apkStamp.buildId,
+      commit: apkStamp.commit ?? null,
     });
     return;
   }
 
   setBundleBuild(bundle, {
-    buildId: installedStamp?.buildId ?? freshStamp.buildId,
-    commit: installedStamp?.commit ?? freshStamp.commit ?? null,
+    buildId: installedStamp.buildId,
+    commit: installedStamp.commit ?? null,
   });
   log(`${installDecision.reason} — skipping APK install.`);
 }
@@ -415,6 +418,7 @@ async function main() {
   let lease = null;
   let finalResult = "failed";
   let finalError = null;
+  let finalizationError = null;
   let routeRecording = null;
   let hostAgent = null;
 
@@ -630,8 +634,9 @@ async function main() {
           },
         );
       } finally {
-        const videoPath = await routeRecording.stop();
+        const recording = routeRecording;
         routeRecording = null;
+        const videoPath = await recording.stop();
         if (videoPath) recordBundleArtifact(bundle, videoPath, "video");
       }
     }
@@ -681,10 +686,19 @@ async function main() {
     log("ALL ANDROID E2E PASSED ✅");
   } catch (error) {
     finalError = error;
+    recordBundleRunnerFailure(bundle, error);
   } finally {
     if (routeRecording) {
-      const videoPath = await routeRecording.stop();
-      if (videoPath) recordBundleArtifact(bundle, videoPath, "video");
+      const recording = routeRecording;
+      routeRecording = null;
+      try {
+        const videoPath = await recording.stop();
+        if (videoPath) recordBundleArtifact(bundle, videoPath, "video");
+      } catch (error) {
+        bundle.warnings.push(
+          `Android route recording finalization failed: ${error?.message ?? error}`,
+        );
+      }
     }
     if (hostAgent) {
       const step = startBundleStep(bundle, "stop deterministic host agent");
@@ -701,6 +715,25 @@ async function main() {
       }
     }
     if (adb && serial) {
+      if (has("--skip-route-coverage")) {
+        try {
+          const finalRecording = await startAndroidScreenRecord({
+            adb,
+            serial,
+            artifactDir: bundle.rawDir,
+            filename: "android-final.mp4",
+            remotePath: `/sdcard/eliza-android-final-${process.pid}.mp4`,
+            log,
+          });
+          await delay(3_000);
+          const videoPath = await finalRecording.stop();
+          if (videoPath) recordBundleArtifact(bundle, videoPath, "video");
+        } catch (error) {
+          bundle.warnings.push(
+            `final Android video failed: ${error?.message ?? error}`,
+          );
+        }
+      }
       try {
         recordBundleArtifact(
           bundle,
@@ -738,8 +771,23 @@ async function main() {
         );
       }
     }
-    lease?.release();
-    const bundleRoot = finalizeDeviceE2eBundle(bundle, finalResult);
+    try {
+      lease?.release();
+    } catch (error) {
+      bundle.warnings.push(
+        `Android device lease release failed: ${error?.message ?? error}`,
+      );
+    }
+    const bundleRoot = finalizeDeviceE2eBundle(bundle, finalResult, {
+      requiredEvidence: {
+        buildId: true,
+        commit: true,
+        inlineScreenshot: true,
+        inlineVideo: true,
+        logs: true,
+      },
+    });
+    finalizationError = getDeviceE2eBundleFinalizationError(bundle);
     if (finalError) {
       const block = formatFailureForensicsBlock(bundle, finalError);
       if (block) process.stderr.write(`\n${block}`);
@@ -747,6 +795,7 @@ async function main() {
     log(`bundle: ${bundleRoot}`);
   }
   if (finalError) throw finalError;
+  if (finalizationError) throw finalizationError;
 }
 
 main().catch((error) => {

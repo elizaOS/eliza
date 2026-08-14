@@ -17,8 +17,10 @@ import {
   finalizeDeviceE2eBundle,
   finishBundleStep,
   formatFailureForensicsBlock,
+  getDeviceE2eBundleFinalizationError,
   parseOutputDirArg,
   recordBundleArtifact,
+  recordBundleRunnerFailure,
   runBundledCommand,
   startBundleStep,
 } from "./lib/device-e2e-bundle.mjs";
@@ -28,6 +30,16 @@ const ONE_BY_ONE_PNG = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAACXBIWXMAAAPoAAAD6AG1e1JrAAAADUlEQVQImWP4z8DwHwAFAAH/q842iQAAAABJRU5ErkJggg==",
   "base64",
 );
+const FINALIZED_MP4 = (() => {
+  const fileType = Buffer.alloc(12);
+  fileType.writeUInt32BE(12, 0);
+  fileType.write("ftyp", 4, "ascii");
+  fileType.write("isom", 8, "ascii");
+  const movie = Buffer.alloc(8);
+  movie.writeUInt32BE(8, 0);
+  movie.write("moov", 4, "ascii");
+  return Buffer.concat([fileType, movie]);
+})();
 
 function tempRoot() {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "device-e2e-bundle-"));
@@ -73,14 +85,24 @@ describe("device-e2e bundle assembly", () => {
     const jpg = path.join(sourceDir, "screen.jpg");
     const mp4 = path.join(sourceDir, "walkthrough.mp4");
     fs.writeFileSync(jpg, "jpg");
-    fs.writeFileSync(mp4, "mp4");
+    fs.writeFileSync(mp4, FINALIZED_MP4);
 
     const step = startBundleStep(bundle, "route coverage");
     recordBundleArtifact(bundle, jpg, "screenshot", step);
     recordBundleArtifact(bundle, mp4, "video", step);
     finishBundleStep(bundle, step, "passed");
 
-    const bundleRoot = finalizeDeviceE2eBundle(bundle, "passed");
+    const logPath = path.join(bundle.logsDir, "runner.log");
+    fs.writeFileSync(logPath, "complete\n");
+    const bundleRoot = finalizeDeviceE2eBundle(bundle, "passed", {
+      requiredEvidence: {
+        buildId: true,
+        commit: true,
+        inlineScreenshot: true,
+        inlineVideo: true,
+        logs: true,
+      },
+    });
     const summary = JSON.parse(
       fs.readFileSync(path.join(bundleRoot, "summary.json"), "utf8"),
     );
@@ -96,6 +118,127 @@ describe("device-e2e bundle assembly", () => {
     expect(
       fs.existsSync(path.join(bundleRoot, "inline", "walkthrough.mp4")),
     ).toBe(true);
+    expect(summary.validationErrors).toEqual([]);
+    expect(
+      summary.artifacts.every((artifact) => !artifact.path.startsWith("..")),
+    ).toBe(true);
+    expect(getDeviceE2eBundleFinalizationError(bundle)).toBeNull();
+  });
+
+  it("ingests external media and logs into a self-contained bundle", () => {
+    const root = tempRoot();
+    const sourceDir = path.join(root, "workflow-evidence");
+    fs.mkdirSync(sourceDir);
+    fs.writeFileSync(path.join(sourceDir, "walkthrough.mp4"), FINALIZED_MP4);
+    fs.writeFileSync(path.join(sourceDir, "screen.jpg"), "jpg");
+    fs.writeFileSync(path.join(sourceDir, "runner.log"), "complete\n");
+    const bundle = createDeviceE2eBundle({
+      appDir: root,
+      lane: "ios-sim",
+      outputDir: path.join(root, "bundle"),
+      build: { buildId: "build-1", commit: "abc123" },
+    });
+    const step = startBundleStep(bundle, "simulator smoke");
+    finishBundleStep(bundle, step, "passed");
+
+    finalizeDeviceE2eBundle(bundle, "passed", {
+      sourceDirs: [sourceDir],
+      requiredEvidence: {
+        buildId: true,
+        commit: true,
+        inlineScreenshot: true,
+        inlineVideo: true,
+        logs: true,
+      },
+    });
+
+    const summary = JSON.parse(
+      fs.readFileSync(path.join(bundle.root, "summary.json"), "utf8"),
+    );
+    expect(summary.result).toBe("passed");
+    expect(fs.existsSync(path.join(bundle.rawDir, "walkthrough.mp4"))).toBe(
+      true,
+    );
+    expect(fs.existsSync(path.join(bundle.rawDir, "screen.jpg"))).toBe(true);
+    expect(fs.existsSync(path.join(bundle.logsDir, "runner.log"))).toBe(true);
+    expect(fs.existsSync(path.join(bundle.inlineDir, "walkthrough.mp4"))).toBe(
+      true,
+    );
+    expect(fs.existsSync(path.join(bundle.inlineDir, "screen.jpg"))).toBe(true);
+    expect(
+      summary.artifacts.every((artifact) => !artifact.path.startsWith("..")),
+    ).toBe(true);
+  });
+
+  it("fails a nominally passing bundle when required exact-head evidence is absent", () => {
+    const root = tempRoot();
+    const bundle = createDeviceE2eBundle({
+      appDir: root,
+      lane: "ios-sim",
+      outputDir: path.join(root, "bundle"),
+      build: { buildId: "build-1", commit: null },
+    });
+    const step = startBundleStep(bundle, "simulator smoke");
+    finishBundleStep(bundle, step, "passed");
+
+    finalizeDeviceE2eBundle(bundle, "passed", {
+      requiredEvidence: {
+        buildId: true,
+        commit: true,
+        inlineScreenshot: true,
+        inlineVideo: true,
+        logs: true,
+      },
+    });
+
+    const summary = JSON.parse(
+      fs.readFileSync(path.join(bundle.root, "summary.json"), "utf8"),
+    );
+    const junit = fs.readFileSync(path.join(bundle.root, "junit.xml"), "utf8");
+    expect(summary.result).toBe("failed");
+    expect(summary.validationErrors).toEqual([
+      "build.commit is missing",
+      "inline JPG screenshot is missing",
+      "inline MP4 walkthrough is missing",
+      "logs/ has no non-empty log",
+    ]);
+    expect(summary.steps.at(-1)).toMatchObject({
+      name: "validate evidence bundle",
+      status: "failed",
+    });
+    expect(junit).toContain('failures="1"');
+    expect(getDeviceE2eBundleFinalizationError(bundle)?.message).toContain(
+      "device evidence bundle is incomplete",
+    );
+  });
+
+  it("rejects a non-empty MP4 that has no finalized movie box", () => {
+    const root = tempRoot();
+    const bundle = createDeviceE2eBundle({
+      appDir: root,
+      lane: "android",
+      outputDir: path.join(root, "bundle"),
+      build: { buildId: "build-1", commit: "abc123" },
+    });
+    const video = path.join(bundle.rawDir, "interrupted.mp4");
+    fs.writeFileSync(video, "not-a-finalized-container");
+    recordBundleArtifact(bundle, video, "video");
+
+    finalizeDeviceE2eBundle(bundle, "passed", {
+      requiredEvidence: { inlineVideo: true },
+    });
+
+    const summary = JSON.parse(
+      fs.readFileSync(path.join(bundle.root, "summary.json"), "utf8"),
+    );
+    expect(summary.result).toBe("failed");
+    expect(summary.validationErrors).toEqual([
+      "inline MP4 walkthrough is missing",
+    ]);
+    expect(fs.readdirSync(bundle.inlineDir)).toEqual([]);
+    expect(summary.warnings).toEqual([
+      `could not publish unfinalized MP4 inline: ${video}`,
+    ]);
   });
 
   it("collects logs from source directories and records failed steps in junit", () => {
@@ -178,6 +321,31 @@ describe("device-e2e bundle assembly", () => {
     expect(
       fs.readFileSync(path.join(bundle.logsDir, "runner.log"), "utf8"),
     ).toContain("nope");
+  });
+
+  it("records an unhandled runner failure as a failed junit step", () => {
+    const root = tempRoot();
+    const bundle = createDeviceE2eBundle({
+      appDir: root,
+      lane: "ios-sim",
+      outputDir: path.join(root, "bundle"),
+    });
+    recordBundleRunnerFailure(bundle, new Error("simulator disappeared"));
+    finalizeDeviceE2eBundle(bundle, "failed");
+
+    const summary = JSON.parse(
+      fs.readFileSync(path.join(bundle.root, "summary.json"), "utf8"),
+    );
+    const junit = fs.readFileSync(path.join(bundle.root, "junit.xml"), "utf8");
+    expect(summary.steps[0]).toMatchObject({
+      name: "runner failure",
+      status: "failed",
+      error: "simulator disappeared",
+    });
+    expect(junit).toContain('failures="1"');
+    expect(
+      fs.readFileSync(path.join(bundle.logsDir, "runner.log"), "utf8"),
+    ).toContain("runner failure: simulator disappeared");
   });
 
   it("records step failure forensics and formats a compact stderr block", () => {

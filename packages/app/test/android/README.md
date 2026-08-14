@@ -59,6 +59,11 @@ bun run --cwd packages/app test:e2e:android:lifecycle:reboot
 bun run --cwd packages/app test:e2e:android:routes
 ```
 
+Focused slices used by the retained device-CI shell scripts run through
+`scripts/android-playwright-e2e.mjs`. Like the full orchestrator, they print a
+final `bundle:` line and accept `--output <dir>` after the package command; the
+bundle is finalized before a failing slice exits non-zero.
+
 ## Prerequisites (env)
 
 - Android SDK with `adb`, `emulator`, and a system image. The harness resolves
