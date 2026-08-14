@@ -100,4 +100,66 @@ describe("runJoinFlow", () => {
     expect(h.savePersistedActiveServer).not.toHaveBeenCalled();
     expect(h.savePersistedFirstRunComplete).not.toHaveBeenCalled();
   });
+
+  test("does not bind or persist when identity resolution finishes after cancellation", async () => {
+    const h = harness();
+    let resolveIdentity: (value: {
+      agentId: string;
+      agentName: string;
+      apiBase: string;
+      runtime: "shared";
+    }) => void = () => undefined;
+    h.getPersonalSharedEliza.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveIdentity = resolve;
+        }),
+    );
+    const controller = new AbortController();
+    const flow = runJoinFlow({
+      client: h.client,
+      effects: h.effects,
+      cloudApiBase: CLOUD_API_BASE,
+      authToken: "session-token",
+      signal: controller.signal,
+    });
+
+    controller.abort(new DOMException("User signed out", "AbortError"));
+    resolveIdentity({
+      agentId: PERSONAL_ID,
+      agentName: "Eliza",
+      apiBase: PERSONAL_BASE,
+      runtime: "shared",
+    });
+
+    await expect(flow).rejects.toMatchObject({ name: "AbortError" });
+    expect(h.getPersonalSharedEliza).toHaveBeenCalledWith({
+      cloudApiBase: CLOUD_API_BASE,
+      authToken: "session-token",
+      signal: controller.signal,
+    });
+    expect(h.setBaseUrl).not.toHaveBeenCalled();
+    expect(h.setToken).not.toHaveBeenCalled();
+    expect(h.savePersistedActiveServer).not.toHaveBeenCalled();
+    expect(h.savePersistedFirstRunComplete).not.toHaveBeenCalled();
+  });
+
+  test("rejects a pre-aborted attempt before starting identity resolution", async () => {
+    const h = harness();
+    const controller = new AbortController();
+    controller.abort(new DOMException("Already signed out", "AbortError"));
+
+    await expect(
+      runJoinFlow({
+        client: h.client,
+        effects: h.effects,
+        cloudApiBase: CLOUD_API_BASE,
+        authToken: "session-token",
+        signal: controller.signal,
+      }),
+    ).rejects.toMatchObject({ name: "AbortError" });
+
+    expect(h.getPersonalSharedEliza).not.toHaveBeenCalled();
+    expect(h.savePersistedActiveServer).not.toHaveBeenCalled();
+  });
 });

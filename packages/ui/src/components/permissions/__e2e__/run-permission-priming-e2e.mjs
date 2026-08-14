@@ -80,8 +80,25 @@ const stubClient = {
 // CJS stub (`.cjs` so esbuild wraps it and `module` is defined): arbitrary
 // named imports of core resolve to `undefined` via CJS interop, since the modal
 // never executes any core code path.
+//
+// `ElizaError` is the one exception and must be a real constructor. The graph
+// reaches `api/client-cloud.ts`, which evaluates `class CloudAgentWakeError
+// extends ElizaError` at module scope. A class heritage clause runs on load
+// even though the modal never constructs it, so an empty core stub prevents
+// React from mounting and leaves the runner waiting for the first card.
 const coreStub = join(outDir, "core-stub.cjs");
-await writeFile(coreStub, "module.exports = {};\n");
+await writeFile(
+  coreStub,
+  `class ElizaError extends Error {
+  constructor(message, options) {
+    super(message);
+    this.name = "ElizaError";
+    if (options && options.code) this.code = options.code;
+  }
+}
+module.exports = { ElizaError };
+`,
+);
 const stubCore = {
   name: "stub-core",
   setup(b) {

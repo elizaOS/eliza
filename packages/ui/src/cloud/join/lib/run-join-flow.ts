@@ -20,6 +20,7 @@ export interface JoinFlowClient {
   getPersonalSharedEliza(options: {
     cloudApiBase: string;
     authToken: string;
+    signal?: AbortSignal;
   }): Promise<{
     agentId: string;
     agentName: string;
@@ -48,6 +49,8 @@ export interface RunJoinFlowArgs {
   cloudApiBase: string;
   authToken: string;
   onProgress?: (status: string, detail?: string) => void;
+  /** Cancels identity resolution before local binding or persistence begins. */
+  signal?: AbortSignal;
 }
 
 export interface JoinFlowResult {
@@ -66,12 +69,15 @@ export interface JoinFlowResult {
 export async function runJoinFlow(
   args: RunJoinFlowArgs,
 ): Promise<JoinFlowResult> {
-  const { client, effects, cloudApiBase, authToken, onProgress } = args;
+  const { client, effects, cloudApiBase, authToken, onProgress, signal } = args;
+  signal?.throwIfAborted();
   onProgress?.("connecting", "Opening your personal Eliza…");
   const selected = await client.getPersonalSharedEliza({
     cloudApiBase,
     authToken,
+    ...(signal ? { signal } : {}),
   });
+  signal?.throwIfAborted();
 
   if (!selected.agentId) {
     throw new Error("Cloud did not return an agent to connect to.");
