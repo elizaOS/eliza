@@ -21,7 +21,7 @@
  *
  *   bun run --cwd packages/app test:e2e test/ui-smoke/voice-realaudio.spec.ts
  */
-import { expect, type Page, test } from "@playwright/test";
+import { expect, type Page, type Response, test } from "@playwright/test";
 import {
   installDefaultAppRoutes,
   openAppPath,
@@ -635,6 +635,27 @@ async function installCloudVoiceConfig(page: Page): Promise<void> {
   });
 }
 
+async function describeVoiceRouteFailure(response: Response): Promise<string> {
+  // error-policy:J6 diagnostic capture — the live assertion remains the
+  // failure authority. Only structured error/message text is retained;
+  // arbitrary response bodies and credential-shaped values stay out of logs.
+  const body = (await response.json().catch(() => null)) as {
+    error?: unknown;
+    message?: unknown;
+  } | null;
+  const detail =
+    typeof body?.error === "string"
+      ? body.error
+      : typeof body?.message === "string"
+        ? body.message
+        : "<structured error body unavailable>";
+  const preview = detail
+    .replace(/\s+/g, " ")
+    .replace(/\b(?:eliza|sk)_[a-z0-9_-]{8,}\b/gi, "[REDACTED]")
+    .slice(0, 500);
+  return `${new URL(response.url()).pathname} HTTP ${response.status()}: ${preview}`;
+}
+
 /** Count POSTs to a client route (ignoring the `/status` probe siblings). */
 function countPosts(page: Page, needle: string): { get: () => number } {
   let n = 0;
@@ -901,27 +922,10 @@ test.describe("live cloud voice round-trip (Railway path)", () => {
       await page.unroute(r).catch(() => {});
     }
 
-    let asrTranscript = "";
-    let ttsBytes = 0;
-    let ttsContentType = "";
-    let ttsAudio: Buffer | null = null;
-    page.on("response", async (res) => {
-      const url = res.url();
-      if (url.includes("/api/asr/cloud") && res.ok()) {
-        // error-policy:J6 diagnostic capture — a failed body read must not mask
-        // the assertion below, which fails loudly on an empty transcript.
-        const json = (await res.json().catch(() => null)) as {
-          text?: unknown;
-        } | null;
-        if (typeof json?.text === "string") asrTranscript = json.text;
-      }
-      if (url.includes("/api/tts/cloud") && res.ok()) {
-        ttsContentType = res.headers()["content-type"] ?? "";
-        const body = await res.body().catch(() => Buffer.alloc(0));
-        ttsBytes = body.byteLength;
-        ttsAudio = body;
-      }
-    });
+    const asrResponsePromise = page.waitForResponse(
+      (response) => response.url().includes("/api/asr/cloud"),
+      { timeout: 60_000 },
+    );
 
     await openAppPath(page, "/chat");
     await expect(page.getByTestId("chat-overlay")).toBeVisible({
@@ -939,21 +943,33 @@ test.describe("live cloud voice round-trip (Railway path)", () => {
     await page.waitForTimeout(2500);
     await mic.click();
 
-    // Real cloud STT returned the injected phrase (the fixture speaks it).
-    await expect
-      .poll(() => asrTranscript.toLowerCase(), {
-        timeout: 60_000,
-        message: "cloud STT must transcribe the injected known phrase",
-      })
-      .toContain("time");
+    const asrResponse = await asrResponsePromise;
+    expect(asrResponse.ok(), await describeVoiceRouteFailure(asrResponse)).toBe(
+      true,
+    );
+    const asrJson = (await asrResponse.json()) as { text?: unknown };
+    const asrTranscript = typeof asrJson.text === "string" ? asrJson.text : "";
+    expect(
+      asrTranscript.toLowerCase(),
+      "cloud STT must transcribe the injected known phrase",
+    ).toContain("time");
 
     // Real cloud TTS returned decoded, non-silent audio that actually played.
-    await expect
-      .poll(() => ttsBytes, {
-        timeout: 60_000,
-        message: "cloud TTS must return a non-trivial audio body",
-      })
-      .toBeGreaterThan(2000);
+    const ttsResponsePromise = page.waitForResponse(
+      (response) => response.url().includes("/api/tts/cloud"),
+      { timeout: 120_000 },
+    );
+    const ttsResponse = await ttsResponsePromise;
+    expect(ttsResponse.ok(), await describeVoiceRouteFailure(ttsResponse)).toBe(
+      true,
+    );
+    const ttsContentType = ttsResponse.headers()["content-type"] ?? "";
+    const ttsAudio = await ttsResponse.body();
+    const ttsBytes = ttsAudio.byteLength;
+    expect(
+      ttsBytes,
+      "cloud TTS must return a non-trivial audio body",
+    ).toBeGreaterThan(2000);
     expect(ttsContentType).toContain("audio");
     await expect
       .poll(async () => (await readAudioProbe(page)).starts, {

@@ -1,21 +1,23 @@
-// Exercises tests voice matrix.test automation behavior with deterministic script fixtures.
-import { describe, expect, test } from "vitest";
+/** Exercises voice-matrix CLI selection and gating with deterministic subprocess fixtures. */
+
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { describe, expect, test } from "vitest";
 
 const scriptPath = fileURLToPath(
   new URL("../voice-matrix.mjs", import.meta.url),
 );
 const repoRoot = path.resolve(path.dirname(scriptPath), "..", "..", "..", "..");
 
-function runVoiceMatrix(args: string[]) {
+function runVoiceMatrix(args: string[], env: NodeJS.ProcessEnv = {}) {
   const outDir = fs.mkdtempSync(path.join(os.tmpdir(), "voice-matrix-"));
   const result = spawnSync("node", [scriptPath, ...args, "--out", outDir], {
     cwd: repoRoot,
     encoding: "utf8",
+    env: { ...process.env, ...env },
   });
   const reportPath = path.join(outDir, "voice-matrix.json");
   const report = fs.existsSync(reportPath)
@@ -55,5 +57,44 @@ describe("voice matrix CLI", () => {
     });
     expect(report.cells).toHaveLength(1);
     expect(report.cells[0].id).toBe("ios.sim-or-device.voice-roundtrip");
+  });
+
+  test("isolates the live Railway browser test and requires both credentials", () => {
+    const missingCloud = runVoiceMatrix(
+      ["--platform", "web.live.railway-roundtrip"],
+      {
+        ELIZA_VOICE_LIVE_RAILWAY: "1",
+        CEREBRAS_API_KEY: "test-model-key",
+        ELIZAOS_CLOUD_API_KEY: "",
+      },
+    );
+
+    expect(missingCloud.result.status).toBe(0);
+    expect(missingCloud.report.cells[0].probe).toEqual({
+      available: false,
+      reason:
+        "ELIZAOS_CLOUD_API_KEY is required for the live Railway browser round-trip",
+    });
+
+    const provisioned = runVoiceMatrix(
+      ["--platform", "web.live.railway-roundtrip"],
+      {
+        ELIZA_VOICE_LIVE_RAILWAY: "1",
+        CEREBRAS_API_KEY: "test-model-key",
+        ELIZAOS_CLOUD_API_KEY: "test-cloud-key",
+      },
+    );
+
+    expect(provisioned.report.cells[0].command).toEqual([
+      "bun",
+      "run",
+      "--cwd",
+      "packages/app",
+      "test:e2e",
+      "test/ui-smoke/voice-realaudio.spec.ts",
+      "--grep",
+      "live cloud voice round-trip",
+    ]);
+    expect(provisioned.report.cells[0].probe.available).toBe(true);
   });
 });

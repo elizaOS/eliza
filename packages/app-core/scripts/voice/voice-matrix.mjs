@@ -96,6 +96,8 @@ const CELLS = [
       "packages/app",
       "test:e2e",
       "test/ui-smoke/voice-realaudio.spec.ts",
+      "--grep",
+      "live cloud voice round-trip",
     ],
     env: UI_SMOKE_MATRIX_ENV,
     evidence: ["packages/app/test-results", "e2e-recordings/app/test-results"],
@@ -390,7 +392,10 @@ const CELLS = [
       voices: "multi-speaker",
     },
     class: "wakeword-device-gap",
-    command: ["node", "packages/app-core/scripts/voice/voice-openwakeword-eval.mjs"],
+    command: [
+      "node",
+      "packages/app-core/scripts/voice/voice-openwakeword-eval.mjs",
+    ],
     evidence: [
       "$ELIZA_VOICE_MATRIX_OUT/wake.openwakeword.real-head/openwakeword-eval.json",
       "$ELIZA_VOICE_OPENWAKEWORD_REPORT",
@@ -698,6 +703,14 @@ function probeCell(cell) {
           reason:
             "set ELIZA_VOICE_LIVE_RAILWAY=1 with reachable Railway STT/TTS + a live LLM key",
         };
+      }
+      for (const key of ["CEREBRAS_API_KEY", "ELIZAOS_CLOUD_API_KEY"]) {
+        if (!process.env[key]?.trim()) {
+          return {
+            available: false,
+            reason: `${key} is required for the live Railway browser round-trip`,
+          };
+        }
       }
       return {
         available: true,
