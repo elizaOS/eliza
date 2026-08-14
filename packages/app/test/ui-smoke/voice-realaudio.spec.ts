@@ -923,7 +923,11 @@ test.describe("live cloud voice round-trip (Railway path)", () => {
     }
 
     const asrResponsePromise = page.waitForResponse(
-      (response) => response.url().includes("/api/asr/cloud"),
+      // The product client deliberately retries the deferred runtime's
+      // `feature_starting` 503. Observe the settled request rather than
+      // treating the first readiness probe as the transcription result.
+      (response) =>
+        response.url().includes("/api/asr/cloud") && response.status() !== 503,
       { timeout: 60_000 },
     );
 
