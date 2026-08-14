@@ -31,6 +31,35 @@ describe("convertMarkdownToTelegram", () => {
     expect(convertMarkdownToTelegram("a-b!")).toBe("a\\-b\\!");
   });
 
+  it("escapes intra-word underscores instead of italicizing identifiers (#19373)", () => {
+    // Prose naming an identifier must reach Telegram verbatim. The old
+    // unanchored italic pattern consumed `_id_` as formatting, so the reserved
+    // underscores went out unescaped and rendered as italic "id".
+    expect(convertMarkdownToTelegram("call the user_id_field helper")).toBe(
+      "call the user\\_id\\_field helper",
+    );
+    expect(convertMarkdownToTelegram("set MAX_RETRY_COUNT today")).toBe(
+      "set MAX\\_RETRY\\_COUNT today",
+    );
+  });
+
+  it("keeps flanked underscore italic working", () => {
+    expect(convertMarkdownToTelegram("_actually italic_")).toBe(
+      "_actually italic_",
+    );
+    expect(convertMarkdownToTelegram("say _hi_ now")).toBe("say _hi_ now");
+    expect(convertMarkdownToTelegram("(_parenthesized_)")).toBe(
+      "\\(_parenthesized_\\)",
+    );
+  });
+
+  it("keeps single intra-word underscores escaped and __x__ inner italic unchanged", () => {
+    expect(convertMarkdownToTelegram("snake_case")).toBe("snake\\_case");
+    // Historical behavior: double-underscore delimiters still produce the
+    // inner italic because underscore flanks remain permitted.
+    expect(convertMarkdownToTelegram("__x__")).toBe("\\__x_\\_");
+  });
+
   it("preserves links (url chars other than ) and \\ stay raw)", () => {
     expect(convertMarkdownToTelegram("[docs](http://x.com)")).toBe(
       "[docs](http://x.com)",

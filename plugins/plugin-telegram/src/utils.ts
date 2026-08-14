@@ -145,12 +145,23 @@ export function convertMarkdownToTelegram(markdown: string): string {
       return storeReplacement(formatted);
     },
   );
-  //    Then underscore-based italic.
-  converted = converted.replace(/_([^_\n]+)_/g, (_match, content) => {
-    const formattedContent = escapePlainText(content);
-    const formatted = `_${formattedContent}_`;
-    return storeReplacement(formatted);
-  });
+  //    Then underscore-based italic. Flanking letters/digits suppress the
+  //    delimiter (CommonMark's intra-word rule): prose naming an identifier
+  //    like `user_id_field` must reach the escaper as plain text — the old
+  //    unanchored pattern consumed `_id_` as formatting, so the reserved
+  //    underscores were re-emitted unescaped and Telegram rendered the
+  //    identifier with italic "id" and the underscores eaten (#19373).
+  //    Underscore flanks stay permitted so the historical `__x__` inner-italic
+  //    behavior is unchanged; a preceding backslash means an already-escaped
+  //    delimiter and never opens italic.
+  converted = converted.replace(
+    /(?<![\p{L}\p{N}\\])_([^_\n]+)_(?![\p{L}\p{N}])/gu,
+    (_match, content) => {
+      const formattedContent = escapePlainText(content);
+      const formatted = `_${formattedContent}_`;
+      return storeReplacement(formatted);
+    },
+  );
 
   // 7. Headers: Convert markdown headers (lines starting with '#' characters)
   //    to bold text. This avoids unescaped '#' characters (which crash Telegram)
