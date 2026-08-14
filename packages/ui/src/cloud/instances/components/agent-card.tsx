@@ -519,7 +519,7 @@ function AgentCardInner({
                       </span>
                       <Switch
                         checked={isPublic}
-                        className="pointer-events-none data-[state=checked]:bg-green-500/20 [&_[data-slot=switch-thumb]]:data-[state=checked]:bg-green-500 [&_[data-slot=switch-thumb]]:data-[state=unchecked]:bg-white/40"
+                        className="pointer-events-none"
                       />
                     </DropdownMenuItem>
                     {isPublic && (
@@ -741,10 +741,7 @@ function AgentCardInner({
                           defaultValue: "Private",
                         })}
                   </span>
-                  <Switch
-                    checked={isPublic}
-                    className="pointer-events-none data-[state=checked]:bg-green-500/20 [&_[data-slot=switch-thumb]]:data-[state=checked]:bg-green-500 [&_[data-slot=switch-thumb]]:data-[state=unchecked]:bg-white/40"
-                  />
+                  <Switch checked={isPublic} className="pointer-events-none" />
                 </DropdownMenuItem>
                 {isPublic && (
                   <DropdownMenuItem

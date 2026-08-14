@@ -400,7 +400,6 @@ export function AppMonetizationSettings({ app }: AppMonetizationSettingsProps) {
                       toggleMonetization(checked);
                     }
                   }}
-                  className="data-[state=checked]:bg-green-500 data-[state=unchecked]:bg-neutral-700"
                 />
               </div>
               <p className="text-xs text-neutral-500 mt-1">

@@ -311,7 +311,6 @@ export function AppSettings({ app }: AppSettingsProps) {
               onCheckedChange={(checked) =>
                 setFormData({ ...formData, is_active: checked })
               }
-              className="data-[state=checked]:bg-green-500 data-[state=unchecked]:bg-neutral-700"
             />
           </div>
         </div>
