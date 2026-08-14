@@ -3,7 +3,10 @@
  * fixtures; no network, browser, or provider account is used by this suite.
  */
 import { expect, test } from "vitest";
-import { evaluatePublicSurface } from "./check-homepage-public-readiness.mjs";
+import {
+  evaluatePublicSurface,
+  resolveWhatsAppAdmission,
+} from "./check-homepage-public-readiness.mjs";
 
 const healthySurface = {
   finalUrl: "https://eliza.app/",
@@ -18,11 +21,45 @@ const healthySurface = {
 };
 
 test("accepts the Cloudflare homepage with WhatsApp disabled", () => {
+  for (const whatsAppNumber of ["", "+14159611510"]) {
+    const result = evaluatePublicSurface(healthySurface, {
+      whatsAppEnabled: false,
+      whatsAppNumber,
+    });
+    expect(result.ok).toBe(true);
+  }
+});
+
+test("matches the deployment workflow's admission values", () => {
+  for (const value of [undefined, "", "0", "false", "no", "off"]) {
+    expect(resolveWhatsAppAdmission(value)).toEqual({
+      enabled: false,
+      valid: true,
+    });
+  }
+  for (const value of ["1", "true", "yes", "on", " TRUE "]) {
+    expect(resolveWhatsAppAdmission(value)).toEqual({
+      enabled: true,
+      valid: true,
+    });
+  }
+  expect(resolveWhatsAppAdmission("maybe")).toEqual({
+    enabled: false,
+    valid: false,
+  });
+});
+
+test("fails closed for an invalid admission flag", () => {
   const result = evaluatePublicSurface(healthySurface, {
     whatsAppEnabled: false,
-    whatsAppNumber: "+18087881821",
+    whatsAppAdmissionValid: false,
+    whatsAppNumber: "",
   });
-  expect(result.ok).toBe(true);
+  expect(result.ok).toBe(false);
+  expect(
+    result.checks.find((entry) => entry.name === "whatsapp-sender-config")
+      ?.passed,
+  ).toBe(false);
 });
 
 test("evaluates an explicitly selected public origin", () => {
