@@ -13,7 +13,7 @@
  *     `CartesiaSonicTtsAdapter` (#15949). Phrase-aggregated deltas stream in;
  *     adapters' strict no-post-cancel guarantee makes barge-in correct.
  *
- * Interruption (contract §7.5): confirmed caller words / explicit `barge_in`
+ * Interruption (contract §7.5): Ink semantic turn-start / explicit `barge_in`
  * -> under one `voiceTurnId`, cancel the active TTS stream (no post-cancel
  * frames), abort the Eliza SSE fetch, flush the downlink, drop pending phrase
  * aggregation, emit `interrupted`, return to listening. Target <250ms.
@@ -486,13 +486,13 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
         break;
       }
       case "start-of-turn": {
-        // Ink's acoustic turn detector also fires for line noise, breathing,
-        // and speaker echo. Keep transcribing alongside the active response;
-        // only a non-empty transcript-update below proves caller speech and
-        // earns the right to cancel model/TTS work.
+        // Ink's semantic turn detector is the earliest reliable signal that
+        // the caller has begun a new utterance. Stop current audio immediately
+        // so Eliza never talks over the caller while transcription continues.
         this.resetSttPartialDelivery();
         this.activeSttTurn = true;
-        if (!this.currentVoiceTurnId) this.state = "transcribing";
+        this.interrupt("acoustic");
+        this.state = "transcribing";
         break;
       }
       case "transcript-update": {
