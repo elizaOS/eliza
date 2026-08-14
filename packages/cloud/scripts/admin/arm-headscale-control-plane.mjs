@@ -650,6 +650,19 @@ rollback_headscale_vhosts() {
     rm -f "$HS_RETIRABLE_LEGACY_VHOST_BACKUP"
   fi
 }
+
+commit_headscale_vhosts() {
+  # Disable rollback only after the complete remote convergence has passed.
+  # Any failure before this call must restore both reviewed nginx files.
+  trap - EXIT
+  rm -f "$HS_VHOST_BACKUP" "$HS_VHOST_STAGE"
+  if [ -n "$HS_RETIRABLE_LEGACY_VHOST_BACKUP" ]; then
+    rm -f "$HS_RETIRABLE_LEGACY_VHOST_BACKUP"
+  fi
+  if [ "$HS_RETIRABLE_LEGACY_VHOST_EXISTED" = "true" ]; then
+    echo "Retired validated legacy Headscale vhost $HS_RETIRABLE_LEGACY_VHOST"
+  fi
+}
 trap rollback_headscale_vhosts EXIT
 
 tee "$HS_VHOST_STAGE" >/dev/null <<NGINX
@@ -856,15 +869,6 @@ for public_host in "$HS_HOST" "$HS_LEGACY_HOST"; do
   fi
 done
 echo "public Headscale overlap is healthy on one exact dual-SAN leaf"
-
-rm -f "$HS_VHOST_BACKUP" "$HS_VHOST_STAGE"
-if [ -n "$HS_RETIRABLE_LEGACY_VHOST_BACKUP" ]; then
-  rm -f "$HS_RETIRABLE_LEGACY_VHOST_BACKUP"
-fi
-if [ "$HS_RETIRABLE_LEGACY_VHOST_EXISTED" = "true" ]; then
-  echo "Retired validated legacy Headscale vhost $HS_RETIRABLE_LEGACY_VHOST"
-fi
-trap - EXIT
 `;
 
 // ── CP self-enrollment as a tailscale node (cp-<env>-router) ─────────────────
@@ -936,10 +940,7 @@ sudo stat -c 'type=%F owner=%U group=%G mode=%a bytes=%s path=%n' \\
 echo "reviewed-sha256=$legacy_vhost_sha256"
 echo "--- reviewed nginx directive-name inventory (values withheld) ---"
 printf '%s\\n' "$legacy_vhost_directives" | sort | uniq -c
-echo "--- reviewed public routing/TLS directives ---"
-sudo grep -En \\
-  '^[[:space:]]*(listen|server_name|location|root|return|proxy_pass|ssl_certificate|ssl_certificate_key|include)[[:space:]]' \\
-  "$HS_RETIRABLE_LEGACY_VHOST" || true
+echo "reviewed-shape=server-blocks:$legacy_server_block_count server-names:$legacy_server_name_count exact-host:$HS_LEGACY_HOST"
 echo "Legacy Headscale vhost passed the read-only retirement preflight"
 `;
 
@@ -1083,6 +1084,7 @@ sudo systemctl restart ${SYSTEMD_UNIT}
 sleep 2
 systemctl is-active headscale
 systemctl is-active ${SYSTEMD_UNIT}
+commit_headscale_vhosts
 `;
 
 const remote = inspectRetirableLegacyVhost

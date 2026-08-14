@@ -98,9 +98,10 @@ gh workflow run arm-headscale-control-plane.yml --repo elizaOS/eliza \
 The inspection requires a regular, root-owned, non-group/world-writable file,
 exactly two server blocks that name only `headscale-staging.elizacloud.ai`, and
 exactly two loaded nginx owners from that path. It reports file metadata,
-SHA-256, and the public routing/TLS directives for review. Only after that run
-is reviewed may an operator select the retirement operation and supply that
-exact lowercase digest:
+SHA-256, directive-name counts, and the validated server-block/name shape for
+review without printing directive literal values. Only after that run is
+reviewed may an operator select the retirement operation and supply that exact
+lowercase digest:
 
 ```bash
 gh workflow run arm-headscale-control-plane.yml --repo elizaOS/eliza \
@@ -113,9 +114,11 @@ The digest makes the reviewed bytes the retirement authority; any intervening
 file change fails closed. The arm backs up the exact file,
 installs the canonical dual-name vhost, removes the legacy file only after the
 rollback trap is active, then validates ownership, SANs, nginx, and public
-health. Any failure restores both prior files and reloads the previous valid
-configuration. Production has no registered cleanup path and rejects both
-legacy-file operations.
+health before converging router enrollment, environment writes, the worker
+restart, and final service liveness. Any failure before all remote convergence
+passes restores both prior files and reloads the previous valid configuration.
+Production has no registered cleanup path and rejects both legacy-file
+operations.
 
 The matching Cloudflare Worker secrets still need to be set through the normal
 Worker secret path. Keep host and Worker values identical for

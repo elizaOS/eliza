@@ -69,7 +69,8 @@ Representative examples:
   a separate explicit retirement operation. The latter validates the regular
   root-owned legacy-only two-listener contract, requires the exact SHA-256
   emitted by the reviewed inspection, backs up both nginx files, and
-  restores them on any ownership, SAN, nginx, reload, or public-health failure.
+  restores them on any ownership, SAN, nginx, reload, public-health, router,
+  environment-write, worker-restart, or final service-liveness failure.
   Production has no legacy-file cleanup path.
 - `deploy-tunnel-proxy.yml` is the protected Railway + Headscale convergence
   path for the customer tunnel proxy. It validates canonical staging/production

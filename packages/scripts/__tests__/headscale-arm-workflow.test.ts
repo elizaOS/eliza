@@ -86,6 +86,7 @@ function runDryArm(
   publicUrl: string,
   legacyPublicUrl: string,
   extraArgs: string[] = [],
+  skipCpRouter = true,
 ) {
   const fixtureDir = mkdtempSync(join(tmpdir(), "headscale-arm-test-"));
   const sshKey = join(fixtureDir, "deploy-key");
@@ -110,7 +111,7 @@ function runDryArm(
         legacyPublicUrl,
         "--headscale-api-key",
         "test-only-api-key",
-        "--skip-cp-router",
+        ...(skipCpRouter ? ["--skip-cp-router"] : []),
         ...extraArgs,
         "--dry-run",
       ],
@@ -121,6 +122,92 @@ function runDryArm(
         },
       },
     );
+  } finally {
+    rmSync(fixtureDir, { recursive: true, force: true });
+  }
+}
+
+function shellFunction(remoteScript: string, name: string) {
+  const startMarker = `${name}() {\n`;
+  const start = remoteScript.indexOf(startMarker);
+  if (start === -1) throw new Error(`Missing shell function ${name}`);
+  const end = remoteScript.indexOf("\n}\n", start);
+  if (end === -1) throw new Error(`Missing shell function end for ${name}`);
+  return remoteScript.slice(start, end + 2);
+}
+
+function runVhostRollbackAfterFailure(failureStage: string) {
+  const dry = runDryArm(
+    "https://headscale-staging.eliza.app",
+    "https://headscale-staging.elizacloud.ai",
+    [
+      "--retire-retirable-legacy-vhost",
+      "--retirable-legacy-vhost-sha256",
+      reviewedLegacyVhostSha256,
+    ],
+    false,
+  );
+  expect(dry.status).toBe(0);
+  const rollback = shellFunction(dry.stdout, "rollback_headscale_vhosts");
+  const fixtureDir = mkdtempSync(join(tmpdir(), "headscale-rollback-test-"));
+  const vhost = join(fixtureDir, "headscale.conf");
+  const vhostBackup = join(fixtureDir, "headscale.conf.backup");
+  const vhostStage = join(fixtureDir, "headscale.conf.stage");
+  const legacyVhost = join(fixtureDir, "headscale-staging.conf");
+  const legacyBackup = join(fixtureDir, "headscale-staging.conf.backup");
+  const commandLog = join(fixtureDir, "commands.log");
+  writeFileSync(vhost, "new canonical bytes\n");
+  writeFileSync(vhostBackup, "old canonical bytes\n");
+  writeFileSync(vhostStage, "staged canonical bytes\n");
+  writeFileSync(legacyBackup, "old legacy bytes\n");
+  writeFileSync(commandLog, "");
+
+  const harness = `
+set -euo pipefail
+HS_VHOST=${JSON.stringify(vhost)}
+HS_VHOST_BACKUP=${JSON.stringify(vhostBackup)}
+HS_VHOST_STAGE=${JSON.stringify(vhostStage)}
+HS_VHOST_EXISTED=true
+HS_RETIRABLE_LEGACY_VHOST=${JSON.stringify(legacyVhost)}
+HS_RETIRABLE_LEGACY_VHOST_BACKUP=${JSON.stringify(legacyBackup)}
+HS_RETIRABLE_LEGACY_VHOST_EXISTED=true
+HS_RETIRABLE_LEGACY_VHOST_MODE=0644
+COMMAND_LOG=${JSON.stringify(commandLog)}
+sudo() {
+  case "$1" in
+    cp) command cp "$2" "$3" ;;
+    rm) shift; command rm "$@" ;;
+    install)
+      command cp "\${@: -2:1}" "\${@: -1}"
+      ;;
+    nginx) return 0 ;;
+    systemctl)
+      shift
+      printf 'systemctl %s\\n' "$*" >> "$COMMAND_LOG"
+      ;;
+    *) "$@" ;;
+  esac
+}
+${rollback}
+trap rollback_headscale_vhosts EXIT
+for stage in cp-router env-write worker-restart final-liveness; do
+  if [ "$stage" = ${JSON.stringify(failureStage)} ]; then
+    false
+  fi
+done
+`;
+
+  try {
+    const result = spawnSync("bash", ["-c", harness], {
+      encoding: "utf8",
+      env: { PATH: process.env.PATH ?? "" },
+    });
+    return {
+      ...result,
+      canonical: readFileSync(vhost, "utf8"),
+      legacy: readFileSync(legacyVhost, "utf8"),
+      commandLog: readFileSync(commandLog, "utf8"),
+    };
   } finally {
     rmSync(fixtureDir, { recursive: true, force: true });
   }
@@ -215,6 +302,56 @@ validate_retirable_legacy_vhost
         TEST_FILE_OWNER: options.owner ?? "root:root",
         TEST_FILE_WRITABLE: options.writable ? "true" : "false",
         TEST_NGINX_CONFIG: (options.loadedConfig ?? "").replaceAll(
+          "REPLACE_LEGACY_PATH",
+          legacyVhost,
+        ),
+      },
+    });
+  } finally {
+    rmSync(fixtureDir, { recursive: true, force: true });
+  }
+}
+
+function runLegacyVhostInspection(source: string, loadedConfig: string) {
+  const dry = runDryArm(
+    "https://headscale-staging.eliza.app",
+    "https://headscale-staging.elizacloud.ai",
+    ["--inspect-retirable-legacy-vhost"],
+  );
+  expect(dry.status).toBe(0);
+  const fixtureDir = mkdtempSync(
+    join(tmpdir(), "headscale-legacy-inspection-test-"),
+  );
+  const legacyVhost = join(fixtureDir, "headscale-staging.conf");
+  writeFileSync(legacyVhost, source, { mode: 0o644 });
+  const remoteScript = dry.stdout.replaceAll(
+    "/etc/nginx/conf.d/headscale-staging.conf",
+    legacyVhost,
+  );
+  const harness = `
+sudo() {
+  case "$1" in
+    stat)
+      if [ "$2" = "-c" ] && [ "$3" = "%U:%G" ]; then
+        printf 'root:root\\n'
+      else
+        printf 'type=regular-file owner=root group=root mode=644 bytes=reviewed path=%s\\n' ${JSON.stringify(legacyVhost)}
+      fi
+      ;;
+    find) return 0 ;;
+    nginx) printf '%s\\n' "$TEST_NGINX_CONFIG" ;;
+    *) "$@" ;;
+  esac
+}
+${remoteScript}
+`;
+
+  try {
+    return spawnSync("bash", ["-c", harness], {
+      encoding: "utf8",
+      env: {
+        PATH: process.env.PATH ?? "",
+        TEST_NGINX_CONFIG: loadedConfig.replaceAll(
           "REPLACE_LEGACY_PATH",
           legacyVhost,
         ),
@@ -568,6 +705,7 @@ server_name headscale-staging.elizacloud.ai;
         "--retirable-legacy-vhost-sha256",
         reviewedLegacyVhostSha256,
       ],
+      false,
     );
     expect(result.status).toBe(0);
     expect(result.stderr).toBe("");
@@ -607,7 +745,19 @@ server_name headscale-staging.elizacloud.ai;
       '-servername "$public_host"',
       publicHealthProof,
     );
-    const transactionCommit = result.stdout.lastIndexOf("trap - EXIT");
+    const cpRouter = result.stdout.indexOf("--- CP self-enrollment:");
+    const envWrite = result.stdout.indexOf("sudo sed -i", cpRouter);
+    const workerRestart = result.stdout.indexOf(
+      "sudo systemctl restart eliza-provisioning-worker.service",
+      envWrite,
+    );
+    const finalServiceLiveness = result.stdout.indexOf(
+      "systemctl is-active eliza-provisioning-worker.service",
+      workerRestart,
+    );
+    const transactionCommit = result.stdout.lastIndexOf(
+      "commit_headscale_vhosts",
+    );
     expect(validation).toBeGreaterThan(-1);
     expect(trap).toBeGreaterThan(validation);
     expect(install).toBeGreaterThan(trap);
@@ -618,6 +768,11 @@ server_name headscale-staging.elizacloud.ai;
     expect(timerProof).toBeGreaterThan(ownership);
     expect(publicHealthProof).toBeGreaterThan(timerProof);
     expect(publicSniProof).toBeGreaterThan(publicHealthProof);
+    expect(cpRouter).toBeGreaterThan(publicSniProof);
+    expect(envWrite).toBeGreaterThan(cpRouter);
+    expect(workerRestart).toBeGreaterThan(envWrite);
+    expect(finalServiceLiveness).toBeGreaterThan(workerRestart);
+    expect(transactionCommit).toBeGreaterThan(finalServiceLiveness);
     expect(transactionCommit).toBeGreaterThan(publicSniProof);
     expect(transactionCommit).toBeGreaterThan(timerProof);
     expect(result.stdout).toContain(
@@ -625,6 +780,17 @@ server_name headscale-staging.elizacloud.ai;
     );
     expectBashSyntax(result.stdout);
   });
+
+  test.each(["cp-router", "env-write", "worker-restart", "final-liveness"])(
+    "restores both reviewed vhosts when %s convergence fails",
+    (failureStage) => {
+      const result = runVhostRollbackAfterFailure(failureStage);
+      expect(result.status).not.toBe(0);
+      expect(result.canonical).toBe("old canonical bytes\n");
+      expect(result.legacy).toBe("old legacy bytes\n");
+      expect(result.commandLog).toBe("systemctl reload nginx\n");
+    },
+  );
 
   test("inspects only the exact reviewed staging file without generating convergence", () => {
     const result = runDryArm(
@@ -641,16 +807,45 @@ server_name headscale-staging.elizacloud.ai;
     expect(result.stdout).toContain(
       "directive-name inventory (values withheld)",
     );
-    const publicDirectiveReport = result.stdout.slice(
-      result.stdout.indexOf("--- reviewed public routing/TLS directives ---"),
-      result.stdout.indexOf(
-        "Legacy Headscale vhost passed the read-only retirement preflight",
-      ),
+    expect(result.stdout).toContain("reviewed-shape=server-blocks:");
+    expect(result.stdout).not.toContain(
+      "reviewed public routing/TLS directives",
     );
-    expect(publicDirectiveReport).not.toContain("proxy_set_header");
+    expect(result.stdout).not.toContain("sudo grep -En");
     expect(result.stdout).not.toContain("sudo systemctl restart headscale");
     expect(result.stdout).not.toContain("sudo rm -f --");
     expectBashSyntax(result.stdout);
+  });
+
+  test("withholds every reviewed directive literal from inspection output", () => {
+    const signedRedirect = "https://redirect.invalid/canary-signed-query";
+    const embeddedCredential =
+      "http://canary-user:canary-password@127.0.0.1:8080";
+    const privateInclude = "/etc/nginx/canary-private-include.conf";
+    const source = `server {
+  listen 80;
+  listen [::]:80;
+  server_name headscale-staging.elizacloud.ai;
+  return 301 ${signedRedirect};
+}
+server {
+  listen 443 ssl;
+  listen [::]:443 ssl;
+  server_name headscale-staging.elizacloud.ai;
+  proxy_pass ${embeddedCredential};
+  include ${privateInclude};
+}
+`;
+    const result = runLegacyVhostInspection(source, expectedLoadedConfig);
+    expect(result.status).toBe(0);
+    expect(result.stderr).toBe("");
+    expect(result.stdout).toContain("reviewed-sha256=");
+    expect(result.stdout).toContain("reviewed-shape=server-blocks:2");
+    expect(result.stdout).toContain("proxy_pass");
+    expect(result.stdout).toContain("include");
+    expect(result.stdout).not.toContain(signedRedirect);
+    expect(result.stdout).not.toContain(embeddedCredential);
+    expect(result.stdout).not.toContain(privateInclude);
   });
 
   test("rejects inspection or retirement for production without a reviewed path", () => {
