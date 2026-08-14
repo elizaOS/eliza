@@ -358,9 +358,12 @@ export function setJobTtlMs(value?: number): void {
   if (value === undefined || Number.isNaN(value)) {
     return;
   }
+  const restartSweeper = sweeper !== null;
   jobTtlMs = clampTtl(value);
-  stopSweeper();
-  startSweeper();
+  if (restartSweeper) {
+    stopSweeper();
+    startSweeper();
+  }
 }
 
 function pruneFinishedSessions(): void {
