@@ -287,6 +287,23 @@ describe("parseSlackMessageLink", () => {
     expect(isValidMessageTs(threaded?.messageTs ?? "")).toBe(true);
   });
 
+  it("requires a bare permalink, and round-trips the mrkdwn-wrapped form via extractUrlFromSlackLink", () => {
+    const bare = "https://acme.slack.com/archives/C12345678/p1700000000123456";
+    // parseSlackMessageLink substring-matched before anchoring, so these three
+    // used to parse; parseSlackMessagePermalink was already start-anchored and
+    // is pinned here so both helpers now agree on rejecting a non-bare link.
+    expect(parseSlackMessageLink(`<${bare}|jump to message>`)).toBeNull();
+    expect(parseSlackMessageLink(`see ${bare} for context`)).toBeNull();
+    expect(parseSlackMessagePermalink(`<${bare}>`)).toBeNull();
+
+    const extracted = extractUrlFromSlackLink(`<${bare}|jump to message>`);
+    expect(extracted).toBe(bare);
+    expect(parseSlackMessageLink(extracted ?? "")).toEqual({
+      channelId: "C12345678",
+      messageTs: "1700000000.123456",
+    });
+  });
+
   it("returns null for malformed lengths, invalid digits, or trailing garbage", () => {
     expect(
       parseSlackMessageLink("https://acme.slack.com/archives/C12345678/p123"),

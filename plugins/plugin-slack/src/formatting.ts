@@ -479,7 +479,10 @@ export function buildSlackMessagePermalink(
 }
 
 /**
- * Parses a Slack message permalink
+ * Parses a Slack message permalink.
+ *
+ * The match is anchored at both ends, so prose-embedded or mrkdwn-wrapped
+ * links must be extracted before they are passed in.
  */
 export function parseSlackMessagePermalink(
   link: string,
