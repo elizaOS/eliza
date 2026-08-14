@@ -193,7 +193,7 @@ describe("action tiering", () => {
 		);
 	});
 
-	it("keeps rank-one WEB_FETCH for a real weather retrieval when Stage-1 omits it", () => {
+	it("keeps context-aligned WEB_FETCH on the surface when Stage-1 omits it", () => {
 		const catalog = buildActionCatalog([
 			{
 				name: "WEB_FETCH",
@@ -221,7 +221,10 @@ describe("action tiering", () => {
 			(result) => result.name === "WEB_FETCH",
 		);
 
-		expect(webFetch).toMatchObject({ rank: 1, score: 1 });
+		// Exact Stage-1 parent hints may sort ahead at the same score. Retrieval
+		// rank is not the safety boundary; planner exposure below is.
+		expect(webFetch).toMatchObject({ score: 1 });
+		expect(webFetch?.stageScores.contextMatch).toBe(0.3);
 		expect(webFetch?.stageScores.bm25).toBeLessThan(0.99);
 
 		const surface = tierActionResults({
@@ -237,6 +240,45 @@ describe("action tiering", () => {
 		]);
 		expect(surface.exposedActionNames).toEqual(
 			expect.arrayContaining(["VIEWS", "WEB_FETCH"]),
+		);
+	});
+
+	it("does not let ambiguous context matches flood a routed candidate", () => {
+		const catalog = buildActionCatalog([
+			{ name: "VIEWS", description: "Open app views." },
+			{
+				name: "WEB_FETCH",
+				description: "Fetch current live data.",
+				contexts: ["web"],
+			},
+			{
+				name: "MESSAGE_SEARCH",
+				description: "Search chat history.",
+				contexts: ["web"],
+			},
+		]);
+		const views = catalog.parentByName.get("VIEWS");
+		const webFetch = catalog.parentByName.get("WEB_FETCH");
+		const messageSearch = catalog.parentByName.get("MESSAGE_SEARCH");
+		if (!views || !webFetch || !messageSearch) {
+			throw new Error("missing context override fixtures");
+		}
+
+		const surface = tierActionResults({
+			catalog,
+			results: [
+				resultFor(views, 1, 1, { exact: 1 }),
+				resultFor(webFetch, 1, 2, { contextMatch: 0.3 }),
+				resultFor(messageSearch, 1, 3, { contextMatch: 0.3 }),
+			],
+			narrowToCandidateActions: ["VIEWS"],
+		});
+
+		expect(surface.tierAParents.map((parent) => parent.name)).toEqual([
+			"VIEWS",
+		]);
+		expect(surface.exposedActionNames).not.toEqual(
+			expect.arrayContaining(["WEB_FETCH", "MESSAGE_SEARCH"]),
 		);
 	});
 

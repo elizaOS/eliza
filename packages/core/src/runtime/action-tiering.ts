@@ -29,9 +29,9 @@ export type Tier0ProtocolAction = (typeof TIER0_PROTOCOL_ACTIONS)[number];
 
 // A near-certain non-candidate match may remain on the planner surface when
 // Stage-1 omits it. The absolute retrieval winner is authoritative even when
-// its lexical stages are asymmetric; otherwise independent keyword and BM25
-// agreement identifies one unambiguous user-text-dominant fallback without
-// reopening a broadly saturated surface.
+// its lexical stages are asymmetric; otherwise a unique selected-context match
+// or independent keyword and BM25 agreement identifies one unambiguous
+// fallback without reopening a broadly saturated surface.
 const RETRIEVAL_OVERRIDE_SCORE = 0.97;
 const DOMINANT_LEXICAL_STAGE_SCORE = 0.99;
 
@@ -253,6 +253,16 @@ export function tierActionResults(
 			dominantLexicalOverrides.length === 1
 				? dominantLexicalOverrides[0]
 				: undefined;
+		const contextAlignedOverrides = tierAParents.filter(
+			(parent) =>
+				!matchesCandidate(parent) &&
+				parent.score >= RETRIEVAL_OVERRIDE_SCORE &&
+				(parent.result.stageScores.contextMatch ?? 0) > 0,
+		);
+		const unambiguousContextOverride =
+			contextAlignedOverrides.length === 1
+				? contextAlignedOverrides[0]
+				: undefined;
 		const absoluteRankOneOverride = tierAParents.find(
 			(parent) =>
 				!matchesCandidate(parent) &&
@@ -260,7 +270,9 @@ export function tierActionResults(
 				parent.result.rank === 1,
 		);
 		const retrievalOverride =
-			absoluteRankOneOverride ?? unambiguousLexicalOverride;
+			absoluteRankOneOverride ??
+			unambiguousContextOverride ??
+			unambiguousLexicalOverride;
 		for (const parent of tierAParents) {
 			// Keep a parent the candidates named, OR the absolute near-certain
 			// retrieval winner. When the winner is already a candidate, only one
