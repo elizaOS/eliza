@@ -6,6 +6,7 @@
  */
 
 import { describe, expect, test } from "bun:test";
+import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
@@ -162,6 +163,31 @@ describe("Cloudflare Pages domain durability", () => {
     join(import.meta.dir, "../../../../.github/workflows/infra.yml"),
     "utf-8",
   );
+  const inventoryValidator = workflow.match(
+    /node -e '\n([\s\S]*?)\n\s+'\n/,
+  )?.[1];
+
+  function validateInventory(
+    overrides: Record<string, string> = {},
+  ): ReturnType<typeof spawnSync> {
+    if (!inventoryValidator) {
+      throw new Error("Pages inventory validator was not found in infra.yml");
+    }
+    return spawnSync("node", ["-e", inventoryValidator], {
+      env: {
+        ...process.env,
+        TF_VAR_dns_record_import_ids: '{"record":"id"}',
+        TF_VAR_canonical_edge_wildcard_origins: '["192.0.2.1"]',
+        TF_VAR_canonical_service_origins: '{"api.example":["192.0.2.2"]}',
+        TF_VAR_railway_tunnel_dns_records: "{}",
+        TF_VAR_canonical_edge_certificate_packs: '{"canonical":{"hosts":["example"]}}',
+        TF_VAR_legacy_redirect_wildcard_origins: '{"*.legacy.example":["192.0.2.3"]}',
+        TF_VAR_legacy_redirect_certificate_packs: '{"legacy":{"hosts":["legacy.example"]}}',
+        ...overrides,
+      },
+      encoding: "utf8",
+    });
+  }
 
   test("binds every canonical browser host to one Pages project", () => {
     expect(main).toContain('domain       = "eliza.app"');
@@ -326,11 +352,32 @@ describe("Cloudflare Pages domain durability", () => {
       "TF_VAR_railway_tunnel_dns_records: $" +
         "{{ vars.RAILWAY_TUNNEL_DNS_RECORDS_JSON || '{}' }}",
     );
+    expect(workflow).toContain(
+      '["RAILWAY_TUNNEL_DNS_RECORDS_JSON", process.env.TF_VAR_railway_tunnel_dns_records, "object", true]',
+    );
+    expect(workflow).toContain(
+      "for (const [name, source, expected, allowEmpty = false] of required)",
+    );
+    expect(workflow).toContain(
+      "allowEmpty || Object.keys(value).length > 0",
+    );
     expect(workflow).toContain("terraform output -json railway_tunnel_dns");
     expect(workflow).toContain("record.proxied !== false");
     expect(workflow).toContain("record.roles?.includes(role)");
     expect(workflow).toContain("--require-beacon");
     expect(workflow).not.toContain("bun install");
     expect(workflow).not.toContain("push:");
+  });
+
+  test("accepts an empty Railway inventory without weakening required inventories", () => {
+    expect(validateInventory().status).toBe(0);
+
+    const missingCanonicalServices = validateInventory({
+      TF_VAR_canonical_service_origins: "{}",
+    });
+    expect(missingCanonicalServices.status).toBe(1);
+    expect(missingCanonicalServices.stderr).toContain(
+      "CANONICAL_SERVICE_ORIGINS_JSON",
+    );
   });
 });
