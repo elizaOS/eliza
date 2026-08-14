@@ -534,7 +534,6 @@ export default function LandingPage() {
   const [phoneCopyState, setPhoneCopyState] = useState<
     "idle" | "copied" | "error"
   >("idle");
-  const phoneCopyResetRef = useRef<number | null>(null);
   const whatsappHref = buildElizaWhatsAppHref();
   const signedIn =
     typeof window !== "undefined" &&
@@ -573,29 +572,14 @@ export default function LandingPage() {
     },
   ];
 
-  useEffect(
-    () => () => {
-      if (phoneCopyResetRef.current !== null) {
-        window.clearTimeout(phoneCopyResetRef.current);
-      }
-    },
-    [],
-  );
-
   const handleMessageEliza = async () => {
     try {
       const outcome = await openOrCopyElizaMessage(window);
       setPhoneCopyState(outcome === "copied" ? "copied" : "idle");
     } catch {
+      // error-policy:J4 Clipboard rejection stays visible as a distinct UI error.
       setPhoneCopyState("error");
     }
-    if (phoneCopyResetRef.current !== null) {
-      window.clearTimeout(phoneCopyResetRef.current);
-    }
-    phoneCopyResetRef.current = window.setTimeout(
-      () => setPhoneCopyState("idle"),
-      2_000,
-    );
   };
 
   const phoneCopyLabel =
@@ -688,7 +672,7 @@ export default function LandingPage() {
           {phoneCopyState !== "idle" && (
             <div
               className={`landing-copy-notice landing-copy-notice--${phoneCopyState}`}
-              role="status"
+              role={phoneCopyState === "error" ? "alert" : "status"}
               aria-live="polite"
             >
               {phoneCopyLabel}
