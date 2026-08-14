@@ -314,9 +314,8 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
 
     this.state = "listening";
     // Read immutable tenancy from cache while the user is beginning to speak.
-    // A miss only schedules authoritative hydration under the Worker lifetime;
-    // the first turn never joins that database work and reports retryable
-    // warming until a later cache read observes the completed fill.
+    // A miss schedules authoritative hydration under the Worker lifetime; the
+    // first turn joins that work so it does not burn time polling a cold cache.
     if (this.config.prewarmElizaContext) {
       this.elizaPrewarm = this.config.prewarmElizaContext().catch((error) => {
         // error-policy:J7 prewarm is latency-only; the response path retains
