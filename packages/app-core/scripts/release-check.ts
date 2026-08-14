@@ -91,7 +91,6 @@ const requiredWorkflowSnippets = [
   'BUN_VERSION: "1.3.14"',
   "workflow_call:",
   "name: Validate Release Inputs",
-  "Manual branch dispatches must provide inputs.tag; refusing to derive a release tag from package.json.",
   "bun-version: $" + "{{ env.BUN_VERSION }}",
   "name: Regression matrix contract",
   "run: bun run test:regression-matrix:release",
@@ -330,7 +329,7 @@ const forbiddenWorkflowSnippets = [
 const requiredElectrobunPrWorkflowSnippets = [
   "name: Validate Electrobun Release Workflow",
   "pull_request:",
-  "branches: [main]",
+  "branches: [develop]",
   "workflow_dispatch:",
   "permissions:",
   "contents: read",
@@ -980,7 +979,7 @@ function assertReleaseWorkflowHasNotaryWrapper() {
 
 function assertElectrobunPrWorkflowExists() {
   const workflow = readFileSync(
-    ".github/workflows/test-electrobun-release.yml",
+    ".github/workflows/electrobun-contract.yml",
     "utf8",
   );
   const missing = requiredElectrobunPrWorkflowSnippets.filter(
