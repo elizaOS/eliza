@@ -35,27 +35,11 @@ const RAW_SWITCH_OCCURRENCES = new Map<
     },
   ],
   [
-    "ConnectorsSection.tsx",
-    {
-      count: 1,
-      reason:
-        "standalone enable switch on a custom connector card, not a SettingsRow",
-    },
-  ],
-  [
     "VoiceConfigView.tsx",
     {
       count: 1,
       reason:
         "compact enable switch inside a custom status chip, not a SettingsRow",
-    },
-  ],
-  [
-    "permission-controls.tsx",
-    {
-      count: 2,
-      reason:
-        "compound permission rows mix badges with Switch or Button trailing controls",
     },
   ],
 ]);

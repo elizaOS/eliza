@@ -26,6 +26,30 @@ export interface SharedConversationHistoryCoordinatorOptions {
 }
 
 /**
+ * Hydrate one conversation object's read-only history and turn-ingress modules.
+ * Voice startup uses this under its fixed greeting; no message is created.
+ */
+export async function coordinateSharedConversationPrewarm(
+  agentId: string,
+  roomId: string,
+  options: SharedConversationHistoryCoordinatorOptions,
+): Promise<void> {
+  const namespace = requireHistoryCoordinator(options);
+  const response = await coordinatorStub(namespace, agentId, roomId).fetch(
+    "https://shared-runtime.internal/prewarm",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ operation: "prewarm", agentId, roomId }),
+    },
+  );
+  await requireCoordinatorResponse(response, "conversation prewarm");
+  // The Durable Object releases its per-room queue when the response body is
+  // consumed. Drain this tiny acknowledgement before the first real turn.
+  await response.arrayBuffer();
+}
+
+/**
  * One normalization for the Durable Object instance name. Turn dispatch and
  * history reads MUST agree — a whitespace/empty variant addressing a second
  * object would migrate the same Postgres row twice and serve a frozen copy.

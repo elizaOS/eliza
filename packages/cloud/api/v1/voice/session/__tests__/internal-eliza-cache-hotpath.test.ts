@@ -97,6 +97,8 @@ test("real cache + canonical coordinator dispatch performs no response-path DB w
     },
     executionCtx,
   );
+  await fetchImpl.prewarm();
+  expect(background).toHaveLength(0);
   const response = await fetchImpl(
     `https://voice.internal/api/v1/eliza/agents/${AGENT_ID}/api/conversations/${CONVERSATION_ID}/messages/stream`,
     {
@@ -116,9 +118,17 @@ test("real cache + canonical coordinator dispatch performs no response-path DB w
   expect(response.status).toBe(200);
   await expect(response.text()).resolves.toContain("cache only");
   expect(background).toHaveLength(0);
-  expect(coordinatorCalls).toHaveLength(1);
-  expect(coordinatorCalls[0]?.name).toBe(`${AGENT_ID}:${CONVERSATION_ID}`);
-  expect(JSON.parse(String(coordinatorCalls[0]?.init?.body))).toMatchObject({
+  expect(coordinatorCalls).toHaveLength(2);
+  expect(coordinatorCalls.map(({ name }) => name)).toEqual([
+    `${AGENT_ID}:${CONVERSATION_ID}`,
+    `${AGENT_ID}:${CONVERSATION_ID}`,
+  ]);
+  expect(JSON.parse(String(coordinatorCalls[0]?.init?.body))).toEqual({
+    operation: "prewarm",
+    agentId: AGENT_ID,
+    roomId: CONVERSATION_ID,
+  });
+  expect(JSON.parse(String(coordinatorCalls[1]?.init?.body))).toMatchObject({
     operation: "stream",
     agent: cachedAgent,
     rpc: {

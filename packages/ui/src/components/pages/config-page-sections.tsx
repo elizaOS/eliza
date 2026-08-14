@@ -13,8 +13,9 @@ import { defaultRegistry } from "../../components/config-ui/config-renderer.help
 import type { JsonSchemaObject } from "../../config/config-catalog";
 import { useAppSelector } from "../../state";
 import type { TranslateFn as AppTranslateFn, ConfigUiHint } from "../../types";
+import { SettingsSwitchRow } from "../settings/settings-agent-rows";
+import { SettingsGroup, SettingsStack } from "../settings/settings-layout";
 import { Button } from "../ui/button";
-import { Switch } from "../ui/switch";
 
 /* ── Types ─────────────────────────────────────────────────────────── */
 
@@ -350,8 +351,7 @@ export function CloudServicesSection() {
   }, [setActionNotice, t]);
 
   const handleToggle = useCallback(
-    async (key: CloudServiceKey) => {
-      const newValue = !services[key];
+    async (key: CloudServiceKey, newValue: boolean) => {
       const updated = { ...services, [key]: newValue };
       setServices(updated);
       setSaving(true);
@@ -397,22 +397,21 @@ export function CloudServicesSection() {
   if (!loaded) return null;
 
   return (
-    <div className="mt-6">
-      <div className="flex items-center justify-between mb-3">
-        <div className="text-sm font-semibold">
-          {t("configpageview.CloudServices", {
-            defaultValue: "Cloud Services",
-          })}
-        </div>
-        {needsRestart && (
-          <span className="text-xs-tight font-medium text-accent">
-            {t("configpageview.RestartRequired", {
-              defaultValue: "Restart required",
-            })}
-          </span>
-        )}
-      </div>
-      <div className="flex flex-col gap-2">
+    <SettingsStack className="mt-6">
+      <SettingsGroup
+        title={t("configpageview.CloudServices", {
+          defaultValue: "Cloud Services",
+        })}
+        action={
+          needsRestart ? (
+            <span className="text-xs-tight font-medium text-accent">
+              {t("configpageview.RestartRequired", {
+                defaultValue: "Restart required",
+              })}
+            </span>
+          ) : undefined
+        }
+      >
         {CLOUD_SERVICE_DEFS.map(
           ({
             key,
@@ -421,29 +420,21 @@ export function CloudServicesSection() {
             descriptionKey,
             descriptionDefault,
           }) => (
-            /* Flat — no card/border. The Switch is the single state signal. */
-            <div key={key} className="flex items-center justify-between p-3">
-              <div className="flex-1 min-w-0 mr-4">
-                <div
-                  id={`cloud-service-${key}`}
-                  className="text-sm font-medium text-txt"
-                >
-                  {t(labelKey, { defaultValue: labelDefault })}
-                </div>
-                <div className="text-xs-tight text-muted mt-0.5">
-                  {t(descriptionKey, { defaultValue: descriptionDefault })}
-                </div>
-              </div>
-              <Switch
-                checked={services[key]}
-                disabled={saving}
-                onCheckedChange={() => void handleToggle(key)}
-                aria-labelledby={`cloud-service-${key}`}
-              />
-            </div>
+            <SettingsSwitchRow
+              key={key}
+              agentId={`config-cloud-service-${key}`}
+              group="config-cloud-services"
+              label={t(labelKey, { defaultValue: labelDefault })}
+              description={t(descriptionKey, {
+                defaultValue: descriptionDefault,
+              })}
+              checked={services[key]}
+              disabled={saving}
+              onCheckedChange={(checked) => void handleToggle(key, checked)}
+            />
           ),
         )}
-      </div>
-    </div>
+      </SettingsGroup>
+    </SettingsStack>
   );
 }

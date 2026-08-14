@@ -347,18 +347,19 @@ const transcriptionShortcutConsent = mobile.locator(
   '[data-testid="voice-section-intent-autostart-transcription"]',
 );
 assert(
-  !(await voiceShortcutConsent.isChecked()) &&
-    !(await transcriptionShortcutConsent.isChecked()),
+  (await voiceShortcutConsent.getAttribute("aria-checked")) === "false" &&
+    (await transcriptionShortcutConsent.getAttribute("aria-checked")) ===
+      "false",
   "mobile Voice settings default both shortcut microphone permissions off",
 );
-await voiceShortcutConsent.check();
+await voiceShortcutConsent.click();
 assert(
-  await voiceShortcutConsent.isChecked(),
+  (await voiceShortcutConsent.getAttribute("aria-checked")) === "true",
   "mobile Voice settings can grant voice-shortcut microphone permission",
 );
-await voiceShortcutConsent.uncheck();
+await voiceShortcutConsent.click();
 assert(
-  !(await voiceShortcutConsent.isChecked()),
+  (await voiceShortcutConsent.getAttribute("aria-checked")) === "false",
   "mobile Voice settings can revoke voice-shortcut microphone permission",
 );
 await mobile.waitForTimeout(450);

@@ -13,6 +13,7 @@ import {
   SettingsInputRow,
   SettingsSelectRow,
   SettingsSwitchRow,
+  SettingsTextareaRow,
 } from "./settings-agent-rows";
 import { SettingsGroup, SettingsRow, SettingsStack } from "./settings-layout";
 
@@ -75,12 +76,14 @@ describe("agent-addressable rows", () => {
     render(
       <SettingsSwitchRow
         agentId="toggle-dark"
+        testId="toggle-dark-switch"
         label="Dark mode"
         checked={false}
         onCheckedChange={onCheckedChange}
       />,
     );
     const sw = screen.getByRole("switch");
+    expect(sw.getAttribute("data-testid")).toBe("toggle-dark-switch");
     expect(sw.getAttribute("data-agent-id")).toBe("toggle-dark");
     expect(sw.getAttribute("data-agent-role")).toBe("toggle");
     expect(sw.getAttribute("data-agent-label")).toBe("Dark mode");
@@ -91,6 +94,26 @@ describe("agent-addressable rows", () => {
     );
     fireEvent.click(sw);
     expect(onCheckedChange).toHaveBeenCalledWith(true);
+    expect(screen.getByLabelText("Dark mode")).toBe(sw);
+    expect(sw.getAttribute("aria-label")).toBeNull();
+  });
+
+  it("SettingsSwitchRow keeps the visible label as the accessible name", () => {
+    render(
+      <SettingsSwitchRow
+        agentId="voice-section-wake-toggle"
+        label="Wake word"
+        agentLabel="Toggle wake-word listening"
+        checked={false}
+        onCheckedChange={() => {}}
+      />,
+    );
+    const sw = screen.getByLabelText("Wake word");
+    expect(sw.getAttribute("data-agent-label")).toBe(
+      "Toggle wake-word listening",
+    );
+    expect(sw.getAttribute("aria-label")).toBeNull();
+    expect(screen.queryByLabelText("Toggle wake-word listening")).toBeNull();
   });
 
   it("SettingsSwitchRow stays disabled when the agent status is unavailable", () => {
@@ -224,5 +247,24 @@ describe("agent-addressable rows", () => {
     const trigger = screen.getByTestId("identity-voice-trigger");
     expect(trigger.getAttribute("data-agent-id")).toBe("identity-voice");
     expect(screen.getByText("Preview")).toBeTruthy();
+  });
+
+  it("SettingsTextareaRow labels the field and exposes agent data attributes", () => {
+    const onValueChange = vi.fn();
+    render(
+      <SettingsTextareaRow
+        agentId="apps-create-intent"
+        label="What should the app do?"
+        value=""
+        onValueChange={onValueChange}
+      />,
+    );
+    const field = screen.getByLabelText("What should the app do?");
+    expect(field.getAttribute("data-agent-id")).toBe("apps-create-intent");
+    expect(field.getAttribute("data-agent-role")).toBe("textarea");
+    expect(field.getAttribute("id")).toBe("apps-create-intent");
+    expect(field.getAttribute("aria-label")).toBeNull();
+    fireEvent.change(field, { target: { value: "Summarize updates" } });
+    expect(onValueChange).toHaveBeenCalledWith("Summarize updates");
   });
 });

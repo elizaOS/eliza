@@ -72,8 +72,7 @@
     padding: 1.1rem clamp(1.25rem, 4vw, 3rem);
     color: white;
   }
-  nav .mark { display: inline-flex; min-height: 44px; align-items: center; gap: 0.6rem; font-weight: 800; font-size: 1.05rem; letter-spacing: -0.01em; text-decoration: none; }
-  nav .mark img { height: 1.7rem; width: auto; display: block; }
+  nav .mark { display: inline-flex; min-height: 44px; align-items: center; font-weight: 800; font-size: 1.05rem; letter-spacing: -0.01em; text-decoration: none; }
   nav .links { display: flex; gap: 1.75rem; }
   nav .links a { display: inline-flex; min-height: 44px; align-items: center; text-decoration: none; font-weight: 600; font-size: 0.92rem; opacity: 0.85; transition: opacity 0.2s; }
   nav .links a:hover { opacity: 1; }
@@ -184,7 +183,7 @@
 <body>
 
 <nav aria-label="Main">
-  <a class="mark" href="#top"><img src="assets/logo_white_nobg.svg" alt="" />Eliza&nbsp;Research</a>
+  <a class="mark" href="#top">Eliza&nbsp;Research</a>
   <div class="links">
     <a href="#eliza">Products</a>
     <a href="#contact">Contact</a>
@@ -250,17 +249,36 @@
 </footer>
 
 <script>
-// Hero: particles assemble the Eliza face wireframe, drift apart in pieces,
-// periodically re-form, and react to pointer/touch (hover repels, drag shoves).
+// Particles orbit inward through a virtual 3D camera, then resolve into the
+// detailed face and continue with a slow per-particle float. Shimmer and pointer
+// response run throughout, so arrival and interaction remain one system.
 (() => {
   const canvas = document.getElementById("swarm");
   const header = canvas.parentElement;
   const ctx = canvas.getContext("2d");
   const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
-  let W = 0, H = 0, dpr = 1, resizeFrame = 0;
+  let W = 0, H = 0, dpr = 1, frame = 0, resizeFrame = 0;
   const boids = [];
   let targets = [];
-  const pointer = { x: -1e4, y: -1e4, vx: 0, vy: 0, down: false, touch: false, t: 0 };
+  let born = 0;
+  let entranceStarted = false;
+  let entranceComplete = reduced;
+  const ENTER_MS = 2050, ENTER_STAGGER_MS = 220;
+  const LANE_COUNT = 16;
+  const laneEase = new Float32Array(LANE_COUNT);
+  const laneCos = new Float32Array(LANE_COUNT);
+  const laneSin = new Float32Array(LANE_COUNT);
+  const laneTiltCos = new Float32Array(LANE_COUNT);
+  const laneTiltSin = new Float32Array(LANE_COUNT);
+  const laneRollCos = new Float32Array(LANE_COUNT);
+  const laneRollSin = new Float32Array(LANE_COUNT);
+
+  // Sine lookup keeps the per-particle float cheap at tens of thousands of dots.
+  const SIN_N = 1024;
+  const SIN = new Float32Array(SIN_N);
+  for (let i = 0; i < SIN_N; i++) SIN[i] = Math.sin((i / SIN_N) * Math.PI * 2);
+  const wave = (turns) => SIN[((turns * SIN_N) | 0) & (SIN_N - 1)];
+  const pointer = { x: -1e4, y: -1e4, down: false, touch: false };
 
   function resize() {
     dpr = Math.min(devicePixelRatio || 1, 2);
@@ -270,7 +288,8 @@
   }
   resize();
 
-  // Sample particle targets from the face logo rendered offscreen.
+  // The offscreen alpha mask preserves the logo's smallest facial details
+  // without adding a visible SVG layer behind the particle field.
   const img = new Image();
   img.src = "assets/logo_white_nobg.svg";
   img.onload = () => { tryInit(); };
@@ -315,18 +334,31 @@
     if (!img.complete || !img.naturalWidth || W === 0) return;
     targets = sampleFace();
     boids.length = 0;
+    if (!entranceStarted && !reduced) {
+      born = performance.now();
+      entranceStarted = true;
+    }
+    const cx = W / 2, cy = H / 2, reach = Math.max(W, H);
     for (const t of targets) {
-      const sx = t.x;
-      const sy = t.y;
+      const a = Math.random() * Math.PI * 2;
+      const r = reach * (0.55 + Math.random() * 0.5);
+      const sx = entranceComplete ? t.x : cx + Math.cos(a) * r;
+      const sy = entranceComplete ? t.y : cy + Math.sin(a) * r;
       boids.push({
         x: sx, y: sy, sx, sy,
-        vx: 0, vy: 0, tx: t.x, ty: t.y,
-        size: Math.random() * 0.95 + 0.85, life: Math.random() * 100 + 50 });
+        tx: t.x, ty: t.y,
+        sz: entranceComplete ? 0 : Math.min(W, H) * (0.35 + Math.random() * 0.55) * (Math.random() < 0.5 ? -1 : 1),
+        lane: (Math.random() * LANE_COUNT) | 0,
+        offsetX: 0, offsetY: 0, depthScale: 1,
+        size: Math.random() * 0.95 + 0.85, life: Math.random() * 100,
+        ph: Math.random(), phy: Math.random(),
+        fs: 0.6 + Math.random() * 0.8, amp: 1.1 + Math.random() * 2.6 });
     }
-    if (reduced) draw();
+    if (reduced) { step(performance.now()); draw(performance.now()); }
   }
 
-  // Pointer interaction on the header (canvas sits behind the copy).
+  // The header owns input because the decorative canvas sits behind the copy
+  // and must never intercept its links or block vertical touch scrolling.
   function toLocal(e) {
     const r = canvas.getBoundingClientRect();
     return { x: e.clientX - r.left, y: e.clientY - r.top };
@@ -334,11 +366,7 @@
   header.addEventListener("pointermove", (e) => {
     if (e.pointerType !== "mouse" && !pointer.down) return;
     const p = toLocal(e);
-    const now = performance.now();
-    const dt = Math.max(16, now - pointer.t);
-    pointer.vx = (p.x - pointer.x) / dt * 16;
-    pointer.vy = (p.y - pointer.y) / dt * 16;
-    pointer.x = p.x; pointer.y = p.y; pointer.t = now;
+    pointer.x = p.x; pointer.y = p.y;
     pointer.touch = e.pointerType !== "mouse";
     if (!pointer.touch) pointer.down = true;
   }, { passive: true });
@@ -346,55 +374,132 @@
     pointer.down = true;
     pointer.touch = e.pointerType !== "mouse";
     const p = toLocal(e);
-    pointer.x = p.x; pointer.y = p.y; pointer.t = performance.now();
+    pointer.x = p.x; pointer.y = p.y;
   }, { passive: true });
   addEventListener("pointerup", (e) => { if (e.pointerType !== "mouse") pointer.down = false; }, { passive: true });
   addEventListener("pointercancel", (e) => { if (e.pointerType !== "mouse") pointer.down = false; pointer.x = pointer.y = -1e4; }, { passive: true });
   addEventListener("scroll", () => {
     if (!pointer.touch || !pointer.down) return;
-    pointer.down = false; pointer.x = pointer.y = -1e4; pointer.vx = pointer.vy = 0;
+    pointer.down = false; pointer.x = pointer.y = -1e4;
   }, { passive: true });
   header.addEventListener("pointerleave", () => {
-    pointer.x = -1e4; pointer.y = -1e4; pointer.vx = pointer.vy = 0;
+    pointer.x = -1e4; pointer.y = -1e4;
   }, { passive: true });
   for (const type of ["contextmenu", "selectstart", "dragstart"]) {
     document.body.addEventListener(type, (event) => event.preventDefault());
   }
 
-  function step() {
+  function step(now) {
     if (!boids.length) { tryInit(); return; }
-    for (const b of boids) {
-      const px = pointer.x - b.x, py = pointer.y - b.y;
+    const faceSize = Math.min(W, H);
+    const centerX = W / 2;
+    const centerY = (H - faceSize) * 0.38 - H * 0.10 + faceSize / 2;
+    const camera = faceSize * 2.4;
+    const tf = now / 1000;
+    if (!entranceComplete) {
+      let forming = false;
+      for (let lane = 0; lane < LANE_COUNT; lane++) {
+        const delay = lane / (LANE_COUNT - 1) * ENTER_STAGGER_MS;
+        const progress = Math.min(1, Math.max(0, (now - born - delay) / (ENTER_MS - delay)));
+        const eased = progress * progress * (3 - 2 * progress);
+        const angle = eased * Math.PI * 2;
+        const tilt = Math.sin(progress * Math.PI) * 0.24;
+        const roll = Math.sin(progress * Math.PI) * 0.28 * (lane % 2 ? -1 : 1);
+        laneEase[lane] = eased;
+        laneCos[lane] = Math.cos(angle);
+        laneSin[lane] = Math.sin(angle);
+        laneTiltCos[lane] = Math.cos(tilt);
+        laneTiltSin[lane] = Math.sin(tilt);
+        laneRollCos[lane] = Math.cos(roll);
+        laneRollSin[lane] = Math.sin(roll);
+        if (progress < 1) forming = true;
+      }
+      if (!forming) entranceComplete = true;
+    }
+    for (let i = 0; i < boids.length; i++) {
+      const b = boids[i];
+      let baseX = b.tx;
+      let baseY = b.ty;
+      let entranceMix = 1;
+      if (!entranceComplete) {
+        entranceMix = laneEase[b.lane];
+        const relX = b.sx + (b.tx - b.sx) * entranceMix - centerX;
+        const relY = b.sy + (b.ty - b.sy) * entranceMix - centerY;
+        const z = b.sz * (1 - entranceMix);
+        const rotatedX = relX * laneCos[b.lane] + z * laneSin[b.lane];
+        const rotatedZ = -relX * laneSin[b.lane] + z * laneCos[b.lane];
+        const rotatedY = relY * laneTiltCos[b.lane] - rotatedZ * laneTiltSin[b.lane];
+        const depth = relY * laneTiltSin[b.lane] + rotatedZ * laneTiltCos[b.lane];
+        const cameraX = rotatedX * laneRollCos[b.lane] - rotatedY * laneRollSin[b.lane];
+        const cameraY = rotatedX * laneRollSin[b.lane] + rotatedY * laneRollCos[b.lane];
+        const perspective = Math.min(1.55, Math.max(0.68, camera / (camera + depth)));
+        baseX = centerX + cameraX * perspective;
+        baseY = centerY + cameraY * perspective;
+        b.depthScale = perspective;
+      } else {
+        b.depthScale = 1;
+      }
+      const idleMix = reduced ? 0 : entranceMix;
+      const gx = baseX + wave(tf * 0.06 * b.fs + b.ph) * b.amp * idleMix;
+      const gy = baseY + wave(tf * 0.048 * b.fs + b.phy) * b.amp * idleMix;
+      const px = pointer.x - gx, py = pointer.y - gy;
       const pd2 = px * px + py * py;
       const R = 105;
+      let desiredX = 0;
+      let desiredY = 0;
       if (pointer.down && pd2 < R * R && pd2 > 1) {
         const pd = Math.sqrt(pd2);
         const f = (R - pd) / R;
-        b.x = b.tx - (px / pd) * f * 24;
-        b.y = b.ty - (py / pd) * f * 24;
-      } else {
-        b.x += (b.tx - b.x) * 0.1;
-        b.y += (b.ty - b.y) * 0.1;
+        desiredX = -(px / pd) * f * 24;
+        desiredY = -(py / pd) * f * 24;
       }
-      if (!reduced && --b.life <= 0) {
+      const response = pointer.down ? 0.22 : 0.12;
+      b.offsetX += (desiredX - b.offsetX) * response;
+      b.offsetY += (desiredY - b.offsetY) * response;
+      b.x = gx + b.offsetX;
+      b.y = gy + b.offsetY;
+      if (entranceComplete && !reduced && --b.life <= 0) {
         const t = targets[(Math.random() * targets.length) | 0];
-        b.x = b.tx = t.x; b.y = b.ty = t.y; b.life = Math.random() * 100 + 50;
+        b.x = b.sx = b.tx = t.x; b.y = b.sy = b.ty = t.y;
+        b.offsetX = 0; b.offsetY = 0;
+        b.life = Math.random() * 100 + 50;
       }
     }
   }
 
-  function draw() {
+  function draw(now) {
     ctx.fillStyle = "#ff5800";
     ctx.fillRect(0, 0, W, H);
     ctx.globalAlpha = 1;
     ctx.fillStyle = "#fff";
-    for (const b of boids) {
-      ctx.fillRect(b.x, b.y, b.size, b.size);
+    const arrival = entranceComplete ? 1 : Math.min(1, Math.max(0, (now - born) / ENTER_MS));
+    const arrivalScale = 0.58 + arrival * 0.42;
+    for (let i = 0; i < boids.length; i++) {
+      const b = boids[i];
+      const shimmer = 0.88 + (1 - Math.abs((((now / 1000) * 0.7 * b.fs + b.ph) % 1) * 2 - 1)) * 0.2;
+      const size = b.size * arrivalScale * shimmer * b.depthScale;
+      ctx.fillRect(b.x - (size - b.size) / 2, b.y - (size - b.size) / 2, size, size);
     }
   }
 
-  function loop() { step(); draw(); requestAnimationFrame(loop); }
-  if (!reduced) requestAnimationFrame(loop);
+  function loop(now) {
+    frame = 0;
+    step(now);
+    draw(now);
+    if (!document.hidden) frame = requestAnimationFrame(loop);
+  }
+  function start() {
+    if (!reduced && !document.hidden && !frame) frame = requestAnimationFrame(loop);
+  }
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) {
+      cancelAnimationFrame(frame);
+      frame = 0;
+    } else {
+      start();
+    }
+  });
+  start();
 })();
 
 </script>

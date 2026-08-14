@@ -55,6 +55,8 @@ export interface SettingsSwitchRowProps {
   /** Override the agent-surface status token (defaults to on/off). */
   agentStatus?: string;
   className?: string;
+  /** Stable test hook on the switch control. */
+  testId?: string;
 }
 
 export function SettingsSwitchRow({
@@ -70,6 +72,7 @@ export function SettingsSwitchRow({
   group = "settings",
   agentStatus,
   className,
+  testId,
 }: SettingsSwitchRowProps) {
   const resolvedLabel = agentLabel ?? labelToString(label, agentId);
   const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
@@ -82,6 +85,8 @@ export function SettingsSwitchRow({
     getValue: () => checked,
     onActivate: disabled ? undefined : () => onCheckedChange(!checked),
   });
+  const { "aria-label": _ignoredSwitchAccessibleName, ...switchAgentProps } =
+    agentProps;
 
   return (
     <SettingsRow
@@ -98,9 +103,8 @@ export function SettingsSwitchRow({
           checked={checked}
           onCheckedChange={onCheckedChange}
           disabled={disabled}
-          {...agentProps}
-          aria-label={resolvedLabel}
-          aria-checked={checked}
+          data-testid={testId}
+          {...switchAgentProps}
         />
       }
     />
@@ -508,6 +512,11 @@ export function SettingsTextareaRow({
     onFill: disabled ? undefined : (next: string) => onValueChange(next),
   });
 
+  const {
+    "aria-label": _ignoredTextareaAccessibleName,
+    ...textareaAgentProps
+  } = agentProps;
+
   return (
     <SettingsRow
       icon={icon}
@@ -515,18 +524,19 @@ export function SettingsTextareaRow({
       label={label}
       description={description}
       className={className}
+      htmlFor={agentId}
       stacked
     >
       <SettingsTextarea
         ref={ref}
+        id={agentId}
         value={value}
         onChange={(event) => onValueChange(event.target.value)}
         placeholder={placeholder}
         rows={rows}
         disabled={disabled}
-        aria-label={resolvedLabel}
         className={textareaClassName}
-        {...agentProps}
+        {...textareaAgentProps}
       />
     </SettingsRow>
   );

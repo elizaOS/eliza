@@ -249,6 +249,58 @@ function makeInvoke(object: { fetch(request: Request): Promise<Response> }) {
   };
 }
 
+test("prewarm joins cold hydration without writing a conversation turn", async () => {
+  repositoryReads = 0;
+  repositoryWrites = 0;
+  repositoryRow = [{ role: "assistant", content: "migrated" }];
+  const data = new Map<string, unknown>();
+  const background: Promise<unknown>[] = [];
+  const object = new SharedRuntimeConversation(
+    makeState(data, background) as never,
+    {} as never,
+  );
+
+  const response = await object.fetch(
+    new Request("https://shared-runtime.internal/prewarm", {
+      method: "POST",
+      body: JSON.stringify({
+        operation: "prewarm",
+        agentId: AGENT_FIXTURE.id,
+        roomId: "room-1",
+      }),
+    }),
+  );
+
+  expect(response.status).toBe(200);
+  await expect(response.json()).resolves.toEqual({ success: true });
+  expect(repositoryReads).toBe(1);
+  expect(repositoryWrites).toBe(0);
+  expect(data.get("conversation")).toMatchObject({
+    agentId: AGENT_FIXTURE.id,
+    channelId: "room-1",
+    history: repositoryRow,
+    dirty: false,
+  });
+
+  const warmResponse = await object.fetch(
+    new Request("https://shared-runtime.internal/prewarm", {
+      method: "POST",
+      body: JSON.stringify({
+        operation: "prewarm",
+        agentId: AGENT_FIXTURE.id,
+        roomId: "room-1",
+      }),
+    }),
+  );
+  expect(warmResponse.status).toBe(200);
+  await warmResponse.arrayBuffer();
+  expect(repositoryReads).toBe(1);
+
+  const result = await makeInvoke(object)("first-real-turn");
+  expect(result).toMatchObject({ result: { historyLength: 2 } });
+  expect(repositoryReads).toBe(1);
+});
+
 test("warm coordinated turns use local history and mirror asynchronously", async () => {
   repositoryReads = 0;
   repositoryWrites = 0;

@@ -76,8 +76,8 @@ const RAW_INPUT_OCCURRENCES = new Map<
   [
     "VoiceSection.tsx",
     {
-      count: 4,
-      reason: "checkbox consent controls, not labelled text/password fields",
+      count: 1,
+      reason: "end-of-turn range sliders, not labelled text/password fields",
     },
   ],
   [
