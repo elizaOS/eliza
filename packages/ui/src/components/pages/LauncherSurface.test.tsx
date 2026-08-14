@@ -18,7 +18,10 @@ import type { AppLaunchResult } from "../../api";
 import type { ViewRegistryEntry } from "../../hooks/useAvailableViews";
 import { type ViewEntry, viewToEntry } from "../../hooks/view-catalog";
 import { __setAppValueForTests } from "../../state/app-store";
-import type { AppContextValue } from "../../state/types";
+import type {
+  AppContextValue,
+  StartupCoordinatorView,
+} from "../../state/types";
 import { useEnabledViewKinds } from "../../state/useViewKinds";
 import { LauncherSurface } from "./LauncherSurface";
 
@@ -63,6 +66,32 @@ vi.mock("../../navigation", () => {
 
 const useEnabledViewKindsMock = vi.mocked(useEnabledViewKinds);
 
+function makeReadyStartupCoordinator(): StartupCoordinatorView {
+  return {
+    state: { phase: "ready" },
+    dispatch: vi.fn(),
+    retry: vi.fn(),
+    reset: vi.fn(),
+    pairingSuccess: vi.fn(),
+    firstRunComplete: vi.fn(),
+    policy: {
+      supportsLocalRuntime: true,
+      backendTimeoutMs: 30_000,
+      agentReadyTimeoutMs: 30_000,
+      probeForExistingInstall: true,
+      defaultTarget: "embedded-local",
+    },
+    loading: false,
+    terminal: false,
+    isShellPaintable: true,
+    isInteractive: true,
+    statusMessageKey: "startupshell.Loading",
+    error: null,
+    target: "embedded-local",
+    phase: "ready",
+  };
+}
+
 function view(
   id: string,
   label: string,
@@ -102,14 +131,28 @@ beforeEach(() => {
   window.localStorage.clear();
   window.history.replaceState(null, "", "/");
   getMock.mockResolvedValue(null);
-  __setAppValueForTests({
+  const launcherState = {
     appRuns: [],
     elizaCloudConnected: false,
+    startupCoordinator: makeReadyStartupCoordinator(),
     setActionNotice: setActionNoticeMock,
     setState: setStateMock,
     setTab: setTabMock,
     t: (key: string) => key,
-  } as unknown as AppContextValue);
+  } satisfies Pick<
+    AppContextValue,
+    | "appRuns"
+    | "elizaCloudConnected"
+    | "startupCoordinator"
+    | "setActionNotice"
+    | "setState"
+    | "setTab"
+    | "t"
+  >;
+  // This isolated renderer selects only the fields above; keep the single
+  // partial-context cast here while checking each selected field against the
+  // real store contract.
+  __setAppValueForTests(launcherState as unknown as AppContextValue);
   useEnabledViewKindsMock.mockReturnValue({ developer: true, preview: true });
   setViews([
     view("chat", "Chat", "/chat"),
