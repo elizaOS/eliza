@@ -5,7 +5,6 @@
  */
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-
 import {
   type ActionResult,
   CapabilityError,
@@ -17,13 +16,13 @@ import {
   type Memory,
   type State,
 } from "@elizaos/core";
-
 import {
   failureToActionResult,
   readArrayParam,
   readStringParam,
   successActionResult,
 } from "../lib/format.js";
+import { resolveInputPath } from "../lib/path-utils.js";
 import type { SandboxService } from "../services/sandbox-service.js";
 import type { SessionCwdService } from "../services/session-cwd-service.js";
 import {
@@ -57,11 +56,23 @@ function formatListText(params: {
   entries: LsEntry[];
   truncated: boolean;
   totalAfterIgnore: number;
+  ignoredFilter?: string;
 }): string {
   const lines = [
     `Directory: ${params.dir}`,
     ...params.entries.map((e) => (e.type === "dir" ? `${e.name}/` : e.name)),
   ];
+  // State the scope, always. `ls` is ONE directory level and does not filter,
+  // but callers pass `pattern`/`glob` and then read the result as if it were a
+  // filtered recursive search: a live turn answered "how many typescript files
+  // are in packages/core/src" with **91** (this listing's top-level .ts names)
+  // when the real recursive count is 1215. A listing that does not say what it
+  // is becomes a total in the reader's hands.
+  if (params.ignoredFilter) {
+    lines.push(
+      `[note] ls does not filter and lists ONE level only — the '${params.ignoredFilter}' filter was ignored. For a recursive match use action=glob with '**/${params.ignoredFilter}'. This is not a total.`,
+    );
+  }
   if (params.truncated) {
     lines.push(
       `…[truncated, listed ${ENTRY_LIMIT} of ${params.totalAfterIgnore} entries]`,
@@ -188,8 +199,24 @@ export async function lsHandler(
   }
 
   const requestedPath = readStringParam(options, "path");
+  // `ls` honors neither of these; naming the drop is what stops the model
+  // treating an unfiltered single-level listing as a filtered recursive one.
+  const ignoredFilter =
+    readStringParam(options, "pattern") ?? readStringParam(options, "glob");
+  // A relative `path` resolves against the conversation cwd, exactly as
+  // read/write/edit already do. Passing it straight to validatePath rejected
+  // the most natural value the planner emits — `"."` — with a hard
+  // "Path must be absolute" failure that surfaced to the user as a generic
+  // runtime error (live capture: "what plugins are in the plugins directory").
+  const resolvedRequested = requestedPath
+    ? resolveInputPath(runtime, conversationId, requestedPath)
+    : undefined;
+  if (resolvedRequested && resolvedRequested.ok === false) {
+    return failureToActionResult(resolvedRequested.failure);
+  }
   const targetPath =
-    requestedPath ?? (await session.getExistingCwd(conversationId)).cwd;
+    resolvedRequested?.value ??
+    (await session.getExistingCwd(conversationId)).cwd;
 
   const validation = await sandbox.validatePath(conversationId, targetPath);
   if (validation.ok === false) {
@@ -207,6 +234,7 @@ export async function lsHandler(
   if (routed.ok) {
     const sorted = sortEntries(routed.payload.entries.map(toLsEntry));
     const text = formatListText({
+      ignoredFilter,
       dir: routed.payload.path,
       entries: sorted,
       truncated: routed.payload.truncated,
@@ -281,6 +309,7 @@ export async function lsHandler(
 
   const sorted = sortEntries(enriched);
   const text = formatListText({
+    ignoredFilter,
     dir,
     entries: sorted,
     truncated,

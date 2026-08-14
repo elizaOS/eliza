@@ -316,3 +316,39 @@ describe("lsHandler — read-only query stays silent", () => {
     expect(callback).not.toHaveBeenCalled();
   });
 });
+
+describe("LS states its scope when a filter is passed", () => {
+  // Live 2026-08-14: "how many typescript files are in packages/core/src"
+  // answered **91** (this listing's top-level .ts names) when the recursive
+  // truth is 1215. The model had passed pattern='*.ts', ls silently ignored it,
+  // and the single-level listing was read as a total. A listing that does not
+  // say what it is becomes a total in the reader's hands.
+  it("names the ignored filter and points at glob", async () => {
+    const { runtime, message } = await buildRuntime();
+    const result = await lsHandler(runtime, message, state, {
+      parameters: { pattern: "*.ts" },
+    });
+    expect(result.success).toBe(true);
+    expect(result.text).toContain("does not filter");
+    expect(result.text).toContain("ONE level");
+    expect(result.text).toContain("action=glob");
+    expect(result.text).toContain("**/*.ts");
+    expect(result.text).toContain("not a total");
+  });
+
+  it("accepts the glob alias for the same filter param", async () => {
+    const { runtime, message } = await buildRuntime();
+    const result = await lsHandler(runtime, message, state, {
+      parameters: { glob: "*.md" },
+    });
+    expect(result.text).toContain("**/*.md");
+  });
+
+  it("stays silent when no filter was passed", async () => {
+    const { runtime, message } = await buildRuntime();
+    const result = await lsHandler(runtime, message, state, {
+      parameters: {},
+    });
+    expect(result.text).not.toContain("does not filter");
+  });
+});
