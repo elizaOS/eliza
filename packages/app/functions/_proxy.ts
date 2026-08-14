@@ -48,12 +48,28 @@ export function resolveApiWorkerTarget(
 export function proxyToApiWorker(
   context: PagesProxyContext,
 ): Promise<Response> {
+  const incoming = new URL(context.request.url);
   const target = resolveApiWorkerTarget(context.request.url, context.env);
   const method = context.request.method.toUpperCase();
+  const headers = new Headers(context.request.headers);
+
+  // Browsers omit Origin on same-origin GETs, including Steward's wallet nonce
+  // request. The service binding changes the request URL to api.eliza.app, so
+  // the API Worker cannot recover the browser host after this boundary. Stamp
+  // the trusted Pages origin before forwarding. Preserve an explicit Origin:
+  // browsers send it on cross-origin and mutating requests, where replacing it
+  // would defeat Steward's origin and CSRF checks.
+  if (
+    !headers.has("origin") &&
+    (incoming.pathname === "/steward" ||
+      incoming.pathname.startsWith("/steward/"))
+  ) {
+    headers.set("origin", incoming.origin);
+  }
 
   const upstreamRequest = new Request(target, {
     method,
-    headers: context.request.headers,
+    headers,
     body:
       method === "GET" || method === "HEAD" ? undefined : context.request.body,
     redirect: "manual",

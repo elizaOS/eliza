@@ -99,19 +99,26 @@ Redis (at least one of these must resolve, or `createRedis()` throws):
 - `REDIS_URL` — native Redis (ioredis).
 - `MOCK_REDIS=1` — in-memory mock (tests / local).
 
+Canonical transport fallback (both values are required together; when either
+is absent or invalid the process rejects startup before binding `/health` or
+`/ready` and does not contact a legacy agent hostname):
+
+- `AGENT_ROUTER_ORIGIN_HOST` — canonical dedicated-agent router origin used
+  after a direct transport failure. Production is
+  `eliza-production-1.eliza.app`; staging is `eliza-staging-1.eliza.app`.
+  The gateway sends the validated
+  `<agent-id>.<ELIZA_CLOUD_AGENT_BASE_DOMAIN>` value as `X-Forwarded-Host`.
+  Validation applies to the complete generated hostname, including the
+  253-character total and 63-character per-label DNS limits.
+- `ELIZA_CLOUD_AGENT_BASE_DOMAIN` — canonical dedicated-agent hostname suffix:
+  `cloud.eliza.app` in production or `cloud-staging.eliza.app` in staging.
+
 Other:
 
 - `GATEWAY_INTERNAL_SECRET` — required to accept `POST /internal/event`; when
   unset, every internal-event request is rejected (logged as a warning at boot).
 - `AGENT_SERVER_SHARED_SECRET` — sent as `X-Server-Token` on forwards to
   agent-server pods.
-- `AGENT_ROUTER_ORIGIN_HOST` — canonical dedicated-agent router origin used
-  after a direct transport failure. The gateway sends the validated
-  `<agent-id>.<ELIZA_CLOUD_AGENT_BASE_DOMAIN>` value as `X-Forwarded-Host`.
-  Validation applies to the complete generated hostname, including the
-  253-character total and 63-character per-label DNS limits.
-- `ELIZA_CLOUD_AGENT_BASE_DOMAIN` — dedicated-agent hostname suffix used with
-  the router origin (default `cloud.eliza.app`).
 - `PORT` (default 3000; `dev`/`start` scripts set 3002), `POD_NAME` /
   `HOSTNAME`.
 - `KEDA_COOLDOWN_SECONDS` (default 900) — TTL on the KEDA activity key.
