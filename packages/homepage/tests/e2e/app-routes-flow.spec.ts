@@ -528,3 +528,92 @@ test("supported-platform messaging keeps a manual copy recovery visible", async 
   await page.getByRole("button", { name: "Copy phone number" }).click();
   await expect(page.getByRole("status")).toHaveText("Phone number copied");
 });
+
+test("the latest manual-copy attempt owns the visible result", async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, "platform", {
+      configurable: true,
+      value: "MacIntel",
+    });
+    Object.defineProperty(navigator, "userAgentData", {
+      configurable: true,
+      value: { platform: "macOS" },
+    });
+    const attempts: Array<{
+      reject: () => void;
+      resolve: () => void;
+    }> = [];
+    Object.defineProperty(window, "__homepageCopyAttempts", {
+      configurable: true,
+      value: attempts,
+    });
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: {
+        writeText: () =>
+          new Promise<void>((resolve, reject) => {
+            attempts.push({ resolve, reject });
+          }),
+      },
+    });
+  });
+
+  const attempts = () =>
+    page.evaluate(() => {
+      const controls = (
+        window as unknown as {
+          __homepageCopyAttempts: Array<{
+            reject: () => void;
+            resolve: () => void;
+          }>;
+        }
+      ).__homepageCopyAttempts;
+      return controls.length;
+    });
+  const settle = (index: number, outcome: "resolve" | "reject") =>
+    page.evaluate(
+      ({ attemptIndex, attemptOutcome }) => {
+        const controls = (
+          window as unknown as {
+            __homepageCopyAttempts: Array<{
+              reject: () => void;
+              resolve: () => void;
+            }>;
+          }
+        ).__homepageCopyAttempts;
+        controls[attemptIndex]?.[attemptOutcome]();
+      },
+      { attemptIndex: index, attemptOutcome: outcome },
+    );
+
+  await page.goto("/");
+  await waitForLandingIntro(page);
+  await page.getByRole("button", { name: "Message Eliza" }).click();
+  const copyButton = page.getByRole("button", { name: "Copy phone number" });
+  await copyButton.click();
+  await copyButton.click();
+  await expect.poll(attempts).toBe(2);
+
+  await settle(1, "resolve");
+  await expect(page.getByRole("status")).toHaveText("Phone number copied");
+  await settle(0, "reject");
+  await expect(page.getByRole("status")).toHaveText("Phone number copied");
+
+  await page.reload();
+  await waitForLandingIntro(page);
+  await page.getByRole("button", { name: "Message Eliza" }).click();
+  await copyButton.click();
+  await copyButton.click();
+  await expect.poll(attempts).toBe(2);
+
+  await settle(1, "reject");
+  await expect(page.getByRole("alert")).toHaveText(
+    "Couldn't copy the phone number",
+  );
+  await settle(0, "resolve");
+  await expect(page.getByRole("alert")).toHaveText(
+    "Couldn't copy the phone number",
+  );
+});

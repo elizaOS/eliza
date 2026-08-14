@@ -709,6 +709,7 @@ export default function GetStartedPage() {
   const [messageNotice, setMessageNotice] = useState<
     "idle" | "handoff" | "copied" | "error"
   >("idle");
+  const messageNoticeOperation = useRef(0);
   const [showContent, setShowContent] = useState(false);
 
   useEffect(() => {
@@ -1290,22 +1291,28 @@ export default function GetStartedPage() {
   }, [handleDiscordAuthSubmit]);
 
   const handleOpenMessages = async () => {
+    const operation = ++messageNoticeOperation.current;
     try {
       const outcome = await openOrCopyElizaMessage(window);
-      setMessageNotice(outcome);
+      if (operation === messageNoticeOperation.current)
+        setMessageNotice(outcome);
     } catch {
       // error-policy:J4 Clipboard rejection stays visible as a distinct UI error.
-      setMessageNotice("error");
+      if (operation === messageNoticeOperation.current)
+        setMessageNotice("error");
     }
   };
 
   const handleCopyMessageNumber = async () => {
+    const operation = ++messageNoticeOperation.current;
     try {
       await navigator.clipboard.writeText(ELIZA_PHONE_NUMBER);
-      setMessageNotice("copied");
+      if (operation === messageNoticeOperation.current)
+        setMessageNotice("copied");
     } catch {
       // error-policy:J4 Clipboard rejection stays visible as a distinct UI error.
-      setMessageNotice("error");
+      if (operation === messageNoticeOperation.current)
+        setMessageNotice("error");
     }
   };
 

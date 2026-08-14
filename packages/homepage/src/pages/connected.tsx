@@ -16,7 +16,7 @@ import {
   DropdownMenuTrigger,
 } from "@elizaos/ui/dropdown-menu";
 import { Check, Copy, Info, LogOut } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { ElizaLogo } from "@/components/brand/eliza-logo";
 import {
@@ -92,6 +92,7 @@ export default function ConnectedPage() {
   const [phoneCopyState, setPhoneCopyState] = useState<
     "idle" | "handoff" | "copied" | "error"
   >("idle");
+  const phoneCopyOperation = useRef(0);
   const [copiedTelegram, setCopiedTelegram] = useState(false);
   const [copiedWhatsApp, setCopiedWhatsApp] = useState(false);
 
@@ -161,12 +162,13 @@ export default function ConnectedPage() {
   }, [isAuthenticated, isLoading, navigate]);
 
   const handleCopyPhone = async () => {
+    const operation = ++phoneCopyOperation.current;
     try {
       await navigator.clipboard.writeText(ELIZA_PHONE_NUMBER);
-      setPhoneCopyState("copied");
+      if (operation === phoneCopyOperation.current) setPhoneCopyState("copied");
     } catch {
       // error-policy:J4 Clipboard rejection stays visible as a distinct UI error.
-      setPhoneCopyState("error");
+      if (operation === phoneCopyOperation.current) setPhoneCopyState("error");
     }
   };
 
@@ -201,12 +203,13 @@ export default function ConnectedPage() {
   };
 
   const handleOpenMessages = async () => {
+    const operation = ++phoneCopyOperation.current;
     try {
       const outcome = await openOrCopyElizaMessage(window);
-      setPhoneCopyState(outcome);
+      if (operation === phoneCopyOperation.current) setPhoneCopyState(outcome);
     } catch {
       // error-policy:J4 Clipboard rejection stays visible as a distinct UI error.
-      setPhoneCopyState("error");
+      if (operation === phoneCopyOperation.current) setPhoneCopyState("error");
     }
   };
 
