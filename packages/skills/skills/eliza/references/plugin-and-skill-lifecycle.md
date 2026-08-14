@@ -41,8 +41,9 @@ Plugin loading is runtime-managed. In this repo, check these areas first:
 
 - `packages/agent/` for app-side runtime glue and default plugin setup
 - `packages/app-core/` for CLI/API/config behavior that selects runtime and plugin sources
-- `packages/elizaos/` for the `elizaos` CLI commands that build, test, publish, or manage plugins
-- `packages/plugin-*` and `plugins/plugin-*` for existing plugin packages
+- `packages/elizaos/` for the `elizaos` CLI's plugin scaffolding, upgrade, deploy, and registry-submission commands
+- the target plugin's own manifest scripts and nearest guide for building, testing, and npm publication — the CLI does not perform those lifecycle steps
+- `plugins/plugin-*` for existing plugin packages
 - the active config/onboarding path for enabled plugins and linked credentials
 
 Do not hot-load arbitrary plugin code by ad hoc `import()` from a worker unless an existing runtime command/API is designed for that. Prefer the repo's CLI/runtime helpers and restart the runtime when a plugin load boundary requires it.

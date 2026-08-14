@@ -16,9 +16,8 @@ This repository is an **elizaOS application**: a local-first assistant with CLI,
 
 - Prefer `packages/app-core/` for app shell behavior (API, CLI, onboarding, config).
 - Prefer `packages/agent/` for agent providers, services, and runtime glue around elizaOS.
-- Prefer `apps/app/` for UI and Electrobun work.
-- Treat `eliza/cloud/` as the Eliza Cloud product and backend surface.
-- Treat `eliza/` as upstream elizaOS. Edit it only when the bug or feature is genuinely upstream.
+- Prefer `packages/app/` for UI work and `packages/app-core/platforms/electrobun/` for the Electrobun native shell.
+- Treat `packages/cloud/` as the Eliza Cloud product and backend surface.
 
 ## Hard Constraints
 
@@ -38,7 +37,7 @@ bun run test
 Narrower commands when useful:
 
 ```bash
-bun run eliza ...
+bun run start
 bun run dev
 bun run dev:desktop
 bun run test:e2e
@@ -50,7 +49,7 @@ bun run test:e2e
 - Prompt, provider, and skill plumbing: `packages/agent/src/`
 - Onboarding and routing: `packages/ui/src/first-run/` and `packages/app-core/src/runtime/`
 - Shipped default skills: bundled in `@elizaos/skills`, seeded into the state-dir skills folder by `packages/app-core/scripts/ensure-skills.mjs`
-- Eliza Cloud backend or monetization: `eliza/cloud/` and the shipped `eliza-cloud` skill
+- Eliza Cloud backend or monetization: `packages/cloud/` and the shipped `eliza-cloud` skill
 
 ## Cloud Default
 

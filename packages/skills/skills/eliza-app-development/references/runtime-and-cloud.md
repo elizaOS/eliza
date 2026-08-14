@@ -56,6 +56,6 @@ For new app work, the default path should usually be:
 
 In this repo’s implementation, app monetization is driven by markup/share fields and creator earnings tracking, not only generic per-request pricing prose. When docs drift, prefer:
 
-- schema fields in `eliza/cloud/packages/db/schemas/`
-- app monetization UI under `eliza/cloud/packages/ui/src/components/apps/`
+- schema fields in `packages/cloud/shared/src/db/schemas/`
+- app monetization UI under `packages/ui/src/cloud/applications/components/`
 - billing and earnings APIs used by the UI
