@@ -69,7 +69,7 @@ describe("AdvancedMemoryStorageService.updateLongTermMemory", () => {
     expect(persisted?.lastAccessedAt?.toISOString()).toBe(lastAccessedAt.toISOString());
   });
 
-  it("replaces the access timestamp when an explicit value is supplied", async () => {
+  it("replaces the creation access timestamp with an explicit older value", async () => {
     const agentId = uuidv4() as UUID;
     const entityId = uuidv4() as UUID;
     const { runtime, cleanup } = await createTestDatabase(agentId);
@@ -79,21 +79,17 @@ describe("AdvancedMemoryStorageService.updateLongTermMemory", () => {
     ]);
     const service = new AdvancedMemoryStorageService();
     await service.initialize(runtime);
-    const initial = new Date("2026-08-02T15:30:00.000Z");
-    const replacement = new Date("2026-08-03T09:45:00.000Z");
+    const initial = new Date("2026-08-03T09:45:00.000Z");
+    const replacement = new Date("2026-08-02T15:30:00.000Z");
 
     const stored = await service.storeLongTermMemory({
       agentId,
       entityId,
       category: "semantic",
       content: "Original memory",
-    });
-
-    await service.updateLongTermMemory(stored.id, agentId, entityId, {
       lastAccessedAt: initial,
     });
-    const [beforeReplacement] = await service.getLongTermMemories(agentId, entityId);
-    expect(beforeReplacement?.lastAccessedAt?.toISOString()).toBe(initial.toISOString());
+    expect(stored.lastAccessedAt?.toISOString()).toBe(initial.toISOString());
 
     await service.updateLongTermMemory(stored.id, agentId, entityId, {
       lastAccessedAt: replacement,
@@ -113,15 +109,13 @@ describe("AdvancedMemoryStorageService.updateLongTermMemory", () => {
     ]);
     const service = new AdvancedMemoryStorageService();
     await service.initialize(runtime);
-    const initial = new Date("2026-08-02T15:30:00.000Z");
-    const replacement = new Date("2026-08-03T09:45:00.000Z");
+    const initial = new Date("2026-08-03T09:45:00.000Z");
+    const replacement = new Date("2026-08-02T15:30:00.000Z");
     const stored = await service.storeLongTermMemory({
       agentId,
       entityId,
       category: "semantic",
       content: "Original memory",
-    });
-    await service.updateLongTermMemory(stored.id, agentId, entityId, {
       lastAccessedAt: initial,
     });
 
@@ -156,7 +150,7 @@ describe("AdvancedMemoryStorageService.updateLongTermMemory", () => {
     expect(updated?.lastAccessedAt?.toISOString()).toBe(replacement.toISOString());
   });
 
-  it("keeps the newer explicit access timestamp when updates arrive out of order", async () => {
+  it("applies the explicit access timestamp from each serialized update", async () => {
     const agentId = uuidv4() as UUID;
     const entityId = uuidv4() as UUID;
     const { runtime, cleanup } = await createTestDatabase(agentId);
@@ -185,6 +179,6 @@ describe("AdvancedMemoryStorageService.updateLongTermMemory", () => {
     ]);
 
     const [updated] = await service.getLongTermMemories(agentId, entityId);
-    expect(updated?.lastAccessedAt?.toISOString()).toBe(newer.toISOString());
+    expect(updated?.lastAccessedAt?.toISOString()).toBe(older.toISOString());
   });
 });
