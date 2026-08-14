@@ -77,7 +77,7 @@ describe("ElizaClient BlueBubbles cloud gateway", () => {
     expect(requestMock).toHaveBeenNthCalledWith(
       1,
       expect.objectContaining({
-        url: "https://api.elizacloud.ai/api/v1/phone-gateways/bluebubbles",
+        url: "https://api.eliza.app/api/v1/phone-gateways/bluebubbles",
         method: "GET",
         headers: expect.objectContaining({
           Authorization: "Bearer cloud-session-token",
@@ -87,7 +87,7 @@ describe("ElizaClient BlueBubbles cloud gateway", () => {
     expect(requestMock).toHaveBeenNthCalledWith(
       2,
       expect.objectContaining({
-        url: "https://api.elizacloud.ai/api/v1/phone-gateways/bluebubbles",
+        url: "https://api.eliza.app/api/v1/phone-gateways/bluebubbles",
         method: "POST",
         data: {
           routingMode: "sender-owned",
@@ -99,7 +99,7 @@ describe("ElizaClient BlueBubbles cloud gateway", () => {
     expect(requestMock).toHaveBeenNthCalledWith(
       3,
       expect.objectContaining({
-        url: "https://api.elizacloud.ai/api/v1/phone-gateways/bluebubbles/gateway%2F1",
+        url: "https://api.eliza.app/api/v1/phone-gateways/bluebubbles/gateway%2F1",
         method: "DELETE",
       }),
     );
