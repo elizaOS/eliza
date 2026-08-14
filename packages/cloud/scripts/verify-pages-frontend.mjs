@@ -67,9 +67,18 @@ async function fetchText(url, options = {}) {
     maxBytes = MAX_INDEX_BYTES,
   } = options;
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  let timeout;
+  const timeoutFailure = new Promise((_, reject) => {
+    timeout = setTimeout(() => {
+      controller.abort();
+      reject(new Error(`request timed out after ${timeoutMs}ms`));
+    }, timeoutMs);
+  });
   try {
-    const response = await fetchImpl(url, { signal: controller.signal });
+    const response = await Promise.race([
+      fetchImpl(url, { signal: controller.signal }),
+      timeoutFailure,
+    ]);
     const contentLength = Number(response.headers?.get?.("content-length"));
     if (Number.isFinite(contentLength) && contentLength > maxBytes) {
       controller.abort();

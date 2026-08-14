@@ -241,7 +241,7 @@ describe("verifyPagesFrontendOnce", () => {
 
   it("returns a structured timeout when a live asset never settles", async () => {
     const distDir = makeDist("assets/index-fresh.js", "entry");
-    const fetchImpl = ((url: string, init?: RequestInit) => {
+    const fetchImpl = ((url: string) => {
       if (url === "https://app.elizacloud.ai/") {
         return Promise.resolve(
           response(
@@ -249,13 +249,7 @@ describe("verifyPagesFrontendOnce", () => {
           ),
         );
       }
-      return new Promise((_, reject) => {
-        init?.signal?.addEventListener(
-          "abort",
-          () => reject(new Error("aborted by verification deadline")),
-          { once: true },
-        );
-      });
+      return new Promise(() => {});
     }) as unknown as typeof fetch;
 
     const startedAt = Date.now();
