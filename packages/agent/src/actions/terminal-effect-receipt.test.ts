@@ -280,7 +280,7 @@ describe("terminal secret hygiene", () => {
   });
 
   it("removes configured, argument, output, and URI secrets from every returned and persisted surface", async () => {
-    const configuredSecret = "plain-character-secret-123456789";
+    const configuredSecret = "same-same-same-same";
     const bearerSecret = "sk-proj-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
     const flagSecret = "flag-secret-value-123456789";
     const urlPassword = "url-password-value-123456789";
