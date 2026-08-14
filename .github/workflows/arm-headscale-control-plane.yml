@@ -69,10 +69,12 @@ jobs:
 
           if [ "$TARGET_ENVIRONMENT" = "production" ]; then
             expected_public_url="https://headscale.eliza.app"
+            expected_legacy_public_url="https://headscale.elizacloud.ai"
             default_api_url="http://127.0.0.1:8081"
             default_listen_addr="127.0.0.1:8081"
           else
             expected_public_url="https://headscale-staging.eliza.app"
+            expected_legacy_public_url="https://headscale-staging.elizacloud.ai"
             default_api_url="http://127.0.0.1:8080"
             default_listen_addr="127.0.0.1:8080"
           fi
@@ -81,6 +83,7 @@ jobs:
             exit 1
           fi
 
+          echo "resolved_legacy_public_url=$expected_legacy_public_url" >> "$GITHUB_ENV"
           echo "resolved_api_url=${HEADSCALE_API_URL:-$default_api_url}" >> "$GITHUB_ENV"
           echo "resolved_listen_addr=${HEADSCALE_LISTEN_ADDR:-$default_listen_addr}" >> "$GITHUB_ENV"
 
@@ -112,22 +115,29 @@ jobs:
             --ssh-key "$DEPLOY_SSH_KEY_PATH" \
             --ssh-known-hosts "${{ steps.key.outputs.known_hosts_path }}" \
             --headscale-public-url "$HEADSCALE_PUBLIC_URL" \
+            --headscale-legacy-public-url "$resolved_legacy_public_url" \
             --headscale-api-url "$resolved_api_url" \
             --listen-addr "$resolved_listen_addr"
 
-      - name: Verify canonical public health
+      - name: Verify canonical and legacy public health
         shell: bash
         run: |
           set -euo pipefail
-          for _ in $(seq 1 30); do
-            if curl --fail --silent --show-error --max-time 10 \
-              "$HEADSCALE_PUBLIC_URL/health" >/dev/null; then
-              exit 0
+          for public_url in "$HEADSCALE_PUBLIC_URL" "$resolved_legacy_public_url"; do
+            healthy=false
+            for _ in $(seq 1 30); do
+              if curl --fail --silent --show-error --max-time 10 \
+                "$public_url/health" >/dev/null; then
+                healthy=true
+                break
+              fi
+              sleep 5
+            done
+            if [ "$healthy" != "true" ]; then
+              echo "::error::Headscale health did not become ready at $public_url"
+              exit 1
             fi
-            sleep 5
           done
-          echo "::error::Canonical Headscale health did not become ready"
-          exit 1
 
       - name: Remove deploy SSH identity
         if: always()

@@ -32,6 +32,11 @@ Set these on each GitHub Environment (`staging`, `production`):
 | `ELIZA_LOCAL_ROOT_KEY` | secret | Optional but launch-critical for local root-token paths; must match the Worker secret. |
 | `HEADSCALE_PUBLIC_URL` | variable | `https://headscale-staging.eliza.app` or `https://headscale.eliza.app`. |
 
+`HEADSCALE_PUBLIC_URL` is always the canonical Eliza URL and remains the only
+value written to Headscale `server_url` and the provisioning daemon. During the
+domain migration, the arm workflow derives the matching legacy exact hostname
+from the selected environment. Operators do not provide or override that alias.
+
 ### Run the arm workflow
 
 ```bash
@@ -56,8 +61,12 @@ The workflow:
 5. upserts `HEADSCALE_PUBLIC_URL`, `HEADSCALE_API_URL`,
    `HEADSCALE_API_KEY`, `HEADSCALE_USER`, and optional agent-token secrets into
    `/opt/eliza/cloud/.env.local`;
-6. restarts `headscale` and `eliza-provisioning-worker.service`;
-7. fails if local `/health` is not green.
+6. obtains or expands one Let's Encrypt certificate whose SANs cover both the
+   canonical and legacy exact hostnames, then serves both names from the same
+   no-http2 nginx vhost;
+7. restarts `headscale` and `eliza-provisioning-worker.service`;
+8. fails unless local health and both public HTTPS health endpoints are green
+   with normal certificate verification.
 
 The matching Cloudflare Worker secrets still need to be set through the normal
 Worker secret path. Keep host and Worker values identical for
@@ -79,6 +88,7 @@ node packages/cloud/scripts/admin/arm-headscale-control-plane.mjs \
   --ssh-key <deploy-key> \
   --ssh-known-hosts <verified-known-hosts-file> \
   --headscale-public-url https://headscale.eliza.app \
+  --headscale-legacy-public-url https://headscale.elizacloud.ai \
   --headscale-api-url http://127.0.0.1:8081 \
   --listen-addr 127.0.0.1:8081 \
   --headscale-api-key "$HEADSCALE_API_KEY"
@@ -110,10 +120,23 @@ Hetzner provisioning-worker host.
 
 - `headscale.eliza.app` / `headscale-staging.eliza.app` → A-record → the
   Hetzner control-plane VM (`eliza-production-1` / `eliza-staging-1`), with
-  nginx + Let's Encrypt terminating TLS in front of local headscale. NOT a CNAME
-  to Railway — the Railway headscale service was removed (see note above).
+  nginx + Let's Encrypt terminating TLS in front of local headscale. The
+  matching `headscale.elizacloud.ai` / `headscale-staging.elizacloud.ai` record
+  remains pointed at the same VM during migration and is covered by the same
+  certificate. These are NOT CNAMEs to Railway — the Railway headscale service
+  was removed (see note above).
 - `tunnel.eliza.app` AND `*.tunnel.eliza.app` → CNAME/ALIAS → Railway public domain for the tunnel-proxy service.
 - Railway terminates public TLS for the tunnel-proxy custom domains; the proxy then uses `tsnet` to reach private tailnet hosts.
+
+### Retiring the legacy Headscale hostname
+
+Legacy retirement is a separate reviewed operation after Worker, tunnel proxy,
+agent, and access-log evidence shows no remaining legacy clients. Remove the
+legacy nginx `server_name`, certificate SAN, and DNS record together; then
+re-run the arm and public-health proofs using the retirement-aware workflow
+revision. Do not delete the DNS record or legacy SAN while this overlap contract
+is active, and do not change `HEADSCALE_PUBLIC_URL` away from the canonical
+Eliza URL.
 
 ## 2. Protected tunnel-proxy convergence
 
