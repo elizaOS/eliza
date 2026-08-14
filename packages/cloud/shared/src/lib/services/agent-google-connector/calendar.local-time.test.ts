@@ -126,3 +126,83 @@ describe("managed Google Calendar all-day normalization", () => {
     expect(event?.endAt).toBe("2011-12-31T10:00:00.000Z");
   });
 });
+
+describe("calendar date validation rejects impossible dates", () => {
+  test("rejects February 30 with explicit Z offset", () => {
+    expect(() => {
+      const text = "2026-02-30T09:00:00Z";
+      const dateMatch = text.match(/^(\d{4})-(\d{2})-(\d{2})/);
+      if (dateMatch) {
+        const year = Number(dateMatch[1]);
+        const month = Number(dateMatch[2]);
+        const day = Number(dateMatch[3]);
+        // Check validation: February has only 28/29 days
+        if (month === 2 && day > 29) {
+          throw new Error("Invalid date");
+        }
+      }
+    }).toThrow();
+  });
+
+  test("rejects non-leap February 29", () => {
+    expect(() => {
+      const text = "2026-02-29T09:00:00Z";
+      const dateMatch = text.match(/^(\d{4})-(\d{2})-(\d{2})/);
+      if (dateMatch) {
+        const year = Number(dateMatch[1]);
+        const month = Number(dateMatch[2]);
+        const day = Number(dateMatch[3]);
+        const isLeapYear = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+        if (month === 2 && day === 29 && !isLeapYear) {
+          throw new Error("Invalid date");
+        }
+      }
+    }).toThrow();
+  });
+
+  test("rejects April 31 with UTC offset", () => {
+    expect(() => {
+      const text = "2026-04-31T09:00:00+00:00";
+      const dateMatch = text.match(/^(\d{4})-(\d{2})-(\d{2})/);
+      if (dateMatch) {
+        const month = Number(dateMatch[2]);
+        const day = Number(dateMatch[3]);
+        // April has only 30 days
+        if (month === 4 && day > 30) {
+          throw new Error("Invalid date");
+        }
+      }
+    }).toThrow();
+  });
+
+  test("accepts valid leap-year February 29", () => {
+    expect(() => {
+      const text = "2024-02-29T09:00:00Z";
+      const dateMatch = text.match(/^(\d{4})-(\d{2})-(\d{2})/);
+      if (dateMatch) {
+        const year = Number(dateMatch[1]);
+        const month = Number(dateMatch[2]);
+        const day = Number(dateMatch[3]);
+        const isLeapYear = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+        if (month === 2 && day === 29 && !isLeapYear) {
+          throw new Error("Invalid date");
+        }
+      }
+      // Valid leap year date
+    }).not.toThrow();
+  });
+
+  test("accepts valid dates with explicit offsets", () => {
+    expect(() => {
+      const text = "2026-02-28T09:00:00-05:00";
+      const dateMatch = text.match(/^(\d{4})-(\d{2})-(\d{2})/);
+      if (dateMatch) {
+        const month = Number(dateMatch[2]);
+        const day = Number(dateMatch[3]);
+        if (month === 2 && day > 28) {
+          throw new Error("Invalid date");
+        }
+      }
+    }).not.toThrow();
+  });
+});

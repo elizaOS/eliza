@@ -445,6 +445,23 @@ export async function createManagedGoogleCalendarEvent(args: {
   return { event };
 }
 
+function validateDateComponents(year: number, month: number, day: number): boolean {
+  // Reject invalid month
+  if (month < 1 || month > 12) {
+    return false;
+  }
+  // Days per month (non-leap year baseline)
+  const daysInMonth = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  // Check for leap year
+  const isLeapYear = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  const maxDay = month === 2 && isLeapYear ? 29 : daysInMonth[month - 1];
+  // Reject invalid day for the month
+  if (day < 1 || day > maxDay) {
+    return false;
+  }
+  return true;
+}
+
 function normalizeManagedCalendarDateTimeInTimeZone(
   value: string | undefined,
   field: string,
@@ -458,6 +475,16 @@ function normalizeManagedCalendarDateTimeInTimeZone(
     fail(400, `${field} is required.`);
   }
   if (/[zZ]|[+-]\d{2}:\d{2}$/.test(text)) {
+    // Extract date components to validate before parsing
+    const dateMatch = text.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (dateMatch) {
+      const year = Number(dateMatch[1]);
+      const month = Number(dateMatch[2]);
+      const day = Number(dateMatch[3]);
+      if (!validateDateComponents(year, month, day)) {
+        fail(400, `${field} must be a valid date.`);
+      }
+    }
     const parsed = new Date(text);
     if (!Number.isFinite(parsed.getTime())) {
       fail(400, `${field} must be a valid datetime.`);
@@ -475,10 +502,16 @@ function normalizeManagedCalendarDateTimeInTimeZone(
         `${field} must include a timezone or UTC offset when no event timezone is available.`,
       );
     }
+    const year = Number(localMatch[1]);
+    const month = Number(localMatch[2]);
+    const day = Number(localMatch[3]);
+    if (!validateDateComponents(year, month, day)) {
+      fail(400, `${field} must be a valid date.`);
+    }
     const localized = buildUtcDateFromLocalParts(timeZone, {
-      year: Number(localMatch[1]),
-      month: Number(localMatch[2]),
-      day: Number(localMatch[3]),
+      year,
+      month,
+      day,
       hour: Number(localMatch[4] ?? "0"),
       minute: Number(localMatch[5] ?? "0"),
       second: Number(localMatch[6] ?? "0"),
