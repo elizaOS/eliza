@@ -85,6 +85,10 @@ export const workflowAction: Action = {
     'DELETE_AUTOMATION',
     'RUN_AUTOMATION',
     'CREATE_WORKFLOW',
+    // Live planner output has used the noun-first form for the same supported
+    // create operation. Keep it on WORKFLOW only so exact parent resolution is
+    // unambiguous and the user is not refused over vocabulary ordering.
+    'WORKFLOW_CREATE',
     'EDIT_WORKFLOW',
     'UPDATE_WORKFLOW',
     'DELETE_WORKFLOW',

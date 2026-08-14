@@ -6,13 +6,17 @@
  * `startCloudAgentHandoff` polls the dedicated record until its container is
  * reachable, then idempotently imports the shared transcript (canonical
  * conversation id === shared agent id) — and, ONLY on a confirmed switch,
- * deletes the transient shared bridge so the org is not left holding two
- * agents. On `timed-out`/`failed` the shared agent is untouched and keeps
- * serving; re-running is safe (the route reattaches to the same target and the
- * import is idempotent per conversation).
+ * finalizes the server-owned active-runtime marker. Rowless personal Shared
+ * history remains as the fallback/archive; only the legacy row-backed bridge
+ * is deleted after a confirmed switch. On `timed-out`/`failed` Shared remains
+ * authoritative and keeps serving. Re-running is safe because target creation
+ * and transcript import are idempotent.
  */
 
-import { buildCloudSharedAgentApiBase } from "../../utils/cloud-agent-base";
+import {
+  buildCloudSharedAgentApiBase,
+  isPersonalSharedElizaId,
+} from "../../utils/cloud-agent-base";
 import type { ConversationHandoffResult } from "./conversation-handoff";
 
 /**
@@ -39,6 +43,12 @@ export interface TierUpgradeHandoffClient {
     agentId: string,
     options: { cloudApiBase: string; authToken: string },
   ): Promise<{ success: boolean; error?: string }>;
+  finalizePersonalDedicatedCutover(options: {
+    personalElizaId: string;
+    dedicatedAgentId: string;
+    cloudApiBase: string;
+    authToken: string;
+  }): Promise<{ runtime: "dedicated"; apiBase: string }>;
 }
 
 export interface TierUpgradeHandoffParams {
@@ -62,20 +72,22 @@ export interface TierUpgradeHandoffOutcome {
   status: ConversationHandoffResult["status"];
   /** Messages copied into the dedicated agent (0 on idempotent re-run). */
   imported: number;
-  /** True only when the shared bridge row was confirmed deleted. */
-  sharedBridgeDeleted: boolean;
+  /** How the Shared source was left after the switch attempt. */
+  sourceCleanup:
+    | "unchanged"
+    | "preserved-rowless"
+    | "deleted-row"
+    | "not-cleaned";
   error?: string;
 }
 
 /**
- * Run the readiness-poll → transcript-import → switch leg of a tier upgrade
- * and, on a confirmed `switched`/`switched-empty`, delete the shared bridge.
- *
- * The delete is deliberately awaited and reported (`sharedBridgeDeleted`)
- * rather than fire-and-forget: the console surfaces the leaked-row case to the
- * user (the shared agent stays visible in their list) instead of silently
- * leaving a duplicate. A failed delete never un-switches the upgrade — the
- * outcome status stays authoritative for what the user is now running on.
+ * Run the readiness-poll → transcript-import → server-finalize → switch leg.
+ * Personal Shared has no row to delete and remains a durable archive/fallback;
+ * the exact active-runtime marker prevents subsequent phone or app turns from
+ * splitting across modes. The legacy bridge delete is still awaited and
+ * reported so a leaked row remains visible rather than silently duplicating
+ * the switched agent.
  */
 export async function runSharedToDedicatedUpgradeHandoff(
   params: TierUpgradeHandoffParams,
@@ -84,6 +96,7 @@ export async function runSharedToDedicatedUpgradeHandoff(
     params.cloudApiBase,
     params.sharedAgentId,
   );
+  const rowlessPersonal = isPersonalSharedElizaId(params.sharedAgentId);
 
   const result = await params.client.startCloudAgentHandoff({
     agentId: params.sharedAgentId,
@@ -93,6 +106,14 @@ export async function runSharedToDedicatedUpgradeHandoff(
     cloudApiBase: params.cloudApiBase,
     authToken: params.authToken,
     onSwitch: async (containerBase) => {
+      if (rowlessPersonal) {
+        await params.client.finalizePersonalDedicatedCutover({
+          personalElizaId: params.sharedAgentId,
+          dedicatedAgentId: params.dedicatedAgentId,
+          cloudApiBase: params.cloudApiBase,
+          authToken: params.authToken,
+        });
+      }
       await params.onSwitch?.(containerBase);
     },
     ...(typeof params.intervalMs === "number"
@@ -110,8 +131,16 @@ export async function runSharedToDedicatedUpgradeHandoff(
     return {
       status: result.status,
       imported: result.imported,
-      sharedBridgeDeleted: false,
+      sourceCleanup: "unchanged",
       ...(result.error ? { error: result.error } : {}),
+    };
+  }
+
+  if (rowlessPersonal) {
+    return {
+      status: result.status,
+      imported: result.imported,
+      sourceCleanup: "preserved-rowless",
     };
   }
 
@@ -126,7 +155,7 @@ export async function runSharedToDedicatedUpgradeHandoff(
   return {
     status: result.status,
     imported: result.imported,
-    sharedBridgeDeleted: deletion.success,
+    sourceCleanup: deletion.success ? "deleted-row" : "not-cleaned",
     ...(deletion.success ? {} : { error: deletion.error }),
   };
 }

@@ -30,6 +30,14 @@ export interface Bindings {
    * (`lib/auth/steward-cookies.ts`) and cache key prefixes.
    */
   ENVIRONMENT?: string;
+  /** Public eliza.app agent used only when its exact Twilio line is called. */
+  ELIZA_APP_DEFAULT_AGENT_ID?: string;
+  /** Exact E.164 Twilio number allowed to route to the public default agent. */
+  ELIZA_APP_TWILIO_PHONE_NUMBER?: string;
+  /** Maximum unauthenticated Twilio media sockets awaiting a signed start frame. */
+  TWILIO_VOICE_MAX_PENDING_BOOTSTRAPS?: string;
+  /** Milliseconds allowed for a Twilio media socket to provide its signed start frame. */
+  TWILIO_VOICE_BOOTSTRAP_TIMEOUT_MS?: string;
   /** Staging-only QA session bridge kill switch; absent/anything but "true" is off. */
   STAGING_SESSION_EXCHANGE_ENABLED?: string;
   /** Exact runtime/code contract version; currently only "v1" is accepted. */
@@ -456,6 +464,7 @@ export interface Bindings {
  */
 export interface AuthedUser {
   id: string;
+  created_at?: Date | string;
   email?: string | null;
   /** Whether `email` is verified — gates the @elizalabs.ai super_admin grant. */
   email_verified?: boolean | null;

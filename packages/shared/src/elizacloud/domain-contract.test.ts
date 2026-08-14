@@ -1,12 +1,13 @@
 /**
- * Canonical and legacy Eliza hostname classification is exercised as a pure
- * compatibility matrix so redirects, API routing, and managed-runtime gates
- * cannot silently disagree during the domain migration.
+ * Canonical and legacy Eliza hostname and retired-dashboard route contracts
+ * are exercised as a pure compatibility matrix so redirects, API routing, and
+ * managed-runtime gates cannot silently disagree during the domain migration.
  */
 
 import { describe, expect, it } from "vitest";
 import {
   buildElizaDedicatedAgentOrigin,
+  canonicalCloudPathForLegacyDashboard,
   canonicalElizaServiceHostname,
   classifyElizaHostname,
   ELIZA_DOMAIN_CONTRACTS,
@@ -155,5 +156,33 @@ describe("Eliza domain contract", () => {
     expect(canonicalElizaServiceHostname(legacyHostname)).toBe(
       canonicalHostname,
     );
+  });
+
+  it.each([
+    ["/dashboard", "", "/cloud"],
+    ["/dashboard/build/new", "?template=starter", "/cloud/my-agents"],
+    ["/dashboard/image", "", "/cloud/api-explorer"],
+    ["/dashboard/containers", "", "/cloud/agents"],
+    ["/dashboard/containers/agents/agent-7", "", "/cloud/agents/agent-7"],
+    ["/dashboard/containers/agent-8", "", "/cloud/agents/agent-8"],
+    ["/dashboard/agents/agent-9/chat", "", "/cloud/agents/agent-9"],
+    ["/dashboard/apps/create", "", "/cloud/apps"],
+    ["/dashboard/affiliates", "", "/cloud/monetization"],
+    ["/dashboard/documents", "", "/cloud/agents"],
+    ["/dashboard/settings", "?tab=billing", "/cloud/billing"],
+    ["/dashboard/settings", "?tab=unknown", "/cloud"],
+    ["/dashboard/api-keys", "", "/cloud/api-keys"],
+  ])(
+    "maps retired dashboard path %s with search %s",
+    (pathname, search, canonicalPathname) => {
+      expect(canonicalCloudPathForLegacyDashboard(pathname, search)).toBe(
+        canonicalPathname,
+      );
+    },
+  );
+
+  it("does not rewrite non-dashboard paths", () => {
+    expect(canonicalCloudPathForLegacyDashboard("/cloud/agents")).toBeNull();
+    expect(canonicalCloudPathForLegacyDashboard("/dashboard-old")).toBeNull();
   });
 });

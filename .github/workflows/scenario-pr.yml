@@ -398,6 +398,9 @@ jobs:
       - name: Actual app ratcheted keyless browser coverage
         run: bun run --cwd packages/app test:e2e test/ui-smoke/ai-qa-capture.spec.ts test/ui-smoke/android-system-apps.spec.ts test/ui-smoke/apps-session.spec.ts test/ui-smoke/apps-session-direct-a.spec.ts test/ui-smoke/apps-session-direct-b.spec.ts test/ui-smoke/auth-startup.spec.ts test/ui-smoke/automations.spec.ts test/ui-smoke/browser-workspace.spec.ts test/ui-smoke/character-editor.spec.ts test/ui-smoke/wallet-inventory.spec.ts test/ui-smoke/workflow-editor.spec.ts test/ui-smoke/computer-use.spec.ts test/ui-smoke/connectors.spec.ts test/ui-smoke/first-run-startup.spec.ts test/ui-smoke/model-download-deferral.spec.ts test/ui-smoke/history-navigation.spec.ts test/ui-smoke/orchestrator-gui-workbench.spec.ts test/ui-smoke/reset-returns-to-onboarding.spec.ts test/ui-smoke/tutorial-chat.spec.ts test/ui-smoke/warming-shell-startup.spec.ts test/ui-smoke/runtime-configurability.spec.ts test/ui-smoke/perf-load-kpi.spec.ts test/ui-smoke/perf-reduced-motion.spec.ts test/ui-smoke/task-coordinator-gui-interactions.spec.ts test/ui-smoke/titlebar-navigation.spec.ts test/ui-smoke/ui-smoke.spec.ts --project=chromium
 
+      - name: Native workflow browser-to-runtime coverage
+        run: ELIZA_UI_SMOKE_REAL_LOCAL_STACK=1 ELIZA_UI_SMOKE_WORKFLOW_JOURNEY=1 ELIZA_UI_SMOKE_DISABLE_VIDEO=1 bun run --cwd packages/app test:e2e test/ui-smoke/workflow-real-local.spec.ts --project=chromium
+
       - name: Upload app browser ratcheted artifacts
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a

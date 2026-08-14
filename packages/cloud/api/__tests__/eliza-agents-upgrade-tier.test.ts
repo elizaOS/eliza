@@ -1,12 +1,9 @@
 /**
- * POST /api/v1/eliza/agents/:agentId/upgrade-tier — the shared→dedicated tier
- * upgrade contract (#15355): org-scoped ownership (cross-org reads as 404, no
- * oracle), shared-tier-only validation, the N-days-of-hosting credit runway
- * gate with the canonical 402 body carrying the stricter threshold, the
- * server-side identity copy (name / character / config / BYO env minus
- * platform-reserved keys) onto a dedicated-always target with a provisioning
- * job, and reattach idempotency (a retry resumes the SAME in-flight target;
- * a marker forged onto a non-dedicated row is never reattached to).
+ * GET/POST /api/v1/eliza/agents/:agentId/upgrade-tier — the server-owned
+ * Shared→Dedicated quote and explicitly confirmed activation contract.
+ * Coverage includes the rowless personal Shared identity, org-scoped
+ * ownership, hosting-runway credit gate, server-side identity copy,
+ * single-flight target creation, and idempotent reattachment.
  *
  * Real route module + real sandbox/billing/provisioning services + real
  * repositories against in-process PGlite; the only mocked seam is
@@ -23,6 +20,7 @@ process.env.MOCK_REDIS = "1";
 import { eq } from "drizzle-orm";
 import { Hono } from "hono";
 import * as realAuth from "@/lib/auth";
+import { personalSharedAgentId } from "@/lib/services/shared-runtime/personal-shared-agent";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
 const ORG_A = "11111111-1111-4111-8111-111111111111";
@@ -42,6 +40,21 @@ const MISSING = "dddddddd-9999-4999-8999-999999999999";
 const ORG_FULL = "33333333-3333-4333-8333-333333333333";
 const USER_FULL = "bbbbbbbb-2222-4222-8222-222222222222";
 const SHARED_FULL = "cccccccc-ffff-4fff-8fff-ffffffffffff";
+const PERSONAL_A = personalSharedAgentId({
+  userId: USER_A,
+  organizationId: ORG_A,
+});
+const PERSONAL_B = personalSharedAgentId({
+  userId: USER_B,
+  organizationId: ORG_B,
+});
+const ORG_C = "44444444-4444-4444-8444-444444444444";
+const USER_C = "aaaaaaaa-4444-4444-8444-444444444444";
+const CUTOVER_TARGET = "cccccccc-4444-4555-8555-555555555555";
+const PERSONAL_C = personalSharedAgentId({
+  userId: USER_C,
+  organizationId: ORG_C,
+});
 
 // Caller identity is switchable so the cross-org denial path is exercised for
 // real (org A's user probing org B's agent).
@@ -60,7 +73,84 @@ const currentUser = {
 // suite in a multi-file run (the coverage lane co-runs changed suites, #15943).
 const realAuthSnapshot = { ...realAuth };
 
-const ENV = { NODE_ENV: "test" } as unknown as AppEnv["Bindings"];
+let cutoverHistory = [
+  { id: "u1", role: "user" as const, content: "hello", createdAt: 10 },
+  {
+    id: "a1",
+    role: "assistant" as const,
+    content: "hello back",
+    createdAt: 20,
+  },
+];
+const cutoverCoordinatorOperations: string[] = [];
+const cutoverCoordinatorTokens: string[] = [];
+let cutoverSealToken: string | null = null;
+let cutoverSealCommitted = false;
+let cutoverCommitFailuresRemaining = 0;
+let observeMarkerAtCommit = false;
+let markerObservedAtCommit: unknown;
+const cutoverCoordinatorFetch = mock(
+  async (_input: RequestInfo | URL, init?: RequestInit) => {
+    const body = JSON.parse(String(init?.body)) as {
+      operation: string;
+      token?: string;
+    };
+    cutoverCoordinatorOperations.push(body.operation);
+    if (body.token) cutoverCoordinatorTokens.push(body.token);
+    if (body.operation === "cutover-seal") {
+      if (cutoverSealToken && cutoverSealToken !== body.token) {
+        return Response.json(
+          { success: false, code: "personal_cutover_in_progress" },
+          { status: 423 },
+        );
+      }
+      cutoverSealToken = body.token ?? null;
+      return Response.json({ success: true, history: cutoverHistory });
+    }
+    if (body.operation === "cutover-release") {
+      if (!cutoverSealCommitted && cutoverSealToken === body.token) {
+        cutoverSealToken = null;
+      }
+      return Response.json({ success: true });
+    }
+    if (body.operation === "cutover-commit") {
+      if (observeMarkerAtCommit) {
+        const { dbWrite } = await import("@/db/client");
+        const { agentSandboxes } = await import("@/db/schemas/agent-sandboxes");
+        const [target] = await dbWrite
+          .select()
+          .from(agentSandboxes)
+          .where(eq(agentSandboxes.id, CUTOVER_TARGET));
+        markerObservedAtCommit = (
+          target?.agent_config as Record<string, unknown> | null
+        )?.__agentPersonalCutover;
+      }
+      if (cutoverCommitFailuresRemaining > 0) {
+        cutoverCommitFailuresRemaining -= 1;
+        return Response.json(
+          { success: false, code: "temporary_commit_failure" },
+          { status: 503 },
+        );
+      }
+      if (!cutoverSealToken || cutoverSealToken !== body.token) {
+        return Response.json(
+          { success: false, code: "personal_cutover_seal_lost" },
+          { status: 409 },
+        );
+      }
+      cutoverSealCommitted = true;
+    }
+    return Response.json({ success: true });
+  },
+);
+const cutoverNamespace = {
+  getByName: mock(() => ({ fetch: cutoverCoordinatorFetch })),
+};
+const ENV = {
+  NODE_ENV: "test",
+  SHARED_RUNTIME_CONVERSATIONS: cutoverNamespace,
+  ELIZA_CLOUD_AGENT_BASE_DOMAIN: "dedicated-cutover.test",
+} as unknown as AppEnv["Bindings"];
 
 let pgliteReady = true;
 let closeDb: (() => Promise<void>) | undefined;
@@ -189,8 +279,15 @@ beforeAll(async () => {
     const upgradeTierRoute = (
       await import("../v1/eliza/agents/[agentId]/upgrade-tier/route")
     ).default;
+    const cutoverRoute = (
+      await import("../v1/eliza/agents/[agentId]/upgrade-tier/cutover/route")
+    ).default;
     app = new Hono<AppEnv>();
     app.route("/api/v1/eliza/agents/:agentId/upgrade-tier", upgradeTierRoute);
+    app.route(
+      "/api/v1/eliza/agents/:agentId/upgrade-tier/cutover",
+      cutoverRoute,
+    );
   } catch (error) {
     pgliteReady = false;
     console.error(
@@ -209,10 +306,47 @@ afterAll(async () => {
   mock.module("@/lib/auth", () => realAuthSnapshot);
 });
 
-function upgrade(agentId: string) {
+function quote(agentId: string) {
   return app.request(
-    `/api/v1/eliza/agents/${agentId}/upgrade-tier`,
-    { method: "POST" },
+    `/api/v1/eliza/agents/${encodeURIComponent(agentId)}/upgrade-tier`,
+    { method: "GET" },
+    ENV,
+  );
+}
+
+function cutover(agentId: string, dedicatedAgentId: string) {
+  return app.request(
+    `/api/v1/eliza/agents/${encodeURIComponent(agentId)}/upgrade-tier/cutover`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: "Bearer steward-test",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ dedicatedAgentId }),
+    },
+    ENV,
+  );
+}
+
+async function upgrade(agentId: string) {
+  const quoted = await quote(agentId);
+  const body = (await quoted
+    .clone()
+    .json()
+    .catch(() => null)) as {
+    data?: { quoteId?: string };
+  } | null;
+  return app.request(
+    `/api/v1/eliza/agents/${encodeURIComponent(agentId)}/upgrade-tier`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        action: "activate_dedicated",
+        quoteId: body?.data?.quoteId ?? "0".repeat(64),
+      }),
+    },
     ENV,
   );
 }
@@ -253,6 +387,60 @@ describe("POST /api/v1/eliza/agents/:agentId/upgrade-tier", () => {
     expect(res.status).toBe(409);
     const body = (await res.json()) as { code: string };
     expect(body.code).toBe("agent_not_running");
+  });
+
+  test("refuses compute activation without an explicit quoted confirmation", async () => {
+    expect(pgliteReady).toBe(true);
+    const res = await app.request(
+      `/api/v1/eliza/agents/${encodeURIComponent(PERSONAL_A)}/upgrade-tier`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      },
+      ENV,
+    );
+    expect(res.status).toBe(400);
+    expect(await res.json()).toMatchObject({
+      code: "dedicated_confirmation_required",
+    });
+  });
+
+  test("quotes Dedicated from server-owned pricing for only the caller's personal Eliza", async () => {
+    expect(pgliteReady).toBe(true);
+    const res = await quote(PERSONAL_A);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      data: {
+        quoteId: string;
+        sourceAgentId: string;
+        hourlyRateUsd: number;
+        dailyRateUsd: number;
+        minimumBalanceUsd: number;
+        minimumRunwayDays: number;
+        balanceUsd: number;
+        deficitUsd: number;
+        canActivate: boolean;
+        requiresConfirmation: boolean;
+        action: string;
+      };
+    };
+    expect(body.data).toMatchObject({
+      sourceAgentId: PERSONAL_A,
+      hourlyRateUsd: 0.01,
+      dailyRateUsd: 0.24,
+      minimumBalanceUsd: 0.72,
+      minimumRunwayDays: 3,
+      balanceUsd: 0.5,
+      deficitUsd: 0.22,
+      canActivate: false,
+      requiresConfirmation: true,
+      action: "activate_dedicated",
+    });
+    expect(body.data.quoteId).toMatch(/^[a-f0-9]{64}$/);
+
+    const hidden = await quote(PERSONAL_B);
+    expect(hidden.status).toBe(404);
   });
 
   test("a balance above the create minimum but below the hosting runway is a canonical 402", async () => {
@@ -329,6 +517,76 @@ describe("POST /api/v1/eliza/agents/:agentId/upgrade-tier", () => {
         .delete(agentSandboxes)
         .where(eq(agentSandboxes.id, targetId));
     }
+  });
+
+  test("a rowless personal Eliza rejects a stale quote, then mints one singleton Dedicated target", async () => {
+    expect(pgliteReady).toBe(true);
+    await setOrgBalance(ORG_A, "10");
+    const firstQuote = await quote(PERSONAL_A);
+    const firstBody = (await firstQuote.json()) as {
+      data: { quoteId: string };
+    };
+    await setOrgBalance(ORG_A, "11");
+
+    const stale = await app.request(
+      `/api/v1/eliza/agents/${encodeURIComponent(PERSONAL_A)}/upgrade-tier`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "activate_dedicated",
+          quoteId: firstBody.data.quoteId,
+        }),
+      },
+      ENV,
+    );
+    expect(stale.status).toBe(409);
+    expect(await stale.json()).toMatchObject({
+      code: "dedicated_quote_changed",
+      data: { balanceUsd: 11 },
+    });
+
+    const activated = await upgrade(PERSONAL_A);
+    expect(activated.status).toBe(202);
+    const activatedBody = (await activated.json()) as {
+      data: {
+        dedicatedAgentId: string;
+        sharedAgentId: string;
+        agentName: string;
+      };
+    };
+    expect(activatedBody.data.sharedAgentId).toBe(PERSONAL_A);
+    expect(activatedBody.data.agentName).toBe("Eliza");
+
+    const { agentSandboxesRepository } = await import(
+      "@/db/repositories/agent-sandboxes"
+    );
+    const target = await agentSandboxesRepository.findByIdAndOrg(
+      activatedBody.data.dedicatedAgentId,
+      ORG_A,
+    );
+    expect(target?.execution_tier).toBe("dedicated-always");
+    expect(
+      (target?.agent_config as Record<string, unknown> | null)
+        ?.__agentUpgradedFrom,
+    ).toBe(PERSONAL_A);
+    expect(
+      (await agentSandboxesRepository.listByOrganization(ORG_A)).some(
+        (row) => row.id === PERSONAL_A,
+      ),
+    ).toBe(false);
+
+    const retry = await upgrade(PERSONAL_A);
+    const retryBody = (await retry.json()) as {
+      created: boolean;
+      alreadyInProgress: boolean;
+      data: { dedicatedAgentId: string };
+    };
+    expect(retryBody.created).toBe(false);
+    expect(retryBody.alreadyInProgress).toBe(true);
+    expect(retryBody.data.dedicatedAgentId).toBe(
+      activatedBody.data.dedicatedAgentId,
+    );
   });
 
   test("funded upgrade mints a dedicated-always target with the identity copied server-side", async () => {
@@ -675,5 +933,264 @@ describe("POST /api/v1/eliza/agents/:agentId/upgrade-tier", () => {
       .from(jobs)
       .where(eq(jobs.agent_id, FORGED_SHARED));
     expect(forgedJobs.length).toBe(0);
+  });
+
+  test("a personal cutover activates only after the authoritative history import succeeds", async () => {
+    expect(pgliteReady).toBe(true);
+    const { dbWrite } = await import("@/db/client");
+    const { organizations } = await import("@/db/schemas/organizations");
+    const { users } = await import("@/db/schemas/users");
+    const { agentSandboxes } = await import("@/db/schemas/agent-sandboxes");
+    await dbWrite.insert(organizations).values({
+      id: ORG_C,
+      name: "Cutover Org",
+      slug: "cutover-org",
+      credit_balance: "10",
+    });
+    await dbWrite.insert(users).values({
+      id: USER_C,
+      email: "cutover@test.test",
+      organization_id: ORG_C,
+      role: "owner",
+      steward_user_id: `steward-${USER_C}`,
+    });
+    await dbWrite.insert(agentSandboxes).values({
+      id: CUTOVER_TARGET,
+      organization_id: ORG_C,
+      user_id: USER_C,
+      agent_name: "Eliza",
+      agent_config: { __agentUpgradedFrom: PERSONAL_C },
+      execution_tier: "dedicated-always",
+      status: "running",
+      database_status: "none",
+      bridge_url: "https://dedicated-cutover.test/chat",
+    });
+
+    const originalFetch = globalThis.fetch;
+    const importFetch = mock(
+      async (_input: RequestInfo | URL, _init?: RequestInit) =>
+        Response.json({ error: "not ready" }, { status: 503 }),
+    );
+    globalThis.fetch = importFetch as unknown as typeof fetch;
+    currentUser.id = USER_C;
+    currentUser.email = "cutover@test.test";
+    currentUser.organization_id = ORG_C;
+    currentUser.organization = {
+      id: ORG_C,
+      name: "Cutover Org",
+      is_active: true,
+    };
+
+    try {
+      cutoverCoordinatorOperations.length = 0;
+      cutoverCoordinatorTokens.length = 0;
+      cutoverSealToken = null;
+      cutoverSealCommitted = false;
+      cutoverCommitFailuresRemaining = 0;
+      observeMarkerAtCommit = false;
+      markerObservedAtCommit = undefined;
+      const refused = await cutover(PERSONAL_C, CUTOVER_TARGET);
+      expect(refused.status).toBe(503);
+      expect(await refused.json()).toMatchObject({
+        code: "dedicated_history_import_failed",
+      });
+      const [before] = await dbWrite
+        .select()
+        .from(agentSandboxes)
+        .where(eq(agentSandboxes.id, CUTOVER_TARGET));
+      expect(
+        (before?.agent_config as Record<string, unknown> | null)
+          ?.__agentPersonalCutover,
+      ).toBeUndefined();
+      expect(cutoverCoordinatorOperations).toEqual([
+        "cutover-seal",
+        "cutover-release",
+      ]);
+
+      importFetch.mockImplementation(async (_input, _init) =>
+        Response.json({
+          complete: true,
+          sourceMessageCount: cutoverHistory.length,
+          inserted: cutoverHistory.length,
+          skipped: 0,
+        }),
+      );
+      cutoverCommitFailuresRemaining = 1;
+      cutoverCoordinatorOperations.length = 0;
+      const commitRefused = await cutover(PERSONAL_C, CUTOVER_TARGET);
+      expect(commitRefused.status).toBeGreaterThanOrEqual(500);
+      const [afterCommitFailure] = await dbWrite
+        .select()
+        .from(agentSandboxes)
+        .where(eq(agentSandboxes.id, CUTOVER_TARGET));
+      expect(
+        (afterCommitFailure?.agent_config as Record<string, unknown> | null)
+          ?.__agentPersonalCutover,
+      ).toBeUndefined();
+      expect(cutoverCoordinatorOperations).toEqual([
+        "cutover-seal",
+        "cutover-commit",
+        "cutover-release",
+      ]);
+
+      observeMarkerAtCommit = true;
+      markerObservedAtCommit = undefined;
+      cutoverCoordinatorOperations.length = 0;
+      const activated = await cutover(PERSONAL_C, CUTOVER_TARGET);
+      expect(activated.status).toBe(200);
+      expect(await activated.json()).toMatchObject({
+        success: true,
+        data: {
+          personalElizaId: PERSONAL_C,
+          activeAgentId: CUTOVER_TARGET,
+          runtime: "dedicated",
+          apiBase: `https://${CUTOVER_TARGET}.dedicated-cutover.test`,
+          importedMessages: 2,
+        },
+      });
+      expect(importFetch).toHaveBeenLastCalledWith(
+        `https://${CUTOVER_TARGET}.dedicated-cutover.test/api/conversations/${encodeURIComponent(PERSONAL_C)}/import`,
+        expect.objectContaining({
+          method: "POST",
+          headers: expect.objectContaining({
+            Authorization: "Bearer steward-test",
+          }),
+        }),
+      );
+      const importInit = importFetch.mock.calls.at(-1)?.[1] as
+        | RequestInit
+        | undefined;
+      expect(JSON.parse(String(importInit?.body))).toEqual({
+        messages: [
+          { sourceId: "u1", role: "user", text: "hello", timestamp: 10 },
+          {
+            sourceId: "a1",
+            role: "assistant",
+            text: "hello back",
+            timestamp: 20,
+          },
+        ],
+      });
+      expect(cutoverCoordinatorOperations).toEqual([
+        "cutover-seal",
+        "cutover-commit",
+      ]);
+      expect(markerObservedAtCommit).toBeUndefined();
+      expect(new Set(cutoverCoordinatorTokens).size).toBe(1);
+
+      const [after] = await dbWrite
+        .select()
+        .from(agentSandboxes)
+        .where(eq(agentSandboxes.id, CUTOVER_TARGET));
+      const marker = (after?.agent_config as Record<string, unknown> | null)
+        ?.__agentPersonalCutover as
+        | {
+            sourceAgentId?: string;
+            cutoverToken?: string;
+            sharedMessageCount?: number;
+            activatedAt?: string;
+          }
+        | undefined;
+      expect(marker).toMatchObject({
+        sourceAgentId: PERSONAL_C,
+        cutoverToken: `personal-cutover:${PERSONAL_C}:${CUTOVER_TARGET}`,
+        sharedMessageCount: 2,
+      });
+      expect(marker?.activatedAt).toBeTruthy();
+
+      cutoverCoordinatorOperations.length = 0;
+      const retried = await cutover(PERSONAL_C, CUTOVER_TARGET);
+      expect(retried.status).toBe(200);
+      expect(cutoverCoordinatorOperations).toEqual(["cutover-commit"]);
+      expect(importFetch).toHaveBeenCalledTimes(3);
+      const [afterRetry] = await dbWrite
+        .select()
+        .from(agentSandboxes)
+        .where(eq(agentSandboxes.id, CUTOVER_TARGET));
+      expect(
+        (
+          (afterRetry?.agent_config as Record<string, unknown> | null)
+            ?.__agentPersonalCutover as { activatedAt?: string } | undefined
+        )?.activatedAt,
+      ).toBe(marker?.activatedAt);
+
+      const interruptedConfig = {
+        ...((afterRetry?.agent_config as Record<string, unknown> | null) ?? {}),
+      };
+      delete interruptedConfig.__agentPersonalCutover;
+      await dbWrite
+        .update(agentSandboxes)
+        .set({ agent_config: interruptedConfig })
+        .where(eq(agentSandboxes.id, CUTOVER_TARGET));
+      importFetch.mockImplementation(async () =>
+        Response.json({
+          complete: true,
+          sourceMessageCount: cutoverHistory.length,
+          inserted: 0,
+          skipped: cutoverHistory.length,
+        }),
+      );
+      cutoverCoordinatorOperations.length = 0;
+      const recoveredAfterCommit = await cutover(PERSONAL_C, CUTOVER_TARGET);
+      expect(recoveredAfterCommit.status).toBe(200);
+      expect(cutoverCoordinatorOperations).toEqual([
+        "cutover-seal",
+        "cutover-commit",
+      ]);
+      const [afterCommittedRecovery] = await dbWrite
+        .select()
+        .from(agentSandboxes)
+        .where(eq(agentSandboxes.id, CUTOVER_TARGET));
+      expect(
+        (afterCommittedRecovery?.agent_config as Record<string, unknown> | null)
+          ?.__agentPersonalCutover,
+      ).toMatchObject({
+        sourceAgentId: PERSONAL_C,
+        cutoverToken: `personal-cutover:${PERSONAL_C}:${CUTOVER_TARGET}`,
+        sharedMessageCount: cutoverHistory.length,
+      });
+
+      await dbWrite
+        .update(agentSandboxes)
+        .set({ status: "stopped" })
+        .where(eq(agentSandboxes.id, CUTOVER_TARGET));
+      const { findActivePersonalDedicatedTarget } = await import(
+        "@/lib/services/agent-tier-upgrade-target"
+      );
+      expect(
+        (await findActivePersonalDedicatedTarget(ORG_C, PERSONAL_C))?.id,
+      ).toBe(CUTOVER_TARGET);
+      expect(
+        (await dbWrite.select().from(agentSandboxes)).some(
+          (row) => row.id === PERSONAL_C,
+        ),
+      ).toBe(false);
+    } finally {
+      globalThis.fetch = originalFetch;
+      currentUser.id = USER_A;
+      currentUser.email = "owner-a@test.test";
+      currentUser.organization_id = ORG_A;
+      currentUser.organization = {
+        id: ORG_A,
+        name: "Org A",
+        is_active: true,
+      };
+      cutoverHistory = [
+        { id: "u1", role: "user", content: "hello", createdAt: 10 },
+        {
+          id: "a1",
+          role: "assistant",
+          content: "hello back",
+          createdAt: 20,
+        },
+      ];
+      cutoverCoordinatorOperations.length = 0;
+      cutoverCoordinatorTokens.length = 0;
+      cutoverSealToken = null;
+      cutoverSealCommitted = false;
+      cutoverCommitFailuresRemaining = 0;
+      observeMarkerAtCommit = false;
+      markerObservedAtCommit = undefined;
+    }
   });
 });

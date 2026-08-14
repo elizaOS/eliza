@@ -8,7 +8,7 @@
  */
 
 import { readFile } from "node:fs/promises";
-import { ModelType, type Route } from "@elizaos/core";
+import { ModelType, type Plugin, type Route } from "@elizaos/core";
 import { createDeterministicModelPlugin } from "@elizaos/core/testing";
 import { backgroundUploadImageRoute } from "../../agent/src/api/background-routes.ts";
 import { startApiServer } from "../src/api/server.ts";
@@ -195,6 +195,12 @@ async function main(): Promise<void> {
   const proxy = createDeterministicModelPlugin({
     stream: deterministicStream,
     resolve(call) {
+      if (
+        process.env.ELIZA_UI_SMOKE_WORKFLOW_JOURNEY === "1" &&
+        call.modelType === ModelType.TEXT_LARGE
+      ) {
+        return { message: "Digest ready" };
+      }
       if (call.modelType !== ModelType.RESPONSE_HANDLER) return null;
       const args = {
         shouldRespond: "RESPOND",
@@ -219,9 +225,19 @@ async function main(): Promise<void> {
       rubyHighEvidenceActionRoute,
     ],
   };
+  const workflowPlugins: Plugin[] = [];
+  if (process.env.ELIZA_UI_SMOKE_WORKFLOW_JOURNEY === "1") {
+    const { default: workflowPlugin } = await import(
+      "../../../plugins/plugin-workflow/src/index.ts"
+    );
+    const { workflowRoutePlugin } = await import(
+      "../../../plugins/plugin-workflow/src/plugin-routes.ts"
+    );
+    workflowPlugins.push(workflowPlugin, workflowRoutePlugin);
+  }
   const runtimeResult = await createRealTestRuntime({
     characterName: "DeviceE2EHostAgent",
-    plugins: [proxy, mediaRoutesPlugin],
+    plugins: [proxy, mediaRoutesPlugin, ...workflowPlugins],
   });
   if (process.env.ELIZA_UI_SMOKE_RUBY_HIGH_JOURNEY === "1") {
     const rubyHighUrl = process.env.RUBY_HIGH_URL?.trim();

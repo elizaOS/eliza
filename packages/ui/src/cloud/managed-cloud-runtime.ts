@@ -12,3 +12,17 @@ export function isManagedCloudRuntime(
 ): boolean {
   return target === "cloud-managed" || isAppModeHost();
 }
+
+/**
+ * Cloud account and lifecycle controls remain reachable when the managed
+ * agent runtime is unavailable. Other app-shell pages still wait for startup
+ * because their data and actions belong to that runtime.
+ */
+export function managedCloudPageOwnsStartupFailure(
+  navigationPath: string,
+  target: RuntimeTarget | null | undefined,
+): boolean {
+  const pathname = navigationPath.split(/[?#]/, 1)[0] ?? "/";
+  const isCloudPath = pathname === "/cloud" || pathname.startsWith("/cloud/");
+  return isCloudPath && isManagedCloudRuntime(target);
+}
