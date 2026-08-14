@@ -10,12 +10,12 @@
 
 import { Camera, Download, ScrollText, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
+import { BrandButton, BrandCard, CornerBrackets } from "../../../cloud-ui";
+import { SettingsSwitchRow } from "../../../components/settings/settings-agent-rows";
 import {
-  BrandButton,
-  BrandCard,
-  CornerBrackets,
-  Switch,
-} from "../../../cloud-ui";
+  SettingsGroup,
+  SettingsStack,
+} from "../../../components/settings/settings-layout";
 import { useCloudT } from "../../shell/CloudI18nProvider";
 import { emitAuditEvent } from "../data/audit-client";
 import {
@@ -65,59 +65,40 @@ export function PrivacyPanel() {
           </p>
         </div>
 
-        {/* Vision toggle */}
-        <div className="flex items-start justify-between gap-3 rounded-sm border border-border bg-surface p-4">
-          <div className="flex items-start gap-3">
-            <div className="rounded-sm border border-purple-500/40 bg-purple-500/20 p-2">
-              <Camera className="h-4 w-4 text-purple-300" />
-            </div>
-            <div className="space-y-1">
-              <p className="text-sm font-medium text-txt-strong">
-                {t("cloud.privacyPanel.visionTitle", {
-                  defaultValue: "Allow vision / screen capture",
-                })}
-              </p>
-              <p className="text-xs text-muted">
-                {t("cloud.privacyPanel.visionDescription", {
-                  defaultValue:
-                    "Off by default. When on, plugins may request screen frames or webcam capture. Remote models charge per image — review your model's per-call fee in Settings → Billing before enabling.",
-                })}
-              </p>
-            </div>
-          </div>
-          <Switch
-            checked={vision}
-            onCheckedChange={onVisionChange}
-            data-testid="vision-toggle"
-          />
-        </div>
-
-        {/* Trajectory logging toggle */}
-        <div className="flex items-start justify-between gap-3 rounded-sm border border-border bg-surface p-4">
-          <div className="flex items-start gap-3">
-            <div className="rounded-sm border border-border bg-muted p-2">
-              <ScrollText className="h-4 w-4 text-muted" />
-            </div>
-            <div className="space-y-1">
-              <p className="text-sm font-medium text-txt-strong">
-                {t("cloud.privacyPanel.trajectoryTitle", {
-                  defaultValue: "Trajectory logging",
-                })}
-              </p>
-              <p className="text-xs text-muted">
-                {t("cloud.privacyPanel.trajectoryDescription", {
-                  defaultValue:
-                    "Off by default. When on, Eliza records per-step plan/action traces locally with a 30-day retention. Redacted content is marked separately from raw.",
-                })}
-              </p>
-            </div>
-          </div>
-          <Switch
-            checked={trajectory}
-            onCheckedChange={onTrajectoryChange}
-            data-testid="trajectory-toggle"
-          />
-        </div>
+        <SettingsStack>
+          <SettingsGroup>
+            <SettingsSwitchRow
+              agentId="cloud-privacy-vision"
+              group="cloud-privacy"
+              icon={Camera}
+              testId="vision-toggle"
+              label={t("cloud.privacyPanel.visionTitle", {
+                defaultValue: "Allow vision / screen capture",
+              })}
+              description={t("cloud.privacyPanel.visionDescription", {
+                defaultValue:
+                  "Off by default. When on, plugins may request screen frames or webcam capture. Remote models charge per image — review your model's per-call fee in Settings → Billing before enabling.",
+              })}
+              checked={vision}
+              onCheckedChange={onVisionChange}
+            />
+            <SettingsSwitchRow
+              agentId="cloud-privacy-trajectory"
+              group="cloud-privacy"
+              icon={ScrollText}
+              testId="trajectory-toggle"
+              label={t("cloud.privacyPanel.trajectoryTitle", {
+                defaultValue: "Trajectory logging",
+              })}
+              description={t("cloud.privacyPanel.trajectoryDescription", {
+                defaultValue:
+                  "Off by default. When on, Eliza records per-step plan/action traces locally with a 30-day retention. Redacted content is marked separately from raw.",
+              })}
+              checked={trajectory}
+              onCheckedChange={onTrajectoryChange}
+            />
+          </SettingsGroup>
+        </SettingsStack>
 
         {/* DSR — Export */}
         <div className="flex items-start justify-between gap-3 rounded-sm border border-border bg-surface p-4">
