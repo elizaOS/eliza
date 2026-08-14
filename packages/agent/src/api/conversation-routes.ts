@@ -28,6 +28,7 @@ import {
   type Content,
   createMessageMemory,
   createUniqueUuid,
+  DuplicateTurnRequestAdmissionError,
   ElizaError,
   logger,
   MESSAGE_SOURCE_AGENT_GREETING,
@@ -43,17 +44,22 @@ import {
   shouldSkipResponseMemoryPersistence,
   stringToUuid,
   type TrustedApiPrincipal,
+  type TurnRequestAdmission,
   type UUID,
   validateUuid,
 } from "@elizaos/core";
-import type { ChatFailureKind } from "@elizaos/shared";
 import {
+  type ChatFailureKind,
   PatchConversationRequestSchema,
   PostConversationCleanupEmptyRequestSchema,
   PostConversationRequestSchema,
   PostConversationTruncateRequestSchema,
   PostSeedMessagesRequestSchema,
   parsePositiveInteger,
+  REALTIME_VOICE_CLIENT_MESSAGE_ID_PREFIX,
+  REALTIME_VOICE_CLIENT_TRANSPORT,
+  REALTIME_VOICE_INGRESS_COMMITTED_V1,
+  REALTIME_VOICE_INGRESS_HEADER,
 } from "@elizaos/shared";
 import type { ElizaConfig } from "../config/config.ts";
 import { resolveStateDir } from "../config/paths.ts";
@@ -676,6 +682,33 @@ function isTurnAbortError(err: unknown): boolean {
   );
 }
 
+function isExactRealtimeVoiceRequest(
+  clientMessageId: string | undefined,
+  metadata: Record<string, unknown> | undefined,
+): clientMessageId is string {
+  if (metadata?.clientTransport !== REALTIME_VOICE_CLIENT_TRANSPORT) {
+    return false;
+  }
+  if (!clientMessageId?.startsWith(REALTIME_VOICE_CLIENT_MESSAGE_ID_PREFIX)) {
+    return false;
+  }
+  return (
+    clientMessageId.length > REALTIME_VOICE_CLIENT_MESSAGE_ID_PREFIX.length
+  );
+}
+
+/**
+ * Exact voice cancellation has an explicit route-owned assistant commit
+ * boundary. A generic transport disconnect may still finish a durable reply
+ * for idempotent replay, but a realtime replacement that wins before this
+ * boundary must not add an assistant answer the caller never heard.
+ */
+function assertExactVoiceAssistantCommitCanBegin(
+  admission: TurnRequestAdmission | null,
+): void {
+  admission?.signal.throwIfAborted();
+}
+
 function ensureAdminEntityIdForRuntime(
   state: ConversationRouteState,
   runtime: AgentRuntime | null,
@@ -888,6 +921,7 @@ async function resolvePersistedAssistantTurn(
   channelType: ChannelType,
   roomHandlerLease: RoomHandlerLease,
   userMessageId?: UUID,
+  assistantCommitAbortSignal?: AbortSignal,
 ): Promise<
   | { kind: "durable"; id: UUID; text: string }
   | { kind: "ephemeral"; text: string }
@@ -945,6 +979,10 @@ async function resolvePersistedAssistantTurn(
 
   let persisted: Memory | null;
   try {
+    // The message service may already have committed an assistant row before
+    // exact cancellation arrived; that durable ID is reconciled and returned
+    // above. Only a new route-owned row samples this exact precommit gate.
+    assistantCommitAbortSignal?.throwIfAborted();
     persisted = await persistAssistantConversationMemory(
       runtime,
       roomId,
@@ -1575,6 +1613,7 @@ async function recoverDurableConversationChatOutcome(
   fingerprint: string,
   agentName: string,
   roomHandlerLease: RoomHandlerLease,
+  options: { settleMissingAssistantAsIgnored?: boolean } = {},
 ): Promise<DurableConversationChatRecovery> {
   if (!clientMessageId) return { kind: "none" };
   const userMessageId = conversationClientUserMemoryId(scope, clientMessageId);
@@ -1646,6 +1685,24 @@ async function recoverDurableConversationChatOutcome(
     )
     .at(-1);
   if (!assistant) {
+    if (options.settleMissingAssistantAsIgnored) {
+      const outcome: ChatMessageIdOutcome = {
+        text: "",
+        agentName,
+        userMessageId,
+        noResponseReason: "ignored",
+      };
+      await persistDurableConversationChatOutcome(
+        runtime,
+        roomId,
+        scope,
+        clientMessageId,
+        fingerprint,
+        outcome,
+        roomHandlerLease,
+      );
+      return { kind: "settled", outcome };
+    }
     const channelType = userMemory.content.channelType;
     if (!isChannelType(channelType)) {
       return {
@@ -3618,142 +3675,293 @@ export async function handleConversationRoutes(
       streamProtocol,
       clientMessageId,
     } = chatPayload;
-    // Deps are the module-imported write fns so route tests that vi.mock
-    // `writeChatTokenSse`/`writeSse` keep capturing frames on the legacy path.
-    const tokenWriter = createChatTokenStreamWriter(
-      streamProtocol ?? "legacy",
-      { writeChatTokenSse, writeSse },
-    );
-
-    // The SSE channel opens as soon as the request is validated — before
-    // runtime resolution, room setup, and user-message persistence — so the
-    // client sees headers, an immediate `thinking` status, and heartbeats
-    // during the pre-model work (runtime warming alone can take seconds; the
-    // pre-model DB steps add serial round-trips). Everything past this point
-    // reports failure as a structured SSE `error` event (the client maps
-    // `type:"error"` data lines to StreamGenerationError); only the validation
-    // above may answer with plain HTTP status codes.
-    initSse(res);
-    writeConversationStreamHeartbeat(res, disconnectTracker);
-    const heartbeatInterval = setInterval(() => {
-      if (disconnectTracker.checkConnectionClosed()) {
-        return;
-      }
-      writeConversationStreamHeartbeat(res, disconnectTracker);
-    }, 5000);
+    const runtime = state.runtime;
+    const exactVoiceClientMessageId = isExactRealtimeVoiceRequest(
+      clientMessageId,
+      chatMetadata,
+    )
+      ? clientMessageId
+      : null;
+    let exactVoiceAdmission: TurnRequestAdmission | null = null;
+    let exactVoiceAbortListener: (() => void) | null = null;
+    let heartbeatInterval: ReturnType<typeof setInterval> | undefined;
+    let streamInitialized = false;
+    let exactVoiceIngressAcknowledged = false;
     let chatReservation: ChatMessageIdReservation | null = null;
     let chatIdempotencyScope = String(conv.roomId);
     let reservationSettled = false;
     let runtimeTurnLease: RoomHandlerLease | null = null;
-    const runtime = state.runtime;
     const releaseTurnReservation = () =>
       releaseChatMessageId(
         chatIdempotencyScope,
         clientMessageId ?? null,
         chatReservation,
       );
-    const failStream = (message: string): true => {
-      releaseTurnReservation();
-      writeSse(res, { type: "error", message });
-      clearInterval(heartbeatInterval);
-      finishStreamResponse();
-      return true;
-    };
 
-    // Runtime readiness is a lifecycle/API boundary. A chat request must fail
-    // immediately when capability is absent instead of occupying an SSE socket
-    // behind a hidden boot timer.
-    if (!runtime) {
-      return failStream("Agent is not running");
-    }
-
-    const caller = resolveConversationCaller(
-      req,
-      state,
-      trustedApiPrincipal,
-      runtime,
-    );
-    const userId = caller.entityId;
-    chatIdempotencyScope = buildConversationChatIdempotencyScope(
-      runtime,
-      conv.roomId,
-      caller.entityId,
-    );
-    const chatFingerprint = buildConversationChatFingerprint({
-      prompt,
-      images,
-      source,
-      channelType,
-      preferredLanguage,
-      metadata: chatMetadata,
-    });
-    const settleTurnReservation = async (
-      outcome: ChatMessageIdOutcome,
-    ): Promise<void> => {
-      if (clientMessageId) {
-        if (!runtimeTurnLease) {
-          throw new ElizaError("Chat outcome has no live room ownership", {
-            code: "CHAT_IDEMPOTENCY_LEASE_MISSING",
-            context: { roomId: conv.roomId, clientMessageId },
-          });
-        }
-        await persistDurableConversationChatOutcome(
-          runtime,
-          conv.roomId,
-          chatIdempotencyScope,
-          clientMessageId,
-          chatFingerprint,
-          outcome,
-          runtimeTurnLease,
-        );
+    try {
+      if (exactVoiceClientMessageId && !runtime) {
+        error(res, "Agent is not running", 503);
+        finishStreamResponse();
+        return true;
       }
-      setChatMessageIdOutcome(
+      if (exactVoiceClientMessageId && runtime) {
+        try {
+          exactVoiceAdmission =
+            runtime.turnControllers.registerRequestAdmission(
+              conv.roomId,
+              exactVoiceClientMessageId,
+            );
+        } catch (err) {
+          if (!(err instanceof DuplicateTurnRequestAdmissionError)) throw err;
+          // A byte-identical retry joins the existing chat-idempotency owner or
+          // recovers its durable user row below. It must not open a second
+          // cancellation capability, but neither may a lost ingress ack be
+          // converted into a 30-second 409 dead zone.
+          exactVoiceAdmission = null;
+        }
+      }
+
+      // Deps are the module-imported write fns so route tests that vi.mock
+      // `writeChatTokenSse`/`writeSse` keep capturing frames on the legacy path.
+      const tokenWriter = createChatTokenStreamWriter(
+        streamProtocol ?? "legacy",
+        { writeChatTokenSse, writeSse },
+      );
+
+      const stopHeartbeat = () => {
+        if (heartbeatInterval !== undefined) {
+          clearInterval(heartbeatInterval);
+          heartbeatInterval = undefined;
+        }
+      };
+      const acknowledgeExactVoiceIngress = () => {
+        if (!exactVoiceClientMessageId) return;
+        res.setHeader(
+          REALTIME_VOICE_INGRESS_HEADER,
+          REALTIME_VOICE_INGRESS_COMMITTED_V1,
+        );
+        exactVoiceIngressAcknowledged = true;
+      };
+      const markExactVoiceIngressCommitted = () => {
+        if (!exactVoiceClientMessageId) return;
+        if (!exactVoiceAdmission) {
+          throw new ElizaError(
+            "Realtime voice ingress acknowledgement has no owned admission",
+            {
+              code: "REALTIME_VOICE_INGRESS_ADMISSION_MISSING",
+              context: {
+                roomId: conv.roomId,
+                clientMessageId: exactVoiceClientMessageId,
+              },
+            },
+          );
+        }
+        if (exactVoiceAdmission.requestIngressState === "pending") {
+          exactVoiceAdmission.markIngressCommitted();
+        }
+        if (exactVoiceAdmission.requestIngressState !== "committed") {
+          throw new ElizaError(
+            "Realtime voice ingress could not be acknowledged as durable",
+            {
+              code: "REALTIME_VOICE_INGRESS_NOT_COMMITTED",
+              context: {
+                roomId: conv.roomId,
+                clientMessageId: exactVoiceClientMessageId,
+                ingressState: exactVoiceAdmission.requestIngressState,
+                ingressFailure: exactVoiceAdmission.requestIngressFailure,
+              },
+            },
+          );
+        }
+        acknowledgeExactVoiceIngress();
+      };
+      const attachExactVoiceAbort = () => {
+        if (!exactVoiceAdmission || exactVoiceAbortListener) return;
+        const admission = exactVoiceAdmission;
+        exactVoiceAbortListener = () => {
+          disconnectTracker.abort(
+            admission.signal.reason ??
+              new Error("Realtime voice request cancelled"),
+          );
+        };
+        admission.signal.addEventListener("abort", exactVoiceAbortListener, {
+          once: true,
+        });
+        if (admission.signal.aborted) exactVoiceAbortListener();
+      };
+      const initializeStream = () => {
+        if (streamInitialized) return;
+        if (exactVoiceClientMessageId && !exactVoiceIngressAcknowledged) {
+          throw new ElizaError(
+            "Realtime voice stream cannot open before durable ingress",
+            {
+              code: "REALTIME_VOICE_STREAM_BEFORE_INGRESS",
+              context: {
+                roomId: conv.roomId,
+                clientMessageId: exactVoiceClientMessageId,
+              },
+            },
+          );
+        }
+        initSse(res);
+        streamInitialized = true;
+        writeConversationStreamHeartbeat(res, disconnectTracker);
+        heartbeatInterval = setInterval(() => {
+          if (disconnectTracker.checkConnectionClosed()) return;
+          writeConversationStreamHeartbeat(res, disconnectTracker);
+        }, 5000);
+        attachExactVoiceAbort();
+      };
+      const finishCommittedExactVoiceWithoutStream = () => {
+        stopHeartbeat();
+        if (!res.writableEnded && !res.destroyed) {
+          res.writeHead(204);
+        }
+        finishStreamResponse();
+      };
+      const failStream = (
+        message: string,
+        status = 500,
+        code?: string,
+      ): true => {
+        releaseTurnReservation();
+        if (streamInitialized) {
+          writeSse(res, { type: "error", message, ...(code ? { code } : {}) });
+        } else if (!res.writableEnded) {
+          error(res, message, status);
+        }
+        stopHeartbeat();
+        finishStreamResponse();
+        return true;
+      };
+
+      // Generic chat preserves its latency-oriented early SSE behavior. A new
+      // exact realtime-voice ingress delays every 2xx/header boundary until its
+      // deterministic user memory is durable and the versioned acknowledgement
+      // is set. A same-id durable replay may emit the same proof header after
+      // verifying the row, but never mints a second admission transition.
+      if (!exactVoiceClientMessageId) initializeStream();
+
+      // Runtime readiness is a lifecycle/API boundary. A chat request must fail
+      // immediately when capability is absent instead of occupying an SSE socket
+      // behind a hidden boot timer.
+      if (!runtime) {
+        return failStream("Agent is not running");
+      }
+
+      const caller = resolveConversationCaller(
+        req,
+        state,
+        trustedApiPrincipal,
+        runtime,
+      );
+      const userId = caller.entityId;
+      chatIdempotencyScope = buildConversationChatIdempotencyScope(
+        runtime,
+        conv.roomId,
+        caller.entityId,
+      );
+      const chatFingerprint = buildConversationChatFingerprint({
+        prompt,
+        images,
+        source,
+        channelType,
+        preferredLanguage,
+        metadata: chatMetadata,
+      });
+      const settleTurnReservation = async (
+        outcome: ChatMessageIdOutcome,
+      ): Promise<void> => {
+        if (clientMessageId) {
+          if (!runtimeTurnLease) {
+            throw new ElizaError("Chat outcome has no live room ownership", {
+              code: "CHAT_IDEMPOTENCY_LEASE_MISSING",
+              context: { roomId: conv.roomId, clientMessageId },
+            });
+          }
+          await persistDurableConversationChatOutcome(
+            runtime,
+            conv.roomId,
+            chatIdempotencyScope,
+            clientMessageId,
+            chatFingerprint,
+            outcome,
+            runtimeTurnLease,
+          );
+        }
+        setChatMessageIdOutcome(
+          chatIdempotencyScope,
+          clientMessageId ?? null,
+          outcome,
+          chatReservation,
+        );
+        reservationSettled = true;
+      };
+      // Exact cancellation owns generation, not transcript delivery. Keep
+      // admission, room ownership, and the deterministic user write alive even
+      // when a pre-registration tombstone or transport close already fired.
+      const exactVoiceIngressController = exactVoiceClientMessageId
+        ? new AbortController()
+        : null;
+      const ingressAdmissionSignal =
+        exactVoiceIngressController?.signal ?? disconnectTracker.signal;
+      const idempotencyAdmission = await awaitConversationChatAdmission(
         chatIdempotencyScope,
         clientMessageId ?? null,
-        outcome,
-        chatReservation,
+        chatFingerprint,
+        ingressAdmissionSignal,
       );
-      reservationSettled = true;
-    };
-    const idempotencyAdmission = await awaitConversationChatAdmission(
-      chatIdempotencyScope,
-      clientMessageId ?? null,
-      chatFingerprint,
-      disconnectTracker.signal,
-    );
-    if (idempotencyAdmission.kind === "aborted") {
-      clearInterval(heartbeatInterval);
-      finishStreamResponse();
-      return true;
-    }
-    if (idempotencyAdmission.kind === "settled") {
-      writeConversationDoneSse(res, idempotencyAdmission.outcome);
-      clearInterval(heartbeatInterval);
-      finishStreamResponse();
-      return true;
-    }
-    if (idempotencyAdmission.kind === "conflict") {
-      writeSse(res, {
-        type: "error",
-        message: idempotencyAdmission.error.message,
-        code: idempotencyAdmission.error.code,
-      });
-      clearInterval(heartbeatInterval);
-      finishStreamResponse();
-      return true;
-    }
-    chatReservation = idempotencyAdmission.reservation;
-    try {
-      writeChatStatusSse(res, { kind: "thinking" });
+      if (idempotencyAdmission.kind === "aborted") {
+        stopHeartbeat();
+        finishStreamResponse();
+        return true;
+      }
+      if (idempotencyAdmission.kind === "settled") {
+        if (exactVoiceClientMessageId) {
+          if (exactVoiceAdmission) {
+            markExactVoiceIngressCommitted();
+            if (
+              exactVoiceAdmission.signal.aborted ||
+              disconnectTracker.isAborted()
+            ) {
+              finishCommittedExactVoiceWithoutStream();
+              return true;
+            }
+            initializeStream();
+          } else {
+            acknowledgeExactVoiceIngress();
+            if (disconnectTracker.isAborted()) {
+              finishCommittedExactVoiceWithoutStream();
+              return true;
+            }
+            initializeStream();
+          }
+        }
+        writeConversationDoneSse(res, idempotencyAdmission.outcome);
+        stopHeartbeat();
+        finishStreamResponse();
+        return true;
+      }
+      if (idempotencyAdmission.kind === "conflict") {
+        return failStream(
+          idempotencyAdmission.error.message,
+          409,
+          idempotencyAdmission.error.code,
+        );
+      }
+      chatReservation = idempotencyAdmission.reservation;
+      if (!exactVoiceClientMessageId) {
+        writeChatStatusSse(res, { kind: "thinking" });
+      }
       try {
         runtimeTurnLease = await runtime.roomHandlerQueue.acquire(
           conv.roomId,
-          disconnectTracker.signal,
+          ingressAdmissionSignal,
         );
       } catch (err) {
         releaseTurnReservation();
-        if (disconnectTracker.isAborted()) {
-          clearInterval(heartbeatInterval);
+        if (ingressAdmissionSignal.aborted) {
+          stopHeartbeat();
           finishStreamResponse();
           return true;
         }
@@ -3779,24 +3987,56 @@ export async function handleConversationRoutes(
           chatFingerprint,
           state.agentName,
           runtimeTurnLease,
+          {
+            settleMissingAssistantAsIgnored: Boolean(exactVoiceClientMessageId),
+          },
         );
         if (durableRecovery.kind === "conflict") {
-          releaseTurnReservation();
-          writeSse(res, {
-            type: "error",
-            message: durableRecovery.error.message,
-            code: durableRecovery.error.code,
-          });
-          clearInterval(heartbeatInterval);
-          finishStreamResponse();
-          return true;
+          return failStream(
+            durableRecovery.error.message,
+            409,
+            durableRecovery.error.code,
+          );
         }
         if (durableRecovery.kind === "settled") {
           await settleTurnReservation(durableRecovery.outcome);
+          if (exactVoiceClientMessageId) {
+            if (exactVoiceAdmission) {
+              markExactVoiceIngressCommitted();
+              if (
+                exactVoiceAdmission.signal.aborted ||
+                disconnectTracker.isAborted()
+              ) {
+                finishCommittedExactVoiceWithoutStream();
+                return true;
+              }
+              initializeStream();
+            } else {
+              acknowledgeExactVoiceIngress();
+              if (disconnectTracker.isAborted()) {
+                finishCommittedExactVoiceWithoutStream();
+                return true;
+              }
+              initializeStream();
+            }
+            writeChatStatusSse(res, { kind: "thinking" });
+          }
           writeConversationDoneSse(res, durableRecovery.outcome);
-          clearInterval(heartbeatInterval);
+          stopHeartbeat();
           finishStreamResponse();
           return true;
+        }
+        if (exactVoiceClientMessageId && !exactVoiceAdmission) {
+          // Registration and chat-idempotency ownership are separate maps. A
+          // prior owner can release its chat reservation between our rejected
+          // registration and admission below. In that TOCTOU case, only a
+          // durable row recovered above is safe to acknowledge; starting fresh
+          // work here would have no exact cancellation capability.
+          return failStream(
+            "Realtime voice retry cannot own new ingress while the prior request receipt is retained",
+            409,
+            "REALTIME_VOICE_RETRY_OWNERSHIP_UNAVAILABLE",
+          );
         }
         let userMessages: Awaited<ReturnType<typeof buildUserMessages>>;
         try {
@@ -3877,6 +4117,7 @@ export async function handleConversationRoutes(
             clientMessageId ?? null,
             runtimeTurnLease,
           );
+          markExactVoiceIngressCommitted();
           assertConversationConnectionRuntime(
             state.runtime,
             connectionDescriptor,
@@ -3890,6 +4131,30 @@ export async function handleConversationRoutes(
             `${connectionFailed ? "Failed to refresh conversation room" : "Failed to store user message"}: ${getErrorMessage(err)}`,
           );
           return handled;
+        }
+
+        if (exactVoiceClientMessageId) {
+          if (
+            exactVoiceAdmission?.signal.aborted ||
+            disconnectTracker.isAborted()
+          ) {
+            try {
+              await settleTurnReservation({
+                text: "",
+                agentName: state.agentName,
+                userMessageId: messageToStore.id,
+                noResponseReason: "ignored",
+              });
+            } catch (err) {
+              return failStream(
+                `Failed to settle interrupted realtime voice ingress: ${getErrorMessage(err)}`,
+              );
+            }
+            finishCommittedExactVoiceWithoutStream();
+            return true;
+          }
+          initializeStream();
+          writeChatStatusSse(res, { kind: "thinking" });
         }
 
         if (walletModeGuidance) {
@@ -3906,6 +4171,7 @@ export async function handleConversationRoutes(
                   state.runtime,
                   connectionDescriptor,
                 );
+                assertExactVoiceAssistantCommitCanBegin(exactVoiceAdmission);
                 const routeOwnedId = crypto.randomUUID() as UUID;
                 const persisted = await persistAssistantConversationMemory(
                   runtime,
@@ -3957,7 +4223,7 @@ export async function handleConversationRoutes(
             ) {
               releaseTurnReservation();
             }
-            clearInterval(heartbeatInterval);
+            stopHeartbeat();
             try {
               finishStreamResponse();
             } finally {
@@ -3985,6 +4251,11 @@ export async function handleConversationRoutes(
             state.agentName,
             {
               abortSignal: disconnectTracker.signal,
+              ...(exactVoiceAdmission
+                ? {
+                    assistantCommitAbortSignal: exactVoiceAdmission.signal,
+                  }
+                : {}),
               roomHandlerLease: runtimeTurnLease,
               onStatus: (status) => {
                 if (
@@ -4094,9 +4365,6 @@ export async function handleConversationRoutes(
               state.runtime,
               connectionDescriptor,
             );
-            // Durable completion belongs to the turn, not to the transport. A
-            // disconnected client can retry the same key and receive this exact
-            // committed outcome without executing or billing another model turn.
             const persistedAssistant = await resolvePersistedAssistantTurn(
               runtime,
               conv.roomId,
@@ -4106,6 +4374,7 @@ export async function handleConversationRoutes(
               channelType,
               runtimeTurnLease,
               messageToStore.id,
+              exactVoiceAdmission?.signal,
             );
             assertConversationConnectionRuntime(
               state.runtime,
@@ -4208,7 +4477,29 @@ export async function handleConversationRoutes(
                 clientMessageId ?? null,
               )
             ) {
-              releaseTurnReservation();
+              if (exactVoiceClientMessageId) {
+                try {
+                  await settleTurnReservation({
+                    text: "",
+                    agentName: state.agentName,
+                    userMessageId: messageToStore.id,
+                    noResponseReason: "ignored",
+                  });
+                } catch (settleError) {
+                  logger.warn(
+                    {
+                      err: getErrorMessage(settleError),
+                      conversationId: conv.id,
+                      roomId: conv.roomId,
+                      clientMessageId: exactVoiceClientMessageId,
+                    },
+                    "[ConversationStream] failed to persist interrupted realtime voice terminal",
+                  );
+                  releaseTurnReservation();
+                }
+              } else {
+                releaseTurnReservation();
+              }
             }
           } else if (
             isCallbackHistoryPersistenceError(terminalError) ||
@@ -4243,6 +4534,7 @@ export async function handleConversationRoutes(
                   state.runtime,
                   connectionDescriptor,
                 );
+                assertExactVoiceAssistantCommitCanBegin(exactVoiceAdmission);
                 const routeOwnedId = crypto.randomUUID() as UUID;
                 const persisted = await persistAssistantConversationMemory(
                   runtime,
@@ -4400,6 +4692,7 @@ export async function handleConversationRoutes(
                   state.runtime,
                   connectionDescriptor,
                 );
+                assertExactVoiceAssistantCommitCanBegin(exactVoiceAdmission);
                 const routeOwnedId = crypto.randomUUID() as UUID;
                 const persisted = await persistAssistantConversationMemory(
                   runtime,
@@ -4449,7 +4742,7 @@ export async function handleConversationRoutes(
           ) {
             releaseTurnReservation();
           }
-          clearInterval(heartbeatInterval);
+          stopHeartbeat();
           try {
             finishStreamResponse();
           } finally {
@@ -4462,7 +4755,21 @@ export async function handleConversationRoutes(
         runtimeTurnLease = null;
       }
     } finally {
-      if (!reservationSettled) releaseTurnReservation();
+      try {
+        if (!reservationSettled) releaseTurnReservation();
+      } finally {
+        clearInterval(heartbeatInterval);
+        try {
+          if (exactVoiceAdmission && exactVoiceAbortListener) {
+            exactVoiceAdmission.signal.removeEventListener(
+              "abort",
+              exactVoiceAbortListener,
+            );
+          }
+        } finally {
+          exactVoiceAdmission?.finish();
+        }
+      }
     }
   }
 

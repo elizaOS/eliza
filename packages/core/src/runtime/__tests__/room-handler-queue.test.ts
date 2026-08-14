@@ -87,6 +87,36 @@ describe("RoomHandlerQueue", () => {
 			await expect(second).resolves.toBe("second-ok");
 			expect(trace).toEqual(["first-running", "second-running"]);
 		});
+
+		it("owner settlement snapshots only the active owner, not queued successors", async () => {
+			const queue = new RoomHandlerQueue();
+			let releaseFirst: (() => void) | undefined;
+			const firstGate = new Promise<void>((resolve) => {
+				releaseFirst = resolve;
+			});
+			let releaseSecond: (() => void) | undefined;
+			const secondGate = new Promise<void>((resolve) => {
+				releaseSecond = resolve;
+			});
+			const first = queue.runWith(ROOM_A, async () => firstGate);
+			await sleep(2);
+			const ownerSettlement = queue.currentOwnerSettlement(ROOM_A);
+			expect(ownerSettlement).not.toBeNull();
+			const second = queue.runWith(ROOM_A, async () => secondGate);
+			expect(queue.pendingFor(ROOM_A)).toBe(2);
+
+			releaseFirst?.();
+			await ownerSettlement;
+			await first;
+			// The snapshot proves the first owner released without waiting for the
+			// already-admitted successor to finish.
+			expect(queue.pendingFor(ROOM_A)).toBe(1);
+			expect(queue.currentOwnerSettlement(ROOM_A)).not.toBeNull();
+
+			releaseSecond?.();
+			await second;
+			expect(queue.currentOwnerSettlement(ROOM_A)).toBeNull();
+		});
 	});
 
 	describe("explicit room leases", () => {

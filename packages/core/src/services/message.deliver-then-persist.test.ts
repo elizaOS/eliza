@@ -17,6 +17,7 @@ import { createCharacter } from "../character";
 import { InMemoryDatabaseAdapter } from "../database/inMemoryAdapter";
 import { inferenceTimingRegistry } from "../inference-timing";
 import { AgentRuntime } from "../runtime";
+import { TurnAbortedError } from "../runtime/turn-controller";
 import {
 	attestDeliveryAudienceFromCanonicalRoom,
 	authorizeOwnerExclusiveDisclosure,
@@ -29,6 +30,7 @@ import { asUUID, ChannelType, type UUID } from "../types/primitives";
 import {
 	DefaultMessageService,
 	enforceTrustedDeliveryAudienceOnResult,
+	wrapSingleTurnVisibleCallback,
 } from "./message";
 
 /** The Stage-1 HANDLE_RESPONSE tool-call envelope a live model emits. */
@@ -46,6 +48,30 @@ function stage1DirectReply(replyText: string) {
 					intents: [],
 					candidateActionNames: [],
 					replyText,
+					facts: [],
+					relationships: [],
+					addressedTo: [],
+				},
+			},
+		],
+		finishReason: "tool_calls",
+	};
+}
+
+function stage1Terminal(action: "IGNORE" | "STOP") {
+	return {
+		text: "",
+		toolCalls: [
+			{
+				id: "handle-response-terminal",
+				name: "HANDLE_RESPONSE",
+				arguments: {
+					shouldRespond: action,
+					thought: "No response is needed.",
+					contexts: [],
+					intents: [],
+					candidateActionNames: [],
+					replyText: "",
 					facts: [],
 					relationships: [],
 					addressedTo: [],
@@ -80,6 +106,8 @@ interface HarnessOptions {
 	holdReplyPersist?: boolean;
 	/** Deterministic interleaving point after Stage-1 reads state, before egress. */
 	beforeStage1Return?: (runtime: AgentRuntime) => Promise<void>;
+	/** Override the normal direct reply with another valid Stage-1 envelope. */
+	stage1Response?: ReturnType<typeof stage1DirectReply>;
 }
 
 async function createHarness(opts: HarnessOptions = {}) {
@@ -110,8 +138,9 @@ async function createHarness(opts: HarnessOptions = {}) {
 			);
 			order.push(`stage1:${invocation}`);
 			await opts.beforeStage1Return?.(runtime);
-			return stage1DirectReply(
-				invocation === 1 ? replyText : followUpReplyText,
+			return (
+				opts.stage1Response ??
+				stage1DirectReply(invocation === 1 ? replyText : followUpReplyText)
 			);
 		},
 		"deterministic-test",
@@ -557,5 +586,240 @@ describe("simple-path deliver-then-persist ordering", () => {
 		h.releaseReplyPersist();
 		await turnA;
 		expect(h.order).toContain("persist:reply");
+	});
+});
+
+describe("exact assistant precommit cancellation", () => {
+	it("rejects a cancellation that wins inside the final audience await without authorizing delivery", async () => {
+		const h = await createHarness();
+		const turn = h.makeMessage();
+		h.runtime.setSetting("ELIZA_ADMIN_ENTITY_ID", turn.entityId);
+		await attestDeliveryAudienceFromCanonicalRoom(h.runtime, turn);
+		expect(
+			await authorizeOwnerExclusiveDisclosure(h.runtime, turn),
+		).toMatchObject({ allowed: true });
+
+		let releaseAudienceLookup: (() => void) | undefined;
+		const audienceLookupGate = new Promise<void>((resolve) => {
+			releaseAudienceLookup = resolve;
+		});
+		let audienceLookupStarted: (() => void) | undefined;
+		const audienceLookup = new Promise<void>((resolve) => {
+			audienceLookupStarted = resolve;
+		});
+		const realGetRoom = h.runtime.getRoom.bind(h.runtime);
+		h.runtime.getRoom = (async (roomId) => {
+			audienceLookupStarted?.();
+			await audienceLookupGate;
+			return realGetRoom(roomId);
+		}) as AgentRuntime["getRoom"];
+
+		const exactAbort = new AbortController();
+		const reason = new TurnAbortedError("cancelled during audience recheck");
+		let callbackCount = 0;
+		let committedBoundaryCount = 0;
+		const cancelledBoundaries: unknown[] = [];
+		const wrapped = wrapSingleTurnVisibleCallback(
+			h.runtime,
+			turn,
+			async () => {
+				callbackCount += 1;
+				return [];
+			},
+			undefined,
+			() => {
+				committedBoundaryCount += 1;
+			},
+			exactAbort.signal,
+			(error) => cancelledBoundaries.push(error),
+		);
+		const delivery = wrapped?.({ text: "private reply" });
+		await audienceLookup;
+		exactAbort.abort(reason);
+		releaseAudienceLookup?.();
+
+		await expect(delivery).rejects.toBe(reason);
+		expect(callbackCount).toBe(0);
+		expect(committedBoundaryCount).toBe(0);
+		expect(cancelledBoundaries).toEqual([reason]);
+	});
+
+	it("keeps the incoming user row but creates no assistant side effect when exact cancellation wins in the last precommit hook", async () => {
+		const h = await createHarness();
+		const exactAbort = new AbortController();
+		const reason = new TurnAbortedError("voice turn replaced");
+		let callbackCount = 0;
+		let messageSentCount = 0;
+		const realEmitEvent = h.runtime.emitEvent.bind(h.runtime);
+		h.runtime.emitEvent = (async (event, payload) => {
+			if (event === EventType.MESSAGE_SENT) messageSentCount += 1;
+			return realEmitEvent(event, payload);
+		}) as AgentRuntime["emitEvent"];
+		h.runtime.registerPipelineHook({
+			id: `abort-exact-before-assistant-commit-${v4()}`,
+			phase: "outgoing_before_deliver",
+			handler: () => {
+				exactAbort.abort(reason);
+			},
+		});
+		const turn = h.makeMessage();
+
+		await expect(
+			h.service.handleMessage(
+				h.runtime,
+				turn,
+				async () => {
+					callbackCount += 1;
+					return [];
+				},
+				{ assistantCommitAbortSignal: exactAbort.signal },
+			),
+		).rejects.toBe(reason);
+
+		const stored = await h.runtime.getMemories({
+			roomId: h.roomId,
+			tableName: "messages",
+			count: 100,
+		});
+		expect(stored.some((memory) => memory.id === turn.id)).toBe(true);
+		expect(
+			stored.filter((memory) => memory.entityId === h.runtime.agentId),
+		).toEqual([]);
+		expect(callbackCount).toBe(0);
+		expect(messageSentCount).toBe(0);
+	});
+
+	it("gates the terminal IGNORE batch after hooks without rolling back the user row", async () => {
+		const h = await createHarness({ stage1Response: stage1Terminal("IGNORE") });
+		const exactAbort = new AbortController();
+		const reason = new TurnAbortedError("voice turn replaced before terminal");
+		let callbackCount = 0;
+		let messageSentCount = 0;
+		const realEmitEvent = h.runtime.emitEvent.bind(h.runtime);
+		h.runtime.emitEvent = (async (event, payload) => {
+			if (event === EventType.MESSAGE_SENT) messageSentCount += 1;
+			return realEmitEvent(event, payload);
+		}) as AgentRuntime["emitEvent"];
+		h.runtime.registerPipelineHook({
+			id: `abort-exact-before-terminal-commit-${v4()}`,
+			phase: "outgoing_before_deliver",
+			handler: () => exactAbort.abort(reason),
+		});
+		const turn = h.makeMessage();
+
+		await expect(
+			h.service.handleMessage(
+				h.runtime,
+				turn,
+				async () => {
+					callbackCount += 1;
+					return [];
+				},
+				{ assistantCommitAbortSignal: exactAbort.signal },
+			),
+		).rejects.toBe(reason);
+
+		const stored = await h.runtime.getMemories({
+			roomId: h.roomId,
+			tableName: "messages",
+			count: 100,
+		});
+		expect(stored.some((memory) => memory.id === turn.id)).toBe(true);
+		expect(
+			stored.filter((memory) => memory.entityId === h.runtime.agentId),
+		).toEqual([]);
+		expect(callbackCount).toBe(0);
+		expect(messageSentCount).toBe(0);
+	});
+
+	it("finishes terminal delivery when exact cancellation arrives after persistence committed", async () => {
+		const h = await createHarness({ stage1Response: stage1Terminal("STOP") });
+		const exactAbort = new AbortController();
+		const reason = new TurnAbortedError("late terminal voice replacement");
+		let callbackCount = 0;
+		let messageSentCount = 0;
+		const realEmitEvent = h.runtime.emitEvent.bind(h.runtime);
+		h.runtime.emitEvent = (async (event, payload) => {
+			if (event === EventType.MESSAGE_SENT) {
+				messageSentCount += 1;
+				exactAbort.abort(reason);
+			}
+			return realEmitEvent(event, payload);
+		}) as AgentRuntime["emitEvent"];
+
+		await h.service.handleMessage(
+			h.runtime,
+			h.makeMessage(),
+			async () => {
+				callbackCount += 1;
+				return [];
+			},
+			{ assistantCommitAbortSignal: exactAbort.signal },
+		);
+
+		expect(exactAbort.signal.reason).toBe(reason);
+		expect(messageSentCount).toBe(1);
+		expect(callbackCount).toBe(1);
+		const stored = await h.runtime.getMemories({
+			roomId: h.roomId,
+			tableName: "messages",
+			count: 100,
+		});
+		expect(
+			stored.filter((memory) => memory.entityId === h.runtime.agentId),
+		).toHaveLength(1);
+	});
+
+	it("keeps generic disconnect durability because only the exact assistant signal owns the precommit gate", async () => {
+		const h = await createHarness();
+		const genericDisconnect = new AbortController();
+		let callbackCount = 0;
+		h.runtime.registerPipelineHook({
+			id: `abort-generic-after-generation-${v4()}`,
+			phase: "outgoing_before_deliver",
+			handler: () => {
+				genericDisconnect.abort(new Error("socket closed"));
+			},
+		});
+
+		const result = await h.service.handleMessage(
+			h.runtime,
+			h.makeMessage(),
+			async () => {
+				callbackCount += 1;
+				return [];
+			},
+			{ abortSignal: genericDisconnect.signal },
+		);
+
+		expect(genericDisconnect.signal.aborted).toBe(true);
+		expect(result.didRespond).toBe(true);
+		expect(callbackCount).toBe(1);
+		expect(await h.storedReplies()).toHaveLength(1);
+		expect(result.persistedResponseMessageIds).toHaveLength(1);
+	});
+
+	it("finishes callback and persistence when exact cancellation arrives after the synchronous latch", async () => {
+		const h = await createHarness();
+		const exactAbort = new AbortController();
+		const reason = new TurnAbortedError("late voice replacement");
+		let callbackCount = 0;
+
+		const result = await h.service.handleMessage(
+			h.runtime,
+			h.makeMessage(),
+			async () => {
+				callbackCount += 1;
+				exactAbort.abort(reason);
+				return [];
+			},
+			{ assistantCommitAbortSignal: exactAbort.signal },
+		);
+
+		expect(exactAbort.signal.reason).toBe(reason);
+		expect(result.didRespond).toBe(true);
+		expect(callbackCount).toBe(1);
+		expect(await h.storedReplies()).toHaveLength(1);
+		expect(result.persistedResponseMessageIds).toHaveLength(1);
 	});
 });

@@ -11,6 +11,20 @@
  */
 export const REALTIME_VOICE_CLIENT_TRANSPORT = "realtime_voice" as const;
 
+/**
+ * Namespace reserved for canonical chat requests owned by a realtime voice
+ * turn. The exact value is shared by the voice bridge, conversation route, and
+ * turn-control endpoint so cancellation never falls back to room-wide guesses.
+ */
+export const REALTIME_VOICE_CLIENT_MESSAGE_ID_PREFIX = "voice:" as const;
+
+export * from "./voice/realtime-voice-ingress.js";
+export * from "./voice/realtime-voice-trace.js";
+export * from "./voice/turn-coordinator.js";
+export * from "./voice/voice-device-evaluation.js";
+export * from "./voice/voice-output-envelope.js";
+export * from "./voice/voice-progress-policy.js";
+
 export interface VoicePreset {
   id: string;
   name: string;
