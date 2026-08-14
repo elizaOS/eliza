@@ -13,6 +13,7 @@ import {
   type ActionResult,
   CAPABILITY_ROUTER_SERVICE_TYPE,
   CapabilityError,
+  logger as coreLogger,
   type ElizaCapabilityRouter,
   type IAgentRuntime,
   type Memory,
@@ -152,6 +153,9 @@ async function makeRuntime(opts: RuntimeOptions = {}): Promise<{
   const services = new Map<string, unknown>();
   const runtime = {
     agentId: "11111111-1111-1111-1111-111111111111" as UUID,
+    character: opts.configuredSecret
+      ? { settings: { secrets: { TEST_SECRET: opts.configuredSecret } } }
+      : {},
     getSetting: vi.fn((key: string) => settings[key]),
     getService: vi.fn(<T>(type: string) => services.get(type) as T | null),
     redactSecrets: vi.fn((text: string) =>
@@ -1883,6 +1887,116 @@ describeIfPosix("shellAction", () => {
     expect(exposed).not.toContain(secret);
   });
 
+  it("applies pattern redaction even without a configured literal secret", async () => {
+    const token = "token-value-123456789";
+    const router = makeShellRouter(async () => ({
+      output: `Bearer ${token}\n`,
+      exitCode: 0,
+      timedOut: false,
+    }));
+    const { runtime } = await makeRuntime({ capabilityRouter: router });
+
+    const result = requireActionResult(
+      await shellAction.handler?.(runtime, makeMessage(), undefined, {
+        command: `printf 'Bearer ${token}'`,
+      }),
+    );
+
+    expect(JSON.stringify(result)).not.toContain(token);
+  });
+
+  it("redacts cwd validation and destructive-confirmation failures", async () => {
+    const secret = "orchid42";
+    const blockedCwd = path.join(process.cwd(), secret);
+    const { runtime } = await makeRuntime({
+      blockedPaths: blockedCwd,
+      configuredSecret: secret,
+    });
+
+    const cwdFailure = requireActionResult(
+      await shellAction.handler?.(runtime, makeMessage(), undefined, {
+        command: "true",
+        cwd: blockedCwd,
+      }),
+    );
+    const destructiveFailure = requireActionResult(
+      await shellAction.handler?.(runtime, makeMessage(), undefined, {
+        command: `mkfs.${secret} /tmp/${secret}`,
+      }),
+    );
+
+    expect(cwdFailure.success).toBe(false);
+    expect(destructiveFailure.success).toBe(false);
+    expect(JSON.stringify({ cwdFailure, destructiveFailure })).not.toContain(
+      secret,
+    );
+  });
+
+  it("builds planner summaries only from the redacted result command", async () => {
+    const secret = "summary-secret";
+    const router = makeShellRouter(async () => ({
+      output: "ok\n",
+      exitCode: 0,
+      timedOut: false,
+    }));
+    const { runtime } = await makeRuntime({
+      capabilityRouter: router,
+      configuredSecret: secret,
+    });
+    const params = { command: `printf '%s' '${secret}'` };
+    const result = requireActionResult(
+      await shellAction.handler?.(runtime, makeMessage(), undefined, params),
+    );
+
+    const summary = shellAction.summarize?.(result, params);
+    expect(summary).toContain("[REDACTED:TEST_SECRET]");
+    expect(summary).not.toContain(secret);
+  });
+
+  it("redacts cwd values in structured shell logs", async () => {
+    const secret = "log-secret";
+    const missingCwd = path.join(process.cwd(), `${secret}-missing`);
+    const router = makeShellRouter(async () => ({
+      output: "ok\n",
+      exitCode: 0,
+      timedOut: false,
+    }));
+    const { runtime } = await makeRuntime({
+      capabilityRouter: router,
+      configuredSecret: secret,
+    });
+    const logger = coreLogger as unknown as Record<
+      "debug" | "info" | "warn",
+      (...args: unknown[]) => void
+    >;
+    const original = {
+      debug: logger.debug,
+      info: logger.info,
+      warn: logger.warn,
+    };
+    const logs: unknown[] = [];
+    logger.debug = (...args) => logs.push(args);
+    logger.info = (...args) => logs.push(args);
+    logger.warn = (...args) => logs.push(args);
+
+    try {
+      const result = requireActionResult(
+        await shellAction.handler?.(runtime, makeMessage(), undefined, {
+          command: "true",
+          cwd: missingCwd,
+        }),
+      );
+      expect(result.success).toBe(true);
+    } finally {
+      logger.debug = original.debug;
+      logger.info = original.info;
+      logger.warn = original.warn;
+    }
+
+    expect(JSON.stringify(logs)).not.toContain(secret);
+    expect(JSON.stringify(logs)).toContain("[REDACTED:TEST_SECRET]");
+  });
+
   it("redacts a configured bare secret from every background session projection", async () => {
     const secret = "violet73";
     const { runtime } = await makeRuntime({ configuredSecret: secret });
@@ -1922,7 +2036,68 @@ describeIfPosix("shellAction", () => {
           unknown
         >
       ).startOffset,
-    ).toBe(0);
+    ).toBe(3);
+    expect(partialPoll.text).toContain("[REDACTED:chunk-boundary]");
+  });
+
+  it("keeps an eviction-split configured secret inside the private overlap", async () => {
+    const secret = "violet73";
+    const payload = `${"a".repeat(6)}${secret}${"z".repeat(36)}`;
+    const { runtime } = await makeRuntime({
+      backgroundBufferChars: 20,
+      configuredSecret: secret,
+    });
+    const actor = makeMessage();
+    const start = requireActionResult(
+      await shellAction.handler?.(runtime, actor, undefined, {
+        action: "start_background",
+        command: `printf '%s' '${payload}'`,
+      }),
+    );
+    const handle = (start.data as Record<string, unknown>).handle as string;
+    const poll = await pollUntil(runtime, actor, handle, (data) => {
+      const stdout = data.stdout as Record<string, unknown> | undefined;
+      return data.status === "exited" && stdout?.truncatedBefore === 30;
+    });
+    const stdout = (poll.data as Record<string, unknown>).stdout as Record<
+      string,
+      unknown
+    >;
+
+    expect(stdout.text).toBe("z".repeat(20));
+    expect(stdout.startOffset).toBe(30);
+    expect(JSON.stringify(poll)).not.toContain(secret);
+    expect(JSON.stringify(poll)).not.toContain(secret.slice(4));
+  });
+
+  it("expands the private overlap when a configured secret rotates", async () => {
+    const rotatedSecret = "rotated-secret-value-LEAK_SENTINEL_9Q";
+    const payload = `${"a".repeat(10)}${rotatedSecret}${"z".repeat(8)}`;
+    const { runtime } = await makeRuntime({ backgroundBufferChars: 20 });
+    runtime.character.settings = {
+      secrets: { ROTATED_SECRET: rotatedSecret },
+    };
+    vi.mocked(runtime.redactSecrets).mockImplementation((text: string) =>
+      text.replaceAll(rotatedSecret, "[REDACTED:ROTATED_SECRET]"),
+    );
+    const actor = makeMessage();
+    const start = requireActionResult(
+      await shellAction.handler?.(runtime, actor, undefined, {
+        action: "start_background",
+        command: `printf '%s' '${payload}'`,
+      }),
+    );
+    const handle = (start.data as Record<string, unknown>).handle as string;
+    const poll = await pollUntil(runtime, actor, handle, (data) => {
+      const stdout = data.stdout as Record<string, unknown> | undefined;
+      return (
+        data.status === "exited" &&
+        stdout?.truncatedBefore === payload.length - 20
+      );
+    });
+
+    expect(poll.text).toContain("[REDACTED:chunk-boundary]");
+    expect(JSON.stringify(poll)).not.toContain(rotatedSecret.slice(-12));
   });
 });
 
