@@ -1,3 +1,7 @@
+/**
+ * Exercises long-term-memory access timestamp updates through the real runtime,
+ * migrated PGlite adapter, and AdvancedMemoryStorageService persistence path.
+ */
 import type { Entity, UUID } from "@elizaos/core";
 import { v4 as uuidv4 } from "uuid";
 import { afterEach, describe, expect, it } from "vitest";
@@ -50,6 +54,7 @@ describe("AdvancedMemoryStorageService.updateLongTermMemory", () => {
     ]);
     const service = new AdvancedMemoryStorageService();
     await service.initialize(runtime);
+    const initial = new Date("2026-08-02T15:30:00.000Z");
     const replacement = new Date("2026-08-03T09:45:00.000Z");
 
     const stored = await service.storeLongTermMemory({
@@ -57,8 +62,13 @@ describe("AdvancedMemoryStorageService.updateLongTermMemory", () => {
       entityId,
       category: "semantic",
       content: "Original memory",
-      lastAccessedAt: new Date("2026-08-02T15:30:00.000Z"),
     });
+
+    await service.updateLongTermMemory(stored.id, agentId, entityId, {
+      lastAccessedAt: initial,
+    });
+    const [beforeReplacement] = await service.getLongTermMemories(agentId, entityId);
+    expect(beforeReplacement?.lastAccessedAt?.toISOString()).toBe(initial.toISOString());
 
     await service.updateLongTermMemory(stored.id, agentId, entityId, {
       lastAccessedAt: replacement,
