@@ -10,7 +10,7 @@ import type { ChoiceOption } from "./widgets/ChoiceWidget";
 // Header attributes (`id=…`, `allow_custom`) are captured as a single string in
 // group 2 and parsed below, so they can appear in any order.
 export const CHOICE_RE =
-  /\[CHOICE:([\w-]+)(?:\s+([^\]]*))?\]\n([\s\S]*?)\n\[\/CHOICE\]/g;
+  /\[[ \t]*CHOICE[ \t]*:[ \t]*([\w-]+)(?:[ \t]+([^\]]*))?\][ \t]*\r?\n([\s\S]*?)\r?\n\[[ \t]*\/[ \t]*CHOICE[ \t]*\]/g;
 
 export function generateChoiceId(): string {
   if (
