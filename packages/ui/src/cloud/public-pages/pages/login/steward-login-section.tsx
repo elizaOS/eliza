@@ -1135,7 +1135,7 @@ export default function StewardLoginSection() {
   }
 
   if (step === "email-sent") {
-    const hasCompanionCode = Boolean(
+    const hasCompanionCode = emailChallenge?.codeAvailable ?? Boolean(
       emailChallenge?.challengeId && emailChallenge.pollSecret,
     );
     const resendDisabled = loading !== null || resendRemainingSeconds > 0;

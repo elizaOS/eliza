@@ -242,4 +242,75 @@ describe("StewardLoginSection email magic-link companion code", () => {
     expect(await screen.findByText("Email expired")).toBeTruthy();
     expect(sessionSpies.sync).not.toHaveBeenCalled();
   });
+
+  it("shows link-only UI when codeAvailable is explicitly false despite polling credentials", async () => {
+    emailLoginSpies.start.mockResolvedValue({
+      expiresAt: Date.now() + 600_000,
+      challengeId: "challenge-1",
+      pollSecret: "poll-secret",
+      codeAvailable: false,
+    });
+    renderSection();
+    const emailInput = await screen.findByPlaceholderText("you@example.com");
+    fireEvent.change(emailInput, { target: { value: "person@example.com" } });
+    fireEvent.click(screen.getByRole("button", { name: /Magic Link/i }));
+
+    // Wait for the email-sent step to render
+    await screen.findByText("Check your email");
+
+    // Verify that the code input is NOT shown (link-only case)
+    expect(screen.queryByLabelText("Six-digit code")).toBeNull();
+
+    // Verify that the magic-link-only message is shown
+    expect(
+      screen.getByText(
+        "Check your inbox and open the magic link to sign in.",
+      ),
+    ).toBeTruthy();
+
+    // Verify that the verify code button is NOT shown
+    expect(screen.queryByRole("button", { name: /Verify code/i })).toBeNull();
+
+    // Verify that the code hint is NOT shown
+    expect(
+      screen.queryByText(
+        "Use only the current email. A new email replaces the old code.",
+      ),
+    ).toBeNull();
+  });
+
+  it("shows code UI when codeAvailable is explicitly true", async () => {
+    emailLoginSpies.start.mockResolvedValue({
+      expiresAt: Date.now() + 600_000,
+      challengeId: "challenge-1",
+      pollSecret: "poll-secret",
+      codeAvailable: true,
+    });
+    renderSection();
+    const emailInput = await screen.findByPlaceholderText("you@example.com");
+    fireEvent.change(emailInput, { target: { value: "person@example.com" } });
+    fireEvent.click(screen.getByRole("button", { name: /Magic Link/i }));
+
+    // Verify that the code input IS shown
+    expect(await screen.findByLabelText("Six-digit code")).toBeTruthy();
+
+    // Verify that the code verification button IS shown
+    expect(
+      screen.getByRole("button", { name: /Verify code/i }),
+    ).toBeTruthy();
+
+    // Verify that the code hint IS shown
+    expect(
+      screen.getByText(
+        "Use only the current email. A new email replaces the old code.",
+      ),
+    ).toBeTruthy();
+
+    // Verify the correct message is shown
+    expect(
+      screen.getByText(
+        "Open the link on this device or enter the six-digit code we sent.",
+      ),
+    ).toBeTruthy();
+  });
 });
