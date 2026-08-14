@@ -81,6 +81,24 @@ describe("normalizeCalendarDateTimeInTimeZone — Z/offset path", () => {
     expectInvalidDate("2026-04-31T09:00:00-05:00", "startAt");
   });
 
+  it("rejects Feb 30 with compact positive offset (#19222)", () => {
+    expectInvalidDate("2026-02-30T09:00:00+0000", "startAt");
+  });
+
+  it("rejects Feb 30 with compact negative offset (#19222)", () => {
+    expectInvalidDate("2026-02-30T09:00:00-0500", "startAt");
+  });
+
+  it("accepts a valid compact offset datetime", () => {
+    expect(
+      normalizeCalendarDateTimeInTimeZone(
+        "2026-06-15T09:00:00+0200",
+        "startAt",
+        "UTC",
+      ),
+    ).toBe("2026-06-15T07:00:00.000Z");
+  });
+
   it("rejects an impossible month", () => {
     expectInvalidDate("2026-13-15T09:00:00Z", "startAt");
   });
