@@ -77,6 +77,7 @@ type AdvancedMemoryEnvelope = {
 const LONG_TERM_MEMORY_TABLE = "long_term_memories";
 const SESSION_SUMMARY_TABLE = "session_summaries";
 const ADVANCED_MEMORY_SOURCE = "advanced-memory";
+const memoryUpdateQueues = new WeakMap<object, Map<UUID, Promise<void>>>();
 
 function isRecord(value: unknown): value is UnknownRecord {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -212,6 +213,30 @@ export class AdvancedMemoryStorageService extends Service implements MemoryStora
   static serviceType = "memoryStorage" as const;
 
   capabilityDescription = "Persistent advanced-memory storage backed by SQL memory tables";
+
+  private async serializeUpdate<T>(id: UUID, update: () => Promise<T>): Promise<T> {
+    const runtimeKey = this.runtime as object;
+    let queues = memoryUpdateQueues.get(runtimeKey);
+    if (!queues) {
+      queues = new Map<UUID, Promise<void>>();
+      memoryUpdateQueues.set(runtimeKey, queues);
+    }
+    const previous = queues.get(id) ?? Promise.resolve();
+    let release!: () => void;
+    const current = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    queues.set(id, current);
+    await previous;
+    try {
+      return await update();
+    } finally {
+      release();
+      if (queues.get(id) === current) {
+        queues.delete(id);
+      }
+    }
+  }
 
   static async start(runtime: IAgentRuntime): Promise<Service> {
     const service = new AdvancedMemoryStorageService();
@@ -471,48 +496,50 @@ export class AdvancedMemoryStorageService extends Service implements MemoryStora
     entityId: UUID,
     updates: Partial<Omit<LongTermMemoryRecord, "id" | "agentId" | "entityId" | "createdAt">>
   ): Promise<void> {
-    const existing = await this.runtime.getMemoryById(id);
-    const parsed = existing ? this.parseLongTermMemory(existing) : null;
-    if (!existing || !parsed || existing.agentId !== agentId) {
-      throw new Error(`Long-term memory ${id} not found`);
-    }
+    return this.serializeUpdate(id, async () => {
+      const existing = await this.runtime.getMemoryById(id);
+      const parsed = existing ? this.parseLongTermMemory(existing) : null;
+      if (!existing || !parsed || existing.agentId !== agentId) {
+        throw new Error(`Long-term memory ${id} not found`);
+      }
 
-    const allowedGroup = await this.getIdentityGroup(entityId);
-    if (!allowedGroup.has(parsed.entityId)) {
-      throw new Error(`Long-term memory ${id} does not belong to entity ${entityId}`);
-    }
+      const allowedGroup = await this.getIdentityGroup(entityId);
+      if (!allowedGroup.has(parsed.entityId)) {
+        throw new Error(`Long-term memory ${id} does not belong to entity ${entityId}`);
+      }
 
-    const currentEnvelope = getAdvancedMemoryEnvelope(existing);
-    const updatedAt = new Date();
-    const advancedMemory = toJsonRecord({
-      ...(currentEnvelope ?? {}),
-      kind: "long_term_memory",
-      originalEntityId: currentEnvelope?.originalEntityId ?? entityId,
-      anchorEntityId: parsed.entityId,
-      category: updates.category ?? parsed.category,
-      confidence: updates.confidence ?? parsed.confidence,
-      source: updates.source ?? parsed.source,
-      semanticMetadata: updates.metadata ?? parsed.metadata,
-      updatedAt: updatedAt.toISOString(),
-      lastAccessedAt: (updates.lastAccessedAt ?? parsed.lastAccessedAt)?.toISOString(),
-      accessCount: updates.accessCount ?? parsed.accessCount ?? 0,
-    });
-    if (!advancedMemory) {
-      throw new Error("Updated long-term memory metadata is not JSON-serializable");
-    }
-    await this.runtime.updateMemory({
-      id,
-      content: {
-        text: updates.content ?? parsed.content,
-      },
-      metadata: buildCustomMemoryMetadata({
-        existing: asRecord(existing.metadata),
-        scope: "shared",
-        timestamp: updatedAt.getTime(),
+      const currentEnvelope = getAdvancedMemoryEnvelope(existing);
+      const updatedAt = new Date();
+      const advancedMemory = toJsonRecord({
+        ...(currentEnvelope ?? {}),
+        kind: "long_term_memory",
+        originalEntityId: currentEnvelope?.originalEntityId ?? entityId,
+        anchorEntityId: parsed.entityId,
+        category: updates.category ?? parsed.category,
+        confidence: updates.confidence ?? parsed.confidence,
         source: updates.source ?? parsed.source,
-        advancedMemory,
-      }),
-      ...(updates.embedding ? { embedding: updates.embedding } : {}),
+        semanticMetadata: updates.metadata ?? parsed.metadata,
+        updatedAt: updatedAt.toISOString(),
+        lastAccessedAt: (updates.lastAccessedAt ?? parsed.lastAccessedAt)?.toISOString(),
+        accessCount: updates.accessCount ?? parsed.accessCount ?? 0,
+      });
+      if (!advancedMemory) {
+        throw new Error("Updated long-term memory metadata is not JSON-serializable");
+      }
+      await this.runtime.updateMemory({
+        id,
+        content: {
+          text: updates.content ?? parsed.content,
+        },
+        metadata: buildCustomMemoryMetadata({
+          existing: asRecord(existing.metadata),
+          scope: "shared",
+          timestamp: updatedAt.getTime(),
+          source: updates.source ?? parsed.source,
+          advancedMemory,
+        }),
+        ...(updates.embedding ? { embedding: updates.embedding } : {}),
+      });
     });
   }
 
@@ -589,41 +616,43 @@ export class AdvancedMemoryStorageService extends Service implements MemoryStora
       Omit<SessionSummaryRecord, "id" | "agentId" | "roomId" | "createdAt" | "updatedAt">
     >
   ): Promise<void> {
-    const existing = await this.runtime.getMemoryById(id);
-    const parsed = existing ? this.parseSessionSummary(existing) : null;
-    if (!existing || !parsed || existing.agentId !== agentId || existing.roomId !== roomId) {
-      throw new Error(`Session summary ${id} not found`);
-    }
+    return this.serializeUpdate(id, async () => {
+      const existing = await this.runtime.getMemoryById(id);
+      const parsed = existing ? this.parseSessionSummary(existing) : null;
+      if (!existing || !parsed || existing.agentId !== agentId || existing.roomId !== roomId) {
+        throw new Error(`Session summary ${id} not found`);
+      }
 
-    const currentEnvelope = getAdvancedMemoryEnvelope(existing);
-    const updatedAt = new Date();
-    const advancedMemory = toJsonRecord({
-      ...(currentEnvelope ?? {}),
-      kind: "session_summary",
-      originalEntityId: currentEnvelope?.originalEntityId ?? parsed.entityId,
-      messageCount: updates.messageCount ?? parsed.messageCount,
-      lastMessageOffset: updates.lastMessageOffset ?? parsed.lastMessageOffset,
-      startTime: (updates.startTime ?? parsed.startTime).toISOString(),
-      endTime: (updates.endTime ?? parsed.endTime).toISOString(),
-      topics: updates.topics ?? parsed.topics,
-      summaryMetadata: updates.metadata ?? parsed.metadata,
-      updatedAt: updatedAt.toISOString(),
-    });
-    if (!advancedMemory) {
-      throw new Error("Updated session summary metadata is not JSON-serializable");
-    }
-    await this.runtime.updateMemory({
-      id,
-      content: {
-        text: updates.summary ?? parsed.summary,
-      },
-      metadata: buildCustomMemoryMetadata({
-        existing: asRecord(existing.metadata),
-        scope: "room",
-        timestamp: updatedAt.getTime(),
-        advancedMemory,
-      }),
-      ...(updates.embedding ? { embedding: updates.embedding } : {}),
+      const currentEnvelope = getAdvancedMemoryEnvelope(existing);
+      const updatedAt = new Date();
+      const advancedMemory = toJsonRecord({
+        ...(currentEnvelope ?? {}),
+        kind: "session_summary",
+        originalEntityId: currentEnvelope?.originalEntityId ?? parsed.entityId,
+        messageCount: updates.messageCount ?? parsed.messageCount,
+        lastMessageOffset: updates.lastMessageOffset ?? parsed.lastMessageOffset,
+        startTime: (updates.startTime ?? parsed.startTime).toISOString(),
+        endTime: (updates.endTime ?? parsed.endTime).toISOString(),
+        topics: updates.topics ?? parsed.topics,
+        summaryMetadata: updates.metadata ?? parsed.metadata,
+        updatedAt: updatedAt.toISOString(),
+      });
+      if (!advancedMemory) {
+        throw new Error("Updated session summary metadata is not JSON-serializable");
+      }
+      await this.runtime.updateMemory({
+        id,
+        content: {
+          text: updates.summary ?? parsed.summary,
+        },
+        metadata: buildCustomMemoryMetadata({
+          existing: asRecord(existing.metadata),
+          scope: "room",
+          timestamp: updatedAt.getTime(),
+          advancedMemory,
+        }),
+        ...(updates.embedding ? { embedding: updates.embedding } : {}),
+      });
     });
   }
 
