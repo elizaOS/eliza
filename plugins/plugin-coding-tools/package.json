@@ -144,6 +144,15 @@
         "required": false,
         "default": 250,
         "sensitive": false
+      },
+      "SHELL_JOB_TTL_MS": {
+        "type": "number",
+        "description": "Finished-process TTL in milliseconds. The registry sweeper evicts finished records this many ms after their end time. Must be a canonical decimal integer from 60000 through 10800000; invalid values fail before the plugin starts.",
+        "required": false,
+        "default": 1800000,
+        "min": 60000,
+        "max": 10800000,
+        "sensitive": false
       }
     }
   },
