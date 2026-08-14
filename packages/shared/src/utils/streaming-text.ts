@@ -127,15 +127,31 @@ export function mergeStreamingText(existing: string, incoming: string): string {
       return incoming.length === 1 ? `${existing}${incoming}` : existing;
     }
 
-    // The overlap index is measured against the NFC-normalized strings, so it
-    // must slice the NORMALIZED incoming: slicing the raw string at an NFC
-    // index misaligns whenever incoming carries decomposed sequences before
-    // the cut (e.g. "e" + U+0301), duplicating combining marks in the merged
-    // text. The appended suffix is canonically equivalent to the raw one. The
-    // existing-side arithmetic stays raw-safe because trailing whitespace is
-    // NFC-stable, so the trimmed-length delta counts the same characters in
-    // both forms.
-    return `${existing.slice(0, existing.length - (existingNorm.length - existingTrimmedLength))}${incomingNorm.slice(overlap)}`;
+    // The overlap index is measured against the NFC-normalized strings, so the
+    // matching raw boundary must be recovered before slicing: slicing the raw
+    // string at the NFC index misaligns whenever incoming carries decomposed
+    // sequences before the cut (e.g. "e" + U+0301), duplicating combining
+    // marks in the merged text. The untouched raw suffix is then appended
+    // byte-for-byte, preserving the caller's representation past the cut per
+    // this function's return-original-incoming contract. The existing-side
+    // arithmetic stays raw-safe because trailing whitespace is NFC-stable, so
+    // the trimmed-length delta counts the same characters in both forms.
+    // Scan from zero rather than from the NFC index: composition-exclusion
+    // characters (e.g. U+0958) EXPAND under NFC, so the raw boundary can sit
+    // before the normalized one.
+    const overlapNorm = incomingNorm.slice(0, overlap);
+    let rawCut = -1;
+    for (let index = 0; index <= incoming.length; index += 1) {
+      if (incoming.slice(0, index).normalize("NFC") === overlapNorm) {
+        rawCut = index;
+        break;
+      }
+    }
+    // A cut that lands inside a composed grapheme has no raw boundary; the
+    // canonically equivalent normalized suffix is the only aligned remainder.
+    const suffix =
+      rawCut === -1 ? incomingNorm.slice(overlap) : incoming.slice(rawCut);
+    return `${existing.slice(0, existing.length - (existingNorm.length - existingTrimmedLength))}${suffix}`;
   }
 
   // Some providers revise earlier words in-place while still sending the full

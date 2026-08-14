@@ -47,6 +47,24 @@ describe("streaming text named regressions", () => {
     expect(merged.normalize("NFC")).toBe("voil\u00e0 magnifique");
   });
 
+  it("appends the untouched raw suffix when the overlap is ASCII and decomposed content follows the cut", () => {
+    // The byte-preservation contract: normalization exists for comparison
+    // only, so a decomposed sequence AFTER the overlap cut must reach the
+    // caller byte-for-byte (U+0065 U+0301, never a rewritten U+00E9) through
+    // every exported function.
+    const existing = "hello";
+    const incoming = "o cafe\u0301";
+    const merged = mergeStreamingText(existing, incoming);
+    expect(merged).toBe("hello cafe\u0301");
+    expect(merged).not.toContain("\u00e9");
+    expect(computeStreamingDelta(existing, incoming)).toBe(" cafe\u0301");
+    expect(resolveStreamingUpdate(existing, incoming)).toEqual({
+      kind: "append",
+      nextText: "hello cafe\u0301",
+      emittedText: " cafe\u0301",
+    });
+  });
+
   it("preserves repeated single-character deltas", () => {
     expect(mergeStreamingText("l", "l")).toBe("ll");
     expect(computeStreamingDelta("l", "l")).toBe("l");
