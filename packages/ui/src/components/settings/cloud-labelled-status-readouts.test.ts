@@ -39,14 +39,12 @@ describe("cloud labelled status readouts use SettingsRow", () => {
     expect(source).not.toContain("grid grid-cols-1 md:grid-cols-2");
   });
 
-  it("invoice labelled status fields are SettingsRows", () => {
+  it("invoice detail stays a BrandCard document, not SettingsRows", () => {
     const source = read("cloud/billing/components/invoice-detail-client.tsx");
-    expect(source).toContain("<SettingsStack");
-    expect(source).toContain("<SettingsGroup");
-    expect(source).toContain("<SettingsRow");
-    expect(source).toContain("Invoice number");
-    expect(source).toContain("Payment information");
-    expect(source).not.toContain("grid grid-cols-3");
-    expect(source).not.toContain("grid grid-cols-2");
+    expect(source).toContain("BrandCard");
+    expect(source).toContain("grid-cols-1 gap-6 md:grid-cols-3");
+    expect(source).toContain("grid-cols-1 gap-6 sm:grid-cols-2");
+    expect(source).not.toContain("<SettingsRow");
+    expect(source).not.toContain("<SettingsStack");
   });
 });

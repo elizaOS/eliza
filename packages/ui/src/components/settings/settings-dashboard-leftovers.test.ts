@@ -43,7 +43,7 @@ const BRANDCARD_ALLOWLIST = new Map<string, string>([
   ],
   [
     "cloud/billing/components/invoice-detail-client.tsx",
-    "invoice transaction line-item table",
+    "invoice detail cards, not labelled settings rows",
   ],
   [
     "cloud/organization/organization-tab.tsx",

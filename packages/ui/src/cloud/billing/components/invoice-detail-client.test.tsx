@@ -1,7 +1,6 @@
 /**
- * Renders InvoiceDetailClient through SettingsRow and asserts labelled
- * invoice status, payment fields, real header links, and omitted optional
- * rows. jsdom, no backend. The transaction table stays a BrandCard.
+ * Renders InvoiceDetailClient as a BrandCard invoice document: 3-column
+ * header, payment grid, real header links, status badge. jsdom, no backend.
  */
 // @vitest-environment jsdom
 
@@ -54,27 +53,27 @@ afterEach(() => {
 });
 
 describe("InvoiceDetailClient", () => {
-  it("renders labelled invoice status and payment readouts", () => {
+  it("renders the invoice as a compact document, not a settings list", () => {
     renderInvoice();
 
     expect(screen.getByTestId("cloud-invoice-detail")).toBeTruthy();
-    expect(screen.getByText("Invoice details")).toBeTruthy();
-    expect(screen.getByText("Invoice number")).toBeTruthy();
+    expect(screen.getByText("Invoice Details")).toBeTruthy();
+    expect(screen.getByText("Invoice Number")).toBeTruthy();
     expect(screen.getByText("INV-1001")).toBeTruthy();
     expect(screen.getByText("Date")).toBeTruthy();
     expect(screen.getByText("Status")).toBeTruthy();
     expect(screen.getByText("Paid")).toBeTruthy();
-    expect(screen.queryByText("paid")).toBeNull();
-    expect(screen.getByText("Payment information")).toBeTruthy();
-    expect(screen.getByText("Amount due")).toBeTruthy();
-    expect(screen.getByText("Amount paid")).toBeTruthy();
+    expect(screen.getByText("Payment Information")).toBeTruthy();
+    expect(screen.getByText("Amount Due")).toBeTruthy();
+    expect(screen.getByText("Amount Paid")).toBeTruthy();
     expect(screen.getAllByText("$10.00").length).toBeGreaterThan(0);
     expect(screen.getByText("Currency")).toBeTruthy();
     expect(screen.getByText("usd")).toBeTruthy();
     expect(screen.getByText("Type")).toBeTruthy();
-    expect(screen.getByText("One-time purchase")).toBeTruthy();
-    expect(screen.getByText("Payment intent ID")).toBeTruthy();
+    expect(screen.getByText("One-Time Purchase")).toBeTruthy();
+    expect(screen.getByText("Payment Intent ID")).toBeTruthy();
     expect(screen.getByText("pi_abc123")).toBeTruthy();
+    expect(document.body.textContent).not.toMatch(/SettingsStack/);
   });
 
   it("keeps the transaction table and header actions as real links", () => {
@@ -95,7 +94,7 @@ describe("InvoiceDetailClient", () => {
       "https://example.test/stripe-invoice",
     );
 
-    const back = screen.getByRole("link", { name: "Back to billing" });
+    const back = screen.getByRole("link", { name: "Back to Billing" });
     expect(back.getAttribute("href")).toBe("/settings#cloud-billing");
   });
 
@@ -116,7 +115,7 @@ describe("InvoiceDetailClient", () => {
     expect(screen.getByText("INV-ABCDEFGH")).toBeTruthy();
     expect(screen.getByText("Open")).toBeTruthy();
     expect(screen.queryByText("Paid")).toBeNull();
-    expect(screen.getAllByText("Auto top-up").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Auto Top-Up").length).toBeGreaterThan(0);
     expect(screen.queryByText("Payment intent ID")).toBeNull();
     expect(screen.queryByRole("link", { name: "Download PDF" })).toBeNull();
     expect(screen.queryByRole("link", { name: "View in Stripe" })).toBeNull();
