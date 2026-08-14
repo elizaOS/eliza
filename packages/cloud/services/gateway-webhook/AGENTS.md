@@ -100,8 +100,8 @@ Redis (at least one of these must resolve, or `createRedis()` throws):
 - `MOCK_REDIS=1` — in-memory mock (tests / local).
 
 Canonical transport fallback (both values are required together; when either
-is absent or invalid the gateway fails closed and does not contact a legacy
-agent hostname):
+is absent or invalid the process rejects startup before binding `/health` or
+`/ready` and does not contact a legacy agent hostname):
 
 - `AGENT_ROUTER_ORIGIN_HOST` — canonical dedicated-agent router origin used
   after a direct transport failure. Production is

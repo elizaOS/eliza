@@ -29,6 +29,11 @@ interface CanonicalAgentFallbackTarget {
 
 type CanonicalAgentFallbackEnv = Record<string, string | undefined>;
 
+export interface CanonicalAgentRoutingConfiguration {
+  agentBaseDomain: string;
+  routerOriginHost: string;
+}
+
 interface ServerRoute {
   serverName: string;
   serverUrl: string;
@@ -48,6 +53,38 @@ export interface ResolvedIdentity {
   agentId: string | null;
 }
 
+/** Resolves one of the two supported production/staging routing pairs. */
+export function getCanonicalAgentRoutingConfiguration(
+  env: CanonicalAgentFallbackEnv = process.env,
+): CanonicalAgentRoutingConfiguration | null {
+  const routerOriginHost = env.AGENT_ROUTER_ORIGIN_HOST?.trim().toLowerCase();
+  const agentBaseDomain =
+    env.ELIZA_CLOUD_AGENT_BASE_DOMAIN?.trim().toLowerCase();
+  if (!routerOriginHost || !agentBaseDomain) return null;
+  if (
+    !DNS_HOSTNAME_PATTERN.test(routerOriginHost) ||
+    !DNS_HOSTNAME_PATTERN.test(agentBaseDomain) ||
+    CANONICAL_ROUTER_ORIGIN_BY_AGENT_DOMAIN[agentBaseDomain] !==
+      routerOriginHost
+  ) {
+    return null;
+  }
+  return { agentBaseDomain, routerOriginHost };
+}
+
+/** Rejects startup before health endpoints bind when routing is unsafe. */
+export function requireCanonicalAgentRoutingConfiguration(
+  env: CanonicalAgentFallbackEnv = process.env,
+): CanonicalAgentRoutingConfiguration {
+  const configuration = getCanonicalAgentRoutingConfiguration(env);
+  if (!configuration) {
+    throw new Error(
+      "AGENT_ROUTER_ORIGIN_HOST and ELIZA_CLOUD_AGENT_BASE_DOMAIN must be configured as an exact canonical production or staging pair",
+    );
+  }
+  return configuration;
+}
+
 /** Resolves a validated public or router-origin fallback for a cloud agent. */
 export function getCanonicalAgentFallbackTarget(
   agentId: string,
@@ -55,26 +92,14 @@ export function getCanonicalAgentFallbackTarget(
 ): CanonicalAgentFallbackTarget | null {
   if (!AGENT_ID_PATTERN.test(agentId)) return null;
   const normalizedAgentId = agentId.toLowerCase();
-  const routerOriginHost = env.AGENT_ROUTER_ORIGIN_HOST?.trim();
-  const agentBaseDomain = env.ELIZA_CLOUD_AGENT_BASE_DOMAIN?.trim();
-  if (!routerOriginHost || !agentBaseDomain) return null;
-  const normalizedRouterOriginHost = routerOriginHost.toLowerCase();
-  const normalizedAgentBaseDomain = agentBaseDomain.toLowerCase();
-  if (
-    CANONICAL_ROUTER_ORIGIN_BY_AGENT_DOMAIN[normalizedAgentBaseDomain] !==
-    normalizedRouterOriginHost
-  ) {
-    return null;
-  }
-  const forwardedHost = `${normalizedAgentId}.${normalizedAgentBaseDomain}`;
-  if (
-    !DNS_HOSTNAME_PATTERN.test(normalizedRouterOriginHost) ||
-    !DNS_HOSTNAME_PATTERN.test(forwardedHost)
-  ) {
+  const configuration = getCanonicalAgentRoutingConfiguration(env);
+  if (!configuration) return null;
+  const forwardedHost = `${normalizedAgentId}.${configuration.agentBaseDomain}`;
+  if (!DNS_HOSTNAME_PATTERN.test(forwardedHost)) {
     return null;
   }
   return {
-    baseUrl: `https://${normalizedRouterOriginHost}/api`,
+    baseUrl: `https://${configuration.routerOriginHost}/api`,
     forwardedHost,
   };
 }

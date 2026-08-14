@@ -4,6 +4,7 @@ import {
   forwardToServer,
   getCanonicalAgentFallbackBase,
   getCanonicalAgentFallbackTarget,
+  requireCanonicalAgentRoutingConfiguration,
 } from "../src/server-router";
 
 const AGENT_ID = "4602b3be-2c01-4e7e-9cdc-849604e1bef7";
@@ -140,6 +141,36 @@ describe("canonical agent forwarding fallback", () => {
         ELIZA_CLOUD_AGENT_BASE_DOMAIN: "cloud.eliza.app",
       }),
     ).toBeNull();
+  });
+
+  test("rejects gateway startup unless an exact canonical pair is configured", () => {
+    expect(
+      requireCanonicalAgentRoutingConfiguration({
+        AGENT_ROUTER_ORIGIN_HOST: " ELIZA-STAGING-1.ELIZA.APP ",
+        ELIZA_CLOUD_AGENT_BASE_DOMAIN: " CLOUD-STAGING.ELIZA.APP ",
+      }),
+    ).toEqual({
+      routerOriginHost: "eliza-staging-1.eliza.app",
+      agentBaseDomain: "cloud-staging.eliza.app",
+    });
+
+    for (const env of [
+      {},
+      { AGENT_ROUTER_ORIGIN_HOST: "eliza-production-1.eliza.app" },
+      { ELIZA_CLOUD_AGENT_BASE_DOMAIN: "cloud.eliza.app" },
+      {
+        AGENT_ROUTER_ORIGIN_HOST: "eliza-production-1.eliza.app",
+        ELIZA_CLOUD_AGENT_BASE_DOMAIN: "cloud-staging.eliza.app",
+      },
+      {
+        AGENT_ROUTER_ORIGIN_HOST: "https://eliza-production-1.eliza.app",
+        ELIZA_CLOUD_AGENT_BASE_DOMAIN: "cloud.eliza.app",
+      },
+    ]) {
+      expect(() => requireCanonicalAgentRoutingConfiguration(env)).toThrow(
+        "must be configured as an exact canonical production or staging pair",
+      );
+    }
   });
 
   test("discovers the sole running dedicated runtime when its id differs", async () => {

@@ -1,5 +1,6 @@
-/** Verifies the CloudRouterShell catch-all host matrix — apex console redirects (with zero network), app-mode gating on the Eliza app hosts, and untouched fall-through everywhere else — through the package's configured test harness. */
+/** Verifies the CloudRouterShell host matrix and its parity with the shared edge redirect contract through the package's configured test harness. */
 // @vitest-environment jsdom
+import { canonicalCloudPathForLegacyDashboard } from "@elizaos/shared/elizacloud";
 import { STEWARD_TOKEN_KEY } from "@elizaos/shared/steward-session-client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
@@ -15,6 +16,7 @@ import {
   AppCatchAllRoute,
   CLOUD_MANAGEMENT_COMPAT_REDIRECTS,
   LEGACY_DASHBOARD_REDIRECTS,
+  LEGACY_SETTINGS_TAB_TARGETS,
   resolveLegacyCloudSettingsTarget,
 } from "./CloudRouterShell";
 
@@ -359,6 +361,37 @@ describe("CloudRouterShell app-mode catch-all (app.elizacloud.ai)", () => {
 });
 
 describe("CloudRouterShell retired dashboard redirects", () => {
+  it("keeps every shell redirect in parity with the shared edge contract", () => {
+    const routeParameter = "agent-7";
+    for (const { from, to } of LEGACY_DASHBOARD_REDIRECTS) {
+      const concreteSource = `/${from}`
+        .replace(":id", routeParameter)
+        .replace("*", "saved-path");
+      const concreteTarget = to.replace(":id", routeParameter);
+      expect(
+        canonicalCloudPathForLegacyDashboard(concreteSource),
+        concreteSource,
+      ).toBe(concreteTarget);
+    }
+
+    for (const [tab, target] of Object.entries(LEGACY_SETTINGS_TAB_TARGETS)) {
+      const search = `?tab=${encodeURIComponent(tab)}&return=1`;
+      expect(
+        canonicalCloudPathForLegacyDashboard("/dashboard/settings", search),
+        tab,
+      ).toBe(target);
+      expect(resolveLegacyCloudSettingsTarget(search), tab).toBe(target);
+    }
+
+    const unknownSearch = "?tab=unknown&return=1";
+    expect(
+      canonicalCloudPathForLegacyDashboard(
+        "/dashboard/settings",
+        unknownSearch,
+      ),
+    ).toBe(resolveLegacyCloudSettingsTarget(unknownSearch));
+  });
+
   it("lets the generic dashboard fallback own direct surface migrations", () => {
     const standalone = new Set([
       "dashboard/billing",
