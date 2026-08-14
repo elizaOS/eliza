@@ -31,6 +31,8 @@ const scriptPath = fileURLToPath(
 interface WorkflowStep {
   name?: string;
   run?: string;
+  uses?: string;
+  with?: Record<string, string | boolean>;
 }
 
 interface WorkflowJob {
@@ -49,6 +51,15 @@ function step(name: string): WorkflowStep {
   const found = arm?.steps?.find((candidate) => candidate.name === name);
   if (!found) throw new Error(`Missing Headscale arm workflow step: ${name}`);
   return found;
+}
+
+function expectBashSyntax(source: string) {
+  const syntax = spawnSync("bash", ["-n"], {
+    encoding: "utf8",
+    input: source,
+  });
+  expect(syntax.status).toBe(0);
+  expect(syntax.stderr).toBe("");
 }
 
 function runDryArm(publicUrl: string, legacyPublicUrl: string) {
@@ -88,6 +99,16 @@ function runDryArm(publicUrl: string, legacyPublicUrl: string) {
   } finally {
     rmSync(fixtureDir, { recursive: true, force: true });
   }
+}
+
+function ownershipAwkProgram(remoteScript: string) {
+  const startMarker = '-v legacy="$HS_LEGACY_HOST" \'\n';
+  const start = remoteScript.indexOf(startMarker);
+  if (start === -1) throw new Error("Missing Headscale ownership awk start");
+  const bodyStart = start + startMarker.length;
+  const end = remoteScript.indexOf("\n')", bodyStart);
+  if (end === -1) throw new Error("Missing Headscale ownership awk end");
+  return remoteScript.slice(bodyStart, end);
 }
 
 describe("protected Headscale arm workflow", () => {
@@ -163,16 +184,68 @@ describe("protected Headscale arm workflow", () => {
     ).run;
     expect(converge).toContain("--headscale-legacy-public-url");
     expect(converge).toContain('"$resolved_legacy_public_url"');
+    expect(
+      converge
+        ?.trimEnd()
+        .endsWith(
+          '--headscale-legacy-public-url "$resolved_legacy_public_url"',
+        ),
+    ).toBe(true);
   });
 
-  test("verifies canonical and legacy health with normal TLS validation", () => {
-    const verify = step("Verify canonical and legacy public health").run;
+  test("does not accept dispatch overrides for loopback API or listen addresses", () => {
+    expect(workflowSource).not.toContain("headscale_api_url:");
+    expect(workflowSource).not.toContain("listen_addr:");
+    expect(arm?.env).not.toHaveProperty("HEADSCALE_API_URL");
+    expect(arm?.env).not.toHaveProperty("HEADSCALE_LISTEN_ADDR");
+
+    expect(scriptSource).not.toContain(
+      'readArg(args, "headscale-api-url", "HEADSCALE_API_URL")',
+    );
+    expect(scriptSource).not.toContain(
+      'readArg(args, "listen-addr", "HEADSCALE_LISTEN_ADDR")',
+    );
+    expect(scriptSource).toContain('apiUrl: "http://127.0.0.1:8081"');
+    expect(scriptSource).toContain('listenAddr: "127.0.0.1:8081"');
+    expect(scriptSource).toContain('apiUrl: "http://127.0.0.1:8080"');
+    expect(scriptSource).toContain('listenAddr: "127.0.0.1:8080"');
+  });
+
+  test("pins staging and production deploys to their canonical branch SHA", () => {
+    const sourceGate = step("Validate protected deploy source").run;
+    expect(sourceGate).toContain('staging) expected_ref="refs/heads/develop"');
+    expect(sourceGate).toContain('production) expected_ref="refs/heads/main"');
+    expect(sourceGate).toContain('if [ "$GITHUB_REF" != "$expected_ref" ]');
+
+    const checkout = arm?.steps?.find((candidate) =>
+      candidate.uses?.startsWith("actions/checkout@"),
+    );
+    expect(checkout?.with?.ref).toContain("github.sha");
+    expect(checkout?.with?.["persist-credentials"]).toBe(false);
+  });
+
+  test("verifies dual-SAN SNI identity and health with normal TLS", () => {
+    const verify = step("Verify dual-SAN public identity and health").run;
     expect(verify).toContain(
       'for public_url in "$HEADSCALE_PUBLIC_URL" "$resolved_legacy_public_url"',
     );
     expect(verify).toContain('"$public_url/health"');
+    expect(verify).toContain("openssl s_client");
+    expect(verify).toContain('-servername "$host"');
+    expect(verify).toContain('-verify_hostname "$host"');
+    expect(verify).toContain("leaf_has_exact_san");
+    expect(verify).toContain("openssl dgst -sha256 -r");
+    expect(verify).toContain(
+      'if [ "$fingerprint" != "$expected_fingerprint" ]',
+    );
     expect(verify).not.toContain("--insecure");
     expect(verify).not.toMatch(/(^|\s)-k(\s|$)/);
+    expectBashSyntax(verify);
+  });
+
+  test("keeps validation gates syntactically valid in bash", () => {
+    expectBashSyntax(step("Validate protected deploy source").run ?? "");
+    expectBashSyntax(step("Validate canonical control-plane inputs").run ?? "");
   });
 });
 
@@ -201,6 +274,45 @@ describe("Headscale migration-overlap remote script", () => {
       expect(result.stdout).toContain(`HS_HOST='${canonicalHost}'`);
       expect(result.stdout).toContain(`HS_LEGACY_HOST='${legacyHost}'`);
       expect(result.stdout).toContain("server_name $HS_HOST $HS_LEGACY_HOST;");
+      expect(result.stdout).toContain(
+        "effective_nginx_config=$(sudo nginx -T 2>&1)",
+      );
+      expect(result.stdout).toContain("conflicting server name");
+      expect(result.stdout).toContain('-v expected="$HS_VHOST"');
+      expect(result.stdout).toContain("$1 != expected { print }");
+      expect(result.stdout).toContain('[ "$canonical_owner_count" -ne 2 ]');
+      expect(result.stdout).toContain('[ "$legacy_owner_count" -ne 2 ]');
+      expect(result.stdout).toContain(
+        "Leaving unknown nginx configs untouched and restoring the prior $HS_VHOST",
+      );
+      expect(result.stdout).toContain("rollback_headscale_vhost()");
+      const acmeTrap = result.stdout.indexOf("trap restore_acme_vhost EXIT");
+      const acmeInstall = result.stdout.indexOf(
+        'sudo install -o root -g root -m 0644 "$HS_ACME_STAGE" "$HS_ACME_VHOST"',
+      );
+      expect(acmeTrap).toBeGreaterThan(-1);
+      expect(acmeInstall).toBeGreaterThan(-1);
+      expect(acmeTrap).toBeLessThan(acmeInstall);
+
+      const finalTrap = result.stdout.indexOf(
+        "trap rollback_headscale_vhost EXIT",
+      );
+      const finalInstall = result.stdout.indexOf(
+        'sudo install -o root -g root -m 0644 "$HS_VHOST_STAGE" "$HS_VHOST"',
+      );
+      expect(finalTrap).toBeGreaterThan(-1);
+      expect(finalInstall).toBeGreaterThan(-1);
+      expect(finalTrap).toBeLessThan(finalInstall);
+      const ownershipProof = result.stdout.indexOf(
+        "effective_nginx_config=$(sudo nginx -T 2>&1)",
+        finalInstall,
+      );
+      const finalReload = result.stdout.indexOf(
+        "sudo systemctl reload nginx",
+        ownershipProof,
+      );
+      expect(ownershipProof).toBeGreaterThan(finalInstall);
+      expect(finalReload).toBeGreaterThan(ownershipProof);
       expect(result.stdout).toContain('-d "$HS_HOST"');
       expect(result.stdout).toContain('-d "$HS_LEGACY_HOST"');
       expect(result.stdout).toContain(
@@ -213,14 +325,45 @@ describe("Headscale migration-overlap remote script", () => {
       expect(result.stdout).toContain('set_config server_url "$PUBLIC_URL"');
       expect(result.stdout).not.toContain(`PUBLIC_URL='${legacyPublicUrl}'`);
 
-      const syntax = spawnSync("bash", ["-n"], {
-        encoding: "utf8",
-        input: result.stdout,
-      });
-      expect(syntax.status).toBe(0);
-      expect(syntax.stderr).toBe("");
+      expectBashSyntax(result.stdout);
     },
   );
+
+  test("enumerates multiline exact hostname owners by loaded nginx config", () => {
+    const result = runDryArm(
+      "https://headscale.eliza.app",
+      "https://headscale.elizacloud.ai",
+    );
+    expect(result.status).toBe(0);
+    const fixture = `# configuration file /etc/nginx/conf.d/headscale.conf:
+server {
+  server_name headscale.eliza.app
+    headscale.elizacloud.ai;
+}
+# configuration file /etc/nginx/sites-enabled/legacy-headscale:
+server {
+  server_name headscale.elizacloud.ai;
+}
+`;
+    const parsed = spawnSync(
+      "awk",
+      [
+        "-v",
+        "canonical=headscale.eliza.app",
+        "-v",
+        "legacy=headscale.elizacloud.ai",
+        ownershipAwkProgram(result.stdout),
+      ],
+      { encoding: "utf8", input: fixture },
+    );
+    expect(parsed.status).toBe(0);
+    expect(parsed.stderr).toBe("");
+    expect(parsed.stdout.trim().split("\n")).toEqual([
+      "/etc/nginx/conf.d/headscale.conf\theadscale.eliza.app",
+      "/etc/nginx/conf.d/headscale.conf\theadscale.elizacloud.ai",
+      "/etc/nginx/sites-enabled/legacy-headscale\theadscale.elizacloud.ai",
+    ]);
+  });
 
   test("rejects a cross-environment legacy hostname", () => {
     const result = runDryArm(

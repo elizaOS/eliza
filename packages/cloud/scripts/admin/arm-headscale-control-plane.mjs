@@ -37,9 +37,23 @@ const HEADSCALE_ACL = "/etc/headscale/acl.hujson";
 const HEADSCALE_STATE_DIR = "/var/lib/headscale";
 const SYSTEMD_UNIT = "eliza-provisioning-worker.service";
 
-const HEADSCALE_LEGACY_HOST_BY_CANONICAL_HOST = new Map([
-  ["headscale.eliza.app", "headscale.elizacloud.ai"],
-  ["headscale-staging.eliza.app", "headscale-staging.elizacloud.ai"],
+const HEADSCALE_ENVIRONMENT_BY_CANONICAL_HOST = new Map([
+  [
+    "headscale.eliza.app",
+    {
+      legacyHostname: "headscale.elizacloud.ai",
+      apiUrl: "http://127.0.0.1:8081",
+      listenAddr: "127.0.0.1:8081",
+    },
+  ],
+  [
+    "headscale-staging.eliza.app",
+    {
+      legacyHostname: "headscale-staging.elizacloud.ai",
+      apiUrl: "http://127.0.0.1:8080",
+      listenAddr: "127.0.0.1:8080",
+    },
+  ],
 ]);
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
@@ -142,8 +156,6 @@ Required:
   --headscale-api-key <key>            Existing Headscale API key.
 
 Optional:
-  --headscale-api-url <url>            Daemon API URL (default http://127.0.0.1:8081).
-  --listen-addr <addr:port>            Headscale listen_addr (default 127.0.0.1:8081).
   --headscale-user <user>              User for agent preauth keys (default agent).
   --cp-router-hostname <name>          Tailscale hostname the CP enrolls itself as
                                        (default derived from the public URL, e.g.
@@ -180,12 +192,7 @@ const legacyPublicUrl = readArg(
   "headscale-legacy-public-url",
   "HEADSCALE_LEGACY_PUBLIC_URL",
 );
-const apiUrl =
-  readArg(args, "headscale-api-url", "HEADSCALE_API_URL") ??
-  "http://127.0.0.1:8081";
 const apiKey = readArg(args, "headscale-api-key", "HEADSCALE_API_KEY");
-const listenAddr =
-  readArg(args, "listen-addr", "HEADSCALE_LISTEN_ADDR") ?? "127.0.0.1:8081";
 const headscaleUser =
   readArg(args, "headscale-user", "HEADSCALE_USER") ?? "agent";
 const agentTokenPrivateKey = readArg(
@@ -229,18 +236,20 @@ const parsedLegacyPublicUrl = parseHttpsOrigin(
   legacyPublicUrl,
 );
 
-// The nginx vhost fronts the public hostname (host part of the URL) and proxies
-// to the loopback port headscale listens on (port part of listen_addr). Both
-// are already env-correct on the workflow inputs — staging is :8080, prod :8081
-// — so the vhost upstream tracks listen_addr automatically with no extra flag.
+// The canonical hostname selects the whole environment contract. Loopback API
+// and listener values are deliberately not operator inputs: accepting an
+// external daemon API URL could exfiltrate the protected Headscale bearer key.
 const headscaleHostname = parsedPublicUrl.hostname;
-const expectedLegacyHostname =
-  HEADSCALE_LEGACY_HOST_BY_CANONICAL_HOST.get(headscaleHostname);
-if (!expectedLegacyHostname) {
+const environmentConfig = HEADSCALE_ENVIRONMENT_BY_CANONICAL_HOST.get(
+  headscaleHostname,
+);
+if (!environmentConfig) {
   die(
     `HEADSCALE_PUBLIC_URL must use a canonical Headscale hostname (received ${headscaleHostname})`,
   );
 }
+const { legacyHostname: expectedLegacyHostname, apiUrl, listenAddr } =
+  environmentConfig;
 const legacyHeadscaleHostname = parsedLegacyPublicUrl.hostname;
 if (legacyHeadscaleHostname !== expectedLegacyHostname) {
   die(
@@ -342,7 +351,14 @@ if certificate_covers_overlap; then
   echo "LE cert already covers canonical and legacy Headscale hosts; skipping issuance"
 else
   sudo install -d -o root -g root -m 0755 "$ACME_WEBROOT"
-  sudo tee "$HS_ACME_VHOST" >/dev/null <<NGINX
+  HS_ACME_BACKUP=$(mktemp)
+  HS_ACME_STAGE=$(mktemp)
+  HS_ACME_VHOST_EXISTED=false
+  if sudo test -f "$HS_ACME_VHOST"; then
+    sudo cp "$HS_ACME_VHOST" "$HS_ACME_BACKUP"
+    HS_ACME_VHOST_EXISTED=true
+  fi
+  tee "$HS_ACME_STAGE" >/dev/null <<NGINX
 server {
     listen 80;
     listen [::]:80;
@@ -355,15 +371,23 @@ server {
     location / { return 404; }
 }
 NGINX
-  sudo nginx -t
-  sudo systemctl reload nginx
 
-  cleanup_acme_vhost() {
-    sudo rm -f "$HS_ACME_VHOST"
+  restore_acme_vhost() {
+    trap - EXIT
+    if [ "$HS_ACME_VHOST_EXISTED" = "true" ]; then
+      sudo cp "$HS_ACME_BACKUP" "$HS_ACME_VHOST"
+    else
+      sudo rm -f "$HS_ACME_VHOST"
+    fi
+    rm -f "$HS_ACME_BACKUP" "$HS_ACME_STAGE"
     sudo nginx -t
     sudo systemctl reload nginx
   }
-  trap cleanup_acme_vhost EXIT
+  trap restore_acme_vhost EXIT
+
+  sudo install -o root -g root -m 0644 "$HS_ACME_STAGE" "$HS_ACME_VHOST"
+  sudo nginx -t
+  sudo systemctl reload nginx
 
   certbot_args=(
     certonly
@@ -385,14 +409,37 @@ NGINX
     echo "issued Headscale certificate does not cover both required hostnames"
     exit 1
   fi
-  cleanup_acme_vhost
-  trap - EXIT
+  restore_acme_vhost
 fi
 
 # Final no-http2 TLS vhost: 80→443 redirect + 443 proxy to Headscale
 #    loopback listener, with the Upgrade/Connection map + long timeouts the
 #    noise protocol needs. Both exact hostnames stay available during migration.
-sudo tee "$HS_VHOST" >/dev/null <<NGINX
+HS_VHOST_BACKUP=$(mktemp)
+HS_VHOST_STAGE=$(mktemp)
+HS_VHOST_EXISTED=false
+if sudo test -f "$HS_VHOST"; then
+  sudo cp "$HS_VHOST" "$HS_VHOST_BACKUP"
+  HS_VHOST_EXISTED=true
+fi
+
+rollback_headscale_vhost() {
+  trap - EXIT
+  if [ "$HS_VHOST_EXISTED" = "true" ]; then
+    sudo cp "$HS_VHOST_BACKUP" "$HS_VHOST"
+  else
+    sudo rm -f "$HS_VHOST"
+  fi
+  if sudo nginx -t; then
+    sudo systemctl reload nginx
+  else
+    echo "rollback restored the previous Headscale vhost bytes, but nginx validation failed"
+  fi
+  rm -f "$HS_VHOST_BACKUP" "$HS_VHOST_STAGE"
+}
+trap rollback_headscale_vhost EXIT
+
+tee "$HS_VHOST_STAGE" >/dev/null <<NGINX
 # headscale control-protocol (TS2021/noise) needs the Upgrade header passed
 # through on HTTP/1.1. NO http2 on this vhost: an h2 client connection would
 # drop the Upgrade header (RFC 7540), which is exactly what broke headscale
@@ -433,11 +480,74 @@ server {
     }
 }
 NGINX
+sudo install -o root -g root -m 0644 "$HS_VHOST_STAGE" "$HS_VHOST"
 sudo nginx -t
-sudo systemctl reload nginx
+
+effective_nginx_config=$(sudo nginx -T 2>&1)
+overlap_warnings=$(printf '%s\n' "$effective_nginx_config" \
+  | grep -F 'conflicting server name' \
+  | grep -F -e "$HS_HOST" -e "$HS_LEGACY_HOST" || true)
+hostname_owners=$(printf '%s\n' "$effective_nginx_config" | awk \
+  -v canonical="$HS_HOST" \
+  -v legacy="$HS_LEGACY_HOST" '
+  function inspect_names(text, fields, count, i, name) {
+    count = split(text, fields, /[[:space:]]+/)
+    for (i = 1; i <= count; i += 1) {
+      name = fields[i]
+      if (name == "") continue
+      if (name ~ /;$/) collecting = 0
+      sub(/;$/, "", name)
+      gsub(/^"|"$/, "", name)
+      if (name == canonical || name == legacy) print config_file "\t" name
+    }
+  }
+  /^# configuration file / {
+    config_file = $0
+    sub(/^# configuration file /, "", config_file)
+    sub(/:$/, "", config_file)
+    collecting = 0
+    next
+  }
+  {
+    line = $0
+    sub(/[[:space:]]*#.*/, "", line)
+    if (collecting) {
+      inspect_names(line)
+      next
+    }
+    if (line ~ /^[[:space:]]*server_name[[:space:]]+/) {
+      sub(/^[[:space:]]*server_name[[:space:]]+/, "", line)
+      collecting = 1
+      inspect_names(line)
+    }
+  }
+')
+unexpected_owners=$(printf '%s\n' "$hostname_owners" \
+  | awk -F '\t' -v expected="$HS_VHOST" 'NF == 2 && $1 != expected { print }')
+canonical_owner_count=$(printf '%s\n' "$hostname_owners" \
+  | awk -F '\t' -v host="$HS_HOST" '$2 == host { count += 1 } END { print count + 0 }')
+legacy_owner_count=$(printf '%s\n' "$hostname_owners" \
+  | awk -F '\t' -v host="$HS_LEGACY_HOST" '$2 == host { count += 1 } END { print count + 0 }')
+if [ -n "$overlap_warnings" ] \
+    || [ -n "$unexpected_owners" ] \
+    || [ "$canonical_owner_count" -ne 2 ] \
+    || [ "$legacy_owner_count" -ne 2 ]; then
+  if [ -n "$overlap_warnings" ]; then
+    echo "nginx reported conflicting Headscale server names:"
+    printf '%s\n' "$overlap_warnings"
+  fi
+  echo "Headscale hostname ownership is not exclusive to $HS_VHOST:"
+  printf '%s\n' "$hostname_owners"
+  echo "Leaving unknown nginx configs untouched and restoring the prior $HS_VHOST"
+  exit 1
+fi
 
 certificate_has_exact_san "$HS_HOST"
 certificate_has_exact_san "$HS_LEGACY_HOST"
+sudo systemctl reload nginx
+
+rm -f "$HS_VHOST_BACKUP" "$HS_VHOST_STAGE"
+trap - EXIT
 
 # Confirm the cert renewal timer is active (renewal is certbot's own systemd
 # timer, not a cron entry we manage). Non-fatal: surfaces a warning if the
