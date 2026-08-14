@@ -286,6 +286,74 @@ describe("unified host migration", () => {
     ]);
   });
 
+  it("preserves the canonical browser origin across the Steward service binding", async () => {
+    const requests: Request[] = [];
+    const apiWorker = {
+      fetch: async (request: Request) => {
+        requests.push(request);
+        return Response.json({ nonce: "Tk9iR2buAPsSuxF0T" });
+      },
+    };
+
+    for (const origin of [
+      "https://eliza.app",
+      "https://cloud.eliza.app",
+      "https://staging.eliza.app",
+      "https://cloud-staging.eliza.app",
+    ]) {
+      const response = await proxyToApiWorker({
+        request: new Request(`${origin}/steward/auth/nonce`, {
+          headers: { Accept: "application/json" },
+        }),
+        env: { API_WORKER: apiWorker },
+      });
+      expect(response.status).toBe(200);
+    }
+
+    expect(
+      requests.map((request) => ({
+        requestOrigin: new URL(request.url).origin,
+        browserOrigin: request.headers.get("Origin"),
+      })),
+    ).toEqual([
+      {
+        requestOrigin: "https://api.eliza.app",
+        browserOrigin: "https://eliza.app",
+      },
+      {
+        requestOrigin: "https://api.eliza.app",
+        browserOrigin: "https://cloud.eliza.app",
+      },
+      {
+        requestOrigin: "https://api-staging.eliza.app",
+        browserOrigin: "https://staging.eliza.app",
+      },
+      {
+        requestOrigin: "https://api-staging.eliza.app",
+        browserOrigin: "https://cloud-staging.eliza.app",
+      },
+    ]);
+  });
+
+  it("preserves an explicit cross-origin Origin for Steward to reject", async () => {
+    let forwarded: Request | undefined;
+    await proxyToApiWorker({
+      request: new Request(`${ORIGIN}/steward/auth/nonce`, {
+        headers: { Origin: "https://attacker.example" },
+      }),
+      env: {
+        API_WORKER: {
+          fetch: async (request) => {
+            forwarded = request;
+            return new Response(null, { status: 400 });
+          },
+        },
+      },
+    });
+
+    expect(forwarded?.headers.get("Origin")).toBe("https://attacker.example");
+  });
+
   it("fails closed when the deployed API service binding is missing", async () => {
     const response = await proxyToApiWorker({
       request: new Request(`${ORIGIN}/api/health`),

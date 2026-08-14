@@ -14,6 +14,12 @@ const PROVIDER_DESTINATIONS = Object.freeze({
   google: "accounts.google.com",
 });
 
+// ERC-4361 defines a SIWE nonce as at least eight ASCII alphanumeric
+// characters. Steward shares this nonce across its SIWE and SIWS launch paths,
+// so accepting a weaker shape would let the deploy gate bless an unusable
+// wallet response.
+const WALLET_NONCE_PATTERN = /^[A-Za-z0-9]{8,}$/;
+
 function requiredUrl(value, flag) {
   if (!value) throw new Error(`${flag} is required`);
   const url = new URL(value);
@@ -122,24 +128,27 @@ export async function verifyStewardWalletOrigin(
     typeof payload !== "object" ||
     payload === null ||
     typeof payload.nonce !== "string" ||
-    payload.nonce.length === 0
+    !WALLET_NONCE_PATTERN.test(payload.nonce)
   ) {
-    throw new Error("wallet origin probe returned no nonce");
+    throw new Error("wallet origin probe returned an invalid nonce");
   }
 
   return { origin: baseUrl };
 }
 
-export async function main(argv = process.argv.slice(2)) {
+export async function main(
+  argv = process.argv.slice(2),
+  { fetchImpl = fetch, log = console.log } = {},
+) {
   const config = parseStewardCallbackProbeArgs(argv);
-  const results = await verifyStewardOAuthCallbacks(config);
+  const results = await verifyStewardOAuthCallbacks(config, { fetchImpl });
   for (const result of results) {
-    console.log(
+    log(
       `Verified ${result.provider} canonical callback via ${result.destinationHostname}.`,
     );
   }
-  const wallet = await verifyStewardWalletOrigin(config);
-  console.log(`Verified canonical wallet origin ${wallet.origin}.`);
+  const wallet = await verifyStewardWalletOrigin(config, { fetchImpl });
+  log(`Verified canonical wallet origin ${wallet.origin}.`);
 }
 
 const invokedPath = process.argv[1]

@@ -5,6 +5,7 @@
 
 import { describe, expect, test } from "bun:test";
 import {
+  main,
   parseStewardCallbackProbeArgs,
   verifyStewardOAuthCallbacks,
   verifyStewardWalletOrigin,
@@ -100,7 +101,7 @@ describe("Steward wallet-origin deployment probe", () => {
       fetchImpl: async (input: string | URL | Request, init?: RequestInit) => {
         requestedUrl = String(input);
         requestedInit = init;
-        return Response.json({ nonce: "deployment-probe-nonce" });
+        return Response.json({ nonce: "Tk9iR2buAPsSuxF0T" });
       },
     });
 
@@ -132,7 +133,29 @@ describe("Steward wallet-origin deployment probe", () => {
       verifyStewardWalletOrigin(CONFIG, {
         fetchImpl: async () => Response.json({ ok: true }),
       }),
-    ).rejects.toThrow("wallet origin probe returned no nonce");
+    ).rejects.toThrow("wallet origin probe returned an invalid nonce");
+  });
+
+  test.each(["", "   ", "a", "bad!nonce", "seven77"])(
+    "rejects unusable nonce %j",
+    async (nonce) => {
+      await expect(
+        verifyStewardWalletOrigin(CONFIG, {
+          fetchImpl: async () => Response.json({ nonce }),
+        }),
+      ).rejects.toThrow("wallet origin probe returned an invalid nonce");
+    },
+  );
+
+  test("fails closed on invalid JSON", async () => {
+    await expect(
+      verifyStewardWalletOrigin(CONFIG, {
+        fetchImpl: async () =>
+          new Response("not-json", {
+            headers: { "Content-Type": "application/json" },
+          }),
+      }),
+    ).rejects.toThrow("wallet origin probe returned invalid JSON");
   });
 
   test("does not follow a redirect away from the canonical browser host", async () => {
@@ -147,5 +170,67 @@ describe("Steward wallet-origin deployment probe", () => {
         },
       }),
     ).rejects.toThrow("wallet origin probe returned HTTP 302");
+  });
+});
+
+describe("Steward deployment probe CLI composition", () => {
+  const ARGS = [
+    "--base-url",
+    CONFIG.baseUrl,
+    "--callback-url",
+    CONFIG.callbackUrl,
+    "--tenant-id",
+    CONFIG.tenantId,
+  ];
+
+  test("runs both OAuth providers and the wallet leg", async () => {
+    const requested: string[] = [];
+    const logs: string[] = [];
+    await main(ARGS, {
+      fetchImpl: async (input: string | URL | Request) => {
+        const url = String(input);
+        requested.push(url);
+        if (url.endsWith("/steward/auth/nonce")) {
+          return Response.json({ nonce: "Tk9iR2buAPsSuxF0T" });
+        }
+        const destination = url.includes("/discord/")
+          ? "https://discord.com/oauth2/authorize"
+          : "https://accounts.google.com/o/oauth2/v2/auth";
+        return new Response(null, {
+          status: 302,
+          headers: { Location: destination },
+        });
+      },
+      log: (message: string) => logs.push(message),
+    });
+
+    expect(requested).toHaveLength(3);
+    expect(requested.at(-1)).toBe(`${CONFIG.baseUrl}/steward/auth/nonce`);
+    expect(logs).toEqual([
+      "Verified discord canonical callback via discord.com.",
+      "Verified google canonical callback via accounts.google.com.",
+      `Verified canonical wallet origin ${CONFIG.baseUrl}.`,
+    ]);
+  });
+
+  test("fails the composed command when the wallet leg is rejected", async () => {
+    await expect(
+      main(ARGS, {
+        fetchImpl: async (input: string | URL | Request) => {
+          const url = String(input);
+          if (url.endsWith("/steward/auth/nonce")) {
+            return Response.json({ error: "origin rejected" }, { status: 400 });
+          }
+          const destination = url.includes("/discord/")
+            ? "https://discord.com/oauth2/authorize"
+            : "https://accounts.google.com/o/oauth2/v2/auth";
+          return new Response(null, {
+            status: 302,
+            headers: { Location: destination },
+          });
+        },
+        log: () => undefined,
+      }),
+    ).rejects.toThrow("wallet origin probe returned HTTP 400");
   });
 });
