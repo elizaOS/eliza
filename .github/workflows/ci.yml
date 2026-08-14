@@ -147,9 +147,9 @@ jobs:
         if: needs.changes.outputs.server == 'true'
         run: bun run test:server
 
-      - name: No affected server lane
+      - name: — not affected (server)
         if: needs.changes.outputs.server != 'true'
-        run: echo "No server test lane is affected."
+        run: echo "::notice::Lane not affected by changes — 0 packages executed"
 
   tests_client:
     name: Tests (client)
@@ -175,9 +175,9 @@ jobs:
         if: needs.changes.outputs.client == 'true'
         run: bun run test:client
 
-      - name: No affected client lane
+      - name: — not affected (client)
         if: needs.changes.outputs.client != 'true'
-        run: echo "No client test lane is affected."
+        run: echo "::notice::Lane not affected by changes — 0 packages executed"
 
   tests_plugins:
     name: Tests (plugins)
@@ -203,9 +203,9 @@ jobs:
         if: needs.changes.outputs.plugins == 'true'
         run: bun run test:plugins
 
-      - name: No affected plugin lane
+      - name: — not affected (plugins)
         if: needs.changes.outputs.plugins != 'true'
-        run: echo "No plugin test lane is affected."
+        run: echo "::notice::Lane not affected by changes — 0 packages executed"
 
   smoke:
     name: Smoke
@@ -265,9 +265,9 @@ jobs:
           ELIZA_UI_SMOKE_SHARD: ${{ matrix.shard }}/6
         run: bun run --cwd packages/app test:e2e
 
-      - name: No affected e2e shard
+      - name: — not affected (e2e shard)
         if: needs.changes.outputs.zero_key != 'true'
-        run: echo "No deterministic E2E lane is affected."
+        run: echo "::notice::Lane not affected by changes — 0 packages executed"
 
   # The desktop and cloud lanes are whole-lane work that does not shard. Held
   # off the matrix so no shard carries them: on run 31489483093 the cloud step
@@ -337,9 +337,9 @@ jobs:
         if: needs.changes.outputs.zero_key == 'true'
         run: bun run test:e2e --filter='^(?!.*packages/app\)#test:e2e)'
 
-      - name: No affected smoke lane
+      - name: — not affected (smoke lane)
         if: needs.changes.outputs.desktop != 'true' && needs.changes.outputs.cloud != 'true' && needs.changes.outputs.zero_key != 'true'
-        run: echo "No desktop, cloud, or deterministic E2E lane is affected."
+        run: echo "::notice::Lane not affected by changes — 0 packages executed"
 
   android_aab:
     name: Android release AAB
