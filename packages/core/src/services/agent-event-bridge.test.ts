@@ -475,6 +475,11 @@ describe("agent-event-bridge", () => {
 		expect(CONNECTOR_MESSAGE_RECEIVED_EVENT_TYPES).toContain(
 			"TWITCH_MESSAGE_RECEIVED",
 		);
+		registerConnectorSourceMetadata("twitch", {
+			aliases: ["twitch"],
+			sourceKind: "passive",
+			isPassive: true,
+		});
 
 		const { runtime, events, notificationService } = await createCtx();
 		await bridgeConnectorMessageReceivedToStreams("TWITCH_MESSAGE_RECEIVED", {
@@ -525,6 +530,58 @@ describe("agent-event-bridge", () => {
 				accountId: "main",
 			},
 		});
+	});
+
+	it("fails raw connector notifications closed without passive provenance", async () => {
+		const { runtime, events, notificationService } = await createCtx();
+		await bridgeConnectorMessageReceivedToStreams("NOSTR_MESSAGE_RECEIVED", {
+			runtime,
+			message: {
+				id: "nostr-message-1",
+				channel: "ops",
+				text: "unregistered connector",
+				userId: "nostr-user-1",
+			},
+		});
+
+		expect(events.filter((event) => event.stream === "message")).toHaveLength(
+			1,
+		);
+		if (!notificationService) throw new Error("NotificationService not loaded");
+		expect(notificationService.list()).toHaveLength(0);
+	});
+
+	it("rejects raw bot, replay, self, and machine-channel notification traffic", async () => {
+		const { runtime, events, notificationService } = await createCtx();
+		registerConnectorSourceMetadata("twitch", {
+			aliases: ["twitch"],
+			sourceKind: "passive",
+			isPassive: true,
+		});
+
+		for (const [id, overrides] of [
+			["bot", { user: { userId: "bot-1", bot: true } }],
+			["replay", { user: { userId: "user-1" }, metadata: { replay: true } }],
+			["self", { user: { userId: "user-1" }, fromSelf: true }],
+			["machine", { user: { userId: "user-1" }, channelType: ChannelType.API }],
+			["agent", { user: { userId: runtime.agentId, name: "Agent" } }],
+		] as const) {
+			await bridgeConnectorMessageReceivedToStreams("TWITCH_MESSAGE_RECEIVED", {
+				runtime,
+				message: {
+					id: `twitch-${id}`,
+					channel: "ops",
+					text: "must not notify",
+					...overrides,
+				},
+			});
+		}
+
+		expect(events.filter((event) => event.stream === "message")).toHaveLength(
+			5,
+		);
+		if (!notificationService) throw new Error("NotificationService not loaded");
+		expect(notificationService.list()).toHaveLength(0);
 	});
 
 	it("rejects unregistered raw connector event types even with spoofed source", async () => {

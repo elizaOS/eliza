@@ -385,14 +385,22 @@ interface RawConnectorMessageSummary {
 	runtime: RuntimeServiceHost;
 	source: string;
 	channel: string;
+	channelType?: string;
 	messageId?: string;
 	roomId?: string;
 	senderId?: string;
 	senderName?: string;
 	content?: string;
 	hasAttachments: boolean;
+	isBot: boolean;
+	isBackfill: boolean;
+	isSelf: boolean;
 	deliveredAt?: number;
 	accountId?: string;
+}
+
+function hasTrueFlag(...values: unknown[]): boolean {
+	return values.some((value) => readBoolean(value) === true);
 }
 
 function normalizeRawConnectorMessage(
@@ -412,6 +420,12 @@ function normalizeRawConnectorMessage(
 	const space = readRecord(root.space ?? message.space ?? event.space);
 	const user = readRecord(root.user ?? message.user ?? message.sender);
 	const twitchUser = readRecord(message.user);
+	const metadata = readRecord(
+		message.metadata ?? root.metadata ?? event.metadata,
+	);
+	const author = readRecord(
+		message.author ?? eventMessage.author ?? root.author,
+	);
 
 	const channel = firstString(
 		message.channel,
@@ -419,6 +433,12 @@ function normalizeRawConnectorMessage(
 		space.type,
 		space.displayName,
 		source,
+	);
+	const channelType = firstString(
+		message.channelType,
+		root.channelType,
+		event.channelType,
+		metadata.channelType,
 	);
 	const content = firstString(
 		message.content,
@@ -451,9 +471,13 @@ function normalizeRawConnectorMessage(
 		message.senderId,
 		message.userId,
 		lineSource.userId,
-		user.name,
 		twitchUser.userId,
+		user.id,
+		author.userId,
+		author.id,
+		metadata.senderId,
 		root.from,
+		user.name,
 	);
 	const senderName = firstString(
 		message.name,
@@ -474,6 +498,7 @@ function normalizeRawConnectorMessage(
 		runtime,
 		source,
 		channel: channel ?? source,
+		...(channelType ? { channelType } : {}),
 		...(messageId ? { messageId } : {}),
 		...(roomId ? { roomId } : {}),
 		...(senderId ? { senderId } : {}),
@@ -483,11 +508,58 @@ function normalizeRawConnectorMessage(
 			readAttachments(message) ||
 			readAttachments(eventMessage) ||
 			readAttachments(root),
+		isBot: hasTrueFlag(
+			message.fromBot,
+			message.isBot,
+			user.bot,
+			twitchUser.bot,
+			author.bot,
+			metadata.fromBot,
+		),
+		isBackfill: hasTrueFlag(
+			message.historical,
+			message.backfill,
+			message.isBackfill,
+			message.replay,
+			message.imported,
+			root.historical,
+			root.backfill,
+			root.isBackfill,
+			root.replay,
+			root.imported,
+			metadata.historical,
+			metadata.backfill,
+			metadata.isBackfill,
+			metadata.replay,
+			metadata.imported,
+		),
+		isSelf: hasTrueFlag(
+			message.fromSelf,
+			message.isSelf,
+			root.fromSelf,
+			root.isSelf,
+			metadata.fromSelf,
+			metadata.isSelf,
+		),
 		...(deliveredAt !== undefined ? { deliveredAt } : {}),
 		...(readString(root.accountId)
 			? { accountId: readString(root.accountId) }
 			: {}),
 	};
+}
+
+function shouldNotifyForRawConnectorMessage(
+	message: RawConnectorMessageSummary,
+): boolean {
+	if (!isPassiveConnectorSource(message.source)) return false;
+	if (
+		message.channelType &&
+		NON_USER_FACING_CHANNEL_TYPES.has(message.channelType.toLowerCase())
+	) {
+		return false;
+	}
+	if (message.senderId === message.runtime.agentId) return false;
+	return !message.isBot && !message.isBackfill && !message.isSelf;
 }
 
 function rawConnectorNotificationData(
@@ -562,7 +634,7 @@ export async function bridgeConnectorMessageReceivedToStreams(
 	}
 
 	const notifications = resolveNotificationService(message.runtime);
-	if (!notifications) return;
+	if (!notifications || !shouldNotifyForRawConnectorMessage(message)) return;
 
 	try {
 		await notifications.notify({
