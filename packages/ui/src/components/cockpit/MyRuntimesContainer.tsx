@@ -5,7 +5,6 @@
 import { useCallback, useState } from "react";
 
 import { isStoreBuild } from "../../build-variant";
-import { cn } from "../../lib/utils";
 import { isAndroidCloudBuild } from "../../platform/android-runtime";
 import {
   addAgentProfile,
@@ -13,6 +12,7 @@ import {
   switchRuntimeNonDestructive,
 } from "../../state";
 import { isTrustedRestoreApiBaseUrl } from "../../state/runtime-url-trust";
+import { SettingsStack } from "../settings/settings-layout";
 import { MyRuntimesSection } from "./MyRuntimesSection";
 
 export interface MyRuntimesContainerProps {
@@ -123,7 +123,7 @@ export function MyRuntimesContainer({ className }: MyRuntimesContainerProps) {
   );
 
   return (
-    <div className={cn("flex flex-col gap-2", className)}>
+    <SettingsStack className={className}>
       {error ? (
         <div
           role="alert"
@@ -140,6 +140,6 @@ export function MyRuntimesContainer({ className }: MyRuntimesContainerProps) {
         onAddRemote={onAddRemote}
         busy={busy}
       />
-    </div>
+    </SettingsStack>
   );
 }
