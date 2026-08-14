@@ -1584,7 +1584,7 @@ body {
   height: 1.35rem;
   margin: 0;
   background: #ffffff;
-  transition: background-color 320ms cubic-bezier(0.22, 1, 0.36, 1);
+  transition: background-color 200ms ease;
 }
 
 .landing-iphone-homebar::after {
