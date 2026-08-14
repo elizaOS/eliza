@@ -8,14 +8,22 @@
  * Reduced motion shows its settled intro, which keeps screenshots deterministic.
  */
 
-import { IMessageIcon } from "@elizaos/ui/cloud-ui/components/icons";
+import {
+  DiscordIcon,
+  IMessageIcon,
+  TelegramIcon,
+  WhatsAppIcon,
+} from "@elizaos/ui/cloud-ui/components/icons";
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
 // Imported through the bundler (not referenced from public/) so the wordmark
 // ships with whichever build consumes this source; a public/ path depends on
 // the host app's asset-sync allowlist and 404s when it drifts.
 import elizaLogotextUrl from "@/assets/eliza-logotext.svg";
 import {
+  buildElizaDiscordHref,
   buildElizaSmsHref,
+  buildElizaTelegramHref,
+  buildElizaWhatsAppHref,
   ELIZA_PHONE_FORMATTED,
   ELIZA_PHONE_NUMBER,
 } from "@/lib/contact";
@@ -323,6 +331,7 @@ function PhoneMockup() {
     <div
       className="landing-iphone"
       aria-hidden="true"
+      onContextMenu={(event) => event.preventDefault()}
       data-demo-phase={phase}
       data-demo-messages={items.length}
     >
@@ -386,7 +395,10 @@ function PhoneMockup() {
             </span>
           </div>
         </div>
-        <div className="landing-phone-thread" ref={threadRef}>
+        <div
+          className="landing-phone-thread scroll-fade scroll-fade-[1.6rem] [--scroll-fade-reveal:64px]"
+          ref={threadRef}
+        >
           <div className="landing-thread-preamble">
             <span className="landing-thread-timestamp">
               Today {localClock(clock, true)}
@@ -581,6 +593,32 @@ export default function LandingPage() {
   const productNavigation = resolveHomepageProductNavigation(
     browserWindow?.location.hostname ?? "",
   );
+  const channels = [
+    {
+      key: "telegram",
+      href: buildElizaTelegramHref(),
+      label: t("homepage_eliza.landing.channelTelegram", {
+        defaultValue: "Message Eliza on Telegram",
+      }),
+      icon: <TelegramIcon className="size-6" style={{ color: "#2AABEE" }} />,
+    },
+    {
+      key: "whatsapp",
+      href: buildElizaWhatsAppHref(),
+      label: t("homepage_eliza.landing.channelWhatsapp", {
+        defaultValue: "Message Eliza on WhatsApp",
+      }),
+      icon: <WhatsAppIcon className="size-6" style={{ color: "#25D366" }} />,
+    },
+    {
+      key: "discord",
+      href: buildElizaDiscordHref(),
+      label: t("homepage_eliza.landing.channelDiscord", {
+        defaultValue: "Message Eliza on Discord",
+      }),
+      icon: <DiscordIcon className="size-6" style={{ color: "#5865F2" }} />,
+    },
+  ];
 
   useEffect(
     () => () => {
@@ -605,14 +643,6 @@ export default function LandingPage() {
       () => setPhoneCopyState("idle"),
       2_000,
     );
-  };
-
-  const openTextEliza = () => {
-    const userAgent = window.navigator.userAgent;
-    const mobileMessages =
-      /Android|iPad|iPhone|iPod/i.test(userAgent) ||
-      (/Macintosh/i.test(userAgent) && window.navigator.maxTouchPoints > 1);
-    if (!mobileMessages) void copyPhoneNumber();
   };
 
   const phoneCopyLabel =
@@ -663,23 +693,47 @@ export default function LandingPage() {
               defaultValue: "Four hours of your time back every week.",
             })}
           </h1>
-          <p className="landing-hero-lede">
-            {t("homepage_eliza.landing.heroLede", {
-              defaultValue:
-                "Hey, I'm Eliza — your personal assistant. I'm here to save you time and take things off your plate.",
-            })}
-          </p>
           <div className="landing-hero-actions">
             <a
               className="landing-cta landing-cta--black"
               href={buildElizaSmsHref()}
-              onClick={openTextEliza}
             >
               <IMessageIcon className="size-5" />
               {t("homepage_eliza.landing.ctaText", {
                 defaultValue: "Text Eliza",
               })}
             </a>
+            <a
+              className="landing-cta landing-cta--white"
+              href={`tel:${ELIZA_PHONE_NUMBER}`}
+            >
+              <svg
+                viewBox="0 0 24 24"
+                fill="currentColor"
+                className="size-5"
+                aria-hidden="true"
+              >
+                <path d="M6.62 10.79a15.05 15.05 0 0 0 6.59 6.59l2.2-2.2a1 1 0 0 1 1.02-.24 11.36 11.36 0 0 0 3.57.57 1 1 0 0 1 1 1V20a1 1 0 0 1-1 1A17 17 0 0 1 3 4a1 1 0 0 1 1-1h3.5a1 1 0 0 1 1 1 11.36 11.36 0 0 0 .57 3.57 1 1 0 0 1-.25 1.02Z" />
+              </svg>
+              {t("homepage_eliza.landing.ctaCall", {
+                defaultValue: "Call",
+              })}
+            </a>
+          </div>
+          <div className="landing-secondary-channels">
+            {channels.map((channel) => (
+              <a
+                key={channel.key}
+                className="landing-channel"
+                href={channel.href}
+                aria-label={channel.label}
+                title={channel.label}
+                target="_blank"
+                rel="noreferrer"
+              >
+                {channel.icon}
+              </a>
+            ))}
           </div>
           <button
             type="button"

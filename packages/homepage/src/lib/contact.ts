@@ -7,6 +7,7 @@ export const ELIZA_TELEGRAM_BOT_USERNAME = "Elizav2_Bot";
 export const ELIZA_TELEGRAM_BOT_ID = "7684336618";
 export const ELIZA_DISCORD_APPLICATION_ID = "1468649258654630063";
 const DEFAULT_WHATSAPP_PHONE_NUMBER = "+14159611510";
+const IMESSAGE_GREETING = "Hey Eliza, what can you do?";
 
 export function getWhatsAppNumber(): string {
   return (
@@ -30,8 +31,8 @@ export function getDiscordBotApplicationId(): string {
   ).trim();
 }
 
-export function buildElizaSmsHref(): string {
-  return `sms:${ELIZA_PHONE_NUMBER}`;
+export function buildElizaSmsHref(message: string = IMESSAGE_GREETING): string {
+  return `sms:${ELIZA_PHONE_NUMBER}?&body=${encodeURIComponent(message)}`;
 }
 
 export function buildElizaWhatsAppHref(): string {
@@ -43,5 +44,5 @@ export function buildElizaTelegramHref(): string {
 }
 
 export function buildElizaDiscordHref(): string {
-  return `https://discord.com/users/${getDiscordBotApplicationId()}`;
+  return `discord://-/users/${getDiscordBotApplicationId()}`;
 }

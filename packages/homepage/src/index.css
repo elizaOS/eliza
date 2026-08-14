@@ -1,5 +1,6 @@
 @import "../../ui/src/styles/base.css";
 @import "../../ui/src/styles/tailwind-theme.css";
+@import "../../ui/src/styles/shadcn-utilities.css";
 @import "tailwindcss";
 @import "tw-animate-css";
 @source "../../ui/src";
@@ -1343,6 +1344,28 @@ body {
   font-family: "Geist", Arial, sans-serif;
 }
 
+html:has(.landing-page) {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(17 17 17 / 30%) transparent;
+}
+
+html:has(.landing-page)::-webkit-scrollbar {
+  width: 0.4rem;
+}
+
+html:has(.landing-page)::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+html:has(.landing-page)::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: rgb(17 17 17 / 30%);
+}
+
+html:has(.landing-page)::-webkit-scrollbar-thumb:hover {
+  background: rgb(17 17 17 / 45%);
+}
+
 /* Grain overlay: plain CSS rather than a Tailwind arbitrary-value class, which
    is not compiled when this source is consumed by the app shell's build. */
 .landing-grain {
@@ -1372,12 +1395,6 @@ body {
 .landing-brand img {
   height: 2.1rem;
   width: auto;
-}
-
-.landing-header-cta {
-  min-height: 2.6rem;
-  padding: 0 1.2rem;
-  font-size: 0.95rem;
 }
 
 .landing-hero {
@@ -1432,15 +1449,15 @@ body {
   flex-wrap: wrap;
   align-items: center;
   justify-content: center;
-  gap: 0.85rem;
-  margin-top: 2.25rem;
+  gap: 0.65rem;
+  margin-top: 1.65rem;
 }
 
 .landing-phone-number {
   display: inline-flex;
   align-items: center;
-  min-height: 2.75rem;
-  margin: 0.8rem 0 0;
+  min-height: 2.25rem;
+  margin: 0.2rem 0 0;
   padding: 0 0.75rem;
   border: 0;
   border-radius: 999px;
@@ -1458,6 +1475,39 @@ body {
 }
 
 .landing-phone-number:focus-visible {
+  outline: 3px solid #111;
+  outline-offset: 2px;
+}
+
+.landing-secondary-channels {
+  display: flex;
+  justify-content: center;
+  gap: 0.6rem;
+  margin-top: 0.5rem;
+}
+
+.landing-channel {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  border-radius: 50%;
+  background: rgb(255 255 255 / 76%);
+  box-shadow: 0 6px 18px rgb(0 0 0 / 9%);
+  transition:
+    transform 160ms ease-out,
+    background-color 160ms ease-out,
+    box-shadow 160ms ease-out;
+}
+
+.landing-channel:hover {
+  transform: translateY(-2px);
+  background: #ffffff;
+  box-shadow: 0 8px 20px rgb(0 0 0 / 14%);
+}
+
+.landing-channel:focus-visible {
   outline: 3px solid #111;
   outline-offset: 2px;
 }
@@ -1511,9 +1561,16 @@ body {
   border-radius: 3.2rem;
   padding: 0.55rem;
   background: #0b0b0f;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
   box-shadow:
     0 40px 90px rgb(0 0 0 / 30%),
     inset 0 0 0 2px rgb(255 255 255 / 14%);
+}
+
+.landing-iphone img {
+  -webkit-user-drag: none;
 }
 
 .landing-iphone-screen {
@@ -1678,7 +1735,7 @@ body {
   gap: 0.5rem;
   /* Top padding clears the floating status bar + contact header so the
      conversation starts below it and scrolls underneath the frosted chrome. */
-  padding: 8.6rem 0.9rem 1.1rem;
+  padding: 8.6rem 0.9rem 2.15rem;
   overflow-y: auto;
   scrollbar-width: none;
 }
@@ -1725,6 +1782,7 @@ body {
   align-items: center;
   gap: 0.55rem;
   margin: 0 0.7rem;
+  padding-bottom: 0.45rem;
 }
 
 .landing-composer-plus {

@@ -22,7 +22,12 @@ describe("Eliza contact links", () => {
   test("builds an SMS link to the hosted Blooio number", () => {
     expect(ELIZA_PHONE_NUMBER).toBe("+18087881821");
     expect(ELIZA_PHONE_FORMATTED).toBe("+1 (808) 788-1821");
-    expect(buildElizaSmsHref()).toBe(`sms:${ELIZA_PHONE_NUMBER}`);
+    expect(buildElizaSmsHref()).toBe(
+      `sms:${ELIZA_PHONE_NUMBER}?&body=Hey%20Eliza%2C%20what%20can%20you%20do%3F`,
+    );
+    expect(buildElizaSmsHref("hello")).toBe(
+      `sms:${ELIZA_PHONE_NUMBER}?&body=hello`,
+    );
     expect(buildElizaSmsHref()).not.toContain("14159611510");
     expect(buildElizaSmsHref()).not.toContain("4153024399");
     expect(buildElizaSmsHref()).not.toContain("415-302-4399");
@@ -38,7 +43,7 @@ describe("Eliza contact links", () => {
       `https://t.me/${ELIZA_TELEGRAM_BOT_USERNAME}`,
     );
     expect(buildElizaDiscordHref()).toBe(
-      `https://discord.com/users/${ELIZA_DISCORD_APPLICATION_ID}`,
+      `discord://-/users/${ELIZA_DISCORD_APPLICATION_ID}`,
     );
     expect(getTelegramBotId()).toBe(ELIZA_TELEGRAM_BOT_ID);
     expect(getDiscordBotApplicationId()).toBe(ELIZA_DISCORD_APPLICATION_ID);
