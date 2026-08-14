@@ -446,6 +446,7 @@ async function connectSession(opts: {
   prewarmElizaContext?: () => Promise<void>;
   openingGreeting?: string;
   cacheWarmingRetryDelaysMs?: readonly number[];
+  onClearAudio?: () => void;
   fish?: {
     enabled?: boolean;
     firstAudioTimeoutMs?: number;
@@ -494,7 +495,9 @@ async function connectSession(opts: {
           : {}),
         usageStore,
         usageLimits: { organizationDailyMinutes: 600, userDailyMinutes: 120 },
-        downlink,
+        downlink: opts.onClearAudio
+          ? { ...downlink, clearAudio: opts.onClearAudio }
+          : downlink,
       }),
   });
 
@@ -1604,6 +1607,32 @@ describe("voice-session WS lifecycle", () => {
     await flush();
     expect(FakeCartesiaSocket.instances.at(-1)).not.toBe(cartesia);
     expect(client.audioFrames.length).toBeGreaterThan(audioBeforeInterruption);
+  });
+
+  test("semantic turn-start flushes transport audio after server TTS completed", async () => {
+    const client = new FakeClientSocket();
+    let clearCount = 0;
+    await connectSession({
+      client,
+      fetchImpl: makeSseFetch(["A response Twilio may buffer."]),
+      onClearAudio: () => {
+        clearCount += 1;
+      },
+    });
+    const ink = FakeInkSocket.instances.at(-1)!;
+
+    ink.emitTurn("turn.start");
+    ink.emitTurn("turn.end", "say something");
+    await flush();
+    await flush();
+    FakeCartesiaSocket.instances.at(-1)!.emitDone();
+    await flush();
+    expect(client.controlTypes()).toContain("speaking_end");
+    clearCount = 0;
+
+    ink.emitTurn("turn.start");
+    await flush();
+    expect(clearCount).toBe(1);
   });
 
   test("a final-only caller transcript still interrupts the active response", async () => {

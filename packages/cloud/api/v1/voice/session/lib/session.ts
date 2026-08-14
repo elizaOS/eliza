@@ -491,7 +491,12 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
         // so Eliza never talks over the caller while transcription continues.
         this.resetSttPartialDelivery();
         this.activeSttTurn = true;
+        const responseActive = Boolean(this.currentVoiceTurnId);
         this.interrupt("acoustic");
+        // A transport such as Twilio can still be playing audio it buffered
+        // before TTS reported completion. There is no active turn to emit an
+        // `interrupted` frame in that state, so flush the transport directly.
+        if (!responseActive) this.config.downlink.clearAudio?.();
         this.state = "transcribing";
         break;
       }
