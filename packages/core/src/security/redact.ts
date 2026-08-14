@@ -27,8 +27,23 @@ const DEFAULT_REDACT_PATTERNS: string[] = [
 	String.raw`"(?:apiKey|token|secret|password|passwd|accessToken|refreshToken|mnemonic|seedPhrase|passphrase|privateKey|credential)"\s*:\s*"([^"]+)"`,
 	// CLI flags (space-separated and --flag=value forms).
 	String.raw`--(?:api[-_]?key|token|secret|password|passwd)(?:\s+|=)(["']?)([^\s"']+)\1`,
-	// Authorization headers.
-	String.raw`Authorization\s*[:=]\s*Bearer\s+([A-Za-z0-9._\-+=]+)`,
+	// Authorization headers. RFC 7235 credentials are `<auth-scheme> SP
+	// <credentials>` and the scheme set is open-ended, so matching `Bearer`
+	// alone left every other scheme in plaintext: a `curl -v` trace or a config
+	// dump relayed `Basic <base64 of user:password>` — a complete, reusable
+	// credential — verbatim. Key on the header grammar rather than a scheme
+	// list: any scheme token followed by a credential-shaped value, plus the
+	// scheme-less form. The length floors keep header-shaped prose
+	// ("Authorization: required for this endpoint") byte-identical.
+	// Deliberately unanchored on the left, matching the rule this replaces: `_`
+	// is a word character, so a `\b` here would stop matching the env-style
+	// `SERVICE_AUTHORIZATION=Bearer …` names that an `env` dump prints.
+	// Bearer keeps its own floor-free rule so this stays a strict superset of the
+	// behaviour it replaces; the general rules below carry a length floor that
+	// would otherwise stop masking a short `Bearer <value>`.
+	String.raw`(?:Proxy-)?Authorization\s*[:=]\s*Bearer\s+([A-Za-z0-9._\-+=]+)`,
+	String.raw`(?:Proxy-)?Authorization\s*[:=]\s*([A-Za-z][A-Za-z0-9-]*)[ \t]+([A-Za-z0-9._\-+=/~]{8,})`,
+	String.raw`(?:Proxy-)?Authorization\s*[:=]\s*([A-Za-z0-9._\-+=/~]{18,})`,
 	String.raw`\bBearer\s+([A-Za-z0-9._\-+=]{18,})\b`,
 	// URI userinfo. Mask the complete userinfo component (user:password,
 	// token-only, or password-only) so credentials in database URLs, curl
@@ -45,6 +60,14 @@ const DEFAULT_REDACT_PATTERNS: string[] = [
 	// Distinct shape from the OpenAI sk- above; Stripe is the payment processor so a leaked
 	// sk_live_ is catastrophic, and these often appear as bare values (not under a *_SECRET name).
 	String.raw`\b((?:sk|rk)_(?:live|test)_[A-Za-z0-9]{10,})\b`,
+	// AWS access key ids: a fixed 4-char type prefix plus 16 base32 chars. The
+	// ENV-name rule above cannot catch these because the canonical variable is
+	// `AWS_ACCESS_KEY_ID` — the credential word is not the last word of the
+	// name — so an `env` dump leaked the key id in plaintext while the paired
+	// `AWS_SECRET_ACCESS_KEY` was masked. Case-anchored with an explicit `/…/g`
+	// (these ids are always upper case) so the case-insensitive default cannot
+	// fold `ASIA` into ordinary mixed-case identifiers like `AsiaPacific…`.
+	String.raw`/\b((?:AKIA|ASIA|ABIA|ACCA)[A-Z0-9]{16})\b/g`,
 	String.raw`\b(ghp_[A-Za-z0-9]{20,})\b`,
 	String.raw`\b(github_pat_[A-Za-z0-9_]{20,})\b`,
 	String.raw`\b(xox[baprs]-[A-Za-z0-9-]{10,})\b`,
@@ -211,6 +234,15 @@ function redactMatch(match: string, groups: string[]): string {
 	const masked = maskToken(token);
 	if (token === match) {
 		return masked;
+	}
+	// The captured credential is the tail of the match for the scheme-bearing
+	// patterns, so splice it by position. `String.replace(string)` rewrites the
+	// FIRST occurrence, which when the credential also appears in the match's
+	// prefix ("Authorization: abcdefgh abcdefgh") masks the scheme and leaves
+	// the credential itself intact in the output.
+	const tailIndex = match.length - token.length;
+	if (tailIndex > 0 && match.startsWith(token, tailIndex)) {
+		return `${match.slice(0, tailIndex)}${masked}`;
 	}
 	// Use a replacer function so `masked` is inserted literally. `masked` keeps
 	// the token's first/last characters verbatim, and String.replace treats a

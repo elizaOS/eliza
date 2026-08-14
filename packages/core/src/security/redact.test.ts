@@ -132,6 +132,69 @@ describe("redactSensitiveText (pattern detection)", () => {
 		expect(redactSensitiveText(bearer)).not.toContain("a".repeat(40));
 	});
 
+	it("masks an Authorization credential for any scheme, not just Bearer", () => {
+		// RFC 7235 leaves the scheme set open, so keying on `Bearer` alone left
+		// `Basic <base64 user:password>` — a complete reusable credential, and the
+		// exact thing a relayed `curl -v` trace prints — in plaintext.
+		const basic = "dXNlcjpzdXBlcnNlY3JldHBhc3N3b3Jk";
+		const out = redactSensitiveText(`> Authorization: Basic ${basic}`);
+		expect(out).not.toContain(basic);
+		expect(out).toContain("Authorization: Basic ");
+
+		// Scheme-less and proxy forms carry the same credential.
+		expect(redactSensitiveText(`Authorization: ${basic}`)).not.toContain(basic);
+		expect(
+			redactSensitiveText(`Proxy-Authorization: Basic ${basic}`),
+		).not.toContain(basic);
+	});
+
+	it("still masks env-style *_AUTHORIZATION names", () => {
+		// `_` is a word character, so left-anchoring the header rule with `\b`
+		// silently stops matching the `SERVICE_AUTHORIZATION=Bearer …` form an
+		// `env` dump prints. The generalized rule must stay a strict superset.
+		expect(
+			redactSensitiveText("VOICE_REALTIME_ELIZA_AUTHORIZATION: Bearer service"),
+		).toBe("VOICE_REALTIME_ELIZA_AUTHORIZATION: Bearer ***");
+		expect(
+			redactSensitiveText(
+				"ELIZA_AUTHORIZATION: Basic dXNlcjpzdXBlcnNlY3JldA==",
+			),
+		).not.toContain("dXNlcjpzdXBlcnNlY3JldA==");
+	});
+
+	it("keeps header-shaped prose byte-identical", () => {
+		// The length floors on the Authorization patterns exist so ordinary
+		// command output is never rewritten. Redaction that corrupts normal
+		// stdout gets turned off, which is strictly worse than no redaction.
+		for (const line of [
+			"Authorization: required for this endpoint",
+			"Authorization: none",
+			"region=AsiaPacificRegion123 selected",
+			"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  file.txt",
+			"404fd6cd53 Merge pull request #19662 from elizaOS/develop",
+		]) {
+			expect(redactSensitiveText(line)).toBe(line);
+		}
+	});
+
+	it("masks the credential, not the scheme, when the two are identical", () => {
+		// `String.replace(string)` rewrites the FIRST occurrence; when the
+		// credential also appears earlier in the match it masked the scheme and
+		// left the credential itself in the output.
+		const out = redactSensitiveText("Authorization: abcdefgh abcdefgh");
+		expect(out).toBe("Authorization: abcdefgh ***");
+	});
+
+	it("masks an AWS access key id", () => {
+		// The ENV-name rule cannot reach these: the canonical variable is
+		// `AWS_ACCESS_KEY_ID`, whose last word is `ID`, so an `env` dump leaked
+		// the key id while the paired `AWS_SECRET_ACCESS_KEY` was masked.
+		for (const id of ["AKIAIOSFODNN7EXAMPLE", "ASIAY34FZKBOKMUTVV7A"]) {
+			expect(redactSensitiveText(`AWS_ACCESS_KEY_ID=${id}`)).not.toContain(id);
+			expect(redactSensitiveText(`bare ${id} here`)).not.toContain(id);
+		}
+	});
+
 	it("masks Stripe secret + restricted keys (underscore form)", () => {
 		// Stripe is the payment processor — a leaked sk_live_ is catastrophic, and these
 		// often appear as bare values (not under a *_SECRET name) in logged request bodies.
