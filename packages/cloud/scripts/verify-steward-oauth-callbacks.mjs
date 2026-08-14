@@ -99,11 +99,10 @@ export async function verifyStewardWalletOrigin(
   { fetchImpl = fetch } = {},
 ) {
   const response = await fetchImpl(`${baseUrl}/steward/auth/nonce`, {
-    headers: {
-      Accept: "application/json",
-      "Content-Type": "application/json",
-      Origin: baseUrl,
-    },
+    // Same-origin browser GETs omit Origin. The embedded proxy must synthesize
+    // the canonical browser origin before forwarding the request to Steward.
+    headers: { Accept: "application/json" },
+    redirect: "manual",
   });
 
   if (response.status !== 200) {

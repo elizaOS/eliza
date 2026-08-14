@@ -93,7 +93,7 @@ describe("Steward OAuth callback deployment probe", () => {
 });
 
 describe("Steward wallet-origin deployment probe", () => {
-  test("sends the browser host as the exact Origin and accepts a nonce", async () => {
+  test("exercises the real same-origin no-Origin proxy path and accepts a nonce", async () => {
     let requestedUrl = "";
     let requestedInit: RequestInit | undefined;
     const result = await verifyStewardWalletOrigin(CONFIG, {
@@ -107,11 +107,8 @@ describe("Steward wallet-origin deployment probe", () => {
     expect(result).toEqual({ origin: CONFIG.baseUrl });
     expect(requestedUrl).toBe(`${CONFIG.baseUrl}/steward/auth/nonce`);
     expect(requestedInit).toEqual({
-      headers: {
-        Accept: "application/json",
-        "Content-Type": "application/json",
-        Origin: CONFIG.baseUrl,
-      },
+      headers: { Accept: "application/json" },
+      redirect: "manual",
     });
   });
 
@@ -136,5 +133,19 @@ describe("Steward wallet-origin deployment probe", () => {
         fetchImpl: async () => Response.json({ ok: true }),
       }),
     ).rejects.toThrow("wallet origin probe returned no nonce");
+  });
+
+  test("does not follow a redirect away from the canonical browser host", async () => {
+    await expect(
+      verifyStewardWalletOrigin(CONFIG, {
+        fetchImpl: async (_input, init) => {
+          expect(init?.redirect).toBe("manual");
+          return new Response(null, {
+            status: 302,
+            headers: { Location: "https://attacker.example/nonce" },
+          });
+        },
+      }),
+    ).rejects.toThrow("wallet origin probe returned HTTP 302");
   });
 });
