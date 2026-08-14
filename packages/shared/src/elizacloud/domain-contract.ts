@@ -1,8 +1,8 @@
 /**
- * Canonical hostname contract for the public Eliza site, managed Cloud app,
- * Cloud API, and dedicated managed-agent ingress. Legacy elizacloud.ai names
- * remain classified so request boundaries can redirect or proxy them without
- * treating them as canonical product origins.
+ * Canonical public-domain and retired-dashboard route contract for the Eliza
+ * site, managed Cloud app, Cloud API, and managed-agent ingress. Legacy
+ * elizacloud.ai names remain classified so request boundaries can redirect or
+ * proxy them without treating them as canonical product origins.
  */
 
 export type ElizaCloudEnvironment = "production" | "staging";
@@ -77,6 +77,11 @@ export const LEGACY_ELIZA_DOMAIN_CONTRACTS = Object.freeze({
       "elizacloud.ai",
       "www.elizacloud.ai",
       "dev.elizacloud.ai",
+      // A/B variant of the public landing. Served by the `eliza-app-b` Pages
+      // project from the same app build, so it must classify as marketing or
+      // the shell boots the agent app and shows a login wall instead.
+      "b.eliza.app",
+      "eliza-app-b.pages.dev",
     ]),
     cloudAppHostnames: Object.freeze(["app.elizacloud.ai"]),
     cloudApiHostnames: Object.freeze(["api.elizacloud.ai"]),
@@ -133,6 +138,28 @@ export interface ElizaHostnameClassification {
   agentId: string | null;
 }
 
+const LEGACY_DASHBOARD_STATIC_TARGETS: Readonly<Record<string, string>> =
+  Object.freeze({
+    "/dashboard": "/cloud",
+    "/dashboard/image": "/cloud/api-explorer",
+    "/dashboard/video": "/cloud/api-explorer",
+    "/dashboard/gallery": "/cloud/api-explorer",
+    "/dashboard/voices": "/cloud/api-explorer",
+    "/dashboard/containers": "/cloud/agents",
+    "/dashboard/apps/create": "/cloud/apps",
+    "/dashboard/earnings": "/cloud/monetization",
+    "/dashboard/affiliates": "/cloud/monetization",
+    "/dashboard/documents": "/cloud/agents",
+  });
+
+const LEGACY_DASHBOARD_SETTINGS_TARGETS: Readonly<Record<string, string>> =
+  Object.freeze({
+    connections: "/cloud/connectors",
+    billing: "/cloud/billing",
+    organization: "/cloud/organization",
+    agents: "/cloud/agents",
+  });
+
 function hostnameOf(origin: string): string {
   return new URL(origin).hostname;
 }
@@ -180,6 +207,52 @@ export function canonicalElizaServiceHostname(
     if (mapped) return mapped;
   }
   return null;
+}
+
+/** Map a retired dashboard pathname onto its equivalent managed Cloud route. */
+export function canonicalCloudPathForLegacyDashboard(
+  pathname: string,
+  search = "",
+): string | null {
+  if (pathname !== "/dashboard" && !pathname.startsWith("/dashboard/")) {
+    return null;
+  }
+
+  const normalizedPathname =
+    pathname.length > 1 ? pathname.replace(/\/+$/, "") : pathname;
+  const staticTarget = LEGACY_DASHBOARD_STATIC_TARGETS[normalizedPathname];
+  if (staticTarget) return staticTarget;
+
+  if (
+    normalizedPathname === "/dashboard/build" ||
+    normalizedPathname.startsWith("/dashboard/build/")
+  ) {
+    return "/cloud/my-agents";
+  }
+
+  const nestedContainerMatch = normalizedPathname.match(
+    /^\/dashboard\/containers\/agents\/([^/]+)$/,
+  );
+  if (nestedContainerMatch) {
+    return `/cloud/agents/${nestedContainerMatch[1]}`;
+  }
+
+  const containerMatch = normalizedPathname.match(
+    /^\/dashboard\/containers\/([^/]+)$/,
+  );
+  if (containerMatch) return `/cloud/agents/${containerMatch[1]}`;
+
+  const agentChatMatch = normalizedPathname.match(
+    /^\/dashboard\/agents\/([^/]+)\/chat$/,
+  );
+  if (agentChatMatch) return `/cloud/agents/${agentChatMatch[1]}`;
+
+  if (normalizedPathname === "/dashboard/settings") {
+    const tab = new URLSearchParams(search).get("tab") ?? "";
+    return LEGACY_DASHBOARD_SETTINGS_TARGETS[tab] ?? "/cloud";
+  }
+
+  return pathname.replace(/^\/dashboard(?=\/|$)/, "/cloud");
 }
 
 function dedicatedAgentId(hostname: string, suffix: string): string | null {

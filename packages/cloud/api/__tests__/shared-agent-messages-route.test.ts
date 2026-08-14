@@ -169,6 +169,7 @@ describe("shared agent messages route", () => {
       expect.objectContaining({ waitUntil: expect.any(Function) }),
       DEFAULT_NAMESPACE,
       undefined,
+      "organization-credits",
     );
   });
 
@@ -192,6 +193,7 @@ describe("shared agent messages route", () => {
       expect.objectContaining({ waitUntil: expect.any(Function) }),
       DEFAULT_NAMESPACE,
       "client-id-4",
+      "organization-credits",
     );
   });
 
@@ -248,6 +250,7 @@ describe("shared agent messages route", () => {
       expect.objectContaining({ waitUntil: expect.any(Function) }),
       namespace,
       undefined,
+      "organization-credits",
     );
   });
 

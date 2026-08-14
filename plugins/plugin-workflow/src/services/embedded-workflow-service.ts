@@ -373,7 +373,7 @@ export class EmbeddedWorkflowService extends Service {
     await this.getDb()
       .delete(embeddedWorkflows)
       .where(and(eq(embeddedWorkflows.agentId, this.tenantId), eq(embeddedWorkflows.id, id)));
-    await this.removeSchedule(id);
+    await this.removeWorkflowTriggers(id);
   }
 
   async activateWorkflow(id: string): Promise<WorkflowDefinitionResponse> {
@@ -404,7 +404,7 @@ export class EmbeddedWorkflowService extends Service {
     return response;
   }
 
-  private async workflowScheduleTasks(workflowId: string): Promise<Task[]> {
+  private async workflowTriggerTasks(workflowId: string): Promise<Task[]> {
     const tasks = await this.runtime.getTasks({
       agentIds: [this.runtime.agentId],
       tags: [...WORKFLOW_TRIGGER_TAGS],
@@ -415,8 +415,17 @@ export class EmbeddedWorkflowService extends Service {
     });
   }
 
+  private async removeWorkflowTriggers(workflowId: string): Promise<void> {
+    for (const task of await this.workflowTriggerTasks(workflowId)) {
+      if (task.id) await this.runtime.deleteTask(task.id);
+    }
+  }
+
   private async removeSchedule(workflowId: string): Promise<void> {
-    for (const task of await this.workflowScheduleTasks(workflowId)) {
+    const scheduleDedupeKey = `workflow-schedule:${workflowId}`;
+    for (const task of await this.workflowTriggerTasks(workflowId)) {
+      const trigger = task.metadata?.trigger as TriggerConfig | undefined;
+      if (trigger?.dedupeKey !== scheduleDedupeKey) continue;
       if (task.id) await this.runtime.deleteTask(task.id);
     }
   }
@@ -531,11 +540,12 @@ export class EmbeddedWorkflowService extends Service {
         input: pending.input,
         signal: controller.signal,
         onEvent: (event) => this.recordEvent(running, event),
-        generate: async ({ prompt, messages, structured }) => {
+        generate: async ({ prompt, messages, structured, signal }) => {
           const promptText =
             typeof prompt === 'string' ? prompt : JSON.stringify(prompt ?? messages ?? '');
           const response = await this.runtime.useModel(ModelType.TEXT_LARGE, {
             prompt: promptText,
+            signal,
             ...(structured ? { responseFormat: { type: 'json_object' as const } } : {}),
           });
           if (!structured) return response;

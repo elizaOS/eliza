@@ -13,6 +13,7 @@
 import "./worker-polyfills";
 
 import {
+  canonicalCloudPathForLegacyDashboard,
   canonicalElizaServiceHostname,
   classifyElizaHostname,
   ELIZA_DOMAIN_CONTRACTS,
@@ -387,6 +388,10 @@ export function redirectFrontendHost(
     );
   }
   const classified = classifyElizaHostname(hostname);
+  const canonicalDashboardPath = canonicalCloudPathForLegacyDashboard(
+    url.pathname,
+    url.search,
+  );
   let canonicalHostname: string | null = null;
   if (hostname === "www.eliza.app") {
     canonicalHostname = new URL(
@@ -397,12 +402,9 @@ export function redirectFrontendHost(
       ELIZA_DOMAIN_CONTRACTS[classified.environment ?? "production"];
     if (isFrontendAliasBackendPath(url)) {
       canonicalHostname = new URL(contract.cloudApiOrigin).hostname;
-    } else if (
-      url.pathname === "/dashboard" ||
-      url.pathname.startsWith("/dashboard/")
-    ) {
+    } else if (canonicalDashboardPath) {
       canonicalHostname = new URL(contract.cloudAppOrigin).hostname;
-      url.pathname = url.pathname.replace(/^\/dashboard(?=\/|$)/, "/cloud");
+      url.pathname = canonicalDashboardPath;
     } else {
       canonicalHostname = classified.canonicalHostname;
     }
@@ -429,17 +431,53 @@ export function redirectFrontendHost(
   if (!canonicalHostname || canonicalHostname === hostname) return null;
 
   if (
+    canonicalDashboardPath &&
     (classified.role === "legacy-marketing" ||
-      classified.role === "legacy-cloud-app" ||
-      classified.role === "legacy-dedicated-agent") &&
-    (url.pathname === "/dashboard" || url.pathname.startsWith("/dashboard/"))
+      classified.role === "legacy-cloud-app")
   ) {
-    url.pathname = url.pathname.replace(/^\/dashboard(?=\/|$)/, "/cloud");
+    url.pathname = canonicalDashboardPath;
   }
 
   const targetUrl = new URL(url);
   targetUrl.hostname = canonicalHostname;
   return Response.redirect(targetUrl.toString(), 308);
+}
+
+/** Identify legacy wildcard hosts with no explicit redirect or UUID agent. */
+export function isUnsupportedLegacyWildcardHostname(
+  rawHostname: string,
+): boolean {
+  const hostname = normalizeHostname(rawHostname);
+  if (!hostname?.endsWith(".elizacloud.ai")) return false;
+  if (hostname === "docs.elizacloud.ai" || hostname === "os.elizacloud.ai") {
+    return false;
+  }
+  if (canonicalElizaServiceHostname(hostname)) return false;
+
+  const classified = classifyElizaHostname(hostname);
+  if (
+    classified.role === "legacy-marketing" ||
+    classified.role === "legacy-cloud-app" ||
+    classified.role === "legacy-cloud-api"
+  ) {
+    return false;
+  }
+  return !(
+    classified.role === "legacy-dedicated-agent" &&
+    classified.agentId &&
+    AGENT_ID_RE.test(classified.agentId)
+  );
+}
+
+function rejectUnsupportedLegacyWildcardHost(url: URL): Response | null {
+  if (!isUnsupportedLegacyWildcardHostname(url.hostname)) return null;
+  return Response.json(
+    { error: "not_found" },
+    {
+      status: 404,
+      headers: { "Cache-Control": "no-store, max-age=0" },
+    },
+  );
 }
 
 const FRONTEND_ALIAS_PROXY_HEADER_DENYLIST = new Set([
@@ -630,6 +668,8 @@ export default {
     if (frontendAliasResponse) return frontendAliasResponse;
     const frontendRedirect = redirectFrontendHost(url, env);
     if (frontendRedirect) return frontendRedirect;
+    const unsupportedLegacyHost = rejectUnsupportedLegacyWildcardHost(url);
+    if (unsupportedLegacyHost) return unsupportedLegacyHost;
     const blobResponse = await serveBlobHostRequest(request, url, env);
     if (blobResponse) return blobResponse;
     const registryResponse = await serveRegistryHostRequest(request, url, env);

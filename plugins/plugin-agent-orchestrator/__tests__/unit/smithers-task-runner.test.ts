@@ -218,6 +218,26 @@ describe("runTaskWithSmithers (durable Smithers-backed coding task)", () => {
     TIMEOUT,
   );
 
+  it("rejects an invalid deadline before executing any task step", async () => {
+    const fake = new FakeExecutor();
+
+    await expect(
+      runTaskWithSmithers(spec(), fake, { timeoutMs: 0 }),
+    ).rejects.toMatchObject({
+      name: "ElizaError",
+      code: "SMITHERS_TIMEOUT_INVALID",
+      context: {
+        configured: 0,
+        minimum: 1,
+        maximum: 2_147_483_647,
+      },
+    });
+    expect(fake.provisionCalls).toBe(0);
+    expect(fake.turnCalls).toHaveLength(0);
+    expect(fake.approvalCalls).toBe(0);
+    expect(fake.submitCalls).toBe(0);
+  });
+
   it(
     "kills a stalled Smithers task at the configured execution deadline",
     async () => {

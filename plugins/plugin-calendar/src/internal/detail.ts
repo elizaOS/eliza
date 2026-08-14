@@ -31,6 +31,34 @@ export function detailString(
     : undefined;
 }
 
+export type PlannerCalendarWindow = {
+  timeMin: string;
+  timeMax: string;
+};
+
+/**
+ * Accepts a planner window only when both bounds parse and form a forward
+ * interval. Returning the pair atomically prevents a valid half-window from
+ * reaching the strict calendar-service boundary after its partner is dropped.
+ */
+export function normalizePlannerCalendarWindow(
+  timeMin: unknown,
+  timeMax: unknown,
+): PlannerCalendarWindow | undefined {
+  if (typeof timeMin !== "string" || typeof timeMax !== "string") {
+    return undefined;
+  }
+  const minMs = Date.parse(timeMin.trim());
+  const maxMs = Date.parse(timeMax.trim());
+  if (!Number.isFinite(minMs) || !Number.isFinite(maxMs) || minMs >= maxMs) {
+    return undefined;
+  }
+  return {
+    timeMin: new Date(minMs).toISOString(),
+    timeMax: new Date(maxMs).toISOString(),
+  };
+}
+
 export function detailNumber(
   details: Record<string, unknown> | undefined,
   key: string,
@@ -90,4 +118,37 @@ export function parseCalendarJsonRecord<
     return null;
   }
   return parsed as T;
+}
+
+/**
+ * Planner-authored calendarId carries the same junk problem as mode/side/
+ * grantId: placeholder tokens ("default", "all", "none") that name no real
+ * calendar. getCalendarFeed treats any non-empty calendarId as an explicit
+ * source filter, so junk excludes every calendar and a create turn dies with
+ * CALENDAR_MUTATION_CONTEXT_INCOMPLETE. Calendar ids have no whitelistable
+ * shape (Google email-like ids and "primary", Microsoft/Apple opaque ids), so
+ * this boundary drops the known placeholder vocabulary instead: unset yields
+ * the aggregated feed and provider-default target — which is what the
+ * placeholders meant. Real ids pass through untouched.
+ */
+const CALENDAR_ID_PLACEHOLDER_TOKENS = new Set([
+  "default",
+  "all",
+  "none",
+  "null",
+  "unset",
+  "unknown",
+  "any",
+  "auto",
+]);
+
+export function sanitizeCalendarId(
+  value: string | undefined,
+): string | undefined {
+  if (!value) return undefined;
+  const trimmed = value.trim();
+  if (trimmed.length === 0) return undefined;
+  return CALENDAR_ID_PLACEHOLDER_TOKENS.has(trimmed.toLowerCase())
+    ? undefined
+    : trimmed;
 }
