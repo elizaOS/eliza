@@ -16,6 +16,7 @@ export interface JoinFlowClient {
     agentId: string;
     agentName: string;
     apiBase: string;
+    runtime: "shared" | "dedicated";
   }>;
   setBaseUrl(baseUrl: string | null): void;
   setToken(token: string | null): void;
@@ -46,6 +47,7 @@ export interface JoinFlowResult {
   agentId: string;
   agentName: string;
   apiBase: string;
+  runtime: "shared" | "dedicated";
 }
 
 /** Resolve and persist the signed-in account's rowless personal Eliza. */
@@ -83,5 +85,6 @@ export async function runJoinFlow(
     agentId: selected.agentId,
     agentName: selected.agentName || "Eliza",
     apiBase: selected.apiBase,
+    runtime: selected.runtime,
   };
 }

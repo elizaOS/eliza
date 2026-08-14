@@ -1,6 +1,14 @@
-/** Derives the rowless account-native identity used by personal Shared chat. */
+/**
+ * Derives the account-native personal Eliza identity used by Shared chat.
+ *
+ * The identity is deterministic from the authenticated account and exists
+ * without an agent_sandboxes row. Every transport that resolves the same
+ * account therefore addresses the same Durable Object conversation history.
+ */
 
 import { v5 as uuidv5 } from "uuid";
+import type { AgentSandbox } from "../../../db/schemas/agent-sandboxes";
+import { getElizaAgentPublicWebUiUrl } from "../../eliza-agent-web-ui";
 import { getDefaultElizaCharacterData } from "../../utils/default-eliza-character";
 import type { SharedRuntimeAgent } from "./shared-runtime-agent";
 
@@ -12,7 +20,7 @@ export interface PersonalSharedAccountIdentity {
   organizationId: string;
 }
 
-/** Stable across Telegram, phone, and signed-in app transports for one account. */
+/** Stable namespaced id used for Durable Object routing and mirrored history. */
 export function personalSharedAgentId(identity: PersonalSharedAccountIdentity): string {
   return `${PERSONAL_SHARED_AGENT_PREFIX}${uuidv5(
     `${identity.organizationId.trim()}:${identity.userId.trim()}`,
@@ -27,7 +35,17 @@ export function isPersonalSharedAgentId(value: string): boolean {
   );
 }
 
-/** Projects the default Eliza character without creating an agent_sandboxes row. */
+/** Resolve the same Dedicated agent base for cutover and future account login. */
+export function personalDedicatedAgentApiBase(
+  target: Pick<AgentSandbox, "id" | "headscale_ip">,
+  baseDomain?: string,
+): string | null {
+  return getElizaAgentPublicWebUiUrl(target, {
+    baseDomain: baseDomain ?? undefined,
+  });
+}
+
+/** Build the rowless runtime projection for the authenticated account. */
 export function personalSharedAgent(identity: PersonalSharedAccountIdentity): SharedRuntimeAgent {
   const character = getDefaultElizaCharacterData();
   return {

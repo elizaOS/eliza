@@ -16,6 +16,7 @@ function harness() {
     agentId: PERSONAL_ID,
     agentName: "Eliza",
     apiBase: PERSONAL_BASE,
+    runtime: "shared" as const,
   });
   const setBaseUrl = vi.fn();
   const setToken = vi.fn();
@@ -76,6 +77,7 @@ describe("runJoinFlow", () => {
       agentId: PERSONAL_ID,
       agentName: "Eliza",
       apiBase: PERSONAL_BASE,
+      runtime: "shared",
     });
   });
 

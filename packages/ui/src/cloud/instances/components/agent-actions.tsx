@@ -465,7 +465,7 @@ export function ElizaAgentActions({
               "Upgrade complete — your conversation moved to the dedicated agent.",
           }),
         );
-        if (!outcome.sharedBridgeDeleted) {
+        if (outcome.sourceCleanup === "not-cleaned") {
           // The user is switched either way; a leaked shared row is only a
           // duplicate list entry, so tell them instead of hiding it.
           toast.info(

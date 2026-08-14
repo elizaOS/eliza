@@ -24,6 +24,7 @@ import {
   buildDedicatedCloudAgentApiBase,
   isDedicatedCloudAgentBase,
   isElizaCloudControlPlaneAgentlessBase,
+  isPersonalSharedElizaId,
   normalizeDirectCloudSharedAgentApiBase,
 } from "../utils/cloud-agent-base";
 import { ElizaClient } from "./client-base";
@@ -1647,6 +1648,7 @@ declare module "./client-base" {
       agentId: string;
       agentName: string;
       apiBase: string;
+      runtime: "shared" | "dedicated";
     }>;
     /**
      * Reuse an existing cloud agent when one exists (so we don't mint a brand-new
@@ -1736,6 +1738,19 @@ declare module "./client-base" {
     }): Promise<
       import("../cloud/handoff/conversation-handoff").ConversationHandoffResult
     >;
+    /** Server-owned import verification + active-mode cutover for rowless personal Eliza. */
+    finalizePersonalDedicatedCutover(options: {
+      personalElizaId: string;
+      dedicatedAgentId: string;
+      cloudApiBase: string;
+      authToken: string;
+    }): Promise<{
+      personalElizaId: string;
+      activeAgentId: string;
+      runtime: "dedicated";
+      apiBase: string;
+      importedMessages: number;
+    }>;
     /**
      * Delete the transient SHARED bridge agent (+ its `shared_runtime_history`,
      * cascaded server-side) once the user has been switched to their dedicated
@@ -4092,23 +4107,50 @@ ElizaClient.prototype.getPersonalSharedEliza = async (options) => {
   const root = recordOrNull(response.data);
   const data = recordOrNull(root?.data);
   const identity = recordOrNull(data?.identity);
-  const agentId = firstString(identity?.id);
+  const personalElizaId = firstString(identity?.id);
   const agentName = firstString(identity?.displayName);
   if (
     root?.success !== true ||
-    identity?.runtime !== "shared" ||
-    !agentId ||
-    !agentId.startsWith("personal:") ||
+    !personalElizaId ||
+    !isPersonalSharedElizaId(personalElizaId) ||
     !agentName
   ) {
-    throw new Error(
-      "Eliza Cloud returned an invalid personal Shared identity.",
-    );
+    throw new Error("Eliza Cloud returned an invalid personal Eliza identity.");
+  }
+  if (identity?.runtime === "dedicated") {
+    const activeAgentId = firstString(identity.activeAgentId);
+    const apiBase = firstString(identity.apiBase);
+    let parsedBase: URL | null = null;
+    try {
+      parsedBase = apiBase ? new URL(apiBase) : null;
+    } catch {
+      parsedBase = null;
+    }
+    if (
+      !activeAgentId ||
+      !apiBase ||
+      !parsedBase ||
+      (parsedBase.protocol !== "https:" && parsedBase.protocol !== "http:")
+    ) {
+      throw new Error(
+        "Eliza Cloud returned an invalid Dedicated connection for this personal Eliza.",
+      );
+    }
+    return {
+      agentId: activeAgentId,
+      agentName,
+      apiBase,
+      runtime: "dedicated",
+    };
+  }
+  if (identity?.runtime !== "shared") {
+    throw new Error("Eliza Cloud returned an unknown personal Eliza runtime.");
   }
   return {
-    agentId,
+    agentId: personalElizaId,
     agentName,
-    apiBase: buildCloudSharedAgentApiBase(cloudApiBase, agentId),
+    apiBase: buildCloudSharedAgentApiBase(cloudApiBase, personalElizaId),
+    runtime: "shared",
   };
 };
 
@@ -4519,6 +4561,50 @@ ElizaClient.prototype.startCloudAgentHandoff = function (
     ...(typeof timeoutMs === "number" ? { timeoutMs } : {}),
     ...(log ? { log } : {}),
   });
+};
+
+ElizaClient.prototype.finalizePersonalDedicatedCutover = async (options) => {
+  const cloudApiBase = resolveDirectCloudAuthApiBase(options.cloudApiBase);
+  const url = `${cloudApiBase}/api/v1/eliza/agents/${encodeURIComponent(options.personalElizaId)}/upgrade-tier/cutover`;
+  const response = await directCloudJsonResponse<unknown>(url, {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${options.authToken}`,
+    },
+    body: JSON.stringify({ dedicatedAgentId: options.dedicatedAgentId }),
+  });
+  const root = recordOrNull(response.data);
+  const data = recordOrNull(root?.data);
+  const personalElizaId = firstString(data?.personalElizaId);
+  const activeAgentId = firstString(data?.activeAgentId);
+  const apiBase = firstString(data?.apiBase);
+  const importedMessages = numberOrNull(data?.importedMessages);
+  if (
+    !response.ok ||
+    root?.success !== true ||
+    data?.runtime !== "dedicated" ||
+    personalElizaId !== options.personalElizaId ||
+    activeAgentId !== options.dedicatedAgentId ||
+    !apiBase ||
+    importedMessages === null ||
+    importedMessages < 0
+  ) {
+    throw Object.assign(
+      new Error(
+        directCloudResponseErrorMessage(response.status, response.data),
+      ),
+      { status: response.status, data: response.data, url },
+    );
+  }
+  return {
+    personalElizaId,
+    activeAgentId,
+    runtime: "dedicated",
+    apiBase,
+    importedMessages,
+  };
 };
 
 ElizaClient.prototype.deleteSharedBridgeAgent = async function (

@@ -459,6 +459,7 @@ import _route_v1_eliza_agents_p_agentId_sleep_route from "../v1/eliza/agents/[ag
 import _route_v1_eliza_agents_p_agentId_snapshot_route from "../v1/eliza/agents/[agentId]/snapshot/route";
 import _route_v1_eliza_agents_p_agentId_stream_route from "../v1/eliza/agents/[agentId]/stream/route";
 import _route_v1_eliza_agents_p_agentId_suspend_route from "../v1/eliza/agents/[agentId]/suspend/route";
+import _route_v1_eliza_agents_p_agentId_upgrade_tier_cutover_route from "../v1/eliza/agents/[agentId]/upgrade-tier/cutover/route";
 import _route_v1_eliza_agents_p_agentId_upgrade_tier_route from "../v1/eliza/agents/[agentId]/upgrade-tier/route";
 import _route_v1_eliza_agents_p_agentId_wake_route from "../v1/eliza/agents/[agentId]/wake/route";
 import _route_v1_eliza_agents_p_agentId_wallet_route from "../v1/eliza/agents/[agentId]/wallet/route";
@@ -1901,6 +1902,10 @@ export function mountRoutes(app: Hono<AppEnv>): void {
   app.route(
     "/api/v1/eliza/agents/:agentId/suspend",
     _route_v1_eliza_agents_p_agentId_suspend_route,
+  );
+  app.route(
+    "/api/v1/eliza/agents/:agentId/upgrade-tier/cutover",
+    _route_v1_eliza_agents_p_agentId_upgrade_tier_cutover_route,
   );
   app.route(
     "/api/v1/eliza/agents/:agentId/upgrade-tier",

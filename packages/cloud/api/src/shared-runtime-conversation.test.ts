@@ -92,6 +92,13 @@ mock.module("@/db/repositories/shared-runtime-history", () => ({
 mock.module("@/lib/services/shared-runtime/shared-runtime-chat", () => ({
   MAX_HISTORY_MESSAGES: 40,
   sharedRuntimeChatService: {
+    getHistory: async (
+      agentId: string,
+      channelId: string,
+      historyStore: {
+        load(agentId: string, channelId: string): Promise<unknown[]>;
+      },
+    ) => await historyStore.load(agentId, channelId),
     bridge: async (
       agent: { id: string },
       rpc: { id?: string | number; params?: { roomId?: string } },
@@ -201,6 +208,9 @@ function makeState(data: Map<string, unknown>, background: Promise<unknown>[]) {
       get: async <T>(key: string) => data.get(key) as T | undefined,
       put: async (key: string, value: unknown) => {
         data.set(key, structuredClone(value));
+      },
+      delete: async (key: string) => {
+        data.delete(key);
       },
       setAlarm: async () => {
         state.alarmDeleted = false;
@@ -396,6 +406,102 @@ test("rowless personal turns use platform funding without sandbox rehydration", 
     history: expect.any(Array),
   });
   await Promise.all(background.splice(0));
+});
+
+test("a cutover seal snapshots history and blocks new Shared turns until release or commit", async () => {
+  const personalAgent = {
+    id: "personal-agent-cutover",
+    organization_id: "org-1",
+    user_id: "user-1",
+    character_id: null,
+    agent_name: "Eliza",
+    agent_config: { character: { name: "Eliza" } },
+    execution_tier: "shared",
+  };
+  const history = [{ id: "u1", role: "user", content: "hello", createdAt: 10 }];
+  const data = new Map<string, unknown>([
+    [
+      "conversation",
+      {
+        agentId: personalAgent.id,
+        channelId: personalAgent.id,
+        history,
+        dirty: false,
+        version: 1,
+      },
+    ],
+  ]);
+  const background: Promise<unknown>[] = [];
+  const object = new SharedRuntimeConversation(
+    makeState(data, background) as never,
+    {} as never,
+  );
+  const request = (payload: Record<string, unknown>) =>
+    object.fetch(
+      new Request("https://shared-runtime.internal/cutover", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      }),
+    );
+  const personalTurn = () =>
+    request({
+      operation: "personal-bridge",
+      agent: personalAgent,
+      rpc: {
+        jsonrpc: "2.0",
+        id: "after-seal",
+        method: "message.send",
+        params: { text: "new turn", roomId: personalAgent.id },
+      },
+    });
+
+  const sealed = await request({
+    operation: "cutover-seal",
+    agentId: personalAgent.id,
+    roomId: personalAgent.id,
+    token: "cutover-1",
+    leaseMs: 60_000,
+  });
+  expect(sealed.status).toBe(200);
+  const sealedPayload: unknown = await sealed.json();
+  expect(sealedPayload).toEqual({ success: true, history });
+
+  const blocked = await personalTurn();
+  expect(blocked.status).toBe(423);
+  expect(await blocked.json()).toMatchObject({
+    code: "personal_cutover_in_progress",
+    retryable: true,
+  });
+
+  const released = await request({
+    operation: "cutover-release",
+    token: "cutover-1",
+  });
+  expect(released.status).toBe(200);
+  await released.json();
+  const resumed = await personalTurn();
+  expect(resumed.status).toBe(200);
+  await resumed.json();
+
+  await request({
+    operation: "cutover-seal",
+    agentId: personalAgent.id,
+    roomId: personalAgent.id,
+    token: "cutover-2",
+    leaseMs: 60_000,
+  }).then((response) => response.json());
+  const committedSeal = await request({
+    operation: "cutover-commit",
+    token: "cutover-2",
+  });
+  expect(committedSeal.status).toBe(200);
+  await committedSeal.json();
+  const committed = await personalTurn();
+  expect(committed.status).toBe(409);
+  expect(await committed.json()).toMatchObject({
+    code: "personal_eliza_dedicated",
+    retryable: false,
+  });
 });
 
 test("concurrent turns serialize through one room and retain both writes", async () => {
