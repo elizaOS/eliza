@@ -256,19 +256,56 @@ if (process.env.ELIZA_PROCESS_ISOLATED_TEST === "1") {
   });
 } else {
   test("runs the harness assertions in a fresh Bun process", () => {
+    // SEC-21: auth isolation for CI logs. Spawn with a minimal env:
+    // keep only PATH (for process.execPath lookup), NODE_OPTIONS/BUN_* (runtime),
+    // and CI markers. Redact all API keys, tokens, and credentials.
+    const allowedEnvKeys = new Set([
+      "PATH",
+      "NODE_OPTIONS",
+      "BUN_WORKDIR",
+      "BUN_RUNTIME",
+      "CI",
+      "GITHUB_ACTIONS",
+      "GITHUB_RUN_ID",
+      "GITHUB_RUN_NUMBER",
+      "GITHUB_WORKFLOW",
+      "GITHUB_JOB",
+      "GITHUB_REF",
+      "GITHUB_SHA",
+      "HOME",
+      "TMPDIR",
+      "TEMP",
+      "TMP",
+      "PWD",
+    ]);
+    const cleanEnv: Record<string, string> = {};
+    for (const [key, value] of Object.entries(process.env)) {
+      if (allowedEnvKeys.has(key) && typeof value === "string") {
+        cleanEnv[key] = value;
+      }
+    }
+    cleanEnv.ELIZA_PROCESS_ISOLATED_TEST = "1";
+
     const result = spawnSync(
       process.execPath,
       ["test", fileURLToPath(import.meta.url), "--timeout", "120000"],
       {
         cwd: process.cwd(),
         encoding: "utf8",
-        env: { ...process.env, ELIZA_PROCESS_ISOLATED_TEST: "1" },
+        env: cleanEnv,
       },
     );
     if (result.status !== 0) {
-      throw new Error(
-        `isolated harness failed:\n${result.stdout ?? ""}${result.stderr ?? ""}`,
-      );
+      // Diagnostic output: include cleaned status and stdout/stderr WITHOUT
+      // credentials (cleanEnv ensures no leaks from the subprocess).
+      const diagnostics = [
+        `isolated harness failed (exit ${result.status ?? "unknown"})`,
+        result.stdout ? `stdout:\n${result.stdout}` : undefined,
+        result.stderr ? `stderr:\n${result.stderr}` : undefined,
+      ]
+        .filter(Boolean)
+        .join("\n");
+      throw new Error(diagnostics);
     }
   });
 }
