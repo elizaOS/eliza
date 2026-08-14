@@ -180,6 +180,16 @@ export type CommitPhoneTelegramConvergenceResult =
     }
   | Exclude<InspectPhoneTelegramConvergenceResult, { status: "eligible" | "resume_alias" }>;
 
+export type FindPendingPhoneTelegramConvergenceResult =
+  | {
+      status: "resume_alias";
+      receipt: PersonalAccountConvergence;
+      user: User;
+      organization: Organization;
+    }
+  | { status: "not_found" }
+  | { status: "identity_projection_conflict" };
+
 function convergenceReceiptMatchesCommit(
   receipt: PersonalAccountConvergence,
   params: CommitPhoneTelegramConvergenceParams,
@@ -1390,6 +1400,67 @@ export class UsersRepository {
         user: mergedUser,
         organization: targetOrganization,
       };
+    });
+  }
+
+  /**
+   * Finds recovery authority from the independently verified Steward subject.
+   * Its pending receipt must still point at that subject's canonical projected
+   * owner; a newly asserted phone, when present, is an additional exact-match
+   * constraint rather than required retry authority.
+   */
+  async findPendingPhoneTelegramPersonalAccountConvergence(input: {
+    phoneNumber?: string;
+    stewardUserId: string;
+  }): Promise<FindPendingPhoneTelegramConvergenceResult> {
+    return dbWrite.transaction(async (tx) => {
+      const [user] = await tx
+        .select()
+        .from(users)
+        .where(eq(users.steward_user_id, input.stewardUserId))
+        .limit(1);
+      if (!user) return { status: "not_found" };
+
+      const [receipt] = await tx
+        .select()
+        .from(personalAccountConvergences)
+        .where(
+          and(
+            eq(personalAccountConvergences.target_user_id, user.id),
+            eq(personalAccountConvergences.steward_user_id, input.stewardUserId),
+            eq(personalAccountConvergences.status, "pending_alias"),
+          ),
+        )
+        .limit(1);
+      if (!receipt) return { status: "not_found" };
+      if (input.phoneNumber && receipt.phone_number !== input.phoneNumber) {
+        return { status: "identity_projection_conflict" };
+      }
+
+      const [organization] = await tx
+        .select()
+        .from(organizations)
+        .where(eq(organizations.id, receipt.target_organization_id))
+        .limit(1);
+      const [identity] = await tx
+        .select()
+        .from(userIdentities)
+        .where(eq(userIdentities.user_id, receipt.target_user_id))
+        .limit(1);
+      if (
+        !organization ||
+        !identity ||
+        user.organization_id !== organization.id ||
+        user.steward_user_id !== input.stewardUserId ||
+        user.phone_number !== receipt.phone_number ||
+        user.phone_verified !== true ||
+        user.telegram_id !== receipt.telegram_id ||
+        !projectionMatchesUser(user, identity)
+      ) {
+        return { status: "identity_projection_conflict" };
+      }
+
+      return { status: "resume_alias", receipt, user, organization };
     });
   }
 

@@ -5,6 +5,7 @@
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { ElizaError } from "@elizaos/core";
+import { personalSharedAgentId } from "./services/shared-runtime/personal-shared-agent";
 
 const telegramUser = {
   id: "telegram-user-1",
@@ -43,6 +44,27 @@ const convergedTelegramUser = {
   phone_verified: true,
   organization: telegramOrganization,
 };
+const sourceAgentId = personalSharedAgentId({
+  userId: phoneUser.id,
+  organizationId: phoneOrganization.id,
+});
+const targetAgentId = personalSharedAgentId({
+  userId: telegramUser.id,
+  organizationId: telegramOrganization.id,
+});
+const convergenceReceipt = {
+  token: `phone-telegram:${phoneUser.id}:${telegramUser.id}`,
+  source_user_id: phoneUser.id,
+  source_organization_id: phoneOrganization.id,
+  source_agent_id: sourceAgentId,
+  target_user_id: telegramUser.id,
+  target_organization_id: telegramOrganization.id,
+  target_agent_id: targetAgentId,
+  phone_number: phoneUser.phone_number,
+  telegram_id: telegramUser.telegram_id,
+  steward_user_id: telegramUser.steward_user_id,
+  status: "pending_alias" as const,
+};
 
 const inspectTelegramPersonalAccountContinuation = mock(async () => ({
   telegramId: "123456789",
@@ -67,14 +89,17 @@ const convergenceEvents: string[] = [];
 const inspectPhoneTelegramPersonalAccountConvergence = mock(async () => ({
   status: "not_dual_account" as const,
 }));
+const findPendingPhoneTelegramPersonalAccountConvergence = mock(async () => ({
+  status: "not_found" as const,
+}));
 const commitPhoneTelegramPersonalAccountConvergence = mock(async () => ({
   status: "committed" as const,
-  receipt: { token: "phone-telegram:phone-user-1:telegram-user-1" },
+  receipt: convergenceReceipt,
   user: convergedTelegramUser,
   organization: telegramOrganization,
 }));
 const markPhoneTelegramPersonalAccountAliasComplete = mock(async () => ({
-  token: "phone-telegram:phone-user-1:telegram-user-1",
+  ...convergenceReceipt,
   status: "complete" as const,
 }));
 const linkVerifiedPhone = mock(async () => convergedTelegramUser);
@@ -106,6 +131,7 @@ mock.module("./services/eliza-app/onboarding-chat", () => ({
 mock.module("../db/repositories/users", () => ({
   usersRepository: {
     commitPhoneTelegramPersonalAccountConvergence,
+    findPendingPhoneTelegramPersonalAccountConvergence,
     inspectPhoneTelegramPersonalAccountConvergence,
     linkVerifiedPhone,
     markPhoneTelegramPersonalAccountAliasComplete,
@@ -156,7 +182,8 @@ mock.module("./utils/logger", () => ({
   },
 }));
 
-const { StewardTelegramAccountClaimError, syncUserFromSteward } = await import("./steward-sync");
+const { StewardPhoneAccountConflictError, StewardTelegramAccountClaimError, syncUserFromSteward } =
+  await import("./steward-sync");
 
 beforeEach(() => {
   inspectTelegramPersonalAccountContinuation.mockReset();
@@ -175,6 +202,10 @@ beforeEach(() => {
   inspectPhoneTelegramPersonalAccountConvergence.mockReset();
   inspectPhoneTelegramPersonalAccountConvergence.mockResolvedValue({
     status: "not_dual_account",
+  });
+  findPendingPhoneTelegramPersonalAccountConvergence.mockReset();
+  findPendingPhoneTelegramPersonalAccountConvergence.mockResolvedValue({
+    status: "not_found",
   });
   commitPhoneTelegramPersonalAccountConvergence.mockClear();
   markPhoneTelegramPersonalAccountAliasComplete.mockClear();
@@ -255,7 +286,7 @@ describe("syncUserFromSteward Telegram account convergence", () => {
       convergenceEvents.push("database");
       return {
         status: "committed",
-        receipt: { token: "phone-telegram:phone-user-1:telegram-user-1" },
+        receipt: convergenceReceipt,
         user: convergedTelegramUser,
         organization: telegramOrganization,
       };
@@ -263,7 +294,7 @@ describe("syncUserFromSteward Telegram account convergence", () => {
     markPhoneTelegramPersonalAccountAliasComplete.mockImplementation(async () => {
       convergenceEvents.push("receipt");
       return {
-        token: "phone-telegram:phone-user-1:telegram-user-1",
+        ...convergenceReceipt,
         status: "complete",
       };
     });
@@ -301,13 +332,7 @@ describe("syncUserFromSteward Telegram account convergence", () => {
   test("resumes a database-committed convergence through import and alias without re-merging", async () => {
     inspectPhoneTelegramPersonalAccountConvergence.mockResolvedValue({
       status: "resume_alias",
-      receipt: {
-        token: "phone-telegram:phone-user-1:telegram-user-1",
-        source_agent_id: "personal:source",
-        target_agent_id: "personal:target",
-        target_user_id: "telegram-user-1",
-        target_organization_id: "telegram-org-1",
-      },
+      receipt: convergenceReceipt,
       user: convergedTelegramUser,
       organization: telegramOrganization,
     });
@@ -341,6 +366,153 @@ describe("syncUserFromSteward Telegram account convergence", () => {
     expect(promoteTelegramPersonalAccountToSteward).not.toHaveBeenCalled();
     expect(createUser).not.toHaveBeenCalled();
     expect(createOrganization).not.toHaveBeenCalled();
+  });
+
+  test("repairs a committed history alias on ordinary Steward login without the continuation or phone claim", async () => {
+    inspectPhoneTelegramPersonalAccountConvergence.mockResolvedValue({
+      status: "eligible",
+      plan: {
+        sourceUser: phoneUser,
+        sourceOrganization: phoneOrganization,
+        targetUser: telegramUser,
+        targetOrganization: telegramOrganization,
+      },
+    });
+    commitPhoneTelegramPersonalAccountConvergence.mockImplementation(async () => {
+      convergenceEvents.push("database");
+      return {
+        status: "committed",
+        receipt: convergenceReceipt,
+        user: convergedTelegramUser,
+        organization: telegramOrganization,
+      };
+    });
+    markPhoneTelegramPersonalAccountAliasComplete.mockImplementation(async () => {
+      convergenceEvents.push("receipt");
+      return { ...convergenceReceipt, status: "complete" };
+    });
+    const importOutage = new Error("target history import unavailable");
+    commitPersonalProvisionalHistoryConvergence.mockImplementationOnce(async () => {
+      convergenceEvents.push("history");
+      throw importOutage;
+    });
+
+    await expect(
+      syncUserFromSteward({
+        stewardUserId: "steward-user-1",
+        name: "Nubs",
+        verifiedPhone: "+14155552671",
+        telegramContinuation: "opaque-telegram-claim-token",
+        sharedRuntimeConversationNamespace: {} as never,
+      }),
+    ).rejects.toBe(importOutage);
+    expect(markPhoneTelegramPersonalAccountAliasComplete).not.toHaveBeenCalled();
+
+    findPendingPhoneTelegramPersonalAccountConvergence.mockResolvedValue({
+      status: "resume_alias",
+      receipt: convergenceReceipt,
+      user: convergedTelegramUser,
+      organization: telegramOrganization,
+    });
+
+    const recovered = await syncUserFromSteward({
+      stewardUserId: "steward-user-1",
+      name: "Nubs",
+      sharedRuntimeConversationNamespace: {} as never,
+    });
+
+    expect(recovered).toMatchObject({
+      id: telegramUser.id,
+      organization_id: telegramOrganization.id,
+      telegram_id: telegramUser.telegram_id,
+      phone_number: phoneUser.phone_number,
+    });
+    expect(findPendingPhoneTelegramPersonalAccountConvergence).toHaveBeenCalledWith({
+      stewardUserId: telegramUser.steward_user_id,
+    });
+    expect(inspectTelegramPersonalAccountContinuation).toHaveBeenCalledTimes(1);
+    expect(commitPhoneTelegramPersonalAccountConvergence).toHaveBeenCalledTimes(1);
+    expect(promoteTelegramPersonalAccountToSteward).not.toHaveBeenCalled();
+    expect(markPhoneTelegramPersonalAccountAliasComplete).toHaveBeenCalledTimes(1);
+    expect(convergenceEvents).toEqual([
+      "seal",
+      "database",
+      "history",
+      "seal",
+      "history",
+      "receipt",
+    ]);
+  });
+
+  test("keeps a pending receipt blocked when the history namespace is unavailable", async () => {
+    findPendingPhoneTelegramPersonalAccountConvergence.mockResolvedValue({
+      status: "resume_alias",
+      receipt: convergenceReceipt,
+      user: convergedTelegramUser,
+      organization: telegramOrganization,
+    });
+
+    await expect(
+      syncUserFromSteward({
+        stewardUserId: "steward-user-1",
+      }),
+    ).rejects.toMatchObject<Partial<InstanceType<typeof StewardPhoneAccountConflictError>>>({
+      reason: "history_coordinator_unavailable",
+    });
+    expect(markPhoneTelegramPersonalAccountAliasComplete).not.toHaveBeenCalled();
+    expect(promoteTelegramPersonalAccountToSteward).not.toHaveBeenCalled();
+  });
+
+  test("repairs a pending alias before validating a retained expired continuation", async () => {
+    findPendingPhoneTelegramPersonalAccountConvergence.mockResolvedValue({
+      status: "resume_alias",
+      receipt: convergenceReceipt,
+      user: convergedTelegramUser,
+      organization: telegramOrganization,
+    });
+    inspectTelegramPersonalAccountContinuation.mockRejectedValue(
+      new ElizaError("expired continuation", {
+        code: "ONBOARDING_TRUSTED_CONTINUATION_INVALID",
+      }),
+    );
+
+    const recovered = await syncUserFromSteward({
+      stewardUserId: "steward-user-1",
+      name: "Nubs",
+      telegramContinuation: "expired-telegram-claim-token",
+      sharedRuntimeConversationNamespace: {} as never,
+    });
+
+    expect(recovered).toMatchObject({
+      id: telegramUser.id,
+      organization_id: telegramOrganization.id,
+      phone_number: phoneUser.phone_number,
+    });
+    expect(inspectTelegramPersonalAccountContinuation).not.toHaveBeenCalled();
+    expect(promoteTelegramPersonalAccountToSteward).not.toHaveBeenCalled();
+    expect(markPhoneTelegramPersonalAccountAliasComplete).toHaveBeenCalledTimes(1);
+  });
+
+  test("fails closed when an ordinary retry asserts a different verified phone", async () => {
+    findPendingPhoneTelegramPersonalAccountConvergence.mockResolvedValue({
+      status: "identity_projection_conflict",
+    });
+
+    await expect(
+      syncUserFromSteward({
+        stewardUserId: "steward-user-1",
+        verifiedPhone: "+14155559999",
+        sharedRuntimeConversationNamespace: {} as never,
+      }),
+    ).rejects.toMatchObject<Partial<InstanceType<typeof StewardTelegramAccountClaimError>>>({
+      reason: "identity_projection_conflict",
+    });
+    expect(findPendingPhoneTelegramPersonalAccountConvergence).toHaveBeenCalledWith({
+      stewardUserId: "steward-user-1",
+      phoneNumber: "+14155559999",
+    });
+    expect(preparePersonalProvisionalHistoryConvergence).not.toHaveBeenCalled();
+    expect(markPhoneTelegramPersonalAccountAliasComplete).not.toHaveBeenCalled();
   });
 
   test("fails closed on expired authority before account lookup or creation", async () => {

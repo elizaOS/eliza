@@ -46,6 +46,9 @@ function linkedStewardUser(stewardUserId: string): TestUser | undefined {
 }
 
 const promotePhonePersonalAccountToSteward = mock(async () => ({ status: "not_found" as const }));
+const findPendingPhoneTelegramPersonalAccountConvergence = mock(async () => ({
+  status: "not_found" as const,
+}));
 const linkVerifiedPhone = mock(async (userId: string, phoneNumber: string) => {
   record("linkVerifiedPhone", userId, phoneNumber);
   if (phoneLinkConflict) {
@@ -64,6 +67,7 @@ const linkVerifiedPhone = mock(async (userId: string, phoneNumber: string) => {
 mock.module("../db/repositories/users", () => ({
   usersRepository: {
     delete: async () => undefined,
+    findPendingPhoneTelegramPersonalAccountConvergence,
     findBySolanaWalletAddressWithOrganization: async () => undefined,
     linkVerifiedPhone,
     promotePhonePersonalAccountToSteward,
@@ -163,6 +167,8 @@ beforeEach(() => {
   emailLookupDelay = 0;
   createConflict = false;
   phoneLinkConflict = false;
+  findPendingPhoneTelegramPersonalAccountConvergence.mockReset();
+  findPendingPhoneTelegramPersonalAccountConvergence.mockResolvedValue({ status: "not_found" });
   promotePhonePersonalAccountToSteward.mockClear();
   linkVerifiedPhone.mockClear();
 });

@@ -79,6 +79,14 @@ mock.module("./services/users", () => ({
     upsertStewardIdentity: async () => undefined,
   },
 }));
+mock.module("../db/repositories/users", () => ({
+  usersRepository: {
+    delete: async () => undefined,
+    findPendingPhoneTelegramPersonalAccountConvergence: async () => ({
+      status: "not_found" as const,
+    }),
+  },
+}));
 mock.module("./services/invites", () => ({
   invitesService: { findPendingInviteByEmail: async () => undefined },
 }));

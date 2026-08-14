@@ -33,6 +33,7 @@ import { organizationsService } from "./services/organizations";
 import {
   commitPersonalProvisionalHistoryConvergence,
   type PersonalProvisionalHistoryConvergence,
+  type PreparedPersonalProvisionalHistoryConvergence,
   preparePersonalProvisionalHistoryConvergence,
   releasePersonalProvisionalHistoryConvergence,
 } from "./services/shared-runtime/conversation-coordinator";
@@ -284,6 +285,73 @@ function historyConvergencePlan(input: {
   };
 }
 
+type CommittedPhoneTelegramConvergence = Extract<
+  CommitPhoneTelegramConvergenceResult,
+  { status: "committed" | "already_committed" }
+>;
+
+async function completePhoneTelegramHistoryConvergence(input: {
+  convergence: Pick<CommittedPhoneTelegramConvergence, "receipt" | "user" | "organization">;
+  namespace?: RuntimeDurableObjectNamespace;
+  prepared?: {
+    plan: PersonalProvisionalHistoryConvergence;
+    snapshot: PreparedPersonalProvisionalHistoryConvergence;
+  };
+}): Promise<UserWithOrganization> {
+  if (!input.namespace) {
+    throw new StewardPhoneAccountConflictError("history_coordinator_unavailable");
+  }
+
+  const { receipt, user, organization } = input.convergence;
+  const expectedSourceAgentId = personalSharedAgentId({
+    userId: receipt.source_user_id,
+    organizationId: receipt.source_organization_id,
+  });
+  const expectedTargetAgentId = personalSharedAgentId({
+    userId: receipt.target_user_id,
+    organizationId: receipt.target_organization_id,
+  });
+  if (
+    receipt.source_agent_id !== expectedSourceAgentId ||
+    receipt.target_agent_id !== expectedTargetAgentId ||
+    receipt.target_user_id !== user.id ||
+    receipt.target_organization_id !== organization.id ||
+    user.organization_id !== organization.id ||
+    user.steward_user_id !== receipt.steward_user_id ||
+    user.phone_number !== receipt.phone_number ||
+    user.phone_verified !== true ||
+    user.telegram_id !== receipt.telegram_id
+  ) {
+    throw new StewardTelegramAccountClaimError("identity_projection_conflict");
+  }
+
+  const plan =
+    input.prepared?.plan ??
+    historyConvergencePlan({
+      token: receipt.token,
+      sourceAgentId: receipt.source_agent_id,
+      targetAgentId: receipt.target_agent_id,
+      targetUserId: receipt.target_user_id,
+      targetOrganizationId: receipt.target_organization_id,
+    });
+  const snapshot =
+    input.prepared?.snapshot ??
+    (await preparePersonalProvisionalHistoryConvergence(plan, {
+      namespace: input.namespace,
+    }));
+  await commitPersonalProvisionalHistoryConvergence(plan, snapshot, {
+    namespace: input.namespace,
+  });
+  const completed = await usersRepository.markPhoneTelegramPersonalAccountAliasComplete(
+    receipt.token,
+  );
+  if (!completed) {
+    throw new Error("Personal account convergence receipt disappeared during recovery");
+  }
+
+  return { ...user, organization };
+}
+
 type ConvergenceConflictStatus = Exclude<
   CommitPhoneTelegramConvergenceResult["status"],
   "committed" | "already_committed"
@@ -380,12 +448,30 @@ export async function syncUserFromSteward(params: StewardSyncParams): Promise<St
     name = `user-${stewardUserId.substring(0, 8)}`;
   }
 
+  let claimedTelegramUser: UserWithOrganization | undefined;
+
+  // Once the database merge commits, the authenticated Steward subject is the
+  // durable retry authority. A repeated phone claim narrows that authority but
+  // is not required, and a stale one-time continuation cannot strand repair.
+  const pending = await usersRepository.findPendingPhoneTelegramPersonalAccountConvergence({
+    stewardUserId,
+    ...(verifiedPhone ? { phoneNumber: verifiedPhone } : {}),
+  });
+  if (pending.status === "identity_projection_conflict") {
+    throw new StewardTelegramAccountClaimError(pending.status);
+  }
+  if (pending.status === "resume_alias") {
+    claimedTelegramUser = await completePhoneTelegramHistoryConvergence({
+      convergence: pending,
+      namespace: params.sharedRuntimeConversationNamespace,
+    });
+  }
+
   // A Telegram DM creates the canonical rowless account before a browser
   // session exists. The opaque, account-bound continuation is validated first,
   // then the provisional `telegram:<id>` subject is atomically promoted before
   // generic Steward sync has any opportunity to create a duplicate user/org.
-  let claimedTelegramUser: UserWithOrganization | undefined;
-  if (params.telegramContinuation) {
+  if (params.telegramContinuation && !claimedTelegramUser) {
     let claim: Awaited<ReturnType<typeof inspectTelegramPersonalAccountContinuation>>;
     try {
       claim = await inspectTelegramPersonalAccountContinuation(params.telegramContinuation);
@@ -454,18 +540,11 @@ export async function syncUserFromSteward(params: StewardSyncParams): Promise<St
             throwConvergenceConflict(convergence.status);
           }
           databaseCommitted = true;
-          await commitPersonalProvisionalHistoryConvergence(historyPlan, preparedHistory, {
+          claimedTelegramUser = await completePhoneTelegramHistoryConvergence({
+            convergence,
             namespace,
+            prepared: { plan: historyPlan, snapshot: preparedHistory },
           });
-          const completed =
-            await usersRepository.markPhoneTelegramPersonalAccountAliasComplete(token);
-          if (!completed) {
-            throw new Error("Personal account convergence receipt disappeared before completion");
-          }
-          claimedTelegramUser = {
-            ...convergence.user,
-            organization: convergence.organization,
-          };
         } catch (error) {
           // error-policy:J6 pre-commit rejection releases only this attempt's
           // history holder; post-commit failures retain both leases for recovery.
@@ -484,33 +563,10 @@ export async function syncUserFromSteward(params: StewardSyncParams): Promise<St
           throw error;
         }
       } else if (inspection.status === "resume_alias") {
-        const namespace = params.sharedRuntimeConversationNamespace;
-        if (!namespace) {
-          throw new StewardPhoneAccountConflictError("history_coordinator_unavailable");
-        }
-        const historyPlan = historyConvergencePlan({
-          token: inspection.receipt.token,
-          sourceAgentId: inspection.receipt.source_agent_id,
-          targetAgentId: inspection.receipt.target_agent_id,
-          targetUserId: inspection.receipt.target_user_id,
-          targetOrganizationId: inspection.receipt.target_organization_id,
+        claimedTelegramUser = await completePhoneTelegramHistoryConvergence({
+          convergence: inspection,
+          namespace: params.sharedRuntimeConversationNamespace,
         });
-        const preparedHistory = await preparePersonalProvisionalHistoryConvergence(historyPlan, {
-          namespace,
-        });
-        await commitPersonalProvisionalHistoryConvergence(historyPlan, preparedHistory, {
-          namespace,
-        });
-        const completed = await usersRepository.markPhoneTelegramPersonalAccountAliasComplete(
-          inspection.receipt.token,
-        );
-        if (!completed) {
-          throw new Error("Personal account convergence receipt disappeared during recovery");
-        }
-        claimedTelegramUser = {
-          ...inspection.user,
-          organization: inspection.organization,
-        };
       } else if (inspection.status !== "not_dual_account") {
         throwConvergenceConflict(inspection.status);
       }

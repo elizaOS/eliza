@@ -205,11 +205,51 @@ describe("UsersRepository phone + Telegram provisional convergence (real PGlite)
     expect(conflictingRetry.status).toBe("continuation_account_mismatch");
     const resumed = await usersRepository.inspectPhoneTelegramPersonalAccountConvergence(proof);
     expect(resumed.status).toBe("resume_alias");
+    const ordinaryStewardLoginRecovery =
+      await usersRepository.findPendingPhoneTelegramPersonalAccountConvergence({
+        stewardUserId: proof.stewardUserId,
+      });
+    expect(ordinaryStewardLoginRecovery).toMatchObject({
+      status: "resume_alias",
+      receipt: { token: params.token, status: "pending_alias" },
+      user: { id: pair.telegram.user.id, organization_id: pair.telegram.organization.id },
+      organization: { id: pair.telegram.organization.id },
+    });
+    expect(
+      await usersRepository.findPendingPhoneTelegramPersonalAccountConvergence({
+        stewardUserId: "different-verified-subject",
+      }),
+    ).toEqual({ status: "not_found" });
+    expect(
+      await usersRepository.findPendingPhoneTelegramPersonalAccountConvergence({
+        phoneNumber: "+14155559999",
+        stewardUserId: proof.stewardUserId,
+      }),
+    ).toEqual({ status: "identity_projection_conflict" });
+    expect(
+      await usersRepository.hasPendingPhoneTelegramPersonalAccountConvergenceTarget({
+        targetUserId: pair.telegram.user.id,
+        targetOrganizationId: pair.telegram.organization.id,
+        targetAgentId: params.targetAgentId,
+      }),
+    ).toBe(true);
 
     const completed = await usersRepository.markPhoneTelegramPersonalAccountAliasComplete(
       params.token,
     );
     expect(completed?.status).toBe("complete");
+    expect(
+      await usersRepository.findPendingPhoneTelegramPersonalAccountConvergence({
+        stewardUserId: proof.stewardUserId,
+      }),
+    ).toEqual({ status: "not_found" });
+    expect(
+      await usersRepository.hasPendingPhoneTelegramPersonalAccountConvergenceTarget({
+        targetUserId: pair.telegram.user.id,
+        targetOrganizationId: pair.telegram.organization.id,
+        targetAgentId: params.targetAgentId,
+      }),
+    ).toBe(false);
     const [projection] = await dbWrite
       .select()
       .from(userIdentities)
@@ -247,6 +287,32 @@ describe("UsersRepository phone + Telegram provisional convergence (real PGlite)
     expect(await dbWrite.select().from(users)).toHaveLength(1);
     expect(await dbWrite.select().from(organizations)).toHaveLength(1);
     expect(await dbWrite.select().from(personalAccountConvergences)).toHaveLength(1);
+  });
+
+  test("refuses pending recovery when the target identity projection no longer matches", async () => {
+    const pair = await createPair();
+    const proof = proofFor(pair);
+    const committed = await usersRepository.commitPhoneTelegramPersonalAccountConvergence({
+      ...proof,
+      sourceUserId: pair.phone.user.id,
+      sourceOrganizationId: pair.phone.organization.id,
+      sourceAgentId: "personal:source-projection-check",
+      targetUserId: pair.telegram.user.id,
+      targetOrganizationId: pair.telegram.organization.id,
+      targetAgentId: "personal:target-projection-check",
+      token: `phone-telegram:${pair.phone.user.id}:${pair.telegram.user.id}`,
+    });
+    expect(committed.status).toBe("committed");
+    await dbWrite
+      .update(userIdentities)
+      .set({ steward_user_id: "tampered-steward-subject" })
+      .where(eq(userIdentities.user_id, pair.telegram.user.id));
+
+    expect(
+      await usersRepository.findPendingPhoneTelegramPersonalAccountConvergence({
+        stewardUserId: proof.stewardUserId,
+      }),
+    ).toEqual({ status: "identity_projection_conflict" });
   });
 
   test("rejects funded, agent-bearing, and mature provisional-shaped accounts", async () => {
