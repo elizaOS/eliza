@@ -164,6 +164,43 @@ describe("pre-delete recovery repository", () => {
     ).resolves.toBe(false);
   });
 
+  test("accepts only a capture created at or after the deletion intent", async () => {
+    await dbWrite.execute(`
+      INSERT INTO agent_sandbox_backups (
+        id, sandbox_record_id, snapshot_type, state_data, backup_kind, created_at
+      ) VALUES (
+        '${BACKUP_ID}', '${AGENT_ID}', 'pre-delete',
+        '{"memories":[],"config":{},"workspaceFiles":{}}'::jsonb, 'full',
+        '2026-08-13T11:59:59.999Z'::timestamptz
+      )
+    `);
+
+    await expect(
+      dbWrite.transaction((tx) =>
+        repository.validateAttachedPreDeleteBackupForDeletion(tx, {
+          backupId: BACKUP_ID,
+          sandboxRecordId: AGENT_ID,
+          deletionStartedAt: NOW,
+        }),
+      ),
+    ).resolves.toBe(false);
+
+    await dbWrite.execute(`
+      UPDATE agent_sandbox_backups
+      SET created_at = '2026-08-13T12:00:00.001Z'::timestamptz
+      WHERE id = '${BACKUP_ID}'
+    `);
+    await expect(
+      dbWrite.transaction((tx) =>
+        repository.validateAttachedPreDeleteBackupForDeletion(tx, {
+          backupId: BACKUP_ID,
+          sandboxRecordId: AGENT_ID,
+          deletionStartedAt: NOW,
+        }),
+      ),
+    ).resolves.toBe(true);
+  });
+
   test("recovery lookup is tenant-scoped and excludes expired rows", async () => {
     await insertRecovery({
       id: BACKUP_ID,
@@ -307,6 +344,52 @@ describe("0199 retained pre-delete backup migration", () => {
         VALUES
           ('${BACKUP_ID}', '${AGENT_ID}', 'pre-delete', '{}'::jsonb),
           ('00000000-0000-4000-8000-0000000000d9', '${AGENT_ID}', 'manual', '{}'::jsonb);
+
+        -- Reproduce the provisioning worker's ensure-before-migrate order.
+        ALTER TABLE agent_sandboxes
+          ADD COLUMN pre_delete_capture_waiver_attempt_id uuid,
+          ADD COLUMN pre_delete_capture_waiver_environment_revision integer,
+          ADD COLUMN pre_delete_capture_waiver_sandbox_id text,
+          ADD COLUMN pre_delete_capture_waiver_bridge_url text,
+          ADD CONSTRAINT agent_sandboxes_pre_delete_capture_waiver_shape_check
+          CHECK ((
+            pre_delete_capture_waiver_attempt_id IS NULL
+            AND pre_delete_capture_waiver_environment_revision IS NULL
+            AND pre_delete_capture_waiver_sandbox_id IS NULL
+            AND pre_delete_capture_waiver_bridge_url IS NULL
+          ) OR (
+            pre_delete_capture_waiver_attempt_id IS NOT NULL
+            AND pre_delete_capture_waiver_attempt_id = deletion_attempt_id
+            AND pre_delete_capture_waiver_environment_revision = environment_revision
+            AND pre_delete_capture_waiver_sandbox_id IS NOT DISTINCT FROM sandbox_id
+            AND pre_delete_capture_waiver_bridge_url IS NOT NULL
+          ));
+        ALTER TABLE agent_sandbox_backups
+          ALTER COLUMN sandbox_record_id DROP NOT NULL,
+          ADD COLUMN recovery_organization_id uuid,
+          ADD COLUMN recovery_agent_id uuid,
+          ADD COLUMN recovery_deletion_attempt_id uuid,
+          ADD COLUMN recovery_expires_at timestamptz,
+          ADD CONSTRAINT agent_sandbox_backups_recovery_organization_id_fkey
+          FOREIGN KEY (recovery_organization_id)
+          REFERENCES organizations(id) ON DELETE CASCADE,
+          ADD CONSTRAINT agent_sandbox_backups_recovery_shape_check
+          CHECK ((
+            sandbox_record_id IS NOT NULL
+            AND recovery_organization_id IS NULL
+            AND recovery_agent_id IS NULL
+            AND recovery_deletion_attempt_id IS NULL
+            AND recovery_expires_at IS NULL
+          ) OR (
+            sandbox_record_id IS NULL
+            AND snapshot_type = 'pre-delete'
+            AND backup_kind = 'full'
+            AND parent_backup_id IS NULL
+            AND recovery_organization_id IS NOT NULL
+            AND recovery_agent_id IS NOT NULL
+            AND recovery_deletion_attempt_id IS NOT NULL
+            AND recovery_expires_at IS NOT NULL
+          ));
       `);
       await client.exec(MIGRATION_SQL);
       // The application schema guard may have created the CHECK first, and

@@ -337,6 +337,12 @@ export async function prepareAgentBackupInsertData(
  */
 export type DeletionAllocationRelease = "released" | "not-owned" | "counter-unchanged";
 
+export interface DeletionAllocationSpendResult {
+  outcome: DeletionAllocationRelease;
+  /** Post-trigger row generation when this call consumed ownership. */
+  lifecycleRevision: number | null;
+}
+
 export class AgentSandboxesRepository {
   // Reads
 
@@ -2133,12 +2139,14 @@ export class AgentSandboxesRepository {
             await deleteObject(candidate.stateDataKey);
             deletedObjects += 1;
           } catch (error) {
+            // error-policy:J1 the bounded cleanup boundary retains this row for
+            // retry, records the failure, and continues with later candidates.
             failedRows += 1;
             logger.error(
               "Failed to delete expired recovery backup object; retaining row for retry",
               {
                 backupId: logger.redact.id(candidate.id),
-                error: error instanceof Error ? error.message : String(error),
+                errorType: error instanceof Error ? error.name : typeof error,
               },
             );
             continue;
@@ -2159,10 +2167,12 @@ export class AgentSandboxesRepository {
           .returning({ id: agentSandboxBackups.id });
         deletedRows += removed.length;
       } catch (error) {
+        // error-policy:J1 the bounded cleanup boundary reports this candidate
+        // as failed and continues without fabricating a successful deletion.
         failedRows += 1;
         logger.error("Failed to delete expired recovery backup row; continuing batch", {
           backupId: logger.redact.id(candidate.id),
-          error: error instanceof Error ? error.message : String(error),
+          errorType: error instanceof Error ? error.name : typeof error,
         });
       }
     }
@@ -2399,16 +2409,16 @@ export class AgentSandboxesRepository {
    * so an unexpected underflow leaves the counter untouched and visible instead
    * of being silently absorbed.
    *
-   * @returns which of the three {@link DeletionAllocationRelease} outcomes
-   * occurred. `counter-unchanged` also warns: ownership was ours to spend, but
-   * the node counter did not move — either it was already 0 or the
-   * `docker_nodes` row is gone, and in both cases there is no slot left to give
-   * back, so committing the flip is correct.
+   * @returns the release outcome and, when ownership was consumed, the
+   * post-trigger lifecycle revision. `counter-unchanged` also warns: ownership
+   * was ours to spend, but the node counter did not move — either it was
+   * already 0 or the `docker_nodes` row is gone, and in both cases there is no
+   * slot left to give back, so committing the flip is correct.
    */
   private async spendDeletionAllocation(
     nodeId: string,
     claimWhere: SQL,
-  ): Promise<DeletionAllocationRelease> {
+  ): Promise<DeletionAllocationSpendResult> {
     // Memoized per database URL, so this is a settled-promise await after the
     // first call in an isolate rather than DDL on every teardown. It stays on
     // this path because the deletion writers can reach the column before the
@@ -2420,8 +2430,11 @@ export class AgentSandboxesRepository {
         .update(agentSandboxes)
         .set({ deletion_allocation_counted: false, updated_at: new Date() })
         .where(and(claimWhere, eq(agentSandboxes.deletion_allocation_counted, true)))
-        .returning({ id: agentSandboxes.id });
-      if (!claimed) return "not-owned";
+        .returning({
+          id: agentSandboxes.id,
+          lifecycleRevision: agentSandboxes.lifecycle_revision,
+        });
+      if (!claimed) return { outcome: "not-owned", lifecycleRevision: null };
 
       const decremented = await tx
         .update(dockerNodes)
@@ -2441,9 +2454,12 @@ export class AgentSandboxesRepository {
         logger.warn(
           `[agent-sandboxes] Deletion allocation ownership consumed for node ${nodeId} but allocated_count was not decremented — counter already at 0 or node row missing`,
         );
-        return "counter-unchanged";
+        return {
+          outcome: "counter-unchanged",
+          lifecycleRevision: claimed.lifecycleRevision,
+        };
       }
-      return "released";
+      return { outcome: "released", lifecycleRevision: claimed.lifecycleRevision };
     });
   }
 
@@ -2462,6 +2478,29 @@ export class AgentSandboxesRepository {
     deletionAttemptId: string,
     nodeId: string,
   ): Promise<DeletionAllocationRelease> {
+    const result = await this.spendDeletionAllocation(
+      nodeId,
+      and(
+        eq(agentSandboxes.id, agentId),
+        eq(agentSandboxes.organization_id, orgId),
+        eq(agentSandboxes.deletion_attempt_id, deletionAttemptId),
+        eq(agentSandboxes.node_id, nodeId),
+      ) as SQL,
+    );
+    return result.outcome;
+  }
+
+  /**
+   * Release allocation ownership for the exact prepared lifecycle generation
+   * and return the post-trigger revision needed by the row-delete CAS.
+   */
+  async tryReleaseDeletionAllocationForCommit(
+    agentId: string,
+    orgId: string,
+    deletionAttemptId: string,
+    nodeId: string,
+    expectedLifecycleRevision: number,
+  ): Promise<DeletionAllocationSpendResult> {
     return this.spendDeletionAllocation(
       nodeId,
       and(
@@ -2469,6 +2508,7 @@ export class AgentSandboxesRepository {
         eq(agentSandboxes.organization_id, orgId),
         eq(agentSandboxes.deletion_attempt_id, deletionAttemptId),
         eq(agentSandboxes.node_id, nodeId),
+        eq(agentSandboxes.lifecycle_revision, expectedLifecycleRevision),
       ) as SQL,
     );
   }
@@ -2500,10 +2540,11 @@ export class AgentSandboxesRepository {
     agentId: string,
     nodeId: string,
   ): Promise<DeletionAllocationRelease> {
-    return this.spendDeletionAllocation(
+    const result = await this.spendDeletionAllocation(
       nodeId,
       and(eq(agentSandboxes.id, agentId), eq(agentSandboxes.node_id, nodeId)) as SQL,
     );
+    return result.outcome;
   }
 }
 
