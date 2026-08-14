@@ -35,10 +35,6 @@ const SECTION_LAYOUT_ALLOWLIST = new Map<string, string>([
   ],
   ["VoiceSectionMount.tsx", "lazy mount wrapper, not a section body"],
   [
-    "../cockpit/MyRuntimesContainer.tsx",
-    "cockpit runtime switcher mount; grouping lives in MyRuntimesSection",
-  ],
-  [
     "../../cloud/connectors/index.ts",
     "cloud connectors adapter; grouping lives in CloudConnectorsSettingsBody",
   ],

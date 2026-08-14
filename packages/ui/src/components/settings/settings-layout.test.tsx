@@ -51,6 +51,17 @@ describe("SettingsRow", () => {
     );
     expect(screen.getByTestId("wide")).toBeTruthy();
   });
+
+  it("marks a static row current when active", () => {
+    render(
+      <SettingsRow label="This device" active control={<span>Active</span>} />,
+    );
+    const row = screen
+      .getByText("This device")
+      .closest("[aria-current='true']");
+    expect(row).toBeTruthy();
+    expect(row?.className).toContain("bg-accent/10");
+  });
 });
 
 describe("SettingsGroup", () => {
