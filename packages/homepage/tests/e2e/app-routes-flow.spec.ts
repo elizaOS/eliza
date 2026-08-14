@@ -503,7 +503,7 @@ test("supported-platform messaging keeps a manual copy recovery visible", async 
   const copyButton = page.getByRole("button", { name: "Copy phone number" });
   await expect(copyButton).toBeVisible();
   await copyButton.click();
-  await expect(page.getByRole("status")).toHaveText("Phone number copied");
+  await expect(page.getByRole("status")).toHaveText("Copied!");
   await expect
     .poll(() => page.evaluate(() => navigator.clipboard.readText()))
     .toBe("+18087881821");
@@ -610,9 +610,9 @@ test("the latest manual-copy attempt owns the visible result", async ({
   await expect.poll(attempts).toBe(2);
 
   await settle(1, "resolve");
-  await expect(page.getByRole("status")).toHaveText("Phone number copied");
+  await expect(page.getByRole("status")).toHaveText("Copied!");
   await settle(0, "reject");
-  await expect(page.getByRole("status")).toHaveText("Phone number copied");
+  await expect(page.getByRole("status")).toHaveText("Copied!");
 
   await page.reload();
   await waitForLandingIntro(page);
@@ -622,11 +622,7 @@ test("the latest manual-copy attempt owns the visible result", async ({
   await expect.poll(attempts).toBe(2);
 
   await settle(1, "reject");
-  await expect(page.getByRole("alert")).toHaveText(
-    "Couldn't copy the phone number",
-  );
+  await expect(page.getByRole("alert")).toHaveText("Couldn't copy");
   await settle(0, "resolve");
-  await expect(page.getByRole("alert")).toHaveText(
-    "Couldn't copy the phone number",
-  );
+  await expect(page.getByRole("alert")).toHaveText("Couldn't copy");
 });
