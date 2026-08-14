@@ -19,7 +19,7 @@ import {
   UnavailableCapabilityRouter,
   type UUID,
 } from "@elizaos/core";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 // These tests exercise the SHELL action through `pwd`, `cd`, `git -C`, and
 // inline pipelines. The action itself does run on Windows (it routes to
@@ -44,6 +44,7 @@ import {
   SANDBOX_SERVICE,
   SESSION_CWD_SERVICE,
 } from "../types.js";
+
 import {
   type CommandPlatform,
   localResourceUserFacingText,
@@ -54,6 +55,16 @@ import {
   resolveSourceInspectionCommand,
   shellAction,
 } from "./bash.js";
+
+const originalEchoTranscript = process.env.ELIZA_SHELL_ECHO_TRANSCRIPT;
+
+afterEach(() => {
+  if (originalEchoTranscript === undefined) {
+    delete process.env.ELIZA_SHELL_ECHO_TRANSCRIPT;
+  } else {
+    process.env.ELIZA_SHELL_ECHO_TRANSCRIPT = originalEchoTranscript;
+  }
+});
 
 const execFileAsync = promisify(execFile);
 
@@ -110,6 +121,7 @@ interface RuntimeOptions {
   withShellHistoryService?: boolean;
   capabilityRouter?: ElizaCapabilityRouter;
   backgroundBufferChars?: number;
+  configuredSecret?: string;
 }
 
 function requireActionResult(result: ActionResult | undefined): ActionResult {
@@ -142,6 +154,11 @@ async function makeRuntime(opts: RuntimeOptions = {}): Promise<{
     agentId: "11111111-1111-1111-1111-111111111111" as UUID,
     getSetting: vi.fn((key: string) => settings[key]),
     getService: vi.fn(<T>(type: string) => services.get(type) as T | null),
+    redactSecrets: vi.fn((text: string) =>
+      opts.configuredSecret
+        ? text.replaceAll(opts.configuredSecret, "[REDACTED:TEST_SECRET]")
+        : text,
+    ),
   } as IAgentRuntime;
 
   const sandbox = await SandboxService.start(runtime);
@@ -506,6 +523,7 @@ describeIfPosix("shellAction", () => {
   });
 
   it("caps only the visible callback for long foreground output", async () => {
+    process.env.ELIZA_SHELL_ECHO_TRANSCRIPT = "1";
     const lines = Array.from(
       { length: 300 },
       (_, index) =>
@@ -659,6 +677,7 @@ describeIfPosix("shellAction", () => {
   });
 
   it("fences every user-facing background/history relay (#16563)", async () => {
+    process.env.ELIZA_SHELL_ECHO_TRANSCRIPT = "1";
     const { runtime } = await makeRuntime();
     const message = makeMessage();
     const posts: Array<{ text: string; source?: string }> = [];
@@ -1831,6 +1850,79 @@ describeIfPosix("shellAction", () => {
     );
     const data = result.data as Record<string, unknown> | undefined;
     expect(data?.action).toBe("view_history");
+  });
+
+  it("redacts a configured bare secret from foreground text, callback, data, and user-facing output", async () => {
+    process.env.ELIZA_SHELL_ECHO_TRANSCRIPT = "1";
+    const secret = "orchid42";
+    const router = makeShellRouter(async () => ({
+      output: `${secret}\n`,
+      exitCode: 0,
+      timedOut: false,
+    }));
+    const { runtime } = await makeRuntime({
+      capabilityRouter: router,
+      configuredSecret: secret,
+    });
+    const posts: Array<{ text: string }> = [];
+
+    const result = requireActionResult(
+      await shellAction.handler?.(
+        runtime,
+        makeMessage(),
+        undefined,
+        { command: `rg Authorization --token ${secret}` },
+        async (content) => {
+          posts.push(content as { text: string });
+          return [];
+        },
+      ),
+    );
+
+    const exposed = JSON.stringify({ result, posts });
+    expect(exposed).not.toContain(secret);
+  });
+
+  it("redacts a configured bare secret from every background session projection", async () => {
+    const secret = "violet73";
+    const { runtime } = await makeRuntime({ configuredSecret: secret });
+    const actor = makeMessage();
+    const start = requireActionResult(
+      await shellAction.handler?.(runtime, actor, undefined, {
+        action: "start_background",
+        command: `printf '%s\\n' '${secret}'`,
+      }),
+    );
+    const handle = (start.data as Record<string, unknown>).handle as string;
+    const poll = await pollUntil(
+      runtime,
+      actor,
+      handle,
+      (data) => data.status === "exited",
+    );
+    const partialPoll = requireActionResult(
+      await shellAction.handler?.(runtime, actor, undefined, {
+        action: "poll_background",
+        handle,
+        stdout_offset: 3,
+      }),
+    );
+    const list = requireActionResult(
+      await shellAction.handler?.(runtime, actor, undefined, {
+        action: "list_background",
+      }),
+    );
+
+    const exposed = JSON.stringify({ start, poll, partialPoll, list });
+    expect(exposed).not.toContain(secret);
+    expect(
+      (
+        (partialPoll.data as Record<string, unknown>).stdout as Record<
+          string,
+          unknown
+        >
+      ).startOffset,
+    ).toBe(0);
   });
 });
 
