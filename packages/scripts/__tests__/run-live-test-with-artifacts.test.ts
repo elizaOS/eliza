@@ -15,6 +15,11 @@ import {
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  MAX_TIMER_DELAY_MS,
+  parseArgs,
+  parseTimeoutMs,
+} from "../run-live-test-with-artifacts.mjs";
 
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const RUNNER = path.resolve(
@@ -68,6 +73,137 @@ function processIsAlive(pid: number): boolean {
     return false;
   }
 }
+
+describe("parseTimeoutMs", () => {
+  test("accepts positive integers through the Node timer ceiling", () => {
+    expect(parseTimeoutMs("1")).toBe(1);
+    expect(parseTimeoutMs("800")).toBe(800);
+    expect(parseTimeoutMs(String(MAX_TIMER_DELAY_MS))).toBe(MAX_TIMER_DELAY_MS);
+  });
+
+  test("rejects zero, fractional, signed, scientific, and non-decimal forms", () => {
+    for (const value of [
+      "0",
+      "-5",
+      "+1",
+      "0.4",
+      "1.5",
+      "1e3",
+      "0x10",
+      "20foo",
+      "800ms",
+      "",
+      " ",
+      "NaN",
+      "Infinity",
+      "08",
+    ]) {
+      expect(() => parseTimeoutMs(value)).toThrow(
+        `--timeout-ms must be a positive decimal integer from 1 to ${MAX_TIMER_DELAY_MS}`,
+      );
+    }
+  });
+
+  test("rejects values Node would clamp to one millisecond", () => {
+    for (const value of [
+      String(MAX_TIMER_DELAY_MS + 1),
+      "9007199254740992",
+      "9".repeat(400),
+    ]) {
+      expect(() => parseTimeoutMs(value)).toThrow(
+        `--timeout-ms must be a positive decimal integer from 1 to ${MAX_TIMER_DELAY_MS}`,
+      );
+    }
+  });
+});
+
+describe("parseArgs", () => {
+  test("parses a valid timeout and command", () => {
+    const options = parseArgs([
+      "--label",
+      "ok",
+      "--timeout-ms",
+      "800",
+      "--",
+      "node",
+      "-e",
+      "0",
+    ]);
+    expect(options.timeoutMs).toBe(800);
+    expect(options.command).toEqual(["node", "-e", "0"]);
+  });
+
+  test("defaults to no deadline when --timeout-ms is omitted", () => {
+    expect(parseArgs(["--", "node", "-e", "0"]).timeoutMs).toBe(0);
+  });
+
+  test("rejects an over-ceiling, fractional, scientific, or zero timeout", () => {
+    for (const value of ["2147483648", "0.4", "1e3", "0", "-5", "abc"]) {
+      expect(() =>
+        parseArgs(["--timeout-ms", value, "--", "node", "-e", "0"]),
+      ).toThrow(
+        `--timeout-ms must be a positive decimal integer from 1 to ${MAX_TIMER_DELAY_MS}`,
+      );
+    }
+  });
+});
+
+describe("run-live-test-with-artifacts timeout CLI boundary", () => {
+  const cases = ["2147483648", "0.4", "1e3", "0", "-5", "abc"];
+  for (const value of cases) {
+    test(`rejects --timeout-ms ${value} before creating a run bundle`, () => {
+      const reportRoot = mkdtempSync(path.join(tmpdir(), "live-artifacts-"));
+      try {
+        const result = runWithArtifacts(reportRoot, [
+          "--label",
+          "bad-timeout",
+          "--timeout-ms",
+          value,
+          "--",
+          NODE_BIN,
+          "-e",
+          "process.exit(0)",
+        ]);
+        expect(result.status).toBe(2);
+        expect(result.stderr).toContain(
+          `--timeout-ms must be a positive decimal integer from 1 to ${MAX_TIMER_DELAY_MS}`,
+        );
+        // No run directory is created when argument parsing fails closed.
+        expect(
+          readdirSync(reportRoot, { withFileTypes: true }).filter((entry) =>
+            entry.isDirectory(),
+          ),
+        ).toHaveLength(0);
+      } finally {
+        rmSync(reportRoot, { recursive: true, force: true });
+      }
+    });
+  }
+
+  test("accepts a valid --timeout-ms and completes the run", () => {
+    const reportRoot = mkdtempSync(path.join(tmpdir(), "live-artifacts-"));
+    try {
+      const result = runWithArtifacts(reportRoot, [
+        "--label",
+        "valid-timeout",
+        "--timeout-ms",
+        "800",
+        "--",
+        NODE_BIN,
+        "-e",
+        'process.stdout.write("done");',
+      ]);
+      expect(result.status).toBe(0);
+      const runDirectory = onlyRunDirectory(reportRoot);
+      const report = readReport(runDirectory);
+      expect(report.timeoutMs).toBe(800);
+      expect(report.timedOut).toBe(false);
+      expect(report.exitCode).toBe(0);
+    } finally {
+      rmSync(reportRoot, { recursive: true, force: true });
+    }
+  });
+});
 
 describe("run-live-test-with-artifacts", () => {
   test("preserves a completed child's exit and fully drained output", () => {
