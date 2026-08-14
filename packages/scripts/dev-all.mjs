@@ -15,6 +15,7 @@ import net from "node:net";
 import path from "node:path";
 import process from "node:process";
 import { pathToFileURL } from "node:url";
+import { parseTcpPort } from "./lib/cli-numbers.mjs";
 import { resolveDevAllSkipPlugins } from "./lib/script-metadata.mjs";
 
 /** Default wall-clock budget for each service readiness wait (ms). */
@@ -106,11 +107,26 @@ export function resolveServiceStartupTimeoutMs(env = process.env) {
 }
 
 const ports = {
-  agentApi: envDefault("DEV_ALL_AGENT_API_PORT", "31337"),
-  frontend: envDefault("DEV_ALL_FRONTEND_PORT", "2138"),
-  cloudWeb: envDefault("DEV_ALL_CLOUD_WEB_PORT", "3000"),
-  cloudApi: envDefault("DEV_ALL_CLOUD_API_PORT", "8787"),
-  cloudDb: envDefault("DEV_ALL_CLOUD_DB_PORT", "55432"),
+  agentApi: parseTcpPort(
+    envDefault("DEV_ALL_AGENT_API_PORT", "31337"),
+    "DEV_ALL_AGENT_API_PORT",
+  ),
+  frontend: parseTcpPort(
+    envDefault("DEV_ALL_FRONTEND_PORT", "2138"),
+    "DEV_ALL_FRONTEND_PORT",
+  ),
+  cloudWeb: parseTcpPort(
+    envDefault("DEV_ALL_CLOUD_WEB_PORT", "3000"),
+    "DEV_ALL_CLOUD_WEB_PORT",
+  ),
+  cloudApi: parseTcpPort(
+    envDefault("DEV_ALL_CLOUD_API_PORT", "8787"),
+    "DEV_ALL_CLOUD_API_PORT",
+  ),
+  cloudDb: parseTcpPort(
+    envDefault("DEV_ALL_CLOUD_DB_PORT", "55432"),
+    "DEV_ALL_CLOUD_DB_PORT",
+  ),
 };
 
 const urls = {

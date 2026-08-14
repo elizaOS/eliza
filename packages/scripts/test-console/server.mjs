@@ -27,6 +27,7 @@ import http from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { parseTcpPort } from "../lib/cli-numbers.mjs";
 import { connectionById, connectionStatus } from "./lib/connections.mjs";
 import {
   completeGoogleFlow,
@@ -54,7 +55,10 @@ import {
 import { verifyConnection } from "./lib/verify.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const PORT = Number(process.env.ELIZA_TEST_CONSOLE_PORT || 31338);
+const rawConsolePort = process.env.ELIZA_TEST_CONSOLE_PORT?.trim();
+const PORT = rawConsolePort
+  ? parseTcpPort(rawConsolePort, "ELIZA_TEST_CONSOLE_PORT")
+  : 31338;
 const HOST = "127.0.0.1";
 
 export const runManager = new RunManager();

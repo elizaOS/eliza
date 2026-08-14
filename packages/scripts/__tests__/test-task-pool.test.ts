@@ -5,6 +5,7 @@ import { spawnSync } from "../lib/spawn-sync-captured.mjs";
 
 import {
   isParallelSafeTask,
+  MAX_TASK_CONCURRENCY,
   normalizeConcurrency,
   parseShardSpec,
   partitionTasks,
@@ -163,16 +164,39 @@ describe("runPool", () => {
 });
 
 describe("normalizeConcurrency", () => {
-  test("defaults to 1 (fully serial) for empty/invalid input", () => {
-    for (const value of [undefined, null, "", "abc", "0", "-3", 0, -1]) {
+  test("defaults to 1 (fully serial) only when the value is absent", () => {
+    for (const value of [undefined, null, ""]) {
       expect(normalizeConcurrency(value)).toBe(1);
     }
   });
 
-  test("parses positive integers from string or number", () => {
+  test("parses canonical positive integers from string or number", () => {
     expect(normalizeConcurrency("4")).toBe(4);
     expect(normalizeConcurrency(8)).toBe(8);
-    expect(normalizeConcurrency("3.9")).toBe(3);
+    expect(normalizeConcurrency(String(MAX_TASK_CONCURRENCY))).toBe(
+      MAX_TASK_CONCURRENCY,
+    );
+  });
+
+  test("throws on present-but-malformed values instead of degrading to serial", () => {
+    // "1e3" and "8abc" used to silently become 1 and 8 via parseInt; "3.9"
+    // used to truncate; zero/negative/overflow used to fall back to 1.
+    for (const value of [
+      "abc",
+      "0",
+      "-3",
+      0,
+      -1,
+      "1e3",
+      "8abc",
+      "3.9",
+      "08",
+      "0x10",
+      String(MAX_TASK_CONCURRENCY + 1),
+      "999999",
+    ]) {
+      expect(() => normalizeConcurrency(value)).toThrow(/concurrency/);
+    }
   });
 });
 

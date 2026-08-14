@@ -1260,8 +1260,21 @@ function flagInt(
 ): number | undefined {
   const v = flagString(flags, key);
   if (v === undefined) return undefined;
-  const n = Number.parseInt(v, 10);
-  return Number.isFinite(n) ? n : undefined;
+  // Fail closed on non-canonical input: parseInt("1e3") is 1 and NaN used to
+  // mean "flag omitted", so typos silently listed the wrong number of rows.
+  const raw = v.trim();
+  const n = Number.parseInt(raw, 10);
+  if (
+    !/^\d+$/.test(raw) ||
+    !Number.isSafeInteger(n) ||
+    String(n) !== raw ||
+    n < 1
+  ) {
+    throw new Error(
+      `--${key} must be a positive whole decimal integer (received ${JSON.stringify(v)})`,
+    );
+  }
+  return n;
 }
 
 function flagDate(

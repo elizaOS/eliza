@@ -107,6 +107,35 @@ describe("parseArgs port wiring", () => {
   });
 });
 
+describe("parseArgs canonical integer flags", () => {
+  test("accepts canonical decimal counts and seeds", () => {
+    const options = parseArgs(
+      ["--conversations=24", "--seed=99", "--api-port=31337"],
+      {},
+    );
+    expect(options.body.conversations).toBe(24);
+    expect(options.body.seed).toBe(99);
+  });
+
+  test("rejects coercible non-canonical forms the same way --api-port already does", () => {
+    // Number("0x10") is 16 and Number("1e2") is 100, so a hex seed or a
+    // scientific count used to silently seed with a different valid value.
+    for (const argv of [
+      ["--seed=0x10"],
+      ["--seed=1e2"],
+      ["--seed= 7 8"],
+      ["--conversations=1e2"],
+      ["--conversations=010"],
+      ["--conversations=12abc"],
+      ["--messages=3.5"],
+      ["--span-months=0x2"],
+      ["--facts=1e1"],
+    ]) {
+      expect(() => parseArgs(argv, {})).toThrow(/must be/);
+    }
+  });
+});
+
 describe("seed-message-corpus CLI boundary", () => {
   test("--help prints usage and exits 0", () => {
     const result = runCli(["--help"]);

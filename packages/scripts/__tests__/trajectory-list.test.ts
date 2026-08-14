@@ -131,6 +131,26 @@ describe("trajectory list", () => {
       expect(result.stdout).not.toContain("match-old");
     }));
 
+  test("non-canonical --limit values fail closed instead of listing the wrong count", () =>
+    withFixture((directory) => {
+      for (let index = 1; index <= 5; index++) {
+        writeTrajectory(directory, {
+          id: `row-${index}`,
+          agent: "target-agent",
+          mtimeMs: BASE_TIME_MS + index * 1_000,
+        });
+      }
+
+      // parseInt("1e3") is 1 and parseInt("abc") is NaN (treated as
+      // "flag omitted"), so both used to succeed with the wrong row count.
+      for (const bad of ["1e3", "abc", "20foo", "-5", "0x10", "0"]) {
+        const result = runList(directory, ["--limit", bad]);
+        expect(result.status).not.toBe(0);
+        expect(result.stderr).toContain("--limit");
+        expect(result.stdout).not.toContain("row-");
+      }
+    }));
+
   test("malformed and since-filtered files do not consume the result limit", () =>
     withFixture((directory) => {
       writeTrajectory(directory, {
