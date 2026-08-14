@@ -3,7 +3,9 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import { failureResponse, jsonError } from "@/lib/api/cloud-worker-errors";
+import { findActivePersonalDedicatedTarget } from "@/lib/services/agent-tier-upgrade-target";
 import { elizaAppUserService } from "@/lib/services/eliza-app";
+import { elizaSandboxService } from "@/lib/services/eliza-sandbox";
 import { personalSharedAgent } from "@/lib/services/shared-runtime/personal-shared-agent";
 import { resolveSharedRuntimeWorkerRequestContext } from "@/lib/services/shared-runtime/resolve-shared-agent";
 import { sharedRestMessageSend } from "@/lib/services/shared-runtime/shared-rest-adapter";
@@ -96,6 +98,69 @@ app.post("/", async (c) => {
       userId: account.user.id,
       organizationId: account.organization.id,
     });
+    const dedicated = await findActivePersonalDedicatedTarget(
+      account.organization.id,
+      agent.id,
+    );
+    if (dedicated) {
+      if (dedicated.status !== "running") {
+        return jsonError(
+          c,
+          503,
+          "Dedicated Eliza is temporarily unavailable.",
+          "service_unavailable",
+        );
+      }
+      const response = await elizaSandboxService.bridge(
+        dedicated.id,
+        account.organization.id,
+        {
+          jsonrpc: "2.0",
+          id: parsed.data.messageId,
+          method: "message.send",
+          params: {
+            text: parsed.data.message,
+            roomId: agent.id,
+            userId: account.user.id,
+            clientMessageId: parsed.data.messageId,
+            platformName: parsed.data.platform,
+            senderName: parsed.data.displayName ?? parsed.data.telegramUsername,
+          },
+        },
+      );
+      if (response.error) {
+        return jsonError(
+          c,
+          503,
+          "Dedicated Eliza is temporarily unavailable.",
+          "service_unavailable",
+        );
+      }
+      const result = response.result as { text?: unknown } | undefined;
+      if (typeof result?.text !== "string") {
+        return jsonError(
+          c,
+          503,
+          "Dedicated Eliza returned an invalid reply.",
+          "service_unavailable",
+        );
+      }
+      return c.json({
+        success: true,
+        data: {
+          identity: {
+            id: agent.id,
+            runtime: "dedicated" as const,
+            activeAgentId: dedicated.id,
+          },
+          account: {
+            userId: account.user.id,
+            organizationId: account.organization.id,
+          },
+          reply: result.text,
+        },
+      });
+    }
     const result = await sharedRestMessageSend(
       agent,
       agent.id,

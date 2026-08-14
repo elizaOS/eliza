@@ -13,6 +13,29 @@ const findOrCreateByPhone = mock(async () => ({
   isNew: true,
 }));
 const sharedRestMessageSend = mock(async () => ({ text: "hello from Eliza" }));
+let activeTarget: {
+  id: string;
+  status: "running" | "stopped";
+} | null = null;
+const findActivePersonalDedicatedTarget = mock(async () => activeTarget);
+type BridgeResponse =
+  | {
+      jsonrpc: "2.0";
+      id: string;
+      result: { text: string };
+    }
+  | {
+      jsonrpc: "2.0";
+      id: string;
+      error: { code: number; message: string };
+    };
+const bridge = mock(
+  async (): Promise<BridgeResponse> => ({
+    jsonrpc: "2.0" as const,
+    id: "telegram:eliza:42",
+    result: { text: "hello from Dedicated" },
+  }),
+);
 const namespace = {
   getByName: mock(() => ({ fetch: mock(async () => new Response()) })),
 };
@@ -23,6 +46,12 @@ mock.module("@/lib/services/eliza-app", () => ({
 }));
 mock.module("@/lib/services/shared-runtime/shared-rest-adapter", () => ({
   sharedRestMessageSend,
+}));
+mock.module("@/lib/services/agent-tier-upgrade-target", () => ({
+  findActivePersonalDedicatedTarget,
+}));
+mock.module("@/lib/services/eliza-sandbox", () => ({
+  elizaSandboxService: { bridge },
 }));
 mock.module("@/lib/services/shared-runtime/resolve-shared-agent", () => ({
   resolveSharedRuntimeWorkerRequestContext: () => ({
@@ -69,8 +98,11 @@ const validPhone = {
 describe("personal Shared messaging deliveries", () => {
   beforeEach(() => {
     findOrCreateByPhone.mockClear();
+    activeTarget = null;
     findOrCreateByTelegram.mockClear();
+    findActivePersonalDedicatedTarget.mockClear();
     sharedRestMessageSend.mockClear();
+    bridge.mockClear();
   });
 
   test("requires internal gateway authentication", async () => {
@@ -134,6 +166,75 @@ describe("personal Shared messaging deliveries", () => {
       "blooio:eliza:message-42",
       "platform",
     );
+  });
+
+  test("routes Telegram to the server-owned Dedicated primary after cutover", async () => {
+    activeTarget = {
+      id: "00000000-0000-4000-8000-000000000020",
+      status: "running",
+    };
+
+    const response = await request(valid);
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      success: true,
+      data: {
+        identity: {
+          id: expect.stringMatching(/^personal:/),
+          runtime: "dedicated",
+          activeAgentId: "00000000-0000-4000-8000-000000000020",
+        },
+        reply: "hello from Dedicated",
+      },
+    });
+    expect(sharedRestMessageSend).not.toHaveBeenCalled();
+    expect(bridge).toHaveBeenCalledWith(
+      "00000000-0000-4000-8000-000000000020",
+      "00000000-0000-4000-8000-000000000001",
+      expect.objectContaining({
+        id: "telegram:eliza:42",
+        method: "message.send",
+        params: expect.objectContaining({
+          text: "hello",
+          clientMessageId: "telegram:eliza:42",
+          platformName: "telegram",
+        }),
+      }),
+    );
+  });
+
+  test("never falls back to Shared after Dedicated becomes authoritative", async () => {
+    activeTarget = {
+      id: "00000000-0000-4000-8000-000000000020",
+      status: "stopped",
+    };
+
+    const response = await request(valid);
+    expect(response.status).toBe(503);
+    expect(await response.json()).toMatchObject({
+      code: "service_unavailable",
+    });
+    expect(sharedRestMessageSend).not.toHaveBeenCalled();
+    expect(bridge).not.toHaveBeenCalled();
+  });
+
+  test("surfaces a Dedicated bridge failure without reopening Shared", async () => {
+    activeTarget = {
+      id: "00000000-0000-4000-8000-000000000020",
+      status: "running",
+    };
+    bridge.mockImplementationOnce(async () => ({
+      jsonrpc: "2.0" as const,
+      id: "telegram:eliza:42",
+      error: { code: -32_603, message: "Dedicated unavailable" },
+    }));
+
+    const response = await request(valid);
+    expect(response.status).toBe(503);
+    expect(await response.json()).toMatchObject({
+      code: "service_unavailable",
+    });
+    expect(sharedRestMessageSend).not.toHaveBeenCalled();
   });
 
   test.each([

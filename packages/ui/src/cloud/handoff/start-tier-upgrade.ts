@@ -48,7 +48,11 @@ export interface TierUpgradeHandoffClient {
     dedicatedAgentId: string;
     cloudApiBase: string;
     authToken: string;
-  }): Promise<{ runtime: "dedicated"; apiBase: string }>;
+  }): Promise<{
+    runtime: "dedicated";
+    apiBase: string;
+    importedMessages: number;
+  }>;
 }
 
 export interface TierUpgradeHandoffParams {
@@ -81,13 +85,28 @@ export interface TierUpgradeHandoffOutcome {
   error?: string;
 }
 
+const DEFAULT_PERSONAL_CUTOVER_INTERVAL_MS = 5_000;
+const DEFAULT_PERSONAL_CUTOVER_TIMEOUT_MS = 10 * 60 * 1000;
+
+function cutoverStatus(error: unknown): number | null {
+  if (!error || typeof error !== "object" || !("status" in error)) return null;
+  const status = (error as { status?: unknown }).status;
+  return typeof status === "number" ? status : null;
+}
+
+function retryableCutoverStatus(status: number | null): boolean {
+  return status === 409 || status === 423 || status === 503;
+}
+
+function wait(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 /**
- * Run the readiness-poll → transcript-import → server-finalize → switch leg.
- * Personal Shared has no row to delete and remains a durable archive/fallback;
- * the exact active-runtime marker prevents subsequent phone or app turns from
- * splitting across modes. The legacy bridge delete is still awaited and
- * reported so a leaked row remains visible rather than silently duplicating
- * the switched agent.
+ * Move a Shared client to Dedicated without exposing a partially transferred
+ * conversation. Rowless personal history crosses one server-owned cutover
+ * boundary; legacy row-backed Shared retains the client handoff flow and is
+ * deleted only after the client switches successfully.
  */
 export async function runSharedToDedicatedUpgradeHandoff(
   params: TierUpgradeHandoffParams,
@@ -98,6 +117,54 @@ export async function runSharedToDedicatedUpgradeHandoff(
   );
   const rowlessPersonal = isPersonalSharedElizaId(params.sharedAgentId);
 
+  // The rowless path has one server-owned transaction boundary. Polling this
+  // endpoint avoids a client-side import followed by a second server import,
+  // which can duplicate memories with different ids. A 409/423/503 leaves
+  // Shared authoritative and is safe to retry inside the existing handoff
+  // budget; auth/validation failures surface immediately.
+  if (rowlessPersonal) {
+    const intervalMs =
+      params.intervalMs ?? DEFAULT_PERSONAL_CUTOVER_INTERVAL_MS;
+    const deadline =
+      Date.now() + (params.timeoutMs ?? DEFAULT_PERSONAL_CUTOVER_TIMEOUT_MS);
+    for (;;) {
+      try {
+        const cutover = await params.client.finalizePersonalDedicatedCutover({
+          personalElizaId: params.sharedAgentId,
+          dedicatedAgentId: params.dedicatedAgentId,
+          cloudApiBase: params.cloudApiBase,
+          authToken: params.authToken,
+        });
+        await params.onSwitch?.(cutover.apiBase);
+        return {
+          status: cutover.importedMessages > 0 ? "switched" : "switched-empty",
+          imported: cutover.importedMessages,
+          sourceCleanup: "preserved-rowless",
+        };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        if (!retryableCutoverStatus(cutoverStatus(error))) {
+          return {
+            status: "failed",
+            imported: 0,
+            sourceCleanup: "unchanged",
+            error: message,
+          };
+        }
+        if (Date.now() >= deadline) {
+          return {
+            status: "timed-out",
+            imported: 0,
+            sourceCleanup: "unchanged",
+            error: message,
+          };
+        }
+        params.log?.(`[handoff] Dedicated cutover not ready: ${message}`);
+        await wait(intervalMs);
+      }
+    }
+  }
+
   const result = await params.client.startCloudAgentHandoff({
     agentId: params.sharedAgentId,
     dedicatedAgentId: params.dedicatedAgentId,
@@ -105,17 +172,7 @@ export async function runSharedToDedicatedUpgradeHandoff(
     conversationId: params.sharedAgentId,
     cloudApiBase: params.cloudApiBase,
     authToken: params.authToken,
-    onSwitch: async (containerBase) => {
-      if (rowlessPersonal) {
-        await params.client.finalizePersonalDedicatedCutover({
-          personalElizaId: params.sharedAgentId,
-          dedicatedAgentId: params.dedicatedAgentId,
-          cloudApiBase: params.cloudApiBase,
-          authToken: params.authToken,
-        });
-      }
-      await params.onSwitch?.(containerBase);
-    },
+    onSwitch: params.onSwitch ?? (() => {}),
     ...(typeof params.intervalMs === "number"
       ? { intervalMs: params.intervalMs }
       : {}),
@@ -133,14 +190,6 @@ export async function runSharedToDedicatedUpgradeHandoff(
       imported: result.imported,
       sourceCleanup: "unchanged",
       ...(result.error ? { error: result.error } : {}),
-    };
-  }
-
-  if (rowlessPersonal) {
-    return {
-      status: result.status,
-      imported: result.imported,
-      sourceCleanup: "preserved-rowless",
     };
   }
 

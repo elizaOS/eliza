@@ -102,7 +102,9 @@ test.describe("shared→dedicated tier upgrade", () => {
       // Shared-tier routes resolve scope/billing `cacheOnly`, so a brand-new
       // agent answers the retryable warming 503 until each cache is hydrated
       // under waitUntil. Poll that documented signal (and only it).
-      const convoUrl = "/api/v1/eliza/shared/messages";
+      const convoUrl = `/api/v1/eliza/agents/${encodeURIComponent(
+        sharedAgentId,
+      )}/api/conversations/${encodeURIComponent(sharedAgentId)}/messages`;
       const FIRST = "save this as a note";
       const SECOND = "set a reminder for Friday";
       const sendTurn = (text: string, clientMessageId: string) =>
@@ -120,18 +122,19 @@ test.describe("shared→dedicated tier upgrade", () => {
         `second shared turn: ${JSON.stringify(secondTurn.json)}`,
       ).toBe(200);
       const sharedHistory = await retrySharedRuntimeWarming(() =>
-        c<{
-          data?: {
-            identity?: { id?: string; runtime?: string };
-            messages?: Array<{ role: string; text: string }>;
-          };
-        }>("GET", convoUrl),
+        c<{ messages?: Array<{ role: string; text: string }> }>(
+          "GET",
+          convoUrl,
+        ),
       );
       expect(
-        sharedHistory.json.data?.messages?.length,
+        sharedHistory.json.messages?.length,
         "shared transcript has both turns (user+assistant ×2)",
       ).toBe(4);
-      expect(sharedHistory.json.data?.identity).toMatchObject({
+      const sharedIdentity = await c<{
+        data?: { identity?: { id?: string; runtime?: string } };
+      }>("GET", "/api/v1/eliza/personal");
+      expect(sharedIdentity.json.data?.identity).toMatchObject({
         id: sharedAgentId,
         runtime: "shared",
       });
@@ -277,6 +280,7 @@ test.describe("shared→dedicated tier upgrade", () => {
                 activeAgentId?: string;
                 runtime?: "dedicated";
                 apiBase?: string;
+                importedMessages?: number;
               };
             }>(
               "POST",
@@ -293,13 +297,15 @@ test.describe("shared→dedicated tier upgrade", () => {
               data?.runtime !== "dedicated" ||
               data.personalElizaId !== options.personalElizaId ||
               data.activeAgentId !== options.dedicatedAgentId ||
-              !data.apiBase
+              !data.apiBase ||
+              typeof data.importedMessages !== "number"
             ) {
               throw new Error("cutover returned an invalid Dedicated identity");
             }
             return {
               runtime: data.runtime,
               apiBase: data.apiBase,
+              importedMessages: data.importedMessages,
             };
           },
         },
@@ -358,7 +364,7 @@ test.describe("shared→dedicated tier upgrade", () => {
             activeAgentId?: string;
           };
         };
-      }>("GET", convoUrl);
+      }>("GET", "/api/v1/eliza/personal");
       expect(active.status).toBe(200);
       expect(active.json.data?.identity).toMatchObject({
         id: sharedAgentId,
@@ -370,8 +376,17 @@ test.describe("shared→dedicated tier upgrade", () => {
         text: "This must not create a new Shared turn.",
         clientMessageId: "personal-after-cutover",
       });
-      expect(splitTurn.status).toBe(409);
-      expect(splitTurn.json.code).toBe("personal_eliza_dedicated");
+      expect(
+        splitTurn.status,
+        `stale Shared turn must fail: ${JSON.stringify(splitTurn.json)}`,
+      ).not.toBe(200);
+      const archivedHistory = await c<{
+        messages?: Array<{ role: string; text: string }>;
+      }>("GET", convoUrl);
+      expect(
+        archivedHistory.json.messages?.length,
+        "a stale client cannot append to the sealed Shared transcript",
+      ).toBe(4);
     } finally {
       setBootConfig(prevBoot);
       if (prevToken === null) {
