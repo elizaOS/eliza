@@ -164,7 +164,7 @@ describe("tool translation", () => {
       required: ["action", "content", "limit"],
       properties: {
         content: { type: ["string", "null"] },
-        limit: { type: "integer" },
+        limit: { type: ["integer", "null"] },
       },
     });
 
@@ -193,6 +193,55 @@ describe("tool translation", () => {
     });
     expect(todoLimitNull.success).toBe(false);
     expect(String(todoLimitNull.error)).toContain("Argument 'limit' expected integer, got null");
+    expect(handler).toHaveBeenCalledTimes(1);
+  });
+
+  it("snapshots mutable provider arguments before validation and handler dispatch", async () => {
+    const handler = vi.fn(async () => ({ success: true }));
+    const action = {
+      name: "OPTIONAL_ARG",
+      description: "Provider-neutral optional argument",
+      parameters: [
+        {
+          name: "action",
+          description: "Operation",
+          required: true,
+          schema: { type: "string", enum: ["list"] },
+        },
+      ],
+      validate: async () => true,
+      handler,
+    };
+    let reads = 0;
+    const params: Record<string, unknown> = {};
+    Object.defineProperty(params, "action", {
+      enumerable: true,
+      get() {
+        reads += 1;
+        return "list";
+      },
+    });
+
+    const result = await executePlannedToolCall(
+      {
+        actions: [action],
+        getRoom: vi.fn(async () => null),
+        getService: vi.fn(() => undefined),
+        logger: { debug: vi.fn(), warn: vi.fn(), error: vi.fn() },
+      } as never,
+      {
+        message: {
+          id: "message-id",
+          entityId: "entity-id",
+          roomId: "room-id",
+          content: { text: "list" },
+        } as never,
+      },
+      { name: "OPTIONAL_ARG", params }
+    );
+
+    expect(result.success).toBe(true);
+    expect(reads).toBe(1);
     expect(handler).toHaveBeenCalledTimes(1);
   });
 });

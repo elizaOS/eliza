@@ -341,6 +341,7 @@ export async function executePlannedToolCall(
 	options: ExecutePlannedToolCallOptions = {},
 ): Promise<ActionResult> {
 	options.abortSignal?.throwIfAborted();
+	toolCall = snapshotPlannedToolCall(toolCall);
 	const action = (options.actions ?? runtime.actions).find(
 		(candidate) => candidate.name === toolCall.name,
 	);
@@ -1050,7 +1051,48 @@ function normalizeToolArgs(
 		return parseJsonObject<Record<string, unknown>>(raw) ?? {};
 	}
 	if (raw && typeof raw === "object" && !Array.isArray(raw)) {
-		return raw as Record<string, unknown>;
+		return snapshotToolArgs(raw as Record<string, unknown>) as Record<
+			string,
+			unknown
+		>;
 	}
 	return {};
+}
+
+function snapshotPlannedToolCall(
+	toolCall: PlannerToolCall | PlannedToolCall,
+): PlannerToolCall | PlannedToolCall {
+	const snapshot: PlannedToolCall = { name: toolCall.name };
+	if (toolCall.id !== undefined) snapshot.id = toolCall.id;
+	const params = "params" in toolCall ? toolCall.params : undefined;
+	if (params !== undefined) {
+		snapshot.params = snapshotToolArgs(params) as Record<string, unknown>;
+	} else {
+		const args = "args" in toolCall ? toolCall.args : undefined;
+		if (args !== undefined) {
+			snapshot.args = snapshotToolArgs(args);
+		} else if ("arguments" in toolCall) {
+			snapshot.arguments = snapshotToolArgs(toolCall.arguments);
+		}
+	}
+	return snapshot;
+}
+
+/**
+ * Take one stable, recursive read of caller-owned argument objects before
+ * alias, envelope, and schema normalization. This prevents accessors or
+ * other mutable records from changing between validation and handler use.
+ */
+function snapshotToolArgs(value: unknown): unknown {
+	if (Array.isArray(value)) {
+		return value.map((entry) => snapshotToolArgs(entry));
+	}
+	if (value && typeof value === "object") {
+		const snapshot: Record<string, unknown> = {};
+		for (const key of Object.keys(value)) {
+			snapshot[key] = snapshotToolArgs((value as Record<string, unknown>)[key]);
+		}
+		return snapshot;
+	}
+	return value;
 }

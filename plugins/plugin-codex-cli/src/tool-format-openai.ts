@@ -55,15 +55,14 @@ function makeStrictSchema(schema: unknown): unknown {
     const next: JsonSchema = {};
     for (const key of keys) {
       let prop = makeStrictSchema(props[key]);
-      const rejectsNull =
-        prop && typeof prop === "object" && !Array.isArray(prop)
-          ? (prop as JsonSchema).nullable === false
-          : false;
       if (prop && typeof prop === "object" && !Array.isArray(prop)) {
         const { nullable: _nullable, ...withoutMetadata } = prop as JsonSchema;
         prop = withoutMetadata;
       }
-      if (!origRequired.has(key) && !rejectsNull) prop = makeNullable(prop);
+      // `nullable` is an elizaOS execution hint, not an OpenAI schema
+      // keyword. Every optional property still needs Codex's null-as-omission
+      // sentinel; execution validation enforces stricter provider contracts.
+      if (!origRequired.has(key)) prop = makeNullable(prop);
       next[key] = prop;
     }
     out.properties = next;
