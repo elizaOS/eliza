@@ -3,10 +3,11 @@
  * DELETE /api/auth/steward-session — clear steward cookies (logout).
  */
 
-import type {
-  StewardSessionErrorCode,
-  StewardSessionRequest,
-  StewardSessionResponse,
+import {
+  type StewardSessionErrorCode,
+  type StewardSessionRequest,
+  type StewardSessionResponse,
+  sanitizeTelegramAccountClaimContinuation,
 } from "@elizaos/shared/steward-session-client";
 import { Hono } from "hono";
 import { deleteCookie, setCookie } from "hono/cookie";
@@ -32,6 +33,7 @@ import {
 import {
   describeSyncError,
   StewardPhoneAccountConflictError,
+  StewardTelegramAccountClaimError,
   syncUserFromSteward,
 } from "@/lib/steward-sync";
 import { logger } from "@/lib/utils/logger";
@@ -116,6 +118,9 @@ app.post("/", async (c) => {
     const token = body.token;
     const refreshToken = body.refreshToken;
     const verifiedPhoneHint = body.verifiedPhone;
+    const telegramContinuation = sanitizeTelegramAccountClaimContinuation(
+      body.telegramContinuation,
+    );
 
     if (!token || typeof token !== "string") {
       logStewardAuth("missing-token", null);
@@ -131,6 +136,13 @@ app.post("/", async (c) => {
       return c.json(
         errorBody("Verified phone must be a string", "verified_phone_invalid"),
         400,
+      );
+    }
+    if (body.telegramContinuation !== undefined && !telegramContinuation) {
+      logStewardAuth("telegram-claim-invalid", null);
+      return c.json(
+        errorBody("Invalid Telegram account claim", "telegram_claim_conflict"),
+        409,
       );
     }
 
@@ -258,6 +270,16 @@ app.post("/", async (c) => {
 
     let cloudUser: Awaited<ReturnType<typeof syncUserFromSteward>>;
     if (claims.stagingSessionBinding) {
+      if (telegramContinuation) {
+        logStewardAuth("telegram-claim-staging-session", null);
+        return c.json(
+          errorBody(
+            "A QA session cannot claim a Telegram account",
+            "telegram_claim_conflict",
+          ),
+          409,
+        );
+      }
       const boundCloudUser = await loadVerifiedStagingSessionUser({
         binding: claims.stagingSessionBinding,
         stewardUserId: claims.userId,
@@ -275,6 +297,7 @@ app.post("/", async (c) => {
           walletAddress: claims.walletAddress ?? claims.address,
           walletChainType: claims.walletChain,
           verifiedPhone,
+          telegramContinuation: telegramContinuation ?? undefined,
         });
       } catch (error) {
         if (error instanceof StewardPhoneAccountConflictError) {
@@ -283,6 +306,16 @@ app.post("/", async (c) => {
             errorBody(
               "This phone account cannot be linked automatically",
               "verified_phone_conflict",
+            ),
+            409,
+          );
+        }
+        if (error instanceof StewardTelegramAccountClaimError) {
+          logStewardAuth("telegram-claim-conflict", null);
+          return c.json(
+            errorBody(
+              "This Telegram chat cannot be linked automatically",
+              "telegram_claim_conflict",
             ),
             409,
           );

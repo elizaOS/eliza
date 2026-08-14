@@ -3,8 +3,10 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import { failureResponse, jsonError } from "@/lib/api/cloud-worker-errors";
+import { sha256Hex } from "@/lib/oidc/crypto";
 import { findActivePersonalDedicatedTarget } from "@/lib/services/agent-tier-upgrade-target";
 import { elizaAppUserService } from "@/lib/services/eliza-app";
+import { runOnboardingChat } from "@/lib/services/eliza-app/onboarding-chat";
 import { elizaSandboxService } from "@/lib/services/eliza-sandbox";
 import { personalSharedAgent } from "@/lib/services/shared-runtime/personal-shared-agent";
 import { resolveSharedRuntimeWorkerRequestContext } from "@/lib/services/shared-runtime/resolve-shared-agent";
@@ -98,6 +100,47 @@ app.post("/", async (c) => {
       userId: account.user.id,
       organizationId: account.organization.id,
     });
+    if (
+      parsed.data.platform === "telegram" &&
+      /^\/connect(?:@[a-z0-9_]{5,32})?$/i.test(parsed.data.message)
+    ) {
+      // A new command gets independent expiry while a webhook retry reaches
+      // the same session. Reusing the sender's permanent session would make
+      // refreshing one claim link revive every expired link for that sender.
+      const claimSessionId = `platform:telegram-claim:${await sha256Hex(
+        `${parsed.data.telegramUserId}\n${parsed.data.messageId}`,
+      )}`;
+      const claim = await runOnboardingChat({
+        sessionId: claimSessionId,
+        platform: "telegram",
+        platformUserId: parsed.data.telegramUserId,
+        platformDisplayName:
+          parsed.data.displayName ??
+          parsed.data.telegramUsername ??
+          parsed.data.telegramUserId,
+        authenticatedUser: {
+          userId: account.user.id,
+          organizationId: account.organization.id,
+          telegramId: parsed.data.telegramUserId,
+        },
+        trustedPlatformIdentity: true,
+        statusOnly: true,
+        idempotencyKey: `telegram-account-claim:${parsed.data.messageId}`,
+      });
+      const loginUrl = new URL(claim.loginUrl);
+      loginUrl.searchParams.set("accountClaim", "telegram");
+      return c.json({
+        success: true,
+        data: {
+          identity: { id: agent.id, runtime: "shared" as const },
+          account: {
+            userId: account.user.id,
+            organizationId: account.organization.id,
+          },
+          reply: `Sign in to connect this Telegram chat to your Eliza account: ${loginUrl.toString()}`,
+        },
+      });
+    }
     const dedicated = await findActivePersonalDedicatedTarget(
       account.organization.id,
       agent.id,

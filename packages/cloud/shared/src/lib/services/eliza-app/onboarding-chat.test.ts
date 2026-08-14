@@ -80,8 +80,12 @@ mock.module("./user-service", () => ({
   },
 }));
 
-const { inspectOnboardingContinuation, runOnboardingChat, validateTelegramOnboardingContinuation } =
-  await import(`./onboarding-chat.ts?test=onboarding-chat-${Date.now()}`);
+const {
+  inspectOnboardingContinuation,
+  inspectTelegramPersonalAccountContinuation,
+  runOnboardingChat,
+  validateTelegramOnboardingContinuation,
+} = await import(`./onboarding-chat.ts?test=onboarding-chat-${Date.now()}`);
 const { peekLocalGreetingQueue, clearLocalGreetingQueue } = await import(
   "./onboarding-proactive-greeting"
 );
@@ -181,6 +185,53 @@ describe("runOnboardingChat", () => {
       /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
     );
     expect(result.loginUrl).not.toContain("123456789");
+  });
+
+  test("mints a read-only continuation bound to the existing Telegram personal account", async () => {
+    getElizaAppProvisioningStatus.mockResolvedValue({
+      status: "none",
+      agentId: null,
+      bridgeUrl: null,
+      sandbox: null,
+    });
+    const claim = await runOnboardingChat({
+      platform: "telegram",
+      platformUserId: "123456789",
+      platformDisplayName: "Nubs",
+      sessionId: "platform:telegram:123456789",
+      trustedPlatformIdentity: true,
+      authenticatedUser: {
+        userId: "telegram-user-1",
+        organizationId: "telegram-org-1",
+        telegramId: "123456789",
+      },
+      statusOnly: true,
+    });
+    const token = continuationToken(claim);
+
+    await expect(inspectTelegramPersonalAccountContinuation(token)).resolves.toEqual({
+      telegramId: "123456789",
+      userId: "telegram-user-1",
+      organizationId: "telegram-org-1",
+    });
+    expect(claim.session.history).toEqual([]);
+    expect(ensureElizaAppProvisioning).not.toHaveBeenCalled();
+  });
+
+  test("rejects an unbound Telegram continuation as account-claim authority", async () => {
+    const unbound = await runOnboardingChat({
+      message: "My name is Sam",
+      platform: "telegram",
+      platformUserId: "987654321",
+      sessionId: "platform:telegram:987654321",
+      trustedPlatformIdentity: true,
+    });
+
+    await expect(
+      inspectTelegramPersonalAccountContinuation(continuationToken(unbound)),
+    ).rejects.toMatchObject({
+      code: "ONBOARDING_TRUSTED_CONTINUATION_INVALID",
+    });
   });
 
   test("preflights a bot-issued Telegram continuation before account mutation", async () => {

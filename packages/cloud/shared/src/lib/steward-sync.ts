@@ -14,6 +14,7 @@
  * differ only in case.
  */
 
+import { ElizaError, isElizaError } from "@elizaos/core";
 import { ELIZA_DOMAIN_CONTRACTS } from "@elizaos/shared/elizacloud";
 import { normalizeWallet } from "../db/crypto/field-crypto";
 import { organizationInvitesRepository } from "../db/repositories/organization-invites";
@@ -21,6 +22,7 @@ import { usersRepository } from "../db/repositories/users";
 import { apiKeysService } from "./services/api-keys";
 import { charactersService } from "./services/characters/characters";
 import { discordService } from "./services/discord";
+import { inspectTelegramPersonalAccountContinuation } from "./services/eliza-app/onboarding-chat";
 import { emailService } from "./services/email";
 import { invitesService } from "./services/invites";
 import { organizationsService } from "./services/organizations";
@@ -225,6 +227,8 @@ export interface StewardSyncParams {
   name?: string;
   /** Phone independently verified against the current Steward bearer. */
   verifiedPhone?: string;
+  /** Opaque account-bound continuation delivered only inside a Telegram DM. */
+  telegramContinuation?: string;
 }
 
 export class StewardPhoneAccountConflictError extends Error {
@@ -232,6 +236,18 @@ export class StewardPhoneAccountConflictError extends Error {
 
   constructor(readonly reason: string) {
     super(`Verified phone account could not be claimed: ${reason}`);
+  }
+}
+
+export class StewardTelegramAccountClaimError extends ElizaError {
+  override readonly name = "StewardTelegramAccountClaimError";
+
+  constructor(readonly reason: string) {
+    super(`Telegram personal account could not be claimed: ${reason}`, {
+      code: "STEWARD_TELEGRAM_ACCOUNT_CLAIM_CONFLICT",
+      context: { reason },
+      severity: "ephemeral",
+    });
   }
 }
 
@@ -315,10 +331,46 @@ export async function syncUserFromSteward(params: StewardSyncParams): Promise<St
     name = `user-${stewardUserId.substring(0, 8)}`;
   }
 
+  // A Telegram DM creates the canonical rowless account before a browser
+  // session exists. The opaque, account-bound continuation is validated first,
+  // then the provisional `telegram:<id>` subject is atomically promoted before
+  // generic Steward sync has any opportunity to create a duplicate user/org.
+  let claimedTelegramUser: UserWithOrganization | undefined;
+  if (params.telegramContinuation) {
+    let claim: Awaited<ReturnType<typeof inspectTelegramPersonalAccountContinuation>>;
+    try {
+      claim = await inspectTelegramPersonalAccountContinuation(params.telegramContinuation);
+    } catch (error) {
+      // error-policy:J3 Invalid opaque authority becomes one non-enumerating
+      // claim conflict; storage and coordinator failures still surface as 5xx.
+      if (!isElizaError(error) || error.code !== "ONBOARDING_TRUSTED_CONTINUATION_INVALID") {
+        throw error;
+      }
+      logger.warn("[StewardSync] Telegram continuation validation failed", {
+        stewardUserId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      throw new StewardTelegramAccountClaimError("invalid_continuation");
+    }
+    const promotion = await usersRepository.promoteTelegramPersonalAccountToSteward({
+      telegramId: claim.telegramId,
+      stewardUserId,
+      expectedUserId: claim.userId,
+      expectedOrganizationId: claim.organizationId,
+    });
+    if (promotion.status !== "promoted" && promotion.status !== "already_promoted") {
+      throw new StewardTelegramAccountClaimError(promotion.status);
+    }
+    claimedTelegramUser = {
+      ...promotion.user,
+      organization: promotion.organization,
+    };
+  }
+
   // A signed inbound text creates a phone-only personal account before any
   // browser session exists. SMS login may claim only that exact synthetic
   // account. Stable user/org ids keep its Shared history attached.
-  if (verifiedPhone) {
+  if (verifiedPhone && !claimedTelegramUser) {
     const promotion = await usersRepository.promotePhonePersonalAccountToSteward({
       phoneNumber: verifiedPhone,
       stewardUserId,
@@ -347,18 +399,25 @@ export async function syncUserFromSteward(params: StewardSyncParams): Promise<St
   }
 
   // ── 1. Existing user by steward_user_id ──────────────────────────────
-  let user = await usersService.getByStewardId(stewardUserId);
+  let user = claimedTelegramUser ?? (await usersService.getByStewardId(stewardUserId));
 
   if (user) {
-    // Ensure identity projection is current
-    try {
-      await usersService.upsertStewardIdentity(user.id, stewardUserId);
-    } catch (error) {
-      logger.warn("[StewardSync] Failed to repair Steward identity projection for existing user", {
-        userId: user.id,
-        stewardUserId,
-        error: error instanceof Error ? error.message : String(error),
-      });
+    // Telegram promotion updates canonical and projected ownership in one
+    // transaction. Ordinary existing accounts retain the repair pass because
+    // older sync paths may have written only the canonical column.
+    if (!claimedTelegramUser) {
+      try {
+        await usersService.upsertStewardIdentity(user.id, stewardUserId);
+      } catch (error) {
+        logger.warn(
+          "[StewardSync] Failed to repair Steward identity projection for existing user",
+          {
+            userId: user.id,
+            stewardUserId,
+            error: error instanceof Error ? error.message : String(error),
+          },
+        );
+      }
     }
 
     if (verifiedPhone) {
@@ -416,7 +475,7 @@ export async function syncUserFromSteward(params: StewardSyncParams): Promise<St
     // org first and returns immediately when a tenant already exists, so the
     // healthy-org cost is one indexed read while existing NULL-tenant orgs get
     // repaired opportunistically without a bulk backfill.
-    if (user.organization_id) {
+    if (user.organization_id && !claimedTelegramUser) {
       try {
         await ensureStewardTenant(user.organization_id);
       } catch (error) {

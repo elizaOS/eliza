@@ -112,6 +112,12 @@ export interface OnboardingContinuationPreview {
   returnUrl: string | null;
 }
 
+export interface TelegramPersonalAccountContinuation {
+  telegramId: string;
+  userId: string;
+  organizationId: string;
+}
+
 export interface OnboardingChatCta {
   label: string;
   url: string;
@@ -436,6 +442,35 @@ export async function inspectOnboardingContinuation(
     platformUserId: session.platformUserId,
     platformDisplayName: session.platformDisplayName?.trim() || session.platformUserId,
     returnUrl: buildMessagingReturnUrl(session),
+  };
+}
+
+/**
+ * Resolves the opaque continuation delivered inside a Telegram DM to the
+ * already-created rowless account it is allowed to claim. Unlike the generic
+ * browser preview, this authority is consumed before Steward can create a
+ * second account, so both canonical account ids are required on the session.
+ */
+export async function inspectTelegramPersonalAccountContinuation(
+  continuationToken: string,
+): Promise<TelegramPersonalAccountContinuation> {
+  const sessionId = await resolveContinuationToken(continuationToken);
+  const session = sessionId ? await loadOnboardingSessionForValidation(sessionId) : null;
+  if (
+    !session ||
+    session.platform !== "telegram" ||
+    session.platformIdentityTrusted !== true ||
+    !session.platformUserId ||
+    !session.userId ||
+    !session.organizationId ||
+    !isFreshOnboardingSession(session)
+  ) {
+    throw trustedBrowserContinuationError(session);
+  }
+  return {
+    telegramId: session.platformUserId,
+    userId: session.userId,
+    organizationId: session.organizationId,
   };
 }
 

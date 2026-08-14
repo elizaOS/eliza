@@ -2,6 +2,8 @@
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 
+import type { OnboardingChatInput } from "@/lib/services/eliza-app/onboarding-chat";
+
 const findOrCreateByTelegram = mock(async () => ({
   user: { id: "00000000-0000-4000-8000-000000000002" },
   organization: { id: "00000000-0000-4000-8000-000000000001" },
@@ -13,6 +15,10 @@ const findOrCreateByPhone = mock(async () => ({
   isNew: true,
 }));
 const sharedRestMessageSend = mock(async () => ({ text: "hello from Eliza" }));
+const runOnboardingChat = mock(async (_input: OnboardingChatInput) => ({
+  loginUrl:
+    "https://cloud-staging.eliza.app/get-started?onboardingSession=claim-token",
+}));
 let activeTarget: {
   id: string;
   status: "running" | "stopped";
@@ -46,6 +52,9 @@ mock.module("@/lib/services/eliza-app", () => ({
 }));
 mock.module("@/lib/services/shared-runtime/shared-rest-adapter", () => ({
   sharedRestMessageSend,
+}));
+mock.module("@/lib/services/eliza-app/onboarding-chat", () => ({
+  runOnboardingChat,
 }));
 mock.module("@/lib/services/agent-tier-upgrade-target", () => ({
   findActivePersonalDedicatedTarget,
@@ -102,6 +111,7 @@ describe("personal Shared messaging deliveries", () => {
     findOrCreateByTelegram.mockClear();
     findActivePersonalDedicatedTarget.mockClear();
     sharedRestMessageSend.mockClear();
+    runOnboardingChat.mockClear();
     bridge.mockClear();
   });
 
@@ -137,6 +147,78 @@ describe("personal Shared messaging deliveries", () => {
       "telegram:eliza:42",
       "platform",
     );
+  });
+
+  test("issues an account-bound Telegram claim without entering runtime or provisioning", async () => {
+    const response = await request({ ...valid, message: "/connect" });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      success: true,
+      data: {
+        account: {
+          userId: "00000000-0000-4000-8000-000000000002",
+          organizationId: "00000000-0000-4000-8000-000000000001",
+        },
+        reply:
+          "Sign in to connect this Telegram chat to your Eliza account: https://cloud-staging.eliza.app/get-started?onboardingSession=claim-token&accountClaim=telegram",
+      },
+    });
+    expect(runOnboardingChat).toHaveBeenCalledWith({
+      sessionId: expect.stringMatching(
+        /^platform:telegram-claim:[0-9a-f]{64}$/,
+      ),
+      platform: "telegram",
+      platformUserId: "123456789",
+      platformDisplayName: "Nubs",
+      authenticatedUser: {
+        userId: "00000000-0000-4000-8000-000000000002",
+        organizationId: "00000000-0000-4000-8000-000000000001",
+        telegramId: "123456789",
+      },
+      trustedPlatformIdentity: true,
+      statusOnly: true,
+      idempotencyKey: "telegram-account-claim:telegram:eliza:42",
+    });
+    expect(findActivePersonalDedicatedTarget).not.toHaveBeenCalled();
+    expect(sharedRestMessageSend).not.toHaveBeenCalled();
+    expect(bridge).not.toHaveBeenCalled();
+  });
+
+  test("accepts Telegram's bot-qualified /connect command idempotently", async () => {
+    const response = await request({
+      ...valid,
+      message: "/connect@elizaisnotabot",
+      messageId: "telegram:eliza:43",
+    });
+
+    expect(response.status).toBe(200);
+    expect(runOnboardingChat).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sessionId: expect.stringMatching(
+          /^platform:telegram-claim:[0-9a-f]{64}$/,
+        ),
+        idempotencyKey: "telegram-account-claim:telegram:eliza:43",
+        statusOnly: true,
+      }),
+    );
+    expect(sharedRestMessageSend).not.toHaveBeenCalled();
+  });
+
+  test("isolates each new /connect delivery without changing retry identity", async () => {
+    await request({ ...valid, message: "/connect" });
+    await request({ ...valid, message: "/connect" });
+    await request({
+      ...valid,
+      message: "/connect",
+      messageId: "telegram:eliza:44",
+    });
+
+    const firstSession = runOnboardingChat.mock.calls[0]?.[0].sessionId;
+    const retrySession = runOnboardingChat.mock.calls[1]?.[0].sessionId;
+    const renewedSession = runOnboardingChat.mock.calls[2]?.[0].sessionId;
+    expect(firstSession).toBe(retrySession);
+    expect(renewedSession).not.toBe(firstSession);
   });
 
   test("uses the phone account without provisioning an agent row", async () => {

@@ -104,6 +104,27 @@ export type PromotePhonePersonalAccountResult =
 
 class PhonePromotionProjectionConflictError extends Error {}
 
+/** Non-merging outcome when a trusted DM continuation claims its Telegram account. */
+export type PromoteTelegramPersonalAccountResult =
+  | { status: "promoted"; user: User; organization: Organization }
+  | { status: "already_promoted"; user: User; organization: Organization }
+  | { status: "not_found" }
+  | { status: "telegram_owned_by_mature_account" }
+  | { status: "steward_subject_owned_by_other_user" }
+  | { status: "telegram_account_inactive" }
+  | { status: "telegram_account_deleted" }
+  | { status: "identity_projection_conflict" }
+  | { status: "continuation_account_mismatch" };
+
+class TelegramPromotionProjectionConflictError extends ElizaError {
+  constructor() {
+    super("Telegram identity projection changed during account promotion", {
+      code: "TELEGRAM_PROMOTION_PROJECTION_CONFLICT",
+      severity: "fatal",
+    });
+  }
+}
+
 /**
  * Repository for user database operations.
  *
@@ -726,6 +747,160 @@ export class UsersRepository {
     } catch (error) {
       // error-policy:J1 The repository maps its private rollback sentinel to a typed sync result.
       if (error instanceof PhonePromotionProjectionConflictError) {
+        return { status: "identity_projection_conflict" };
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Claims the exact rowless account named by a trusted Telegram continuation.
+   * Only the provisional `telegram:<id>` Steward subject may move; mature
+   * accounts are never merged, and canonical/projection ownership plus the
+   * continuation's bound user and organization must all agree.
+   */
+  async promoteTelegramPersonalAccountToSteward(params: {
+    telegramId: string;
+    stewardUserId: string;
+    expectedUserId: string;
+    expectedOrganizationId: string;
+  }): Promise<PromoteTelegramPersonalAccountResult> {
+    try {
+      return await dbWrite.transaction(async (tx) => {
+        const lockKeys = [
+          `telegram_personal_account:${params.telegramId}`,
+          `steward_subject:${params.stewardUserId}`,
+        ].sort();
+        for (const lockKey of lockKeys) {
+          await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${lockKey}))`);
+        }
+
+        const temporaryStewardUserId = `telegram:${params.telegramId}`;
+        const [canonicalTelegramOwner] = await tx
+          .select()
+          .from(users)
+          .where(eq(users.telegram_id, params.telegramId))
+          .limit(1);
+        const [projectedTelegramOwner] = await tx
+          .select()
+          .from(userIdentities)
+          .where(eq(userIdentities.telegram_id, params.telegramId))
+          .limit(1);
+        const [canonicalStewardOwner] = await tx
+          .select({ id: users.id })
+          .from(users)
+          .where(eq(users.steward_user_id, params.stewardUserId))
+          .limit(1);
+        const [projectedStewardOwner] = await tx
+          .select({ userId: userIdentities.user_id })
+          .from(userIdentities)
+          .where(eq(userIdentities.steward_user_id, params.stewardUserId))
+          .limit(1);
+
+        if (!canonicalTelegramOwner) {
+          if (canonicalStewardOwner || projectedStewardOwner) {
+            return { status: "steward_subject_owned_by_other_user" };
+          }
+          return projectedTelegramOwner
+            ? { status: "identity_projection_conflict" }
+            : { status: "not_found" };
+        }
+        if (
+          canonicalTelegramOwner.id !== params.expectedUserId ||
+          canonicalTelegramOwner.organization_id !== params.expectedOrganizationId
+        ) {
+          return { status: "continuation_account_mismatch" };
+        }
+        if (
+          (canonicalStewardOwner && canonicalStewardOwner.id !== canonicalTelegramOwner.id) ||
+          (projectedStewardOwner && projectedStewardOwner.userId !== canonicalTelegramOwner.id)
+        ) {
+          return { status: "steward_subject_owned_by_other_user" };
+        }
+        if (canonicalTelegramOwner.deleted_at) {
+          return { status: "telegram_account_deleted" };
+        }
+        if (!canonicalTelegramOwner.is_active) {
+          return { status: "telegram_account_inactive" };
+        }
+        if (
+          canonicalTelegramOwner.is_anonymous ||
+          canonicalTelegramOwner.role !== "owner" ||
+          !canonicalTelegramOwner.organization_id ||
+          (canonicalTelegramOwner.steward_user_id !== temporaryStewardUserId &&
+            canonicalTelegramOwner.steward_user_id !== params.stewardUserId)
+        ) {
+          return { status: "telegram_owned_by_mature_account" };
+        }
+
+        const [organization] = await tx
+          .select()
+          .from(organizations)
+          .where(eq(organizations.id, canonicalTelegramOwner.organization_id))
+          .limit(1);
+        if (!organization || organization.id !== params.expectedOrganizationId) {
+          return { status: "continuation_account_mismatch" };
+        }
+        if (!organization.is_active) {
+          return { status: "telegram_account_inactive" };
+        }
+        if (
+          !projectedTelegramOwner ||
+          projectedTelegramOwner.user_id !== canonicalTelegramOwner.id ||
+          projectedTelegramOwner.telegram_id !== params.telegramId ||
+          projectedTelegramOwner.is_anonymous
+        ) {
+          return { status: "identity_projection_conflict" };
+        }
+
+        if (canonicalTelegramOwner.steward_user_id === params.stewardUserId) {
+          return projectedTelegramOwner.steward_user_id === params.stewardUserId
+            ? { status: "already_promoted", user: canonicalTelegramOwner, organization }
+            : { status: "identity_projection_conflict" };
+        }
+
+        const updatedAt = new Date();
+        const [promotedUser] = await tx
+          .update(users)
+          .set({ steward_user_id: params.stewardUserId, updated_at: updatedAt })
+          .where(
+            and(
+              eq(users.id, canonicalTelegramOwner.id),
+              eq(users.organization_id, params.expectedOrganizationId),
+              eq(users.steward_user_id, temporaryStewardUserId),
+              eq(users.telegram_id, params.telegramId),
+              eq(users.is_anonymous, false),
+              eq(users.role, "owner"),
+              eq(users.is_active, true),
+              isNull(users.deleted_at),
+            ),
+          )
+          .returning();
+        if (!promotedUser) {
+          return { status: "telegram_owned_by_mature_account" };
+        }
+
+        const [promotedIdentity] = await tx
+          .update(userIdentities)
+          .set({ steward_user_id: params.stewardUserId, updated_at: updatedAt })
+          .where(
+            and(
+              eq(userIdentities.user_id, promotedUser.id),
+              eq(userIdentities.steward_user_id, temporaryStewardUserId),
+              eq(userIdentities.telegram_id, params.telegramId),
+              eq(userIdentities.is_anonymous, false),
+            ),
+          )
+          .returning({ id: userIdentities.id });
+        if (!promotedIdentity) {
+          throw new TelegramPromotionProjectionConflictError();
+        }
+
+        return { status: "promoted", user: promotedUser, organization };
+      });
+    } catch (error) {
+      // error-policy:J1 The repository maps its private rollback sentinel to a typed sync result.
+      if (error instanceof TelegramPromotionProjectionConflictError) {
         return { status: "identity_projection_conflict" };
       }
       throw error;
