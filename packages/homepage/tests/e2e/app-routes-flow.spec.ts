@@ -281,11 +281,11 @@ test("get-started covers Discord callback errors and setup guide", async ({
   await expect(
     page.getByRole("heading", { name: "Discord Setup Guide" }),
   ).toBeVisible();
-  await expect(page.getByText("Add Eliza to your server")).toBeVisible();
+  await expect(page.getByText("Install Eliza for your account")).toBeVisible();
   await expect(page.getByText("Send a direct message")).toBeVisible();
   await expect(page.getByText("Start chatting")).toBeVisible();
   await expect(
-    page.getByRole("button", { name: "Invite to Server" }),
+    page.getByRole("button", { name: "Install for DMs" }),
   ).toBeVisible();
   await expect(page.getByRole("button", { name: "Open DM" })).toBeVisible();
 
@@ -482,7 +482,7 @@ test("supported-platform messaging keeps a manual copy recovery visible", async 
   await page.goto("/");
   await waitForLandingIntro(page);
 
-  await page.getByRole("button", { name: "Message Eliza" }).click();
+  await page.getByRole("button", { name: "Text" }).click();
   await expect(page.getByRole("status")).toHaveText(
     "Opening Messages. If nothing happens, copy the number.",
   );
@@ -590,7 +590,7 @@ test("the latest manual-copy attempt owns the visible result", async ({
 
   await page.goto("/");
   await waitForLandingIntro(page);
-  await page.getByRole("button", { name: "Message Eliza" }).click();
+  await page.getByRole("button", { name: "Text" }).click();
   const copyButton = page.getByRole("button", { name: "Copy phone number" });
   await copyButton.click();
   await copyButton.click();
@@ -603,7 +603,7 @@ test("the latest manual-copy attempt owns the visible result", async ({
 
   await page.reload();
   await waitForLandingIntro(page);
-  await page.getByRole("button", { name: "Message Eliza" }).click();
+  await page.getByRole("button", { name: "Text" }).click();
   await copyButton.click();
   await copyButton.click();
   await expect.poll(attempts).toBe(2);
