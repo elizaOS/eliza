@@ -1,9 +1,15 @@
 /**
  * Read-only account details: account id, email + verification, and join date.
+ * These are labelled 1:1 status rows, not the ProfileForm editor, so they
+ * compose SettingsStack / SettingsGroup / SettingsRow.
  */
 
-import { CheckCircle2, Info, XCircle } from "lucide-react";
-import { BrandCard, CornerBrackets } from "../../../cloud-ui";
+import {
+  SettingsGroup,
+  SettingsRow,
+  SettingsStack,
+} from "../../../components/settings/settings-layout";
+import { StatusBadge } from "../../../components/ui/status-badge";
 import { useCloudT } from "../../shell/CloudI18nProvider";
 import type { UserProfile } from "../data/user";
 
@@ -22,67 +28,56 @@ export function AccountDetails({ user }: AccountDetailsProps) {
     : null;
 
   return (
-    <BrandCard className="relative">
-      <CornerBrackets size="sm" className="opacity-50" />
+    <SettingsStack data-testid="cloud-account-details">
+      <SettingsGroup
+        title={t("cloud.accountDetails.title", {
+          defaultValue: "Account details",
+        })}
+      >
+        <SettingsRow
+          label={t("cloud.accountDetails.accountId", {
+            defaultValue: "Account ID",
+          })}
+          description={
+            <span className="break-all font-mono text-txt-strong">
+              {user.id}
+            </span>
+          }
+        />
 
-      <div className="relative z-10 space-y-6">
-        <div className="flex items-center gap-2">
-          <Info className="h-5 w-5 text-muted" />
-          <h3 className="text-lg font-bold text-txt-strong">
-            {t("cloud.accountDetails.title", {
-              defaultValue: "Account details",
+        {user.email ? (
+          <SettingsRow
+            label={t("cloud.accountDetails.email", { defaultValue: "Email" })}
+            description={
+              <span className="break-all text-txt-strong">{user.email}</span>
+            }
+            control={
+              <StatusBadge
+                withDot
+                variant={user.email_verified ? "success" : "muted"}
+                label={
+                  user.email_verified
+                    ? t("cloud.accountDetails.verified", {
+                        defaultValue: "Verified",
+                      })
+                    : t("cloud.accountDetails.notVerified", {
+                        defaultValue: "Unverified",
+                      })
+                }
+              />
+            }
+          />
+        ) : null}
+
+        {created ? (
+          <SettingsRow
+            label={t("cloud.accountDetails.accountCreated", {
+              defaultValue: "Member since",
             })}
-          </h3>
-        </div>
-
-        <div className="space-y-4">
-          <div className="space-y-1">
-            <p className="text-xs text-muted uppercase tracking-wide">
-              {t("cloud.accountDetails.accountId", {
-                defaultValue: "Account ID",
-              })}
-            </p>
-            <p className="font-mono text-xs text-txt">{user.id}</p>
-          </div>
-
-          {user.email && (
-            <div className="space-y-1">
-              <p className="text-xs text-muted uppercase tracking-wide">
-                {t("cloud.accountDetails.email", { defaultValue: "Email" })}
-              </p>
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="text-sm text-txt-strong">{user.email}</span>
-                {user.email_verified ? (
-                  <span className="inline-flex items-center gap-1 rounded-sm border border-green-500/40 bg-green-500/10 px-2 py-0.5 text-xs text-green-400">
-                    <CheckCircle2 className="h-3 w-3" />
-                    {t("cloud.accountDetails.verified", {
-                      defaultValue: "Verified",
-                    })}
-                  </span>
-                ) : (
-                  <span className="inline-flex items-center gap-1 rounded-sm border border-border bg-muted px-2 py-0.5 text-xs text-txt-strong">
-                    <XCircle className="h-3 w-3" />
-                    {t("cloud.accountDetails.notVerified", {
-                      defaultValue: "Unverified",
-                    })}
-                  </span>
-                )}
-              </div>
-            </div>
-          )}
-
-          {created && (
-            <div className="space-y-1">
-              <p className="text-xs text-muted uppercase tracking-wide">
-                {t("cloud.accountDetails.accountCreated", {
-                  defaultValue: "Member since",
-                })}
-              </p>
-              <p className="text-sm text-txt-strong">{created}</p>
-            </div>
-          )}
-        </div>
-      </div>
-    </BrandCard>
+            description={<span className="text-txt-strong">{created}</span>}
+          />
+        ) : null}
+      </SettingsGroup>
+    </SettingsStack>
   );
 }
