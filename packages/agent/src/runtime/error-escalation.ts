@@ -57,7 +57,7 @@ export class ErrorEscalationTracker {
 function resolveThreshold(runtime: IAgentRuntime): number {
   const raw = runtime.getSetting?.("ERROR_ESCALATION_THRESHOLD");
   const parsed = raw ? Number(raw) : Number.NaN;
-  return Number.isInteger(parsed) && parsed >= 1 ? parsed : DEFAULT_THRESHOLD;
+  return Number.isInteger(parsed) && !Number.isNaN(parsed) && parsed >= 1 ? parsed : DEFAULT_THRESHOLD;
 }
 
 function resolveWindowMs(runtime: IAgentRuntime): number {

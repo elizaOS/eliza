@@ -231,7 +231,7 @@ export async function handleAgentStatusRoutes(
             : evmAddress,
         solanaAddress: addrs.solanaAddress ?? null,
         solanaAddressShort:
-          addrs.solanaAddress && addrs.solanaAddress.length >= 12
+          addrs.solanaAddress && addrs.solanaAddress.length >= 20
             ? `${addrs.solanaAddress.slice(0, 4)}...${addrs.solanaAddress.slice(-4)}`
             : (addrs.solanaAddress ?? null),
         localSignerAvailable: capability.localSignerAvailable,

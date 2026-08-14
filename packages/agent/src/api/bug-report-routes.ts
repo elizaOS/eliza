@@ -104,9 +104,12 @@ export function sanitize(input: string, maxLen = 10_000): string {
   const clipped = input.length > maxLen ? input.slice(0, maxLen) : input;
   let prev = clipped;
   let next = prev.replace(/<[^<>]{0,1024}>/g, "");
-  while (next !== prev) {
+  let iterations = 0;
+  const MAX_ITERATIONS = 100; // Prevent infinite loops
+  while (next !== prev && iterations < MAX_ITERATIONS) {
     prev = next;
     next = prev.replace(/<[^<>]{0,1024}>/g, "");
+    iterations++;
   }
   return next.replace(/[<>]/g, "").slice(0, maxLen);
 }
@@ -283,7 +286,9 @@ export async function handleBugReportRoutes(
   }
 
   if (method === "POST" && pathname === "/api/bug-report") {
-    if (!rateLimitBugReport(req.socket.remoteAddress ?? null)) {
+    const clientIp = req.socket.remoteAddress ?? req.headers["x-forwarded-for"] ?? null;
+    const ipString = Array.isArray(clientIp) ? clientIp[0] : clientIp;
+    if (!rateLimitBugReport(ipString)) {
       error(res, "Too many bug reports. Try again later.", 429);
       return true;
     }

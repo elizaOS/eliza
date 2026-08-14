@@ -124,7 +124,7 @@ export function validatePluginConfig(
       // Value source: provided config > process.env > undefined
       const value = providedConfig?.[param.key] ?? process.env[param.key];
 
-      if (!value?.trim()) {
+      if (typeof value !== "string" || !value.trim()) {
         // Required param with a default is a warning, not an error
         if (param.default) {
           warnings.push({
