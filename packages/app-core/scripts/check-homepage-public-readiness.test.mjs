@@ -14,7 +14,7 @@ const healthySurface = {
   bodyText: "Four hours of your time back every week.",
   messageButtonCount: 1,
   copiedPhone: "+18087881821",
-  copyNotice: "Phone number copied",
+  copyNotice: "Copied!",
   telHrefs: ["tel:+18087881821"],
   whatsAppHrefs: [],
   consoleErrors: [],

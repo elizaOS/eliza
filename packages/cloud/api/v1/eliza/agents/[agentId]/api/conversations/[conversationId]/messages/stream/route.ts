@@ -179,6 +179,7 @@ async function resolveAgentScope(
       orgId,
       userId,
       agentName: agent.agent_name ?? "Agent",
+      agentKind: "sandbox" as const,
     };
   }
   return resolveSharedAgent(c, {
@@ -266,6 +267,7 @@ app.post("/", async (c) => {
     body: raw,
     origin,
     namespace: worker.namespace,
+    agentKind: "agentKind" in r ? r.agentKind : "sandbox",
     // The Worker context carries both cold hydration and the shared turn's
     // deferred billing tail without putting either on the response path.
     executionCtx: worker.executionCtx,

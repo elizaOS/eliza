@@ -120,6 +120,7 @@ export interface LandingDemoCard {
 export type LandingDemoStep =
   | {
       capability: LandingDemoCapability;
+      continuation?: boolean;
       kind: "eliza";
       text: string;
     }
@@ -134,91 +135,106 @@ export const LANDING_DEMO_INTRO: readonly LandingDemoStep[] = [
   {
     capability: "conversation-memory",
     kind: "eliza",
-    text: "Hey, it's Eliza. Tell me what matters and I'll keep it in this conversation.",
+    text: "Hey, it's Eliza. What's on your plate?",
   },
-  { kind: "user", text: "my dad and I are planning Rome in October" },
+  { kind: "user", text: "dinner for four on Thursday" },
   {
     capability: "conversation-memory",
     kind: "eliza",
-    text: "Got it: Rome in October with your dad. What kind of places does he enjoy?",
+    text: "Got it. Thursday dinner for four.",
   },
-  { kind: "user", text: "quiet streets, old bookstores, great coffee" },
+  {
+    capability: "conversation-memory",
+    continuation: true,
+    kind: "eliza",
+    text: "What matters most?",
+  },
+  { kind: "user", text: "Italian, quiet, around 7:30" },
   {
     capability: "conversation-memory",
     kind: "eliza",
-    text: "I'll keep those preferences with the trip details in this conversation.",
-  },
-  { kind: "user", text: "he also likes early mornings and avoids crowds" },
-  {
-    capability: "conversation-memory",
-    kind: "eliza",
-    text: "Understood. Here's the context you've shared so far.",
+    text: "Perfect. I'll keep that together while we plan.",
   },
   {
     capability: "conversation-memory",
     kind: "card",
     card: {
       capability: "conversation-memory",
-      label: "Conversation context",
-      title: "Rome in October",
-      rows: ["Traveling with Dad"],
-      status: "In this chat",
+      label: "Dinner plan",
+      title: "Thursday at 7:30 PM",
+      rows: ["Italian and quiet", "Party of 4"],
     },
+  },
+  { kind: "user", text: "I also fly to San Francisco Friday morning" },
+  {
+    capability: "conversation-memory",
+    kind: "eliza",
+    text: "Okay. Dinner Thursday, then San Francisco Friday morning.",
   },
   {
     capability: "conversation-memory",
     kind: "card",
     card: {
       capability: "conversation-memory",
-      label: "Conversation context",
-      title: "What Dad enjoys",
-      rows: ["Quiet streets and old bookstores", "Great coffee"],
-      status: "In this chat",
+      label: "Trip context",
+      title: "San Francisco",
+      rows: ["Friday morning", "After Thursday dinner"],
     },
+  },
+  { kind: "user", text: "and remember I hate early flights" },
+  {
+    capability: "conversation-memory",
+    kind: "eliza",
+    text: "Noted.",
+  },
+  {
+    capability: "conversation-memory",
+    continuation: true,
+    kind: "eliza",
+    text: "I'll keep that preference in this conversation.",
   },
   {
     capability: "conversation-memory",
     kind: "card",
     card: {
       capability: "conversation-memory",
-      label: "Conversation context",
-      title: "Pace",
-      rows: ["Early mornings", "Avoid crowded places"],
-      status: "In this chat",
+      label: "Travel preference",
+      title: "Flight timing",
+      rows: ["Avoid early departures"],
     },
   },
-  { kind: "user", text: "what have I told you so far?" },
+  { kind: "user", text: "what's the plan again?" },
   {
     capability: "conversation-memory",
     kind: "eliza",
-    text: "Rome in October with your dad. He likes quiet streets, old bookstores, great coffee, and early mornings without crowds.",
+    text: "Quiet Italian dinner for four Thursday at 7:30.",
   },
-  { kind: "user", text: "perfect, we'll start with Monti" },
   {
     capability: "conversation-memory",
+    continuation: true,
     kind: "eliza",
-    text: "Got it. Monti is your starting point for this trip conversation.",
+    text: "Then San Francisco Friday morning, but not too early.",
   },
 ];
 
 export const LANDING_DEMO_LOOP: readonly LandingDemoStep[] = [
-  { kind: "user", text: "what did I say my dad likes?" },
+  { kind: "user", text: "what do you remember about dinner?" },
   {
     capability: "conversation-memory",
     kind: "eliza",
-    text: "Quiet streets, old bookstores, great coffee, and early mornings without crowds.",
+    text: "Thursday at 7:30, somewhere Italian and quiet, for four people.",
   },
-  { kind: "user", text: "and where did we decide to start?" },
+  { kind: "user", text: "and the flight?" },
   {
     capability: "conversation-memory",
     kind: "eliza",
-    text: "Monti is the starting point you chose for the Rome trip.",
+    text: "Friday morning to San Francisco. You don't want an early departure.",
   },
-  { kind: "user", text: "sum up the trip context in one sentence" },
+  { kind: "user", text: "put it all together" },
   {
     capability: "conversation-memory",
     kind: "eliza",
-    text: "A quiet October trip to Rome with your dad, starting in Monti and shaped around bookstores, coffee, and uncrowded mornings.",
+    text: "Quiet Italian dinner Thursday, then a not-too-early flight to San Francisco Friday.",
   },
 ];
 
