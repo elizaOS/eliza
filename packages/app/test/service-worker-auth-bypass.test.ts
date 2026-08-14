@@ -29,6 +29,14 @@ function loadServiceWorker() {
       listeners.set(type, [...(listeners.get(type) ?? []), listener]);
     },
     skipWaiting: () => Promise.resolve(),
+    // sw.js reads `self.registration` twice: it snapshots `.active` at
+    // evaluation time to tell a first install (null) from an update (the
+    // previous worker), and `activate` gates navigation-preload setup on
+    // `.navigationPreload`. A worker-like stub without `registration` makes
+    // the first read throw before any listener is registered, killing the
+    // script on load; stubbing only `.active` defers the same crash to the
+    // first test that dispatches `activate`. Both keys model a first install.
+    registration: { active: null, navigationPreload: null },
     clients: {
       claim: () => Promise.resolve(),
       matchAll: () => Promise.resolve([]),
