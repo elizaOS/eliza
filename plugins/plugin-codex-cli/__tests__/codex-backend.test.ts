@@ -3,7 +3,9 @@
  * SSE parser, tool-schema translation, and CodexBackend request/stream handling
  * driven by a fake fetch (no live model or network).
  */
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { buildPlannerToolsFromActions } from "../../../packages/core/src/actions/to-tool";
+import { executePlannedToolCall } from "../../../packages/core/src/runtime/execute-planned-tool-call";
 import { __INTERNAL_buildCodexGenerateParams, codexCliPlugin } from "../index";
 import {
   __resetCodexAuthDeps,
@@ -126,6 +128,72 @@ describe("tool translation", () => {
       required: ["action", "prompt"],
       additionalProperties: false,
     });
+  });
+
+  it("keeps unrelated optional nulls nullable while rejecting TODO limit null at execution", async () => {
+    const handler = vi.fn(async () => ({ success: true }));
+    const action = {
+      name: "TODO",
+      description: "Manage todos",
+      parameters: [
+        {
+          name: "action",
+          description: "Todo operation",
+          required: true,
+          schema: { type: "string", enum: ["list"] },
+        },
+        {
+          name: "content",
+          description: "Optional content",
+          required: false,
+          schema: { type: "string" },
+        },
+        {
+          name: "limit",
+          description: "Maximum rows",
+          required: false,
+          schema: { type: "integer", minimum: 1, nullable: false },
+        },
+      ],
+      validate: async () => true,
+      handler,
+    };
+    const [tool] = buildPlannerToolsFromActions([action]);
+    const codexTool = toOpenAITool(tool);
+    expect(codexTool.parameters).toMatchObject({
+      required: ["action", "content", "limit"],
+      properties: {
+        content: { type: ["string", "null"] },
+        limit: { type: "integer" },
+      },
+    });
+
+    const runtime = {
+      actions: [action],
+      getRoom: vi.fn(async () => null),
+      getService: vi.fn(() => undefined),
+      logger: { debug: vi.fn(), warn: vi.fn(), error: vi.fn() },
+    } as never;
+    const context = {
+      message: {
+        id: "message-id",
+        entityId: "entity-id",
+        roomId: "room-id",
+        content: { text: "list todos" },
+      },
+    } as never;
+    const unrelatedNull = await executePlannedToolCall(runtime, context, {
+      name: "TODO",
+      params: { action: "list", content: null },
+    });
+    expect(unrelatedNull.success).toBe(true);
+    const todoLimitNull = await executePlannedToolCall(runtime, context, {
+      name: "TODO",
+      params: { action: "list", limit: null },
+    });
+    expect(todoLimitNull.success).toBe(false);
+    expect(String(todoLimitNull.error)).toContain("Argument 'limit' expected integer, got null");
+    expect(handler).toHaveBeenCalledTimes(1);
   });
 });
 

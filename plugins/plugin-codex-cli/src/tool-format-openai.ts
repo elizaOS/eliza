@@ -55,7 +55,15 @@ function makeStrictSchema(schema: unknown): unknown {
     const next: JsonSchema = {};
     for (const key of keys) {
       let prop = makeStrictSchema(props[key]);
-      if (!origRequired.has(key)) prop = makeNullable(prop);
+      const rejectsNull =
+        prop && typeof prop === "object" && !Array.isArray(prop)
+          ? (prop as JsonSchema).nullable === false
+          : false;
+      if (prop && typeof prop === "object" && !Array.isArray(prop)) {
+        const { nullable: _nullable, ...withoutMetadata } = prop as JsonSchema;
+        prop = withoutMetadata;
+      }
+      if (!origRequired.has(key) && !rejectsNull) prop = makeNullable(prop);
       next[key] = prop;
     }
     out.properties = next;

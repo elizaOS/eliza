@@ -583,6 +583,7 @@ export const todoAction: Action = {
         type: "integer" as const,
         minimum: 1,
         maximum: Number.MAX_SAFE_INTEGER,
+        nullable: false,
       },
     },
   ],

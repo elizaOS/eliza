@@ -158,7 +158,40 @@ describe("executePlannedToolCall", () => {
 		expect(handler).not.toHaveBeenCalled();
 	});
 
-	it("rejects an explicit null optional argument instead of normalizing it to omission", async () => {
+	it("preserves omission semantics for an explicit null optional argument", async () => {
+		const handler = vi.fn(async () => ({ success: true }));
+		const action = makeAction({
+			name: "OPTIONAL_ARG",
+			parameters: [
+				{
+					name: "action",
+					description: "Todo operation",
+					required: true,
+					schema: { type: "string", enum: ["list"] },
+				},
+				{
+					name: "limit",
+					description: "Maximum rows",
+					required: false,
+					schema: { type: "integer", minimum: 1 },
+				},
+			],
+			handler,
+		});
+
+		const result = await executePlannedToolCall(
+			makeRuntime([action]),
+			{ message: makeMessage() },
+			{ name: "OPTIONAL_ARG", params: { action: "list", limit: null } },
+		);
+
+		expect(result.success).toBe(true);
+		expect(handler.mock.calls[0]?.[3]).toMatchObject({
+			parameters: { action: "list" },
+		});
+	});
+
+	it("rejects TODO list limit null before the handler", async () => {
 		const handler = vi.fn(async () => ({ success: true }));
 		const action = makeAction({
 			name: "TODO",
@@ -173,7 +206,7 @@ describe("executePlannedToolCall", () => {
 					name: "limit",
 					description: "Maximum rows",
 					required: false,
-					schema: { type: "integer", minimum: 1 },
+					schema: { type: "integer", minimum: 1, nullable: false },
 				},
 			],
 			handler,

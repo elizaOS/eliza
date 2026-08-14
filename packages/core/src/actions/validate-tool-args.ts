@@ -168,11 +168,13 @@ function validateObject(
 	}
 
 	for (const [key, childSchema] of Object.entries(properties)) {
-		// An explicitly supplied null is not the same as an omitted optional
-		// parameter. Validate it against the declared schema so callers cannot
-		// accidentally turn an invalid null into omission (and a different,
-		// potentially unbounded operation).
-		if (hasOwn(value, key) && value[key] !== undefined) {
+		// Preserve the established null-as-omission behavior for optional
+		// parameters unless the schema explicitly opts into null rejection.
+		if (
+			hasOwn(value, key) &&
+			value[key] !== undefined &&
+			(value[key] !== null || childSchema.nullable === false)
+		) {
 			const childPath = path ? `${path}.${key}` : key;
 			const before = errors.length;
 			const childValue = validateSchema(

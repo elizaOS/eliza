@@ -41,6 +41,8 @@ export interface ActionParameterSchema {
 	description?: string;
 	/** Default value if parameter is not provided */
 	default?: JsonValue | null;
+	/** Whether an explicitly supplied null is rejected for this parameter. */
+	nullable?: boolean;
 	/** For object types, define nested properties */
 	properties?: Record<string, ActionParameterSchema>;
 	/** Required child property names for object-valued parameters */
