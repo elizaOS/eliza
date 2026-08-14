@@ -424,6 +424,39 @@ describe("runSharedAgentTurnStream — incremental provider policy", () => {
     expect(((error as Error).cause as Error).message).toContain("provider stream reset");
   });
 
+  test("propagates explicit provider error parts instead of treating them as clean EOF", async () => {
+    streamTextImpl = () => ({
+      fullStream: aiFullStream(
+        (async function* () {
+          yield { type: "text-delta", text: "partial" };
+          yield { type: "error", error: new Error("provider rejected stream") };
+        })(),
+      ),
+      text: Promise.resolve("partial"),
+      totalUsage: Promise.resolve({ totalTokens: 0 }),
+    });
+
+    const result = await runSharedAgentTurnStream({
+      character: { name: "Nova", model: "gpt-oss-120b" },
+      history: [],
+      message: "hello",
+    });
+    if (!("parts" in result)) throw new Error("expected streaming result");
+
+    const error = await (async () => {
+      try {
+        for await (const _part of result.parts) {
+          // Consume through the explicit provider error part.
+        }
+        throw new Error("expected stream consumption to fail");
+      } catch (caught) {
+        return caught;
+      }
+    })();
+    expect(error).toBeInstanceOf(Error);
+    expect(((error as Error).cause as Error).message).toBe("provider rejected stream");
+  });
+
   test("propagates a clean EOF whose authoritative SDK result rejects", async () => {
     streamTextImpl = () => {
       const text = Promise.reject(new Error("provider completion failed"));

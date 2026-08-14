@@ -456,6 +456,11 @@ export async function runSharedAgentTurnStream(
             reply += part.text;
             yield { type: "text-delta", text: part.text };
           }
+          if (part.type === "error") {
+            throw part.error instanceof Error
+              ? part.error
+              : new Error("provider stream reported an unknown error");
+          }
           if (part.type === "finish") {
             finishSeen = true;
             yield {
