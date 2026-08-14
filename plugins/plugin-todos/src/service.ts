@@ -138,14 +138,17 @@ export class TodosService extends Service {
   }
 
   async list(filter: TodoFilter): Promise<Todo[]> {
-    if (filter.limit !== undefined && !isValidTodoLimit(filter.limit)) {
+    // Snapshot the caller-owned accessor once. Validation and query construction
+    // must use the same value even if the filter is mutated while this method runs.
+    const limit = filter.limit;
+    if (limit !== undefined && !isValidTodoLimit(limit)) {
       throw new ElizaError(
         `${TODOS_LOG_PREFIX} limit must be a positive safe integer when provided`,
         {
           code: "todos.list.invalid_limit",
           context: {
-            receivedLimit: String(filter.limit),
-            receivedType: typeof filter.limit,
+            receivedLimit: String(limit),
+            receivedType: typeof limit,
           },
           severity: "fatal",
         },
@@ -174,10 +177,7 @@ export class TodosService extends Service {
       .from(todosTable)
       .where(and(...conditions))
       .orderBy(desc(todosTable.updatedAt));
-    const rows =
-      filter.limit === undefined
-        ? await query
-        : await query.limit(filter.limit);
+    const rows = limit === undefined ? await query : await query.limit(limit);
     return rows.map(rowToTodo);
   }
 

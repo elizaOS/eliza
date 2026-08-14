@@ -603,6 +603,37 @@ describe("TODO action", () => {
       ).rejects.toMatchObject({ code: "todos.list.invalid_limit" });
       expect(dbReads).toBe(0);
     });
+
+    it("snapshots an accessor limit once and rejects its invalid value before DB access", async () => {
+      let limitReads = 0;
+      let dbReads = 0;
+      const filter = {
+        entityId: ENTITY,
+        get limit(): number {
+          limitReads++;
+          // Simulate caller mutation immediately after the accessor is read.
+          Object.defineProperty(this, "limit", {
+            value: 1,
+            configurable: true,
+          });
+          return 0;
+        },
+      };
+      const guardedRuntime = {
+        agentId: AGENT,
+        get db(): never {
+          dbReads++;
+          throw new Error("runtime.db must not be read for an invalid limit");
+        },
+      } as unknown as IAgentRuntime;
+      const guardedService = new TodosService(guardedRuntime);
+
+      await expect(guardedService.list(filter)).rejects.toMatchObject({
+        code: "todos.list.invalid_limit",
+      });
+      expect(limitReads).toBe(1);
+      expect(dbReads).toBe(0);
+    });
   });
 
   describe("action=clear", () => {
