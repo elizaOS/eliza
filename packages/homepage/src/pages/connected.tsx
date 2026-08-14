@@ -16,7 +16,7 @@ import {
   DropdownMenuTrigger,
 } from "@elizaos/ui/dropdown-menu";
 import { Check, Copy, Info, LogOut } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { ElizaLogo } from "@/components/brand/eliza-logo";
 import {
@@ -92,7 +92,6 @@ export default function ConnectedPage() {
   const [phoneCopyState, setPhoneCopyState] = useState<
     "idle" | "copied" | "error"
   >("idle");
-  const phoneCopyResetRef = useRef<number | null>(null);
   const [copiedTelegram, setCopiedTelegram] = useState(false);
   const [copiedWhatsApp, setCopiedWhatsApp] = useState(false);
 
@@ -161,32 +160,13 @@ export default function ConnectedPage() {
     }
   }, [isAuthenticated, isLoading, navigate]);
 
-  useEffect(
-    () => () => {
-      if (phoneCopyResetRef.current !== null) {
-        window.clearTimeout(phoneCopyResetRef.current);
-      }
-    },
-    [],
-  );
-
-  const setTemporaryPhoneCopyState = (state: "copied" | "error") => {
-    setPhoneCopyState(state);
-    if (phoneCopyResetRef.current !== null) {
-      window.clearTimeout(phoneCopyResetRef.current);
-    }
-    phoneCopyResetRef.current = window.setTimeout(
-      () => setPhoneCopyState("idle"),
-      2_000,
-    );
-  };
-
   const handleCopyPhone = async () => {
     try {
       await navigator.clipboard.writeText(ELIZA_PHONE_NUMBER);
-      setTemporaryPhoneCopyState("copied");
+      setPhoneCopyState("copied");
     } catch {
-      setTemporaryPhoneCopyState("error");
+      // error-policy:J4 Clipboard rejection stays visible as a distinct UI error.
+      setPhoneCopyState("error");
     }
   };
 
@@ -223,9 +203,10 @@ export default function ConnectedPage() {
   const handleOpenMessages = async () => {
     try {
       const outcome = await openOrCopyElizaMessage(window);
-      if (outcome === "copied") setTemporaryPhoneCopyState("copied");
+      if (outcome === "copied") setPhoneCopyState("copied");
     } catch {
-      setTemporaryPhoneCopyState("error");
+      // error-policy:J4 Clipboard rejection stays visible as a distinct UI error.
+      setPhoneCopyState("error");
     }
   };
 
@@ -284,7 +265,7 @@ export default function ConnectedPage() {
           className={`fixed bottom-4 left-1/2 z-50 -translate-x-1/2 rounded-full bg-white px-4 py-2 text-sm font-medium shadow-lg ${
             phoneCopyState === "copied" ? "text-green-700" : "text-red-700"
           }`}
-          role="status"
+          role={phoneCopyState === "error" ? "alert" : "status"}
           aria-live="polite"
         >
           {phoneCopyState === "copied"

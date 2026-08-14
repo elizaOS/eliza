@@ -329,7 +329,7 @@ test("landing leads with iMessage and keeps secondary channels available", async
   context,
   page,
 }) => {
-  await context.grantPermissions(["clipboard-write"]);
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
   await page.goto("/");
 
   await expect(
@@ -339,6 +339,11 @@ test("landing leads with iMessage and keeps secondary channels available", async
   const textCta = page.getByRole("button", { name: "Message Eliza" });
   await expect(textCta).toBeVisible();
   await textCta.click();
+  await expect(page.getByRole("status")).toHaveText("Phone number copied");
+  await expect
+    .poll(() => page.evaluate(() => navigator.clipboard.readText()))
+    .toBe("+18087881821");
+  await page.waitForTimeout(2_250);
   await expect(page.getByRole("status")).toHaveText("Phone number copied");
   await expect(page.getByText("+1 (808) 788-1821")).toHaveCount(0);
   await expect(page.getByRole("link", { name: "Call" })).toHaveAttribute(
@@ -383,8 +388,10 @@ test("landing leads with iMessage and keeps secondary channels available", async
 });
 
 test("landing keeps content reachable on a small viewport", async ({
+  context,
   page,
 }) => {
+  await context.grantPermissions(["clipboard-write"]);
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/");
   await waitForLandingIntro(page);
@@ -399,4 +406,31 @@ test("landing keeps content reachable on a small viewport", async ({
   const composer = page.locator(".landing-phone-composer");
   await composer.scrollIntoViewIfNeeded();
   await expect(composer).toBeVisible();
+
+  await page.getByRole("button", { name: "Message Eliza" }).click();
+  await expect(page.getByRole("status")).toHaveText("Phone number copied");
+  await page.waitForTimeout(2_250);
+  await expect(page.getByRole("status")).toHaveText("Phone number copied");
+});
+
+test("landing keeps clipboard rejection visible", async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: {
+        writeText: () =>
+          Promise.reject(new DOMException("denied", "NotAllowedError")),
+      },
+    });
+  });
+  await page.goto("/");
+
+  await page.getByRole("button", { name: "Message Eliza" }).click();
+  await expect(page.getByRole("alert")).toHaveText(
+    "Couldn't copy the phone number",
+  );
+  await page.waitForTimeout(2_250);
+  await expect(page.getByRole("alert")).toHaveText(
+    "Couldn't copy the phone number",
+  );
 });

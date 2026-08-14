@@ -708,22 +708,12 @@ export default function GetStartedPage() {
   const [messageNotice, setMessageNotice] = useState<
     "idle" | "copied" | "error"
   >("idle");
-  const messageNoticeResetRef = useRef<number | null>(null);
   const [showContent, setShowContent] = useState(false);
 
   useEffect(() => {
     const timer = setTimeout(() => setShowContent(true), 100);
     return () => clearTimeout(timer);
   }, []);
-
-  useEffect(
-    () => () => {
-      if (messageNoticeResetRef.current !== null) {
-        window.clearTimeout(messageNoticeResetRef.current);
-      }
-    },
-    [],
-  );
 
   const headerStyle: CSSProperties = {
     opacity: showContent ? 1 : 0,
@@ -1303,15 +1293,9 @@ export default function GetStartedPage() {
       const outcome = await openOrCopyElizaMessage(window);
       setMessageNotice(outcome === "copied" ? "copied" : "idle");
     } catch {
+      // error-policy:J4 Clipboard rejection stays visible as a distinct UI error.
       setMessageNotice("error");
     }
-    if (messageNoticeResetRef.current !== null) {
-      window.clearTimeout(messageNoticeResetRef.current);
-    }
-    messageNoticeResetRef.current = window.setTimeout(
-      () => setMessageNotice("idle"),
-      2_000,
-    );
   };
 
   const handleContinueToConnected = () => {
@@ -1820,7 +1804,7 @@ export default function GetStartedPage() {
 
               {messageNotice !== "idle" && (
                 <p
-                  role="status"
+                  role={messageNotice === "error" ? "alert" : "status"}
                   aria-live="polite"
                   className={`mt-3 text-center text-sm font-medium ${
                     messageNotice === "copied"
