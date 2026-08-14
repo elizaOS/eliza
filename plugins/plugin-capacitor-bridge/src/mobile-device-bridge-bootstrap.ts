@@ -873,9 +873,27 @@ class MobileDeviceBridge {
 
 export const mobileDeviceBridge = new MobileDeviceBridge();
 
-function readTimeoutMs(envKey: string, fallback: number): number {
-	const parsed = Number.parseInt(process.env[envKey]?.trim() ?? "", 10);
-	return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+const MAX_TIMER_DELAY_MS = 2_147_483_647;
+
+export function readTimeoutMs(envKey: string, fallback: number): number {
+	const raw = process.env[envKey]?.trim();
+	if (!raw) return fallback;
+	if (!/^(?:0|[1-9]\d*)$/.test(raw)) {
+		throw new Error(
+			`${envKey} must be a canonical decimal integer from 1 through ${MAX_TIMER_DELAY_MS}`,
+		);
+	}
+	const parsed = Number(raw);
+	if (
+		!Number.isSafeInteger(parsed) ||
+		parsed < 1 ||
+		parsed > MAX_TIMER_DELAY_MS
+	) {
+		throw new Error(
+			`${envKey} must be a canonical decimal integer from 1 through ${MAX_TIMER_DELAY_MS}`,
+		);
+	}
+	return parsed;
 }
 
 function localInferenceRoot(): string {
