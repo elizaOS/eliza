@@ -897,10 +897,11 @@ export async function listOrAutoProvisionCloudAgent(
   if (!authToken) {
     return { kind: "needs-cloud-login" };
   }
-  // Capacitor does not mount the web-only `/join` router. Resolve the same
-  // account-native identity here and never list, select, wake, or provision a
-  // row-backed Cloud agent merely because the user installed the companion.
-  if (isNative && !isDesktopPlatform()) {
+  // Native and desktop companions do not mount the web-only `/join` router.
+  // Resolve the same account-native identity here and never list, select,
+  // wake, or provision a row-backed Cloud agent merely because the user
+  // installed a companion app.
+  if (isNative) {
     return bindNativePersonalEliza(authToken, ports);
   }
   let list = agentsList;

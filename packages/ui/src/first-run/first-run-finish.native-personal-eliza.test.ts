@@ -1,4 +1,4 @@
-/** Verifies native Cloud onboarding binds the account-native personal Eliza without provisioning an agent row. */
+/** Verifies companion Cloud onboarding binds the account-native personal Eliza without provisioning an agent row. */
 // @vitest-environment jsdom
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -22,6 +22,7 @@ const addAgentProfileMock = vi.hoisted(() => vi.fn(() => ({ id: "profile" })));
 const saveActiveServerMock = vi.hoisted(() => vi.fn());
 const saveFirstRunCompleteMock = vi.hoisted(() => vi.fn());
 const persistMobileModeMock = vi.hoisted(() => vi.fn());
+const platformMock = vi.hoisted(() => ({ desktop: false }));
 
 vi.mock("../api", () => ({ client: clientMock }));
 
@@ -35,7 +36,7 @@ vi.mock("../config/boot-config", () => ({
 vi.mock("../platform/init", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../platform/init")>()),
   isAndroid: false,
-  isDesktopPlatform: () => false,
+  isDesktopPlatform: () => platformMock.desktop,
   isIOS: true,
   isNative: true,
 }));
@@ -78,6 +79,7 @@ function ports(): FirstRunFinishPorts {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  platformMock.desktop = false;
   window.localStorage.clear();
   window.localStorage.setItem("steward_session_token", "steward-token");
   clientMock.getPersonalSharedEliza.mockResolvedValue({
@@ -88,35 +90,42 @@ beforeEach(() => {
   });
 });
 
-describe("native personal Eliza onboarding", () => {
-  it("binds the same account identity without listing or provisioning agents", async () => {
-    const p = ports();
-    const outcome = await listOrAutoProvisionCloudAgent(draft(), p);
+describe("companion personal Eliza onboarding", () => {
+  it.each([
+    ["iOS", false],
+    ["desktop", true],
+  ])(
+    "binds the same account identity on %s without listing or provisioning agents",
+    async (_platform, desktop) => {
+      platformMock.desktop = desktop;
+      const p = ports();
+      const outcome = await listOrAutoProvisionCloudAgent(draft(), p);
 
-    expect(outcome).toEqual({ kind: "done" });
-    expect(clientMock.getPersonalSharedEliza).toHaveBeenCalledWith({
-      cloudApiBase: "https://staging.elizacloud.ai",
-      authToken: "steward-token",
-    });
-    expect(clientMock.getCloudCompatAgents).not.toHaveBeenCalled();
-    expect(clientMock.selectOrProvisionCloudAgent).not.toHaveBeenCalled();
-    expect(saveActiveServerMock).toHaveBeenCalledWith({
-      id: `cloud:${PERSONAL_ID}`,
-      kind: "cloud",
-      label: "Eliza",
-      apiBase: PERSONAL_BASE,
-      accessToken: "steward-token",
-    });
-    expect(addAgentProfileMock).toHaveBeenCalledWith({
-      kind: "cloud",
-      label: "Eliza",
-      cloudAgentId: PERSONAL_ID,
-      apiBase: PERSONAL_BASE,
-      accessToken: "steward-token",
-    });
-    expect(persistMobileModeMock).toHaveBeenCalledWith("elizacloud");
-    expect(p.completeFirstRun).toHaveBeenCalledWith("chat");
-  });
+      expect(outcome).toEqual({ kind: "done" });
+      expect(clientMock.getPersonalSharedEliza).toHaveBeenCalledWith({
+        cloudApiBase: "https://staging.elizacloud.ai",
+        authToken: "steward-token",
+      });
+      expect(clientMock.getCloudCompatAgents).not.toHaveBeenCalled();
+      expect(clientMock.selectOrProvisionCloudAgent).not.toHaveBeenCalled();
+      expect(saveActiveServerMock).toHaveBeenCalledWith({
+        id: `cloud:${PERSONAL_ID}`,
+        kind: "cloud",
+        label: "Eliza",
+        apiBase: PERSONAL_BASE,
+        accessToken: "steward-token",
+      });
+      expect(addAgentProfileMock).toHaveBeenCalledWith({
+        kind: "cloud",
+        label: "Eliza",
+        cloudAgentId: PERSONAL_ID,
+        apiBase: PERSONAL_BASE,
+        accessToken: "steward-token",
+      });
+      expect(persistMobileModeMock).toHaveBeenCalledWith("elizacloud");
+      expect(p.completeFirstRun).toHaveBeenCalledWith("chat");
+    },
+  );
 
   it("surfaces identity resolution failure without falling back to provisioning", async () => {
     clientMock.getPersonalSharedEliza.mockRejectedValueOnce(
