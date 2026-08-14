@@ -1,5 +1,8 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { mkdtempSync, readFileSync, rmSync, symlinkSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { describe, it } from "node:test";
 import {
   canary,
@@ -94,6 +97,27 @@ describe("deterministic canaries", () => {
       await canary(scenario);
     }
     await assert.rejects(canary("unknown"), /canary failed: unknown/);
+  });
+
+  it("runs when invoked through a symlink in a path containing spaces", () => {
+    const tempDir = mkdtempSync(path.join(tmpdir(), "security advisory gate "));
+    const linkedScript = path.join(tempDir, "security advisory gate.mjs");
+    symlinkSync(
+      new URL("./security-advisory-gate.mjs", import.meta.url),
+      linkedScript,
+    );
+
+    try {
+      const result = spawnSync(process.execPath, [linkedScript], {
+        encoding: "utf8",
+        env: { ...process.env, CANARY_SCENARIO: "bypass" },
+      });
+
+      assert.equal(result.status, 0, result.stderr);
+      assert.match(result.stdout, /canary passed: bypass/);
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
   });
 });
 
