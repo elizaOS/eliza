@@ -100,6 +100,8 @@ const STT_PARTIAL_EMIT_INTERVAL_MS = 40;
  * land, while keeping the total first-turn penalty bounded below eight seconds.
  */
 const CACHE_WARMING_RETRY_DELAYS_MS = [250, 500, 1_000, 2_000, 4_000] as const;
+/** Replace a failed realtime recognizer without dropping the live phone call. */
+const STT_RECONNECT_DELAYS_MS = [0, 250, 1_000] as const;
 const CACHE_WARMING_CODES = new Set([
   "agent_cache_warming",
   "shared_runtime_cache_warming",
@@ -149,6 +151,8 @@ export interface VoiceSessionConfig {
   openingGreeting?: string;
   /** Deterministic test override; production uses bounded exponential backoff. */
   cacheWarmingRetryDelaysMs?: readonly number[];
+  /** Deterministic test override for the bounded Ink reconnect schedule. */
+  sttReconnectDelaysMs?: readonly number[];
 
   // Metering (SEC-15). Server-derived only.
   usageStore: VoiceUsageStore;
@@ -194,6 +198,9 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
 
   private stt: CartesiaInkRealtimeSession | null = null;
   private sttReady = false;
+  private sttGeneration = 0;
+  private sttReconnectAttempts = 0;
+  private sttReconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private readonly providerPendingFrames: ArrayBuffer[] = [];
   private readonly cartesiaAdapter: CartesiaSonicTtsAdapter;
   private readonly fishAudioAdapter: FishAudioTtsAdapter | null = null;
@@ -273,11 +280,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
     if (this.started || this.closed) return;
     this.started = true;
 
-    this.stt = createCartesiaInkRealtimeSession({
-      cartesiaApiKey: this.config.cartesiaApiKey,
-      webSocketFactory: this.config.cartesiaInkWebSocketFactory,
-      onEvent: (event) => this.onSttEvent(event),
-    });
+    this.openSttSession();
 
     this.registry.register(this);
 
@@ -340,7 +343,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
    * meters server-derived seconds. Silently drops if the session is torn down.
    */
   pushUplinkAudio(bytes: Uint8Array): void {
-    if (this.closed || !this.stt || this.meteredExhausted) return;
+    if (this.closed || this.meteredExhausted) return;
 
     // Fail-closed admission (SEC-15): NO audio is forwarded to the paid provider
     // until an initial quota check has PASSED. Frames that arrive before the
@@ -389,8 +392,8 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
 
   /** Queue audio until Ink is ready, then preserve its original frame order. */
   private forwardSttFrame(frame: ArrayBuffer): boolean {
-    if (this.closed || !this.stt) return false;
-    if (!this.sttReady) {
+    if (this.closed) return false;
+    if (!this.stt || !this.sttReady) {
       this.providerPendingFrames.push(frame);
       if (this.providerPendingFrames.length <= MAX_PROVIDER_PENDING_FRAMES) {
         return true;
@@ -481,12 +484,26 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
 
   // --- STT event handling ---------------------------------------------------
 
-  private onSttEvent(event: CartesiaInkRealtimeEvent): void {
-    if (this.closed) return;
+  private openSttSession(): void {
+    const generation = ++this.sttGeneration;
+    this.sttReady = false;
+    this.stt = createCartesiaInkRealtimeSession({
+      cartesiaApiKey: this.config.cartesiaApiKey,
+      webSocketFactory: this.config.cartesiaInkWebSocketFactory,
+      onEvent: (event) => this.onSttEvent(event, generation),
+    });
+  }
+
+  private onSttEvent(
+    event: CartesiaInkRealtimeEvent,
+    generation: number,
+  ): void {
+    if (this.closed || generation !== this.sttGeneration) return;
     switch (event.type) {
       case "connected": {
         // Provider readiness is transport metadata; the client-facing session
         // has already emitted its own authenticated `ready` frame.
+        this.sttReconnectAttempts = 0;
         this.sttReady = true;
         const buffered = this.providerPendingFrames.splice(0);
         for (const frame of buffered) if (!this.forwardSttFrame(frame)) break;
@@ -541,17 +558,82 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
       case "error": {
         // Provider/protocol failures are explicit and terminate the current
         // turn; malformed input must not be reinterpreted as speech.
+        this.activeSttTurn = false;
         this.resetSttPartialDelivery();
+        if (event.code === "transport_error") {
+          this.send({ t: "error", code: event.code, retryable: true });
+          this.recoverSttTransport("transport_error", generation);
+          break;
+        }
         this.send({ t: "error", code: event.code, retryable: false });
         break;
       }
       case "close": {
-        // Provider closed. If we were mid-session and not already tearing down,
-        // this is fatal for the turn; end the session so the client re-mints.
-        if (!this.closed) this.teardown("error");
+        this.send({ t: "error", code: "stt_reconnecting", retryable: true });
+        this.recoverSttTransport(`close:${event.code}`, generation);
         break;
       }
     }
+  }
+
+  /**
+   * Replace a failed Ink socket while preserving the authenticated call.
+   *
+   * The generation fence makes the old socket's recursive close callback a
+   * no-op. Any incomplete transcript is discarded because a new recognizer
+   * cannot safely resume provider turn state; newly metered audio remains in
+   * the bounded provider queue until the replacement emits `connected`.
+   */
+  private recoverSttTransport(reason: string, generation: number): void {
+    if (this.closed || generation !== this.sttGeneration) return;
+    const failed = this.stt;
+    this.stt = null;
+    this.sttReady = false;
+    this.activeSttTurn = false;
+    this.resetSttPartialDelivery();
+    this.sttGeneration += 1;
+    if (failed) {
+      try {
+        failed.cancel(`recover:${reason}`);
+      } catch {
+        // error-policy:J6 best-effort teardown of the failed recognizer; the
+        // generation fence already prevents it from reaching session state.
+      }
+    }
+    this.scheduleSttReconnect(reason);
+  }
+
+  private scheduleSttReconnect(reason: string): void {
+    if (this.closed || this.sttReconnectTimer !== null) return;
+    const delays = this.config.sttReconnectDelaysMs ?? STT_RECONNECT_DELAYS_MS;
+    const delay = delays[this.sttReconnectAttempts];
+    if (delay === undefined) {
+      logger.warn("[voice-session] Ink reconnect attempts exhausted", {
+        sessionId: this.sessionId,
+        reason,
+        attempts: this.sttReconnectAttempts,
+      });
+      this.teardown("error");
+      return;
+    }
+    this.sttReconnectAttempts += 1;
+    this.sttReconnectTimer = setTimeout(() => {
+      this.sttReconnectTimer = null;
+      if (this.closed) return;
+      try {
+        this.openSttSession();
+      } catch (error) {
+        // error-policy:J4 a replacement transport that cannot be constructed
+        // stays visibly retrying, then fails the call closed at the bound.
+        logger.warn("[voice-session] Ink reconnect failed", {
+          sessionId: this.sessionId,
+          reason,
+          attempt: this.sttReconnectAttempts,
+          error: error instanceof Error ? error.message : String(error),
+        });
+        this.scheduleSttReconnect(reason);
+      }
+    }, delay);
   }
 
   /** Cancel an active response only after Ink has produced caller words. */
@@ -1082,6 +1164,11 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
     // Invalidate any live turn so racing callbacks are dropped.
     this.currentVoiceTurnId = null;
     this.resetSttPartialDelivery();
+    this.sttGeneration += 1;
+    if (this.sttReconnectTimer !== null) {
+      clearTimeout(this.sttReconnectTimer);
+      this.sttReconnectTimer = null;
+    }
 
     if (this.ttsStream) {
       try {
