@@ -401,27 +401,111 @@ export function normalizeSlackPermalinkTimestamp(
   return `${digits.slice(0, 10)}.${digits.slice(10).padStart(6, "0")}`;
 }
 
+/** One DNS label, so a nested `.slack.com` cannot be spelled inside it. */
+const SLACK_WORKSPACE_LABEL_RE = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/;
+
+/**
+ * Resolves a Slack `/archives/` permalink through the WHATWG URL parser and
+ * returns its parts, or `null` if the input is not one.
+ *
+ * The origin is established by `URL`, not by a pattern over the raw string.
+ * Textual matching cannot decide which characters end the authority: `?`, `#`,
+ * and (for special schemes) `\` all terminate the host before a later
+ * `.slack.com` suffix, so `https://attacker?x=.slack.com/archives/…` reads as
+ * Slack to a regex while every real client resolves it to `attacker`. Banning
+ * each delimiter as it is discovered leaves the next one open, so the host is
+ * taken from `url.hostname` and the segments from `url.pathname`.
+ *
+ * Credentials and ports are rejected rather than ignored: `https://user@…`
+ * would otherwise surface `user@workspace` as the workspace domain, which
+ * round-trips back out through `buildSlackMessagePermalink`. Query and fragment
+ * tails stay allowed — Slack's own threaded permalinks carry `?thread_ts=…`.
+ */
+export function parseSlackArchivesUrl(link: string): {
+  workspaceDomain: string;
+  channelId: string;
+  messageTs: string;
+} | null {
+  let url: URL;
+  try {
+    url = new URL(link);
+  } catch {
+    // error-policy:J3 an unparseable link is not a permalink; the explicit
+    // invalid result is `null`, never a partially-trusted default.
+    return null;
+  }
+
+  if (url.protocol !== "https:" && url.protocol !== "http:") {
+    return null;
+  }
+  if (url.username !== "" || url.password !== "" || url.port !== "") {
+    return null;
+  }
+
+  // `url.hostname` is already lowercased and IDNA-normalized.
+  const host = url.hostname;
+  const suffix = ".slack.com";
+  if (!host.endsWith(suffix)) {
+    return null;
+  }
+  const workspaceDomain = host.slice(0, -suffix.length);
+  if (!SLACK_WORKSPACE_LABEL_RE.test(workspaceDomain)) {
+    return null;
+  }
+
+  // Percent-encoded separators survive in `pathname`, so a segment carrying
+  // `%2F` fails the character classes below instead of splitting into two.
+  const segments = url.pathname.split("/");
+  if (segments[segments.length - 1] === "") {
+    segments.pop(); // one optional trailing slash
+  }
+  if (
+    segments.length !== 4 ||
+    segments[0] !== "" ||
+    segments[1] !== "archives"
+  ) {
+    return null;
+  }
+
+  const channelId = segments[2];
+  if (!/^[A-Z0-9]+$/i.test(channelId)) {
+    return null;
+  }
+
+  const tsMatch = /^p(\d+)$/.exec(segments[3]);
+  if (!tsMatch) {
+    return null;
+  }
+  const messageTs = normalizeSlackPermalinkTimestamp(tsMatch[1]);
+  if (!messageTs) {
+    return null;
+  }
+
+  return { workspaceDomain, channelId, messageTs };
+}
+
 /**
  * Parses a Slack message link to extract channel and message IDs.
  *
- * The match is anchored, so the argument must be a bare permalink: a link
- * embedded in surrounding prose or wrapped in mrkdwn (`<https://…|label>`)
- * returns `null`. Callers holding message text extract the URL first, with
- * `extractUrlFromSlackLink` for the mrkdwn form.
+ * Accepts only a bare permalink: a link embedded in surrounding prose or
+ * wrapped in mrkdwn (`<https://…|label>`) returns `null`. Callers holding
+ * message text extract the URL first, with `extractUrlFromSlackLink` for the
+ * mrkdwn form.
+ *
+ * Narrower than `parseSlackMessagePermalink` on the channel only: this helper
+ * feeds conversation APIs and so requires a conversation ID (`C`/`G`/`D`).
  */
 export function parseSlackMessageLink(
   link: string,
 ): { channelId: string; messageTs: string } | null {
   // Format: https://workspace.slack.com/archives/C12345678/p1234567890123456
-  const match = link.match(
-    /^https?:\/\/[^./]+\.slack\.com\/archives\/([CGD][A-Z0-9]+)\/p(\d{16}|\d{15}|\d{10})\/?(?:[?#].*)?$/i,
-  );
-  if (!match) return null;
+  const parsed = parseSlackArchivesUrl(link);
+  if (!parsed) return null;
 
-  const messageTs = normalizeSlackPermalinkTimestamp(match[2]);
-  if (!messageTs) return null;
+  const { channelId, messageTs } = parsed;
+  if (!/^[CGD][A-Z0-9]+$/i.test(channelId)) return null;
 
-  return { channelId: match[1], messageTs };
+  return { channelId, messageTs };
 }
 
 /**

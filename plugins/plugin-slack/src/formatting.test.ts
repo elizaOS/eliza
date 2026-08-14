@@ -233,31 +233,146 @@ describe("permalink build/parse round-trip", () => {
     ).toBeNull();
   });
 
-  it("rejects a non-Slack origin that carries .slack.com in the path", () => {
-    // A workspace label excluding only `.` let the authority end at the first
-    // `/`, so these parsed and reported the attacker origin as the workspace.
-    expect(
-      parseSlackMessagePermalink(
+  // Both exports resolve the origin through the same WHATWG `URL` boundary, so
+  // every case here is asserted against both. Textual patterns kept admitting
+  // whichever delimiter had not been banned yet: excluding `.` left `/` open,
+  // and excluding `/` too still left `?`, `#`, and `\`. Each entry below is a
+  // string a regex over the raw link reads as Slack while `new URL(...)`
+  // resolves it to a non-Slack host.
+  describe.each([
+    ["parseSlackMessagePermalink", parseSlackMessagePermalink],
+    ["parseSlackMessageLink", parseSlackMessageLink],
+  ])("%s host boundary", (_name, parse) => {
+    it.each([
+      // Delimiters that terminate the authority before the `.slack.com` text.
+      [
+        "query delimiter",
+        "https://attacker?x=.slack.com/archives/C12345678/p1700000000123456",
+      ],
+      [
+        "fragment delimiter",
+        "https://attacker#x=.slack.com/archives/C12345678/p1700000000123456",
+      ],
+      [
+        "WHATWG backslash delimiter",
+        "https://attacker\\redirect.slack.com/archives/C12345678/p1700000000123456",
+      ],
+      [
+        "path delimiter",
         "https://attacker/redirect.slack.com/archives/C12345678/p1700000000123456",
-      ),
-    ).toBeNull();
-    expect(
-      parseSlackMessagePermalink(
+      ],
+      [
+        "path delimiter on a hyphenated host",
         "https://evil-host/a.slack.com/archives/C12345678/p1700000000123456",
-      ),
-    ).toBeNull();
+      ],
+      // `user@evil.slack.com` reached a real Slack host, but reported the
+      // attacker-controlled userinfo as the workspace domain, which then
+      // round-trips back out through `buildSlackMessagePermalink`.
+      [
+        "userinfo",
+        "https://user@evil.slack.com/archives/C12345678/p1700000000123456",
+      ],
+      [
+        "userinfo with password",
+        "https://user:pw@acme.slack.com/archives/C12345678/p1700000000123456",
+      ],
+      [
+        "port",
+        "https://acme.slack.com:8080/archives/C12345678/p1700000000123456",
+      ],
+      // Percent-encoded separators must not be decoded back into structure.
+      [
+        "encoded host delimiter",
+        "https://attacker%2F.slack.com/archives/C12345678/p1700000000123456",
+      ],
+      [
+        "encoded path delimiter in the channel segment",
+        "https://acme.slack.com/archives/C12345678%2Fx/p1700000000123456",
+      ],
+      // Lookalike hosts: the suffix has to be the end of the host, and the
+      // workspace has to be a real label in front of it.
+      [
+        "suffix continues into another domain",
+        "https://acme.slack.com.evil.com/archives/C12345678/p1700000000123456",
+      ],
+      [
+        "slack.com without a workspace label",
+        "https://slack.com/archives/C12345678/p1700000000123456",
+      ],
+      [
+        "empty workspace label",
+        "https://.slack.com/archives/C12345678/p1700000000123456",
+      ],
+      [
+        "lookalike registrable domain",
+        "https://acme.slack.com.co/archives/C12345678/p1700000000123456",
+      ],
+      [
+        "unrelated host",
+        "https://evil.example/archives/C12345678/p1700000000123456",
+      ],
+      // Non-HTTP schemes never carry an `/archives/` permalink.
+      [
+        "non-HTTP scheme",
+        "javascript:alert(1)//acme.slack.com/archives/C12345678/p1700000000123456",
+      ],
+      [
+        "file scheme",
+        "file://acme.slack.com/archives/C12345678/p1700000000123456",
+      ],
+    ])("rejects %s", (_case, link) => {
+      expect(parse(link)).toBeNull();
+    });
+  });
+
+  // Consequences of resolving with `URL` rather than matching the raw string.
+  // Both inputs name a genuine `acme.slack.com` message and every real client
+  // resolves them to it, so they are accepted deliberately, not incidentally.
+  it("resolves links the way a URL parser does once the host is genuinely Slack", () => {
     expect(
       parseSlackMessagePermalink(
-        "https://evil.example/archives/C12345678/p1700000000123456",
+        "https://acme.slack.com\\archives\\C12345678\\p1700000000123456",
       ),
-    ).toBeNull();
-    // The same shape is already rejected by the sibling parser; pin both so the
-    // two helpers cannot drift apart again.
+    ).toEqual({
+      workspaceDomain: "acme",
+      channelId: "C12345678",
+      messageTs: "1700000000.123456",
+    });
     expect(
-      parseSlackMessageLink(
-        "https://attacker/redirect.slack.com/archives/C12345678/p1700000000123456",
+      parseSlackMessagePermalink(
+        "https://acme.slack.com/x/../archives/C12345678/p1700000000123456",
       ),
-    ).toBeNull();
+    ).toEqual({
+      workspaceDomain: "acme",
+      channelId: "C12345678",
+      messageTs: "1700000000.123456",
+    });
+  });
+
+  it("normalizes host case and accepts hyphenated workspace labels", () => {
+    expect(
+      parseSlackMessagePermalink(
+        "https://My-Team.SLACK.COM/archives/C12345678/p1700000000123456",
+      ),
+    ).toEqual({
+      workspaceDomain: "my-team",
+      channelId: "C12345678",
+      messageTs: "1700000000.123456",
+    });
+  });
+
+  it("keeps the channel contracts the two parsers actually need", () => {
+    // The permalink form is used for display and round-tripping, so it accepts
+    // any ID shape; the link form feeds conversation APIs and so requires a
+    // conversation ID.
+    const userChannel =
+      "https://acme.slack.com/archives/U1234567/p1700000000123456";
+    expect(parseSlackMessagePermalink(userChannel)).toEqual({
+      workspaceDomain: "acme",
+      channelId: "U1234567",
+      messageTs: "1700000000.123456",
+    });
+    expect(parseSlackMessageLink(userChannel)).toBeNull();
   });
 });
 

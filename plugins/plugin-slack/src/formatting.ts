@@ -9,7 +9,7 @@
  * paths and re-exported from `index.ts`.
  */
 import {
-  normalizeSlackPermalinkTimestamp,
+  parseSlackArchivesUrl,
   type SlackChannel,
   type SlackUser,
 } from "./types";
@@ -481,33 +481,16 @@ export function buildSlackMessagePermalink(
 /**
  * Parses a Slack message permalink.
  *
- * The match is anchored at both ends, so prose-embedded or mrkdwn-wrapped
- * links must be extracted before they are passed in.
+ * Prose-embedded or mrkdwn-wrapped links must be extracted before they are
+ * passed in. The origin is established by `parseSlackArchivesUrl`, which both
+ * this helper and `parseSlackMessageLink` share so the two cannot drift into
+ * disagreeing about what counts as a Slack host.
  *
- * The workspace label excludes `/` as well as `.`, so `.slack.com` has to sit
- * in the authority rather than the path. Excluding only `.` still admitted
- * `https://attacker/redirect.slack.com/archives/...`, which reports a non-Slack
- * origin as the workspace domain. `parseSlackMessageLink` enforces the same
- * boundary.
+ * The returned `workspaceDomain` is a bare DNS label and so is safe to feed
+ * back through `buildSlackMessagePermalink`.
  */
 export function parseSlackMessagePermalink(
   link: string,
 ): { workspaceDomain: string; channelId: string; messageTs: string } | null {
-  const match = link.match(
-    /^https?:\/\/([^./]+)\.slack\.com\/archives\/([A-Z0-9]+)\/p(\d{16}|\d{15}|\d{10})\/?(?:[?#].*)?$/i,
-  );
-  if (!match) {
-    return null;
-  }
-
-  const messageTs = normalizeSlackPermalinkTimestamp(match[3]);
-  if (!messageTs) {
-    return null;
-  }
-
-  return {
-    workspaceDomain: match[1],
-    channelId: match[2],
-    messageTs,
-  };
+  return parseSlackArchivesUrl(link);
 }
