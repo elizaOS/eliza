@@ -15,11 +15,13 @@ describe("release workflow authority", () => {
     const workflowFiles = readdirSync(workflowDirectory).filter((name) =>
       /\.ya?ml$/.test(name),
     );
-    const releaseEntries = workflowFiles.filter((name) =>
-      /^(?:release|publish|update-homebrew|.*-release)\.(?:yml|yaml)$/.test(
-        name,
-      ),
-    );
+    const releaseEntries = workflowFiles
+      .filter((name) =>
+        /^(?:release|publish|update-homebrew|.*-release)\.(?:yml|yaml)$/.test(
+          name,
+        ),
+      )
+      .sort();
     expect(releaseEntries).toEqual(["cloud-cf-release.yml", "release.yaml"]);
 
     // `cloud-cf-release.yml` shares the name but not the authority: it is the
