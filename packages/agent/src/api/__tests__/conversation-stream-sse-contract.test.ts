@@ -4,8 +4,10 @@
  * Drives the real `/api/conversations/:id/messages/stream` handler
  * (`handleConversationRoutes` → `generateChatResponse`) with a deterministic
  * mock `runtime.useModel`, and asserts the frame contract the dashboard client
- * consumes: the SSE channel (headers + `thinking` status + heartbeat) opens
- * before any model work, `status` frames arrive in thinking → streaming order,
+ * consumes: generic chat opens the SSE channel before pre-model work, while
+ * exact realtime voice delays 2xx/SSE until its user memory is durable and a
+ * versioned ingress acknowledgement is present; `status` frames arrive in
+ * thinking → streaming order,
  * `token` frames are ordered with cumulative `fullText`, a terminal `done`
  * frame carries the full text plus the model `thought`, and failures after the
  * SSE channel opened surface as structured `error` data frames (never as a
@@ -33,8 +35,14 @@ import {
   ModelType,
   RoomHandlerQueue,
   stringToUuid,
+  TurnControllerRegistry,
   type UUID,
 } from "@elizaos/core";
+import {
+  REALTIME_VOICE_CLIENT_TRANSPORT,
+  REALTIME_VOICE_INGRESS_COMMITTED_V1,
+  REALTIME_VOICE_INGRESS_HEADER,
+} from "@elizaos/shared";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 // Per-test negotiated wire protocol the mocked payload reader advertises, so a
@@ -42,6 +50,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 // route handler.
 let requestStreamProtocol: "delta-v2" | undefined;
 let requestClientMessageId: string | undefined;
+let requestMetadata: Record<string, unknown> | undefined;
 const DEFAULT_REQUEST_PROMPT = "stream the deterministic thought";
 const FIRST_VOICE_TRANSCRIPT =
   "Can you change your personality to be a little bit more hip and cool?";
@@ -64,7 +73,7 @@ vi.mock("../chat-routes.ts", async () => {
       images: undefined,
       preferredLanguage: undefined,
       source: "api",
-      metadata: undefined,
+      metadata: requestMetadata,
       ...(requestStreamProtocol
         ? { streamProtocol: requestStreamProtocol }
         : {}),
@@ -783,6 +792,7 @@ function createState(
     }),
     reportError: vi.fn(),
     abortTurn: vi.fn(),
+    turnControllers: new TurnControllerRegistry(),
     roomHandlerQueue: new RoomHandlerQueue(),
     adapter: {},
   } as unknown as AgentRuntime;
@@ -864,6 +874,13 @@ function createDeferred() {
     promise,
     resolve: () => resolve?.(),
     reject: (reason: unknown) => reject?.(reason),
+  };
+}
+
+function useExactRealtimeVoiceRequest(clientMessageId: string): void {
+  requestClientMessageId = clientMessageId;
+  requestMetadata = {
+    clientTransport: REALTIME_VOICE_CLIENT_TRANSPORT,
   };
 }
 
@@ -951,6 +968,7 @@ describe("conversation stream SSE contract (#10712)", () => {
     vi.clearAllMocks();
     requestStreamProtocol = undefined;
     requestClientMessageId = undefined;
+    requestMetadata = undefined;
     requestPromptQueue.length = 0;
     userMessagePreparationHook = undefined;
   });
@@ -972,6 +990,536 @@ describe("conversation stream SSE contract (#10712)", () => {
       ),
     ).toHaveLength(1);
     expect(runtime.roomHandlerQueue.pendingFor(ROOM_ID)).toBe(0);
+  });
+
+  it("persists and acknowledges an exact voice pre-abort once without generation or assistant output", async () => {
+    const clientMessageId = "voice:pre-aborted-route";
+    useExactRealtimeVoiceRequest(clientMessageId);
+    const { ctx, record, state, useModel } = createCtx();
+    const runtime = state.runtime;
+    if (!runtime) throw new Error("runtime fixture missing");
+    vi.mocked(persistConversationMemory).mockClear();
+    vi.mocked(persistAssistantConversationMemory).mockClear();
+
+    const armed = runtime.turnControllers.abortRequestAdmission(
+      ROOM_ID,
+      clientMessageId,
+      "barge_in",
+    );
+    expect(armed).toMatchObject({
+      requestObserved: false,
+      requestArmed: true,
+      requestAborted: false,
+    });
+
+    await handleConversationRoutes(ctx);
+
+    expect(record.headers["Content-Type"]).toBeUndefined();
+    expect(record.headers[REALTIME_VOICE_INGRESS_HEADER]).toBe(
+      REALTIME_VOICE_INGRESS_COMMITTED_V1,
+    );
+    expect(record.headers.status).toBe("204");
+    expect(record.ended).toBe(true);
+    expect(runtime.ensureConnection).toHaveBeenCalledTimes(1);
+    expect(persistConversationMemory).not.toHaveBeenCalled();
+    expect(persistAssistantConversationMemory).not.toHaveBeenCalled();
+    expect(runtime.createMemory).toHaveBeenCalledTimes(1);
+    expect(useModel).not.toHaveBeenCalled();
+    const memories = await runtime.getMemories({
+      roomId: ROOM_ID,
+      tableName: "messages",
+    });
+    expect(memories).toHaveLength(1);
+    expect(memories[0]?.content.text).toBe(DEFAULT_REQUEST_PROMPT);
+    expect(
+      JSON.parse(
+        String(
+          (
+            memories[0]?.content.chatIdempotency as
+              | { outcomeJson?: unknown }
+              | undefined
+          )?.outcomeJson,
+        ),
+      ),
+    ).toMatchObject({
+      text: "",
+      agentName: "Streaming Agent",
+      userMessageId: memories[0]?.id,
+      noResponseReason: "ignored",
+    });
+    expect(armed.requestIngressState).toBe("committed");
+    expect(armed.requestIngressFailure).toBeNull();
+    await armed.settlement;
+    expect(
+      runtime.turnControllers.hasRequestAdmission(ROOM_ID, clientMessageId),
+    ).toBe(false);
+    expect(runtime.roomHandlerQueue.pendingFor(ROOM_ID)).toBe(0);
+  });
+
+  it("opens exact voice SSE only after the user commit and versioned ingress header", async () => {
+    const clientMessageId = "voice:headers-after-user-commit";
+    useExactRealtimeVoiceRequest(clientMessageId);
+    const generationStarted = createDeferred();
+    const generationGate = createDeferred();
+    const fixture = createCtx(
+      createGatedMessageService(generationStarted, generationGate),
+    );
+    const runtime = fixture.state.runtime;
+    if (!runtime) throw new Error("runtime fixture missing");
+    const persistStarted = createDeferred();
+    const persistGate = createDeferred();
+    const createMemory = vi.mocked(runtime.createMemory);
+    const originalCreateMemory = createMemory.getMockImplementation();
+    if (!originalCreateMemory) throw new Error("memory fixture missing");
+    let userCommitted = false;
+    createMemory.mockImplementationOnce(async (...args) => {
+      persistStarted.resolve();
+      await persistGate.promise;
+      const persisted = await originalCreateMemory(...args);
+      userCommitted = true;
+      return persisted;
+    });
+    const originalSetHeader = fixture.ctx.res.setHeader.bind(fixture.ctx.res);
+    fixture.ctx.res.setHeader = vi.fn((name, value) => {
+      if (name === REALTIME_VOICE_INGRESS_HEADER) {
+        expect(userCommitted).toBe(true);
+      }
+      return originalSetHeader(name, value);
+    }) as never;
+
+    const turn = handleConversationRoutes(fixture.ctx);
+    await persistStarted.promise;
+
+    expect(userCommitted).toBe(false);
+    expect(
+      fixture.record.headers[REALTIME_VOICE_INGRESS_HEADER],
+    ).toBeUndefined();
+    expect(fixture.record.headers["Content-Type"]).toBeUndefined();
+    expect(fixture.record.writes).toEqual([]);
+    persistGate.resolve();
+    await generationStarted.promise;
+    expect(userCommitted).toBe(true);
+    expect(fixture.record.headers[REALTIME_VOICE_INGRESS_HEADER]).toBe(
+      REALTIME_VOICE_INGRESS_COMMITTED_V1,
+    );
+    expect(fixture.record.headers["Content-Type"]).toBe("text/event-stream");
+    expect(fixture.record.headers.status).toBe("200");
+    expect(fixture.record.writes.join("")).toContain(": heartbeat");
+
+    generationGate.resolve();
+    await turn;
+    expect(createMemory).toHaveBeenCalledTimes(2);
+    expect(persistAssistantConversationMemory).toHaveBeenCalledTimes(1);
+  });
+
+  it("settles an exact voice abort only after lease release and lets a replacement run without committing the unheard answer", async () => {
+    const firstClientMessageId = "voice:route-active-first";
+    const secondClientMessageId = "voice:route-active-replacement";
+    useExactRealtimeVoiceRequest(firstClientMessageId);
+    requestPromptQueue.push("first exact voice turn", "replacement voice turn");
+    const firstStarted = createDeferred();
+    const firstGate = createDeferred();
+    const secondStarted = createDeferred();
+    const events: string[] = [];
+    let firstGenerationSignal: AbortSignal | undefined;
+    let invocation = 0;
+    const service = {
+      async handleMessage(
+        _runtime: AgentRuntime,
+        message: { content?: { text?: unknown } },
+        _callback: unknown,
+        options?: { abortSignal?: AbortSignal },
+      ) {
+        invocation += 1;
+        const text = String(message.content?.text ?? "");
+        events.push(`start:${text}`);
+        if (invocation === 1) {
+          firstGenerationSignal = options?.abortSignal;
+          firstStarted.resolve();
+          // Deliberately ignore AbortSignal to reproduce a provider that wins
+          // its response race after the user has already superseded the turn.
+          await firstGate.promise;
+          events.push(`return:${text}`);
+          return {
+            didRespond: true,
+            responseContent: { text: "unheard superseded answer" },
+            responseMessages: [],
+          };
+        }
+        secondStarted.resolve();
+        events.push(`return:${text}`);
+        return {
+          didRespond: true,
+          responseContent: { text: "replacement answer" },
+          responseMessages: [],
+        };
+      },
+      shouldRespond: () => ({
+        shouldRespond: true,
+        skipEvaluation: true,
+        reason: "exact-voice-route-settlement-test",
+      }),
+      deleteMessage: async () => undefined,
+      clearChannel: async () => undefined,
+    } satisfies NonNullable<AgentRuntime["messageService"]>;
+    const first = createCtx(service);
+    const runtime = first.state.runtime;
+    if (!runtime) throw new Error("runtime fixture missing");
+    vi.mocked(persistAssistantConversationMemory).mockClear();
+    vi.mocked(runtime.createMemory).mockClear();
+    const releaseStarted = createDeferred();
+    const releaseGate = createDeferred();
+    const originalAcquire = runtime.roomHandlerQueue.acquire.bind(
+      runtime.roomHandlerQueue,
+    );
+    let acquisition = 0;
+    runtime.roomHandlerQueue.acquire = (async (roomId, signal) => {
+      const lease = await originalAcquire(roomId, signal);
+      acquisition += 1;
+      if (acquisition === 1) {
+        const originalRelease = lease.release.bind(lease);
+        Object.defineProperty(lease, "release", {
+          configurable: true,
+          value: vi.fn(async () => {
+            releaseStarted.resolve();
+            await releaseGate.promise;
+            await originalRelease();
+          }),
+        });
+      }
+      return lease;
+    }) as typeof runtime.roomHandlerQueue.acquire;
+    first.ctx.res.writeHead = vi.fn(
+      (status: number, headers?: Record<string, string>) => {
+        expect(
+          runtime.turnControllers.hasRequestAdmission(
+            ROOM_ID,
+            firstClientMessageId,
+          ),
+        ).toBe(true);
+        first.record.headers.status = String(status);
+        Object.assign(first.record.headers, headers);
+        return first.ctx.res;
+      },
+    ) as never;
+
+    const firstTurn = handleConversationRoutes(first.ctx);
+    await firstStarted.promise;
+    expect(first.record.headers["Content-Type"]).toBe("text/event-stream");
+    expect(
+      runtime.turnControllers.hasRequestAdmission(
+        ROOM_ID,
+        firstClientMessageId,
+      ),
+    ).toBe(true);
+
+    const abortResult = runtime.turnControllers.abortRequestAdmission(
+      ROOM_ID,
+      firstClientMessageId,
+      "confirmed_speech",
+    );
+    expect(abortResult).toMatchObject({
+      requestObserved: true,
+      requestArmed: false,
+      requestAborted: true,
+    });
+    expect(firstGenerationSignal?.aborted).toBe(true);
+    let abortSettled = false;
+    void abortResult.settlement.then(() => {
+      abortSettled = true;
+    });
+
+    useExactRealtimeVoiceRequest(secondClientMessageId);
+    const second = createFollowupCtx(first.ctx, first.state);
+    const secondTurn = handleConversationRoutes(second.ctx);
+    await vi.waitFor(() => {
+      expect(runtime.roomHandlerQueue.pendingFor(ROOM_ID)).toBe(2);
+    });
+    expect(events).toEqual(["start:first exact voice turn"]);
+
+    firstGate.resolve();
+    await releaseStarted.promise;
+    await Promise.resolve();
+    expect(abortSettled).toBe(false);
+    expect(
+      runtime.turnControllers.hasRequestAdmission(
+        ROOM_ID,
+        firstClientMessageId,
+      ),
+    ).toBe(true);
+    expect(persistAssistantConversationMemory).not.toHaveBeenCalled();
+    const memoriesBeforeRelease = await runtime.getMemories({
+      roomId: ROOM_ID,
+      tableName: "messages",
+    });
+    expect(
+      memoriesBeforeRelease.map((memory) => memory.content.text),
+    ).toContain("first exact voice turn");
+    expect(
+      memoriesBeforeRelease.map((memory) => memory.content.text),
+    ).not.toContain("unheard superseded answer");
+    expect(events).toEqual([
+      "start:first exact voice turn",
+      "return:first exact voice turn",
+    ]);
+
+    releaseGate.resolve();
+    await secondStarted.promise;
+    await Promise.all([firstTurn, secondTurn, abortResult.settlement]);
+
+    expect(abortSettled).toBe(true);
+    expect(runtime.roomHandlerQueue.pendingFor(ROOM_ID)).toBe(0);
+    expect(
+      runtime.turnControllers.hasRequestAdmission(
+        ROOM_ID,
+        firstClientMessageId,
+      ),
+    ).toBe(false);
+    expect(
+      runtime.turnControllers.hasRequestAdmission(
+        ROOM_ID,
+        secondClientMessageId,
+      ),
+    ).toBe(false);
+    expect(persistAssistantConversationMemory).toHaveBeenCalledTimes(1);
+    expect(persistAssistantConversationMemory).toHaveBeenCalledWith(
+      expect.anything(),
+      ROOM_ID,
+      expect.objectContaining({ text: "replacement answer" }),
+      expect.anything(),
+      expect.anything(),
+      expect.anything(),
+      expect.anything(),
+    );
+    const settledMemories = await runtime.getMemories({
+      roomId: ROOM_ID,
+      tableName: "messages",
+    });
+    const settledTexts = settledMemories.map((memory) => memory.content.text);
+    expect(settledTexts).toContain("first exact voice turn");
+    expect(settledTexts).toContain("replacement voice turn");
+    expect(settledTexts).toContain("replacement answer");
+    expect(settledTexts).not.toContain("unheard superseded answer");
+    expect(
+      parseSsePayloads(first.record.writes).some(
+        (payload) => payload.type === "done",
+      ),
+    ).toBe(false);
+    expect(
+      parseSsePayloads(second.record.writes).filter(
+        (payload) => payload.type === "done",
+      ),
+    ).toEqual([expect.objectContaining({ fullText: "replacement answer" })]);
+  });
+
+  it("replays an exact durable user-only ingress as ignored without synthesizing an assistant", async () => {
+    const clientMessageId = "voice:durable-user-only-replay";
+    useExactRealtimeVoiceRequest(clientMessageId);
+    let routeState: ConversationRouteState | null = null;
+    const serviceCalls = vi.fn();
+    const service = {
+      async handleMessage() {
+        serviceCalls();
+        if (!routeState) throw new Error("route state fixture missing");
+        // Simulate a process/runtime handoff after the user row commits but
+        // before an assistant or durable terminal can be written.
+        routeState.runtime = null;
+        return {
+          didRespond: true,
+          responseContent: { text: "must not become a recovery assistant" },
+          responseMessages: [],
+        };
+      },
+      shouldRespond: () => ({
+        shouldRespond: true,
+        skipEvaluation: true,
+        reason: "exact-voice-durable-recovery-test",
+      }),
+      deleteMessage: async () => undefined,
+      clearChannel: async () => undefined,
+    } satisfies NonNullable<AgentRuntime["messageService"]>;
+    const first = createCtx(service);
+    routeState = first.state;
+    const runtime = first.state.runtime;
+    if (!runtime) throw new Error("runtime fixture missing");
+    vi.mocked(persistAssistantConversationMemory).mockClear();
+
+    await handleConversationRoutes(first.ctx);
+
+    expect(first.record.headers[REALTIME_VOICE_INGRESS_HEADER]).toBe(
+      REALTIME_VOICE_INGRESS_COMMITTED_V1,
+    );
+    expect(serviceCalls).toHaveBeenCalledTimes(1);
+    expect(persistAssistantConversationMemory).not.toHaveBeenCalled();
+    const interruptedMemories = await runtime.getMemories({
+      roomId: ROOM_ID,
+      tableName: "messages",
+    });
+    expect(interruptedMemories).toHaveLength(1);
+    expect(interruptedMemories[0]?.content.text).toBe(DEFAULT_REQUEST_PROMPT);
+    expect(
+      (
+        interruptedMemories[0]?.content.chatIdempotency as
+          | { outcomeJson?: unknown }
+          | undefined
+      )?.outcomeJson,
+    ).toBeUndefined();
+
+    // Retry the same immutable id after its volatile owner has finished. The
+    // registry's bounded terminal receipt must not create a 409 dead zone: the
+    // deterministic user row remains the durable authority for replay.
+    first.state.runtime = runtime;
+    useExactRealtimeVoiceRequest(clientMessageId);
+    const replay = createFollowupCtx(first.ctx, first.state);
+    await handleConversationRoutes(replay.ctx);
+
+    expect(serviceCalls).toHaveBeenCalledTimes(1);
+    expect(persistAssistantConversationMemory).not.toHaveBeenCalled();
+    expect(replay.record.headers[REALTIME_VOICE_INGRESS_HEADER]).toBe(
+      REALTIME_VOICE_INGRESS_COMMITTED_V1,
+    );
+    expect(parseSsePayloads(replay.record.writes)).toContainEqual(
+      expect.objectContaining({
+        type: "done",
+        fullText: "",
+        noResponseReason: "ignored",
+        userMessageId: interruptedMemories[0]?.id,
+      }),
+    );
+    const recoveredMemories = await runtime.getMemories({
+      roomId: ROOM_ID,
+      tableName: "messages",
+    });
+    expect(recoveredMemories).toHaveLength(1);
+    expect(
+      JSON.parse(
+        String(
+          (
+            recoveredMemories[0]?.content.chatIdempotency as
+              | { outcomeJson?: unknown }
+              | undefined
+          )?.outcomeJson,
+        ),
+      ),
+    ).toMatchObject({
+      text: "",
+      noResponseReason: "ignored",
+      userMessageId: interruptedMemories[0]?.id,
+    });
+    expect(
+      recoveredMemories.some(
+        (memory) =>
+          memory.content.text === "must not become a recovery assistant",
+      ),
+    ).toBe(false);
+  });
+
+  it("fails closed when a retained receipt would otherwise create an unowned exact ingress", async () => {
+    const clientMessageId = "voice:retained-failed-receipt";
+    useExactRealtimeVoiceRequest(clientMessageId);
+    const fixture = createCtx();
+    const runtime = fixture.state.runtime;
+    if (!runtime) throw new Error("runtime fixture missing");
+    const prior = runtime.turnControllers.registerRequestAdmission(
+      ROOM_ID,
+      clientMessageId,
+    );
+    prior.finish();
+    await prior.settlement;
+    expect(prior.requestIngressState).toBe("failed");
+    vi.mocked(runtime.createMemory).mockClear();
+    fixture.useModel.mockClear();
+
+    await handleConversationRoutes(fixture.ctx);
+
+    expect(
+      fixture.record.headers[REALTIME_VOICE_INGRESS_HEADER],
+    ).toBeUndefined();
+    expect(fixture.record.headers["Content-Type"]).toBeUndefined();
+    expect(fixture.record.writes.join("")).toContain(
+      "error 409: Realtime voice retry cannot own new ingress",
+    );
+    expect(fixture.record.ended).toBe(true);
+    expect(runtime.createMemory).not.toHaveBeenCalled();
+    expect(fixture.useModel).not.toHaveBeenCalled();
+    expect(runtime.roomHandlerQueue.pendingFor(ROOM_ID)).toBe(0);
+  });
+
+  it("joins a duplicate active exact voice id and replays one durable outcome", async () => {
+    const clientMessageId = "voice:duplicate-active-route";
+    useExactRealtimeVoiceRequest(clientMessageId);
+    const firstStarted = createDeferred();
+    const firstGate = createDeferred();
+    const first = createCtx(createGatedMessageService(firstStarted, firstGate));
+    const runtime = first.state.runtime;
+    if (!runtime) throw new Error("runtime fixture missing");
+    vi.mocked(persistAssistantConversationMemory).mockClear();
+    vi.mocked(runtime.createMemory).mockClear();
+
+    const firstTurn = handleConversationRoutes(first.ctx);
+    await firstStarted.promise;
+    const duplicate = createFollowupCtx(first.ctx, first.state);
+    const duplicateTurn = handleConversationRoutes(duplicate.ctx);
+    await Promise.resolve();
+
+    expect(duplicate.record.headers["Content-Type"]).toBeUndefined();
+    expect(
+      duplicate.record.headers[REALTIME_VOICE_INGRESS_HEADER],
+    ).toBeUndefined();
+    expect(duplicate.record.writes).toEqual([]);
+    expect(duplicate.record.ended).toBe(false);
+    expect(
+      runtime.turnControllers.hasRequestAdmission(ROOM_ID, clientMessageId),
+    ).toBe(true);
+
+    firstGate.resolve();
+    await Promise.all([firstTurn, duplicateTurn]);
+
+    expect(first.record.headers[REALTIME_VOICE_INGRESS_HEADER]).toBe(
+      REALTIME_VOICE_INGRESS_COMMITTED_V1,
+    );
+    expect(duplicate.record.headers[REALTIME_VOICE_INGRESS_HEADER]).toBe(
+      REALTIME_VOICE_INGRESS_COMMITTED_V1,
+    );
+    expect(duplicate.record.headers["Content-Type"]).toBe("text/event-stream");
+    expect(
+      parseSsePayloads(duplicate.record.writes).filter(
+        (payload) => payload.type === "done",
+      ),
+    ).toEqual([expect.objectContaining({ fullText: FINAL_TEXT })]);
+    expect(persistAssistantConversationMemory).toHaveBeenCalledTimes(1);
+    expect(runtime.createMemory).toHaveBeenCalledTimes(2);
+    expect(
+      runtime.turnControllers.hasRequestAdmission(ROOM_ID, clientMessageId),
+    ).toBe(false);
+  });
+
+  it("keeps generic chat SSE open while user-message preparation is pending", async () => {
+    const preparationStarted = createDeferred();
+    const preparationGate = createDeferred();
+    userMessagePreparationHook = async () => {
+      preparationStarted.resolve();
+      await preparationGate.promise;
+    };
+    const fixture = createCtx();
+
+    const turn = handleConversationRoutes(fixture.ctx);
+    await preparationStarted.promise;
+
+    expect(fixture.record.headers.status).toBe("200");
+    expect(fixture.record.headers["Content-Type"]).toBe("text/event-stream");
+    expect(
+      fixture.record.headers[REALTIME_VOICE_INGRESS_HEADER],
+    ).toBeUndefined();
+    expect(fixture.record.writes.join("")).toContain(": heartbeat");
+    expect(parseSsePayloads(fixture.record.writes)).toContainEqual({
+      type: "status",
+      kind: "thinking",
+    });
+
+    preparationGate.resolve();
+    await turn;
+    expect(fixture.useModel).toHaveBeenCalledTimes(1);
   });
 
   it("emits thinking→streaming status, ordered cumulative token frames, then a terminal done frame with thought", async () => {
@@ -1713,6 +2261,100 @@ describe("conversation stream SSE contract (#10712)", () => {
     });
     expect(persistAssistantConversationMemory).not.toHaveBeenCalled();
     expect(getMemoriesByIds).not.toHaveBeenCalled();
+  });
+
+  it("preserves a message-service assistant commit when exact voice cancellation arrives after its latch", async () => {
+    const clientMessageId = "voice:abort-after-message-service-commit";
+    const assistantId = stringToUuid(
+      "exact-voice-latched-message-service-assistant",
+    ) as UUID;
+    useExactRealtimeVoiceRequest(clientMessageId);
+    let observedExactCommitSignal = false;
+    const service = {
+      async handleMessage(
+        runtime: AgentRuntime,
+        message: Memory,
+        _callback: unknown,
+        options?: { assistantCommitAbortSignal?: AbortSignal },
+      ) {
+        observedExactCommitSignal = Boolean(
+          options?.assistantCommitAbortSignal,
+        );
+        await runtime.createMemory(
+          {
+            id: assistantId,
+            entityId: AGENT_ID,
+            agentId: AGENT_ID,
+            roomId: ROOM_ID,
+            content: {
+              text: "Committed before the late interruption.",
+              inReplyTo: message.id,
+            },
+          },
+          "messages",
+        );
+        const abortResult = runtime.turnControllers.abortRequestAdmission(
+          ROOM_ID,
+          clientMessageId,
+          "confirmed_speech_after_commit",
+        );
+        expect(abortResult).toMatchObject({
+          requestObserved: true,
+          requestAborted: true,
+        });
+        expect(options?.assistantCommitAbortSignal?.aborted).toBe(true);
+        return {
+          didRespond: true,
+          responseContent: {
+            text: "Committed before the late interruption.",
+          },
+          responseMessages: [
+            {
+              id: assistantId,
+              entityId: AGENT_ID,
+              agentId: AGENT_ID,
+              roomId: ROOM_ID,
+              content: {
+                text: "Committed before the late interruption.",
+                inReplyTo: message.id,
+              },
+            },
+          ],
+          persistedResponseMessageIds: [assistantId],
+          mode: "simple" as const,
+        };
+      },
+      shouldRespond: () => ({
+        shouldRespond: true,
+        skipEvaluation: true,
+        reason: "exact-voice-late-commit-regression",
+      }),
+      deleteMessage: async () => undefined,
+      clearChannel: async () => undefined,
+    } satisfies NonNullable<AgentRuntime["messageService"]>;
+    const { ctx, record, state } = createCtx(service);
+    const runtime = state.runtime;
+    if (!runtime) throw new Error("runtime fixture missing");
+    vi.mocked(persistAssistantConversationMemory).mockClear();
+
+    await handleConversationRoutes(ctx);
+
+    expect(observedExactCommitSignal).toBe(true);
+    expect(persistAssistantConversationMemory).not.toHaveBeenCalled();
+    const stored = await runtime.getMemories({
+      roomId: ROOM_ID,
+      tableName: "messages",
+      count: 100,
+    });
+    expect(stored.some((memory) => memory.id === assistantId)).toBe(true);
+    expect(
+      parseSsePayloads(record.writes).some(
+        (payload) => payload.type === "done",
+      ),
+    ).toBe(false);
+    expect(
+      runtime.turnControllers.hasRequestAdmission(ROOM_ID, clientMessageId),
+    ).toBe(false);
   });
 
   it("emits an error instead of done when exact callback metadata cannot become durable", async () => {

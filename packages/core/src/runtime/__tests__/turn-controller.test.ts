@@ -5,6 +5,7 @@
  */
 import { describe, expect, it } from "vitest";
 import {
+	DuplicateTurnRequestAdmissionError,
 	TurnAbortedError,
 	TurnControllerRegistry,
 	type TurnEvent,
@@ -81,6 +82,230 @@ describe("TurnControllerRegistry", () => {
 			registry.abortTurn(ROOM_A, "test-abort");
 			await expect(turnPromise).rejects.toBeInstanceOf(TurnAbortedError);
 			expect(registry.hasActiveTurn(ROOM_A)).toBe(false);
+		});
+
+		it("exposes settlement for exactly the active turn", async () => {
+			const registry = new TurnControllerRegistry();
+			let release: (() => void) | undefined;
+			const gate = new Promise<void>((resolve) => {
+				release = resolve;
+			});
+			const turn = registry.runWith(ROOM_A, async () => {
+				await gate;
+				return "settled";
+			});
+			const settlement = registry.settlementFor(ROOM_A);
+			expect(settlement).not.toBeNull();
+			let observed = false;
+			void settlement?.then(() => {
+				observed = true;
+			});
+			await Promise.resolve();
+			expect(observed).toBe(false);
+
+			release?.();
+			await expect(turn).resolves.toBe("settled");
+			await settlement;
+			expect(observed).toBe(true);
+			expect(registry.settlementFor(ROOM_A)).toBeNull();
+		});
+	});
+
+	describe("exact request admission", () => {
+		it("consumes a pre-abort tombstone as an already-aborted signal", async () => {
+			const registry = new TurnControllerRegistry();
+			const preAbort = registry.abortRequestAdmission(
+				ROOM_A,
+				"message-before-register",
+				"voice-interrupt",
+			);
+			expect(preAbort).toMatchObject({
+				requestAborted: false,
+				requestObserved: false,
+				requestArmed: true,
+				requestArmRejected: false,
+				requestIngressState: "pending",
+				requestIngressFailure: null,
+			});
+			let settled = false;
+			void preAbort.settlement.then(() => {
+				settled = true;
+			});
+			await Promise.resolve();
+			expect(settled).toBe(false);
+
+			const admission = registry.registerRequestAdmission(
+				ROOM_A,
+				"message-before-register",
+			);
+			expect(admission.signal.aborted).toBe(true);
+			expect(admission.signal.reason).toMatchObject({
+				code: "TURN_ABORTED",
+				reason: "voice-interrupt",
+			});
+			expect(
+				registry.hasRequestAdmission(ROOM_A, "message-before-register"),
+			).toBe(true);
+			expect(admission.markIngressCommitted()).toBe(true);
+			expect(preAbort.requestIngressState).toBe("committed");
+			admission.finish();
+			admission.finish();
+			await admission.settlement;
+			expect(
+				registry.hasRequestAdmission(ROOM_A, "message-before-register"),
+			).toBe(false);
+		});
+
+		it("aborts and exposes settlement for exactly one active request", async () => {
+			const registry = new TurnControllerRegistry();
+			const admission = registry.registerRequestAdmission(ROOM_A, "active-a");
+			const result = registry.abortRequestAdmission(
+				ROOM_A,
+				"active-a",
+				"replace",
+			);
+			expect(result).toMatchObject({
+				requestAborted: true,
+				requestObserved: true,
+				requestArmed: false,
+				requestArmRejected: false,
+				requestIngressState: "pending",
+			});
+			expect(admission.signal.aborted).toBe(true);
+			let settled = false;
+			void result.settlement.then(() => {
+				settled = true;
+			});
+			await Promise.resolve();
+			expect(settled).toBe(false);
+
+			admission.markIngressCommitted();
+			admission.finish();
+			await result.settlement;
+			expect(settled).toBe(true);
+			expect(result.requestIngressState).toBe("committed");
+		});
+
+		it("fails unfinished ingress and retains a bounded terminal receipt", async () => {
+			const registry = new TurnControllerRegistry();
+			const admission = registry.registerRequestAdmission(
+				ROOM_A,
+				"unfinished-ingress",
+			);
+			admission.finish();
+			await admission.settlement;
+			expect(admission.requestIngressState).toBe("failed");
+			expect(admission.requestIngressFailure).toBe(
+				"request_finished_before_ingress",
+			);
+
+			const receipt = registry.abortRequestAdmission(
+				ROOM_A,
+				"unfinished-ingress",
+				"retry",
+			);
+			expect(receipt).toMatchObject({
+				requestObserved: true,
+				requestArmed: false,
+				requestIngressState: "failed",
+				requestIngressFailure: "request_finished_before_ingress",
+			});
+			await receipt.settlement;
+		});
+
+		it("isolates the same id across rooms and different ids within a room", () => {
+			const registry = new TurnControllerRegistry();
+			const target = registry.registerRequestAdmission(ROOM_A, "same-id");
+			const sameRoomOtherId = registry.registerRequestAdmission(
+				ROOM_A,
+				"other-id",
+			);
+			const otherRoomSameId = registry.registerRequestAdmission(
+				ROOM_B,
+				"same-id",
+			);
+
+			registry.abortRequestAdmission(ROOM_A, "same-id", "target-only");
+			expect(target.signal.aborted).toBe(true);
+			expect(sameRoomOtherId.signal.aborted).toBe(false);
+			expect(otherRoomSameId.signal.aborted).toBe(false);
+			target.finish();
+			sameRoomOtherId.finish();
+			otherRoomSameId.finish();
+		});
+
+		it("rejects active and recently settled duplicate request ids", () => {
+			let now = 1_000;
+			const registry = new TurnControllerRegistry({
+				requestAdmissionNow: () => now,
+				requestAbortTombstoneTtlMs: 50,
+			});
+			const admission = registry.registerRequestAdmission(ROOM_A, "duplicate");
+			expect(() =>
+				registry.registerRequestAdmission(ROOM_A, "duplicate"),
+			).toThrow(DuplicateTurnRequestAdmissionError);
+			admission.markIngressCommitted();
+			admission.finish();
+			expect(() =>
+				registry.registerRequestAdmission(ROOM_A, "duplicate"),
+			).toThrow(DuplicateTurnRequestAdmissionError);
+			now += 51;
+			const replacement = registry.registerRequestAdmission(
+				ROOM_A,
+				"duplicate",
+			);
+			expect(replacement.signal.aborted).toBe(false);
+			replacement.finish();
+		});
+
+		it("a late old-id abort never affects a newer id in the same room", () => {
+			const registry = new TurnControllerRegistry();
+			const newer = registry.registerRequestAdmission(ROOM_A, "new-id");
+			registry.abortRequestAdmission(ROOM_A, "old-id", "late-old-cancel");
+			expect(newer.signal.aborted).toBe(false);
+
+			const old = registry.registerRequestAdmission(ROOM_A, "old-id");
+			expect(old.signal.aborted).toBe(true);
+			expect(newer.signal.aborted).toBe(false);
+			old.finish();
+			newer.finish();
+		});
+
+		it("fails closed at tombstone capacity and expires pending barriers", async () => {
+			let now = 1_000;
+			const registry = new TurnControllerRegistry({
+				requestAdmissionNow: () => now,
+				requestAbortTombstoneCapacity: 2,
+				requestAbortTombstoneTtlMs: 50,
+			});
+			const oldest = registry.abortRequestAdmission(
+				ROOM_A,
+				"oldest",
+				"cancel-oldest",
+			);
+			const middle = registry.abortRequestAdmission(
+				ROOM_A,
+				"middle",
+				"cancel-middle",
+			);
+			const rejected = registry.abortRequestAdmission(
+				ROOM_A,
+				"newest",
+				"cancel-newest",
+			);
+			expect(rejected).toMatchObject({
+				requestArmed: false,
+				requestArmRejected: true,
+				requestIngressState: "failed",
+				requestIngressFailure: "abort_tombstone_capacity",
+			});
+
+			now += 51;
+			registry.abortRequestAdmission(ROOM_B, "purge", "trigger-purge");
+			await oldest.settlement;
+			await middle.settlement;
+			expect(oldest.requestIngressState).toBe("failed");
+			expect(oldest.requestIngressFailure).toBe("abort_tombstone_expired");
 		});
 	});
 

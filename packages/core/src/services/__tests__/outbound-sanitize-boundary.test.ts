@@ -49,6 +49,39 @@ function buildHarness(): {
 }
 
 describe("outbound sanitization at the visible-callback boundary", () => {
+	it("blocks an exact voice cancellation at the final connector boundary", async () => {
+		const delivered: Content[] = [];
+		const controller = new AbortController();
+		const reason = new Error("exact voice response superseded");
+		const runtime = {
+			agentId: stringToUuid("outbound-cancel-agent"),
+			logger,
+		};
+		const message: Pick<Memory, "id" | "roomId" | "entityId"> = {
+			id: stringToUuid("outbound-cancel-message"),
+			roomId: stringToUuid("outbound-cancel-room"),
+			entityId: stringToUuid("outbound-cancel-user"),
+		};
+		const wrapped = wrapSingleTurnVisibleCallback(
+			runtime,
+			message,
+			async (content) => {
+				delivered.push(content);
+				return [];
+			},
+			undefined,
+			undefined,
+			controller.signal,
+		);
+		controller.abort(reason);
+
+		await expect(wrapped?.({ text: "must not escape" })).rejects.toMatchObject({
+			code: "TURN_ABORTED",
+			reason: reason.message,
+		});
+		expect(delivered).toEqual([]);
+	});
+
 	it("delivers sanitized text to the connector callback", async () => {
 		const { delivered, wrapped } = buildHarness();
 

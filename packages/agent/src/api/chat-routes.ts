@@ -997,6 +997,12 @@ export interface ChatGenerateOptions {
    */
   onToolEvent?: (event: ChatToolCallEvent) => void;
   abortSignal?: AbortSignal;
+  /**
+   * Exact-request-only gate for assistant persistence/delivery. Kept separate
+   * from the transport/generation signal so generic disconnects retain durable
+   * completion and incoming user persistence is never cancelled.
+   */
+  assistantCommitAbortSignal?: AbortSignal;
   /** Existing runtime-validated ownership for a host's wider durable turn. */
   roomHandlerLease?: RoomHandlerLease;
   resolveNoResponseText?: () => string;
@@ -3702,6 +3708,12 @@ async function generateChatResponseWithTiming(
                   },
                   {
                     abortSignal: generationAbortController.signal,
+                    ...(opts?.assistantCommitAbortSignal
+                      ? {
+                          assistantCommitAbortSignal:
+                            opts.assistantCommitAbortSignal,
+                        }
+                      : {}),
                     roomHandlerLease: opts?.roomHandlerLease,
                     keepExistingResponses: true,
                     onSettledActionResult: (actionResult) => {

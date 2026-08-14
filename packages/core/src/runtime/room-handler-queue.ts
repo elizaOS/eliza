@@ -146,6 +146,7 @@ class RoomQueue {
 	readonly roomId: string;
 	private queue: QueuedItem<unknown>[] = [];
 	private active: QueuedItem<unknown> | null = null;
+	private activeSettlement: Promise<void> | null = null;
 
 	constructor(roomId: string) {
 		this.roomId = roomId;
@@ -153,6 +154,11 @@ class RoomQueue {
 
 	get pendingCount(): number {
 		return this.queue.length + (this.active ? 1 : 0);
+	}
+
+	/** Snapshot settlement of the owner active at this instant. */
+	currentOwnerSettlement(): Promise<void> | null {
+		return this.activeSettlement;
 	}
 
 	enqueue<T>(fn: () => Promise<T>, signal?: AbortSignal): Promise<T> {
@@ -206,18 +212,31 @@ class RoomQueue {
 			next.signal.removeEventListener("abort", next.onAbort);
 		}
 		this.active = next;
+		let markSettled: (() => void) | undefined;
+		const settlement = new Promise<void>((resolve) => {
+			markSettled = resolve;
+		});
+		this.activeSettlement = settlement;
+		const finishOwner = () => {
+			this.active = null;
+			if (this.activeSettlement === settlement) {
+				this.activeSettlement = null;
+			}
+			// Ownership is already released before observers resume from this
+			// settlement promise. Queued successors may start only after that fact.
+			markSettled?.();
+			this.drain();
+		};
 		Promise.resolve()
 			.then(() => next.fn())
 			.then(
 				(value) => {
 					next.resolve(value);
-					this.active = null;
-					this.drain();
+					finishOwner();
 				},
 				(error) => {
 					next.reject(error);
-					this.active = null;
-					this.drain();
+					finishOwner();
 				},
 			);
 	}
@@ -604,6 +623,15 @@ export class RoomHandlerQueue {
 
 	pendingFor(roomId: string): number {
 		return this.rooms.get(roomId)?.pendingCount ?? 0;
+	}
+
+	/**
+	 * Snapshot settlement of only the room owner active now. Unlike `quiesce`,
+	 * this never waits for queued successor turns, so an abort barrier cannot
+	 * accidentally consume or deadlock replacement work.
+	 */
+	currentOwnerSettlement(roomId: string): Promise<void> | null {
+		return this.rooms.get(roomId)?.currentOwnerSettlement() ?? null;
 	}
 
 	pendingTotal(): number {

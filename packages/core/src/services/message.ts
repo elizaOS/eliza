@@ -1497,11 +1497,36 @@ type ResolvedMessageOptions = {
 	 * in-flight inference. Sourced from `MessageProcessingOptions.abortSignal`.
 	 */
 	abortSignal?: AbortSignal;
+	/** Exact-request-only assistant precommit gate; never gates user ingress. */
+	assistantCommitAbortSignal?: AbortSignal;
 	roomHandlerLease?: RoomHandlerLease;
 	onSettledActionResult?: (result: ActionResult) => void;
 	onTrajectoryTerminalOwner?: (owner: "run") => void;
 	runTerminalOwner?: MessageRunTerminalOwner;
 };
+
+type VisibleDeliveryBoundary =
+	| { committed: true }
+	| { committed: false; error: unknown };
+
+/**
+ * Sample the exact-request assistant cancellation signal at a synchronous
+ * precommit boundary. Preserve the registry's TurnAbortedError identity when
+ * present so hosts can classify the cancellation without string matching.
+ */
+function assertAssistantCommitCanBegin(signal?: AbortSignal): void {
+	if (!signal?.aborted) return;
+	const reason = signal.reason;
+	throw reason instanceof TurnAbortedError
+		? reason
+		: new TurnAbortedError(
+				reason instanceof Error
+					? reason.message
+					: typeof reason === "string"
+						? reason
+						: "assistant commit cancelled",
+			);
+}
 
 function normalizeShouldRespondModelType(
 	value: unknown,
@@ -10529,94 +10554,145 @@ export function wrapSingleTurnVisibleCallback(
 	message: Pick<Memory, "id" | "roomId" | "entityId">,
 	callback?: HandlerCallback,
 	recordDeliveredVisibleText?: (text: string) => void,
+	onDeliveryBoundaryReached?: () => void,
+	assistantCommitAbortSignal?: AbortSignal,
+	onDeliveryBoundaryCancelled?: (error: unknown) => void,
 ): HandlerCallback | undefined {
 	if (!callback) return callback;
 	const fullRuntime = runtime as IAgentRuntime;
-	const deliver = async (response: Content, actionName?: string) => {
-		const fullMessage = message as Memory;
-		response = await enforceTrustedDeliveryAudienceAtEgress(
-			fullRuntime,
-			fullMessage,
-			response,
-		);
-		if (isRecord(response.data) && response.data.privacyDenied === true) {
-			actionName = "PRIVACY_DENIED";
-		}
-		if (response.transcriptVisibility === "internal") {
-			return [];
-		}
-		let rawUnsanitizedText: string | undefined;
-		// Shared post-model, pre-channel sanitization (#15888): every visible
-		// delivery — action callbacks, early replies, simple replies, terminal
-		// content — funnels through this wrap, so stripping leaked machine
-		// syntax here covers every connector without per-connector copies. The
-		// envelope guard then fail-closed blocks any security-envelope echo the
-		// model produced, replacing it with the honest leak notice.
-		if (typeof response?.text === "string" && response.text.length > 0) {
-			const guarded = guardOutboundEnvelopeText(
-				fullRuntime,
-				sanitizeOutboundText(response.text),
-				"visible-callback",
-			);
-			if (guarded !== response.text) {
-				// Record the raw form too: planner-echo suppression compares the
-				// planner's unsanitized finalMessage against this set, and must
-				// still recognize a delivery whose wire text was sanitized.
-				rawUnsanitizedText = response.text.trim() ? response.text : undefined;
-				response = { ...response, text: guarded };
+	const deliver = async (
+		response: Content,
+		actionName?: string,
+		prepare?: (response: Content, actionName?: string) => Promise<Content>,
+	) => {
+		let boundaryNotified = false;
+		const notifyBoundary = () => {
+			if (boundaryNotified) return;
+			boundaryNotified = true;
+			onDeliveryBoundaryReached?.();
+		};
+		const notifyBoundaryCancelled = (error: unknown) => {
+			if (boundaryNotified) return;
+			boundaryNotified = true;
+			onDeliveryBoundaryCancelled?.(error);
+		};
+		try {
+			if (prepare) {
+				response = await prepare(response, actionName);
 			}
-		}
-		// Attachments are a delivery surface the text guard never sees: both
-		// voice paths ship the spoken sentence as attachment.text under an empty
-		// top-level text, so envelope material must be blocked here too.
-		if (
-			Array.isArray(response.attachments) &&
-			response.attachments.length > 0
-		) {
-			const guardedAttachments = guardOutboundEnvelopeAttachments(
+			const fullMessage = message as Memory;
+			response = await enforceTrustedDeliveryAudienceAtEgress(
 				fullRuntime,
-				response.attachments,
-				"visible-callback-attachment",
+				fullMessage,
+				response,
 			);
-			if (guardedAttachments !== response.attachments) {
-				response = { ...response, attachments: guardedAttachments };
-				// When the blocked attachment was the whole payload there is
-				// nothing honest left to send — skip the delivery instead of
-				// handing connectors an empty message.
-				if (
-					guardedAttachments.length === 0 &&
-					!(typeof response.text === "string" && response.text.trim())
-				) {
-					return [];
+			if (isRecord(response.data) && response.data.privacyDenied === true) {
+				actionName = "PRIVACY_DENIED";
+			}
+			if (response.transcriptVisibility === "internal") {
+				// Policy intentionally suppresses connector delivery while retaining
+				// the already-authorized internal transcript.
+				notifyBoundary();
+				return [];
+			}
+			let rawUnsanitizedText: string | undefined;
+			// Shared post-model, pre-channel sanitization (#15888): every visible
+			// delivery — action callbacks, early replies, simple replies, terminal
+			// content — funnels through this wrap, so stripping leaked machine
+			// syntax here covers every connector without per-connector copies. The
+			// envelope guard then fail-closed blocks any security-envelope echo the
+			// model produced, replacing it with the honest leak notice.
+			if (typeof response?.text === "string" && response.text.length > 0) {
+				const guarded = guardOutboundEnvelopeText(
+					fullRuntime,
+					sanitizeOutboundText(response.text),
+					"visible-callback",
+				);
+				if (guarded !== response.text) {
+					// Record the raw form too: planner-echo suppression compares the
+					// planner's unsanitized finalMessage against this set, and must
+					// still recognize a delivery whose wire text was sanitized.
+					rawUnsanitizedText = response.text.trim() ? response.text : undefined;
+					response = { ...response, text: guarded };
 				}
 			}
-		}
-		response = enforceEffectGroundedVisibleContent(
-			fullRuntime,
-			response,
-			actionName,
-		);
-		const delivered = await callback(response, actionName);
-		if (rawUnsanitizedText) {
-			recordDeliveredVisibleText?.(rawUnsanitizedText);
-		}
-		if (typeof response?.text === "string" && response.text.trim()) {
-			recordDeliveredVisibleText?.(response.text);
-		}
-		// The voice rewrite (voiceActionReply below) restyles the wire text and
-		// stashes the action's original text in data.rawActionText. The planner's
-		// finalMessage is composed from that RAW text (a verified tool's
-		// userFacingText), so record it too — same rationale as the sanitize-drift
-		// recording above: echo suppression must recognize a delivery whose wire
-		// form diverged from the text the planner re-selects.
-		if (response?.data && typeof response.data === "object") {
-			const rawActionText = (response.data as Record<string, unknown>)
-				.rawActionText;
-			if (typeof rawActionText === "string" && rawActionText.trim()) {
-				recordDeliveredVisibleText?.(rawActionText);
+			// Attachments are a delivery surface the text guard never sees: both
+			// voice paths ship the spoken sentence as attachment.text under an empty
+			// top-level text, so envelope material must be blocked here too.
+			if (
+				Array.isArray(response.attachments) &&
+				response.attachments.length > 0
+			) {
+				const guardedAttachments = guardOutboundEnvelopeAttachments(
+					fullRuntime,
+					response.attachments,
+					"visible-callback-attachment",
+				);
+				if (guardedAttachments !== response.attachments) {
+					response = { ...response, attachments: guardedAttachments };
+					// When the blocked attachment was the whole payload there is
+					// nothing honest left to send — skip the delivery instead of
+					// handing connectors an empty message.
+					if (
+						guardedAttachments.length === 0 &&
+						!(typeof response.text === "string" && response.text.trim())
+					) {
+						// Fail-closed envelope suppression is an intentional delivery
+						// outcome, not an infrastructure failure. The sanitized batch may
+						// settle without handing an empty payload to the connector.
+						notifyBoundary();
+						return [];
+					}
+				}
 			}
+			response = enforceEffectGroundedVisibleContent(
+				fullRuntime,
+				response,
+				actionName,
+			);
+			// Audience revalidation and action-voice rewriting can await after the
+			// outer response batch sampled exact cancellation. Re-sample at the real
+			// connector boundary so a winning realtime-voice cancel cannot leak an
+			// action callback or simple reply through that gap.
+			try {
+				assertAssistantCommitCanBegin(assistantCommitAbortSignal);
+			} catch (error) {
+				notifyBoundaryCancelled(error);
+				throw error;
+			}
+			// Resolve the simple-path persistence handoff immediately before the
+			// connector callback starts. This preserves deliver-then-persist ordering
+			// without leaving an await between the exact cancellation latch and the
+			// assistant batch that has already begun.
+			notifyBoundary();
+			const delivered = await callback(response, actionName);
+			if (rawUnsanitizedText) {
+				recordDeliveredVisibleText?.(rawUnsanitizedText);
+			}
+			if (typeof response?.text === "string" && response.text.trim()) {
+				recordDeliveredVisibleText?.(response.text);
+			}
+			// The voice rewrite (voiceActionReply below) restyles the wire text and
+			// stashes the action's original text in data.rawActionText. The planner's
+			// finalMessage is composed from that RAW text (a verified tool's
+			// userFacingText), so record it too — same rationale as the sanitize-drift
+			// recording above: echo suppression must recognize a delivery whose wire
+			// form diverged from the text the planner re-selects.
+			if (response?.data && typeof response.data === "object") {
+				const rawActionText = (response.data as Record<string, unknown>)
+					.rawActionText;
+				if (typeof rawActionText === "string" && rawActionText.trim()) {
+					recordDeliveredVisibleText?.(rawActionText);
+				}
+			}
+			return delivered;
+		} catch (error) {
+			// A failure before the synchronous connector latch must not authorize a
+			// durable assistant row. Once notifyBoundary() has run, this call is a
+			// no-op and connector failures remain post-commit as intended.
+			notifyBoundaryCancelled(error);
+			throw error;
 		}
-		return delivered;
 	};
 	// The character-voice rewrite spends a TEXT_SMALL call per action callback and
 	// restyles the delivered text. Deterministic harnesses (the scenario runner)
@@ -10664,7 +10740,7 @@ export function wrapSingleTurnVisibleCallback(
 
 	if (typeof fullRuntime.getService !== "function") {
 		return async (response, actionName) =>
-			deliver(await voiceActionReply(response, actionName), actionName);
+			deliver(response, actionName, voiceActionReply);
 	}
 	// Resolve verbosity once per turn — cheap because PersonalityStore is
 	// in-memory. Returning the original callback when no override is set
@@ -10672,7 +10748,7 @@ export function wrapSingleTurnVisibleCallback(
 	const store = getPersonalityStore(fullRuntime);
 	if (!store) {
 		return async (response, actionName) =>
-			deliver(await voiceActionReply(response, actionName), actionName);
+			deliver(response, actionName, voiceActionReply);
 	}
 	const userSlot =
 		message.entityId && message.entityId !== fullRuntime.agentId
@@ -10682,28 +10758,34 @@ export function wrapSingleTurnVisibleCallback(
 	const verbosity = userSlot?.verbosity ?? globalSlot?.verbosity ?? null;
 	if (verbosity !== "terse") {
 		return async (response, actionName) =>
-			deliver(await voiceActionReply(response, actionName), actionName);
+			deliver(response, actionName, voiceActionReply);
 	}
 
 	const wrapped: HandlerCallback = async (response, actionName) => {
-		response = await voiceActionReply(response, actionName);
-		if (typeof response?.text === "string" && response.text.length > 0) {
-			const result = enforceVerbosity(response.text, "terse");
-			if (result.truncated) {
-				fullRuntime.logger.debug(
-					{
-						src: "service:message",
-						messageId: message.id,
-						roomId: message.roomId,
-						originalTokens: result.originalTokens,
-						finalTokens: result.finalTokens,
-					},
-					"Personality verbosity=terse — truncated response",
-				);
-				response = { ...response, text: result.text };
-			}
-		}
-		return deliver(response, actionName);
+		return deliver(
+			response,
+			actionName,
+			async (prepared, preparedActionName) => {
+				prepared = await voiceActionReply(prepared, preparedActionName);
+				if (typeof prepared?.text === "string" && prepared.text.length > 0) {
+					const result = enforceVerbosity(prepared.text, "terse");
+					if (result.truncated) {
+						fullRuntime.logger.debug(
+							{
+								src: "service:message",
+								messageId: message.id,
+								roomId: message.roomId,
+								originalTokens: result.originalTokens,
+								finalTokens: result.finalTokens,
+							},
+							"Personality verbosity=terse — truncated response",
+						);
+						prepared = { ...prepared, text: result.text };
+					}
+				}
+				return prepared;
+			},
+		);
 	};
 	return wrapped;
 }
@@ -11428,6 +11510,11 @@ export class DefaultMessageService implements IMessageService {
 						),
 					shouldRespondModel: resolvedShouldRespondModel,
 					...(options?.abortSignal ? { abortSignal: options.abortSignal } : {}),
+					...(options?.assistantCommitAbortSignal
+						? {
+								assistantCommitAbortSignal: options.assistantCommitAbortSignal,
+							}
+						: {}),
 					...(options?.roomHandlerLease
 						? { roomHandlerLease: options.roomHandlerLease }
 						: {}),
@@ -11450,6 +11537,14 @@ export class DefaultMessageService implements IMessageService {
 					);
 				};
 				const instrumentedCallback = wrapSingleTurnVisibleCallback(
+					runtime,
+					message,
+					callback,
+					recordDeliveredVisibleText,
+					undefined,
+					opts.assistantCommitAbortSignal,
+				);
+				const precommittedVisibleCallback = wrapSingleTurnVisibleCallback(
 					runtime,
 					message,
 					callback,
@@ -11635,8 +11730,11 @@ export class DefaultMessageService implements IMessageService {
 									this.processMessage(
 										runtime,
 										message,
+										callback,
 										instrumentedCallback,
+										precommittedVisibleCallback,
 										deliveredVisibleTexts,
+										recordDeliveredVisibleText,
 										responseId,
 										runId,
 										opts,
@@ -11766,8 +11864,11 @@ export class DefaultMessageService implements IMessageService {
 	private async processMessage(
 		runtime: IAgentRuntime,
 		message: Memory,
+		rawCallback: HandlerCallback | undefined,
 		callback: HandlerCallback | undefined,
+		precommittedVisibleCallback: HandlerCallback | undefined,
 		deliveredVisibleTexts: Set<string>,
+		recordDeliveredVisibleText: (text: string) => void,
 		responseId: UUID,
 		runId: UUID,
 		opts: ResolvedMessageOptions,
@@ -12260,6 +12361,10 @@ export class DefaultMessageService implements IMessageService {
 						roomId: message.roomId,
 						createdAt: Date.now(),
 					};
+					// All hooks/audience reads are complete. Exact cancellation wins
+					// only until this synchronous boundary; after createMemory starts,
+					// persistence, MESSAGE_SENT, and delivery finish as one truthful batch.
+					assertAssistantCommitCanBegin(opts.assistantCommitAbortSignal);
 					await runtime.createMemory(earlyMemory, "messages");
 					await this.emitMessageSent(
 						runtime,
@@ -12268,8 +12373,8 @@ export class DefaultMessageService implements IMessageService {
 					);
 					earlyReplyMessages.push(earlyMemory);
 					persistedEarlyReplyIds.add(earlyResponseId);
-					if (callback) {
-						await callback(earlyContent);
+					if (precommittedVisibleCallback) {
+						await precommittedVisibleCallback(earlyContent);
 					}
 					return true;
 				}
@@ -12702,6 +12807,7 @@ export class DefaultMessageService implements IMessageService {
 				mode !== "simple" &&
 				mode !== "actions"
 			) {
+				const responseCommitBatch: Memory[] = [];
 				for (const responseMemory of responseMessages) {
 					if (
 						responseMemory.id &&
@@ -12709,7 +12815,7 @@ export class DefaultMessageService implements IMessageService {
 					) {
 						continue;
 					}
-					// Update the content in case inReplyTo was added
+					// Update the content in case inReplyTo was added.
 					if (responseContent) {
 						responseContent = await enforceTrustedDeliveryAudienceAtEgress(
 							runtime,
@@ -12725,6 +12831,13 @@ export class DefaultMessageService implements IMessageService {
 						);
 						continue;
 					}
+					responseCommitBatch.push(responseMemory);
+				}
+
+				// Prepare the complete batch before sampling exact cancellation. No
+				// await may split this check from the first assistant side effect.
+				assertAssistantCommitCanBegin(opts.assistantCommitAbortSignal);
+				for (const responseMemory of responseCommitBatch) {
 					runtime.logger.debug(
 						{ src: "service:message", memoryId: responseMemory.id },
 						"Saving response to memory",
@@ -12786,6 +12899,64 @@ export class DefaultMessageService implements IMessageService {
 							deliverableResponseContent,
 						);
 					responseContent = deliverableResponseContent;
+					const simpleCommitBatch: Array<{
+						memory: Memory;
+						persist: boolean;
+					}> = [];
+					for (const responseMemory of responseMessages) {
+						if (
+							responseMemory.id &&
+							persistedEarlyReplyIds.has(responseMemory.id)
+						) {
+							continue;
+						}
+						responseMemory.content =
+							await enforceTrustedDeliveryAudienceAtEgress(
+								runtime,
+								message,
+								deliverableResponseContent,
+							);
+						const persist =
+							!shouldSkipResponseMemoryPersistence(responseMemory);
+						if (!persist) {
+							runtime.logger.debug(
+								{ src: "service:message", memoryId: responseMemory.id },
+								"Skipping transient response memory persistence",
+							);
+						}
+						simpleCommitBatch.push({ memory: responseMemory, persist });
+					}
+
+					// The final simple reply owns its own delivery/persistence
+					// handshake. Action callbacks, early acknowledgements, and detached
+					// voice callbacks may all run through the turn's shared callback
+					// wrapper first; none of those distinct deliveries may authorize this
+					// reply's memory write. A fresh wrapper makes the boundary
+					// invocation-specific and re-samples exact cancellation after its
+					// final awaited audience check.
+					let resolveSimpleDeliveryBoundary:
+						| ((boundary: VisibleDeliveryBoundary) => void)
+						| undefined;
+					const simpleDeliveryBoundary = rawCallback
+						? new Promise<VisibleDeliveryBoundary>((resolve) => {
+								resolveSimpleDeliveryBoundary = resolve;
+							})
+						: undefined;
+					const simpleVisibleCallback = wrapSingleTurnVisibleCallback(
+						runtime,
+						message,
+						rawCallback,
+						recordDeliveredVisibleText,
+						() => resolveSimpleDeliveryBoundary?.({ committed: true }),
+						opts.assistantCommitAbortSignal,
+						(error) =>
+							resolveSimpleDeliveryBoundary?.({ committed: false, error }),
+					);
+
+					// Hooks and every audience revalidation above are precommit work.
+					// Sample exact cancellation once, synchronously, then finish both
+					// callback and persistence even if cancellation arrives later.
+					assertAssistantCommitCanBegin(opts.assistantCommitAbortSignal);
 					// Registered BEFORE the callback fires so a follow-up prompted
 					// by this delivery always finds the barrier pending; released
 					// (never rejected) in the finally once the persist settles.
@@ -12799,9 +12970,9 @@ export class DefaultMessageService implements IMessageService {
 						// raw delivery error by identity (TURN_ABORTED / generation-
 						// timeout checks at the conversation route), so both failures
 						// are rethrown UNCHANGED after both operations settle.
-						const deliveryTask = callback
+						const deliveryTask = simpleVisibleCallback
 							? timeInferenceSpan("message:delivery:callback", () =>
-									callback(deliverableResponseContent),
+									simpleVisibleCallback(deliverableResponseContent),
 								).then((value) => {
 									markInference(INFERENCE_MARKS.replyDelivered);
 									return value;
@@ -12813,37 +12984,22 @@ export class DefaultMessageService implements IMessageService {
 						// strictly after both operations settle.
 						const deliveredClaimMemories: Memory[] = [];
 						const persistTask = (async () => {
-							for (const responseMemory of responseMessages) {
-								if (
-									responseMemory.id &&
-									persistedEarlyReplyIds.has(responseMemory.id)
-								) {
-									continue;
-								}
-								responseMemory.content =
-									await enforceTrustedDeliveryAudienceAtEgress(
-										runtime,
-										message,
-										deliverableResponseContent,
-									);
-								if (shouldSkipResponseMemoryPersistence(responseMemory)) {
+							const boundary = await simpleDeliveryBoundary;
+							if (boundary && !boundary.committed) throw boundary.error;
+							for (const { memory, persist } of simpleCommitBatch) {
+								if (persist) {
 									runtime.logger.debug(
-										{ src: "service:message", memoryId: responseMemory.id },
-										"Skipping transient response memory persistence",
-									);
-								} else {
-									runtime.logger.debug(
-										{ src: "service:message", memoryId: responseMemory.id },
+										{ src: "service:message", memoryId: memory.id },
 										"Saving response to memory",
 									);
 									await timeInferenceSpan("message:delivery:persistence", () =>
-										runtime.createMemory(responseMemory, "messages"),
+										runtime.createMemory(memory, "messages"),
 									);
-									if (responseMemory.id) {
-										persistedResponseMessageIds.add(responseMemory.id);
+									if (memory.id) {
+										persistedResponseMessageIds.add(memory.id);
 									}
 								}
-								deliveredClaimMemories.push(responseMemory);
+								deliveredClaimMemories.push(memory);
 							}
 						})();
 						const [deliveryOutcome, persistOutcome] = await Promise.allSettled([
@@ -12981,6 +13137,10 @@ export class DefaultMessageService implements IMessageService {
 				roomId: message.roomId,
 				createdAt: Date.now(),
 			};
+			// Terminal IGNORE/STOP rows are assistant side effects too. Hooks and
+			// audience checks are complete; cancellation may win only before this
+			// synchronous batch boundary.
+			assertAssistantCommitCanBegin(opts.assistantCommitAbortSignal);
 			await timeInferenceSpan("message:delivery:persistence", () =>
 				runtime.createMemory(terminalMemory, "messages"),
 			);
@@ -12997,11 +13157,11 @@ export class DefaultMessageService implements IMessageService {
 			);
 
 			if (
-				callback &&
+				precommittedVisibleCallback &&
 				!(terminalAction === "IGNORE" && isVoiceChannelMessage(message))
 			) {
 				await timeInferenceSpan("message:delivery:callback", () =>
-					callback(terminalContent),
+					precommittedVisibleCallback(terminalContent),
 				);
 			}
 		}
