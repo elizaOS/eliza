@@ -1,4 +1,4 @@
-// Handles webhook gateway index behavior for authenticated connector fan-in.
+/** Assembles and starts the authenticated multi-platform webhook gateway. */
 import { Hono } from "hono";
 import { blooioAdapter } from "./adapters/blooio";
 import { telegramAdapter } from "./adapters/telegram";
@@ -6,6 +6,7 @@ import { twilioAdapter } from "./adapters/twilio";
 import type { Platform, PlatformAdapter } from "./adapters/types";
 import { whatsappAdapter } from "./adapters/whatsapp";
 import { getAuthHeader, initAuth, shutdownAuth } from "./auth";
+import { registerForwarderAuthReadinessRoute } from "./forwarder-auth-readiness";
 import { enforceForwarderSecret } from "./internal-auth";
 import { handleInternalEvent } from "./internal-event-handler";
 import { logger } from "./logger";
@@ -54,6 +55,7 @@ app.get("/ready", (c) => {
   if (draining) return c.json({ status: "draining" }, 503);
   return c.json({ status: "ready" });
 });
+registerForwarderAuthReadinessRoute(app);
 app.post("/drain", (c) => {
   draining = true;
   logger.info("Drain requested");

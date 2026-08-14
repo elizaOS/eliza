@@ -1,7 +1,8 @@
-// Exercises the gateway-webhook internal auth path with deterministic cloud service fixtures.
+/** Exercises gateway internal-auth boundaries with deterministic service fixtures. */
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import {
   enforceForwarderSecret,
+  getForwarderAuthReadiness,
   validateInternalSecret,
 } from "../src/internal-auth";
 
@@ -76,6 +77,7 @@ describe("validateInternalSecret", () => {
 // is configured; backward-compatible no-op when not.
 describe("enforceForwarderSecret", () => {
   const originalForwarder = process.env.ELIZA_APP_WEBHOOK_GATEWAY_SECRET;
+  const originalProject = process.env.ELIZA_APP_WEBHOOK_PROJECT;
   const originalInternal = process.env.GATEWAY_INTERNAL_SECRET;
 
   afterEach(() => {
@@ -83,6 +85,11 @@ describe("enforceForwarderSecret", () => {
       delete process.env.ELIZA_APP_WEBHOOK_GATEWAY_SECRET;
     } else {
       process.env.ELIZA_APP_WEBHOOK_GATEWAY_SECRET = originalForwarder;
+    }
+    if (originalProject === undefined) {
+      delete process.env.ELIZA_APP_WEBHOOK_PROJECT;
+    } else {
+      process.env.ELIZA_APP_WEBHOOK_PROJECT = originalProject;
     }
     if (originalInternal === undefined) {
       delete process.env.GATEWAY_INTERNAL_SECRET;
@@ -109,6 +116,9 @@ describe("enforceForwarderSecret", () => {
 
   test("no forwarder secret configured => gate is a no-op (allows traffic)", () => {
     delete process.env.ELIZA_APP_WEBHOOK_GATEWAY_SECRET;
+    expect(getForwarderAuthReadiness(FORWARDED_PROJECT)).toBe(
+      "secret-disabled",
+    );
     expect(enforceForwarderSecret(webhookRequest(), FORWARDED_PROJECT)).toBe(
       true,
     );
@@ -129,6 +139,7 @@ describe("enforceForwarderSecret", () => {
 
   test("forwarder secret configured + valid header => allowed", () => {
     process.env.ELIZA_APP_WEBHOOK_GATEWAY_SECRET = "bff-secret";
+    expect(getForwarderAuthReadiness(FORWARDED_PROJECT)).toBe("enforced");
     expect(
       enforceForwarderSecret(webhookRequest("bff-secret"), FORWARDED_PROJECT),
     ).toBe(true);
@@ -155,6 +166,24 @@ describe("enforceForwarderSecret", () => {
     // No forwarder header at all, but a non-forwarded project => allowed.
     expect(enforceForwarderSecret(webhookRequest(), "some-other-project")).toBe(
       true,
+    );
+  });
+
+  test("configured forwarded-project mismatch is distinct from an enabled gate", () => {
+    process.env.ELIZA_APP_WEBHOOK_GATEWAY_SECRET = "bff-secret";
+    process.env.ELIZA_APP_WEBHOOK_PROJECT = "different-project";
+    expect(getForwarderAuthReadiness(FORWARDED_PROJECT)).toBe(
+      "project-mismatch",
+    );
+    expect(enforceForwarderSecret(webhookRequest(), FORWARDED_PROJECT)).toBe(
+      true,
+    );
+  });
+
+  test("a blank dedicated secret reports disabled readiness", () => {
+    process.env.ELIZA_APP_WEBHOOK_GATEWAY_SECRET = "  \n";
+    expect(getForwarderAuthReadiness(FORWARDED_PROJECT)).toBe(
+      "secret-disabled",
     );
   });
 
