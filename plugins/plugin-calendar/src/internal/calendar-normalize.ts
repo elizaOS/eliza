@@ -45,14 +45,14 @@ export function normalizeCalendarTimeZone(value: unknown): string {
   return normalizeValidTimeZone(value, "timeZone", resolveDefaultTimeZone());
 }
 
-function validateExplicitCalendarDate(text: string, field: string): void {
-  const match =
-    /^(?<year>[+-]?\d{4,6})-(?<month>\d{1,2})-(?<day>\d{1,2})(?:(?:T| )\d{1,2}:\d{2}(?::\d{2}(?:\.\d{1,9})?)?)?(?:[zZ]|[+-]\d{2}:?\d{2})$/.exec(
-      text,
-    );
-  if (!match?.groups) {
-    fail(400, `${field} must be a valid ISO datetime`);
-  }
+function validateIsoCalendarDatePrefix(text: string, field: string): void {
+  const match = /^(?<year>[+-]?\d{4,6})-(?<month>\d{1,2})-(?<day>\d{1,2})/.exec(
+    text,
+  );
+  // Non-ISO compatibility inputs remain the generic parser's responsibility.
+  // Every ISO-like input, however, must prove its civil date before any route
+  // reaches Date.parse, whose permissive legacy grammar normalizes Feb 30.
+  if (!match?.groups) return;
 
   const year = Number(match.groups.year);
   const month = Number(match.groups.month);
@@ -92,8 +92,8 @@ export function normalizeCalendarDateTimeInTimeZone(
     return undefined;
   }
   const text = requireNonEmptyString(value, field);
+  validateIsoCalendarDatePrefix(text, field);
   if (/[zZ]$|[+-]\d{2}:?\d{2}$/.test(text)) {
-    validateExplicitCalendarDate(text, field);
     return normalizeIsoString(text, field);
   }
 
