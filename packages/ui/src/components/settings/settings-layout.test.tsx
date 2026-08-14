@@ -13,6 +13,7 @@ import {
   SettingsInputRow,
   SettingsSelectRow,
   SettingsSwitchRow,
+  SettingsTextareaRow,
 } from "./settings-agent-rows";
 import { SettingsGroup, SettingsRow, SettingsStack } from "./settings-layout";
 
@@ -246,5 +247,24 @@ describe("agent-addressable rows", () => {
     const trigger = screen.getByTestId("identity-voice-trigger");
     expect(trigger.getAttribute("data-agent-id")).toBe("identity-voice");
     expect(screen.getByText("Preview")).toBeTruthy();
+  });
+
+  it("SettingsTextareaRow labels the field and exposes agent data attributes", () => {
+    const onValueChange = vi.fn();
+    render(
+      <SettingsTextareaRow
+        agentId="apps-create-intent"
+        label="What should the app do?"
+        value=""
+        onValueChange={onValueChange}
+      />,
+    );
+    const field = screen.getByLabelText("What should the app do?");
+    expect(field.getAttribute("data-agent-id")).toBe("apps-create-intent");
+    expect(field.getAttribute("data-agent-role")).toBe("textarea");
+    expect(field.getAttribute("id")).toBe("apps-create-intent");
+    expect(field.getAttribute("aria-label")).toBeNull();
+    fireEvent.change(field, { target: { value: "Summarize updates" } });
+    expect(onValueChange).toHaveBeenCalledWith("Summarize updates");
   });
 });

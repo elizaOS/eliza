@@ -391,15 +391,6 @@ export const BUILTIN_VIEW_MUTATION_BASELINE = [
         actionOperations: ["relaunch"],
       },
       {
-        id: "create.intent.agent",
-        sourceFile:
-          "packages/ui/src/components/settings/AppsManagementSection.tsx",
-        sourceSignature:
-          'useAgentElement<HTMLTextAreaElement>({\n      id: "apps-create-intent",',
-        semanticAction: "APP",
-        actionOperations: ["create"],
-      },
-      {
         id: "create.submit.agent",
         sourceFile:
           "packages/ui/src/components/settings/AppsManagementSection.tsx",
@@ -416,15 +407,6 @@ export const BUILTIN_VIEW_MUTATION_BASELINE = [
           'useAgentElement<HTMLButtonElement>({\n      id: "apps-create-cancel",',
         semanticAction: "APP",
         actionOperations: ["create"],
-      },
-      {
-        id: "load.directory.agent",
-        sourceFile:
-          "packages/ui/src/components/settings/AppsManagementSection.tsx",
-        sourceSignature:
-          'useAgentElement<HTMLInputElement>({\n      id: "apps-load-directory",',
-        semanticAction: "APP",
-        actionOperations: ["load_from_directory"],
       },
       {
         id: "load.submit.agent",
@@ -483,7 +465,7 @@ export const BUILTIN_VIEW_MUTATION_BASELINE = [
         id: "create.intent.pointer",
         sourceFile:
           "packages/ui/src/components/settings/AppsManagementSection.tsx",
-        sourceSignature: "onChange={(e) => setCreateIntent(e.target.value)}",
+        sourceSignature: "onValueChange={setCreateIntent}",
         semanticAction: "APP",
         actionOperations: ["create"],
       },
@@ -517,8 +499,7 @@ export const BUILTIN_VIEW_MUTATION_BASELINE = [
         id: "load.directory.pointer",
         sourceFile:
           "packages/ui/src/components/settings/AppsManagementSection.tsx",
-        sourceSignature:
-          "onChange={(e: React.ChangeEvent<HTMLInputElement>) =>\n                  setLoadDirectory(e.target.value)",
+        sourceSignature: "onValueChange={setLoadDirectory}",
         semanticAction: "APP",
         actionOperations: ["load_from_directory"],
       },
@@ -572,7 +553,7 @@ export const BUILTIN_VIEW_MUTATION_BASELINE = [
         actionOperations: ["stop"],
       },
     ],
-    maxMutationSites: 27,
+    maxMutationSites: 25,
     notes:
       "The standalone page mounts AppsManagementSection, so its complete app-control surface is inventoried here instead of disappearing behind a child component. APP owns app lifecycle; VIEWS owns the signed-in Cloud Apps shell navigation.",
   },

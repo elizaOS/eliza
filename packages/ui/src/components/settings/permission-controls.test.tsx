@@ -9,8 +9,9 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { PluginInfo } from "../../api";
-import { CapabilityToggle } from "./permission-controls";
+import { CapabilityToggle, PermissionRow } from "./permission-controls";
 import type { CapabilityDef } from "./permission-types";
+import { SYSTEM_PERMISSIONS } from "./permission-types";
 
 const appMock = vi.hoisted(() => ({
   t: (key: string, options?: { defaultValue?: string }) =>
@@ -93,5 +94,37 @@ describe("CapabilityToggle", () => {
     expect(
       screen.getByText("permissionssection.MissingPermissions"),
     ).toBeTruthy();
+  });
+});
+
+const shellDef = SYSTEM_PERMISSIONS.find((def) => def.id === "shell");
+if (!shellDef) {
+  throw new Error("SYSTEM_PERMISSIONS must include shell");
+}
+
+describe("PermissionRow shell toggle", () => {
+  it("routes the shell enable switch through SettingsSwitchRow", () => {
+    const onToggleShell = vi.fn();
+    render(
+      <PermissionRow
+        def={shellDef}
+        status="granted"
+        platform="darwin"
+        canRequest={false}
+        onRequest={() => {}}
+        onOpenSettings={() => {}}
+        isShell
+        shellEnabled
+        onToggleShell={onToggleShell}
+      />,
+    );
+    const sw = screen.getByRole("switch");
+    expect(sw.getAttribute("data-agent-id")).toBe("perm-shell-shell");
+    expect(sw.getAttribute("data-agent-label")).toBe(
+      "Shell Access shell access",
+    );
+    expect(sw.getAttribute("aria-checked")).toBe("true");
+    fireEvent.click(sw);
+    expect(onToggleShell).toHaveBeenCalledWith(false);
   });
 });

@@ -42,14 +42,6 @@ const RAW_SWITCH_OCCURRENCES = new Map<
         "compact enable switch inside a custom status chip, not a SettingsRow",
     },
   ],
-  [
-    "permission-controls.tsx",
-    {
-      count: 1,
-      reason:
-        "PermissionRow shell toggle shares the row with a badge and grant button",
-    },
-  ],
 ]);
 
 function posixRelative(from: string, to: string): string {

@@ -15,10 +15,13 @@ import type {
 import { useAppSelector } from "../../state";
 import { Button } from "../ui/button";
 import { Checkbox } from "../ui/checkbox";
-import { SettingsInput, SettingsTextarea } from "../ui/settings-controls";
 import { AdvancedToggle } from "./AdvancedToggle";
 import { useAdvancedSettingsEnabled } from "./AdvancedToggle.hooks";
-import { SettingsSelectRow } from "./settings-agent-rows";
+import {
+  SettingsInputRow,
+  SettingsSelectRow,
+  SettingsTextareaRow,
+} from "./settings-agent-rows";
 import { SettingsGroup, SettingsRow, SettingsStack } from "./settings-layout";
 
 /**
@@ -415,17 +418,6 @@ export function AppsManagementSection() {
       status: verifyOnRelaunch ? "active" : "inactive",
       onActivate: () => setVerifyOnRelaunch((v) => !v),
     });
-  const { ref: createIntentRef, agentProps: createIntentAgentProps } =
-    useAgentElement<HTMLTextAreaElement>({
-      id: "apps-create-intent",
-      role: "textarea",
-      label: t("settings.sections.apps.intentLabel", {
-        defaultValue: "What should the app do?",
-      }),
-      group: "apps-create",
-      getValue: () => createIntent,
-      onFill: setCreateIntent,
-    });
   const { ref: createSubmitRef, agentProps: createSubmitAgentProps } =
     useAgentElement<HTMLButtonElement>({
       id: "apps-create-submit",
@@ -451,17 +443,6 @@ export function AppsManagementSection() {
         setCreateEditTarget("");
         setCreateStatus({ state: "idle" });
       },
-    });
-  const { ref: loadDirectoryRef, agentProps: loadDirectoryAgentProps } =
-    useAgentElement<HTMLInputElement>({
-      id: "apps-load-directory",
-      role: "text-input",
-      label: t("settings.sections.apps.directoryLabel", {
-        defaultValue: "Directory path",
-      }),
-      group: "apps-load",
-      getValue: () => loadDirectory,
-      onFill: setLoadDirectory,
     });
   const { ref: loadSubmitRef, agentProps: loadSubmitAgentProps } =
     useAgentElement<HTMLButtonElement>({
@@ -564,27 +545,21 @@ export function AppsManagementSection() {
               ) : undefined
             }
           >
-            <SettingsRow
-              htmlFor="apps-create-intent"
-              stacked
+            <SettingsTextareaRow
+              agentId="apps-create-intent"
+              group="apps-create"
               label={t("settings.sections.apps.intentLabel", {
                 defaultValue: "What should the app do?",
               })}
-            >
-              <SettingsTextarea
-                ref={createIntentRef}
-                id="apps-create-intent"
-                rows={3}
-                value={createIntent}
-                disabled={isCreating}
-                onChange={(e) => setCreateIntent(e.target.value)}
-                className="block w-full resize-y font-sans text-sm text-txt"
-                placeholder={t("settings.sections.apps.intentPlaceholder", {
-                  defaultValue: "Describe what the app should do.",
-                })}
-                {...createIntentAgentProps}
-              />
-            </SettingsRow>
+              value={createIntent}
+              disabled={isCreating}
+              rows={3}
+              onValueChange={setCreateIntent}
+              textareaClassName="block w-full resize-y font-sans text-sm text-txt"
+              placeholder={t("settings.sections.apps.intentPlaceholder", {
+                defaultValue: "Describe what the app should do.",
+              })}
+            />
             {advancedEnabled ? (
               <SettingsSelectRow
                 agentId="apps-create-edit-target"
@@ -675,28 +650,19 @@ export function AppsManagementSection() {
               ) : undefined
             }
           >
-            <SettingsRow
-              htmlFor="apps-load-directory"
-              stacked
+            <SettingsInputRow
+              agentId="apps-load-directory"
+              group="apps-load"
               label={t("settings.sections.apps.directoryLabel", {
                 defaultValue: "Directory path",
               })}
-            >
-              <SettingsInput
-                ref={loadDirectoryRef}
-                id="apps-load-directory"
-                variant="touch"
-                type="text"
-                value={loadDirectory}
-                disabled={isLoading}
-                onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                  setLoadDirectory(e.target.value)
-                }
-                placeholder="/Users/me/code/my-app"
-                className="w-full"
-                {...loadDirectoryAgentProps}
-              />
-            </SettingsRow>
+              value={loadDirectory}
+              disabled={isLoading}
+              type="text"
+              onValueChange={setLoadDirectory}
+              placeholder="/Users/me/code/my-app"
+              inputClassName="w-full"
+            />
             <SettingsRow label="" stacked>
               <div className="flex items-center gap-2">
                 <Button

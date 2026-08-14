@@ -39,7 +39,6 @@ import type { PermissionStatus, PluginInfo } from "../../api";
 import { useAppSelector } from "../../state";
 import { Button } from "../ui/button";
 import { StatusBadge } from "../ui/status-badge";
-import { Switch } from "../ui/switch";
 import type { CapabilityDef, PermissionDef } from "./permission-types";
 import {
   getPermissionAction,
@@ -117,18 +116,6 @@ export function PermissionRow({
   const showShellToggle =
     isShell && onToggleShell && status !== "not-applicable";
 
-  const { ref: shellRef, agentProps: shellAgentProps } =
-    useAgentElement<HTMLButtonElement>({
-      id: `perm-shell-${def.id}`,
-      role: "toggle",
-      label: `${name} shell access`,
-      group: "permissions",
-      status: shellEnabled ? "on" : "off",
-      getValue: () => shellEnabled,
-      onActivate: onToggleShell
-        ? () => onToggleShell(!shellEnabled)
-        : undefined,
-    });
   const { ref: actionRef, agentProps: actionAgentProps } =
     useAgentElement<HTMLButtonElement>({
       id: `perm-action-${def.id}`,
@@ -141,40 +128,6 @@ export function PermissionRow({
           : onOpenSettings
         : undefined,
     });
-
-  const control = showShellToggle ? (
-    <Switch
-      ref={shellRef}
-      checked={shellEnabled}
-      onCheckedChange={onToggleShell}
-      title={
-        shellEnabled
-          ? translateWithFallback(
-              t,
-              "permissionssection.DisableShellAccess",
-              "Disable shell access",
-            )
-          : translateWithFallback(
-              t,
-              "permissionssection.EnableShellAccess",
-              "Enable shell access",
-            )
-      }
-      {...shellAgentProps}
-    />
-  ) : !isShell && action ? (
-    <Button
-      ref={actionRef}
-      variant="default"
-      size="sm"
-      className="min-h-11 rounded-sm px-3 text-xs font-semibold"
-      onClick={action.type === "request" ? onRequest : onOpenSettings}
-      aria-label={`${action.ariaLabelPrefix} ${name}`}
-      {...actionAgentProps}
-    >
-      {action.label}
-    </Button>
-  ) : undefined;
 
   const label = (
     <span className="flex flex-wrap items-center gap-2">
@@ -197,19 +150,49 @@ export function PermissionRow({
     </span>
   );
 
+  const descriptionNode = (
+    <>
+      {description}
+      {reason ? <span className="mt-1 block text-txt">{reason}</span> : null}
+    </>
+  );
+
+  if (showShellToggle) {
+    return (
+      <SettingsSwitchRow
+        agentId={`perm-shell-${def.id}`}
+        agentLabel={`${name} shell access`}
+        group="permissions"
+        icon={permissionIcon(def.icon)}
+        label={label}
+        description={descriptionNode}
+        checked={shellEnabled}
+        agentStatus={shellEnabled ? "on" : "off"}
+        onCheckedChange={(checked) => onToggleShell?.(checked)}
+      />
+    );
+  }
+
   return (
     <SettingsRow
       icon={permissionIcon(def.icon)}
       label={label}
-      control={control}
-      description={
-        <>
-          {description}
-          {reason ? (
-            <span className="mt-1 block text-txt">{reason}</span>
-          ) : null}
-        </>
+      control={
+        !isShell && action ? (
+          <Button
+            ref={actionRef}
+            variant="default"
+            size="sm"
+            className="min-h-11 rounded-sm px-3 text-xs font-semibold"
+            onClick={action.type === "request" ? onRequest : onOpenSettings}
+            aria-label={`${action.ariaLabelPrefix} ${name}`}
+            {...actionAgentProps}
+          >
+            {action.label}
+          </Button>
+        ) : undefined
       }
+      description={descriptionNode}
     />
   );
 }

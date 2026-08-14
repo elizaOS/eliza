@@ -512,6 +512,11 @@ export function SettingsTextareaRow({
     onFill: disabled ? undefined : (next: string) => onValueChange(next),
   });
 
+  const {
+    "aria-label": _ignoredTextareaAccessibleName,
+    ...textareaAgentProps
+  } = agentProps;
+
   return (
     <SettingsRow
       icon={icon}
@@ -519,18 +524,19 @@ export function SettingsTextareaRow({
       label={label}
       description={description}
       className={className}
+      htmlFor={agentId}
       stacked
     >
       <SettingsTextarea
         ref={ref}
+        id={agentId}
         value={value}
         onChange={(event) => onValueChange(event.target.value)}
         placeholder={placeholder}
         rows={rows}
         disabled={disabled}
-        aria-label={resolvedLabel}
         className={textareaClassName}
-        {...agentProps}
+        {...textareaAgentProps}
       />
     </SettingsRow>
   );
