@@ -9,6 +9,9 @@ export type SharedDedicatedCapability =
   | "notes"
   | "calendar"
   | "reminders"
+  | "bookings"
+  | "communications"
+  | "purchases"
   | "cloud-apps"
   | "coding-runtime"
   | "shell"
@@ -22,7 +25,7 @@ export interface SharedCapabilityWall {
 }
 
 const NON_EXECUTION_CONTEXT =
-  /^(?:please\s+)?(?:do\s+not|don't|dont|never|explain|describe|define|translate|how\s+(?:do|would|can|to)|what\s+(?:is|are|would|happens?)|if\s+(?:i|we|you)|before\s+you)\b/i;
+  /^(?:please\s+)?(?:(?:can|could|would)\s+you\s+)?(?:do\s+not|don't|dont|never|explain|describe|define|translate|teach\s+me|tell\s+me\s+how|show\s+me\s+how|how\s+(?:do|would|can|to)|what\s+(?:is|are|would|happens?)|why\s+(?:do|would|can|is|are)|if\s+(?:i|we|you)|before\s+you)\b/i;
 
 const RULES: ReadonlyArray<{
   capability: SharedDedicatedCapability;
@@ -45,6 +48,30 @@ const RULES: ReadonlyArray<{
       /\b(?:add|create|book|schedule|cancel|delete|move|reschedule|check|show|list|open)\b[\s\S]{0,36}\b(?:calendar|events?|appointments?|meetings?)\b/i,
     reply:
       "Calendar actions require Dedicated. Shared chat remains available; activate Dedicated when you want Eliza to read or change your calendar.",
+  },
+  {
+    capability: "bookings",
+    label: "Bookings",
+    pattern:
+      /\b(?:(?:can|could|would|will)\s+you\s+)?(?:(?:book|reserve)\b[\s\S]{0,48}\b(?:flights?|tables?|restaurants?|reservations?|hotels?|rooms?|tickets?|dinner|lunch|appointments?)|make\b[\s\S]{0,36}\b(?:reservations?|bookings?))\b/i,
+    reply:
+      "Bookings require Dedicated. Shared can research and help you choose, but it cannot reserve a table, flight, hotel, appointment, or ticket.",
+  },
+  {
+    capability: "communications",
+    label: "Calls and messages",
+    pattern:
+      /\b(?:(?:can|could|would|will)\s+you\s+)?(?:(?:email|call|text|message|dm)\b(?!\s+(?:this|the|a|an)\s+(?:\w+\s+){0,2}(?:function|method|api|endpoint|class|variable|command)\b)|send\b[\s\S]{0,32}\b(?:email|text|message|dm)\b)/i,
+    reply:
+      "Calling or messaging people requires Dedicated. Shared can draft what you want to say, but it cannot send email, texts, DMs, or place calls.",
+  },
+  {
+    capability: "purchases",
+    label: "Purchases",
+    pattern:
+      /\b(?:(?:can|could|would|will)\s+you\s+)?(?:order|buy|purchase)\b[\s\S]{0,48}\b(?:food|groceries|meal|dinner|lunch|breakfast|item|product|gift|flowers|bottle|coffee|pizza|tickets?)\b/i,
+    reply:
+      "Purchases require Dedicated. Shared can compare options and help you decide, but it cannot place an order or buy anything.",
   },
   {
     capability: "notes",

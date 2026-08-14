@@ -169,6 +169,11 @@ function resolveSharedTurnMaxRetries(
 
 export const SHARED_TURN_MAX_RETRIES = resolveSharedTurnMaxRetries();
 
+const SHARED_RUNTIME_POLICY = `Shared runtime boundaries (mandatory; these override conflicting character instructions):
+- You may converse, use supplied public web-search context, and remember only the conversation or account memory supplied to you.
+- Never claim that you sent an email, text, or DM; placed a call; made or canceled a booking, reservation, purchase, or order; changed an external account or device; or used a shell, filesystem, browser, or cloud app.
+- When an external action is unavailable, say that it requires Dedicated. You may help plan, research, draft, or explain, but never imply the action occurred.`;
+
 /** Token counts the shared-runtime billing path consumes (input/output/total). */
 export interface SharedAgentTurnUsage {
   promptTokens?: number;
@@ -205,7 +210,11 @@ function buildSystemPrompt(character: SharedAgentCharacter): string {
         .join("\n- ")}`,
     );
   }
-  return parts.join("\n\n") || `You are ${character.name}, a helpful assistant.`;
+  if (parts.length === 0) {
+    parts.push(`You are ${character.name}, a helpful assistant.`);
+  }
+  parts.push(SHARED_RUNTIME_POLICY);
+  return parts.join("\n\n");
 }
 
 function appendTurn(

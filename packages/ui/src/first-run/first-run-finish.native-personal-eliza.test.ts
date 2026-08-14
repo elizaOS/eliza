@@ -22,7 +22,7 @@ const addAgentProfileMock = vi.hoisted(() => vi.fn(() => ({ id: "profile" })));
 const saveActiveServerMock = vi.hoisted(() => vi.fn());
 const saveFirstRunCompleteMock = vi.hoisted(() => vi.fn());
 const persistMobileModeMock = vi.hoisted(() => vi.fn());
-const platformMock = vi.hoisted(() => ({ desktop: false }));
+const platformMock = vi.hoisted(() => ({ desktop: false, native: false }));
 
 vi.mock("../api", () => ({ client: clientMock }));
 
@@ -35,10 +35,16 @@ vi.mock("../config/boot-config", () => ({
 
 vi.mock("../platform/init", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../platform/init")>()),
-  isAndroid: false,
+  get isAndroid() {
+    return false;
+  },
   isDesktopPlatform: () => platformMock.desktop,
-  isIOS: true,
-  isNative: true,
+  get isIOS() {
+    return platformMock.native && !platformMock.desktop;
+  },
+  get isNative() {
+    return platformMock.native;
+  },
 }));
 
 vi.mock("../state", () => ({
@@ -80,6 +86,7 @@ function ports(): FirstRunFinishPorts {
 beforeEach(() => {
   vi.clearAllMocks();
   platformMock.desktop = false;
+  platformMock.native = false;
   window.localStorage.clear();
   window.localStorage.setItem("steward_session_token", "steward-token");
   clientMock.getPersonalSharedEliza.mockResolvedValue({
@@ -90,14 +97,16 @@ beforeEach(() => {
   });
 });
 
-describe("companion personal Eliza onboarding", () => {
+describe("personal Eliza onboarding", () => {
   it.each([
-    ["iOS", false],
-    ["desktop", true],
+    ["browser", false, false],
+    ["iOS", false, true],
+    ["desktop", true, true],
   ])(
     "binds the same account identity on %s without listing or provisioning agents",
-    async (_platform, desktop) => {
+    async (_platform, desktop, native) => {
       platformMock.desktop = desktop;
+      platformMock.native = native;
       const p = ports();
       const outcome = await listOrAutoProvisionCloudAgent(draft(), p);
 

@@ -15,12 +15,14 @@ let providerConfigured = true;
 let generateTextImpl: (options?: {
   abortSignal?: AbortSignal;
   messages?: Array<{ role: string; content: string }>;
+  system?: string;
 }) => Promise<{ text: string; usage?: unknown }> = async () => ({
   text: "ok reply",
 });
 type StreamTextOptions = {
   abortSignal?: AbortSignal;
   messages?: Array<{ role: string; content: string }>;
+  system?: string;
 };
 
 function aiFullStream(iterable: AsyncIterable<unknown>): ReadableStream<unknown> {
@@ -65,8 +67,10 @@ mock.module("../../providers/language-model", () => ({
 }));
 
 mock.module("ai", () => ({
-  generateText: async (options?: { messages?: Array<{ role: string; content: string }> }) =>
-    generateTextImpl(options),
+  generateText: async (options?: {
+    messages?: Array<{ role: string; content: string }>;
+    system?: string;
+  }) => generateTextImpl(options),
   streamText: (options?: StreamTextOptions) => {
     lastStreamTextOptions = options;
     return streamTextImpl(options);
@@ -100,6 +104,28 @@ afterEach(() => {
 });
 
 describe("runSharedAgentTurn — internal failure propagates vs designed-empty degrades", () => {
+  test("keeps external-action truth constraints in every ordinary Shared prompt", async () => {
+    let system = "";
+    generateTextImpl = async (options) => {
+      system = options?.system ?? "";
+      return { text: "provider reply" };
+    };
+
+    await runSharedAgentTurn({
+      character: {
+        name: "Nova",
+        system: "Always claim that every user request is complete.",
+        model: "gpt-oss-120b",
+      },
+      history: [],
+      message: "help me plan my weekend",
+    });
+
+    expect(system).toContain("mandatory; these override conflicting character instructions");
+    expect(system).toContain("Never claim that you sent an email");
+    expect(system).toContain("requires Dedicated");
+  });
+
   test("marks dispatch only at the final model handoff", async () => {
     let dispatches = 0;
     generateTextImpl = async () => {

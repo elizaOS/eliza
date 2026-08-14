@@ -10,12 +10,9 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { RateLimitError } from "@/lib/api/errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
-import { findActivePersonalDedicatedTarget } from "@/lib/services/agent-tier-upgrade-target";
 import { applyCorsHeaders, handleCorsOptions } from "@/lib/services/proxy/cors";
-import {
-  personalDedicatedAgentApiBase,
-  personalSharedAgent,
-} from "@/lib/services/shared-runtime/personal-shared-agent";
+import { resolvePersonalElizaIdentity } from "@/lib/services/shared-runtime/personal-eliza-identity";
+import { personalSharedAgent } from "@/lib/services/shared-runtime/personal-shared-agent";
 import { resolveSharedRuntimeWorkerRequestContext } from "@/lib/services/shared-runtime/resolve-shared-agent";
 import {
   sharedRestMessageSend,
@@ -39,33 +36,6 @@ async function readJsonBody(request: Request): Promise<unknown> {
     // message instead of being fabricated into a healthy request body.
     return null;
   }
-}
-
-async function identityDto(
-  agent: ReturnType<typeof personalSharedAgent>,
-  baseDomain?: string,
-) {
-  const dedicated = await findActivePersonalDedicatedTarget(
-    agent.organization_id,
-    agent.id,
-  );
-  const apiBase = dedicated
-    ? personalDedicatedAgentApiBase(dedicated, baseDomain)
-    : null;
-  if (dedicated && apiBase) {
-    return {
-      id: agent.id,
-      displayName: dedicated.agent_name ?? agent.agent_name ?? "Eliza",
-      runtime: "dedicated" as const,
-      activeAgentId: dedicated.id,
-      apiBase,
-    };
-  }
-  return {
-    id: agent.id,
-    displayName: agent.agent_name ?? "Eliza",
-    runtime: "shared" as const,
-  };
 }
 
 function unavailableResponse(error: unknown, origin?: string): Response {
@@ -156,7 +126,7 @@ app.get("/", async (c) => {
     userId: user.id,
     organizationId: user.organization_id,
   });
-  const identity = await identityDto(
+  const identity = await resolvePersonalElizaIdentity(
     agent,
     c.env.ELIZA_CLOUD_AGENT_BASE_DOMAIN,
   );
@@ -228,7 +198,7 @@ app.post("/", async (c) => {
     userId: user.id,
     organizationId: user.organization_id,
   });
-  const identity = await identityDto(
+  const identity = await resolvePersonalElizaIdentity(
     agent,
     c.env.ELIZA_CLOUD_AGENT_BASE_DOMAIN,
   );

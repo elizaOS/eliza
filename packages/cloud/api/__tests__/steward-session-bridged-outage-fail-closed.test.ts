@@ -46,6 +46,7 @@ mock.module("@/lib/auth/steward-client", () => ({
 }));
 
 mock.module("@/lib/steward-sync", () => ({
+  StewardPhoneAccountConflictError: class StewardPhoneAccountConflictError extends Error {},
   describeSyncError: (error: unknown) =>
     error instanceof Error ? error.message : String(error),
   syncUserFromSteward,
