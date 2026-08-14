@@ -26,7 +26,6 @@ import type { RuntimeDurableObjectNamespace } from "../types/cloud-worker-env";
 import { apiKeysService } from "./services/api-keys";
 import { charactersService } from "./services/characters/characters";
 import { discordService } from "./services/discord";
-import { inspectTelegramPersonalAccountContinuation } from "./services/eliza-app/onboarding-chat";
 import { emailService } from "./services/email";
 import { invitesService } from "./services/invites";
 import { organizationsService } from "./services/organizations";
@@ -472,8 +471,15 @@ export async function syncUserFromSteward(params: StewardSyncParams): Promise<St
   // then the provisional `telegram:<id>` subject is atomically promoted before
   // generic Steward sync has any opportunity to create a duplicate user/org.
   if (params.telegramContinuation && !claimedTelegramUser) {
-    let claim: Awaited<ReturnType<typeof inspectTelegramPersonalAccountContinuation>>;
+    let claim: Awaited<
+      ReturnType<
+        typeof import("./services/eliza-app/onboarding-chat").inspectTelegramPersonalAccountContinuation
+      >
+    >;
     try {
+      const { inspectTelegramPersonalAccountContinuation } = await import(
+        "./services/eliza-app/onboarding-chat"
+      );
       claim = await inspectTelegramPersonalAccountContinuation(params.telegramContinuation);
     } catch (error) {
       // error-policy:J3 Invalid opaque authority becomes one non-enumerating
