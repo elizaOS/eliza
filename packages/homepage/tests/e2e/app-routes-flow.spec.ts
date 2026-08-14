@@ -325,7 +325,7 @@ test("connected page exercises account menu, copy controls, link-phone form, and
   await expect(page).toHaveURL(/\/get-started\?method=discord&link=true/);
 });
 
-test("landing page renders its hero and messaging entrypoints", async ({
+test("landing leads with iMessage and keeps secondary channels available", async ({
   context,
   page,
 }) => {
@@ -336,32 +336,49 @@ test("landing page renders its hero and messaging entrypoints", async ({
     page.getByRole("heading", { name: /Four hours of your time back/ }),
   ).toBeVisible({ timeout: 20_000 });
 
-  const textCta = page.getByRole("button", { name: "Text" });
+  const textCta = page.getByRole("button", { name: "Text Eliza" });
   await expect(textCta).toBeVisible();
   await textCta.click();
-  await expect(page.getByRole("status")).toHaveText("Phone number copied");
+  await expect(page.getByRole("status")).toHaveText("Copied!");
   await expect
     .poll(() => page.evaluate(() => navigator.clipboard.readText()))
     .toBe("+18087881821");
   await page.waitForTimeout(2_250);
-  await expect(page.getByRole("status")).toHaveText("Phone number copied");
+  await expect(page.getByRole("status")).toHaveText("Copied!");
   await expect(page.getByText("+1 (808) 788-1821")).toHaveCount(0);
   await expect(page.getByRole("link", { name: "Call" })).toHaveAttribute(
     "href",
     "tel:+18087881821",
   );
-  // Every alternate channel is reachable with a real deep link.
-  const channels = page.locator(".landing-hero-actions");
+  const channels = page.locator(".landing-secondary-channels");
+  await expect(channels.locator(".landing-channel")).toHaveCount(2);
   await expect(
     channels.getByRole("link", { name: /Telegram/ }),
   ).toHaveAttribute("href", /^https:\/\/t\.me\//);
   await expect(channels.getByRole("link", { name: /Discord/ })).toHaveAttribute(
     "href",
-    /^https:\/\/discord\.com\//,
+    "https://discord.com/users/1468649258654630063",
   );
-  await expect(
-    channels.getByRole("link", { name: /WhatsApp/ }),
-  ).toHaveAttribute("href", /^https:\/\/wa\.me\//);
+  await expect(channels.getByRole("link", { name: /WhatsApp/ })).toHaveCount(0);
+
+  const keyboard = page.locator(".landing-keyboard");
+  await expect(keyboard).toHaveAttribute("data-open", "true", {
+    timeout: 20_000,
+  });
+  const phoneInsets = await page.evaluate(() => {
+    const composer = document.querySelector(".landing-phone-composer");
+    const keyboard = document.querySelector(".landing-keyboard");
+    const thread = document.querySelector(".landing-phone-thread");
+    if (!composer || !keyboard || !thread) throw new Error("Phone UI missing");
+    return {
+      composerToKeyboard:
+        keyboard.getBoundingClientRect().top -
+        composer.getBoundingClientRect().bottom,
+      threadMask: getComputedStyle(thread).maskImage,
+    };
+  });
+  expect(phoneInsets.composerToKeyboard).toBeGreaterThanOrEqual(7);
+  expect(phoneInsets.threadMask).toContain("linear-gradient");
 });
 
 test("landing keeps content reachable on a small viewport", async ({
@@ -454,14 +471,10 @@ test("landing keeps clipboard rejection visible", async ({ page }) => {
   });
   await page.goto("/");
 
-  await page.getByRole("button", { name: "Text" }).click();
-  await expect(page.getByRole("alert")).toHaveText(
-    "Couldn't copy the phone number",
-  );
+  await page.getByRole("button", { name: "Text Eliza" }).click();
+  await expect(page.getByRole("alert")).toHaveText("Couldn't copy");
   await page.waitForTimeout(2_250);
-  await expect(page.getByRole("alert")).toHaveText(
-    "Couldn't copy the phone number",
-  );
+  await expect(page.getByRole("alert")).toHaveText("Couldn't copy");
 });
 
 test("supported-platform messaging keeps a manual copy recovery visible", async ({

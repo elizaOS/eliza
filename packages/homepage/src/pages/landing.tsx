@@ -13,17 +13,18 @@ import {
   DiscordIcon,
   IMessageIcon,
   TelegramIcon,
-  WhatsAppIcon,
 } from "@elizaos/ui/cloud-ui/components/icons";
-import { lazy, Suspense, useEffect, useRef, useState } from "react";
-// Imported through the bundler (not referenced from public/) so the wordmark
-// ships with whichever build consumes this source; a public/ path depends on
-// the host app's asset-sync allowlist and 404s when it drifts.
-import elizaLogotextUrl from "@/assets/eliza-logotext.svg";
+import {
+  lazy,
+  Suspense,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import {
   buildElizaDiscordHref,
   buildElizaTelegramHref,
-  buildElizaWhatsAppHref,
   ELIZA_PHONE_NUMBER,
   openOrCopyElizaMessage,
 } from "@/lib/contact";
@@ -43,7 +44,7 @@ const ShaderBackground = lazy(
 );
 
 type DemoCard = LandingDemoCard;
-type DemoStep = LandingDemoStep;
+type DemoStep = LandingDemoStep & { continuation?: boolean };
 
 type DemoItemInput =
   | { from: "eliza" | "user"; kind: "text"; text: string }
@@ -65,6 +66,20 @@ const PRE_ELIZA_MS = 815;
 const PRE_CARD_MS = 975;
 const SEND_HOLD_MS = 650;
 
+const LOCAL_CLOCK_FORMATTER = new Intl.DateTimeFormat(undefined, {
+  hour: "numeric",
+  minute: "2-digit",
+});
+
+function localClock(date: Date, includeDayPeriod: boolean): string {
+  const parts = LOCAL_CLOCK_FORMATTER.formatToParts(date);
+  return parts
+    .filter((part) => includeDayPeriod || part.type !== "dayPeriod")
+    .map((part) => part.value)
+    .join("")
+    .trim();
+}
+
 function settledIntroItems(): DemoItem[] {
   return DEMO_INTRO.map((step, index) =>
     step.kind === "card"
@@ -79,45 +94,44 @@ function DemoCardBubble({ card }: { card: DemoCard }) {
       <span className="landing-demo-card-label">{card.label}</span>
       <strong>{card.title}</strong>
       {card.rows.map((row) => (
-        <span key={row} className="landing-demo-card-row">
+        <span className="landing-demo-card-row" key={row}>
           {row}
         </span>
       ))}
       {card.status ? (
-        <span className="landing-demo-card-status">{card.status}</span>
+        <span className="landing-demo-card-status">
+          <svg
+            viewBox="0 0 16 16"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.8"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+          >
+            <path d="m3 8.3 3 3L13 4.7" />
+          </svg>
+          {card.status}
+        </span>
       ) : null}
     </div>
   );
 }
 
-/** Frozen at mount so the whole demo reads as one continuous session. */
-function useSessionClock() {
-  const [clock] = useState(() => {
-    const now = new Date();
-    return {
-      short: now.toLocaleTimeString(undefined, {
-        hour: "numeric",
-        minute: "2-digit",
-        hour12: false,
-      }),
-      long: now.toLocaleTimeString(undefined, {
-        hour: "numeric",
-        minute: "2-digit",
-      }),
-    };
-  });
-  return clock;
-}
-
 function PhoneMockup() {
   const t = useT();
-  const clock = useSessionClock();
+  const [clock, setClock] = useState(() => new Date());
   const [items, setItems] = useState<DemoItem[]>([]);
   const [phase, setPhase] = useState<"intro" | "looping" | "settled">("intro");
   const [elizaTyping, setElizaTyping] = useState(false);
   const [composerText, setComposerText] = useState("");
   const threadRef = useRef<HTMLDivElement>(null);
   const nextIdRef = useRef(DEMO_INTRO.length);
+
+  useEffect(() => {
+    const interval = window.setInterval(() => setClock(new Date()), 30_000);
+    return () => window.clearInterval(interval);
+  }, []);
 
   useEffect(() => {
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
@@ -153,19 +167,26 @@ function PhoneMockup() {
           setComposerText("");
           append({ from: "user", kind: "text", text: step.text });
         } else if (step.kind === "eliza") {
-          await sleep(PRE_ELIZA_MS);
-          if (cancelled) return;
-          setElizaTyping(true);
-          await sleep(ELIZA_TYPING_MS);
-          if (cancelled) return;
-          setElizaTyping(false);
+          await sleep(step.continuation ? 360 : PRE_ELIZA_MS);
+          if (!step.continuation) {
+            if (cancelled) return;
+            setElizaTyping(true);
+            await sleep(ELIZA_TYPING_MS);
+            if (cancelled) return;
+            setElizaTyping(false);
+          }
           append({ from: "eliza", kind: "text", text: step.text });
         } else {
           await sleep(PRE_CARD_MS);
           if (cancelled) return;
           append({ from: "eliza", kind: "card", card: step.card });
         }
-        await sleep(BEAT_PAUSE_MS);
+        const nextStep = steps[index + 1];
+        await sleep(
+          nextStep?.kind === "eliza" && nextStep.continuation
+            ? 280
+            : BEAT_PAUSE_MS,
+        );
       }
     };
 
@@ -196,16 +217,20 @@ function PhoneMockup() {
   return (
     <div
       className="landing-iphone"
+      aria-hidden="true"
+      onContextMenu={(event) => event.preventDefault()}
       data-demo-phase={phase}
       data-demo-messages={items.length}
     >
       <div className="landing-iphone-screen">
         <div className="landing-phone-top">
-          <div className="landing-iphone-statusbar" aria-hidden="true">
-            <span className="landing-iphone-time">{clock.short}</span>
+          <div className="landing-iphone-statusbar">
+            <span className="landing-iphone-time">
+              {localClock(clock, false)}
+            </span>
             <span className="landing-iphone-island" />
             <span className="landing-iphone-signal">
-              <svg viewBox="0 0 46 12" fill="currentColor" aria-hidden="true">
+              <svg viewBox="0 0 41 12" fill="currentColor" aria-hidden="true">
                 <rect x="0" y="7" width="3" height="5" rx="1" />
                 <rect x="5" y="5" width="3" height="7" rx="1" />
                 <rect x="10" y="3" width="3" height="9" rx="1" />
@@ -213,14 +238,21 @@ function PhoneMockup() {
                 <rect
                   x="24"
                   y="1"
-                  width="20"
+                  width="14"
                   height="10"
-                  rx="3"
+                  rx="2.6"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.2"
+                />
+                <rect x="25.7" y="2.7" width="10" height="6.6" rx="1.2" />
+                <path
+                  d="M39.2 4.1v3.8"
                   fill="none"
                   stroke="currentColor"
                   strokeWidth="1.5"
+                  strokeLinecap="round"
                 />
-                <rect x="26" y="3" width="14" height="6" rx="1.5" />
               </svg>
             </span>
           </div>
@@ -251,16 +283,12 @@ function PhoneMockup() {
           </div>
         </div>
         <div
-          className="landing-phone-thread"
+          className="landing-phone-thread scroll-fade scroll-fade-[1.6rem] [--scroll-fade-reveal:64px]"
           ref={threadRef}
-          aria-hidden="true"
         >
           <div className="landing-thread-preamble">
             <span className="landing-thread-timestamp">
-              {t("homepage_eliza.landing.threadStamp", {
-                defaultValue: "Today {{time}}",
-                time: clock.long,
-              })}
+              Today {localClock(clock, true)}
             </span>
           </div>
           {items.map((item) =>
@@ -354,6 +382,34 @@ function PhoneMockup() {
   );
 }
 
+function ResponsivePhoneMockup() {
+  const stageRef = useRef<HTMLDivElement>(null);
+
+  useLayoutEffect(() => {
+    const stage = stageRef.current;
+    const frame = stage?.querySelector<HTMLElement>(".landing-iphone");
+    if (!stage || !frame) return;
+
+    const fitFrame = () => {
+      const widthScale = stage.clientWidth / frame.offsetWidth;
+      const heightScale = stage.clientHeight / frame.offsetHeight;
+      const scale = Math.max(0.1, Math.min(1, widthScale, heightScale));
+      stage.style.setProperty("--landing-phone-scale", String(scale));
+    };
+
+    fitFrame();
+    const observer = new ResizeObserver(fitFrame);
+    observer.observe(stage);
+    return () => observer.disconnect();
+  }, []);
+
+  return (
+    <div className="landing-phone-stage" ref={stageRef}>
+      <PhoneMockup />
+    </div>
+  );
+}
+
 const KEYBOARD_ROWS = ["qwertyuiop", "asdfghjkl", "zxcvbnm"] as const;
 
 /**
@@ -367,62 +423,70 @@ function DemoKeyboard({ composerText }: { composerText: string }) {
   const lastWord = composerText.split(/\s+/).pop() ?? "";
   return (
     <div className="landing-keyboard" data-open={open} aria-hidden="true">
-      <div className="landing-keyboard-inner">
-        <div className="landing-kb-suggestions">
-          <span>{lastWord ? `“${lastWord}”` : ""}</span>
-          <span>{lastWord}</span>
-          <span>{lastWord ? `${lastWord}s` : ""}</span>
-        </div>
-        {KEYBOARD_ROWS.map((row, rowIndex) => (
-          <div key={row} className="landing-kb-row">
-            {rowIndex === 2 ? (
-              <span className="landing-kb-key landing-kb-key--special">⇧</span>
-            ) : null}
-            {row.split("").map((key) => (
-              <span
-                key={key}
-                className="landing-kb-key"
-                data-active={key === lastChar}
-              >
-                {key}
-              </span>
-            ))}
-            {rowIndex === 2 ? (
-              <span className="landing-kb-key landing-kb-key--special">⌫</span>
-            ) : null}
+      <div className="landing-keyboard-clip">
+        <div className="landing-keyboard-inner">
+          <div className="landing-kb-suggestions">
+            <span>{lastWord ? `“${lastWord}”` : ""}</span>
+            <span>{lastWord}</span>
+            <span>{lastWord ? `${lastWord}s` : ""}</span>
           </div>
-        ))}
-        <div className="landing-kb-row">
-          <span className="landing-kb-key landing-kb-key--special">123</span>
-          <span
-            className="landing-kb-key landing-kb-key--space"
-            data-active={lastChar === " "}
-          />
-          <span className="landing-kb-key landing-kb-key--return">return</span>
-        </div>
-        <div className="landing-kb-bottom">
-          <svg
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.6"
-            aria-hidden="true"
-          >
-            <circle cx="12" cy="12" r="9" />
-            <path d="M3 12h18M12 3c2.5 2.6 2.5 15.4 0 18M12 3c-2.5 2.6-2.5 15.4 0 18" />
-          </svg>
-          <svg
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.6"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            aria-hidden="true"
-          >
-            <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" />
-            <path d="M19 11v1a7 7 0 0 1-14 0v-1M12 19v3" />
-          </svg>
+          {KEYBOARD_ROWS.map((row, rowIndex) => (
+            <div key={row} className="landing-kb-row">
+              {rowIndex === 2 ? (
+                <span className="landing-kb-key landing-kb-key--special">
+                  ⇧
+                </span>
+              ) : null}
+              {row.split("").map((key) => (
+                <span
+                  key={key}
+                  className="landing-kb-key"
+                  data-active={key === lastChar}
+                >
+                  {key}
+                </span>
+              ))}
+              {rowIndex === 2 ? (
+                <span className="landing-kb-key landing-kb-key--special">
+                  ⌫
+                </span>
+              ) : null}
+            </div>
+          ))}
+          <div className="landing-kb-row">
+            <span className="landing-kb-key landing-kb-key--special">123</span>
+            <span
+              className="landing-kb-key landing-kb-key--space"
+              data-active={lastChar === " "}
+            />
+            <span className="landing-kb-key landing-kb-key--return">
+              return
+            </span>
+          </div>
+          <div className="landing-kb-bottom">
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.6"
+              aria-hidden="true"
+            >
+              <circle cx="12" cy="12" r="9" />
+              <path d="M3 12h18M12 3c2.5 2.6 2.5 15.4 0 18M12 3c-2.5 2.6-2.5 15.4 0 18" />
+            </svg>
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.6"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" />
+              <path d="M19 11v1a7 7 0 0 1-14 0v-1M12 19v3" />
+            </svg>
+          </div>
         </div>
       </div>
     </div>
@@ -588,13 +652,10 @@ export default function LandingPage() {
   const productNavigation = resolveHomepageProductNavigation(
     browserWindow?.location.hostname ?? "",
   );
-  const whatsappHref = buildElizaWhatsAppHref();
-  const [contactSheetOpen, setContactSheetOpen] = useState(false);
   const channels = [
     {
       key: "telegram",
       href: buildElizaTelegramHref(),
-      external: true,
       label: t("homepage_eliza.landing.channelTelegram", {
         defaultValue: "Message Eliza on Telegram",
       }),
@@ -603,27 +664,11 @@ export default function LandingPage() {
     {
       key: "discord",
       href: buildElizaDiscordHref(),
-      external: true,
       label: t("homepage_eliza.landing.channelDiscord", {
         defaultValue: "Message Eliza on Discord",
       }),
       icon: <DiscordIcon className="size-6" style={{ color: "#5865F2" }} />,
     },
-    ...(whatsappHref
-      ? [
-          {
-            key: "whatsapp",
-            href: whatsappHref,
-            external: true,
-            label: t("homepage_eliza.landing.channelWhatsapp", {
-              defaultValue: "Message Eliza on WhatsApp",
-            }),
-            icon: (
-              <WhatsAppIcon className="size-6" style={{ color: "#25D366" }} />
-            ),
-          },
-        ]
-      : []),
   ];
 
   const handleMessageEliza = async () => {
@@ -651,7 +696,7 @@ export default function LandingPage() {
   const phoneCopyLabel =
     phoneCopyState === "copied"
       ? t("homepage_eliza.landing.phoneCopied", {
-          defaultValue: "Phone number copied",
+          defaultValue: "Copied!",
         })
       : phoneCopyState === "handoff"
         ? t("homepage_eliza.common.messageHandoff", {
@@ -659,7 +704,7 @@ export default function LandingPage() {
               "Opening Messages. If nothing happens, copy the number.",
           })
         : t("homepage_eliza.landing.phoneCopyFailed", {
-            defaultValue: "Couldn't copy the phone number",
+            defaultValue: "Couldn't copy",
           });
   return (
     <div className="landing-page theme-app">
@@ -675,7 +720,16 @@ export default function LandingPage() {
             defaultValue: "Eliza",
           })}
         >
-          <img src={elizaLogotextUrl} alt="Eliza" />
+          <img
+            className="landing-brand-mark"
+            src="/brand/logos/logo_white_orangebg.svg"
+            alt=""
+          />
+          <img
+            className="landing-brand-wordmark"
+            src="/brand/logos/eliza_text_black.svg"
+            alt=""
+          />
         </a>
         <a
           className="landing-cta landing-cta--white landing-header-cta"
@@ -707,7 +761,7 @@ export default function LandingPage() {
             >
               <IMessageIcon className="size-5" />
               {t("homepage_eliza.landing.ctaText", {
-                defaultValue: "Text",
+                defaultValue: "Text Eliza",
               })}
             </button>
             <a
@@ -726,6 +780,8 @@ export default function LandingPage() {
                 defaultValue: "Call",
               })}
             </a>
+          </div>
+          <div className="landing-secondary-channels">
             {channels.map((channel) => (
               <a
                 key={channel.key}
@@ -733,8 +789,8 @@ export default function LandingPage() {
                 href={channel.href}
                 aria-label={channel.label}
                 title={channel.label}
-                target={channel.external ? "_blank" : undefined}
-                rel={channel.external ? "noreferrer" : undefined}
+                target="_blank"
+                rel="noreferrer"
               >
                 {channel.icon}
               </a>
@@ -764,15 +820,7 @@ export default function LandingPage() {
             </div>
           )}
         </div>
-        <PhoneMockup />
-        <button
-          type="button"
-          className="landing-tap-target"
-          onClick={() => setContactSheetOpen(true)}
-          aria-label={t("homepage_eliza.landing.contactSheetOpen", {
-            defaultValue: "All the ways to reach Eliza",
-          })}
-        />
+        <ResponsivePhoneMockup />
       </main>
       <ContactSheet
         open={contactSheetOpen}
