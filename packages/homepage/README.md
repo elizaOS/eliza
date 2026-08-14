@@ -25,7 +25,7 @@ cp .env.example .env.local
 | `VITE_TELEGRAM_BOT_ID` | Optional numeric Telegram bot ID override (default `8931353359`) |
 | `VITE_DISCORD_CLIENT_ID` | Optional Discord Application ID override (default `1474591626759376967`) |
 | `WHATSAPP_PUBLIC_ENABLED` | Deployment switch that must be true before the public WhatsApp CTA is built |
-| `VITE_WHATSAPP_PHONE_NUMBER` | Production WhatsApp Business sender in E.164 format; omitted by default |
+| `VITE_WHATSAPP_PHONE_NUMBER` | Admitted Blooio WhatsApp sender in E.164 format; set to the shared `+18087881821` number |
 
 OAuth provider callback configuration belongs to the unified Cloud auth routes
 and API deployment. Do not register a callback against this source package or
@@ -33,19 +33,21 @@ its optional test-harness port.
 
 ### WhatsApp production activation
 
-The homepage is provider-neutral: it opens the admitted Business sender with
-`wa.me`, while the gateway can receive and reply through either the direct Meta
-Cloud API adapter or the Twilio adapter. Leave `WHATSAPP_PUBLIC_ENABLED=false`
-until one provider owns a registered production sender and a real handset
-round trip has succeeded.
+The homepage opens the admitted Blooio WhatsApp sender with `wa.me`. A normal
+Blooio channel is not automatically a WhatsApp channel: it resolves outbound
+messages to iMessage, RCS, or SMS. Leave `WHATSAPP_PUBLIC_ENABLED=false` until
+Blooio exposes a separate active WhatsApp-capable channel for the shared number
+and a real handset round trip has succeeded.
 
-1. Register a production sender with Meta or Twilio and configure the matching
-   gateway credentials and webhook.
-2. Set the target GitHub environment's `VITE_WHATSAPP_PHONE_NUMBER` variable to
-   that exact sender.
-3. Set `WHATSAPP_PUBLIC_ENABLED=true` in the same environment and deploy the
+1. Ask Blooio to provision and expose an active WhatsApp channel for
+   `+18087881821`; verify it through `GET /v4/channels`.
+2. Confirm the gateway receives `message.received` with that exact channel id
+   and replies through the v4 channel-aware message endpoint.
+3. Set the repository `VITE_WHATSAPP_PHONE_NUMBER` variable to
+   `+18087881821`.
+4. Set `WHATSAPP_PUBLIC_ENABLED=true` and deploy the
    consolidated app.
-4. Verify the rendered `wa.me` target, receive a handset message through the
+5. Verify the rendered `wa.me` target, receive a handset message through the
    signed webhook, and confirm the agent reply reaches the same handset.
 
 The release workflow rejects the Twilio shared sandbox (`+14155238886`), the
