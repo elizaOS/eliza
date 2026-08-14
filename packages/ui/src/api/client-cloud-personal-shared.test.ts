@@ -42,9 +42,11 @@ describe("getPersonalSharedEliza", () => {
     );
     vi.stubGlobal("fetch", fetchMock);
 
+    const controller = new AbortController();
     const result = await new ElizaClient().getPersonalSharedEliza({
       cloudApiBase: "https://api.eliza.app",
       authToken: "steward-token",
+      signal: controller.signal,
     });
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
@@ -57,6 +59,7 @@ describe("getPersonalSharedEliza", () => {
         accept: "application/json",
         authorization: "Bearer steward-token",
       },
+      signal: controller.signal,
     });
     expect(result).toEqual({
       agentId: "personal:3b9e517b-5c33-5c5f-a6f9-f78c764dc41b",
