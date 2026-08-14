@@ -10,7 +10,7 @@ import {
   TelegramIcon,
   WhatsAppIcon,
 } from "@elizaos/ui/cloud-ui/components/icons";
-import { ArrowLeft, Check, Copy, ExternalLink, Info, Send } from "lucide-react";
+import { ArrowLeft, Check, ExternalLink, Info, Send } from "lucide-react";
 import {
   type CSSProperties,
   lazy,
@@ -42,14 +42,12 @@ const ShaderBackground = lazy(
 
 import { elizacloudAuthFetch } from "@/lib/api/client";
 import {
-  buildElizaSmsHref,
   buildElizaTelegramHref,
-  ELIZA_PHONE_FORMATTED,
-  ELIZA_PHONE_NUMBER,
   getDiscordBotApplicationId,
   getTelegramBotId,
   getTelegramBotUsername,
   getWhatsAppNumber,
+  openOrCopyElizaMessage,
 } from "@/lib/contact";
 import {
   getAuthToken,
@@ -707,13 +705,25 @@ export default function GetStartedPage() {
   const [isSubmittingPhone, setIsSubmittingPhone] = useState(false);
 
   const [suppressRedirect, setSuppressRedirect] = useState(false);
-  const [copied, setCopied] = useState(false);
+  const [messageNotice, setMessageNotice] = useState<
+    "idle" | "copied" | "error"
+  >("idle");
+  const messageNoticeResetRef = useRef<number | null>(null);
   const [showContent, setShowContent] = useState(false);
 
   useEffect(() => {
     const timer = setTimeout(() => setShowContent(true), 100);
     return () => clearTimeout(timer);
   }, []);
+
+  useEffect(
+    () => () => {
+      if (messageNoticeResetRef.current !== null) {
+        window.clearTimeout(messageNoticeResetRef.current);
+      }
+    },
+    [],
+  );
 
   const headerStyle: CSSProperties = {
     opacity: showContent ? 1 : 0,
@@ -1288,14 +1298,20 @@ export default function GetStartedPage() {
     await handleDiscordAuthSubmit();
   }, [handleDiscordAuthSubmit]);
 
-  const handleCopyNumber = async () => {
-    await navigator.clipboard.writeText(ELIZA_PHONE_NUMBER);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
-
-  const handleOpenMessages = () => {
-    window.location.href = buildElizaSmsHref();
+  const handleOpenMessages = async () => {
+    try {
+      const outcome = await openOrCopyElizaMessage(window);
+      setMessageNotice(outcome === "copied" ? "copied" : "idle");
+    } catch {
+      setMessageNotice("error");
+    }
+    if (messageNoticeResetRef.current !== null) {
+      window.clearTimeout(messageNoticeResetRef.current);
+    }
+    messageNoticeResetRef.current = window.setTimeout(
+      () => setMessageNotice("idle"),
+      2_000,
+    );
   };
 
   const handleContinueToConnected = () => {
@@ -1792,35 +1808,35 @@ export default function GetStartedPage() {
                 })}
               </p>
 
-              <div className={`w-full p-4 ${GLASS_TILE} rounded-2xl mb-6`}>
-                <div className="flex items-center justify-between gap-3">
-                  <span className="text-lg font-medium tabular-nums tracking-wide text-neutral-900">
-                    {ELIZA_PHONE_FORMATTED}
-                  </span>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={handleCopyNumber}
-                    className="shrink-0 text-neutral-500 hover:text-neutral-900 hover:bg-neutral-200/50"
-                  >
-                    {copied ? (
-                      <Check className="size-4 text-green-500" />
-                    ) : (
-                      <Copy className="size-4" />
-                    )}
-                  </Button>
-                </div>
-              </div>
-
               <Button
-                onClick={handleOpenMessages}
+                onClick={() => void handleOpenMessages()}
                 className="w-full h-[52px] rounded-full bg-neutral-900 hover:bg-neutral-800 text-white font-medium gap-2"
               >
                 <IMessageIcon className="size-5 text-[#34C759]" />
                 {t("homepage_eliza.getStarted.openImessage", {
-                  defaultValue: "Open iMessage",
+                  defaultValue: "Message Eliza",
                 })}
               </Button>
+
+              {messageNotice !== "idle" && (
+                <p
+                  role="status"
+                  aria-live="polite"
+                  className={`mt-3 text-center text-sm font-medium ${
+                    messageNotice === "copied"
+                      ? "text-green-700"
+                      : "text-red-700"
+                  }`}
+                >
+                  {messageNotice === "copied"
+                    ? t("homepage_eliza.getStarted.phoneCopied", {
+                        defaultValue: "Phone number copied",
+                      })
+                    : t("homepage_eliza.getStarted.phoneCopyFailed", {
+                        defaultValue: "Couldn't copy the phone number",
+                      })}
+                </p>
+              )}
 
               <button
                 type="button"
