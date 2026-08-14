@@ -455,6 +455,43 @@ describe("CodingWorkspaceService workspace lifecycle seams", () => {
     },
   );
 
+  // runtime.getSetting() is typed string | boolean | number | null (it
+  // really can return a boolean, and even normalizes a decrypted string
+  // "true"/"false" into that same boolean - see AgentRuntime.getSetting in
+  // packages/core/src/runtime.ts). Number(true) === 1, which is a *valid*
+  // TTL under the numeric range check, so a boolean setting must be
+  // rejected before it ever reaches Number(...) - otherwise it silently
+  // produces a destructive 1ms cleanup TTL instead of throwing.
+  it.each([true, false])(
+    "rejects a boolean scratch decision TTL setting (%s) before scheduling cleanup",
+    async (configuredTtl) => {
+      const root = tmpRoot("workspace-service-boolean-scratch-ttl-");
+      const source = await makeScratchDir(root, "task-source");
+      const runtime = {
+        getSetting: vi.fn((key: string) =>
+          key === "ELIZA_SCRATCH_RETENTION"
+            ? "pending_decision"
+            : key === "ELIZA_SCRATCH_DECISION_TTL_MS"
+              ? configuredTtl
+              : undefined,
+        ),
+        reportError: vi.fn(),
+      } as unknown as IAgentRuntime;
+      const service = new CodingWorkspaceService(runtime, { baseDir: root });
+
+      await expect(
+        service.registerScratchWorkspace(
+          "session-boolean-ttl",
+          source,
+          "Feature Branch",
+          "task_complete",
+        ),
+      ).rejects.toMatchObject({ code: "INVALID_SCRATCH_DECISION_TTL" });
+      expect(service.listScratchWorkspaces()).toEqual([]);
+      expect(existsSync(source)).toBe(true);
+    },
+  );
+
   it.each([
     ["01", 1],
     ["1e3", 1000],

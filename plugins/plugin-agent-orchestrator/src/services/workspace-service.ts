@@ -1514,12 +1514,34 @@ export class CodingWorkspaceService {
   }
 
   private getScratchDecisionTtlMs(): number {
-    const setting = this.runtime.getSetting("ELIZA_SCRATCH_DECISION_TTL_MS") as
-      | string
-      | number
-      | undefined;
-    const configured = setting ?? process.env.ELIZA_SCRATCH_DECISION_TTL_MS;
+    // runtime.getSetting() is typed string | boolean | number | null (see
+    // IAgentRuntime.getSetting in packages/core/src/types/runtime.ts) - it
+    // really can return a boolean, and even normalizes a decrypted string
+    // "true"/"false" into that same boolean. A prior version of this
+    // resolver cast the result to `string | number | undefined`, discarding
+    // the boolean case at the type level while it could still occur at
+    // runtime: Number(true) === 1, which passes the range check below and
+    // silently produced a destructive 1ms TTL instead of throwing.
+    const setting = this.runtime.getSetting("ELIZA_SCRATCH_DECISION_TTL_MS");
+    const configured =
+      setting === null || setting === undefined
+        ? process.env.ELIZA_SCRATCH_DECISION_TTL_MS
+        : setting;
     if (configured === undefined) return DEFAULT_SCRATCH_DECISION_TTL_MS;
+
+    if (typeof configured === "boolean") {
+      throw new ElizaError(
+        `ELIZA_SCRATCH_DECISION_TTL_MS must be an integer from 1 through ${MAX_SCRATCH_DECISION_TTL_MS} milliseconds, not a boolean`,
+        {
+          code: "INVALID_SCRATCH_DECISION_TTL",
+          context: {
+            configured,
+            minimum: 1,
+            maximum: MAX_SCRATCH_DECISION_TTL_MS,
+          },
+        },
+      );
+    }
 
     const normalized =
       typeof configured === "string" ? configured.trim() : configured;
