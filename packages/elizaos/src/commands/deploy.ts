@@ -223,13 +223,10 @@ function metadataNameCandidates(
 function pollIntervalMs(): number {
   const raw = process.env.ELIZAOS_DEPLOY_POLL_INTERVAL_MS;
   if (raw === undefined) return DEFAULT_POLL_INTERVAL_MS;
-  if (!/^(0|[1-9]\d*)$/.test(raw)) {
-    throw new Error(
-      "ELIZAOS_DEPLOY_POLL_INTERVAL_MS must be a base-10 integer between 0 and 2147483647.",
-    );
-  }
-  const value = Number(raw);
-  if (!Number.isSafeInteger(value) || value > MAX_TIMER_DELAY_MS) {
+  const trimmed = raw.trim();
+  if (trimmed === "") return DEFAULT_POLL_INTERVAL_MS;
+  const value = Number(trimmed);
+  if (!Number.isSafeInteger(value) || value < 0 || value > MAX_TIMER_DELAY_MS) {
     throw new Error(
       "ELIZAOS_DEPLOY_POLL_INTERVAL_MS must be a base-10 integer between 0 and 2147483647.",
     );

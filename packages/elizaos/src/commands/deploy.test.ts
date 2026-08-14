@@ -98,7 +98,7 @@ describe("runDeploy", () => {
     );
   });
 
-  it.each(["", "-1", "1.5", "1e3", "01000", "2147483648", " 1000 "])(
+  it.each(["-1", "1.5", "2147483648"])(
     "rejects malformed poll interval %s before any network call",
     async (interval) => {
       process.env.ELIZAOS_CLOUD_API_KEY = "eliza_test_key";
@@ -116,6 +116,74 @@ describe("runDeploy", () => {
           "ELIZAOS_DEPLOY_POLL_INTERVAL_MS must be a base-10 integer between 0 and 2147483647",
         ),
       );
+    },
+  );
+
+  // Mutation-resistant: proves a configured, non-default poll interval actually
+  // reaches the real setTimeout call inside pollDeploymentStatus's sleep(), not
+  // just that the standalone parser resolves it correctly in isolation. Also
+  // covers every Number()-compatible spelling the pre-existing Number(...)
+  // parser accepted (blank/unset, leading zero, exponent, surrounding
+  // whitespace) to prove the stricter regex didn't silently narrow the
+  // accepted configuration grammar.
+  it.each([
+    ["", 5_000],
+    ["01000", 1_000],
+    ["1e3", 1_000],
+    [" 1000 ", 1_000],
+    ["2147483647", 2_147_483_647],
+  ])(
+    "uses the exact configured poll interval for %s (%dms), not the 5s default",
+    async (interval, expectedMs) => {
+      process.env.ELIZAOS_CLOUD_API_KEY = "eliza_test_key";
+      process.env.ELIZA_CLOUD_API_BASE_URL = "https://cloud.example.test";
+      process.env.ELIZAOS_DEPLOY_POLL_INTERVAL_MS = interval;
+      // The deploy POST response and the first status GET are two separate
+      // calls; a third response is required so the poll loop observes a
+      // non-terminal status at least once and actually calls sleep() before
+      // seeing READY.
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValueOnce(
+          jsonResponse(
+            { success: true, deploymentId: "dep-1", status: "QUEUED" },
+            202,
+          ),
+        )
+        .mockResolvedValueOnce(
+          jsonResponse({
+            success: true,
+            deploymentId: "dep-1",
+            status: "BUILDING",
+          }),
+        )
+        .mockResolvedValueOnce(
+          jsonResponse({
+            success: true,
+            deploymentId: "dep-1",
+            status: "READY",
+          }),
+        );
+      globalThis.fetch = fetchMock as unknown as typeof fetch;
+      vi.spyOn(console, "log").mockImplementation(() => {});
+      const setTimeoutSpy = vi
+        .spyOn(globalThis, "setTimeout")
+        .mockImplementation(((callback: () => void) => {
+          callback();
+          return 0 as unknown as ReturnType<typeof setTimeout>;
+        }) as typeof setTimeout);
+
+      const code = await runDeploy({ appId: "app-1" });
+
+      expect(code).toBe(0);
+      expect(
+        setTimeoutSpy.mock.calls.some((call) => call[1] === expectedMs),
+      ).toBe(true);
+      if (expectedMs !== 5_000) {
+        expect(setTimeoutSpy.mock.calls.some((call) => call[1] === 5_000)).toBe(
+          false,
+        );
+      }
     },
   );
 
