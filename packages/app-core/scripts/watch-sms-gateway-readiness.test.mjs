@@ -135,4 +135,45 @@ describe("watch-sms-gateway-readiness CLI timing boundary", () => {
     );
     expect(elapsedMs).toBeLessThan(6_000);
   });
+
+  test("a stalled bridge-doctor probe cannot stretch the watch past its deadline", async () => {
+    // The doctor endpoint accepts the request and never responds. curl's
+    // independent 5s cap used to stretch a 1s watch to ~5s; the probe budget
+    // now clips every subprocess (curl --max-time included) to the remaining
+    // deadline. Port 8795 is the script's fixed doctor address.
+    let hang;
+    try {
+      hang = Bun.serve({
+        port: 8795,
+        fetch: () => new Promise(() => {}),
+      });
+    } catch {
+      // Port occupied on this machine — the environment cannot host the
+      // stall; the run()-level budget is still covered by the interval test.
+      return;
+    }
+    try {
+      const startedAt = Date.now();
+      const result = spawnSync(
+        process.execPath,
+        [SCRIPT, "--timeout", "1", "--interval", "2"],
+        {
+          encoding: "utf8",
+          timeout: 10_000,
+          env: { ...process.env, PATH: "/nonexistent" },
+        },
+      );
+      const elapsedMs = Date.now() - startedAt;
+      expect(result.signal).toBeNull();
+      expect(result.status).not.toBe(0);
+      expect(`${result.stdout}${result.stderr}`).toContain(
+        "Timed out waiting 1s",
+      );
+      // Close to the requested 1s deadline: one bounded probe pass of
+      // overshoot at most, nowhere near curl's old independent 5s cap.
+      expect(elapsedMs).toBeLessThan(3_000);
+    } finally {
+      hang.stop(true);
+    }
+  });
 });

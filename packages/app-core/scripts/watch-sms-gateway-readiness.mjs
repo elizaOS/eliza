@@ -90,10 +90,21 @@ export function parseArgs(argv) {
   return args;
 }
 
+// Absolute probe deadline for the current watch. Every subprocess a probe
+// spawns is killed at the remaining budget, so a stalled adb/ioreg/curl can
+// overshoot --timeout by at most process-kill latency, never its own runtime.
+let probeDeadlineAtMs = Number.POSITIVE_INFINITY;
+
+function remainingProbeMs() {
+  return probeDeadlineAtMs - Date.now();
+}
+
 function run(command, args) {
+  const budgetMs = Math.max(1, Math.floor(remainingProbeMs()));
   const result = spawnSync(command, args, {
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"],
+    ...(Number.isFinite(budgetMs) ? { timeout: budgetMs } : {}),
   });
   return {
     status: result.status ?? (result.error ? 1 : 0),
@@ -185,10 +196,16 @@ function listHostUsbDevices() {
 }
 
 function readBridgeDoctor() {
+  // curl's own cap must never exceed the remaining watch budget: a stalled
+  // doctor endpoint used to stretch a 1s watch to curl's independent 5s.
+  const capSeconds = Math.min(
+    5,
+    Math.max(1, Math.ceil(remainingProbeMs() / 1000)),
+  );
   const result = run("curl", [
     "-sS",
     "--max-time",
-    "5",
+    String(Number.isFinite(capSeconds) ? capSeconds : 5),
     "http://127.0.0.1:8795/doctor",
   ]);
   if (result.status !== 0 || !result.stdout.trim()) return null;
@@ -231,16 +248,25 @@ function runInstallFlow(extraArgs = [], waitDeviceSeconds = "1") {
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   const deadline = Date.now() + args.timeoutSeconds * 1000;
+  probeDeadlineAtMs = deadline;
   let lastWirelessAdbSummary = "";
   let lastWirelessAdbSeenAt = 0;
   let printedBlueBubblesValidationHint = false;
 
-  while (Date.now() <= deadline) {
+  const expired = () => Date.now() > deadline;
+  while (!expired()) {
+    // Re-check the budget between probes: each subprocess is individually
+    // bounded, but a sequence of near-budget probes must not stack.
     const adbDeviceRows = listAdbDeviceRows();
+    if (expired()) break;
     const devices = listAdbDevices();
+    if (expired()) break;
     const wirelessAdb = listWirelessAdbServices();
+    if (expired()) break;
     const hostUsbDevices = listHostUsbDevices();
+    if (expired()) break;
     const bridgeDoctor = readBridgeDoctor();
+    if (expired()) break;
     const bridgeReady = bridgeOutboundReady(bridgeDoctor);
     const wirelessSummary = wirelessAdb
       .map((service) => `${service.type}:${service.endpoint}`)
