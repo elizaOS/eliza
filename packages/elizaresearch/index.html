@@ -437,7 +437,12 @@
         laneRollSin[lane] = Math.sin(roll);
         if (progress < 1) forming = true;
       }
-      if (!forming) entranceComplete = true;
+      if (!forming) {
+        entranceComplete = true;
+        // Last entrance frame is alpha 1. Seed the fade clock at full
+        // opacity so the first steady-state frame does not drop to bucket 0.
+        for (let i = 0; i < boids.length; i++) boids[i].age = FADE_FRAMES;
+      }
     }
     // whole face breathes: slow expand/contract around its center
     const breathe = reduced ? 1 : 1 + wave(tf * 0.07) * 0.03;
@@ -486,14 +491,16 @@
       b.x = gx + b.offsetX;
       b.y = gy + b.offsetY;
       if (entranceComplete && !reduced) {
-        b.age++;
-        if (--b.life <= 0) {
-          // move only once fully faded out, so the jump is never visible
+        if (b.life <= 0) {
+          // Previous frame already drew this particle at true zero.
           const t = targets[(Math.random() * targets.length) | 0];
           b.x = b.sx = b.tx = t.x; b.y = b.sy = b.ty = t.y;
           b.offsetX = 0; b.offsetY = 0;
           b.life = Math.random() * 150 + 90 + FADE_FRAMES * 2;
           b.age = 0;
+        } else {
+          b.age++;
+          b.life--;
         }
       }
     }
@@ -525,7 +532,7 @@
     for (let k = 0; k < ALPHA_LEVELS; k++) {
       const to = starts[k];
       if (to === from) continue;
-      ctx.globalAlpha = (k + 1) / ALPHA_LEVELS;
+      ctx.globalAlpha = k === 0 ? 0 : k / (ALPHA_LEVELS - 1);
       for (let j = from; j < to; j++) {
         const b = boids[order[j]];
         const shimmer = 0.88 + (1 - Math.abs((((now / 1000) * 0.28 * b.fs + b.ph) % 1) * 2 - 1)) * 0.2;
