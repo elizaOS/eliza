@@ -935,6 +935,17 @@
           "label": "OS-level sandbox",
           "help": "Wrap bash invocations in sandbox-exec (macOS) or bwrap (Linux) when available. AST analysis runs regardless.",
           "advanced": true
+        },
+        "SHELL_JOB_TTL_MS": {
+          "type": "number",
+          "required": false,
+          "sensitive": false,
+          "label": "Finished-session TTL",
+          "help": "How long finished-process records are kept before the registry sweeper evicts them. Defaults to 1800000 ms; must be a canonical decimal integer from 60000 through 10800000, and invalid values fail before the plugin starts.",
+          "advanced": true,
+          "min": 60000,
+          "max": 10800000,
+          "unit": "ms"
         }
       },
       "render": {
