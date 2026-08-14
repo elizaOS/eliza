@@ -99,10 +99,10 @@ describe("ElizaClient direct Cloud auth served from a cloud web host", () => {
     expect(result).toEqual(
       expect.objectContaining({
         ok: true,
-        apiBase: "https://api-staging.elizacloud.ai",
+        apiBase: "https://api-staging.eliza.app",
         sessionId: expect.any(String),
         browserUrl: expect.stringMatching(
-          /^https:\/\/staging\.elizacloud\.ai\/auth\/cli-login\?session=/,
+          /^https:\/\/staging\.eliza\.app\/auth\/cli-login\?session=/,
         ),
       }),
     );
@@ -194,7 +194,7 @@ describe("ElizaClient direct Cloud auth served from localhost dev (port-shift)",
     // The bug: a same-origin "/api/auth/cli-session" gets proxied to the local
     // agent API, whose default-deny gate 401s the unlisted /api/auth/* path.
     expect(fetchSpy).toHaveBeenCalledWith(
-      "https://api-staging.elizacloud.ai/api/auth/cli-session",
+      "https://api-staging.eliza.app/api/auth/cli-session",
       expect.objectContaining({ method: "POST" }),
     );
     expect(fetchSpy).not.toHaveBeenCalledWith(
@@ -204,11 +204,11 @@ describe("ElizaClient direct Cloud auth served from localhost dev (port-shift)",
     expect(result).toEqual(
       expect.objectContaining({
         ok: true,
-        apiBase: "https://api-staging.elizacloud.ai",
+        apiBase: "https://api-staging.eliza.app",
       }),
     );
     const browserUrl = new URL(result.browserUrl ?? "");
-    expect(browserUrl.origin).toBe("https://staging.elizacloud.ai");
+    expect(browserUrl.origin).toBe("https://staging.eliza.app");
     expect(browserUrl.pathname).toBe("/auth/cli-login");
     const sessionId = browserUrl.searchParams.get("session");
     expect(sessionId).toEqual(expect.any(String));
@@ -237,7 +237,7 @@ describe("ElizaClient direct Cloud auth served from localhost dev (port-shift)",
     );
 
     expect(fetchSpy).toHaveBeenCalledWith(
-      "https://api-staging.elizacloud.ai/api/auth/cli-session/session-1",
+      "https://api-staging.eliza.app/api/auth/cli-session/session-1",
     );
     expect(result).toEqual({
       status: "authenticated",

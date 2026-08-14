@@ -10,6 +10,7 @@
 import { afterAll, afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import type http from "node:http";
 import { addLogListener, type LogEntry } from "@elizaos/core";
+import { _resetCloudSecretsForTesting } from "@elizaos/shared/elizacloud";
 import {
   handleCloudSttRoute,
   handleCloudTtsPreviewRoute,
@@ -108,8 +109,9 @@ function fakeRes(): {
 }
 
 beforeEach(() => {
+  _resetCloudSecretsForTesting();
+  process.env.ELIZA_CONFIG_PATH = `/tmp/eliza-cloud-tts-test-missing-${process.pid}.json`;
   process.env.ELIZAOS_CLOUD_API_KEY = "test-cloud-key";
-  process.env.ELIZA_CONFIG_PATH = "/nonexistent/server-cloud-tts-test.json";
   upstream = [];
   upstreamResponse = () =>
     new Response(new Uint8Array([73, 68, 51]), {
@@ -136,6 +138,7 @@ beforeEach(() => {
 
 afterAll(() => {
   globalThis.fetch = realFetch;
+  _resetCloudSecretsForTesting();
   if (prevApiKey === undefined) delete process.env.ELIZAOS_CLOUD_API_KEY;
   else process.env.ELIZAOS_CLOUD_API_KEY = prevApiKey;
   if (prevConfigPath === undefined) delete process.env.ELIZA_CONFIG_PATH;

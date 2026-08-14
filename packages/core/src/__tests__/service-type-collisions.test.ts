@@ -103,24 +103,6 @@ const duplicateServiceTypeAllowlist = new Map<string, AllowlistEntry>([
 			]),
 		},
 	],
-	[
-		"workflow_credential_provider",
-		{
-			reason:
-				"Workflow credential providers share one discovery slot so workflow nodes can ask every connector for credentials.",
-			classes: new Set([
-				"plugins/plugin-bluebubbles/src/workflow-credential-provider.ts:BlueBubblesWorkflowCredentialProvider",
-				"plugins/plugin-elizacloud/src/services/cloud-credential-provider.ts:CloudCredentialProvider",
-				"plugins/plugin-google-workspace/src/chat/workflow-credential-provider.ts:GoogleChatWorkflowCredentialProvider",
-				"plugins/plugin-instagram/src/workflow-credential-provider.ts:InstagramWorkflowCredentialProvider",
-				"plugins/plugin-matrix/src/workflow-credential-provider.ts:MatrixWorkflowCredentialProvider",
-				"plugins/plugin-signal/src/workflow-credential-provider.ts:SignalWorkflowCredentialProvider",
-				"plugins/plugin-slack/src/workflow-credential-provider.ts:SlackWorkflowCredentialProvider",
-				"plugins/plugin-whatsapp/src/workflow-credential-provider.ts:WhatsAppWorkflowCredentialProvider",
-				"plugins/plugin-x/src/workflow-credential-provider.ts:XWorkflowCredentialProvider",
-			]),
-		},
-	],
 ]);
 let cachedServiceClassRegistrations: ServiceClassRegistration[] | null = null;
 

@@ -112,7 +112,7 @@ describe("startCloudAgentHandoff — dedicated migration target", () => {
     expect(getCloudCompatAgent).not.toHaveBeenCalled();
     expect(getCloudCompatAgent).not.toHaveBeenCalledWith("shared-1");
     expect(fetch).toHaveBeenCalledWith(
-      "https://api.elizacloud.ai/api/v1/eliza/agents/dedicated-1",
+      "https://api.eliza.app/api/v1/eliza/agents/dedicated-1",
       expect.objectContaining({
         headers: expect.objectContaining({ Authorization: "Bearer tok" }),
       }),

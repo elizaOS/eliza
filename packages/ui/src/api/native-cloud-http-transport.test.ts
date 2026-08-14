@@ -21,8 +21,8 @@ vi.mock("@capacitor/core", () => ({
 import { nativeCloudHttpTransportForUrl } from "./native-cloud-http-transport";
 
 const AGENT_URL =
-  "https://82e92cc6-6fab-4c4a-a1dc-7c1605aebfeb.elizacloud.ai/api/conversations/abc/messages/stream";
-const API_URL = "https://api.elizacloud.ai/api/v1/eliza/agents";
+  "https://82e92cc6-6fab-4c4a-a1dc-7c1605aebfeb.cloud.eliza.app/api/conversations/abc/messages/stream";
+const API_URL = "https://api.eliza.app/api/v1/eliza/agents";
 
 let webFetchMock: ReturnType<typeof vi.fn>;
 let globalFetchMock: ReturnType<typeof vi.fn>;
@@ -168,11 +168,10 @@ describe("SSE streaming bypass", () => {
   });
 
   it("does NOT use the native fetch for SSE to the central cloud API (CORS blocks the app origin there)", async () => {
-    // api.elizacloud.ai does not serve CORS to the app origin, so its SSE
+    // api.eliza.app does not serve CORS to the app origin, so its SSE
     // (e.g. computer-use/approvals/stream) must stay on CapacitorHttp's
     // CORS-bypass path — switching it to the native fetch would break it.
-    const sseApiUrl =
-      "https://api.elizacloud.ai/api/computer-use/approvals/stream";
+    const sseApiUrl = "https://api.eliza.app/api/computer-use/approvals/stream";
     const transport = nativeCloudHttpTransportForUrl(sseApiUrl);
     await transport?.request(sseApiUrl, {
       method: "GET",
@@ -208,7 +207,7 @@ describe("non-streaming requests are unchanged", () => {
 
   it("routes non-SSE agent-subdomain calls through the patched global fetch", async () => {
     const agentNonStream =
-      "https://82e92cc6-6fab-4c4a-a1dc-7c1605aebfeb.elizacloud.ai/api/agents";
+      "https://82e92cc6-6fab-4c4a-a1dc-7c1605aebfeb.cloud.eliza.app/api/agents";
     const transport = nativeCloudHttpTransportForUrl(agentNonStream);
     await transport?.request(agentNonStream, { method: "GET", headers: {} });
     expect(globalFetchMock).toHaveBeenCalledTimes(1);

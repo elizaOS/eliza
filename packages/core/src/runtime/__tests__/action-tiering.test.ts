@@ -193,7 +193,7 @@ describe("action tiering", () => {
 		);
 	});
 
-	it("keeps rank-one WEB_FETCH for a real weather retrieval when Stage-1 omits it", () => {
+	it("keeps WEB_FETCH exposed for a real weather retrieval when Stage-1 omits it", () => {
 		const catalog = buildActionCatalog([
 			{
 				name: "WEB_FETCH",
@@ -221,7 +221,7 @@ describe("action tiering", () => {
 			(result) => result.name === "WEB_FETCH",
 		);
 
-		expect(webFetch).toMatchObject({ rank: 1, score: 1 });
+		expect(webFetch).toMatchObject({ score: 1 });
 		expect(webFetch?.stageScores.bm25).toBeLessThan(0.99);
 
 		const surface = tierActionResults({

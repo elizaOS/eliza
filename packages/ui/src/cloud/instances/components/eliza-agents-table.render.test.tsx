@@ -266,7 +266,7 @@ describe("ElizaAgentsTable per-row view model", () => {
     const links = screen.getAllByRole("link", { name: "Open Eliza app" });
     expect(links.length).toBeGreaterThanOrEqual(1);
     for (const link of links) {
-      expect(link.getAttribute("href")).toBe("https://app.elizacloud.ai");
+      expect(link.getAttribute("href")).toBe("https://cloud.eliza.app");
       expect(link.getAttribute("target")).toBe("_blank");
       expect(link.getAttribute("rel")).toBe("noreferrer");
     }

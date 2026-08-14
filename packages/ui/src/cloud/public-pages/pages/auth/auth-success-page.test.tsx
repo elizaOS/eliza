@@ -430,7 +430,7 @@ describe("verifyAuthSuccessCandidate", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(fetchMock).toHaveBeenCalledWith(
       expect.stringMatching(
-        /^https:\/\/api\.elizacloud\.ai\/api\/v1\/oauth\/success-proof\/verify\?proof=loopback\.sig$/,
+        /^https:\/\/api\.eliza\.app\/api\/v1\/oauth\/success-proof\/verify\?proof=loopback\.sig$/,
       ),
       expect.objectContaining({ credentials: "include", method: "GET" }),
     );
