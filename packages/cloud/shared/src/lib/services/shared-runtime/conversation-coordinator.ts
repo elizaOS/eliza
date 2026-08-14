@@ -38,9 +38,7 @@ export interface PersonalProvisionalHistoryConvergence {
   token: string;
   holderId: string;
   sourceAgentId: string;
-  sourceRoomId: string;
   targetAgentId: string;
-  targetRoomId: string;
   targetUserId: string;
   targetOrganizationId: string;
   leaseMs: number;
@@ -355,9 +353,10 @@ export async function coordinateSharedCutoverCommit(
 }
 
 /**
- * Seals the source personal room and captures its complete transcript. The
- * caller commits the account transaction before passing this snapshot to the
- * commit step, so a rejected account merge cannot contaminate the target.
+ * Reserves the target against Dedicated cutover, then seals the source and
+ * captures its complete transcript. The caller commits the account transaction
+ * before passing this snapshot to the commit step, so a rejected account merge
+ * cannot contaminate the target.
  */
 export async function preparePersonalProvisionalHistoryConvergence(
   plan: PersonalProvisionalHistoryConvergence,
@@ -365,7 +364,24 @@ export async function preparePersonalProvisionalHistoryConvergence(
 ): Promise<PreparedPersonalProvisionalHistoryConvergence> {
   const namespace = requireHistoryCoordinator(options);
   try {
-    const sealed = await coordinatorStub(namespace, plan.sourceAgentId, plan.sourceRoomId).fetch(
+    const reserved = await coordinatorStub(namespace, plan.targetAgentId, plan.targetAgentId).fetch(
+      "https://shared-runtime.internal/provisional-convergence-reserve",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          operation: "provisional-convergence-reserve",
+          agentId: plan.targetAgentId,
+          token: plan.token,
+          holderId: plan.holderId,
+          leaseMs: plan.leaseMs,
+        }),
+      },
+    );
+    await requireCoordinatorResponse(reserved, "provisional convergence reservation");
+    await reserved.arrayBuffer();
+
+    const sealed = await coordinatorStub(namespace, plan.sourceAgentId, plan.sourceAgentId).fetch(
       "https://shared-runtime.internal/provisional-convergence-seal",
       {
         method: "POST",
@@ -373,11 +389,9 @@ export async function preparePersonalProvisionalHistoryConvergence(
         body: JSON.stringify({
           operation: "provisional-convergence-seal",
           agentId: plan.sourceAgentId,
-          roomId: plan.sourceRoomId,
           token: plan.token,
           holderId: plan.holderId,
           targetAgentId: plan.targetAgentId,
-          targetRoomId: plan.targetRoomId,
           targetUserId: plan.targetUserId,
           targetOrganizationId: plan.targetOrganizationId,
           leaseMs: plan.leaseMs,
@@ -400,9 +414,9 @@ export async function preparePersonalProvisionalHistoryConvergence(
     try {
       await releasePersonalProvisionalHistoryConvergence(plan, options);
     } catch (releaseError) {
-      // error-policy:J6 the prepare failure remains primary; the bounded source
-      // seal self-expires, and this breadcrumb makes delayed recovery visible.
-      logger.warn("[shared-runtime] Failed to release provisional convergence seal", {
+      // error-policy:J6 the prepare failure remains primary; both bounded
+      // leases self-expire, and this breadcrumb makes delayed recovery visible.
+      logger.warn("[shared-runtime] Failed to release provisional convergence leases", {
         sourceAgentId: plan.sourceAgentId,
         token: plan.token,
         error: releaseError instanceof Error ? releaseError.message : String(releaseError),
@@ -420,7 +434,7 @@ export async function commitPersonalProvisionalHistoryConvergence(
 ): Promise<void> {
   const namespace = requireHistoryCoordinator(options);
   if (!prepared.alreadyAliased) {
-    const imported = await coordinatorStub(namespace, plan.targetAgentId, plan.targetRoomId).fetch(
+    const imported = await coordinatorStub(namespace, plan.targetAgentId, plan.targetAgentId).fetch(
       "https://shared-runtime.internal/provisional-convergence-import",
       {
         method: "POST",
@@ -428,8 +442,8 @@ export async function commitPersonalProvisionalHistoryConvergence(
         body: JSON.stringify({
           operation: "provisional-convergence-import",
           agentId: plan.targetAgentId,
-          roomId: plan.targetRoomId,
           token: plan.token,
+          holderId: plan.holderId,
           history: prepared.history,
         }),
       },
@@ -437,7 +451,7 @@ export async function commitPersonalProvisionalHistoryConvergence(
     await requireCoordinatorResponse(imported, "provisional convergence import");
     await imported.arrayBuffer();
   }
-  const response = await coordinatorStub(namespace, plan.sourceAgentId, plan.sourceRoomId).fetch(
+  const response = await coordinatorStub(namespace, plan.sourceAgentId, plan.sourceAgentId).fetch(
     "https://shared-runtime.internal/provisional-convergence-alias",
     {
       method: "POST",
@@ -446,7 +460,6 @@ export async function commitPersonalProvisionalHistoryConvergence(
         operation: "provisional-convergence-alias",
         token: plan.token,
         targetAgentId: plan.targetAgentId,
-        targetRoomId: plan.targetRoomId,
         targetUserId: plan.targetUserId,
         targetOrganizationId: plan.targetOrganizationId,
       }),
@@ -454,29 +467,37 @@ export async function commitPersonalProvisionalHistoryConvergence(
   );
   await requireCoordinatorResponse(response, "provisional convergence alias");
   await response.arrayBuffer();
+  await releasePersonalProvisionalHistoryConvergence(plan, options);
 }
 
-/** Releases a pre-commit source seal when the database rejects the plan. */
+/** Releases this attempt's source seal and target reservation. */
 export async function releasePersonalProvisionalHistoryConvergence(
   plan: Pick<
     PersonalProvisionalHistoryConvergence,
-    "token" | "holderId" | "sourceAgentId" | "sourceRoomId"
+    "token" | "holderId" | "sourceAgentId" | "targetAgentId"
   >,
   options: SharedConversationHistoryCoordinatorOptions,
 ): Promise<void> {
   const namespace = requireHistoryCoordinator(options);
-  const response = await coordinatorStub(namespace, plan.sourceAgentId, plan.sourceRoomId).fetch(
-    "https://shared-runtime.internal/provisional-convergence-release",
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        operation: "provisional-convergence-release",
-        token: plan.token,
-        holderId: plan.holderId,
-      }),
-    },
+  const responses = await Promise.all(
+    [plan.sourceAgentId, plan.targetAgentId].map(
+      async (agentId) =>
+        await coordinatorStub(namespace, agentId, agentId).fetch(
+          "https://shared-runtime.internal/provisional-convergence-release",
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              operation: "provisional-convergence-release",
+              token: plan.token,
+              holderId: plan.holderId,
+            }),
+          },
+        ),
+    ),
   );
-  await requireCoordinatorResponse(response, "provisional convergence release");
-  await response.arrayBuffer();
+  for (const response of responses) {
+    await requireCoordinatorResponse(response, "provisional convergence release");
+    await response.arrayBuffer();
+  }
 }

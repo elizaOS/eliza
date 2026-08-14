@@ -277,9 +277,7 @@ function historyConvergencePlan(input: {
     token: input.token,
     holderId: crypto.randomUUID(),
     sourceAgentId: input.sourceAgentId,
-    sourceRoomId: input.sourceAgentId,
     targetAgentId: input.targetAgentId,
-    targetRoomId: input.targetAgentId,
     targetUserId: input.targetUserId,
     targetOrganizationId: input.targetOrganizationId,
     leaseMs: PROVISIONAL_CONVERGENCE_LEASE_MS,
@@ -470,14 +468,14 @@ export async function syncUserFromSteward(params: StewardSyncParams): Promise<St
           };
         } catch (error) {
           // error-policy:J6 pre-commit rejection releases only this attempt's
-          // history holder; post-commit failures retain the seal for recovery.
+          // history holder; post-commit failures retain both leases for recovery.
           if (!databaseCommitted) {
             try {
               await releasePersonalProvisionalHistoryConvergence(historyPlan, { namespace });
             } catch (releaseError) {
               // error-policy:J6 the database rejection remains primary; the
-              // bounded seal self-expires and this makes delayed repair visible.
-              logger.warn("[StewardSync] Failed to release rejected convergence seal", {
+              // bounded leases self-expire and this makes delayed repair visible.
+              logger.warn("[StewardSync] Failed to release rejected convergence leases", {
                 sourceAgentId,
                 error: releaseError instanceof Error ? releaseError.message : String(releaseError),
               });

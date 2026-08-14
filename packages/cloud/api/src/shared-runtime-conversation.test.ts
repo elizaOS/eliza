@@ -665,6 +665,107 @@ test("an expired pending seal releases Shared when no Dedicated marker exists", 
   expect(data.has("personal-cutover-seal")).toBe(false);
 });
 
+test("target convergence reservation and Dedicated cutover serialize onto one winner", async () => {
+  const agentId = "personal:00000000-0000-5000-8000-000000000099";
+  const convergence = {
+    operation: "provisional-convergence-reserve",
+    agentId,
+    token: "phone-telegram:source:target",
+    holderId: "claim-holder",
+    leaseMs: 60_000,
+  };
+  const cutover = {
+    operation: "cutover-seal",
+    agentId,
+    roomId: agentId,
+    token: "personal-cutover:target:dedicated",
+    leaseMs: 60_000,
+    organizationId: "00000000-0000-4000-8000-000000000001",
+    dedicatedAgentId: "00000000-0000-4000-8000-000000000002",
+  };
+  const race = async (
+    first: typeof convergence | typeof cutover,
+    second: typeof convergence | typeof cutover,
+  ) => {
+    const data = new Map<string, unknown>();
+    const object = new SharedRuntimeConversation(
+      makeState(data, []) as never,
+      {} as never,
+    );
+    const invoke = async (payload: Record<string, unknown>) => {
+      const response = await object.fetch(
+        new Request(
+          "https://shared-runtime.internal/convergence-cutover-race",
+          {
+            method: "POST",
+            body: JSON.stringify(payload),
+          },
+        ),
+      );
+      return {
+        status: response.status,
+        body: (await response.json()) as Record<string, unknown>,
+      };
+    };
+    const results = await Promise.all([invoke(first), invoke(second)]);
+    return { data, invoke, results };
+  };
+
+  const convergenceFirst = await race(convergence, cutover);
+  expect(convergenceFirst.results).toEqual([
+    { status: 200, body: { success: true } },
+    {
+      status: 423,
+      body: {
+        success: false,
+        error: "Personal history is being linked. Retry shortly.",
+        code: "personal_convergence_in_progress",
+        retryable: true,
+      },
+    },
+  ]);
+  await convergenceFirst.invoke({
+    operation: "provisional-convergence-release",
+    token: convergence.token,
+    holderId: "not-the-holder",
+  });
+  await convergenceFirst.invoke({
+    operation: "provisional-convergence-release",
+    token: "phone-telegram:different:attempt",
+    holderId: convergence.holderId,
+  });
+  expect(
+    convergenceFirst.data.get("personal-provisional-convergence-reservation"),
+  ).toMatchObject({
+    token: convergence.token,
+    holderIds: [convergence.holderId],
+  });
+
+  const cutoverFirst = await race(cutover, convergence);
+  expect(cutoverFirst.results).toEqual([
+    { status: 200, body: { success: true, history: [] } },
+    {
+      status: 423,
+      body: { success: false, code: "personal_cutover_in_progress" },
+    },
+  ]);
+  const refusedImport = await cutoverFirst.invoke({
+    operation: "provisional-convergence-import",
+    agentId,
+    token: convergence.token,
+    holderId: convergence.holderId,
+    history: [],
+  });
+  expect(refusedImport).toEqual({
+    status: 423,
+    body: { success: false, code: "personal_cutover_in_progress" },
+  });
+  expect(cutoverFirst.data.has("personal-cutover-seal")).toBe(true);
+  expect(
+    cutoverFirst.data.has("personal-provisional-convergence-reservation"),
+  ).toBe(false);
+});
+
 test("provisional convergence imports history once and aliases stale source-room turns", async () => {
   repositoryReads = 0;
   repositoryWrites = 0;
@@ -750,14 +851,21 @@ test("provisional convergence imports history once and aliases stale source-room
     );
   const token = "phone-telegram:source-user:target-user";
   const holderId = "holder-one";
+  const reserved = await request(target, {
+    operation: "provisional-convergence-reserve",
+    agentId: targetAgentId,
+    token,
+    holderId,
+    leaseMs: 60_000,
+  });
+  expect(reserved.status).toBe(200);
+  await reserved.json();
   const sealed = await request(source, {
     operation: "provisional-convergence-seal",
     agentId: sourceAgentId,
-    roomId: sourceAgentId,
     token,
     holderId,
     targetAgentId,
-    targetRoomId: targetAgentId,
     targetUserId,
     targetOrganizationId,
     leaseMs: 60_000,
@@ -790,14 +898,21 @@ test("provisional convergence imports history once and aliases stale source-room
     code: "personal_convergence_in_progress",
   });
 
+  const secondReserved = await request(target, {
+    operation: "provisional-convergence-reserve",
+    agentId: targetAgentId,
+    token,
+    holderId: "holder-two",
+    leaseMs: 60_000,
+  });
+  expect(secondReserved.status).toBe(200);
+  await secondReserved.json();
   const secondSeal = await request(source, {
     operation: "provisional-convergence-seal",
     agentId: sourceAgentId,
-    roomId: sourceAgentId,
     token,
     holderId: "holder-two",
     targetAgentId,
-    targetRoomId: targetAgentId,
     targetUserId,
     targetOrganizationId,
     leaseMs: 60_000,
@@ -812,18 +927,26 @@ test("provisional convergence imports history once and aliases stale source-room
   expect((await releasedFirstHolder.json()) as Record<string, unknown>).toEqual(
     { success: true },
   );
+  await request(target, {
+    operation: "provisional-convergence-release",
+    token,
+    holderId,
+  }).then((response) => response.json());
   const stillSealed = sourceData.get(
     "personal-provisional-convergence-seal",
   ) as {
     holderIds: string[];
   };
   expect(stillSealed.holderIds).toEqual(["holder-two"]);
+  expect(
+    targetData.get("personal-provisional-convergence-reservation"),
+  ).toMatchObject({ token, holderIds: ["holder-two"] });
 
   const importPayload = {
     operation: "provisional-convergence-import",
     agentId: targetAgentId,
-    roomId: targetAgentId,
     token,
+    holderId: "holder-two",
     history: sourceHistory,
   };
   const imported = await request(target, importPayload);
@@ -849,7 +972,6 @@ test("provisional convergence imports history once and aliases stale source-room
     operation: "provisional-convergence-alias",
     token,
     targetAgentId,
-    targetRoomId: targetAgentId,
     targetUserId,
     targetOrganizationId,
   });
@@ -860,13 +982,23 @@ test("provisional convergence imports history once and aliases stale source-room
     operation: "provisional-convergence-alias",
     token,
     targetAgentId,
-    targetRoomId: targetAgentId,
     targetUserId,
     targetOrganizationId,
   });
   expect((await replayedAlias.json()) as Record<string, unknown>).toEqual({
     success: true,
   });
+  const releasedTarget = await request(target, {
+    operation: "provisional-convergence-release",
+    token,
+    holderId: "holder-two",
+  });
+  expect((await releasedTarget.json()) as Record<string, unknown>).toEqual({
+    success: true,
+  });
+  expect(targetData.has("personal-provisional-convergence-reservation")).toBe(
+    false,
+  );
 
   const staleSourceTurn = await request(source, {
     operation: "personal-bridge",
@@ -899,7 +1031,6 @@ test("provisional convergence imports history once and aliases stale source-room
   expect(sourceData.get("personal-provisional-convergence-alias")).toEqual({
     token,
     targetAgentId,
-    targetRoomId: targetAgentId,
     targetUserId,
     targetOrganizationId,
   });

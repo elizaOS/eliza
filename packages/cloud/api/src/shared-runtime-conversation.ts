@@ -52,13 +52,18 @@ type ConversationRequest =
   | { operation: "cutover-release"; token: string }
   | { operation: "cutover-commit"; token: string }
   | {
+      operation: "provisional-convergence-reserve";
+      agentId: string;
+      token: string;
+      holderId: string;
+      leaseMs: number;
+    }
+  | {
       operation: "provisional-convergence-seal";
       agentId: string;
-      roomId: string;
       token: string;
       holderId: string;
       targetAgentId: string;
-      targetRoomId: string;
       targetUserId: string;
       targetOrganizationId: string;
       leaseMs: number;
@@ -66,15 +71,14 @@ type ConversationRequest =
   | {
       operation: "provisional-convergence-import";
       agentId: string;
-      roomId: string;
       token: string;
+      holderId: string;
       history: SharedTurnMessage[];
     }
   | {
       operation: "provisional-convergence-alias";
       token: string;
       targetAgentId: string;
-      targetRoomId: string;
       targetUserId: string;
       targetOrganizationId: string;
     }
@@ -100,6 +104,8 @@ const MAX_RECALL_MESSAGES = 128;
 const CUTOVER_SEAL_KEY = "personal-cutover-seal";
 const PROVISIONAL_CONVERGENCE_SEAL_KEY =
   "personal-provisional-convergence-seal";
+const PROVISIONAL_CONVERGENCE_RESERVATION_KEY =
+  "personal-provisional-convergence-reservation";
 const PROVISIONAL_CONVERGENCE_ALIAS_KEY =
   "personal-provisional-convergence-alias";
 const PROVISIONAL_CONVERGENCE_IMPORT_PREFIX =
@@ -119,16 +125,20 @@ interface StoredProvisionalConvergenceSeal {
   token: string;
   holderIds: string[];
   targetAgentId: string;
-  targetRoomId: string;
   targetUserId: string;
   targetOrganizationId: string;
+  expiresAt: number;
+}
+
+interface StoredProvisionalConvergenceReservation {
+  token: string;
+  holderIds: string[];
   expiresAt: number;
 }
 
 interface StoredProvisionalConvergenceAlias {
   token: string;
   targetAgentId: string;
-  targetRoomId: string;
   targetUserId: string;
   targetOrganizationId: string;
 }
@@ -549,6 +559,16 @@ export class SharedRuntimeConversation {
     return null;
   }
 
+  private async activeProvisionalConvergenceReservation(): Promise<StoredProvisionalConvergenceReservation | null> {
+    const reservation =
+      (await this.state.storage.get<StoredProvisionalConvergenceReservation>(
+        PROVISIONAL_CONVERGENCE_RESERVATION_KEY,
+      )) ?? null;
+    if (!reservation || reservation.expiresAt > Date.now()) return reservation;
+    await this.state.storage.delete(PROVISIONAL_CONVERGENCE_RESERVATION_KEY);
+    return null;
+  }
+
   private async forwardToConvergedPersonalEliza(
     payload: ConversationRequest,
     alias: StoredProvisionalConvergenceAlias,
@@ -578,7 +598,7 @@ export class SharedRuntimeConversation {
           ...payload.rpc,
           params: {
             ...payload.rpc.params,
-            roomId: alias.targetRoomId,
+            roomId: alias.targetAgentId,
           },
         },
       };
@@ -590,12 +610,12 @@ export class SharedRuntimeConversation {
       forwarded = {
         ...payload,
         agentId: alias.targetAgentId,
-        roomId: alias.targetRoomId,
+        roomId: alias.targetAgentId,
       };
     }
 
     return await namespace
-      .getByName(`${alias.targetAgentId}:${alias.targetRoomId}`)
+      .getByName(`${alias.targetAgentId}:${alias.targetAgentId}`)
       .fetch("https://shared-runtime.internal/converged-personal", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -614,6 +634,60 @@ export class SharedRuntimeConversation {
         payload.agentId.startsWith("personal:"));
     const historyStore = this.historyStore(personal);
     const turnClaims = this.turnClaims();
+    if (payload.operation === "provisional-convergence-reserve") {
+      if (
+        typeof payload.agentId !== "string" ||
+        !payload.agentId.startsWith("personal:") ||
+        typeof payload.token !== "string" ||
+        payload.token.length === 0 ||
+        typeof payload.holderId !== "string" ||
+        payload.holderId.length === 0 ||
+        typeof payload.leaseMs !== "number" ||
+        !Number.isFinite(payload.leaseMs) ||
+        payload.leaseMs <= 0
+      ) {
+        return Response.json(
+          { success: false, code: "invalid_provisional_convergence" },
+          { status: 400 },
+        );
+      }
+      const cutover = await this.activeCutoverSeal();
+      if (cutover) {
+        return Response.json(
+          {
+            success: false,
+            code: cutover.committed
+              ? "personal_eliza_dedicated"
+              : "personal_cutover_in_progress",
+          },
+          { status: cutover.committed ? 409 : 423 },
+        );
+      }
+      if (await this.activeProvisionalConvergenceSeal()) {
+        return Response.json(
+          { success: false, code: "provisional_convergence_in_progress" },
+          { status: 423 },
+        );
+      }
+      const existing = await this.activeProvisionalConvergenceReservation();
+      if (existing && existing.token !== payload.token) {
+        return Response.json(
+          { success: false, code: "provisional_convergence_in_progress" },
+          { status: 423 },
+        );
+      }
+      await this.state.storage.put(PROVISIONAL_CONVERGENCE_RESERVATION_KEY, {
+        token: payload.token,
+        holderIds: [
+          ...new Set([...(existing?.holderIds ?? []), payload.holderId]),
+        ],
+        expiresAt: Math.max(
+          existing?.expiresAt ?? 0,
+          Date.now() + payload.leaseMs,
+        ),
+      } satisfies StoredProvisionalConvergenceReservation);
+      return Response.json({ success: true });
+    }
     if (payload.operation === "provisional-convergence-seal") {
       if (
         typeof payload.agentId !== "string" ||
@@ -621,8 +695,6 @@ export class SharedRuntimeConversation {
         typeof payload.targetAgentId !== "string" ||
         !payload.targetAgentId.startsWith("personal:") ||
         payload.agentId === payload.targetAgentId ||
-        payload.roomId !== payload.agentId ||
-        payload.targetRoomId !== payload.targetAgentId ||
         typeof payload.targetUserId !== "string" ||
         payload.targetUserId.length === 0 ||
         typeof payload.targetOrganizationId !== "string" ||
@@ -640,6 +712,24 @@ export class SharedRuntimeConversation {
           { status: 400 },
         );
       }
+      const cutover = await this.activeCutoverSeal();
+      if (cutover) {
+        return Response.json(
+          {
+            success: false,
+            code: cutover.committed
+              ? "personal_eliza_dedicated"
+              : "personal_cutover_in_progress",
+          },
+          { status: cutover.committed ? 409 : 423 },
+        );
+      }
+      if (await this.activeProvisionalConvergenceReservation()) {
+        return Response.json(
+          { success: false, code: "provisional_convergence_in_progress" },
+          { status: 423 },
+        );
+      }
       const alias =
         await this.state.storage.get<StoredProvisionalConvergenceAlias>(
           PROVISIONAL_CONVERGENCE_ALIAS_KEY,
@@ -648,7 +738,6 @@ export class SharedRuntimeConversation {
         if (
           alias.token !== payload.token ||
           alias.targetAgentId !== payload.targetAgentId ||
-          alias.targetRoomId !== payload.targetRoomId ||
           alias.targetUserId !== payload.targetUserId ||
           alias.targetOrganizationId !== payload.targetOrganizationId
         ) {
@@ -668,7 +757,6 @@ export class SharedRuntimeConversation {
         existing &&
         (existing.token !== payload.token ||
           existing.targetAgentId !== payload.targetAgentId ||
-          existing.targetRoomId !== payload.targetRoomId ||
           existing.targetUserId !== payload.targetUserId ||
           existing.targetOrganizationId !== payload.targetOrganizationId)
       ) {
@@ -683,7 +771,6 @@ export class SharedRuntimeConversation {
           ...new Set([...(existing?.holderIds ?? []), payload.holderId]),
         ],
         targetAgentId: payload.targetAgentId,
-        targetRoomId: payload.targetRoomId,
         targetUserId: payload.targetUserId,
         targetOrganizationId: payload.targetOrganizationId,
         expiresAt: Math.max(
@@ -698,7 +785,7 @@ export class SharedRuntimeConversation {
         );
         return await sharedRuntimeChatService.getHistory(
           payload.agentId,
-          payload.roomId,
+          payload.agentId,
           historyStore,
         );
       });
@@ -708,14 +795,37 @@ export class SharedRuntimeConversation {
       if (
         typeof payload.agentId !== "string" ||
         !payload.agentId.startsWith("personal:") ||
-        payload.roomId !== payload.agentId ||
         typeof payload.token !== "string" ||
         payload.token.length === 0 ||
+        typeof payload.holderId !== "string" ||
+        payload.holderId.length === 0 ||
         !Array.isArray(payload.history)
       ) {
         return Response.json(
           { success: false, code: "invalid_provisional_convergence" },
           { status: 400 },
+        );
+      }
+      const cutover = await this.activeCutoverSeal();
+      if (cutover) {
+        return Response.json(
+          {
+            success: false,
+            code: cutover.committed
+              ? "personal_eliza_dedicated"
+              : "personal_cutover_in_progress",
+          },
+          { status: cutover.committed ? 409 : 423 },
+        );
+      }
+      const reservation = await this.activeProvisionalConvergenceReservation();
+      if (
+        reservation?.token !== payload.token ||
+        !reservation.holderIds.includes(payload.holderId)
+      ) {
+        return Response.json(
+          { success: false, code: "provisional_convergence_not_reserved" },
+          { status: 409 },
         );
       }
       const markerKey = `${PROVISIONAL_CONVERGENCE_IMPORT_PREFIX}${payload.token}`;
@@ -724,7 +834,7 @@ export class SharedRuntimeConversation {
       }
       await historyStore.merge(
         payload.agentId,
-        payload.roomId,
+        payload.agentId,
         payload.history,
       );
       await this.state.storage.put(markerKey, true);
@@ -736,7 +846,6 @@ export class SharedRuntimeConversation {
         payload.token.length === 0 ||
         typeof payload.targetAgentId !== "string" ||
         !payload.targetAgentId.startsWith("personal:") ||
-        payload.targetRoomId !== payload.targetAgentId ||
         typeof payload.targetUserId !== "string" ||
         payload.targetUserId.length === 0 ||
         typeof payload.targetOrganizationId !== "string" ||
@@ -755,7 +864,6 @@ export class SharedRuntimeConversation {
         existingAlias &&
         (existingAlias.token !== payload.token ||
           existingAlias.targetAgentId !== payload.targetAgentId ||
-          existingAlias.targetRoomId !== payload.targetRoomId ||
           existingAlias.targetUserId !== payload.targetUserId ||
           existingAlias.targetOrganizationId !== payload.targetOrganizationId)
       ) {
@@ -772,7 +880,6 @@ export class SharedRuntimeConversation {
         !activeSeal ||
         activeSeal.token !== payload.token ||
         activeSeal.targetAgentId !== payload.targetAgentId ||
-        activeSeal.targetRoomId !== payload.targetRoomId ||
         activeSeal.targetUserId !== payload.targetUserId ||
         activeSeal.targetOrganizationId !== payload.targetOrganizationId
       ) {
@@ -784,7 +891,6 @@ export class SharedRuntimeConversation {
       await this.state.storage.put(PROVISIONAL_CONVERGENCE_ALIAS_KEY, {
         token: payload.token,
         targetAgentId: payload.targetAgentId,
-        targetRoomId: payload.targetRoomId,
         targetUserId: payload.targetUserId,
         targetOrganizationId: payload.targetOrganizationId,
       } satisfies StoredProvisionalConvergenceAlias);
@@ -817,6 +923,25 @@ export class SharedRuntimeConversation {
           } satisfies StoredProvisionalConvergenceSeal);
         }
       }
+      const reservation = await this.activeProvisionalConvergenceReservation();
+      if (reservation?.token === payload.token) {
+        const holderIds = reservation.holderIds.filter(
+          (holderId) => holderId !== payload.holderId,
+        );
+        if (holderIds.length === 0) {
+          await this.state.storage.delete(
+            PROVISIONAL_CONVERGENCE_RESERVATION_KEY,
+          );
+        } else {
+          await this.state.storage.put(
+            PROVISIONAL_CONVERGENCE_RESERVATION_KEY,
+            {
+              ...reservation,
+              holderIds,
+            } satisfies StoredProvisionalConvergenceReservation,
+          );
+        }
+      }
       return Response.json({ success: true });
     }
 
@@ -832,7 +957,9 @@ export class SharedRuntimeConversation {
       );
     }
     const convergenceSeal = await this.activeProvisionalConvergenceSeal();
-    if (convergenceSeal) {
+    const convergenceReservation =
+      await this.activeProvisionalConvergenceReservation();
+    if (convergenceSeal || convergenceReservation) {
       return Response.json(
         {
           success: false,

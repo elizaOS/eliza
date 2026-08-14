@@ -15,6 +15,7 @@ process.env.MOCK_REDIS = "1";
 import { pushSchema } from "drizzle-kit/api";
 import { eq, sql } from "drizzle-orm";
 import { closeDatabaseConnectionsForTests, dbWrite } from "../../client";
+import { sqlRows } from "../../execute-helpers";
 import { organizationBalanceRevisionSequence, organizations } from "../../schemas/organizations";
 import { personalAccountConvergences } from "../../schemas/personal-account-convergences";
 import { userIdentities } from "../../schemas/user-identities";
@@ -114,8 +115,20 @@ describe("UsersRepository phone + Telegram provisional convergence (real PGlite)
       await dbWrite.execute(sql`
         CREATE TABLE IF NOT EXISTS user_sessions (
           id uuid PRIMARY KEY,
-          organization_id uuid NOT NULL,
-          user_id uuid NOT NULL
+          organization_id uuid NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+          user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE
+        )
+      `);
+      await dbWrite.execute(sql`
+        CREATE TABLE IF NOT EXISTS payment_requests (
+          id uuid PRIMARY KEY,
+          payer_user_id uuid REFERENCES users(id) ON DELETE SET NULL
+        )
+      `);
+      await dbWrite.execute(sql`
+        CREATE TABLE IF NOT EXISTS ad_report_shares (
+          id uuid PRIMARY KEY,
+          created_by_user_id uuid
         )
       `);
     } catch (error) {
@@ -136,6 +149,8 @@ describe("UsersRepository phone + Telegram provisional convergence (real PGlite)
     await dbWrite.execute(sql`DELETE FROM api_keys`);
     await dbWrite.execute(sql`DELETE FROM conversations`);
     await dbWrite.execute(sql`DELETE FROM user_sessions`);
+    await dbWrite.execute(sql`DELETE FROM payment_requests`);
+    await dbWrite.execute(sql`DELETE FROM ad_report_shares`);
     await dbWrite.delete(personalAccountConvergences);
     await dbWrite.delete(userIdentities);
     await dbWrite.delete(users);
@@ -318,5 +333,66 @@ describe("UsersRepository phone + Telegram provisional convergence (real PGlite)
     ).toBe("identity_projection_conflict");
     expect(await dbWrite.select().from(users)).toHaveLength(2);
     expect(await dbWrite.select().from(organizations)).toHaveLength(2);
+  });
+
+  test("preserves FK and registered provenance instead of nulling or deleting it", async () => {
+    const paymentPair = await createPair();
+    const paymentProof = proofFor(paymentPair);
+    const paymentRequestId = crypto.randomUUID();
+    await dbWrite.execute(
+      sql`INSERT INTO payment_requests (id, payer_user_id)
+          VALUES (${paymentRequestId}, ${paymentPair.phone.user.id})`,
+    );
+
+    const paymentInspection =
+      await usersRepository.inspectPhoneTelegramPersonalAccountConvergence(paymentProof);
+    expect(paymentInspection.status).toBe("phone_account_mature");
+    const paymentCommit = await usersRepository.commitPhoneTelegramPersonalAccountConvergence({
+      ...paymentProof,
+      sourceUserId: paymentPair.phone.user.id,
+      sourceOrganizationId: paymentPair.phone.organization.id,
+      sourceAgentId: "personal:payment-source",
+      targetUserId: paymentPair.telegram.user.id,
+      targetOrganizationId: paymentPair.telegram.organization.id,
+      targetAgentId: "personal:payment-target",
+      token: `phone-telegram:${paymentPair.phone.user.id}:${paymentPair.telegram.user.id}`,
+    });
+    expect(paymentCommit.status).toBe("phone_account_mature");
+    const [paymentRequest] = await sqlRows<{ payer_user_id: string }>(
+      dbWrite,
+      sql`SELECT payer_user_id FROM payment_requests WHERE id = ${paymentRequestId}`,
+    );
+    expect(paymentRequest).toEqual({ payer_user_id: paymentPair.phone.user.id });
+    expect(await usersRepository.findById(paymentPair.phone.user.id)).toBeDefined();
+
+    await dbWrite.execute(sql`DELETE FROM payment_requests`);
+    const registeredPair = await createPair();
+    const registeredProof = proofFor(registeredPair);
+    const reportId = crypto.randomUUID();
+    await dbWrite.execute(
+      sql`INSERT INTO ad_report_shares (id, created_by_user_id)
+          VALUES (${reportId}, ${registeredPair.phone.user.id})`,
+    );
+
+    const registeredInspection =
+      await usersRepository.inspectPhoneTelegramPersonalAccountConvergence(registeredProof);
+    expect(registeredInspection.status).toBe("phone_account_mature");
+    const registeredCommit = await usersRepository.commitPhoneTelegramPersonalAccountConvergence({
+      ...registeredProof,
+      sourceUserId: registeredPair.phone.user.id,
+      sourceOrganizationId: registeredPair.phone.organization.id,
+      sourceAgentId: "personal:registered-source",
+      targetUserId: registeredPair.telegram.user.id,
+      targetOrganizationId: registeredPair.telegram.organization.id,
+      targetAgentId: "personal:registered-target",
+      token: `phone-telegram:${registeredPair.phone.user.id}:${registeredPair.telegram.user.id}`,
+    });
+    expect(registeredCommit.status).toBe("phone_account_mature");
+    const [report] = await sqlRows<{ created_by_user_id: string }>(
+      dbWrite,
+      sql`SELECT created_by_user_id FROM ad_report_shares WHERE id = ${reportId}`,
+    );
+    expect(report).toEqual({ created_by_user_id: registeredPair.phone.user.id });
+    expect(await usersRepository.findById(registeredPair.phone.user.id)).toBeDefined();
   });
 });

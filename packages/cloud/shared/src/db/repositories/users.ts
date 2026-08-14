@@ -339,6 +339,31 @@ function quotePostgresIdentifier(value: string): string {
   return `"${value.replaceAll('"', '""')}"`;
 }
 
+type ProvisionalOwnershipKind = "user" | "organization";
+
+interface ProvisionalOwnershipReference {
+  table_schema: string;
+  table_name: string;
+  column_name: string;
+  owner_kind: ProvisionalOwnershipKind;
+  native_type: "text" | "uuid";
+}
+
+// These columns intentionally retain ownership provenance without a database
+// FK. Everything else is discovered from pg_constraint so new FK names such as
+// payer_user_id are covered without relying on naming conventions.
+const PROVISIONAL_OWNERSHIP_COLUMNS_WITHOUT_FOREIGN_KEYS = [
+  ["ad_report_shares", "created_by_user_id", "user"],
+  ["alb_priorities", "user_id", "user"],
+  ["app_usage_projections", "user_id", "user"],
+  ["eliza_room_characters", "user_id", "user"],
+  ["invoices", "organization_id", "organization"],
+  ["oauth_success_proof_tickets", "organization_id", "organization"],
+  ["oauth_success_proof_tickets", "user_id", "user"],
+  ["phone_gateway_devices", "organization_id", "organization"],
+  ["secret_audit_log", "organization_id", "organization"],
+] as const satisfies readonly (readonly [string, string, ProvisionalOwnershipKind])[];
+
 async function findUnexpectedProvisionalAccountState(
   db: SqlExecutor,
   input: {
@@ -348,49 +373,115 @@ async function findUnexpectedProvisionalAccountState(
     targetOrganizationId: string;
   },
 ): Promise<"phone" | "telegram" | undefined> {
-  const references = await sqlRows<{
-    table_schema: string;
-    table_name: string;
-    column_name: "organization_id" | "user_id";
-  }>(
+  const foreignKeyReferences = await sqlRows<ProvisionalOwnershipReference>(
     db,
     sql`
-      SELECT DISTINCT
-        namespace.nspname AS table_schema,
-        relation.relname AS table_name,
-        attribute.attname AS column_name
-      FROM pg_class relation
-      INNER JOIN pg_namespace namespace ON namespace.oid = relation.relnamespace
-      INNER JOIN pg_attribute attribute ON attribute.attrelid = relation.oid
-      WHERE namespace.nspname = 'public'
-        AND relation.relkind IN ('r', 'p')
-        AND attribute.attnum > 0
-        AND NOT attribute.attisdropped
-        AND attribute.attname IN ('organization_id', 'user_id')
-        AND relation.relname NOT IN ('users', 'user_identities')
-      ORDER BY namespace.nspname, relation.relname, attribute.attname
+      SELECT
+        source_namespace.nspname AS table_schema,
+        source_relation.relname AS table_name,
+        source_attribute.attname AS column_name,
+        CASE target_relation.relname
+          WHEN 'users' THEN 'user'
+          WHEN 'organizations' THEN 'organization'
+        END AS owner_kind,
+        format_type(source_attribute.atttypid, source_attribute.atttypmod) AS native_type
+      FROM pg_constraint ownership_fk
+      INNER JOIN pg_class source_relation
+        ON source_relation.oid = ownership_fk.conrelid
+      INNER JOIN pg_namespace source_namespace
+        ON source_namespace.oid = source_relation.relnamespace
+      INNER JOIN pg_class target_relation
+        ON target_relation.oid = ownership_fk.confrelid
+      INNER JOIN pg_namespace target_namespace
+        ON target_namespace.oid = target_relation.relnamespace
+      INNER JOIN pg_attribute source_attribute
+        ON source_attribute.attrelid = source_relation.oid
+        AND source_attribute.attnum = ownership_fk.conkey[1]
+      INNER JOIN pg_attribute target_attribute
+        ON target_attribute.attrelid = target_relation.oid
+        AND target_attribute.attnum = ownership_fk.confkey[1]
+      WHERE ownership_fk.contype = 'f'
+        AND array_length(ownership_fk.conkey, 1) = 1
+        AND array_length(ownership_fk.confkey, 1) = 1
+        AND source_namespace.nspname = 'public'
+        AND target_namespace.nspname = 'public'
+        AND target_relation.relname IN ('users', 'organizations')
+        AND source_relation.relname NOT IN ('users', 'user_identities')
+        AND source_attribute.atttypid = target_attribute.atttypid
+      ORDER BY source_namespace.nspname, source_relation.relname, source_attribute.attname
     `,
   );
 
-  for (const reference of references) {
+  const registryValues = sql.join(
+    PROVISIONAL_OWNERSHIP_COLUMNS_WITHOUT_FOREIGN_KEYS.map(
+      ([tableName, columnName, ownerKind]) => sql`(${tableName}, ${columnName}, ${ownerKind})`,
+    ),
+    sql`, `,
+  );
+  const registeredReferences = await sqlRows<ProvisionalOwnershipReference>(
+    db,
+    sql`
+      WITH registered(table_name, column_name, owner_kind) AS (
+        VALUES ${registryValues}
+      )
+      SELECT
+        namespace.nspname AS table_schema,
+        relation.relname AS table_name,
+        attribute.attname AS column_name,
+        registered.owner_kind,
+        format_type(attribute.atttypid, attribute.atttypmod) AS native_type
+      FROM registered
+      INNER JOIN pg_namespace namespace ON namespace.nspname = 'public'
+      INNER JOIN pg_class relation
+        ON relation.relnamespace = namespace.oid
+        AND relation.relname = registered.table_name
+        AND relation.relkind IN ('r', 'p')
+      INNER JOIN pg_attribute attribute
+        ON attribute.attrelid = relation.oid
+        AND attribute.attname = registered.column_name
+        AND attribute.attnum > 0
+        AND NOT attribute.attisdropped
+      WHERE format_type(attribute.atttypid, attribute.atttypmod) IN ('text', 'uuid')
+        AND NOT EXISTS (
+          SELECT 1
+          FROM pg_constraint ownership_fk
+          INNER JOIN pg_class target_relation
+            ON target_relation.oid = ownership_fk.confrelid
+          INNER JOIN pg_namespace target_namespace
+            ON target_namespace.oid = target_relation.relnamespace
+          WHERE ownership_fk.contype = 'f'
+            AND ownership_fk.conrelid = relation.oid
+            AND attribute.attnum = ANY(ownership_fk.conkey)
+            AND target_namespace.nspname = 'public'
+            AND target_relation.relname IN ('users', 'organizations')
+        )
+      ORDER BY relation.relname, attribute.attname
+    `,
+  );
+
+  for (const reference of [...foreignKeyReferences, ...registeredReferences]) {
     const qualifiedTable = `${quotePostgresIdentifier(reference.table_schema)}.${quotePostgresIdentifier(reference.table_name)}`;
     const column = quotePostgresIdentifier(reference.column_name);
     const sourceId =
-      reference.column_name === "organization_id" ? input.sourceOrganizationId : input.sourceUserId;
+      reference.owner_kind === "organization" ? input.sourceOrganizationId : input.sourceUserId;
     const targetId =
-      reference.column_name === "organization_id" ? input.targetOrganizationId : input.targetUserId;
+      reference.owner_kind === "organization" ? input.targetOrganizationId : input.targetUserId;
+    const sourceValue =
+      reference.native_type === "uuid" ? sql`CAST(${sourceId} AS uuid)` : sql`${sourceId}`;
+    const targetValue =
+      reference.native_type === "uuid" ? sql`CAST(${targetId} AS uuid)` : sql`${targetId}`;
     const [occupied] = await sqlRows<{ source_found: boolean; target_found: boolean }>(
       db,
       sql`
         SELECT
           EXISTS (
             SELECT 1 FROM ${sql.raw(qualifiedTable)}
-            WHERE ${sql.raw(column)}::text = ${sourceId}
+            WHERE ${sql.raw(column)} = ${sourceValue}
             LIMIT 1
           ) AS source_found,
           EXISTS (
             SELECT 1 FROM ${sql.raw(qualifiedTable)}
-            WHERE ${sql.raw(column)}::text = ${targetId}
+            WHERE ${sql.raw(column)} = ${targetValue}
             LIMIT 1
           ) AS target_found
       `,

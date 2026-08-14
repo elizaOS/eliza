@@ -190,33 +190,37 @@ describe("shared conversation coordinator", () => {
       token: "phone-telegram:source:target",
       holderId: "login-attempt-1",
       sourceAgentId: "personal:source",
-      sourceRoomId: "personal:source",
       targetAgentId: "personal:target",
-      targetRoomId: "personal:target",
       targetUserId: "target-user",
       targetOrganizationId: "target-org",
       leaseMs: 60_000,
     };
 
     const prepared = await preparePersonalProvisionalHistoryConvergence(plan, { namespace });
-    expect(operations).toEqual(["provisional-convergence-seal"]);
+    expect(operations).toEqual(["provisional-convergence-reserve", "provisional-convergence-seal"]);
     expect(prepared).toEqual({
       alreadyAliased: false,
       history: [{ id: "phone-1", role: "user", content: "remember this" }],
     });
 
     // The account transaction is the caller-controlled boundary between these
-    // two calls. Nothing reaches the target object during preparation.
+    // calls. Preparation reserves the target but cannot mutate its history.
     await commitPersonalProvisionalHistoryConvergence(plan, prepared, { namespace });
     expect(operations).toEqual([
+      "provisional-convergence-reserve",
       "provisional-convergence-seal",
       "provisional-convergence-import",
       "provisional-convergence-alias",
+      "provisional-convergence-release",
+      "provisional-convergence-release",
     ]);
     expect(names).toEqual([
+      "personal:target:personal:target",
       "personal:source:personal:source",
       "personal:target:personal:target",
       "personal:source:personal:source",
+      "personal:source:personal:source",
+      "personal:target:personal:target",
     ]);
   });
 
