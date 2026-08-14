@@ -166,14 +166,13 @@ app.post("/", async (c) => {
     expSeconds: minted.claims.exp,
   });
   publicUrl.pathname = "/api/v1/twilio/voice/media";
-  publicUrl.search = new URLSearchParams({
-    sessionId: minted.claims.sessionId,
-    token: minted.token,
-  }).toString();
+  publicUrl.search = "";
   publicUrl.protocol = publicUrl.protocol === "http:" ? "ws:" : "wss:";
   return new Response(
     buildRealtimeVoiceTwiML({
       streamUrl: publicUrl.toString(),
+      sessionId: minted.claims.sessionId,
+      token: minted.token,
       greeting: "Hi, you're connected to Eliza.",
     }),
     {

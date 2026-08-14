@@ -22,7 +22,7 @@ describe("Twilio voice route boundaries", () => {
     expect(response.status).toBe(426);
   });
 
-  test("media rejects an unsigned upgrade before opening providers", async () => {
+  test("media refuses an upgrade when provider configuration is absent", async () => {
     const response = await media.request(
       "http://local/?sessionId=11111111-1111-4111-8111-111111111111&token=bad",
       { headers: { Upgrade: "websocket" } },
@@ -31,9 +31,9 @@ describe("Twilio voice route boundaries", () => {
         ELIZA_APP_TWILIO_AUTH_TOKEN: "secret",
       } as never,
     );
-    expect(response.status).toBe(403);
+    expect(response.status).toBe(503);
     expect((await response.json()) as unknown).toEqual({
-      error: "invalid stream token",
+      error: "voice realtime session misconfigured",
     });
   });
 });

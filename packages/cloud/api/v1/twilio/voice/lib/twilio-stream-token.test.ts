@@ -23,6 +23,7 @@ describe("Twilio stream token", () => {
       "secret",
       () => 1_000_000,
     );
+    expect(minted.token.length).toBeLessThan(500);
     expect(
       await verifyTwilioStreamToken(minted.token, "secret", () => 1_001_000),
     ).toEqual(minted.claims);

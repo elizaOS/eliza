@@ -116,7 +116,7 @@ app.get("/", async (c) => {
     return c.json({ error: "expected a websocket upgrade" }, 426);
   }
 
-  const authToken =
+  const streamSigningSecret = (
     (
       c.env as unknown as {
         TWILIO_AUTH_TOKEN?: string;
@@ -124,15 +124,10 @@ app.get("/", async (c) => {
       }
     ).TWILIO_AUTH_TOKEN ??
     (c.env as unknown as { ELIZA_APP_TWILIO_AUTH_TOKEN?: string })
-      .ELIZA_APP_TWILIO_AUTH_TOKEN;
-  const requestUrl = new URL(c.req.url);
-  const requestedSessionId = requestUrl.searchParams.get("sessionId") ?? "";
-  const token = requestUrl.searchParams.get("token") ?? "";
-  const claims = authToken
-    ? await verifyTwilioStreamToken(token, authToken.trim())
-    : null;
-  if (!claims || claims.sessionId !== requestedSessionId) {
-    return c.json({ error: "invalid stream token" }, 403);
+      .ELIZA_APP_TWILIO_AUTH_TOKEN
+  )?.trim();
+  if (!streamSigningSecret) {
+    return c.json({ error: "voice realtime session misconfigured" }, 503);
   }
   const rawRedis = buildRedisClient(
     env as unknown as Parameters<typeof buildRedisClient>[0],
@@ -172,16 +167,6 @@ app.get("/", async (c) => {
     logger.error("[twilio-media] provider/config missing; refusing upgrade");
     return c.json({ error: "voice realtime session misconfigured" }, 503);
   }
-  if (
-    !(await claimVoiceSessionToken(
-      claims.jti,
-      claims.exp,
-      rawRedis ?? undefined,
-    ))
-  ) {
-    return c.json({ error: "stream token already used" }, 409);
-  }
-
   const WebSocketPairCtor = (
     globalThis as { WebSocketPair?: new () => [unknown, unknown] }
   ).WebSocketPair;
@@ -280,6 +265,30 @@ app.get("/", async (c) => {
     ) {
       logger.warn("[twilio-media] unsupported media format", { format });
       server.close(1003, "unsupported media format");
+      closed = true;
+      return;
+    }
+    const presentedToken = event.start.customParameters.token;
+    const requestedSessionId = event.start.customParameters.sessionId;
+    const claims =
+      presentedToken && requestedSessionId
+        ? await verifyTwilioStreamToken(presentedToken, streamSigningSecret)
+        : null;
+    if (!claims || claims.sessionId !== requestedSessionId) {
+      logger.warn("[twilio-media] invalid stream bootstrap");
+      server.close(1008, "invalid stream bootstrap");
+      closed = true;
+      return;
+    }
+    if (
+      !(await claimVoiceSessionToken(
+        claims.jti,
+        claims.exp,
+        rawRedis ?? undefined,
+      ))
+    ) {
+      logger.warn("[twilio-media] replayed stream bootstrap");
+      server.close(1008, "stream bootstrap already used");
       closed = true;
       return;
     }

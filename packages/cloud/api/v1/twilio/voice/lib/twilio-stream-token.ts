@@ -23,6 +23,20 @@ const ClaimsSchema = z.object({
   calledNumber: z.string().min(1),
 });
 
+const WireClaimsSchema = z.object({
+  v: z.literal(TOKEN_VERSION),
+  s: z.string().uuid(),
+  j: z.string().uuid(),
+  e: z.number().int().positive(),
+  a: z.string().min(1),
+  c: z.string().min(1),
+  o: z.string().min(1),
+  u: z.string().min(1),
+  g: z.string().min(1),
+  n: z.string().uuid(),
+  p: z.string().min(1),
+});
+
 export type TwilioStreamTokenClaims = z.infer<typeof ClaimsSchema>;
 
 function encodeBase64Url(bytes: Uint8Array): string {
@@ -68,7 +82,21 @@ export async function mintTwilioStreamToken(
     exp: Math.floor(now() / 1_000) + TOKEN_TTL_SECONDS,
   });
   const payload = encodeBase64Url(
-    new TextEncoder().encode(JSON.stringify(claims)),
+    new TextEncoder().encode(
+      JSON.stringify({
+        v: claims.v,
+        s: claims.sessionId,
+        j: claims.jti,
+        e: claims.exp,
+        a: claims.accountSid,
+        c: claims.callSid,
+        o: claims.organizationId,
+        u: claims.userId,
+        g: claims.agentId,
+        n: claims.conversationId,
+        p: claims.calledNumber,
+      }),
+    ),
   );
   const signature = new Uint8Array(
     await crypto.subtle.sign(
@@ -95,9 +123,23 @@ export async function verifyTwilioStreamToken(
       new TextEncoder().encode(payload),
     );
     if (!valid) return null;
-    const parsed = ClaimsSchema.safeParse(
+    const wire = WireClaimsSchema.safeParse(
       JSON.parse(new TextDecoder().decode(decodeBase64Url(payload))),
     );
+    if (!wire.success) return null;
+    const parsed = ClaimsSchema.safeParse({
+      v: wire.data.v,
+      sessionId: wire.data.s,
+      jti: wire.data.j,
+      exp: wire.data.e,
+      accountSid: wire.data.a,
+      callSid: wire.data.c,
+      organizationId: wire.data.o,
+      userId: wire.data.u,
+      agentId: wire.data.g,
+      conversationId: wire.data.n,
+      calledNumber: wire.data.p,
+    });
     if (!parsed.success) return null;
     const nowSeconds = Math.floor(now() / 1_000);
     if (parsed.data.exp + CLOCK_SKEW_SECONDS < nowSeconds) return null;
