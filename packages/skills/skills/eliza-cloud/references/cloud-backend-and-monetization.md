@@ -132,7 +132,7 @@ proxy only forwards unexpired hostnames minted by the Cloud Worker.
 
 Prefer these implementation surfaces:
 
-- `packages/cloud/shared/src/db/schemas/app-billing.ts`
+- `packages/cloud/shared/src/db/schemas/payment-requests.ts`
 - `packages/cloud/shared/src/db/schemas/apps.ts`
 - `packages/cloud/shared/src/db/schemas/redeemable-earnings.ts`
 - `packages/cloud/shared/src/lib/services/app-charge-requests.ts`
