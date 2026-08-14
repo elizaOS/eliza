@@ -63,6 +63,56 @@ function makeRuntime(opts: RuntimeMockOpts): {
 }
 
 describe("embedRecallQuery — resolve / fail-open", () => {
+	test("an unregistered embedding capability returns null without diagnostics", async () => {
+		const runtime = new AgentRuntime({
+			character: {
+				name: "RecallWithoutEmbeddingsAgent",
+				bio: "Exercises lexical recall when embeddings are not installed.",
+				settings: {},
+			},
+			adapter: new InMemoryDatabaseAdapter(),
+			logLevel: "fatal",
+		});
+		const useModel = vi.spyOn(runtime, "useModel");
+		const reportError = vi.spyOn(runtime, "reportError");
+
+		await expect(
+			embedRecallQuery(runtime, "keyword fallback"),
+		).resolves.toBeNull();
+		expect(useModel).not.toHaveBeenCalled();
+		expect(reportError).not.toHaveBeenCalled();
+		expect(runtime.getRecentReportedErrors()).toEqual([]);
+	});
+
+	test("a canonically disabled embedding capability returns null without diagnostics", async () => {
+		const runtime = new AgentRuntime({
+			character: {
+				name: "RecallWithDisabledEmbeddingsAgent",
+				bio: "Exercises canonical service-routing capability ownership.",
+				settings: {},
+			},
+			adapter: new InMemoryDatabaseAdapter(),
+			settings: { ELIZA_CANONICAL_EMBEDDINGS_ENABLED: "false" },
+			logLevel: "fatal",
+		});
+		const handler = vi.fn(async () => [0.1, 0.2]);
+		runtime.registerModel(
+			ModelType.TEXT_EMBEDDING,
+			handler,
+			"disabled-test-provider",
+			100,
+		);
+		const reportError = vi.spyOn(runtime, "reportError");
+
+		await expect(
+			embedRecallQuery(runtime, "keyword fallback"),
+		).resolves.toBeNull();
+		expect(runtime.getModel(ModelType.TEXT_EMBEDDING)).toBeUndefined();
+		expect(handler).not.toHaveBeenCalled();
+		expect(reportError).not.toHaveBeenCalled();
+		expect(runtime.getRecentReportedErrors()).toEqual([]);
+	});
+
 	test("returns the vector when the embed resolves", async () => {
 		const { runtime } = makeRuntime({
 			embed: async () => [0.1, 0.2, 0.3],
