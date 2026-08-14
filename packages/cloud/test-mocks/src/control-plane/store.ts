@@ -115,8 +115,6 @@ export interface ImportedMessage {
  */
 export interface ConversationImportResult {
   conversationId: string;
-  complete: true;
-  sourceMessageCount: number;
   inserted: number;
   skipped: number;
   alreadyPopulated?: boolean;
@@ -343,8 +341,6 @@ export class ControlPlaneStore {
     if (existing && existing.length > 0) {
       return {
         conversationId,
-        complete: true,
-        sourceMessageCount: messages.length,
         inserted: 0,
         skipped: messages.length,
         alreadyPopulated: true,
@@ -353,8 +349,6 @@ export class ControlPlaneStore {
     this.conversations.set(key, [...messages]);
     return {
       conversationId,
-      complete: true,
-      sourceMessageCount: messages.length,
       inserted: messages.length,
       skipped: 0,
     };

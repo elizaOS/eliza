@@ -44,7 +44,7 @@ app.patch("/", async (c) => {
       sharedRestConversationUpdate(
         r.agentId,
         r.agent.agent_name ?? "Eliza",
-        ("createdAt" in r ? r.createdAt : r.agent.created_at).toISOString(),
+        r.agent.created_at.toISOString(),
         body,
       ),
     ),

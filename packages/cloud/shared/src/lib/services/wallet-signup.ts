@@ -13,9 +13,35 @@ import type { UserWithOrganization } from "../../db/repositories/users";
 import { usersRepository } from "../../db/repositories/users";
 import { organizations } from "../../db/schemas/organizations";
 import { users } from "../../db/schemas/users";
+import { getClientIp } from "../runtime/request-context";
+import { logger } from "../utils/logger";
+import { creditsService } from "./credits";
+import {
+  recordWelcomeBonusWithheldOnOrg,
+  runWithSignupGrantIpCapDetailed,
+  type SignupGrantWithheldReason,
+} from "./signup-grant-guard";
 import { usersService } from "./users";
 
+export const INITIAL_FREE_CREDITS = ((): number => {
+  const v = process.env.INITIAL_FREE_CREDITS;
+  if (v === undefined || v.trim() === "") return 5;
+  const trimmed = v.trim();
+  if (!/^\d+(?:\.\d+)?$/.test(trimmed)) {
+    throw new Error(`[WalletSignup] INITIAL_FREE_CREDITS must be a non-negative decimal`);
+  }
+  const n = Number(trimmed);
+  if (!Number.isFinite(n)) {
+    throw new Error(`[WalletSignup] INITIAL_FREE_CREDITS must be finite`);
+  }
+  return n;
+})();
+
 export interface FindOrCreateWalletOptions {
+  /** When true (default), grant INITIAL_FREE_CREDITS to new orgs. Set false for x402 topup so payment-only flows don't double-grant. */
+  grantInitialCredits?: boolean;
+  /** When true, fail signup if the initial free-credit grant cannot be confirmed. */
+  requireInitialCredits?: boolean;
   /**
    * Whether the caller VERIFIED control of this address — a SIWE/SIWS signature
    * or the signed wallet-auth header — rather than merely being handed it in a
@@ -29,6 +55,111 @@ export interface FindOrCreateWalletOptions {
    * from the request and could otherwise mark a stranger's wallet verified.
    */
   walletProven?: boolean;
+}
+
+export interface InitialCreditGrantMetadata {
+  initialCreditsGranted: boolean;
+  initialFreeCreditsUsd: number;
+  welcomeBonusWithheld?: boolean;
+  welcomeBonusWithheldReason?: SignupGrantWithheldReason;
+  welcomeBonusWithheldMessage?: string;
+}
+
+async function grantWalletSignupCredits(params: {
+  organizationId: string;
+  amount: number;
+  chain: "evm" | "solana";
+  idempotencyKey: string;
+  requireInitialCredits: boolean;
+  db?: DbTransaction;
+}): Promise<InitialCreditGrantMetadata> {
+  if (params.amount <= 0) {
+    return { initialCreditsGranted: false, initialFreeCreditsUsd: 0 };
+  }
+
+  // Anti-sybil: withhold the bonus when this IP has hit the daily free-grant
+  // cap. The cap check and the grant run under a per-IP advisory lock so
+  // concurrent same-IP signups cannot each pass the cap before any commits.
+  const signupIp = getClientIp();
+  try {
+    const decision = await runWithSignupGrantIpCapDetailed(
+      signupIp,
+      async (tx) => {
+        await creditsService.addCredits({
+          organizationId: params.organizationId,
+          amount: params.amount,
+          description: "Wallet sign-up bonus",
+          stripePaymentIntentId: params.idempotencyKey,
+          metadata: { type: "wallet_signup", chain: params.chain, ip_address: signupIp },
+          db: tx,
+        });
+      },
+      params.db,
+    );
+    if (decision.withheldReason) {
+      // Record the withheld decision on the org (inside the signup transaction
+      // when one is open) so the agent credit gate can explain the $0-balance
+      // 402 this signup will hit later — see steward-sync's twin write.
+      await recordWelcomeBonusWithheldOnOrg(
+        params.organizationId,
+        { withheldReason: decision.withheldReason, withheldMessage: decision.withheldMessage },
+        params.db,
+      );
+    }
+    return {
+      initialCreditsGranted: decision.granted,
+      initialFreeCreditsUsd: decision.granted ? params.amount : 0,
+      ...(decision.withheldReason
+        ? {
+            welcomeBonusWithheld: true,
+            welcomeBonusWithheldReason: decision.withheldReason,
+            welcomeBonusWithheldMessage: decision.withheldMessage,
+          }
+        : {}),
+    };
+  } catch (err) {
+    // error-policy:J4 explicit user-facing degrade — wallet signup may continue
+    // without optional welcome credits only when the caller has not required the
+    // grant; metadata distinguishes the withheld bonus from a normal zero grant.
+    logger.error("[WalletSignup] Failed to grant initial credits:", err);
+    if (params.requireInitialCredits) {
+      throw err;
+    }
+    return {
+      initialCreditsGranted: false,
+      initialFreeCreditsUsd: 0,
+      welcomeBonusWithheld: true,
+      welcomeBonusWithheldMessage: "Initial credit grant failed; signup continued without bonus.",
+    };
+  }
+}
+
+export async function grantInitialCreditsToWalletAccount(params: {
+  organizationId: string;
+  walletAddress: string;
+  chain?: "evm";
+  requireInitialCredits?: boolean;
+}): Promise<{
+  initialCreditsGranted: boolean;
+  initialFreeCreditsUsd: number;
+  welcomeBonusWithheld?: boolean;
+  welcomeBonusWithheldReason?: SignupGrantWithheldReason;
+  welcomeBonusWithheldMessage?: string;
+}> {
+  const address = getAddress(params.walletAddress);
+  const normalized = address.toLowerCase();
+  const grantResult =
+    INITIAL_FREE_CREDITS > 0
+      ? await grantWalletSignupCredits({
+          organizationId: params.organizationId,
+          amount: INITIAL_FREE_CREDITS,
+          chain: params.chain ?? "evm",
+          idempotencyKey: `wallet-signup:evm:${normalized}`,
+          requireInitialCredits: params.requireInitialCredits === true,
+        })
+      : { initialCreditsGranted: false, initialFreeCreditsUsd: 0 };
+
+  return grantResult;
 }
 
 /**
@@ -130,8 +261,7 @@ async function raiseWalletProof(
 /**
  * Find user by wallet, or create org + user and return.
  * Address can be any case; stored and slug use lowercase.
- * Used by SIWE, wallet header auth, and x402 topup. Account creation is always
- * $0; purchased top-ups and explicit promotion codes are separate credit paths.
+ * Used by SIWE, wallet header auth, and x402 topup (with grantInitialCredits: false).
  *
  * `walletProven` decides `users.wallet_verified` and defaults to false — see the
  * option's own note for why the caller must say so explicitly.
@@ -142,11 +272,16 @@ export async function findOrCreateUserByWalletAddress(
 ): Promise<{
   user: UserWithOrganization;
   isNewAccount: boolean;
-  initialCreditsGranted?: false;
-  initialFreeCreditsUsd?: 0;
+  initialCreditsGranted?: boolean;
+  initialFreeCreditsUsd?: number;
+  welcomeBonusWithheld?: boolean;
+  welcomeBonusWithheldReason?: SignupGrantWithheldReason;
+  welcomeBonusWithheldMessage?: string;
 }> {
   const address = getAddress(walletAddress);
   const normalized = address.toLowerCase();
+  const grantInitialCredits = options?.grantInitialCredits !== false;
+  const requireInitialCredits = options?.requireInitialCredits === true;
   const walletProven = options?.walletProven === true;
 
   const existing = await usersService.getByWalletAddressWithOrganization(address);
@@ -168,6 +303,18 @@ export async function findOrCreateUserByWalletAddress(
         slug,
         name: `Wallet ${address.slice(0, 6)}...${address.slice(-4)}`,
       });
+      const initialCreditGrant =
+        grantInitialCredits && INITIAL_FREE_CREDITS > 0
+          ? await grantWalletSignupCredits({
+              organizationId: org.id,
+              amount: INITIAL_FREE_CREDITS,
+              chain: "evm",
+              idempotencyKey: `wallet-signup:evm:${normalized}`,
+              requireInitialCredits,
+              db: tx,
+            })
+          : { initialCreditsGranted: false, initialFreeCreditsUsd: 0 };
+
       const [created] = await tx
         .insert(users)
         .values({
@@ -197,8 +344,7 @@ export async function findOrCreateUserByWalletAddress(
       return {
         user,
         isNewAccount: true,
-        initialCreditsGranted: false,
-        initialFreeCreditsUsd: 0,
+        ...initialCreditGrant,
       };
     });
   } catch (e) {
@@ -222,13 +368,18 @@ export async function findOrCreateSolanaUserByWalletAddress(
 ): Promise<{
   user: UserWithOrganization;
   isNewAccount: boolean;
-  initialCreditsGranted?: false;
-  initialFreeCreditsUsd?: 0;
+  initialCreditsGranted?: boolean;
+  initialFreeCreditsUsd?: number;
+  welcomeBonusWithheld?: boolean;
+  welcomeBonusWithheldReason?: SignupGrantWithheldReason;
+  welcomeBonusWithheldMessage?: string;
 }> {
   const address = walletAddress.trim();
   if (!address) {
     throw new Error("Wallet address is required");
   }
+  const grantInitialCredits = options?.grantInitialCredits !== false;
+  const requireInitialCredits = options?.requireInitialCredits === true;
   const walletProven = options?.walletProven === true;
 
   const existing = await usersRepository.findBySolanaWalletAddressWithOrganization(address);
@@ -249,6 +400,18 @@ export async function findOrCreateSolanaUserByWalletAddress(
         slug,
         name: `Solana Wallet ${address.slice(0, 6)}...${address.slice(-4)}`,
       });
+      const initialCreditGrant =
+        grantInitialCredits && INITIAL_FREE_CREDITS > 0
+          ? await grantWalletSignupCredits({
+              organizationId: org.id,
+              amount: INITIAL_FREE_CREDITS,
+              chain: "solana",
+              idempotencyKey: `wallet-signup:solana:${address}`,
+              requireInitialCredits,
+              db: tx,
+            })
+          : { initialCreditsGranted: false, initialFreeCreditsUsd: 0 };
+
       const [created] = await tx
         .insert(users)
         .values({
@@ -275,8 +438,7 @@ export async function findOrCreateSolanaUserByWalletAddress(
       return {
         user,
         isNewAccount: true,
-        initialCreditsGranted: false,
-        initialFreeCreditsUsd: 0,
+        ...initialCreditGrant,
       };
     });
   } catch (e) {

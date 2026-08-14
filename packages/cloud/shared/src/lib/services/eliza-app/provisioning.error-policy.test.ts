@@ -11,6 +11,8 @@ const listByOrganization = mock();
 const createAgent = mock();
 const enqueueAgentProvision = mock();
 const deleteSandbox = mock();
+const hasElizaAppInitialFreeCredits = mock();
+const addCredits = mock();
 const checkAgentCreditGate = mock();
 
 const deleteSandboxSpy = spyOn(agentSandboxesRepository, "delete").mockImplementation(
@@ -30,6 +32,15 @@ const listByOrganizationSpy = spyOn(
   agentSandboxesRepository,
   "listByOrganization",
 ).mockImplementation((...args) => listByOrganization(...args) as never);
+
+mock.module("../../../db/repositories/credit-transactions", () => ({
+  creditTransactionsRepository: { hasElizaAppInitialFreeCredits },
+}));
+
+mock.module("../credits", () => ({
+  creditsService: { addCredits },
+  InsufficientCreditsError: class InsufficientCreditsError extends Error {},
+}));
 
 const createAgentSpy = spyOn(elizaSandboxService, "createAgent").mockImplementation(
   (...args) => createAgent(...args) as never,
@@ -57,10 +68,13 @@ describe("ensureElizaAppProvisioning error policy", () => {
     createAgent.mockReset();
     enqueueAgentProvision.mockReset();
     deleteSandbox.mockReset();
+    hasElizaAppInitialFreeCredits.mockReset();
+    addCredits.mockReset();
     checkAgentCreditGate.mockReset();
   });
 
   test("propagates the real enqueue failure even when the compensating delete ALSO fails (teardown never masks the cause)", async () => {
+    hasElizaAppInitialFreeCredits.mockResolvedValue(true);
     listByOrganization.mockResolvedValue([]);
     checkAgentCreditGate.mockResolvedValue({ allowed: true, balance: 5 });
     createAgent.mockResolvedValue({
@@ -83,6 +97,7 @@ describe("ensureElizaAppProvisioning error policy", () => {
   });
 
   test("still propagates enqueue failure and deletes the orphan when the teardown succeeds", async () => {
+    hasElizaAppInitialFreeCredits.mockResolvedValue(true);
     listByOrganization.mockResolvedValue([]);
     checkAgentCreditGate.mockResolvedValue({ allowed: true, balance: 5 });
     createAgent.mockResolvedValue({
@@ -99,6 +114,7 @@ describe("ensureElizaAppProvisioning error policy", () => {
   });
 
   test("designed-empty stays distinct from failure: a drained org returns insufficient_credits, never throws and never provisions", async () => {
+    hasElizaAppInitialFreeCredits.mockResolvedValue(true);
     listByOrganization.mockResolvedValue([]);
     checkAgentCreditGate.mockResolvedValue({ allowed: false, balance: 0 });
 
@@ -122,6 +138,7 @@ describe("ensureElizaAppProvisioning error policy", () => {
   test("an internal repository failure while reading status PROPAGATES (not swallowed to a healthy-empty status)", async () => {
     // A DB read failure must surface as a throw, never degrade to status:"none"
     // (which would look like a legitimately un-provisioned org).
+    hasElizaAppInitialFreeCredits.mockResolvedValue(true);
     listByOrganization.mockRejectedValue(new Error("sandbox lookup failed"));
 
     await expect(

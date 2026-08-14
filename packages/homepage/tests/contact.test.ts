@@ -50,7 +50,7 @@ describe("Eliza contact links", () => {
       `https://t.me/${ELIZA_TELEGRAM_BOT_USERNAME}`,
     );
     expect(buildElizaDiscordHref()).toBe(
-      `discord://-/users/${ELIZA_DISCORD_APPLICATION_ID}`,
+      `https://discord.com/users/${ELIZA_DISCORD_APPLICATION_ID}`,
     );
     expect(getTelegramBotId()).toBe(ELIZA_TELEGRAM_BOT_ID);
     expect(getDiscordBotApplicationId()).toBe(ELIZA_DISCORD_APPLICATION_ID);

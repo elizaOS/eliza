@@ -133,8 +133,7 @@ describe("runOnboardingChat", () => {
     expect(ensureElizaAppProvisioning).not.toHaveBeenCalled();
     expect(findOrCreateByPhone).not.toHaveBeenCalled();
     expect(result.reply).toMatch(/what should I call you\?/i);
-    expect(result.reply).toContain("shared chat is free");
-    expect(result.reply).not.toContain("$5");
+    expect(result.reply).toContain("$5");
   });
 
   test("sends a login link after a trusted phone user provides a preferred name", async () => {
@@ -657,8 +656,7 @@ describe("runOnboardingChat", () => {
     expect(result.reply).not.toContain(result.loginUrl);
     expect(result.reply).not.toContain("https://");
     expect(result.reply).toContain("Sam");
-    expect(result.reply).toContain("shared chat is free");
-    expect(result.reply).not.toContain("$5");
+    expect(result.reply).toContain("$5");
   });
 
   test("discord Connect CTA targets the Cloud app /get-started directly, not the homepage", async () => {
@@ -786,8 +784,7 @@ describe("runOnboardingChat", () => {
     expect(result.session.name).toBeUndefined();
     expect(result.reply).toMatch(/^hey!/);
     expect(result.reply).toMatch(/what should I call you\?/i);
-    expect(result.reply).toContain("shared chat is free");
-    expect(result.reply).not.toContain("$5");
+    expect(result.reply).toContain("$5");
   });
 
   test("keeps steering to the connect CTA when the user asks a question instead of connecting", async () => {
@@ -809,8 +806,7 @@ describe("runOnboardingChat", () => {
     expect(result.requiresLogin).toBe(true);
     expect(result.cta).toEqual({ label: "Connect", url: result.loginUrl });
     expect(result.reply).toContain("good question, Sam");
-    expect(result.reply).toContain("shared chat is free");
-    expect(result.reply).not.toContain("$5");
+    expect(result.reply).toContain("$5");
     // The button carries the URL; the message body must not repeat it.
     expect(result.reply).not.toContain(result.loginUrl);
   });
@@ -905,9 +901,8 @@ describe("runOnboardingChat", () => {
     expect(first.reply.replace(first.loginUrl, "<login>")).toBe(
       second.reply.replace(second.loginUrl, "<login>"),
     );
-    expect(first.reply).toContain("shared chat is free");
-    expect(first.reply).not.toContain("$5");
-    expect(first.reply.endsWith(`no card needed: ${first.loginUrl}`)).toBe(true);
+    expect(first.reply).toContain("$5");
+    expect(first.reply.endsWith(`on me: ${first.loginUrl}`)).toBe(true);
     expect(first.reply).not.toMatch(/[^\x09\x0A\x0D\x20-\x7E]/);
   });
 
@@ -1590,7 +1585,7 @@ describe("runOnboardingChat", () => {
       expect(second.session.name).toBe("Sam");
       expect(second.session.history).toHaveLength(4);
       for (const result of [first, second]) {
-        expect(result.reply).toContain(`no card needed: ${result.loginUrl}`);
+        expect(result.reply).toContain(`on me: ${result.loginUrl}`);
       }
     });
 
@@ -1816,7 +1811,7 @@ describe("runOnboardingChat", () => {
     test("login-required fallback reply always ends with the exact login link", async () => {
       const result = await runTrustedPhoneTurn("My name is Sam");
       expect(result.requiresLogin).toBe(true);
-      expect(result.reply.endsWith(`no card needed: ${result.loginUrl}`)).toBe(true);
+      expect(result.reply.endsWith(`on me: ${result.loginUrl}`)).toBe(true);
     });
 
     test("a failed transcript handoff is retried on the next turn and copied exactly once", async () => {

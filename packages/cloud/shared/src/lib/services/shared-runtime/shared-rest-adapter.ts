@@ -16,12 +16,12 @@
  * item, so no conversation index is needed.
  */
 
+import type { AgentSandbox } from "../../../db/repositories/agent-sandboxes";
 import type { RuntimeDurableObjectNamespace } from "../../../types/cloud-worker-env";
 import { InsufficientCreditsError } from "../../api/errors";
 import type { BridgeRequest } from "../eliza-sandbox-bridge";
 import { coordinateSharedBridge, coordinateSharedHistory } from "./conversation-coordinator";
 import type { SharedAgentCharacter } from "./run-shared-agent-turn";
-import type { SharedRuntimeAgent } from "./shared-runtime-agent";
 import { type BridgeExecutionContext, sharedRuntimeChatService } from "./shared-runtime-chat";
 
 const BRIDGE_INSUFFICIENT_CREDITS_CODE = -32002;
@@ -415,7 +415,7 @@ export function sharedRestAuthMe(
  * Postgres in the request.
  */
 export async function sharedRestCharacter(
-  agent: SharedRuntimeAgent,
+  agent: AgentSandbox,
   agentName: string,
   executionCtx: BridgeExecutionContext,
 ): Promise<{ character: SharedAgentCharacter; agentName: string }> {
@@ -509,14 +509,13 @@ export async function sharedRestMessagesGet(
  * turn that already landed (#18045); absent, each send gets a fresh id.
  */
 export async function sharedRestMessageSend(
-  agent: SharedRuntimeAgent,
+  agent: AgentSandbox,
   conversationId: string,
   text: string,
   agentName: string,
   executionCtx: BridgeExecutionContext,
   namespace: RuntimeDurableObjectNamespace,
   clientMessageId?: string,
-  funding: "organization-credits" | "platform" = "organization-credits",
 ): Promise<{ text: string; agentName: string }> {
   const rpc: BridgeRequest = {
     jsonrpc: "2.0",
@@ -532,11 +531,7 @@ export async function sharedRestMessageSend(
   };
   // The production coordinator and Worker lifetime are required together so a
   // missing binding cannot select an inline legacy bridge or billing path.
-  const response = await coordinateSharedBridge(agent, rpc, {
-    executionCtx,
-    namespace,
-    ...(funding === "platform" ? { agentKind: "personal" as const } : {}),
-  });
+  const response = await coordinateSharedBridge(agent, rpc, { executionCtx, namespace });
   if (response.error) {
     // A credit-reserve rejection is a permanent add-credits condition, not a
     // transient bridge failure — surface it typed so the route boundary can

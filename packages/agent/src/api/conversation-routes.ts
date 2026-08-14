@@ -94,7 +94,6 @@ import {
   persistAssistantConversationMemory,
   persistConversationMemory,
   persistExactConversationMemory,
-  persistExactConversationMemoryResult,
   readChatRequestPayload,
   releaseChatMessageId,
   resolveNoResponseFallback,
@@ -3234,13 +3233,7 @@ export async function handleConversationRoutes(
           typeof rec.timestamp === "number" && Number.isFinite(rec.timestamp)
             ? rec.timestamp
             : undefined;
-        const sourceId =
-          typeof rec.sourceId === "string" &&
-          rec.sourceId.trim() &&
-          rec.sourceId.length <= 256
-            ? rec.sourceId.trim()
-            : undefined;
-        return { role, text, timestamp, sourceId } as const;
+        return { role, text, timestamp } as const;
       })
       .filter(
         (
@@ -3249,22 +3242,8 @@ export async function handleConversationRoutes(
           readonly role: "user" | "assistant";
           readonly text: string;
           readonly timestamp: number | undefined;
-          readonly sourceId: string | undefined;
         } => m !== null,
       );
-    const sourceIds = importMessages.map((message) => message.sourceId);
-    const exactImport = sourceIds.length > 0 && sourceIds.every(Boolean);
-    if (sourceIds.some(Boolean) && !exactImport) {
-      error(res, "Every imported message must include a sourceId", 400);
-      return true;
-    }
-    if (
-      exactImport &&
-      new Set(sourceIds as string[]).size !== sourceIds.length
-    ) {
-      error(res, "Imported message sourceIds must be unique", 400);
-      return true;
-    }
 
     const runtime = state.runtime;
     if (!runtime) {
@@ -3345,31 +3324,26 @@ export async function handleConversationRoutes(
         return true;
       }
 
-      if (!exactImport) {
-        // Legacy imports predate source ids. Preserve their room-level
-        // idempotency while exact cloud cutovers use per-message identities.
-        const existing = await runtime.getMemories({
-          roomId: conv.roomId,
-          tableName: "messages",
-          limit: 1,
+      // Idempotency: a populated room means the handoff already ran (or the user
+      // chatted here). Never double-import.
+      const existing = await runtime.getMemories({
+        roomId: conv.roomId,
+        tableName: "messages",
+        limit: 1,
+      });
+      if (existing.length > 0) {
+        json(res, {
+          conversationId: convId,
+          inserted: 0,
+          skipped: importMessages.length,
+          alreadyPopulated: true,
         });
-        if (existing.length > 0) {
-          json(res, {
-            conversationId: convId,
-            complete: true,
-            sourceMessageCount: importMessages.length,
-            inserted: 0,
-            skipped: importMessages.length,
-            alreadyPopulated: true,
-          });
-          return true;
-        }
+        return true;
       }
 
       // Preserve original ordering: assign strictly increasing timestamps,
       // anchored to the provided ones when present.
       let inserted = 0;
-      let skipped = 0;
       const anchor = Date.now() - importMessages.length;
       for (let i = 0; i < importMessages.length; i += 1) {
         const m = importMessages[i];
@@ -3378,12 +3352,7 @@ export async function handleConversationRoutes(
         const createdAt = m.timestamp ?? anchor + i;
         try {
           const memory = createMessageMemory({
-            id: m.sourceId
-              ? createUniqueUuid(
-                  runtime,
-                  `handoff-import:${convId}:${m.sourceId}`,
-                )
-              : (crypto.randomUUID() as UUID),
+            id: crypto.randomUUID() as UUID,
             entityId,
             roomId: conv.roomId,
             content: {
@@ -3398,23 +3367,9 @@ export async function handleConversationRoutes(
           memory.createdAt = createdAt;
           if (memory.metadata && typeof memory.metadata === "object") {
             memory.metadata.timestamp = createdAt;
-            if (m.sourceId) {
-              memory.metadata.sourceId = m.sourceId;
-              memory.metadata.platformMessageId = m.sourceId;
-            }
           }
-          if (m.sourceId) {
-            const result = await persistExactConversationMemoryResult(
-              runtime,
-              memory,
-              historyLease,
-            );
-            if (result.created) inserted += 1;
-            else skipped += 1;
-          } else {
-            await persistConversationMemory(runtime, memory, historyLease);
-            inserted += 1;
-          }
+          await persistConversationMemory(runtime, memory, historyLease);
+          inserted += 1;
         } catch (err) {
           // error-policy:J1 the import boundary reports the exact partial-write
           // position and never returns a healthy skipped-count response.
@@ -3430,10 +3385,8 @@ export async function handleConversationRoutes(
       state.broadcastWs?.({ type: "conversation-updated", conversation: conv });
       json(res, {
         conversationId: convId,
-        complete: true,
-        sourceMessageCount: importMessages.length,
         inserted,
-        skipped,
+        skipped: importMessages.length - inserted,
       });
       return true;
     } finally {

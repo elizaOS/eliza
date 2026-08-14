@@ -51,15 +51,6 @@ describe("MemoryRedisAdapter (MOCK_REDIS=1)", () => {
     // get returns null for missing key
     expect(await redis.get("nope")).toBeNull();
 
-    expect(
-      await redis.eval<number>(
-        'return redis.call("SET", KEYS[1], ARGV[1]) and 1 or 0',
-        ["lua-key"],
-        ["lua-value"],
-      ),
-    ).toBe(1);
-    expect(await redis.get<string>("lua-key")).toBe("lua-value");
-
     if (redis.quit) await redis.quit();
   });
 });

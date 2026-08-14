@@ -9,6 +9,7 @@
 import type { Context } from "hono";
 import { Hono } from "hono";
 import { z } from "zod";
+import type { AgentSandbox } from "@/db/repositories/agent-sandboxes";
 import { errorToResponse, ValidationError } from "@/lib/api/errors";
 import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
 import { elizaSandboxService } from "@/lib/services/eliza-sandbox";
@@ -19,7 +20,6 @@ import {
   resolveSharedAgent,
   resolveSharedRuntimeWorkerRequestContext,
 } from "@/lib/services/shared-runtime/resolve-shared-agent";
-import type { SharedRuntimeAgent } from "@/lib/services/shared-runtime/shared-runtime-agent";
 import type { BridgeExecutionContext } from "@/lib/services/shared-runtime/shared-runtime-chat";
 import type {
   AppEnv,
@@ -48,8 +48,7 @@ async function __hono_POST(
   request: Request,
   _route: { params: Promise<{ agentId: string }> },
   resolved: {
-    agent: SharedRuntimeAgent;
-    agentKind?: "sandbox" | "personal";
+    agent: AgentSandbox;
     namespace: RuntimeDurableObjectNamespace;
     executionCtx: BridgeExecutionContext;
   },
@@ -81,7 +80,6 @@ async function __hono_POST(
     const response = await coordinateSharedBridge(resolved.agent, rpcRequest, {
       executionCtx: resolved.executionCtx,
       namespace: resolved.namespace,
-      agentKind: resolved.agentKind,
     });
 
     return applyCorsHeaders(Response.json(response), CORS_METHODS);
@@ -218,7 +216,6 @@ __hono_app.post("/", async (c) => {
     { params: Promise.resolve({ agentId: c.req.param("agentId")! }) },
     {
       agent: scope.agent,
-      ...("agentKind" in scope ? { agentKind: scope.agentKind } : {}),
       namespace: worker.namespace,
       executionCtx: worker.executionCtx,
     },

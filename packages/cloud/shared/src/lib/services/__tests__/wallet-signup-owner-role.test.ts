@@ -60,8 +60,12 @@ describe("wallet signup org role", () => {
     "fresh EVM wallet signup creates the org with the user as OWNER",
     async () => {
       if (!pgliteReady) throw pgliteError;
-      const { user, isNewAccount } =
-        await walletSignup.findOrCreateUserByWalletAddress(EVM_ADDRESS);
+      const { user, isNewAccount } = await walletSignup.findOrCreateUserByWalletAddress(
+        EVM_ADDRESS,
+        {
+          grantInitialCredits: false,
+        },
+      );
       expect(isNewAccount).toBe(true);
       expect(user.organization_id).toBeTruthy();
       expect(user.role).toBe("owner");
@@ -73,8 +77,12 @@ describe("wallet signup org role", () => {
     "returning EVM wallet keeps the same owner user (no re-create)",
     async () => {
       if (!pgliteReady) throw pgliteError;
-      const first = await walletSignup.findOrCreateUserByWalletAddress(EVM_ADDRESS);
-      const again = await walletSignup.findOrCreateUserByWalletAddress(EVM_ADDRESS);
+      const first = await walletSignup.findOrCreateUserByWalletAddress(EVM_ADDRESS, {
+        grantInitialCredits: false,
+      });
+      const again = await walletSignup.findOrCreateUserByWalletAddress(EVM_ADDRESS, {
+        grantInitialCredits: false,
+      });
       expect(again.isNewAccount).toBe(false);
       expect(again.user.id).toBe(first.user.id);
       expect(again.user.role).toBe("owner");
@@ -86,8 +94,10 @@ describe("wallet signup org role", () => {
     "fresh Solana wallet signup creates the org with the user as OWNER",
     async () => {
       if (!pgliteReady) throw pgliteError;
-      const { user, isNewAccount } =
-        await walletSignup.findOrCreateSolanaUserByWalletAddress(SOLANA_ADDRESS);
+      const { user, isNewAccount } = await walletSignup.findOrCreateSolanaUserByWalletAddress(
+        SOLANA_ADDRESS,
+        { grantInitialCredits: false },
+      );
       expect(isNewAccount).toBe(true);
       expect(user.organization_id).toBeTruthy();
       expect(user.role).toBe("owner");
