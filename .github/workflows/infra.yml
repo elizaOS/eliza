@@ -296,18 +296,18 @@ jobs:
                 ["DNS_RECORD_IMPORT_IDS_JSON", process.env.TF_VAR_dns_record_import_ids, "object"],
                 ["CANONICAL_EDGE_WILDCARD_ORIGINS_JSON", process.env.TF_VAR_canonical_edge_wildcard_origins, "array"],
                 ["CANONICAL_SERVICE_ORIGINS_JSON", process.env.TF_VAR_canonical_service_origins, "object"],
-                ["RAILWAY_TUNNEL_DNS_RECORDS_JSON", process.env.TF_VAR_railway_tunnel_dns_records, "object"],
+                ["RAILWAY_TUNNEL_DNS_RECORDS_JSON", process.env.TF_VAR_railway_tunnel_dns_records, "object", true],
                 ["CANONICAL_EDGE_CERTIFICATE_PACKS_JSON", process.env.TF_VAR_canonical_edge_certificate_packs, "object"],
                 ["LEGACY_REDIRECT_WILDCARD_ORIGINS_JSON", process.env.TF_VAR_legacy_redirect_wildcard_origins, "object"],
                 ["LEGACY_REDIRECT_CERTIFICATE_PACKS_JSON", process.env.TF_VAR_legacy_redirect_certificate_packs, "object"],
               ];
               const invalid = [];
-              for (const [name, source, expected] of required) {
+              for (const [name, source, expected, allowEmpty = false] of required) {
                 try {
                   const value = JSON.parse(source ?? "");
                   const isExpected = expected === "array"
-                    ? Array.isArray(value) && value.length > 0
-                    : value && !Array.isArray(value) && Object.keys(value).length > 0;
+                    ? Array.isArray(value) && (allowEmpty || value.length > 0)
+                    : value && !Array.isArray(value) && (allowEmpty || Object.keys(value).length > 0);
                   if (!isExpected) invalid.push(name);
                 } catch {
                   invalid.push(name);
