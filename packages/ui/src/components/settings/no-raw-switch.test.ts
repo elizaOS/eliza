@@ -42,14 +42,6 @@ const RAW_SWITCH_OCCURRENCES = new Map<
         "compact enable switch inside a custom status chip, not a SettingsRow",
     },
   ],
-  [
-    "permission-controls.tsx",
-    {
-      count: 2,
-      reason:
-        "compound permission rows mix badges with Switch or Button trailing controls",
-    },
-  ],
 ]);
 
 function posixRelative(from: string, to: string): string {

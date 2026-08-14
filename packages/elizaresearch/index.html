@@ -350,7 +350,7 @@
         sz: entranceComplete ? 0 : Math.min(W, H) * (0.35 + Math.random() * 0.55) * (Math.random() < 0.5 ? -1 : 1),
         lane: (Math.random() * LANE_COUNT) | 0,
         offsetX: 0, offsetY: 0, depthScale: 1,
-        size: Math.random() * 0.95 + 0.85, life: Math.random() * 100,
+        size: Math.random() * 0.95 + 0.85, life: Math.random() * 1000 + 500,
         ph: Math.random(), phy: Math.random(),
         fs: 0.6 + Math.random() * 0.8, amp: 1.1 + Math.random() * 2.6 });
     }
@@ -416,10 +416,12 @@
       }
       if (!forming) entranceComplete = true;
     }
+    // whole face breathes: slow expand/contract around its center
+    const breathe = reduced ? 1 : 1 + wave(tf * 0.07) * 0.03;
     for (let i = 0; i < boids.length; i++) {
       const b = boids[i];
-      let baseX = b.tx;
-      let baseY = b.ty;
+      let baseX = centerX + (b.tx - centerX) * breathe;
+      let baseY = centerY + (b.ty - centerY) * breathe;
       let entranceMix = 1;
       if (!entranceComplete) {
         entranceMix = laneEase[b.lane];
@@ -440,8 +442,8 @@
         b.depthScale = 1;
       }
       const idleMix = reduced ? 0 : entranceMix;
-      const gx = baseX + wave(tf * 0.06 * b.fs + b.ph) * b.amp * idleMix;
-      const gy = baseY + wave(tf * 0.048 * b.fs + b.phy) * b.amp * idleMix;
+      const gx = baseX + wave(tf * 0.02 * b.fs + b.ph) * b.amp * idleMix;
+      const gy = baseY + wave(tf * 0.016 * b.fs + b.phy) * b.amp * idleMix;
       const px = pointer.x - gx, py = pointer.y - gy;
       const pd2 = px * px + py * py;
       const R = 105;
@@ -462,7 +464,7 @@
         const t = targets[(Math.random() * targets.length) | 0];
         b.x = b.sx = b.tx = t.x; b.y = b.sy = b.ty = t.y;
         b.offsetX = 0; b.offsetY = 0;
-        b.life = Math.random() * 100 + 50;
+        b.life = Math.random() * 1000 + 500;
       }
     }
   }
@@ -476,7 +478,7 @@
     const arrivalScale = 0.58 + arrival * 0.42;
     for (let i = 0; i < boids.length; i++) {
       const b = boids[i];
-      const shimmer = 0.88 + (1 - Math.abs((((now / 1000) * 0.7 * b.fs + b.ph) % 1) * 2 - 1)) * 0.2;
+      const shimmer = 0.88 + (1 - Math.abs((((now / 1000) * 0.09 * b.fs + b.ph) % 1) * 2 - 1)) * 0.2;
       const size = b.size * arrivalScale * shimmer * b.depthScale;
       ctx.fillRect(b.x - (size - b.size) / 2, b.y - (size - b.size) / 2, size, size);
     }

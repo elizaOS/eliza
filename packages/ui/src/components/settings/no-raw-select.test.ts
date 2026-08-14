@@ -46,9 +46,9 @@ const RAW_SELECT_OCCURRENCES = new Map<
   [
     "vault-tabs/RoutingTab.tsx",
     {
-      count: 5,
+      count: 4,
       reason:
-        "routing table cells and default-profile compact picker, not labelled settings rows",
+        "add-rule form scope/agent/app/profile pickers, not settings rows",
     },
   ],
 ]);
