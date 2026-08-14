@@ -41,11 +41,13 @@
  * is also the semantically correct recall query (the user's request, not the
  * injected document context).
  *
- * **Fail-open on error only.** A failed embed (the model handler rejects — e.g.
- * its own request timeout aborts, or the provider errors) returns `null`; the
- * caller falls open to keyword/BM25 recall (or, for callers with no keyword
- * path, to empty recall context) — recall richness is lost, but the reply is
- * never blocked on an *error*. The provider owns diagnosis of a typed, expected
+ * **Fail-open on unavailable capability or error.** An unregistered or
+ * canonically disabled embedding capability returns `null` without entering
+ * runtime diagnostics. A failed embed (the model handler rejects — e.g. its own
+ * request timeout aborts, or the provider errors) also returns `null`; the caller
+ * falls open to keyword/BM25 recall (or, for callers with no keyword path, to
+ * empty recall context) — recall richness is lost, but the reply is never
+ * blocked on an *error*. The provider owns diagnosis of a typed, expected
  * capability-unavailable state; every unexpected failure is reported here with
  * a stable recall code so it remains eligible for runtime diagnostics and
  * escalation without turning a known missing capability into chat noise.
@@ -221,9 +223,10 @@ function getTurnCache(
  *   (document augmentation) so the embed caches before a `runId` exists and the
  *   first in-run caller adopts it. Omit for the common in-run recall callers,
  *   which key off `runId`.
- * @returns the embedding vector, or `null` when the embed failed — in which case
- *   the caller MUST fail open to keyword/BM25 recall (or, where no keyword path
- *   exists, to empty recall context); never drop recall silently.
+ * @returns the embedding vector, or `null` when embeddings are unavailable or
+ *   the embed failed — in which case the caller MUST fail open to keyword/BM25
+ *   recall (or, where no keyword path exists, to empty recall context); never
+ *   drop recall silently.
  */
 export async function embedRecallQuery(
 	runtime: IAgentRuntime,
@@ -236,6 +239,14 @@ export async function embedRecallQuery(
 	}
 	const normalized = normalizeQuery(queryText);
 	if (!normalized) {
+		return null;
+	}
+	// A missing registration (including a capability disabled by canonical
+	// service routing) is an expected deployment state, not a provider failure.
+	// Avoid calling useModel here: its typed no-provider error is useful for
+	// required inference, but optional recall must quietly fall back to lexical
+	// search without entering RECENT_ERRORS or owner escalation.
+	if (!runtime.getModel(ModelType.TEXT_EMBEDDING)) {
 		return null;
 	}
 
