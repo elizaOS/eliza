@@ -103,7 +103,16 @@ transaction succeeds, that transaction detaches only the exact `pre-delete`
 row associated with the deletion attempt, then deletes the sandbox. The
 existing `ON DELETE CASCADE` still removes every attached scheduled, manual,
 shutdown, and upgrade backup. Unsupported legacy images that cannot snapshot
-do not fabricate a recovery record.
+do not fabricate a recovery record. Instead, the deletion transaction records
+a typed waiver bound to the exact deletion attempt, environment revision,
+sandbox ID, and bridge URL. A retry may reuse only that same generation's
+waiver; a changed generation must be captured again.
+
+Rows that still carry a dedicated container locator but have entered an error
+or disconnected state remain fail-closed when no bridge is reachable. A
+deletion continuation known to have originated from an already-stopped,
+uncounted row skips capture, so a retained historical sandbox ID cannot wedge
+cleanup against a container that is already gone.
 
 The detached row keeps explicit `recovery_organization_id`,
 `recovery_agent_id`, and `recovery_deletion_attempt_id` fields because its

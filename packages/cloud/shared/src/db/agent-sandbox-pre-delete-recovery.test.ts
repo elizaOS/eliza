@@ -109,12 +109,23 @@ describe("pre-delete recovery repository", () => {
       )
     `);
 
+    await expect(
+      dbWrite.transaction((tx) =>
+        repository.validateAttachedPreDeleteBackupForDeletion(tx, {
+          backupId: BACKUP_ID,
+          sandboxRecordId: AGENT_ID,
+          deletionStartedAt: new Date("2026-08-13T00:00:00.000Z"),
+        }),
+      ),
+    ).resolves.toBe(true);
+
     const retained = await dbWrite.transaction((tx) =>
       repository.retainPreDeleteBackupForDeletedAgent(tx, {
         backupId: BACKUP_ID,
         sandboxRecordId: AGENT_ID,
         organizationId: ORG_A,
         deletionAttemptId: ATTEMPT_ID,
+        deletionStartedAt: new Date("2026-08-13T00:00:00.000Z"),
         expiresAt: new Date("2026-09-12T12:00:00.000Z"),
       }),
     );
@@ -131,11 +142,22 @@ describe("pre-delete recovery repository", () => {
 
     await expect(
       dbWrite.transaction((tx) =>
+        repository.validateAttachedPreDeleteBackupForDeletion(tx, {
+          backupId: BACKUP_ID,
+          sandboxRecordId: AGENT_ID,
+          deletionStartedAt: new Date("2026-08-13T00:00:00.000Z"),
+        }),
+      ),
+    ).resolves.toBe(false);
+
+    await expect(
+      dbWrite.transaction((tx) =>
         repository.retainPreDeleteBackupForDeletedAgent(tx, {
           backupId: BACKUP_ID,
           sandboxRecordId: AGENT_ID,
           organizationId: ORG_A,
           deletionAttemptId: ATTEMPT_ID,
+          deletionStartedAt: new Date("2026-08-13T00:00:00.000Z"),
           expiresAt: new Date("2026-09-12T12:00:00.000Z"),
         }),
       ),
@@ -230,7 +252,10 @@ describe("0199 retained pre-delete backup migration", () => {
         CREATE TABLE organizations (id uuid PRIMARY KEY);
         CREATE TABLE agent_sandboxes (
           id uuid PRIMARY KEY,
-          organization_id uuid NOT NULL REFERENCES organizations(id)
+          organization_id uuid NOT NULL REFERENCES organizations(id),
+          sandbox_id text,
+          deletion_attempt_id uuid,
+          environment_revision integer NOT NULL DEFAULT 0
         );
         CREATE TABLE agent_sandbox_backups (
           id uuid PRIMARY KEY,
@@ -288,6 +313,19 @@ describe("0199 retained pre-delete backup migration", () => {
           ) VALUES (
             '00000000-0000-4000-8000-0000000000f1', NULL,
             'manual', '{}'::jsonb
+          )
+        `),
+      ).rejects.toThrow("agent_sandbox_backups_recovery_shape_check");
+      await expect(
+        client.exec(`
+          INSERT INTO agent_sandbox_backups (
+            id, sandbox_record_id, snapshot_type, state_data, backup_kind,
+            recovery_organization_id, recovery_agent_id,
+            recovery_deletion_attempt_id, recovery_expires_at
+          ) VALUES (
+            '00000000-0000-4000-8000-0000000000f2', NULL,
+            'pre-delete', '{}'::jsonb, 'incremental', '${ORG_A}',
+            '${AGENT_ID}', '${ATTEMPT_ID}', '2026-09-12T12:00:00.000Z'
           )
         `),
       ).rejects.toThrow("agent_sandbox_backups_recovery_shape_check");

@@ -126,6 +126,18 @@ export const agentSandboxes = pgTable(
       withTimezone: true,
     }),
     /**
+     * A typed waiver for the one supported no-snapshot case. It is scoped to
+     * the deletion attempt and the observed container generation so a retry
+     * can converge after teardown without treating another container's 404 as
+     * authority to delete this one.
+     */
+    pre_delete_capture_waiver_attempt_id: uuid("pre_delete_capture_waiver_attempt_id"),
+    pre_delete_capture_waiver_environment_revision: integer(
+      "pre_delete_capture_waiver_environment_revision",
+    ),
+    pre_delete_capture_waiver_sandbox_id: text("pre_delete_capture_waiver_sandbox_id"),
+    pre_delete_capture_waiver_bridge_url: text("pre_delete_capture_waiver_bridge_url"),
+    /**
      * Whether THIS deletion generation still owns one counted slot in
      * `docker_nodes.allocated_count`, so the slot is released exactly once no
      * matter how many times the teardown runs.
@@ -318,6 +330,21 @@ export const agentSandboxes = pgTable(
       ) OR (
         ${table.deletion_attempt_id} IS NOT NULL
         AND ${table.deletion_started_at} IS NOT NULL
+      )`,
+    ),
+    pre_delete_capture_waiver_shape_check: check(
+      "agent_sandboxes_pre_delete_capture_waiver_shape_check",
+      sql`(
+        ${table.pre_delete_capture_waiver_attempt_id} IS NULL
+        AND ${table.pre_delete_capture_waiver_environment_revision} IS NULL
+        AND ${table.pre_delete_capture_waiver_sandbox_id} IS NULL
+        AND ${table.pre_delete_capture_waiver_bridge_url} IS NULL
+      ) OR (
+        ${table.pre_delete_capture_waiver_attempt_id} IS NOT NULL
+        AND ${table.pre_delete_capture_waiver_attempt_id} = ${table.deletion_attempt_id}
+        AND ${table.pre_delete_capture_waiver_environment_revision} = ${table.environment_revision}
+        AND ${table.pre_delete_capture_waiver_sandbox_id} IS NOT DISTINCT FROM ${table.sandbox_id}
+        AND ${table.pre_delete_capture_waiver_bridge_url} IS NOT NULL
       )`,
     ),
     warm_claim_credential_state_check: check(
@@ -597,6 +624,8 @@ export const agentSandboxBackups = pgTable(
       ) OR (
         ${table.sandbox_record_id} IS NULL
         AND ${table.snapshot_type} = 'pre-delete'
+        AND ${table.backup_kind} = 'full'
+        AND ${table.parent_backup_id} IS NULL
         AND ${table.recovery_organization_id} IS NOT NULL
         AND ${table.recovery_agent_id} IS NOT NULL
         AND ${table.recovery_deletion_attempt_id} IS NOT NULL

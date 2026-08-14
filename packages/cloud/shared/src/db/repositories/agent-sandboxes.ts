@@ -1981,6 +1981,40 @@ export class AgentSandboxesRepository {
   // Backups
 
   /**
+   * Revalidate an unlocked retry candidate inside the lifecycle transaction.
+   * The row must still be this agent's attached, full pre-delete capture and
+   * must have been created for the current deletion intent.
+   */
+  async validateAttachedPreDeleteBackupForDeletion(
+    tx: DbTransaction,
+    params: {
+      backupId: string;
+      sandboxRecordId: string;
+      deletionStartedAt: Date;
+    },
+  ): Promise<boolean> {
+    const [backup] = await tx
+      .select({ id: agentSandboxBackups.id })
+      .from(agentSandboxBackups)
+      .where(
+        and(
+          eq(agentSandboxBackups.id, params.backupId),
+          eq(agentSandboxBackups.sandbox_record_id, params.sandboxRecordId),
+          eq(agentSandboxBackups.snapshot_type, "pre-delete"),
+          eq(agentSandboxBackups.backup_kind, "full"),
+          isNull(agentSandboxBackups.parent_backup_id),
+          gte(agentSandboxBackups.created_at, params.deletionStartedAt),
+          isNull(agentSandboxBackups.recovery_organization_id),
+          isNull(agentSandboxBackups.recovery_agent_id),
+          isNull(agentSandboxBackups.recovery_deletion_attempt_id),
+          isNull(agentSandboxBackups.recovery_expires_at),
+        ),
+      )
+      .limit(1);
+    return backup !== undefined;
+  }
+
+  /**
    * Detach the exact pre-delete snapshot owned by a successful deletion while
    * the sandbox row is locked. Every other attached backup remains subject to
    * the existing parent FK cascade.
@@ -1992,6 +2026,7 @@ export class AgentSandboxesRepository {
       sandboxRecordId: string;
       organizationId: string;
       deletionAttemptId: string;
+      deletionStartedAt: Date;
       expiresAt: Date;
     },
   ): Promise<boolean> {
@@ -2009,6 +2044,9 @@ export class AgentSandboxesRepository {
           eq(agentSandboxBackups.id, params.backupId),
           eq(agentSandboxBackups.sandbox_record_id, params.sandboxRecordId),
           eq(agentSandboxBackups.snapshot_type, "pre-delete"),
+          eq(agentSandboxBackups.backup_kind, "full"),
+          isNull(agentSandboxBackups.parent_backup_id),
+          gte(agentSandboxBackups.created_at, params.deletionStartedAt),
           isNull(agentSandboxBackups.recovery_organization_id),
           isNull(agentSandboxBackups.recovery_agent_id),
           isNull(agentSandboxBackups.recovery_deletion_attempt_id),

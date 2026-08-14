@@ -3,6 +3,27 @@
 -- the delete transaction nulls only its exact pre-delete backup before deleting
 -- the sandbox, so scheduled/manual/upgrade backups keep their current cascade.
 
+ALTER TABLE "agent_sandboxes"
+  ADD COLUMN IF NOT EXISTS "pre_delete_capture_waiver_attempt_id" uuid,
+  ADD COLUMN IF NOT EXISTS "pre_delete_capture_waiver_environment_revision" integer,
+  ADD COLUMN IF NOT EXISTS "pre_delete_capture_waiver_sandbox_id" text,
+  ADD COLUMN IF NOT EXISTS "pre_delete_capture_waiver_bridge_url" text;
+
+ALTER TABLE "agent_sandboxes"
+  ADD CONSTRAINT "agent_sandboxes_pre_delete_capture_waiver_shape_check"
+  CHECK ((
+    "pre_delete_capture_waiver_attempt_id" IS NULL
+    AND "pre_delete_capture_waiver_environment_revision" IS NULL
+    AND "pre_delete_capture_waiver_sandbox_id" IS NULL
+    AND "pre_delete_capture_waiver_bridge_url" IS NULL
+  ) OR (
+    "pre_delete_capture_waiver_attempt_id" IS NOT NULL
+    AND "pre_delete_capture_waiver_attempt_id" = "deletion_attempt_id"
+    AND "pre_delete_capture_waiver_environment_revision" = "environment_revision"
+    AND "pre_delete_capture_waiver_sandbox_id" IS NOT DISTINCT FROM "sandbox_id"
+    AND "pre_delete_capture_waiver_bridge_url" IS NOT NULL
+  ));
+
 ALTER TABLE "agent_sandbox_backups"
   ALTER COLUMN "sandbox_record_id" DROP NOT NULL,
   ADD COLUMN IF NOT EXISTS "recovery_organization_id" uuid,
@@ -30,6 +51,8 @@ ALTER TABLE "agent_sandbox_backups"
   ) OR (
     "sandbox_record_id" IS NULL
     AND "snapshot_type" = 'pre-delete'
+    AND "backup_kind" = 'full'
+    AND "parent_backup_id" IS NULL
     AND "recovery_organization_id" IS NOT NULL
     AND "recovery_agent_id" IS NOT NULL
     AND "recovery_deletion_attempt_id" IS NOT NULL
