@@ -41,41 +41,15 @@ import {
   listDevices,
   resolveAdb,
 } from "./lib/android-device.mjs";
+import {
+  MAX_CAPTURE_DURATION_SECONDS,
+  resolveCaptureDurationSeconds,
+} from "./lib/capture-output.mjs";
 
 const SCRIPT_PATH = fileURLToPath(import.meta.url);
 const APP_DIR = resolve(dirname(SCRIPT_PATH), "..");
 const REPO_ROOT = resolve(APP_DIR, "../..");
-/** Largest delay Node accepts without clamping (2^31-1). */
-export const MAX_NODE_TIMER_MS = 2_147_483_647;
 export const DEFAULT_DURATION_SECONDS = 30;
-
-/**
- * Accept only a complete positive decimal integer in [min, max]. Rejects
- * missing, fractional, signed, partial, zero (when min>=1), and overflow values
- * so mistyped matrix flags fail before device probes or capture spawns.
- */
-export function parsePositiveInteger(
-  raw,
-  flag,
-  { min = 1, max = MAX_NODE_TIMER_MS } = {},
-) {
-  if (raw === undefined || raw === null) {
-    throw new Error(`${flag} requires an integer from ${min} to ${max}`);
-  }
-  const value = String(raw);
-  if (!/^[1-9]\d*$/.test(value) && !(min === 0 && value === "0")) {
-    throw new Error(
-      `${flag} must be an integer from ${min} to ${max} (received ${JSON.stringify(value)})`,
-    );
-  }
-  const parsed = Number(value);
-  if (!Number.isSafeInteger(parsed) || parsed < min || parsed > max) {
-    throw new Error(
-      `${flag} must be an integer from ${min} to ${max} (received ${JSON.stringify(value)})`,
-    );
-  }
-  return parsed;
-}
 
 export function parseArgs(argv, env = process.env) {
   const a = {
@@ -117,13 +91,10 @@ export function parseArgs(argv, env = process.env) {
       const value = argv[++i];
       if (value === undefined || value.startsWith("--")) {
         throw new Error(
-          `--duration requires an integer from 1 to ${MAX_NODE_TIMER_MS}`,
+          `--duration requires an integer from 1 to ${MAX_CAPTURE_DURATION_SECONDS}`,
         );
       }
-      a.duration = parsePositiveInteger(value, "--duration", {
-        min: 1,
-        max: MAX_NODE_TIMER_MS,
-      });
+      a.duration = resolveCaptureDurationSeconds({ duration: value });
     } else if (arg === "--require") {
       const value = argv[++i];
       if (value === undefined || value.startsWith("--")) {
