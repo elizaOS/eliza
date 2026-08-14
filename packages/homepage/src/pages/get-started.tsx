@@ -2085,7 +2085,7 @@ export default function GetStartedPage() {
                     <div className="flex-1">
                       <p className="text-sm font-medium text-neutral-900">
                         {t("homepage_eliza.getStarted.guideStep1", {
-                          defaultValue: "Add Eliza to your server",
+                          defaultValue: "Install Eliza for your account",
                         })}
                       </p>
                       <Button
@@ -2093,8 +2093,13 @@ export default function GetStartedPage() {
                         size="sm"
                         onClick={() => {
                           const clientId = getDiscordClientId();
+                          const params = new URLSearchParams({
+                            client_id: clientId,
+                            integration_type: "1",
+                            scope: "applications.commands",
+                          });
                           window.open(
-                            `https://discord.com/oauth2/authorize?client_id=${clientId}&permissions=2048&scope=bot`,
+                            `https://discord.com/oauth2/authorize?${params.toString()}`,
                             "_blank",
                           );
                         }}
@@ -2102,7 +2107,7 @@ export default function GetStartedPage() {
                       >
                         <ExternalLink className="size-3.5" />
                         {t("homepage_eliza.getStarted.guideInviteToServer", {
-                          defaultValue: "Invite to Server",
+                          defaultValue: "Install for DMs",
                         })}
                       </Button>
                     </div>
