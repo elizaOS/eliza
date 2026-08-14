@@ -531,6 +531,7 @@ const CLOUD_DASHBOARD_URL = `${EXTERNAL_URLS.app}/cloud-apps`;
 
 export default function LandingPage() {
   const t = useT();
+  const whatsappHref = buildElizaWhatsAppHref();
   const signedIn =
     typeof window !== "undefined" &&
     window.localStorage.getItem(SESSION_STORAGE_KEY) !== null;
@@ -544,6 +545,19 @@ export default function LandingPage() {
       }),
       icon: <TelegramIcon className="size-6 text-[#2AABEE]" />,
     },
+    ...(whatsappHref
+      ? [
+          {
+            key: "whatsapp",
+            href: whatsappHref,
+            external: true,
+            label: t("homepage_eliza.landing.channelWhatsapp", {
+              defaultValue: "Message Eliza on WhatsApp",
+            }),
+            icon: <WhatsAppIcon className="size-6 text-[#25D366]" />,
+          },
+        ]
+      : []),
     {
       key: "discord",
       href: buildElizaDiscordHref(),
@@ -552,15 +566,6 @@ export default function LandingPage() {
         defaultValue: "Message Eliza on Discord",
       }),
       icon: <DiscordIcon className="size-6 text-[#5865F2]" />,
-    },
-    {
-      key: "whatsapp",
-      href: buildElizaWhatsAppHref(),
-      external: true,
-      label: t("homepage_eliza.landing.channelWhatsapp", {
-        defaultValue: "Message Eliza on WhatsApp",
-      }),
-      icon: <WhatsAppIcon className="size-6 text-[#25D366]" />,
     },
   ];
 
