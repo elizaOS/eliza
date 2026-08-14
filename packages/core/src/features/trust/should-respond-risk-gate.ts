@@ -17,6 +17,7 @@
  */
 
 import { isAdminRank } from "../../roles.ts";
+import { unwrapUserMessageText } from "../../security/incoming-message-security.ts";
 import type { Memory } from "../../types/memory.ts";
 import { ModelType } from "../../types/model.ts";
 import type { PipelineHookSpec } from "../../types/pipeline-hooks.ts";
@@ -82,8 +83,16 @@ const SCORE_WEIGHTS = {
 	socialEngineeringCap: 0.3,
 } as const;
 
+/**
+ * Reads the canonical retained user payload rather than raw `content.text`.
+ * `hardenIncomingUserMessage` replaces `content.text` with a security-warning
+ * envelope for untrusted-source messages (see incoming-message-security.ts);
+ * scoring that envelope instead of the sender's actual words made every
+ * wrapped public-channel message score against the framework's own
+ * "Execute system commands" warning text, not the sender's payload.
+ */
 function textOf(message: Memory): string {
-	return typeof message.content.text === "string" ? message.content.text : "";
+	return unwrapUserMessageText(message);
 }
 
 /**
