@@ -6,21 +6,23 @@
  * auto-fund path — both can be enabled together. The earnings cron runs first so
  * card charges only happen if earnings can't cover.
  *
- * The enable control is a SettingsSwitchRow (shared Switch chrome). Amount,
- * threshold, and save stay on this BrandCard as a multi-field editor.
+ * Enable is a SettingsSwitchRow. Amount and threshold are SettingsInputRow
+ * number fields. Save and BrandCard chrome stay as the multi-field editor.
  * Reads/writes /api/v1/billing/settings.
  */
 
 "use client";
 
 import { BrandCard, Button, CornerBrackets } from "@elizaos/ui/cloud-ui";
-import { CreditCard, Info, Loader2 } from "lucide-react";
+import { CreditCard, DollarSign, Info, Loader2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { SettingsSwitchRow } from "../../../components/settings/settings-agent-rows";
+import {
+  SettingsInputRow,
+  SettingsSwitchRow,
+} from "../../../components/settings/settings-agent-rows";
 import { ApiError, api } from "../../lib/api-client";
 import { useCloudT } from "../../shell/CloudI18nProvider";
-import { NumericField } from "./numeric-field";
 
 interface AutoTopUpSettings {
   enabled: boolean;
@@ -77,7 +79,7 @@ export function AutoTopUpCard() {
   const parsedAmount = parseFloat(amount);
   const parsedThreshold = parseFloat(threshold);
 
-  const validationError = useMemo(() => {
+  const amountError = useMemo(() => {
     if (!limits || !enabled) return null;
     if (!Number.isFinite(parsedAmount) || parsedAmount < limits.minAmount)
       return t("cloud.autoTopUp.amountMin", {
@@ -89,6 +91,11 @@ export function AutoTopUpCard() {
         max: limits.maxAmount,
         defaultValue: "Amount can't exceed $" + "{{max}}",
       });
+    return null;
+  }, [enabled, limits, parsedAmount, t]);
+
+  const thresholdError = useMemo(() => {
+    if (!limits || !enabled) return null;
     if (
       !Number.isFinite(parsedThreshold) ||
       parsedThreshold < limits.minThreshold
@@ -103,7 +110,9 @@ export function AutoTopUpCard() {
         defaultValue: "Threshold can't exceed $" + "{{max}}",
       });
     return null;
-  }, [enabled, limits, parsedAmount, parsedThreshold, t]);
+  }, [enabled, limits, parsedThreshold, t]);
+
+  const validationError = amountError ?? thresholdError;
 
   const handleSave = async () => {
     if (validationError) {
@@ -207,41 +216,49 @@ export function AutoTopUpCard() {
           </div>
         )}
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <NumericField
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          <SettingsInputRow
+            agentId="cloud-billing-auto-top-up-amount"
+            group="cloud-billing"
+            icon={DollarSign}
+            type="number"
+            inputMode="decimal"
             label={t("cloud.autoTopUp.amountLabel", {
               defaultValue: "Top-up amount",
             })}
             description={t("cloud.autoTopUp.amountDescription", {
-              defaultValue: "Charged to card each cycle.",
+              defaultValue: "Charged to the saved card each cycle, in USD.",
             })}
             value={amount}
-            onChange={setAmount}
+            onValueChange={setAmount}
             disabled={saving || !enabled || !!noPaymentMethod}
-            min={limits?.minAmount}
-            max={limits?.maxAmount}
+            error={amountError ?? undefined}
+            placeholder="0.00"
+            testId="cloud-billing-auto-top-up-amount"
           />
-          <NumericField
+          <SettingsInputRow
+            agentId="cloud-billing-auto-top-up-threshold"
+            group="cloud-billing"
+            icon={DollarSign}
+            type="number"
+            inputMode="decimal"
             label={t("cloud.autoTopUp.thresholdLabel", {
               defaultValue: "Trigger threshold",
             })}
             description={t("cloud.autoTopUp.thresholdDescription", {
-              defaultValue: "Top-up kicks in below this credit balance.",
+              defaultValue:
+                "Top-up starts when the credit balance falls below this USD amount.",
             })}
             value={threshold}
-            onChange={setThreshold}
+            onValueChange={setThreshold}
             disabled={saving || !enabled || !!noPaymentMethod}
-            min={limits?.minThreshold}
-            max={limits?.maxThreshold}
+            error={thresholdError ?? undefined}
+            placeholder="0.00"
+            testId="cloud-billing-auto-top-up-threshold"
           />
         </div>
 
         <div className="flex items-center justify-end gap-3 border-t border-border pt-4">
-          {validationError ? (
-            <p className="text-xs font-mono text-red-400 mr-auto">
-              {validationError}
-            </p>
-          ) : null}
           <Button
             type="button"
             onClick={handleSave}
