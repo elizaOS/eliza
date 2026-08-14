@@ -38,8 +38,35 @@ import {
 // Constants
 // ============================================================================
 
-/** Buffer multiplier for cost estimation (default 50%). Configurable via env. */
-export const COST_BUFFER = Number(process.env.CREDIT_COST_BUFFER) || 1.5;
+/**
+ * Validates and returns the credit cost buffer value.
+ * Enforces minimum value of 1.0 to prevent credit reservation underflow.
+ * Defaults to 1.5 (50% buffer) if not specified or invalid.
+ */
+function validateCostBuffer(): number {
+  const envValue = process.env.CREDIT_COST_BUFFER;
+  if (!envValue) {
+    return 1.5; // Default: 50% buffer
+  }
+
+  const parsed = Number(envValue);
+
+  // Validate the parsed value
+  if (!Number.isFinite(parsed)) {
+    throw new Error(`CREDIT_COST_BUFFER must be a valid number, got: "${envValue}"`);
+  }
+
+  if (parsed < 1.0) {
+    throw new Error(
+      `CREDIT_COST_BUFFER must be >= 1.0 to prevent credit reservation underflow, got: ${parsed}`,
+    );
+  }
+
+  return parsed;
+}
+
+/** Buffer multiplier for cost estimation (default 1.5 = 50%). Validated to be >= 1.0. */
+export const COST_BUFFER = validateCostBuffer();
 /** Minimum reservation amount in USD */
 export const MIN_RESERVATION = 0.000001;
 /** Epsilon for reconcile float comparisons — 10% of MIN_RESERVATION */
