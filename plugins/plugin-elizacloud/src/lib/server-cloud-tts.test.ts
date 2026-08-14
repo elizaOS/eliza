@@ -7,10 +7,13 @@
  * `ELIZA_TTS_DEBUG` contract (phases observably emitted on the structured
  * logger when the flag is set, silent otherwise).
  */
-import { afterAll, beforeEach, describe, expect, test, vi } from "vitest";
+import { afterAll, afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import type http from "node:http";
 import { addLogListener, type LogEntry } from "@elizaos/core";
-import { handleCloudTtsPreviewRoute } from "./server-cloud-tts";
+import {
+  handleCloudSttRoute,
+  handleCloudTtsPreviewRoute,
+} from "./server-cloud-tts";
 
 // The logger freezes its level at module init and the repo test setup defaults
 // LOG_LEVEL to "error", which would gate the info-level tts lines (and their
@@ -22,6 +25,7 @@ vi.hoisted(() => {
 });
 
 const prevApiKey = process.env.ELIZAOS_CLOUD_API_KEY;
+const prevConfigPath = process.env.ELIZA_CONFIG_PATH;
 const prevTtsDebug = process.env.ELIZA_TTS_DEBUG;
 const realFetch = globalThis.fetch;
 
@@ -105,6 +109,7 @@ function fakeRes(): {
 
 beforeEach(() => {
   process.env.ELIZAOS_CLOUD_API_KEY = "test-cloud-key";
+  process.env.ELIZA_CONFIG_PATH = "/nonexistent/server-cloud-tts-test.json";
   upstream = [];
   upstreamResponse = () =>
     new Response(new Uint8Array([73, 68, 51]), {
@@ -118,7 +123,12 @@ beforeEach(() => {
     upstream.push({
       url: String(input),
       headers: (init?.headers ?? {}) as Record<string, string>,
-      body: init?.body ? JSON.parse(String(init.body)) : null,
+      body:
+        init?.body instanceof FormData
+          ? init.body
+          : init?.body
+            ? JSON.parse(String(init.body))
+            : null,
     });
     return upstreamResponse();
   }) as typeof fetch;
@@ -128,8 +138,14 @@ afterAll(() => {
   globalThis.fetch = realFetch;
   if (prevApiKey === undefined) delete process.env.ELIZAOS_CLOUD_API_KEY;
   else process.env.ELIZAOS_CLOUD_API_KEY = prevApiKey;
+  if (prevConfigPath === undefined) delete process.env.ELIZA_CONFIG_PATH;
+  else process.env.ELIZA_CONFIG_PATH = prevConfigPath;
   if (prevTtsDebug === undefined) delete process.env.ELIZA_TTS_DEBUG;
   else process.env.ELIZA_TTS_DEBUG = prevTtsDebug;
+});
+
+afterEach(() => {
+  vi.useRealTimers();
 });
 
 describe("handleCloudTtsPreviewRoute (/api/tts/cloud proxy)", () => {
@@ -236,6 +252,89 @@ describe("handleCloudTtsPreviewRoute (/api/tts/cloud proxy)", () => {
     expect(JSON.parse(String(state.body))).toMatchObject({
       error: "Insufficient credits",
     });
+  });
+
+  test("retries an explicit cache-warming 503 before returning audio", async () => {
+    let calls = 0;
+    upstreamResponse = () => {
+      calls++;
+      return calls === 1
+        ? new Response(
+            JSON.stringify({
+              code: "service_unavailable",
+              details: { retryable: true, retryAfterSeconds: 1 },
+            }),
+            { status: 503 },
+          )
+        : new Response(new Uint8Array([73, 68, 51]), {
+            status: 200,
+            headers: { "content-type": "audio/mpeg" },
+          });
+    };
+    vi.useFakeTimers();
+
+    const { res, state } = fakeRes();
+    const handled = handleCloudTtsPreviewRoute(
+      fakeReq(JSON.stringify({ text: "warm up" })),
+      res,
+    );
+    await vi.runAllTimersAsync();
+    await handled;
+
+    expect(state.statusCode).toBe(200);
+    expect(upstream).toHaveLength(2);
+  });
+});
+
+describe("handleCloudSttRoute (/api/asr/cloud proxy)", () => {
+  test("retries an explicit cache-warming 503 before returning a transcript", async () => {
+    let calls = 0;
+    upstreamResponse = () => {
+      calls++;
+      return calls === 1
+        ? new Response(
+            JSON.stringify({
+              code: "service_unavailable",
+              details: { retryable: true, retryAfterSeconds: 1 },
+            }),
+            { status: 503 },
+          )
+        : Response.json({ text: "The quick brown fox." });
+    };
+    vi.useFakeTimers();
+
+    const { res, state } = fakeRes();
+    const handled = handleCloudSttRoute(
+      fakeReq("RIFF-audio", { "content-type": "audio/wav" }),
+      res,
+    );
+    await vi.runAllTimersAsync();
+    await handled;
+
+    expect(state.statusCode).toBe(200);
+    expect(JSON.parse(String(state.body))).toEqual({
+      text: "The quick brown fox.",
+    });
+    expect(upstream).toHaveLength(2);
+    expect(upstream.every((request) => request.body instanceof FormData)).toBe(
+      true,
+    );
+  });
+
+  test("does not retry a non-warming 503", async () => {
+    upstreamResponse = () =>
+      new Response(JSON.stringify({ error: "Whisper unavailable" }), {
+        status: 503,
+      });
+    const { res, state } = fakeRes();
+
+    await handleCloudSttRoute(
+      fakeReq("RIFF-audio", { "content-type": "audio/wav" }),
+      res,
+    );
+
+    expect(state.statusCode).toBe(502);
+    expect(upstream).toHaveLength(1);
   });
 });
 

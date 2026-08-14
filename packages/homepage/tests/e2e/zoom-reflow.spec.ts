@@ -62,11 +62,11 @@ for (const viewport of REFLOW_VIEWPORTS) {
     await applyTwoHundredPercentTextSize(page);
 
     await expectNoUnreachableOverflow(page);
-    // Narrow viewports render the full-screen conversation with an icon top
-    // bar; wider ones keep the hero's labelled pills. Assert on the entry
-    // points themselves so the check holds for whichever layout is painted.
+    // Narrow viewports make the whole conversation one tap target that opens
+    // the contact sheet; wider ones keep the hero's labelled pills. Assert on
+    // the entry points themselves so the check holds for either layout.
     const textCta = page
-      .getByRole("button", { name: /Message Eliza|Text Eliza on iMessage/ })
+      .getByRole("button", { name: /^(Text|All the ways to reach Eliza)$/ })
       .filter({ visible: true })
       .first();
     const _callCta = page.locator('a[href^="tel:"]:visible').first();
