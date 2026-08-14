@@ -1460,30 +1460,27 @@ html:has(.landing-page)::-webkit-scrollbar-thumb:hover {
   margin-top: 1.65rem;
 }
 
-.landing-phone-number {
+.landing-copy-notice {
+  position: fixed;
+  left: 50%;
+  bottom: max(1rem, env(safe-area-inset-bottom));
+  z-index: 40;
   display: inline-flex;
   align-items: center;
   min-height: 2.25rem;
   margin: 0.2rem 0 0;
   padding: 0 0.75rem;
-  border: 0;
   border-radius: 999px;
-  background: transparent;
-  color: #111;
+  background: rgb(255 255 255 / 76%);
+  color: #166534;
   font-size: 0.92rem;
   font-weight: 650;
-  letter-spacing: 0.02em;
-  cursor: pointer;
-  transition: background-color 160ms ease-out;
+  box-shadow: 0 8px 24px rgb(0 0 0 / 14%);
+  transform: translateX(-50%);
 }
 
-.landing-phone-number:hover {
-  background: rgb(255 255 255 / 48%);
-}
-
-.landing-phone-number:focus-visible {
-  outline: 3px solid #111;
-  outline-offset: 2px;
+.landing-copy-notice--error {
+  color: #991b1b;
 }
 
 .landing-secondary-channels {
@@ -1494,6 +1491,7 @@ html:has(.landing-page)::-webkit-scrollbar-thumb:hover {
 }
 
 .landing-channel {
+  border: 0;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1502,6 +1500,7 @@ html:has(.landing-page)::-webkit-scrollbar-thumb:hover {
   border-radius: 50%;
   background: rgb(255 255 255 / 76%);
   box-shadow: 0 6px 18px rgb(0 0 0 / 9%);
+  cursor: pointer;
   transition:
     transform 160ms ease-out,
     background-color 160ms ease-out,
@@ -1520,6 +1519,7 @@ html:has(.landing-page)::-webkit-scrollbar-thumb:hover {
 }
 
 .landing-cta {
+  border: 0;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1529,6 +1529,8 @@ html:has(.landing-page)::-webkit-scrollbar-thumb:hover {
   border-radius: 999px;
   font-weight: 600;
   font-size: 1.05rem;
+  font-family: inherit;
+  cursor: pointer;
   text-decoration: none;
   white-space: nowrap;
   max-width: 100%;
@@ -2174,7 +2176,6 @@ html:has(.landing-page)::-webkit-scrollbar-thumb:hover {
      stray copy competing with the thread for width */
   .landing-hero-actions,
   .landing-secondary-channels,
-  .landing-phone-number,
   .landing-hero-lede {
     display: none;
   }

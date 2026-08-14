@@ -28,11 +28,10 @@ import {
 import elizaLogotextUrl from "@/assets/eliza-logotext.svg";
 import {
   buildElizaDiscordHref,
-  buildElizaSmsHref,
   buildElizaTelegramHref,
   buildElizaWhatsAppHref,
-  ELIZA_PHONE_FORMATTED,
   ELIZA_PHONE_NUMBER,
+  openOrCopyElizaMessage,
 } from "@/lib/contact";
 import { resolveHomepageProductNavigation } from "@/lib/product-navigation";
 import { useT } from "@/providers/I18nProvider";
@@ -671,10 +670,10 @@ export default function LandingPage() {
     [],
   );
 
-  const copyPhoneNumber = async () => {
+  const handleMessageEliza = async () => {
     try {
-      await navigator.clipboard.writeText(ELIZA_PHONE_NUMBER);
-      setPhoneCopyState("copied");
+      const outcome = await openOrCopyElizaMessage(window);
+      setPhoneCopyState(outcome === "copied" ? "copied" : "idle");
     } catch {
       setPhoneCopyState("error");
     }
@@ -690,13 +689,11 @@ export default function LandingPage() {
   const phoneCopyLabel =
     phoneCopyState === "copied"
       ? t("homepage_eliza.landing.phoneCopied", {
-          defaultValue: "Copied!",
+          defaultValue: "Phone number copied",
         })
-      : phoneCopyState === "error"
-        ? t("homepage_eliza.landing.phoneCopyFailed", {
-            defaultValue: "Couldn't copy",
-          })
-        : ELIZA_PHONE_FORMATTED;
+      : t("homepage_eliza.landing.phoneCopyFailed", {
+          defaultValue: "Couldn't copy the phone number",
+        });
   return (
     <div className="landing-page theme-app">
       <Suspense fallback={null}>
@@ -710,16 +707,17 @@ export default function LandingPage() {
         })}
       >
         <span className="landing-topbar-channels">
-          <a
+          <button
+            type="button"
             className="landing-channel"
-            href={buildElizaSmsHref()}
+            onClick={() => void handleMessageEliza()}
             aria-label={t("homepage_eliza.landing.channelImessage", {
               defaultValue: "Text Eliza on iMessage",
             })}
           >
             <IMessageIcon className="size-6" style={{ color: "#34C759" }} />
             <span className="sr-only">iMessage</span>
-          </a>
+          </button>
           <a
             className="landing-channel"
             href={`tel:${ELIZA_PHONE_NUMBER}`}
@@ -820,15 +818,16 @@ export default function LandingPage() {
             })}
           </h1>
           <div className="landing-hero-actions">
-            <a
+            <button
+              type="button"
               className="landing-cta landing-cta--black"
-              href={buildElizaSmsHref()}
+              onClick={() => void handleMessageEliza()}
             >
               <IMessageIcon className="size-5" />
               {t("homepage_eliza.landing.ctaText", {
-                defaultValue: "Text Eliza",
+                defaultValue: "Message Eliza",
               })}
-            </a>
+            </button>
             <a
               className="landing-cta landing-cta--white"
               href={`tel:${ELIZA_PHONE_NUMBER}`}
@@ -861,16 +860,15 @@ export default function LandingPage() {
               </a>
             ))}
           </div>
-          <button
-            type="button"
-            className="landing-phone-number"
-            onClick={() => void copyPhoneNumber()}
-            aria-label={t("homepage_eliza.landing.copyPhone", {
-              defaultValue: "Copy Eliza's phone number",
-            })}
-          >
-            <span aria-live="polite">{phoneCopyLabel}</span>
-          </button>
+          {phoneCopyState !== "idle" && (
+            <div
+              className={`landing-copy-notice landing-copy-notice--${phoneCopyState}`}
+              role="status"
+              aria-live="polite"
+            >
+              {phoneCopyLabel}
+            </div>
+          )}
         </div>
         <ResponsivePhoneMockup />
       </main>
