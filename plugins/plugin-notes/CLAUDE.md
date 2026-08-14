@@ -33,6 +33,9 @@ views or event state to this package.
   write barrier.
 - `src/service.ts` — `NotesService`, the only layer allowed to mutate state.
 - `src/interact.ts` — server capability broker (`serverInteract`).
+- `src/action.ts` — `NOTES`, the chat-side door onto the same service.
+- `src/provider.ts` — `SAVED_NOTES`, the read seam that renders the canonical
+  snapshot into turn context so a saved note is recallable.
 - `src/capabilities.ts` — planner-visible capability declarations.
 - `src/routes.ts` — authenticated `GET /api/notes/state`.
 - `src/register.ts` — static app-shell page registration.
@@ -43,3 +46,6 @@ views or event state to this package.
 - The server owns all state; the view renders the authoritative snapshot.
 - Loading, designed-empty, and error are three distinguishable renders.
 - Failures throw typed `ElizaError`s; nothing fabricates a healthy empty state.
+- `NotesService` is the only store. Notes reach recall by being rendered from
+  that snapshot at read time — never by mirroring note text into a memory
+  record, which would be a second copy that survives an edit or a delete.
