@@ -328,7 +328,13 @@ export async function runSubPlanner(
 					error: `Action ${toolCall.name} is not available to sub-planner ${params.action.name}`,
 				};
 			}
-			const canonicalCall = { ...toolCall, name: resolvedChildAction.name };
+			// The loop records this same object after execution. Canonicalize it in
+			// place so the persisted sub-step identity is stable when the model uses
+			// a simile on one pass and the canonical name (or another simile) later.
+			// Keeping the alias in the trajectory made the replay guard compare two
+			// different digests for the same child operation.
+			toolCall.name = resolvedChildAction.name;
+			const canonicalCall = toolCall;
 			if (
 				priorNonRetryableSubstep(subPlannerCtx.previousResults, canonicalCall)
 			) {
