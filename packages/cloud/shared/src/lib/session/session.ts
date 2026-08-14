@@ -12,7 +12,6 @@ import type { AnonymousSession } from "../../db/schemas";
 import {
   anonymousSessions,
   conversations,
-  creditTransactions,
   elizaRoomCharactersTable,
   organizations,
   userCharacters,
@@ -195,7 +194,7 @@ export async function migrateAnonymousSession(
         .values({
           name: `${anonUser.name || "User"}'s Organization`,
           slug: orgSlug,
-          credit_balance: "5.00",
+          credit_balance: "0.00",
         })
         .returning();
 
@@ -237,18 +236,6 @@ export async function migrateAnonymousSession(
 
       targetUserId = anonymousUserId;
       targetOrgId = organization.id;
-
-      await tx.insert(creditTransactions).values({
-        organization_id: targetOrgId,
-        user_id: targetUserId,
-        amount: "5.00",
-        type: "credit",
-        description: "Initial free credits - Anonymous migration welcome bonus",
-        metadata: {
-          type: "initial_free_credits",
-          source: "anonymous-steward-migration",
-        },
-      });
 
       logger.info(`${logPrefix} Converted in-place`, {
         userId: targetUserId,

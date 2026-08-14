@@ -82,6 +82,13 @@ export function directCloudSharedAgentIdFromBase(
   }
 }
 
+/** Account-native Shared ids are stable identities, not sandbox row UUIDs. */
+export function isPersonalSharedElizaId(value: string): boolean {
+  return /^personal:[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+    value,
+  );
+}
+
 /**
  * True only for shared-runtime adapter paths on a trusted Eliza Cloud
  * control-plane host. Path-only classification is intentionally broader for

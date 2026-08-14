@@ -43,6 +43,7 @@ const SHARED_AGENT_BASE =
   "https://staging.elizacloud.ai/api/v1/eliza/agents/cad3c071";
 
 const clientMock = vi.hoisted(() => ({
+  getPersonalSharedEliza: vi.fn(),
   selectOrProvisionCloudAgent: vi.fn(),
   submitFirstRun: vi.fn(async () => {}),
   setBaseUrl: vi.fn(),
@@ -160,6 +161,13 @@ beforeEach(() => {
   window.localStorage.clear();
   clientMock.getCloudStatus.mockResolvedValue(null);
   clientMock.getRestAuthToken.mockReturnValue(null);
+  clientMock.getPersonalSharedEliza.mockResolvedValue({
+    agentId: "personal:org-1",
+    agentName: "Eliza",
+    apiBase:
+      "https://staging.elizacloud.ai/api/v1/eliza/agents/personal%3Aorg-1",
+    runtime: "shared",
+  });
   // Default boot config: shared-first with NO auto-upgrade (#18204).
   bootConfigMock.autoUpgradeSharedToDedicated = false;
 });
@@ -354,32 +362,29 @@ describe("listOrAutoProvisionCloudAgent / runFirstRunFinish routing", () => {
     window.localStorage.setItem("steward_session_token", "steward-jwt");
   });
 
-  it("lists running agents and binds the preferred one (routed via runFirstRunFinish)", async () => {
-    clientMock.getCloudCompatAgents.mockResolvedValue({
-      success: true,
-      data: [
-        { agent_id: "cad3c071", status: "running", preferred: true },
-        { agent_id: "other", status: "running" },
-      ],
-    });
-    mockSelection(false);
+  it("routes Cloud first run directly to the rowless personal identity", async () => {
     const outcome = await runFirstRunFinish(
       { ...draft(), runtime: "cloud" },
       ports(),
     );
     expect(outcome.kind).toBe("done");
-    expect(clientMock.selectOrProvisionCloudAgent).toHaveBeenCalledWith(
-      expect.objectContaining({ preferAgentId: "cad3c071" }),
-    );
+    expect(clientMock.getPersonalSharedEliza).toHaveBeenCalledWith({
+      cloudApiBase: "https://staging.elizacloud.ai",
+      authToken: "steward-jwt",
+    });
+    expect(clientMock.getCloudCompatAgents).not.toHaveBeenCalled();
+    expect(clientMock.selectOrProvisionCloudAgent).not.toHaveBeenCalled();
   });
 
-  it("surfaces the listing error when the agent list call fails", async () => {
-    clientMock.getCloudCompatAgents.mockResolvedValue({
-      success: false,
-      error: "network unreachable",
-    });
-    const outcome = await listOrAutoProvisionCloudAgent(draft(), ports());
-    expect(outcome).toEqual({ kind: "error", message: "network unreachable" });
+  it("surfaces personal identity failure without provisioning a fallback", async () => {
+    clientMock.getPersonalSharedEliza.mockRejectedValueOnce(
+      new Error("identity unavailable"),
+    );
+    await expect(
+      listOrAutoProvisionCloudAgent(draft(), ports()),
+    ).rejects.toThrow("identity unavailable");
+    expect(clientMock.getCloudCompatAgents).not.toHaveBeenCalled();
+    expect(clientMock.selectOrProvisionCloudAgent).not.toHaveBeenCalled();
   });
 
   it("requires cloud login when no auth token is available", async () => {
@@ -392,18 +397,6 @@ describe("listOrAutoProvisionCloudAgent / runFirstRunFinish routing", () => {
 
   it("requires renderer auth when the server is connected but has no client token", async () => {
     window.localStorage.clear();
-    clientMock.getCloudStatus.mockResolvedValue({ connected: true });
-    clientMock.getCloudCompatAgents.mockResolvedValue({
-      success: true,
-      data: [
-        {
-          agent_id: "cad3c071",
-          status: "running",
-          preferred: true,
-        },
-      ],
-    });
-    mockSelection(false, { bridgeUrl: "https://cad3c071.elizacloud.ai" });
     const p = ports();
     p.handleInteractiveCloudLogin = vi.fn(async () => {
       window.localStorage.setItem(
@@ -418,14 +411,14 @@ describe("listOrAutoProvisionCloudAgent / runFirstRunFinish routing", () => {
       requireClientAuth: true,
     });
     expect(outcome.kind).toBe("done");
-    expect(clientMock.selectOrProvisionCloudAgent).toHaveBeenCalledWith(
+    expect(clientMock.getPersonalSharedEliza).toHaveBeenCalledWith(
       expect.objectContaining({ authToken: "fresh-client-token" }),
     );
+    expect(clientMock.selectOrProvisionCloudAgent).not.toHaveBeenCalled();
   });
 
   it("does not list or provision when required client auth returns no token", async () => {
     window.localStorage.clear();
-    clientMock.getCloudStatus.mockResolvedValue({ connected: true });
     const p = ports();
 
     const outcome = await listOrAutoProvisionCloudAgent(draft(), p);
@@ -434,7 +427,7 @@ describe("listOrAutoProvisionCloudAgent / runFirstRunFinish routing", () => {
       requireClientAuth: true,
     });
     expect(outcome.kind).toBe("needs-cloud-login");
-    expect(clientMock.getCloudCompatAgents).not.toHaveBeenCalled();
+    expect(clientMock.getPersonalSharedEliza).not.toHaveBeenCalled();
     expect(clientMock.selectOrProvisionCloudAgent).not.toHaveBeenCalled();
   });
 });

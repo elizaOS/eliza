@@ -13,6 +13,10 @@ export const CARTESIA_INK_SAMPLE_RATE = 16_000;
 export const CARTESIA_INK_AUDIO_ENCODING = "pcm_s16le";
 export const CARTESIA_INK_CHUNK_MILLISECONDS = 100;
 export const CARTESIA_INK_CHUNK_BYTES = 3_200;
+export const CARTESIA_INK_TURN_START_THRESHOLD = 0.8;
+export const CARTESIA_INK_TURN_EAGER_END_THRESHOLD = 0.5;
+export const CARTESIA_INK_TURN_END_THRESHOLD = 0.4;
+export const CARTESIA_INK_TURN_END_TIMEOUT_MILLISECONDS = 1_200;
 
 const DEFAULT_CLOSE_CODE = 1000;
 
@@ -167,6 +171,22 @@ export function buildCartesiaInkUrl(config: CartesiaInkConfig): string {
   url.searchParams.set("encoding", CARTESIA_INK_AUDIO_ENCODING);
   url.searchParams.set("sample_rate", String(CARTESIA_INK_SAMPLE_RATE));
   url.searchParams.set("cartesia_version", CARTESIA_INK_API_VERSION);
+  url.searchParams.set(
+    "turn_start_threshold",
+    String(CARTESIA_INK_TURN_START_THRESHOLD),
+  );
+  url.searchParams.set(
+    "turn_eager_end_threshold",
+    String(CARTESIA_INK_TURN_EAGER_END_THRESHOLD),
+  );
+  url.searchParams.set(
+    "turn_end_threshold",
+    String(CARTESIA_INK_TURN_END_THRESHOLD),
+  );
+  url.searchParams.set(
+    "turn_end_timeout_ms",
+    String(CARTESIA_INK_TURN_END_TIMEOUT_MILLISECONDS),
+  );
   return url.toString();
 }
 
@@ -217,6 +237,7 @@ export function createCartesiaInkRealtimeSession(
 
   const onOpen = () => {
     metric({ name: "cartesia_ink_connected", value: 1 });
+    emit({ type: "connected", raw: {} });
   };
 
   const onMessage = (event: MessageEvent) => {

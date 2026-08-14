@@ -8,7 +8,6 @@
  * contract cannot select the legacy database-backed bridge.
  */
 
-import type { AgentSandbox } from "@/db/repositories/agent-sandboxes";
 import { timingSafeEqualSecret } from "@/lib/auth/cron";
 import { cache } from "@/lib/cache/client";
 import { CacheKeys } from "@/lib/cache/keys";
@@ -17,6 +16,7 @@ import {
   runWithCloudBindingsAsync,
 } from "@/lib/runtime/cloud-bindings";
 import { handleCanonicalScopedAgentStream } from "@/lib/services/shared-runtime/canonical-scoped-stream";
+import type { SharedRuntimeAgent } from "@/lib/services/shared-runtime/shared-runtime-agent";
 import type { BridgeExecutionContext } from "@/lib/services/shared-runtime/shared-runtime-chat";
 import { logger } from "@/lib/utils/logger";
 import type {
@@ -43,14 +43,14 @@ export type InternalElizaConversationFetchFactory = (
 interface InternalVoiceSharedRuntime {
   executionCtx?: BridgeExecutionContext;
   namespace?: RuntimeDurableObjectNamespace;
-  readCachedAgent(): Promise<AgentSandbox | null>;
+  readCachedAgent(): Promise<SharedRuntimeAgent | null>;
   scheduleHydration(): boolean;
 }
 
 function isCachedVoiceAgent(
-  agent: AgentSandbox | null,
+  agent: SharedRuntimeAgent | null,
   claims: InternalElizaConversationFetchClaims,
-): agent is AgentSandbox {
+): agent is SharedRuntimeAgent {
   return Boolean(
     agent &&
       agent.id === claims.agentId &&
@@ -98,8 +98,8 @@ export function createInternalElizaConversationFetchFactory(
     );
     let hydrationPromise: Promise<void> | null = null;
 
-    const readCachedAgent = async (): Promise<AgentSandbox | null> => {
-      const cached = await cache.get<AgentSandbox>(cacheKey);
+    const readCachedAgent = async (): Promise<SharedRuntimeAgent | null> => {
+      const cached = await cache.get<SharedRuntimeAgent>(cacheKey);
       return isCachedVoiceAgent(cached, claims) ? cached : null;
     };
 

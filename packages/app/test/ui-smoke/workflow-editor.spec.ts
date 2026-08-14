@@ -275,9 +275,9 @@ test("workflow studio creates, executes, inspects, and reloads a Smithers workfl
   const source = `/** @jsxImportSource smthrs */
 import { createSmithers } from "smthrs/create";
 import { z } from "zod";
-const { Workflow, Task, smithers, outputs } = createSmithers({ result: z.object({ message: z.string() }) });
+const { Workflow, Task, smithers, outputs } = createSmithers({ output: z.object({ message: z.string() }) });
 const agent = globalThis.__elizaSmithers.agent;
-export default smithers(() => <Workflow name="digest"><Task id="digest" output={outputs.result} agent={agent}>Create the digest.</Task></Workflow>);`;
+export default smithers(() => <Workflow name="digest"><Task id="digest" output={outputs.output} agent={agent}>Create the digest.</Task></Workflow>);`;
   await page.getByTestId("smithers-source-editor").fill(source);
   await page.locator('[data-agent-id="save-workflow"]').click();
 
