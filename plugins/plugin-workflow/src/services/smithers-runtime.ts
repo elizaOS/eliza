@@ -125,18 +125,23 @@ export function resolveSmithersWorkflowDir(tenantId: string, workflowId: string)
 }
 
 export function resolveSmithersTimeoutMs(value?: number): number {
-  const raw = process.env.ELIZA_SMTHRS_TIMEOUT_MS?.trim();
-  const configured = value ?? (raw === undefined ? DEFAULT_TIMEOUT_MS : Number(raw));
-  const validEnvironmentSyntax = value !== undefined || raw === undefined || /^\d+$/.test(raw);
-  if (
-    !validEnvironmentSyntax ||
-    !Number.isSafeInteger(configured) ||
-    configured <= 0 ||
-    configured > MAX_TIMEOUT_MS
-  ) {
+  const raw = process.env.ELIZA_SMTHRS_TIMEOUT_MS;
+  let configured: number;
+  if (value !== undefined) {
+    configured = value;
+  } else if (raw === undefined) {
+    configured = DEFAULT_TIMEOUT_MS;
+  } else {
+    configured = /^[1-9]\d*$/.test(raw) ? Number(raw) : Number.NaN;
+  }
+  if (!Number.isSafeInteger(configured) || configured <= 0 || configured > MAX_TIMEOUT_MS) {
     throw new ElizaError(`Smithers timeout must be an integer from 1 to ${MAX_TIMEOUT_MS}`, {
       code: 'SMTHRS_TIMEOUT_INVALID',
-      context: { configured },
+      context: {
+        configured: value ?? raw,
+        minimum: 1,
+        maximum: MAX_TIMEOUT_MS,
+      },
     });
   }
   return configured;
