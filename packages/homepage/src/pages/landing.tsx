@@ -58,6 +58,10 @@ const DEMO_LOOP: readonly DemoStep[] = LANDING_DEMO_LOOP;
 // Keep only the most recent messages in the DOM; the thread stays pinned to
 // the bottom so pruning older rows is invisible.
 const MAX_RENDERED_ITEMS = 14;
+// The phone should read as an ongoing relationship on first paint, especially
+// in the taller desktop frame. Playback continues from this truthful context
+// instead of spending half a minute growing an empty transcript.
+const INITIAL_RENDERED_ITEMS = 7;
 const USER_KEYSTROKE_MS = 62;
 const ELIZA_TYPING_MS = 2275;
 const BEAT_PAUSE_MS = 1465;
@@ -121,7 +125,9 @@ function DemoCardBubble({ card }: { card: DemoCard }) {
 function PhoneMockup() {
   const t = useT();
   const [clock, setClock] = useState(() => new Date());
-  const [items, setItems] = useState<DemoItem[]>([]);
+  const [items, setItems] = useState<DemoItem[]>(() =>
+    settledIntroItems().slice(0, INITIAL_RENDERED_ITEMS),
+  );
   const [phase, setPhase] = useState<"intro" | "looping" | "settled">("intro");
   const [elizaTyping, setElizaTyping] = useState(false);
   const [composerText, setComposerText] = useState("");
@@ -191,7 +197,7 @@ function PhoneMockup() {
     };
 
     (async () => {
-      await play(DEMO_INTRO);
+      await play(DEMO_INTRO.slice(INITIAL_RENDERED_ITEMS));
       if (cancelled) return;
       setPhase("looping");
       while (!cancelled) {

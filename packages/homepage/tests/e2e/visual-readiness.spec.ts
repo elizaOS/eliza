@@ -61,17 +61,16 @@ test("reduced motion renders the settled intro conversation", async ({
   // screenshot determinism.
   const demo = page.locator(".landing-iphone");
   await expect(demo).toHaveAttribute("data-demo-phase", "settled");
-  await expect(demo).toHaveAttribute("data-demo-messages", "18");
+  await expect(demo).toHaveAttribute("data-demo-messages", "17");
   await expect(page.locator(".landing-demo-card")).toHaveCount(3);
 
   const assistantMessages = await page
     .locator(".landing-bubble--eliza")
     .allTextContents();
+  expect(assistantMessages).toContain("Got it. Thursday dinner for four.");
+  expect(assistantMessages).toContain("Noted.");
   expect(assistantMessages).toContain(
-    "Looks like you've got 2 important emails you haven't followed up on.",
-  );
-  expect(assistantMessages).toContain(
-    "One looks like an important work thing. Should I draft a reply?",
+    "Then San Francisco Friday morning, but not too early.",
   );
   expect(assistantMessages.join(" ")).not.toContain("—");
 });
