@@ -21,14 +21,42 @@ export function messageText(message: Memory): string {
   return typeof text === "string" ? text : "";
 }
 
+/**
+ * Small models on the native tool path emit key-name debris as field VALUES.
+ * Two shapes show up live:
+ *   a comma-led key fragment  — `",time_min:"`, `",label:"`, `",new_title:"`
+ *   the field's own name      — `side: "side"`, `grantId: "grantId"`
+ * Both type-check, so they flow into connector routing and event lookup as if
+ * they were real input: a plain "cancel the quibbleworth review" arrived with
+ * grantId="grantId", missed the built-in calendar, and the user was told
+ * "Google Calendar isn't connected" about an event in their own local calendar.
+ *
+ * A value that is only a key fragment, or only its own field name, carries no
+ * information in ANY calendar field — so it is dropped here, at the single
+ * chokepoint every field reads through, rather than at each call site.
+ */
+const KEY_DEBRIS_PATTERN = /^,\s*[A-Za-z_][A-Za-z0-9_-]*\s*:?$/;
+
+function echoesOwnKey(key: string, value: string): boolean {
+  const normalize = (raw: string) => raw.replace(/[\s_-]+/g, "").toLowerCase();
+  return normalize(value) === normalize(key);
+}
+
 export function detailString(
   details: Record<string, unknown> | undefined,
   key: string,
 ): string | undefined {
   const value = details?.[key];
-  return typeof value === "string" && value.trim().length > 0
-    ? value.trim()
-    : undefined;
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  if (
+    trimmed.length === 0 ||
+    KEY_DEBRIS_PATTERN.test(trimmed) ||
+    echoesOwnKey(key, trimmed)
+  ) {
+    return undefined;
+  }
+  return trimmed;
 }
 
 export type PlannerCalendarWindow = {

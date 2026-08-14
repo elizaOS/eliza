@@ -115,3 +115,37 @@ describe("normalizePlannerCalendarWindow (#18946)", () => {
     });
   });
 });
+
+describe("detailString drops planner key-name debris", () => {
+  // Live 2026-08-14: "cancel the quibbleworth review" arrived with
+  // side="side", grantId="grantId", mode="mode". Those type-check, so the junk
+  // grant reached connector routing, missed the built-in calendar, and the user
+  // was told "Google Calendar isn't connected" about a local event.
+  it("drops a value that is only its own key name", () => {
+    expect(detailString({ side: "side" }, "side")).toBeUndefined();
+    expect(detailString({ grantId: "grantId" }, "grantId")).toBeUndefined();
+    expect(detailString({ mode: "mode" }, "mode")).toBeUndefined();
+  });
+
+  it("drops a key echo across naming styles", () => {
+    expect(detailString({ grantId: "grant_id" }, "grantId")).toBeUndefined();
+    expect(
+      detailString({ calendar_id: "calendarId" }, "calendar_id"),
+    ).toBeUndefined();
+  });
+
+  it("drops a comma-led key fragment", () => {
+    expect(detailString({ title: ",time_min:" }, "title")).toBeUndefined();
+    expect(detailString({ label: ", new_title" }, "label")).toBeUndefined();
+  });
+
+  it("keeps a real value that merely contains the key name", () => {
+    expect(detailString({ side: "google" }, "side")).toBe("google");
+    expect(detailString({ title: "title fight tickets" }, "title")).toBe(
+      "title fight tickets",
+    );
+    expect(detailString({ query: "querying the db" }, "query")).toBe(
+      "querying the db",
+    );
+  });
+});
