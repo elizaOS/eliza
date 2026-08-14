@@ -66,6 +66,7 @@ jobs:
       AGENT_IMAGE_CANARY_TARGET_DIGEST: sha256:4a6818aeab4d8b093708a316d51d1b505f1050225a6d1cccbacc3739880721f8
       AGENT_IMAGE_CANARY_BASE_URL: https://api.eliza.app
       AGENT_IMAGE_CANARY_EVIDENCE_PATH: reports/agent-image-canary.json
+      AGENT_IMAGE_CANARY_JOB_ID: cf434a6a-26eb-484f-ba43-f8929a28ef9b
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -80,6 +81,33 @@ jobs:
         run: |
           mkdir -p reports
           bun packages/cloud/scripts/admin/agent-image-canary-live.ts
+      - name: Report sanitized canary failure
+        if: failure()
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          const response = await fetch(
+            `${process.env.AGENT_IMAGE_CANARY_BASE_URL}/api/v1/admin/agent-image-canary/jobs/${process.env.AGENT_IMAGE_CANARY_JOB_ID}`,
+            { headers: { Accept: "application/json", "X-API-Key": process.env.ELIZACLOUD_API_KEY } },
+          );
+          const body = await response.json();
+          if (!response.ok || body.success !== true) {
+            throw new Error(`Canary diagnostic request failed with HTTP ${response.status}`);
+          }
+          const data = body.data ?? {};
+          const result = data.result ?? {};
+          console.log(JSON.stringify({
+            status: data.status,
+            error: data.error ?? null,
+            attempts: data.attempts,
+            maxAttempts: data.maxAttempts,
+            result: {
+              success: result.success ?? null,
+              error: result.error ?? null,
+              cleanupPending: result.cleanupPending ?? null,
+            },
+          }));
+          NODE
       - name: Upload privacy-safe rollout evidence
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
