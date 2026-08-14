@@ -9,6 +9,7 @@
   "homepage_eliza.common.skipToContent": "跳到正文",
   "homepage_eliza.common.loading": "加载中…",
   "homepage_eliza.common.redirecting": "正在跳转…",
+  "homepage_eliza.common.messageHandoff": "正在打开“信息”。如果没有反应，请复制号码。",
   "homepage_eliza.common.year": "ElizaCloud Inc. {{year}}",
   "homepage_eliza.common.terms": "条款",
   "homepage_eliza.common.privacy": "隐私",

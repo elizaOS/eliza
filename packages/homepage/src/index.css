@@ -1457,6 +1457,22 @@ body {
   transform: translateX(-50%);
 }
 
+.landing-copy-notice-action {
+  min-height: 2.75rem;
+  margin-left: 0.75rem;
+  border: 0;
+  background: transparent;
+  color: currentColor;
+  font: inherit;
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+  cursor: pointer;
+}
+
+.landing-copy-notice--handoff {
+  color: #404040;
+}
+
 .landing-copy-notice--error {
   color: #991b1b;
 }
