@@ -765,9 +765,9 @@ INFERENCE_PASSTHROUGH_STREAMING = "true"
 # the upstream JSON untouched; usage parses from the same buffer and bills
 # through the identical settle chain. Default off; rollback = flip off.
 INFERENCE_PASSTHROUGH_EMBEDDINGS = "true"
-# Realtime voice is a staging-only soak. Keep the production posture explicit
-# so a missing variable or inherited default cannot accidentally expose it.
-VOICE_REALTIME_WS_ENABLED = "false"
+# Production voice powers both authenticated app sessions and signed Twilio
+# media streams. Keep it explicit so a deploy cannot silently hang up calls.
+VOICE_REALTIME_WS_ENABLED = "true"
 ELIZA_TTS_FISH_ENABLED = "false"
 FISH_AUDIO_DATA_GOVERNANCE_APPROVED = "false"
 FORCE_REDIS_EVENTS = "false"
