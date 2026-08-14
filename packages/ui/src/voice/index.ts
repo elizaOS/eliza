@@ -71,6 +71,7 @@ export {
   type PlaybackFrameTap,
   resamplePcmTo16k,
 } from "./playback-frame-pump";
+export { StreamingLinearResampler } from "./streaming-linear-resampler";
 export * from "./types";
 export {
   SHIPPED_WAKE_HEADS,
@@ -121,6 +122,13 @@ export {
   type VoiceWebSocketFactory,
   type VoiceWebSocketLike,
 } from "./voice-session-client";
+export {
+  redactGrantedVoiceCaptureSettings,
+  type VoiceBrowserAudioBackend,
+  type VoiceCaptureDiagnostics,
+  type VoicePlaybackDiagnostics,
+  type VoiceSessionClientDiagnosticEvent,
+} from "./voice-session-media-diagnostics";
 export {
   type AudioNodeLike,
   hasAudioWorkletSupport,

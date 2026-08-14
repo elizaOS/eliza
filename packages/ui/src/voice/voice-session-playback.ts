@@ -27,6 +27,8 @@ import {
   constructBrowserAudioContext,
   constructBrowserAudioWorkletNode,
 } from "./browser-audio-runtime";
+import { StreamingLinearResampler } from "./streaming-linear-resampler";
+import type { VoicePlaybackDiagnostics } from "./voice-session-media-diagnostics";
 import {
   int16BytesToFloatPcm,
   VOICE_PCM_SAMPLE_RATE,
@@ -124,6 +126,10 @@ export interface VoiceSessionPlaybackOptions {
   unlockOnCreate?: boolean;
   /** Notified when queued audio starts/stops waiting for an unlock gesture. */
   onUnlockChange?: (needsUnlock: boolean) => void;
+  /** Content-free requested/actual playback settings for device evaluation. */
+  onDiagnostics?: (diagnostics: VoicePlaybackDiagnostics) => void;
+  /** Notified when the engine first consumes a sequenced audio frame. */
+  onStarted?: (sequence: number) => void;
   /** Notified with the exact newest enqueue sequence that drained. */
   onDrained?: (sequence: number) => void;
 }
@@ -213,10 +219,8 @@ export async function createVoiceSessionPlayback(
         isPlaybackAudioContextLike,
       );
       if (!context) throw new Error("AudioContext unavailable for playback");
-      // Request a 16 kHz context so the pcm16 downlink plays at native rate with
-      // no resample; if the platform ignores it (Safari sometimes forces 44.1),
-      // the ScriptProcessor/worklet plays the raw samples — a pitch shift the
-      // caller can correct later, but correctness of framing/flush is unaffected.
+      // Request a native 16 kHz context. Browsers that force a device-native
+      // rate (commonly 44.1/48 kHz) are corrected by the streaming resampler.
       return context;
     });
 
@@ -238,6 +242,10 @@ export async function createVoiceSessionPlayback(
   let stopped = false;
   let paused = false;
   let needsUnlock = false;
+  const resampler = new StreamingLinearResampler(
+    VOICE_PCM_SAMPLE_RATE,
+    ctx.sampleRate,
+  );
   const setNeedsUnlock = (next: boolean): void => {
     if (needsUnlock === next) return;
     needsUnlock = next;
@@ -253,6 +261,7 @@ export async function createVoiceSessionPlayback(
   interface QueuedPlaybackFrame {
     samples: Float32Array;
     sequence: number;
+    started: boolean;
   }
   const preUnlockQueue: QueuedPlaybackFrame[] = [];
 
@@ -262,10 +271,28 @@ export async function createVoiceSessionPlayback(
   // stale notification can never clear the newer response's activity state.
   let activitySequence = 0;
   let latestActivitySequence = 0;
+  let lastFlushSequence = 0;
+  let lastStartedSequence = 0;
   const nextActivitySequence = (): number => {
     activitySequence += 1;
     latestActivitySequence = activitySequence;
     return activitySequence;
+  };
+  const emitStarted = (sequence: number): void => {
+    try {
+      options.onStarted?.(sequence);
+    } catch (ignoredError) {
+      // error-policy:J7 playout diagnostics must never break audio delivery.
+      void ignoredError;
+    }
+  };
+  const emitDrained = (sequence: number): void => {
+    try {
+      options.onDrained?.(sequence);
+    } catch (ignoredError) {
+      // error-policy:J7 playout diagnostics must never break audio delivery.
+      void ignoredError;
+    }
   };
 
   let backend: "audioworklet" | "scriptprocessor";
@@ -301,12 +328,25 @@ export async function createVoiceSessionPlayback(
           | { type?: string; sequence?: unknown }
           | undefined;
         if (
+          d?.type === "started" &&
+          typeof d.sequence === "number" &&
+          Number.isSafeInteger(d.sequence) &&
+          d.sequence > lastFlushSequence &&
+          d.sequence > lastStartedSequence &&
+          d.sequence <= latestActivitySequence
+        ) {
+          lastStartedSequence = d.sequence;
+          emitStarted(d.sequence);
+          return;
+        }
+        if (
           d?.type === "drained" &&
           typeof d.sequence === "number" &&
           Number.isSafeInteger(d.sequence) &&
+          d.sequence > lastFlushSequence &&
           d.sequence === latestActivitySequence
         ) {
-          options.onDrained?.(d.sequence);
+          emitDrained(d.sequence);
         }
       };
       node.connect(ctx.destination);
@@ -336,10 +376,16 @@ export async function createVoiceSessionPlayback(
             ch[i] = 0;
             if (jsHadAudio) {
               jsHadAudio = false;
-              options.onDrained?.(jsLatestSequence);
+              emitDrained(jsLatestSequence);
             }
           } else {
-            ch[i] = jsQueue[0].samples[jsReadOffset];
+            const frame = jsQueue[0];
+            if (!frame.started) {
+              frame.started = true;
+              lastStartedSequence = frame.sequence;
+              emitStarted(frame.sequence);
+            }
+            ch[i] = frame.samples[jsReadOffset];
             jsReadOffset += 1;
           }
         }
@@ -365,6 +411,21 @@ export async function createVoiceSessionPlayback(
     throw error;
   }
 
+  try {
+    options.onDiagnostics?.({
+      backend,
+      requestedSampleRateHz: VOICE_PCM_SAMPLE_RATE,
+      actualSampleRateHz: ctx.sampleRate,
+      sampleRateConversion:
+        ctx.sampleRate === VOICE_PCM_SAMPLE_RATE
+          ? "not_required"
+          : "streaming_linear",
+    });
+  } catch (ignoredError) {
+    // error-policy:J7 diagnostic listeners must never break an active playback graph.
+    void ignoredError;
+  }
+
   let onAbort: (() => void) | null = null;
   let stopPromise: Promise<void> | null = null;
 
@@ -383,6 +444,7 @@ export async function createVoiceSessionPlayback(
     }
     preUnlockQueue.length = 0;
     jsQueue.length = 0;
+    resampler.reset();
     setNeedsUnlock(false);
     stopPromise = ctx.close().catch(() => {});
     return stopPromise;
@@ -445,9 +507,13 @@ export async function createVoiceSessionPlayback(
     },
     enqueue(bytes: Uint8Array) {
       if (stopped) return null;
-      const samples = int16BytesToFloatPcm(bytes);
+      const samples = resampler.push(int16BytesToFloatPcm(bytes));
       if (samples.length === 0) return null;
-      const frame = { samples, sequence: nextActivitySequence() };
+      const frame = {
+        samples,
+        sequence: nextActivitySequence(),
+        started: false,
+      };
       if (!isRunning()) {
         // Buffer until unlocked; do not drop.
         setNeedsUnlock(true);
@@ -475,6 +541,8 @@ export async function createVoiceSessionPlayback(
       // Immediate silence for barge-in — clear BOTH the deferred and live queues.
       paused = false;
       const flushSequence = nextActivitySequence();
+      lastFlushSequence = flushSequence;
+      resampler.reset();
       preUnlockQueue.length = 0;
       // A flush discards every frame that was waiting for a gesture, so the UI
       // must not keep advertising an unlock for audio that no longer exists.

@@ -44,6 +44,7 @@
  */
 
 import type { VoiceContinuousStatus } from "./voice-chat-types";
+import type { VoiceSessionClientDiagnosticEvent } from "./voice-session-media-diagnostics";
 import {
   type MicAudioContextLike,
   startVoiceMicCapture,
@@ -200,6 +201,8 @@ export interface VoiceSessionClientOptions {
   onServerEvent?: (event: ServerControlFrame) => void;
   /** Fired for each client playout trace mark. */
   onTraceMark?: (mark: VoiceTraceMark) => void;
+  /** Fired for content-free capture/playout device diagnostics. */
+  onDiagnostic?: (event: VoiceSessionClientDiagnosticEvent) => void;
   /** Fired after each successful mint, including a reconnect re-mint. */
   onMinted?: (minted: VoiceSessionMintResponse) => void;
   /** Fired when browser autoplay requires (or no longer requires) a tap. */
@@ -368,6 +371,8 @@ export function createVoiceSessionClient(
   let captureAbort: AbortController | null = null;
   let microphoneMuted = false;
   let playbackMayHaveAudio = false;
+  const playbackTraceBySequence = new Map<number, string | null>();
+  const playbackStartedTraceIds = new Set<string>();
   const turnAuthority = new VoiceSessionTurnAuthority();
   const authorityTimers = new Map<string, ReturnType<typeof setTimeout>>();
   // Whether the caller explicitly stopped us (clean bye) — suppresses reconnect.
@@ -378,11 +383,20 @@ export function createVoiceSessionClient(
     options.onState?.(state, toContinuousStatus(state.phase));
   };
 
-  const mark = (name: string, traceId: string | null): void => {
+  const mark = (name: string, traceId: string | null, atMs = now()): void => {
     try {
-      options.onTraceMark?.({ name, traceId, atMs: now() });
+      options.onTraceMark?.({ name, traceId, atMs });
     } catch (ignoredError) {
       // error-policy:J7 trace-mark listeners are diagnostics; a throwing listener must never break audio or transport.
+      void ignoredError;
+    }
+  };
+
+  const emitDiagnostic = (event: VoiceSessionClientDiagnosticEvent): void => {
+    try {
+      options.onDiagnostic?.(event);
+    } catch (ignoredError) {
+      // error-policy:J7 diagnostics are observational; a throwing listener must never break audio or transport.
       void ignoredError;
     }
   };
@@ -490,6 +504,7 @@ export function createVoiceSessionClient(
           const wasPaused = playback?.paused ?? false;
           const hadBufferedAudio = playbackMayHaveAudio;
           playback?.flush();
+          playbackTraceBySequence.clear();
           turnAuthority.acknowledgePlaybackFlush(transition, effect.responseId);
           setPlaybackMayHaveAudio(false);
           if (wasPaused) {
@@ -760,6 +775,7 @@ export function createVoiceSessionClient(
         mark("not_reached(stale_downlink_audio)", state.traceId);
         return;
       }
+      playbackTraceBySequence.set(sequence, state.traceId);
       setPlaybackMayHaveAudio(true);
       notifyPlaybackUnlockState();
       mark("downlink_audio", state.traceId);
@@ -1006,6 +1022,20 @@ export function createVoiceSessionClient(
         },
         onError: (err) => {
           if (isLifecycleCurrent(generation) && ws === socket) emitError(err);
+        },
+        onDiagnostics: (capture) => {
+          if (
+            isLifecycleCurrent(generation) &&
+            ws === socket &&
+            turnAuthority.isSessionLeaseCurrent(sessionLease)
+          ) {
+            emitDiagnostic({
+              type: "capture_ready",
+              atMs: now(),
+              traceId: state.traceId,
+              capture,
+            });
+          }
         },
         ...(provisionalBargeInEnabled
           ? {
@@ -1339,6 +1369,8 @@ export function createVoiceSessionClient(
     applyAuthorityEffects(closingAuthority);
     clearAuthorityTimers();
     setPlaybackMayHaveAudio(false);
+    playbackTraceBySequence.clear();
+    playbackStartedTraceIds.clear();
     const stoppedGeneration = ++lifecycleGeneration;
     lifecycleAbort?.abort();
     lifecycleAbort = null;
@@ -1425,19 +1457,58 @@ export function createVoiceSessionClient(
               emitPlaybackUnlockState(required);
             }
           },
+          onDiagnostics: (playbackDiagnostics) => {
+            if (isLifecycleCurrent(generation)) {
+              emitDiagnostic({
+                type: "playback_ready",
+                atMs: now(),
+                traceId: state.traceId,
+                playback: playbackDiagnostics,
+              });
+            }
+          },
+          onStarted: (sequence) => {
+            if (
+              !isLifecycleCurrent(generation) ||
+              !playbackTraceBySequence.has(sequence)
+            ) {
+              return;
+            }
+            const traceId = playbackTraceBySequence.get(sequence) ?? null;
+            const atMs = now();
+            emitDiagnostic({
+              type: "playback_started",
+              atMs,
+              traceId,
+              sequence,
+            });
+            if (traceId && !playbackStartedTraceIds.has(traceId)) {
+              playbackStartedTraceIds.add(traceId);
+              mark("first_audio_playout", traceId, atMs);
+            }
+          },
           onDrained: (sequence) => {
             if (isLifecycleCurrent(generation)) {
+              const atMs = now();
               const drained = turnAuthority.acceptPlaybackDrained(
                 sequence,
-                now(),
+                atMs,
               );
               if (!drained.accepted) {
                 mark("not_reached(stale_playback_drain)", state.traceId);
                 return;
               }
+              const traceId = playbackTraceBySequence.get(sequence) ?? null;
+              playbackTraceBySequence.clear();
               setPlaybackMayHaveAudio(false);
               rejectCurrentProvisionalSpeech();
-              mark("playback_drained", state.traceId);
+              emitDiagnostic({
+                type: "playback_drained",
+                atMs,
+                traceId,
+                sequence,
+              });
+              mark("playback_drained", traceId, atMs);
             }
           },
         });

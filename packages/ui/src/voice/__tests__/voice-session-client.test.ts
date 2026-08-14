@@ -6,6 +6,7 @@ import {
   VoiceSessionMintError,
   type VoiceTraceMark,
 } from "../voice-session-client";
+import type { VoiceSessionClientDiagnosticEvent } from "../voice-session-media-diagnostics";
 import {
   FakeMicAudioContext,
   FakeMicWorkletAudioContext,
@@ -353,6 +354,97 @@ describe("voice-session client (real framing/state/barge-in/reconnect)", () => {
     await client.stop();
   });
 
+  it("emits typed content-free device diagnostics at capture, first consumption, and drain", async () => {
+    const mint = makeMintFetch();
+    const ws = makeWsFactory();
+    const playbackContext = new FakePlaybackAudioContext(48_000);
+    const diagnostics: VoiceSessionClientDiagnosticEvent[] = [];
+    const marks: VoiceTraceMark[] = [];
+    let atMs = 100;
+    const client = createVoiceSessionClient({
+      agentId: "11111111-1111-1111-1111-111111111111",
+      conversationId: "22222222-2222-2222-2222-222222222222",
+      getConsentNonce: async () => "diagnostics",
+      fetch: mint.fetch,
+      webSocketFactory: ws.factory,
+      getUserMedia: fakeGetUserMedia(),
+      createMicAudioContext: () => new FakeMicAudioContext(48_000),
+      createPlaybackAudioContext: () => playbackContext,
+      onDiagnostic: (event) => diagnostics.push(event),
+      onTraceMark: (mark) => marks.push(mark),
+      now: () => (atMs += 1),
+    });
+
+    await client.start();
+    await flush();
+    const socket = ws.last();
+    socket.emitOpen();
+    socket.emitControl({
+      t: "ready",
+      sessionId: "session-diagnostics",
+      traceId: "trace-diagnostics",
+    });
+    await flush();
+    socket.emitControl({
+      t: "speaking_start",
+      traceId: "trace-diagnostics",
+    });
+    socket.emitAudio(new Uint8Array(320));
+    playbackScriptNodeOf(playbackContext).render(600);
+
+    expect(diagnostics.map((event) => event.type)).toEqual([
+      "playback_ready",
+      "capture_ready",
+      "playback_started",
+      "playback_drained",
+    ]);
+    expect(diagnostics[0]).toMatchObject({
+      type: "playback_ready",
+      traceId: null,
+      playback: {
+        backend: "scriptprocessor",
+        requestedSampleRateHz: 16_000,
+        actualSampleRateHz: 48_000,
+        sampleRateConversion: "streaming_linear",
+      },
+    });
+    expect(diagnostics[1]).toMatchObject({
+      type: "capture_ready",
+      traceId: "trace-diagnostics",
+      capture: {
+        frameDurationMs: 20,
+        audioContextSampleRateHz: 48_000,
+        granted: {
+          sampleRateHz: "unknown",
+          channelCount: "unknown",
+          echoCancellation: "unknown",
+          noiseSuppression: "unknown",
+          autoGainControl: "unknown",
+        },
+      },
+    });
+    const started = diagnostics[2];
+    const drained = diagnostics[3];
+    expect(started).toMatchObject({
+      type: "playback_started",
+      traceId: "trace-diagnostics",
+    });
+    expect(drained).toMatchObject({
+      type: "playback_drained",
+      traceId: "trace-diagnostics",
+    });
+    if (started.type !== "playback_started") {
+      throw new Error("expected playback_started diagnostic");
+    }
+    expect(drained).toMatchObject({ sequence: started.sequence });
+    expect(marks.map((mark) => mark.name)).toContain("first_audio_playout");
+    expect(marks.map((mark) => mark.name)).toContain("playback_drained");
+    expect(JSON.stringify(diagnostics)).not.toMatch(
+      /(?:deviceId|groupId|label|transcript|audioData)/,
+    );
+    await client.stop();
+  });
+
   it("mutes the live microphone as PCM silence without ending the session", async () => {
     const mint = makeMintFetch();
     const ws = makeWsFactory();
@@ -383,9 +475,11 @@ describe("voice-session client (real framing/state/barge-in/reconnect)", () => {
     let frames = socket.sent.filter(
       (value): value is ArrayBuffer => value instanceof ArrayBuffer,
     );
-    expect(frames).toHaveLength(1);
+    expect(frames).toHaveLength(5);
     expect(
-      Array.from(new Uint8Array(frames[0])).some((byte) => byte !== 0),
+      frames.every((frame) =>
+        Array.from(new Uint8Array(frame)).some((byte) => byte !== 0),
+      ),
     ).toBe(true);
 
     clientWithMic.setMicrophoneMuted(true);
@@ -394,9 +488,13 @@ describe("voice-session client (real framing/state/barge-in/reconnect)", () => {
     frames = socket.sent.filter(
       (value): value is ArrayBuffer => value instanceof ArrayBuffer,
     );
-    expect(frames).toHaveLength(2);
+    expect(frames).toHaveLength(10);
     expect(
-      Array.from(new Uint8Array(frames[1])).every((byte) => byte === 0),
+      frames
+        .slice(5)
+        .every((frame) =>
+          Array.from(new Uint8Array(frame)).every((byte) => byte === 0),
+        ),
     ).toBe(true);
     expect(clientWithMic.state.phase).toBe("listening");
 
@@ -405,9 +503,13 @@ describe("voice-session client (real framing/state/barge-in/reconnect)", () => {
     frames = socket.sent.filter(
       (value): value is ArrayBuffer => value instanceof ArrayBuffer,
     );
-    expect(frames).toHaveLength(3);
+    expect(frames).toHaveLength(15);
     expect(
-      Array.from(new Uint8Array(frames[2])).some((byte) => byte !== 0),
+      frames
+        .slice(10)
+        .every((frame) =>
+          Array.from(new Uint8Array(frame)).some((byte) => byte !== 0),
+        ),
     ).toBe(true);
     await clientWithMic.stop();
     expect(clientWithMic.microphoneMuted).toBe(false);

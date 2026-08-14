@@ -12,7 +12,11 @@ class ElizaVoiceSessionDownlink extends AudioWorkletProcessor {
       const data = event.data;
       if (!data) return;
       if (data.type === "pcm" && data.pcm) {
-        this.queue.push(data.pcm);
+        this.queue.push({
+          pcm: data.pcm,
+          sequence: Number.isSafeInteger(data.sequence) ? data.sequence : null,
+          started: false,
+        });
         this.hadAudio = true;
         if (Number.isSafeInteger(data.sequence)) {
           this.latestSequence = data.sequence;
@@ -44,7 +48,7 @@ class ElizaVoiceSessionDownlink extends AudioWorkletProcessor {
     for (let i = 0; i < firstChannel.length; i += 1) {
       while (
         this.queue.length > 0 &&
-        this.readOffset >= this.queue[0].length
+        this.readOffset >= this.queue[0].pcm.length
       ) {
         this.queue.shift();
         this.readOffset = 0;
@@ -59,7 +63,17 @@ class ElizaVoiceSessionDownlink extends AudioWorkletProcessor {
           });
         }
       } else {
-        firstChannel[i] = this.queue[0][this.readOffset];
+        const frame = this.queue[0];
+        if (!frame.started) {
+          frame.started = true;
+          if (Number.isSafeInteger(frame.sequence)) {
+            this.port.postMessage({
+              type: "started",
+              sequence: frame.sequence,
+            });
+          }
+        }
+        firstChannel[i] = frame.pcm[this.readOffset];
         this.readOffset += 1;
       }
     }

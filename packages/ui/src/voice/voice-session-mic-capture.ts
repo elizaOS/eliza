@@ -28,6 +28,11 @@ import {
   constructBrowserAudioContext,
   constructBrowserAudioWorkletNode,
 } from "./browser-audio-runtime";
+import { StreamingLinearResampler } from "./streaming-linear-resampler";
+import {
+  redactGrantedVoiceCaptureSettings,
+  type VoiceCaptureDiagnostics,
+} from "./voice-session-media-diagnostics";
 import {
   floatPcmToInt16Bytes,
   VOICE_PCM_SAMPLE_RATE,
@@ -140,6 +145,8 @@ export interface VoiceMicCaptureOptions {
   onResume?: () => void;
   /** Called on a fatal capture error mid-session. */
   onError?: (error: VoiceMicCaptureError) => void;
+  /** Content-free requested/granted media settings for device evaluation. */
+  onDiagnostics?: (diagnostics: VoiceCaptureDiagnostics) => void;
   /**
    * Optional local-only speech onset signal. It is provisional: callers must
    * wait for server STT confirmation before cancelling remote work.
@@ -150,8 +157,8 @@ export interface VoiceMicCaptureOptions {
   /** Whether onset evidence is currently relevant (normally agent speaking). */
   isProvisionalSpeechStartEnabled?: () => boolean;
   /**
-   * Target uplink frame duration (ms). The contract wants small frames
-   * (~100-320ms); default 100ms = 1600 samples @16k = 3200 bytes.
+   * Target uplink frame duration (whole milliseconds, 20-40 inclusive).
+   * Default 20ms = 320 samples @16k = 640 bytes.
    */
   frameMs?: number;
   /** Injectable getUserMedia (tests / non-standard hosts). */
@@ -179,6 +186,16 @@ export interface VoiceMicCaptureOptions {
 }
 
 const WORKLET_NAME = "eliza-voice-session-uplink";
+const DEFAULT_FRAME_MS = 20;
+const MIN_FRAME_MS = 20;
+const MAX_FRAME_MS = 40;
+const REQUESTED_CAPTURE_SETTINGS = {
+  sampleRateHz: VOICE_PCM_SAMPLE_RATE,
+  channelCount: 1,
+  echoCancellation: true,
+  noiseSuppression: true,
+  autoGainControl: true,
+} as const;
 
 class VoiceMicCaptureCancelledError extends Error {
   constructor(cause?: unknown) {
@@ -244,51 +261,24 @@ export interface VoiceMicCapture {
 }
 
 /**
- * A streaming linear resampler (source rate → 16 kHz), carried across frames so
- * the fractional read position is continuous (no per-frame boundary glitch).
- */
-class StreamingResampler {
-  private position = 0;
-  private tail = 0; // last sample of the previous block, for interpolation.
-  private hasTail = false;
-  private readonly ratio: number;
-
-  constructor(private readonly sourceRate: number) {
-    this.ratio = sourceRate / VOICE_PCM_SAMPLE_RATE;
-  }
-
-  push(block: Float32Array): Float32Array {
-    if (this.sourceRate === VOICE_PCM_SAMPLE_RATE) return block;
-    if (block.length === 0) return block;
-    const out: number[] = [];
-    // Virtual index space includes the carried tail at index -1.
-    while (this.position < block.length) {
-      const idx = this.position;
-      const i0 = Math.floor(idx);
-      const frac = idx - i0;
-      const s0 = i0 < 0 ? (this.hasTail ? this.tail : block[0]) : block[i0];
-      const s1 =
-        i0 + 1 < block.length ? block[i0 + 1] : block[block.length - 1];
-      out.push(s0 + (s1 - s0) * frac);
-      this.position += this.ratio;
-    }
-    // Carry: keep the last real sample; rebase position for the next block.
-    this.tail = block[block.length - 1];
-    this.hasTail = true;
-    this.position -= block.length;
-    return Float32Array.from(out);
-  }
-}
-
-/**
  * Start mic capture. Resolves once the audio graph is live and emitting frames.
  * Throws {@link VoiceMicCaptureError} on unsupported host / permission denial.
  */
 export async function startVoiceMicCapture(
   options: VoiceMicCaptureOptions,
 ): Promise<VoiceMicCapture> {
-  const frameMs = options.frameMs ?? 100;
-  const frameSamples = Math.round((VOICE_PCM_SAMPLE_RATE * frameMs) / 1000);
+  const frameMs = options.frameMs ?? DEFAULT_FRAME_MS;
+  if (
+    !Number.isSafeInteger(frameMs) ||
+    frameMs < MIN_FRAME_MS ||
+    frameMs > MAX_FRAME_MS
+  ) {
+    throw new VoiceMicCaptureError(
+      "uplink frame duration must be a whole number from 20 to 40ms",
+      "start_failed",
+    );
+  }
+  const frameSamples = (VOICE_PCM_SAMPLE_RATE * frameMs) / 1000;
 
   const getUserMedia =
     options.getUserMedia ??
@@ -324,6 +314,7 @@ export async function startVoiceMicCapture(
   try {
     const mediaPromise = getUserMedia({
       audio: {
+        sampleRate: VOICE_PCM_SAMPLE_RATE,
         echoCancellation: true,
         noiseSuppression: true,
         autoGainControl: true,
@@ -417,7 +408,10 @@ export async function startVoiceMicCapture(
   }
   const ctx = acquiredContext;
   const source = acquiredSource;
-  const resampler = new StreamingResampler(ctx.sampleRate);
+  const resampler = new StreamingLinearResampler(
+    ctx.sampleRate,
+    VOICE_PCM_SAMPLE_RATE,
+  );
   const speechStartDetector = options.onProvisionalSpeechStart
     ? new ProvisionalSpeechStartDetector(options.provisionalSpeechStart)
     : null;
@@ -532,6 +526,30 @@ export async function startVoiceMicCapture(
     );
   }
 
+  let grantedSettings: MediaTrackSettings | undefined;
+  try {
+    const audioTrack =
+      stream.getAudioTracks?.()[0] ??
+      stream.getTracks().find((track) => track.kind === "audio") ??
+      stream.getTracks()[0];
+    grantedSettings = audioTrack?.getSettings?.();
+  } catch (ignoredError) {
+    // error-policy:J7 granted settings are best-effort diagnostics; capture remains live when a browser omits or rejects them.
+    void ignoredError;
+  }
+  try {
+    options.onDiagnostics?.({
+      backend,
+      frameDurationMs: frameMs,
+      audioContextSampleRateHz: ctx.sampleRate,
+      requested: REQUESTED_CAPTURE_SETTINGS,
+      granted: redactGrantedVoiceCaptureSettings(grantedSettings),
+    });
+  } catch (ignoredError) {
+    // error-policy:J7 diagnostic listeners must never break an active mic graph.
+    void ignoredError;
+  }
+
   // Visibility / suspend handling (iOS PWA).
   const visibility =
     options.visibility ??
@@ -581,6 +599,7 @@ export async function startVoiceMicCapture(
     }
     source.disconnect();
     stopMediaStream(stream);
+    resampler.reset();
     // error-policy:J6 best-effort context close during teardown; tracks are already stopped above.
     await ctx.close().catch(() => {});
   };

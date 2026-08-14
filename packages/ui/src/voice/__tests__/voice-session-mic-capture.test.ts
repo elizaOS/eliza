@@ -199,7 +199,7 @@ describe("voice-session mic capture (ScriptProcessor fallback path — WebView 1
     const frames: Uint8Array[] = [];
     const capture = await startVoiceMicCapture({
       onFrame: (b) => frames.push(b),
-      frameMs: 100, // 1600 samples/frame @16k
+      frameMs: 20, // 320 samples/frame @16k
       getUserMedia: fakeGetUserMedia(),
       createAudioContext: () => ctx,
       visibility: {
@@ -219,7 +219,7 @@ describe("voice-session mic capture (ScriptProcessor fallback path — WebView 1
     const frames: Uint8Array[] = [];
     const capture = await startVoiceMicCapture({
       onFrame: (b) => frames.push(b),
-      frameMs: 100, // 1600 samples → 3200 bytes/frame
+      frameMs: 20, // 320 samples → 640 bytes/frame
       getUserMedia: fakeGetUserMedia(),
       createAudioContext: () => ctx,
       visibility: {
@@ -232,9 +232,9 @@ describe("voice-session mic capture (ScriptProcessor fallback path — WebView 1
     // Feed 4096 samples (one ScriptProcessor block). At 16k, no resample.
     const block = new Float32Array(4096).fill(0.5);
     node.feed(block);
-    // 4096 samples → two full 1600-sample frames, remainder buffered.
-    expect(frames.length).toBe(2);
-    for (const f of frames) expect(f.byteLength).toBe(3200);
+    // 4096 samples → twelve full 320-sample frames, remainder buffered.
+    expect(frames.length).toBe(12);
+    for (const f of frames) expect(f.byteLength).toBe(640);
     // Decode: 0.5 → ~16384; check the first sample.
     const decoded = int16BytesToFloatPcm(frames[0]);
     expect(decoded[0]).toBeCloseTo(0.5, 3);
@@ -246,7 +246,7 @@ describe("voice-session mic capture (ScriptProcessor fallback path — WebView 1
     const frames: Uint8Array[] = [];
     const capture = await startVoiceMicCapture({
       onFrame: (b) => frames.push(b),
-      frameMs: 100,
+      frameMs: 20,
       getUserMedia: fakeGetUserMedia(),
       createAudioContext: () => ctx,
       visibility: {
@@ -256,10 +256,10 @@ describe("voice-session mic capture (ScriptProcessor fallback path — WebView 1
       },
     });
     const node = scriptNodeOf(ctx);
-    // 9600 samples @48k ≈ 3200 samples @16k → two 1600-sample frames.
+    // 9600 samples @48k = 3200 samples @16k → ten 320-sample frames.
     node.feed(new Float32Array(9600).fill(0.25));
-    expect(frames.length).toBeGreaterThanOrEqual(2);
-    for (const f of frames) expect(f.byteLength).toBe(3200);
+    expect(frames.length).toBe(10);
+    for (const f of frames) expect(f.byteLength).toBe(640);
     const decoded = int16BytesToFloatPcm(frames[0]);
     // Resampled amplitude preserved (linear interp of a constant is constant).
     expect(decoded[10]).toBeCloseTo(0.25, 2);
@@ -278,7 +278,7 @@ describe("voice-session mic capture (ScriptProcessor fallback path — WebView 1
     const frames: Uint8Array[] = [];
     const capture = await startVoiceMicCapture({
       onFrame: (b) => frames.push(b),
-      frameMs: 100,
+      frameMs: 40,
       getUserMedia: fakeGetUserMedia(),
       createAudioContext: () => ctx,
       onSuspend,
@@ -313,6 +313,130 @@ describe("voice-session mic capture (ScriptProcessor fallback path — WebView 1
     node.feed(new Float32Array(4096).fill(0.5));
     expect(frames.length).toBeGreaterThan(0);
     await capture.stop();
+  });
+
+  it("requests low-latency media constraints and reports only redacted granted settings", async () => {
+    const constraints: MediaStreamConstraints[] = [];
+    const stop = vi.fn();
+    const track = {
+      kind: "audio",
+      label: "Precious USB microphone name",
+      stop,
+      getSettings: () => ({
+        sampleRate: 48_000,
+        channelCount: 2,
+        echoCancellation: true,
+        noiseSuppression: false,
+        autoGainControl: true,
+        deviceId: "private-device-id",
+        groupId: "private-group-id",
+      }),
+    };
+    const onDiagnostics = vi.fn();
+    const capture = await startVoiceMicCapture({
+      onFrame: () => {},
+      onDiagnostics,
+      getUserMedia: async (requested) => {
+        constraints.push(requested);
+        return {
+          getAudioTracks: () => [track],
+          getTracks: () => [track],
+        } as unknown as MediaStream;
+      },
+      createAudioContext: () => new FakeMicAudioContext(48_000),
+      visibility: {
+        addListener() {},
+        removeListener() {},
+        isHidden: () => false,
+      },
+    });
+
+    expect(constraints).toEqual([
+      {
+        audio: {
+          sampleRate: 16_000,
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+          channelCount: 1,
+        },
+        video: false,
+      },
+    ]);
+    expect(onDiagnostics).toHaveBeenCalledWith({
+      backend: "scriptprocessor",
+      frameDurationMs: 20,
+      audioContextSampleRateHz: 48_000,
+      requested: {
+        sampleRateHz: 16_000,
+        channelCount: 1,
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true,
+      },
+      granted: {
+        sampleRateHz: 48_000,
+        channelCount: 2,
+        echoCancellation: true,
+        noiseSuppression: false,
+        autoGainControl: true,
+      },
+    });
+    expect(JSON.stringify(onDiagnostics.mock.calls)).not.toContain(
+      "private-device-id",
+    );
+    expect(JSON.stringify(onDiagnostics.mock.calls)).not.toContain(
+      "Precious USB microphone name",
+    );
+    await capture.stop();
+    expect(stop).toHaveBeenCalledTimes(1);
+  });
+
+  it("reports unknown grants without failing capture when getSettings is unavailable", async () => {
+    const onDiagnostics = vi.fn(() => {
+      throw new Error("diagnostic sink failed");
+    });
+    const capture = await startVoiceMicCapture({
+      onFrame: () => {},
+      onDiagnostics,
+      getUserMedia: fakeGetUserMedia(),
+      createAudioContext: () => new FakeMicAudioContext(16_000),
+      visibility: {
+        addListener() {},
+        removeListener() {},
+        isHidden: () => false,
+      },
+    });
+
+    expect(capture.active).toBe(true);
+    expect(onDiagnostics).toHaveBeenCalledWith(
+      expect.objectContaining({
+        granted: {
+          sampleRateHz: "unknown",
+          channelCount: "unknown",
+          echoCancellation: "unknown",
+          noiseSuppression: "unknown",
+          autoGainControl: "unknown",
+        },
+      }),
+    );
+    await capture.stop();
+  });
+
+  it("rejects capture frame durations outside the 20-40ms contract before requesting permission", async () => {
+    const getUserMedia = vi.fn(fakeGetUserMedia());
+
+    for (const frameMs of [19, 41, 20.5, Number.NaN]) {
+      await expect(
+        startVoiceMicCapture({
+          onFrame: () => {},
+          frameMs,
+          getUserMedia,
+          createAudioContext: () => new FakeMicAudioContext(16_000),
+        }),
+      ).rejects.toMatchObject({ code: "start_failed" });
+    }
+    expect(getUserMedia).not.toHaveBeenCalled();
   });
 
   it("surfaces a permission denial as a typed error", async () => {

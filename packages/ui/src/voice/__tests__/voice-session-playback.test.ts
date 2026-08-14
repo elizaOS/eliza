@@ -104,9 +104,11 @@ describe("voice-session streaming PCM playback sink (ScriptProcessor path)", () 
   it("ignores a stale AudioWorklet drain after newer audio is enqueued", async () => {
     vi.stubGlobal("AudioWorkletNode", FakeVoiceAudioWorkletNode);
     const ctx = new FakePlaybackWorkletAudioContext();
+    const onStarted = vi.fn();
     const onDrained = vi.fn();
     const playback = await createVoiceSessionPlayback({
       createAudioContext: () => ctx,
+      onStarted,
       onDrained,
     });
     await playback.unlock();
@@ -129,6 +131,20 @@ describe("voice-session streaming PCM playback sink (ScriptProcessor path)", () 
     expect(second.sequence).toBe(secondSequence);
     expect(second.sequence).toBeGreaterThan(first.sequence);
 
+    worklet.port.onmessage?.({
+      data: { type: "started", sequence: first.sequence },
+    });
+    worklet.port.onmessage?.({
+      data: { type: "started", sequence: first.sequence },
+    });
+    worklet.port.onmessage?.({
+      data: { type: "started", sequence: second.sequence },
+    });
+    expect(onStarted.mock.calls.map(([sequence]) => sequence)).toEqual([
+      first.sequence,
+      second.sequence,
+    ]);
+
     // The old queue drained in the render thread, but its port notification
     // reached the main thread only after a newer server frame was enqueued.
     worklet.port.onmessage?.({
@@ -148,13 +164,17 @@ describe("voice-session streaming PCM playback sink (ScriptProcessor path)", () 
     };
     playback.flush();
     worklet.port.onmessage?.({
+      data: { type: "started", sequence: beforeFlush.sequence },
+    });
+    worklet.port.onmessage?.({
       data: { type: "drained", sequence: beforeFlush.sequence },
     });
+    expect(onStarted).toHaveBeenCalledTimes(2);
     expect(onDrained).toHaveBeenCalledTimes(1);
     await playback.stop();
   });
 
-  it("the shipped AudioWorklet echoes its newest sequence and flush cancels drain", () => {
+  it("the shipped AudioWorklet reports first consumption and drain while flush cancels stale events", () => {
     interface TestPort {
       onmessage: ((event: { data: unknown }) => void) | null;
       messages: unknown[];
@@ -209,16 +229,24 @@ describe("voice-session streaming PCM playback sink (ScriptProcessor path)", () 
 
     send({ type: "pcm", pcm: new Float32Array([0.25, 0.25]), sequence: 7 });
     render(4);
-    expect(processor.port.messages).toEqual([{ type: "drained", sequence: 7 }]);
+    expect(processor.port.messages).toEqual([
+      { type: "started", sequence: 7 },
+      { type: "drained", sequence: 7 },
+    ]);
 
     send({ type: "pcm", pcm: new Float32Array([0.5, 0.5]), sequence: 8 });
     send({ type: "flush", sequence: 9 });
     render(4);
-    expect(processor.port.messages).toHaveLength(1);
+    expect(processor.port.messages).toHaveLength(2);
 
     send({ type: "pcm", pcm: new Float32Array([0.5]), sequence: 10 });
     send({ type: "pcm", pcm: new Float32Array([0.75]), sequence: 11 });
     render(4);
+    expect(processor.port.messages.slice(-3)).toEqual([
+      { type: "started", sequence: 10 },
+      { type: "started", sequence: 11 },
+      { type: "drained", sequence: 11 },
+    ]);
     expect(processor.port.messages.at(-1)).toEqual({
       type: "drained",
       sequence: 11,
@@ -289,6 +317,37 @@ describe("voice-session streaming PCM playback sink (ScriptProcessor path)", () 
     // First 4 ≈ 0.5, next 4 ≈ -0.5 → ordering preserved.
     for (let i = 0; i < 4; i += 1) expect(out[i]).toBeCloseTo(0.5, 2);
     for (let i = 4; i < 8; i += 1) expect(out[i]).toBeCloseTo(-0.5, 2);
+    await pb.stop();
+  });
+
+  it("resamples 16kHz downlink to the AudioContext's actual 48kHz rate", async () => {
+    const ctx = new FakePlaybackAudioContext(48_000);
+    const onDiagnostics = vi.fn();
+    const onStarted = vi.fn();
+    const pb = await createVoiceSessionPlayback({
+      createAudioContext: () => ctx,
+      onDiagnostics,
+      onStarted,
+    });
+    await pb.unlock();
+
+    const sequence = pb.enqueue(pcmFrame(0.25, 320));
+    const out = scriptNodeOf(ctx).render(960);
+    const audible = Array.from(out).filter((sample) => sample !== 0);
+
+    // The streaming interpolator holds one input sample for the next network
+    // frame, so a standalone 20ms fixture emits 957 of the ideal 960 samples.
+    expect(audible.length).toBeGreaterThanOrEqual(957);
+    expect(audible.length).toBeLessThanOrEqual(960);
+    for (const sample of audible) expect(sample).toBeCloseTo(0.25, 2);
+    expect(onStarted).toHaveBeenCalledOnce();
+    expect(onStarted).toHaveBeenCalledWith(sequence);
+    expect(onDiagnostics).toHaveBeenCalledWith({
+      backend: "scriptprocessor",
+      requestedSampleRateHz: 16_000,
+      actualSampleRateHz: 48_000,
+      sampleRateConversion: "streaming_linear",
+    });
     await pb.stop();
   });
 
@@ -422,17 +481,24 @@ describe("voice-session streaming PCM playback sink (ScriptProcessor path)", () 
 
   it("emits onDrained when the queue transitions from audio to empty", async () => {
     const ctx = new FakePlaybackAudioContext();
+    const onStarted = vi.fn();
     const onDrained = vi.fn();
     const pb = await createVoiceSessionPlayback({
       createAudioContext: () => ctx,
+      onStarted,
       onDrained,
     });
     await pb.unlock();
     const sequence = pb.enqueue(pcmFrame(0.5, 2));
     // Pull more than enqueued → transitions to empty → onDrained fires once.
     scriptNodeOf(ctx).render(8);
+    expect(onStarted).toHaveBeenCalledTimes(1);
+    expect(onStarted).toHaveBeenCalledWith(sequence);
     expect(onDrained).toHaveBeenCalledTimes(1);
     expect(onDrained).toHaveBeenCalledWith(sequence);
+    expect(onStarted.mock.invocationCallOrder[0]).toBeLessThan(
+      onDrained.mock.invocationCallOrder[0],
+    );
     await pb.stop();
   });
 });
