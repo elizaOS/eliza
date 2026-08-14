@@ -6,7 +6,7 @@
  * "missing", broadcasts a system-warning via WebSocket.
  */
 
-import type { AgentRuntime } from "@elizaos/core";
+import { type AgentRuntime, logger } from "@elizaos/core";
 
 export type ConnectorStatus = "ok" | "missing" | "unknown";
 
@@ -26,27 +26,31 @@ export interface ConnectorHealthMonitorOptions {
 const DEFAULT_INTERVAL_MS = 60_000;
 const MIN_INTERVAL_MS = 10_000;
 const MAX_INTERVAL_MS = 2_147_483_647;
-const CANONICAL_INTEGER_PATTERN = /^(0|[1-9]\d*)$/;
 
+/**
+ * `ConnectorHealthMonitor` is constructed inside a post-listen deferred wave
+ * wrapped in a warn-and-continue catch (see `startDeferredStartupWork` in
+ * `server.ts`), so a throw here doesn't fail fast - it silently disables
+ * connector health monitoring (and the `/api/health` connector status) for
+ * the rest of the process lifetime. Defaulting instead of throwing preserves
+ * the original `Number.parseInt`-based tolerance (trailing-junk, fractional,
+ * and leading-zero forms all still resolve the same way they always did),
+ * while logging a discoverable warning naming the env var so a malformed
+ * value isn't silently invisible either.
+ */
 export function resolveConnectorHealthIntervalMs(
-  envVal = process.env.CONNECTOR_HEALTH_INTERVAL_MS,
+  envVal: string | undefined,
 ): number {
-  if (envVal === undefined || envVal === "") return DEFAULT_INTERVAL_MS;
-  if (!CANONICAL_INTEGER_PATTERN.test(envVal)) {
-    throw new Error(
-      "CONNECTOR_HEALTH_INTERVAL_MS must be a canonical decimal integer",
-    );
+  if (!envVal) return DEFAULT_INTERVAL_MS;
+  const parsed = Number.parseInt(envVal, 10);
+  if (Number.isNaN(parsed) || parsed < MIN_INTERVAL_MS) {
+    return DEFAULT_INTERVAL_MS;
   }
-
-  const parsed = Number(envVal);
-  if (
-    !Number.isSafeInteger(parsed) ||
-    parsed < MIN_INTERVAL_MS ||
-    parsed > MAX_INTERVAL_MS
-  ) {
-    throw new Error(
-      `CONNECTOR_HEALTH_INTERVAL_MS must be between ${MIN_INTERVAL_MS} and ${MAX_INTERVAL_MS}`,
+  if (parsed > MAX_INTERVAL_MS) {
+    logger.warn(
+      `[connector-health] CONNECTOR_HEALTH_INTERVAL_MS=${envVal} exceeds the max setInterval delay (${MAX_INTERVAL_MS}); using the ${DEFAULT_INTERVAL_MS}ms default instead.`,
     );
+    return DEFAULT_INTERVAL_MS;
   }
   return parsed;
 }
@@ -108,7 +112,11 @@ export class ConnectorHealthMonitor {
     this.runtime = opts.runtime;
     this.config = opts.config;
     this.broadcastWs = opts.broadcastWs;
-    this.intervalMs = opts.intervalMs ?? resolveConnectorHealthIntervalMs();
+    this.intervalMs =
+      opts.intervalMs ??
+      resolveConnectorHealthIntervalMs(
+        process.env.CONNECTOR_HEALTH_INTERVAL_MS,
+      );
   }
 
   start(): void {
