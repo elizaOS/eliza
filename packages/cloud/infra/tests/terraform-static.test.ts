@@ -284,6 +284,9 @@ describe("Cloudflare Pages domain durability", () => {
 
   test("owns reviewed Railway tunnel DNS as an imported DNS-only inventory", () => {
     expect(variables).toContain('variable "railway_tunnel_dns_records"');
+    expect(variables).toContain(
+      "length(var.railway_tunnel_dns_records) == 0 || (",
+    );
     expect(variables).toContain('"apex-routing"');
     expect(variables).toContain('"apex-verification"');
     expect(variables).toContain('"wildcard-routing"');
