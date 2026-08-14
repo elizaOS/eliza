@@ -96,9 +96,12 @@ describe("voice matrix CLI", () => {
       "live cloud voice round-trip",
     ]);
     expect(provisioned.report.cells[0].env).toMatchObject({
-      ELIZA_UI_SMOKE_CLOUD_LIVE: "1",
+      ELIZA_UI_SMOKE_CLOUD_MEDIA_LIVE: "1",
       ELIZA_UI_SMOKE_SKIP_BUILD: "1",
     });
+    expect(provisioned.report.cells[0].env).not.toHaveProperty(
+      "ELIZA_UI_SMOKE_CLOUD_LIVE",
+    );
     expect(provisioned.report.cells[0].probe.available).toBe(true);
   });
 });

@@ -7851,6 +7851,7 @@
   "cloud.incidentReport.describeWhatHappened": "Please describe what happened.",
   "cloud.incidentReport.submittedSuccess": "Incident report submitted. We'll follow up by email.",
   "cloud.incidentReport.failedToSubmit": "Failed to submit: {{message}}",
+  "cloud.incidentReport.detailsLabel": "Incident details",
   "cloud.incidentReport.title": "Report a security incident",
   "cloud.incidentReport.emailPre": "Email",
   "cloud.incidentReport.emailPost": "or submit details below. Encrypted disclosures welcomed.",
