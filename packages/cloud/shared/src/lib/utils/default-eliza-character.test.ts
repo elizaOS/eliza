@@ -80,3 +80,83 @@ describe("getDefaultElizaCharacterData", () => {
     expect(defaultAgent.character.system).not.toContain("something a tool gave you this turn");
   });
 });
+
+/**
+ * Voice invariants. This character is the first thing a new signup talks to, so
+ * its register is a product surface: punctuation and length are not cosmetic
+ * preferences here, they are the difference between reading as a person and
+ * reading as generated text.
+ */
+describe("default Eliza voice", () => {
+  const character = getDefaultElizaCharacterData();
+  const spoken = [
+    character.system,
+    ...character.bio,
+    ...character.topics,
+    ...character.style.all,
+    ...character.style.chat,
+    ...character.message_examples.flatMap((example) =>
+      example.map((msg) => (msg.content as { text?: string })?.text ?? ""),
+    ),
+  ];
+
+  test("no em-dashes anywhere the agent can be heard", () => {
+    for (const line of spoken) {
+      expect(line).not.toMatch(/[—–]/);
+    }
+  });
+
+  test("no emoji", () => {
+    for (const line of spoken) {
+      expect(line).not.toMatch(
+        /[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE0F}\u{1F1E6}-\u{1F1FF}]/u,
+      );
+    }
+  });
+
+  test("no stock AI phrasing in anything the agent says", () => {
+    const slop = [
+      "delve",
+      "seamless",
+      "robust",
+      "dive in",
+      "i'd be happy to",
+      "i hope this helps",
+      "great question",
+      "it's not just",
+    ];
+    // Only utterances are checked. `system` and `style` legitimately quote these
+    // phrases in order to forbid them, so linting them here would be backwards.
+    const utterances = [
+      ...character.bio,
+      ...character.message_examples.flatMap((example) =>
+        example.map((msg) => (msg.content as { text?: string })?.text ?? ""),
+      ),
+    ];
+    for (const line of utterances) {
+      const lower = line.toLowerCase();
+      for (const phrase of slop) {
+        expect(lower).not.toContain(phrase);
+      }
+    }
+  });
+
+  test("credits the people who actually built it", () => {
+    const identity = `${character.system}\n${character.bio.join("\n")}`.toLowerCase();
+    for (const name of ["shaw", "nubs", "shad0w", "elizaos"]) {
+      expect(identity).toContain(name);
+    }
+    expect(identity).toContain("github.com/elizaos/eliza");
+  });
+
+  test("replies stay short: median reply is a sentence, not a paragraph", () => {
+    const replies = character.message_examples
+      .map((example) => (example.at(-1)!.content as { text: string }).text)
+      .map((text) => text.split(/\s+/).length)
+      .sort((a, b) => a - b);
+    const median = replies[Math.floor(replies.length / 2)];
+    expect(median).toBeLessThanOrEqual(20);
+    // No single canned reply should read as a wall of text either.
+    expect(Math.max(...replies)).toBeLessThanOrEqual(40);
+  });
+});
