@@ -22,6 +22,10 @@ import type {
 /** Public alias for {@link CanonicalTrajectoryExportOptions} (canonical type lives in services). */
 export type TrajectoryExportOptions = CanonicalTrajectoryExportOptions;
 
+import {
+	composeToolDiagnosticRedactor,
+	projectToolDiagnosticValue,
+} from "../../security/tool-diagnostics";
 import type { TrajectoryRuntimeLlmCallParams } from "../../trajectory-utils";
 import type { IAgentRuntime } from "../../types";
 import { Service } from "../../types/service";
@@ -2590,10 +2594,33 @@ export class TrajectoriesService extends Service {
 				if (!stepId) return;
 
 				const step = await this.ensureStepExists(trajectory, stepId, execute);
+				// Final persistence boundary for every completeStep caller (planner
+				// executor, action/provider interceptors, generic wrappers): tool-call
+				// parameters and result/failure metadata are projected through the
+				// composed diagnostic redaction before they reach steps_json. Raw
+				// values never persist, regardless of which call site produced them.
+				const redactDiagnosticText = composeToolDiagnosticRedactor(
+					this.runtime,
+				);
 				step.action = {
 					attemptId: uuidv4(),
 					timestamp: Date.now(),
 					...action,
+					parameters: projectToolDiagnosticValue(
+						action.parameters,
+						redactDiagnosticText,
+					) as typeof action.parameters,
+					...(action.result !== undefined
+						? {
+								result: projectToolDiagnosticValue(
+									action.result,
+									redactDiagnosticText,
+								) as typeof action.result,
+							}
+						: {}),
+					...(typeof action.error === "string"
+						? { error: redactDiagnosticText(action.error) }
+						: {}),
 				};
 				step.done = true;
 

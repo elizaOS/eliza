@@ -15,6 +15,12 @@ import { computeCallCostUsd } from "../features/trajectories/pricing";
 import { logger } from "../logger";
 import { parseInteractionBlocks } from "../messaging/interactions/parse";
 import { plannerSchema, plannerTemplate } from "../prompts/planner";
+import {
+	composeToolDiagnosticRedactor,
+	projectToolDiagnosticArgs,
+	projectToolDiagnosticValue,
+	type ToolDiagnosticTextRedactor,
+} from "../security/tool-diagnostics";
 import { resolveOptimizedPromptForRuntime } from "../services/optimized-prompt-resolver";
 import {
 	emitStreamingHook,
@@ -329,6 +335,10 @@ async function runPlannerLoopIterations(
 	params: PlannerLoopParams,
 ): Promise<PlannerLoopResult> {
 	const plannerContext = normalizePlannerContext(params.context);
+	// Diagnostic projection for every context/event copy of tool-call
+	// arguments: runtime-known secrets composed with the shared tool-shape
+	// patterns. The raw calls stay on `trajectory.plannedQueue` for execution.
+	const redactDiagnosticText = composeToolDiagnosticRedactor(params.runtime);
 	// Coding/full-surface mode (the eliza-code sub-agent sets
 	// ELIZA_PLANNER_FULL_ACTION_SURFACE): a real build legitimately makes many
 	// tool calls (read several files, write several, run tests). The chat default
@@ -1096,6 +1106,8 @@ async function runPlannerLoopIterations(
 			}
 			repeatedNonTerminalToolCalls = 0;
 			trajectory.plannedQueue.push(...validNonTerminalCalls);
+			// The queue keeps the exact raw calls for the handler path; the context
+			// copies below are diagnostics and carry the redacted projection only.
 			trajectory.context = {
 				...trajectory.context,
 				plannedQueue: [
@@ -1103,7 +1115,10 @@ async function runPlannerLoopIterations(
 					...validNonTerminalCalls.map((toolCall) => ({
 						id: toolCall.id,
 						name: toolCall.name,
-						args: stringifyForModel(toolCall.params ?? {}),
+						args: stringifyToolArgsForDiagnostics(
+							toolCall.params,
+							redactDiagnosticText,
+						),
 						status: "queued" as const,
 						sourceStageId: `planner:${iteration}`,
 					})),
@@ -1119,7 +1134,10 @@ async function runPlannerLoopIterations(
 						iteration,
 						toolCallId: toolCall.id,
 						name: toolCall.name,
-						params: stringifyForModel(toolCall.params ?? {}),
+						params: stringifyToolArgsForDiagnostics(
+							toolCall.params,
+							redactDiagnosticText,
+						),
 						status: "queued",
 					},
 				});
@@ -2228,6 +2246,7 @@ async function maybeCompactPlannerTrajectory(args: {
 		compactedSteps,
 		keptSteps,
 		budget: args.budget,
+		redactDiagnosticText: composeToolDiagnosticRedactor(args.runtime),
 	});
 	args.trajectory.archivedSteps.push(...compactedSteps);
 	args.trajectory.steps = keptSteps;
@@ -2326,6 +2345,7 @@ function buildCompactionSummary(args: {
 	compactedSteps: readonly PlannerStep[];
 	keptSteps: readonly PlannerStep[];
 	budget: ModelInputBudget;
+	redactDiagnosticText: ToolDiagnosticTextRedactor;
 }): string {
 	const lines = [
 		"Compacted prior planner trajectory steps because estimated input approached the model context window.",
@@ -2337,12 +2357,15 @@ function buildCompactionSummary(args: {
 		"Compacted step summaries:",
 	];
 	for (const step of args.compactedSteps) {
-		lines.push(`- ${summarizePlannerStep(step)}`);
+		lines.push(`- ${summarizePlannerStep(step, args.redactDiagnosticText)}`);
 	}
 	return lines.join("\n").trim();
 }
 
-function summarizePlannerStep(step: PlannerStep): string {
+function summarizePlannerStep(
+	step: PlannerStep,
+	redactDiagnosticText: ToolDiagnosticTextRedactor,
+): string {
 	const name = step.toolCall?.name ?? (step.terminalOnly ? "terminal" : "step");
 	const status = step.result
 		? step.result.success
@@ -2351,7 +2374,13 @@ function summarizePlannerStep(step: PlannerStep): string {
 		: "no_result";
 	const args =
 		step.toolCall?.params && Object.keys(step.toolCall.params).length > 0
-			? ` args=${compactText(stringifyForModel(step.toolCall.params), 180)}`
+			? ` args=${compactText(
+					stringifyToolArgsForDiagnostics(
+						step.toolCall.params,
+						redactDiagnosticText,
+					),
+					180,
+				)}`
 			: "";
 	const result = step.result
 		? ` result=${compactText(toolMessageContent(step.result), 360)}`
@@ -2874,8 +2903,15 @@ async function executeQueuedToolCall(params: {
 		params.trajectory.context,
 		params.toolCall,
 	);
+	const redactDiagnosticText = composeToolDiagnosticRedactor(
+		params.params.runtime,
+	);
 	await emitStreamingHook(streamingContext, "onToolCall", {
-		toolCall: plannerToolCallToStreamingToolCall(params.toolCall, "pending"),
+		toolCall: plannerToolCallToStreamingToolCall(
+			params.toolCall,
+			"pending",
+			redactDiagnosticText,
+		),
 		contextEvent,
 		messageId: streamingContext?.messageId,
 		metadata: { iteration: params.iteration },
@@ -2963,8 +2999,13 @@ async function executeQueuedToolCall(params: {
 			iteration: params.iteration,
 			toolCallId: params.toolCall.id,
 			name: params.toolCall.name,
-			params: stringifyForModel(params.toolCall.params ?? {}),
-			result: stringifyForModel(result),
+			params: stringifyToolArgsForDiagnostics(
+				params.toolCall.params,
+				redactDiagnosticText,
+			),
+			result: stringifyForModel(
+				projectToolDiagnosticValue(result, redactDiagnosticText),
+			),
 			status: result.success ? "completed" : "failed",
 		},
 	});
@@ -3044,13 +3085,33 @@ async function recordToolStage(args: {
 function plannerToolCallToStreamingToolCall(
 	toolCall: PlannerToolCall,
 	status: "pending" | "completed" | "failed",
+	redactDiagnosticText: ToolDiagnosticTextRedactor,
 ): ToolCall {
+	// Streaming observers are a diagnostic surface: keep the raw call identity
+	// for correlation, project the argument values.
 	return {
 		id: toolCall.id ?? toolCall.name,
 		name: toolCall.name,
-		arguments: (toolCall.params ?? {}) as ToolCall["arguments"],
+		arguments: (projectToolDiagnosticArgs(
+			toolCall.params ?? {},
+			redactDiagnosticText,
+		) ?? {}) as ToolCall["arguments"],
 		status,
 	};
+}
+
+/**
+ * Serialize tool-call arguments for a diagnostic context/event copy: project
+ * through the composed redaction first, then stringify. Never used for the
+ * execution path, which reads the raw call from the planned queue.
+ */
+function stringifyToolArgsForDiagnostics(
+	params: Record<string, unknown> | undefined,
+	redactDiagnosticText: ToolDiagnosticTextRedactor,
+): string {
+	return stringifyForModel(
+		projectToolDiagnosticArgs(params ?? {}, redactDiagnosticText) ?? {},
+	);
 }
 
 function findToolContextEvent(

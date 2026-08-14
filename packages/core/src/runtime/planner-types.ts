@@ -76,6 +76,12 @@ export interface PlannerRuntime {
 		error: unknown,
 		context?: Record<string, unknown>,
 	): void;
+	/**
+	 * Runtime-known-secret redaction (character-configured values). Composed
+	 * with the shared tool-shape patterns for every diagnostic projection of
+	 * tool-call arguments; when absent the shape pass still applies.
+	 */
+	redactSecrets?(text: string): string;
 	useModel(
 		modelType: TextGenerationModelType,
 		params: {
