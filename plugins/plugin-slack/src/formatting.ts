@@ -8,7 +8,11 @@
  * channel-type / display-name helpers. Used by `service.ts` on the send/receive
  * paths and re-exported from `index.ts`.
  */
-import type { SlackChannel, SlackUser } from "./types";
+import {
+  normalizeSlackPermalinkTimestamp,
+  type SlackChannel,
+  type SlackUser,
+} from "./types";
 
 /**
  * Escape special characters for Slack mrkdwn format
@@ -488,15 +492,16 @@ export function parseSlackMessagePermalink(
   link: string,
 ): { workspaceDomain: string; channelId: string; messageTs: string } | null {
   const match = link.match(
-    /^https?:\/\/([^.]+)\.slack\.com\/archives\/([A-Z0-9]+)\/p(\d{10}|\d{16})(?:[/?#].*)?$/i,
+    /^https?:\/\/([^.]+)\.slack\.com\/archives\/([A-Z0-9]+)\/p(\d{16}|\d{15}|\d{10})(?:[/?#].*)?$/i,
   );
   if (!match) {
     return null;
   }
 
-  const ts = match[3];
-  const messageTs =
-    ts.length === 16 ? `${ts.slice(0, 10)}.${ts.slice(10)}` : `${ts}.000000`;
+  const messageTs = normalizeSlackPermalinkTimestamp(match[3]);
+  if (!messageTs) {
+    return null;
+  }
 
   return {
     workspaceDomain: match[1],
