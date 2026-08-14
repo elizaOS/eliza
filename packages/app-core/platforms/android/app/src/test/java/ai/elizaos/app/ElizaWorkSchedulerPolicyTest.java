@@ -7,6 +7,10 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
+
+import java.io.ByteArrayInputStream;
+import java.net.SocketTimeoutException;
 
 import org.junit.Test;
 
@@ -81,6 +85,29 @@ public class ElizaWorkSchedulerPolicyTest {
         );
         assertEquals(0, cancel.enqueueCalls);
         assertEquals(1, cancel.cancelCalls);
+    }
+
+    @Test
+    public void slowMultiFrameResponseCannotExtendAbsoluteDeadline() throws Exception {
+        ByteArrayInputStream response = new ByteArrayInputStream(
+            "ok\nstill-streaming\n".getBytes(java.nio.charset.StandardCharsets.UTF_8)
+        );
+        final int[] elapsedMs = {0};
+        ElizaAgentService.BeforeSocketRead deadline = () -> {
+            if (elapsedMs[0] >= 50) {
+                throw new SocketTimeoutException("absolute deadline exceeded");
+            }
+            elapsedMs[0] += 10;
+        };
+
+        assertEquals("ok", ElizaAgentService.readFrameLine(response, deadline));
+        try {
+            ElizaAgentService.readFrameLine(response, deadline);
+            fail("a slow second frame must not reset the request deadline");
+        } catch (SocketTimeoutException expected) {
+            assertEquals("absolute deadline exceeded", expected.getMessage());
+        }
+        assertEquals(50, elapsedMs[0]);
     }
 
     private static void assertSchedule(ElizaWorkScheduler.Decision decision) {

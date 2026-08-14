@@ -659,12 +659,26 @@ public class ElizaAgentService extends Service {
         InputStream in,
         long deadlineElapsedMs
     ) throws IOException {
+        return readFrameLine(
+            in,
+            () -> socket.setSoTimeout(remainingSocketTimeout(deadlineElapsedMs))
+        );
+    }
+
+    @FunctionalInterface
+    interface BeforeSocketRead {
+        void run() throws IOException;
+    }
+
+    /** Package-visible seam for deterministic absolute-deadline policy tests. */
+    static String readFrameLine(InputStream in, BeforeSocketRead beforeRead)
+        throws IOException {
         ByteArrayOutputStream buffer = new ByteArrayOutputStream();
         while (true) {
             // Android's SO_TIMEOUT applies to each read. Recompute it for every
             // byte so a peer cannot extend the request indefinitely by slowly
             // dripping bytes or frames just inside a per-read timeout.
-            socket.setSoTimeout(remainingSocketTimeout(deadlineElapsedMs));
+            beforeRead.run();
             int b = in.read();
             if (b == -1) break;
             if (b == '\n') {

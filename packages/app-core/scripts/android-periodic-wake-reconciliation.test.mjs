@@ -126,7 +126,7 @@ describe("Android periodic wake reconciliation (#17874)", () => {
     );
     expect(scheduler).toContain("static synchronized void runtimeStopped");
     expect(service).toMatch(
-      /readFrameLine\([\s\S]*?socket\.setSoTimeout\(remainingSocketTimeout\(deadlineElapsedMs\)\);[\s\S]*?int b = in\.read\(\)/,
+      /readFrameLine\([\s\S]*?socket\.setSoTimeout\(remainingSocketTimeout\(deadlineElapsedMs\)\)[\s\S]*?beforeRead\.run\(\);[\s\S]*?int b = in\.read\(\)/,
     );
     expect(service).toMatch(
       /for \([\s\S]*readFrameLine\(socket, in, deadlineElapsedMs\)[\s\S]*line = readFrameLine\(socket, in, deadlineElapsedMs\)/,
