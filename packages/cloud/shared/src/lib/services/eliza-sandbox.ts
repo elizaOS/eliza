@@ -6025,7 +6025,7 @@ export class ElizaSandboxService {
       if (!res.ok) return null;
       const body = await res.json().catch(() => ({}));
       const messages = this.getBridgeMessages(body);
-      for (const message of messages.toReversed()) {
+      for (const message of messages.slice().reverse()) {
         const record = this.nestedBridgeRecord(message);
         if (!record || !this.isBridgeAgentMessage(record, runtimeAgentId)) continue;
         const text = this.extractBridgeMessageText(record);
@@ -6054,7 +6054,7 @@ export class ElizaSandboxService {
       if (!res.ok) return null;
       const body = await res.json().catch(() => ({}));
       const messages = this.getBridgeMessages(body);
-      for (const message of messages.toReversed()) {
+      for (const message of messages.slice().reverse()) {
         const record = this.nestedBridgeRecord(message);
         if (!record || !this.isBridgeAgentMessage(record, runtimeAgentId)) continue;
         const text = this.extractBridgeMessageText(record);
