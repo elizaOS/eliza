@@ -158,6 +158,40 @@ describe("executePlannedToolCall", () => {
 		expect(handler).not.toHaveBeenCalled();
 	});
 
+	it("rejects an explicit null optional argument instead of normalizing it to omission", async () => {
+		const handler = vi.fn(async () => ({ success: true }));
+		const action = makeAction({
+			name: "TODO",
+			parameters: [
+				{
+					name: "action",
+					description: "Todo operation",
+					required: true,
+					schema: { type: "string", enum: ["list"] },
+				},
+				{
+					name: "limit",
+					description: "Maximum rows",
+					required: false,
+					schema: { type: "integer", minimum: 1 },
+				},
+			],
+			handler,
+		});
+
+		const result = await executePlannedToolCall(
+			makeRuntime([action]),
+			{ message: makeMessage() },
+			{ name: "TODO", params: { action: "list", limit: null } },
+		);
+
+		expect(result.success).toBe(false);
+		expect(String(result.error)).toContain(
+			"Argument 'limit' expected integer, got null",
+		);
+		expect(handler).not.toHaveBeenCalled();
+	});
+
 	it("does not start an action or publish a settlement when cancellation wins during validation", async () => {
 		const abortController = new AbortController();
 		const abortReason = new Error("transport disconnected before commit");
