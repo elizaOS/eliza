@@ -24,7 +24,7 @@ import type {
   StewardMfaRequiredResult,
   StewardProviders,
 } from "@stwd/sdk";
-import { StewardAuth } from "@stwd/sdk";
+import { StewardApiError, StewardAuth } from "@stwd/sdk";
 import { AlertCircle } from "lucide-react";
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -348,6 +348,7 @@ export default function StewardLoginSection() {
   const [step, setStep] = useState<AuthStep>("idle");
   const [loading, setLoading] = useState<Provider | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [showPasskeyRecovery, setShowPasskeyRecovery] = useState(false);
   // Wallet libs mount only on intent: the first wallet-button click renders
   // the (lazy) providers + buttons and auto-starts that wallet's flow.
   const [walletButtonsMounted, setWalletButtonsMounted] = useState(false);
@@ -637,8 +638,19 @@ export default function StewardLoginSection() {
     setStep("success");
   }
 
+  function isBrowserOwnedWebAuthnFailure(e: unknown, msg: string): boolean {
+    return (
+      (typeof DOMException !== "undefined" && e instanceof DOMException) ||
+      (e instanceof StewardApiError &&
+        e.status === 0 &&
+        (msg.includes("webauthn authentication") ||
+          msg.includes("webauthn registration")))
+    );
+  }
+
   function isUserCancelled(e: unknown): boolean {
     const msg = getErrorMessage(e, "").toLowerCase();
+    if (!isBrowserOwnedWebAuthnFailure(e, msg)) return false;
     return (
       msg.includes("cancel") ||
       msg.includes("notallowed") ||
@@ -656,6 +668,7 @@ export default function StewardLoginSection() {
   // UV constraint and loops. See #18468.
   function isUserVerificationError(e: unknown): boolean {
     const msg = getErrorMessage(e, "").toLowerCase();
+    if (!isBrowserOwnedWebAuthnFailure(e, msg)) return false;
     return (
       msg.includes("user verification") ||
       msg.includes("user could not be verified")
@@ -679,22 +692,35 @@ export default function StewardLoginSection() {
     }
     setLoading("passkey");
     setError(null);
+    setShowPasskeyRecovery(false);
     try {
       const result = requireCompletedAuth(
-        await auth.signInWithPasskey(email.trim()),
+        await auth.signInWithPasskey(email.trim(), {
+          fallbackToRegistration: false,
+        }),
       );
       await handleSuccess(result.token, result.refreshToken);
     } catch (e: unknown) {
+      // error-policy:J4 authentication failures remain visibly distinct and
+      // only the ambiguous browser-owned credential outcome offers recovery.
       if (isUserVerificationError(e)) {
         setError(
-          getErrorMessage(
-            e,
-            "Passkey sign-in requires device verification (PIN or biometric). Your device may not support this — try Magic Link instead.",
-          ),
+          "Passkey sign-in requires device verification (PIN or biometric). Your device may not support this — try Magic Link instead.",
         );
         setLoading(null);
+      } else if (
+        isUserCancelled(e) ||
+        (e instanceof StewardApiError && e.status === 404)
+      ) {
+        // A discoverable-credential request intentionally cannot reveal whether
+        // an account or passkey exists. Chromium reports the same NotAllowedError
+        // for an empty credential result and a cancelled prompt, so recovery must
+        // remain an explicit user choice instead of silently sending signup mail.
+        setShowPasskeyRecovery(true);
+        setLoading(null);
       } else {
-        await startPasskeySignup();
+        setError(getErrorMessage(e, "Passkey sign-in failed. Try again."));
+        setLoading(null);
       }
     }
   }
@@ -705,6 +731,7 @@ export default function StewardLoginSection() {
     try {
       await auth.sendEmailOtp(email.trim());
       setOtpCode("");
+      setShowPasskeyRecovery(false);
       setStep("otp-entry");
       setLoading(null);
     } catch (e: unknown) {
@@ -1193,7 +1220,10 @@ export default function StewardLoginSection() {
             defaultValue: "you@example.com",
           })}
           value={email}
-          onChange={(e) => setEmail(e.target.value)}
+          onChange={(e) => {
+            setEmail(e.target.value);
+            setShowPasskeyRecovery(false);
+          }}
           onKeyDown={(e) => {
             if (e.key === "Enter") {
               if (showPasskey) {
@@ -1216,7 +1246,7 @@ export default function StewardLoginSection() {
             type="button"
             onClick={handlePasskey}
             disabled={isLoading}
-            className="flex min-h-touch flex-1 items-center justify-center gap-2 rounded-md border border-transparent bg-accent px-4 py-3 font-semibold text-accent-foreground transition-[background-color,border-color,transform] hover:bg-accent-hover active:scale-[0.99] disabled:pointer-events-none disabled:opacity-50"
+            className="flex min-h-touch flex-1 items-center justify-center gap-2 rounded-md border border-transparent bg-accent px-4 py-3 font-semibold text-accent-foreground transition-[background-color,border-color,transform] hover:bg-accent-hover hover:text-accent-foreground active:scale-[0.99] disabled:pointer-events-none disabled:opacity-50"
           >
             {loading === "passkey" ? <Spinner /> : <PasskeyIcon />}{" "}
             {t("cloud.login.button.passkey", { defaultValue: "Passkey" })}
@@ -1256,6 +1286,55 @@ export default function StewardLoginSection() {
               "Passkey sign-in is not available here. Use Google, Discord, or Magic Link, or open this sign-in link on another device.",
           })}
         </p>
+      )}
+
+      {showPasskeyRecovery && (
+        <section
+          aria-labelledby="passkey-recovery-title"
+          className="space-y-3 rounded-md border border-border-strong bg-accent-subtle p-4 text-left"
+        >
+          <div className="space-y-1">
+            <p
+              id="passkey-recovery-title"
+              className="text-sm font-semibold text-txt-strong"
+            >
+              {t("cloud.login.passkeyRecovery.title", {
+                defaultValue: "Passkey not completed",
+              })}
+            </p>
+            <p className="text-xs leading-relaxed text-muted">
+              {t("cloud.login.passkeyRecovery.message", {
+                defaultValue:
+                  "No passkey was available, or the request was cancelled. Choose how you want to continue.",
+              })}
+            </p>
+          </div>
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            {providers.email !== false && (
+              <Button
+                variant="ghost"
+                type="button"
+                onClick={handleEmail}
+                disabled={isLoading}
+                className="hosted-signin-focus-emphasis min-h-touch rounded-md border border-border-strong bg-bg-elevated px-3 py-2.5 text-sm font-semibold text-txt hover:border-border-hover hover:bg-bg-hover"
+              >
+                {t("cloud.login.passkeyRecovery.magicLink", {
+                  defaultValue: "Use Magic Link",
+                })}
+              </Button>
+            )}
+            <Button
+              type="button"
+              onClick={startPasskeySignup}
+              disabled={isLoading}
+              className="hosted-signin-focus-emphasis min-h-touch rounded-md bg-accent px-3 py-2.5 text-sm font-semibold text-accent-foreground hover:bg-accent-hover"
+            >
+              {t("cloud.login.passkeyRecovery.setup", {
+                defaultValue: "Set up passkey",
+              })}
+            </Button>
+          </div>
+        </section>
       )}
 
       {hasOAuthProviders && (
