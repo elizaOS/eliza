@@ -774,3 +774,161 @@ describe("normalize", () => {
 		);
 	});
 });
+
+describe("line-ending variants (#19476)", () => {
+	it("parses CHOICE with CRLF line endings", () => {
+		const text = "Pick:\r\n[CHOICE:s id=i]\r\na=A\r\nb=B\r\n[/CHOICE]";
+		const { blocks, cleanedText } = parseInteractionBlocks(text);
+		expect(blocks).toHaveLength(1);
+		expect((blocks[0] as ChoiceInteraction).scope).toBe("s");
+		expect((blocks[0] as ChoiceInteraction).options).toEqual([
+			{ value: "a", label: "A" },
+			{ value: "b", label: "B" },
+		]);
+		expect(cleanedText).toBe("Pick:");
+	});
+
+	it("parses CHOICE with mixed LF/CRLF endings", () => {
+		const text = "Pick:\n[CHOICE:s id=i]\r\na=A\nb=B\r\n[/CHOICE]";
+		const { blocks } = parseInteractionBlocks(text);
+		expect(blocks).toHaveLength(1);
+		expect((blocks[0] as ChoiceInteraction).options).toHaveLength(2);
+	});
+
+	it("parses CHOICE with space after opening bracket and before newline", () => {
+		const text = "Pick:\n[CHOICE:s id=i]  \na=A\nb=B\n[/CHOICE]";
+		const { blocks } = parseInteractionBlocks(text);
+		expect(blocks).toHaveLength(1);
+		expect((blocks[0] as ChoiceInteraction).scope).toBe("s");
+		expect((blocks[0] as ChoiceInteraction).options).toHaveLength(2);
+	});
+
+	it("parses FORM with CRLF", () => {
+		const fields = [{ name: "f", type: "text" as const }];
+		const text = `[FORM]\r\n${JSON.stringify({ fields })}\r\n[/FORM]`;
+		const { blocks } = parseInteractionBlocks(text);
+		expect(blocks).toHaveLength(1);
+		expect(blocks[0]?.kind).toBe("form");
+	});
+
+	it("parses FOLLOWUPS with CRLF", () => {
+		const text = "[FOLLOWUPS id=f1]\r\nyes=Yes\r\nno=No\r\n[/FOLLOWUPS]";
+		const { blocks } = parseInteractionBlocks(text);
+		expect(blocks).toHaveLength(1);
+		expect(blocks[0]?.kind).toBe("followups");
+		expect(
+			((blocks[0] as FollowupsInteraction).options[0] as FollowupOption).payload,
+		).toBe("yes");
+	});
+
+	it("parses TASK with CRLF context (no newlines within marker)", () => {
+		const id = "abc12345def67890abcdef1234567890";
+		const text = `Status\r\n[TASK:${id}]Ship it[/TASK]\r\nNext`;
+		const { blocks, cleanedText } = parseInteractionBlocks(text);
+		expect(blocks).toHaveLength(1);
+		expect((blocks[0] as TaskInteraction).threadId).toBe(id);
+		expect(cleanedText).toContain("Status");
+		expect(cleanedText).toContain("Next");
+	});
+
+	it("does not leak markers with CRLF variants into cleanedText", () => {
+		const text = "Status\r\n[CHOICE:s id=i]\r\na=A\r\n[/CHOICE]\r\nNext";
+		const { cleanedText } = parseInteractionBlocks(text);
+		expect(cleanedText).not.toContain("[CHOICE");
+		expect(cleanedText).not.toContain("[/CHOICE");
+		expect(cleanedText).toContain("Status");
+		expect(cleanedText).toContain("Next");
+	});
+
+	it("round-trips choice → serialize → parse with CRLF injected", () => {
+		const block: ChoiceInteraction = {
+			kind: "choice",
+			id: "i",
+			scope: "s",
+			options: [{ value: "a", label: "A" }],
+		};
+		const serialized = serializeInteractionBlock(block);
+		// Inject CRLF into serialized form
+		const crlf = serialized.replace(/\n/g, "\r\n");
+		const { blocks } = parseInteractionBlocks(crlf);
+		expect((blocks[0] as ChoiceInteraction).scope).toBe("s");
+	});
+
+	it("handles CR-only (old Mac) line endings", () => {
+		const text = "Pick:\r[CHOICE:s id=i]\ra=A\rb=B\r[/CHOICE]";
+		const { blocks, cleanedText } = parseInteractionBlocks(text);
+		expect(blocks).toHaveLength(1);
+		expect((blocks[0] as ChoiceInteraction).options).toHaveLength(2);
+		expect(cleanedText).toBe("Pick:");
+	});
+
+	it("findInteractionRegions maps indices correctly after CRLF normalization", () => {
+		const text = "x[CHOICE:s id=i]\r\na=A\r\n[/CHOICE]y";
+		const regions = findInteractionRegions(text);
+		expect(regions).toHaveLength(1);
+		// Slice original text using region bounds; must match block content
+		const sliced = text.slice(regions[0].start, regions[0].end);
+		expect(sliced).toContain("[CHOICE");
+		expect(sliced).toContain("[/CHOICE");
+	});
+
+	it("stripInteractionMarkers removes markers with any line-ending variant", () => {
+		const crlf = "Hi\r\n[CHOICE:s id=i]\r\na=A\r\n[/CHOICE]";
+		const cr = "Hi\r[CHOICE:s id=i]\ra=A\r[/CHOICE]";
+		const mixed = "Hi\r\n[CHOICE:s id=i]\na=A\r\n[/CHOICE]";
+
+		expect(stripInteractionMarkers(crlf)).toBe("Hi");
+		expect(stripInteractionMarkers(cr)).toBe("Hi");
+		expect(stripInteractionMarkers(mixed)).toBe("Hi");
+	});
+
+	it("cleanedText never contains markers after parsing any variant", () => {
+		const variants = [
+			// LF (Unix)
+			"Msg\n[CHOICE:s id=i]\na=A\n[/CHOICE]",
+			// CRLF (Windows)
+			"Msg\r\n[CHOICE:s id=i]\r\na=A\r\n[/CHOICE]",
+			// CR (old Mac)
+			"Msg\r[CHOICE:s id=i]\ra=A\r[/CHOICE]",
+			// Mixed
+			"Msg\r\n[CHOICE:s id=i]\na=A\r\n[/CHOICE]",
+			// Trailing spaces
+			"Msg  \n[CHOICE:s id=i]  \na=A  \n[/CHOICE]  ",
+		];
+
+		for (const variant of variants) {
+			const { cleanedText } = parseInteractionBlocks(variant);
+			expect(cleanedText).not.toContain("[CHOICE");
+			expect(cleanedText).not.toContain("[/CHOICE");
+			expect(cleanedText).toContain("Msg");
+		}
+	});
+
+	it("handles complex form with CRLF and whitespace", () => {
+		const formSpec = {
+			id: "f1",
+			title: "Setup",
+			fields: [
+				{ name: "key", type: "text" as const, label: "API Key" },
+			],
+		};
+		const text = `Begin\r\n[FORM]  \r\n${JSON.stringify(formSpec)}\r\n  [/FORM]\r\nEnd`;
+		const { blocks, cleanedText } = parseInteractionBlocks(text);
+		expect(blocks).toHaveLength(1);
+		expect((blocks[0] as FormInteraction).title).toBe("Setup");
+		expect(cleanedText).toContain("Begin");
+		expect(cleanedText).toContain("End");
+		expect(cleanedText).not.toContain("[FORM");
+	});
+
+	it("parses multiple blocks with mixed line-ending variants", () => {
+		const text =
+			"Status:\r\n[TASK:aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee]Build\n[/TASK]\r\nWhat next?\r\n[CHOICE:next id=n1]\r\na=A\nb=B\r\n[/CHOICE]";
+		const { blocks, cleanedText } = parseInteractionBlocks(text);
+		expect(blocks.map((b) => b.kind)).toEqual(["task", "choice"]);
+		expect(cleanedText).not.toContain("[TASK");
+		expect(cleanedText).not.toContain("[CHOICE");
+		expect(cleanedText).toContain("Status:");
+		expect(cleanedText).toContain("What next?");
+	});
+});

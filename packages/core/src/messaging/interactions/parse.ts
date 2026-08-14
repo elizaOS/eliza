@@ -32,11 +32,66 @@ export const MAX_FORM_FIELDS = 20;
 export const MAX_FOLLOWUPS = 4;
 export const MAX_TASK_TITLE_LEN = 200;
 
+/**
+ * Normalize line endings to LF and trim trailing whitespace before newlines.
+ * Handles CRLF (Windows), CR (old Mac), and mixed variants so the strict
+ * regexes below match consistently. Markers preceded by spaces/tabs no longer
+ * block parsing.
+ */
+function normalizeLineEndings(text: string): string {
+	if (!text) return text;
+	return text
+		.replace(/\r\n/g, "\n") // CRLF → LF
+		.replace(/\r/g, "\n") // CR → LF
+		.replace(/[ \t]+\n/g, "\n"); // trim trailing spaces/tabs before newlines
+}
+
+/**
+ * Map regex match indices from normalized text back to the original.
+ * After normalizing line endings, CRLF sequences collapse to LF, changing
+ * character positions. Region bounds must point into the original text
+ * so slice() calls in parseInteractionBlocks remove the right bytes.
+ */
+function adjustRegionIndices(
+	original: string,
+	normalized: string,
+	regions: InteractionRegion[],
+): InteractionRegion[] {
+	if (original === normalized) return regions; // fast path
+
+	// Build a char-by-char mapping: normalized index → original index
+	const indexMap: number[] = [];
+	let normIdx = 0;
+	let origIdx = 0;
+	while (origIdx < original.length) {
+		indexMap[normIdx] = origIdx;
+		if (original[origIdx] === "\r") {
+			if (original[origIdx + 1] === "\n") {
+				origIdx += 2; // CRLF consumes 2 bytes, 1 normalized position
+			} else {
+				origIdx += 1; // CR alone consumes 1 byte, 1 normalized position
+			}
+		} else {
+			origIdx += 1; // regular char consumes 1 byte, 1 normalized position
+		}
+		normIdx += 1;
+	}
+	indexMap[normIdx] = origIdx; // final position
+
+	// Remap each region's start/end to original-text indices
+	return regions.map((r) => ({
+		...r,
+		start: indexMap[r.start] ?? r.start,
+		end: indexMap[r.end] ?? r.end,
+	}));
+}
+
 // Group 2 captures the header attributes (`id=…`, `allow_custom`) in any order.
-const CHOICE_RE = /\[CHOICE:([\w-]+)([^\]]*)\]\n([\s\S]*?)\n\[\/CHOICE\]/g;
+// Updated patterns: allow optional whitespace around markers and line endings.
+const CHOICE_RE = /\[CHOICE:([\w-]+)([^\]]*)\]\s*\n([\s\S]*?)\n\s*\[\/CHOICE\]/g;
 const FOLLOWUPS_RE =
-	/\[FOLLOWUPS(?:\s+id=(\S+))?\]\n([\s\S]*?)\n\[\/FOLLOWUPS\]/g;
-const FORM_RE = /\[FORM\]\n([\s\S]*?)\n\[\/FORM\]/g;
+	/\[FOLLOWUPS(?:\s+id=(\S+))?\]\s*\n([\s\S]*?)\n\s*\[\/FOLLOWUPS\]/g;
+const FORM_RE = /\[FORM\]\s*\n([\s\S]*?)\n\s*\[\/FORM\]/g;
 const TASK_RE = /\[TASK:([a-f0-9-]{8,64})\]([\s\S]*?)\[\/TASK\]/g;
 
 const FIELD_TYPES: ReadonlySet<InteractionFieldType> = new Set([
@@ -218,10 +273,13 @@ function pushMatches(
 /** Find every interaction-block region in `text`, sorted by position, de-overlapped. */
 export function findInteractionRegions(text: string): InteractionRegion[] {
 	if (!text) return [];
+	// Normalize line endings ONCE before all regex matching.
+	// This ensures CRLF, CR, and mixed variants all parse consistently.
+	const normalized = normalizeLineEndings(text);
 	const regions: InteractionRegion[] = [];
 
 	pushMatches(
-		text,
+		normalized,
 		CHOICE_RE,
 		(m): ChoiceInteraction | null => {
 			const options = parseOptionLines(m[3]);
@@ -240,7 +298,7 @@ export function findInteractionRegions(text: string): InteractionRegion[] {
 		regions,
 	);
 	pushMatches(
-		text,
+		normalized,
 		FOLLOWUPS_RE,
 		(m): FollowupsInteraction | null => {
 			const options = parseFollowupLines(m[2]);
@@ -250,13 +308,13 @@ export function findInteractionRegions(text: string): InteractionRegion[] {
 		regions,
 	);
 	pushMatches(
-		text,
+		normalized,
 		FORM_RE,
 		(m): FormInteraction | null => parseFormBody(m[1]),
 		regions,
 	);
 	pushMatches(
-		text,
+		normalized,
 		TASK_RE,
 		(m): TaskInteraction | null => {
 			const threadId = m[1];
@@ -280,7 +338,10 @@ export function findInteractionRegions(text: string): InteractionRegion[] {
 		accepted.push(r);
 		cursor = r.end;
 	}
-	return accepted;
+
+	// Map indices from normalized text back to original text so region
+	// boundaries are correct when slicing in parseInteractionBlocks.
+	return adjustRegionIndices(text, normalized, accepted);
 }
 
 export interface ParsedInteractions {
