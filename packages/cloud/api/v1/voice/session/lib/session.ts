@@ -213,6 +213,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
   private lastSttPartialSentAtMs = Number.NEGATIVE_INFINITY;
   private sttPartialTimer: ReturnType<typeof setTimeout> | null = null;
   private llmAbort: AbortController | null = null;
+  private elizaPrewarm: Promise<void> | null = null;
   private phrase: PhraseAggregator | null = null;
   private turnSttMs = 0;
   private turnTtsChars = 0;
@@ -317,7 +318,14 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
     // the first turn never joins that database work and reports retryable
     // warming until a later cache read observes the completed fill.
     if (this.config.prewarmElizaContext) {
-      void this.config.prewarmElizaContext().catch(() => undefined);
+      this.elizaPrewarm = this.config.prewarmElizaContext().catch((error) => {
+        // error-policy:J7 prewarm is latency-only; the response path retains
+        // its typed cache-warming retry fallback and reports the failed hint.
+        logger.warn("[voice-session] Eliza context prewarm failed", {
+          sessionId: this.sessionId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      });
     }
     // The session-level trace span id is stable until the first turn mints its own.
     const sessionTrace = this.mintTraceId("session");
@@ -763,6 +771,13 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
       // turn does not await readiness because outbound phrases queue in the
       // adapter, so consume that designed rejection on fast teardown.
       void prewarmedTts.opened.catch(() => undefined);
+
+      const elizaPrewarm = this.elizaPrewarm;
+      if (elizaPrewarm) {
+        await elizaPrewarm;
+        if (this.elizaPrewarm === elizaPrewarm) this.elizaPrewarm = null;
+        if (abort.signal.aborted || this.currentVoiceTurnId !== traceId) return;
+      }
 
       const request = {
         endpoint: this.config.elizaEndpoint,
