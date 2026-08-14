@@ -9,7 +9,11 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { Bell } from "lucide-react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { SettingsSelectRow, SettingsSwitchRow } from "./settings-agent-rows";
+import {
+  SettingsInputRow,
+  SettingsSelectRow,
+  SettingsSwitchRow,
+} from "./settings-agent-rows";
 import { SettingsGroup, SettingsRow, SettingsStack } from "./settings-layout";
 
 afterEach(() => cleanup());
@@ -109,6 +113,55 @@ describe("agent-addressable rows", () => {
     expect(sw).toHaveProperty("disabled", true);
   });
 
+  it("SettingsInputRow labels the field and exposes agent data attributes", () => {
+    const onValueChange = vi.fn();
+    render(
+      <SettingsInputRow
+        agentId="security-password-new"
+        label="New password"
+        type="password"
+        value=""
+        onValueChange={onValueChange}
+        testId="security-password-new-input"
+      />,
+    );
+    const input = screen.getByLabelText("New password");
+    expect(input.getAttribute("data-agent-id")).toBe("security-password-new");
+    expect(input.getAttribute("data-agent-role")).toBe("text-input");
+    expect(input.getAttribute("id")).toBe("security-password-new");
+    expect(input.getAttribute("data-testid")).toBe(
+      "security-password-new-input",
+    );
+    expect(input.getAttribute("aria-label")).toBeNull();
+    expect(screen.getByText("New password").tagName).toBe("LABEL");
+    expect(screen.getByText("New password").getAttribute("for")).toBe(
+      "security-password-new",
+    );
+    fireEvent.change(input, { target: { value: "abcdefghijkl" } });
+    expect(onValueChange).toHaveBeenCalledWith("abcdefghijkl");
+  });
+
+  it("SettingsInputRow announces a validation error below the field", () => {
+    render(
+      <SettingsInputRow
+        agentId="security-password-confirm"
+        label="Confirm new password"
+        type="password"
+        value="nope"
+        onValueChange={() => {}}
+        error="Passwords do not match."
+      />,
+    );
+    const input = screen.getByLabelText("Confirm new password");
+    const alert = screen.getByRole("alert");
+    expect(alert.textContent).toBe("Passwords do not match.");
+    expect(input.getAttribute("aria-invalid")).toBe("true");
+    expect(input.getAttribute("aria-describedby")).toBe(
+      "security-password-confirm-error",
+    );
+    expect(alert.className).toContain("text-danger");
+  });
+
   it("SettingsSelectRow registers as an agent-addressable select", () => {
     render(
       <SettingsSelectRow
@@ -125,5 +178,51 @@ describe("agent-addressable rows", () => {
     const trigger = screen.getByLabelText("Theme");
     expect(trigger.getAttribute("data-agent-id")).toBe("pick-theme");
     expect(trigger.getAttribute("data-agent-role")).toBe("select");
+    expect(trigger.getAttribute("id")).toBe("pick-theme");
+    expect(trigger.getAttribute("aria-label")).toBeNull();
+    expect(screen.getByText("Theme").tagName).toBe("LABEL");
+    expect(screen.getByText("Theme").getAttribute("for")).toBe("pick-theme");
+  });
+
+  it("SettingsSelectRow keeps the visible label as the accessible name", () => {
+    render(
+      <SettingsSelectRow
+        agentId="identity-voice"
+        label="Voice"
+        agentLabel="Agent voice preset"
+        value="alloy"
+        onValueChange={() => {}}
+        options={[{ value: "alloy", label: "Alloy" }]}
+      />,
+    );
+    const trigger = screen.getByLabelText("Voice");
+    expect(trigger.getAttribute("data-agent-label")).toBe("Agent voice preset");
+    expect(trigger.getAttribute("aria-label")).toBeNull();
+    expect(screen.queryByLabelText("Agent voice preset")).toBeNull();
+  });
+
+  it("SettingsSelectRow renders grouped options and a trailing control", () => {
+    render(
+      <SettingsSelectRow
+        agentId="identity-voice"
+        label="Voice"
+        value="alloy"
+        onValueChange={() => {}}
+        groups={[
+          {
+            label: "Premade",
+            items: [
+              { value: "alloy", label: "Alloy", hint: "fast" },
+              { value: "verse", label: "Verse" },
+            ],
+          },
+        ]}
+        trailing={<button type="button">Preview</button>}
+        testId="identity-voice-trigger"
+      />,
+    );
+    const trigger = screen.getByTestId("identity-voice-trigger");
+    expect(trigger.getAttribute("data-agent-id")).toBe("identity-voice");
+    expect(screen.getByText("Preview")).toBeTruthy();
   });
 });
