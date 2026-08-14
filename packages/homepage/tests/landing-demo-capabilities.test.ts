@@ -51,6 +51,19 @@ describe("landing Shared-agent capability contract", () => {
     ).toHaveLength(3);
   });
 
+  test("paces distinct context cards between conversational beats", () => {
+    const cardIndexes = LANDING_DEMO_INTRO.flatMap((step, index) =>
+      step.kind === "card" ? [index] : [],
+    );
+    const cards = LANDING_DEMO_INTRO.flatMap((step) =>
+      step.kind === "card" ? [step.card] : [],
+    );
+
+    expect(cardIndexes).toEqual([6, 9, 13]);
+    expect(new Set(cards.map((card) => card.label)).size).toBe(cards.length);
+    expect(cards.every((card) => card.status === undefined)).toBe(true);
+  });
+
   test.each([
     [
       "I'm here to save you time and take things off your plate. Should we start with your email?",
