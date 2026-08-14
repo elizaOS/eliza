@@ -1570,6 +1570,47 @@ function redactTrajectoryParams(
   return cloned ?? params;
 }
 
+/**
+ * Required capture fields the byte budget may have evicted from a snapshot.
+ *
+ * `snapshotCaptureParams` bounds the whole payload against a row-size budget,
+ * so a large call (big prompt AND big response) can lose `response` entirely.
+ * The snapshot is then re-validated against the SAME completeness contract as
+ * the pre-snapshot params, so a lossy-but-valid artifact was rejected and the
+ * ENTIRE llm capture was discarded — on exactly the large, tool-heavy turns
+ * trajectories exist to explain (live: field=response, captureType=llm).
+ *
+ * Validating a deliberately lossy artifact for completeness is the bug. Restore
+ * the required strings the budget dropped, bounded and explicitly marked, so
+ * the record degrades to "truncated" instead of vanishing.
+ */
+const REQUIRED_LLM_CAPTURE_STRINGS = [
+  "model",
+  "response",
+  "purpose",
+  "actionType",
+] as const;
+
+const TRUNCATED_CAPTURE_FIELD_CHARS = 2000;
+
+function restoreBudgetEvictedCaptureFields(
+  snapshot: Record<string, unknown>,
+  source: Record<string, unknown>,
+): Record<string, unknown> {
+  let restored: Record<string, unknown> | null = null;
+  for (const field of REQUIRED_LLM_CAPTURE_STRINGS) {
+    if (typeof snapshot[field] === "string") continue;
+    const original = source[field];
+    if (typeof original !== "string") continue;
+    restored ??= { ...snapshot };
+    restored[field] =
+      original.length > TRUNCATED_CAPTURE_FIELD_CHARS
+        ? `${original.slice(0, TRUNCATED_CAPTURE_FIELD_CHARS)}…[truncated ${original.length - TRUNCATED_CAPTURE_FIELD_CHARS} chars to fit the trajectory row budget]`
+        : original;
+  }
+  return restored ?? snapshot;
+}
+
 function snapshotCaptureParams(
   params: Record<string, unknown>,
   stepId: string,
@@ -1597,8 +1638,24 @@ function snapshotCaptureParams(
 function coerceAbsentLlmResponse(
   params: Record<string, unknown>,
 ): Record<string, unknown> {
-  if (params.response != null) return params;
-  return { ...params, response: "" };
+  if (params.response == null) {
+    return { ...params, response: "" };
+  }
+  // Tool-call stages surface structured (non-string) model responses; the
+  // validator requires a string and rejected the whole capture, which is why
+  // exactly the tool-call stages were missing from stored trajectories
+  // (diagnosed live via the field-bearing rejection warn: field=response).
+  // Serialize instead of rejecting so the archival record keeps the data.
+  if (typeof params.response !== "string") {
+    try {
+      return { ...params, response: JSON.stringify(params.response) ?? "" };
+    } catch {
+      // error-policy:J3 unserializable diagnostic payload degrades to a
+      // marker string rather than dropping the entire capture.
+      return { ...params, response: "[unserializable response]" };
+    }
+  }
+  return params;
 }
 
 export function normalizeLlmCallPayload(
@@ -1626,7 +1683,10 @@ export function normalizeLlmCallPayload(
       }),
     );
     validateLlmCapture(params, stepId);
-    const snapshot = snapshotCaptureParams(params, stepId);
+    const snapshot = restoreBudgetEvictedCaptureFields(
+      snapshotCaptureParams(params, stepId),
+      params,
+    );
     validateLlmCapture(snapshot, stepId);
     return {
       stepId,
@@ -1654,7 +1714,10 @@ export function normalizeLlmCallPayload(
     coerceAbsentLlmResponse(normalizedParams),
   );
   validateLlmCapture(redactedParams, stepId);
-  const snapshot = snapshotCaptureParams(redactedParams, stepId);
+  const snapshot = restoreBudgetEvictedCaptureFields(
+    snapshotCaptureParams(redactedParams, stepId),
+    redactedParams,
+  );
   validateLlmCapture(snapshot, stepId);
   return {
     stepId,

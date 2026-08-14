@@ -14,6 +14,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   enqueueStepWrite,
   ensureTrajectoriesTable,
+  normalizeLlmCallPayload,
 } from "./trajectory-internals.ts";
 import { installDatabaseTrajectoryLogger } from "./trajectory-persistence.ts";
 import { loadPersistedTrajectoryRows } from "./trajectory-query.ts";
@@ -1364,5 +1365,42 @@ describe("installDatabaseTrajectoryLogger (capture bridge)", () => {
 
     expect(originalExportTrajectories).not.toHaveBeenCalled();
     expect(hasTraceFilter(execute, "trace-1")).toBe(true);
+  });
+});
+
+describe("a budget-evicted required field truncates instead of dropping the capture", () => {
+  // Live 2026-08-14: TRAJECTORY_CAPTURE_INVALID field=response captureType=llm.
+  // snapshotCaptureParams bounds the payload against a row-size budget, so a
+  // large call can lose `response`; the snapshot was then re-validated against
+  // the same completeness contract and the WHOLE capture was discarded — on
+  // exactly the large tool-heavy turns trajectories exist to explain.
+  it("keeps the capture and marks the truncation", () => {
+    const huge = "x".repeat(400_000);
+    const payload = {
+      stepId: "step-budget-evicted",
+      model: "zai-glm-4.7",
+      purpose: "response",
+      actionType: "llm",
+      systemPrompt: huge,
+      userPrompt: huge,
+      response: huge,
+    };
+    const normalized = normalizeLlmCallPayload([payload]);
+    expect(normalized?.stepId).toBe("step-budget-evicted");
+    expect(typeof normalized?.params.response).toBe("string");
+    expect((normalized?.params.response as string).length).toBeGreaterThan(0);
+  });
+
+  it("leaves a small response byte-identical", () => {
+    const normalized = normalizeLlmCallPayload([
+      {
+        stepId: "step-small",
+        model: "zai-glm-4.7",
+        purpose: "response",
+        actionType: "llm",
+        response: "ok",
+      },
+    ]);
+    expect(normalized?.params.response).toBe("ok");
   });
 });
