@@ -868,4 +868,24 @@ describe("unclaimed interaction markers never ship as prose", () => {
 		const text = "set the flag: enabled=true in your config.";
 		expect(parseInteractionBlocks(text).cleanedText).toBe(text);
 	});
+
+	// A parser that sweeps residue is necessary but not sufficient: a renderer
+	// that echoes its RAW input on the zero-block branch discards the sweep, and
+	// zero-block is precisely the branch residue survives on. The Discord and
+	// Telegram renderers already return their cleaned text here; the plain-text
+	// path was the last one still handing back the source.
+	it("renders the swept text on the zero-block plain-text path", () => {
+		const { text, hadBlocks } = renderInteractionsAsPlainText(
+			"here you go.\n[ FOLLOWUPS ]\nreply:More=More",
+		);
+		expect(hadBlocks).toBe(false);
+		expect(text).not.toContain("FOLLOWUPS");
+		expect(text).not.toContain("reply:");
+		expect(text).toBe("here you go.");
+	});
+
+	it("leaves block-free ordinary prose byte-identical through the renderer", () => {
+		const text = "i read [the docs] and [section 2] carefully.";
+		expect(renderInteractionsAsPlainText(text).text).toBe(text);
+	});
 });
