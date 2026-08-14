@@ -1,6 +1,6 @@
 /** Coordinates cloud phone-gateway registration, authentication, and presence state. */
 import { and, eq, sql } from "drizzle-orm";
-import { dbRead, dbWrite } from "../../db/client";
+import { type Database, type DbTransaction, dbRead, dbWrite } from "../../db/client";
 import { phoneGatewayDevices } from "../../db/schemas/phone-gateway-devices";
 import { logger } from "../utils/logger";
 import { normalizePhoneNumber } from "../utils/phone-normalization";
@@ -247,7 +247,7 @@ export async function createBlueBubblesGatewayRegistration(input: {
     authTokenHash,
     tokenCreatedAt: new Date().toISOString(),
   };
-  const registered = await registerPhoneGatewayDevice({
+  const registrationInput: RegisterPhoneGatewayDeviceInput = {
     organizationId: input.organizationId,
     // The existing database enum uses blooio for iMessage bridges. The public
     // contract remains explicitly BlueBubbles through gatewayKind and bridgeId.
@@ -260,7 +260,40 @@ export async function createBlueBubblesGatewayRegistration(input: {
     sendMethod: "bluebubbles-local-bridge",
     metadata,
     markSeen: false,
-  });
+  };
+  const phoneNumber = normalizePhoneNumber(input.phoneNumber);
+  if (!phoneNumber) {
+    throw new Error("A BlueBubbles gateway requires a valid phone number");
+  }
+
+  const registerAtomically = async () =>
+    await dbWrite.transaction(async (tx) => {
+      const lockKey = `${input.organizationId}:${phoneNumber}:${input.userId}`;
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${lockKey}))`);
+      await tx
+        .update(phoneGatewayDevices)
+        .set({ is_active: false, updated_at: new Date() })
+        .where(
+          and(
+            eq(phoneGatewayDevices.organization_id, input.organizationId),
+            eq(phoneGatewayDevices.provider, "blooio"),
+            eq(phoneGatewayDevices.phone_number, phoneNumber),
+            eq(phoneGatewayDevices.is_active, true),
+            sql`${phoneGatewayDevices.metadata}::jsonb ->> 'gatewayKind' = 'bluebubbles'`,
+            sql`${phoneGatewayDevices.metadata}::jsonb ->> 'ownerUserId' = ${input.userId}`,
+          ),
+        );
+      return await upsertPhoneGatewayDevice(registrationInput, tx);
+    });
+
+  let registered: RegisterPhoneGatewayDeviceResult;
+  try {
+    registered = await registerAtomically();
+  } catch (error) {
+    if (!isUndefinedTableError(error)) throw error;
+    await ensurePhoneGatewayDevicesTable();
+    registered = await registerAtomically();
+  }
   if (!registered.registered || !registered.id) {
     throw new Error(
       `BlueBubbles gateway registration failed: ${registered.skippedReason ?? "unknown"}`,
@@ -390,54 +423,8 @@ export async function registerPhoneGatewayDevice(
     return { id: null, registered: false, skippedReason: "missing_phone_number" };
   }
 
-  const now = new Date();
-  const lastSeenAt = input.markSeen === false ? null : now;
   const bridgeId = nullableText(input.bridgeId) ?? "default";
-  const metadata = JSON.stringify(input.metadata ?? {});
-
-  const upsert = async () => {
-    const [record] = await dbWrite
-      .insert(phoneGatewayDevices)
-      .values({
-        organization_id: nullableText(input.organizationId),
-        provider: input.provider,
-        phone_number: phoneNumber,
-        bridge_id: bridgeId,
-        phone_account_id: nullableText(input.phoneAccountId),
-        phone_account_label: nullableText(input.phoneAccountLabel),
-        friendly_name: nullableText(input.friendlyName),
-        send_method: nullableText(input.sendMethod),
-        cloud_webhook_url: nullableText(input.cloudWebhookUrl),
-        local_webhook_url: nullableText(input.localWebhookUrl),
-        metadata,
-        is_active: true,
-        last_seen_at: lastSeenAt,
-        updated_at: now,
-      })
-      .onConflictDoUpdate({
-        target: [
-          phoneGatewayDevices.provider,
-          phoneGatewayDevices.phone_number,
-          phoneGatewayDevices.bridge_id,
-        ],
-        set: {
-          organization_id: nullableText(input.organizationId),
-          phone_account_id: nullableText(input.phoneAccountId),
-          phone_account_label: nullableText(input.phoneAccountLabel),
-          friendly_name: nullableText(input.friendlyName),
-          send_method: nullableText(input.sendMethod),
-          cloud_webhook_url: nullableText(input.cloudWebhookUrl),
-          local_webhook_url: nullableText(input.localWebhookUrl),
-          metadata,
-          is_active: true,
-          last_seen_at: lastSeenAt,
-          updated_at: now,
-        },
-      })
-      .returning({ id: phoneGatewayDevices.id });
-
-    return { id: record?.id ?? null, registered: true };
-  };
+  const upsert = async () => await upsertPhoneGatewayDevice(input, dbWrite);
 
   try {
     return await upsert();
@@ -461,4 +448,59 @@ export async function registerPhoneGatewayDevice(
     });
     return { id: null, registered: false, skippedReason: "write_failed" };
   }
+}
+
+async function upsertPhoneGatewayDevice(
+  input: RegisterPhoneGatewayDeviceInput,
+  writer: Database | DbTransaction,
+): Promise<RegisterPhoneGatewayDeviceResult> {
+  const phoneNumber = normalizePhoneNumber(input.phoneNumber);
+  if (!phoneNumber) {
+    return { id: null, registered: false, skippedReason: "missing_phone_number" };
+  }
+  const now = new Date();
+  const lastSeenAt = input.markSeen === false ? null : now;
+  const bridgeId = nullableText(input.bridgeId) ?? "default";
+  const metadata = JSON.stringify(input.metadata ?? {});
+  const [record] = await writer
+    .insert(phoneGatewayDevices)
+    .values({
+      organization_id: nullableText(input.organizationId),
+      provider: input.provider,
+      phone_number: phoneNumber,
+      bridge_id: bridgeId,
+      phone_account_id: nullableText(input.phoneAccountId),
+      phone_account_label: nullableText(input.phoneAccountLabel),
+      friendly_name: nullableText(input.friendlyName),
+      send_method: nullableText(input.sendMethod),
+      cloud_webhook_url: nullableText(input.cloudWebhookUrl),
+      local_webhook_url: nullableText(input.localWebhookUrl),
+      metadata,
+      is_active: true,
+      last_seen_at: lastSeenAt,
+      updated_at: now,
+    })
+    .onConflictDoUpdate({
+      target: [
+        phoneGatewayDevices.provider,
+        phoneGatewayDevices.phone_number,
+        phoneGatewayDevices.bridge_id,
+      ],
+      set: {
+        organization_id: nullableText(input.organizationId),
+        phone_account_id: nullableText(input.phoneAccountId),
+        phone_account_label: nullableText(input.phoneAccountLabel),
+        friendly_name: nullableText(input.friendlyName),
+        send_method: nullableText(input.sendMethod),
+        cloud_webhook_url: nullableText(input.cloudWebhookUrl),
+        local_webhook_url: nullableText(input.localWebhookUrl),
+        metadata,
+        is_active: true,
+        last_seen_at: lastSeenAt,
+        updated_at: now,
+      },
+    })
+    .returning({ id: phoneGatewayDevices.id });
+
+  return { id: record?.id ?? null, registered: true };
 }

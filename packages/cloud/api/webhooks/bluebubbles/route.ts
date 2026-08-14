@@ -20,9 +20,6 @@ import {
 import { logger } from "@/lib/utils/logger";
 import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
 
-const DEFAULT_GATEWAY_ORG_ID = "00000000-0000-4000-8000-000000000000";
-const DEFAULT_GATEWAY_PHONE_NUMBER = "+14159611510";
-
 const BlueBubblesHandleSchema = z
   .object({
     address: z.string().optional().nullable(),
@@ -59,14 +56,6 @@ const BlueBubblesWebhookSchema = z
 
 function readEnvString(c: AppContext, key: string): string | null {
   const value = c.env[key];
-  return typeof value === "string" && value.trim() ? value.trim() : null;
-}
-
-function readPayloadString(
-  record: Record<string, unknown> | null | undefined,
-  key: string,
-): string | null {
-  const value = record?.[key];
   return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
@@ -141,8 +130,8 @@ export async function handleBlueBubblesWebhookPayload(
   payload: unknown,
 ): Promise<Response> {
   const bridgeId =
-    readEnvString(c, "BLUEBUBBLES_BRIDGE_ID") ??
     c.req.param("bridgeId") ??
+    readEnvString(c, "BLUEBUBBLES_BRIDGE_ID") ??
     c.req.header("x-eliza-bridge") ??
     c.req.query("bridge") ??
     c.req.param("orgId") ??
@@ -188,6 +177,16 @@ export async function handleBlueBubblesWebhookPayload(
   const hasAttachments = Boolean(data.attachments?.length);
   if (!body && !hasAttachments) {
     return c.json({ success: true, skipped: "empty_message" });
+  }
+
+  const legacyOrganizationId = readEnvString(c, "BLUEBUBBLES_GATEWAY_ORG_ID");
+  const legacyRecipient = readEnvString(c, "BLUEBUBBLES_GATEWAY_PHONE_NUMBER");
+  if (!registeredGateway && (!legacyOrganizationId || !legacyRecipient)) {
+    logger.error(
+      "[BlueBubblesWebhook] Legacy gateway identity is not configured",
+      { bridgeId },
+    );
+    return c.json({ error: "BlueBubbles gateway is not configured" }, 503);
   }
 
   if (registeredGateway) {
@@ -237,27 +236,15 @@ export async function handleBlueBubblesWebhookPayload(
   }
 
   const organizationId =
-    registeredGateway?.organizationId ??
-    readEnvString(c, "BLUEBUBBLES_GATEWAY_ORG_ID") ??
-    DEFAULT_GATEWAY_ORG_ID;
-  const configuredRecipient = registeredGateway?.phoneNumber
-    ? registeredGateway.phoneNumber
-    : readEnvString(c, "BLUEBUBBLES_GATEWAY_PHONE_NUMBER");
-  const recipient =
-    configuredRecipient ??
-    readPayloadString(data.metadata, "localPhoneNumber") ??
-    readPayloadString(data.metadata, "phoneNumber") ??
-    DEFAULT_GATEWAY_PHONE_NUMBER;
+    registeredGateway?.organizationId ?? legacyOrganizationId!;
+  const configuredRecipient = registeredGateway?.phoneNumber ?? legacyRecipient;
+  const recipient = configuredRecipient!;
   const phoneAccountId = registeredGateway
     ? registeredGateway.phoneNumber
-    : configuredRecipient
-      ? recipient
-      : (readPayloadString(data.metadata, "phoneAccountId") ?? recipient);
+    : recipient;
   const phoneAccountLabel = registeredGateway
     ? (registeredGateway.friendlyName ?? registeredGateway.phoneNumber)
-    : configuredRecipient
-      ? recipient
-      : (readPayloadString(data.metadata, "phoneAccountLabel") ?? recipient);
+    : recipient;
   let gatewayDevice = {
     id: registeredGateway?.id ?? (null as string | null),
     registered: Boolean(registeredGateway),
@@ -366,10 +353,24 @@ export async function handleBlueBubblesWebhookPayload(
       // The marker is created before routing so concurrent deliveries cannot
       // double-spend. Remove it when routing fails so BlueBubbles or the local
       // relay can retry the same message guid instead of losing the message.
-      await webhookEventsRepository.deleteByEventId(
-        dedupeEventId,
-        "bluebubbles",
-      );
+      try {
+        await webhookEventsRepository.deleteByEventId(
+          dedupeEventId,
+          "bluebubbles",
+        );
+      } catch (cleanupError) {
+        // error-policy:J6 dedupe rollback is best-effort; the original routing
+        // failure must still return 503 so the transport observes a retryable
+        // failure rather than an unstructured exception.
+        logger.error("[BlueBubblesWebhook] Dedupe rollback failed", {
+          bridgeId,
+          messageId: data.guid,
+          error:
+            cleanupError instanceof Error
+              ? cleanupError.message
+              : String(cleanupError),
+        });
+      }
     }
     return c.json(
       {

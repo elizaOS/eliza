@@ -21,6 +21,7 @@ const selectLimit = mock();
 const updateSet = mock();
 const updateWhere = mock();
 const updateReturning = mock();
+const transaction = mock();
 
 const insertBuilder = {
   values,
@@ -48,6 +49,7 @@ mock.module("../../db/client", () => ({
     select: mock(() => selectBuilder),
     update: mock(() => updateBuilder),
     execute,
+    transaction,
   },
   getDbConnectionInfo: mock(() => ({ databaseUrlConfigured: true })),
   runWithDbCache: (fn: () => unknown) => fn(),
@@ -88,6 +90,7 @@ mock.module("../../db/schemas", () => ({
     bridge_id: "bridge_id",
     organization_id: "organization_id",
     is_active: "is_active",
+    metadata: "metadata",
   },
   userCharacters: {},
   userMcps: {},
@@ -129,6 +132,15 @@ describe("registerPhoneGatewayDevice", () => {
     updateWhere.mockReturnValue(updateBuilder);
     updateReturning.mockReset();
     updateReturning.mockResolvedValue([{ id: "gateway-device-1" }]);
+    transaction.mockReset();
+    transaction.mockImplementation(
+      async (fn: (tx: unknown) => Promise<unknown>) =>
+        await fn({
+          execute,
+          insert: mock(() => insertBuilder),
+          update: mock(() => updateBuilder),
+        }),
+    );
   });
 
   test("upserts a shared gateway device by provider, phone number, and bridge id", async () => {
@@ -228,6 +240,20 @@ describe("registerPhoneGatewayDevice", () => {
     expect(metadata).not.toHaveProperty("token");
     expect(metadata.authTokenHash).toBe(await hashBlueBubblesGatewayToken(result.token));
     expect(values).toHaveBeenCalledWith(expect.objectContaining({ last_seen_at: null }));
+  });
+
+  test("atomically deactivates the prior credential before re-registration", async () => {
+    await createBlueBubblesGatewayRegistration({
+      organizationId: "org-1",
+      userId: "user-1",
+      routingMode: "sender-owned",
+      phoneNumber: "+1 (415) 555-0123",
+    });
+
+    expect(transaction).toHaveBeenCalledTimes(1);
+    expect(execute).toHaveBeenCalledWith(expect.anything());
+    expect(updateSet).toHaveBeenCalledWith(expect.objectContaining({ is_active: false }));
+    expect(updateWhere).toHaveBeenCalled();
   });
 
   test("authenticates only the token issued for a sender-owned registered bridge", async () => {
