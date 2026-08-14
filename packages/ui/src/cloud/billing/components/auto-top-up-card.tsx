@@ -6,21 +6,18 @@
  * auto-fund path — both can be enabled together. The earnings cron runs first so
  * card charges only happen if earnings can't cover.
  *
+ * The enable control is a SettingsSwitchRow (shared Switch chrome). Amount,
+ * threshold, and save stay on this BrandCard as a multi-field editor.
  * Reads/writes /api/v1/billing/settings.
  */
 
 "use client";
 
-import {
-  BrandCard,
-  Button,
-  CornerBrackets,
-  Label,
-  Switch,
-} from "@elizaos/ui/cloud-ui";
+import { BrandCard, Button, CornerBrackets } from "@elizaos/ui/cloud-ui";
 import { CreditCard, Info, Loader2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
+import { SettingsSwitchRow } from "../../../components/settings/settings-agent-rows";
 import { ApiError, api } from "../../lib/api-client";
 import { useCloudT } from "../../shell/CloudI18nProvider";
 import { NumericField } from "./numeric-field";
@@ -181,32 +178,22 @@ export function AutoTopUpCard() {
           </p>
         </div>
 
-        <div className="flex items-start justify-between gap-3">
-          <div className="space-y-1">
-            <Label className="text-txt-strong font-mono text-sm">
-              {t("cloud.autoTopUp.enableLabel", {
-                defaultValue: "Enable card auto top-up",
-              })}
-            </Label>
-            <p className="text-xs font-mono text-muted">
-              {settings?.enabled
-                ? t("cloud.autoTopUp.activeState", {
-                    defaultValue:
-                      "Active. Your saved card will be charged automatically.",
-                  })
-                : t("cloud.autoTopUp.offState", {
-                    defaultValue:
-                      "Currently off — card won't be charged automatically.",
-                  })}
-            </p>
-          </div>
-          <Switch
-            checked={enabled}
-            onCheckedChange={setEnabled}
-            disabled={saving || !!noPaymentMethod}
-            className="data-[state=checked]:bg-txt flex-shrink-0"
-          />
-        </div>
+        <SettingsSwitchRow
+          agentId="cloud-billing-auto-top-up"
+          group="cloud-billing"
+          icon={CreditCard}
+          label={t("cloud.autoTopUp.enableLabel", {
+            defaultValue: "Enable card auto top-up",
+          })}
+          description={t("cloud.autoTopUp.enableDescription", {
+            defaultValue:
+              "When on, your saved card is charged automatically when credits dip below the threshold. When off, the card is not charged automatically.",
+          })}
+          checked={enabled}
+          disabled={saving || !!noPaymentMethod}
+          onCheckedChange={setEnabled}
+          testId="cloud-billing-auto-top-up"
+        />
 
         {noPaymentMethod && (
           <div className="flex items-start gap-2 border border-yellow-500/30 bg-yellow-500/5 p-3">
