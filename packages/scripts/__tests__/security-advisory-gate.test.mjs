@@ -9,13 +9,13 @@ import {
   classify,
   evaluate,
   waitForRequiredChecks,
-} from "./security-advisory-gate.mjs";
+} from "../../../scripts/security/security-advisory-gate.mjs";
 
 describe("base-trusted workflow contract", () => {
   it("grants the read-only Actions authority required by the production query", () => {
     const workflow = readFileSync(
       new URL(
-        "../../.github/workflows/security-advisory-gate.yml",
+        "../../../.github/workflows/security-advisory-gate.yml",
         import.meta.url,
       ),
       "utf8",
@@ -103,7 +103,10 @@ describe("deterministic canaries", () => {
     const tempDir = mkdtempSync(path.join(tmpdir(), "security advisory gate "));
     const linkedScript = path.join(tempDir, "security advisory gate.mjs");
     symlinkSync(
-      new URL("./security-advisory-gate.mjs", import.meta.url),
+      new URL(
+        "../../../scripts/security/security-advisory-gate.mjs",
+        import.meta.url,
+      ),
       linkedScript,
     );
 
