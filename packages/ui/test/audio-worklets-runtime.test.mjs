@@ -58,7 +58,10 @@ describe("packaged voice AudioWorklets", () => {
     expect(Array.from(left)).toEqual([0.25, -0.5, 0]);
     expect(Array.from(right)).toEqual([0.25, -0.5, 0]);
     expect(downlink.port.postMessage).toHaveBeenCalledOnce();
-    expect(downlink.port.postMessage).toHaveBeenCalledWith({ type: "drained" });
+    expect(downlink.port.postMessage).toHaveBeenCalledWith({
+      type: "drained",
+      sequence: 0,
+    });
 
     downlink.process([], [[new Float32Array(1)]]);
     expect(downlink.port.postMessage).toHaveBeenCalledOnce();
