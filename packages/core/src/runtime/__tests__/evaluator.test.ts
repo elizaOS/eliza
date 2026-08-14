@@ -1039,6 +1039,37 @@ describe("malformed envelope recovery (#18240 class — the 2026-08-10 leak)", (
 		expect(result.messageToUser).toContain("42 open issues");
 	});
 
+	// Live 2026-08-14, "what did we talk about yesterday?": the model emitted a
+	// stray `None` in front of a perfectly good envelope. The whole blob passed
+	// the answer check on length, the envelope was then stripped as trailing
+	// machinery, and the word "None" shipped to the channel — discarding an
+	// honest reply about the 200-message scan window that was inside it.
+	it("prefers the envelope's own answer over a debris prefix", async () => {
+		const raw = `None${JSON.stringify({
+			success: false,
+			decision: "FINISH",
+			thought: "hit the scan window limit",
+			messageToUser:
+				"i can't pull up yesterday's conversation logs from this window — the message search only reaches back around 200 recent messages.",
+		})}`;
+		const result = await runEvaluator(harness(raw));
+		expect(result.decision).toBe("FINISH");
+		expect(result.messageToUser).toContain("200 recent messages");
+		expect(result.messageToUser).not.toBe("None");
+		expect(result.messageToUser?.startsWith("None")).toBe(false);
+	});
+
+	it("replans rather than shipping debris when the envelope carries no prose", async () => {
+		const raw = `None${JSON.stringify({
+			success: false,
+			decision: "FINISH",
+			thought: "nothing to say",
+			messageToUser: "",
+		})}`;
+		const result = await runEvaluator(harness(raw));
+		expect(result.messageToUser).not.toBe("None");
+	});
+
 	it("does not classify a user-asked-for JSON payload as a malformed envelope", async () => {
 		// A JSON payload without the envelope discriminator keys must not be
 		// captured by the malformed-envelope branch; it keeps the pre-existing

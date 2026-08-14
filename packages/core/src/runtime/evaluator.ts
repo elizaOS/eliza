@@ -812,9 +812,41 @@ function recoverEvaluatorTextOutput(
 	}
 
 	if (!hasSuccessfulToolResult(trajectory)) return output;
+
+	// The model's own envelope wins over anything wrapped around it. Checked
+	// before the prose path because debris can sit on EITHER side of the
+	// envelope, and only the envelope is the model's considered answer.
+	const envelopeMessage = trailingEnvelopeMessage(text);
+	if (envelopeMessage) {
+		return {
+			success: true,
+			decision: "FINISH",
+			thought:
+				"Recovered the evaluator envelope's own answer from a debris-wrapped response.",
+			messageToUser: envelopeMessage,
+			raw: { recoverySource: "trailing_envelope_message" },
+		};
+	}
+
 	if (!looksLikeUserFacingAnswer(text)) return output;
 
 	const userFacing = stripTrailingEvaluatorEnvelope(text);
+
+	// Re-validate AFTER stripping. The check above ran on the blob that still
+	// had the envelope attached, so it can pass on length alone and then be
+	// reduced to a scrap. Whatever survives the strip is what the user actually
+	// reads, so it has to clear the same bar on its own.
+	if (!looksLikeUserFacingAnswer(userFacing)) {
+		return {
+			...output,
+			success: false,
+			decision: "CONTINUE",
+			thought:
+				"Evaluator prose was only debris wrapped around an envelope; replanning from recorded tool results.",
+			parseError: undefined,
+			raw: { recoverySource: "debris_only_text" },
+		};
+	}
 
 	return {
 		success: true,
@@ -870,6 +902,39 @@ function rejectEvaluatorInvocationMessage(
 // that parses as a real evaluator envelope (`success` boolean plus a valid
 // `decision`/`route`). A legitimate user-asked-for trailing JSON object such
 // as `{"success":true}` or `{"decision":"approve"}` is left untouched.
+/**
+ * The `messageToUser` carried by a trailing evaluator envelope, when the model
+ * prefixed its real answer with debris.
+ *
+ * Live 2026-08-14, asked "what did we talk about yesterday?", a model emitted
+ * `None{"success":false,"decision":"FINISH",…,"messageToUser":"i can't pull up
+ * yesterday's conversation logs from this window — the message search only
+ * reaches back around 200 recent messages…"}`. The recovery below judged the
+ * whole blob (long enough to look like an answer), then stripped the envelope
+ * as trailing machinery — and shipped the word **"None"** to a live channel,
+ * discarding a correct, honest reply that was inside the envelope the whole
+ * time. When the trailing envelope parses AND carries prose, that prose is the
+ * model's considered answer and whatever wraps it is debris.
+ */
+function trailingEnvelopeMessage(text: string): string | null {
+	const trimmed = text.trimEnd();
+	if (!trimmed.endsWith("}")) return null;
+	const candidate = extractJsonObjects(trimmed).at(-1);
+	if (!candidate || !trimmed.endsWith(candidate)) return null;
+	let parsed: unknown;
+	try {
+		parsed = JSON.parse(candidate);
+	} catch {
+		// error-policy:J3 a malformed trailing candidate is not an envelope.
+		return null;
+	}
+	if (!isEvaluatorEnvelopeObject(parsed)) return null;
+	const message = (parsed as { messageToUser?: unknown }).messageToUser;
+	return typeof message === "string" && message.trim().length > 0
+		? message.trim()
+		: null;
+}
+
 function stripTrailingEvaluatorEnvelope(text: string): string {
 	const trimmed = text.trimEnd();
 	if (!trimmed.endsWith("}")) return text;
