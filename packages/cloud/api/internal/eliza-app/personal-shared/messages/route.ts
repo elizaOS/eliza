@@ -1,4 +1,4 @@
-/** Runs a trusted Telegram delivery through one rowless personal Shared turn. */
+/** Runs a trusted messaging delivery through one rowless personal Shared turn. */
 
 import { Hono } from "hono";
 import { z } from "zod";
@@ -10,17 +10,28 @@ import { sharedRestMessageSend } from "@/lib/services/shared-runtime/shared-rest
 import type { AppEnv } from "@/types/cloud-worker-env";
 import { requireInternalAuth } from "../../../_auth";
 
-const telegramMessageSchema = z.object({
-  platform: z.literal("telegram"),
-  telegramUserId: z
-    .string()
-    .trim()
-    .regex(/^\d{1,20}$/),
-  telegramUsername: z.string().trim().min(1).max(64).optional(),
-  displayName: z.string().trim().min(1).max(128).optional(),
-  messageId: z.string().trim().min(1).max(160),
-  message: z.string().trim().min(1).max(4000),
-});
+const sharedMessageSchema = z.discriminatedUnion("platform", [
+  z.object({
+    platform: z.literal("telegram"),
+    telegramUserId: z
+      .string()
+      .trim()
+      .regex(/^\d{1,20}$/),
+    telegramUsername: z.string().trim().min(1).max(64).optional(),
+    displayName: z.string().trim().min(1).max(128).optional(),
+    messageId: z.string().trim().min(1).max(160),
+    message: z.string().trim().min(1).max(4000),
+  }),
+  z.object({
+    platform: z.enum(["twilio", "blooio"]),
+    phoneNumber: z
+      .string()
+      .trim()
+      .regex(/^\+[1-9]\d{6,14}$/),
+    messageId: z.string().trim().min(1).max(160),
+    message: z.string().trim().min(1).max(4000),
+  }),
+]);
 
 const app = new Hono<AppEnv>();
 
@@ -40,11 +51,21 @@ app.post("/", async (c) => {
       raw = await c.req.json();
     } catch {
       // error-policy:J3 malformed provider input is explicitly invalid.
-      return jsonError(c, 400, "Invalid Telegram message", "validation_error");
+      return jsonError(
+        c,
+        400,
+        "Invalid messaging delivery",
+        "validation_error",
+      );
     }
-    const parsed = telegramMessageSchema.safeParse(raw);
+    const parsed = sharedMessageSchema.safeParse(raw);
     if (!parsed.success) {
-      return jsonError(c, 400, "Invalid Telegram message", "validation_error");
+      return jsonError(
+        c,
+        400,
+        "Invalid messaging delivery",
+        "validation_error",
+      );
     }
 
     const worker = resolveSharedRuntimeWorkerRequestContext(c);
@@ -61,11 +82,16 @@ app.post("/", async (c) => {
       );
     }
 
-    const account = await elizaAppUserService.findOrCreateByTelegram({
-      telegramId: parsed.data.telegramUserId,
-      username: parsed.data.telegramUsername,
-      displayName: parsed.data.displayName,
-    });
+    const account =
+      parsed.data.platform === "telegram"
+        ? await elizaAppUserService.findOrCreateByTelegram({
+            telegramId: parsed.data.telegramUserId,
+            username: parsed.data.telegramUsername,
+            displayName: parsed.data.displayName,
+          })
+        : await elizaAppUserService.findOrCreateByPhone(
+            parsed.data.phoneNumber,
+          );
     const agent = personalSharedAgent({
       userId: account.user.id,
       organizationId: account.organization.id,

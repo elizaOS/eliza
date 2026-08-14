@@ -22,6 +22,7 @@ const DEDUP_TTL_SECONDS = 300;
 // egress. Otherwise a provider retry can reclaim the update while the first
 // worker is still generating and execute the same user turn twice.
 const PROCESSING_TTL_SECONDS = 120;
+const PERSONAL_SHARED_ATTEMPTS = 3;
 const TELEGRAM_DELIVERY_TTL_SECONDS = 30 * 24 * 60 * 60;
 const TELEGRAM_EGRESS_STARTED = "egress_started";
 const TELEGRAM_DELIVERED = "delivered";
@@ -29,6 +30,10 @@ const TELEGRAM_TYPING_REFRESH_MS = 4_000;
 
 class TelegramEgressAlreadyClaimedError extends Error {
   override readonly name = "TelegramEgressAlreadyClaimedError";
+}
+
+class PersonalSharedPreEgressError extends Error {
+  override readonly name = "PersonalSharedPreEgressError";
 }
 
 interface HandlerDeps {
@@ -209,13 +214,32 @@ export async function handleWebhook(
   // ── Async phase: identity → forward → reply (runs in background) ──
 
   processMessage(adapter, config, event, deps, project, agentId).catch(
-    (err) => {
+    async (err) => {
       logger.error("Background message processing failed", {
         error: err instanceof Error ? err.message : String(err),
         project,
         platform: adapter.platform,
         messageId: event.messageId,
       });
+      if (err instanceof PersonalSharedPreEgressError) {
+        try {
+          // The Shared endpoint is idempotent and provider egress has not
+          // started, so reopening lets the messaging provider retry safely.
+          await redis.del(dedupKey);
+        } catch (cleanupError) {
+          // error-policy:J7 The original delivery failure is already observed;
+          // cleanup diagnostics must not create another unhandled rejection.
+          logger.error("Failed to reopen personal Shared webhook delivery", {
+            error:
+              cleanupError instanceof Error
+                ? cleanupError.message
+                : String(cleanupError),
+            project,
+            platform: adapter.platform,
+            messageId: event.messageId,
+          });
+        }
+      }
     },
   );
 
@@ -473,7 +497,11 @@ async function sendUnlinkedReply(
   project: string,
   beforeEgress?: () => Promise<void>,
 ): Promise<void> {
-  if (adapter.platform === "telegram") {
+  if (
+    adapter.platform === "telegram" ||
+    adapter.platform === "twilio" ||
+    adapter.platform === "blooio"
+  ) {
     await sendPersonalSharedReply(
       adapter,
       config,
@@ -501,18 +529,56 @@ async function sendPersonalSharedReply(
     fetch(`${cloudBaseUrl}/api/internal/eliza-app/personal-shared/messages`, {
       method: "POST",
       headers: { "Content-Type": "application/json", ...authHeader },
-      body: JSON.stringify({
-        platform: "telegram",
-        telegramUserId: event.senderId,
-        displayName: event.senderName,
-        messageId: `telegram:${project}:${event.messageId}`,
-        message: event.text,
-      }),
+      body: JSON.stringify(
+        adapter.platform === "telegram"
+          ? {
+              platform: "telegram",
+              telegramUserId: event.senderId,
+              displayName: event.senderName,
+              messageId: `telegram:${project}:${event.messageId}`,
+              message: event.text,
+            }
+          : {
+              platform: adapter.platform,
+              phoneNumber: event.senderId,
+              messageId: `${adapter.platform}:${project}:${event.messageId}`,
+              message: event.text,
+            },
+      ),
       signal: AbortSignal.timeout(30_000),
     });
 
-  let response = await postMessage(getAuthHeader());
-  if (response.status === 401) response = await postMessage(await reauth());
+  let authHeader: Record<string, string> = getAuthHeader();
+  let response: Response | null = null;
+  let lastTransportError: unknown;
+  for (let attempt = 1; attempt <= PERSONAL_SHARED_ATTEMPTS; attempt += 1) {
+    try {
+      response = await postMessage(authHeader);
+      if (response.status === 401 && attempt < PERSONAL_SHARED_ATTEMPTS) {
+        authHeader = await reauth();
+        continue;
+      }
+      const retryable =
+        response.status === 408 ||
+        response.status === 425 ||
+        response.status === 429 ||
+        response.status >= 500;
+      if (response.ok || !retryable || attempt === PERSONAL_SHARED_ATTEMPTS) {
+        break;
+      }
+    } catch (error) {
+      response = null;
+      lastTransportError = error;
+      if (attempt === PERSONAL_SHARED_ATTEMPTS) break;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 200 * attempt));
+  }
+  if (!response) {
+    throw new PersonalSharedPreEgressError(
+      `personal Shared chat transport failed: ${lastTransportError instanceof Error ? lastTransportError.message : String(lastTransportError)}`,
+      { cause: lastTransportError },
+    );
+  }
   if (!response.ok) {
     let diagnostics: string;
     try {
@@ -521,7 +587,7 @@ async function sendPersonalSharedReply(
       // error-policy:J1 preserve a failed optional diagnostic body read.
       diagnostics = `unable to read response body: ${error instanceof Error ? error.message : String(error)}`;
     }
-    throw new Error(
+    throw new PersonalSharedPreEgressError(
       `personal Shared chat failed (${response.status}) ${diagnostics}`,
     );
   }
@@ -531,7 +597,9 @@ async function sendPersonalSharedReply(
       ? (body.data as { reply?: unknown } | null)?.reply
       : undefined;
   if (typeof reply !== "string" || !reply.trim()) {
-    throw new Error("personal Shared chat returned no reply");
+    throw new PersonalSharedPreEgressError(
+      "personal Shared chat returned no reply",
+    );
   }
   await beforeEgress?.();
   await adapter.sendReply(config, event, reply);
