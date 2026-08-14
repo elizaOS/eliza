@@ -1386,9 +1386,15 @@ describe("a budget-evicted required field truncates instead of dropping the capt
       response: huge,
     };
     const normalized = normalizeLlmCallPayload([payload]);
-    expect(normalized?.stepId).toBe("step-budget-evicted");
-    expect(typeof normalized?.params.response).toBe("string");
-    expect((normalized?.params.response as string).length).toBeGreaterThan(0);
+    // The capture surviving at all IS the assertion — a null here is the
+    // regression (the budget evicted `response`, so the whole capture was
+    // discarded). Narrow first so the reads below are not optional-chained.
+    expect(normalized).not.toBeNull();
+    if (!normalized) return;
+    expect(normalized.stepId).toBe("step-budget-evicted");
+    const response = normalized.params.response;
+    expect(typeof response).toBe("string");
+    expect((response as string).length).toBeGreaterThan(0);
   });
 
   it("leaves a small response byte-identical", () => {
@@ -1401,6 +1407,7 @@ describe("a budget-evicted required field truncates instead of dropping the capt
         response: "ok",
       },
     ]);
+    expect(normalized).not.toBeNull();
     expect(normalized?.params.response).toBe("ok");
   });
 });
