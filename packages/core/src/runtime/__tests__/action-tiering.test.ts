@@ -240,6 +240,36 @@ describe("action tiering", () => {
 		);
 	});
 
+	it("does not count a wrong exact candidate as message evidence in a saturated tie", () => {
+		const catalog = buildActionCatalog([
+			{
+				name: "QUASAR_LOOKUP",
+				description: "Inspect quasar telemetry and measurements.",
+				contexts: ["general"],
+			},
+			{
+				name: "VIEWS",
+				description: "Open app views and arrange panels.",
+				contexts: ["general"],
+			},
+		]);
+		const retrieval = retrieveActions({
+			catalog,
+			messageText: "quasar",
+			candidateActions: ["VIEWS"],
+			selectedContexts: ["general"],
+		});
+
+		expect(retrieval.results.slice(0, 2)).toMatchObject([
+			{ name: "QUASAR_LOOKUP", rank: 1, score: 1 },
+			{ name: "VIEWS", rank: 2, score: 1 },
+		]);
+		expect(retrieval.results[1]?.stageScores).toMatchObject({
+			exact: 1,
+			bm25: 1,
+		});
+	});
+
 	it("does not let tied perfect keyword matches flood a routed candidate", () => {
 		const catalog = buildActionCatalog([
 			...actions,
