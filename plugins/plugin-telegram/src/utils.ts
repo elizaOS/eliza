@@ -159,7 +159,7 @@ export function convertMarkdownToTelegram(markdown: string): string {
   //    unchanged; a preceding backslash means an already-escaped delimiter and
   //    never opens italic.
   converted = converted.replace(
-    /(?<![\p{L}\p{N}\p{M}\u200c\u200d\\])_([^_\n]+)_(?![\p{L}\p{N}\p{M}\u200c\u200d])/gu,
+    /(?<![\p{L}\p{N}\p{M}\\])(?<!\u200c)(?<!\u200d)_([^_\n]+)_(?![\p{L}\p{N}\p{M}]|\u200c|\u200d)/gu,
     (_match, content) => {
       const formattedContent = escapePlainText(content);
       const formatted = `_${formattedContent}_`;
