@@ -142,8 +142,10 @@ const EXCLUDED_SURFACES = [
 // the canonical cloud release are the load-bearing paths. After #18996 split
 // the canary deploy (`cloud-cf-deploy.yml`) from the canonical release
 // (`cloud-cf-release.yml`), the release workflow is the one that actually
-// publishes to production; the gate must cover it or a float there passes
-// silently (#19183).
+// publishes to production. The general workflow scan already rejects floating
+// pins; gate membership additionally prevents the release file from
+// disappearing or replacing its direct canonical literal with indirection
+// (#19183).
 const GATE_WORKFLOWS = [
   "test.yml",
   "develop-pr.yml",
