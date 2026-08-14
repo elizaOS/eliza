@@ -19,8 +19,6 @@
  *  - {@link CloudPluginGrantsSection}  → cloud/account-security (PermissionsSurface: plugin grants)
  */
 
-import { ExternalLink, Grid3x3 } from "lucide-react";
-import { Button } from "../../components/ui/button";
 import { AccountSurface } from "../account-security/AccountSurface";
 import { PermissionsSurface } from "../account-security/PermissionsSurface";
 import { SecuritySurface } from "../account-security/SecuritySurface";
@@ -28,7 +26,7 @@ import { ApiKeysSurface } from "../api-keys/ApiKeysSurface";
 import { BillingSectionBody } from "../billing/BillingSection";
 import { MonetizationView } from "../monetization/MonetizationSection";
 import { OrganizationSection } from "../organization/OrganizationSection";
-import { useCloudT } from "../shell/CloudI18nProvider";
+import { ApplicationsEntry } from "./applications-entry";
 import { CloudSettingsSectionShell } from "./CloudSettingsSectionShell";
 
 export function CloudAccountSection(): React.JSX.Element {
@@ -61,43 +59,7 @@ export function CloudApiKeysSection(): React.JSX.Element {
  * view (CloudRouterShell serves it on the web build). The cloud route registry
  * already registers the route at import time.
  */
-function ApplicationsEntry(): React.JSX.Element {
-  const t = useCloudT();
-  const open = () => {
-    if (typeof window !== "undefined") {
-      window.location.assign("/cloud/apps");
-    }
-  };
-  return (
-    <Button
-      variant="ghost"
-      type="button"
-      onClick={open}
-      className="group flex w-full items-center gap-3 rounded-lg border border-border bg-card px-4 py-4 text-left transition-colors hover:border-accent/40 hover:bg-surface   "
-    >
-      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-accent/12 text-accent  ">
-        <Grid3x3 className="h-[18px] w-[18px]" aria-hidden />
-      </span>
-      <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-        <span className="text-sm font-medium leading-5 text-txt-strong">
-          {t("cloud.applications.entryTitle", {
-            defaultValue: "Manage applications",
-          })}
-        </span>
-        <span className="text-xs leading-relaxed text-muted">
-          {t("cloud.applications.entryDescription", {
-            defaultValue:
-              "Cloud OAuth applications: monetization, earnings, domains, analytics, users.",
-          })}
-        </span>
-      </span>
-      <ExternalLink
-        className="h-4 w-4 shrink-0 text-muted transition-colors group-hover:text-accent"
-        aria-hidden
-      />
-    </Button>
-  );
-}
+export { ApplicationsEntry };
 
 export function CloudApplicationsSection(): React.JSX.Element {
   return (

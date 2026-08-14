@@ -40,7 +40,7 @@ const SECTION_LAYOUT_ALLOWLIST = new Map<string, string>([
   ],
   [
     "../../cloud/settings/sections.tsx",
-    "cloud settings adapters; grouping lives in domain bodies",
+    "cloud settings adapters; ApplicationsEntry and domain bodies own grouping",
   ],
   [
     "../../cloud/mcps/McpsSection.tsx",
