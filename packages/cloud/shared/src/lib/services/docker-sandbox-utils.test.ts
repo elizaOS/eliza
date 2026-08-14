@@ -7,10 +7,13 @@ import {
   allocatePort,
   buildAgentContainerLabelArgs,
   buildAgentContainerLabelFlags,
+  CONTAINER_DURABLE_STATE_DIR,
   dockerPlatformFlag,
+  ensureVolumeVaultPassphrase,
   extractDockerCreateContainerId,
   getContainerName,
   getVolumePath,
+  getVolumeVaultPassphrasePath,
   inferArchitectureFromHetznerServerType,
   isArchitectureCompatibleWithPlatform,
   normalizeDockerArchitecture,
@@ -246,5 +249,82 @@ describe("resolveVpnTeardown (#16565)", () => {
 
   test("plain provisions without an id keep the historical by-name cleanup", () => {
     expect(resolveVpnTeardown({})).toEqual({ kind: "by-name" });
+  });
+});
+
+describe("volume-persisted vault passphrase (#18080 / #19225)", () => {
+  // Runs the EXACT shell command the provider sends over SSH, against a real
+  // local /bin/sh and a real temp "agent volume" directory — the same
+  // read-or-create the deployed node executes.
+  const shExec = async (cmd: string, _timeoutMs: number): Promise<string> => {
+    const { execFile } = await import("node:child_process");
+    return await new Promise<string>((resolve, reject) => {
+      execFile("/bin/sh", ["-c", cmd], (err, stdout) => (err ? reject(err) : resolve(stdout)));
+    });
+  };
+
+  async function makeVolume(): Promise<string> {
+    const fs = await import("node:fs");
+    const os = await import("node:os");
+    const path = await import("node:path");
+    return fs.mkdtempSync(path.join(os.tmpdir(), "eliza-agent-volume-"));
+  }
+
+  test("container A creates a 64-hex key file with 0600 on the volume", async () => {
+    const fs = await import("node:fs");
+    const volume = await makeVolume();
+    const key = await ensureVolumeVaultPassphrase(shExec, volume, 5_000);
+    expect(key).toMatch(/^[0-9a-f]{64}$/);
+    const keyPath = getVolumeVaultPassphrasePath(volume);
+    expect(fs.readFileSync(keyPath, "utf-8")).toBe(key);
+    expect(fs.statSync(keyPath).mode & 0o777).toBe(0o600);
+    fs.rmSync(volume, { recursive: true, force: true });
+  });
+
+  test("replacement container B over the same volume derives the SAME key from a newly constructed env", async () => {
+    const fs = await import("node:fs");
+    const volume = await makeVolume();
+    // Two independent provisions (A then its replacement B): each runs the
+    // read-or-create against the shared agent volume, nothing is copied from
+    // A's environment.
+    const keyA = await ensureVolumeVaultPassphrase(shExec, volume, 5_000);
+    const keyB = await ensureVolumeVaultPassphrase(shExec, volume, 5_000);
+    expect(keyB).toBe(keyA);
+    fs.rmSync(volume, { recursive: true, force: true });
+  });
+
+  test("distinct agent volumes get distinct random keys — never derived from an identifier", async () => {
+    const fs = await import("node:fs");
+    const volumeA = await makeVolume();
+    const volumeB = await makeVolume();
+    const keyA = await ensureVolumeVaultPassphrase(shExec, volumeA, 5_000);
+    const keyB = await ensureVolumeVaultPassphrase(shExec, volumeB, 5_000);
+    expect(keyA).not.toBe(keyB);
+    fs.rmSync(volumeA, { recursive: true, force: true });
+    fs.rmSync(volumeB, { recursive: true, force: true });
+  });
+
+  test("an operator-provisioned key file is honored as-is", async () => {
+    const fs = await import("node:fs");
+    const volume = await makeVolume();
+    fs.writeFileSync(getVolumeVaultPassphrasePath(volume), "operator-supplied-passphrase\n");
+    await expect(ensureVolumeVaultPassphrase(shExec, volume, 5_000)).resolves.toBe(
+      "operator-supplied-passphrase",
+    );
+    fs.rmSync(volume, { recursive: true, force: true });
+  });
+
+  test("fails closed on an unusable persisted key instead of minting a fresh per-launch key", async () => {
+    const fs = await import("node:fs");
+    const volume = await makeVolume();
+    fs.writeFileSync(getVolumeVaultPassphrasePath(volume), "short\n");
+    await expect(ensureVolumeVaultPassphrase(shExec, volume, 5_000)).rejects.toThrow(
+      /refusing to mint a fresh per-launch key/,
+    );
+    fs.rmSync(volume, { recursive: true, force: true });
+  });
+
+  test("the durable state root lands on the /root/.eliza mount", () => {
+    expect(CONTAINER_DURABLE_STATE_DIR).toBe("/root/.eliza");
   });
 });
