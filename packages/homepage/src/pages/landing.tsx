@@ -599,6 +599,14 @@ export default function LandingPage() {
     );
   };
 
+  const openTextEliza = () => {
+    const userAgent = window.navigator.userAgent;
+    const mobileMessages =
+      /Android|iPad|iPhone|iPod/i.test(userAgent) ||
+      (/Macintosh/i.test(userAgent) && window.navigator.maxTouchPoints > 1);
+    if (!mobileMessages) void copyPhoneNumber();
+  };
+
   const phoneCopyLabel =
     phoneCopyState === "copied"
       ? t("homepage_eliza.landing.phoneCopied", {
@@ -657,6 +665,7 @@ export default function LandingPage() {
             <a
               className="landing-cta landing-cta--black"
               href={buildElizaSmsHref()}
+              onClick={openTextEliza}
             >
               <IMessageIcon className="size-5" />
               {t("homepage_eliza.landing.ctaText", {

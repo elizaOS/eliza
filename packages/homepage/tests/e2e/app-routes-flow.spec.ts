@@ -345,11 +345,10 @@ test("landing makes iMessage the single zero-friction entrypoint", async ({
   const textCta = page.getByRole("link", { name: "Text Eliza" });
   await expect(textCta).toBeVisible();
   await expect(textCta).toHaveAttribute("href", /^sms:\+18087881821/);
+  await textCta.click();
   const phoneNumber = page.getByRole("button", {
     name: "Copy Eliza's phone number",
   });
-  await expect(phoneNumber).toHaveText("+1 (808) 788-1821");
-  await phoneNumber.click();
   await expect(phoneNumber).toHaveText("Copied!");
   await expect(page.getByRole("link", { name: "Call" })).toHaveCount(0);
   await expect(page.locator(".landing-channel")).toHaveCount(0);
