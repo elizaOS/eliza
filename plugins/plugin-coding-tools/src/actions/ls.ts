@@ -33,6 +33,9 @@ import {
 } from "../types.js";
 
 const ENTRY_LIMIT = 1000;
+const LIST_SCOPE = "Scope: one directory level only (not recursive).";
+const FILTER_GUIDANCE =
+  "ls does not accept pattern or glob filters; use FILE action=glob with a valid recursive glob pattern";
 
 type EntryType = "file" | "dir" | "symlink";
 
@@ -59,6 +62,7 @@ function formatListText(params: {
   totalAfterIgnore: number;
 }): string {
   const lines = [
+    LIST_SCOPE,
     `Directory: ${params.dir}`,
     ...params.entries.map((e) => (e.type === "dir" ? `${e.name}/` : e.name)),
   ];
