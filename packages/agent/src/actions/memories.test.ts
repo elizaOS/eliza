@@ -56,16 +56,21 @@ function makeRuntime(options?: {
       tableName: string;
       roomId?: UUID;
       entityId?: UUID;
+      limit?: number;
     }) => {
       assertUuidOrThrowLikeDrizzle(params.roomId, "roomId");
       assertUuidOrThrowLikeDrizzle(params.entityId, "entityId");
-      return rows
+      const matching = rows
         .filter((row) => row.tableName === params.tableName)
         .filter((row) => !params.roomId || row.memory.roomId === params.roomId)
         .filter(
           (row) => !params.entityId || row.memory.entityId === params.entityId,
         )
         .map((row) => row.memory);
+      // The SQL adapter returns at most `limit` rows, newest first. Ignoring
+      // the cap here would hide the windowed read that MEMORY op:search does.
+      if (params.limit == null) return matching;
+      return matching.slice(-params.limit).reverse();
     },
     getMemoryById: async (memoryId: UUID) => {
       assertUuidOrThrowLikeDrizzle(memoryId, "id");
@@ -451,6 +456,97 @@ describe("MEMORY op:delete by query", () => {
       "MEMORY_CONFIRMATION_REQUIRED",
     );
     expect(rows).toHaveLength(1);
+  });
+});
+
+describe("MEMORY op:search windowed-read disclosure", () => {
+  // op:search reads only the most recent max(limit*2, 200) rows per memory
+  // table and filters that window in memory, so its surviving count is a
+  // count of matches INSIDE the window. Printing it as "(total: N)" made
+  // "what do you remember about my sister?" answer "Found 0 memory item(s)
+  // (total: 0)" — read as "nothing is stored about her" — when the fact was
+  // simply older than the 200-row window.
+  it("does not call a windowed match count a total when the window filled up", async () => {
+    const { runtime, rows } = makeRuntime();
+    seedFact(rows, { text: "my sister is named vega", entityId: USER_ID });
+    for (let i = 0; i < 250; i++) {
+      seedFact(rows, { text: `unrelated note ${i}`, entityId: USER_ID });
+    }
+
+    const result = await runAction(runtime, makeMessage(), {
+      action: "search",
+      query: "sister",
+    });
+
+    const text = String(result.text ?? "");
+    expect(text).not.toContain("total:");
+    expect(text).toContain("older rows were NOT scanned");
+    expect(text).toContain("not a total");
+    expect(text).toContain("facts");
+    expect(result.values).toMatchObject({
+      matchedInWindow: 0,
+      scanWindowSaturated: true,
+    });
+  });
+
+  // The boundary between the two cases above. A table holding EXACTLY the
+  // window size fills it without hiding anything, so it is indistinguishable
+  // from a truncated one by row count alone. Saturation is measured by reading
+  // one row past the window; inferring it from a full page would tell this
+  // reader that older rows went unscanned when there are none.
+  it("does not claim rows were cut when the table exactly fills the window", async () => {
+    const { runtime, rows } = makeRuntime();
+    // perTable = max(limit * 2, 200); the default limit is 50, so 200.
+    for (let i = 0; i < 200; i++) {
+      seedFact(rows, { text: `unrelated note ${i}`, entityId: USER_ID });
+    }
+
+    const result = await runAction(runtime, makeMessage(), {
+      action: "search",
+      query: "unicycle",
+    });
+
+    const text = String(result.text ?? "");
+    expect(text).not.toContain("older rows were NOT scanned");
+    expect(text).toContain("every stored row in the scanned tables");
+    expect(result.values).toMatchObject({ scanWindowSaturated: false });
+  });
+
+  it("states that every stored row was inside the window when nothing was cut", async () => {
+    const { runtime, rows } = makeRuntime();
+    seedFact(rows, { text: "nubs plays guitar", entityId: USER_ID });
+
+    const result = await runAction(runtime, makeMessage(), {
+      action: "search",
+      query: "unicycle",
+    });
+
+    const text = String(result.text ?? "");
+    expect(text).toContain("every stored row in the scanned tables");
+    expect(text).not.toContain("older rows were NOT scanned");
+    expect(result.values).toMatchObject({ scanWindowSaturated: false });
+  });
+
+  it("reports the number of lines actually rendered, not the number collected", async () => {
+    const { runtime, rows } = makeRuntime();
+    for (let i = 0; i < 30; i++) {
+      seedFact(rows, { text: `nubs plays guitar ${i}`, entityId: USER_ID });
+    }
+
+    const result = await runAction(runtime, makeMessage(), {
+      action: "search",
+      query: "guitar",
+    });
+
+    const text = String(result.text ?? "");
+    // 30 matches survive the filter, 25 lines are printed. The old header
+    // claimed the collected count and rendered a shorter list beneath it.
+    expect(text).toContain("Showing 25 of 30 match(es)");
+    expect(text).toContain('query="guitar"');
+    expect(text.split("\n").filter((l) => l.startsWith("- ["))).toHaveLength(
+      25,
+    );
+    expect(result.values).toMatchObject({ rendered: 25, matchedInWindow: 30 });
   });
 });
 

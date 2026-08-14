@@ -207,6 +207,25 @@ interface MemoryCandidate {
 }
 
 /**
+ * A candidate set plus the shape of the window it was read from. The read is
+ * always windowed — `perTable` most-recent rows per memory table — and the
+ * query/entity filters run in memory over that window, so the surviving count
+ * is a count of matches INSIDE the window and never a total.
+ *
+ * Saturation is MEASURED by reading one row past the window: a table holding
+ * exactly `perTable` rows fills it without hiding anything, and is
+ * indistinguishable from a truncated one by row count alone. Treating a merely
+ * full page as saturated tells the reader older rows went unscanned when none
+ * exist — a fabricated scope claim in the sentence meant to prevent them.
+ */
+interface CandidateScan {
+  matches: MemoryCandidate[];
+  perTable: number;
+  tables: readonly MemoryType[];
+  saturatedTables: MemoryType[];
+}
+
+/**
  * Shared read scope for search and delete-by-query. The entity filter is
  * identity-cluster expanded via getRelatedEntityIds — the same expansion the
  * FACTS provider applies — so a fact stored under a cluster sibling of the
@@ -222,20 +241,26 @@ async function collectCandidates(
     query?: string;
     limit: number;
   },
-): Promise<MemoryCandidate[]> {
+): Promise<CandidateScan> {
   const tables: readonly MemoryType[] = scope.type
     ? [scope.type]
     : MEMORY_TYPES;
   const perTable = Math.max(scope.limit * 2, 200);
   const collected: MemoryCandidate[] = [];
+  const saturatedTables: MemoryType[] = [];
 
   for (const tableName of tables) {
-    const memories = await runtime.getMemories({
+    // One row past the window, so "older rows exist" is observed rather than
+    // assumed from a page that happened to fill.
+    const page = await runtime.getMemories({
       agentId: runtime.agentId as UUID,
       roomId: scope.roomId,
       tableName,
-      limit: perTable,
+      limit: perTable + 1,
     });
+    const overflowed = page.length > perTable;
+    if (overflowed) saturatedTables.push(tableName);
+    const memories = overflowed ? page.slice(0, perTable) : page;
     for (const m of memories) collected.push({ memory: m, type: tableName });
   }
 
@@ -265,7 +290,39 @@ async function collectCandidates(
   filtered.sort(
     (a, b) => (b.memory.createdAt ?? 0) - (a.memory.createdAt ?? 0),
   );
-  return filtered;
+  return { matches: filtered, perTable, tables, saturatedTables };
+}
+
+/** Names every narrowing that was applied, so an empty result can say why. */
+function describeSearchScope(scope: {
+  type?: MemoryType;
+  entityId?: UUID;
+  roomId?: UUID;
+  query?: string;
+}): string {
+  const parts: string[] = [];
+  if (scope.query) parts.push(`query="${scope.query}"`);
+  if (scope.type) parts.push(`type=${scope.type}`);
+  if (scope.entityId) parts.push(`entityId=${scope.entityId}`);
+  if (scope.roomId) parts.push(`roomId=${scope.roomId}`);
+  return parts.length > 0 ? parts.join(", ") : "none";
+}
+
+/**
+ * The sentence that keeps a windowed count from being read as a total. The
+ * scan reads only the most recent `perTable` rows per table, so "0 matches"
+ * means "no match in the window", not "nothing is stored" — the difference
+ * between answering "what do you remember about my sister" with a fact and
+ * with "I have nothing stored about her".
+ */
+function describeScanWindow(scan: CandidateScan): string {
+  const base = `Scanned only the ${scan.perTable} most recent row(s) of each table (${scan.tables.join(", ")}) before filtering.`;
+  if (scan.saturatedTables.length === 0) {
+    // "overflowed", not "filled": a table holding exactly `perTable` rows fills
+    // the window and still had every row considered. Only overflow hides rows.
+    return `${base} No table overflowed that window, so every stored row in the scanned tables was considered.`;
+  }
+  return `${base} ${scan.saturatedTables.join(", ")} filled that window, so older rows were NOT scanned and this is a windowed match count, not a total — widen with type, entityId, roomId, or a higher limit (the window is max(limit*2, 200) rows per table).`;
 }
 
 async function doSearch(
@@ -281,34 +338,51 @@ async function doSearch(
   const query = params.query?.trim();
   const limit = clampLimit(params.limit, 50);
 
-  const filtered = await collectCandidates(runtime, {
+  const scope = {
     type,
     entityId: entityParam.id,
     roomId: roomParam.id,
     query,
-    limit,
-  });
+  };
+  const scan = await collectCandidates(runtime, { ...scope, limit });
 
-  const total = filtered.length;
-  const items = filtered
+  const matchedInWindow = scan.matches.length;
+  const items = scan.matches
     .slice(0, limit)
     .map((c) => toListItem(c.memory, c.type));
   const lines = items
     .slice(0, 25)
     .map((m) => `- [${m.type}] ${m.id}: ${m.text.slice(0, 120)}`);
 
+  // Report what was actually rendered, not what was collected: the previous
+  // header claimed up to 50 items while printing 25 lines, and printed the
+  // in-window match count under the label "total".
+  const renderNote =
+    lines.length < matchedInWindow
+      ? `Showing ${lines.length} of ${matchedInWindow} match(es) in the scanned window`
+      : `Showing all ${lines.length} match(es) found in the scanned window`;
+
   return {
     success: true,
     text: [
-      `Found ${items.length} memory item(s) (total: ${total}).`,
+      `${renderNote} (filters: ${describeSearchScope(scope)}).`,
+      describeScanWindow(scan),
       ...lines,
     ].join("\n"),
-    values: { count: items.length, total },
+    values: {
+      count: items.length,
+      rendered: lines.length,
+      matchedInWindow,
+      scanWindowPerTable: scan.perTable,
+      scanWindowSaturated: scan.saturatedTables.length > 0,
+    },
     data: {
       actionName: "MEMORY",
       op: "search" as const,
       memories: items,
-      total,
+      matchedInWindow,
+      scanWindowPerTable: scan.perTable,
+      scanWindowSaturatedTables: scan.saturatedTables,
       limit,
     },
   };
@@ -441,7 +515,7 @@ async function doDeleteByQuery(
   const scopeEntityId = message.entityId ?? entityParam.id;
 
   const limit = clampLimit(params.limit, 50);
-  const candidates = await collectCandidates(runtime, {
+  const scan = await collectCandidates(runtime, {
     type,
     entityId: scopeEntityId,
     roomId: roomParam.id,
@@ -451,14 +525,17 @@ async function doDeleteByQuery(
 
   // Deletion needs a stronger bar than search ranking: scoreText >= 1 means
   // the whole phrase matched or every query term matched.
-  const matched = candidates.filter((c) => {
+  const matched = scan.matches.filter((c) => {
     const text =
       (c.memory.content as { text?: string } | undefined)?.text ?? "";
     return scoreText(text, query) >= 1;
   });
 
   if (matched.length === 0) {
-    return fail(`No stored memory matches "${query}".`, "MEMORY_NOT_FOUND");
+    return fail(
+      `No stored memory matches "${query}". ${describeScanWindow(scan)}`,
+      "MEMORY_NOT_FOUND",
+    );
   }
 
   const normalize = (c: MemoryCandidate) =>
@@ -530,13 +607,17 @@ export const memoryAction: Action = {
     "SEARCH_MEMORY",
     "REMOVE_MEMORY",
     "MODIFY_MEMORY",
+    // Note-taking vocabulary: a "note" is a memory record. Without these the
+    // planner found no note-capable tool and fell through to DATABASE, where
+    // it hand-wrote INSERT statements against the memories table that failed
+    // on schema mismatch (live capture: "make a note: launch checklist …").
   ],
   description:
     "Manage agent memory records. op:create stores a new memory; op:search filters by type/entityId/roomId/query; op:update edits text and re-embeds (requires confirm:true); op:delete removes a memory by memoryId or by query text match (requires confirm:true).",
   descriptionCompressed:
     "manage agent memory create search update delete; delete by memoryId or query; update/delete require confirm:true",
   routingHint:
-    "store/search/edit the agent's OWN memory records about the user or conversation -> MEMORY. This includes recalling or COUNTING what was said earlier than the messages shown in context ('how many times have I mentioned X', 'have I ever told you about X', 'what did we say about X last week') — the conversation block in context is only the most recent turns, so answer those from op:search over the stored record, never from that block alone. Do NOT use for open-web lookups -> WEB_SEARCH, for searching connected external channels such as email or another platform's inbox -> MESSAGE (action=search), or for the skill catalog -> SKILL",
+    "NOTES ARE NOT MEMORY: 'make a note', 'note to self', 'jot this down', 'what notes do i have' -> the NOTES action, which writes the durable note store the user sees in the Notes view. MEMORY is the agent's own recall of the conversation. store/search/edit the agent's OWN memory records about the user or conversation -> MEMORY. This includes recalling or COUNTING what was said earlier than the messages shown in context ('how many times have I mentioned X', 'have I ever told you about X', 'what did we say about X last week') — the conversation block in context is only the most recent turns, so answer those from op:search over the stored record, never from that block alone. Do NOT use for open-web lookups -> WEB_SEARCH, for searching connected external channels such as email or another platform's inbox -> MESSAGE (action=search), or for the skill catalog -> SKILL",
   validate: async () => true,
   handler: async (
     runtime: IAgentRuntime,
@@ -668,7 +749,10 @@ export const memoryAction: Action = {
       },
       {
         name: "{{agentName}}",
-        content: { text: "Found N memory item(s)...", action: "MEMORY" },
+        content: {
+          text: "Showing N of M match(es) in the scanned window...",
+          action: "MEMORY",
+        },
       },
     ],
   ],
