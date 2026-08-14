@@ -478,15 +478,11 @@ jobs:
           VAST_API_KEY: ${{ secrets.VAST_API_KEY }}
           VAST_BASE_URL: ${{ secrets.VAST_BASE_URL }}
           DEPLOY_ENVIRONMENT: ${{ steps.env.outputs.deploy_environment }}
-          VOICE_REALTIME_WS_ENABLED: ${{ steps.env.outputs.deploy_environment != 'production' && contains(fromJSON('["1","true","TRUE","True","yes","YES","Yes","on","ON","On"]'), vars.VOICE_REALTIME_WS_ENABLED) && 'true' || 'false' }}
-          # Keep this mirror locked to wrangler.toml's env.production value.
-          # The workflow contract test fails if they drift.
-          PRODUCTION_REALTIME_WS_ENABLED: "false"
-          # Production intentionally omits these runtime vars while realtime is
-          # off. Their mirrors are also contract-locked to wrangler.toml so a
-          # future enable cannot deploy a credential-complete but 503-only route.
-          PRODUCTION_REALTIME_CARTESIA_VOICE_ID: ""
-          PRODUCTION_REALTIME_ELIZA_ENDPOINT: ""
+          # Phone and app voice are production features. Staging remains an
+          # explicit repository-variable opt-in, while production is pinned on
+          # so a managed deploy cannot silently replace wrangler.toml's true
+          # value with a false command-line override.
+          VOICE_REALTIME_WS_ENABLED: ${{ (steps.env.outputs.deploy_environment == 'production' || contains(fromJSON('["1","true","TRUE","True","yes","YES","Yes","on","ON","On"]'), vars.VOICE_REALTIME_WS_ENABLED)) && 'true' || 'false' }}
           VOICE_REALTIME_ELIZA_AUTHORIZATION: ${{ secrets.VOICE_REALTIME_ELIZA_AUTHORIZATION }}
           # Staging may use its existing Cloud key for the Worker-to-gateway
           # voice bridge. Production MUST use the dedicated authorization and
@@ -549,25 +545,9 @@ jobs:
             export VOICE_REALTIME_ELIZA_AUTHORIZATION
           fi
 
-          # Production realtime is currently explicitly disabled. A stale
-          # Worker secret may therefore remain stored but is unreachable. If a
-          # future change enables the route, fail that deploy unless every
-          # provider and the dedicated bridge authorization is configured; the
-          # next publish then overwrites any legacy repository-key fallback.
-          # Production never constructs the staging repository-key fallback.
-          if [ "$DEPLOY_ENVIRONMENT" = "production" ] && \
-             is_truthy "$PRODUCTION_REALTIME_WS_ENABLED"; then
-            missing_voice_secrets=()
-            for name in CARTESIA_API_KEY VOICE_REALTIME_ELIZA_AUTHORIZATION PRODUCTION_REALTIME_CARTESIA_VOICE_ID PRODUCTION_REALTIME_ELIZA_ENDPOINT; do
-              if ! has_nonblank_value "${!name:-}"; then
-                missing_voice_secrets+=("$name")
-              fi
-            done
-            if [ "${#missing_voice_secrets[@]}" -gt 0 ]; then
-              echo "::error::Production realtime voice is enabled but required dedicated/provider secrets are missing: ${missing_voice_secrets[*]}"
-              exit 1
-            fi
-          fi
+          # Production provider and bridge values are managed Worker secrets,
+          # not GitHub secret material. keep_vars preserves them, and their
+          # binding names are verified against the live Worker before deploy.
 
           # Staging advertises realtime only when the repository variable
           # VOICE_REALTIME_WS_ENABLED is explicitly truthy. Refuse that opt-in
@@ -643,6 +623,33 @@ jobs:
           if [ -z "$OPENROUTER_API_KEY" ] && [ -z "$CEREBRAS_API_KEY" ] && [ -z "$OPENAI_API_KEY" ] && [ -z "$ANTHROPIC_API_KEY" ]; then
             echo "::error::No model provider key configured. Set OPENROUTER_API_KEY (backup) and/or a native key (CEREBRAS/OPENAI/ANTHROPIC) at https://github.com/elizaOS/eliza/settings/secrets/actions."
             exit 1
+          fi
+
+          if [ "$DEPLOY_ENVIRONMENT" = "production" ] && \
+             is_truthy "$VOICE_REALTIME_WS_ENABLED"; then
+            secret_inventory="$(bunx wrangler@4.100.0 secret list ${{ steps.env.outputs.wrangler_args }} --format json)"
+            printf '%s' "$secret_inventory" | node -e '
+              const fs = require("node:fs");
+              const parsed = JSON.parse(fs.readFileSync(0, "utf8"));
+              const entries = Array.isArray(parsed)
+                ? parsed
+                : Array.isArray(parsed?.result)
+                  ? parsed.result
+                  : [];
+              const present = new Set(entries.map((entry) => entry?.name).filter(Boolean));
+              const required = [
+                "CARTESIA_API_KEY",
+                "VOICE_REALTIME_CARTESIA_VOICE_ID",
+                "VOICE_REALTIME_ELIZA_AUTHORIZATION",
+                "VOICE_REALTIME_ELIZA_ENDPOINT",
+              ];
+              const missing = required.filter((name) => !present.has(name));
+              if (missing.length > 0) {
+                console.error(`::error::Production realtime voice is missing managed Worker secret binding name(s): ${missing.join(" ")}`);
+                process.exit(1);
+              }
+              console.log(`Verified ${required.length} managed production voice secret binding names; values were not read.`);
+            '
           fi
 
           publish_secret() {
@@ -831,7 +838,7 @@ jobs:
           DEPLOY_ENVIRONMENT: ${{ steps.env.outputs.deploy_environment }}
           STAGING_ONBOARDING_LOGIN_APP_URL: https://staging.eliza.app
           KOKORO_TTS_URL: ${{ vars.ELIZA_VOICE_KOKORO_TTS_URL }}
-          VOICE_REALTIME_WS_ENABLED: ${{ steps.env.outputs.deploy_environment != 'production' && contains(fromJSON('["1","true","TRUE","True","yes","YES","Yes","on","ON","On"]'), vars.VOICE_REALTIME_WS_ENABLED) && 'true' || 'false' }}
+          VOICE_REALTIME_WS_ENABLED: ${{ (steps.env.outputs.deploy_environment == 'production' || contains(fromJSON('["1","true","TRUE","True","yes","YES","Yes","on","ON","On"]'), vars.VOICE_REALTIME_WS_ENABLED)) && 'true' || 'false' }}
           ELIZA_TTS_FISH_ENABLED: ${{ steps.env.outputs.deploy_environment != 'production' && contains(fromJSON('["1","true","TRUE","True","yes","YES","Yes","on","ON","On"]'), vars.ELIZA_TTS_FISH_ENABLED) && 'true' || 'false' }}
           FISH_AUDIO_DATA_GOVERNANCE_APPROVED: ${{ steps.env.outputs.deploy_environment != 'production' && contains(fromJSON('["1","true","TRUE","True","yes","YES","Yes","on","ON","On"]'), vars.FISH_AUDIO_DATA_GOVERNANCE_APPROVED) && 'true' || 'false' }}
           FISH_AUDIO_MODEL: ${{ vars.FISH_AUDIO_MODEL || 's2.1-pro' }}
@@ -1303,7 +1310,7 @@ jobs:
           VITE_STEWARD_TENANT_ID: ${{ (inputs.target_environment == 'production') && 'elizacloud' || 'elizacloud-staging' }}
           NEXT_PUBLIC_STEWARD_TENANT_ID: ${{ (inputs.target_environment == 'production') && 'elizacloud' || 'elizacloud-staging' }}
           VITE_ENVIRONMENT: ${{ inputs.target_environment }}
-          VITE_VOICE_REALTIME_WS: ${{ !(inputs.target_environment == 'production') && contains(fromJSON('["1","true","TRUE","True","yes","YES","Yes","on","ON","On"]'), vars.VOICE_REALTIME_WS_ENABLED) && '1' || '0' }}
+          VITE_VOICE_REALTIME_WS: ${{ (inputs.target_environment == 'production' || contains(fromJSON('["1","true","TRUE","True","yes","YES","Yes","on","ON","On"]'), vars.VOICE_REALTIME_WS_ENABLED)) && '1' || '0' }}
           VITE_VOICE_REALTIME_FORCE: "0"
           NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID: ${{ vars.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID }}
 
@@ -1579,7 +1586,7 @@ jobs:
           VITE_STEWARD_TENANT_ID: ${{ (inputs.target_environment == 'production') && 'elizacloud' || 'elizacloud-staging' }}
           NEXT_PUBLIC_STEWARD_TENANT_ID: ${{ (inputs.target_environment == 'production') && 'elizacloud' || 'elizacloud-staging' }}
           VITE_ENVIRONMENT: ${{ inputs.target_environment }}
-          VITE_VOICE_REALTIME_WS: ${{ !(inputs.target_environment == 'production') && contains(fromJSON('["1","true","TRUE","True","yes","YES","Yes","on","ON","On"]'), vars.VOICE_REALTIME_WS_ENABLED) && '1' || '0' }}
+          VITE_VOICE_REALTIME_WS: ${{ (inputs.target_environment == 'production' || contains(fromJSON('["1","true","TRUE","True","yes","YES","Yes","on","ON","On"]'), vars.VOICE_REALTIME_WS_ENABLED)) && '1' || '0' }}
           VITE_VOICE_REALTIME_FORCE: "0"
           NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID: ${{ vars.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID }}
 
