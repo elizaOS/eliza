@@ -14,6 +14,7 @@ import {
   type InteractionBlock,
   type NeutralButton,
   parseInteractionBlocks,
+  stripInteractionMarkers,
   toNeutralLayout,
 } from "@elizaos/core";
 import type { InlineKeyboardButton } from "@telegraf/types";
@@ -52,7 +53,9 @@ function toTelegramButton(button: NeutralButton): InlineKeyboardButton | null {
 /**
  * Project a reply's interaction blocks onto Telegram inline-keyboard rows + the
  * prose to display. Plain replies (no blocks) pass through unchanged with no
- * keyboard, so this is a safe no-op on the common path.
+ * keyboard, so this is a safe no-op on the common path. Markers are stripped from
+ * the returned text — users never see [CHOICE], [FOLLOWUPS], [TASK], etc. in
+ * their message stream.
  */
 export function renderTelegramInteractions(
   content: Content,
@@ -61,7 +64,7 @@ export function renderTelegramInteractions(
   const { blocks, cleanedText } = parseInteractionBlocks(content.text ?? "");
   if (blocks.length === 0) {
     return {
-      text: content.text ?? "",
+      text: stripInteractionMarkers(content.text ?? ""),
       keyboardRows: [],
       needsFreeTextReply: false,
     };

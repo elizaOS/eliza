@@ -18,6 +18,7 @@ import {
 	ModelType,
 	type ReplyToMode,
 	type SsrfPolicy,
+	stripInteractionMarkers,
 	trimTokens,
 } from "@elizaos/core";
 import {
@@ -214,6 +215,15 @@ function collectStructuredText(value: unknown, seen: Set<object>): string[] {
 	return [];
 }
 
+/**
+ * Normalize message text for Discord output. Strips interaction markers
+ * (CHOICE/FOLLOWUPS/TASK/FORM) that are meant for structured control rendering,
+ * not user-facing display. Markers are parsed into Content.interactions by
+ * the runtime; connectors render from that typed array using native controls.
+ *
+ * This ensures markers never leak to users — they see clean prose + native
+ * buttons/keyboards, not the marker syntax.
+ */
 export function normalizeDiscordMessageText(value: unknown): string {
 	const fragments = collectStructuredText(value, new Set())
 		.map((fragment) => fragment.trim())
@@ -221,7 +231,9 @@ export function normalizeDiscordMessageText(value: unknown): string {
 	if (fragments.length === 0) {
 		return "";
 	}
-	return fragments.join("\n\n");
+	const joined = fragments.join("\n\n");
+	// Strip interaction markers before returning to user-facing output
+	return stripInteractionMarkers(joined);
 }
 
 export function cleanUrl(url: string): string {
