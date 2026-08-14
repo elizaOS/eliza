@@ -217,6 +217,7 @@ export function createCartesiaInkRealtimeSession(
 
   const onOpen = () => {
     metric({ name: "cartesia_ink_connected", value: 1 });
+    emit({ type: "connected", raw: {} });
   };
 
   const onMessage = (event: MessageEvent) => {

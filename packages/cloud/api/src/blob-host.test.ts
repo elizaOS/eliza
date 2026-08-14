@@ -1,6 +1,6 @@
 /**
  * The blob host (`R2_PUBLIC_HOST`) must serve public R2 objects from the
- * worker itself: the wildcard `*.elizacloud.ai/*` route shadows any R2 custom
+ * worker itself: the managed-agent wildcard route shadows any R2 custom
  * domain, so before this handler every minted public URL (avatars, image
  * generations, voice samples) 404'd on the JSON router — and OpenAI's
  * moderation-by-URL failed image generation closed on every env.
@@ -60,7 +60,7 @@ describe("serveBlobHostRequest", () => {
       "generations/images/org/user/img.png": { body: "PNGBYTES" },
     });
     const [request, url] = req(
-      "https://blob.elizacloud.ai/generations/images/org/user/img.png",
+      "https://blob.eliza.app/generations/images/org/user/img.png",
     );
 
     const res = await serveBlobHostRequest(request, url, env);
@@ -81,7 +81,7 @@ describe("serveBlobHostRequest", () => {
         contentType: "image/svg+xml",
       },
     });
-    const [request, url] = req(`https://blob.elizacloud.ai/${key}`);
+    const [request, url] = req(`https://blob.eliza.app/${key}`);
 
     const res = await serveBlobHostRequest(request, url, env);
 
@@ -107,17 +107,13 @@ describe("serveBlobHostRequest", () => {
 
     // The default host is NOT served when the env pins a different one —
     // those requests fall through to normal routing.
-    const [missReq, missUrl] = req(
-      "https://blob.elizacloud.ai/avatars/eliza.png",
-    );
+    const [missReq, missUrl] = req("https://blob.eliza.app/avatars/eliza.png");
     expect(await serveBlobHostRequest(missReq, missUrl, env)).toBeNull();
   });
 
   test("404s a missing key with the router's JSON error shape", async () => {
     const { env } = makeEnv({});
-    const [request, url] = req(
-      "https://blob.elizacloud.ai/generations/nope.png",
-    );
+    const [request, url] = req("https://blob.eliza.app/generations/nope.png");
 
     const res = await serveBlobHostRequest(request, url, env);
 
@@ -128,7 +124,7 @@ describe("serveBlobHostRequest", () => {
   test("HEAD returns headers without a body (falls back to get when head is absent)", async () => {
     const { env } = makeEnv({ "avatars/a/b.png": { body: "12345" } });
     const [request, url] = req(
-      "https://blob.elizacloud.ai/avatars/a/b.png",
+      "https://blob.eliza.app/avatars/a/b.png",
       "HEAD",
     );
 
@@ -142,10 +138,7 @@ describe("serveBlobHostRequest", () => {
 
   test("rejects writes", async () => {
     const { env } = makeEnv({ "avatars/a/b.png": { body: "x" } });
-    const [request, url] = req(
-      "https://blob.elizacloud.ai/avatars/a/b.png",
-      "PUT",
-    );
+    const [request, url] = req("https://blob.eliza.app/avatars/a/b.png", "PUT");
 
     const res = await serveBlobHostRequest(request, url, env);
 
@@ -155,7 +148,7 @@ describe("serveBlobHostRequest", () => {
 
   test("ignores non-blob hosts entirely", async () => {
     const { env } = makeEnv({ "avatars/a/b.png": { body: "x" } });
-    const [request, url] = req("https://api.elizacloud.ai/avatars/a/b.png");
+    const [request, url] = req("https://api.eliza.app/avatars/a/b.png");
 
     expect(await serveBlobHostRequest(request, url, env)).toBeNull();
   });
@@ -165,7 +158,7 @@ describe("serveBlobHostRequest", () => {
       "avatars/user/1 - fichier été.png": { body: "OK" },
     });
     const [request, url] = req(
-      "https://blob.elizacloud.ai/avatars/user/1%20-%20fichier%20%C3%A9t%C3%A9.png",
+      "https://blob.eliza.app/avatars/user/1%20-%20fichier%20%C3%A9t%C3%A9.png",
     );
 
     const res = await serveBlobHostRequest(request, url, env);
@@ -180,7 +173,7 @@ describe("serveBlobHostRequest", () => {
       });
 
       for (const method of ["GET", "HEAD"]) {
-        const [request, url] = req(`https://blob.elizacloud.ai/${key}`, method);
+        const [request, url] = req(`https://blob.eliza.app/${key}`, method);
         const res = await serveBlobHostRequest(request, url, env);
         expect(res?.status).toBe(404);
       }
@@ -196,7 +189,7 @@ describe("serveBlobHostRequest", () => {
       "media/user/file.png",
     ]) {
       const { env, reads } = makeEnv({ [key]: { body: "PRIVATE" } });
-      const [request, url] = req(`https://blob.elizacloud.ai/${key}`);
+      const [request, url] = req(`https://blob.eliza.app/${key}`);
 
       const res = await serveBlobHostRequest(request, url, env);
 
@@ -221,7 +214,7 @@ describe("serveBlobHostRequest", () => {
       },
     });
     const [request, url] = req(
-      "https://blob.elizacloud.ai/avatars/users/org/user/pic.svg",
+      "https://blob.eliza.app/avatars/users/org/user/pic.svg",
     );
 
     const res = await serveBlobHostRequest(request, url, env);
@@ -246,7 +239,7 @@ describe("serveBlobHostRequest", () => {
 
     for (const name of ["evil.html", "blob.bin"]) {
       const [request, url] = req(
-        `https://blob.elizacloud.ai/generations/images/org/user/${name}`,
+        `https://blob.eliza.app/generations/images/org/user/${name}`,
       );
       const res = await serveBlobHostRequest(request, url, env);
       expect(res?.status).toBe(200);
@@ -258,7 +251,7 @@ describe("serveBlobHostRequest", () => {
   test("404s malformed percent-encoding instead of throwing", async () => {
     const { env, reads } = makeEnv({});
     // `%A` truncated escape → decodeURIComponent throws URIError.
-    const [request, url] = req("https://blob.elizacloud.ai/avatars/%E0%A4%A");
+    const [request, url] = req("https://blob.eliza.app/avatars/%E0%A4%A");
 
     const res = await serveBlobHostRequest(request, url, env);
 
