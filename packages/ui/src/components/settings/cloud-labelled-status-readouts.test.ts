@@ -38,4 +38,15 @@ describe("cloud labelled status readouts use SettingsRow", () => {
     expect(source).not.toContain("BrandCard");
     expect(source).not.toContain("grid grid-cols-1 md:grid-cols-2");
   });
+
+  it("invoice labelled status fields are SettingsRows", () => {
+    const source = read("cloud/billing/components/invoice-detail-client.tsx");
+    expect(source).toContain("<SettingsStack");
+    expect(source).toContain("<SettingsGroup");
+    expect(source).toContain("<SettingsRow");
+    expect(source).toContain("Invoice number");
+    expect(source).toContain("Payment information");
+    expect(source).not.toContain("grid grid-cols-3");
+    expect(source).not.toContain("grid grid-cols-2");
+  });
 });
