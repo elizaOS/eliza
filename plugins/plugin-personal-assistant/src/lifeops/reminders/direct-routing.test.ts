@@ -12,6 +12,8 @@ import {
 describe("owner reminder direct routing", () => {
   it.each([
     "Remind me in 2 minutes to check the mail.",
+    "Remind myself tomorrow to call Pat.",
+    "Don't forget to remind me tomorrow to call Pat.",
     "Please remind me at 9pm to check the oven.",
     "Can you remind me tomorrow morning?",
     "Set a reminder for Friday at noon.",
@@ -30,6 +32,7 @@ describe("owner reminder direct routing", () => {
     "Write a story about setting reminders.",
     "What does ‘remind me to call Pat’ mean?",
     "Don't remind me to call Pat.",
+    "Don't forget to cancel my reminder for Friday.",
     "Remind me not to call Pat.",
     "Remind Alex to call Pat.",
     "Remind my partner to call Pat.",
