@@ -66,7 +66,10 @@ The workflow:
    canonical and legacy exact hostnames, then serves both names from the same
    no-http2 nginx vhost; after the ACME vhost is gone, `nginx -T` must report no
    conflicting-name warning and only `/etc/nginx/conf.d/headscale.conf` may own
-   either exact hostname, exactly once on HTTP and HTTPS;
+   either exact hostname, exactly once on HTTP and HTTPS; every arm also
+   installs a root-owned certbot deploy hook that requires both SANs and a valid
+   nginx config before reload, and fails unless `certbot.timer` is enabled and
+   active;
 7. restarts `headscale` and `eliza-provisioning-worker.service`;
 8. fails unless local health and both public HTTPS health endpoints are green,
    and both public SNI names serve the same leaf fingerprint whose SANs contain

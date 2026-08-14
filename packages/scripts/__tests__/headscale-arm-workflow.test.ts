@@ -4,7 +4,13 @@
  */
 import { describe, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -12,6 +18,17 @@ import { fileURLToPath } from "node:url";
 const repoRoot = new URL("../../../", import.meta.url);
 const workflowSource = readFileSync(
   new URL(".github/workflows/arm-headscale-control-plane.yml", repoRoot),
+  "utf8",
+);
+const provisioningWorkflowSource = readFileSync(
+  new URL(".github/workflows/deploy-eliza-provisioning-worker.yml", repoRoot),
+  "utf8",
+);
+const controlPlaneRunbookSource = readFileSync(
+  new URL(
+    "packages/cloud/infra/cloud/terraform/hetzner/control-plane/README.md",
+    repoRoot,
+  ),
   "utf8",
 );
 const scriptSource = readFileSync(
@@ -109,6 +126,66 @@ function ownershipAwkProgram(remoteScript: string) {
   const end = remoteScript.indexOf("\n')", bodyStart);
   if (end === -1) throw new Error("Missing Headscale ownership awk end");
   return remoteScript.slice(bodyStart, end);
+}
+
+function renewalHookScript(remoteScript: string) {
+  const startMarker = "<<'HOOK'\n";
+  const start = remoteScript.indexOf(startMarker);
+  if (start === -1) throw new Error("Missing certbot renewal hook start");
+  const bodyStart = start + startMarker.length;
+  const end = remoteScript.indexOf("\nHOOK\n", bodyStart);
+  if (end === -1) throw new Error("Missing certbot renewal hook end");
+  return remoteScript.slice(bodyStart, end);
+}
+
+function runRenewalHook(hookSource: string, certificateSans: string) {
+  const fixtureDir = mkdtempSync(join(tmpdir(), "headscale-renew-hook-test-"));
+  const binDir = join(fixtureDir, "bin");
+  const lineageDir = join(fixtureDir, "lineage");
+  const hookPath = join(fixtureDir, "renew-hook");
+  const logPath = join(fixtureDir, "commands.log");
+  mkdirSync(binDir);
+  mkdirSync(lineageDir);
+  writeFileSync(join(lineageDir, "fullchain.pem"), "test-only-certificate\n");
+  writeFileSync(logPath, "");
+  writeFileSync(
+    join(binDir, "openssl"),
+    "#!/usr/bin/env bash\nprintf 'X509v3 Subject Alternative Name:\\n    %s\\n' \"$TEST_CERT_SANS\"\n",
+    { mode: 0o755 },
+  );
+  writeFileSync(
+    join(binDir, "nginx"),
+    '#!/usr/bin/env bash\nprintf \'nginx %s\\n\' "$*" >> "$HOOK_LOG"\n',
+    { mode: 0o755 },
+  );
+  writeFileSync(
+    join(binDir, "systemctl"),
+    '#!/usr/bin/env bash\nprintf \'systemctl %s\\n\' "$*" >> "$HOOK_LOG"\n',
+    { mode: 0o755 },
+  );
+  writeFileSync(
+    hookPath,
+    hookSource.replace(
+      /^EXPECTED_LINEAGE=.*$/m,
+      `EXPECTED_LINEAGE=${JSON.stringify(lineageDir)}`,
+    ),
+    { mode: 0o755 },
+  );
+
+  try {
+    const result = spawnSync("bash", [hookPath], {
+      encoding: "utf8",
+      env: {
+        PATH: `${binDir}:${process.env.PATH ?? ""}`,
+        HOOK_LOG: logPath,
+        RENEWED_LINEAGE: lineageDir,
+        TEST_CERT_SANS: certificateSans,
+      },
+    });
+    return { ...result, commandLog: readFileSync(logPath, "utf8") };
+  } finally {
+    rmSync(fixtureDir, { recursive: true, force: true });
+  }
 }
 
 describe("protected Headscale arm workflow", () => {
@@ -209,6 +286,30 @@ describe("protected Headscale arm workflow", () => {
     expect(scriptSource).toContain('listenAddr: "127.0.0.1:8081"');
     expect(scriptSource).toContain('apiUrl: "http://127.0.0.1:8080"');
     expect(scriptSource).toContain('listenAddr: "127.0.0.1:8080"');
+  });
+
+  test("keeps every control-plane writer on the environment-fixed loopback API", () => {
+    expect(provisioningWorkflowSource).not.toContain(
+      "HEADSCALE_API_URL: $" + "{{ vars.HEADSCALE_API_URL }}",
+    );
+    expect(provisioningWorkflowSource).not.toContain(
+      "require_exact HEADSCALE_API_URL",
+    );
+    expect(provisioningWorkflowSource).toContain(
+      'resolved_headscale_api_url="http://127.0.0.1:8081"',
+    );
+    expect(provisioningWorkflowSource).toContain(
+      'resolved_headscale_api_url="http://127.0.0.1:8080"',
+    );
+    expect(provisioningWorkflowSource).toContain(
+      'echo "HEADSCALE_API_URL=$resolved_headscale_api_url" >> "$GITHUB_ENV"',
+    );
+  });
+
+  test("documents only the canonical protected dispatch inputs", () => {
+    expect(controlPlaneRunbookSource).toContain("-f environment=production");
+    expect(controlPlaneRunbookSource).not.toContain("-f headscale_api_url=");
+    expect(controlPlaneRunbookSource).not.toContain("-f listen_addr=");
   });
 
   test("pins staging and production deploys to their canonical branch SHA", () => {
@@ -363,6 +464,47 @@ server {
       "/etc/nginx/conf.d/headscale.conf\theadscale.elizacloud.ai",
       "/etc/nginx/sites-enabled/legacy-headscale\theadscale.elizacloud.ai",
     ]);
+  });
+
+  test("installs a fail-closed renewal hook that validates both SANs before reload", () => {
+    const result = runDryArm(
+      "https://headscale.eliza.app",
+      "https://headscale.elizacloud.ai",
+    );
+    expect(result.status).toBe(0);
+    const hook = renewalHookScript(result.stdout);
+    expectBashSyntax(hook);
+    expect(result.stdout).toContain(
+      "HS_RENEW_HOOK=/etc/letsencrypt/renewal-hooks/deploy/eliza-headscale-nginx-reload",
+    );
+    expect(result.stdout).toContain(
+      'sudo install -o root -g root -m 0755 "$HS_RENEW_HOOK_STAGE" "$HS_RENEW_HOOK"',
+    );
+    expect(result.stdout).toContain(
+      "sudo systemctl enable --now certbot.timer",
+    );
+    expect(result.stdout).toContain(
+      "sudo systemctl is-enabled --quiet certbot.timer",
+    );
+    expect(result.stdout).toContain(
+      "sudo systemctl is-active --quiet certbot.timer",
+    );
+    expect(result.stdout).not.toContain("WARN: certbot.timer not active");
+
+    const valid = runRenewalHook(
+      hook,
+      "DNS:headscale.eliza.app, DNS:headscale.elizacloud.ai",
+    );
+    expect(valid.status).toBe(0);
+    expect(valid.stderr).toBe("");
+    expect(valid.commandLog).toBe("nginx -t\nsystemctl reload nginx\n");
+
+    const missingLegacySan = runRenewalHook(hook, "DNS:headscale.eliza.app");
+    expect(missingLegacySan.status).not.toBe(0);
+    expect(missingLegacySan.stderr).toContain(
+      "renewed Headscale certificate does not cover both required hostnames",
+    );
+    expect(missingLegacySan.commandLog).toBe("");
   });
 
   test("rejects a cross-environment legacy hostname", () => {

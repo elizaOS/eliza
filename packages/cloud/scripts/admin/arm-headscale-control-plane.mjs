@@ -240,16 +240,18 @@ const parsedLegacyPublicUrl = parseHttpsOrigin(
 // and listener values are deliberately not operator inputs: accepting an
 // external daemon API URL could exfiltrate the protected Headscale bearer key.
 const headscaleHostname = parsedPublicUrl.hostname;
-const environmentConfig = HEADSCALE_ENVIRONMENT_BY_CANONICAL_HOST.get(
-  headscaleHostname,
-);
+const environmentConfig =
+  HEADSCALE_ENVIRONMENT_BY_CANONICAL_HOST.get(headscaleHostname);
 if (!environmentConfig) {
   die(
     `HEADSCALE_PUBLIC_URL must use a canonical Headscale hostname (received ${headscaleHostname})`,
   );
 }
-const { legacyHostname: expectedLegacyHostname, apiUrl, listenAddr } =
-  environmentConfig;
+const {
+  legacyHostname: expectedLegacyHostname,
+  apiUrl,
+  listenAddr,
+} = environmentConfig;
 const legacyHeadscaleHostname = parsedLegacyPublicUrl.hostname;
 if (legacyHeadscaleHostname !== expectedLegacyHostname) {
   die(
@@ -326,6 +328,7 @@ HS_PORT=${shellQuote(headscalePort)}
 CERTBOT_EMAIL=${shellQuote(certbotEmail)}
 HS_VHOST=/etc/nginx/conf.d/headscale.conf
 HS_ACME_VHOST=/etc/nginx/conf.d/00-headscale-acme.conf
+HS_RENEW_HOOK=/etc/letsencrypt/renewal-hooks/deploy/eliza-headscale-nginx-reload
 ACME_WEBROOT=/var/lib/letsencrypt
 LE_LIVE=/etc/letsencrypt/live/$HS_HOST
 LE_FULLCHAIN=$LE_LIVE/fullchain.pem
@@ -549,12 +552,50 @@ sudo systemctl reload nginx
 rm -f "$HS_VHOST_BACKUP" "$HS_VHOST_STAGE"
 trap - EXIT
 
-# Confirm the cert renewal timer is active (renewal is certbot's own systemd
-# timer, not a cron entry we manage). Non-fatal: surfaces a warning if the
-# distro shipped certbot without the timer.
-sudo systemctl is-active certbot.timer >/dev/null 2>&1 \\
-  && echo "certbot.timer active (auto-renewal wired)" \\
-  || echo "WARN: certbot.timer not active — check auto-renewal on this host"
+# Certbot's webroot renewal updates the certificate files in place. Install a
+# deploy hook on every arm, including no-op certificate runs, so nginx adopts
+# only a leaf that still covers both migration-overlap names. The hook is
+# root-owned and validates both the certificate and nginx before reloading.
+HS_RENEW_HOOK_STAGE=$(mktemp)
+tee "$HS_RENEW_HOOK_STAGE" >/dev/null <<'HOOK'
+#!/usr/bin/env bash
+set -euo pipefail
+
+EXPECTED_LINEAGE=${shellQuote(`/etc/letsencrypt/live/${headscaleHostname}`)}
+CANONICAL_HOST=${shellQuote(headscaleHostname)}
+LEGACY_HOST=${shellQuote(legacyHeadscaleHostname)}
+
+if [ "\${RENEWED_LINEAGE:-}" != "$EXPECTED_LINEAGE" ]; then
+  exit 0
+fi
+
+leaf_has_exact_san() {
+  test -s "$EXPECTED_LINEAGE/fullchain.pem" \\
+    && openssl x509 -in "$EXPECTED_LINEAGE/fullchain.pem" -noout -ext subjectAltName 2>/dev/null \\
+      | tr ',' '\\n' \\
+      | sed -n 's/^[[:space:]]*DNS://p' \\
+      | grep -Fx -- "$1" >/dev/null
+}
+
+if ! leaf_has_exact_san "$CANONICAL_HOST" \\
+    || ! leaf_has_exact_san "$LEGACY_HOST"; then
+  echo "renewed Headscale certificate does not cover both required hostnames" >&2
+  exit 1
+fi
+
+nginx -t
+systemctl reload nginx
+HOOK
+sudo install -d -o root -g root -m 0755 "$(dirname "$HS_RENEW_HOOK")"
+sudo install -o root -g root -m 0755 "$HS_RENEW_HOOK_STAGE" "$HS_RENEW_HOOK"
+rm -f "$HS_RENEW_HOOK_STAGE"
+
+# Renewal is part of the converged contract, not an advisory. Ensure certbot's
+# systemd schedule exists, is enabled, and is running before the arm succeeds.
+sudo systemctl enable --now certbot.timer
+sudo systemctl is-enabled --quiet certbot.timer
+sudo systemctl is-active --quiet certbot.timer
+echo "certbot.timer active (auto-renewal wired)"
 `;
 
 // ── CP self-enrollment as a tailscale node (cp-<env>-router) ─────────────────
