@@ -8,7 +8,18 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { getBootConfig, setBootConfig } from "../config/boot-config.js";
 import { _resetCloudSecretsForTesting } from "../elizacloud/cloud-secrets.js";
+import { ELIZA_DOMAIN_CONTRACTS } from "../elizacloud/domain-contract.js";
 import { resolveHfDownloadBase, resolveHfDownloadBases } from "./hf-proxy.js";
+
+/**
+ * A recognized control-plane host is canonicalized onto the current production
+ * cloud API origin, so the proxy base is derived from the domain contract
+ * rather than restated as a literal. The legacy `elizacloud.ai` inputs below
+ * are kept verbatim on purpose: they are the redirect-ingress hosts callers
+ * still supply during the retirement window, and canonicalizing them is the
+ * behavior under test.
+ */
+const CLOUD_HF_PROXY_BASE = `${ELIZA_DOMAIN_CONTRACTS.production.cloudApiOrigin}/api/v1/hf-proxy`;
 
 /**
  * `resolveHfDownloadBase` decides where local-inference bundle `resolve`
@@ -59,7 +70,7 @@ describe("resolveHfDownloadBase", () => {
     process.env.ELIZAOS_CLOUD_BASE_URL = "https://api.elizacloud.ai";
 
     expect(resolveHfDownloadBase()).toEqual({
-      base: "https://elizacloud.ai/api/v1/hf-proxy",
+      base: CLOUD_HF_PROXY_BASE,
       authHeader: { authorization: "Bearer key-123" },
       viaCloud: true,
       label: "cloud",
@@ -100,7 +111,7 @@ describe("resolveHfDownloadBase", () => {
         label: "mirror",
       },
       {
-        base: "https://elizacloud.ai/api/v1/hf-proxy",
+        base: CLOUD_HF_PROXY_BASE,
         authHeader: { authorization: "Bearer key-123" },
         viaCloud: true,
         label: "cloud",

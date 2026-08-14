@@ -248,5 +248,5 @@ test("hot module and canonical handler structurally exclude legacy DB turn depen
 
   expect(canonicalSource).not.toContain("elizaSandboxService");
   expect(canonicalSource).not.toContain('import("../eliza-sandbox")');
-  expect(canonicalSource).toContain("agent: AgentSandbox;");
+  expect(canonicalSource).toContain("agent: SharedRuntimeAgent;");
 });

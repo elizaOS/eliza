@@ -11,15 +11,40 @@ const repoRoot = fileURLToPath(new URL("../../..", import.meta.url));
 const workflowDirectory = join(repoRoot, ".github", "workflows");
 
 describe("release workflow authority", () => {
+  test("release contract checkout includes the pull-request base history", () => {
+    const source = readFileSync(
+      join(workflowDirectory, "electrobun-contract.yml"),
+      "utf8",
+    );
+    const workflow = Bun.YAML.parse(source) as {
+      jobs?: Record<
+        string,
+        {
+          steps?: Array<{
+            name?: string;
+            with?: Record<string, unknown>;
+          }>;
+        }
+      >;
+    };
+    const checkout = workflow.jobs?.["release-contract"]?.steps?.find(
+      (step) => step.name === "Checkout",
+    );
+
+    expect(checkout?.with?.["fetch-depth"]).toBe(0);
+  });
+
   test("has one manually dispatched release workflow", () => {
     const workflowFiles = readdirSync(workflowDirectory).filter((name) =>
       /\.ya?ml$/.test(name),
     );
-    const releaseEntries = workflowFiles.filter((name) =>
-      /^(?:release|publish|update-homebrew|.*-release)\.(?:yml|yaml)$/.test(
-        name,
-      ),
-    );
+    const releaseEntries = workflowFiles
+      .filter((name) =>
+        /^(?:release|publish|update-homebrew|.*-release)\.(?:yml|yaml)$/.test(
+          name,
+        ),
+      )
+      .sort();
     expect(releaseEntries).toEqual(["cloud-cf-release.yml", "release.yaml"]);
 
     // `cloud-cf-release.yml` shares the name but not the authority: it is the

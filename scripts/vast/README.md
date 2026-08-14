@@ -15,7 +15,7 @@ the Ed25519 signature is what matters (trust model:
 | `run-certification.mjs` | The vast driver: search → create → poll → pull → **destroy** (plain node, zero workspace deps) |
 | `run-certification.test.mjs` | Unit tests for the pure pieces (`bun run test:vast` / `node --test scripts/vast/*.test.mjs`) |
 | `local-certify.mjs` | One-command local fallback (same chain, same output) |
-| `../../docker/certification/Dockerfile.gpu` | The prebuilt image the instance boots (models + toolchain baked; onstart is capped at 16 KB) |
+| `Dockerfile.gpu` | The prebuilt image the instance boots (models + toolchain baked; onstart is capped at 16 KB) |
 | `../../.github/workflows/certification-vast.yml` | Dispatch/nightly workflow that drives the driver |
 | `../../.github/workflows/certification-image.yml` | Builds + pushes `ghcr.io/elizaos/certification-gpu` |
 
@@ -127,7 +127,7 @@ fabricate green.
 
 ## Image
 
-`docker/certification/Dockerfile.gpu` bakes CUDA `llama-server` (pinned to
+`scripts/vast/Dockerfile.gpu` bakes CUDA `llama-server` (pinned to
 llama.cpp `b8525`, the minimum `scripts/gpu-vision` accepts), the
 sha256-pinned OCR/VLM GGUFs via `scripts/gpu-vision/setup.mjs --with-vlm`,
 Node 24, Bun 1.3.14, Playwright Chromium (+ OS deps), tesseract, and ffmpeg.

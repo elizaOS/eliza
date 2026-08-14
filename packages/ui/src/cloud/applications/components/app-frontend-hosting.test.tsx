@@ -196,7 +196,7 @@ describe("AppFrontendHosting (#10690)", () => {
       }
     ).json;
     expect(body.activate).toBe(true);
-    expect(body.buildMeta.source).toBe("cloud");
+    expect(body.buildMeta.source).toBe("dashboard");
     expect(body.files).toHaveLength(1);
     expect(body.files[0].path).toBe("index.html");
     expect(body.files[0].encoding).toBe("base64");

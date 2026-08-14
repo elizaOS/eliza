@@ -74,10 +74,10 @@ export function canOpenElizaSmsLink(navigatorValue: MessageNavigator): boolean {
 export async function openOrCopyElizaMessage(
   windowValue: MessageWindow,
   message: string = IMESSAGE_GREETING,
-): Promise<"opened" | "copied"> {
+): Promise<"handoff" | "copied"> {
   if (canOpenElizaSmsLink(windowValue.navigator)) {
     windowValue.location.href = buildElizaSmsHref(message);
-    return "opened";
+    return "handoff";
   }
 
   if (!windowValue.navigator.clipboard) {

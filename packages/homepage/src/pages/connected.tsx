@@ -16,7 +16,7 @@ import {
   DropdownMenuTrigger,
 } from "@elizaos/ui/dropdown-menu";
 import { Check, Copy, Info, LogOut } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { ElizaLogo } from "@/components/brand/eliza-logo";
 import {
@@ -90,8 +90,9 @@ export default function ConnectedPage() {
   const { user, organization, isAuthenticated, isLoading, logout, linkPhone } =
     useAuth();
   const [phoneCopyState, setPhoneCopyState] = useState<
-    "idle" | "copied" | "error"
+    "idle" | "handoff" | "copied" | "error"
   >("idle");
+  const phoneCopyOperation = useRef(0);
   const [copiedTelegram, setCopiedTelegram] = useState(false);
   const [copiedWhatsApp, setCopiedWhatsApp] = useState(false);
 
@@ -161,12 +162,13 @@ export default function ConnectedPage() {
   }, [isAuthenticated, isLoading, navigate]);
 
   const handleCopyPhone = async () => {
+    const operation = ++phoneCopyOperation.current;
     try {
       await navigator.clipboard.writeText(ELIZA_PHONE_NUMBER);
-      setPhoneCopyState("copied");
+      if (operation === phoneCopyOperation.current) setPhoneCopyState("copied");
     } catch {
       // error-policy:J4 Clipboard rejection stays visible as a distinct UI error.
-      setPhoneCopyState("error");
+      if (operation === phoneCopyOperation.current) setPhoneCopyState("error");
     }
   };
 
@@ -201,12 +203,13 @@ export default function ConnectedPage() {
   };
 
   const handleOpenMessages = async () => {
+    const operation = ++phoneCopyOperation.current;
     try {
       const outcome = await openOrCopyElizaMessage(window);
-      if (outcome === "copied") setPhoneCopyState("copied");
+      if (operation === phoneCopyOperation.current) setPhoneCopyState(outcome);
     } catch {
       // error-policy:J4 Clipboard rejection stays visible as a distinct UI error.
-      setPhoneCopyState("error");
+      if (operation === phoneCopyOperation.current) setPhoneCopyState("error");
     }
   };
 
@@ -263,18 +266,30 @@ export default function ConnectedPage() {
       {phoneCopyState !== "idle" && (
         <div
           className={`fixed bottom-4 left-1/2 z-50 -translate-x-1/2 rounded-full bg-white px-4 py-2 text-sm font-medium shadow-lg ${
-            phoneCopyState === "copied" ? "text-green-700" : "text-red-700"
+            phoneCopyState === "copied"
+              ? "text-green-700"
+              : phoneCopyState === "error"
+                ? "text-red-700"
+                : "text-neutral-700"
           }`}
-          role={phoneCopyState === "error" ? "alert" : "status"}
-          aria-live="polite"
         >
-          {phoneCopyState === "copied"
-            ? t("homepage_eliza.connected.phoneCopied", {
-                defaultValue: "Phone number copied",
-              })
-            : t("homepage_eliza.connected.phoneCopyFailed", {
-                defaultValue: "Couldn't copy the phone number",
-              })}
+          <span
+            role={phoneCopyState === "error" ? "alert" : "status"}
+            aria-live="polite"
+          >
+            {phoneCopyState === "copied"
+              ? t("homepage_eliza.connected.phoneCopied", {
+                  defaultValue: "Phone number copied",
+                })
+              : phoneCopyState === "handoff"
+                ? t("homepage_eliza.common.messageHandoff", {
+                    defaultValue:
+                      "Opening Messages. If nothing happens, copy the number.",
+                  })
+                : t("homepage_eliza.connected.phoneCopyFailed", {
+                    defaultValue: "Couldn't copy the phone number",
+                  })}
+          </span>
         </div>
       )}
       <header className="absolute top-0 inset-x-0 z-10 p-4 flex items-center justify-between pointer-events-none">

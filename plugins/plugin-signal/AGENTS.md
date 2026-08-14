@@ -10,7 +10,6 @@ Adds a `signal` message connector so Eliza agents can send DMs and group message
 
 ### Services
 - **`SignalService`** (`serviceType: "signal"`) — core connector. Starts a signal-cli daemon (or connects to an existing HTTP API), registers a `MessageConnector` with the runtime, polls/streams inbound messages, stores them as memories, and emits `SignalEventTypes` events. Also exposes `sendMessage`, `sendGroupMessage`, `sendReaction`, and `getRecentMessages` for programmatic use.
-- **`SignalWorkflowCredentialProvider`** (`serviceType: "workflow_credential_provider"`) — supplies `httpHeaderAuth` credentials (account number + HTTP URL) to the workflow plugin for Signal-backed automations.
 
 ### Actions
 None registered. Sending is done via the `MessageConnector` send handler or direct `SignalService` method calls.
@@ -50,7 +49,6 @@ src/
   pairing-service.ts            SignalPairingSession — QR device linking via signal-cli or @elizaos/signal-native
   setup-routes.ts               HTTP route handlers for /api/setup/signal/* and QR override helper
   connector-account-provider.ts ConnectorAccountManager provider (list/create/patch/delete accounts)
-  workflow-credential-provider.ts Workflow plugin credential bridge (httpHeaderAuth)
 auto-enable.ts                  Auto-enable check (loaded by plugin engine at boot; no heavy imports)
 ```
 

@@ -263,7 +263,7 @@
   let born = 0;
   let entranceStarted = false;
   let entranceComplete = reduced;
-  const ENTER_MS = 3200, ENTER_STAGGER_MS = 620;
+  const ENTER_MS = 4200, ENTER_STAGGER_MS = 900;
   const FADE_FRAMES = 75;            // ~1.25s fade in and out per dot
   const ALPHA_LEVELS = 8;            // bucketed so per-dot alpha stays one state change per level
   let order = new Int32Array(0);
@@ -290,7 +290,7 @@
   const easeSettle = (progress) => {
     const s = smootherstep(progress);
     const inv = 1 - s;
-    return 1 - inv * inv * inv * inv * inv;
+    return 1 - inv * inv;
   };
   let entranceSeed = 0;
   function entranceRandom() {

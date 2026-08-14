@@ -773,4 +773,55 @@ describe("normalize", () => {
 			"Hi",
 		);
 	});
+
+	it("removes terminal unclaimed machinery before outbound delivery", () => {
+		const content: Content = {
+			text: "Done.\n[ FOLLOWUPS ]\nreply:Again=Again",
+		};
+		expect(normalizeContentInteractions(content)).toEqual({ text: "Done." });
+	});
+});
+
+describe("interaction marker residue", () => {
+	it("parses spaced CRLF blocks, including TASK whitespace before the bracket", () => {
+		const taskId = "0123abcd-1234-5678-9abc-deadbeefcafe";
+		const text = [
+			"Done.",
+			"[ FOLLOWUPS ]\r\nreply:More=More\r\n[ / FOLLOWUPS ]",
+			"[ CHOICE: pick ]\r\nyes=Yes\r\n[ / CHOICE ]",
+			`[ TASK: ${taskId} ]Ship it[ / TASK ]`,
+		].join("\r\n");
+		const { blocks, cleanedText } = parseInteractionBlocks(text);
+		expect(blocks.map((block) => block.kind)).toEqual([
+			"followups",
+			"choice",
+			"task",
+		]);
+		expect(cleanedText).toBe("Done.");
+	});
+
+	it("strips a terminal half-open block across blanks and malformed close rows", () => {
+		const { blocks, cleanedText } = parseInteractionBlocks(
+			"Here you go.\r\n[ FOLLOWUPS ]\r\nreply:More=More\r\n\r\nprompt:Again=Again\r\n[ /FOLLOWUP ]",
+		);
+		expect(blocks).toEqual([]);
+		expect(cleanedText).toBe("Here you go.");
+	});
+
+	it("preserves malformed marker prose when ordinary prose follows it", () => {
+		const text =
+			"[ FOLLOWUPS ]\nreply:More=More\nThis paragraph explains the malformed example.";
+		expect(parseInteractionBlocks(text).cleanedText).toBe(text);
+	});
+
+	it("preserves marker examples inside fenced Markdown", () => {
+		const text = "Example:\n```text\n[ FOLLOWUPS ]\nreply:More=More\n```";
+		expect(parseInteractionBlocks(text).cleanedText).toBe(text);
+	});
+
+	it("preserves invalid FORM data", () => {
+		const text =
+			'[ FORM ]\r\n{"fields":[{"name":"constructor","type":"text"}]}\r\n[ / FORM ]';
+		expect(parseInteractionBlocks(text).cleanedText).toBe(text);
+	});
 });

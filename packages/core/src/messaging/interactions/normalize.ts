@@ -13,7 +13,10 @@
  */
 
 import type { Content } from "../../types/primitives";
-import { parseInteractionBlocks } from "./parse";
+import {
+	parseInteractionBlocks,
+	stripUnclaimedInteractionMarkup,
+} from "./parse";
 
 /** Message text with every interaction marker removed and whitespace tidied. */
 export function stripInteractionMarkers(text: string): string {
@@ -22,16 +25,19 @@ export function stripInteractionMarkers(text: string): string {
 
 /**
  * Attach parsed interaction blocks to `content.interactions`. Idempotent and
- * non-destructive: returns the same reference when there's nothing to do, and
- * never mutates `content.text`.
+ * non-destructive for human prose and valid markers; terminal unclaimed
+ * machinery is removed before any delivery surface receives the content.
  */
 export function normalizeContentInteractions(content: Content): Content {
 	if (typeof content.text !== "string" || content.text.length === 0)
 		return content;
+	const text = stripUnclaimedInteractionMarkup(content.text);
 	if (Array.isArray(content.interactions) && content.interactions.length > 0) {
-		return content;
+		return text === content.text ? content : { ...content, text };
 	}
-	const { blocks } = parseInteractionBlocks(content.text);
-	if (blocks.length === 0) return content;
-	return { ...content, interactions: blocks };
+	const { blocks } = parseInteractionBlocks(text);
+	if (blocks.length === 0) {
+		return text === content.text ? content : { ...content, text };
+	}
+	return { ...content, text, interactions: blocks };
 }

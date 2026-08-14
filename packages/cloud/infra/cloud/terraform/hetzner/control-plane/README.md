@@ -108,8 +108,13 @@ For the normal staging/prod path, use the idempotent workflow:
 
 ```bash
 gh workflow run arm-headscale-control-plane.yml --repo elizaOS/eliza --ref main \
-  -f environment=production
+  -f environment=production -f operation=converge
 ```
+
+Staging legacy-vhost retirement is a separate two-run operation documented in
+`packages/cloud/services/headscale/DEPLOY.md`. The retirement dispatch must
+include the exact lowercase SHA-256 printed by its preceding read-only
+inspection; do not retire against an unbound or stale review.
 
 That workflow installs the committed ACL, converges `server_url` and the fixed
 environment-specific loopback `listen_addr`, ensures the `agent`/`tunnel`
