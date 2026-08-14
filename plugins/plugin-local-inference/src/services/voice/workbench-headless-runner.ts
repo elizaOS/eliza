@@ -50,6 +50,12 @@ import type {
 	VoiceWorkbenchScenarioRun,
 } from "./voice-workbench-report";
 import { encodeMonoPcm16Wav } from "./wav-codec";
+import {
+	buildVoiceWorkbenchScenarioEvidence,
+	type VoiceWorkbenchEvidenceSettings,
+	type VoiceWorkbenchObservedTurnEvidence,
+	type VoiceWorkbenchRealtimeTurnEvidence,
+} from "./workbench-evidence";
 
 /** What the real (or mock) services observed for one turn of audio. */
 export interface VoiceTurnObservation {
@@ -87,6 +93,11 @@ export interface VoiceTurnObservation {
 	 * no streaming ASR (batch transcription only) and monotonicity is not scored.
 	 */
 	partialTranscripts?: string[];
+	/**
+	 * Optional content-free realtime/device evidence from an instrumented lane.
+	 * Offsets must come from one monotonic run clock; absent marks stay absent.
+	 */
+	realtimeEvidence?: VoiceWorkbenchRealtimeTurnEvidence;
 }
 
 /** One real diarizer segment in stream-relative time. */
@@ -98,6 +109,11 @@ export interface VoiceDiarizationObservation extends DiarizationSegment {
 export interface VoiceWorkbenchServices {
 	/** Real evidence lanes fail when a scenario's asserted signal has no samples. */
 	strictMeasurementCoverage?: boolean;
+	/**
+	 * Declares how this adapter obtained evidence. Mock/logic/offline lanes are
+	 * always serialized as deterministic fake media, never physical-device proof.
+	 */
+	evidence?: VoiceWorkbenchEvidenceSettings;
 	/**
 	 * Optional one-shot hook before a scenario's turns are scored. Real services
 	 * use this to enroll speaker centroids from the generated corpus; mock
@@ -255,6 +271,7 @@ export async function runVoiceScenarioHeadless(
 	}> = [];
 	const erleSamples: Array<{ erleDb: number }> = [];
 	const partialCases: VoiceE2eCaseResult[] = [];
+	const observedTurns: VoiceWorkbenchObservedTurnEvidence[] = [];
 	const wantsOwnerScoring = scenario.classes.includes("owner-security");
 
 	for (const label of corpus.groundTruth.turns) {
@@ -282,6 +299,23 @@ export async function runVoiceScenarioHeadless(
 			label,
 			groundTruth: corpus.groundTruth,
 		});
+		if (services.evidence) {
+			observedTurns.push({
+				turnIndex: label.index,
+				expectRespond: label.expectRespond,
+				responded: obs.responded,
+				isAgentEcho: label.isAgentEcho === true,
+				bargeIn: label.bargeIn === true,
+				expectBargeInCancel: label.expectBargeInCancel === true,
+				...(obs.firstAudioMs !== undefined
+					? { firstAudioMs: obs.firstAudioMs }
+					: {}),
+				...(obs.bargeInCancelMs !== undefined
+					? { bargeInCancelMs: obs.bargeInCancelMs }
+					: {}),
+				...(obs.realtimeEvidence ? { realtime: obs.realtimeEvidence } : {}),
+			});
+		}
 
 		// WER — one round-trip case per turn (referenceTranscript vs ASR hypothesis).
 		cases.push(
@@ -330,14 +364,23 @@ export async function runVoiceScenarioHeadless(
 		if (label.isAgentEcho) {
 			echoSamples.push({ isAgentEcho: true, responded: obs.responded });
 		}
-		if (wantsOwnerScoring && typeof obs.predictedOwner === "boolean") {
+		if (
+			wantsOwnerScoring &&
+			!label.isAgentEcho &&
+			typeof obs.predictedOwner === "boolean"
+		) {
 			ownerSamples.push({
 				predictedOwner: obs.predictedOwner,
 				expectedOwner: label.isOwner === true,
 			});
 		}
 
-		if (obs.responded && typeof obs.firstAudioMs === "number") {
+		if (
+			label.expectRespond &&
+			!label.isAgentEcho &&
+			obs.responded &&
+			typeof obs.firstAudioMs === "number"
+		) {
 			cases.push(
 				scoreFirstResponseLatency({
 					turnStartedAtMs: 0,
@@ -359,12 +402,16 @@ export async function runVoiceScenarioHeadless(
 			});
 		}
 		// ERLE only when the lane produced an AEC measurement for this turn.
-		if (typeof obs.erleDb === "number") {
+		if (label.isAgentEcho && typeof obs.erleDb === "number") {
 			erleSamples.push({ erleDb: obs.erleDb });
 		}
 		// Partial-transcript monotonicity only when the lane produced a partial
 		// stream (streaming ASR); batch-only lanes skip it honestly.
-		if (obs.partialTranscripts && obs.partialTranscripts.length > 0) {
+		if (
+			!label.isAgentEcho &&
+			obs.partialTranscripts &&
+			obs.partialTranscripts.length > 0
+		) {
 			partialCases.push(scorePartialMonotonicity(obs.partialTranscripts));
 		}
 	}
@@ -391,7 +438,7 @@ export async function runVoiceScenarioHeadless(
 					: {}),
 			}),
 		);
-	} else if (diarTurns.length > 0) {
+	} else if (!services.strictMeasurementCoverage && diarTurns.length > 0) {
 		cases.push(
 			scoreDiarizationTimeline(diarTurns, {
 				...(assertions.maxDer !== undefined
@@ -474,11 +521,13 @@ export async function runVoiceScenarioHeadless(
 		const requiredCoverage: Array<{
 			metric: string;
 			count: number;
+			expectedCount: number;
 			required: boolean;
 		}> = [
 			{
 				metric: "diarization-segments",
 				count: observedDiarization?.length ?? 0,
+				expectedCount: 1,
 				required:
 					assertions.maxDer !== undefined ||
 					scenario.classes.includes("diarization"),
@@ -487,47 +536,70 @@ export async function runVoiceScenarioHeadless(
 				metric: "first-audio-latency",
 				count: cases.filter((entry) => entry.kind === "first-response-latency")
 					.length,
+				expectedCount: corpus.groundTruth.turns.filter(
+					(label) => label.expectRespond && !label.isAgentEcho,
+				).length,
 				required: assertions.maxFirstAudioMs !== undefined,
 			},
 			{
 				metric: "voice-entity-match",
 				count: voiceEntitySamples.length,
+				expectedCount: 1,
 				required: assertions.minVoiceEntityMatchRate !== undefined,
 			},
 			{
 				metric: "entity-extraction",
 				count: expectedEntities.length,
+				expectedCount: 1,
 				required: assertions.minEntityF1 !== undefined,
 			},
 			{
 				metric: "echo-rejection",
 				count: echoSamples.length,
+				expectedCount: 1,
 				required: assertions.minEchoRejectionRate !== undefined,
 			},
 			{
 				metric: "owner-security",
 				count: ownerSamples.length,
+				expectedCount: corpus.groundTruth.turns.filter(
+					(label) => !label.isAgentEcho,
+				).length,
 				required: assertions.minOwnerAccuracy !== undefined,
 			},
 			{
 				metric: "barge-in-cancel",
 				count: bargeInSamples.length,
+				expectedCount: corpus.groundTruth.turns.filter((label) => label.bargeIn)
+					.length,
 				required: assertions.maxBargeInCancelMs !== undefined,
 			},
 			{
 				metric: "erle",
 				count: erleSamples.length,
+				expectedCount: corpus.groundTruth.turns.filter(
+					(label) => label.isAgentEcho,
+				).length,
 				required: assertions.minErleDb !== undefined,
 			},
 			{
 				metric: "streaming-partials",
 				count: partialCases.length,
+				expectedCount: corpus.groundTruth.turns.filter(
+					(label) => !label.isAgentEcho,
+				).length,
 				required: scenario.classes.includes("streaming-partials"),
 			},
 		];
 		for (const coverage of requiredCoverage) {
 			if (coverage.required) {
-				cases.push(scoreMeasurementCoverage(coverage.metric, coverage.count));
+				cases.push(
+					scoreMeasurementCoverage(
+						coverage.metric,
+						coverage.count,
+						coverage.expectedCount,
+					),
+				);
 			}
 		}
 	}
@@ -538,6 +610,16 @@ export async function runVoiceScenarioHeadless(
 		status: "ran",
 		cases,
 		...(audioArtifacts.length > 0 ? { audioArtifacts } : {}),
+		...(services.evidence
+			? {
+					evidence: buildVoiceWorkbenchScenarioEvidence({
+						scenarioId: scenario.id,
+						sampleRate: corpus.sampleRate,
+						settings: services.evidence,
+						turns: observedTurns,
+					}),
+				}
+			: {}),
 	};
 }
 

@@ -111,8 +111,8 @@ describe("runVoiceScenarioHeadless — scoring", () => {
 			async observeDiarization() {
 				return corpus.groundTruth.turns.map((label) => ({
 					speaker: clusterBySpeaker.get(label.speaker) ?? "cluster-unknown",
-					startMs: (label.speechStartSample / corpus.sampleRate) * 1000,
-					endMs: (label.speechEndSample / corpus.sampleRate) * 1000,
+					startMs: (label.speechStartSample / corpus.sampleRate) * 1000 + 250,
+					endMs: (label.speechEndSample / corpus.sampleRate) * 1000 + 250,
 				}));
 			},
 			async observeTurn({ label }) {
@@ -132,8 +132,47 @@ describe("runVoiceScenarioHeadless — scoring", () => {
 			services,
 		});
 		const diarization = run.cases.find((c) => c.kind === "diarization");
-		expect(diarization).toMatchObject({ der: 0, passed: true });
-		expect(diarization).toHaveProperty("totalReferenceMs");
+		expect(diarization).toMatchObject({ passed: false });
+		if (diarization?.kind === "diarization") {
+			expect(diarization.der).toBeGreaterThan(0);
+			expect(diarization.missedMs).toBeGreaterThan(0);
+			expect(diarization.falseAlarmMs).toBeGreaterThan(0);
+		}
+	});
+
+	it("does not publish ground-truth-derived DER for a strict lane", async () => {
+		const corpus = await generateVoiceCorpus(SCENARIO);
+		const services: VoiceWorkbenchServices = {
+			strictMeasurementCoverage: true,
+			async observeTurn({ label }) {
+				return {
+					hypothesisTranscript: label.referenceTranscript,
+					predictedSpeakerLabel: label.speaker,
+					eotDecided: true,
+					responded: label.expectRespond,
+					inferredEntities: [],
+					matchedEntityId: label.entityId ?? null,
+				};
+			},
+		};
+		const run = await runVoiceScenarioHeadless({
+			scenario: SCENARIO,
+			corpus,
+			services,
+		});
+		expect(run.cases.some((entry) => entry.kind === "diarization")).toBe(false);
+		expect(
+			run.cases.find(
+				(entry) =>
+					entry.kind === "measurement-coverage" &&
+					entry.metric === "diarization-segments",
+			),
+		).toMatchObject({ count: 0, expectedCount: 1, passed: false });
+		expect(buildVoiceWorkbenchReport([run]).metrics.der).toEqual({
+			count: 0,
+			mean: null,
+			worst: null,
+		});
 	});
 
 	it("fails DER when a real diarizer emits no segments", async () => {
@@ -201,7 +240,128 @@ describe("runVoiceScenarioHeadless — scoring", () => {
 				entry.kind === "measurement-coverage" &&
 				entry.metric === "first-audio-latency",
 		);
-		expect(coverage).toMatchObject({ count: 0, passed: false });
+		expect(coverage).toMatchObject({
+			count: 0,
+			expectedCount: 1,
+			passed: false,
+		});
+	});
+
+	it("fails closed when a real lane measures only some asserted responses", async () => {
+		const scenario = {
+			...SCENARIO,
+			turns: SCENARIO.turns.map((turn) => ({
+				...turn,
+				expectRespond: true,
+			})),
+			assertions: { ...SCENARIO.assertions, maxFirstAudioMs: 800 },
+		};
+		const corpus = await generateVoiceCorpus(scenario);
+		const services: VoiceWorkbenchServices = {
+			strictMeasurementCoverage: true,
+			async observeDiarization() {
+				return corpus.groundTruth.turns.map((label) => ({
+					speaker: `cluster-${label.speaker}`,
+					startMs: (label.speechStartSample / corpus.sampleRate) * 1000,
+					endMs: (label.speechEndSample / corpus.sampleRate) * 1000,
+				}));
+			},
+			async observeTurn({ turnIndex, label }) {
+				return {
+					hypothesisTranscript: label.referenceTranscript,
+					predictedSpeakerLabel: label.speaker,
+					eotDecided: true,
+					responded: label.expectRespond,
+					inferredEntities: [],
+					matchedEntityId: label.entityId ?? null,
+					...(turnIndex === 0 ? { firstAudioMs: 250 } : {}),
+				};
+			},
+		};
+		const run = await runVoiceScenarioHeadless({
+			scenario,
+			corpus,
+			services,
+		});
+		const coverage = run.cases.find(
+			(entry) =>
+				entry.kind === "measurement-coverage" &&
+				entry.metric === "first-audio-latency",
+		);
+		expect(coverage).toMatchObject({
+			count: 1,
+			expectedCount: 2,
+			passed: false,
+		});
+	});
+
+	it("does not let ineligible turns mask missing strict measurements", async () => {
+		const scenario: VoiceScenario = {
+			id: "strict-coverage-eligibility",
+			classes: ["owner-security", "desktop-aec", "streaming-partials"],
+			participants: [
+				{ label: "owner", entityId: "entity-owner", isOwner: true },
+			],
+			turns: [
+				{ speaker: "owner", text: "Eliza answer me", expectRespond: true },
+				{
+					speaker: "owner",
+					text: "the agent reply leaking into the mic",
+					expectRespond: false,
+					isAgentEcho: true,
+				},
+			],
+			assertions: {
+				maxFirstAudioMs: 800,
+				minOwnerAccuracy: 1,
+				minErleDb: 18,
+			},
+		};
+		const corpus = await generateVoiceCorpus(scenario);
+		const services: VoiceWorkbenchServices = {
+			strictMeasurementCoverage: true,
+			async observeTurn({ label }) {
+				const common = {
+					hypothesisTranscript: label.referenceTranscript,
+					predictedSpeakerLabel: label.speaker,
+					eotDecided: true,
+					responded: true,
+					inferredEntities: [],
+					matchedEntityId: label.entityId ?? null,
+				};
+				if (label.isAgentEcho) {
+					return {
+						...common,
+						firstAudioMs: 100,
+						predictedOwner: true,
+						partialTranscripts: ["the agent", "the agent reply"],
+					};
+				}
+				return { ...common, erleDb: 30 };
+			},
+		};
+		const run = await runVoiceScenarioHeadless({
+			scenario,
+			corpus,
+			services,
+		});
+		const coverage = new Map(
+			run.cases
+				.filter((entry) => entry.kind === "measurement-coverage")
+				.map((entry) => [entry.metric, entry]),
+		);
+		for (const metric of [
+			"first-audio-latency",
+			"owner-security",
+			"erle",
+			"streaming-partials",
+		]) {
+			expect(coverage.get(metric)).toMatchObject({
+				count: 0,
+				expectedCount: 1,
+				passed: false,
+			});
+		}
 	});
 
 	it("fails EOT when a mid-utterance pause is treated as a boundary", async () => {

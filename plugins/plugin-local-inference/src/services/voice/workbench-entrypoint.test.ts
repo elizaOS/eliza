@@ -19,6 +19,12 @@ describe("buildAndRunVoiceWorkbench", () => {
 		expect(report.scenariosRan).toBeGreaterThan(0);
 		expect(markdown).toContain("Voice Workbench");
 		expect(markdown).toContain("WER");
+		expect(report.evidence?.evidenceKindCounts.deterministic_fake_media).toBe(
+			report.scenariosRan,
+		);
+		expect(report.evidence?.liveProviderTraceCount).toBe(0);
+		expect(report.evidence?.releaseGatePassed).toBe(false);
+		expect(markdown).toContain("Synthetic/mock diagnostics never satisfy");
 	});
 
 	it("the real lane with no backend skips every scenario (never pass)", async () => {
@@ -47,10 +53,22 @@ describe("writeVoiceWorkbenchResult", () => {
 		);
 		const json = JSON.parse(readFileSync(reportJsonPath, "utf8")) as {
 			overall: string;
+			evidence?: {
+				contentFree: boolean;
+				releaseGatePassed: boolean;
+				evidenceKindCounts: { deterministic_fake_media: number };
+			};
 		};
 		expect(json.overall).toBe("pass");
+		expect(json.evidence).toMatchObject({
+			contentFree: true,
+			releaseGatePassed: false,
+		});
+		expect(
+			json.evidence?.evidenceKindCounts.deterministic_fake_media,
+		).toBeGreaterThan(0);
 		expect(readFileSync(reportMarkdownPath, "utf8")).toContain(
-			"Voice Workbench",
+			"Content-free realtime and device evidence",
 		);
 	});
 });

@@ -88,6 +88,17 @@ export function realDecisionLogicServices(): VoiceWorkbenchServices {
 	let clusterer = new OnlineSpeakerClusterer();
 
 	return {
+		evidence: {
+			lane: "logic",
+			providerPath: {
+				sttProvider: "deterministic",
+				modelProvider: "logic",
+				ttsProvider: "none",
+				transport: "local",
+				roundTrip: "unsupported",
+			},
+			requestedFrameDurationMs: 20,
+		},
 		async observeTurn({
 			audio,
 			sampleRate,

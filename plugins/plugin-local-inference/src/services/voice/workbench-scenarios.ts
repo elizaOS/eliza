@@ -795,6 +795,17 @@ export function groundTruthMockServices(
 	} = {},
 ): VoiceWorkbenchServices {
 	return {
+		evidence: {
+			lane: "mock",
+			providerPath: {
+				sttProvider: "deterministic",
+				modelProvider: "deterministic",
+				ttsProvider: "deterministic",
+				transport: "local",
+				roundTrip: "unsupported",
+			},
+			requestedFrameDurationMs: 20,
+		},
 		async observeTurn({
 			label,
 			groundTruth,
