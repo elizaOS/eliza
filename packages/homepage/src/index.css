@@ -1886,24 +1886,18 @@ body {
 .landing-demo-card-status {
   display: inline-flex;
   align-items: center;
-  gap: 0.3rem;
+  gap: 0.35rem;
   margin-top: 0.25rem;
   color: #5b5b60;
   font-size: 0.76rem;
   font-weight: 600;
 }
 
-.landing-demo-card-status::before {
-  display: inline-grid;
-  width: 0.9rem;
-  height: 0.9rem;
-  place-items: center;
-  border: 1px solid #8e8e93;
-  border-radius: 50%;
-  color: #5b5b60;
-  content: "✓";
-  font-size: 0.58rem;
-  line-height: 1;
+.landing-demo-card-status svg {
+  width: 0.82rem;
+  height: 0.82rem;
+  flex: 0 0 auto;
+  color: #6e6e73;
 }
 
 /* iOS-style keyboard shown while the demo user is typing */

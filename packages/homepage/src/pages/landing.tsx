@@ -211,7 +211,20 @@ function DemoCardBubble({ card }: { card: DemoCard }) {
         </span>
       ))}
       {card.status ? (
-        <span className="landing-demo-card-status">{card.status}</span>
+        <span className="landing-demo-card-status">
+          <svg
+            viewBox="0 0 16 16"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.8"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+          >
+            <path d="m3 8.3 3 3L13 4.7" />
+          </svg>
+          {card.status}
+        </span>
       ) : null}
     </div>
   );
