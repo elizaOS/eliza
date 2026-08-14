@@ -226,6 +226,12 @@ app.get("/", async (c) => {
         logger.warn("[twilio-media] voice session error", {
           code: frame.code,
           retryable: frame.retryable,
+          ...(frame.upstreamStatus
+            ? { upstreamStatus: frame.upstreamStatus }
+            : {}),
+          ...(frame.upstreamMessage
+            ? { upstreamMessage: frame.upstreamMessage }
+            : {}),
         });
       }
       if (frame.t === "stt_final") {
