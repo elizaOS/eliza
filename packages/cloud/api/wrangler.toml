@@ -340,9 +340,14 @@ TUNNEL_AUTH_KEY_COST_USD = "0.01"
 #                                      Generate with packages/cloud/scripts/admin/generate-oidc-keys.ts.
 #   OIDC_CLIENTS                       OIDC relying-party registry: JSON array; client
 #                                      secrets stored as sha256 hex only.
-#                                      NOTE: both are SECRETS on purpose — a wiped secret
-#                                      makes SSO fail closed (503) rather than serve an
-#                                      empty registry. OIDC_ENABLED / OIDC_ISSUER_URL are
+#                                      OIDC_SIGNING_JWKS and OIDC_CLIENTS are
+#                                      SECRETS on purpose: losing either makes
+#                                      SSO fail closed instead of serving an
+#                                      empty registry.
+#   OIDC_REDIRECT_URI_ALIASES          Public JSON object of client_id to additive
+#                                      exact HTTPS callbacks. It cannot create a
+#                                      client or change any protected registration.
+#                                      OIDC_ENABLED / OIDC_ISSUER_URL are
 #                                      committed [vars] below for the same reason inverted:
 #                                      losing them must not silently change the issuer.
 #                                      OIDC_WALLET_EMAIL_DOMAIN is a var for that same
@@ -681,6 +686,7 @@ ELIZA_FRONTEND_HOST_SUFFIX = "sites.eliza.app"
 # relying-party account link.
 OIDC_ENABLED = "true"
 OIDC_ISSUER_URL = "https://api.eliza.app"
+OIDC_REDIRECT_URI_ALIASES = '{"elizahub":["https://git.slop.cash/user/oauth2/elizacloud/callback"]}'
 # Pin the prod Steward tenant explicitly instead of leaning on the implicit
 # DEFAULT_STEWARD_TENANT_ID ("elizacloud") in steward-tenant-config.ts. That
 # implicit fallback is what the prod magic-link bug hinged on — make it explicit
