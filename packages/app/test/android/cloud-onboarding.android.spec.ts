@@ -269,6 +269,12 @@ async function runCloudOnboardingMode({
       label: `android-cloud-onboarding-${mode}`,
       prompt: challenge,
       challengeToken: extractLivenessChallengeToken(challenge),
+      // A freshly provisioned cloud agent's FIRST turn pays model + tool
+      // registration cold start and can exceed the 120s default (observed on
+      // a live run: the token-bearing reply rendered after the poll gave up).
+      // This widens only how long we wait — the token gate and row-phase
+      // classification are unchanged.
+      replyTimeoutMs: 300_000,
     });
     await testInfo.attach(`liveness reply (${mode})`, {
       body: reply,
