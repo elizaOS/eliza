@@ -20,6 +20,7 @@ export type PricingBillingSource =
   | "openai"
   | "anthropic"
   | "fal"
+  | "cartesia"
   | "elevenlabs"
   | "suno";
 

@@ -50,6 +50,10 @@ import {
 import { getElevenLabsService } from "@/lib/services/elevenlabs";
 import { usageService } from "@/lib/services/usage";
 import { logger } from "@/lib/utils/logger";
+import {
+  calculateCartesiaSttCost,
+  parseCartesiaUsdPerCredit,
+} from "./cartesia-pricing";
 import { resolveWhisperSttModel } from "./whisper-model";
 import {
   parseWhisperTimestamps,
@@ -62,6 +66,8 @@ const DEEPGRAM_PRERECORDED_MODEL = "nova-3";
 const CARTESIA_BATCH_STT_URL = "https://api.cartesia.ai/stt";
 const CARTESIA_BATCH_STT_MODEL = "ink-whisper";
 const CARTESIA_BATCH_STT_API_VERSION = "2026-03-01";
+const DEFAULT_CARTESIA_BATCH_STT_TIMEOUT_MS = 120_000;
+const MAX_CARTESIA_BATCH_STT_TIMEOUT_MS = 300_000;
 const STT_PRICING_PROXY_MODEL = "elevenlabs/scribe_v1";
 const DEFAULT_MAX_MULTIPART_BODY_BYTES = 25 * 1024 * 1024;
 const MAX_MULTIPART_BODY_BYTES_ENV = "VOICE_STT_MAX_MULTIPART_BYTES";
@@ -218,6 +224,7 @@ function parseDeepgramTranscription(
 }
 
 interface CartesiaTranscription {
+  durationSeconds: number;
   transcript: string;
   words?: SttTimedSpan[];
 }
@@ -234,15 +241,57 @@ function parseCartesiaTranscription(
     payload !== null && typeof payload === "object" && !Array.isArray(payload)
       ? (payload as Record<string, unknown>)
       : null;
-  if (!root || typeof root.text !== "string") return null;
+  if (
+    !root ||
+    typeof root.text !== "string" ||
+    typeof root.duration !== "number" ||
+    !Number.isFinite(root.duration) ||
+    root.duration <= 0
+  ) {
+    return null;
+  }
 
   const words = parseDeepgramArray(root.words, "word");
   if (words.invalid) return null;
 
   return {
+    durationSeconds: root.duration,
     transcript: root.text.trim(),
     ...(words.spans.length > 0 ? { words: words.spans } : {}),
   };
+}
+
+type BatchSttProvider = "cartesia" | "deepgram" | "elevenlabs" | "whisper";
+
+function parseBatchSttProvider(
+  value: string | undefined,
+): BatchSttProvider | undefined {
+  if (value === undefined) return undefined;
+  const provider = value.trim().toLowerCase();
+  if (
+    provider === "cartesia" ||
+    provider === "deepgram" ||
+    provider === "elevenlabs" ||
+    provider === "whisper"
+  ) {
+    return provider;
+  }
+  throw new Error("VOICE_BATCH_STT_PROVIDER is not a supported provider");
+}
+
+function parseCartesiaTimeoutMs(value: string | undefined): number {
+  if (value === undefined) return DEFAULT_CARTESIA_BATCH_STT_TIMEOUT_MS;
+  const parsed = Number(value);
+  if (
+    !Number.isSafeInteger(parsed) ||
+    parsed <= 0 ||
+    parsed > MAX_CARTESIA_BATCH_STT_TIMEOUT_MS
+  ) {
+    throw new Error(
+      `CARTESIA_BATCH_STT_TIMEOUT_MS must be an integer from 1 to ${MAX_CARTESIA_BATCH_STT_TIMEOUT_MS}`,
+    );
+  }
+  return parsed;
 }
 
 function parseSttMultipartBodyLimit(env: AppEnv["Bindings"]): number {
@@ -556,7 +605,17 @@ async function __hono_POST(c: AppContext) {
       }
     };
 
-    const batchSttProvider = env.VOICE_BATCH_STT_PROVIDER?.trim().toLowerCase();
+    let batchSttProvider: BatchSttProvider | undefined;
+    try {
+      batchSttProvider = parseBatchSttProvider(env.VOICE_BATCH_STT_PROVIDER);
+    } catch {
+      // error-policy:J1 invalid deployment configuration fails closed at the route boundary.
+      logger.error("[Voice STT API] Invalid batch provider configuration");
+      return Response.json(
+        { error: "Speech-to-text service is not configured" },
+        { status: 503 },
+      );
+    }
     const deepgramApiKey = env.DEEPGRAM_API_KEY?.trim();
     const cartesiaApiKey = env.CARTESIA_API_KEY?.trim();
     if (batchSttProvider === "deepgram" && !deepgramApiKey) {
@@ -781,12 +840,26 @@ async function __hono_POST(c: AppContext) {
     // -------------------------------------------------------------------------
     if (cartesiaApiKey && batchSttProvider === "cartesia") {
       const estimate = await getBillingEstimate();
-      const sttCost = await calculateSTTCostFromCatalog({
-        model: STT_PRICING_PROXY_MODEL,
+      let cartesiaUsdPerCredit: number;
+      let cartesiaTimeoutMs: number;
+      try {
+        cartesiaUsdPerCredit = parseCartesiaUsdPerCredit(
+          env.CARTESIA_STT_USD_PER_CREDIT,
+        );
+        cartesiaTimeoutMs = parseCartesiaTimeoutMs(
+          env.CARTESIA_BATCH_STT_TIMEOUT_MS,
+        );
+      } catch {
+        // error-policy:J1 invalid deployment configuration fails closed at the route boundary.
+        logger.error("[Voice STT API] Invalid Cartesia batch configuration");
+        return Response.json(
+          { error: "Speech-to-text service is not configured" },
+          { status: 503 },
+        );
+      }
+      const estimatedSttCost = calculateCartesiaSttCost({
         durationSeconds: estimate.durationSeconds,
-        ...(getGenerativePricingCacheOptions(c).cacheOnly
-          ? { cache: getGenerativePricingCacheOptions(c) }
-          : {}),
+        usdPerCredit: cartesiaUsdPerCredit,
       });
       const cartesiaBillingContext: BillingContext = {
         organizationId: user.organization_id,
@@ -794,18 +867,15 @@ async function __hono_POST(c: AppContext) {
         apiKeyId,
         model: CARTESIA_BATCH_STT_MODEL,
         provider: "cartesia",
-        billingSource: "elevenlabs",
+        billingSource: "cartesia",
         requestId: billingRequestId,
         affiliateCode,
         description: `STT transcription: ${estimate.estimatedDurationMinutes.toFixed(2)} min`,
-        metadata: {
-          pricingProxyProvider: "elevenlabs",
-          pricingProxyModel: STT_PRICING_PROXY_MODEL,
-        },
+        metadata: { pricingSource: "cartesia_account_credit_rate" },
       };
       const cartesiaAdmission = await reserveOr402(
         cartesiaBillingContext,
-        sttCost,
+        estimatedSttCost,
       );
       if (cartesiaAdmission instanceof Response) return cartesiaAdmission;
       reservation = cartesiaAdmission.reservation;
@@ -840,12 +910,11 @@ async function __hono_POST(c: AppContext) {
         cartesiaResponse = await fetch(CARTESIA_BATCH_STT_URL, {
           method: "POST",
           headers: {
-            // Cartesia authenticates REST requests with X-API-Key (same header
-            // the TTS bytes endpoint uses), NOT an Authorization bearer.
-            "X-API-Key": cartesiaApiKey,
+            Authorization: `Bearer ${cartesiaApiKey}`,
             "Cartesia-Version": CARTESIA_BATCH_STT_API_VERSION,
           },
           body: cartesiaForm,
+          signal: AbortSignal.timeout(cartesiaTimeoutMs),
         });
       } catch (error) {
         // error-policy:J1 provider transport failures translate at the route boundary.
@@ -853,9 +922,16 @@ async function __hono_POST(c: AppContext) {
         logger.error("[Voice STT API] Cartesia request failed", {
           errorType: error instanceof Error ? error.name : "unknown",
         });
+        const timedOut =
+          error instanceof Error &&
+          (error.name === "TimeoutError" || error.name === "AbortError");
         return Response.json(
-          { error: "Speech-to-text failed" },
-          { status: 502 },
+          {
+            error: timedOut
+              ? "Speech-to-text timed out"
+              : "Speech-to-text failed",
+          },
+          { status: timedOut ? 504 : 502 },
         );
       }
       if (!cartesiaResponse.ok) {
@@ -897,6 +973,10 @@ async function __hono_POST(c: AppContext) {
       }
 
       const cartesiaDuration = Date.now() - cartesiaStart;
+      const actualSttCost = calculateCartesiaSttCost({
+        durationSeconds: transcription.durationSeconds,
+        usdPerCredit: cartesiaUsdPerCredit,
+      });
       const billingReservation = reservation;
       reservation = undefined;
 
@@ -904,8 +984,8 @@ async function __hono_POST(c: AppContext) {
         billing: "paid",
         durationMs: cartesiaDuration,
         model: CARTESIA_BATCH_STT_MODEL,
-        pricingProxyModel: STT_PRICING_PROXY_MODEL,
         provider: "cartesia",
+        transcriptionDurationSeconds: transcription.durationSeconds,
         transcriptLength: transcription.transcript.length,
         wordCount: transcription.words?.length,
       });
@@ -914,7 +994,7 @@ async function __hono_POST(c: AppContext) {
         try {
           const billing = await billFlatUsage(
             cartesiaBillingContext,
-            sttCost,
+            actualSttCost,
             billingReservation,
           );
           billingApplied = true;
@@ -935,13 +1015,13 @@ async function __hono_POST(c: AppContext) {
             metadata: {
               audioSizeBytes: audioFile.size,
               estimatedDurationMinutes: estimate.estimatedDurationMinutes,
-              durationSeconds: estimate.durationSeconds,
+              estimatedDurationSeconds: estimate.durationSeconds,
+              durationSeconds: transcription.durationSeconds,
               languageCode,
               transcriptLength: transcription.transcript.length,
               baseTotalCost: billing.baseTotalCost,
-              billingSource: "elevenlabs",
-              pricingProxyProvider: "elevenlabs",
-              pricingProxyModel: STT_PRICING_PROXY_MODEL,
+              billingSource: "cartesia",
+              pricingSource: "cartesia_account_credit_rate",
               provider: "cartesia",
               model: CARTESIA_BATCH_STT_MODEL,
             },

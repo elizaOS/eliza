@@ -214,13 +214,17 @@ export interface Bindings {
   CEREBRAS_API_KEY?: string;
   /**
    * Batch STT provider override: `deepgram` | `cartesia` | `whisper` |
-   * `elevenlabs`. Unset → Cartesia when CARTESIA_API_KEY is configured, else
-   * Whisper, else ElevenLabs. Deepgram is never selected by key presence
-   * alone, and an override whose binding is missing fails the route closed.
+   * `elevenlabs`. Unset uses Whisper when configured, otherwise ElevenLabs.
+   * Paid providers are never selected by key presence alone, and an override
+   * whose required binding is missing fails the route closed.
    */
   VOICE_BATCH_STT_PROVIDER?: string;
   /** Opt-in prerecorded Deepgram STT key (server-held; never returned to clients). */
   DEEPGRAM_API_KEY?: string;
+  /** Effective USD price of one credit on the deployed Cartesia account. */
+  CARTESIA_STT_USD_PER_CREDIT?: string;
+  /** Cartesia batch STT request timeout in milliseconds (default 120000, max 300000). */
+  CARTESIA_BATCH_STT_TIMEOUT_MS?: string;
   /** BYOK OpenRouter key — the backup for models we have no native key for. */
   OPENROUTER_API_KEY?: string;
   OPENROUTER_BASE_URL?: string;
