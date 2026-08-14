@@ -145,6 +145,16 @@ export class TodosService extends Service {
         inArray(todosTable.status, ["pending", "in_progress"] as TodoStatus[]),
       );
     }
+
+    // Validate limit before building query
+    if (filter.limit !== undefined) {
+      if (!Number.isSafeInteger(filter.limit) || filter.limit <= 0) {
+        throw new Error(
+          `${TODOS_LOG_PREFIX} limit must be a positive integer; received ${filter.limit}`,
+        );
+      }
+    }
+
     const query = db
       .select()
       .from(todosTable)
