@@ -72,7 +72,34 @@ describe("AutoTopUpCard", () => {
     expect(apiMock).toHaveBeenCalledWith("/api/v1/billing/settings");
     expect(screen.getByText("Top-up amount")).toBeTruthy();
     expect(screen.getByText("Trigger threshold")).toBeTruthy();
+    expect(
+      screen.getByTestId("cloud-billing-auto-top-up-amount"),
+    ).toHaveProperty("value", "25");
+    expect(
+      screen.getByTestId("cloud-billing-auto-top-up-threshold"),
+    ).toHaveProperty("value", "10");
     expect(screen.getByRole("button", { name: /save/i })).toBeTruthy();
+  });
+
+  it("shows the amount error on the amount field when the value is below the limit", async () => {
+    apiMock.mockResolvedValueOnce(loadedSettings);
+
+    render(<AutoTopUpCard />);
+    const toggle = await screen.findByRole("switch");
+    fireEvent.click(toggle);
+    fireEvent.change(screen.getByTestId("cloud-billing-auto-top-up-amount"), {
+      target: { value: "1" },
+    });
+
+    const alert = await screen.findByRole("alert");
+    expect(alert.id).toBe("cloud-billing-auto-top-up-amount-error");
+    expect(alert.textContent).toMatch(/Enter at least/i);
+    const save = screen.getByRole("button", { name: /save/i });
+    expect(save).toHaveProperty("disabled", false);
+    fireEvent.click(save);
+    expect(document.activeElement).toBe(
+      screen.getByTestId("cloud-billing-auto-top-up-amount"),
+    );
   });
 
   it("keeps the toggle as draft until Save PUTs the autoTopUp payload", async () => {

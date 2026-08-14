@@ -30,7 +30,7 @@ describe("cloud billing auto-top-up enable switch", () => {
   it("leaves the multi-field BrandCard editor in place", () => {
     expect(source).toContain("BrandCard");
     expect(source).toContain("CornerBrackets");
-    expect(source).toContain("<NumericField");
+    expect(source).toContain("<SettingsInputRow");
     expect(source).toMatch(/Save/);
   });
 });
