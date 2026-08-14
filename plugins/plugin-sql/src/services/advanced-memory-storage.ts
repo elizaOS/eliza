@@ -174,6 +174,12 @@ function toDate(value: unknown, fallback?: Date): Date {
   return fallback ?? new Date();
 }
 
+function newerDate(current: Date | undefined, requested: Date | undefined): Date | undefined {
+  if (!current) return requested;
+  if (!requested) return current;
+  return requested.getTime() > current.getTime() ? requested : current;
+}
+
 function getMemoryText(memory: Memory): string {
   return typeof memory.content.text === "string" ? memory.content.text : "";
 }
@@ -428,6 +434,7 @@ export class AdvancedMemoryStorageService extends Service implements MemoryStora
       source: memory.source,
       semanticMetadata: memory.metadata,
       updatedAt: now.toISOString(),
+      lastAccessedAt: memory.lastAccessedAt?.toISOString(),
       accessCount: 0,
     });
     if (!advancedMemory) {
@@ -520,7 +527,7 @@ export class AdvancedMemoryStorageService extends Service implements MemoryStora
         source: updates.source ?? parsed.source,
         semanticMetadata: updates.metadata ?? parsed.metadata,
         updatedAt: updatedAt.toISOString(),
-        lastAccessedAt: (updates.lastAccessedAt ?? parsed.lastAccessedAt)?.toISOString(),
+        lastAccessedAt: newerDate(parsed.lastAccessedAt, updates.lastAccessedAt)?.toISOString(),
         accessCount: updates.accessCount ?? parsed.accessCount ?? 0,
       });
       if (!advancedMemory) {
