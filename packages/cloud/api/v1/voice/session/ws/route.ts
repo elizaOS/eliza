@@ -248,6 +248,7 @@ app.get("/", (c) => {
         agentId: claims.agentId,
         conversationId: claims.conversationId,
         tokenExpSeconds,
+        acousticInterruptPolicy: "confirmed_speech",
         cartesiaApiKey,
         cartesiaInkWebSocketFactory: createWorkerCartesiaInkFactory(),
         cartesiaVoiceId,

@@ -8,6 +8,60 @@
 
 declare module "@elizaos/shared" {
   export const REALTIME_VOICE_CLIENT_TRANSPORT: "realtime_voice";
+  export const REALTIME_VOICE_CLIENT_MESSAGE_ID_PREFIX: "voice:";
+  export const REALTIME_VOICE_INGRESS_HEADER: "X-Eliza-Realtime-Voice-Ingress";
+  export const REALTIME_VOICE_INGRESS_COMMITTED_V1: "committed-v1";
+  export function hasCommittedRealtimeVoiceIngress(headers: Headers): boolean;
+
+  export type VoiceOutputPolicy = "say" | "show" | "both" | "never_speak";
+
+  export type VoiceArtifactKind =
+    | "audio"
+    | "code"
+    | "data"
+    | "file"
+    | "image"
+    | "link";
+
+  export interface VoiceArtifactReference {
+    id: string;
+    kind: VoiceArtifactKind;
+    label: string;
+    mimeType?: string;
+    href?: string;
+  }
+
+  export type VoiceSpeechBlockReason =
+    | "never_speak"
+    | "show_only"
+    | "sensitive_content"
+    | "structured_speech"
+    | "structured_requires_spoken"
+    | "invalid_envelope"
+    | "empty";
+
+  export interface VoiceOutputEnvelope {
+    policy: VoiceOutputPolicy;
+    display: { markdown: string };
+    spoken?: string;
+    artifacts?: readonly VoiceArtifactReference[];
+  }
+
+  export interface VoiceOutputProjection {
+    displayMarkdown: string;
+    showDisplay: boolean;
+    speechText: string | null;
+    captions: string | null;
+    artifacts: readonly VoiceArtifactReference[];
+    speechBlockReason?: VoiceSpeechBlockReason;
+    usedStructuredSummary: boolean;
+    truncated: boolean;
+  }
+
+  export function projectVoiceOutput(
+    envelope: VoiceOutputEnvelope,
+    options?: { maxSpeechChars?: number },
+  ): VoiceOutputProjection;
 
   export interface CoinGeckoMarketRecord {
     id: string;

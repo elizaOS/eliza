@@ -20,9 +20,15 @@
  * decoding path, no live model.
  */
 
-import { REALTIME_VOICE_CLIENT_TRANSPORT } from "@elizaos/shared";
+import {
+  REALTIME_VOICE_CLIENT_MESSAGE_ID_PREFIX,
+  REALTIME_VOICE_CLIENT_TRANSPORT,
+  type VoiceOutputPolicy,
+} from "@elizaos/shared";
 
 export const VOICE_TRACE_HEADER = "X-Eliza-Voice-Trace-Id";
+export const VOICE_CLIENT_MESSAGE_ID_PREFIX = REALTIME_VOICE_CLIENT_MESSAGE_ID_PREFIX;
+export const MAX_VOICE_CLIENT_MESSAGE_ID_CHARS = 128;
 /** Scope headers so the configured endpoint routes the turn to the right agent. */
 export const VOICE_AGENT_HEADER = "X-Eliza-Agent-Id";
 export const VOICE_CONVERSATION_HEADER = "X-Eliza-Conversation-Id";
@@ -63,6 +69,17 @@ export interface ElizaSseBridgeResult {
   aborted: boolean;
   /** Successful model-selected VIEWS handoff carried by the terminal frame. */
   viewHandoff?: ElizaVoiceViewHandoff;
+  /**
+   * Optional, terminal-only speech policy. Display text stays the canonical
+   * `fullText`; this directive can never replace or hide persisted output.
+   */
+  outputDirective?: ElizaVoiceOutputDirective;
+}
+
+export interface ElizaVoiceOutputDirective {
+  policy: VoiceOutputPolicy;
+  /** Explicit concise speech; omitted means conservatively project fullText. */
+  spoken?: string;
 }
 
 export interface ElizaVoiceViewHandoff {
@@ -91,6 +108,30 @@ export class ElizaSseBridgeError extends Error {
 }
 
 /**
+ * Correlate the canonical chat request with its realtime voice turn. The same
+ * id is used by the local runtime's exact abort endpoint, so cancellation can
+ * target one request without guessing from room-level activity.
+ */
+export function voiceClientMessageIdForTrace(traceId: string): string {
+  const normalized = traceId.trim();
+  const clientMessageId = `${VOICE_CLIENT_MESSAGE_ID_PREFIX}${normalized}`;
+  if (
+    normalized.length === 0 ||
+    normalized !== traceId ||
+    clientMessageId.length > MAX_VOICE_CLIENT_MESSAGE_ID_CHARS
+  ) {
+    throw new ElizaSseBridgeError(
+      "Eliza voice trace cannot be represented as a client message id",
+      "protocol_error",
+      undefined,
+      undefined,
+      false,
+    );
+  }
+  return clientMessageId;
+}
+
+/**
  * Stream LLM text deltas for a turn. Invokes `onDelta` for each non-empty
  * content token as it arrives. Resolves on an explicit terminal frame or abort;
  * an unframed EOF is a protocol failure because it cannot authorize snapshots.
@@ -100,6 +141,7 @@ export async function streamElizaConversation(
   onDelta: (text: string) => void,
 ): Promise<ElizaSseBridgeResult> {
   const fetchImpl = request.fetchImpl ?? fetch;
+  const clientMessageId = voiceClientMessageIdForTrace(request.traceId);
   let response: Response;
   try {
     const endpoint = canonicalConversationStreamUrl(
@@ -127,6 +169,7 @@ export async function streamElizaConversation(
       // sharedRestMessageSend/bridgeStream executes and persists this turn.
       body: JSON.stringify({
         text: request.transcript,
+        clientMessageId,
         metadata: {
           clientTransport: REALTIME_VOICE_CLIENT_TRANSPORT,
         },
@@ -195,7 +238,7 @@ export async function streamElizaConversation(
     pendingProvisionalText = null;
     if (!authoritativeText.startsWith(emittedText)) {
       throw new ElizaSseBridgeError(
-        "Eliza agent authoritative reply diverged from text already sent to speech",
+        "Eliza agent authoritative reply diverged from text already emitted by the canonical stream",
         "protocol_error",
       );
     }
@@ -262,10 +305,13 @@ export async function streamElizaConversation(
         if (payload === "[DONE]" || eventType === "done" || payloadType === "done") {
           finishAuthoritativeText(payload);
           const viewHandoff = payload === "[DONE]" ? null : extractViewHandoff(payload);
+          const outputDirective =
+            payload === "[DONE]" ? null : extractVoiceOutputDirective(payload);
           return {
             completed: true,
             aborted: false,
             ...(viewHandoff ? { viewHandoff } : {}),
+            ...(outputDirective ? { outputDirective } : {}),
           };
         }
         if (eventType === "error" || payloadType === "error") {
@@ -488,7 +534,7 @@ function extractTerminalText(payload: string): {
   } catch (ignoredError) {
     void ignoredError;
     // error-policy:J3 terminal SSE text is untrusted; malformed JSON cannot
-    // become speakable content.
+    // become authoritative output.
     return { present: false, text: "" };
   }
   if (!isRecord(parsed)) return { present: false, text: "" };
@@ -538,6 +584,58 @@ function extractViewHandoff(payload: string): ElizaVoiceViewHandoff | null {
     };
   }
   return null;
+}
+
+const VOICE_OUTPUT_POLICIES = new Set<VoiceOutputPolicy>(["say", "show", "both", "never_speak"]);
+const MAX_EXPLICIT_SPOKEN_TEXT_CHARS = 2_000;
+
+/**
+ * Read the additive terminal `voiceOutput` directive. The canonical route does
+ * not emit it for legacy turns, which intentionally defaults at the session
+ * boundary. If the field is present it must be fully valid; malformed policy
+ * must never degrade to speech-enabled behavior.
+ */
+function extractVoiceOutputDirective(payload: string): ElizaVoiceOutputDirective | null {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(payload);
+  } catch (ignoredError) {
+    void ignoredError;
+    // The terminal parser already rejects malformed terminal semantics. This
+    // field has no meaning on a non-object payload.
+    return null;
+  }
+  if (!isRecord(parsed) || !("voiceOutput" in parsed)) return null;
+  const directive = parsed.voiceOutput;
+  if (!isRecord(directive)) {
+    throw new ElizaSseBridgeError(
+      "Eliza agent terminal voiceOutput directive is invalid",
+      "protocol_error",
+      undefined,
+      undefined,
+      false,
+    );
+  }
+  const policy = directive.policy;
+  const spoken = directive.spoken;
+  if (
+    typeof policy !== "string" ||
+    !VOICE_OUTPUT_POLICIES.has(policy as VoiceOutputPolicy) ||
+    (spoken !== undefined &&
+      (typeof spoken !== "string" || spoken.length > MAX_EXPLICIT_SPOKEN_TEXT_CHARS))
+  ) {
+    throw new ElizaSseBridgeError(
+      "Eliza agent terminal voiceOutput directive is invalid",
+      "protocol_error",
+      undefined,
+      undefined,
+      false,
+    );
+  }
+  return {
+    policy: policy as VoiceOutputPolicy,
+    ...(typeof spoken === "string" ? { spoken } : {}),
+  };
 }
 
 function readBoundedString(value: unknown): string | null {
