@@ -16,7 +16,14 @@ import * as React from "react";
 import { useAgentElement } from "../../agent-surface";
 import { cn } from "../../lib/utils";
 import { Button, type ButtonProps } from "../ui/button";
-import { Select, SelectContent, SelectItem, SelectValue } from "../ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectLabel,
+  SelectValue,
+} from "../ui/select";
 import {
   SettingsInput,
   type SettingsInputVariant,
@@ -103,6 +110,13 @@ export function SettingsSwitchRow({
 export interface SettingsSelectRowOption {
   value: string;
   label: React.ReactNode;
+  /** Optional descriptive text below the label. */
+  hint?: React.ReactNode;
+}
+
+export interface SettingsSelectRowGroup {
+  label: React.ReactNode;
+  items: SettingsSelectRowOption[];
 }
 
 export interface SettingsSelectRowProps {
@@ -114,11 +128,22 @@ export interface SettingsSelectRowProps {
   iconClassName?: string;
   value: string;
   onValueChange: (value: string) => void;
-  options: SettingsSelectRowOption[];
+  /** Flat options array. For grouped options, use `optionGroups` instead. */
+  options?: SettingsSelectRowOption[];
+  /** Grouped options. Mutually exclusive with `options`. */
+  optionGroups?: SettingsSelectRowGroup[];
   placeholder?: string;
   disabled?: boolean;
   group?: string;
   triggerClassName?: string;
+  /** Optional data-testid for the select trigger. */
+  testId?: string;
+  /** Optional trailing action button (e.g. preview, test). */
+  trailingAction?: {
+    node: React.ReactNode;
+    onClick: () => void;
+    disabled?: boolean;
+  };
 }
 
 export function SettingsSelectRow({
@@ -131,12 +156,21 @@ export function SettingsSelectRow({
   value,
   onValueChange,
   options,
+  optionGroups,
   placeholder,
   disabled = false,
   group = "settings",
   triggerClassName,
+  testId,
+  trailingAction,
 }: SettingsSelectRowProps) {
   const resolvedLabel = agentLabel ?? labelToString(label, agentId);
+
+  // Flatten options for agent surface
+  const flatOptions = optionGroups
+    ? optionGroups.flatMap((g) => g.items.map((item) => item.value))
+    : (options?.map((option) => option.value) ?? []);
+
   const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
     id: agentId,
     role: "select",
@@ -144,10 +178,85 @@ export function SettingsSelectRow({
     group,
     description: typeof description === "string" ? description : undefined,
     status: value || undefined,
-    options: options.map((option) => option.value),
+    options: flatOptions,
     getValue: () => value,
     onFill: disabled ? undefined : (next: string) => onValueChange(next),
   });
+
+  const selectContent = (
+    <Select value={value} onValueChange={onValueChange} disabled={disabled}>
+      <SettingsSelectTrigger
+        ref={ref}
+        variant="touch"
+        className={triggerClassName}
+        aria-label={resolvedLabel}
+        data-testid={testId}
+        {...agentProps}
+      >
+        <SelectValue placeholder={placeholder} />
+      </SettingsSelectTrigger>
+      <SelectContent>
+        {optionGroups
+          ? optionGroups.map((optGroup) => (
+              <SelectGroup key={typeof optGroup.label === "string" ? optGroup.label : "group"}>
+                <SelectLabel className="px-2.5 py-1 text-2xs font-semibold text-muted">
+                  {optGroup.label}
+                </SelectLabel>
+                {optGroup.items.map((item) => (
+                  <SelectItem
+                    key={item.value}
+                    value={item.value}
+                    textValue={typeof item.label === "string" ? item.label : item.value}
+                  >
+                    <div className="flex w-full items-center justify-between gap-2">
+                      <span className="font-semibold">{item.label}</span>
+                      {item.hint ? (
+                        <span className="text-muted text-xs">{item.hint}</span>
+                      ) : null}
+                    </div>
+                  </SelectItem>
+                ))}
+              </SelectGroup>
+            ))
+          : options?.map((option) => (
+              <SelectItem key={option.value} value={option.value}>
+                <div className="flex w-full items-center justify-between gap-2">
+                  <span className="font-semibold">{option.label}</span>
+                  {option.hint ? (
+                    <span className="text-muted text-xs">{option.hint}</span>
+                  ) : null}
+                </div>
+              </SelectItem>
+            ))}
+      </SelectContent>
+    </Select>
+  );
+
+  if (trailingAction) {
+    return (
+      <SettingsRow
+        icon={icon}
+        iconClassName={iconClassName}
+        label={label}
+        description={description}
+        stacked
+      >
+        <div className="flex items-center gap-2">
+          {selectContent}
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="h-11 w-11 shrink-0 rounded-md"
+            onClick={trailingAction.onClick}
+            disabled={trailingAction.disabled ?? disabled}
+          >
+            {trailingAction.node}
+          </Button>
+        </div>
+      </SettingsRow>
+    );
+  }
 
   return (
     <SettingsRow
@@ -157,24 +266,7 @@ export function SettingsSelectRow({
       description={description}
       stacked
     >
-      <Select value={value} onValueChange={onValueChange} disabled={disabled}>
-        <SettingsSelectTrigger
-          ref={ref}
-          variant="touch"
-          className={triggerClassName}
-          aria-label={resolvedLabel}
-          {...agentProps}
-        >
-          <SelectValue placeholder={placeholder} />
-        </SettingsSelectTrigger>
-        <SelectContent>
-          {options.map((option) => (
-            <SelectItem key={option.value} value={option.value}>
-              {option.label}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
+      {selectContent}
     </SettingsRow>
   );
 }
@@ -294,6 +386,8 @@ export interface SettingsInputRowProps {
   group?: string;
   className?: string;
   inputClassName?: string;
+  /** Optional data-testid for the input element. */
+  testId?: string;
 }
 
 /** A labelled text/number field that the agent can read and fill from chat. */
@@ -315,6 +409,7 @@ export function SettingsInputRow({
   group = "settings",
   className,
   inputClassName,
+  testId,
 }: SettingsInputRowProps) {
   const resolvedLabel = agentLabel ?? labelToString(label, agentId);
   const { ref, agentProps } = useAgentElement<HTMLInputElement>({
@@ -347,6 +442,7 @@ export function SettingsInputRow({
         autoComplete={autoComplete}
         disabled={disabled}
         aria-label={resolvedLabel}
+        data-testid={testId}
         className={inputClassName}
         {...agentProps}
       />

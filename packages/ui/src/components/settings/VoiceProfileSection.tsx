@@ -29,8 +29,7 @@ import { Button } from "../ui/button";
 import { Checkbox } from "../ui/checkbox";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
-import { Select, SelectContent, SelectItem, SelectValue } from "../ui/select";
-import { SettingsSelectTrigger } from "../ui/settings-controls";
+import { SettingsInputRow, SettingsSelectRow } from "./settings-agent-rows";
 
 export interface VoiceProfileSectionProps {
   /** Adapter supplied by the parent that holds the `ElizaClient`. */
@@ -156,33 +155,17 @@ function VoiceProfileLifecycleEditor({
 
       {!profile.isOwner && mergeTargets.length > 0 ? (
         <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
-          <div className="grid gap-1.5">
-            <Label htmlFor={`voice-profile-merge-${profile.id}`}>
-              {t("voiceprofile.merge.target", {
-                defaultValue: "Merge into",
-              })}
-            </Label>
-            <Select value={mergeIntoId} onValueChange={setMergeIntoId}>
-              <SettingsSelectTrigger
-                id={`voice-profile-merge-${profile.id}`}
-                className="min-h-11"
-                data-testid={`voice-profile-merge-target-${profile.id}`}
-              >
-                <SelectValue
-                  placeholder={t("voiceprofile.merge.choose", {
-                    defaultValue: "Choose destination profile",
-                  })}
-                />
-              </SettingsSelectTrigger>
-              <SelectContent>
-                {mergeTargets.map((candidate) => (
-                  <SelectItem key={candidate.id} value={candidate.id}>
-                    {candidate.displayName}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+          <SettingsSelectRow
+            agentId={`voice-profile-merge-target-${profile.id}`}
+            label={t("voiceprofile.merge.target", { defaultValue: "Merge into" })}
+            value={mergeIntoId}
+            onValueChange={setMergeIntoId}
+            placeholder={t("voiceprofile.merge.choose", { defaultValue: "Choose destination profile" })}
+            options={mergeTargets.map((candidate) => ({ value: candidate.id, label: candidate.displayName }))}
+            triggerClassName="min-h-11"
+            testId={`voice-profile-merge-target-${profile.id}`}
+            disabled={pending}
+          />
           <Button
             type="button"
             variant="secondary"
@@ -268,32 +251,28 @@ function VoiceProfileLifecycleEditor({
       {!profile.entityId ? (
         <div className="grid gap-2">
           <div className="grid gap-2 sm:grid-cols-2">
-            <div className="grid gap-1.5">
-              <Label htmlFor={`voice-profile-entity-${profile.id}`}>
-                {t("voiceprofile.bind.entity", { defaultValue: "Entity ID" })}
-              </Label>
-              <Input
-                id={`voice-profile-entity-${profile.id}`}
-                value={entityId}
-                onChange={(event) => setEntityId(event.target.value)}
-                className="h-11"
-                data-testid={`voice-profile-bind-entity-${profile.id}`}
-              />
-            </div>
-            <div className="grid gap-1.5">
-              <Label htmlFor={`voice-profile-entity-label-${profile.id}`}>
-                {t("voiceprofile.bind.label", {
-                  defaultValue: "Binding label (optional)",
-                })}
-              </Label>
-              <Input
-                id={`voice-profile-entity-label-${profile.id}`}
-                value={entityLabel}
-                onChange={(event) => setEntityLabel(event.target.value)}
-                className="h-11"
-                data-testid={`voice-profile-bind-label-${profile.id}`}
-              />
-            </div>
+            <SettingsInputRow
+              agentId={`voice-profile-bind-entity-${profile.id}`}
+              label={t("voiceprofile.bind.entity", { defaultValue: "Entity ID" })}
+              value={entityId}
+              onValueChange={setEntityId}
+              disabled={pending}
+              group="voice-profiles"
+              inputClassName="h-11"
+              testId={`voice-profile-bind-entity-${profile.id}`}
+            />
+            <SettingsInputRow
+              agentId={`voice-profile-bind-label-${profile.id}`}
+              label={t("voiceprofile.bind.label", {
+                defaultValue: "Binding label (optional)",
+              })}
+              value={entityLabel}
+              onValueChange={setEntityLabel}
+              disabled={pending}
+              group="voice-profiles"
+              inputClassName="h-11"
+              testId={`voice-profile-bind-label-${profile.id}`}
+            />
           </div>
           <Button
             type="button"
@@ -389,24 +368,6 @@ const VoiceProfileRow = React.memo(function VoiceProfileRow({
       group: "voice-profiles-list",
       getValue: () => renameValue,
       onFill: setRenameValue,
-    });
-  const { ref: relationshipRef, agentProps: relationshipAgentProps } =
-    useAgentElement<HTMLButtonElement>({
-      id: `voice-profile-relationship-${profile.id}`,
-      role: "select",
-      label: t("voiceprofile.setRelationship", {
-        defaultValue: "Set relationship",
-      }),
-      group: "voice-profiles-list",
-      getValue: () => profile.relationshipLabel ?? NO_RELATIONSHIP_VALUE,
-      onFill: (value) =>
-        void dispatch({
-          type: "set-relationship",
-          id: profile.id,
-          relationshipLabel:
-            value && value !== NO_RELATIONSHIP_VALUE ? value : null,
-        }),
-      options: [NO_RELATIONSHIP_VALUE, ...COMMON_RELATIONSHIPS],
     });
   const { ref: renameBtnRef, agentProps: renameBtnAgentProps } =
     useAgentElement<HTMLButtonElement>({
@@ -536,7 +497,11 @@ const VoiceProfileRow = React.memo(function VoiceProfileRow({
           {!profile.isOwner ? (
             <>
               <div className="w-full sm:w-36">
-                <Select
+                <SettingsSelectRow
+                  agentId={`voice-profile-relationship-${profile.id}`}
+                  label={t("voiceprofile.setRelationship", {
+                    defaultValue: "Set relationship",
+                  })}
                   value={profile.relationshipLabel ?? NO_RELATIONSHIP_VALUE}
                   onValueChange={(value) =>
                     void dispatch({
@@ -546,32 +511,21 @@ const VoiceProfileRow = React.memo(function VoiceProfileRow({
                         value === NO_RELATIONSHIP_VALUE ? null : value,
                     })
                   }
-                >
-                  <SettingsSelectTrigger
-                    ref={relationshipRef}
-                    variant="soft"
-                    className="min-h-11"
-                    data-testid={`voice-profile-relationship-select-${profile.id}`}
-                    aria-label={t("voiceprofile.setRelationship", {
-                      defaultValue: "Set relationship",
-                    })}
-                    {...relationshipAgentProps}
-                  >
-                    <SelectValue />
-                  </SettingsSelectTrigger>
-                  <SelectContent>
-                    <SelectItem value={NO_RELATIONSHIP_VALUE}>
-                      {t("voiceprofile.noLabel", {
+                  options={[
+                    {
+                      value: NO_RELATIONSHIP_VALUE,
+                      label: t("voiceprofile.noLabel", {
                         defaultValue: "(no label)",
-                      })}
-                    </SelectItem>
-                    {COMMON_RELATIONSHIPS.map((relationship) => (
-                      <SelectItem key={relationship} value={relationship}>
-                        {relationship}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                      }),
+                    },
+                    ...COMMON_RELATIONSHIPS.map((relationship) => ({
+                      value: relationship,
+                      label: relationship,
+                    })),
+                  ]}
+                  triggerClassName="min-h-11"
+                  testId={`voice-profile-relationship-select-${profile.id}`}
+                />
               </div>
               <Button
                 ref={renameBtnRef}
