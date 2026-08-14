@@ -101,6 +101,7 @@ export default function ConnectedPage() {
   const [isLinkingPhone, setIsLinkingPhone] = useState(false);
 
   const countryOptions = useCountryOptions();
+  const whatsappHref = buildElizaWhatsAppHref();
 
   const getFullPhoneNumber = useCallback(() => {
     return buildFullPhoneNumber(phoneValue, selectedCountry, countryOptions);
@@ -171,7 +172,8 @@ export default function ConnectedPage() {
   };
 
   const handleCopyWhatsApp = async () => {
-    await navigator.clipboard.writeText(buildElizaWhatsAppHref());
+    if (!whatsappHref) return;
+    await navigator.clipboard.writeText(whatsappHref);
     setCopiedWhatsApp(true);
     setTimeout(() => setCopiedWhatsApp(false), 2000);
   };
@@ -190,7 +192,7 @@ export default function ConnectedPage() {
   };
 
   const handleOpenWhatsApp = () => {
-    window.open(buildElizaWhatsAppHref(), "_blank");
+    if (whatsappHref) window.open(whatsappHref, "_blank");
   };
 
   const handleOpenMessages = () => {
@@ -554,12 +556,56 @@ export default function ConnectedPage() {
             </div>
           )}
 
-          {user.whatsapp_id ? (
-            <div className="w-full h-[72px] bg-white hover:bg-black hover:text-white text-black flex items-center px-5 transition-colors group">
+          {whatsappHref &&
+            (user.whatsapp_id ? (
+              <div className="w-full h-[72px] bg-white hover:bg-black hover:text-white text-black flex items-center px-5 transition-colors group">
+                <button
+                  type="button"
+                  onClick={handleOpenWhatsApp}
+                  className="flex h-full min-w-0 flex-1 cursor-pointer items-center gap-4 border-0 bg-transparent p-0 text-left text-black group-hover:text-white"
+                >
+                  <div className="w-8 h-8 shrink-0 flex items-center justify-center">
+                    <WhatsAppIcon className="size-8 text-[#25D366]" />
+                  </div>
+                  <div className="flex flex-col items-start flex-1">
+                    <span className="text-lg font-medium">
+                      {t("homepage_eliza.connected.whatsappLabel", {
+                        defaultValue: "WhatsApp",
+                      })}
+                    </span>
+                    <span className="text-sm text-black/70 group-hover:text-white/80">
+                      {user.whatsapp_name ||
+                        t("homepage_eliza.connected.openWhatsapp", {
+                          defaultValue: "Open WhatsApp",
+                        })}
+                    </span>
+                  </div>
+                </button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleCopyWhatsApp();
+                  }}
+                  className="shrink-0 text-black/70 group-hover:text-white/80 hover:text-white hover:bg-white/10"
+                  title={t("homepage_eliza.connected.copyWhatsappTitle", {
+                    defaultValue: "Copy WhatsApp link",
+                  })}
+                >
+                  {copiedWhatsApp ? (
+                    <Check className="size-5 text-green-400" />
+                  ) : (
+                    <Copy className="size-5" />
+                  )}
+                </Button>
+              </div>
+            ) : (
               <button
                 type="button"
+                className="w-full h-[72px] bg-white hover:bg-black hover:text-white text-black flex items-center gap-4 px-5 cursor-pointer transition-colors"
                 onClick={handleOpenWhatsApp}
-                className="flex h-full min-w-0 flex-1 cursor-pointer items-center gap-4 border-0 bg-transparent p-0 text-left text-black group-hover:text-white"
               >
                 <div className="w-8 h-8 shrink-0 flex items-center justify-center">
                   <WhatsAppIcon className="size-8 text-[#25D366]" />
@@ -570,52 +616,9 @@ export default function ConnectedPage() {
                       defaultValue: "WhatsApp",
                     })}
                   </span>
-                  <span className="text-sm text-black/70 group-hover:text-white/80">
-                    {user.whatsapp_name ||
-                      t("homepage_eliza.connected.openWhatsapp", {
-                        defaultValue: "Open WhatsApp",
-                      })}
-                  </span>
                 </div>
               </button>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleCopyWhatsApp();
-                }}
-                className="shrink-0 text-black/70 group-hover:text-white/80 hover:text-white hover:bg-white/10"
-                title={t("homepage_eliza.connected.copyWhatsappTitle", {
-                  defaultValue: "Copy WhatsApp link",
-                })}
-              >
-                {copiedWhatsApp ? (
-                  <Check className="size-5 text-green-400" />
-                ) : (
-                  <Copy className="size-5" />
-                )}
-              </Button>
-            </div>
-          ) : (
-            <button
-              type="button"
-              className="w-full h-[72px] bg-white hover:bg-black hover:text-white text-black flex items-center gap-4 px-5 cursor-pointer transition-colors"
-              onClick={handleOpenWhatsApp}
-            >
-              <div className="w-8 h-8 shrink-0 flex items-center justify-center">
-                <WhatsAppIcon className="size-8 text-[#25D366]" />
-              </div>
-              <div className="flex flex-col items-start flex-1">
-                <span className="text-lg font-medium">
-                  {t("homepage_eliza.connected.whatsappLabel", {
-                    defaultValue: "WhatsApp",
-                  })}
-                </span>
-              </div>
-            </button>
-          )}
+            ))}
 
           {user.discord_id ? (
             <div className="w-full h-[72px] bg-white hover:bg-black hover:text-white text-black flex items-center px-5 transition-colors group">

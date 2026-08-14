@@ -738,6 +738,7 @@ export default function GetStartedPage() {
   });
 
   const countryOptions = useCountryOptions();
+  const whatsappNumber = getWhatsAppNumber();
 
   const hasPhoneNumber = phoneValue.trim().length > 0;
 
@@ -884,7 +885,7 @@ export default function GetStartedPage() {
       } else if (methodParam === "discord") {
         setSelectedMethod("discord");
         handleDiscordOAuthRedirect();
-      } else if (methodParam === "whatsapp") {
+      } else if (methodParam === "whatsapp" && whatsappNumber) {
         setSelectedMethod("whatsapp");
         setStep("WHATSAPP_DIRECT");
       }
@@ -901,6 +902,7 @@ export default function GetStartedPage() {
     isLinkMode,
     handleDiscordOAuthRedirect,
     t,
+    whatsappNumber,
   ]);
 
   useEffect(() => {
@@ -985,7 +987,7 @@ export default function GetStartedPage() {
       if (!handleDiscordOAuthRedirect()) {
         setSelectedMethod(null);
       }
-    } else if (method === "whatsapp") {
+    } else if (method === "whatsapp" && whatsappNumber) {
       setStep("WHATSAPP_DIRECT");
     } else if (method === "solana") {
       void handleSolanaConnect();
@@ -1548,23 +1550,25 @@ export default function GetStartedPage() {
                   </div>
                 </button>
 
-                <button
-                  type="button"
-                  onClick={() => handleMethodSelect("whatsapp")}
-                  className={`w-full h-16 ${GLASS_TILE} hover:bg-white/60 rounded-full transition-colors flex items-center gap-4 pl-2.5 pr-6 cursor-pointer`}
-                  style={cardStyle(2)}
-                >
-                  <div className="size-11 rounded-full bg-white/60 flex items-center justify-center shrink-0">
-                    <WhatsAppIcon className="size-6 text-[#25D366]" />
-                  </div>
-                  <div className="flex-1 text-left">
-                    <p className="font-medium text-neutral-900">
-                      {t("homepage_eliza.getStarted.btnWhatsapp", {
-                        defaultValue: "WhatsApp",
-                      })}
-                    </p>
-                  </div>
-                </button>
+                {whatsappNumber && (
+                  <button
+                    type="button"
+                    onClick={() => handleMethodSelect("whatsapp")}
+                    className={`w-full h-16 ${GLASS_TILE} hover:bg-white/60 rounded-full transition-colors flex items-center gap-4 pl-2.5 pr-6 cursor-pointer`}
+                    style={cardStyle(2)}
+                  >
+                    <div className="size-11 rounded-full bg-white/60 flex items-center justify-center shrink-0">
+                      <WhatsAppIcon className="size-6 text-[#25D366]" />
+                    </div>
+                    <div className="flex-1 text-left">
+                      <p className="font-medium text-neutral-900">
+                        {t("homepage_eliza.getStarted.btnWhatsapp", {
+                          defaultValue: "WhatsApp",
+                        })}
+                      </p>
+                    </div>
+                  </button>
+                )}
 
                 <button
                   type="button"
@@ -1833,7 +1837,7 @@ export default function GetStartedPage() {
             </>
           )}
 
-          {step === "WHATSAPP_DIRECT" && (
+          {step === "WHATSAPP_DIRECT" && whatsappNumber && (
             <>
               <div
                 className={`w-16 h-16 rounded-full ${GLASS_TILE} flex items-center justify-center mb-6`}
@@ -1855,7 +1859,7 @@ export default function GetStartedPage() {
 
               <Button
                 onClick={() => {
-                  const waNumber = getWhatsAppNumber().replace(/\D/g, "");
+                  const waNumber = whatsappNumber.replace(/\D/g, "");
                   window.open(`https://wa.me/${waNumber}`, "_blank");
                 }}
                 className="w-full h-[52px] rounded-full bg-neutral-900 hover:bg-neutral-800 text-white font-medium gap-2"
