@@ -93,6 +93,26 @@ function feed(events: LifeOpsCalendarEvent[] = [EVENT]): LifeOpsCalendarFeed {
   };
 }
 
+function requireOrderedCalendarWindow(
+  request: Record<string, unknown> | undefined,
+): void {
+  const min = request?.timeMin;
+  const max = request?.timeMax;
+  if (
+    typeof min !== "string" ||
+    typeof max !== "string" ||
+    !Number.isFinite(Date.parse(min)) ||
+    !Number.isFinite(Date.parse(max)) ||
+    Date.parse(min) >= Date.parse(max)
+  ) {
+    throw new CalendarServiceError(
+      400,
+      "Calendar windows require an ordered pair.",
+      "CALENDAR_WINDOW_INVALID",
+    );
+  }
+}
+
 function message(text: string): Memory {
   return {
     id: MESSAGE_ID,
@@ -235,19 +255,21 @@ describe("CALENDAR effect receipt settlement", () => {
       text: "Approval request calendar-approval-request-1 is ready.",
     };
     const schedule = vi.fn(async () => approval);
+    const getCalendarFeed = vi.fn(async () => feed([]));
+    const prepareCalendarEventCreate = vi.fn(
+      async (_url: URL, request: Record<string, unknown>) => ({
+        ...request,
+        side: "owner" as const,
+        grantId: "connector-account:calendar-owner",
+        calendarId: "primary",
+        startAt: "2026-07-28T22:00:00.000Z",
+        endAt: "2026-07-28T22:30:00.000Z",
+        timeZone: "UTC",
+      }),
+    );
     const service = {
-      getCalendarFeed: vi.fn(async () => feed([])),
-      prepareCalendarEventCreate: vi.fn(
-        async (_url: URL, request: Record<string, unknown>) => ({
-          ...request,
-          side: "owner" as const,
-          grantId: "connector-account:calendar-owner",
-          calendarId: "primary",
-          startAt: "2026-07-28T22:00:00.000Z",
-          endAt: "2026-07-28T22:30:00.000Z",
-          timeZone: "UTC",
-        }),
-      ),
+      getCalendarFeed,
+      prepareCalendarEventCreate,
     };
     const action = createCalendarActionRunner(
       deps({
@@ -268,6 +290,7 @@ describe("CALENDAR effect receipt settlement", () => {
         subaction: "create_event",
         title: "School pickup",
         details: {
+          calendarId: "  Default  ",
           startAt: "2026-07-28T22:00:00.000Z",
           endAt: "2026-07-28T22:30:00.000Z",
           timeZone: "UTC",
@@ -277,6 +300,14 @@ describe("CALENDAR effect receipt settlement", () => {
     });
 
     expect(schedule, JSON.stringify(result)).toHaveBeenCalledOnce();
+    expect(getCalendarFeed).toHaveBeenCalledWith(
+      expect.any(URL),
+      expect.objectContaining({ calendarId: undefined }),
+    );
+    expect(prepareCalendarEventCreate).toHaveBeenCalledWith(
+      expect.any(URL),
+      expect.objectContaining({ calendarId: undefined }),
+    );
     expect(result.effectReceipts, JSON.stringify(result)).toEqual([
       expect.objectContaining({
         operation: "calendar.approval.schedule_event",
@@ -442,7 +473,14 @@ describe("CALENDAR effect receipt settlement", () => {
       title: "Eat two sandwiches",
       metadata: { etag: '"eliza-2"', version: 2 },
     };
-    const getCalendarFeed = vi.fn(async () => feed([ELIZA_EVENT]));
+    const lookupRequests: Record<string, unknown>[] = [];
+    const getCalendarFeed = vi.fn(
+      async (_url: URL, request?: Record<string, unknown>) => {
+        requireOrderedCalendarWindow(request);
+        lookupRequests.push(request ?? {});
+        return feed([ELIZA_EVENT]);
+      },
+    );
     const getConditionalCalendarMutationTarget = vi.fn();
     const updateCalendarEvent = vi.fn(async () => updatedEvent);
     const service = {
@@ -466,6 +504,8 @@ describe("CALENDAR effect receipt settlement", () => {
         details: {
           eventId: "unknown",
           grantId: "unknown",
+          timeMin: "2026-08-05T10:00:00Z",
+          timeMax: "2026-08-05T09:00:00Z",
           oldTitle: "Eat a sandwich",
           newTitle: "Eat two sandwiches",
         },
@@ -474,6 +514,17 @@ describe("CALENDAR effect receipt settlement", () => {
     });
 
     expect(getCalendarFeed).toHaveBeenCalledOnce();
+    // A rejected planner window is ABSENT, not "provided but unusable": the
+    // lookup has to fall through to the wide by-title range (-365d..+5y), not
+    // the 30-day search default, or an event a couple of months out silently
+    // resolves to "not found".
+    expect(
+      Date.parse(lookupRequests[0]?.timeMax as string) -
+        Date.parse(lookupRequests[0]?.timeMin as string),
+    ).toBeGreaterThan(365 * 24 * 60 * 60 * 1000);
+    expect(Date.parse(lookupRequests[0]?.timeMin as string)).toBeLessThan(
+      Date.now(),
+    );
     expect(getConditionalCalendarMutationTarget).not.toHaveBeenCalled();
     expect(updateCalendarEvent).toHaveBeenCalledWith(
       expect.any(URL),
@@ -544,6 +595,62 @@ describe("CALENDAR effect receipt settlement", () => {
       ],
     });
     expect(result.userFacingText).not.toMatch(/approve|reject|request id/i);
+    expectBoundDelivery(delivered, result);
+  });
+
+  it("drops a partial planner window before resolving a built-in delete by title", async () => {
+    const lookupRequests: Record<string, unknown>[] = [];
+    const getCalendarFeed = vi.fn(
+      async (_url: URL, request?: Record<string, unknown>) => {
+        requireOrderedCalendarWindow(request);
+        lookupRequests.push(request ?? {});
+        return feed([ELIZA_EVENT]);
+      },
+    );
+    const deleteCalendarEvent = vi.fn(async () => undefined);
+    const service = { getCalendarFeed, deleteCalendarEvent };
+    const action = createCalendarActionRunner(deps());
+    const delivered: Content[] = [];
+
+    const result = await execute({
+      action,
+      service,
+      actor: message('Delete the calendar event "Eat a sandwich".'),
+      parameters: {
+        subaction: "delete_event",
+        query: "Eat a sandwich",
+        details: {
+          eventId: "unknown",
+          timeMin: "2026-08-05T09:00:00Z",
+          timeMax: "not-a-date",
+        },
+      },
+      delivered,
+    });
+
+    expect(getCalendarFeed).toHaveBeenCalledOnce();
+    // A rejected planner window is ABSENT, not "provided but unusable": the
+    // lookup has to fall through to the wide by-title range (-365d..+5y), not
+    // the 30-day search default, or an event a couple of months out silently
+    // resolves to "not found".
+    expect(
+      Date.parse(lookupRequests[0]?.timeMax as string) -
+        Date.parse(lookupRequests[0]?.timeMin as string),
+    ).toBeGreaterThan(365 * 24 * 60 * 60 * 1000);
+    expect(Date.parse(lookupRequests[0]?.timeMin as string)).toBeLessThan(
+      Date.now(),
+    );
+    expect(deleteCalendarEvent).toHaveBeenCalledWith(
+      expect.any(URL),
+      expect.objectContaining({
+        eventId: ELIZA_EVENT.externalId,
+        grantId: ELIZA_EVENT.grantId,
+      }),
+    );
+    expect(result).toMatchObject({
+      success: true,
+      data: { approvalRequired: false, deleted: true },
+    });
     expectBoundDelivery(delivered, result);
   });
 
@@ -790,34 +897,68 @@ describe("CALENDAR effect receipt settlement", () => {
     expect(request.timeMax).toBe("2026-08-03T00:00:00.000Z");
   });
 
-  it("drops invalid planner time bounds instead of forwarding malformed ISO", async () => {
-    const getCalendarFeed = vi.fn(
-      async (_url: URL, _request?: Record<string, unknown>) => feed(),
-    );
-    const action = createCalendarActionRunner(deps());
-
-    await execute({
-      action,
-      service: { getCalendarFeed },
-      actor: message("Show my calendar."),
-      parameters: {
-        subaction: "feed",
-        details: {
-          timeMin: ",time_min:",
-          timeMax: "not-a-date",
-          timeZone: "UTC",
-        },
+  it.each([
+    {
+      label: "valid+invalid",
+      timeMin: "2026-08-05T09:00:00Z",
+      timeMax: "not-a-date",
+    },
+    {
+      label: "invalid+valid",
+      timeMin: "not-a-date",
+      timeMax: "2026-08-05T10:00:00Z",
+    },
+    {
+      label: "reversed",
+      timeMin: "2026-08-05T10:00:00Z",
+      timeMax: "2026-08-05T09:00:00Z",
+    },
+    {
+      label: "valid offset pair",
+      timeMin: "2026-08-05T09:00:00-07:00",
+      timeMax: "2026-08-05T10:00:00-07:00",
+      expected: {
+        timeMin: "2026-08-05T16:00:00.000Z",
+        timeMax: "2026-08-05T17:00:00.000Z",
       },
-      delivered: [],
-    });
+    },
+  ])(
+    "sends only a complete ordered service window for $label planner bounds",
+    async ({ timeMin, timeMax, expected }) => {
+      const requests: Record<string, unknown>[] = [];
+      const getCalendarFeed = vi.fn(
+        async (_url: URL, request?: Record<string, unknown>) => {
+          requireOrderedCalendarWindow(request);
+          requests.push(request ?? {});
+          return feed();
+        },
+      );
+      const action = createCalendarActionRunner(deps());
 
-    const request = getCalendarFeed.mock.calls[0]?.[1] as Record<
-      string,
-      unknown
-    >;
-    expect(request.timeMin).not.toBe(",time_min:");
-    expect(request.timeMax).not.toBe("not-a-date");
-  });
+      const result = await execute({
+        action,
+        service: { getCalendarFeed },
+        actor: message("Show my calendar."),
+        parameters: {
+          subaction: "feed",
+          details: { timeMin, timeMax, timeZone: "UTC" },
+        },
+        delivered: [],
+      });
+
+      expect(result.success, JSON.stringify(result)).toBe(true);
+      expect(requests).toHaveLength(1);
+      const request = requests[0];
+      if (expected) {
+        expect(request).toMatchObject(expected);
+      } else {
+        expect(
+          Date.parse(request.timeMax as string) -
+            Date.parse(request.timeMin as string),
+        ).toBe(24 * 60 * 60 * 1000);
+      }
+    },
+  );
 
   it("passes a real grant id through untouched", async () => {
     const getCalendarFeed = vi.fn(

@@ -10,6 +10,7 @@ import {
   detailNumber,
   detailString,
   messageText,
+  normalizePlannerCalendarWindow,
   parseCalendarJsonRecord,
   sanitizeCalendarId,
 } from "../src/internal/detail.js";
@@ -60,26 +61,57 @@ describe("parseCalendarJsonRecord", () => {
   });
 });
 
-describe("sanitizeCalendarId", () => {
-  it("drops model placeholders and preserves real provider ids", () => {
-    for (const placeholder of [
+describe("sanitizeCalendarId (#18946)", () => {
+  it("drops planner placeholder tokens case-insensitively", () => {
+    for (const junk of [
       "default",
+      "Default",
       "ALL",
       "none",
       "null",
       "unset",
       "unknown",
       "any",
-      "auto",
+      "AUTO",
       "  Auto  ",
     ]) {
-      expect(sanitizeCalendarId(placeholder)).toBeUndefined();
+      expect(sanitizeCalendarId(junk)).toBeUndefined();
     }
+  });
 
+  it("passes real calendar ids through trimmed", () => {
     expect(sanitizeCalendarId("primary")).toBe("primary");
     expect(sanitizeCalendarId(" user@example.com ")).toBe("user@example.com");
     expect(sanitizeCalendarId("AQMkADAwATM3ZmYAZS0xYjIz")).toBe(
       "AQMkADAwATM3ZmYAZS0xYjIz",
     );
+  });
+
+  it("treats empty and whitespace-only values as unset", () => {
+    expect(sanitizeCalendarId(undefined)).toBeUndefined();
+    expect(sanitizeCalendarId("")).toBeUndefined();
+    expect(sanitizeCalendarId("   ")).toBeUndefined();
+  });
+});
+
+describe("normalizePlannerCalendarWindow (#18946)", () => {
+  it.each([
+    ["2026-08-05T09:00:00Z", "not-a-date"],
+    ["not-a-date", "2026-08-05T10:00:00Z"],
+    ["2026-08-05T10:00:00Z", "2026-08-05T09:00:00Z"],
+  ])("drops the entire pair for incomplete or reversed bounds", (min, max) => {
+    expect(normalizePlannerCalendarWindow(min, max)).toBeUndefined();
+  });
+
+  it("canonicalizes an ordered offset-bearing pair", () => {
+    expect(
+      normalizePlannerCalendarWindow(
+        "2026-08-05T09:00:00-07:00",
+        "2026-08-05T10:00:00-07:00",
+      ),
+    ).toEqual({
+      timeMin: "2026-08-05T16:00:00.000Z",
+      timeMax: "2026-08-05T17:00:00.000Z",
+    });
   });
 });

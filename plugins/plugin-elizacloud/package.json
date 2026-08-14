@@ -139,7 +139,6 @@
     "format:check": "bunx @biomejs/biome format .",
     "test": "vitest run",
     "test:unit": "vitest run __tests__/unit/",
-    "test:integration": "vitest run __tests__/integration/",
     "lint:check": "bunx @biomejs/biome check .",
     "build": "node ../../packages/scripts/with-package-build-lock.mjs plugins/plugin-elizacloud -- bun run build:unlocked",
     "build:unlocked": "bun run build.ts && bun run build:views && node scripts/verify-built-package.mjs",
