@@ -2,7 +2,12 @@
 import path from "node:path";
 import { ElizaError, type IAgentRuntime, logger } from "@elizaos/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  addSession,
+  resetProcessRegistryForTests,
+} from "../services/processRegistry.js";
 import { ShellService } from "../services/shellService.js";
+import type { ProcessSession } from "../types/index.js";
 import { loadShellConfig } from "./config.js";
 
 function captureConfigError(): ElizaError {
@@ -19,6 +24,8 @@ function captureConfigError(): ElizaError {
 
 describe("loadShellConfig", () => {
   afterEach(() => {
+    resetProcessRegistryForTests();
+    vi.useRealTimers();
     vi.unstubAllEnvs();
     vi.restoreAllMocks();
   });
@@ -113,6 +120,34 @@ describe("loadShellConfig", () => {
         severity: "fatal",
       },
     );
+  });
+
+  it("applies a valid non-default job TTL through service startup", async () => {
+    vi.useFakeTimers();
+    vi.stubEnv("SHELL_JOB_TTL_MS", "600000");
+    const intervalSpy = vi.spyOn(globalThis, "setInterval");
+    await ShellService.start({} as IAgentRuntime);
+
+    const session: ProcessSession = {
+      id: "ttl-boundary-session",
+      command: "sleep 1",
+      startedAt: Date.now(),
+      maxOutputChars: 1_000,
+      totalOutputChars: 0,
+      pendingStdout: [],
+      pendingStderr: [],
+      pendingStdoutChars: 0,
+      pendingStderrChars: 0,
+      aggregated: "",
+      tail: "",
+      exited: false,
+      truncated: false,
+      backgrounded: false,
+    };
+    addSession(session);
+
+    expect(intervalSpy).toHaveBeenCalledOnce();
+    expect(intervalSpy.mock.calls[0]?.[1]).toBe(100_000);
   });
 
   it("defaults blank job TTL values and accepts both live boundaries", () => {
