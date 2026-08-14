@@ -205,6 +205,26 @@ describe("refreshCloudStewardSession (web/fetch branch)", () => {
     expect(result).toBeNull();
   });
 
+  it("surfaces a typed transient failure when the caller must preserve auth state", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({ ok: false, status: 503 })),
+    );
+
+    await expect(
+      refreshCloudStewardSession({
+        endpoint: "https://api.elizacloud.ai/api/v1/auth/steward/refresh",
+        throwOnTransientHttpFailure: true,
+      }),
+    ).rejects.toMatchObject({
+      code: "STEWARD_SESSION_REFRESH_TRANSIENT",
+      context: {
+        endpoint: "https://api.elizacloud.ai/api/v1/auth/steward/refresh",
+        status: 503,
+      },
+    });
+  });
+
   it("returns null when the response body is not parseable JSON (J3 fail-closed)", async () => {
     vi.stubGlobal(
       "fetch",

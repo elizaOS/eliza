@@ -12,6 +12,7 @@ import type { RoleGateRole } from "@elizaos/core";
 import { getElizaApiToken } from "@elizaos/shared";
 import {
   clearStoredStewardToken,
+  hasStewardAuthedCookie,
   readStoredStewardToken,
   writeStoredStewardToken,
 } from "@elizaos/shared/steward-session-client";
@@ -327,6 +328,19 @@ export async function authMe(): Promise<AuthMeResult> {
         normalizeCloudApiKeyToken(getBootConfig().apiToken) ??
           normalizeCloudApiKeyToken(getElizaApiToken()),
       );
+    if (!token && !hasNativeOwnerApiKey && hasStewardAuthedCookie()) {
+      try {
+        const refreshed = await refreshCloudStewardSession({
+          throwOnTransientHttpFailure: true,
+        });
+        token = refreshed?.token?.trim() || undefined;
+        if (token) writeStoredStewardToken(token);
+      } catch {
+        // error-policy:J1 a transport, throttle, or server outage is not
+        // authoritative logout; preserve the binding and expose unavailability.
+        return { ok: false, status: 503, reason: "server_error" };
+      }
+    }
     const secondsRemaining = token ? cloudTokenSecsRemaining(token) : null;
     if (
       token &&
