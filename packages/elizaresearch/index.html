@@ -258,6 +258,7 @@
   const boids = [];
   let targets = [];
   let born = 0;
+  let faceCx = 0, faceCy = 0;
   const ENTER_MS = 2600, ENTER_STAGGER_MS = 1100;
 
   // Sine lookup keeps the per-particle float cheap at tens of thousands of dots.
@@ -320,6 +321,9 @@
     if (!img.complete || !img.naturalWidth || W === 0) return;
     targets = sampleFace();
     boids.length = 0;
+    faceCx = 0; faceCy = 0;
+    for (const t of targets) { faceCx += t.x; faceCy += t.y; }
+    faceCx /= targets.length || 1; faceCy /= targets.length || 1;
     const cx = W / 2, cy = H / 2, reach = Math.max(W, H);
     for (const t of targets) {
       // enter from a ring around the viewport so the face converges inward
@@ -329,7 +333,7 @@
         x: cx + Math.cos(a) * r, y: cy + Math.sin(a) * r,
         sx: cx + Math.cos(a) * r, sy: cy + Math.sin(a) * r,
         tx: t.x, ty: t.y,
-        size: Math.random() * 0.95 + 0.85, life: Math.random() * 100 + 50,
+        size: Math.random() * 0.95 + 0.85, life: Math.random() * 1000 + 500,
         delay: Math.random() * ENTER_STAGGER_MS,
         ph: Math.random(), phy: Math.random(),
         fs: 0.6 + Math.random() * 0.8, amp: 1.1 + Math.random() * 2.6 });
@@ -377,14 +381,18 @@
     if (!boids.length) { tryInit(); return; }
     const age = now - born;
     const tf = now / 1000;
+    // whole face breathes: one slow expand/contract every ~14s
+    const breathe = 1 + wave(tf * 0.07) * 0.03;
     for (const b of boids) {
       // entrance: ease from the spawn ring onto the face target
       const p = reduced ? 1 : Math.min(1, Math.max(0, (age - b.delay) / ENTER_MS));
       const e = p * p * (3 - 2 * p);
       // idle float, faded in with the entrance so the assembly stays crisp
       const amp = b.amp * e;
-      const gx = b.sx + (b.tx - b.sx) * e + wave(tf * 0.06 * b.fs + b.ph) * amp;
-      const gy = b.sy + (b.ty - b.sy) * e + wave(tf * 0.048 * b.fs + b.phy) * amp;
+      const bx = faceCx + (b.tx - faceCx) * breathe;
+      const by = faceCy + (b.ty - faceCy) * breathe;
+      const gx = b.sx + (bx - b.sx) * e + wave(tf * 0.02 * b.fs + b.ph) * amp;
+      const gy = b.sy + (by - b.sy) * e + wave(tf * 0.016 * b.fs + b.phy) * amp;
 
       const px = pointer.x - b.x, py = pointer.y - b.y;
       const pd2 = px * px + py * py;
@@ -405,7 +413,7 @@
       if (!reduced && p >= 1 && --b.life <= 0) {
         const t = targets[(Math.random() * targets.length) | 0];
         b.x = b.sx = b.tx = t.x; b.y = b.sy = b.ty = t.y;
-        b.life = Math.random() * 100 + 50;
+        b.life = Math.random() * 1000 + 500;
         b.delay = -ENTER_MS; // already assembled; skip the entrance for recycled dots
       }
     }
