@@ -250,8 +250,9 @@
 </footer>
 
 <script>
-// Hero: particles assemble the Eliza face wireframe, drift apart in pieces,
-// periodically re-form, and react to pointer/touch (hover repels, drag shoves).
+// The face arrives as nine coherent fragments before the established shimmer
+// and pointer response take over. The grouped entrance makes facial structure
+// legible immediately without adding a separate loader or animation system.
 (() => {
   const canvas = document.getElementById("swarm");
   const header = canvas.parentElement;
@@ -260,6 +261,11 @@
   let W = 0, H = 0, dpr = 1, resizeFrame = 0;
   const boids = [];
   let targets = [];
+  let born = 0;
+  let entranceStarted = false;
+  let entranceComplete = reduced;
+  const entranceMs = 1800;
+  const fadeMs = 480;
   const pointer = { x: -1e4, y: -1e4, vx: 0, vy: 0, down: false, touch: false, t: 0 };
 
   function resize() {
@@ -315,15 +321,45 @@
     if (!img.complete || !img.naturalWidth || W === 0) return;
     targets = sampleFace();
     boids.length = 0;
+    let minX = W, minY = H, maxX = 0, maxY = 0;
+    for (const target of targets) {
+      minX = Math.min(minX, target.x); minY = Math.min(minY, target.y);
+      maxX = Math.max(maxX, target.x); maxY = Math.max(maxY, target.y);
+    }
+    const faceWidth = maxX - minX;
+    const faceHeight = maxY - minY;
+    const faceSize = Math.min(faceWidth, faceHeight);
+    const faceX = (minX + maxX) / 2;
+    const faceY = (minY + maxY) / 2;
+    const groupDelays = [90, 20, 70, 130, 0, 110, 170, 55, 150];
+    if (!entranceStarted && !reduced) {
+      born = performance.now();
+      entranceStarted = true;
+    }
     for (const t of targets) {
-      const sx = t.x;
-      const sy = t.y;
+      const gx = Math.min(2, Math.max(0, Math.floor((t.x - minX) / faceWidth * 3)));
+      const gy = Math.min(2, Math.max(0, Math.floor((t.y - minY) / faceHeight * 3)));
+      const group = gy * 3 + gx;
+      const groupX = minX + (gx + 0.5) * faceWidth / 3;
+      const groupY = minY + (gy + 0.5) * faceHeight / 3;
+      let outX = groupX - faceX;
+      let outY = groupY - faceY;
+      const outLength = Math.hypot(outX, outY);
+      if (outLength < 1) { outX = 0; outY = -1; }
+      else { outX /= outLength; outY /= outLength; }
+      const distance = faceSize * (0.07 + Math.random() * 0.025);
+      const radius = faceSize * 0.008 * Math.sqrt(Math.random());
+      const angle = Math.random() * Math.PI * 2;
+      const sx = entranceComplete ? t.x : t.x + outX * distance + Math.cos(angle) * radius;
+      const sy = entranceComplete ? t.y : t.y + outY * distance + Math.sin(angle) * radius;
+      const arc = entranceComplete ? 0 : faceSize * (0.028 + Math.random() * 0.017) * (group % 2 ? -1 : 1);
       boids.push({
         x: sx, y: sy, sx, sy,
         vx: 0, vy: 0, tx: t.x, ty: t.y,
+        arcX: -outY * arc, arcY: outX * arc, delay: groupDelays[group],
         size: Math.random() * 0.95 + 0.85, life: Math.random() * 100 + 50 });
     }
-    if (reduced) draw();
+    if (reduced) draw(performance.now());
   }
 
   // Pointer interaction on the header (canvas sits behind the copy).
@@ -361,8 +397,22 @@
     document.body.addEventListener(type, (event) => event.preventDefault());
   }
 
-  function step() {
+  function step(now) {
     if (!boids.length) { tryInit(); return; }
+    if (!entranceComplete) {
+      let forming = false;
+      for (const b of boids) {
+        const progress = Math.min(1, Math.max(0, (now - born - b.delay) / (entranceMs - b.delay)));
+        const eased = progress * progress * progress * (progress * (progress * 6 - 15) + 10);
+        const arc = 4 * eased * (1 - eased);
+        b.x = b.sx + (b.tx - b.sx) * eased + b.arcX * arc;
+        b.y = b.sy + (b.ty - b.sy) * eased + b.arcY * arc;
+        if (progress < 1) forming = true;
+      }
+      if (forming) return;
+      entranceComplete = true;
+      for (const b of boids) { b.x = b.tx; b.y = b.ty; }
+    }
     for (const b of boids) {
       const px = pointer.x - b.x, py = pointer.y - b.y;
       const pd2 = px * px + py * py;
@@ -383,17 +433,22 @@
     }
   }
 
-  function draw() {
+  function draw(now) {
     ctx.fillStyle = "#ff5800";
     ctx.fillRect(0, 0, W, H);
-    ctx.globalAlpha = 1;
+    const fade = entranceComplete ? 1 : Math.min(1, Math.max(0, (now - born) / fadeMs));
+    const visible = 1 - (1 - fade) * (1 - fade) * (1 - fade);
+    const dotScale = 0.35 + visible * 0.65;
+    ctx.globalAlpha = visible;
     ctx.fillStyle = "#fff";
     for (const b of boids) {
-      ctx.fillRect(b.x, b.y, b.size, b.size);
+      const size = b.size * dotScale;
+      ctx.fillRect(b.x - (size - b.size) / 2, b.y - (size - b.size) / 2, size, size);
     }
+    ctx.globalAlpha = 1;
   }
 
-  function loop() { step(); draw(); requestAnimationFrame(loop); }
+  function loop(now) { step(now); draw(now); requestAnimationFrame(loop); }
   if (!reduced) requestAnimationFrame(loop);
 })();
 
