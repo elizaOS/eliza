@@ -101,11 +101,18 @@ mock.module("@/lib/services/shared-runtime/shared-runtime-chat", () => ({
     ) => await historyStore.load(agentId, channelId),
     bridge: async (
       agent: { id: string },
-      rpc: { id?: string | number; params?: { roomId?: string } },
+      rpc: {
+        id?: string | number;
+        params?: { roomId?: string; text?: string };
+      },
       options: {
         funding?: unknown;
         historyStore: {
-          load(agentId: string, channelId: string): Promise<unknown[]>;
+          load(
+            agentId: string,
+            channelId: string,
+            queryText?: string,
+          ): Promise<unknown[]>;
           save(
             agentId: string,
             channelId: string,
@@ -124,7 +131,11 @@ mock.module("@/lib/services/shared-runtime/shared-runtime-chat", () => ({
         throw new RateLimitError("Organization rate limit exceeded.", 29);
       }
       const channelId = rpc.params?.roomId ?? agent.id;
-      const history = await options.historyStore.load(agent.id, channelId);
+      const history = await options.historyStore.load(
+        agent.id,
+        channelId,
+        rpc.params?.text,
+      );
       await options.historyStore.merge(agent.id, channelId, [
         {
           id: `message-${rpc.id}`,
@@ -136,7 +147,16 @@ mock.module("@/lib/services/shared-runtime/shared-runtime-chat", () => ({
       return {
         jsonrpc: "2.0",
         id: rpc.id,
-        result: { historyLength: history.length + 1 },
+        result: {
+          historyLength: history.length + 1,
+          historyIds: history.map((message) =>
+            typeof message === "object" &&
+            message !== null &&
+            typeof (message as { id?: unknown }).id === "string"
+              ? (message as { id: string }).id
+              : null,
+          ),
+        },
       };
     },
     stream: async (
@@ -206,6 +226,12 @@ function makeState(data: Map<string, unknown>, background: Promise<unknown>[]) {
     alarmDeleted: false,
     storage: {
       get: async <T>(key: string) => data.get(key) as T | undefined,
+      list: async <T>(options?: { prefix?: string }) =>
+        new Map(
+          [...data.entries()].filter(
+            ([key]) => !options?.prefix || key.startsWith(options.prefix),
+          ),
+        ) as Map<string, T>,
       put: async (key: string, value: unknown) => {
         data.set(key, structuredClone(value));
       },
@@ -560,6 +586,103 @@ test("concurrent turns serialize through one room and retain both writes", async
     "turn-concurrent-one",
     "turn-concurrent-two",
   ]);
+  await Promise.all(background.splice(0));
+});
+
+test("personal history archives beyond the model window and cutover reads every turn", async () => {
+  repositoryReads = 0;
+  repositoryWrites = 0;
+  repositoryRow = [];
+  const data = new Map<string, unknown>([
+    [
+      "conversation",
+      {
+        agentId: "personal:test-user",
+        channelId: "room-1",
+        history: [],
+        dirty: false,
+        version: 1,
+      },
+    ],
+  ]);
+  const background: Promise<unknown>[] = [];
+  const object = new SharedRuntimeConversation(
+    makeState(data, background) as never,
+    {} as never,
+  );
+
+  for (let index = 0; index < 45; index += 1) {
+    const turnId = index === 0 ? "zebra-memory" : `archive-${index}`;
+    const response = await object.fetch(
+      new Request("https://shared-runtime.internal/personal-bridge", {
+        method: "POST",
+        body: JSON.stringify({
+          operation: "personal-bridge",
+          agent: {
+            ...AGENT_FIXTURE,
+            id: "personal:test-user",
+            agent_name: "Eliza",
+            character_id: null,
+            agent_config: { character: { name: "Eliza" } },
+          },
+          rpc: {
+            jsonrpc: "2.0",
+            id: turnId,
+            method: "message.send",
+            params: { text: "hi", roomId: "room-1" },
+          },
+        }),
+      }),
+    );
+    expect(response.status).toBe(200);
+    await response.arrayBuffer();
+  }
+
+  const recalledResponse = await object.fetch(
+    new Request("https://shared-runtime.internal/personal-bridge", {
+      method: "POST",
+      body: JSON.stringify({
+        operation: "personal-bridge",
+        agent: {
+          ...AGENT_FIXTURE,
+          id: "personal:test-user",
+          agent_name: "Eliza",
+          character_id: null,
+          agent_config: { character: { name: "Eliza" } },
+        },
+        rpc: {
+          jsonrpc: "2.0",
+          id: "recall",
+          method: "message.send",
+          params: { text: "What did I say about zebra?", roomId: "room-1" },
+        },
+      }),
+    }),
+  );
+  const recalled = (await recalledResponse.json()) as {
+    result?: { historyIds?: Array<string | null> };
+  };
+  expect(recalled.result?.historyIds).toContain("message-zebra-memory");
+
+  const active = data.get("conversation") as { history: unknown[] };
+  expect(active.history).toHaveLength(40);
+  expect(
+    [...data.keys()].filter((key) => key.startsWith("history-archive:")),
+  ).toHaveLength(6);
+
+  const response = await object.fetch(
+    new Request("https://shared-runtime.internal/history", {
+      method: "POST",
+      body: JSON.stringify({
+        operation: "history",
+        agentId: "personal:test-user",
+        roomId: "room-1",
+      }),
+    }),
+  );
+  expect(response.status).toBe(200);
+  const body = (await response.json()) as { history: unknown[] };
+  expect(body.history).toHaveLength(46);
   await Promise.all(background.splice(0));
 });
 

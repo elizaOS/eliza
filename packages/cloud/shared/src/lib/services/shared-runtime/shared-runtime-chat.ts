@@ -72,7 +72,7 @@ export type BridgeExecutionContext = {
 };
 
 export interface SharedRuntimeHistoryStore {
-  load(agentId: string, channelId: string): Promise<SharedTurnMessage[]>;
+  load(agentId: string, channelId: string, queryText?: string): Promise<SharedTurnMessage[]>;
   merge(
     agentId: string,
     channelId: string,
@@ -245,9 +245,10 @@ async function loadHistory(
   agentId: string,
   roomId: string,
   store?: SharedRuntimeHistoryStore,
+  queryText?: string,
 ): Promise<SharedTurnMessage[]> {
   const history = store
-    ? await store.load(agentId, roomId)
+    ? await store.load(agentId, roomId, queryText)
     : await import("../../../db/repositories/shared-runtime-history").then(
         ({ sharedRuntimeHistoryRepository }) => sharedRuntimeHistoryRepository.get(agentId, roomId),
       );
@@ -725,7 +726,7 @@ export class SharedRuntimeChatService {
         cacheOnly: Boolean(options.historyStore),
         executionCtx: options.executionCtx,
       }),
-      loadHistory(agent.id, roomId, options.historyStore),
+      loadHistory(agent.id, roomId, options.historyStore, text),
     ]);
     let billing: BillingTurn | null;
     try {
@@ -879,7 +880,7 @@ export class SharedRuntimeChatService {
         cacheOnly: Boolean(options.historyStore),
         executionCtx: options.executionCtx,
       }),
-      loadHistory(agent.id, roomId, options.historyStore),
+      loadHistory(agent.id, roomId, options.historyStore, text),
     ]);
     let billing: BillingTurn | null;
     try {

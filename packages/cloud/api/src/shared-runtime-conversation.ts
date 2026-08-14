@@ -18,6 +18,7 @@ import type {
 import {
   MAX_HISTORY_MESSAGES,
   mergeSharedRuntimeHistoryMessages,
+  selectSharedRuntimeContext,
 } from "@/lib/services/shared-runtime/shared-runtime-history-policy";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -54,11 +55,14 @@ interface StoredConversation {
   agentId: string;
   channelId: string;
   history: SharedTurnMessage[];
+  recall?: SharedTurnMessage[];
   dirty: boolean;
   version: number;
 }
 
 const CONVERSATION_KEY = "conversation";
+const HISTORY_ARCHIVE_PREFIX = "history-archive:";
+const MAX_RECALL_MESSAGES = 128;
 const CUTOVER_SEAL_KEY = "personal-cutover-seal";
 const RETRY_DELAY_MS = 30_000;
 
@@ -127,6 +131,20 @@ function boundSnapshotHistory(
     ];
   }
   return bounded;
+}
+
+function archiveMessageKey(message: SharedTurnMessage): string {
+  const identity =
+    message.id ??
+    `${message.role}:${message.createdAt ?? 0}:${message.content}`;
+  let hash = 2166136261;
+  for (let index = 0; index < identity.length; index += 1) {
+    hash ^= identity.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return `${HISTORY_ARCHIVE_PREFIX}${(message.createdAt ?? 0)
+    .toString()
+    .padStart(16, "0")}:${(hash >>> 0).toString(16).padStart(8, "0")}`;
 }
 
 class ConversationCacheWarmingError extends Error {
@@ -299,26 +317,79 @@ export class SharedRuntimeConversation {
     return this.mirrorQueue;
   }
 
+  private async loadArchivedHistory(): Promise<SharedTurnMessage[]> {
+    const archived = await this.state.storage.list<SharedTurnMessage>({
+      prefix: HISTORY_ARCHIVE_PREFIX,
+    });
+    return [...archived.values()];
+  }
+
+  private async loadCompleteHistory(
+    current: StoredConversation,
+  ): Promise<SharedTurnMessage[]> {
+    const archived = await this.loadArchivedHistory();
+    return mergeSharedRuntimeHistoryMessages(
+      archived,
+      current.history,
+      Number.MAX_SAFE_INTEGER,
+    );
+  }
+
   private historyStore(startEmpty: boolean): SharedRuntimeHistoryStore {
     return {
-      load: async (agentId, channelId) =>
-        (await this.loadConversation(agentId, channelId, startEmpty)).history,
+      load: async (agentId, channelId, queryText) => {
+        const current = await this.loadConversation(
+          agentId,
+          channelId,
+          startEmpty,
+        );
+        if (!startEmpty) return current.history;
+        if (queryText === undefined) {
+          return await this.loadCompleteHistory(current);
+        }
+        const recallContext = mergeSharedRuntimeHistoryMessages(
+          current.recall ?? [],
+          current.history,
+          Number.MAX_SAFE_INTEGER,
+        );
+        return selectSharedRuntimeContext(
+          recallContext,
+          queryText,
+          MAX_HISTORY_MESSAGES,
+        );
+      },
       merge: async (agentId, channelId, messages) => {
         const current = await this.loadConversation(
           agentId,
           channelId,
           startEmpty,
         );
+        const merged = mergeSharedRuntimeHistoryMessages(
+          current.history,
+          messages,
+          Number.MAX_SAFE_INTEGER,
+        );
+        const evicted = merged.slice(0, -MAX_HISTORY_MESSAGES);
+        let recall = current.recall;
+        if (startEmpty && evicted.length > 0) {
+          for (const message of evicted) {
+            await this.state.storage.put(archiveMessageKey(message), message);
+          }
+          recall = selectSharedRuntimeContext(
+            mergeSharedRuntimeHistoryMessages(
+              current.recall ?? [],
+              evicted,
+              Number.MAX_SAFE_INTEGER,
+            ),
+            "",
+            MAX_RECALL_MESSAGES,
+          );
+        }
         const snapshot: StoredConversation = {
           agentId,
           channelId,
-          history: boundSnapshotHistory(
-            mergeSharedRuntimeHistoryMessages(
-              current.history,
-              messages,
-              MAX_HISTORY_MESSAGES,
-            ),
-          ),
+          history: boundSnapshotHistory(merged.slice(-MAX_HISTORY_MESSAGES)),
+          ...(recall ? { recall } : {}),
           dirty: true,
           version: (this.conversation?.version ?? 0) + 1,
         };
@@ -388,7 +459,8 @@ export class SharedRuntimeConversation {
     const payload = (await request.json()) as ConversationRequest;
     const personal =
       payload.operation === "personal-bridge" ||
-      payload.operation === "personal-stream";
+      payload.operation === "personal-stream" ||
+      ("agentId" in payload && payload.agentId.startsWith("personal:"));
     const historyStore = this.historyStore(personal);
     const turnClaims = this.turnClaims();
     if (payload.operation === "prewarm") {

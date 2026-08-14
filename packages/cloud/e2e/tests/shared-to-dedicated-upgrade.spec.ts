@@ -134,6 +134,10 @@ test.describe("shared→dedicated tier upgrade", () => {
       const sharedIdentity = await c<{
         data?: { identity?: { id?: string; runtime?: string } };
       }>("GET", "/api/v1/eliza/personal");
+      expect(
+        sharedIdentity.status,
+        `personal identity: ${JSON.stringify(sharedIdentity.json)}`,
+      ).toBe(200);
       expect(sharedIdentity.json.data?.identity).toMatchObject({
         id: sharedAgentId,
         runtime: "shared",
