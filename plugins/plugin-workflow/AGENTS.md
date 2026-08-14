@@ -14,7 +14,7 @@ Every Smithers `Task` must use `globalThis.__elizaSmithers.agent`. The runner in
 
 ```tsx
 /** @jsxImportSource smthrs */
-import { createSmithers } from "smthrs";
+import { createSmithers } from "smthrs/create";
 import { z } from "zod";
 
 const { Workflow, Task, smithers, outputs } = createSmithers(
