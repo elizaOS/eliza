@@ -106,6 +106,18 @@ describe("authProbeShouldHoldShell — pre-auth poll suppression", () => {
     ).toBe(false);
     expect(authProbeShouldHoldShell("ready", false, "loading")).toBe(false);
   });
+
+  it("does not unmount an already-painted onboarding shell on the completion edge", () => {
+    expect(authProbeShouldHoldShell("ready", true, "loading", true)).toBe(
+      false,
+    );
+  });
+
+  it("still holds an ordinary shell when a later auth probe starts", () => {
+    expect(authProbeShouldHoldShell("ready", true, "loading", false)).toBe(
+      true,
+    );
+  });
 });
 
 describe("shouldShowRemoteAgentPairingGate — LAN standalone agent auth", () => {
