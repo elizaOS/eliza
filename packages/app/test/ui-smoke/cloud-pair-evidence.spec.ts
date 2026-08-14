@@ -65,8 +65,26 @@ function evidenceModulesBundle(): Promise<string> {
           namespace: "eliza-core-stub",
         }));
         b.onLoad({ filter: /.*/, namespace: "eliza-core-stub" }, () => ({
-          contents:
-            "const n=()=>noop;const noop=new Proxy(n,{get:()=>noop});module.exports=noop;",
+          contents: `
+            const noop = new Proxy(() => noop, { get: () => noop });
+            class ElizaError extends Error {
+              constructor(message, options = {}) {
+                super(
+                  message,
+                  options.cause !== undefined ? { cause: options.cause } : undefined,
+                );
+                this.name = "ElizaError";
+                this.code = options.code;
+                this.context = options.context;
+                this.severity = options.severity;
+                Object.setPrototypeOf(this, new.target.prototype);
+              }
+            }
+            module.exports = new Proxy(
+              { ElizaError, isElizaError: (value) => value instanceof ElizaError },
+              { get: (target, property) => property in target ? target[property] : noop },
+            );
+          `,
           loader: "js",
         }));
       },
@@ -318,7 +336,7 @@ const IN_PAGE_RUNNER = async (mainSource: string) => {
         id: `cloud:${agentA}`,
         kind: "cloud",
         label: "Eliza Cloud",
-        apiBase: `https://${agentA}.elizacloud.ai`,
+        apiBase: `https://${agentA}.cloud.eliza.app`,
         accessToken: tokenA,
       }),
     );
@@ -334,7 +352,7 @@ const IN_PAGE_RUNNER = async (mainSource: string) => {
     // dedicated origin mirrors it for Gate 3 (owner-bound read).
     const bootAdopter = makeBootAdopter(
       client,
-      () => ({ apiBase: `https://${agentA}.elizacloud.ai` }),
+      () => ({ apiBase: `https://${agentA}.cloud.eliza.app` }),
       () => false,
       cloudAgentBase.isDedicatedCloudAgentBase,
       cloudAgentBase.dedicatedCloudAgentIdFromBase,
