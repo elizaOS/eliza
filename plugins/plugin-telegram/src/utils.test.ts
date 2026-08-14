@@ -53,6 +53,25 @@ describe("convertMarkdownToTelegram", () => {
     );
   });
 
+  it("treats canonically equivalent flanks identically (#19373 review)", () => {
+    // A decomposed word flank (e + U+0301) must suppress the delimiter exactly
+    // like its precomposed form: marks are word continuations.
+    expect(convertMarkdownToTelegram("caf\u00e9_id_")).toBe(
+      "caf\u00e9\\_id\\_",
+    );
+    expect(convertMarkdownToTelegram("cafe\u0301_id_")).toBe(
+      "cafe\u0301\\_id\\_",
+    );
+  });
+
+  it("suppresses the delimiter after non-Latin combining-mark clusters", () => {
+    // Devanagari KA + virama: the mark ends the flank word, so the underscores
+    // are identifier characters, not italic delimiters.
+    expect(convertMarkdownToTelegram("\u0915\u094d_id_")).toBe(
+      "\u0915\u094d\\_id\\_",
+    );
+  });
+
   it("keeps single intra-word underscores escaped and __x__ inner italic unchanged", () => {
     expect(convertMarkdownToTelegram("snake_case")).toBe("snake\\_case");
     // Historical behavior: double-underscore delimiters still produce the
