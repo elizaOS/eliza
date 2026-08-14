@@ -3641,10 +3641,9 @@ async function finishWithForcedSynthesis(params: {
 	// bounded chronological native suffix. Read/search/list/get tools may provide
 	// a scrubbed observation for synthesis; mutations contribute only their
 	// action-owned user-facing projection and receipt-backed status.
-	const synthesisSteps = [
-		...trajectory.archivedSteps.slice(-6),
-		...trajectory.steps,
-	].map(projectStepForFinalSynthesis);
+	const synthesisSteps = [...trajectory.archivedSteps, ...trajectory.steps]
+		.slice(-FINAL_SYNTHESIS_MAX_STEPS)
+		.map(projectStepForFinalSynthesis);
 	const synthesisContext = {
 		...trajectory.context,
 		events: trajectory.context.events.filter(
@@ -3711,6 +3710,24 @@ async function finishWithForcedSynthesis(params: {
 const SYNTHESIS_OBSERVATION_TOOL =
 	/(?:^|_)(?:READ|SEARCH|LIST|GET|FETCH|LOOKUP|QUERY|STATUS|INSPECT)(?:_|$)/i;
 
+const FINAL_SYNTHESIS_MAX_STEPS = 12;
+const FINAL_SYNTHESIS_MAX_RECEIPTS = 4;
+
+function synthesisReceiptSummary(
+	result: PlannerToolResult,
+): string | undefined {
+	const receipts = result.effectReceipts?.slice(-FINAL_SYNTHESIS_MAX_RECEIPTS);
+	if (!receipts?.length) return undefined;
+	return receipts
+		.map((receipt) => {
+			const operation = compactText(receipt.operation, 120);
+			const resourceKind = compactText(receipt.resource.kind, 80);
+			const resourceId = compactText(receipt.resource.id, 160);
+			return `receipt outcome=${receipt.outcome} operation=${operation} resource=${resourceKind}:${resourceId}`;
+		})
+		.join("\n");
+}
+
 function projectStepForFinalSynthesis(step: PlannerStep): PlannerStep {
 	if (!step.toolCall || !step.result) {
 		return { ...step, thought: undefined };
@@ -3722,6 +3739,14 @@ function projectStepForFinalSynthesis(step: PlannerStep): PlannerStep {
 		SYNTHESIS_OBSERVATION_TOOL.test(step.toolCall.name)
 			? getNonEmptyString(result.text)
 			: undefined;
+	const receiptSummary = synthesisReceiptSummary(result);
+	const primaryProjection = observation
+		? compactText(observation, 1_500)
+		: userFacingText
+			? compactText(userFacingText, 750)
+			: result.success
+				? "Tool completed; no synthesis-safe observation was published."
+				: "Tool failed; no synthesis-safe diagnostic was published.";
 	return {
 		iteration: step.iteration,
 		toolCall: {
@@ -3731,18 +3756,11 @@ function projectStepForFinalSynthesis(step: PlannerStep): PlannerStep {
 		},
 		result: {
 			success: result.success,
-			text: observation
-				? compactText(observation, 1_500)
-				: userFacingText
-					? compactText(userFacingText, 750)
-					: result.success
-						? "Tool completed; no synthesis-safe observation was published."
-						: "Tool failed; no synthesis-safe diagnostic was published.",
+			text: receiptSummary
+				? `${primaryProjection}\n${receiptSummary}`
+				: primaryProjection,
 			...(userFacingText
 				? { userFacingText: compactText(userFacingText, 750) }
-				: {}),
-			...(result.effectReceipts?.length
-				? { effectReceipts: result.effectReceipts }
 				: {}),
 		},
 	};
