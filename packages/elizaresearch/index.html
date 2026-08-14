@@ -55,8 +55,6 @@
     -webkit-font-smoothing: antialiased;
     -webkit-tap-highlight-color: transparent;
     -webkit-touch-callout: none;
-    -webkit-user-select: none;
-    user-select: none;
   }
   h1, h2, h3 { text-wrap: balance; line-height: 1.02; }
   p { text-wrap: pretty; max-width: 62ch; }
@@ -84,7 +82,7 @@
     color: white; overflow: hidden;
     display: grid; align-content: end;
   }
-  #swarm { position: absolute; inset: 0; width: 100%; height: 100%; background: var(--orange); touch-action: pan-y; }
+  #swarm { position: absolute; inset: 0; width: 100%; height: 100%; background: var(--orange); touch-action: pan-y; -webkit-user-select: none; user-select: none; }
   .hero-inner { position: relative; padding-block: clamp(3rem, 8vh, 6rem); }
   .hero-inner h1 {
     font-size: clamp(2.6rem, 8.5vw, 5.8rem);
