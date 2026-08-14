@@ -139,6 +139,10 @@ export const PRE_DELETE_BACKUP_CLEANUP_BATCH_SIZE = 100;
 export interface PreDeleteBackupCleanupResult {
   deletedRows: number;
   deletedObjects: number;
+  /** Rows retained for a later retry after a transient cleanup failure. */
+  failedRows: number;
+  /** Malformed rows discarded under the terminal invalid-row policy. */
+  invalidRows: number;
 }
 
 /**
@@ -2111,33 +2115,59 @@ export class AgentSandboxesRepository {
 
     let deletedRows = 0;
     let deletedObjects = 0;
+    let failedRows = 0;
+    let invalidRows = 0;
     for (const candidate of candidates) {
       if (candidate.stateDataStorage === "r2") {
         if (!candidate.stateDataKey) {
-          throw new ElizaError("Expired recovery backup is missing its object-storage key", {
-            code: "AGENT_RECOVERY_BACKUP_OBJECT_KEY_MISSING",
-            context: { backupId: candidate.id },
-            severity: "fatal",
-          });
+          // This row can never become retryable: no object key exists to recover.
+          // Remove the expired metadata row so it cannot poison every oldest-first
+          // batch forever, but account and alert on the invariant violation.
+          invalidRows += 1;
+          logger.error(
+            "Expired recovery backup is missing its object-storage key; discarding invalid row",
+            { backupId: logger.redact.id(candidate.id) },
+          );
+        } else {
+          try {
+            await deleteObject(candidate.stateDataKey);
+            deletedObjects += 1;
+          } catch (error) {
+            failedRows += 1;
+            logger.error(
+              "Failed to delete expired recovery backup object; retaining row for retry",
+              {
+                backupId: logger.redact.id(candidate.id),
+                error: error instanceof Error ? error.message : String(error),
+              },
+            );
+            continue;
+          }
         }
-        await deleteObject(candidate.stateDataKey);
-        deletedObjects += 1;
       }
 
-      const removed = await dbWrite
-        .delete(agentSandboxBackups)
-        .where(
-          and(
-            eq(agentSandboxBackups.id, candidate.id),
-            isNull(agentSandboxBackups.sandbox_record_id),
-            lte(agentSandboxBackups.recovery_expires_at, now),
-          ),
-        )
-        .returning({ id: agentSandboxBackups.id });
-      deletedRows += removed.length;
+      try {
+        const removed = await dbWrite
+          .delete(agentSandboxBackups)
+          .where(
+            and(
+              eq(agentSandboxBackups.id, candidate.id),
+              isNull(agentSandboxBackups.sandbox_record_id),
+              lte(agentSandboxBackups.recovery_expires_at, now),
+            ),
+          )
+          .returning({ id: agentSandboxBackups.id });
+        deletedRows += removed.length;
+      } catch (error) {
+        failedRows += 1;
+        logger.error("Failed to delete expired recovery backup row; continuing batch", {
+          backupId: logger.redact.id(candidate.id),
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
     }
 
-    return { deletedRows, deletedObjects };
+    return { deletedRows, deletedObjects, failedRows, invalidRows };
   }
 
   async createBackup(data: NewAgentSandboxBackup): Promise<AgentSandboxBackup> {

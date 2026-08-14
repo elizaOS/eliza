@@ -1826,13 +1826,20 @@ export async function runInfraMaintenanceCycle(
     "pre-delete backup cleanup cycle",
     () => processPreDeleteBackupCleanupCycle(),
     (summary) => {
-      if (summary.deletedRows > 0 || summary.deletedObjects > 0) {
+      if (
+        summary.deletedRows > 0 ||
+        summary.deletedObjects > 0 ||
+        summary.failedRows > 0 ||
+        summary.invalidRows > 0
+      ) {
         logger.info(
           "[provisioning-worker] pre-delete backup cleanup cycle complete",
           {
             event: "pre_delete_backup_cleanup.cycle",
             deletedRows: summary.deletedRows,
             deletedObjects: summary.deletedObjects,
+            failedRows: summary.failedRows,
+            invalidRows: summary.invalidRows,
           },
         );
       }

@@ -210,6 +210,8 @@ describe("pre-delete recovery repository", () => {
     await expect(repository.cleanupExpiredPreDeleteRecoveryBackups(NOW)).resolves.toEqual({
       deletedRows: 2,
       deletedObjects: 1,
+      failedRows: 0,
+      invalidRows: 0,
     });
     expect(deleteObject).toHaveBeenCalledWith(key);
     const remaining = await dbWrite.execute("SELECT id FROM agent_sandbox_backups ORDER BY id");
@@ -218,13 +220,18 @@ describe("pre-delete recovery repository", () => {
     ]);
   });
 
-  test("R2 cleanup failure preserves the database row for retry", async () => {
+  test("an R2 poison row is retained for retry without starving later rows", async () => {
     const key = "agent-sandbox-backups/org/backup/state_data.json";
+    const healthyBackupId = "00000000-0000-4000-8000-0000000000d2";
     await insertRecovery({
       id: BACKUP_ID,
-      expiresAt: new Date(NOW.getTime() - 1_000),
+      expiresAt: new Date(NOW.getTime() - 2_000),
       storage: "r2",
       key,
+    });
+    await insertRecovery({
+      id: healthyBackupId,
+      expiresAt: new Date(NOW.getTime() - 1_000),
     });
     setRuntimeR2Bucket({
       get: mock(async () => null),
@@ -234,13 +241,34 @@ describe("pre-delete recovery repository", () => {
       }),
     });
 
-    await expect(repository.cleanupExpiredPreDeleteRecoveryBackups(NOW)).rejects.toThrow(
-      "R2 unavailable",
-    );
-    const remaining = await dbWrite.execute("SELECT id FROM agent_sandbox_backups");
+    await expect(repository.cleanupExpiredPreDeleteRecoveryBackups(NOW)).resolves.toEqual({
+      deletedRows: 1,
+      deletedObjects: 0,
+      failedRows: 1,
+      invalidRows: 0,
+    });
+    const remaining = await dbWrite.execute("SELECT id FROM agent_sandbox_backups ORDER BY id");
     expect((remaining as unknown as { rows: Array<{ id: string }> }).rows).toEqual([
       { id: BACKUP_ID },
     ]);
+  });
+
+  test("discards an irrecoverable R2 row with no key and accounts for it", async () => {
+    await insertRecovery({
+      id: BACKUP_ID,
+      expiresAt: new Date(NOW.getTime() - 1_000),
+      storage: "r2",
+      key: null,
+    });
+
+    await expect(repository.cleanupExpiredPreDeleteRecoveryBackups(NOW)).resolves.toEqual({
+      deletedRows: 1,
+      deletedObjects: 0,
+      failedRows: 0,
+      invalidRows: 1,
+    });
+    const remaining = await dbWrite.execute("SELECT id FROM agent_sandbox_backups");
+    expect((remaining as unknown as { rows: Array<{ id: string }> }).rows).toEqual([]);
   });
 });
 
@@ -280,6 +308,9 @@ describe("0199 retained pre-delete backup migration", () => {
           ('${BACKUP_ID}', '${AGENT_ID}', 'pre-delete', '{}'::jsonb),
           ('00000000-0000-4000-8000-0000000000d9', '${AGENT_ID}', 'manual', '{}'::jsonb);
       `);
+      await client.exec(MIGRATION_SQL);
+      // The application schema guard may have created the CHECK first, and
+      // deploy retries can replay this migration body. Both must be harmless.
       await client.exec(MIGRATION_SQL);
       await client.exec(`
         BEGIN;
