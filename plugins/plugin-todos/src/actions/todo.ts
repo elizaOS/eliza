@@ -417,6 +417,14 @@ async function actionList({
 }: ActionHandlerArgs): Promise<ActionResult> {
   const includeCompleted = readBoolean(params.includeCompleted) ?? false;
   const limit = readNumber(params.limit);
+  if (limit !== undefined) {
+    if (!Number.isSafeInteger(limit) || limit <= 0) {
+      return failure(
+        "invalid_param",
+        "limit must be a positive integer (omit for unlimited results)",
+      );
+    }
+  }
   const filter: Parameters<TodosService["list"]>[0] = {
     entityId: scope.entityId,
     agentId: scope.agentId,
