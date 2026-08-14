@@ -103,11 +103,30 @@ export const DEFAULT_ANDROID_LOCAL_INFERENCE_READY_ATTEMPTS = 180;
 export const DEFAULT_ANDROID_LOCAL_INFERENCE_READY_DELAY_MS = 2000;
 export const DEFAULT_ANDROID_SMOKE_MODEL_CONTEXT_SIZE = 4096;
 
+/** The bundled eliza-1 GGUF advertises a 128k context; anything above it is a
+ * typo, and full width already OOMs a phone/simulator. */
+export const MAX_MODEL_CONTEXT_TOKENS = 131_072;
+/** Retry/readiness/stability loops are dev-lane scale; five digits of attempts
+ * is already three orders past any documented default. */
+export const MAX_LOOP_COUNT = 10_000;
+/** No single polling loop may be configured past 24h of wall clock — a lane
+ * that needs longer is broken, not patient. Checked as attempts × delay. */
+export const MAX_LOOP_BUDGET_MS = 86_400_000;
+/** Model bundles are single-digit GiB; a size override past 1 TiB is a typo. */
+export const MAX_MODEL_SIZE_BYTES = 1_099_511_627_776;
+
 function isBlankEnv(value) {
   return value === undefined || value === null || String(value).trim() === "";
 }
 
 function parseEnvInteger(raw, label, { min, max }) {
+  // Canonical decimal spelling only: the shared helpers accept /^\d+$/, which
+  // lets "0008" pass as 8. A leading zero is a typo, not a smaller number.
+  if (!/^(?:0|[1-9]\d*)$/.test(raw)) {
+    throw new Error(
+      `Invalid ${label}: expected a canonical decimal integer (no leading zeros); received ${JSON.stringify(raw)}`,
+    );
+  }
   if (min === 0) {
     return parseNonNegativeSafeInteger(raw, label, { max });
   }
@@ -118,6 +137,14 @@ function parseEnvInteger(raw, label, { min, max }) {
     );
   }
   return parsed;
+}
+
+function assertLoopBudget(attemptsName, attempts, delayName, delayMs) {
+  if (attempts * delayMs > MAX_LOOP_BUDGET_MS) {
+    throw new Error(
+      `Invalid ${attemptsName} × ${delayName}: ${attempts} × ${delayMs}ms exceeds the ${MAX_LOOP_BUDGET_MS}ms (24h) loop budget`,
+    );
+  }
 }
 
 function readEnvInteger(env, name, fallback, bounds) {
@@ -135,13 +162,14 @@ function readEnvInteger(env, name, fallback, bounds) {
 export function resolveMobileSmokeNumericEnv(env = process.env) {
   const timer = { min: 1, max: MAX_TIMER_DELAY_MS };
   const delay = { min: 0, max: MAX_TIMER_DELAY_MS };
-  const count = { min: 1, max: Number.MAX_SAFE_INTEGER };
-  return {
+  const count = { min: 1, max: MAX_LOOP_COUNT };
+  const context = { min: 1, max: MAX_MODEL_CONTEXT_TOKENS };
+  const resolved = {
     iosFullBunSmokeContextSize: readEnvInteger(
       env,
       "IOS_FULL_BUN_SMOKE_CONTEXT_SIZE",
       DEFAULT_IOS_FULL_BUN_SMOKE_CONTEXT_SIZE,
-      count,
+      context,
     ),
     androidFullTurnTimeoutMs: readEnvInteger(
       env,
@@ -201,7 +229,7 @@ export function resolveMobileSmokeNumericEnv(env = process.env) {
       env,
       "ANDROID_SMOKE_MODEL_CONTEXT_SIZE",
       DEFAULT_ANDROID_SMOKE_MODEL_CONTEXT_SIZE,
-      count,
+      context,
     ),
     androidSmokeModelSizeBytesOverride: isBlankEnv(
       env.ANDROID_SMOKE_MODEL_SIZE_BYTES,
@@ -210,9 +238,36 @@ export function resolveMobileSmokeNumericEnv(env = process.env) {
       : parseEnvInteger(
           String(env.ANDROID_SMOKE_MODEL_SIZE_BYTES).trim(),
           "ANDROID_SMOKE_MODEL_SIZE_BYTES",
-          { min: 1, max: Number.MAX_SAFE_INTEGER },
+          { min: 1, max: MAX_MODEL_SIZE_BYTES },
         ),
   };
+  // Per-loop execution budgets: a syntactically valid pair may still describe
+  // a lane that polls for months. Reject over-budget combinations before any
+  // device work, and keep the stability window self-consistent.
+  if (resolved.androidStabilitySamples > resolved.androidStabilityAttempts) {
+    throw new Error(
+      `Invalid ANDROID_STABILITY_SAMPLES: ${resolved.androidStabilitySamples} exceeds ANDROID_STABILITY_ATTEMPTS ${resolved.androidStabilityAttempts}`,
+    );
+  }
+  assertLoopBudget(
+    "ANDROID_TRANSIENT_RETRY_ATTEMPTS",
+    resolved.androidTransientRetryAttempts,
+    "ANDROID_TRANSIENT_RETRY_DELAY_MS",
+    resolved.androidTransientRetryDelayMs,
+  );
+  assertLoopBudget(
+    "ANDROID_STABILITY_ATTEMPTS",
+    resolved.androidStabilityAttempts,
+    "ANDROID_STABILITY_DELAY_MS",
+    resolved.androidStabilityDelayMs,
+  );
+  assertLoopBudget(
+    "ANDROID_LOCAL_INFERENCE_READY_ATTEMPTS",
+    resolved.androidLocalInferenceReadyAttempts,
+    "ANDROID_LOCAL_INFERENCE_READY_DELAY_MS",
+    resolved.androidLocalInferenceReadyDelayMs,
+  );
+  return resolved;
 }
 
 const smokeNumbers = resolveMobileSmokeNumericEnv();
@@ -220,8 +275,7 @@ const smokeNumbers = resolveMobileSmokeNumericEnv();
 // max context; loading it at full width allocates a multi-GB KV cache that is
 // impractically slow (and OOMs) on a phone/simulator, so the first reply never
 // lands. 4096 mirrors the Android smoke and keeps model load + generation fast.
-const IOS_FULL_BUN_SMOKE_CONTEXT_SIZE =
-  smokeNumbers.iosFullBunSmokeContextSize;
+const IOS_FULL_BUN_SMOKE_CONTEXT_SIZE = smokeNumbers.iosFullBunSmokeContextSize;
 const IOS_FULL_BUN_SMOKE_ATTEMPTS = 180;
 const IOS_FULL_BUN_SMOKE_DELAY_MS = 2000;
 // ANDROID_FULL_TURN_FAILURE_RE comes from the checked-in failure-string source
@@ -2751,7 +2805,6 @@ async function main() {
 }
 
 export {
-  MAX_TIMER_DELAY_MS,
   androidBackgroundServicesReady,
   androidDeviceSerial,
   androidRunAs,
@@ -2767,6 +2820,7 @@ export {
   launchAndroidEmulatorApp,
   launchIosSimulatorApp,
   localInferenceSummary,
+  MAX_TIMER_DELAY_MS,
   main,
   parseSseEvents,
   preseedAndroidLocalRuntime,

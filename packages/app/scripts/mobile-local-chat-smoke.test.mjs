@@ -565,13 +565,23 @@ function runSmokeCli(envOverrides) {
 }
 
 describe("resolveMobileSmokeNumericEnv", () => {
-  it("keeps documented defaults when knobs are unset or empty", () => {
-    expect(smoke.resolveMobileSmokeNumericEnv({})).toMatchObject({
+  it("keeps every documented default when knobs are unset or empty", () => {
+    expect(smoke.resolveMobileSmokeNumericEnv({})).toEqual({
+      iosFullBunSmokeContextSize: smoke.DEFAULT_IOS_FULL_BUN_SMOKE_CONTEXT_SIZE,
       androidFullTurnTimeoutMs: smoke.DEFAULT_ANDROID_FULL_TURN_TIMEOUT_MS,
       androidHealthProbeTimeoutMs:
         smoke.DEFAULT_ANDROID_HEALTH_PROBE_TIMEOUT_MS,
       androidTransientRetryAttempts:
         smoke.DEFAULT_ANDROID_TRANSIENT_RETRY_ATTEMPTS,
+      androidTransientRetryDelayMs:
+        smoke.DEFAULT_ANDROID_TRANSIENT_RETRY_DELAY_MS,
+      androidStabilitySamples: smoke.DEFAULT_ANDROID_STABILITY_SAMPLES,
+      androidStabilityDelayMs: smoke.DEFAULT_ANDROID_STABILITY_DELAY_MS,
+      androidStabilityAttempts: smoke.DEFAULT_ANDROID_STABILITY_ATTEMPTS,
+      androidLocalInferenceReadyAttempts:
+        smoke.DEFAULT_ANDROID_LOCAL_INFERENCE_READY_ATTEMPTS,
+      androidLocalInferenceReadyDelayMs:
+        smoke.DEFAULT_ANDROID_LOCAL_INFERENCE_READY_DELAY_MS,
       androidSmokeModelContextSize:
         smoke.DEFAULT_ANDROID_SMOKE_MODEL_CONTEXT_SIZE,
       androidSmokeModelSizeBytesOverride: null,
@@ -633,6 +643,89 @@ describe("resolveMobileSmokeNumericEnv", () => {
         ANDROID_SMOKE_MODEL_CONTEXT_SIZE: "8abc",
       }),
     ).toThrow(/ANDROID_SMOKE_MODEL_CONTEXT_SIZE/);
+  });
+
+  it("rejects leading-zero spellings the shared helpers would accept", () => {
+    expect(() =>
+      smoke.resolveMobileSmokeNumericEnv({
+        ANDROID_TRANSIENT_RETRY_ATTEMPTS: "0008",
+      }),
+    ).toThrow(/ANDROID_TRANSIENT_RETRY_ATTEMPTS.*leading zeros/);
+    expect(() =>
+      smoke.resolveMobileSmokeNumericEnv({ ANDROID_STABILITY_DELAY_MS: "00" }),
+    ).toThrow(/ANDROID_STABILITY_DELAY_MS.*leading zeros/);
+    expect(
+      smoke.resolveMobileSmokeNumericEnv({ ANDROID_STABILITY_DELAY_MS: "0" })
+        .androidStabilityDelayMs,
+    ).toBe(0);
+  });
+
+  it("bounds context sizes at the model's advertised 128k", () => {
+    for (const name of [
+      "IOS_FULL_BUN_SMOKE_CONTEXT_SIZE",
+      "ANDROID_SMOKE_MODEL_CONTEXT_SIZE",
+    ]) {
+      expect(
+        smoke.resolveMobileSmokeNumericEnv({
+          [name]: String(smoke.MAX_MODEL_CONTEXT_TOKENS),
+        }),
+      ).toBeTruthy();
+      for (const value of [
+        String(smoke.MAX_MODEL_CONTEXT_TOKENS + 1),
+        String(Number.MAX_SAFE_INTEGER),
+      ]) {
+        expect(() =>
+          smoke.resolveMobileSmokeNumericEnv({ [name]: value }),
+        ).toThrow(new RegExp(name));
+      }
+    }
+  });
+
+  it("bounds count knobs at the operational loop maximum", () => {
+    for (const name of [
+      "ANDROID_TRANSIENT_RETRY_ATTEMPTS",
+      "ANDROID_STABILITY_SAMPLES",
+      "ANDROID_STABILITY_ATTEMPTS",
+      "ANDROID_LOCAL_INFERENCE_READY_ATTEMPTS",
+    ]) {
+      for (const value of [
+        String(smoke.MAX_LOOP_COUNT + 1),
+        String(Number.MAX_SAFE_INTEGER),
+      ]) {
+        expect(() =>
+          smoke.resolveMobileSmokeNumericEnv({ [name]: value }),
+        ).toThrow(new RegExp(name));
+      }
+    }
+    expect(() =>
+      smoke.resolveMobileSmokeNumericEnv({
+        ANDROID_SMOKE_MODEL_SIZE_BYTES: String(smoke.MAX_MODEL_SIZE_BYTES + 1),
+      }),
+    ).toThrow(/ANDROID_SMOKE_MODEL_SIZE_BYTES/);
+  });
+
+  it("rejects over-budget loop combinations and inconsistent stability windows", () => {
+    // 10_000 attempts × 8_640_001ms ≈ 2.7 years — each value alone is legal.
+    expect(() =>
+      smoke.resolveMobileSmokeNumericEnv({
+        ANDROID_LOCAL_INFERENCE_READY_ATTEMPTS: String(smoke.MAX_LOOP_COUNT),
+        ANDROID_LOCAL_INFERENCE_READY_DELAY_MS: "8640001",
+      }),
+    ).toThrow(/loop budget/);
+    expect(() =>
+      smoke.resolveMobileSmokeNumericEnv({
+        ANDROID_TRANSIENT_RETRY_ATTEMPTS: "100",
+        ANDROID_TRANSIENT_RETRY_DELAY_MS: "864001",
+      }),
+    ).toThrow(/ANDROID_TRANSIENT_RETRY_ATTEMPTS.*loop budget/s);
+    expect(() =>
+      smoke.resolveMobileSmokeNumericEnv({
+        ANDROID_STABILITY_SAMPLES: "10",
+        ANDROID_STABILITY_ATTEMPTS: "5",
+      }),
+    ).toThrow(/ANDROID_STABILITY_SAMPLES.*exceeds ANDROID_STABILITY_ATTEMPTS/);
+    // The documented defaults stay well inside every budget.
+    expect(smoke.resolveMobileSmokeNumericEnv({})).toBeTruthy();
   });
 });
 
