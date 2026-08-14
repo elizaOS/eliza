@@ -37,7 +37,7 @@ Source validation requires a `smthrs` import and default export and rejects lega
 - `WorkflowService` (`workflow`) is the chat and API facade. It generates native source with the selected elizaOS model and exposes search, CRUD, activation, asynchronous runs, revisions, and evaluation samples.
 - `EmbeddedWorkflowService` (`embedded_workflow_service`) persists tenant-scoped definitions and runs, launches the Smithers worker, records events, and supports cancellation and live subscriptions.
 - `WORKFLOW_DISPATCH` is the typed trigger bridge and preserves idempotency keys.
-- `WorkflowCredentialStore` remains the agent-scoped connector credential mapping service; workflow tasks access integrations through elizaOS capabilities rather than embedded secrets.
+- Workflow tasks access integrations through elizaOS capabilities; the plugin does not define foreign credential records or embed connector secrets.
 
 ## HTTP surface
 

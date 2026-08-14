@@ -24,6 +24,7 @@ const settleCalls: number[] = [];
 let settleUnknownCalls = 0;
 const billCalls: unknown[] = [];
 let characterReads = 0;
+const loggerWarn = mock(() => undefined);
 
 class ApiInsufficientCreditsError extends Error {}
 
@@ -48,7 +49,7 @@ mock.module("../../pricing", () => ({
 
 mock.module("../../utils/logger", () => ({
   logger: {
-    warn: mock(() => undefined),
+    warn: loggerWarn,
     error: mock(() => undefined),
   },
 }));
@@ -325,6 +326,7 @@ beforeEach(() => {
   turnCalls = 0;
   streamTurnCalls = 0;
   characterReads = 0;
+  loggerWarn.mockClear();
   enforceOrgRateLimit.mockClear();
   getInferenceAdmissionSnapshotCacheOnly.mockClear();
   admitOrganizationInference.mockClear();
@@ -650,23 +652,33 @@ describe("SharedRuntimeChatService", () => {
     expect(settleUnknownCalls).toBe(1);
   });
 
-  test("stream response-body cancellation awaits interrupted history persistence", async () => {
+  test("stream cancellation persists interrupted history without waiting for provider teardown", async () => {
     const service = new SharedRuntimeChatService();
     const h = harness();
-    let releaseProvider = () => {};
-    const providerGate = new Promise<void>((resolve) => {
-      releaseProvider = resolve;
+    let releaseProviderStream = () => {};
+    const providerStreamGate = new Promise<void>((resolve) => {
+      releaseProviderStream = resolve;
+    });
+    let releaseProviderCancellation = () => {};
+    const providerCancellationGate = new Promise<void>((resolve) => {
+      releaseProviderCancellation = resolve;
     });
     let providerCancelReason: unknown;
     streamTurn = {
       degraded: false,
       cancel: async (reason: unknown) => {
         providerCancelReason = reason;
-        releaseProvider();
+        await providerCancellationGate;
       },
       parts: (async function* () {
         yield { type: "text-delta", text: "partial " };
-        await providerGate;
+        await providerStreamGate;
+        yield { type: "text-delta", text: "late" };
+        yield {
+          type: "finish",
+          text: "partial late",
+          usage: { inputTokens: 1, outputTokens: 1 },
+        };
       })(),
     };
 
@@ -674,7 +686,16 @@ describe("SharedRuntimeChatService", () => {
     const reader = response.body!.getReader();
     const first = await reader.read();
     expect(new TextDecoder().decode(first.value)).toContain("partial");
-    await reader.cancel("barge-in");
+    const cancellation = reader.cancel("barge-in");
+    let guardTimer: ReturnType<typeof setTimeout> | undefined;
+    const cancellationOutcome = await Promise.race([
+      cancellation.then(() => "persisted" as const),
+      new Promise<"stuck_on_provider">((resolve) => {
+        guardTimer = setTimeout(() => resolve("stuck_on_provider"), 1_000);
+      }),
+    ]);
+    if (guardTimer !== undefined) clearTimeout(guardTimer);
+    expect(cancellationOutcome).toBe("persisted");
 
     expect(h.history()).toHaveLength(3);
     expect(h.history()[1]).toMatchObject({
@@ -692,7 +713,102 @@ describe("SharedRuntimeChatService", () => {
     expect(streamAbortSignal?.reason).toBe("barge-in");
     expect(providerCancelReason).toBe("barge-in");
     expect(settleUnknownCalls).toBe(1);
+
+    // Provider teardown remains observed under waitUntil, but it is no longer
+    // part of the room-lock release condition. Let both mocked provider tasks
+    // finish so the test leaves no pending async work.
+    releaseProviderCancellation();
+    releaseProviderStream();
+    await cancellation;
+    await Promise.all(h.background);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(h.history()).toHaveLength(3);
+    expect(h.history().at(-1)).toMatchObject({
+      role: "assistant",
+      content: "partial",
+      interrupted: true,
+    });
+    expect(settleUnknownCalls).toBe(1);
   });
+
+  test("stream cancellation observes provider teardown failures off the room-lock path", async () => {
+    const service = new SharedRuntimeChatService();
+    const h = harness();
+    let releaseProviderStream = () => {};
+    const providerStreamGate = new Promise<void>((resolve) => {
+      releaseProviderStream = resolve;
+    });
+    streamTurn = {
+      degraded: false,
+      cancel: async () => {
+        releaseProviderStream();
+        throw new Error("provider cancel failed");
+      },
+      parts: (async function* () {
+        yield { type: "text-delta", text: "partial " };
+        await providerStreamGate;
+      })(),
+    };
+
+    const response = await service.stream(agent, rpc, h);
+    const reader = response.body!.getReader();
+    await reader.read();
+    await reader.cancel("barge-in");
+    await Promise.all(h.background);
+
+    expect(h.history().at(-1)).toMatchObject({
+      role: "assistant",
+      content: "partial",
+      interrupted: true,
+    });
+    expect(loggerWarn).toHaveBeenCalledWith(
+      "[SharedRuntimeChatService] provider stream cancellation did not settle cleanly",
+      expect.objectContaining({
+        agentId: agent.id,
+        outcome: "rejected",
+        error: "provider cancel failed",
+      }),
+    );
+  });
+
+  test("stream cancellation reports provider teardown that never settles", async () => {
+    const service = new SharedRuntimeChatService();
+    const h = harness();
+    let releaseProviderStream = () => {};
+    const providerStreamGate = new Promise<void>((resolve) => {
+      releaseProviderStream = resolve;
+    });
+    streamTurn = {
+      degraded: false,
+      cancel: async () => {
+        await new Promise<void>(() => undefined);
+      },
+      parts: (async function* () {
+        yield { type: "text-delta", text: "partial " };
+        await providerStreamGate;
+      })(),
+    };
+
+    const response = await service.stream(agent, rpc, h);
+    const reader = response.body!.getReader();
+    await reader.read();
+    await reader.cancel("barge-in");
+    releaseProviderStream();
+    await Promise.all(h.background);
+
+    expect(h.history().at(-1)).toMatchObject({
+      role: "assistant",
+      content: "partial",
+      interrupted: true,
+    });
+    expect(loggerWarn).toHaveBeenCalledWith(
+      "[SharedRuntimeChatService] provider stream cancellation did not settle cleanly",
+      expect.objectContaining({
+        agentId: agent.id,
+        outcome: "timed_out",
+      }),
+    );
+  }, 10_000);
 
   test("stream finalization retries after a failed history write", async () => {
     const service = new SharedRuntimeChatService();

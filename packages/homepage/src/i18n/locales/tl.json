@@ -9,6 +9,7 @@
   "homepage_eliza.common.skipToContent": "Lumaktaw sa content",
   "homepage_eliza.common.loading": "Naglo-load…",
   "homepage_eliza.common.redirecting": "Inire-redirect…",
+  "homepage_eliza.common.messageHandoff": "Binubuksan ang Messages. Kung walang mangyari, kopyahin ang numero.",
   "homepage_eliza.common.year": "ElizaCloud Inc. {{year}}",
   "homepage_eliza.common.terms": "Mga Tuntunin",
   "homepage_eliza.common.privacy": "Privacy",

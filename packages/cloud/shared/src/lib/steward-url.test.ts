@@ -20,15 +20,15 @@ afterEach(() => {
 
 describe("resolveBrowserStewardApiUrl", () => {
   test("routes staging cloud host to the staging API worker", () => {
-    setLocation("staging.elizacloud.ai");
+    setLocation("cloud-staging.eliza.app");
 
-    expect(resolveBrowserStewardApiUrl()).toBe("https://api-staging.elizacloud.ai/steward");
+    expect(resolveBrowserStewardApiUrl()).toBe("https://api-staging.eliza.app/steward");
   });
 
   test("routes production cloud host to the production API worker", () => {
-    setLocation("elizacloud.ai");
+    setLocation("cloud.eliza.app");
 
-    expect(resolveBrowserStewardApiUrl()).toBe("https://api.elizacloud.ai/steward");
+    expect(resolveBrowserStewardApiUrl()).toBe("https://api.eliza.app/steward");
   });
 
   test("falls back to same-origin steward mount for unknown hosts", () => {

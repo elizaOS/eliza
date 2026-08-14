@@ -631,8 +631,18 @@ export async function addLabels(
   repo: string,
   issueNumber: number,
   labels: string[],
-): Promise<void> {
+): Promise<IssueInfo> {
   const client = await ensureGitHubClient(ctx);
   const { owner, repo: repoName } = parseOwnerRepo(repo);
   await client.addLabels(owner, repoName, issueNumber, labels);
+  const issue = await client.getIssue(owner, repoName, issueNumber);
+  const observed = new Set(issue.labels.map((label) => label.toLowerCase()));
+  const missing = labels.filter((label) => !observed.has(label.toLowerCase()));
+  if (missing.length > 0) {
+    throw new ElizaError("GitHub label write was not visible on readback", {
+      code: "GITHUB_LABEL_READBACK_MISMATCH",
+      context: { repo, issueNumber, requested: labels, observed: issue.labels },
+    });
+  }
+  return issue;
 }

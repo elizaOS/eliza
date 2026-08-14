@@ -107,7 +107,6 @@ packages/shared/
       trajectory-format.ts       Trajectory log format helpers
       ...                        25+ additional utility modules
     runtime-env.ts               resolveRuntimePorts, resolveApiSecurityConfig
-    connector-cred-types.ts      ConnectorCredentialType
     connectors.ts                Connector source alias helpers (normalizeConnectorSource, …)
     character-presets.ts         Built-in character preset definitions
     character-language.ts        Character language type helpers

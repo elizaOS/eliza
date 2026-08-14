@@ -480,7 +480,7 @@ describe("shared agent messages/stream", () => {
     expect(runtime.fetch).toHaveBeenCalledTimes(1);
   });
 
-  test("cache miss returns warming without joining in-flight DB hydration", async () => {
+  test("cache miss returns warming while prewarm joins in-flight DB hydration", async () => {
     const runtime = voiceWorkerRuntime("hydrated ok");
     const env = {
       CACHE_ENABLED: "true",
@@ -513,9 +513,9 @@ describe("shared agent messages/stream", () => {
       organizationId: ORG,
       userId: VOICE_USER,
     });
-    await fetchImpl.prewarm();
-    expect(runtime.background).toHaveLength(1);
+    const prewarm = fetchImpl.prewarm();
     await hydrationStarted;
+    expect(runtime.background).toHaveLength(1);
 
     const res = await fetchImpl(
       `https://api-staging.elizacloud.ai/api/v1/eliza/agents/${AGENT}/api/conversations/${VOICE_CONVERSATION}/messages/stream`,
@@ -531,6 +531,7 @@ describe("shared agent messages/stream", () => {
     expect(bridgeStream).not.toHaveBeenCalled();
 
     releaseHydration(cachedVoiceAgent());
+    await prewarm;
     await runtime.background[0];
 
     const retry = await fetchImpl(

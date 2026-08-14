@@ -12,11 +12,19 @@ import { shellHistoryProvider } from "../providers/shellHistoryProvider";
 import { resetProcessRegistryForTests } from "../services/processRegistry";
 import { ShellService } from "../services/shellService";
 
-function createRuntime(service: ShellService | null): IAgentRuntime {
+function createRuntime(
+  service: ShellService | null,
+  configuredSecret?: string,
+): IAgentRuntime {
   return {
     character: {},
     getService(name: string) {
       return name === "shell" ? service : null;
+    },
+    redactSecrets(text: string) {
+      return configuredSecret
+        ? text.replaceAll(configuredSecret, "[REDACTED:TEST_SECRET]")
+        : text;
     },
   } as IAgentRuntime;
 }
@@ -81,6 +89,29 @@ describePosixShell("shell plugin real local integration", () => {
     expect(provider.values?.currentWorkingDirectory).toBe(allowedDirectory);
   });
 
+  it("stores and provides only redacted configured bare secrets", async () => {
+    const secret = "marigold9";
+    await service.stop();
+    service = await ShellService.start(createRuntime(null, secret));
+    runtime = createRuntime(service, secret);
+    const result = await service.executeCommand(
+      `printf '%s\\n' '${secret}'`,
+      "room-secret",
+    );
+    expect(result.success).toBe(true);
+    expect(JSON.stringify(result)).not.toContain(secret);
+
+    const history = service.getCommandHistory("room-secret", 10);
+    const provider = await shellHistoryProvider.get(
+      runtime,
+      { roomId: "room-secret", agentId: "agent-1" } as never,
+      {} as never,
+    );
+
+    expect(JSON.stringify(history)).not.toContain(secret);
+    expect(JSON.stringify(provider)).not.toContain(secret);
+  });
+
   it("fails closed when a command tries to escape the allowed directory", async () => {
     const result = await service.executeCommand("cd ../..", "room-1");
 
@@ -112,6 +143,9 @@ describePosixShell("shell plugin real local integration", () => {
       character: {},
       getService(name: string) {
         return name === "shell" ? throwingService : null;
+      },
+      redactSecrets(text: string) {
+        return text;
       },
       reportError(scope: string, error: unknown) {
         reported.push({ scope, error });
