@@ -254,6 +254,64 @@ describe("INBOX umbrella action — cross-channel inbox", () => {
       expect(data.items).toHaveLength(1);
       expect(data.items[0]?.id).toBe("g-2");
     });
+
+    it("marks a per-platform-capped pull as a sample, not an inbox total", async () => {
+      // `limit` is applied per platform, so a fetcher whose channel holds MORE
+      // than the cap truncated itself — the merged figure is not the inbox
+      // size. Each fetcher is asked for limit + 1 so that is measured, which is
+      // why gmail must be able to return 4 rows for a limit of 3.
+      setInboxFetchers({
+        gmail: async ({ limit }) =>
+          Array.from({ length: limit }, (_, index) =>
+            makeItem({ id: `g-${index}`, platform: "gmail" }),
+          ),
+        discord: async () => [makeItem({ id: "d-1", platform: "discord" })],
+      });
+      const result = await callInbox(makeRuntime(), makeMessage(), {
+        subaction: "list",
+        platforms: ["gmail", "discord"],
+        limit: 3,
+      });
+      expect(result.text).toContain("up to 3 per platform");
+      expect(result.text).toContain("gmail hit that cap");
+      expect(result.text).toContain("sample, not a total");
+      expect(result.text).not.toContain("discord hit that cap");
+    });
+
+    // The exact-fit counterpart. A platform holding exactly `limit` rows fills
+    // the page without truncating, so calling it a sample and telling the
+    // reader to raise `limit` would state something untrue.
+    it("does not call an exact-fit platform capped", async () => {
+      setInboxFetchers({
+        gmail: async () =>
+          Array.from({ length: 3 }, (_, index) =>
+            makeItem({ id: `g-${index}`, platform: "gmail" }),
+          ),
+        discord: async () => [makeItem({ id: "d-1", platform: "discord" })],
+      });
+      const result = await callInbox(makeRuntime(), makeMessage(), {
+        subaction: "list",
+        platforms: ["gmail", "discord"],
+        limit: 3,
+      });
+      expect(result.text).toContain("up to 3 per platform");
+      expect(result.text).not.toContain("hit that cap");
+      expect(result.text).not.toContain("sample, not a total");
+    });
+
+    it("names the since window on the non-empty pull", async () => {
+      setInboxFetchers({
+        gmail: async () => [makeItem({ id: "g-1", platform: "gmail" })],
+      });
+      const result = await callInbox(makeRuntime(), makeMessage(), {
+        subaction: "list",
+        platforms: ["gmail"],
+        since: "2026-05-01T00:00:00.000Z",
+      });
+      expect(result.text).toContain("Pulled 1 messages");
+      expect(result.text).toContain("since 2026-05-01T00:00:00.000Z");
+      expect(result.text).toContain("up to 50 per platform");
+    });
   });
 
   describe("search", () => {
@@ -463,7 +521,101 @@ describe("INBOX umbrella action — cross-channel inbox", () => {
       const select = calls[0]?.sql ?? "";
       expect(select).toContain("resolved = FALSE");
       expect(select).toContain("snoozed_until IS NULL");
-      expect(select).toContain("LIMIT 5");
+      // One row past the requested limit, so a full page can be told apart
+      // from a queue that holds exactly that many rows.
+      expect(select).toContain("LIMIT 6");
+    });
+
+    it("states the cap on a triage page that genuinely overflowed", async () => {
+      const { runtime } = makeDbRuntime((sql) =>
+        sql.includes("life_inbox_triage_entries")
+          ? Array.from({ length: 3 }, (_, index) =>
+              makeTriageRow({ id: `entry-${index}` }),
+            )
+          : [],
+      );
+
+      const result = await callInbox(runtime, makeMessage(), {
+        subaction: "triage",
+        limit: 2,
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.text).toContain("capped at 2");
+      expect(result.text).toContain("2+");
+      const data = result.data as { entries: Array<{ id: string }> };
+      expect(data.entries).toHaveLength(2);
+    });
+
+    it("does not state a cap on a triage page that exactly fit", async () => {
+      const { runtime } = makeDbRuntime((sql) =>
+        sql.includes("life_inbox_triage_entries")
+          ? Array.from({ length: 2 }, (_, index) =>
+              makeTriageRow({ id: `entry-${index}` }),
+            )
+          : [],
+      );
+
+      const result = await callInbox(runtime, makeMessage(), {
+        subaction: "triage",
+        limit: 2,
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.text).toContain("Loaded 2");
+      expect(result.text).not.toContain("capped at");
+    });
+
+    it("does not report a classification-filtered miss as an empty queue", async () => {
+      const { runtime } = makeDbRuntime((sql) => {
+        if (!sql.includes("life_inbox_triage_entries")) return [];
+        // The narrowed read finds nothing urgent; the widened re-read still
+        // sees the pending needs_reply rows.
+        if (sql.includes("classification = ")) return [];
+        return [
+          makeTriageRow({ id: "entry-1" }),
+          makeTriageRow({ id: "entry-2" }),
+        ];
+      });
+
+      const result = await callInbox(runtime, makeMessage("any urgent?"), {
+        subaction: "triage",
+        classification: "urgent",
+        limit: 5,
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.text).not.toContain("No inbox triage items are pending.");
+      expect(result.text).toContain("No urgent inbox triage items are pending");
+      expect(result.text).toContain("snoozed items excluded");
+      expect(result.text).toContain(
+        "2 other pending items remain in the queue",
+      );
+    });
+
+    it("reports a genuinely empty queue plainly once every narrowing is lifted", async () => {
+      const { runtime } = makeDbRuntime(() => []);
+
+      const result = await callInbox(runtime, makeMessage(), {
+        subaction: "triage",
+        classification: "urgent",
+        limit: 5,
+      });
+
+      expect(result.text).toContain("No urgent inbox triage items are pending");
+      expect(result.text).toContain("nothing else is pending either");
+    });
+
+    it("keeps the plain empty wording when the read was not narrowed at all", async () => {
+      const { runtime } = makeDbRuntime(() => []);
+
+      const result = await callInbox(runtime, makeMessage(), {
+        subaction: "triage",
+        includeSnoozed: true,
+        limit: 5,
+      });
+
+      expect(result.text).toContain("No inbox triage items are pending.");
     });
 
     it("runs the triage classifier over fresh messages and persists one entry per message", async () => {

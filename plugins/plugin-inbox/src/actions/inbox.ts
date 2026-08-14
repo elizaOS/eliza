@@ -365,25 +365,39 @@ async function fetchInboxItems(args: {
   merged: readonly InboxItem[];
   totalBeforeDedupe: number;
   degraded: readonly InboxDegradedPlatform[];
+  capped: readonly InboxPlatform[];
 }> {
+  // Ask each fetcher for one row PAST the cap so overflow is measured rather
+  // than inferred. A platform holding exactly `limit` rows returns a full page
+  // and is otherwise indistinguishable from a truncated one — reporting that as
+  // "a sample, not a total — raise `limit` to see more" states something false,
+  // which is the very failure this action is being corrected for.
+  const probeLimit = args.limit + 1;
   const settled = await Promise.allSettled(
     args.platforms.map(async (platform) => {
       const fetcher = activeFetchers[platform];
       return fetcher({
         runtime: args.runtime,
         ...(args.since ? { since: args.since } : {}),
-        limit: args.limit,
+        limit: probeLimit,
         ...(args.query ? { query: args.query } : {}),
       });
     }),
   );
   const flat: InboxItem[] = [];
   const degraded: InboxDegradedPlatform[] = [];
+  const capped: InboxPlatform[] = [];
   settled.forEach((result, index) => {
     const platform = args.platforms[index];
     if (!platform) return;
     if (result.status === "fulfilled") {
-      flat.push(...result.value);
+      // `limit` is applied per platform, not to the merge. Only a platform that
+      // returned MORE than the cap actually truncated its own channel.
+      const overflowed = result.value.length > args.limit;
+      flat.push(
+        ...(overflowed ? result.value.slice(0, args.limit) : result.value),
+      );
+      if (overflowed) capped.push(platform);
       return;
     }
     degraded.push({
@@ -398,6 +412,7 @@ async function fetchInboxItems(args: {
     merged: dedupeAndOrder(flat),
     totalBeforeDedupe: flat.length,
     degraded,
+    capped,
   };
 }
 
@@ -406,6 +421,27 @@ function degradedSuffix(degraded: readonly InboxDegradedPlatform[]): string {
   if (degraded.length === 0) return "";
   const parts = degraded.map((entry) => `${entry.platform} (${entry.error})`);
   return ` Warning: could not check ${parts.join(", ")} — results may be incomplete.`;
+}
+
+/**
+ * One-line suffix naming the narrowings a fan-out read applied: the `since`
+ * window it looked back over and the per-platform page cap that truncated any
+ * channel that filled it. Without this the merged figure reads as the inbox
+ * total when it is a capped sample of a bounded window.
+ */
+function fetchScopeSuffix(args: {
+  limit: number;
+  since?: string;
+  capped: readonly InboxPlatform[];
+}): string {
+  const parts: string[] = [];
+  if (args.since) parts.push(`since ${args.since}`);
+  parts.push(`up to ${args.limit} per platform`);
+  const cappedNote =
+    args.capped.length === 0
+      ? ""
+      : ` ${args.capped.join(", ")} hit that cap, so this is a sample, not a total — raise \`limit\` to see more.`;
+  return ` Scope: ${parts.join(", ")}.${cappedNote}`;
 }
 
 /**
@@ -530,6 +566,55 @@ function parseClassification(value: unknown): TriageClassification | null {
   return TRIAGE_CLASSIFICATIONS.has(normalized as TriageClassification)
     ? (normalized as TriageClassification)
     : null;
+}
+
+/**
+ * Name the narrowings the triage queue read applied. `classification` filters
+ * the queue to one bucket and snoozed rows are hidden unless asked for, so a
+ * count reported without them reads as the whole pending queue.
+ */
+function triageScopeNote(
+  classification: TriageClassification | null,
+  includeSnoozed: boolean,
+): string {
+  const parts: string[] = [];
+  if (classification) parts.push(`classified ${classification}`);
+  if (!includeSnoozed) parts.push("snoozed items excluded");
+  return parts.length === 0 ? "" : ` (${parts.join(", ")})`;
+}
+
+/**
+ * Render the empty triage queue. A narrowed miss re-reads the queue with the
+ * classification and snooze filters lifted, so "nothing urgent" is never
+ * reported as "nothing pending" while needs-reply or snoozed rows remain.
+ */
+function emptyTriageText(args: {
+  classification: TriageClassification | null;
+  includeSnoozed: boolean;
+  queueOutsideScope: number;
+  queueOutsideScopeCapped: boolean;
+}): string {
+  const {
+    classification,
+    includeSnoozed,
+    queueOutsideScope,
+    queueOutsideScopeCapped,
+  } = args;
+  if (!classification && includeSnoozed) {
+    return "No inbox triage items are pending.";
+  }
+  const scope = classification
+    ? `No ${classification} inbox triage items are pending`
+    : "No unsnoozed inbox triage items are pending";
+  const narrowing = triageScopeNote(classification, includeSnoozed);
+  if (queueOutsideScope === 0) {
+    return `${scope}${narrowing}, and nothing else is pending either.`;
+  }
+  // "at least" is only honest when the unfiltered re-read actually overflowed
+  // its own cap; a re-read that merely filled it holds exactly that many rows.
+  const approx = queueOutsideScopeCapped ? "at least " : "";
+  const plural = queueOutsideScope === 1 && !queueOutsideScopeCapped ? "" : "s";
+  return `${scope}${narrowing}. ${approx}${queueOutsideScope} other pending item${plural} remain in the queue — ask for the full triage queue to see them.`;
 }
 
 function requireEntryId(params: InboxActionParameters): string {
@@ -736,21 +821,47 @@ export async function executeInboxQueueOperation(args: {
       }
       // 2. Return the pending queue, which now includes the rows the
       //    classifier just persisted, optionally narrowed by classification.
-      const entries = classification
+      const includeSnoozed = args.params.includeSnoozed === true;
+      // Read one row past the cap so a full page is distinguishable from a
+      // queue that holds exactly `limit` rows; otherwise the count below reads
+      // as a total whenever the page happens to fill.
+      const entryPage = classification
         ? await repo.getByClassification(classification, {
-            limit,
-            includeSnoozed: args.params.includeSnoozed === true,
+            limit: limit + 1,
+            includeSnoozed,
           })
-        : await repo.getUnresolved({
-            limit,
-            includeSnoozed: args.params.includeSnoozed === true,
-          });
+        : await repo.getUnresolved({ limit: limit + 1, includeSnoozed });
+      const entriesCapped = entryPage.length > limit;
+      const entries = entriesCapped ? entryPage.slice(0, limit) : entryPage;
+      // The queue read is narrowed by `classification` and (by default) hides
+      // snoozed rows. An empty narrowed read is not an empty queue, so re-read
+      // the queue with both narrowings lifted and report what is actually
+      // sitting there rather than declaring triage clear.
+      const outsideScopePage =
+        entries.length === 0 && (classification || !includeSnoozed)
+          ? await repo.getUnresolved({ limit: limit + 1, includeSnoozed: true })
+          : [];
+      const queueOutsideScopeCapped = outsideScopePage.length > limit;
+      const queueOutsideScope = queueOutsideScopeCapped
+        ? limit
+        : outsideScopePage.length;
+      // A page that filled the cap is a page, not a count of the queue. Say so
+      // on the non-empty renders too — the empty render already re-reads the
+      // queue unfiltered, but a full page was previously reported as a total.
+      const entriesCap = entriesCapped
+        ? ` (capped at ${limit} — raise \`limit\` to see more)`
+        : "";
       const baseText =
         classifiedCount > 0
-          ? `Triaged ${classifiedCount} new message${classifiedCount === 1 ? "" : "s"}; ${entries.length} pending inbox item${entries.length === 1 ? "" : "s"}.`
+          ? `Triaged ${classifiedCount} new message${classifiedCount === 1 ? "" : "s"}; ${entries.length}${entriesCapped ? "+" : ""} pending inbox item${entries.length === 1 && !entriesCapped ? "" : "s"}${triageScopeNote(classification, includeSnoozed)}${entriesCap}.`
           : entries.length === 0
-            ? "No inbox triage items are pending."
-            : `Loaded ${entries.length} pending inbox triage items.`;
+            ? emptyTriageText({
+                classification,
+                includeSnoozed,
+                queueOutsideScope,
+                queueOutsideScopeCapped,
+              })
+            : `Loaded ${entries.length}${entriesCapped ? "+" : ""} pending inbox triage items${triageScopeNote(classification, includeSnoozed)}${entriesCap}.`;
       return {
         success: true,
         text: appendInboxTriageChoiceMarkers(
@@ -1056,13 +1167,14 @@ export const inboxAction: Action & {
         ? params.since.trim()
         : undefined;
 
-    const { merged, totalBeforeDedupe, degraded } = await fetchInboxItems({
-      runtime,
-      platforms,
-      ...(since ? { since } : {}),
-      limit,
-      ...(query ? { query } : {}),
-    });
+    const { merged, totalBeforeDedupe, degraded, capped } =
+      await fetchInboxItems({
+        runtime,
+        platforms,
+        ...(since ? { since } : {}),
+        limit,
+        ...(query ? { query } : {}),
+      });
     const items: readonly InboxItem[] = subaction === "summarize" ? [] : merged;
     const summary: readonly InboxSummaryEntry[] | undefined =
       subaction === "summarize" ? buildSummary(merged, platforms) : undefined;
@@ -1094,7 +1206,7 @@ export const inboxAction: Action & {
         text = `Summarized ${platforms.length} platforms (${merged.length} unique messages).`;
         break;
     }
-    text = `${text}${degradedSuffix(degraded)}`;
+    text = `${text}${fetchScopeSuffix({ limit, ...(since ? { since } : {}), capped })}${degradedSuffix(degraded)}`;
 
     await callback?.({
       text,

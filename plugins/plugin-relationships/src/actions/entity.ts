@@ -131,6 +131,52 @@ function entitySummary(entity: Entity): {
 
 const ENTITY_KINDS_DEFAULT = "person";
 
+function entityCount(n: number, capped: boolean): string {
+  return `${n}${capped ? "+" : ""} entit${n === 1 && !capped ? "y" : "ies"}`;
+}
+
+/**
+ * Render the `list` op's summary so the narrowing is never invisible.
+ *
+ * `entityStore.list` is scoped by the caller's `kind` and capped at `limit`, so
+ * a bare "N entities in the graph" turns a filtered page into an apparent
+ * total and a filtered miss into an apparently empty graph. The text names the
+ * kind filter, marks a genuinely overflowing result as capped, and — when a
+ * kind-filtered read came back empty — reports the measured unfiltered count so
+ * the reader can tell "no organizations" from "no graph".
+ *
+ * `hasMore` must come from reading one row PAST the cap. A page that merely
+ * fills `limit` is indistinguishable from a source holding exactly `limit`
+ * rows, so inferring overflow from `length >= limit` would make the cap notice
+ * itself a fabricated claim.
+ */
+function listScopeText(args: {
+  entities: readonly Entity[];
+  kind: string | null;
+  limit: number;
+  hasMore: boolean;
+  unfiltered: { entities: readonly Entity[]; hasMore: boolean } | null;
+}): string {
+  const { entities, kind, limit, hasMore, unfiltered } = args;
+  if (entities.length > 0) {
+    const scope = kind ? ` of kind "${kind}"` : "";
+    const cap = hasMore
+      ? ` (capped at ${limit} — raise \`limit\` to see more)`
+      : "";
+    return `${entityCount(entities.length, hasMore)}${scope} in the graph${cap}.`;
+  }
+  if (!kind) {
+    return "No entities in the graph yet.";
+  }
+  if (!unfiltered || unfiltered.entities.length === 0) {
+    return `No entities of kind "${kind}" — the graph holds no entities of any kind yet.`;
+  }
+  return `No entities of kind "${kind}". The graph holds ${entityCount(
+    unfiltered.entities.length,
+    unfiltered.hasMore,
+  )} of other kinds — list without \`kind\` to see them.`;
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
@@ -303,16 +349,38 @@ export const entityAction: Action = {
           typeof params.limit === "number" && params.limit > 0
             ? Math.floor(params.limit)
             : 50;
-        const entities = await entityStore.list({
+        // Read one past the cap so overflow is MEASURED, not guessed. A page
+        // that merely fills the limit is indistinguishable from a source that
+        // holds exactly `limit` rows, and telling that reader to "raise limit
+        // to see more" is a false statement — the same fabricated-scope bug
+        // this action is being fixed for.
+        const page = await entityStore.list({
           ...(kind ? { type: kind } : {}),
-          limit,
+          limit: limit + 1,
         });
+        const hasMore = page.length > limit;
+        const entities = hasMore ? page.slice(0, limit) : page;
+        // A `kind`-filtered miss is not an empty graph. An empty kind-filtered
+        // read re-reads the graph unfiltered so the count reported for "the
+        // graph" is measured rather than assumed.
+        const unfilteredPage =
+          kind && entities.length === 0
+            ? await entityStore.list({ limit: limit + 1 })
+            : null;
         return reply({
           success: true,
-          text:
-            entities.length === 0
-              ? "No entities in the graph yet."
-              : `${entities.length} entit${entities.length === 1 ? "y" : "ies"} in the graph.`,
+          text: listScopeText({
+            entities,
+            kind,
+            limit,
+            hasMore,
+            unfiltered: unfilteredPage
+              ? {
+                  entities: unfilteredPage.slice(0, limit),
+                  hasMore: unfilteredPage.length > limit,
+                }
+              : null,
+          }),
           data: { op, entities: entities.map(entitySummary) },
         });
       }
