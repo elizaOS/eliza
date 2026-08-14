@@ -186,7 +186,9 @@ async function runCloudOnboardingMode({
   mode: CloudOnboardingMode;
   testInfo: import("@playwright/test").TestInfo;
 }) {
-  test.setTimeout(240_000);
+  // First-run cold start (SIWE provision + cloud agent first turn) can exceed
+  // 240s end-to-end on a live run; the per-step waits below stay unchanged.
+  test.setTimeout(420_000);
 
   await installCloudOnboardingHarness(page, mode);
   const recording = await startAndroidScreenRecord({
