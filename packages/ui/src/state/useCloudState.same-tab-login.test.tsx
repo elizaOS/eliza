@@ -10,6 +10,7 @@
 // intact for the round trip. A live popup handle keeps the device-code popup
 // flow. jsdom pinned to a hosted elizacloud origin with the API client mocked.
 
+import { ELIZA_DOMAIN_CONTRACTS } from "@elizaos/shared/elizacloud";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { client } from "../api";
@@ -245,8 +246,11 @@ describe("useCloudState — handleCloudLogin same-tab fallback on hosted web", (
       );
       expect(result.current.elizaCloudConnected).toBe(true);
     });
+    // The jsdom origin is a LEGACY elizacloud.ai host on purpose: post-cutover
+    // those hosts resolve onto the canonical Cloud API origin, and that
+    // redirect is the behaviour this case still needs to cover.
     expect(cloudLoginPollDirectSpy).toHaveBeenCalledWith(
-      "https://api.elizacloud.ai",
+      ELIZA_DOMAIN_CONTRACTS.production.cloudApiOrigin,
       "sess-return",
     );
     expect(params.setActionNotice).not.toHaveBeenCalled();
@@ -286,7 +290,10 @@ describe("useCloudState — handleCloudLogin same-tab fallback on hosted web", (
       await act(async () => {
         window.dispatchEvent(
           new MessageEvent("message", {
-            origin: "https://elizacloud.ai",
+            // Trust is checked against the RESOLVED web base; a legacy
+            // apiBase resolves to the canonical marketing origin, so a
+            // completion message must now arrive from there.
+            origin: ELIZA_DOMAIN_CONTRACTS.production.marketingOrigin,
             data: {
               type: "eliza-cloud-auth-complete",
               sessionId: "wrong-session",
@@ -299,7 +306,10 @@ describe("useCloudState — handleCloudLogin same-tab fallback on hosted web", (
       await act(async () => {
         window.dispatchEvent(
           new MessageEvent("message", {
-            origin: "https://elizacloud.ai",
+            // Trust is checked against the RESOLVED web base; a legacy
+            // apiBase resolves to the canonical marketing origin, so a
+            // completion message must now arrive from there.
+            origin: ELIZA_DOMAIN_CONTRACTS.production.marketingOrigin,
             data: {
               type: "eliza-cloud-auth-complete",
               sessionId: "sess-1",
