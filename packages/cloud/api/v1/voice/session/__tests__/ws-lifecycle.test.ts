@@ -1570,7 +1570,7 @@ describe("voice-session WS lifecycle", () => {
     expect(client.audioFrames.length).toBe(framesAfterInterrupt);
   });
 
-  test("acoustic activity interrupts only after Ink registers caller words", async () => {
+  test("semantic turn-start interrupts immediately and the caller gets the next response", async () => {
     const client = new FakeClientSocket();
     await connectSession({
       client,
@@ -1589,21 +1589,21 @@ describe("voice-session WS lifecycle", () => {
     expect(client.controlTypes()).toContain("speaking_start");
     expect(cartesia.closed).toBe(false);
 
-    // Acoustic turn-start and punctuation-only revisions can be background
-    // noise or echo. They must not clear audio or cancel the active response.
+    const audioBeforeInterruption = client.audioFrames.length;
     ink.emitTurn("turn.start");
-    ink.emitTurn("turn.update", "...");
-    await flush();
-    expect(client.controlTypes()).not.toContain("interrupted");
-    expect(cartesia.closed).toBe(false);
-
-    // The first partial containing a letter/number is confirmed caller speech.
-    ink.emitTurn("turn.update", "wait");
     await flush();
     expect(client.controlFrames).toContainEqual(
       expect.objectContaining({ t: "interrupted", reason: "acoustic" }),
     );
     expect(cartesia.closed).toBe(true);
+    expect(client.audioFrames).toHaveLength(audioBeforeInterruption);
+
+    ink.emitTurn("turn.update", "wait");
+    ink.emitTurn("turn.end", "wait");
+    await flush();
+    await flush();
+    expect(FakeCartesiaSocket.instances.at(-1)).not.toBe(cartesia);
+    expect(client.audioFrames.length).toBeGreaterThan(audioBeforeInterruption);
   });
 
   test("a final-only caller transcript still interrupts the active response", async () => {
