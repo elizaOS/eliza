@@ -1,8 +1,9 @@
 // Persists users records for cloud services through the shared DB boundary.
+import { ElizaError } from "@elizaos/core";
 import { and, desc, eq, isNull, ne, or, type SQL, sql } from "drizzle-orm";
 import { sqlRows } from "../execute-helpers";
 import { dbRead, dbWrite } from "../helpers";
-import { type Organization } from "../schemas/organizations";
+import { type Organization, organizations } from "../schemas/organizations";
 import { type UserIdentity, userIdentities } from "../schemas/user-identities";
 import { type NewUser, type User, users } from "../schemas/users";
 
@@ -44,6 +45,12 @@ export type LinkTelegramAndPhoneResult =
 export interface ResolvedIdentity {
   user: User;
   identity?: UserIdentity;
+}
+
+export interface FindOrCreateTelegramPersonalAccountResult {
+  user: User;
+  organization: Organization;
+  isNew: boolean;
 }
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{12}$/i;
@@ -396,6 +403,150 @@ export class UsersRepository {
   // ============================================================================
   // WRITE OPERATIONS (use primary)
   // ============================================================================
+
+  /**
+   * Creates or reuses the $0 personal account proven by Telegram's signed
+   * webhook boundary. A sender-scoped transaction lock makes concurrent first
+   * updates converge without an agent row or orphan organization.
+   */
+  async findOrCreateTelegramPersonalAccount(params: {
+    telegramId: string;
+    telegramUsername?: string;
+    telegramFirstName?: string;
+    displayName: string;
+    organizationName: string;
+    organizationSlug: string;
+  }): Promise<FindOrCreateTelegramPersonalAccountResult> {
+    return dbWrite.transaction(async (tx) => {
+      await tx.execute(
+        sql`SELECT pg_advisory_xact_lock(hashtext(${`telegram_personal_account:${params.telegramId}`}))`,
+      );
+
+      const [projection] = await tx
+        .select({ userId: userIdentities.user_id })
+        .from(userIdentities)
+        .where(eq(userIdentities.telegram_id, params.telegramId))
+        .limit(1);
+      const [canonical] = await tx
+        .select()
+        .from(users)
+        .where(eq(users.telegram_id, params.telegramId))
+        .limit(1);
+
+      if (projection && canonical && projection.userId !== canonical.id) {
+        throw new ElizaError("Telegram identity owners disagree", {
+          code: "TELEGRAM_PERSONAL_ACCOUNT_IDENTITY_CONFLICT",
+          context: { canonicalUserId: canonical.id, projectedUserId: projection.userId },
+          severity: "fatal",
+        });
+      }
+
+      const [existing] = projection
+        ? await tx.select().from(users).where(eq(users.id, projection.userId)).limit(1)
+        : canonical
+          ? [canonical]
+          : [];
+      if (projection && !existing) {
+        throw new ElizaError("Telegram identity projection has no canonical owner", {
+          code: "TELEGRAM_PERSONAL_ACCOUNT_IDENTITY_CONFLICT",
+          context: { projectedUserId: projection.userId },
+          severity: "fatal",
+        });
+      }
+
+      if (existing) {
+        if (existing.deleted_at || !existing.is_active || !existing.organization_id) {
+          throw new ElizaError("Telegram personal account is unavailable", {
+            code: "TELEGRAM_PERSONAL_ACCOUNT_UNAVAILABLE",
+            context: { userId: existing.id },
+            severity: "fatal",
+          });
+        }
+        const [organization] = await tx
+          .select()
+          .from(organizations)
+          .where(eq(organizations.id, existing.organization_id))
+          .limit(1);
+        if (!organization?.is_active) {
+          throw new ElizaError("Telegram personal account organization is unavailable", {
+            code: "TELEGRAM_PERSONAL_ACCOUNT_UNAVAILABLE",
+            context: { userId: existing.id, organizationId: existing.organization_id },
+            severity: "fatal",
+          });
+        }
+
+        const now = new Date();
+        const [updated] = await tx
+          .update(users)
+          .set({
+            telegram_id: params.telegramId,
+            telegram_username: params.telegramUsername,
+            telegram_first_name: params.telegramFirstName,
+            name: existing.name ?? params.displayName,
+            updated_at: now,
+          })
+          .where(eq(users.id, existing.id))
+          .returning();
+        if (!updated) throw new Error(`Telegram account ${existing.id} disappeared`);
+        await tx
+          .insert(userIdentities)
+          .values({
+            user_id: updated.id,
+            steward_user_id: updated.steward_user_id,
+            is_anonymous: updated.is_anonymous,
+            telegram_id: params.telegramId,
+            telegram_username: params.telegramUsername,
+            telegram_first_name: params.telegramFirstName,
+            updated_at: now,
+          })
+          .onConflictDoUpdate({
+            target: userIdentities.user_id,
+            set: {
+              telegram_id: params.telegramId,
+              telegram_username: params.telegramUsername,
+              telegram_first_name: params.telegramFirstName,
+              updated_at: now,
+            },
+          });
+        return { user: updated, organization, isNew: false };
+      }
+
+      const [organization] = await tx
+        .insert(organizations)
+        .values({
+          name: params.organizationName,
+          slug: params.organizationSlug,
+          credit_balance: "0.00",
+        })
+        .returning();
+      if (!organization) throw new Error("Failed to create Telegram personal organization");
+
+      const [user] = await tx
+        .insert(users)
+        .values({
+          steward_user_id: `telegram:${params.telegramId}`,
+          telegram_id: params.telegramId,
+          telegram_username: params.telegramUsername,
+          telegram_first_name: params.telegramFirstName,
+          name: params.displayName,
+          is_anonymous: false,
+          organization_id: organization.id,
+          role: "owner",
+          is_active: true,
+        })
+        .returning();
+      if (!user) throw new Error("Failed to create Telegram personal user");
+      await tx.insert(userIdentities).values({
+        user_id: user.id,
+        steward_user_id: user.steward_user_id,
+        is_anonymous: false,
+        telegram_id: params.telegramId,
+        telegram_username: params.telegramUsername,
+        telegram_first_name: params.telegramFirstName,
+      });
+      return { user, organization, isNew: true };
+    });
+  }
 
   /**
    * Creates a new user.

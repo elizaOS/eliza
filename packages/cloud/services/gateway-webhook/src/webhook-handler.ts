@@ -263,12 +263,22 @@ async function processMessage(
   stageStartedAt = Date.now();
 
   if (!identity) {
-    logger.info("Identity not linked; routing message to onboarding chat", {
+    logger.info(
+      "Identity not linked; routing message to the account entry service",
+      {
+        project,
+        platform: adapter.platform,
+        senderId: event.senderId,
+      },
+    );
+    await sendUnlinkedReply(
+      adapter,
+      config,
+      event,
+      deps,
       project,
-      platform: adapter.platform,
-      senderId: event.senderId,
-    });
-    await sendOnboardingReply(adapter, config, event, deps, beforeEgress);
+      beforeEgress,
+    );
     return;
   }
 
@@ -308,13 +318,23 @@ async function processMessage(
       });
       return;
     }
-    logger.info("Sender has no running agent; routing message to onboarding", {
+    logger.info(
+      "Sender has no running agent; routing message to the account entry service",
+      {
+        project,
+        platform: adapter.platform,
+        senderId: event.senderId,
+        agentId,
+      },
+    );
+    await sendUnlinkedReply(
+      adapter,
+      config,
+      event,
+      deps,
       project,
-      platform: adapter.platform,
-      senderId: event.senderId,
-      agentId,
-    });
-    await sendOnboardingReply(adapter, config, event, deps);
+      beforeEgress,
+    );
     return;
   }
 
@@ -443,6 +463,78 @@ export function startTypingRefreshLoop(
     stopped = true;
     clearInterval(timer);
   };
+}
+
+async function sendUnlinkedReply(
+  adapter: PlatformAdapter,
+  config: WebhookConfig,
+  event: ChatEvent,
+  deps: HandlerDeps,
+  project: string,
+  beforeEgress?: () => Promise<void>,
+): Promise<void> {
+  if (adapter.platform === "telegram") {
+    await sendPersonalSharedReply(
+      adapter,
+      config,
+      event,
+      deps,
+      project,
+      beforeEgress,
+    );
+    return;
+  }
+  await sendOnboardingReply(adapter, config, event, deps, beforeEgress);
+}
+
+async function sendPersonalSharedReply(
+  adapter: PlatformAdapter,
+  config: WebhookConfig,
+  event: ChatEvent,
+  deps: HandlerDeps,
+  project: string,
+  beforeEgress?: () => Promise<void>,
+): Promise<void> {
+  const { cloudBaseUrl, getAuthHeader } = deps;
+  const reauth = deps.reacquireAuthHeader ?? reacquireAuthHeader;
+  const postMessage = (authHeader: Record<string, string>) =>
+    fetch(`${cloudBaseUrl}/api/internal/eliza-app/personal-shared/messages`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...authHeader },
+      body: JSON.stringify({
+        platform: "telegram",
+        telegramUserId: event.senderId,
+        displayName: event.senderName,
+        messageId: `telegram:${project}:${event.messageId}`,
+        message: event.text,
+      }),
+      signal: AbortSignal.timeout(30_000),
+    });
+
+  let response = await postMessage(getAuthHeader());
+  if (response.status === 401) response = await postMessage(await reauth());
+  if (!response.ok) {
+    let diagnostics: string;
+    try {
+      diagnostics = (await response.text()).slice(0, 200);
+    } catch (error) {
+      // error-policy:J1 preserve a failed optional diagnostic body read.
+      diagnostics = `unable to read response body: ${error instanceof Error ? error.message : String(error)}`;
+    }
+    throw new Error(
+      `personal Shared chat failed (${response.status}) ${diagnostics}`,
+    );
+  }
+  const body: unknown = await response.json();
+  const reply =
+    body && typeof body === "object" && "data" in body
+      ? (body.data as { reply?: unknown } | null)?.reply
+      : undefined;
+  if (typeof reply !== "string" || !reply.trim()) {
+    throw new Error("personal Shared chat returned no reply");
+  }
+  await beforeEgress?.();
+  await adapter.sendReply(config, event, reply);
 }
 
 async function sendOnboardingReply(

@@ -9,6 +9,7 @@
 import type { BridgeRequest } from "@/lib/services/eliza-sandbox";
 import type { CachedAgentSandbox } from "@/lib/services/shared-runtime/cached-agent-dates";
 import type { SharedTurnMessage } from "@/lib/services/shared-runtime/run-shared-agent-turn";
+import type { SharedRuntimeAgent } from "@/lib/services/shared-runtime/shared-runtime-agent";
 import type {
   SharedRuntimeHistoryStore,
   SharedTurnClaimStore,
@@ -25,7 +26,17 @@ import type { AppEnv } from "@/types/cloud-worker-env";
 // service consumes the row (the CONVERSATIONS-500 defect class).
 type ConversationRequest =
   | { operation: "bridge"; agent: CachedAgentSandbox; rpc: BridgeRequest }
+  | {
+      operation: "personal-bridge";
+      agent: SharedRuntimeAgent;
+      rpc: BridgeRequest;
+    }
   | { operation: "stream"; agent: CachedAgentSandbox; rpc: BridgeRequest }
+  | {
+      operation: "personal-stream";
+      agent: SharedRuntimeAgent;
+      rpc: BridgeRequest;
+    }
   | { operation: "prewarm"; agentId: string; roomId: string }
   | { operation: "history"; agentId: string; roomId: string }
   | { operation: "delete"; agentId: string };
@@ -136,6 +147,7 @@ export class SharedRuntimeConversation {
   private async loadConversation(
     agentId: string,
     channelId: string,
+    startEmpty: boolean,
   ): Promise<StoredConversation> {
     if (this.conversation) return this.conversation;
     if (this.conversation === undefined) {
@@ -144,6 +156,21 @@ export class SharedRuntimeConversation {
         null;
     }
     if (this.conversation) return this.conversation;
+
+    // A personal identity has no sandbox-era Postgres history to migrate. Its
+    // Durable Object is born on first contact, so delaying that first reply for
+    // a mirror read would turn a successful Telegram webhook into silent loss.
+    if (startEmpty) {
+      this.conversation = {
+        agentId,
+        channelId,
+        history: [],
+        dirty: false,
+        version: 0,
+      };
+      await this.state.storage.put(CONVERSATION_KEY, this.conversation);
+      return this.conversation;
+    }
 
     if (!this.hydration) {
       this.hydration = this.runWithBindings(async () => {
@@ -191,7 +218,7 @@ export class SharedRuntimeConversation {
     channelId: string,
   ): Promise<void> {
     try {
-      await this.loadConversation(agentId, channelId);
+      await this.loadConversation(agentId, channelId, false);
     } catch (error) {
       if (!(error instanceof ConversationCacheWarmingError)) throw error;
       const hydration = this.hydration;
@@ -256,12 +283,16 @@ export class SharedRuntimeConversation {
     return this.mirrorQueue;
   }
 
-  private historyStore(): SharedRuntimeHistoryStore {
+  private historyStore(startEmpty: boolean): SharedRuntimeHistoryStore {
     return {
       load: async (agentId, channelId) =>
-        (await this.loadConversation(agentId, channelId)).history,
+        (await this.loadConversation(agentId, channelId, startEmpty)).history,
       merge: async (agentId, channelId, messages) => {
-        const current = await this.loadConversation(agentId, channelId);
+        const current = await this.loadConversation(
+          agentId,
+          channelId,
+          startEmpty,
+        );
         const snapshot: StoredConversation = {
           agentId,
           channelId,
@@ -327,7 +358,10 @@ export class SharedRuntimeConversation {
 
   private async handle(request: Request): Promise<Response> {
     const payload = (await request.json()) as ConversationRequest;
-    const historyStore = this.historyStore();
+    const personal =
+      payload.operation === "personal-bridge" ||
+      payload.operation === "personal-stream";
+    const historyStore = this.historyStore(personal);
     const turnClaims = this.turnClaims();
     if (payload.operation === "prewarm") {
       await this.prewarmConversation(payload.agentId, payload.roomId);
@@ -359,27 +393,35 @@ export class SharedRuntimeConversation {
     }
 
     return await this.runWithBindings(async () => {
-      const [{ sharedRuntimeChatService }, { rehydrateCachedAgentDates }] =
-        await Promise.all([
-          import("@/lib/services/shared-runtime/shared-runtime-chat"),
-          import("@/lib/services/shared-runtime/cached-agent-dates"),
-        ]);
-      const agent = rehydrateCachedAgentDates(payload.agent);
+      const { sharedRuntimeChatService } = await import(
+        "@/lib/services/shared-runtime/shared-runtime-chat"
+      );
+      const agent = personal
+        ? payload.agent
+        : await import("@/lib/services/shared-runtime/cached-agent-dates").then(
+            ({ rehydrateCachedAgentDates }) =>
+              rehydrateCachedAgentDates(payload.agent),
+          );
       const executionCtx = {
         waitUntil: (promise: Promise<unknown>) => this.state.waitUntil(promise),
       };
-      if (payload.operation === "stream") {
+      if (
+        payload.operation === "stream" ||
+        payload.operation === "personal-stream"
+      ) {
         return await sharedRuntimeChatService.stream(agent, payload.rpc, {
           abortSignal: request.signal,
           executionCtx,
           historyStore,
           turnClaims,
+          funding: personal ? "platform" : "organization-credits",
         });
       }
       const result = await sharedRuntimeChatService.bridge(agent, payload.rpc, {
         executionCtx,
         historyStore,
         turnClaims,
+        funding: personal ? "platform" : "organization-credits",
       });
       return Response.json(result);
     });

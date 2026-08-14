@@ -5,7 +5,6 @@
  * SSE/CORS response shape used by HTTP routes and in-process voice turns.
  */
 
-import type { AgentSandbox } from "../../../db/repositories/agent-sandboxes";
 import type { RuntimeDurableObjectNamespace } from "../../../types/cloud-worker-env";
 import { InsufficientCreditsError, RateLimitError } from "../../api/errors";
 import { logger } from "../../utils/logger";
@@ -13,6 +12,7 @@ import { chatSseFrame } from "../chat-sse-frames";
 import type { BridgeRequest } from "../eliza-sandbox-bridge";
 import { applyCorsHeaders } from "../proxy/cors";
 import { coordinateSharedStream } from "./conversation-coordinator";
+import type { SharedRuntimeAgent } from "./shared-runtime-agent";
 import { type BridgeExecutionContext, sharedTurnClientMessageId } from "./shared-runtime-chat";
 
 const CORS_METHODS = "POST, OPTIONS";
@@ -29,7 +29,7 @@ export interface CanonicalScopedStreamRequest {
    * boundary prevents Worker callers from falling through to the legacy
    * repository-backed bridge when cache authorization is unavailable.
    */
-  agent: AgentSandbox;
+  agent: SharedRuntimeAgent;
   agentId: string;
   orgId: string;
   conversationId: string;

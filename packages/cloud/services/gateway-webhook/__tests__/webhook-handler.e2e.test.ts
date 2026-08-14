@@ -309,14 +309,14 @@ describe("gateway webhook handler e2e routing", () => {
       "identity:telegram:sender-1",
       JSON.stringify({ notFound: true }),
     );
-    let onboardingAttempts = 0;
+    let sharedAttempts = 0;
     globalThis.fetch = mock(async () => {
-      onboardingAttempts += 1;
-      if (onboardingAttempts === 1) {
+      sharedAttempts += 1;
+      if (sharedAttempts === 1) {
         return new Response("temporarily unavailable", { status: 503 });
       }
       return new Response(
-        JSON.stringify({ data: { reply: "onboarding reply" } }),
+        JSON.stringify({ data: { reply: "personal Shared reply" } }),
         { status: 200, headers: { "content-type": "application/json" } },
       );
     }) as typeof fetch;
@@ -335,13 +335,87 @@ describe("gateway webhook handler e2e routing", () => {
 
     await expect(
       handleWebhook(request(), adapter, deps, "eliza-app"),
-    ).rejects.toThrow(/onboarding chat failed \(503\)/);
+    ).rejects.toThrow(/personal Shared chat failed \(503\)/);
     expect(redis.store.has(processingKey)).toBe(false);
 
     const retry = await handleWebhook(request(), adapter, deps, "eliza-app");
     expect(retry.status).toBe(200);
     expect(sendReply).toHaveBeenCalledTimes(1);
     expect(redis.store.has(processingKey)).toBe(true);
+  });
+
+  test("routes an unlinked Telegram DM to rowless personal Shared", async () => {
+    process.env.ELIZA_APP_TELEGRAM_BOT_TOKEN = "telegram-test-token";
+    const event: ChatEvent = {
+      platform: "telegram",
+      messageId: "update-personal-1",
+      chatId: "chat-1",
+      chatType: "private",
+      senderId: "123456789",
+      senderName: "Ada",
+      text: "what should I focus on today?",
+      rawPayload: {},
+    };
+    const sendReply = mock(async () => undefined);
+    const adapter: PlatformAdapter = {
+      platform: "telegram",
+      getDedupeScope: () => "scope",
+      verifyWebhook: mock(async () => true),
+      extractEvent: mock(async () => event),
+      sendTypingIndicator: mock(async () => undefined),
+      sendReply,
+    };
+    const redis = new MemoryRedis();
+    let sharedBody: Record<string, unknown> | null = null;
+    globalThis.fetch = mock(async (input, init) => {
+      const url = String(input);
+      if (url.endsWith("/api/internal/identity/resolve")) {
+        return new Response(JSON.stringify({ error: "not found" }), {
+          status: 404,
+        });
+      }
+      if (url.endsWith("/api/internal/eliza-app/personal-shared/messages")) {
+        sharedBody = JSON.parse(String(init?.body)) as Record<string, unknown>;
+        return new Response(
+          JSON.stringify({
+            data: { reply: "start with the launch checklist" },
+          }),
+          {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          },
+        );
+      }
+      throw new Error(`unexpected request: ${url}`);
+    }) as typeof fetch;
+
+    const response = await handleWebhook(
+      new Request("https://gateway.example/webhook/eliza-app/telegram", {
+        method: "POST",
+        body: "{}",
+      }),
+      adapter,
+      {
+        redis,
+        cloudBaseUrl: "https://api.elizacloud.ai",
+        getAuthHeader: () => ({ Authorization: "Bearer internal-secret" }),
+      },
+      "eliza-app",
+    );
+
+    expect(response.status).toBe(200);
+    expect(sharedBody).toEqual({
+      platform: "telegram",
+      telegramUserId: "123456789",
+      displayName: "Ada",
+      messageId: "telegram:eliza-app:update-personal-1",
+      message: "what should I focus on today?",
+    });
+    expect(sendReply).toHaveBeenCalledWith(
+      expect.anything(),
+      event,
+      "start with the launch checklist",
+    );
   });
 
   test("retries onboarding once with fresh auth and the same idempotency key", async () => {

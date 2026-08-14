@@ -7,7 +7,6 @@
  */
 
 import crypto from "node:crypto";
-import type { AgentSandbox } from "../../../db/repositories/agent-sandboxes";
 import type { UserCharacter } from "../../../db/repositories/characters";
 import {
   InsufficientCreditsError as InsufficientCreditsApiError,
@@ -55,7 +54,9 @@ import {
   type SharedTurnMessage,
 } from "./run-shared-agent-turn";
 import { projectSharedAgentCharacter } from "./shared-agent-character";
+import { capabilityWallActionResult } from "./shared-capability-wall";
 import { navIntentActionResult } from "./shared-nav-intent";
+import type { SharedRuntimeAgent } from "./shared-runtime-agent";
 import { SharedRuntimeCacheWarmingError, SharedTurnConflictError } from "./shared-runtime-errors";
 import { MAX_HISTORY_MESSAGES } from "./shared-runtime-history-policy";
 
@@ -63,6 +64,7 @@ export { MAX_HISTORY_MESSAGES } from "./shared-runtime-history-policy";
 
 const BRIDGE_INSUFFICIENT_CREDITS_CODE = -32002;
 const PROVIDER_CANCELLATION_OBSERVE_MS = 5_000;
+const PERSONAL_SHARED_RATE_LIMIT = { windowMs: 60_000, maxRequests: 60 } as const;
 const linkedCharacterMemoryCache = new InMemoryLRUCache<UserCharacter>(256, 60_000);
 
 export type BridgeExecutionContext = {
@@ -76,6 +78,20 @@ export interface SharedRuntimeHistoryStore {
     channelId: string,
     messages: SharedTurnMessage[],
   ): Promise<SharedTurnMessage[]>;
+}
+
+function turnActionResults(
+  turn: Pick<RunSharedAgentTurnResult, "navIntent" | "capabilityWall">,
+): unknown[] | undefined {
+  if (turn.capabilityWall) return [capabilityWallActionResult(turn.capabilityWall)];
+  if (turn.navIntent) return [navIntentActionResult(turn.navIntent)];
+  return undefined;
+}
+
+function isDeterministicFreeTurn(
+  turn: Pick<RunSharedAgentTurnResult, "navIntent" | "capabilityWall">,
+): boolean {
+  return Boolean(turn.navIntent || turn.capabilityWall);
 }
 
 /** Terminal result of a landed shared turn, durably replayable by claim key. */
@@ -122,6 +138,8 @@ export interface SharedRuntimeChatOptions {
   executionCtx?: BridgeExecutionContext;
   historyStore?: SharedRuntimeHistoryStore;
   turnClaims?: SharedTurnClaimStore;
+  /** Personal Shared keeps abuse limits but never debits account credits. */
+  funding?: "organization-credits" | "platform";
 }
 
 export {
@@ -261,7 +279,7 @@ async function mergeHistory(
 }
 
 async function characterFor(
-  agent: AgentSandbox,
+  agent: SharedRuntimeAgent,
   options: {
     cacheOnly: boolean;
     executionCtx?: BridgeExecutionContext;
@@ -369,13 +387,14 @@ interface BillingTurn {
 }
 
 async function admitTurn(
-  agent: AgentSandbox,
+  agent: SharedRuntimeAgent,
   character: SharedAgentCharacter,
   history: SharedTurnMessage[],
   text: string,
   roomId: string,
   executionCtx?: BridgeExecutionContext,
   turnKey?: string,
+  funding: SharedRuntimeChatOptions["funding"] = "organization-credits",
 ): Promise<BillingTurn | null> {
   const model = resolveSharedAgentTurnModel(character.model);
   if (!model) return null;
@@ -406,7 +425,7 @@ async function admitTurn(
   };
   let rateLimited: Response | null;
   let admissionSnapshot: InferenceAdmissionSnapshot | undefined;
-  if (executionCtx) {
+  if (executionCtx && funding === "organization-credits") {
     try {
       admissionSnapshot = await getInferenceAdmissionSnapshotCacheOnly(
         agent.organization_id,
@@ -427,7 +446,10 @@ async function admitTurn(
     rateLimited = await enforceOrgRateLimit(agent.organization_id, "completions", {
       cacheOnly: Boolean(executionCtx),
       executionCtx,
-      config: inferenceRateLimitConfig(admissionSnapshot, "completions"),
+      config:
+        funding === "platform"
+          ? PERSONAL_SHARED_RATE_LIMIT
+          : inferenceRateLimitConfig(admissionSnapshot, "completions"),
     });
   } catch (error) {
     // error-policy:J1 the shared-runtime boundary keeps policy hydration off
@@ -451,6 +473,9 @@ async function admitTurn(
       "Rate-limit authorization is unavailable. Retry shortly.",
     );
   }
+  // Personal Shared is a platform service: enforce abuse controls above, but
+  // keep user credits untouched. Dedicated is the explicit paid-compute line.
+  if (funding === "platform") return null;
   let admission: Awaited<ReturnType<typeof admitOrganizationInference>>;
   try {
     admission = await admitOrganizationInference({
@@ -480,7 +505,7 @@ async function admitTurn(
 }
 
 async function finishBilling(
-  agent: AgentSandbox,
+  agent: SharedRuntimeAgent,
   billing: BillingTurn,
   reply: string,
   prompt: string,
@@ -530,7 +555,7 @@ async function finishBilling(
 }
 
 async function settleAmbiguousProviderWork(
-  agent: AgentSandbox,
+  agent: SharedRuntimeAgent,
   billing: BillingTurn,
   reason: string,
 ): Promise<void> {
@@ -549,7 +574,7 @@ async function settleAmbiguousProviderWork(
 }
 
 function settleAmbiguousProviderWorkOffPath(
-  agent: AgentSandbox,
+  agent: SharedRuntimeAgent,
   billing: BillingTurn | null,
   executionCtx: BridgeExecutionContext | undefined,
   reason: string,
@@ -611,7 +636,7 @@ function isProvablyZeroProviderFailure(error: unknown): boolean {
 }
 
 function settleFailedProviderWorkOffPath(
-  agent: AgentSandbox,
+  agent: SharedRuntimeAgent,
   billing: BillingTurn | null,
   executionCtx: BridgeExecutionContext | undefined,
   error: unknown,
@@ -643,14 +668,14 @@ export class SharedRuntimeChatService {
   }
 
   async getCharacter(
-    agent: AgentSandbox,
+    agent: SharedRuntimeAgent,
     executionCtx: BridgeExecutionContext,
   ): Promise<SharedAgentCharacter> {
     return await characterFor(agent, { cacheOnly: true, executionCtx });
   }
 
   async bridge(
-    agent: AgentSandbox,
+    agent: SharedRuntimeAgent,
     rpc: BridgeRequest,
     options: SharedRuntimeChatOptions = {},
   ): Promise<BridgeResponse> {
@@ -712,6 +737,7 @@ export class SharedRuntimeChatService {
         roomId,
         options.executionCtx,
         claimKey,
+        options.funding,
       );
     } catch (error) {
       // error-policy:J1 translate the money boundary to the JSON-RPC protocol.
@@ -752,7 +778,8 @@ export class SharedRuntimeChatService {
     let turnCompleted = false;
     let turnIsProvablyFree = false;
     try {
-      turnIsProvablyFree = turn.degraded || Boolean(turn.navIntent);
+      turnIsProvablyFree = turn.degraded || isDeterministicFreeTurn(turn);
+      const actionResults = turnActionResults(turn);
       const result: SharedTurnTerminalResult = {
         text: turn.reply,
         messageId: messageIds.assistant,
@@ -763,7 +790,7 @@ export class SharedRuntimeChatService {
         degraded: turn.degraded,
         runtime: "shared",
         transport: "shared-runtime",
-        ...(turn.navIntent ? { actionResults: [navIntentActionResult(turn.navIntent)] } : {}),
+        ...(actionResults ? { actionResults } : {}),
       };
       if (turn.degraded) {
         await billing?.settle(0);
@@ -783,7 +810,7 @@ export class SharedRuntimeChatService {
         if (claimKey && options.turnClaims) {
           await options.turnClaims.complete(claimKey, result);
         }
-        if (turn.navIntent) {
+        if (isDeterministicFreeTurn(turn)) {
           await billing?.settle(0);
         } else if (billing) {
           await settleOffResponsePath(options.executionCtx, () =>
@@ -815,7 +842,7 @@ export class SharedRuntimeChatService {
   }
 
   async stream(
-    agent: AgentSandbox,
+    agent: SharedRuntimeAgent,
     rpc: BridgeRequest,
     options: SharedRuntimeChatOptions = {},
   ): Promise<Response> {
@@ -864,6 +891,7 @@ export class SharedRuntimeChatService {
         roomId,
         options.executionCtx,
         claimKey,
+        options.funding,
       );
     } catch (error) {
       // error-policy:J1 translate the money boundary to the HTTP stream boundary.
@@ -971,7 +999,7 @@ export class SharedRuntimeChatService {
     const settleInterruptedTurn = async (reason: string): Promise<void> => {
       if (terminalSettlementStarted) return;
       terminalSettlementStarted = true;
-      if (turn.navIntent) {
+      if (isDeterministicFreeTurn(turn)) {
         await billing?.settle(0);
         return;
       }
@@ -1058,12 +1086,10 @@ export class SharedRuntimeChatService {
                   degraded: false,
                   runtime: "shared",
                   transport: "shared-runtime",
-                  ...(turn.navIntent
-                    ? { actionResults: [navIntentActionResult(turn.navIntent)] }
-                    : {}),
+                  ...(turnActionResults(turn) ? { actionResults: turnActionResults(turn) } : {}),
                 });
               }
-              if (turn.navIntent) {
+              if (isDeterministicFreeTurn(turn)) {
                 terminalSettlementStarted = true;
                 await billing?.settle(0);
               } else if (billing) {
@@ -1073,13 +1099,14 @@ export class SharedRuntimeChatService {
                 );
               }
             });
-            const done = turn.navIntent
+            const actionResults = turnActionResults(turn);
+            const done = actionResults
               ? {
                   messageId: messageIds.assistant,
                   userMessageId: messageIds.user,
                   text: finalReply,
                   fullText: finalReply,
-                  actionResults: [navIntentActionResult(turn.navIntent)],
+                  actionResults,
                 }
               : {
                   messageId: messageIds.assistant,
