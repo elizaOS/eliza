@@ -34,6 +34,7 @@ let streamMergeGate: Promise<void> | null = null;
 let resolveStreamMergeGate = () => {};
 let rehydrateCalls = 0;
 let bridgeFunding: unknown;
+let recoveredCutoverTargetId: string | null = null;
 
 function testMessageIdentity(value: unknown): string {
   const message = value as {
@@ -53,6 +54,10 @@ mock.module("@/db/client", () => ({
 mock.module("@/lib/runtime/cloud-bindings", () => ({
   runWithCloudBindingsAsync: async <T>(_env: unknown, fn: () => Promise<T>) =>
     await fn(),
+}));
+mock.module("@/lib/services/agent-tier-upgrade-target", () => ({
+  findActivePersonalDedicatedTarget: async () =>
+    recoveredCutoverTargetId ? { id: recoveredCutoverTargetId } : null,
 }));
 mock.module("@/lib/services/shared-runtime/cached-agent-dates", () => ({
   rehydrateCachedAgentDates: (agent: unknown) => {
@@ -219,6 +224,7 @@ beforeEach(() => {
   resolveStreamMergeGate = () => {};
   rehydrateCalls = 0;
   bridgeFunding = undefined;
+  recoveredCutoverTargetId = null;
 });
 
 function makeState(data: Map<string, unknown>, background: Promise<unknown>[]) {
@@ -487,6 +493,8 @@ test("a cutover seal snapshots history and blocks new Shared turns until release
     roomId: personalAgent.id,
     token: "cutover-1",
     leaseMs: 60_000,
+    organizationId: personalAgent.organization_id,
+    dedicatedAgentId: "dedicated-agent-1",
   });
   expect(sealed.status).toBe(200);
   const sealedPayload: unknown = await sealed.json();
@@ -515,6 +523,8 @@ test("a cutover seal snapshots history and blocks new Shared turns until release
     roomId: personalAgent.id,
     token: "cutover-2",
     leaseMs: 60_000,
+    organizationId: personalAgent.organization_id,
+    dedicatedAgentId: "dedicated-agent-1",
   }).then((response) => response.json());
   const committedSeal = await request({
     operation: "cutover-commit",
@@ -541,6 +551,112 @@ test("a cutover seal snapshots history and blocks new Shared turns until release
     code: "personal_eliza_dedicated",
     retryable: false,
   });
+});
+
+test("an expired pending seal recovers the authoritative Dedicated marker", async () => {
+  const personalAgent = {
+    id: "personal-agent-recovery",
+    organization_id: "org-recovery",
+    user_id: "user-recovery",
+    character_id: null,
+    agent_name: "Eliza",
+    agent_config: { character: { name: "Eliza" } },
+    execution_tier: "shared",
+  };
+  recoveredCutoverTargetId = "dedicated-agent-recovery";
+  const data = new Map<string, unknown>([
+    [
+      "personal-cutover-seal",
+      {
+        token: "cutover-recovery",
+        expiresAt: 0,
+        committed: false,
+        organizationId: personalAgent.organization_id,
+        sourceAgentId: personalAgent.id,
+        dedicatedAgentId: recoveredCutoverTargetId,
+      },
+    ],
+  ]);
+  const object = new SharedRuntimeConversation(
+    makeState(data, []) as never,
+    {} as never,
+  );
+
+  const response = await object.fetch(
+    new Request("https://shared-runtime.internal/bridge", {
+      method: "POST",
+      body: JSON.stringify({
+        operation: "personal-bridge",
+        agent: personalAgent,
+        rpc: {
+          jsonrpc: "2.0",
+          id: "turn-after-db-commit",
+          method: "message.send",
+          params: { text: "stay dedicated", roomId: personalAgent.id },
+        },
+      }),
+    }),
+  );
+
+  expect(response.status).toBe(409);
+  expect(await response.json()).toMatchObject({
+    code: "personal_eliza_dedicated",
+    retryable: false,
+  });
+  expect(data.get("personal-cutover-seal")).toMatchObject({
+    token: "cutover-recovery",
+    committed: true,
+    dedicatedAgentId: recoveredCutoverTargetId,
+  });
+});
+
+test("an expired pending seal releases Shared when no Dedicated marker exists", async () => {
+  const personalAgent = {
+    id: "personal-agent-release",
+    organization_id: "org-release",
+    user_id: "user-release",
+    character_id: null,
+    agent_name: "Eliza",
+    agent_config: { character: { name: "Eliza" } },
+    execution_tier: "shared",
+  };
+  const data = new Map<string, unknown>([
+    [
+      "personal-cutover-seal",
+      {
+        token: "cutover-release",
+        expiresAt: 0,
+        committed: false,
+        organizationId: personalAgent.organization_id,
+        sourceAgentId: personalAgent.id,
+        dedicatedAgentId: "dedicated-agent-missing",
+      },
+    ],
+  ]);
+  const object = new SharedRuntimeConversation(
+    makeState(data, []) as never,
+    {} as never,
+  );
+
+  const response = await object.fetch(
+    new Request("https://shared-runtime.internal/bridge", {
+      method: "POST",
+      body: JSON.stringify({
+        operation: "personal-bridge",
+        agent: personalAgent,
+        rpc: {
+          jsonrpc: "2.0",
+          id: "turn-after-expired-lease",
+          method: "message.send",
+          params: { text: "continue shared", roomId: personalAgent.id },
+        },
+      }),
+    }),
+  );
+
+  expect(response.status).toBe(200);
+  await response.json();
+  expect(data.has("personal-cutover-seal")).toBe(false);
 });
 
 test("concurrent turns serialize through one room and retain both writes", async () => {

@@ -23,6 +23,7 @@ const DEDUP_TTL_SECONDS = 300;
 // worker is still generating and execute the same user turn twice.
 const PROCESSING_TTL_SECONDS = 120;
 const PERSONAL_SHARED_ATTEMPTS = 3;
+const PERSONAL_SHARED_RETRY_DELAY_CAP_MS = 5_000;
 const TELEGRAM_DELIVERY_TTL_SECONDS = 30 * 24 * 60 * 60;
 const TELEGRAM_EGRESS_STARTED = "egress_started";
 const TELEGRAM_DELIVERED = "delivered";
@@ -274,6 +275,34 @@ async function processMessage(
   const reauth = deps.reacquireAuthHeader ?? reacquireAuthHeader;
   const authHeader = getAuthHeader();
 
+  // The public eliza.app phone/Telegram endpoints are account transports, not
+  // arbitrary agent webhooks. Always converge them through the same internal
+  // personal route, including after Dedicated cutover. Direct agent-server
+  // forwarding used `userId` as its room and forked connector turns away from
+  // the imported `personal:*` conversation.
+  if (!explicitAgentId && isPersonalElizaTransport(adapter.platform)) {
+    const stopTyping = beginTypingFeedback(adapter, config, event);
+    try {
+      await sendPersonalSharedReply(
+        adapter,
+        config,
+        event,
+        deps,
+        project,
+        beforeEgress,
+      );
+      logger.info("Personal Eliza connector message completed", {
+        project,
+        platform: adapter.platform,
+        messageId: event.messageId,
+        totalMs: Date.now() - startedAt,
+      });
+    } finally {
+      stopTyping();
+    }
+    return;
+  }
+
   const identity = await resolveIdentity(
     redis,
     cloudBaseUrl,
@@ -362,18 +391,7 @@ async function processMessage(
     return;
   }
 
-  const stopTyping =
-    adapter.platform === "telegram"
-      ? startTypingRefreshLoop(adapter, config, event)
-      : () => undefined;
-  if (adapter.platform !== "telegram") {
-    adapter.sendTypingIndicator(config, event).catch((err) => {
-      logger.debug("sendTypingIndicator failed", {
-        platform: adapter.platform,
-        error: err instanceof Error ? err.message : String(err),
-      });
-    });
-  }
+  const stopTyping = beginTypingFeedback(adapter, config, event);
   refreshKedaActivity(redis, server.serverName).catch((err) => {
     logger.warn("refreshKedaActivity failed", {
       serverName: server.serverName,
@@ -489,6 +507,31 @@ export function startTypingRefreshLoop(
   };
 }
 
+function isPersonalElizaTransport(
+  platform: Platform,
+): platform is "telegram" | "twilio" | "blooio" {
+  return (
+    platform === "telegram" || platform === "twilio" || platform === "blooio"
+  );
+}
+
+function beginTypingFeedback(
+  adapter: PlatformAdapter,
+  config: WebhookConfig,
+  event: ChatEvent,
+): () => void {
+  if (adapter.platform === "telegram") {
+    return startTypingRefreshLoop(adapter, config, event);
+  }
+  adapter.sendTypingIndicator(config, event).catch((err) => {
+    logger.debug("sendTypingIndicator failed", {
+      platform: adapter.platform,
+      error: err instanceof Error ? err.message : String(err),
+    });
+  });
+  return () => undefined;
+}
+
 async function sendUnlinkedReply(
   adapter: PlatformAdapter,
   config: WebhookConfig,
@@ -571,7 +614,17 @@ async function sendPersonalSharedReply(
       lastTransportError = error;
       if (attempt === PERSONAL_SHARED_ATTEMPTS) break;
     }
-    await new Promise((resolve) => setTimeout(resolve, 200 * attempt));
+    const retryAfterSeconds = Number.parseInt(
+      response?.headers.get("Retry-After") ?? "",
+      10,
+    );
+    const retryDelayMs = Number.isFinite(retryAfterSeconds)
+      ? Math.min(
+          Math.max(retryAfterSeconds, 0) * 1_000,
+          PERSONAL_SHARED_RETRY_DELAY_CAP_MS,
+        )
+      : 200 * attempt;
+    await new Promise((resolve) => setTimeout(resolve, retryDelayMs));
   }
   if (!response) {
     throw new PersonalSharedPreEgressError(
@@ -596,11 +649,14 @@ async function sendPersonalSharedReply(
     body && typeof body === "object" && "data" in body
       ? (body.data as { reply?: unknown } | null)?.reply
       : undefined;
-  if (typeof reply !== "string" || !reply.trim()) {
+  if (typeof reply !== "string") {
     throw new PersonalSharedPreEgressError(
       "personal Shared chat returned no reply",
     );
   }
+  // Empty is the agent's deliberate shouldRespond=no result. It is a
+  // successful turn with no provider egress, not a malformed response.
+  if (reply.length === 0) return;
   await beforeEgress?.();
   await adapter.sendReply(config, event, reply);
 }

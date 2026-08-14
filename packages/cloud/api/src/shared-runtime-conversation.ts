@@ -46,6 +46,8 @@ type ConversationRequest =
       roomId: string;
       token: string;
       leaseMs: number;
+      organizationId: string;
+      dedicatedAgentId: string;
     }
   | { operation: "cutover-release"; token: string }
   | { operation: "cutover-commit"; token: string }
@@ -70,6 +72,9 @@ interface StoredCutoverSeal {
   token: string;
   expiresAt: number;
   committed: boolean;
+  organizationId?: string;
+  sourceAgentId?: string;
+  dedicatedAgentId?: string;
 }
 
 /**
@@ -451,6 +456,29 @@ export class SharedRuntimeConversation {
     // A committed seal is the durable cutover authority: expiring it would let
     // a stale browser/native session resume the archived Shared transcript.
     if (!seal || seal.committed || seal.expiresAt > Date.now()) return seal;
+
+    // The DB marker commits before the final DO transition. If the Worker
+    // crashes or loses the acknowledgement between those two durable writes,
+    // an expired lease must recover the server-owned marker rather than
+    // reopening Shared and splitting later turns into the archived log.
+    if (seal.organizationId && seal.sourceAgentId && seal.dedicatedAgentId) {
+      const organizationId = seal.organizationId;
+      const sourceAgentId = seal.sourceAgentId;
+      const active = await this.runWithBindings(async () => {
+        const { findActivePersonalDedicatedTarget } = await import(
+          "@/lib/services/agent-tier-upgrade-target"
+        );
+        return await findActivePersonalDedicatedTarget(
+          organizationId,
+          sourceAgentId,
+        );
+      });
+      if (active?.id === seal.dedicatedAgentId) {
+        const recovered = { ...seal, committed: true };
+        await this.state.storage.put(CUTOVER_SEAL_KEY, recovered);
+        return recovered;
+      }
+    }
     await this.state.storage.delete(CUTOVER_SEAL_KEY);
     return null;
   }
@@ -484,6 +512,9 @@ export class SharedRuntimeConversation {
         token: payload.token,
         expiresAt: Date.now() + payload.leaseMs,
         committed: existing?.committed ?? false,
+        organizationId: payload.organizationId,
+        sourceAgentId: payload.agentId,
+        dedicatedAgentId: payload.dedicatedAgentId,
       };
       await this.state.storage.put(CUTOVER_SEAL_KEY, seal);
       try {

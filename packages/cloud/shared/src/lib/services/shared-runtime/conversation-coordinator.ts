@@ -30,6 +30,8 @@ export interface SharedConversationHistoryCoordinatorOptions {
 export interface SharedCutoverSeal {
   token: string;
   leaseMs: number;
+  organizationId: string;
+  dedicatedAgentId: string;
 }
 
 /**
@@ -287,6 +289,8 @@ export async function coordinateSharedCutoverSeal(
         roomId,
         token: seal.token,
         leaseMs: seal.leaseMs,
+        organizationId: seal.organizationId,
+        dedicatedAgentId: seal.dedicatedAgentId,
       }),
     },
   );

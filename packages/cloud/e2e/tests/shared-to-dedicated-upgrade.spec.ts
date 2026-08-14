@@ -376,6 +376,95 @@ test.describe("shared→dedicated tier upgrade", () => {
         activeAgentId: dedicatedAgentId,
       });
 
+      const { usersRepository } = await import(
+        "@elizaos/cloud-shared/db/repositories/users"
+      );
+      const connectorPhone = "+14155550987";
+      const linked = await usersRepository.linkVerifiedPhone(
+        seededUser.userId,
+        connectorPhone,
+      );
+      expect(linked?.id, "phone transport resolves the existing account").toBe(
+        seededUser.userId,
+      );
+      const connectorResponse = await fetch(
+        `${cloudApiBase}/api/internal/eliza-app/personal-shared/messages`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: "Bearer test-internal-secret",
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            platform: "blooio",
+            phoneNumber: connectorPhone,
+            messageId: "blooio:after-cutover",
+            message: "Continue this exact conversation from my phone.",
+          }),
+        },
+      );
+      expect(
+        connectorResponse.status,
+        `connector turn: ${await connectorResponse.clone().text()}`,
+      ).toBe(200);
+      const connectorPayload = (await connectorResponse.json()) as {
+        data?: {
+          identity?: {
+            id?: string;
+            runtime?: string;
+            activeAgentId?: string;
+          };
+        };
+      };
+      expect(connectorPayload.data?.identity).toMatchObject({
+        id: sharedAgentId,
+        runtime: "dedicated",
+        activeAgentId: dedicatedAgentId,
+      });
+      const connectorTranscript =
+        stack.mocks.controlPlane.store.getConversationByAgent(
+          dedicatedAgentId,
+          sharedAgentId,
+        );
+      expect(
+        connectorTranscript.map((message) => message.role),
+        "the connector appends to the imported canonical room",
+      ).toEqual([
+        "user",
+        "assistant",
+        "user",
+        "assistant",
+        "user",
+        "assistant",
+      ]);
+      expect(connectorTranscript[4]?.text).toBe(
+        "Continue this exact conversation from my phone.",
+      );
+      const connectorRetry = await fetch(
+        `${cloudApiBase}/api/internal/eliza-app/personal-shared/messages`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: "Bearer test-internal-secret",
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            platform: "blooio",
+            phoneNumber: connectorPhone,
+            messageId: "blooio:after-cutover",
+            message: "Continue this exact conversation from my phone.",
+          }),
+        },
+      );
+      expect(connectorRetry.status, "connector retry is replay-safe").toBe(200);
+      expect(
+        stack.mocks.controlPlane.store.getConversationByAgent(
+          dedicatedAgentId,
+          sharedAgentId,
+        ),
+        "the stable provider message id prevents duplicate turns",
+      ).toHaveLength(6);
+
       const splitTurn = await c<{ code?: string }>("POST", convoUrl, {
         text: "This must not create a new Shared turn.",
         clientMessageId: "personal-after-cutover",

@@ -8,6 +8,7 @@ import { findActivePersonalDedicatedTarget } from "@/lib/services/agent-tier-upg
 import { elizaAppUserService } from "@/lib/services/eliza-app";
 import { runOnboardingChat } from "@/lib/services/eliza-app/onboarding-chat";
 import { elizaSandboxService } from "@/lib/services/eliza-sandbox";
+import { preparePersonalDedicatedDelivery } from "@/lib/services/personal-dedicated-delivery";
 import { personalSharedAgent } from "@/lib/services/shared-runtime/personal-shared-agent";
 import { resolveSharedRuntimeWorkerRequestContext } from "@/lib/services/shared-runtime/resolve-shared-agent";
 import { sharedRestMessageSend } from "@/lib/services/shared-runtime/shared-rest-adapter";
@@ -146,12 +147,57 @@ app.post("/", async (c) => {
       agent.id,
     );
     if (dedicated) {
-      if (dedicated.status !== "running") {
-        return jsonError(
-          c,
+      const preparation = await preparePersonalDedicatedDelivery(
+        dedicated,
+        {
+          organizationId: account.organization.id,
+          userId: account.user.id,
+        },
+        c.env,
+        worker.executionCtx,
+      );
+      if (preparation.state === "blocked") {
+        return c.json(
+          {
+            success: false,
+            code: preparation.code,
+            error: preparation.error,
+            retryable: false,
+            currentBalance: preparation.currentBalance,
+          },
+          402,
+        );
+      }
+      if (preparation.state === "starting") {
+        return c.json(
+          {
+            success: false,
+            code: "dedicated_starting",
+            error: "Dedicated Eliza is waking up. Retry this turn shortly.",
+            retryable: true,
+            data: {
+              action: preparation.action,
+              activeAgentId: dedicated.id,
+              alreadyInProgress: !preparation.created,
+              jobId: preparation.jobId,
+            },
+          },
           503,
-          "Dedicated Eliza is temporarily unavailable.",
-          "service_unavailable",
+          { "Retry-After": String(preparation.retryAfterSeconds) },
+        );
+      }
+      if (preparation.state === "unavailable") {
+        return c.json(
+          {
+            success: false,
+            code: preparation.code,
+            error: preparation.error,
+            retryable: preparation.retryable,
+          },
+          preparation.status,
+          preparation.retryAfterSeconds
+            ? { "Retry-After": String(preparation.retryAfterSeconds) }
+            : undefined,
         );
       }
       const response = await elizaSandboxService.bridge(
@@ -164,9 +210,12 @@ app.post("/", async (c) => {
           params: {
             text: parsed.data.message,
             roomId: agent.id,
+            conversationId: agent.id,
+            canonicalBridgeBase: dedicated.bridge_url,
             userId: account.user.id,
             clientMessageId: parsed.data.messageId,
             platformName: parsed.data.platform,
+            source: parsed.data.platform,
             ...(parsed.data.platform === "telegram"
               ? {
                   senderName:

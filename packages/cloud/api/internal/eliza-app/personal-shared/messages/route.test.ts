@@ -21,9 +21,34 @@ const runOnboardingChat = mock(async (_input: OnboardingChatInput) => ({
 }));
 let activeTarget: {
   id: string;
-  status: "running" | "stopped";
+  status: "running" | "sleeping" | "stopped";
+  bridge_url?: string;
 } | null = null;
 const findActivePersonalDedicatedTarget = mock(async () => activeTarget);
+let creditGateResult: { allowed: boolean; balance: number; error?: string } = {
+  allowed: true,
+  balance: 10,
+};
+let workerHealthResult:
+  | { ok: true; required: false }
+  | {
+      ok: false;
+      required: true;
+      status: 503;
+      code: "PROVISIONING_WORKER_UNHEALTHY";
+      error: string;
+    } = { ok: true, required: false };
+const enqueueAgentResumeOnce = mock(async () => ({
+  created: true,
+  job: { id: "resume-job-1" },
+}));
+const enqueueAgentWakeOnce = mock(async () => ({
+  created: true,
+  job: { id: "wake-job-1" },
+  appliedRestoreBackupId: null,
+  appliedForceFreshBoot: false,
+}));
+const triggerImmediate = mock(async () => undefined);
 type BridgeResponse =
   | {
       jsonrpc: "2.0";
@@ -58,6 +83,19 @@ mock.module("@/lib/services/eliza-app/onboarding-chat", () => ({
 }));
 mock.module("@/lib/services/agent-tier-upgrade-target", () => ({
   findActivePersonalDedicatedTarget,
+}));
+mock.module("@/lib/services/agent-billing-gate", () => ({
+  checkAgentCreditGate: async () => creditGateResult,
+}));
+mock.module("@/lib/services/provisioning-worker-health", () => ({
+  checkProvisioningWorkerHealth: async () => workerHealthResult,
+}));
+mock.module("@/lib/services/provisioning-jobs", () => ({
+  provisioningJobService: {
+    enqueueAgentResumeOnce,
+    enqueueAgentWakeOnce,
+    triggerImmediate,
+  },
 }));
 mock.module("@/lib/services/eliza-sandbox", () => ({
   elizaSandboxService: { bridge },
@@ -113,6 +151,11 @@ describe("personal Shared messaging deliveries", () => {
     sharedRestMessageSend.mockClear();
     runOnboardingChat.mockClear();
     bridge.mockClear();
+    enqueueAgentResumeOnce.mockClear();
+    enqueueAgentWakeOnce.mockClear();
+    triggerImmediate.mockClear();
+    creditGateResult = { allowed: true, balance: 10 };
+    workerHealthResult = { ok: true, required: false };
   });
 
   test("requires internal gateway authentication", async () => {
@@ -254,6 +297,7 @@ describe("personal Shared messaging deliveries", () => {
     activeTarget = {
       id: "00000000-0000-4000-8000-000000000020",
       status: "running",
+      bridge_url: "http://127.0.0.1:9876/api/compat/agents/sandbox",
     };
 
     const response = await request(valid);
@@ -278,14 +322,19 @@ describe("personal Shared messaging deliveries", () => {
         method: "message.send",
         params: expect.objectContaining({
           text: "hello",
+          roomId: expect.stringMatching(/^personal:/),
+          conversationId: expect.stringMatching(/^personal:/),
+          canonicalBridgeBase:
+            "http://127.0.0.1:9876/api/compat/agents/sandbox",
           clientMessageId: "telegram:eliza:42",
           platformName: "telegram",
+          source: "telegram",
         }),
       }),
     );
   });
 
-  test("never falls back to Shared after Dedicated becomes authoritative", async () => {
+  test("idempotently resumes stopped Dedicated and asks the gateway to retry", async () => {
     activeTarget = {
       id: "00000000-0000-4000-8000-000000000020",
       status: "stopped",
@@ -294,8 +343,75 @@ describe("personal Shared messaging deliveries", () => {
     const response = await request(valid);
     expect(response.status).toBe(503);
     expect(await response.json()).toMatchObject({
-      code: "service_unavailable",
+      code: "dedicated_starting",
+      retryable: true,
+      data: {
+        action: "resume",
+        activeAgentId: "00000000-0000-4000-8000-000000000020",
+        alreadyInProgress: false,
+        jobId: "resume-job-1",
+      },
     });
+    expect(response.headers.get("retry-after")).toBe("5");
+    expect(enqueueAgentResumeOnce).toHaveBeenCalledWith({
+      agentId: "00000000-0000-4000-8000-000000000020",
+      organizationId: "00000000-0000-4000-8000-000000000001",
+      userId: "00000000-0000-4000-8000-000000000002",
+    });
+    expect(triggerImmediate).toHaveBeenCalledTimes(1);
+    expect(sharedRestMessageSend).not.toHaveBeenCalled();
+    expect(bridge).not.toHaveBeenCalled();
+  });
+
+  test("wakes sleeping Dedicated without reopening Shared", async () => {
+    activeTarget = {
+      id: "00000000-0000-4000-8000-000000000020",
+      status: "sleeping",
+    };
+    enqueueAgentWakeOnce.mockImplementationOnce(async () => ({
+      created: false,
+      job: { id: "wake-job-existing" },
+      appliedRestoreBackupId: null,
+      appliedForceFreshBoot: false,
+    }));
+
+    const response = await request(valid);
+    expect(response.status).toBe(503);
+    expect(await response.json()).toMatchObject({
+      code: "dedicated_starting",
+      retryable: true,
+      data: {
+        action: "wake",
+        alreadyInProgress: true,
+        jobId: "wake-job-existing",
+      },
+    });
+    expect(enqueueAgentWakeOnce).toHaveBeenCalledTimes(1);
+    expect(enqueueAgentResumeOnce).not.toHaveBeenCalled();
+    expect(sharedRestMessageSend).not.toHaveBeenCalled();
+    expect(bridge).not.toHaveBeenCalled();
+  });
+
+  test("keeps paid-compute wake fail-closed when the account is unfunded", async () => {
+    activeTarget = {
+      id: "00000000-0000-4000-8000-000000000020",
+      status: "stopped",
+    };
+    creditGateResult = {
+      allowed: false,
+      balance: 0,
+      error: "Add funds before resuming Dedicated.",
+    };
+
+    const response = await request(valid);
+    expect(response.status).toBe(402);
+    expect(await response.json()).toMatchObject({
+      code: "insufficient_credits",
+      retryable: false,
+      currentBalance: 0,
+    });
+    expect(enqueueAgentResumeOnce).not.toHaveBeenCalled();
+    expect(enqueueAgentWakeOnce).not.toHaveBeenCalled();
     expect(sharedRestMessageSend).not.toHaveBeenCalled();
     expect(bridge).not.toHaveBeenCalled();
   });

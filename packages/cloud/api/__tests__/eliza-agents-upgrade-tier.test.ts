@@ -1016,6 +1016,8 @@ describe("POST /api/v1/eliza/agents/:agentId/upgrade-tier", () => {
         }),
       );
       cutoverCommitFailuresRemaining = 1;
+      observeMarkerAtCommit = true;
+      markerObservedAtCommit = undefined;
       cutoverCoordinatorOperations.length = 0;
       const commitRefused = await cutover(PERSONAL_C, CUTOVER_TARGET);
       expect(commitRefused.status).toBeGreaterThanOrEqual(500);
@@ -1026,14 +1028,21 @@ describe("POST /api/v1/eliza/agents/:agentId/upgrade-tier", () => {
       expect(
         (afterCommitFailure?.agent_config as Record<string, unknown> | null)
           ?.__agentPersonalCutover,
-      ).toBeUndefined();
+      ).toMatchObject({
+        sourceAgentId: PERSONAL_C,
+        cutoverToken: `personal-cutover:${PERSONAL_C}:${CUTOVER_TARGET}`,
+        sharedMessageCount: 2,
+      });
       expect(cutoverCoordinatorOperations).toEqual([
         "cutover-seal",
         "cutover-commit",
-        "cutover-release",
       ]);
+      expect(markerObservedAtCommit).toMatchObject({
+        sourceAgentId: PERSONAL_C,
+        cutoverToken: `personal-cutover:${PERSONAL_C}:${CUTOVER_TARGET}`,
+        sharedMessageCount: 2,
+      });
 
-      observeMarkerAtCommit = true;
       markerObservedAtCommit = undefined;
       cutoverCoordinatorOperations.length = 0;
       const activated = await cutover(PERSONAL_C, CUTOVER_TARGET);
@@ -1071,11 +1080,12 @@ describe("POST /api/v1/eliza/agents/:agentId/upgrade-tier", () => {
           },
         ],
       });
-      expect(cutoverCoordinatorOperations).toEqual([
-        "cutover-seal",
-        "cutover-commit",
-      ]);
-      expect(markerObservedAtCommit).toBeUndefined();
+      expect(cutoverCoordinatorOperations).toEqual(["cutover-commit"]);
+      expect(markerObservedAtCommit).toMatchObject({
+        sourceAgentId: PERSONAL_C,
+        cutoverToken: `personal-cutover:${PERSONAL_C}:${CUTOVER_TARGET}`,
+        sharedMessageCount: 2,
+      });
       expect(new Set(cutoverCoordinatorTokens).size).toBe(1);
 
       const [after] = await dbWrite
@@ -1102,7 +1112,7 @@ describe("POST /api/v1/eliza/agents/:agentId/upgrade-tier", () => {
       const retried = await cutover(PERSONAL_C, CUTOVER_TARGET);
       expect(retried.status).toBe(200);
       expect(cutoverCoordinatorOperations).toEqual(["cutover-commit"]);
-      expect(importFetch).toHaveBeenCalledTimes(3);
+      expect(importFetch).toHaveBeenCalledTimes(2);
       const [afterRetry] = await dbWrite
         .select()
         .from(agentSandboxes)
