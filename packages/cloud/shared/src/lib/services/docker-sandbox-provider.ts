@@ -1308,17 +1308,19 @@ export class DockerSandboxProvider implements SandboxProvider {
       );
 
       // Resolve the per-agent vault master passphrase BEFORE building the
-      // container env: an explicit caller-provided value wins; otherwise
-      // reuse-or-create the key persisted on the agent volume so a
-      // replacement container derives the SAME master key and can decrypt
-      // the vault ciphertext it inherits (#18080 / #19225).
-      const vaultPassphrase =
-        environmentVars.ELIZA_VAULT_PASSPHRASE?.trim() ||
-        (await ensureVolumeVaultPassphrase(
-          (cmd, timeoutMs) => ssh.exec(cmd, timeoutMs),
-          volumePath,
-          DOCKER_CMD_TIMEOUT_MS,
-        ));
+      // container env. The key persisted on the agent volume is the single
+      // source of truth so a replacement container derives the SAME master
+      // key and can decrypt the vault ciphertext it inherits (#18080 /
+      // #19225). A caller-injected ELIZA_VAULT_PASSPHRASE does not bypass
+      // that lifecycle: it seeds the persisted key on first provision and
+      // must match it afterwards (fail-closed on mismatch), so a later
+      // replacement launched without the override still reads the same key.
+      const vaultPassphrase = await ensureVolumeVaultPassphrase(
+        (cmd, timeoutMs) => ssh.exec(cmd, timeoutMs),
+        volumePath,
+        DOCKER_CMD_TIMEOUT_MS,
+        environmentVars.ELIZA_VAULT_PASSPHRASE,
+      );
 
       // Pull image (may take a while on first run). Log in when registry
       // credentials are configured; otherwise rely on anonymous public pulls.
@@ -1420,8 +1422,9 @@ export class DockerSandboxProvider implements SandboxProvider {
         // (no D-Bus keychain). The key must be STABLE across container
         // replacement over the same agent volume: the state-dir vault
         // ciphertext survives on the mount, so a fresh per-launch key would
-        // orphan every stored credential (#18080 / #19225). Caller value
-        // wins; otherwise the key persisted on the agent volume is reused.
+        // orphan every stored credential (#18080 / #19225). Always the key
+        // persisted on the agent volume; a caller-injected value only seeds
+        // that key on first provision and must match it afterwards.
         ELIZA_VAULT_PASSPHRASE: vaultPassphrase,
         // Durable state root on the `${volumePath}/eliza:/root/.eliza` mount.
         // Without it the runtime resolves state (including the vault) to
