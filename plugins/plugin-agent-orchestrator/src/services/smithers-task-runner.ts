@@ -206,26 +206,29 @@ export function resolveTaskDbPath(tenantId: string, taskId: string): string {
 /**
  * Resolve the Smithers storage backend configuration from environment variables.
  *
- * SMITHERS_DB_PROVIDER: "sqlite" (default) | "postgres" | "pglite"
+ * SMITHERS_DB_PROVIDER: "sqlite" (default) | "postgres"
  * SMITHERS_DB_URL:      PostgreSQL connection string (used when provider = "postgres")
- * SMITHERS_DB_DATA_DIR: PGlite data directory (used when provider = "pglite")
  *
  * The resolved config is threaded through the subprocess payload so the layer
  * selection runs inside the subprocess script string.
  */
 export function resolveSmithersDbConfig(): {
-  provider: "sqlite" | "postgres" | "pglite";
+  provider: "sqlite" | "postgres";
   connectionString?: string;
-  dataDir?: string;
 } {
   const provider = (process.env.SMITHERS_DB_PROVIDER ?? "sqlite")
     .trim()
     .toLowerCase();
-  if (
-    provider !== "sqlite" &&
-    provider !== "postgres" &&
-    provider !== "pglite"
-  ) {
+  if (provider === "pglite") {
+    throw new ElizaError(
+      "Smithers PGlite storage is temporarily unsupported because its installed adapter dependency closure is incompatible; use sqlite or postgres",
+      {
+        code: "SMITHERS_PGLITE_INCOMPATIBLE",
+        context: { provider },
+      },
+    );
+  }
+  if (provider !== "sqlite" && provider !== "postgres") {
     throw new ElizaError(
       `Unsupported Smithers database provider: ${provider}`,
       {
@@ -246,19 +249,6 @@ export function resolveSmithersDbConfig(): {
       );
     }
     return { provider, connectionString };
-  }
-  if (provider === "pglite") {
-    const dataDir = process.env.SMITHERS_DB_DATA_DIR?.trim();
-    if (!dataDir) {
-      throw new ElizaError(
-        "SMITHERS_DB_DATA_DIR is required for the pglite backend",
-        {
-          code: "SMITHERS_DB_DATA_DIR_REQUIRED",
-          context: { provider },
-        },
-      );
-    }
-    return { provider, dataDir };
   }
   return { provider };
 }
@@ -467,8 +457,6 @@ function createTaskScript(): string {
         smithersLayer = Smithers.sqlite({ filename: payload.dbPath });
       } else if (provider === 'postgres' && typeof Smithers.postgres === 'function') {
         smithersLayer = Smithers.postgres({ connectionString: dbConfig.connectionString });
-      } else if (provider === 'pglite' && typeof Smithers.pglite === 'function') {
-        smithersLayer = Smithers.pglite({ dataDir: dbConfig.dataDir });
       } else {
         throw new Error('Configured Smithers backend is unavailable: ' + provider);
       }
