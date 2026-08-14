@@ -657,3 +657,91 @@ test("delete operation clears room storage and cancels the mirror-retry alarm", 
   });
   await Promise.all(background.splice(0));
 });
+
+test("room lock watchdog force-proceeds when a barge-in abort never releases the lock", async () => {
+  // Reproduces the phone-line wedge: turn 1 ok, turn 2 is a streamed turn whose
+  // caller barge-in aborts the LLM stream, but the abort -> body-cancel
+  // propagation is DROPPED (a Cloudflare DO stub-fetch abort gap), so the
+  // response body is neither drained to `done` nor `cancel`led and the room
+  // queue lock is never released the normal way. Without the watchdog, turn 3's
+  // `await previous` would hang forever ("responds 2-3 times then goes silent").
+  // With the watchdog, turn 3 force-proceeds.
+  repositoryReads = 0;
+  repositoryWrites = 0;
+  repositoryRow = [];
+  repositoryHistoryLengths.length = 0;
+  repositoryHistories.length = 0;
+  streamMergeGate = null;
+  resolveStreamMergeGate = () => {};
+  const data = new Map<string, unknown>([
+    [
+      "conversation",
+      {
+        agentId: AGENT_FIXTURE.id,
+        channelId: "room-1",
+        history: [],
+        dirty: false,
+        version: 1,
+      },
+    ],
+  ]);
+  const background: Promise<unknown>[] = [];
+  const object = new SharedRuntimeConversation(
+    makeState(data, background) as never,
+    {} as never,
+  );
+  // Shrink the watchdog so the force-proceed path is asserted without a 45s
+  // real-timer wait. Production keeps the module constant.
+  (object as unknown as { roomLockWaitMs: number }).roomLockWaitMs = 20;
+  const invoke = makeInvoke(object);
+
+  // Turn 1: a normal bridge turn releases its lock cleanly.
+  expect(await invoke("turn-one")).toMatchObject({
+    result: { historyLength: 1 },
+  });
+  await Promise.all(background.splice(0));
+
+  // Turn 2: a streamed turn. Read exactly one chunk, then abandon the body
+  // WITHOUT draining it to `done` and WITHOUT cancelling it — modelling the
+  // dropped abort -> body-cancel propagation. The lock stays held.
+  const streamed = await object.fetch(
+    new Request("https://shared-runtime.internal/stream", {
+      method: "POST",
+      body: JSON.stringify({
+        operation: "stream",
+        agent: AGENT_FIXTURE,
+        rpc: {
+          jsonrpc: "2.0",
+          id: "turn-two-wedged",
+          method: "message.send",
+          params: { text: "hi", roomId: "room-1" },
+        },
+      }),
+    }),
+  );
+  const reader = streamed.body!.getReader();
+  await reader.read(); // consume the first chunk, then leak the reader.
+
+  // Turn 3 must NOT hang. Guard with a race so a regression (missing watchdog)
+  // fails as a timeout instead of hanging the whole suite.
+  let thirdCompleted = false;
+  const third = invoke("turn-three").then((result) => {
+    thirdCompleted = true;
+    return result;
+  });
+  const guard = new Promise<"stuck">((resolve) =>
+    setTimeout(() => resolve("stuck"), 2_000),
+  );
+  const outcome = await Promise.race([
+    third.then(() => "done" as const),
+    guard,
+  ]);
+  expect(outcome).toBe("done");
+  expect(thirdCompleted).toBe(true);
+
+  const result = await third;
+  // History advanced past the wedged turn 2 (turn 1 + turn 3 both landed).
+  expect(result).toMatchObject({ result: { historyLength: 2 } });
+
+  await Promise.all(background.splice(0));
+});

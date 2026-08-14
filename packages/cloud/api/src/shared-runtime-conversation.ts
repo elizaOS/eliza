@@ -42,6 +42,23 @@ const CONVERSATION_KEY = "conversation";
 const RETRY_DELAY_MS = 30_000;
 
 /**
+ * Upper bound on how long a queued turn waits for the previous turn's room
+ * lock to release before it force-proceeds. The room queue releases the lock
+ * when the prior turn's response body drains, is cancelled, or errors
+ * (`releaseWhenConsumed`). A caller barge-in aborts the LLM stream, and the
+ * abort is expected to propagate through the Durable Object stub-fetch to the
+ * response body's `cancel`, which releases the lock. If any link in that
+ * abort -> body-cancel chain fails to propagate (a Cloudflare DO stub-fetch
+ * abort-propagation gap, or a cancel finalizer rejecting), the lock would
+ * otherwise never release and every subsequent turn's `await previous` would
+ * hang forever — the observed "voice line responds 2-3 times then goes silent"
+ * signature. This watchdog bounds that wait so ordering degrades to at worst a
+ * slightly-out-of-order turn instead of a permanently wedged room. The window
+ * is generous relative to a real turn so it never fires on a healthy slow turn.
+ */
+const ROOM_LOCK_WAIT_MS = 45_000;
+
+/**
  * Durable claim ledger for client-keyed turns (#18045), stored as one bounded
  * value. The room queue fully serializes turns, so read-modify-write is safe.
  * Bounds keep the value under the storage limit; an evicted claim degrades to
@@ -116,6 +133,9 @@ export class SharedRuntimeConversation {
   private hydration: Promise<void> | undefined;
   private queue: Promise<void> = Promise.resolve();
   private mirrorQueue: Promise<void> = Promise.resolve();
+  // Room-lock watchdog window. Overridable only so unit tests can assert the
+  // force-proceed path without a 45s real-timer wait; production uses the const.
+  private roomLockWaitMs: number = ROOM_LOCK_WAIT_MS;
 
   constructor(state: DurableObjectState, env: AppEnv["Bindings"]) {
     this.state = state;
@@ -426,13 +446,59 @@ export class SharedRuntimeConversation {
     });
   }
 
+  /**
+   * Await the previous turn's lock with a watchdog. Resolves as soon as the
+   * prior turn releases; if that never happens within ROOM_LOCK_WAIT_MS (a
+   * dropped barge-in abort -> body-cancel propagation), it force-proceeds and
+   * logs the wedge so the gap is observable rather than silently permanent.
+   */
+  private async awaitPreviousTurn(previous: Promise<void>): Promise<void> {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const watchdog = new Promise<"timeout">((resolve) => {
+      timer = setTimeout(() => resolve("timeout"), this.roomLockWaitMs);
+    });
+    try {
+      const outcome = await Promise.race([
+        previous.then(() => "released" as const),
+        watchdog,
+      ]);
+      if (outcome === "timeout") {
+        const { logger } = await import("@/lib/utils/logger");
+        logger.warn(
+          "[SharedRuntimeConversation] room lock watchdog fired; previous turn never released (suspected dropped abort->body-cancel propagation) — proceeding to avoid a wedged room",
+          { waitMs: this.roomLockWaitMs },
+        );
+      }
+    } finally {
+      if (timer !== undefined) clearTimeout(timer);
+    }
+  }
+
   async fetch(request: Request): Promise<Response> {
     const previous = this.queue;
-    let release = () => {};
+    // The lock is released by exactly one of three mutually exclusive paths:
+    // `handle` throwing (catch below), the response body draining/cancelling
+    // (`releaseWhenConsumed`), or the watchdog timing out `await previous`.
+    // Make release idempotent so a late body-cancel after a watchdog
+    // force-release (or vice versa) cannot resolve a stale, already-replaced
+    // queue promise and corrupt ordering for a later turn.
+    let released = false;
+    let resolveQueue = () => {};
     this.queue = new Promise<void>((resolve) => {
-      release = resolve;
+      resolveQueue = resolve;
     });
-    await previous;
+    const release = () => {
+      if (released) return;
+      released = true;
+      resolveQueue();
+    };
+
+    // Bound the wait for the previous turn's lock. A dropped abort -> body
+    // -cancel propagation on a prior barge-in would otherwise leave `previous`
+    // unresolved forever and wedge this room for the rest of the call. If the
+    // watchdog fires, we proceed anyway (ordering degrades gracefully) and log
+    // the wedge so the propagation gap is observable in Worker tail.
+    await this.awaitPreviousTurn(previous);
 
     try {
       const response = await this.handle(request);
