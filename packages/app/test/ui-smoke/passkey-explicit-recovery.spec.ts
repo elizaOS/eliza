@@ -7,7 +7,9 @@
  * allow-list instead of revealing whether an email has an account or passkey.
  * With no matching virtual credential, the browser-owned ceremony rejects. The
  * UI must offer explicit recovery without sending email until the user chooses
- * Magic Link or Set up passkey. A hard 500 must not expose setup recovery.
+ * Magic Link or Set up passkey. The accent button retains its accessible text
+ * token on hover, and a same-mounted retry ending in a hard 500 must clear the
+ * recovery actions.
  */
 import { mkdir, writeFile } from "node:fs/promises";
 import { expect, type Page, type TestInfo, test } from "@playwright/test";
@@ -58,6 +60,33 @@ async function screenshot(
   await mkdir(testInfo.outputDir, { recursive: true });
   await page.screenshot({ path, fullPage: true });
   await testInfo.attach(name, { path, contentType: "image/png" });
+}
+
+function contrastRatio(foreground: string, background: string): number {
+  const channels = (color: string): number[] => {
+    const values = color
+      .match(/[\d.]+/g)
+      ?.slice(0, 3)
+      .map(Number);
+    if (values?.length !== 3) {
+      throw new Error(`Unsupported computed color: ${color}`);
+    }
+    return values;
+  };
+  const luminance = (color: string): number => {
+    const [red, green, blue] = channels(color).map((channel) => {
+      const normalized = channel / 255;
+      return normalized <= 0.04045
+        ? normalized / 12.92
+        : ((normalized + 0.055) / 1.055) ** 2.4;
+    });
+    return 0.2126 * red + 0.7152 * green + 0.0722 * blue;
+  };
+  const foregroundLuminance = luminance(foreground);
+  const backgroundLuminance = luminance(background);
+  const lighter = Math.max(foregroundLuminance, backgroundLuminance);
+  const darker = Math.min(foregroundLuminance, backgroundLuminance);
+  return (lighter + 0.05) / (darker + 0.05);
 }
 
 for (const viewport of VIEWPORTS) {
@@ -144,6 +173,45 @@ for (const viewport of VIEWPORTS) {
     const passkeyButton = page.getByRole("button", { name: /^Passkey$/ });
     await expect(emailInput).toBeVisible();
     await emailInput.fill(EMAIL);
+
+    const expectedHoverStyle = await passkeyButton.evaluate((button) => {
+      const probe = document.createElement("span");
+      probe.style.color = "var(--accent-foreground)";
+      probe.style.backgroundColor = "var(--accent-hover)";
+      probe.style.position = "fixed";
+      probe.style.pointerEvents = "none";
+      button.appendChild(probe);
+      const style = getComputedStyle(probe);
+      const resolved = {
+        color: style.color,
+        backgroundColor: style.backgroundColor,
+      };
+      probe.remove();
+      return resolved;
+    });
+    await passkeyButton.hover();
+    await expect(passkeyButton).toHaveCSS("color", expectedHoverStyle.color);
+    await expect(passkeyButton).toHaveCSS(
+      "background-color",
+      expectedHoverStyle.backgroundColor,
+    );
+    const computedHoverStyle = await passkeyButton.evaluate((button) => {
+      const style = getComputedStyle(button);
+      return {
+        color: style.color,
+        backgroundColor: style.backgroundColor,
+      };
+    });
+    const hoverContrast = contrastRatio(
+      computedHoverStyle.color,
+      computedHoverStyle.backgroundColor,
+    );
+    expect(hoverContrast).toBeGreaterThanOrEqual(4.5);
+    frontendEvents.push(
+      `passkey-hover-style:${JSON.stringify({ ...computedHoverStyle, contrast: hoverContrast })}`,
+    );
+    await screenshot(page, testInfo, `${viewport.name}-0-passkey-hover`);
+
     await passkeyButton.click();
 
     await expect(page.getByText("Passkey not completed")).toBeVisible();
@@ -162,11 +230,37 @@ for (const viewport of VIEWPORTS) {
     ).toBe(0);
     await screenshot(page, testInfo, `${viewport.name}-1-explicit-recovery`);
 
+    optionsMode = "server-error";
+    await passkeyButton.click();
+    await expect(
+      page.getByText("User verification service unavailable"),
+    ).toBeVisible();
+    await expect(page.getByText("Passkey not completed")).toHaveCount(0);
+    await expect(
+      page.getByRole("button", { name: "Set up passkey" }),
+    ).toHaveCount(0);
+    await expect(
+      page.getByRole("button", { name: "Use Magic Link" }),
+    ).toHaveCount(0);
+    expect(otpSendCount, "same-mount 500 must not send setup OTP").toBe(0);
+    expect(magicLinkSendCount, "same-mount 500 must not send magic link").toBe(
+      0,
+    );
+    await screenshot(
+      page,
+      testInfo,
+      `${viewport.name}-2-same-mount-server-error`,
+    );
+
+    optionsMode = "discoverable";
+    await page.reload();
+    await page.getByPlaceholder("you@example.com").fill(EMAIL);
+    await page.getByRole("button", { name: /^Passkey$/ }).click();
     await page.getByRole("button", { name: "Set up passkey" }).click();
     await expect(page.getByText("Set up your passkey")).toBeVisible();
     expect(otpSendCount, "explicit setup intent sends exactly one OTP").toBe(1);
     expect(magicLinkSendCount).toBe(0);
-    await screenshot(page, testInfo, `${viewport.name}-2-setup-otp`);
+    await screenshot(page, testInfo, `${viewport.name}-3-setup-otp`);
 
     optionsMode = "discoverable";
     await page.reload();
@@ -177,22 +271,6 @@ for (const viewport of VIEWPORTS) {
     await expect(page.getByText("Check your email")).toBeVisible();
     expect(magicLinkSendCount, "explicit Magic Link intent sends once").toBe(1);
     expect(otpSendCount).toBe(1);
-
-    optionsMode = "server-error";
-    await page.reload();
-    const emailForServerError = page.getByPlaceholder("you@example.com");
-    await emailForServerError.fill(EMAIL);
-    await page.getByRole("button", { name: /^Passkey$/ }).click();
-    await expect(
-      page.getByText("User verification service unavailable"),
-    ).toBeVisible();
-    await expect(page.getByText("Passkey not completed")).toHaveCount(0);
-    await expect(
-      page.getByRole("button", { name: "Set up passkey" }),
-    ).toHaveCount(0);
-    expect(otpSendCount, "500 must not send setup OTP").toBe(1);
-    expect(magicLinkSendCount, "500 must not send magic link").toBe(1);
-    await screenshot(page, testInfo, `${viewport.name}-3-server-error`);
 
     const logPath = testInfo.outputPath(`${viewport.name}-frontend.log`);
     await writeFile(logPath, `${frontendEvents.join("\n")}\n`, "utf8");

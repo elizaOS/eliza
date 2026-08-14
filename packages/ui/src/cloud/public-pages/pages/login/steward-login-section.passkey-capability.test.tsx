@@ -398,6 +398,49 @@ describe("StewardLoginSection passkey capability gating", () => {
     },
   );
 
+  it("clears recovery actions when a same-mount retry ends in a hard server failure", async () => {
+    capabilityRef.usable = true;
+    capabilityRef.reason = "available";
+    stewardAuthSpies.signInWithPasskey
+      .mockRejectedValueOnce(
+        new StewardApiError(
+          "WebAuthn authentication cancelled or failed: NotAllowedError",
+          0,
+        ),
+      )
+      .mockRejectedValueOnce(
+        new StewardApiError("User verification service unavailable", 500),
+      );
+
+    renderSection();
+
+    const input = await screen.findByPlaceholderText("you@example.com");
+    fireEvent.change(input, { target: { value: "person@example.com" } });
+    fireEvent.click(screen.getByRole("button", { name: /^Passkey$/i }));
+
+    expect(await screen.findByText("Passkey not completed")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Use Magic Link" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Set up passkey" })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: /^Passkey$/i }));
+
+    expect(
+      await screen.findByText("User verification service unavailable"),
+    ).toBeTruthy();
+    await waitFor(() => {
+      expect(screen.queryByText("Passkey not completed")).toBeNull();
+      expect(
+        screen.queryByRole("button", { name: "Use Magic Link" }),
+      ).toBeNull();
+      expect(
+        screen.queryByRole("button", { name: "Set up passkey" }),
+      ).toBeNull();
+    });
+    expect(stewardAuthSpies.signInWithPasskey).toHaveBeenCalledTimes(2);
+    expect(stewardAuthSpies.sendEmailOtp).not.toHaveBeenCalled();
+    expect(emailLoginSpies.start).not.toHaveBeenCalled();
+  });
+
   it("surfaces MFA-required without recovery or enrollment", async () => {
     capabilityRef.usable = true;
     capabilityRef.reason = "available";
