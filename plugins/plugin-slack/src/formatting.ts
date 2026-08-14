@@ -328,14 +328,7 @@ export function formatSlackDate(
     return fallbackText || "Invalid date";
   }
   const unix = Math.floor(timeMs / 1000);
-  let fallback = fallbackText;
-  if (!fallback) {
-    try {
-      fallback = date.toISOString();
-    } catch {
-      return fallbackText || "Invalid date";
-    }
-  }
+  const fallback = fallbackText || date.toISOString();
   return `<!date^${unix}^${format}|${fallback}>`;
 }
 
