@@ -638,18 +638,19 @@ export default function StewardLoginSection() {
     setStep("success");
   }
 
+  function isBrowserOwnedWebAuthnFailure(e: unknown, msg: string): boolean {
+    return (
+      (typeof DOMException !== "undefined" && e instanceof DOMException) ||
+      (e instanceof StewardApiError &&
+        e.status === 0 &&
+        (msg.includes("webauthn authentication") ||
+          msg.includes("webauthn registration")))
+    );
+  }
+
   function isUserCancelled(e: unknown): boolean {
     const msg = getErrorMessage(e, "").toLowerCase();
-    const browserOwnedError =
-      typeof DOMException !== "undefined" &&
-      e instanceof DOMException &&
-      (e.name === "NotAllowedError" || e.name === "AbortError");
-    const wrappedWebAuthnError =
-      e instanceof StewardApiError &&
-      e.status === 0 &&
-      (msg.includes("webauthn authentication") ||
-        msg.includes("webauthn registration"));
-    if (!browserOwnedError && !wrappedWebAuthnError) return false;
+    if (!isBrowserOwnedWebAuthnFailure(e, msg)) return false;
     return (
       msg.includes("cancel") ||
       msg.includes("notallowed") ||
@@ -667,6 +668,7 @@ export default function StewardLoginSection() {
   // UV constraint and loops. See #18468.
   function isUserVerificationError(e: unknown): boolean {
     const msg = getErrorMessage(e, "").toLowerCase();
+    if (!isBrowserOwnedWebAuthnFailure(e, msg)) return false;
     return (
       msg.includes("user verification") ||
       msg.includes("user could not be verified")

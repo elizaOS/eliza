@@ -121,7 +121,7 @@ for (const viewport of VIEWPORTS) {
           contentType: "application/json",
           body: JSON.stringify({
             ok: false,
-            error: "Passkey service unavailable",
+            error: "User verification service unavailable",
           }),
         });
       }
@@ -183,7 +183,9 @@ for (const viewport of VIEWPORTS) {
     const emailForServerError = page.getByPlaceholder("you@example.com");
     await emailForServerError.fill(EMAIL);
     await page.getByRole("button", { name: /^Passkey$/ }).click();
-    await expect(page.getByText("Passkey service unavailable")).toBeVisible();
+    await expect(
+      page.getByText("User verification service unavailable"),
+    ).toBeVisible();
     await expect(page.getByText("Passkey not completed")).toHaveCount(0);
     await expect(
       page.getByRole("button", { name: "Set up passkey" }),

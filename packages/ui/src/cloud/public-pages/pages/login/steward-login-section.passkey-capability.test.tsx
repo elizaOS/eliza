@@ -343,8 +343,9 @@ describe("StewardLoginSection passkey capability gating", () => {
     capabilityRef.usable = true;
     capabilityRef.reason = "available";
     stewardAuthSpies.signInWithPasskey.mockRejectedValue(
-      new Error(
-        "User verification was required, but user could not be verified",
+      new StewardApiError(
+        "WebAuthn authentication cancelled or failed: User verification was required, but user could not be verified",
+        0,
       ),
     );
 
@@ -374,6 +375,7 @@ describe("StewardLoginSection passkey capability gating", () => {
   it.each([
     new StewardApiError("Network request failed", 0),
     new StewardApiError("Passkey service unavailable", 500),
+    new StewardApiError("User verification service unavailable", 500),
     new StewardApiError("Gateway timed out", 504),
   ])(
     "surfaces hard failure %s without recovery or enrollment",
