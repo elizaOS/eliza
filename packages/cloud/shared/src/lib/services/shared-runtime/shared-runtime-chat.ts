@@ -1078,6 +1078,10 @@ export class SharedRuntimeChatService {
           logger.warn("[SharedRuntimeChatService] stream failed", {
             agentId: agent.id,
             error: error instanceof Error ? error.message : String(error),
+            cause:
+              error instanceof Error && error.cause instanceof Error
+                ? error.cause.message.slice(0, 240)
+                : undefined,
           });
           if (!consumerCanceled) {
             controller.enqueue(
