@@ -9,19 +9,27 @@
  * worktree the operator happens to be in.
  *
  * Saves default to ~/.eliza/.env — the layer that survives worktree churn —
- * with repo .env as the per-save alternative; writes are atomic (tmp file
- * mode 600 + rename) and preserve unrelated lines and comments. The parse,
- * merge, and upsert primitives are exported separately so they stay
- * unit-testable without touching the real filesystem or git. Values returned
- * by loadLayeredEnv are real secrets: callers must never render them — the
- * display-safe surface is listPresent(), which only reports presence and the
- * winning source layer.
+ * with repo .env as the per-save alternative. Each target file is serialized
+ * through an exclusive lock, reread, then written atomically (tmp file mode
+ * 600 + rename, tmp unlinked on failure). Upserts collapse every definition
+ * of the written key so parseDotenv's last-wins read cannot resurrect a stale
+ * later line, and they preserve unrelated lines, comments, and trailing blanks.
+ * The parse, merge, and upsert primitives stay unit-testable without touching
+ * the real operator files. Values returned by loadLayeredEnv are real secrets:
+ * callers must never render them — the display-safe surface is listPresent(),
+ * which only reports presence and the winning source layer.
  */
+import { randomBytes } from "node:crypto";
 import {
+  chmodSync,
+  closeSync,
   existsSync,
   mkdirSync,
+  openSync,
   readFileSync,
   renameSync,
+  statSync,
+  unlinkSync,
   writeFileSync,
 } from "node:fs";
 import { homedir } from "node:os";
@@ -37,6 +45,9 @@ export const HOME_ENV_PATH = join(homedir(), ".eliza", ".env");
 export const ENV_LAYER_SOURCES = ["process", "repo", "home"];
 
 const ENV_KEY_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/;
+const LOCK_STALE_MS = 10_000;
+const LOCK_WAIT_MS = 5_000;
+const LOCK_POLL_MS = 25;
 
 // --- pure primitives ---------------------------------------------------------
 
@@ -88,30 +99,39 @@ export function mergeEnvLayers(layers) {
 }
 
 /**
- * Replace KEY=value lines in dotenv text, preserving unrelated lines and
- * comments, appending keys that were not present. Always ends with a single
- * trailing newline.
+ * Replace KEY=value lines in dotenv text, preserving unrelated lines,
+ * comments, and trailing blank lines. Every definition of a written key is
+ * collapsed to one assignment so a later duplicate cannot win at parse time.
+ * Keys that were not present are appended. A non-empty result always ends
+ * with a newline.
  */
 export function upsertEnvContent(existingText, entries) {
-  const lines = existingText.length > 0 ? existingText.split("\n") : [];
   const remaining = new Map(Object.entries(entries));
-  const nextLines = lines.map((line) => {
-    const match = /^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=/.exec(line);
-    if (match && remaining.has(match[1])) {
-      const value = remaining.get(match[1]);
-      remaining.delete(match[1]);
-      return `${match[1]}=${value}`;
+  const writtenKeys = new Set(remaining.keys());
+  const replaced = new Set();
+  const nextLines = [];
+  if (existingText.length > 0) {
+    for (const line of existingText.split("\n")) {
+      const match = /^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=/.exec(line);
+      if (match && writtenKeys.has(match[1])) {
+        if (replaced.has(match[1])) {
+          continue;
+        }
+        replaced.add(match[1]);
+        const value = remaining.get(match[1]);
+        remaining.delete(match[1]);
+        nextLines.push(`${match[1]}=${value}`);
+        continue;
+      }
+      nextLines.push(line);
     }
-    return line;
-  });
-  while (
-    nextLines.length > 0 &&
-    nextLines[nextLines.length - 1].trim() === ""
-  ) {
-    nextLines.pop();
   }
   for (const [key, value] of remaining) nextLines.push(`${key}=${value}`);
-  return `${nextLines.join("\n")}\n`;
+  if (nextLines.length === 0) {
+    return "";
+  }
+  const body = nextLines.join("\n");
+  return body.endsWith("\n") ? body : `${body}\n`;
 }
 
 /**
@@ -196,22 +216,84 @@ export function listPresent(names, options = {}) {
   });
 }
 
-function atomicWriteEnvFile(path, content) {
+function sleepMs(ms) {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
+function acquireTargetLock(targetPath) {
+  const lockPath = `${targetPath}.lock`;
+  mkdirSync(dirname(targetPath), { recursive: true });
+  const deadline = Date.now() + LOCK_WAIT_MS;
+  while (true) {
+    try {
+      const fd = openSync(lockPath, "wx", 0o600);
+      writeFileSync(fd, `${process.pid}\n`);
+      return { fd, lockPath };
+    } catch (err) {
+      // error-policy:J3 exclusive-create miss means another writer holds the lock
+      if (err.code !== "EEXIST") throw err;
+      try {
+        const st = statSync(lockPath);
+        if (Date.now() - st.mtimeMs > LOCK_STALE_MS) {
+          unlinkSync(lockPath);
+          continue;
+        }
+      } catch (statErr) {
+        // error-policy:J6 lock disappeared between EEXIST and stat
+        if (statErr.code !== "ENOENT") throw statErr;
+      }
+      if (Date.now() >= deadline) {
+        throw new Error(`writeSecret: timed out waiting for lock ${lockPath}`);
+      }
+      sleepMs(LOCK_POLL_MS);
+    }
+  }
+}
+
+function releaseTargetLock(lock) {
+  try {
+    closeSync(lock.fd);
+  } catch {
+    // error-policy:J6 lock fd already closed during teardown
+  }
+  try {
+    unlinkSync(lock.lockPath);
+  } catch (err) {
+    // error-policy:J6 lock file already removed
+    if (err.code !== "ENOENT") throw err;
+  }
+}
+
+export function atomicWriteEnvFile(path, content) {
   mkdirSync(dirname(path), { recursive: true });
-  // Mode 600 on the tmp file carries through the rename, so the final file is
-  // owner-only even when it replaces a pre-existing looser one.
-  const tmp = `${path}.${process.pid}.${Date.now()}.tmp`;
-  writeFileSync(tmp, content, { encoding: "utf8", mode: 0o600 });
-  renameSync(tmp, path);
+  const tmp = `${path}.${process.pid}.${Date.now()}.${randomBytes(4).toString("hex")}.tmp`;
+  try {
+    writeFileSync(tmp, content, { encoding: "utf8", mode: 0o600 });
+    renameSync(tmp, path);
+  } catch (err) {
+    try {
+      unlinkSync(tmp);
+    } catch (cleanupErr) {
+      // error-policy:J6 uncommitted tmp after a failed atomic write
+      if (cleanupErr.code !== "ENOENT") {
+        throw new Error(
+          `atomicWriteEnvFile: failed writing ${path} and could not remove ${tmp}`,
+          { cause: err },
+        );
+      }
+    }
+    throw err;
+  }
 }
 
 /**
  * Upsert one KEY=value into the chosen layer file — scope 'home'
  * (~/.eliza/.env, created on first save; the default because it survives
- * worktree churn) or 'repo' (this checkout's .env). Atomic tmp+rename write,
- * mode 600. Also sets the key on processEnv so probes running in the same
- * process observe the save immediately. Values must be single-line; multi-line
- * values would corrupt the dotenv format and are rejected.
+ * worktree churn) or 'repo' (this checkout's .env). The target is locked,
+ * reread, then written atomically (tmp+rename, mode 600). Also sets the key
+ * on processEnv so probes running in the same process observe the save
+ * immediately. Values must be single-line; multi-line values would corrupt
+ * the dotenv format and are rejected.
  */
 export function writeSecret(key, value, options = {}) {
   const {
@@ -219,6 +301,7 @@ export function writeSecret(key, value, options = {}) {
     repoRoot = ROOT,
     homeEnvPath = HOME_ENV_PATH,
     processEnv = process.env,
+    afterRead,
   } = options;
   if (typeof key !== "string" || !ENV_KEY_PATTERN.test(key)) {
     throw new Error(`writeSecret: invalid env key ${JSON.stringify(key)}`);
@@ -232,10 +315,19 @@ export function writeSecret(key, value, options = {}) {
     );
   }
   const path = scope === "home" ? homeEnvPath : join(repoRoot, ".env");
-  const existing = existsSync(path) ? readFileSync(path, "utf8") : "";
-  atomicWriteEnvFile(path, upsertEnvContent(existing, { [key]: value }));
-  processEnv[key] = value;
-  return { key, scope, path };
+  const lock = acquireTargetLock(path);
+  try {
+    const existing = existsSync(path) ? readFileSync(path, "utf8") : "";
+    if (typeof afterRead === "function") {
+      afterRead();
+    }
+    atomicWriteEnvFile(path, upsertEnvContent(existing, { [key]: value }));
+    chmodSync(path, 0o600);
+    processEnv[key] = value;
+    return { key, scope, path };
+  } finally {
+    releaseTargetLock(lock);
+  }
 }
 
 export function saveEnvVar(key, value, target = "home", options = {}) {

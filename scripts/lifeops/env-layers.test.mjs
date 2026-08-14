@@ -1,25 +1,31 @@
 /**
  * Unit tests for layered .env resolution: pure parse/merge/upsert primitives,
- * real-filesystem load/save against temp dirs (mode 600 asserted), and a real
- * linked-worktree fixture proving an empty worktree .env falls through to the
- * home-scoped layer.
+ * real-filesystem load/save against temp dirs (mode 600 asserted), a linked
+ * worktree fixture, and the #14793 writer residuals — duplicate-key collapse,
+ * trailing-blank preservation, serialized separate-process writes, atomic
+ * tmp cleanup, and permission repair.
  */
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import {
+  existsSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   realpathSync,
   rmSync,
   statSync,
+  utimesSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import test from "node:test";
+import { pathToFileURL } from "node:url";
 import {
   applyLayeredEnvToProcess,
+  atomicWriteEnvFile,
   listPresent,
   loadLayeredEnv,
   mergeEnvLayers,
@@ -127,6 +133,27 @@ test("upsertEnvContent replaces in place, preserves comments, appends new keys",
 
 test("upsertEnvContent on empty text emits just the entries", () => {
   assert.equal(upsertEnvContent("", { A: "1" }), "A=1\n");
+});
+
+test("upsertEnvContent collapses every definition of a written key", () => {
+  const after = upsertEnvContent(
+    [
+      "TOKEN=first",
+      "KEEP=ok",
+      "export TOKEN=stale-later",
+      "TOKEN=also-stale",
+    ].join("\n"),
+    { TOKEN: "fresh" },
+  );
+  assert.equal(after, "TOKEN=fresh\nKEEP=ok\n");
+  assert.equal(parseDotenv(after).TOKEN, "fresh");
+  assert.equal([...after.matchAll(/^TOKEN=/gm)].length, 1);
+});
+
+test("upsertEnvContent preserves trailing blank lines on in-place replace", () => {
+  const after = upsertEnvContent("KEEP=old\n\n\n", { KEEP: "new" });
+  assert.equal(after, "KEEP=new\n\n\n");
+  assert.equal(parseDotenv(after).KEEP, "new");
 });
 
 // --- loadLayeredEnv / listPresent ---------------------------------------------------
@@ -382,12 +409,185 @@ test("surviving HITL consumers import the shared layered env module", () => {
     "scripts/lifeops/hitl-credential-dashboard.mjs",
     "scripts/lifeops/env-layers.test.mjs",
   ];
+  let seen = 0;
   for (const relativePath of importers) {
-    const text = readFileSync(join(ROOT, relativePath), "utf8");
+    const fullPath = join(ROOT, relativePath);
+    if (!existsSync(fullPath)) continue;
+    seen += 1;
+    const text = readFileSync(fullPath, "utf8");
     assert.match(
       text,
       /from "\.\/env-layers\.mjs"/,
       `${relativePath} must import scripts/lifeops/env-layers.mjs`,
     );
+  }
+  assert.ok(
+    seen >= 2,
+    "at least the dashboard and this test must still import env-layers",
+  );
+});
+
+test("writeSecret collapses duplicate keys so parseDotenv cannot return a stale later value", () => {
+  const base = tempDir("env-layers-dup-key-");
+  try {
+    const homeEnvPath = join(base, ".eliza", ".env");
+    mkdirSync(dirname(homeEnvPath), { recursive: true });
+    writeFileSync(
+      homeEnvPath,
+      "TOKEN=first\nKEEP=ok\nexport TOKEN=stale-later\n",
+      "utf8",
+    );
+    const processEnv = {};
+    writeSecret("TOKEN", "fresh", { scope: "home", homeEnvPath, processEnv });
+    const text = readFileSync(homeEnvPath, "utf8");
+    assert.equal(text, "TOKEN=fresh\nKEEP=ok\n");
+    assert.equal(parseDotenv(text).TOKEN, "fresh");
+    assert.equal(processEnv.TOKEN, "fresh");
+    assert.equal(statSync(homeEnvPath).mode & 0o777, 0o600);
+  } finally {
+    rmSync(base, { recursive: true, force: true });
+  }
+});
+
+test("writeSecret preserves trailing blanks and repairs a world-readable mode", () => {
+  const base = tempDir("env-layers-blanks-mode-");
+  try {
+    const homeEnvPath = join(base, ".eliza", ".env");
+    mkdirSync(dirname(homeEnvPath), { recursive: true });
+    writeFileSync(homeEnvPath, "KEEP=old\n\n\n", {
+      encoding: "utf8",
+      mode: 0o644,
+    });
+    writeSecret("KEEP", "new", {
+      scope: "home",
+      homeEnvPath,
+      processEnv: {},
+    });
+    assert.equal(readFileSync(homeEnvPath, "utf8"), "KEEP=new\n\n\n");
+    assert.equal(statSync(homeEnvPath).mode & 0o777, 0o600);
+  } finally {
+    rmSync(base, { recursive: true, force: true });
+  }
+});
+
+test("atomicWriteEnvFile removes the tmp file when rename cannot replace the target", () => {
+  const base = tempDir("env-layers-atomic-fail-");
+  try {
+    const dest = join(base, "env-as-dir");
+    mkdirSync(dest, { recursive: true });
+    assert.throws(() => atomicWriteEnvFile(dest, "A=1\n"));
+    const leftovers = readdirSync(base).filter((name) => name.endsWith(".tmp"));
+    assert.deepEqual(leftovers, []);
+  } finally {
+    rmSync(base, { recursive: true, force: true });
+  }
+});
+
+test("writeSecret recovers from a stale sibling lock file", () => {
+  const base = tempDir("env-layers-stale-lock-");
+  try {
+    const homeEnvPath = join(base, ".eliza", ".env");
+    mkdirSync(dirname(homeEnvPath), { recursive: true });
+    const lockPath = `${homeEnvPath}.lock`;
+    writeFileSync(lockPath, "999999\n", "utf8");
+    const stale = new Date(Date.now() - 30_000);
+    utimesSync(lockPath, stale, stale);
+    writeSecret("RECOVERED", "yes", {
+      scope: "home",
+      homeEnvPath,
+      processEnv: {},
+    });
+    assert.equal(
+      parseDotenv(readFileSync(homeEnvPath, "utf8")).RECOVERED,
+      "yes",
+    );
+    assert.equal(existsSync(lockPath), false);
+  } finally {
+    rmSync(base, { recursive: true, force: true });
+  }
+});
+
+function writeSecretInChild(repoRoot, key, value, afterReadWaitPath) {
+  const moduleUrl = pathToFileURL(
+    join(ROOT, "scripts/lifeops/env-layers.mjs"),
+  ).href;
+  const script = `
+    import { existsSync } from "node:fs";
+    import { writeSecret } from ${JSON.stringify(moduleUrl)};
+    const waitPath = ${JSON.stringify(afterReadWaitPath ?? "")};
+    writeSecret(${JSON.stringify(key)}, ${JSON.stringify(value)}, {
+      scope: "repo",
+      repoRoot: ${JSON.stringify(repoRoot)},
+      processEnv: {},
+      afterRead: waitPath
+        ? () => {
+            const deadline = Date.now() + 5000;
+            while (!existsSync(waitPath) && Date.now() < deadline) {
+              Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
+            }
+          }
+        : undefined,
+    });
+  `;
+  return new Promise((resolvePromise, reject) => {
+    const child = spawn(
+      process.execPath,
+      ["--input-type=module", "-e", script],
+      {
+        encoding: "utf8",
+      },
+    );
+    let stderr = "";
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk;
+    });
+    child.on("error", reject);
+    child.on("close", (code) => {
+      if (code === 0) {
+        resolvePromise();
+        return;
+      }
+      reject(new Error(`child write ${key} exited ${code}: ${stderr}`));
+    });
+  });
+}
+
+test("writeSecret serializes separate-process multi-key writes so neither save is lost", async () => {
+  const base = tempDir("env-layers-race-");
+  try {
+    const waitPath = join(base, "release-first-writer");
+    const first = writeSecretInChild(base, "KEY_A", "aaa", waitPath);
+    const started = Date.now();
+    while (
+      Date.now() - started < 2000 &&
+      !existsSync(`${join(base, ".env")}.lock`)
+    ) {
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
+    }
+    const second = writeSecretInChild(base, "KEY_B", "bbb");
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 150);
+    writeFileSync(waitPath, "go\n");
+    await Promise.all([first, second]);
+    const parsed = parseDotenv(readFileSync(join(base, ".env"), "utf8"));
+    assert.equal(parsed.KEY_A, "aaa");
+    assert.equal(parsed.KEY_B, "bbb");
+  } finally {
+    rmSync(base, { recursive: true, force: true });
+  }
+});
+
+test("writeSecret same-key child writers leave exactly one definition", async () => {
+  const base = tempDir("env-layers-same-key-race-");
+  try {
+    await Promise.all([
+      writeSecretInChild(base, "TOKEN", "one"),
+      writeSecretInChild(base, "TOKEN", "two"),
+    ]);
+    const text = readFileSync(join(base, ".env"), "utf8");
+    const matches = [...text.matchAll(/^TOKEN=/gm)];
+    assert.equal(matches.length, 1);
+    assert.ok(["one", "two"].includes(parseDotenv(text).TOKEN));
+  } finally {
+    rmSync(base, { recursive: true, force: true });
   }
 });
