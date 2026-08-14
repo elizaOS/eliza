@@ -11,6 +11,7 @@ import { createMockRuntime, MOCK_AGENT_ID } from "../../testing/mock-runtime";
 import type { Character, Memory, UUID } from "../../types";
 import { MemoryType, ModelType } from "../../types";
 import { DocumentService } from "./service.ts";
+import { generateContentBasedId } from "./utils.ts";
 
 const DOCUMENTS_TABLE = "documents";
 const DOCUMENT_FRAGMENTS_TABLE = "document_fragments";
@@ -232,6 +233,11 @@ describe("DocumentService character document ingestion boot races", () => {
 	});
 
 	test("does not write the parent when any pre-chunked embedding fails", async () => {
+		const documentId = generateContentBasedId("first\nsecond", MOCK_AGENT_ID, {
+			includeFilename: "meeting.txt",
+			contentType: "text/plain",
+			maxChars: 2000,
+		});
 		let embeddings = 0;
 		const runtime = await createRealRuntime();
 		runtime.registerModel(
@@ -289,9 +295,73 @@ describe("DocumentService character document ingestion boot races", () => {
 		}
 		expect(thrown.cause).toMatchObject({
 			code: "DOCUMENT_FRAGMENT_EMBED_FAILED",
-			context: { documentId: expect.any(String), position: 1 },
+			context: { documentId, position: 1 },
+		});
+		expect(thrown.cause.cause).toBeInstanceOf(ElizaError);
+		if (!(thrown.cause.cause instanceof ElizaError)) {
+			throw new Error("Expected fragment failure to preserve provider cause");
+		}
+		expect(thrown.cause.cause).toMatchObject({
+			code: "EMBEDDING_MODEL_OUTPUT_INVALID",
+			context: { outputKind: "empty-array" },
 		});
 		expect(embeddings).toBe(2);
+		await expect(getStoredMemories(runtime, DOCUMENTS_TABLE)).resolves.toEqual(
+			[],
+		);
+		await expect(
+			getStoredMemories(runtime, DOCUMENT_FRAGMENTS_TABLE),
+		).resolves.toEqual([]);
+	});
+
+	test("refuses pre-chunked persistence when dimension probing disabled embedding generation", async () => {
+		const documentId = generateContentBasedId("first", MOCK_AGENT_ID, {
+			includeFilename: "disabled-embedding.txt",
+			contentType: "text/plain",
+			maxChars: 2000,
+		});
+		const runtime = await createRealRuntime();
+		runtime.registerModel(
+			ModelType.TEXT_EMBEDDING,
+			async () => [],
+			"document-character-disabled-embedding-test",
+			100,
+		);
+		await expect(runtime.ensureEmbeddingDimension()).rejects.toThrow();
+		expect(runtime.isEmbeddingGenerationDisabled()).toBe(true);
+		const service = new DocumentService(runtime);
+
+		let thrown: unknown;
+		try {
+			await service.addDocument({
+				agentId: MOCK_AGENT_ID,
+				worldId: MOCK_AGENT_ID,
+				roomId: MOCK_AGENT_ID,
+				entityId: MOCK_AGENT_ID,
+				clientDocumentId: MOCK_AGENT_ID,
+				contentType: "text/plain",
+				originalFilename: "disabled-embedding.txt",
+				content: "first",
+				fragments: [
+					{
+						text: "first",
+						metadata: { segmentIds: ["s1"], startMs: 0, endMs: 500 },
+					},
+				],
+			});
+		} catch (error) {
+			thrown = error;
+		}
+
+		expect(thrown).toBeInstanceOf(ElizaError);
+		if (!(thrown instanceof ElizaError)) {
+			throw new Error("Expected disabled embedding ingestion to fail");
+		}
+		expect(thrown.code).toBe("DOCUMENT_PROCESSING_FAILED");
+		expect(thrown.cause).toMatchObject({
+			code: "DOCUMENT_FRAGMENT_EMBED_FAILED",
+			context: { documentId, position: 0 },
+		});
 		await expect(getStoredMemories(runtime, DOCUMENTS_TABLE)).resolves.toEqual(
 			[],
 		);
