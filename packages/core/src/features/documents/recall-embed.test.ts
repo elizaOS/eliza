@@ -79,7 +79,10 @@ describe("embedRecallQuery — resolve / fail-open", () => {
 		await expect(
 			embedRecallQuery(runtime, "keyword fallback"),
 		).resolves.toBeNull();
-		expect(useModel).not.toHaveBeenCalled();
+		expect(useModel).toHaveBeenCalledOnce();
+		expect(useModel).toHaveBeenCalledWith(ModelType.TEXT_EMBEDDING, {
+			text: "keyword fallback",
+		});
 		expect(reportError).not.toHaveBeenCalled();
 		expect(runtime.getRecentReportedErrors()).toEqual([]);
 	});
@@ -103,11 +106,13 @@ describe("embedRecallQuery — resolve / fail-open", () => {
 			100,
 		);
 		const reportError = vi.spyOn(runtime, "reportError");
+		const useModel = vi.spyOn(runtime, "useModel");
 
 		await expect(
 			embedRecallQuery(runtime, "keyword fallback"),
 		).resolves.toBeNull();
 		expect(runtime.getModel(ModelType.TEXT_EMBEDDING)).toBeUndefined();
+		expect(useModel).toHaveBeenCalledOnce();
 		expect(handler).not.toHaveBeenCalled();
 		expect(reportError).not.toHaveBeenCalled();
 		expect(runtime.getRecentReportedErrors()).toEqual([]);

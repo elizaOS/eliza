@@ -76,7 +76,12 @@ function reportUnexpectedEmbeddingFailure(
 	error: unknown,
 	phase: "synchronous" | "asynchronous",
 ): void {
-	if (isExpectedLocalEmbeddingUnavailability(error)) return;
+	if (
+		isExpectedLocalEmbeddingUnavailability(error) ||
+		isMissingEmbeddingCapability(error)
+	) {
+		return;
+	}
 	const details = modelProviderFailureDetails(error);
 	runtime.reportError(
 		"DocumentRecall.embedding",
@@ -88,6 +93,22 @@ function reportUnexpectedEmbeddingFailure(
 			...(details.provider ? { provider: details.provider } : {}),
 			...(details.reason ? { reason: details.reason } : {}),
 		},
+	);
+}
+
+/**
+ * Optional semantic recall may quietly degrade when the runtime has no
+ * embedding capability. Canonical routing uses the typed no-provider error,
+ * while a runtime with no registration reaches the model router's exact
+ * missing-delegate error. Keep this recognition narrow so a broken registered
+ * provider remains observable.
+ */
+function isMissingEmbeddingCapability(error: unknown): boolean {
+	return (
+		error instanceof Error &&
+		(error.name === "NoModelProviderConfiguredError" ||
+			error.message ===
+				`No handler found for delegate type: ${ModelType.TEXT_EMBEDDING}`)
 	);
 }
 
@@ -241,15 +262,6 @@ export async function embedRecallQuery(
 	if (!normalized) {
 		return null;
 	}
-	// A missing registration (including a capability disabled by canonical
-	// service routing) is an expected deployment state, not a provider failure.
-	// Avoid calling useModel here: its typed no-provider error is useful for
-	// required inference, but optional recall must quietly fall back to lexical
-	// search without entering RECENT_ERRORS or owner escalation.
-	if (!runtime.getModel(ModelType.TEXT_EMBEDDING)) {
-		return null;
-	}
-
 	let runId: string;
 	try {
 		runId = runtime.getCurrentRunId();
