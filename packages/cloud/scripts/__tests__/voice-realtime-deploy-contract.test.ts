@@ -24,7 +24,7 @@ interface Workflow {
 const repoRoot = resolve(import.meta.dirname, "../../../..");
 const workflow = parse(
   readFileSync(
-    resolve(repoRoot, ".github/workflows/cloud-cf-deploy.yml"),
+    resolve(repoRoot, ".github/workflows/cloud-cf-release.yml"),
     "utf8",
   ),
 ) as Workflow;
@@ -58,7 +58,9 @@ describe("realtime staging deploy contract", () => {
     expect(run).toContain('if [ "$VOICE_REALTIME_WS_ENABLED" != "true" ]');
     expect(run).toContain('-H "X-API-Key: $STAGING_ELIZACLOUD_API_KEY"');
     expect(run).toContain("/api/v1/voice/session/consent");
-    expect(run).toContain("https://api-staging.eliza.app/api/v1/voice/session/consent");
+    expect(run).toContain(
+      "https://api-staging.eliza.app/api/v1/voice/session/consent",
+    );
     expect(run).not.toContain("api-staging.elizacloud.ai");
     expect(run).toContain("body.consentNonce");
     expect(run).toContain("body.expiresAt");
