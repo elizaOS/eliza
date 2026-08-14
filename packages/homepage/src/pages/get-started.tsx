@@ -43,6 +43,7 @@ const ShaderBackground = lazy(
 import { elizacloudAuthFetch } from "@/lib/api/client";
 import {
   buildElizaTelegramHref,
+  ELIZA_PHONE_NUMBER,
   getDiscordBotApplicationId,
   getTelegramBotId,
   getTelegramBotUsername,
@@ -706,7 +707,7 @@ export default function GetStartedPage() {
 
   const [suppressRedirect, setSuppressRedirect] = useState(false);
   const [messageNotice, setMessageNotice] = useState<
-    "idle" | "copied" | "error"
+    "idle" | "handoff" | "copied" | "error"
   >("idle");
   const [showContent, setShowContent] = useState(false);
 
@@ -1291,7 +1292,17 @@ export default function GetStartedPage() {
   const handleOpenMessages = async () => {
     try {
       const outcome = await openOrCopyElizaMessage(window);
-      setMessageNotice(outcome === "copied" ? "copied" : "idle");
+      setMessageNotice(outcome);
+    } catch {
+      // error-policy:J4 Clipboard rejection stays visible as a distinct UI error.
+      setMessageNotice("error");
+    }
+  };
+
+  const handleCopyMessageNumber = async () => {
+    try {
+      await navigator.clipboard.writeText(ELIZA_PHONE_NUMBER);
+      setMessageNotice("copied");
     } catch {
       // error-policy:J4 Clipboard rejection stays visible as a distinct UI error.
       setMessageNotice("error");
@@ -1809,17 +1820,37 @@ export default function GetStartedPage() {
                   className={`mt-3 text-center text-sm font-medium ${
                     messageNotice === "copied"
                       ? "text-green-700"
-                      : "text-red-700"
+                      : messageNotice === "error"
+                        ? "text-red-700"
+                        : "text-neutral-700"
                   }`}
                 >
                   {messageNotice === "copied"
                     ? t("homepage_eliza.getStarted.phoneCopied", {
                         defaultValue: "Phone number copied",
                       })
-                    : t("homepage_eliza.getStarted.phoneCopyFailed", {
-                        defaultValue: "Couldn't copy the phone number",
-                      })}
+                    : messageNotice === "handoff"
+                      ? t("homepage_eliza.common.messageHandoff", {
+                          defaultValue:
+                            "Opening Messages. If nothing happens, copy the number.",
+                        })
+                      : t("homepage_eliza.getStarted.phoneCopyFailed", {
+                          defaultValue: "Couldn't copy the phone number",
+                        })}
                 </p>
+              )}
+
+              {messageNotice === "handoff" && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => void handleCopyMessageNumber()}
+                  className="mt-3 h-11 w-full rounded-full"
+                >
+                  {t("homepage_eliza.connected.copyPhoneAria", {
+                    defaultValue: "Copy phone number",
+                  })}
+                </Button>
               )}
 
               <button

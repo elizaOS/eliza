@@ -9,6 +9,7 @@
   "homepage_eliza.common.skipToContent": "Skip to content",
   "homepage_eliza.common.loading": "Loading…",
   "homepage_eliza.common.redirecting": "Redirecting…",
+  "homepage_eliza.common.messageHandoff": "Opening Messages. If nothing happens, copy the number.",
   "homepage_eliza.common.year": "ElizaCloud Inc. {{year}}",
   "homepage_eliza.common.terms": "Terms",
   "homepage_eliza.common.privacy": "Privacy",

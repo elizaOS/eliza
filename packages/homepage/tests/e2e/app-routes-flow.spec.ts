@@ -463,3 +463,68 @@ test("landing keeps clipboard rejection visible", async ({ page }) => {
     "Couldn't copy the phone number",
   );
 });
+
+test("supported-platform messaging keeps a manual copy recovery visible", async ({
+  context,
+  page,
+}) => {
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, "platform", {
+      configurable: true,
+      value: "MacIntel",
+    });
+    Object.defineProperty(navigator, "userAgentData", {
+      configurable: true,
+      value: { platform: "macOS" },
+    });
+  });
+  await page.goto("/");
+  await waitForLandingIntro(page);
+
+  await page.getByRole("button", { name: "Message Eliza" }).click();
+  await expect(page.getByRole("status")).toHaveText(
+    "Opening Messages. If nothing happens, copy the number.",
+  );
+
+  const copyButton = page.getByRole("button", { name: "Copy phone number" });
+  await expect(copyButton).toBeVisible();
+  await copyButton.click();
+  await expect(page.getByRole("status")).toHaveText("Phone number copied");
+  await expect
+    .poll(() => page.evaluate(() => navigator.clipboard.readText()))
+    .toBe("+18087881821");
+  await expect(page.getByText("+1 (808) 788-1821")).toHaveCount(0);
+
+  await page.goto("/get-started");
+  await page.getByRole("button", { name: /^iMessage$/ }).click();
+  await page.getByRole("button", { name: "Message Eliza" }).click();
+  await expect(page.getByRole("status")).toHaveText(
+    "Opening Messages. If nothing happens, copy the number.",
+  );
+  await page.evaluate(() => {
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: {
+        writeText: () =>
+          Promise.reject(new DOMException("denied", "NotAllowedError")),
+      },
+    });
+  });
+  await page.getByRole("button", { name: "Copy phone number" }).click();
+  await expect(page.getByRole("alert")).toHaveText(
+    "Couldn't copy the phone number",
+  );
+
+  await seedAuthenticatedSession(page);
+  await page.goto("/connected");
+  await page.getByRole("button", { name: /^iMessage$/ }).click();
+  await page.getByLabel("Phone number").fill("416 555 0123");
+  await page.getByRole("button", { name: "Link Phone" }).click();
+  await page.getByRole("button", { name: /^iMessage$/ }).click();
+  await expect(page.getByRole("status")).toHaveText(
+    "Opening Messages. If nothing happens, copy the number.",
+  );
+  await page.getByRole("button", { name: "Copy phone number" }).click();
+  await expect(page.getByRole("status")).toHaveText("Phone number copied");
+});

@@ -9,6 +9,7 @@
   "homepage_eliza.common.skipToContent": "Bỏ qua, vào nội dung",
   "homepage_eliza.common.loading": "Đang tải…",
   "homepage_eliza.common.redirecting": "Đang chuyển hướng…",
+  "homepage_eliza.common.messageHandoff": "Đang mở Tin nhắn. Nếu không có gì xảy ra, hãy sao chép số.",
   "homepage_eliza.common.year": "ElizaCloud Inc. {{year}}",
   "homepage_eliza.common.terms": "Điều khoản",
   "homepage_eliza.common.privacy": "Quyền riêng tư",
