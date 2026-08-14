@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 // Unit test for the iOS cloud-onboarding smoke contract helpers (#16936):
 // request parsing (blank/bare/JSON/invalid) and the fail-closed reply-row
 // classification the in-app liveness driver relies on. Deterministic, jsdom —
