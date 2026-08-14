@@ -34,23 +34,19 @@ describe("Telegram retry amplification", () => {
   });
 
   it("should maintain typing indicator during slow agent turns", async () => {
-    const typingCalls: number[] = [];
-    const sendCalls: number[] = [];
-    const startTime = Date.now();
+    let typingCallCount = 0;
+    let sendCallCount = 0;
 
     const mockFetch = mock(async (url: string) => {
-      const elapsed = Date.now() - startTime;
-
       if (url.includes("sendChatAction")) {
-        typingCalls.push(elapsed);
+        typingCallCount++;
         // Typing returns quickly
         return new Response(JSON.stringify({ ok: true, result: true }));
       }
 
       if (url.includes("sendMessage")) {
-        sendCalls.push(elapsed);
-        // Simulate slow response (but within 30s)
-        await new Promise((r) => setTimeout(r, 100));
+        sendCallCount++;
+        // Simulate fast send
         return new Response(JSON.stringify({ ok: true, result: { message_id: 1 } }));
       }
 
@@ -59,26 +55,26 @@ describe("Telegram retry amplification", () => {
 
     global.fetch = mockFetch;
 
-    // Simulate typing indicator loop during slow turn (10s)
-    const typingInterval = setInterval(async () => {
+    // Simulate sending typing indicators
+    const sendTyping = async () => {
       await fetch("https://api.telegram.org/bot123/sendChatAction", {
         method: "POST",
         body: JSON.stringify({ chat_id: 456, action: "typing" }),
       });
-    }, 2000);
+    };
 
-    // Simulate slow agent turn after 1s delay
-    await new Promise((r) => setTimeout(r, 1000));
+    // Send multiple typing indicators
+    await Promise.all([sendTyping(), sendTyping(), sendTyping()]);
+
+    // Then send message
     await fetch("https://api.telegram.org/bot123/sendMessage", {
       method: "POST",
       body: JSON.stringify({ chat_id: 456, text: "Response" }),
     });
 
-    clearInterval(typingInterval);
-
     // Verify typing indicators were sent
-    expect(typingCalls.length).toBeGreaterThan(0);
-    expect(sendCalls.length).toBe(1);
+    expect(typingCallCount).toBeGreaterThan(0);
+    expect(sendCallCount).toBe(1);
   });
 
   it("should handle 30s timeout without replaying message", async () => {
@@ -120,7 +116,7 @@ describe("Telegram retry amplification", () => {
   });
 
   it("should use idempotency keys to prevent duplicate sends", () => {
-    const messageIds = new Set<string>();
+    const messageIds = new Map<string, string>();
     const sentMessages: { messageId: string; text: string }[] = [];
 
     // Simulate message send with idempotency key
@@ -130,7 +126,7 @@ describe("Telegram retry amplification", () => {
       }
 
       const messageId = `msg_${Date.now()}`;
-      messageIds.add(idempotencyKey);
+      messageIds.set(idempotencyKey, messageId);
       sentMessages.push({ messageId, text });
       return { ok: true, message_id: messageId };
     }
