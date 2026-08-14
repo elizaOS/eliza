@@ -298,6 +298,8 @@ app.post("/", async (c) => {
           walletChainType: claims.walletChain,
           verifiedPhone,
           telegramContinuation: telegramContinuation ?? undefined,
+          sharedRuntimeConversationNamespace:
+            c.env.SHARED_RUNTIME_CONVERSATIONS,
         });
       } catch (error) {
         if (error instanceof StewardPhoneAccountConflictError) {

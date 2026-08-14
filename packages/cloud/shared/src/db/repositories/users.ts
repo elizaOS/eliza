@@ -1,9 +1,13 @@
 // Persists users records for cloud services through the shared DB boundary.
 import { ElizaError } from "@elizaos/core";
 import { and, desc, eq, isNull, ne, or, type SQL, sql } from "drizzle-orm";
-import { sqlRows } from "../execute-helpers";
+import { type SqlExecutor, sqlRows } from "../execute-helpers";
 import { dbRead, dbWrite } from "../helpers";
 import { type Organization, organizations } from "../schemas/organizations";
+import {
+  type PersonalAccountConvergence,
+  personalAccountConvergences,
+} from "../schemas/personal-account-convergences";
 import { type UserIdentity, userIdentities } from "../schemas/user-identities";
 import { type NewUser, type User, users } from "../schemas/users";
 
@@ -123,6 +127,281 @@ class TelegramPromotionProjectionConflictError extends ElizaError {
       severity: "fatal",
     });
   }
+}
+
+export interface PhoneTelegramConvergenceProof {
+  phoneNumber: string;
+  telegramId: string;
+  stewardUserId: string;
+  expectedTelegramUserId: string;
+  expectedTelegramOrganizationId: string;
+}
+
+export interface PhoneTelegramConvergencePlan {
+  sourceUser: User;
+  sourceOrganization: Organization;
+  targetUser: User;
+  targetOrganization: Organization;
+}
+
+export type InspectPhoneTelegramConvergenceResult =
+  | { status: "eligible"; plan: PhoneTelegramConvergencePlan }
+  | {
+      status: "resume_alias";
+      receipt: PersonalAccountConvergence;
+      user: User;
+      organization: Organization;
+    }
+  | { status: "not_dual_account" }
+  | { status: "continuation_account_mismatch" }
+  | { status: "identity_projection_conflict" }
+  | { status: "steward_subject_owned_by_other_user" }
+  | { status: "phone_account_mature" }
+  | { status: "telegram_account_mature" }
+  | { status: "funded_account" }
+  | { status: "agent_bearing_account" };
+
+export interface CommitPhoneTelegramConvergenceParams extends PhoneTelegramConvergenceProof {
+  sourceUserId: string;
+  sourceOrganizationId: string;
+  sourceAgentId: string;
+  targetUserId: string;
+  targetOrganizationId: string;
+  targetAgentId: string;
+  token: string;
+}
+
+export type CommitPhoneTelegramConvergenceResult =
+  | {
+      status: "committed" | "already_committed";
+      receipt: PersonalAccountConvergence;
+      user: User;
+      organization: Organization;
+    }
+  | Exclude<InspectPhoneTelegramConvergenceResult, { status: "eligible" | "resume_alias" }>;
+
+function convergenceReceiptMatchesCommit(
+  receipt: PersonalAccountConvergence,
+  params: CommitPhoneTelegramConvergenceParams,
+): boolean {
+  return (
+    receipt.phone_number === params.phoneNumber &&
+    receipt.telegram_id === params.telegramId &&
+    receipt.steward_user_id === params.stewardUserId &&
+    receipt.source_user_id === params.sourceUserId &&
+    receipt.source_organization_id === params.sourceOrganizationId &&
+    receipt.source_agent_id === params.sourceAgentId &&
+    receipt.target_user_id === params.targetUserId &&
+    receipt.target_organization_id === params.targetOrganizationId &&
+    receipt.target_agent_id === params.targetAgentId
+  );
+}
+
+function hasOnlyEmptySettings(value: unknown): boolean {
+  return (
+    value !== null &&
+    typeof value === "object" &&
+    !Array.isArray(value) &&
+    Object.keys(value).length === 0
+  );
+}
+
+function isZeroBalance(value: unknown): boolean {
+  const amount = typeof value === "number" ? value : Number(String(value));
+  return Number.isFinite(amount) && amount === 0;
+}
+
+function isPristineProvisionalOrganization(organization: Organization): boolean {
+  return (
+    organization.is_active &&
+    isZeroBalance(organization.credit_balance) &&
+    organization.balance_revision === 0 &&
+    hasOnlyEmptySettings(organization.settings) &&
+    organization.stripe_customer_id === null &&
+    organization.billing_email === null &&
+    organization.stripe_payment_method_id === null &&
+    organization.stripe_default_payment_method === null &&
+    organization.auto_top_up_enabled === false &&
+    organization.auto_top_up_threshold === null &&
+    organization.auto_top_up_amount === null &&
+    organization.pay_as_you_go_from_earnings === true &&
+    organization.steward_tenant_id === null &&
+    organization.steward_tenant_api_key === null
+  );
+}
+
+function hasNoMatureIdentity(user: User): boolean {
+  return (
+    user.email === null &&
+    user.email_verified === false &&
+    user.wallet_address === null &&
+    user.wallet_chain_type === null &&
+    user.wallet_verified === false &&
+    user.avatar === null &&
+    user.discord_id === null &&
+    user.discord_username === null &&
+    user.discord_global_name === null &&
+    user.discord_avatar_url === null &&
+    user.whatsapp_id === null &&
+    user.whatsapp_name === null &&
+    user.anonymous_session_id === null &&
+    user.expires_at === null &&
+    user.nickname === null &&
+    user.work_function === null &&
+    user.preferences === null &&
+    user.email_notifications === true &&
+    user.response_notifications === true &&
+    user.email_ciphertext === null &&
+    user.email_nonce === null &&
+    user.email_auth_tag === null &&
+    user.email_kms_key_id === null &&
+    user.email_kms_key_version === null &&
+    user.email_blind_index === null &&
+    user.phone_ciphertext === null &&
+    user.phone_nonce === null &&
+    user.phone_auth_tag === null &&
+    user.phone_kms_key_id === null &&
+    user.phone_kms_key_version === null &&
+    user.phone_blind_index === null &&
+    user.wallet_address_ciphertext === null &&
+    user.wallet_address_nonce === null &&
+    user.wallet_address_auth_tag === null &&
+    user.wallet_address_kms_key_id === null &&
+    user.wallet_address_kms_key_version === null &&
+    user.wallet_address_blind_index === null &&
+    user.telegram_id_ciphertext === null &&
+    user.telegram_id_nonce === null &&
+    user.telegram_id_auth_tag === null &&
+    user.telegram_id_kms_key_id === null &&
+    user.telegram_id_kms_key_version === null &&
+    user.discord_id_ciphertext === null &&
+    user.discord_id_nonce === null &&
+    user.discord_id_auth_tag === null &&
+    user.discord_id_kms_key_id === null &&
+    user.discord_id_kms_key_version === null &&
+    !user.is_anonymous &&
+    user.role === "owner" &&
+    user.is_active &&
+    user.deleted_at === null
+  );
+}
+
+function sameOptionalTimestamp(left: Date | null, right: Date | null): boolean {
+  return left === null || right === null ? left === right : left.getTime() === right.getTime();
+}
+
+function isPhoneProvisionalUser(user: User, phoneNumber: string): boolean {
+  return (
+    hasNoMatureIdentity(user) &&
+    user.steward_user_id === `phone:${phoneNumber}` &&
+    user.phone_number === phoneNumber &&
+    user.phone_verified === true &&
+    user.telegram_id === null &&
+    user.telegram_username === null &&
+    user.telegram_first_name === null &&
+    user.telegram_photo_url === null
+  );
+}
+
+function isTelegramProvisionalUser(user: User, telegramId: string, stewardUserId: string): boolean {
+  return (
+    hasNoMatureIdentity(user) &&
+    (user.steward_user_id === `telegram:${telegramId}` || user.steward_user_id === stewardUserId) &&
+    user.telegram_id === telegramId &&
+    user.phone_number === null &&
+    user.phone_verified === false
+  );
+}
+
+function projectionMatchesUser(user: User, identity: UserIdentity): boolean {
+  return (
+    identity.user_id === user.id &&
+    identity.steward_user_id === user.steward_user_id &&
+    identity.is_anonymous === user.is_anonymous &&
+    identity.anonymous_session_id === user.anonymous_session_id &&
+    sameOptionalTimestamp(identity.expires_at, user.expires_at) &&
+    identity.telegram_id === user.telegram_id &&
+    identity.telegram_username === user.telegram_username &&
+    identity.telegram_first_name === user.telegram_first_name &&
+    identity.telegram_photo_url === user.telegram_photo_url &&
+    identity.phone_number === user.phone_number &&
+    identity.phone_verified === user.phone_verified &&
+    identity.discord_id === user.discord_id &&
+    identity.discord_username === user.discord_username &&
+    identity.discord_global_name === user.discord_global_name &&
+    identity.discord_avatar_url === user.discord_avatar_url &&
+    identity.whatsapp_id === user.whatsapp_id &&
+    identity.whatsapp_name === user.whatsapp_name
+  );
+}
+
+function quotePostgresIdentifier(value: string): string {
+  return `"${value.replaceAll('"', '""')}"`;
+}
+
+async function findUnexpectedProvisionalAccountState(
+  db: SqlExecutor,
+  input: {
+    sourceUserId: string;
+    sourceOrganizationId: string;
+    targetUserId: string;
+    targetOrganizationId: string;
+  },
+): Promise<"phone" | "telegram" | undefined> {
+  const references = await sqlRows<{
+    table_schema: string;
+    table_name: string;
+    column_name: "organization_id" | "user_id";
+  }>(
+    db,
+    sql`
+      SELECT DISTINCT
+        namespace.nspname AS table_schema,
+        relation.relname AS table_name,
+        attribute.attname AS column_name
+      FROM pg_class relation
+      INNER JOIN pg_namespace namespace ON namespace.oid = relation.relnamespace
+      INNER JOIN pg_attribute attribute ON attribute.attrelid = relation.oid
+      WHERE namespace.nspname = 'public'
+        AND relation.relkind IN ('r', 'p')
+        AND attribute.attnum > 0
+        AND NOT attribute.attisdropped
+        AND attribute.attname IN ('organization_id', 'user_id')
+        AND relation.relname NOT IN ('users', 'user_identities')
+      ORDER BY namespace.nspname, relation.relname, attribute.attname
+    `,
+  );
+
+  for (const reference of references) {
+    const qualifiedTable = `${quotePostgresIdentifier(reference.table_schema)}.${quotePostgresIdentifier(reference.table_name)}`;
+    const column = quotePostgresIdentifier(reference.column_name);
+    const sourceId =
+      reference.column_name === "organization_id" ? input.sourceOrganizationId : input.sourceUserId;
+    const targetId =
+      reference.column_name === "organization_id" ? input.targetOrganizationId : input.targetUserId;
+    const [occupied] = await sqlRows<{ source_found: boolean; target_found: boolean }>(
+      db,
+      sql`
+        SELECT
+          EXISTS (
+            SELECT 1 FROM ${sql.raw(qualifiedTable)}
+            WHERE ${sql.raw(column)}::text = ${sourceId}
+            LIMIT 1
+          ) AS source_found,
+          EXISTS (
+            SELECT 1 FROM ${sql.raw(qualifiedTable)}
+            WHERE ${sql.raw(column)}::text = ${targetId}
+            LIMIT 1
+          ) AS target_found
+      `,
+    );
+    if (!occupied) {
+      throw new Error(`Provisional resource scan returned no row for ${reference.table_name}`);
+    }
+    if (occupied.source_found) return "phone";
+    if (occupied.target_found) return "telegram";
+  }
+  return undefined;
 }
 
 /**
@@ -443,6 +722,618 @@ export class UsersRepository {
   // ============================================================================
   // WRITE OPERATIONS (use primary)
   // ============================================================================
+
+  /**
+   * Builds the only account-level merge plan this repository permits: a
+   * continuation-bound Telegram provisional account plus a separately verified
+   * phone provisional account. Both transports are explicit proof inputs from
+   * the auth boundary; arbitrary users, organizations, or identity strings are
+   * never accepted as merge candidates.
+   */
+  async inspectPhoneTelegramPersonalAccountConvergence(
+    proof: PhoneTelegramConvergenceProof,
+  ): Promise<InspectPhoneTelegramConvergenceResult> {
+    return dbWrite.transaction(async (tx) => {
+      const lockKeys = [
+        `phone_personal_account:${proof.phoneNumber}`,
+        `steward_subject:${proof.stewardUserId}`,
+        `telegram_personal_account:${proof.telegramId}`,
+        `user:${proof.expectedTelegramUserId}`,
+      ].sort();
+      for (const lockKey of lockKeys) {
+        await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${lockKey}))`);
+      }
+
+      const [receipt] = await tx
+        .select()
+        .from(personalAccountConvergences)
+        .where(
+          and(
+            eq(personalAccountConvergences.phone_number, proof.phoneNumber),
+            eq(personalAccountConvergences.telegram_id, proof.telegramId),
+          ),
+        )
+        .limit(1);
+      if (receipt) {
+        if (
+          receipt.steward_user_id !== proof.stewardUserId ||
+          receipt.target_user_id !== proof.expectedTelegramUserId ||
+          receipt.target_organization_id !== proof.expectedTelegramOrganizationId
+        ) {
+          return { status: "continuation_account_mismatch" };
+        }
+        const [user] = await tx
+          .select()
+          .from(users)
+          .where(eq(users.id, receipt.target_user_id))
+          .limit(1);
+        const [organization] = await tx
+          .select()
+          .from(organizations)
+          .where(eq(organizations.id, receipt.target_organization_id))
+          .limit(1);
+        const [identity] = await tx
+          .select()
+          .from(userIdentities)
+          .where(eq(userIdentities.user_id, receipt.target_user_id))
+          .limit(1);
+        if (
+          !user ||
+          !organization ||
+          !identity ||
+          user.organization_id !== organization.id ||
+          user.steward_user_id !== proof.stewardUserId ||
+          user.telegram_id !== proof.telegramId ||
+          user.phone_number !== proof.phoneNumber ||
+          user.phone_verified !== true ||
+          !projectionMatchesUser(user, identity)
+        ) {
+          return { status: "identity_projection_conflict" };
+        }
+        return { status: "resume_alias", receipt, user, organization };
+      }
+
+      const [phoneUser] = await tx
+        .select()
+        .from(users)
+        .where(eq(users.phone_number, proof.phoneNumber))
+        .limit(1);
+      const [phoneIdentity] = await tx
+        .select()
+        .from(userIdentities)
+        .where(eq(userIdentities.phone_number, proof.phoneNumber))
+        .limit(1);
+      const [telegramUser] = await tx
+        .select()
+        .from(users)
+        .where(eq(users.telegram_id, proof.telegramId))
+        .limit(1);
+      const [telegramIdentity] = await tx
+        .select()
+        .from(userIdentities)
+        .where(eq(userIdentities.telegram_id, proof.telegramId))
+        .limit(1);
+
+      if (!telegramUser || !telegramIdentity) {
+        return { status: "continuation_account_mismatch" };
+      }
+      if (
+        telegramUser.id !== proof.expectedTelegramUserId ||
+        telegramUser.organization_id !== proof.expectedTelegramOrganizationId
+      ) {
+        return { status: "continuation_account_mismatch" };
+      }
+      if (!projectionMatchesUser(telegramUser, telegramIdentity)) {
+        return { status: "identity_projection_conflict" };
+      }
+      if (!phoneUser && !phoneIdentity) {
+        return { status: "not_dual_account" };
+      }
+      if (!phoneUser || !phoneIdentity || !projectionMatchesUser(phoneUser, phoneIdentity)) {
+        return { status: "identity_projection_conflict" };
+      }
+      if (phoneUser.id === telegramUser.id) {
+        return { status: "not_dual_account" };
+      }
+
+      const [stewardCanonical] = await tx
+        .select({ id: users.id })
+        .from(users)
+        .where(eq(users.steward_user_id, proof.stewardUserId))
+        .limit(1);
+      const [stewardProjection] = await tx
+        .select({ userId: userIdentities.user_id })
+        .from(userIdentities)
+        .where(eq(userIdentities.steward_user_id, proof.stewardUserId))
+        .limit(1);
+      if (
+        (stewardCanonical && stewardCanonical.id !== telegramUser.id) ||
+        (stewardProjection && stewardProjection.userId !== telegramUser.id)
+      ) {
+        return { status: "steward_subject_owned_by_other_user" };
+      }
+
+      if (!isPhoneProvisionalUser(phoneUser, proof.phoneNumber)) {
+        return { status: "phone_account_mature" };
+      }
+      if (!isTelegramProvisionalUser(telegramUser, proof.telegramId, proof.stewardUserId)) {
+        return { status: "telegram_account_mature" };
+      }
+      if (!phoneUser.organization_id || !telegramUser.organization_id) {
+        return { status: "identity_projection_conflict" };
+      }
+
+      const [phoneOrganization] = await tx
+        .select()
+        .from(organizations)
+        .where(eq(organizations.id, phoneUser.organization_id))
+        .limit(1);
+      const [telegramOrganization] = await tx
+        .select()
+        .from(organizations)
+        .where(eq(organizations.id, telegramUser.organization_id))
+        .limit(1);
+      if (!phoneOrganization || !telegramOrganization) {
+        return { status: "identity_projection_conflict" };
+      }
+      if (phoneOrganization.id === telegramOrganization.id) {
+        return { status: "identity_projection_conflict" };
+      }
+      if (!isPristineProvisionalOrganization(phoneOrganization)) {
+        return { status: "phone_account_mature" };
+      }
+      if (!isPristineProvisionalOrganization(telegramOrganization)) {
+        return { status: "telegram_account_mature" };
+      }
+      const organizationMembers = await tx
+        .select({ id: users.id, organizationId: users.organization_id })
+        .from(users)
+        .where(
+          or(
+            eq(users.organization_id, phoneOrganization.id),
+            eq(users.organization_id, telegramOrganization.id),
+          ),
+        );
+      if (
+        organizationMembers.some(
+          (member) => member.organizationId === phoneOrganization.id && member.id !== phoneUser.id,
+        )
+      ) {
+        return { status: "phone_account_mature" };
+      }
+      if (
+        organizationMembers.some(
+          (member) =>
+            member.organizationId === telegramOrganization.id && member.id !== telegramUser.id,
+        )
+      ) {
+        return { status: "telegram_account_mature" };
+      }
+
+      const [resources] = await sqlRows<{
+        phone_agents: boolean;
+        telegram_agents: boolean;
+        phone_funding: boolean;
+        telegram_funding: boolean;
+        phone_mature: boolean;
+        telegram_mature: boolean;
+      }>(
+        tx,
+        sql`
+          SELECT
+            EXISTS (
+              SELECT 1 FROM agent_sandboxes
+              WHERE organization_id = ${phoneOrganization.id}
+                AND pool_status IS NULL AND deleted_at IS NULL
+            ) OR EXISTS (
+              SELECT 1 FROM user_characters
+              WHERE organization_id = ${phoneOrganization.id}
+            ) AS phone_agents,
+            EXISTS (
+              SELECT 1 FROM agent_sandboxes
+              WHERE organization_id = ${telegramOrganization.id}
+                AND pool_status IS NULL AND deleted_at IS NULL
+            ) OR EXISTS (
+              SELECT 1 FROM user_characters
+              WHERE organization_id = ${telegramOrganization.id}
+            ) AS telegram_agents,
+            EXISTS (
+              SELECT 1 FROM credit_transactions
+              WHERE organization_id = ${phoneOrganization.id}
+            ) AS phone_funding,
+            EXISTS (
+              SELECT 1 FROM credit_transactions
+              WHERE organization_id = ${telegramOrganization.id}
+            ) AS telegram_funding,
+            EXISTS (
+              SELECT 1 FROM api_keys WHERE organization_id = ${phoneOrganization.id}
+            ) OR EXISTS (
+              SELECT 1 FROM conversations WHERE organization_id = ${phoneOrganization.id}
+            ) AS phone_mature,
+            EXISTS (
+              SELECT 1 FROM api_keys WHERE organization_id = ${telegramOrganization.id}
+            ) OR EXISTS (
+              SELECT 1 FROM conversations WHERE organization_id = ${telegramOrganization.id}
+            ) AS telegram_mature
+        `,
+      );
+      if (!resources) {
+        throw new Error("Provisional account resource guard returned no row");
+      }
+      if (resources.phone_funding || resources.telegram_funding) {
+        return { status: "funded_account" };
+      }
+      if (resources.phone_agents || resources.telegram_agents) {
+        return { status: "agent_bearing_account" };
+      }
+      if (resources.phone_mature) return { status: "phone_account_mature" };
+      if (resources.telegram_mature) return { status: "telegram_account_mature" };
+
+      const unexpectedState = await findUnexpectedProvisionalAccountState(tx, {
+        sourceUserId: phoneUser.id,
+        sourceOrganizationId: phoneOrganization.id,
+        targetUserId: telegramUser.id,
+        targetOrganizationId: telegramOrganization.id,
+      });
+      if (unexpectedState === "phone") return { status: "phone_account_mature" };
+      if (unexpectedState === "telegram") return { status: "telegram_account_mature" };
+
+      return {
+        status: "eligible",
+        plan: {
+          sourceUser: phoneUser,
+          sourceOrganization: phoneOrganization,
+          targetUser: telegramUser,
+          targetOrganization: telegramOrganization,
+        },
+      };
+    });
+  }
+
+  /**
+   * Commits a previously history-sealed convergence plan. Every eligibility
+   * predicate is checked again under deterministic account locks so funding,
+   * provisioning, or identity drift between planning and commit fails closed.
+   */
+  async commitPhoneTelegramPersonalAccountConvergence(
+    params: CommitPhoneTelegramConvergenceParams,
+  ): Promise<CommitPhoneTelegramConvergenceResult> {
+    const inspection = await this.inspectPhoneTelegramPersonalAccountConvergence(params);
+    if (inspection.status === "resume_alias") {
+      if (!convergenceReceiptMatchesCommit(inspection.receipt, params)) {
+        return { status: "continuation_account_mismatch" };
+      }
+      return {
+        status: "already_committed",
+        receipt: inspection.receipt,
+        user: inspection.user,
+        organization: inspection.organization,
+      };
+    }
+    if (inspection.status !== "eligible") return inspection;
+    if (
+      inspection.plan.sourceUser.id !== params.sourceUserId ||
+      inspection.plan.sourceOrganization.id !== params.sourceOrganizationId ||
+      inspection.plan.targetUser.id !== params.targetUserId ||
+      inspection.plan.targetOrganization.id !== params.targetOrganizationId
+    ) {
+      return { status: "continuation_account_mismatch" };
+    }
+
+    return dbWrite.transaction(async (tx) => {
+      const lockKeys = [
+        `organization:${params.sourceOrganizationId}`,
+        `organization:${params.targetOrganizationId}`,
+        `phone_personal_account:${params.phoneNumber}`,
+        `steward_subject:${params.stewardUserId}`,
+        `telegram_personal_account:${params.telegramId}`,
+        `user:${params.sourceUserId}`,
+        `user:${params.targetUserId}`,
+      ].sort();
+      for (const lockKey of lockKeys) {
+        await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${lockKey}))`);
+      }
+
+      const [existingReceipt] = await tx
+        .select()
+        .from(personalAccountConvergences)
+        .where(eq(personalAccountConvergences.token, params.token))
+        .limit(1);
+      if (existingReceipt) {
+        if (!convergenceReceiptMatchesCommit(existingReceipt, params)) {
+          return { status: "continuation_account_mismatch" };
+        }
+        const [user] = await tx
+          .select()
+          .from(users)
+          .where(eq(users.id, existingReceipt.target_user_id))
+          .limit(1);
+        const [organization] = await tx
+          .select()
+          .from(organizations)
+          .where(eq(organizations.id, existingReceipt.target_organization_id))
+          .limit(1);
+        if (!user || !organization) return { status: "identity_projection_conflict" };
+        return { status: "already_committed", receipt: existingReceipt, user, organization };
+      }
+
+      const [sourceUser] = await tx
+        .select()
+        .from(users)
+        .where(eq(users.id, params.sourceUserId))
+        .for("update")
+        .limit(1);
+      const [targetUser] = await tx
+        .select()
+        .from(users)
+        .where(eq(users.id, params.targetUserId))
+        .for("update")
+        .limit(1);
+      const [sourceIdentity] = await tx
+        .select()
+        .from(userIdentities)
+        .where(eq(userIdentities.user_id, params.sourceUserId))
+        .for("update")
+        .limit(1);
+      const [targetIdentity] = await tx
+        .select()
+        .from(userIdentities)
+        .where(eq(userIdentities.user_id, params.targetUserId))
+        .for("update")
+        .limit(1);
+      const [sourceOrganization] = await tx
+        .select()
+        .from(organizations)
+        .where(eq(organizations.id, params.sourceOrganizationId))
+        .for("update")
+        .limit(1);
+      const [targetOrganization] = await tx
+        .select()
+        .from(organizations)
+        .where(eq(organizations.id, params.targetOrganizationId))
+        .for("update")
+        .limit(1);
+
+      if (
+        !sourceUser ||
+        !targetUser ||
+        !sourceIdentity ||
+        !targetIdentity ||
+        !sourceOrganization ||
+        !targetOrganization ||
+        sourceUser.organization_id !== sourceOrganization.id ||
+        targetUser.organization_id !== targetOrganization.id ||
+        targetUser.id !== params.expectedTelegramUserId ||
+        targetOrganization.id !== params.expectedTelegramOrganizationId ||
+        sourceOrganization.id === targetOrganization.id
+      ) {
+        return { status: "continuation_account_mismatch" };
+      }
+      if (
+        !projectionMatchesUser(sourceUser, sourceIdentity) ||
+        !projectionMatchesUser(targetUser, targetIdentity)
+      ) {
+        return { status: "identity_projection_conflict" };
+      }
+      if (!isPhoneProvisionalUser(sourceUser, params.phoneNumber)) {
+        return { status: "phone_account_mature" };
+      }
+      if (!isTelegramProvisionalUser(targetUser, params.telegramId, params.stewardUserId)) {
+        return { status: "telegram_account_mature" };
+      }
+      if (!isPristineProvisionalOrganization(sourceOrganization)) {
+        return { status: "phone_account_mature" };
+      }
+      if (!isPristineProvisionalOrganization(targetOrganization)) {
+        return { status: "telegram_account_mature" };
+      }
+      const organizationMembers = await tx
+        .select({ id: users.id, organizationId: users.organization_id })
+        .from(users)
+        .where(
+          or(
+            eq(users.organization_id, sourceOrganization.id),
+            eq(users.organization_id, targetOrganization.id),
+          ),
+        );
+      if (
+        organizationMembers.some(
+          (member) =>
+            member.organizationId === sourceOrganization.id && member.id !== sourceUser.id,
+        )
+      ) {
+        return { status: "phone_account_mature" };
+      }
+      if (
+        organizationMembers.some(
+          (member) =>
+            member.organizationId === targetOrganization.id && member.id !== targetUser.id,
+        )
+      ) {
+        return { status: "telegram_account_mature" };
+      }
+
+      const [resources] = await sqlRows<{
+        has_agents: boolean;
+        has_funding: boolean;
+        has_mature_state: boolean;
+      }>(
+        tx,
+        sql`
+          SELECT
+            EXISTS (
+              SELECT 1 FROM agent_sandboxes
+              WHERE organization_id IN (${sourceOrganization.id}, ${targetOrganization.id})
+                AND pool_status IS NULL AND deleted_at IS NULL
+            ) OR EXISTS (
+              SELECT 1 FROM user_characters
+              WHERE organization_id IN (${sourceOrganization.id}, ${targetOrganization.id})
+            ) AS has_agents,
+            EXISTS (
+              SELECT 1 FROM credit_transactions
+              WHERE organization_id IN (${sourceOrganization.id}, ${targetOrganization.id})
+            ) AS has_funding,
+            EXISTS (
+              SELECT 1 FROM api_keys
+              WHERE organization_id IN (${sourceOrganization.id}, ${targetOrganization.id})
+            ) OR EXISTS (
+              SELECT 1 FROM conversations
+              WHERE organization_id IN (${sourceOrganization.id}, ${targetOrganization.id})
+            ) AS has_mature_state
+        `,
+      );
+      if (!resources) throw new Error("Provisional account resource guard returned no row");
+      if (resources.has_funding) return { status: "funded_account" };
+      if (resources.has_agents) return { status: "agent_bearing_account" };
+      if (resources.has_mature_state) return { status: "phone_account_mature" };
+
+      const unexpectedState = await findUnexpectedProvisionalAccountState(tx, {
+        sourceUserId: sourceUser.id,
+        sourceOrganizationId: sourceOrganization.id,
+        targetUserId: targetUser.id,
+        targetOrganizationId: targetOrganization.id,
+      });
+      if (unexpectedState === "phone") return { status: "phone_account_mature" };
+      if (unexpectedState === "telegram") return { status: "telegram_account_mature" };
+
+      const [canonicalStewardOwner] = await tx
+        .select({ id: users.id })
+        .from(users)
+        .where(eq(users.steward_user_id, params.stewardUserId))
+        .limit(1);
+      const [projectedStewardOwner] = await tx
+        .select({ userId: userIdentities.user_id })
+        .from(userIdentities)
+        .where(eq(userIdentities.steward_user_id, params.stewardUserId))
+        .limit(1);
+      if (
+        (canonicalStewardOwner && canonicalStewardOwner.id !== targetUser.id) ||
+        (projectedStewardOwner && projectedStewardOwner.userId !== targetUser.id)
+      ) {
+        return { status: "steward_subject_owned_by_other_user" };
+      }
+
+      const deletedProjection = await tx
+        .delete(userIdentities)
+        .where(eq(userIdentities.user_id, sourceUser.id))
+        .returning({ id: userIdentities.id });
+      if (deletedProjection.length !== 1) {
+        throw new Error("Phone provisional identity disappeared during convergence");
+      }
+      const deletedUser = await tx
+        .delete(users)
+        .where(eq(users.id, sourceUser.id))
+        .returning({ id: users.id });
+      if (deletedUser.length !== 1) {
+        throw new Error("Phone provisional user disappeared during convergence");
+      }
+
+      const updatedAt = new Date();
+      const [mergedUser] = await tx
+        .update(users)
+        .set({
+          steward_user_id: params.stewardUserId,
+          phone_number: params.phoneNumber,
+          phone_verified: true,
+          updated_at: updatedAt,
+        })
+        .where(
+          and(
+            eq(users.id, targetUser.id),
+            eq(users.organization_id, targetOrganization.id),
+            eq(users.telegram_id, params.telegramId),
+          ),
+        )
+        .returning();
+      if (!mergedUser) throw new Error("Telegram target changed during convergence");
+
+      const [mergedIdentity] = await tx
+        .update(userIdentities)
+        .set({
+          steward_user_id: params.stewardUserId,
+          phone_number: params.phoneNumber,
+          phone_verified: true,
+          updated_at: updatedAt,
+        })
+        .where(
+          and(
+            eq(userIdentities.user_id, targetUser.id),
+            eq(userIdentities.telegram_id, params.telegramId),
+          ),
+        )
+        .returning();
+      if (!mergedIdentity || !projectionMatchesUser(mergedUser, mergedIdentity)) {
+        throw new Error("Merged personal identity projection did not converge");
+      }
+
+      const [receipt] = await tx
+        .insert(personalAccountConvergences)
+        .values({
+          token: params.token,
+          source_user_id: sourceUser.id,
+          source_organization_id: sourceOrganization.id,
+          source_agent_id: params.sourceAgentId,
+          target_user_id: mergedUser.id,
+          target_organization_id: targetOrganization.id,
+          target_agent_id: params.targetAgentId,
+          phone_number: params.phoneNumber,
+          telegram_id: params.telegramId,
+          steward_user_id: params.stewardUserId,
+          status: "pending_alias",
+          updated_at: updatedAt,
+        })
+        .returning();
+      if (!receipt) throw new Error("Personal account convergence receipt was not persisted");
+
+      const deletedOrganization = await tx
+        .delete(organizations)
+        .where(eq(organizations.id, sourceOrganization.id))
+        .returning({ id: organizations.id });
+      if (deletedOrganization.length !== 1) {
+        throw new Error("Phone provisional organization disappeared during convergence");
+      }
+
+      return {
+        status: "committed",
+        receipt,
+        user: mergedUser,
+        organization: targetOrganization,
+      };
+    });
+  }
+
+  /** Marks the exact history alias receipt complete; retries are idempotent. */
+  async markPhoneTelegramPersonalAccountAliasComplete(
+    token: string,
+  ): Promise<PersonalAccountConvergence | undefined> {
+    const [receipt] = await dbWrite
+      .update(personalAccountConvergences)
+      .set({ status: "complete", updated_at: new Date() })
+      .where(eq(personalAccountConvergences.token, token))
+      .returning();
+    return receipt;
+  }
+
+  /** Prevents Dedicated from snapshotting the target before its source history lands. */
+  async hasPendingPhoneTelegramPersonalAccountConvergenceTarget(input: {
+    targetUserId: string;
+    targetOrganizationId: string;
+    targetAgentId: string;
+  }): Promise<boolean> {
+    const [receipt] = await dbWrite
+      .select({ token: personalAccountConvergences.token })
+      .from(personalAccountConvergences)
+      .where(
+        and(
+          eq(personalAccountConvergences.target_user_id, input.targetUserId),
+          eq(personalAccountConvergences.target_organization_id, input.targetOrganizationId),
+          eq(personalAccountConvergences.target_agent_id, input.targetAgentId),
+          eq(personalAccountConvergences.status, "pending_alias"),
+        ),
+      )
+      .limit(1);
+    return Boolean(receipt);
+  }
 
   /**
    * Creates or reuses the personal account proven by a trusted inbound phone

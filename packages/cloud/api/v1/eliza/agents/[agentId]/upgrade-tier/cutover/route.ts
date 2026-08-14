@@ -7,6 +7,7 @@
 
 import { Hono } from "hono";
 import { z } from "zod";
+import { usersRepository } from "@/db/repositories/users";
 import { errorToResponse } from "@/lib/api/errors";
 import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
 import {
@@ -94,6 +95,25 @@ app.post("/", async (c) => {
             "Shared history is temporarily unavailable. Shared remains active.",
         },
         503,
+      );
+    }
+    if (
+      await usersRepository.hasPendingPhoneTelegramPersonalAccountConvergenceTarget(
+        {
+          targetUserId: user.id,
+          targetOrganizationId: user.organization_id,
+          targetAgentId: sourceAgentId,
+        },
+      )
+    ) {
+      return json(
+        {
+          success: false,
+          code: "personal_identity_convergence_in_progress",
+          error:
+            "Personal history is still linking across channels. Try Dedicated activation again shortly.",
+        },
+        409,
       );
     }
     const sealToken = `personal-cutover:${sourceAgentId}:${parsed.data.dedicatedAgentId}`;

@@ -34,6 +34,22 @@ export interface SharedCutoverSeal {
   dedicatedAgentId: string;
 }
 
+export interface PersonalProvisionalHistoryConvergence {
+  token: string;
+  holderId: string;
+  sourceAgentId: string;
+  sourceRoomId: string;
+  targetAgentId: string;
+  targetRoomId: string;
+  targetUserId: string;
+  targetOrganizationId: string;
+  leaseMs: number;
+}
+
+export type PreparedPersonalProvisionalHistoryConvergence =
+  | { alreadyAliased: true }
+  | { alreadyAliased: false; history: SharedTurnMessage[] };
+
 /**
  * Hydrate one conversation object's read-only history and turn-ingress modules.
  * Voice startup uses this under its fixed greeting; no message is created.
@@ -336,4 +352,131 @@ export async function coordinateSharedCutoverCommit(
   options: SharedConversationHistoryCoordinatorOptions,
 ): Promise<void> {
   await coordinateSharedCutoverTransition(agentId, roomId, token, "cutover-commit", options);
+}
+
+/**
+ * Seals the source personal room and captures its complete transcript. The
+ * caller commits the account transaction before passing this snapshot to the
+ * commit step, so a rejected account merge cannot contaminate the target.
+ */
+export async function preparePersonalProvisionalHistoryConvergence(
+  plan: PersonalProvisionalHistoryConvergence,
+  options: SharedConversationHistoryCoordinatorOptions,
+): Promise<PreparedPersonalProvisionalHistoryConvergence> {
+  const namespace = requireHistoryCoordinator(options);
+  try {
+    const sealed = await coordinatorStub(namespace, plan.sourceAgentId, plan.sourceRoomId).fetch(
+      "https://shared-runtime.internal/provisional-convergence-seal",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          operation: "provisional-convergence-seal",
+          agentId: plan.sourceAgentId,
+          roomId: plan.sourceRoomId,
+          token: plan.token,
+          holderId: plan.holderId,
+          targetAgentId: plan.targetAgentId,
+          targetRoomId: plan.targetRoomId,
+          targetUserId: plan.targetUserId,
+          targetOrganizationId: plan.targetOrganizationId,
+          leaseMs: plan.leaseMs,
+        }),
+      },
+    );
+    await requireCoordinatorResponse(sealed, "provisional convergence seal");
+    const sealedBody = (await sealed.json()) as {
+      alreadyAliased?: boolean;
+      history?: SharedTurnMessage[];
+    };
+    if (sealedBody.alreadyAliased) return { alreadyAliased: true };
+    if (!Array.isArray(sealedBody.history)) {
+      throw new Error("Provisional convergence seal returned no history snapshot");
+    }
+    return { alreadyAliased: false, history: sealedBody.history };
+  } catch (error) {
+    // error-policy:J6 a failed prepare releases only this attempt's holder;
+    // the original coordinator failure remains the observable result.
+    try {
+      await releasePersonalProvisionalHistoryConvergence(plan, options);
+    } catch (releaseError) {
+      // error-policy:J6 the prepare failure remains primary; the bounded source
+      // seal self-expires, and this breadcrumb makes delayed recovery visible.
+      logger.warn("[shared-runtime] Failed to release provisional convergence seal", {
+        sourceAgentId: plan.sourceAgentId,
+        token: plan.token,
+        error: releaseError instanceof Error ? releaseError.message : String(releaseError),
+      });
+    }
+    throw error;
+  }
+}
+
+/** Imports the sealed transcript once, then installs the durable source-room alias. */
+export async function commitPersonalProvisionalHistoryConvergence(
+  plan: PersonalProvisionalHistoryConvergence,
+  prepared: PreparedPersonalProvisionalHistoryConvergence,
+  options: SharedConversationHistoryCoordinatorOptions,
+): Promise<void> {
+  const namespace = requireHistoryCoordinator(options);
+  if (!prepared.alreadyAliased) {
+    const imported = await coordinatorStub(namespace, plan.targetAgentId, plan.targetRoomId).fetch(
+      "https://shared-runtime.internal/provisional-convergence-import",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          operation: "provisional-convergence-import",
+          agentId: plan.targetAgentId,
+          roomId: plan.targetRoomId,
+          token: plan.token,
+          history: prepared.history,
+        }),
+      },
+    );
+    await requireCoordinatorResponse(imported, "provisional convergence import");
+    await imported.arrayBuffer();
+  }
+  const response = await coordinatorStub(namespace, plan.sourceAgentId, plan.sourceRoomId).fetch(
+    "https://shared-runtime.internal/provisional-convergence-alias",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        operation: "provisional-convergence-alias",
+        token: plan.token,
+        targetAgentId: plan.targetAgentId,
+        targetRoomId: plan.targetRoomId,
+        targetUserId: plan.targetUserId,
+        targetOrganizationId: plan.targetOrganizationId,
+      }),
+    },
+  );
+  await requireCoordinatorResponse(response, "provisional convergence alias");
+  await response.arrayBuffer();
+}
+
+/** Releases a pre-commit source seal when the database rejects the plan. */
+export async function releasePersonalProvisionalHistoryConvergence(
+  plan: Pick<
+    PersonalProvisionalHistoryConvergence,
+    "token" | "holderId" | "sourceAgentId" | "sourceRoomId"
+  >,
+  options: SharedConversationHistoryCoordinatorOptions,
+): Promise<void> {
+  const namespace = requireHistoryCoordinator(options);
+  const response = await coordinatorStub(namespace, plan.sourceAgentId, plan.sourceRoomId).fetch(
+    "https://shared-runtime.internal/provisional-convergence-release",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        operation: "provisional-convergence-release",
+        token: plan.token,
+        holderId: plan.holderId,
+      }),
+    },
+  );
+  await requireCoordinatorResponse(response, "provisional convergence release");
+  await response.arrayBuffer();
 }

@@ -24,6 +24,25 @@ const telegramOrganization = {
   name: "Nubs's Workspace",
   credit_balance: "0.000000",
 };
+const phoneUser = {
+  ...telegramUser,
+  id: "phone-user-1",
+  steward_user_id: "+phone-provisional",
+  telegram_id: null,
+  phone_number: "+14155552671",
+  organization_id: "phone-org-1",
+};
+const phoneOrganization = {
+  ...telegramOrganization,
+  id: "phone-org-1",
+  name: "Phone Workspace",
+};
+const convergedTelegramUser = {
+  ...telegramUser,
+  phone_number: "+14155552671",
+  phone_verified: true,
+  organization: telegramOrganization,
+};
 
 const inspectTelegramPersonalAccountContinuation = mock(async () => ({
   telegramId: "123456789",
@@ -44,8 +63,35 @@ const promoteTelegramPersonalAccountToSteward = mock(
     organization: telegramOrganization,
   }),
 );
+const convergenceEvents: string[] = [];
+const inspectPhoneTelegramPersonalAccountConvergence = mock(async () => ({
+  status: "not_dual_account" as const,
+}));
+const commitPhoneTelegramPersonalAccountConvergence = mock(async () => ({
+  status: "committed" as const,
+  receipt: { token: "phone-telegram:phone-user-1:telegram-user-1" },
+  user: convergedTelegramUser,
+  organization: telegramOrganization,
+}));
+const markPhoneTelegramPersonalAccountAliasComplete = mock(async () => ({
+  token: "phone-telegram:phone-user-1:telegram-user-1",
+  status: "complete" as const,
+}));
+const linkVerifiedPhone = mock(async () => convergedTelegramUser);
+const preparePersonalProvisionalHistoryConvergence = mock(async () => {
+  convergenceEvents.push("seal");
+  return { alreadyAliased: false as const, history: [] };
+});
+const commitPersonalProvisionalHistoryConvergence = mock(async () => {
+  convergenceEvents.push("history");
+});
+const releasePersonalProvisionalHistoryConvergence = mock(async () => {
+  convergenceEvents.push("release");
+});
 const getByStewardId = mock(async () => undefined);
-const getByStewardIdForWrite = mock(async () => undefined);
+const getByStewardIdForWrite = mock(
+  async (): Promise<typeof convergedTelegramUser | undefined> => undefined,
+);
 const upsertStewardIdentity = mock(async () => undefined);
 const createUser = mock(async () => undefined);
 const createOrganization = mock(async () => undefined);
@@ -59,8 +105,18 @@ mock.module("./services/eliza-app/onboarding-chat", () => ({
 
 mock.module("../db/repositories/users", () => ({
   usersRepository: {
+    commitPhoneTelegramPersonalAccountConvergence,
+    inspectPhoneTelegramPersonalAccountConvergence,
+    linkVerifiedPhone,
+    markPhoneTelegramPersonalAccountAliasComplete,
     promoteTelegramPersonalAccountToSteward,
   },
+}));
+
+mock.module("./services/shared-runtime/conversation-coordinator", () => ({
+  commitPersonalProvisionalHistoryConvergence,
+  preparePersonalProvisionalHistoryConvergence,
+  releasePersonalProvisionalHistoryConvergence,
 }));
 
 mock.module("./services/users", () => ({
@@ -115,6 +171,17 @@ beforeEach(() => {
     user: telegramUser,
     organization: telegramOrganization,
   });
+  convergenceEvents.length = 0;
+  inspectPhoneTelegramPersonalAccountConvergence.mockReset();
+  inspectPhoneTelegramPersonalAccountConvergence.mockResolvedValue({
+    status: "not_dual_account",
+  });
+  commitPhoneTelegramPersonalAccountConvergence.mockClear();
+  markPhoneTelegramPersonalAccountAliasComplete.mockClear();
+  linkVerifiedPhone.mockClear();
+  preparePersonalProvisionalHistoryConvergence.mockClear();
+  commitPersonalProvisionalHistoryConvergence.mockClear();
+  releasePersonalProvisionalHistoryConvergence.mockClear();
   getByStewardId.mockClear();
   getByStewardIdForWrite.mockClear();
   upsertStewardIdentity.mockClear();
@@ -170,6 +237,108 @@ describe("syncUserFromSteward Telegram account convergence", () => {
     });
 
     expect(result.id).toBe("telegram-user-1");
+    expect(createUser).not.toHaveBeenCalled();
+    expect(createOrganization).not.toHaveBeenCalled();
+  });
+
+  test("converges separately proved phone and Telegram accounts before ordinary promotion", async () => {
+    inspectPhoneTelegramPersonalAccountConvergence.mockResolvedValue({
+      status: "eligible",
+      plan: {
+        sourceUser: phoneUser,
+        sourceOrganization: phoneOrganization,
+        targetUser: telegramUser,
+        targetOrganization: telegramOrganization,
+      },
+    });
+    commitPhoneTelegramPersonalAccountConvergence.mockImplementation(async () => {
+      convergenceEvents.push("database");
+      return {
+        status: "committed",
+        receipt: { token: "phone-telegram:phone-user-1:telegram-user-1" },
+        user: convergedTelegramUser,
+        organization: telegramOrganization,
+      };
+    });
+    markPhoneTelegramPersonalAccountAliasComplete.mockImplementation(async () => {
+      convergenceEvents.push("receipt");
+      return {
+        token: "phone-telegram:phone-user-1:telegram-user-1",
+        status: "complete",
+      };
+    });
+    getByStewardIdForWrite.mockResolvedValue(convergedTelegramUser);
+
+    const result = await syncUserFromSteward({
+      stewardUserId: "steward-user-1",
+      name: "Nubs",
+      verifiedPhone: "+1 (415) 555-2671",
+      telegramContinuation: "opaque-telegram-claim-token",
+      sharedRuntimeConversationNamespace: {} as never,
+    });
+
+    expect(result).toMatchObject({
+      id: "telegram-user-1",
+      organization_id: "telegram-org-1",
+      telegram_id: "123456789",
+      phone_number: "+14155552671",
+    });
+    expect(convergenceEvents).toEqual(["seal", "database", "history", "receipt"]);
+    expect(preparePersonalProvisionalHistoryConvergence).toHaveBeenCalledWith(
+      expect.objectContaining({
+        targetUserId: "telegram-user-1",
+        targetOrganizationId: "telegram-org-1",
+      }),
+      expect.anything(),
+    );
+    expect(promoteTelegramPersonalAccountToSteward).not.toHaveBeenCalled();
+    expect(releasePersonalProvisionalHistoryConvergence).not.toHaveBeenCalled();
+    expect(linkVerifiedPhone).toHaveBeenCalledWith("telegram-user-1", "+14155552671");
+    expect(createUser).not.toHaveBeenCalled();
+    expect(createOrganization).not.toHaveBeenCalled();
+  });
+
+  test("resumes a database-committed convergence through import and alias without re-merging", async () => {
+    inspectPhoneTelegramPersonalAccountConvergence.mockResolvedValue({
+      status: "resume_alias",
+      receipt: {
+        token: "phone-telegram:phone-user-1:telegram-user-1",
+        source_agent_id: "personal:source",
+        target_agent_id: "personal:target",
+        target_user_id: "telegram-user-1",
+        target_organization_id: "telegram-org-1",
+      },
+      user: convergedTelegramUser,
+      organization: telegramOrganization,
+    });
+    markPhoneTelegramPersonalAccountAliasComplete.mockImplementation(async () => {
+      convergenceEvents.push("receipt");
+      return {
+        token: "phone-telegram:phone-user-1:telegram-user-1",
+        status: "complete",
+      };
+    });
+    getByStewardIdForWrite.mockResolvedValue(convergedTelegramUser);
+
+    const result = await syncUserFromSteward({
+      stewardUserId: "steward-user-1",
+      name: "Nubs",
+      verifiedPhone: "+14155552671",
+      telegramContinuation: "opaque-telegram-claim-token",
+      sharedRuntimeConversationNamespace: {} as never,
+    });
+
+    expect(result.id).toBe("telegram-user-1");
+    expect(convergenceEvents).toEqual(["seal", "history", "receipt"]);
+    expect(preparePersonalProvisionalHistoryConvergence).toHaveBeenCalledWith(
+      expect.objectContaining({
+        targetUserId: "telegram-user-1",
+        targetOrganizationId: "telegram-org-1",
+      }),
+      expect.anything(),
+    );
+    expect(commitPhoneTelegramPersonalAccountConvergence).not.toHaveBeenCalled();
+    expect(promoteTelegramPersonalAccountToSteward).not.toHaveBeenCalled();
     expect(createUser).not.toHaveBeenCalled();
     expect(createOrganization).not.toHaveBeenCalled();
   });

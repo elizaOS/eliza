@@ -35,6 +35,7 @@ let resolveStreamMergeGate = () => {};
 let rehydrateCalls = 0;
 let bridgeFunding: unknown;
 let recoveredCutoverTargetId: string | null = null;
+let lastBridgeAgent: unknown;
 
 function testMessageIdentity(value: unknown): string {
   const message = value as {
@@ -132,6 +133,7 @@ mock.module("@/lib/services/shared-runtime/shared-runtime-chat", () => ({
       },
     ) => {
       bridgeFunding = options.funding;
+      lastBridgeAgent = agent;
       if (rpc.id === "rate-limited") {
         throw new RateLimitError("Organization rate limit exceeded.", 29);
       }
@@ -218,6 +220,9 @@ mock.module("@/lib/utils/logger", () => ({
 const { SharedRuntimeConversation } = await import(
   "./shared-runtime-conversation"
 );
+type SharedRuntimeConversationInstance = InstanceType<
+  typeof SharedRuntimeConversation
+>;
 
 beforeEach(() => {
   streamMergeGate = null;
@@ -225,6 +230,7 @@ beforeEach(() => {
   rehydrateCalls = 0;
   bridgeFunding = undefined;
   recoveredCutoverTargetId = null;
+  lastBridgeAgent = undefined;
 });
 
 function makeState(data: Map<string, unknown>, background: Promise<unknown>[]) {
@@ -657,6 +663,254 @@ test("an expired pending seal releases Shared when no Dedicated marker exists", 
   expect(response.status).toBe(200);
   await response.json();
   expect(data.has("personal-cutover-seal")).toBe(false);
+});
+
+test("provisional convergence imports history once and aliases stale source-room turns", async () => {
+  repositoryReads = 0;
+  repositoryWrites = 0;
+  repositoryRow = [];
+  const sourceAgentId = "personal:00000000-0000-5000-8000-000000000001";
+  const targetAgentId = "personal:00000000-0000-5000-8000-000000000002";
+  const targetUserId = "00000000-0000-4000-8000-000000000003";
+  const targetOrganizationId = "00000000-0000-4000-8000-000000000004";
+  const sourceHistory = [
+    { id: "source-1", role: "user", content: "phone history", createdAt: 1 },
+  ];
+  const targetHistory = [
+    {
+      id: "target-1",
+      role: "assistant",
+      content: "telegram history",
+      createdAt: 2,
+    },
+  ];
+  const sourceData = new Map<string, unknown>([
+    [
+      "conversation",
+      {
+        agentId: sourceAgentId,
+        channelId: sourceAgentId,
+        history: sourceHistory,
+        dirty: false,
+        version: 1,
+      },
+    ],
+  ]);
+  const targetData = new Map<string, unknown>([
+    [
+      "conversation",
+      {
+        agentId: targetAgentId,
+        channelId: targetAgentId,
+        history: targetHistory,
+        dirty: false,
+        version: 1,
+      },
+    ],
+  ]);
+  const sourceBackground: Promise<unknown>[] = [];
+  const targetBackground: Promise<unknown>[] = [];
+  const objects = new Map<string, SharedRuntimeConversationInstance>();
+  const namespace = {
+    getByName(name: string) {
+      const object = objects.get(name);
+      if (!object) throw new Error(`Missing test Durable Object ${name}`);
+      return {
+        fetch: async (input: RequestInfo | URL, init?: RequestInit) =>
+          await object.fetch(
+            input instanceof Request ? input : new Request(input, init),
+          ),
+      };
+    },
+  };
+  const source = new SharedRuntimeConversation(
+    makeState(sourceData, sourceBackground) as never,
+    {
+      SHARED_RUNTIME_CONVERSATIONS: namespace,
+    } as never,
+  );
+  const target = new SharedRuntimeConversation(
+    makeState(targetData, targetBackground) as never,
+    {
+      SHARED_RUNTIME_CONVERSATIONS: namespace,
+    } as never,
+  );
+  objects.set(`${sourceAgentId}:${sourceAgentId}`, source);
+  objects.set(`${targetAgentId}:${targetAgentId}`, target);
+
+  const request = (
+    object: SharedRuntimeConversationInstance,
+    payload: Record<string, unknown>,
+  ) =>
+    object.fetch(
+      new Request("https://shared-runtime.internal/provisional-convergence", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      }),
+    );
+  const token = "phone-telegram:source-user:target-user";
+  const holderId = "holder-one";
+  const sealed = await request(source, {
+    operation: "provisional-convergence-seal",
+    agentId: sourceAgentId,
+    roomId: sourceAgentId,
+    token,
+    holderId,
+    targetAgentId,
+    targetRoomId: targetAgentId,
+    targetUserId,
+    targetOrganizationId,
+    leaseMs: 60_000,
+  });
+  expect(sealed.status).toBe(200);
+  expect((await sealed.json()) as Record<string, unknown>).toEqual({
+    success: true,
+    alreadyAliased: false,
+    history: sourceHistory,
+  });
+
+  const blocked = await request(source, {
+    operation: "personal-bridge",
+    agent: {
+      ...AGENT_FIXTURE,
+      id: sourceAgentId,
+      agent_name: "Eliza",
+      character_id: null,
+      agent_config: { character: { name: "Eliza" } },
+    },
+    rpc: {
+      jsonrpc: "2.0",
+      id: "blocked-during-convergence",
+      method: "message.send",
+      params: { text: "wait", roomId: sourceAgentId },
+    },
+  });
+  expect(blocked.status).toBe(423);
+  expect(await blocked.json()).toMatchObject({
+    code: "personal_convergence_in_progress",
+  });
+
+  const secondSeal = await request(source, {
+    operation: "provisional-convergence-seal",
+    agentId: sourceAgentId,
+    roomId: sourceAgentId,
+    token,
+    holderId: "holder-two",
+    targetAgentId,
+    targetRoomId: targetAgentId,
+    targetUserId,
+    targetOrganizationId,
+    leaseMs: 60_000,
+  });
+  expect(secondSeal.status).toBe(200);
+  await secondSeal.json();
+  const releasedFirstHolder = await request(source, {
+    operation: "provisional-convergence-release",
+    token,
+    holderId,
+  });
+  expect((await releasedFirstHolder.json()) as Record<string, unknown>).toEqual(
+    { success: true },
+  );
+  const stillSealed = sourceData.get(
+    "personal-provisional-convergence-seal",
+  ) as {
+    holderIds: string[];
+  };
+  expect(stillSealed.holderIds).toEqual(["holder-two"]);
+
+  const importPayload = {
+    operation: "provisional-convergence-import",
+    agentId: targetAgentId,
+    roomId: targetAgentId,
+    token,
+    history: sourceHistory,
+  };
+  const imported = await request(target, importPayload);
+  expect((await imported.json()) as Record<string, unknown>).toEqual({
+    success: true,
+    alreadyImported: false,
+  });
+  targetData.delete(`personal-provisional-convergence-import:${token}`);
+  const replayedAfterMarkerLoss = await request(target, importPayload);
+  expect(
+    (await replayedAfterMarkerLoss.json()) as Record<string, unknown>,
+  ).toEqual({
+    success: true,
+    alreadyImported: false,
+  });
+  const replayedImport = await request(target, importPayload);
+  expect((await replayedImport.json()) as Record<string, unknown>).toEqual({
+    success: true,
+    alreadyImported: true,
+  });
+
+  const aliased = await request(source, {
+    operation: "provisional-convergence-alias",
+    token,
+    targetAgentId,
+    targetRoomId: targetAgentId,
+    targetUserId,
+    targetOrganizationId,
+  });
+  expect((await aliased.json()) as Record<string, unknown>).toEqual({
+    success: true,
+  });
+  const replayedAlias = await request(source, {
+    operation: "provisional-convergence-alias",
+    token,
+    targetAgentId,
+    targetRoomId: targetAgentId,
+    targetUserId,
+    targetOrganizationId,
+  });
+  expect((await replayedAlias.json()) as Record<string, unknown>).toEqual({
+    success: true,
+  });
+
+  const staleSourceTurn = await request(source, {
+    operation: "personal-bridge",
+    agent: {
+      ...AGENT_FIXTURE,
+      id: sourceAgentId,
+      agent_name: "Eliza",
+      character_id: null,
+      agent_config: { character: { name: "Eliza" } },
+    },
+    rpc: {
+      jsonrpc: "2.0",
+      id: "stale-source-turn",
+      method: "message.send",
+      params: { text: "continue", roomId: sourceAgentId },
+    },
+  });
+  expect(staleSourceTurn.status).toBe(200);
+  expect(await staleSourceTurn.json()).toMatchObject({
+    result: {
+      historyLength: 3,
+      historyIds: ["source-1", "target-1"],
+    },
+  });
+  expect(lastBridgeAgent).toMatchObject({
+    id: targetAgentId,
+    user_id: targetUserId,
+    organization_id: targetOrganizationId,
+  });
+  expect(sourceData.get("personal-provisional-convergence-alias")).toEqual({
+    token,
+    targetAgentId,
+    targetRoomId: targetAgentId,
+    targetUserId,
+    targetOrganizationId,
+  });
+  expect(
+    (
+      targetData.get("conversation") as {
+        history: Array<{ id: string }>;
+      }
+    ).history.map((message) => message.id),
+  ).toEqual(["source-1", "target-1", "message-stale-source-turn"]);
+  await Promise.all([...sourceBackground, ...targetBackground]);
 });
 
 test("concurrent turns serialize through one room and retain both writes", async () => {

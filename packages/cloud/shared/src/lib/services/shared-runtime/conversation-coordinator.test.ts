@@ -28,10 +28,12 @@ mock.module("../eliza-sandbox", () => ({
 }));
 
 const {
+  commitPersonalProvisionalHistoryConvergence,
   coordinateSharedBridge,
   coordinateSharedConversationPrewarm,
   coordinateSharedHistory,
   coordinateSharedStream,
+  preparePersonalProvisionalHistoryConvergence,
   purgeSharedConversationRooms,
 } = await import("./conversation-coordinator");
 
@@ -157,6 +159,65 @@ describe("shared conversation coordinator", () => {
     ).rejects.toMatchObject({
       name: "SharedRuntimeCacheWarmingError",
     });
+  });
+
+  test("keeps history import behind the account-commit boundary and makes replay explicit", async () => {
+    const operations: string[] = [];
+    const names: string[] = [];
+    const namespace = {
+      getByName(name: string) {
+        names.push(name);
+        return {
+          fetch: async (_input: RequestInfo | URL, init?: RequestInit) => {
+            const envelope = JSON.parse(String(init?.body)) as { operation: string };
+            operations.push(envelope.operation);
+            if (envelope.operation === "provisional-convergence-seal") {
+              return Response.json({
+                success: true,
+                alreadyAliased: false,
+                history: [{ id: "phone-1", role: "user", content: "remember this" }],
+              });
+            }
+            if (envelope.operation === "provisional-convergence-import") {
+              return Response.json({ success: true, alreadyImported: false });
+            }
+            return Response.json({ success: true });
+          },
+        };
+      },
+    };
+    const plan = {
+      token: "phone-telegram:source:target",
+      holderId: "login-attempt-1",
+      sourceAgentId: "personal:source",
+      sourceRoomId: "personal:source",
+      targetAgentId: "personal:target",
+      targetRoomId: "personal:target",
+      targetUserId: "target-user",
+      targetOrganizationId: "target-org",
+      leaseMs: 60_000,
+    };
+
+    const prepared = await preparePersonalProvisionalHistoryConvergence(plan, { namespace });
+    expect(operations).toEqual(["provisional-convergence-seal"]);
+    expect(prepared).toEqual({
+      alreadyAliased: false,
+      history: [{ id: "phone-1", role: "user", content: "remember this" }],
+    });
+
+    // The account transaction is the caller-controlled boundary between these
+    // two calls. Nothing reaches the target object during preparation.
+    await commitPersonalProvisionalHistoryConvergence(plan, prepared, { namespace });
+    expect(operations).toEqual([
+      "provisional-convergence-seal",
+      "provisional-convergence-import",
+      "provisional-convergence-alias",
+    ]);
+    expect(names).toEqual([
+      "personal:source:personal:source",
+      "personal:target:personal:target",
+      "personal:source:personal:source",
+    ]);
   });
 
   test("rehydrates exact rate denial across the Durable Object boundary", async () => {

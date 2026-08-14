@@ -51,6 +51,38 @@ type ConversationRequest =
     }
   | { operation: "cutover-release"; token: string }
   | { operation: "cutover-commit"; token: string }
+  | {
+      operation: "provisional-convergence-seal";
+      agentId: string;
+      roomId: string;
+      token: string;
+      holderId: string;
+      targetAgentId: string;
+      targetRoomId: string;
+      targetUserId: string;
+      targetOrganizationId: string;
+      leaseMs: number;
+    }
+  | {
+      operation: "provisional-convergence-import";
+      agentId: string;
+      roomId: string;
+      token: string;
+      history: SharedTurnMessage[];
+    }
+  | {
+      operation: "provisional-convergence-alias";
+      token: string;
+      targetAgentId: string;
+      targetRoomId: string;
+      targetUserId: string;
+      targetOrganizationId: string;
+    }
+  | {
+      operation: "provisional-convergence-release";
+      token: string;
+      holderId: string;
+    }
   | { operation: "delete"; agentId: string };
 
 interface StoredConversation {
@@ -66,6 +98,12 @@ const CONVERSATION_KEY = "conversation";
 const HISTORY_ARCHIVE_PREFIX = "history-archive:";
 const MAX_RECALL_MESSAGES = 128;
 const CUTOVER_SEAL_KEY = "personal-cutover-seal";
+const PROVISIONAL_CONVERGENCE_SEAL_KEY =
+  "personal-provisional-convergence-seal";
+const PROVISIONAL_CONVERGENCE_ALIAS_KEY =
+  "personal-provisional-convergence-alias";
+const PROVISIONAL_CONVERGENCE_IMPORT_PREFIX =
+  "personal-provisional-convergence-import:";
 const RETRY_DELAY_MS = 30_000;
 
 interface StoredCutoverSeal {
@@ -75,6 +113,24 @@ interface StoredCutoverSeal {
   organizationId?: string;
   sourceAgentId?: string;
   dedicatedAgentId?: string;
+}
+
+interface StoredProvisionalConvergenceSeal {
+  token: string;
+  holderIds: string[];
+  targetAgentId: string;
+  targetRoomId: string;
+  targetUserId: string;
+  targetOrganizationId: string;
+  expiresAt: number;
+}
+
+interface StoredProvisionalConvergenceAlias {
+  token: string;
+  targetAgentId: string;
+  targetRoomId: string;
+  targetUserId: string;
+  targetOrganizationId: string;
 }
 
 /**
@@ -483,14 +539,310 @@ export class SharedRuntimeConversation {
     return null;
   }
 
+  private async activeProvisionalConvergenceSeal(): Promise<StoredProvisionalConvergenceSeal | null> {
+    const seal =
+      (await this.state.storage.get<StoredProvisionalConvergenceSeal>(
+        PROVISIONAL_CONVERGENCE_SEAL_KEY,
+      )) ?? null;
+    if (!seal || seal.expiresAt > Date.now()) return seal;
+    await this.state.storage.delete(PROVISIONAL_CONVERGENCE_SEAL_KEY);
+    return null;
+  }
+
+  private async forwardToConvergedPersonalEliza(
+    payload: ConversationRequest,
+    alias: StoredProvisionalConvergenceAlias,
+    signal: AbortSignal,
+  ): Promise<Response> {
+    const namespace = this.env.SHARED_RUNTIME_CONVERSATIONS;
+    if (!namespace) {
+      throw new Error(
+        "Shared runtime namespace is unavailable for personal history alias",
+      );
+    }
+
+    let forwarded: ConversationRequest = payload;
+    if (
+      payload.operation === "personal-bridge" ||
+      payload.operation === "personal-stream"
+    ) {
+      forwarded = {
+        ...payload,
+        agent: {
+          ...payload.agent,
+          id: alias.targetAgentId,
+          user_id: alias.targetUserId,
+          organization_id: alias.targetOrganizationId,
+        },
+        rpc: {
+          ...payload.rpc,
+          params: {
+            ...payload.rpc.params,
+            roomId: alias.targetRoomId,
+          },
+        },
+      };
+    } else if (
+      payload.operation === "prewarm" ||
+      payload.operation === "history" ||
+      payload.operation === "cutover-seal"
+    ) {
+      forwarded = {
+        ...payload,
+        agentId: alias.targetAgentId,
+        roomId: alias.targetRoomId,
+      };
+    }
+
+    return await namespace
+      .getByName(`${alias.targetAgentId}:${alias.targetRoomId}`)
+      .fetch("https://shared-runtime.internal/converged-personal", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(forwarded),
+        signal,
+      });
+  }
+
   private async handle(request: Request): Promise<Response> {
     const payload = (await request.json()) as ConversationRequest;
     const personal =
       payload.operation === "personal-bridge" ||
       payload.operation === "personal-stream" ||
-      ("agentId" in payload && payload.agentId.startsWith("personal:"));
+      ("agentId" in payload &&
+        typeof payload.agentId === "string" &&
+        payload.agentId.startsWith("personal:"));
     const historyStore = this.historyStore(personal);
     const turnClaims = this.turnClaims();
+    if (payload.operation === "provisional-convergence-seal") {
+      if (
+        typeof payload.agentId !== "string" ||
+        !payload.agentId.startsWith("personal:") ||
+        typeof payload.targetAgentId !== "string" ||
+        !payload.targetAgentId.startsWith("personal:") ||
+        payload.agentId === payload.targetAgentId ||
+        payload.roomId !== payload.agentId ||
+        payload.targetRoomId !== payload.targetAgentId ||
+        typeof payload.targetUserId !== "string" ||
+        payload.targetUserId.length === 0 ||
+        typeof payload.targetOrganizationId !== "string" ||
+        payload.targetOrganizationId.length === 0 ||
+        typeof payload.token !== "string" ||
+        payload.token.length === 0 ||
+        typeof payload.holderId !== "string" ||
+        payload.holderId.length === 0 ||
+        typeof payload.leaseMs !== "number" ||
+        !Number.isFinite(payload.leaseMs) ||
+        payload.leaseMs <= 0
+      ) {
+        return Response.json(
+          { success: false, code: "invalid_provisional_convergence" },
+          { status: 400 },
+        );
+      }
+      const alias =
+        await this.state.storage.get<StoredProvisionalConvergenceAlias>(
+          PROVISIONAL_CONVERGENCE_ALIAS_KEY,
+        );
+      if (alias) {
+        if (
+          alias.token !== payload.token ||
+          alias.targetAgentId !== payload.targetAgentId ||
+          alias.targetRoomId !== payload.targetRoomId ||
+          alias.targetUserId !== payload.targetUserId ||
+          alias.targetOrganizationId !== payload.targetOrganizationId
+        ) {
+          return Response.json(
+            { success: false, code: "provisional_convergence_conflict" },
+            { status: 409 },
+          );
+        }
+        return Response.json({
+          success: true,
+          alreadyAliased: true,
+          history: [],
+        });
+      }
+      const existing = await this.activeProvisionalConvergenceSeal();
+      if (
+        existing &&
+        (existing.token !== payload.token ||
+          existing.targetAgentId !== payload.targetAgentId ||
+          existing.targetRoomId !== payload.targetRoomId ||
+          existing.targetUserId !== payload.targetUserId ||
+          existing.targetOrganizationId !== payload.targetOrganizationId)
+      ) {
+        return Response.json(
+          { success: false, code: "provisional_convergence_in_progress" },
+          { status: 423 },
+        );
+      }
+      const seal: StoredProvisionalConvergenceSeal = {
+        token: payload.token,
+        holderIds: [
+          ...new Set([...(existing?.holderIds ?? []), payload.holderId]),
+        ],
+        targetAgentId: payload.targetAgentId,
+        targetRoomId: payload.targetRoomId,
+        targetUserId: payload.targetUserId,
+        targetOrganizationId: payload.targetOrganizationId,
+        expiresAt: Math.max(
+          existing?.expiresAt ?? 0,
+          Date.now() + payload.leaseMs,
+        ),
+      };
+      await this.state.storage.put(PROVISIONAL_CONVERGENCE_SEAL_KEY, seal);
+      const history = await this.runWithBindings(async () => {
+        const { sharedRuntimeChatService } = await import(
+          "@/lib/services/shared-runtime/shared-runtime-chat"
+        );
+        return await sharedRuntimeChatService.getHistory(
+          payload.agentId,
+          payload.roomId,
+          historyStore,
+        );
+      });
+      return Response.json({ success: true, alreadyAliased: false, history });
+    }
+    if (payload.operation === "provisional-convergence-import") {
+      if (
+        typeof payload.agentId !== "string" ||
+        !payload.agentId.startsWith("personal:") ||
+        payload.roomId !== payload.agentId ||
+        typeof payload.token !== "string" ||
+        payload.token.length === 0 ||
+        !Array.isArray(payload.history)
+      ) {
+        return Response.json(
+          { success: false, code: "invalid_provisional_convergence" },
+          { status: 400 },
+        );
+      }
+      const markerKey = `${PROVISIONAL_CONVERGENCE_IMPORT_PREFIX}${payload.token}`;
+      if (await this.state.storage.get<boolean>(markerKey)) {
+        return Response.json({ success: true, alreadyImported: true });
+      }
+      await historyStore.merge(
+        payload.agentId,
+        payload.roomId,
+        payload.history,
+      );
+      await this.state.storage.put(markerKey, true);
+      return Response.json({ success: true, alreadyImported: false });
+    }
+    if (payload.operation === "provisional-convergence-alias") {
+      if (
+        typeof payload.token !== "string" ||
+        payload.token.length === 0 ||
+        typeof payload.targetAgentId !== "string" ||
+        !payload.targetAgentId.startsWith("personal:") ||
+        payload.targetRoomId !== payload.targetAgentId ||
+        typeof payload.targetUserId !== "string" ||
+        payload.targetUserId.length === 0 ||
+        typeof payload.targetOrganizationId !== "string" ||
+        payload.targetOrganizationId.length === 0
+      ) {
+        return Response.json(
+          { success: false, code: "invalid_provisional_convergence" },
+          { status: 400 },
+        );
+      }
+      const existingAlias =
+        await this.state.storage.get<StoredProvisionalConvergenceAlias>(
+          PROVISIONAL_CONVERGENCE_ALIAS_KEY,
+        );
+      if (
+        existingAlias &&
+        (existingAlias.token !== payload.token ||
+          existingAlias.targetAgentId !== payload.targetAgentId ||
+          existingAlias.targetRoomId !== payload.targetRoomId ||
+          existingAlias.targetUserId !== payload.targetUserId ||
+          existingAlias.targetOrganizationId !== payload.targetOrganizationId)
+      ) {
+        return Response.json(
+          { success: false, code: "provisional_convergence_conflict" },
+          { status: 409 },
+        );
+      }
+      if (existingAlias) {
+        return Response.json({ success: true });
+      }
+      const activeSeal = await this.activeProvisionalConvergenceSeal();
+      if (
+        !activeSeal ||
+        activeSeal.token !== payload.token ||
+        activeSeal.targetAgentId !== payload.targetAgentId ||
+        activeSeal.targetRoomId !== payload.targetRoomId ||
+        activeSeal.targetUserId !== payload.targetUserId ||
+        activeSeal.targetOrganizationId !== payload.targetOrganizationId
+      ) {
+        return Response.json(
+          { success: false, code: "provisional_convergence_not_prepared" },
+          { status: 409 },
+        );
+      }
+      await this.state.storage.put(PROVISIONAL_CONVERGENCE_ALIAS_KEY, {
+        token: payload.token,
+        targetAgentId: payload.targetAgentId,
+        targetRoomId: payload.targetRoomId,
+        targetUserId: payload.targetUserId,
+        targetOrganizationId: payload.targetOrganizationId,
+      } satisfies StoredProvisionalConvergenceAlias);
+      await this.state.storage.delete(PROVISIONAL_CONVERGENCE_SEAL_KEY);
+      return Response.json({ success: true });
+    }
+    if (payload.operation === "provisional-convergence-release") {
+      if (
+        typeof payload.token !== "string" ||
+        payload.token.length === 0 ||
+        typeof payload.holderId !== "string" ||
+        payload.holderId.length === 0
+      ) {
+        return Response.json(
+          { success: false, code: "invalid_provisional_convergence" },
+          { status: 400 },
+        );
+      }
+      const activeSeal = await this.activeProvisionalConvergenceSeal();
+      if (activeSeal?.token === payload.token) {
+        const holderIds = activeSeal.holderIds.filter(
+          (holderId) => holderId !== payload.holderId,
+        );
+        if (holderIds.length === 0) {
+          await this.state.storage.delete(PROVISIONAL_CONVERGENCE_SEAL_KEY);
+        } else {
+          await this.state.storage.put(PROVISIONAL_CONVERGENCE_SEAL_KEY, {
+            ...activeSeal,
+            holderIds,
+          } satisfies StoredProvisionalConvergenceSeal);
+        }
+      }
+      return Response.json({ success: true });
+    }
+
+    const convergenceAlias =
+      await this.state.storage.get<StoredProvisionalConvergenceAlias>(
+        PROVISIONAL_CONVERGENCE_ALIAS_KEY,
+      );
+    if (convergenceAlias && payload.operation !== "delete") {
+      return await this.forwardToConvergedPersonalEliza(
+        payload,
+        convergenceAlias,
+        request.signal,
+      );
+    }
+    const convergenceSeal = await this.activeProvisionalConvergenceSeal();
+    if (convergenceSeal) {
+      return Response.json(
+        {
+          success: false,
+          error: "Personal history is being linked. Retry shortly.",
+          code: "personal_convergence_in_progress",
+          retryable: true,
+        },
+        { status: 423, headers: { "Retry-After": "1" } },
+      );
+    }
     if (payload.operation === "prewarm") {
       await this.prewarmConversation(payload.agentId, payload.roomId);
       return Response.json({ success: true });
