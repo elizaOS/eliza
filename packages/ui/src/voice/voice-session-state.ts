@@ -111,9 +111,11 @@ export function applyClientAction(
  *   llm_first_text   → thinking (first response text, phase already truthful)
  *   speaking_start   → speaking
  *   speaking_end     → complete → (caller loops to listening)
+ *   turn_end         → complete → (caller loops to listening)
  *   interrupted      → interrupted → (caller loops to listening)
  *   error            → records error; retryable=false is fatal (caller re-mints)
- *   usage            → no phase change (settlement telemetry)
+ *   usage            → thinking becomes complete as a terminal fallback;
+ *                      other phases are unchanged (settlement telemetry)
  */
 export function applyServerEvent(
   state: VoiceSessionMachineState,
@@ -174,6 +176,8 @@ export function applyServerEvent(
       return { ...state, phase: "speaking", traceId: event.traceId };
     case "speaking_end":
       return { ...state, phase: "complete", traceId: event.traceId };
+    case "turn_end":
+      return { ...state, phase: "complete", traceId: event.traceId };
     case "navigate_view":
       // Navigation is a shell side effect; the voice phase remains unchanged.
       return { ...state, traceId: event.traceId };
@@ -190,8 +194,16 @@ export function applyServerEvent(
         lastError: { code: event.code, retryable: event.retryable },
       };
     case "usage":
-      // Settlement telemetry; no client phase impact.
-      return { ...state, traceId: event.traceId };
+      // Current servers follow settlement with `turn_end`, but older servers
+      // ended a no-audio/error turn at usage and a malformed terminal frame is
+      // ignored at the browser boundary. Treat usage as a defensive terminal
+      // only from Thinking; active speech still waits for speaking_end or an
+      // interruption so settlement can never cut audible output short.
+      return {
+        ...state,
+        phase: state.phase === "thinking" ? "complete" : state.phase,
+        traceId: event.traceId,
+      };
     default: {
       // Exhaustiveness guard — an unhandled server type is a no-op, never a
       // fabricated transition.

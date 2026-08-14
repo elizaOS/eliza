@@ -28,9 +28,11 @@
  *   - voice-session-state (the §7.4 machine, mapped into the unified voice
  *     status via toContinuousStatus)
  *
- * Barge-in: `bargeIn()` flushes local playback IMMEDIATELY and sends
- * `{t:"barge_in"}`; it does NOT wait for the server `interrupted` event to stop
- * audible output, but reconciles state when that event arrives.
+ * Barge-in: explicit `bargeIn()` flushes local playback IMMEDIATELY and sends
+ * `{t:"barge_in"}`. Acoustic onset provisionally pauses (without consuming)
+ * playback while server STT confirms spoken text; confirmed speech or an
+ * authoritative interruption flushes, while a bounded timeout/no-response
+ * terminal resumes the retained queue after a false trigger.
  *
  * Trace: the client carries `traceId` from server events onto client playout
  * marks (`onTraceMark`). A mark never reached is reported as
@@ -66,6 +68,7 @@ import {
   type VoiceSessionCodec,
   type VoiceSessionMintResponse,
 } from "./voice-session-protocol";
+import type { ProvisionalSpeechStartConfig } from "./voice-session-provisional-speech-start";
 import {
   applyClientAction,
   applyServerEvent,
@@ -75,6 +78,14 @@ import {
   toContinuousStatus,
   type VoiceSessionMachineState,
 } from "./voice-session-state";
+import {
+  type VoiceAuthorityTransition,
+  type VoiceSessionLease,
+  VoiceSessionTurnAuthority,
+} from "./voice-session-turn-authority";
+
+/** Matches the server's own spoken-transcript dispatch/confirmation gate. */
+const SPOKEN_TRANSCRIPT_RE = /[\p{L}\p{N}]/u;
 
 /** Minimal WebSocket surface the client drives (native or fake). */
 export interface VoiceWebSocketLike {
@@ -139,6 +150,15 @@ export interface VoiceTraceMark {
   atMs: number;
 }
 
+export interface ProvisionalBargeInOptions {
+  /** Enabled by default for the already flag-gated realtime route. */
+  enabled?: boolean;
+  /** Resume retained playback unless the server confirms by this deadline. Default 350ms. */
+  confirmationTimeoutMs?: number;
+  /** Conservative local onset thresholds; remote STT remains authoritative. */
+  detector?: ProvisionalSpeechStartConfig;
+}
+
 export interface VoiceSessionClientOptions {
   agentId: string;
   conversationId: string;
@@ -184,10 +204,17 @@ export interface VoiceSessionClientOptions {
   onMinted?: (minted: VoiceSessionMintResponse) => void;
   /** Fired when browser autoplay requires (or no longer requires) a tap. */
   onPlaybackUnlockChange?: (needsUnlock: boolean) => void;
+  /** Fired when browser playback gains or drains/flushes queued audio. */
+  onPlaybackActivityChange?: (active: boolean) => void;
   /** Fired on a fatal client error (mic/permission/transport). */
   onError?: (error: Error) => void;
   /** Monotonic clock for trace marks (tests inject). */
   now?: () => number;
+  /**
+   * Local provisional speech-start policy. This only pauses playback; it never
+   * sends barge_in or cancels remote work before server confirmation.
+   */
+  provisionalBargeIn?: ProvisionalBargeInOptions;
 
   /**
    * Max reconnect (re-mint) attempts per outage before giving up. Default 5.
@@ -311,6 +338,11 @@ export function createVoiceSessionClient(
   const epochNow = options.epochNow ?? Date.now;
   const preLiveMaxAttempts = Math.max(1, options.preLiveMaxAttempts ?? 3);
   const preLiveRetryDelayMs = Math.max(0, options.preLiveRetryDelayMs ?? 500);
+  const provisionalBargeInEnabled = options.provisionalBargeIn?.enabled ?? true;
+  const provisionalBargeInConfirmationTimeoutMs = Math.max(
+    0,
+    options.provisionalBargeIn?.confirmationTimeoutMs ?? 350,
+  );
 
   let state: VoiceSessionMachineState = { ...INITIAL_VOICE_SESSION_STATE };
   let connPhase: ConnectionPhase = "idle";
@@ -335,6 +367,9 @@ export function createVoiceSessionClient(
   let captureSocket: VoiceWebSocketLike | null = null;
   let captureAbort: AbortController | null = null;
   let microphoneMuted = false;
+  let playbackMayHaveAudio = false;
+  const turnAuthority = new VoiceSessionTurnAuthority();
+  const authorityTimers = new Map<string, ReturnType<typeof setTimeout>>();
   // Whether the caller explicitly stopped us (clean bye) — suppresses reconnect.
   let intentionalClose = false;
 
@@ -350,6 +385,164 @@ export function createVoiceSessionClient(
       // error-policy:J7 trace-mark listeners are diagnostics; a throwing listener must never break audio or transport.
       void ignoredError;
     }
+  };
+
+  const clearAuthorityTimers = (): void => {
+    for (const timer of authorityTimers.values()) clearTimeout(timer);
+    authorityTimers.clear();
+  };
+
+  const setPlaybackMayHaveAudio = (active: boolean): void => {
+    if (playbackMayHaveAudio === active) return;
+    playbackMayHaveAudio = active;
+    try {
+      options.onPlaybackActivityChange?.(active);
+    } catch (ignoredError) {
+      // error-policy:J7 playback activity is UI state; a throwing listener must never break audio delivery.
+      void ignoredError;
+    }
+  };
+
+  const applyAuthorityEffects = (
+    transition: VoiceAuthorityTransition,
+    traceId: string | null = state.traceId,
+  ): void => {
+    if (
+      !transition.accepted ||
+      !turnAuthority.isTransitionCurrent(transition)
+    ) {
+      return;
+    }
+    for (const effect of transition.effects) {
+      if (!turnAuthority.isTransitionCurrent(transition)) return;
+      switch (effect.type) {
+        case "timer/arm": {
+          const existing = authorityTimers.get(effect.key);
+          if (existing) clearTimeout(existing);
+          const lease = turnAuthority.currentSessionLease();
+          const speechAttemptId = turnAuthority.speechAttemptId;
+          const turn = turnAuthority.state?.turn;
+          const delayMs = Math.max(
+            0,
+            effect.deadlineMs -
+              (turnAuthority.state?.lastAtMs ?? effect.deadlineMs),
+          );
+          const timer = setTimeout(() => {
+            authorityTimers.delete(effect.key);
+            if (!turnAuthority.isSessionLeaseCurrent(lease)) return;
+            const elapsed = effect.key.startsWith("speech:")
+              ? speechAttemptId
+                ? turnAuthority.rejectProvisionalSpeech(
+                    speechAttemptId,
+                    effect.deadlineMs,
+                    "timer",
+                  )
+                : null
+              : turn
+                ? turnAuthority.acceptMergeTimer(
+                    turn.id,
+                    turn.revision,
+                    effect.deadlineMs,
+                  )
+                : null;
+            if (elapsed) applyAuthorityEffects(elapsed, traceId);
+          }, delayMs);
+          authorityTimers.set(effect.key, timer);
+          break;
+        }
+        case "timer/cancel": {
+          const timer = authorityTimers.get(effect.key);
+          if (timer) clearTimeout(timer);
+          authorityTimers.delete(effect.key);
+          break;
+        }
+        case "playback/pause":
+          if (
+            turnAuthority.isPlaybackEffectAuthorized(
+              transition,
+              effect.responseId,
+            )
+          ) {
+            playback?.pause();
+            mark("local_speech_start", traceId);
+          }
+          break;
+        case "playback/resume":
+          if (
+            turnAuthority.isPlaybackEffectAuthorized(
+              transition,
+              effect.responseId,
+            )
+          ) {
+            playback?.resume();
+            mark("local_speech_start_unconfirmed", traceId);
+          }
+          break;
+        case "playback/flush": {
+          if (
+            !turnAuthority.isPlaybackFlushAuthorized(
+              transition,
+              effect.responseId,
+            )
+          ) {
+            break;
+          }
+          const wasPaused = playback?.paused ?? false;
+          const hadBufferedAudio = playbackMayHaveAudio;
+          playback?.flush();
+          turnAuthority.acknowledgePlaybackFlush(transition, effect.responseId);
+          setPlaybackMayHaveAudio(false);
+          if (wasPaused) {
+            mark("local_speech_start_confirmed", traceId);
+          } else if (hadBufferedAudio) {
+            mark("server_speech_start_confirmed", traceId);
+          }
+          break;
+        }
+        case "model/abort":
+        case "tts/cancel":
+        case "output/retract":
+        case "progress/cancel":
+        case "turn/commit_revision":
+        case "turn/end":
+        case "response/start":
+        case "task/start":
+        case "task/abort":
+        case "task/detach":
+        case "task/report_actual_state":
+        case "task/result_available":
+        case "repair/queue":
+          // Upstream work is server-owned. Browser effects are deliberately
+          // limited to exact local timers/playout; the wire interruption or
+          // explicit barge_in control owns remote cancellation.
+          break;
+      }
+    }
+  };
+
+  const rejectCurrentProvisionalSpeech = (): void => {
+    const attemptId = turnAuthority.speechAttemptId;
+    if (!attemptId) return;
+    applyAuthorityEffects(
+      turnAuthority.rejectProvisionalSpeech(attemptId, now(), "detector"),
+    );
+  };
+
+  const isPlaybackInterruptible = (): boolean =>
+    state.phase === "speaking" || playbackMayHaveAudio;
+
+  const beginProvisionalBargeIn = (): void => {
+    const currentPlayback = playback;
+    if (
+      !provisionalBargeInEnabled ||
+      microphoneMuted ||
+      !isPlaybackInterruptible() ||
+      !currentPlayback?.unlocked ||
+      turnAuthority.speechAttemptId
+    ) {
+      return;
+    }
+    applyAuthorityEffects(turnAuthority.beginProvisionalSpeech(now()));
   };
 
   const emitError = (error: Error): void => {
@@ -490,8 +683,17 @@ export function createVoiceSessionClient(
     throw lastError ?? new Error("voice session mint failed");
   }
 
-  function sendControl(frame: Parameters<typeof encodeClientControl>[0]): void {
-    if (!ws || connPhase !== "open") return;
+  function sendControl(
+    frame: Parameters<typeof encodeClientControl>[0],
+    lease: VoiceSessionLease | null,
+  ): void {
+    if (
+      !turnAuthority.isSessionLeaseCurrent(lease) ||
+      !ws ||
+      connPhase !== "open"
+    ) {
+      return;
+    }
     try {
       ws.send(encodeClientControl(frame));
     } catch (ignoredError) {
@@ -500,8 +702,14 @@ export function createVoiceSessionClient(
     }
   }
 
-  function sendUplinkAudio(bytes: Uint8Array): void {
-    if (!ws || connPhase !== "open") return;
+  function sendUplinkAudio(bytes: Uint8Array, lease: VoiceSessionLease): void {
+    if (
+      !turnAuthority.isSessionLeaseCurrent(lease) ||
+      !ws ||
+      connPhase !== "open"
+    ) {
+      return;
+    }
     try {
       // Copy into a standalone ArrayBuffer so a shared/pooled backing store from
       // the capture path is never observed mutated after send. A muted session
@@ -523,18 +731,36 @@ export function createVoiceSessionClient(
     socket: VoiceWebSocketLike,
   ): void {
     if (!isLifecycleCurrent(generation) || ws !== socket) return;
-    // Binary downlink audio → straight to the streaming playback sink.
-    if (data instanceof ArrayBuffer) {
-      playback?.enqueue(new Uint8Array(data));
-      notifyPlaybackUnlockState();
-      mark("downlink_audio", state.traceId);
-      return;
-    }
-    if (ArrayBuffer.isView(data)) {
-      const view = data as ArrayBufferView;
-      playback?.enqueue(
-        new Uint8Array(view.buffer, view.byteOffset, view.byteLength),
+    // Binary downlink audio must hold the exact current response lease. Binary
+    // frames have no wire response id, so only an accepted speaking_start can
+    // open this ingress owner.
+    if (data instanceof ArrayBuffer || ArrayBuffer.isView(data)) {
+      const bytes =
+        data instanceof ArrayBuffer
+          ? new Uint8Array(data)
+          : new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
+      const responseLease = turnAuthority.authorizeAudioFrame();
+      const currentPlayback = playback;
+      if (
+        !responseLease ||
+        !currentPlayback ||
+        !turnAuthority.isResponseLeaseCurrent(responseLease)
+      ) {
+        mark("not_reached(stale_downlink_audio)", state.traceId);
+        return;
+      }
+      const sequence = currentPlayback.enqueue(bytes);
+      if (sequence === null) return;
+      const enqueued = turnAuthority.acceptPlaybackEnqueued(
+        responseLease,
+        sequence,
+        now(),
       );
+      if (!enqueued.accepted) {
+        mark("not_reached(stale_downlink_audio)", state.traceId);
+        return;
+      }
+      setPlaybackMayHaveAudio(true);
       notifyPlaybackUnlockState();
       mark("downlink_audio", state.traceId);
       return;
@@ -556,6 +782,96 @@ export function createVoiceSessionClient(
       return;
     }
 
+    const atMs = now();
+    let authorityTransition: VoiceAuthorityTransition | null = null;
+    switch (event.t) {
+      case "ready":
+        if (
+          !turnAuthority.state ||
+          turnAuthority.state.sessionId !== event.sessionId ||
+          turnAuthority.state.lifecycle !== "listening"
+        ) {
+          clearAuthorityTimers();
+          turnAuthority.openSession(event.sessionId, atMs, {
+            speechConfirmationTimeoutMs:
+              provisionalBargeInConfirmationTimeoutMs,
+          });
+        }
+        if (!turnAuthority.isReadySession(event.sessionId)) return;
+        break;
+      case "stt_partial":
+        if (!SPOKEN_TRANSCRIPT_RE.test(event.text)) return;
+        authorityTransition = turnAuthority.acceptPartialTranscript(
+          event.text,
+          atMs,
+        );
+        break;
+      case "stt_eager_eot":
+        authorityTransition = turnAuthority.acceptTentativeEot(atMs);
+        break;
+      case "stt_final":
+        authorityTransition = turnAuthority.commitTranscript(
+          event.text,
+          event.traceId,
+          atMs,
+        );
+        break;
+      case "llm_first_text":
+        authorityTransition = turnAuthority.acceptModelStarted(
+          event.traceId,
+          atMs,
+        );
+        break;
+      case "speaking_start":
+        authorityTransition = turnAuthority.acceptSpeakingStarted(
+          event.traceId,
+          atMs,
+        );
+        break;
+      case "speaking_end":
+        authorityTransition = turnAuthority.acceptSpeakingEnded(
+          event.traceId,
+          atMs,
+        );
+        break;
+      case "turn_end":
+        authorityTransition = turnAuthority.acceptTurnEnded(
+          event.traceId,
+          event.outcome,
+          atMs,
+        );
+        break;
+      case "interrupted":
+        authorityTransition = turnAuthority.acceptInterrupted(
+          event.traceId,
+          event.reason,
+          atMs,
+        );
+        break;
+      case "navigate_view":
+      case "usage":
+      case "error":
+        if (!turnAuthority.acceptsResponseControlTrace(event.traceId)) {
+          mark("not_reached(stale_control)", event.traceId ?? state.traceId);
+          return;
+        }
+        break;
+    }
+
+    if (authorityTransition) {
+      if (!authorityTransition.accepted) {
+        mark(
+          `not_reached(coordinator_${authorityTransition.rejection ?? "rejected"})`,
+          "traceId" in event ? (event.traceId ?? state.traceId) : state.traceId,
+        );
+        return;
+      }
+      applyAuthorityEffects(
+        authorityTransition,
+        "traceId" in event ? (event.traceId ?? state.traceId) : state.traceId,
+      );
+    }
+
     setState(applyServerEvent(state, event));
     if (!isLifecycleCurrent(generation) || ws !== socket) return;
     options.onServerEvent?.(event);
@@ -569,7 +885,12 @@ export function createVoiceSessionClient(
         lastLiveAtMs = now();
         everLiveThisLifecycle = true;
         // Client-owned: begin capture, then listening.
-        void startCapture(generation, socket);
+        {
+          const sessionLease = turnAuthority.currentSessionLease();
+          if (sessionLease) {
+            void startCapture(generation, socket, sessionLease);
+          }
+        }
         break;
       case "stt_final":
         mark("stt_final", event.traceId);
@@ -588,15 +909,31 @@ export function createVoiceSessionClient(
         mark("speaking_start", event.traceId);
         break;
       case "speaking_end":
+        if (!playbackMayHaveAudio) {
+          rejectCurrentProvisionalSpeech();
+        }
         mark("speaking_end", event.traceId);
         // Turn complete → loop back to listening once emitted.
+        setState(loopToListening(state));
+        break;
+      case "turn_end":
+        if (
+          event.outcome === "no_response" ||
+          event.outcome === "displayed" ||
+          !playbackMayHaveAudio
+        ) {
+          // A punctuation/noise-only STT final is not speech confirmation.
+          // Its no_response terminal releases the bounded provisional pause so
+          // the retained prior tail continues instead of being false-cut off.
+          rejectCurrentProvisionalSpeech();
+        }
+        mark(`turn_end(${event.outcome})`, event.traceId);
         setState(loopToListening(state));
         break;
       case "interrupted":
         // Reconcile: the server confirms the interruption. Ensure local audio is
         // silenced (idempotent with an optimistic local flush) and loop to
         // listening.
-        playback?.flush();
         mark("interrupted", event.traceId);
         setState(loopToListening(state));
         break;
@@ -616,6 +953,11 @@ export function createVoiceSessionClient(
         }
         break;
       case "usage":
+        // Compatibility/safety terminal: pre-turn_end servers ended a
+        // no-audio turn at usage, and a malformed turn_end is ignored. The
+        // reducer only marks Thinking complete, so this cannot cut speech.
+        if (state.phase === "complete") setState(loopToListening(state));
+        break;
       case "navigate_view":
       case "stt_partial":
       case "stt_eager_eot":
@@ -626,12 +968,14 @@ export function createVoiceSessionClient(
   async function startCapture(
     generation: number,
     socket: VoiceWebSocketLike,
+    sessionLease: VoiceSessionLease,
   ): Promise<void> {
     if (
       mic ||
       captureSocket === socket ||
       !isLifecycleCurrent(generation) ||
-      ws !== socket
+      ws !== socket ||
+      !turnAuthority.isSessionLeaseCurrent(sessionLease)
     ) {
       return;
     }
@@ -642,8 +986,12 @@ export function createVoiceSessionClient(
     try {
       const createdMic = await startVoiceMicCapture({
         onFrame: (bytes) => {
-          if (isLifecycleCurrent(generation) && ws === socket) {
-            sendUplinkAudio(bytes);
+          if (
+            isLifecycleCurrent(generation) &&
+            ws === socket &&
+            turnAuthority.isSessionLeaseCurrent(sessionLease)
+          ) {
+            sendUplinkAudio(bytes, sessionLease);
           }
         },
         onSuspend: () => {
@@ -659,11 +1007,34 @@ export function createVoiceSessionClient(
         onError: (err) => {
           if (isLifecycleCurrent(generation) && ws === socket) emitError(err);
         },
+        ...(provisionalBargeInEnabled
+          ? {
+              onProvisionalSpeechStart: beginProvisionalBargeIn,
+              ...(options.provisionalBargeIn?.detector
+                ? {
+                    provisionalSpeechStart: options.provisionalBargeIn.detector,
+                  }
+                : {}),
+              isProvisionalSpeechStartEnabled: () =>
+                isLifecycleCurrent(generation) &&
+                ws === socket &&
+                turnAuthority.isSessionLeaseCurrent(sessionLease) &&
+                !microphoneMuted &&
+                isPlaybackInterruptible() &&
+                Boolean(playback?.unlocked),
+              now,
+            }
+          : {}),
         getUserMedia: options.getUserMedia,
         createAudioContext: options.createMicAudioContext,
         signal: captureController.signal,
       });
-      if (!isLifecycleCurrent(generation) || ws !== socket || mic) {
+      if (
+        !isLifecycleCurrent(generation) ||
+        ws !== socket ||
+        !turnAuthority.isSessionLeaseCurrent(sessionLease) ||
+        mic
+      ) {
         // error-policy:J6 best-effort release of a mic whose session was superseded before it attached.
         await createdMic.stop().catch(() => {});
         return;
@@ -862,6 +1233,9 @@ export function createVoiceSessionClient(
   ): Promise<void> {
     if (!isLifecycleCurrent(generation) || intentionalClose) return;
     clearRotationTimer();
+    const reconnecting = turnAuthority.enterReconnecting(now());
+    applyAuthorityEffects(reconnecting);
+    clearAuthorityTimers();
     // The transport is already gone, so publish that fact before a browser
     // driver is allowed to delay microphone teardown. Later retry attempts
     // re-arm the caller's connect watchdog from inside the loop.
@@ -961,6 +1335,10 @@ export function createVoiceSessionClient(
     disposed = true;
     intentionalClose = true;
     microphoneMuted = false;
+    const closingAuthority = turnAuthority.close(now());
+    applyAuthorityEffects(closingAuthority);
+    clearAuthorityTimers();
+    setPlaybackMayHaveAudio(false);
     const stoppedGeneration = ++lifecycleGeneration;
     lifecycleAbort?.abort();
     lifecycleAbort = null;
@@ -1030,6 +1408,8 @@ export function createVoiceSessionClient(
       lastLiveAtMs = null;
       everLiveThisLifecycle = false;
       microphoneMuted = false;
+      setPlaybackMayHaveAudio(false);
+      clearAuthorityTimers();
       setState({ ...INITIAL_VOICE_SESSION_STATE, phase: "connecting" });
       // Create playback up front so an early user-gesture unlock is possible and
       // downlink frames after `ready` have a sink.
@@ -1045,8 +1425,18 @@ export function createVoiceSessionClient(
               emitPlaybackUnlockState(required);
             }
           },
-          onDrained: () => {
+          onDrained: (sequence) => {
             if (isLifecycleCurrent(generation)) {
+              const drained = turnAuthority.acceptPlaybackDrained(
+                sequence,
+                now(),
+              );
+              if (!drained.accepted) {
+                mark("not_reached(stale_playback_drain)", state.traceId);
+                return;
+              }
+              setPlaybackMayHaveAudio(false);
+              rejectCurrentProvisionalSpeech();
               mark("playback_drained", state.traceId);
             }
           },
@@ -1088,9 +1478,11 @@ export function createVoiceSessionClient(
       if (disposed) return;
       // Flush local audible output IMMEDIATELY — do NOT wait for the server
       // `interrupted` event. Then optimistically fold state and notify server.
-      playback?.flush();
+      const interrupted = turnAuthority.explicitInterrupt(now());
+      if (!interrupted.accepted) return;
+      applyAuthorityEffects(interrupted);
       setState(applyClientAction(state, { type: "client/local_barge_in" }));
-      sendControl({ t: "barge_in" });
+      sendControl({ t: "barge_in" }, turnAuthority.currentSessionLease());
       mark("barge_in_sent", state.traceId);
     },
 
@@ -1101,6 +1493,9 @@ export function createVoiceSessionClient(
     setMicrophoneMuted(muted) {
       if (disposed || microphoneMuted === muted) return;
       microphoneMuted = muted;
+      if (muted) {
+        rejectCurrentProvisionalSpeech();
+      }
       mark(muted ? "mic_muted" : "mic_unmuted", state.traceId);
     },
 

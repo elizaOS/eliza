@@ -311,6 +311,7 @@ afterEach(() => {
   appMock.value.chatSending = false;
   composerMock.value.chatSending = false;
   appMock.value.chatFirstTokenReceived = false;
+  appMock.value.handleChatStop.mockClear();
   appMock.serverTurnStatus = null;
   appMock.value.sendChatText.mockClear();
   appMock.value.setActionNotice.mockClear();
@@ -815,6 +816,25 @@ describe("useShellController — turnStatus derivation", () => {
 
     expect(result.current.responding).toBe(true);
     expect(result.current.turnStatus).toEqual({ kind: "thinking" });
+  });
+
+  it("routes Stop during realtime Thinking to barge-in before playout exists", () => {
+    realtimeVoiceMock.enabled = true;
+    realtimeVoiceMock.state.active = true;
+    realtimeVoiceMock.state.status = "thinking";
+    realtimeVoiceMock.state.agentSpeaking = false;
+    composerMock.value.chatSending = false;
+    voiceOutputMock.speaking = false;
+
+    const { result } = renderHook(() => useShellController());
+    expect(result.current.responding).toBe(true);
+    expect(result.current.speaking).toBe(false);
+
+    act(() => result.current.stop());
+
+    expect(realtimeVoiceMock.bargeIn).toHaveBeenCalledTimes(1);
+    expect(appMock.value.handleChatStop).not.toHaveBeenCalled();
+    expect(voiceOutputMock.stopSpeaking).toHaveBeenCalledTimes(1);
   });
 });
 

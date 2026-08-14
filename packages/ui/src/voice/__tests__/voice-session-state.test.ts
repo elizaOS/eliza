@@ -91,6 +91,27 @@ describe("voice-session-state machine (§7.4)", () => {
     expect(loopToListening(s).phase).toBe("listening");
   });
 
+  it.each(["displayed", "no_response", "error", "stopped"] as const)(
+    "turn_end(%s) terminates a committed turn that produced no speaking_end",
+    (outcome) => {
+      const thinking = applyServerEvent(fresh(), {
+        t: "stt_final",
+        text: "please respond",
+        traceId: "T-terminal",
+      });
+      expect(thinking.phase).toBe("thinking");
+
+      const ended = applyServerEvent(thinking, {
+        t: "turn_end",
+        outcome,
+        traceId: "T-terminal",
+      });
+
+      expect(ended.phase).toBe("complete");
+      expect(loopToListening(ended).phase).toBe("listening");
+    },
+  );
+
   it("server is authoritative for interrupted; local barge-in is optimistic", () => {
     let s = applyServerEvent(fresh(), { t: "speaking_start", traceId: "T2" });
     expect(s.phase).toBe("speaking");
@@ -149,7 +170,7 @@ describe("voice-session-state machine (§7.4)", () => {
     expect(retry.lastError?.retryable).toBe(true);
   });
 
-  it("usage events carry trace but never change phase", () => {
+  it("usage defensively completes thinking but never cuts active speech short", () => {
     const speaking = applyServerEvent(fresh(), {
       t: "speaking_start",
       traceId: "T4",
@@ -162,6 +183,20 @@ describe("voice-session-state machine (§7.4)", () => {
     });
     expect(after.phase).toBe("speaking");
     expect(after.traceId).toBe("T4");
+
+    const thinking = applyServerEvent(fresh(), {
+      t: "stt_final",
+      text: "please respond",
+      traceId: "T5",
+    });
+    const settled = applyServerEvent(thinking, {
+      t: "usage",
+      sttMs: 10,
+      ttsChars: 0,
+      traceId: "T5",
+    });
+    expect(settled.phase).toBe("complete");
+    expect(loopToListening(settled).phase).toBe("listening");
   });
 
   it("beginListening only advances from ready/complete", () => {

@@ -32,6 +32,11 @@ import {
   floatPcmToInt16Bytes,
   VOICE_PCM_SAMPLE_RATE,
 } from "./voice-session-pcm";
+import {
+  type ProvisionalSpeechStartConfig,
+  ProvisionalSpeechStartDetector,
+  type ProvisionalSpeechStartEvent,
+} from "./voice-session-provisional-speech-start";
 
 /** A device/permission error the caller must surface, not swallow. */
 export class VoiceMicCaptureError extends Error {
@@ -136,6 +141,15 @@ export interface VoiceMicCaptureOptions {
   /** Called on a fatal capture error mid-session. */
   onError?: (error: VoiceMicCaptureError) => void;
   /**
+   * Optional local-only speech onset signal. It is provisional: callers must
+   * wait for server STT confirmation before cancelling remote work.
+   */
+  onProvisionalSpeechStart?: (event: ProvisionalSpeechStartEvent) => void;
+  /** Conservative detector thresholds for the optional onset signal. */
+  provisionalSpeechStart?: ProvisionalSpeechStartConfig;
+  /** Whether onset evidence is currently relevant (normally agent speaking). */
+  isProvisionalSpeechStartEnabled?: () => boolean;
+  /**
    * Target uplink frame duration (ms). The contract wants small frames
    * (~100-320ms); default 100ms = 1600 samples @16k = 3200 bytes.
    */
@@ -160,6 +174,8 @@ export interface VoiceMicCaptureOptions {
     removeListener: (listener: () => void) => void;
     isHidden: () => boolean;
   };
+  /** Monotonic clock for provisional speech-start telemetry (tests inject). */
+  now?: () => number;
 }
 
 const WORKLET_NAME = "eliza-voice-session-uplink";
@@ -402,6 +418,13 @@ export async function startVoiceMicCapture(
   const ctx = acquiredContext;
   const source = acquiredSource;
   const resampler = new StreamingResampler(ctx.sampleRate);
+  const speechStartDetector = options.onProvisionalSpeechStart
+    ? new ProvisionalSpeechStartDetector(options.provisionalSpeechStart)
+    : null;
+  const now =
+    options.now ??
+    (() =>
+      typeof performance !== "undefined" ? performance.now() : Date.now());
 
   let stopped = false;
   let suspended = false;
@@ -412,6 +435,18 @@ export async function startVoiceMicCapture(
     if (stopped || suspended) return;
     const resampled = resampler.push(mono);
     if (resampled.length === 0) return;
+    if (speechStartDetector) {
+      if (options.isProvisionalSpeechStartEnabled?.() ?? true) {
+        const event = speechStartDetector.push(
+          resampled,
+          VOICE_PCM_SAMPLE_RATE,
+          now(),
+        );
+        if (event) options.onProvisionalSpeechStart?.(event);
+      } else {
+        speechStartDetector.reset();
+      }
+    }
     const merged = new Float32Array(pending.length + resampled.length);
     merged.set(pending);
     merged.set(resampled, pending.length);
@@ -515,6 +550,7 @@ export async function startVoiceMicCapture(
     if (visibility.isHidden()) {
       if (!suspended) {
         suspended = true;
+        speechStartDetector?.reset();
         // error-policy:J5 a failed suspend is inert: the `suspended` gate already stops frame emission, which is the state the caller observes.
         void ctx.suspend?.().catch(() => {});
         options.onSuspend?.();

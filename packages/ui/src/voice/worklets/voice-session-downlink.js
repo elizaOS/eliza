@@ -6,15 +6,29 @@ class ElizaVoiceSessionDownlink extends AudioWorkletProcessor {
     this.queue = [];
     this.readOffset = 0;
     this.hadAudio = false;
+    this.paused = false;
+    this.latestSequence = 0;
     this.port.onmessage = (event) => {
       const data = event.data;
       if (!data) return;
       if (data.type === "pcm" && data.pcm) {
         this.queue.push(data.pcm);
         this.hadAudio = true;
+        if (Number.isSafeInteger(data.sequence)) {
+          this.latestSequence = data.sequence;
+        }
       } else if (data.type === "flush") {
         this.queue = [];
         this.readOffset = 0;
+        this.hadAudio = false;
+        this.paused = false;
+        if (Number.isSafeInteger(data.sequence)) {
+          this.latestSequence = data.sequence;
+        }
+      } else if (data.type === "pause") {
+        this.paused = true;
+      } else if (data.type === "resume") {
+        this.paused = false;
       }
     };
   }
@@ -23,6 +37,10 @@ class ElizaVoiceSessionDownlink extends AudioWorkletProcessor {
     const output = outputs[0];
     const firstChannel = output[0];
     if (!firstChannel) return true;
+    if (this.paused) {
+      for (const channel of output) channel.fill(0);
+      return true;
+    }
     for (let i = 0; i < firstChannel.length; i += 1) {
       while (
         this.queue.length > 0 &&
@@ -35,7 +53,10 @@ class ElizaVoiceSessionDownlink extends AudioWorkletProcessor {
         firstChannel[i] = 0;
         if (this.hadAudio) {
           this.hadAudio = false;
-          this.port.postMessage({ type: "drained" });
+          this.port.postMessage({
+            type: "drained",
+            sequence: this.latestSequence,
+          });
         }
       } else {
         firstChannel[i] = this.queue[0][this.readOffset];

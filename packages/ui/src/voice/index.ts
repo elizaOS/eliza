@@ -113,6 +113,7 @@ export {
 } from "./voice-selftest/voice-selftest-harness";
 export {
   createVoiceSessionClient,
+  type ProvisionalBargeInOptions,
   type VoiceSessionClient,
   type VoiceSessionClientOptions,
   VoiceSessionMintError,
@@ -154,11 +155,19 @@ export {
   negotiateCodec,
   parseServerControl,
   type ServerControlFrame as VoiceSessionServerControlFrame,
+  type ServerTurnEndEvent,
+  type ServerTurnOutcome,
   VOICE_SESSION_PROTOCOL_VERSION as VOICE_SESSION_CLIENT_PROTOCOL_VERSION,
   VOICE_SESSION_SAMPLE_RATE,
   type VoiceSessionCodec,
   type VoiceSessionMintResponse,
 } from "./voice-session-protocol";
+export {
+  DEFAULT_PROVISIONAL_SPEECH_START_CONFIG,
+  type ProvisionalSpeechStartConfig,
+  ProvisionalSpeechStartDetector,
+  type ProvisionalSpeechStartEvent,
+} from "./voice-session-provisional-speech-start";
 export {
   applyClientAction,
   applyServerEvent,

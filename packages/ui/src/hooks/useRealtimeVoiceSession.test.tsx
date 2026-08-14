@@ -295,6 +295,132 @@ describe("useRealtimeVoiceSession", () => {
     expect(result.current.status).toBe("idle");
   });
 
+  it("keeps the real-shell speaking guard true for a buffered tail so an explicit click flushes it", async () => {
+    const { options, ws } = makeOptions();
+    const { result } = renderHook(() => useRealtimeVoiceSession(options));
+
+    const startPromise = beginStart(result);
+    await act(async () => {
+      await flushAsync();
+    });
+    const sock = await driveReady(ws);
+    await expect(startPromise).resolves.toEqual({ kind: "live" });
+    await waitFor(() => expect(result.current.active).toBe(true));
+
+    await act(async () => {
+      sock.emitControl({ t: "speaking_start", traceId: "T1" });
+      sock.emitAudio(new Uint8Array(320));
+      sock.emitControl({ t: "speaking_end", traceId: "T1" });
+      await flushAsync();
+    });
+
+    // Server control has already looped to listening, but the browser sink
+    // still owns 160 queued samples. The normal shell gates its existing
+    // realtime barge-in call on this value, so it must reflect local playout.
+    expect(result.current.status).toBe("listening");
+    expect(result.current.agentSpeaking).toBe(true);
+
+    await act(async () => {
+      if (result.current.agentSpeaking) result.current.bargeIn();
+      await flushAsync();
+    });
+
+    expect(sock.sentControls().some((c) => c.t === "barge_in")).toBe(true);
+    expect(result.current.agentSpeaking).toBe(false);
+    await act(async () => {
+      await result.current.stop();
+    });
+  });
+
+  it("clears the buffered-tail speaking guard when browser playback drains naturally", async () => {
+    const { options, ws, pbCtx } = makeOptions();
+    const { result } = renderHook(() => useRealtimeVoiceSession(options));
+
+    const startPromise = beginStart(result);
+    await act(async () => {
+      await flushAsync();
+    });
+    const sock = await driveReady(ws);
+    await expect(startPromise).resolves.toEqual({ kind: "live" });
+    await waitFor(() => expect(result.current.active).toBe(true));
+
+    await act(async () => {
+      sock.emitControl({ t: "speaking_start", traceId: "T1" });
+      sock.emitAudio(new Uint8Array(320));
+      sock.emitControl({ t: "speaking_end", traceId: "T1" });
+      await flushAsync();
+    });
+    expect(result.current.status).toBe("listening");
+    expect(result.current.agentSpeaking).toBe(true);
+
+    await act(async () => {
+      // 320 PCM16 bytes = 160 samples. Pulling a larger block consumes the
+      // tail and gives the real playback sink room to emit its drain callback.
+      pbCtx.scriptNode?.render(400);
+      await flushAsync();
+    });
+
+    expect(result.current.agentSpeaking).toBe(false);
+    await act(async () => {
+      await result.current.stop();
+    });
+  });
+
+  it("publishes idle immediately during slow teardown without clobbering a newer session", async () => {
+    const closeGate = deferred<void>();
+    const closeStarted = vi.fn();
+    class DeferredPlaybackCloseContext extends FakePlaybackAudioContext {
+      override async close(): Promise<void> {
+        closeStarted();
+        await closeGate.promise;
+        await super.close();
+      }
+    }
+    const { options, ws } = makeOptions({
+      playbackContext: new DeferredPlaybackCloseContext(16_000),
+    });
+    const { result } = renderHook(() => useRealtimeVoiceSession(options));
+    const firstStart = beginStart(result);
+    await act(async () => {
+      await flushAsync();
+    });
+    await driveReady(ws, "s1", "T1");
+    await expect(firstStart).resolves.toEqual({ kind: "live" });
+    await waitFor(() => expect(result.current.active).toBe(true));
+
+    let oldStop!: Promise<void>;
+    act(() => {
+      oldStop = result.current.stop();
+    });
+
+    expect(closeStarted).toHaveBeenCalledTimes(1);
+    expect(result.current.active).toBe(false);
+    expect(result.current.connecting).toBe(false);
+    expect(result.current.agentSpeaking).toBe(false);
+    expect(result.current.status).toBe("idle");
+
+    const secondStart = beginStart(result);
+    await act(async () => {
+      await flushAsync();
+    });
+    expect(ws.sockets).toHaveLength(2);
+    await driveReady(ws, "s2", "T2");
+    await expect(secondStart).resolves.toEqual({ kind: "live" });
+    await waitFor(() => expect(result.current.active).toBe(true));
+
+    closeGate.resolve();
+    await act(async () => {
+      await oldStop;
+      await flushAsync();
+    });
+
+    expect(result.current.active).toBe(true);
+    expect(result.current.status).toBe("listening");
+    await act(async () => {
+      await result.current.stop();
+    });
+  });
+
   it("does not report active until socket open + server ready + mic capturing (truthful `active`)", async () => {
     const { options, ws, micCtx } = makeOptions();
     const { result } = renderHook(() => useRealtimeVoiceSession(options));
