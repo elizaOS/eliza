@@ -426,6 +426,124 @@ describe("selectOrProvisionCloudAgent — fresh create follows its job", () => {
     expect((error as CloudAgentWakeError).message).toMatch(/image pull failed/);
     expect(getCloudCompatAgent).not.toHaveBeenCalled();
   });
+
+  it("returns the create receipt when cancellation lands during job polling", async () => {
+    const controller = new AbortController();
+    const reason = new DOMException("cancelled", "AbortError");
+    let markJobReadStarted!: () => void;
+    let releaseJobRead!: () => void;
+    const jobReadStarted = new Promise<void>((resolve) => {
+      markJobReadStarted = resolve;
+    });
+    const releaseJob = new Promise<void>((resolve) => {
+      releaseJobRead = resolve;
+    });
+    const client = fakeClient({
+      getCloudCompatAgents: vi.fn(async () => ({ success: true, data: [] })),
+      createCloudCompatAgent: vi.fn(async () => ({
+        success: true,
+        created: true,
+        data: {
+          agentId: "agent-new",
+          agentName: "Eliza",
+          jobId: "job-9",
+          status: "provisioning",
+          nodeId: null,
+          message: "",
+        },
+      })),
+      getCloudCompatJobStatus: vi.fn(async () => {
+        markJobReadStarted();
+        await releaseJob;
+        return {
+          success: true,
+          data: { status: "in_progress", state: "in_progress" },
+        };
+      }),
+    });
+
+    const selection = client.selectOrProvisionCloudAgent({
+      cloudApiBase: "https://api.eliza.app/api/v1",
+      authToken: "test-token",
+      name: "Eliza",
+      signal: controller.signal,
+      wakePollIntervalMs: 1,
+      wakeTimeoutMs: 1_000,
+    });
+    await jobReadStarted;
+    controller.abort(reason);
+    releaseJobRead();
+
+    await expect(selection).resolves.toMatchObject({
+      agentId: "agent-new",
+      created: true,
+    });
+  });
+
+  it("returns the create receipt when cancellation lands during running polling", async () => {
+    const controller = new AbortController();
+    const reason = new DOMException("cancelled", "AbortError");
+    let markRunningReadStarted!: () => void;
+    let resolveRunningRead!: () => void;
+    const runningReadStarted = new Promise<void>((resolve) => {
+      markRunningReadStarted = resolve;
+    });
+    const releaseRunningRead = new Promise<void>((resolve) => {
+      resolveRunningRead = resolve;
+    });
+    const startingAgent = makeAgent({
+      agent_id: "agent-new",
+      status: "starting",
+      web_ui_url: "https://agent-new.cloud.eliza.app",
+      webUiUrl: "https://agent-new.cloud.eliza.app",
+    });
+    const getCloudCompatAgent = vi
+      .fn()
+      .mockResolvedValueOnce({ success: true, data: startingAgent })
+      .mockImplementationOnce(async () => {
+        markRunningReadStarted();
+        await releaseRunningRead;
+        return { success: true, data: startingAgent };
+      });
+    const client = fakeClient({
+      getCloudCompatAgents: vi.fn(async () => ({ success: true, data: [] })),
+      createCloudCompatAgent: vi.fn(async () => ({
+        success: true,
+        created: true,
+        data: {
+          agentId: "agent-new",
+          agentName: "Eliza",
+          jobId: "job-9",
+          status: "provisioning",
+          nodeId: null,
+          message: "",
+        },
+      })),
+      getCloudCompatJobStatus: vi.fn(async () => ({
+        success: true,
+        data: { status: "completed", state: "completed" },
+      })),
+      getCloudCompatAgent,
+      resumeCloudCompatAgent: vi.fn(async () => ({ success: true })),
+    });
+
+    const selection = client.selectOrProvisionCloudAgent({
+      cloudApiBase: "https://api.eliza.app/api/v1",
+      authToken: "test-token",
+      name: "Eliza",
+      signal: controller.signal,
+      wakePollIntervalMs: 1,
+      wakeTimeoutMs: 1_000,
+    });
+    await runningReadStarted;
+    controller.abort(reason);
+    resolveRunningRead();
+
+    await expect(selection).resolves.toMatchObject({
+      agentId: "agent-new",
+      created: true,
+    });
+  });
 });
 
 describe("CloudAgentWakeError — real typed-error identity", () => {

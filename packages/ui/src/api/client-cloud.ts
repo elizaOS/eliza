@@ -4165,20 +4165,21 @@ ElizaClient.prototype.selectOrProvisionCloudAgent = async function (
   }
   requireConfirmedFreshCloudAgentCreate(mustForceCreate, created.created);
   const agentId = created.data.agentId;
+  const cancellationReceipt = () => ({
+    agentId,
+    agentName: created.data.agentName || name,
+    apiBase: buildCloudSharedAgentApiBase(resolvedCloudApiBase, agentId),
+    bridgeUrl: null,
+    created: created.created !== false,
+    requiresAgentPairing: false,
+    executionTier: preferSharedTier ? ("shared" as const) : null,
+  });
   // A create cannot be safely abandoned after the server has accepted it: the
   // caller needs the authoritative id in order to compensate. Return the
   // receipt immediately and let the join controller delete it before its
   // cancellation promise settles.
   if (options.signal?.aborted) {
-    return {
-      agentId,
-      agentName: created.data.agentName || name,
-      apiBase: buildCloudSharedAgentApiBase(resolvedCloudApiBase, agentId),
-      bridgeUrl: null,
-      created: created.created !== false,
-      requiresAgentPairing: false,
-      executionTier: preferSharedTier ? "shared" : null,
-    };
+    return cancellationReceipt();
   }
   // The provisioning-job wait and the running wait below are two halves of ONE
   // join, so they share ONE budget. Giving each the full wake timeout let a job
@@ -4194,16 +4195,23 @@ ElizaClient.prototype.selectOrProvisionCloudAgent = async function (
   // to terminal — its row carries the real failure reason long before the
   // agent-detail poll below would time out — instead of discarding the id.
   if (created.data.jobId) {
-    await waitForCloudProvisionJob(this, {
-      agentId,
-      jobId: created.data.jobId,
-      ...(typeof options.wakePollIntervalMs === "number"
-        ? { pollIntervalMs: options.wakePollIntervalMs }
-        : {}),
-      timeoutMs: remainingWakeMs(),
-      ...(onProgress ? { onProgress } : {}),
-      ...(options.signal ? { signal: options.signal } : {}),
-    });
+    try {
+      await waitForCloudProvisionJob(this, {
+        agentId,
+        jobId: created.data.jobId,
+        ...(typeof options.wakePollIntervalMs === "number"
+          ? { pollIntervalMs: options.wakePollIntervalMs }
+          : {}),
+        timeoutMs: remainingWakeMs(),
+        ...(onProgress ? { onProgress } : {}),
+        ...(options.signal ? { signal: options.signal } : {}),
+      });
+    } catch (error) {
+      if (options.signal?.aborted && error === options.signal.reason) {
+        return cancellationReceipt();
+      }
+      throw error;
+    }
   }
   // error-policy:J4 detail is an optimization probe (warm-pool fast path);
   // on failure the standard dedicated subdomain is still the desired default.
@@ -4233,15 +4241,22 @@ ElizaClient.prototype.selectOrProvisionCloudAgent = async function (
     detailAgent.status !== "running" &&
     isDedicatedCloudAgentBase(initialDedicatedApiBase)
   ) {
-    detailAgent = await waitForCloudAgentRunning(this, {
-      agentId,
-      ...(typeof options.wakePollIntervalMs === "number"
-        ? { pollIntervalMs: options.wakePollIntervalMs }
-        : {}),
-      timeoutMs: remainingWakeMs(),
-      ...(onProgress ? { onProgress } : {}),
-      ...(options.signal ? { signal: options.signal } : {}),
-    });
+    try {
+      detailAgent = await waitForCloudAgentRunning(this, {
+        agentId,
+        ...(typeof options.wakePollIntervalMs === "number"
+          ? { pollIntervalMs: options.wakePollIntervalMs }
+          : {}),
+        timeoutMs: remainingWakeMs(),
+        ...(onProgress ? { onProgress } : {}),
+        ...(options.signal ? { signal: options.signal } : {}),
+      });
+    } catch (error) {
+      if (options.signal?.aborted && error === options.signal.reason) {
+        return cancellationReceipt();
+      }
+      throw error;
+    }
   }
   const apiBase = useSharedAdapter
     ? buildCloudSharedAgentApiBase(resolvedCloudApiBase, agentId)
