@@ -7946,6 +7946,7 @@
   "cloud.autoTopUp.amountMax": "Amount can't exceed $",
   "cloud.autoTopUp.amountMin": "Amount must be at least $",
   "cloud.autoTopUp.description": "Automatically charge your saved card when credits dip below the threshold. Earnings auto-fund runs first, so this only fires if earnings can't cover the gap.",
+  "cloud.autoTopUp.enableDescription": "When on, your saved card is charged automatically when credits dip below the threshold. When off, the card is not charged automatically.",
   "cloud.autoTopUp.enableLabel": "Enable card auto top-up",
   "cloud.autoTopUp.noPaymentMethod": "No saved payment method. Add a card on the billing page first to enable auto top-up.",
   "cloud.autoTopUp.offState": "Currently off — card won't be charged automatically.",
