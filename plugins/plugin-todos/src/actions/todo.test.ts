@@ -8,9 +8,10 @@ import type {
   IAgentRuntime,
   Memory,
 } from "@elizaos/core";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { currentTodosProvider } from "../providers/current-todos.js";
+import { TODO_LIST_LIMIT_ERROR_CODE, TodosService } from "../service.js";
 import { TODOS_SERVICE_TYPE } from "../types.js";
 import { todoAction } from "./todo.js";
 
@@ -40,6 +41,7 @@ class FakeTodosService {
   private nextId = 0;
   rows: StoredTodo[] = [];
   failOn: string | null = null;
+  listCallCount = 0;
 
   private throwIf(operation: string): void {
     if (this.failOn === operation) {
@@ -88,6 +90,7 @@ class FakeTodosService {
     includeCompleted?: boolean;
     limit?: number;
   }): Promise<StoredTodo[]> {
+    this.listCallCount++;
     this.throwIf("list");
     let results = this.rows.filter((r) => {
       if (r.entityId !== filter.entityId) return false;
@@ -101,7 +104,7 @@ class FakeTodosService {
       }
       return true;
     });
-    if (filter.limit && Number.isSafeInteger(filter.limit) && filter.limit > 0) {
+    if (filter.limit !== undefined) {
       results = results.slice(0, filter.limit);
     }
     return results;
@@ -633,7 +636,7 @@ describe("TODO action", () => {
     });
   });
 
-  describe("action=list with limit validation", () => {
+  describe("action=list limit validation", () => {
     beforeEach(async () => {
       // Create 5 todos for limit testing
       for (let i = 1; i <= 5; i++) {
@@ -655,72 +658,69 @@ describe("TODO action", () => {
       expect(data.todos.length).toBe(3);
     });
 
-    it("rejects limit=0 with invalid_param error", async () => {
-      const result = await invoke(runtime, {
-        action: "list",
-        limit: 0,
-      });
-      expect(result.success).toBe(false);
-      expect(result.text).toContain("invalid_param");
-      expect(result.text).toContain("positive integer");
-    });
-
-    it("rejects negative limit with invalid_param error", async () => {
-      const result = await invoke(runtime, {
-        action: "list",
-        limit: -5,
-      });
-      expect(result.success).toBe(false);
-      expect(result.text).toContain("invalid_param");
-    });
-
-    it("rejects fractional limit (2.5) with invalid_param error", async () => {
-      const result = await invoke(runtime, {
-        action: "list",
-        limit: 2.5,
-      });
-      expect(result.success).toBe(false);
-      expect(result.text).toContain("invalid_param");
-    });
-
-    it("treats NaN limit as undefined (readNumber filters it out)", async () => {
-      // readNumber returns undefined for NaN, so no validation error occurs
-      const result = await invoke(runtime, {
-        action: "list",
-        limit: Number.NaN,
-      });
-      expect(result.success).toBe(true);
-      const data = result.data as { todos: unknown[] };
-      expect(data.todos.length).toBe(5);
-    });
-
     it("omitted limit returns all results (unlimited)", async () => {
       const result = await invoke(runtime, { action: "list" });
       expect(result.success).toBe(true);
       const data = result.data as { todos: unknown[] };
       expect(data.todos.length).toBe(5);
+      expect(service.listCallCount).toBe(1);
     });
 
-    it("parses numeric string limit correctly", async () => {
-      const result = await invoke(runtime, {
-        action: "list",
-        limit: "3",
-      });
-      expect(result.success).toBe(true);
-      const data = result.data as { todos: unknown[] };
-      expect(data.todos.length).toBe(3);
-    });
+    it.each([
+      ["zero", 0],
+      ["negative", -5],
+      ["fraction", 2.5],
+      ["NaN", Number.NaN],
+      ["infinity", Number.POSITIVE_INFINITY],
+      ["unsafe integer", Number.MAX_SAFE_INTEGER + 1],
+      ["numeric string", "3"],
+      ["non-numeric string", "abc"],
+      ["null", null],
+      ["boolean", false],
+      ["explicit undefined", undefined],
+    ])(
+      "rejects a supplied %s before calling the service",
+      async (_name, limit) => {
+        const result = await invoke(runtime, {
+          action: "list",
+          limit,
+        });
+        expect(result.success).toBe(false);
+        expect(result.text).toContain("invalid_param");
+        expect(result.text).toContain("positive safe integer number");
+        expect(service.listCallCount).toBe(0);
+      },
+    );
+  });
 
-    it("treats non-numeric string limit as undefined (no limit applied)", async () => {
-      // readNumber("abc") returns undefined, so no validation occurs
-      const result = await invoke(runtime, {
-        action: "list",
-        limit: "abc",
-      });
-      expect(result.success).toBe(true);
-      const data = result.data as { todos: unknown[] };
-      expect(data.todos.length).toBe(5);
-    });
+  describe("TodosService.list limit validation", () => {
+    it.each([
+      ["zero", 0],
+      ["negative", -1],
+      ["fraction", 1.5],
+      ["NaN", Number.NaN],
+      ["numeric string", "2"],
+      ["explicit undefined", undefined],
+    ])(
+      "rejects a supplied %s before reading the database",
+      async (_name, limit) => {
+        const select = vi.fn();
+        const directService = new TodosService({
+          db: { select },
+        } as unknown as IAgentRuntime);
+
+        await expect(
+          directService.list({
+            entityId: ENTITY,
+            limit: limit as number,
+          }),
+        ).rejects.toMatchObject({
+          name: "ElizaError",
+          code: TODO_LIST_LIMIT_ERROR_CODE,
+        });
+        expect(select).not.toHaveBeenCalled();
+      },
+    );
   });
 
   describe("persistence failures", () => {

@@ -3,7 +3,13 @@
  * scoped by `(agentId, entityId)` with optional `roomId`/`worldId` narrowing.
  * Requires `runtime.db` from `@elizaos/plugin-sql`; throws if it is absent.
  */
-import { type IAgentRuntime, logger, Service, type UUID } from "@elizaos/core";
+import {
+  ElizaError,
+  type IAgentRuntime,
+  logger,
+  Service,
+  type UUID,
+} from "@elizaos/core";
 import { and, desc, eq, inArray } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 
@@ -43,6 +49,13 @@ export interface UpdateTodoInput {
   status?: TodoStatus;
   parentTodoId?: string | null;
   metadata?: Record<string, unknown>;
+}
+
+export const TODO_LIST_LIMIT_ERROR_CODE = "TODO_INVALID_LIST_LIMIT";
+
+/** Return true only for executable SQL limits accepted by the TODO contract. */
+export function isValidTodoListLimit(value: unknown): value is number {
+  return typeof value === "number" && Number.isSafeInteger(value) && value > 0;
 }
 
 function rowToTodo(row: TodoRow): Todo {
@@ -127,6 +140,20 @@ export class TodosService extends Service {
   }
 
   async list(filter: TodoFilter): Promise<Todo[]> {
+    let limit: number | undefined;
+    if (Object.hasOwn(filter, "limit")) {
+      if (!isValidTodoListLimit(filter.limit)) {
+        throw new ElizaError(
+          `${TODOS_LOG_PREFIX} limit must be a positive safe integer`,
+          {
+            code: TODO_LIST_LIMIT_ERROR_CODE,
+            context: { receivedType: typeof filter.limit },
+          },
+        );
+      }
+      limit = filter.limit;
+    }
+
     const db = this.getDb();
     const conditions = [eq(todosTable.entityId, filter.entityId as UUID)];
     if (filter.agentId) {
@@ -146,21 +173,12 @@ export class TodosService extends Service {
       );
     }
 
-    // Validate limit before building query
-    if (filter.limit !== undefined) {
-      if (!Number.isSafeInteger(filter.limit) || filter.limit <= 0) {
-        throw new Error(
-          `${TODOS_LOG_PREFIX} limit must be a positive integer; received ${filter.limit}`,
-        );
-      }
-    }
-
     const query = db
       .select()
       .from(todosTable)
       .where(and(...conditions))
       .orderBy(desc(todosTable.updatedAt));
-    const rows = filter.limit ? await query.limit(filter.limit) : await query;
+    const rows = limit === undefined ? await query : await query.limit(limit);
     return rows.map(rowToTodo);
   }
 

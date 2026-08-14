@@ -26,6 +26,7 @@ import type {
 import {
   type CreateTodoInput,
   getTodosService,
+  isValidTodoListLimit,
   type TodosService,
   type UpdateTodoInput,
 } from "../service.js";
@@ -90,15 +91,6 @@ function readBoolean(value: unknown): boolean | undefined {
     const v = value.trim().toLowerCase();
     if (v === "true" || v === "1" || v === "yes") return true;
     if (v === "false" || v === "0" || v === "no") return false;
-  }
-  return undefined;
-}
-
-function readNumber(value: unknown): number | undefined {
-  if (typeof value === "number" && Number.isFinite(value)) return value;
-  if (typeof value === "string" && value.trim()) {
-    const n = Number(value);
-    if (Number.isFinite(n)) return n;
   }
   return undefined;
 }
@@ -416,21 +408,19 @@ async function actionList({
   callback,
 }: ActionHandlerArgs): Promise<ActionResult> {
   const includeCompleted = readBoolean(params.includeCompleted) ?? false;
-  const limit = readNumber(params.limit);
-  if (limit !== undefined) {
-    if (!Number.isSafeInteger(limit) || limit <= 0) {
-      return failure(
-        "invalid_param",
-        "limit must be a positive integer (omit for unlimited results)",
-      );
-    }
+  const hasLimit = Object.hasOwn(params, "limit");
+  if (hasLimit && !isValidTodoListLimit(params.limit)) {
+    return failure(
+      "invalid_param",
+      "limit must be a positive safe integer number (omit for unlimited results)",
+    );
   }
   const filter: Parameters<TodosService["list"]>[0] = {
     entityId: scope.entityId,
     agentId: scope.agentId,
     includeCompleted,
   };
-  if (limit !== undefined) filter.limit = limit;
+  if (hasLimit) filter.limit = params.limit as number;
   const todos = await service.list(filter);
   const text = renderMarkdown(todos);
   await emit(callback, text);
@@ -583,9 +573,10 @@ export const todoAction: Action = {
     },
     {
       name: "limit",
-      description: "Max rows to return for action=list.",
+      description:
+        "Positive safe integer maximum rows to return for action=list; omit for unlimited results.",
       required: false,
-      schema: { type: "number" as const },
+      schema: { type: "integer" as const, minimum: 1 },
     },
   ],
   validate: async (runtime: IAgentRuntime) => Boolean(getTodosService(runtime)),
