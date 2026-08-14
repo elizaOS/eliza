@@ -3317,6 +3317,7 @@
     "bigint-buffer",
   ],
   "patchedDependencies": {
+    "@stwd/sdk@0.11.0": "patches/@stwd%2Fsdk@0.11.0.patch",
     "@solana/rpc-subscriptions-spec@5.5.1": "patches/@solana%2Frpc-subscriptions-spec@5.5.1.patch",
     "@solana/rpc-transformers@5.5.1": "patches/@solana%2Frpc-transformers@5.5.1.patch",
     "@solana/fast-stable-stringify@5.5.1": "patches/@solana%2Ffast-stable-stringify@5.5.1.patch",
