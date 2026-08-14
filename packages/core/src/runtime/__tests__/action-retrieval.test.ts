@@ -720,3 +720,56 @@ describe("action catalogue and retrieval", () => {
 		expect(parentAliasesForCandidateAction("LAUNCH_APP")).toEqual(["APP"]);
 	});
 });
+
+describe("an exact candidate hint is a floor, not a tie-breaker", () => {
+	// Two real bugs pull in opposite directions and BOTH must hold:
+	//   #18948 — a Stage-1 candidate naming a real parent must not lose to fuzzy
+	//            noise (OWNER_REMINDERS lost to CALENDAR on "remind me in 2 min").
+	//   action-tiering — a WRONG Stage-1 candidate must not displace the parent
+	//            the message genuinely points at (VIEWS displaced WEB_FETCH on
+	//            "weather in tokyo").
+	// They collide only when both saturate the 1.0 ceiling, where the comparator
+	// used to fall through to rrfScore — which the hint itself inflates, so the
+	// hint won by construction. Ties now go to independently-earned evidence.
+	it("lifts a named parent above fuzzy competitors", () => {
+		const catalog = buildActionCatalog([
+			{ name: "OWNER_REMINDERS", description: "Create exact-time reminders." },
+			{
+				name: "CALENDAR",
+				description:
+					"Calendar events, scheduling, time, minutes, days, appointments.",
+			},
+		] as never);
+		const response = retrieveActions({
+			catalog,
+			messageText: "remind me in 2 minutes to stretch",
+			candidateActions: ["OWNER_REMINDERS"],
+		} as never);
+		const reminders = response.results.find(
+			(result) => result.name === "OWNER_REMINDERS",
+		);
+		expect(reminders?.rank).toBe(1);
+		expect(reminders?.stageScores.exact).toBe(1);
+	});
+
+	it("does not let a wrong hint outrank the parent the message points at", () => {
+		const catalog = buildActionCatalog([
+			{
+				name: "WEB_FETCH",
+				description: "Fetch current live data from a URL.",
+				contexts: ["web"],
+				similes: ["CURRENT_WEATHER", "LIVE_INFO"],
+			},
+			{ name: "VIEWS", description: "Open app views and arrange panels." },
+		] as never);
+		const response = retrieveActions({
+			catalog,
+			messageText: "weather in tokyo",
+			candidateActions: ["VIEWS"],
+			selectedContexts: ["web"],
+		} as never);
+		expect(
+			response.results.find((result) => result.name === "WEB_FETCH")?.rank,
+		).toBe(1);
+	});
+});

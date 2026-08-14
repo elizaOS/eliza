@@ -488,9 +488,28 @@ export function retrieveActions(
 		};
 	});
 
+	// Evidence this parent earned from the MESSAGE rather than from Stage-1's
+	// hint. `exact` and `regex` are both computed from `candidateActions`, so
+	// they only say "Stage-1 named me"; keyword/bm25/embedding/contextMatch say
+	// "the user's words and this turn's context point here".
+	const independentEvidence = (result: {
+		stageScores: ActionRetrievalResult["stageScores"];
+	}): number =>
+		(result.stageScores.keyword ?? 0) +
+		(result.stageScores.bm25 ?? 0) +
+		(result.stageScores.embedding ?? 0) +
+		(result.stageScores.contextMatch ?? 0);
+
 	results.sort((left, right) => {
 		return (
 			right.score - left.score ||
+			// Both saturated at the ceiling. An exact hint is a FLOOR — it keeps a
+			// named parent from losing to fuzzy noise (#18948: OWNER_REMINDERS lost
+			// to CALENDAR on "remind me in 2 minutes to stretch") — but it must not
+			// also win ties, or a WRONG Stage-1 guess outranks a genuine match, as
+			// candidate VIEWS did to WEB_FETCH on "weather in tokyo". When
+			// confidence is equal, prefer the parent the message itself points at.
+			independentEvidence(right) - independentEvidence(left) ||
 			right.rrfScore - left.rrfScore ||
 			left.normalizedName.localeCompare(right.normalizedName)
 		);
