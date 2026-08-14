@@ -1119,6 +1119,7 @@ if (
   import.meta.url === pathToFileURL(process.argv[1]).href
 ) {
   main().catch(async (err) => {
+    // error-policy:J1 The CLI boundary preserves a shard failure report before exiting non-zero.
     if (args.shard) {
       try {
         await mkdir(outDir, { recursive: true });
@@ -1140,6 +1141,7 @@ if (
           ),
         );
       } catch (writeError) {
+        // error-policy:J1 The process boundary reports failure-artifact loss without masking the original error.
         console.error(
           "story-gate: failed to write fatal shard report",
           writeError,

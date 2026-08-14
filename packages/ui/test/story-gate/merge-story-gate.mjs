@@ -8,7 +8,8 @@
  * pass with a smaller manifest: a cancelled or truncated shard must never be
  * able to produce a green run.
  */
-import { cp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
+import { cp, mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 
 const REPORT_SCHEMA = "eliza_story_gate_v1";
@@ -274,6 +275,51 @@ async function readJson(path) {
   return JSON.parse(await readFile(path, "utf8"));
 }
 
+async function readShardReport(reportPath, shard) {
+  try {
+    return await readJson(reportPath);
+  } catch (error) {
+    // error-policy:J2 Identify the failed shard while retaining the filesystem or parse cause.
+    const kind =
+      error?.code === "ENOENT"
+        ? "missing shard report"
+        : error instanceof SyntaxError
+          ? "invalid shard report JSON"
+          : "unreadable shard report";
+    throw new Error(`${kind}: ${shard}`, { cause: error });
+  }
+}
+
+async function copyShardScreenshots({ reports, screenshotDirs, outDir }) {
+  for (let index = 0; index < reports.length; index++) {
+    const report = reports[index];
+    const screenshots = screenshotDirs[index];
+    const required = report.results
+      .filter((result) => result.verdict === "good")
+      .map((result) => `${result.id}.png`);
+
+    if (!existsSync(screenshots)) {
+      if (required.length) {
+        throw new Error(`missing shard screenshots: ${report.shard}`);
+      }
+      continue;
+    }
+
+    const available = new Set(await readdir(screenshots));
+    const missing = required.filter((name) => !available.has(name));
+    if (missing.length) {
+      throw new Error(
+        `missing screenshots for rendered stories in ${report.shard}: ${missing.join(", ")}`,
+      );
+    }
+
+    await cp(screenshots, join(outDir, "screenshots"), {
+      recursive: true,
+      force: true,
+    });
+  }
+}
+
 export async function mergeStoryGateArtifacts({
   catalogPath,
   inputDir,
@@ -294,9 +340,10 @@ export async function mergeStoryGateArtifacts({
         `story-gate-shard-${index}-of-${shardCount}`,
       );
       const reportPath = join(shardDir, "report.json");
-      const report = await readJson(reportPath).catch(() => {
-        throw new Error(`missing shard report: ${index}/${shardCount}`);
-      });
+      const report = await readShardReport(
+        reportPath,
+        `${index}/${shardCount}`,
+      );
       reports.push(report);
       screenshotDirs.push(join(shardDir, "screenshots"));
     }
@@ -306,7 +353,9 @@ export async function mergeStoryGateArtifacts({
       expectedShards,
     });
     await writeArtifacts(outDir, merged);
+    await copyShardScreenshots({ reports, screenshotDirs, outDir });
   } catch (error) {
+    // error-policy:J1 The aggregation boundary emits a durable failure report before rejecting CI.
     await rm(outDir, { recursive: true, force: true });
     await mkdir(outDir, { recursive: true });
     await writeFile(
@@ -324,12 +373,6 @@ export async function mergeStoryGateArtifacts({
       ),
     );
     throw error;
-  }
-  for (const screenshots of screenshotDirs) {
-    await cp(screenshots, join(outDir, "screenshots"), {
-      recursive: true,
-      force: true,
-    }).catch(() => undefined);
   }
   if (merged.failures.length) {
     const byShard = new Map();
@@ -374,6 +417,7 @@ if (
   resolve(process.argv[1]) === resolve(import.meta.filename)
 ) {
   mergeStoryGateArtifacts(parseCli(process.argv.slice(2))).catch((error) => {
+    // error-policy:J1 The CLI boundary translates an aggregate failure into a non-zero process result.
     console.error(`story-gate merge: ${error.message}`);
     process.exit(1);
   });
