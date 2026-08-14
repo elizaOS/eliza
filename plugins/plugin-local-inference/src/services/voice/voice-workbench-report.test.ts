@@ -153,11 +153,48 @@ describe("buildVoiceWorkbenchReport", () => {
 			},
 		]);
 		expect(report.scenarios[0].measurementCoverage).toEqual([
-			{ metric: "first-audio-latency", count: 0, passed: false },
-			{ metric: "diarization-segments", count: 3, passed: true },
+			{
+				metric: "first-audio-latency",
+				count: 0,
+				expectedCount: 1,
+				passed: false,
+			},
+			{
+				metric: "diarization-segments",
+				count: 3,
+				expectedCount: 1,
+				passed: true,
+			},
 		]);
 		expect(formatVoiceWorkbenchMarkdown(report)).toContain(
-			"first-audio-latency=0!",
+			"first-audio-latency=0/1!",
+		);
+	});
+
+	it("renders historical schema-v1 coverage without expectedCount", () => {
+		const report = buildVoiceWorkbenchReport([
+			{
+				scenarioId: "legacy-coverage",
+				classes: ["endpoint-latency"],
+				status: "ran",
+				cases: [scoreMeasurementCoverage("first-audio-latency", 0)],
+			},
+		]);
+		const coverage = report.scenarios[0].measurementCoverage;
+		if (!coverage) throw new Error("expected generated coverage entries");
+		const entry = coverage[0];
+		if (!entry) throw new Error("expected generated coverage entry");
+		delete entry.expectedCount;
+		expect(formatVoiceWorkbenchMarkdown(report)).toContain(
+			"first-audio-latency=0/1!",
+		);
+	});
+
+	it("renders historical schema-v1 scenarios without measurementCoverage", () => {
+		const report = buildVoiceWorkbenchReport([cleanRespond]);
+		delete report.scenarios[0].measurementCoverage;
+		expect(formatVoiceWorkbenchMarkdown(report)).toContain(
+			"| respond-basic | respond-no-respond | pass | 1 | — | — |",
 		);
 	});
 });
