@@ -31,6 +31,7 @@ import {
   loadLayeredEnv,
   mergeEnvLayers,
   parseDotenv,
+  reclaimObservedLock,
   saveEnvVar,
   upsertEnvContent,
   writeSecret,
@@ -502,7 +503,13 @@ test("writeSecret recovers from a stale sibling lock file", () => {
   }
 });
 
-function writeSecretInChild(repoRoot, key, value, afterReadWaitPath) {
+function writeSecretInChild(
+  repoRoot,
+  key,
+  value,
+  afterReadWaitPath,
+  options = {},
+) {
   const moduleUrl = pathToFileURL(
     join(ROOT, "scripts/lifeops/env-layers.mjs"),
   ).href;
@@ -514,6 +521,9 @@ function writeSecretInChild(repoRoot, key, value, afterReadWaitPath) {
       scope: "repo",
       repoRoot: ${JSON.stringify(repoRoot)},
       processEnv: {},
+      ...(${JSON.stringify(options.lockWaitMs ?? null)} === null
+        ? {}
+        : { lockWaitMs: ${JSON.stringify(options.lockWaitMs ?? null)} }),
       afterRead: waitPath
         ? () => {
             const deadline = Date.now() + 5000;
@@ -539,7 +549,11 @@ function writeSecretInChild(repoRoot, key, value, afterReadWaitPath) {
     child.on("error", reject);
     child.on("close", (code) => {
       if (code === 0) {
-        resolvePromise();
+        resolvePromise({ code, stderr });
+        return;
+      }
+      if (options.allowFailure) {
+        resolvePromise({ code, stderr });
         return;
       }
       reject(new Error(`child write ${key} exited ${code}: ${stderr}`));
@@ -609,12 +623,15 @@ test("an aged live writer keeps lock ownership until its transaction finishes", 
   }
 });
 
-test("a writer releases only the lock record it acquired", async () => {
+test("a displaced writer fails loudly instead of committing a lost update", async () => {
   const base = tempDir("env-layers-owned-lock-");
   try {
     const lockPath = `${join(base, ".env")}.lock`;
     const waitPath = join(base, "release-writer");
-    const writer = writeSecretInChild(base, "TOKEN", "secret", waitPath);
+    const writer = writeSecretInChild(base, "TOKEN", "secret", waitPath, {
+      allowFailure: true,
+      lockWaitMs: 500,
+    });
     const started = Date.now();
     while (Date.now() - started < 2000 && !existsSync(lockPath)) {
       Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
@@ -625,10 +642,68 @@ test("a writer releases only the lock record it acquired", async () => {
     const replacementOwner = `${process.pid}:${"a".repeat(32)}\n`;
     writeFileSync(lockPath, replacementOwner, { mode: 0o600 });
     writeFileSync(waitPath, "go\n");
-    await writer;
+    const result = await writer;
 
+    // Commit-time ownership verification: the displaced writer must not
+    // commit, must leave the usurper's record intact, and must exit loudly
+    // once the held foreign lock starves its retries.
+    assert.notEqual(result.code, 0);
+    assert.match(
+      result.stderr,
+      /lock ownership lost|timed out waiting for lock/,
+    );
     assert.equal(readFileSync(lockPath, "utf8"), replacementOwner);
+    assert.equal(existsSync(join(base, ".env")), false);
     unlinkSync(lockPath);
+  } finally {
+    rmSync(base, { recursive: true, force: true });
+  }
+}, 20_000);
+
+test("a reclaim stampede over a dead owner admits exactly one writer at a time", async () => {
+  const base = tempDir("env-layers-reclaim-stampede-");
+  try {
+    // A definitely-dead owner: spawn a child that exits, reuse its pid.
+    const dead = spawn(process.execPath, ["-e", "process.exit(0)"]);
+    await new Promise((resolvePromise) => dead.once("close", resolvePromise));
+    const lockPath = `${join(base, ".env")}.lock`;
+    mkdirSync(base, { recursive: true });
+    writeFileSync(lockPath, `${dead.pid}:${"b".repeat(32)}\n`, {
+      mode: 0o600,
+    });
+
+    // Several worktrees notice the same dead lock at once (the recovery
+    // stampede): rename-based reclamation lets exactly one capture it, and
+    // every distinct update must survive.
+    await Promise.all([
+      writeSecretInChild(base, "KEY_ONE", "one"),
+      writeSecretInChild(base, "KEY_TWO", "two"),
+      writeSecretInChild(base, "KEY_THREE", "three"),
+    ]);
+    const parsed = parseDotenv(readFileSync(join(base, ".env"), "utf8"));
+    assert.equal(parsed.KEY_ONE, "one");
+    assert.equal(parsed.KEY_TWO, "two");
+    assert.equal(parsed.KEY_THREE, "three");
+  } finally {
+    rmSync(base, { recursive: true, force: true });
+  }
+}, 20_000);
+
+test("reclaim restores a lock that was re-acquired between observation and rename", () => {
+  const base = tempDir("env-layers-reclaim-restore-");
+  try {
+    const lockPath = `${join(base, ".env")}.lock`;
+    mkdirSync(base, { recursive: true });
+    const deadRecord = `999999999:${"c".repeat(32)}\n`;
+    const liveRecord = `${process.pid}:${"d".repeat(32)}\n`;
+    // The reclaimer observed deadRecord, but a new owner re-acquired first.
+    writeFileSync(lockPath, liveRecord, { mode: 0o600 });
+    assert.equal(reclaimObservedLock(lockPath, deadRecord), false);
+    assert.equal(readFileSync(lockPath, "utf8"), liveRecord);
+
+    // Idempotence: reclaiming an already-gone lock is a win, not an error.
+    unlinkSync(lockPath);
+    assert.equal(reclaimObservedLock(lockPath, deadRecord), true);
   } finally {
     rmSync(base, { recursive: true, force: true });
   }

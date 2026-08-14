@@ -26,6 +26,7 @@ import {
   chmodSync,
   closeSync,
   existsSync,
+  linkSync,
   mkdirSync,
   openSync,
   readFileSync,
@@ -50,6 +51,7 @@ const ENV_KEY_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/;
 const LOCK_STALE_MS = 10_000;
 const LOCK_WAIT_MS = 5_000;
 const LOCK_POLL_MS = 25;
+const WRITE_OWNERSHIP_RETRIES = 3;
 
 // --- pure primitives ---------------------------------------------------------
 
@@ -262,6 +264,59 @@ function readLockOwner(lockPath) {
   }
 }
 
+/**
+ * Atomically reclaim a lock whose owner was observed dead. rename() is the
+ * ownership-transfer primitive: exactly one reclaimer captures the pathname,
+ * so two reclaimers can never both pass a compare-and-unlink and admit
+ * concurrent writers. If the captured record is not the observed dead one
+ * (the lock was re-acquired between observation and rename), the capture is
+ * undone with an exclusive link(); when even that loses to a newer lock, the
+ * displaced owner is caught by writeSecret's commit-time ownership check.
+ */
+export function reclaimObservedLock(lockPath, observedRecord) {
+  const quarantine = `${lockPath}.reclaim.${process.pid}.${randomBytes(8).toString("hex")}`;
+  try {
+    renameSync(lockPath, quarantine);
+  } catch (err) {
+    // error-policy:J3 losing the rename race means another reclaimer won
+    if (err.code === "ENOENT") return true;
+    throw err;
+  }
+  let quarantined;
+  try {
+    quarantined = readFileSync(quarantine, "utf8");
+  } catch (err) {
+    // error-policy:J3 quarantine vanished only if the filesystem is hostile
+    if (err.code !== "ENOENT") throw err;
+    return true;
+  }
+  if (quarantined === observedRecord) {
+    try {
+      unlinkSync(quarantine);
+    } catch (err) {
+      // error-policy:J6 quarantine cleanup is teardown-only
+      if (err.code !== "ENOENT") throw err;
+    }
+    return true;
+  }
+  // Captured a live re-acquired lock: restore it if the pathname is still
+  // free. link() is exclusive, so a newer lock is never clobbered.
+  try {
+    linkSync(quarantine, lockPath);
+  } catch (err) {
+    // error-policy:J3 a newer lock appeared; its owner holds the pathname and
+    // the displaced owner aborts at commit-time verification
+    if (err.code !== "EEXIST") throw err;
+  }
+  try {
+    unlinkSync(quarantine);
+  } catch (err) {
+    // error-policy:J6 quarantine cleanup is teardown-only
+    if (err.code !== "ENOENT") throw err;
+  }
+  return false;
+}
+
 function removeObservedLock(lockPath, observedRecord) {
   try {
     if (readFileSync(lockPath, "utf8") !== observedRecord) return false;
@@ -274,10 +329,10 @@ function removeObservedLock(lockPath, observedRecord) {
   }
 }
 
-function acquireTargetLock(targetPath) {
+function acquireTargetLock(targetPath, waitMs = LOCK_WAIT_MS) {
   const lockPath = `${targetPath}.lock`;
   mkdirSync(dirname(targetPath), { recursive: true });
-  const deadline = Date.now() + LOCK_WAIT_MS;
+  const deadline = Date.now() + waitMs;
   while (true) {
     let fd;
     try {
@@ -289,7 +344,7 @@ function acquireTargetLock(targetPath) {
       if (owner.state === "missing") continue;
       if (
         owner.state === "reclaim" &&
-        removeObservedLock(lockPath, owner.record)
+        reclaimObservedLock(lockPath, owner.record)
       ) {
         continue;
       }
@@ -389,6 +444,7 @@ export function writeSecret(key, value, options = {}) {
     homeEnvPath = HOME_ENV_PATH,
     processEnv = process.env,
     afterRead,
+    lockWaitMs = LOCK_WAIT_MS,
   } = options;
   if (typeof key !== "string" || !ENV_KEY_PATTERN.test(key)) {
     throw new Error(`writeSecret: invalid env key ${JSON.stringify(key)}`);
@@ -402,29 +458,54 @@ export function writeSecret(key, value, options = {}) {
     );
   }
   const path = scope === "home" ? homeEnvPath : join(repoRoot, ".env");
-  const lock = acquireTargetLock(path);
-  try {
-    const existing = existsSync(path) ? readFileSync(path, "utf8") : "";
-    if (typeof afterRead === "function") {
-      afterRead();
-    }
-    atomicWriteEnvFile(path, upsertEnvContent(existing, { [key]: value }));
-    chmodSync(path, 0o600);
-    processEnv[key] = value;
-  } catch (err) {
+  for (let attempt = 1; attempt <= WRITE_OWNERSHIP_RETRIES; attempt += 1) {
+    const lock = acquireTargetLock(path, lockWaitMs);
+    let ownershipLost = false;
     try {
-      releaseTargetLock(lock);
-    } catch (releaseError) {
-      // error-policy:J2 preserve both the transaction and teardown failures
-      throw new AggregateError(
-        [err, releaseError],
-        `writeSecret(${key}): write and lock release both failed`,
-      );
+      const existing = existsSync(path) ? readFileSync(path, "utf8") : "";
+      if (typeof afterRead === "function") {
+        afterRead();
+      }
+      // Commit-time ownership verification: if this writer's lock record was
+      // displaced (the reclaim restore edge), abort before the rename commit
+      // and retry the whole read-modify-write instead of losing an update.
+      if (!stillOwnsLock(lock)) {
+        ownershipLost = true;
+      } else {
+        atomicWriteEnvFile(path, upsertEnvContent(existing, { [key]: value }));
+        chmodSync(path, 0o600);
+        processEnv[key] = value;
+      }
+    } catch (err) {
+      try {
+        releaseTargetLock(lock);
+      } catch (releaseError) {
+        // error-policy:J2 preserve both the transaction and teardown failures
+        throw new AggregateError(
+          [err, releaseError],
+          `writeSecret(${key}): write and lock release both failed`,
+        );
+      }
+      throw err;
     }
+    releaseTargetLock(lock);
+    if (!ownershipLost) {
+      return { key, scope, path };
+    }
+  }
+  throw new Error(
+    `writeSecret(${key}): lock ownership lost ${WRITE_OWNERSHIP_RETRIES} times`,
+  );
+}
+
+function stillOwnsLock(lock) {
+  try {
+    return readFileSync(lock.lockPath, "utf8") === lock.ownerRecord;
+  } catch (err) {
+    // error-policy:J3 a missing lock record means ownership was displaced
+    if (err.code === "ENOENT") return false;
     throw err;
   }
-  releaseTargetLock(lock);
-  return { key, scope, path };
 }
 
 export function saveEnvVar(key, value, target = "home", options = {}) {
