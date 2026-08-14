@@ -1,10 +1,12 @@
 /**
  * Verifies that a Cloudflare Pages custom domain is serving the frontend bundle
  * that was just built by the deploy job. The check follows the live
- * `index.html` to its Vite entry chunk, then compares every emitted JavaScript
- * script with the local build byte-for-byte. Required sentinel text is searched
- * incrementally across the complete emitted graph so code-split user flows
- * remain provable without retaining the entire application in memory.
+ * `index.html` to its Vite entry chunk, then compares every public emitted
+ * JavaScript asset with the local build byte-for-byte. Required sentinel text
+ * is searched incrementally across the complete public graph so code-split
+ * user flows remain provable without retaining the entire application in
+ * memory. Cloudflare's reserved `_worker.js` is executable deployment input,
+ * not a public asset, and is deliberately excluded from that graph.
  */
 import { readdir, readFile, stat } from "node:fs/promises";
 import path from "node:path";
@@ -15,6 +17,7 @@ const MAX_CONCURRENT_ASSET_FETCHES = 16;
 const MAX_INDEX_BYTES = 2 * 1024 * 1024;
 const MAX_JAVASCRIPT_ASSETS = 2_048;
 const MAX_TOTAL_JAVASCRIPT_BYTES = 128 * 1024 * 1024;
+const CLOUDFLARE_PAGES_EXECUTABLE_FILES = new Set(["_worker.js"]);
 
 function normalizeBaseUrl(url) {
   const trimmed = `${url ?? ""}`.trim();
@@ -214,7 +217,11 @@ async function readJavaScriptAssets(distDir) {
     for (const entry of entries) {
       const relativePath = path.posix.join(relativeDir, entry.name);
       if (entry.isDirectory()) pending.push(relativePath);
-      else if (entry.isFile() && entry.name.endsWith(".js")) {
+      else if (
+        entry.isFile() &&
+        entry.name.endsWith(".js") &&
+        !CLOUDFLARE_PAGES_EXECUTABLE_FILES.has(relativePath)
+      ) {
         const size = (await stat(path.join(distDir, relativePath))).size;
         assets.push({ path: relativePath, size });
         totalBytes += size;
