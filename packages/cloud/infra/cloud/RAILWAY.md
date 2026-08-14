@@ -23,7 +23,7 @@ config wins — fix this file.
 | Redis | **Railway managed Redis** (TCP, `REDIS_URL`) | n/a (managed service) | `REDIS_URL` Worker secret; in-Worker SocketRedis speaks RESP2 over `cloudflare:sockets` (`wrangler.toml` cache/queue notes). Upstash REST (`KV_REST_API_*`) is a **legacy fallback only** | Private |
 | Database migrations | GitHub Actions → Railway Postgres | `packages/cloud/shared/src/db/migrations/` | `cloud-cf-deploy.yml` `migrate-db` job (`bun run db:cloud:migrate`); every deploy job `needs: migrate-db` | n/a |
 | `gateway-discord` (multi-tenant Discord WS gateway) | Railway (Docker) | `packages/cloud/services/gateway-discord/` | `railway.toml` + `Dockerfile`; Railway auto-deploys on push — `cloud-gateway-discord.yml` runs tests only | Discord-facing; `/internal/*` shared-secret routes |
-| `gateway-webhook` (Telegram / Blooio / Twilio / WhatsApp) | Railway (Docker) | `packages/cloud/services/gateway-webhook/` | `railway.toml` + `Dockerfile`; `cloud-gateway-webhook.yml` runs tests only | Public webhook ingress |
+| `gateway-webhook` (Telegram / Blooio / Twilio / WhatsApp) | Railway (Docker) | `packages/cloud/services/gateway-webhook/` | protected `.github/workflows/deploy-gateway-webhook.yml` using `railway.toml` + `Dockerfile` | Public webhook ingress |
 | `voice-kokoro-tts` (free-cloud TTS) | Railway (Docker) | `packages/cloud/services/voice-kokoro-tts/` | `railway.toml`; its URL is injected at Worker deploy time as `KOKORO_TTS_URL` (GitHub var `ELIZA_VOICE_KOKORO_TTS_URL` in `cloud-cf-deploy.yml`) | **Private origin** behind the Worker's `POST /api/v1/voice/tts` — unauthenticated at the service boundary, so its URL must not be published |
 | `voice-whisper-stt` (free-cloud STT) | Railway (Docker) | `packages/cloud/services/voice-whisper-stt/` | `railway.toml`; consumed via the `WHISPER_STT_URL` env var | **Private origin** behind the Worker's `POST /api/v1/voice/stt` (same posture as Kokoro) |
 | `tunnel-proxy` (public HTTPS → tailnet bridge, customer-tunnel path) | Railway (Docker, Go) | `packages/cloud/services/tunnel-proxy/` | protected `.github/workflows/deploy-tunnel-proxy.yml` using `railway.toml` + `Dockerfile` | Public: `tunnel.eliza.app` (staging: `tunnel-staging.eliza.app`) |
@@ -138,12 +138,25 @@ was decommissioned on 2026-06-17.
 
 ### `gateway-discord` / `gateway-webhook`
 
-Docker/Bun services with `railway.toml` manifests; Railway auto-deploys on
-push to the watched branch. Their GitHub workflows
-(`cloud-gateway-discord.yml`, `cloud-gateway-webhook.yml`) run tests only —
-the AWS EKS/Terraform/Helm deploy jobs were removed with the AWS retirement
-([`AWS_RETIREMENT.md`](./AWS_RETIREMENT.md)). Required env vars are documented
-in each service's `railway.toml` header.
+Docker/Bun services with `railway.toml` manifests. `gateway-discord` retains
+its Railway watched-branch deployment and `cloud-gateway-discord.yml` runs its
+repository tests. `gateway-webhook` has no Railway repo trigger: the protected
+`deploy-gateway-webhook.yml` dispatcher is its only deployment authority. It
+binds staging to `develop` and production to `main`, validates the exact
+Railway identities and canonical routing variables, uploads the exact dispatch
+SHA from the repository root with a byte-identical root copy of the
+tracked service manifest, and verifies the returned deployment id, applied
+Dockerfile/health metadata, active-deployment identity around the public
+probes, live `/health`, and the dedicated headerless
+`/ready/forwarder-auth/eliza-app` contract. That read-only route returns its
+exact 401 only when the forwarding secret gate is active for `eliza-app`;
+disabled or project-mismatched configurations fail with distinct non-401
+states without entering provider handling. Required runtime variables are
+documented in each service's `railway.toml` header; the names-only sensitive
+inventory includes the mandatory `ELIZA_APP_WEBHOOK_GATEWAY_SECRET` forwarding
+trust gate. The old AWS EKS/Terraform/Helm deploy jobs were
+removed with the AWS retirement
+([`AWS_RETIREMENT.md`](./AWS_RETIREMENT.md)).
 
 ### `voice-kokoro-tts` / `voice-whisper-stt`
 

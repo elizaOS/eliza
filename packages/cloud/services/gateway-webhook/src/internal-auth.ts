@@ -1,4 +1,4 @@
-// Handles webhook gateway internal auth behavior for authenticated connector fan-in.
+/** Enforces internal-event and BFF-forwarder trust boundaries for gateway ingress. */
 import { timingSafeEqual } from "node:crypto";
 import { logger } from "./logger";
 
@@ -73,14 +73,41 @@ export function validateInternalSecret(request: Request): boolean {
  * so enabling the BFF-forwarder gate does NOT force every direct provider
  * webhook to present the internal-event secret.
  */
-const FORWARDER_SECRET_HEADER = "X-Eliza-Webhook-Forwarder-Secret";
+export const FORWARDER_SECRET_HEADER = "X-Eliza-Webhook-Forwarder-Secret";
 
 // The project the eliza-app BFF forwarder targets (matches the forwarder's
 // `ELIZA_APP_WEBHOOK_PROJECT`, default "eliza-app"). The forwarder secret gate
 // applies ONLY to this project, so other gateway tenants that post directly
 // with valid provider auth are never affected.
-const FORWARDED_PROJECT =
-  (process.env.ELIZA_APP_WEBHOOK_PROJECT ?? "eliza-app").trim() || "eliza-app";
+export type ForwarderAuthReadiness =
+  | "enforced"
+  | "secret-disabled"
+  | "project-mismatch";
+
+function resolveForwarderAuth(project: string): {
+  readiness: ForwarderAuthReadiness;
+  secret: string;
+} {
+  const secret = (process.env.ELIZA_APP_WEBHOOK_GATEWAY_SECRET ?? "").trim();
+  const forwardedProject =
+    (process.env.ELIZA_APP_WEBHOOK_PROJECT ?? "eliza-app").trim() ||
+    "eliza-app";
+
+  if (!secret) {
+    return { readiness: "secret-disabled", secret };
+  }
+  if (project !== forwardedProject) {
+    return { readiness: "project-mismatch", secret };
+  }
+  return { readiness: "enforced", secret };
+}
+
+/** Reports whether the dedicated forwarder gate applies to the named project. */
+export function getForwarderAuthReadiness(
+  project: string,
+): ForwarderAuthReadiness {
+  return resolveForwarderAuth(project).readiness;
+}
 
 /**
  * Optional BFF-forwarder gate for the public webhook routes (finding L3,
@@ -114,16 +141,11 @@ export function enforceForwarderSecret(
   request: Request,
   project: string,
 ): boolean {
-  // Trim to match the BFF forwarder, which stamps the trimmed env value
-  // (readStringEnv() -> value.trim()). Comparing the raw env here would 401
-  // every forward when the secret mount has a trailing newline/whitespace.
-  const secret = (process.env.ELIZA_APP_WEBHOOK_GATEWAY_SECRET ?? "").trim();
-  // No dedicated secret configured ⇒ feature off ⇒ do not break existing traffic.
-  if (!secret) {
-    return true;
-  }
-  // Only the forwarded project is gated; other tenants pass through untouched.
-  if (project !== FORWARDED_PROJECT) {
+  // Resolve the same state used by the public auth-readiness contract. A
+  // disabled secret or another project remains backward-compatible traffic;
+  // only the configured forwarded project enters the constant-time gate.
+  const { readiness, secret } = resolveForwarderAuth(project);
+  if (readiness !== "enforced") {
     return true;
   }
 
