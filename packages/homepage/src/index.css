@@ -1596,7 +1596,11 @@ body {
   content: "";
   transform: scaleY(0);
   transform-origin: bottom;
-  transition: transform var(--landing-keyboard-transition);
+  /* The keyboard surface crosses this short inset almost immediately while
+     opening, then remains behind it until the keyboard has nearly cleared.
+     Matching the inset to the full keyboard duration leaves a white strip
+     beside an already-visible gray keyboard. */
+  transition: transform 60ms linear 180ms;
 }
 
 .landing-iphone-homebar::after {
@@ -1929,6 +1933,7 @@ body {
 
 .landing-keyboard[data-open="true"] + .landing-iphone-homebar::before {
   transform: scaleY(1);
+  transition-delay: 0ms;
 }
 
 .landing-keyboard-clip {
