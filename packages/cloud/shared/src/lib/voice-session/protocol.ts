@@ -25,6 +25,7 @@ export const MAX_AUDIO_FRAME_BYTES = 64 * 1024;
 
 export type VoiceUplinkCodec = "pcm16" | "opus";
 export type VoiceDownlinkCodec = "pcm16" | "opus";
+export type VoiceTurnEndOutcome = "spoken" | "displayed" | "no_response" | "error" | "stopped";
 
 // --- client -> server control frames -------------------------------------
 
@@ -83,6 +84,7 @@ export type ServerControlFrame =
   | { t: "llm_first_text"; traceId: string }
   | { t: "speaking_start"; traceId: string }
   | { t: "speaking_end"; traceId: string }
+  | { t: "turn_end"; outcome: VoiceTurnEndOutcome; traceId: string }
   | {
       t: "navigate_view";
       viewId: string;

@@ -10,13 +10,14 @@
  *   - LLM: `streamElizaConversation` (existing SSE / Cerebras pass-through). No
  *     new LLM client.
  *   - TTS: Fish Audio when `ELIZA_TTS_FISH_ENABLED` is true; otherwise
- *     `CartesiaSonicTtsAdapter` (#15949). Phrase-aggregated deltas stream in;
- *     adapters' strict no-post-cancel guarantee makes barge-in correct.
+ *     `CartesiaSonicTtsAdapter` (#15949). Canonical assistant text is buffered
+ *     through its explicit terminal frame, projected once through the shared
+ *     speech/display safety policy, then sent as at most one synthesis input.
  *
- * Interruption (contract §7.5): Ink semantic turn-start / explicit `barge_in`
- * -> under one `voiceTurnId`, cancel the active TTS stream (no post-cancel
- * frames), abort the Eliza SSE fetch, flush the downlink, drop pending phrase
- * aggregation, emit `interrupted`, return to listening. Target <250ms.
+ * Interruption (contract §7.5): telephony trusts Ink semantic turn-start;
+ * browser/local sessions wait for confirmed caller words while local playback
+ * pauses provisionally. Once authoritative, one `voiceTurnId` cancels TTS and
+ * the Eliza SSE fetch, flushes pending speech, and emits `interrupted`.
  *
  * Metering (SEC-15): server-derived uplink duration only; the client is NEVER
  * trusted for cost. Every audio frame accrues real-time seconds against the
@@ -26,6 +27,7 @@
  * revoke — same-worker or cross-device — stops uplink to Cartesia in <=500ms.
  */
 
+import { projectVoiceOutput, type VoiceOutputPolicy } from "@elizaos/shared";
 import {
   CartesiaSonicTtsAdapter,
   type CartesiaWebSocketFactory,
@@ -46,8 +48,10 @@ import {
   ElizaSseBridgeError,
   streamElizaConversation,
 } from "@/lib/voice-session/eliza-sse-bridge";
-import { PhraseAggregator } from "@/lib/voice-session/phrase-aggregator";
-import type { ServerControlFrame } from "@/lib/voice-session/protocol";
+import type {
+  ServerControlFrame,
+  VoiceTurnEndOutcome,
+} from "@/lib/voice-session/protocol";
 import {
   getVoiceSessionRegistry,
   type LiveVoiceSession,
@@ -84,14 +88,8 @@ const REVOCATION_POLL_MS = 400;
  * and severs fail-closed instead of streaming unbounded paid audio.
  */
 const MAX_OUTSTANDING_METER_WINDOWS = 2;
-/**
- * Voice cannot wait for the generic 180-character phrase ceiling: short spoken
- * replies often have no punctuation until the model's final token, which put
- * ~2.8s of generation after `llm_first_text` on the first-audio path. Emit a
- * speakable clause after a small token-sized prefix; Cartesia's continuation
- * context preserves prosody across the resulting chunks.
- */
-const VOICE_TTS_FIRST_CLAUSE_CHARS = 24;
+/** Whole-answer speech is bounded before it crosses the provider boundary. */
+const VOICE_TTS_MAX_SPEECH_CHARS = 600;
 /** Human-readable interim captions do not benefit from provider-rate redraws. */
 const STT_PARTIAL_EMIT_INTERVAL_MS = 40;
 /**
@@ -106,6 +104,8 @@ const CACHE_WARMING_CODES = new Set([
   "conversation_cache_warming",
 ]);
 const SPOKEN_TRANSCRIPT_RE = /[\p{L}\p{N}]/u;
+const SPOKEN_STOP_COMMAND_RE =
+  /^(?:(?:ok(?:ay)?|please),?\s+)?(?:stop(?:\s+(?:(?:talking|speaking)(?:\s+now)?|now))?|be\s+quiet|cancel|never\s*mind|that(?:['’]s| is)\s+enough)$/u;
 
 // Cartesia's server buffers streamed transcript for up to 3000ms by default
 // before starting synthesis, which measured ~2.7s of the speaking_start gap on
@@ -114,6 +114,21 @@ const SPOKEN_TRANSCRIPT_RE = /[\p{L}\p{N}]/u;
 // reference server provably opens Cartesia with the same value (#16667).
 
 export type { VoiceSessionDownlink } from "@/lib/voice-session/ws-handler";
+
+export type AcousticInterruptPolicy = "semantic_start" | "confirmed_speech";
+
+/**
+ * Recognize only self-contained spoken cancellation commands. Longer requests
+ * such as "stop the timer and start another" stay ordinary agent turns.
+ */
+export function isSpokenStopCommand(transcript: string): boolean {
+  const normalized = transcript
+    .trim()
+    .toLocaleLowerCase("en-US")
+    .replace(/[.!?,;:\u2026]+$/gu, "")
+    .replace(/\s+/gu, " ");
+  return SPOKEN_STOP_COMMAND_RE.test(normalized);
+}
 
 export interface VoiceSessionConfig {
   sessionId: string;
@@ -124,6 +139,8 @@ export interface VoiceSessionConfig {
   conversationId: string;
   /** Unix-seconds expiry of the bootstrap token; the session self-severs at exp. */
   tokenExpSeconds: number;
+  /** Browser/local audio waits for real words; telephony clears on turn-start. */
+  acousticInterruptPolicy: AcousticInterruptPolicy;
 
   // Provider wiring (injectable for tests: fake transports, real adapter code).
   cartesiaApiKey: string;
@@ -208,14 +225,18 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
   private currentTraceId: string | null = null;
   private currentVoiceTurnId: string | null = null;
   private activeSttTurn = false;
+  /** Active response protected from a browser/local false acoustic start. */
+  private protectedResponseTraceId: string | null = null;
+  private protectedProvisionalUplinkBytes = 0;
   private pendingSttPartial: { text: string; traceId: string } | null = null;
   private lastSttPartialText = "";
   private lastSttPartialSentAtMs = Number.NEGATIVE_INFINITY;
   private sttPartialTimer: ReturnType<typeof setTimeout> | null = null;
   private llmAbort: AbortController | null = null;
   private elizaPrewarm: Promise<void> | null = null;
-  private phrase: PhraseAggregator | null = null;
   private turnSttMs = 0;
+  /** Per-turn telemetry remainder; quota accounting has a separate accumulator. */
+  private turnUnmeteredUplinkBytes = 0;
   private turnTtsChars = 0;
   private firstLlmTextEmitted = false;
 
@@ -493,28 +514,45 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
         break;
       }
       case "start-of-turn": {
-        // Ink's semantic turn detector is the earliest reliable signal that
-        // the caller has begun a new utterance. Stop current audio immediately
-        // so Eliza never talks over the caller while transcription continues.
         this.resetSttPartialDelivery();
         this.activeSttTurn = true;
-        const responseActive = Boolean(this.currentVoiceTurnId);
-        this.interrupt("acoustic");
-        // A transport such as Twilio can still be playing audio it buffered
-        // before TTS reported completion. There is no active turn to emit an
-        // `interrupted` frame in that state, so flush the transport directly.
-        if (!responseActive) this.config.downlink.clearAudio?.();
-        this.state = "transcribing";
+        this.clearProtectedResponseAccounting();
+        if (this.config.acousticInterruptPolicy === "semantic_start") {
+          // Telephony has no local provisional playback gate, so Ink's semantic
+          // start remains the earliest signal that can clear buffered audio.
+          const responseActive = Boolean(this.currentVoiceTurnId);
+          this.interrupt("acoustic");
+          if (!responseActive) this.config.downlink.clearAudio?.();
+          this.state = "transcribing";
+        } else {
+          // Browser/local playback is paused provisionally on-device. Retain
+          // the authoritative response until Ink confirms actual caller words,
+          // allowing noise-only starts to resume without losing callbacks.
+          this.protectedResponseTraceId = this.currentVoiceTurnId;
+          if (!this.protectedResponseTraceId) {
+            this.state = "transcribing";
+          }
+        }
         break;
       }
       case "transcript-update": {
-        if (this.activeSttTurn && event.transcript) {
+        if (
+          this.activeSttTurn &&
+          event.transcript &&
+          SPOKEN_TRANSCRIPT_RE.test(event.transcript)
+        ) {
           this.interruptForConfirmedSpeech(event.transcript);
           this.queueSttPartial(event.transcript);
         }
         break;
       }
       case "eager-end-of-turn": {
+        if (
+          this.protectedResponseTraceId &&
+          !SPOKEN_TRANSCRIPT_RE.test(event.transcript)
+        ) {
+          break;
+        }
         this.interruptForConfirmedSpeech(event.transcript);
         this.flushSttPartial();
         this.send({
@@ -525,13 +563,27 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
       }
       case "end-of-turn": {
         if (!this.activeSttTurn) return;
-        this.interruptForConfirmedSpeech(event.transcript);
+        const transcript = event.transcript ?? "";
         this.activeSttTurn = false;
         this.resetSttPartialDelivery();
-        // A missing transcript commits as "" on purpose: commitTurn's empty-
-        // final path still reports+resets the turn's metered usage and clears
-        // the turn id, which skipping the commit would leak into the next turn.
-        this.commitTurn(event.transcript ?? "");
+        if (
+          this.protectedResponseTraceId &&
+          !SPOKEN_TRANSCRIPT_RE.test(transcript)
+        ) {
+          // A false browser/local acoustic start never owns the response turn.
+          // Discard it without minting a trace, invalidating old callbacks, or
+          // carrying its metered/partial audio into a later semantic turn.
+          this.discardProtectedFalseStartAccounting();
+          break;
+        }
+        if (isSpokenStopCommand(transcript)) {
+          const confirmedUplinkBytes = this.detachProtectedSpeechAccounting();
+          this.interrupt("explicit");
+          this.accrueTurnTelemetry(confirmedUplinkBytes);
+        } else {
+          this.interruptForConfirmedSpeech(transcript);
+        }
+        this.commitTurn(transcript);
         break;
       }
       case "turn-resumed": {
@@ -556,11 +608,40 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
 
   /** Cancel an active response only after Ink has produced caller words. */
   private interruptForConfirmedSpeech(transcript: string): void {
-    if (!this.currentVoiceTurnId || !SPOKEN_TRANSCRIPT_RE.test(transcript)) {
+    if (
+      this.config.acousticInterruptPolicy !== "confirmed_speech" ||
+      !SPOKEN_TRANSCRIPT_RE.test(transcript)
+    ) {
       return;
     }
-    this.interrupt("acoustic");
+    const confirmedUplinkBytes = this.detachProtectedSpeechAccounting();
+    if (this.currentVoiceTurnId) this.interrupt("acoustic");
+    this.accrueTurnTelemetry(confirmedUplinkBytes);
     this.state = "transcribing";
+  }
+
+  private discardProtectedFalseStartAccounting(): void {
+    // Provisional bytes never entered per-turn telemetry, so discarding a
+    // noise-only start cannot mutate either the live response's accounting or
+    // a response that completed while Ink was still evaluating the start.
+    this.clearProtectedResponseAccounting();
+  }
+
+  /**
+   * Remove provisional caller audio from the old response and return it for
+   * attribution to the now-confirmed replacement turn. Billing remains
+   * untouched and monotonic.
+   */
+  private detachProtectedSpeechAccounting(): number {
+    if (!this.protectedResponseTraceId) return 0;
+    const confirmedUplinkBytes = this.protectedProvisionalUplinkBytes;
+    this.clearProtectedResponseAccounting();
+    return confirmedUplinkBytes;
+  }
+
+  private clearProtectedResponseAccounting(): void {
+    this.protectedResponseTraceId = null;
+    this.protectedProvisionalUplinkBytes = 0;
   }
 
   /**
@@ -632,12 +713,17 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
 
     this.send({ t: "stt_final", text: transcript, traceId });
 
-    if (transcript.trim() === "") {
-      // Empty final (silence/noise): no TTS turn. Close it out like any other
-      // turn — report + reset usage and CLEAR the turn id — so its metered STT
-      // ms don't bleed into the next utterance and a stray barge_in can't emit
-      // an `interrupted` for a turn that isn't really active.
-      this.finishTurn(traceId);
+    if (isSpokenStopCommand(transcript)) {
+      // Spoken stop is a control command, not a semantic chat turn. It never
+      // enters the conversation bridge or opens a synthesis context.
+      this.finishTurn(traceId, "stopped");
+      return;
+    }
+
+    if (!SPOKEN_TRANSCRIPT_RE.test(transcript)) {
+      // Silence/noise/punctuation has no response leg. Report settlement and a
+      // terminal outcome so clients cannot remain parked in Thinking.
+      this.finishTurn(traceId, "no_response");
       return;
     }
 
@@ -667,7 +753,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
       onComplete: () => {
         if (this.currentVoiceTurnId !== traceId) return;
         this.send({ t: "speaking_end", traceId });
-        this.finishTurn(traceId);
+        this.finishTurn(traceId, "spoken");
       },
       onProviderError: (error) => {
         if (this.currentVoiceTurnId !== traceId) return;
@@ -676,7 +762,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
           code: error.code ?? "tts_error",
           retryable: true,
         });
-        this.finishTurn(traceId);
+        this.finishTurn(traceId, "error");
       },
     });
     this.ttsStream = stream;
@@ -708,18 +794,9 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
   ): Promise<void> {
     const abort = new AbortController();
     this.llmAbort = abort;
-    const phrase = new PhraseAggregator({
-      maxBufferChars: VOICE_TTS_FIRST_CLAUSE_CHARS,
-      preferWordBoundaryAtMax: true,
-    });
-    this.phrase = phrase;
 
     let tts: RealtimeTtsStream | null = null;
-    // Held terminal suffix (see the streaming loop below): Cartesia requires a
-    // non-empty final request carrying continue:false. We retain only the last
-    // word of each complete phrase, not the whole phrase, so synthesis can begin
-    // immediately while preserving a real terminal request for stream close.
-    let pendingPhrase: string | null = null;
+    let canonicalDisplayText = "";
     const ensureTts = (): RealtimeTtsStream => {
       if (tts) return tts;
       const callbacks: RealtimeTtsStreamCallbacks = {
@@ -736,7 +813,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
         onComplete: () => {
           if (this.currentVoiceTurnId !== traceId) return;
           this.send({ t: "speaking_end", traceId });
-          this.finishTurn(traceId);
+          this.finishTurn(traceId, "spoken");
         },
         onProviderError: (err) => {
           if (this.currentVoiceTurnId !== traceId) return;
@@ -751,7 +828,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
           abort.abort();
           // Close out the failed turn so the client gets usage + returns to
           // listening, instead of the session being stuck on a dead turn.
-          this.finishTurn(traceId);
+          this.finishTurn(traceId, "error");
         },
       };
       tts = this.createTtsStream(traceId, callbacks);
@@ -760,14 +837,13 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
     };
 
     try {
-      // Open Cartesia in parallel with the LLM request. Previously the provider
-      // WebSocket was created lazily only after a complete speakable phrase had
-      // arrived, putting its DNS/TLS/WebSocket handshake directly on the
-      // first-audio critical path. A turn that is interrupted or produces no
-      // speakable output cancels this idle context below.
+      // Open the provider in parallel with the LLM request. Whole-answer safety
+      // intentionally delays text until the terminal frame, so overlapping the
+      // DNS/TLS/WebSocket handshake preserves the latency work that can happen
+      // safely. Interrupted or display-only turns cancel this idle context.
       const prewarmedTts = ensureTts();
       // Cancellation before the provider's open event rejects `opened`. This
-      // turn does not await readiness because outbound phrases queue in the
+      // turn does not await readiness because the final input queues in the
       // adapter, so consume that designed rejection on fast teardown.
       void prewarmedTts.opened.catch(() => undefined);
 
@@ -797,27 +873,10 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
           this.firstLlmTextEmitted = true;
           this.send({ t: "llm_first_text", traceId });
         }
-        // Cartesia closes a synthesis context via the FINAL non-empty phrase
-        // carrying continue:false. Holding a whole sentence until LLM stream
-        // completion added seconds to first audio for one-sentence replies.
-        // Send the speakable prefix immediately and retain only its last word
-        // as the eventual terminal phrase. A following phrase first flushes
-        // the retained suffix with continue:true.
-        const phrases = phrase.push(delta);
-        for (const p of phrases) {
-          this.turnTtsChars += p.length;
-          const stream = ensureTts();
-          if (pendingPhrase !== null) {
-            stream.sendPhrase({ text: pendingPhrase, continueContext: true });
-          }
-          const split = splitTerminalSuffix(p);
-          if (split) {
-            stream.sendPhrase({ text: split.prefix, continueContext: true });
-            pendingPhrase = split.suffix;
-          } else {
-            pendingPhrase = p;
-          }
-        }
+        // Never forward an incremental fragment to synthesis. Secrets,
+        // filesystem paths, code fences, and tables can all straddle arbitrary
+        // SSE boundaries; only the terminal whole-answer projection may speak.
+        canonicalDisplayText += delta;
       };
       const retryDelays =
         this.config.cacheWarmingRetryDelaysMs ?? CACHE_WARMING_RETRY_DELAYS_MS;
@@ -879,36 +938,47 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
         });
       }
 
-      const tail = phrase.flush();
-      if (tail) {
-        // A trailing phrase remains. Flush any held phrase (continue:true), then
-        // send the tail as the terminal phrase with continue:false.
-        if (pendingPhrase !== null) {
-          ensureTts().sendPhrase({
-            text: pendingPhrase,
-            continueContext: true,
-          });
-          pendingPhrase = null;
-        }
-        this.turnTtsChars += tail.length;
-        ensureTts().sendPhrase({ text: tail, continueContext: false });
-      } else if (pendingPhrase !== null) {
-        // The held phrase is the LAST speakable unit: send it with
-        // continue:false to close the context cleanly (yields `done` ->
-        // onComplete). This replaces the empty-transcript finish() that the
-        // LIVE Cartesia API rejects.
-        ensureTts().sendPhrase({ text: pendingPhrase, continueContext: false });
-        pendingPhrase = null;
-      } else {
-        // No speakable output at all (empty LLM reply). The socket was opened
-        // speculatively to hide its handshake behind LLM generation, so cancel
-        // the unused context before closing the turn. (Read via the class field:
-        // `tts` is only assigned inside closures, so outer-flow narrowing would
-        // otherwise collapse its type to never.)
-        this.ttsStream?.cancel("empty_llm_reply");
-        this.finishTurn(traceId);
+      const policy = resolveRuntimeVoiceOutputPolicy(
+        result.outputDirective?.policy,
+      );
+      const projection = projectVoiceOutput(
+        {
+          policy,
+          display: { markdown: canonicalDisplayText },
+          ...(result.outputDirective?.spoken === undefined
+            ? {}
+            : { spoken: result.outputDirective.spoken }),
+        },
+        { maxSpeechChars: VOICE_TTS_MAX_SPEECH_CHARS },
+      );
+      if (abort.signal.aborted || this.currentVoiceTurnId !== traceId) return;
+
+      // Captions are the speech contract, not a separately normalized view.
+      // A future projector regression must fail closed instead of sending bytes
+      // that captions would misrepresent.
+      const safeSpeechText =
+        projection.captions === projection.speechText
+          ? projection.captions
+          : null;
+      if (!safeSpeechText) {
+        // The canonical route has already persisted/displayed non-empty output.
+        // Cancel only the speculative provider context and report that truthful
+        // outcome; `no_response` is reserved for an actually empty answer.
+        this.ttsStream?.cancel(
+          canonicalDisplayText ? "display_only_reply" : "empty_llm_reply",
+        );
+        this.finishTurn(
+          traceId,
+          canonicalDisplayText ? "displayed" : "no_response",
+        );
+        return;
       }
-      // If a phrase was sent, its final continue:false closes the context.
+
+      this.turnTtsChars = safeSpeechText.length;
+      ensureTts().sendPhrase({
+        text: safeSpeechText,
+        continueContext: false,
+      });
     } catch (error) {
       // error-policy:J1 boundary translation — the LLM/TTS turn is the async
       // boundary; provider failures become a structured client `error` frame.
@@ -941,28 +1011,35 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
       });
       // The socket is already open because it was prewarmed before the LLM
       // request. Do not leak an idle provider connection when that request or
-      // stream fails before a terminal TTS phrase is sent. finishTurn has not
+      // stream fails before a projected TTS input is sent. finishTurn has not
       // run yet, so ttsStream still belongs to this turn.
       this.ttsStream?.cancel("llm_error");
-      this.finishTurn(traceId);
+      this.finishTurn(traceId, "error");
     }
   }
 
-  private finishTurn(traceId: string): void {
+  private finishTurn(traceId: string, outcome: VoiceTurnEndOutcome): void {
     if (this.currentVoiceTurnId !== traceId || this.closed) return;
+    if (outcome !== "spoken") {
+      // Protocol-v1 clients do not know `turn_end`; this legacy terminal keeps
+      // stop/no-response/error turns from remaining in Thinking. New clients
+      // accept it as an idempotent terminal before the explicit outcome.
+      this.send({ t: "speaking_end", traceId });
+    }
     this.send({
       t: "usage",
       sttMs: this.turnSttMs,
       ttsChars: this.turnTtsChars,
       traceId,
     });
+    this.send({ t: "turn_end", outcome, traceId });
     this.currentVoiceTurnId = null;
     this.llmAbort = null;
-    this.phrase = null;
     this.ttsStream = null;
     // Reset per-utterance accumulators now that this turn's usage is reported;
     // the next utterance's STT metering starts fresh.
     this.turnSttMs = 0;
+    this.turnUnmeteredUplinkBytes = 0;
     this.turnTtsChars = 0;
     this.state = "listening";
   }
@@ -990,12 +1067,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
       this.llmAbort.abort();
       this.llmAbort = null;
     }
-    // 4. Drop pending phrase aggregation.
-    if (this.phrase) {
-      this.phrase.reset();
-      this.phrase = null;
-    }
-    // 5. Report the interrupted turn's usage (STT accrued + TTS chars emitted so
+    // 4. Report the interrupted turn's usage (STT accrued + TTS chars emitted so
     //    far) so the client sees accurate accounting, then reset the per-turn
     //    accumulators so this turn's duration is NOT carried into the next
     //    committed turn's usage frame.
@@ -1006,9 +1078,10 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
       traceId,
     });
     this.turnSttMs = 0;
+    this.turnUnmeteredUplinkBytes = 0;
     this.turnTtsChars = 0;
     this.llmAbort = null;
-    // 6. Emit interrupted and return to listening.
+    // 5. Emit interrupted and return to listening.
     this.state = "interrupted";
     this.send({ t: "interrupted", reason, traceId });
     this.state = "listening";
@@ -1021,15 +1094,30 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
     // metering only runs once admitted so we never double-charge the first
     // window nor stream uncapped before admission.
     if (!this.meteringAdmitted) return;
+    if (this.protectedResponseTraceId) {
+      this.protectedProvisionalUplinkBytes += byteLength;
+    } else {
+      this.accrueTurnTelemetry(byteLength);
+    }
     this.unmeteredUplinkBytes += byteLength;
     const seconds = Math.floor(
       this.unmeteredUplinkBytes / PCM16_BYTES_PER_SECOND,
     );
     if (seconds < METER_FLUSH_SECONDS) return;
     this.unmeteredUplinkBytes -= seconds * PCM16_BYTES_PER_SECOND;
-    this.turnSttMs += seconds * 1000;
     this.meterWindowsInFlight += 1;
     void this.recordMeter(seconds / 60);
+  }
+
+  private accrueTurnTelemetry(byteLength: number): void {
+    if (byteLength <= 0) return;
+    this.turnUnmeteredUplinkBytes += byteLength;
+    const seconds = Math.floor(
+      this.turnUnmeteredUplinkBytes / PCM16_BYTES_PER_SECOND,
+    );
+    if (seconds <= 0) return;
+    this.turnUnmeteredUplinkBytes -= seconds * PCM16_BYTES_PER_SECOND;
+    this.turnSttMs += seconds * 1000;
   }
 
   private async recordMeter(minutes: number): Promise<void> {
@@ -1081,6 +1169,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
 
     // Invalidate any live turn so racing callbacks are dropped.
     this.currentVoiceTurnId = null;
+    this.clearProtectedResponseAccounting();
     this.resetSttPartialDelivery();
 
     if (this.ttsStream) {
@@ -1231,9 +1320,8 @@ class FishPrimaryRealtimeTtsStream implements RealtimeTtsStream {
         : {
             ...phrase,
             // Fish buffers short text events until its generation threshold.
-            // Flush every continuation phrase so the 24-character voice
-            // aggregator remains genuinely realtime; the final stop flushes
-            // the terminal phrase itself.
+            // Continuation inputs flush immediately; the final stop flushes
+            // the terminal input itself.
             flush: phrase.continueContext || phrase.flush,
           },
     );
@@ -1296,25 +1384,12 @@ function isFishPreAudioFallbackError(code: string | undefined): boolean {
   );
 }
 
-/**
- * Keep a small real-text suffix available for Cartesia's required terminal
- * continue:false request while allowing the rest of a completed phrase to
- * start synthesis immediately. Very short/one-token phrases remain intact.
- */
-function splitTerminalSuffix(
-  phrase: string,
-): { prefix: string; suffix: string } | null {
-  const hasTrailingBoundary = /\s$/.test(phrase);
-  const trimmed = phrase.trim();
-  const match = /^(.*\S)\s+(\S+)$/.exec(trimmed);
-  if (!match) return null;
-  const prefixText = match[1].trim();
-  const suffixText = match[2].trim();
-  if (prefixText.length < 8 || suffixText.length > 40) return null;
-  // Preserve both word boundaries when provider transcript chunks are
-  // concatenated. Cartesia accepts trailing whitespace on continuation chunks.
-  return {
-    prefix: `${prefixText} `,
-    suffix: hasTrailingBoundary ? `${suffixText} ` : suffixText,
-  };
+/** Resolve terminal output policy without pretending display can be hidden. */
+function resolveRuntimeVoiceOutputPolicy(
+  policy: VoiceOutputPolicy | undefined,
+): Exclude<VoiceOutputPolicy, "say"> {
+  // The normal chat route always persists and renders canonical text. Until a
+  // display renderer can honor `say`, treating it as `both` is the only truthful
+  // behavior. Legacy terminals also default to both; say-only is never inferred.
+  return policy === undefined || policy === "say" ? "both" : policy;
 }

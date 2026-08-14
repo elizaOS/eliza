@@ -5,7 +5,12 @@
 
 import { describe, expect, test } from "bun:test";
 import { PhraseAggregator } from "../phrase-aggregator";
-import { MAX_AUDIO_FRAME_BYTES, parseClientControlFrame, validateAudioFrame } from "../protocol";
+import {
+  MAX_AUDIO_FRAME_BYTES,
+  parseClientControlFrame,
+  serializeServerFrame,
+  validateAudioFrame,
+} from "../protocol";
 import { createVoiceSessionRegistry, type LiveVoiceSession } from "../session-registry";
 
 describe("protocol framing", () => {
@@ -100,6 +105,24 @@ describe("protocol framing", () => {
     expect(validateAudioFrame(2560).ok).toBe(true);
     expect(validateAudioFrame(0).ok).toBe(false);
     expect(validateAudioFrame(MAX_AUDIO_FRAME_BYTES + 1).ok).toBe(false);
+  });
+
+  test("serializes explicit spoken and display-only terminal outcomes", () => {
+    for (const outcome of ["spoken", "displayed"] as const) {
+      expect(
+        JSON.parse(
+          serializeServerFrame({
+            t: "turn_end",
+            outcome,
+            traceId: "trace-1",
+          }),
+        ),
+      ).toEqual({
+        t: "turn_end",
+        outcome,
+        traceId: "trace-1",
+      });
+    }
   });
 });
 

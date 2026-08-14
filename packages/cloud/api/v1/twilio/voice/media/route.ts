@@ -395,6 +395,7 @@ app.get("/", async (c) => {
       agentId: claims.agentId,
       conversationId: claims.conversationId,
       tokenExpSeconds: callExpSeconds,
+      acousticInterruptPolicy: "semantic_start",
       cartesiaApiKey,
       cartesiaInkWebSocketFactory: createWorkerCartesiaInkFactory(),
       cartesiaVoiceId,

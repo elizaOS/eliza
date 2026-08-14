@@ -6,7 +6,11 @@
 import { describe, expect, test } from "bun:test";
 import { REALTIME_VOICE_CLIENT_TRANSPORT } from "@elizaos/shared";
 
-import { streamElizaConversation, VOICE_TRACE_HEADER } from "../eliza-sse-bridge";
+import {
+  streamElizaConversation,
+  VOICE_TRACE_HEADER,
+  voiceClientMessageIdForTrace,
+} from "../eliza-sse-bridge";
 
 function sseResponse(lines: string[], status = 200): Response {
   const encoder = new TextEncoder();
@@ -78,6 +82,69 @@ describe("eliza sse bridge", () => {
 
     expect(deltas).toEqual(["Hello", " local"]);
     expect(result).toEqual({ completed: true, aborted: false });
+  });
+
+  test("returns a valid terminal voice-output directive without replacing canonical text", async () => {
+    const deltas: string[] = [];
+    const fetchImpl = (async () =>
+      sseResponse([
+        `data: ${JSON.stringify({ type: "token", text: "Exact display text." })}\n\n`,
+        `data: ${JSON.stringify({
+          type: "done",
+          fullText: "Exact display text.",
+          voiceOutput: { policy: "both", spoken: "Concise speech." },
+        })}\n\n`,
+      ])) as unknown as typeof fetch;
+
+    const result = await streamElizaConversation(
+      {
+        endpoint: "http://x",
+        authorization: "Bearer s",
+        model: "m",
+        transcript: "hi",
+        agentId: "agent-1",
+        conversationId: "conv-1",
+        traceId: "trace-output-directive",
+        signal: new AbortController().signal,
+        fetchImpl,
+      },
+      (delta) => deltas.push(delta),
+    );
+
+    expect(deltas).toEqual(["Exact display text."]);
+    expect(result).toEqual({
+      completed: true,
+      aborted: false,
+      outputDirective: { policy: "both", spoken: "Concise speech." },
+    });
+  });
+
+  test("rejects a malformed terminal voice-output directive instead of enabling legacy speech", async () => {
+    const fetchImpl = (async () =>
+      sseResponse([
+        `data: ${JSON.stringify({
+          type: "done",
+          fullText: "Do not speak this.",
+          voiceOutput: { policy: "sometimes" },
+        })}\n\n`,
+      ])) as unknown as typeof fetch;
+
+    await expect(
+      streamElizaConversation(
+        {
+          endpoint: "http://x",
+          authorization: "Bearer s",
+          model: "m",
+          transcript: "hi",
+          agentId: "agent-1",
+          conversationId: "conv-1",
+          traceId: "trace-invalid-output-directive",
+          signal: new AbortController().signal,
+          fetchImpl,
+        },
+        () => {},
+      ),
+    ).rejects.toMatchObject({ code: "protocol_error", retryable: false });
   });
 
   test("buffers provisional chunks and snapshots before an authoritative replacement", async () => {
@@ -539,6 +606,16 @@ describe("eliza sse bridge", () => {
     expect(seenHeader).toBe("trace-XYZ");
   });
 
+  test("derives one bounded exact request id from the voice trace", () => {
+    expect(voiceClientMessageIdForTrace("trace-XYZ")).toBe("voice:trace-XYZ");
+    expect(() => voiceClientMessageIdForTrace(" ")).toThrow(
+      "cannot be represented as a client message id",
+    );
+    expect(() => voiceClientMessageIdForTrace(`t${"x".repeat(122)}`)).toThrow(
+      "cannot be represented as a client message id",
+    );
+  });
+
   test("uses the canonical persisted message route with minted agent + conversation identity", async () => {
     let seenUrl = "";
     let seenBody: { text?: string } | null = null;
@@ -573,6 +650,7 @@ describe("eliza sse bridge", () => {
     );
     expect(seenBody).toEqual({
       text: "hi",
+      clientMessageId: "voice:t",
       metadata: {
         clientTransport: REALTIME_VOICE_CLIENT_TRANSPORT,
       },
