@@ -8,6 +8,7 @@
  * state. Harness mocks the cloud API client.
  */
 
+import { ELIZA_DOMAIN_CONTRACTS } from "@elizaos/shared/elizacloud/domain-contract";
 import { act, cleanup, render, screen } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -96,7 +97,7 @@ function setPageOrigin(origin: string): void {
 beforeEach(() => {
   // Default to a Cloud web origin so relative `api()` transport is exercised.
   // jsdom's default host is loopback, which intentionally uses absolute Cloud.
-  setPageOrigin("https://app.elizacloud.ai");
+  setPageOrigin(ELIZA_DOMAIN_CONTRACTS.production.cloudAppOrigin);
 });
 
 afterEach(() => {
@@ -429,9 +430,7 @@ describe("verifyAuthSuccessCandidate", () => {
     expect(apiMock).not.toHaveBeenCalled();
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(fetchMock).toHaveBeenCalledWith(
-      expect.stringMatching(
-        /^https:\/\/api\.elizacloud\.ai\/api\/v1\/oauth\/success-proof\/verify\?proof=loopback\.sig$/,
-      ),
+      `${ELIZA_DOMAIN_CONTRACTS.production.cloudApiOrigin}/api/v1/oauth/success-proof/verify?proof=loopback.sig`,
       expect.objectContaining({ credentials: "include", method: "GET" }),
     );
   });

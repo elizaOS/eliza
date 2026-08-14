@@ -10,6 +10,7 @@
  * action, and the deactivate confirm dialog's billing-transparency copy.
  */
 
+import { ELIZA_DOMAIN_CONTRACTS } from "@elizaos/shared/elizacloud/domain-contract";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -266,7 +267,9 @@ describe("ElizaAgentsTable per-row view model", () => {
     const links = screen.getAllByRole("link", { name: "Open Eliza app" });
     expect(links.length).toBeGreaterThanOrEqual(1);
     for (const link of links) {
-      expect(link.getAttribute("href")).toBe("https://app.elizacloud.ai");
+      expect(link.getAttribute("href")).toBe(
+        ELIZA_DOMAIN_CONTRACTS.production.cloudAppOrigin,
+      );
       expect(link.getAttribute("target")).toBe("_blank");
       expect(link.getAttribute("rel")).toBe("noreferrer");
     }

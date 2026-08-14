@@ -10,6 +10,7 @@
  * `sonner` toast are doubled; the card renders for real.
  */
 
+import { ELIZA_DOMAIN_CONTRACTS } from "@elizaos/shared/elizacloud/domain-contract";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -196,7 +197,7 @@ describe("BuyDomainCard (#10246)", () => {
     });
     await user.click(addCredits);
     expect(openExternalUrlMock).toHaveBeenCalledWith(
-      expect.stringContaining("/settings#cloud-billing"),
+      `${ELIZA_DOMAIN_CONTRACTS.production.cloudAppOrigin}/cloud/billing`,
     );
   });
 });
