@@ -37,10 +37,11 @@ export const SCRIPT_TEST_EXTENSIONS = [
   "cjs",
 ];
 
-// Cloud ops scripts live with the cloud package (packages/cloud/scripts) but
-// have no workspace manifest either, so this runner owns their tests too.
+// Root scripts, cloud ops scripts under the cloud package (packages/cloud/scripts),
+// and repository scripts under packages/scripts all have no workspace manifest,
+// so this runner owns their tests too.
 const SCRIPT_TEST_PATTERN = new RegExp(
-  `^packages/(?:scripts|cloud/scripts)/(?:.+/)?[^/]*[._](?:test|spec)\\.(?:${SCRIPT_TEST_EXTENSIONS.join("|")})$`,
+  `^(?:scripts|packages/(?:scripts|cloud/scripts))/(?:.+/)?[^/]*[._](?:test|spec)\\.(?:${SCRIPT_TEST_EXTENSIONS.join("|")})$`,
   "i",
 );
 
@@ -67,7 +68,7 @@ export function isScriptTestPath(value) {
 }
 
 function listRepositoryFiles(repoRoot) {
-  const pathspecs = ["packages/scripts", "packages/cloud/scripts"];
+  const pathspecs = ["scripts", "packages/scripts", "packages/cloud/scripts"];
   const candidates = execFileSync(
     "git",
     [
