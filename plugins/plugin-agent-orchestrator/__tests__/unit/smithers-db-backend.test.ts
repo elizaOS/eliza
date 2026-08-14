@@ -146,8 +146,29 @@ describe("Smithers worker isolation", () => {
   });
 
   it("rejects invalid execution timeouts", () => {
-    expect(() => resolveSmithersTimeoutMs(0)).toThrow("positive number");
+    expect(() => resolveSmithersTimeoutMs(0)).toThrow("integer from 1 through");
+    expect(() => resolveSmithersTimeoutMs(1.5)).toThrow(
+      "integer from 1 through",
+    );
+    expect(() => resolveSmithersTimeoutMs(2_147_483_648)).toThrow(
+      "integer from 1 through",
+    );
     expect(resolveSmithersTimeoutMs(1234)).toBe(1234);
+    expect(resolveSmithersTimeoutMs(2_147_483_647)).toBe(2_147_483_647);
+  });
+
+  it("rejects malformed operator-configured execution timeouts", () => {
+    const previousTimeout = process.env.ELIZA_SMITHERS_TIMEOUT_MS;
+    process.env.ELIZA_SMITHERS_TIMEOUT_MS = "1e3";
+    try {
+      expect(() => resolveSmithersTimeoutMs()).toThrow(
+        "integer from 1 through",
+      );
+    } finally {
+      if (previousTimeout === undefined)
+        delete process.env.ELIZA_SMITHERS_TIMEOUT_MS;
+      else process.env.ELIZA_SMITHERS_TIMEOUT_MS = previousTimeout;
+    }
   });
 });
 

@@ -26,6 +26,7 @@ import type {
 
 const DEFAULT_MAX_TURNS = 32;
 const DEFAULT_SMITHERS_TIMEOUT_MS = 300_000;
+const MAX_SMITHERS_TIMEOUT_MS = 2_147_483_647;
 const ABORT_DRAIN_TIMEOUT_MS = 1_000;
 const SMITHERS_WORKER_ENV_KEYS = [
   "PATH",
@@ -254,14 +255,32 @@ export function resolveSmithersDbConfig(): {
 }
 
 export function resolveSmithersTimeoutMs(explicitTimeoutMs?: number): number {
+  const rawConfigured = process.env.ELIZA_SMITHERS_TIMEOUT_MS?.trim();
+  if (
+    explicitTimeoutMs === undefined &&
+    rawConfigured !== undefined &&
+    !/^\d+$/.test(rawConfigured)
+  ) {
+    throw new ElizaError(
+      `Smithers timeout must be an integer from 1 through ${MAX_SMITHERS_TIMEOUT_MS} milliseconds`,
+      {
+        code: "SMITHERS_TIMEOUT_INVALID",
+        context: { configured: rawConfigured },
+      },
+    );
+  }
   const configured =
     explicitTimeoutMs ??
-    (process.env.ELIZA_SMITHERS_TIMEOUT_MS
-      ? Number(process.env.ELIZA_SMITHERS_TIMEOUT_MS)
-      : DEFAULT_SMITHERS_TIMEOUT_MS);
-  if (!Number.isFinite(configured) || configured <= 0) {
+    (rawConfigured === undefined
+      ? DEFAULT_SMITHERS_TIMEOUT_MS
+      : Number(rawConfigured));
+  if (
+    !Number.isSafeInteger(configured) ||
+    configured <= 0 ||
+    configured > MAX_SMITHERS_TIMEOUT_MS
+  ) {
     throw new ElizaError(
-      "Smithers timeout must be a positive number of milliseconds",
+      `Smithers timeout must be an integer from 1 through ${MAX_SMITHERS_TIMEOUT_MS} milliseconds`,
       {
         code: "SMITHERS_TIMEOUT_INVALID",
         context: { configured },
