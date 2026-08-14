@@ -75,12 +75,14 @@ describe("agent-addressable rows", () => {
     render(
       <SettingsSwitchRow
         agentId="toggle-dark"
+        testId="toggle-dark-switch"
         label="Dark mode"
         checked={false}
         onCheckedChange={onCheckedChange}
       />,
     );
     const sw = screen.getByRole("switch");
+    expect(sw.getAttribute("data-testid")).toBe("toggle-dark-switch");
     expect(sw.getAttribute("data-agent-id")).toBe("toggle-dark");
     expect(sw.getAttribute("data-agent-role")).toBe("toggle");
     expect(sw.getAttribute("data-agent-label")).toBe("Dark mode");
@@ -91,6 +93,26 @@ describe("agent-addressable rows", () => {
     );
     fireEvent.click(sw);
     expect(onCheckedChange).toHaveBeenCalledWith(true);
+    expect(screen.getByLabelText("Dark mode")).toBe(sw);
+    expect(sw.getAttribute("aria-label")).toBeNull();
+  });
+
+  it("SettingsSwitchRow keeps the visible label as the accessible name", () => {
+    render(
+      <SettingsSwitchRow
+        agentId="voice-section-wake-toggle"
+        label="Wake word"
+        agentLabel="Toggle wake-word listening"
+        checked={false}
+        onCheckedChange={() => {}}
+      />,
+    );
+    const sw = screen.getByLabelText("Wake word");
+    expect(sw.getAttribute("data-agent-label")).toBe(
+      "Toggle wake-word listening",
+    );
+    expect(sw.getAttribute("aria-label")).toBeNull();
+    expect(screen.queryByLabelText("Toggle wake-word listening")).toBeNull();
   });
 
   it("SettingsSwitchRow stays disabled when the agent status is unavailable", () => {
