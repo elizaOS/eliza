@@ -14,6 +14,7 @@ let streamTurn: Record<string, unknown>;
 let turnError: Error | null;
 let streamTurnError: Error | null;
 let turnCalls = 0;
+let lastTurnInput: Record<string, unknown> | undefined;
 let streamTurnCalls = 0;
 let admissionError: Error | null;
 let billError: Error | null;
@@ -159,9 +160,11 @@ mock.module("./run-shared-agent-turn", () => ({
   runSharedAgentTurn: async (input: {
     messageIds?: { user: string; assistant: string };
     messageRole?: "system" | "user";
+    [key: string]: unknown;
   }) => {
     turnCalls++;
     lastTurnRole = input.messageRole;
+    lastTurnInput = input;
     if (turnError) throw turnError;
     const history = Array.isArray(turn.history)
       ? turn.history.map((message, index) =>
@@ -329,6 +332,7 @@ beforeEach(() => {
   turnError = null;
   streamTurnError = null;
   turnCalls = 0;
+  lastTurnInput = undefined;
   streamTurnCalls = 0;
   characterReads = 0;
   loggerWarn.mockClear();
@@ -460,6 +464,22 @@ describe("SharedRuntimeChatService", () => {
     expect(billCalls).toHaveLength(0);
     expect(settleCalls).toHaveLength(0);
     expect(h.history()).toHaveLength(3);
+  });
+
+  test("passes the explicit AgentRuntime transition gate without changing identity", async () => {
+    const service = new SharedRuntimeChatService();
+    const h = harness();
+
+    await service.bridge(agent, rpc, {
+      ...h,
+      funding: "platform",
+      executionEngine: "eliza-runtime",
+    });
+
+    expect(lastTurnInput?.execution).toEqual({
+      engine: "eliza-runtime",
+      agentKey: agent.id,
+    });
   });
 
   test("rate denial and policy warming stop before billing admission or provider dispatch", async () => {

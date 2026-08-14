@@ -72,6 +72,15 @@ export interface RunSharedAgentTurnInput {
   onProviderDispatch?: () => Promise<void>;
   /** Cancels provider generation when the response consumer disconnects. */
   abortSignal?: AbortSignal;
+  /**
+   * Transition-only selector for the genuine Workerd AgentRuntime path. The
+   * direct model path remains the control until the runtime path has passed
+   * live model and connector proof.
+   */
+  execution?: {
+    engine: "eliza-runtime";
+    agentKey: string;
+  };
 }
 
 export interface RunSharedAgentTurnResult {
@@ -220,7 +229,7 @@ function buildSystemPrompt(character: SharedAgentCharacter): string {
   return parts.join("\n\n") || `You are ${character.name}, a helpful assistant.`;
 }
 
-function appendTurn(
+export function appendSharedTurn(
   history: SharedTurnMessage[],
   userMessage: string,
   reply: string,
@@ -302,6 +311,16 @@ export async function runSharedAgentTurn(
       model: "none",
       degraded: true,
     };
+  }
+
+  if (input.execution?.engine === "eliza-runtime") {
+    const { runSharedElizaRuntimeTurn } = await import("./shared-eliza-runtime");
+    return await runSharedElizaRuntimeTurn({
+      ...input,
+      character: { ...input.character, system: buildSystemPrompt(input.character) },
+      agentKey: input.execution.agentKey,
+      model: modelId,
+    });
   }
 
   try {

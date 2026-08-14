@@ -1,11 +1,11 @@
 /**
- * Edge runtime entry point for @elizaos/core (Vercel Edge, Cloudflare Workers, Deno Deploy).
- * Same API as node minus Node-only modules: character-loader, sessions, plugins discovery,
- * media, network/ssrf, services/hook, provisioning, utils/node.
+ * Cloudflare Workers entry point for the Eliza runtime and plugin contracts.
  *
- * WHY separate entry: Edge runtimes cannot load Node APIs; provisioning uses process.env
- * and is not safe on edge. This keeps the bundle edge-compatible and avoids pulling
- * in code that would fail at runtime.
+ * Workers run this surface with `nodejs_compat`, which supplies the supported
+ * Node APIs used by core while preserving Web Platform request and storage
+ * boundaries. Host-only provisioning and plugin discovery stay outside this
+ * entry; durable product state must still live in an injected database adapter,
+ * Durable Object, or external service rather than the request-local filesystem.
  */
 
 export * from "./access-context";

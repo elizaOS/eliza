@@ -737,6 +737,36 @@ const browserExternals = [
 	"@vercel/oidc",
 ];
 
+const edgeRuntimeSourcesPlugin: BunPlugin = {
+	name: "eliza-core-workerd-sources",
+	setup(build) {
+		build.onResolve(
+			{ filter: /^\.\/features\/basic-capabilities\/index(?:\.ts)?$/ },
+			() => ({
+				path: join(
+					process.cwd(),
+					"src/features/basic-capabilities/index.edge.ts",
+				),
+			}),
+		);
+		build.onResolve(
+			{ filter: /^\.\/plugins\/native-features(?:\.ts)?$/ },
+			() => ({
+				path: join(process.cwd(), "src/plugins/native-features.edge.ts"),
+			}),
+		);
+		build.onResolve(
+			{ filter: /^\.\/mime-sniffer(?:\.ts|\.js)?$/ },
+			({ importer }) =>
+				importer.endsWith("/src/media/mime.ts")
+					? {
+							path: join(process.cwd(), "src/media/mime-sniffer.edge.ts"),
+						}
+					: undefined,
+		);
+	},
+};
+
 // Node-specific externals (native modules and node-specific packages)
 const nodeExternals = ["dotenv", "sharp", "zod", "@hapi/shot"];
 
@@ -837,13 +867,16 @@ export async function buildEdge(
 		buildOptions: {
 			entrypoints: [`${TS_SRC}/index.edge.ts`],
 			outdir: "dist/edge",
-			target: "node",
+			// Browser targeting avoids Bun's CommonJS createRequire shim; supported
+			// node:* imports remain external for Workerd's nodejs_compat runtime.
+			target: "browser",
 			format: "esm",
-			external: browserExternals,
+			external: [...browserExternals, "node:*"],
 			sourcemap: true,
 			minify: false,
 			generateDts: false,
 			skipClean: true,
+			plugins: [edgeRuntimeSourcesPlugin],
 			selfPackageName: "@elizaos/core",
 		},
 	});
@@ -1128,7 +1161,13 @@ export async function generateTypeScriptDeclarations() {
 	// dist/edge/index.d.ts - points to the edge entry point
 	await fs.writeFile(
 		"dist/edge/index.d.ts",
-		`// Type definitions for @elizaos/core (Edge)\nexport * from './index.edge.js';\n`,
+		`// Type definitions for @elizaos/core (Edge)\nexport * from '../index.edge.js';\n`,
+	);
+	// Keep the declaration adjacent to the runtime artifact as well. TypeScript
+	// follows this file when a Workerd host resolves the compiled JS directly.
+	await fs.writeFile(
+		"dist/edge/index.edge.d.ts",
+		`// Type definitions for @elizaos/core (Edge runtime artifact)\nexport * from '../index.edge.js';\n`,
 	);
 
 	// Create main index.js for runtime fallback (when conditional exports don't match)
@@ -1170,7 +1209,11 @@ export async function generateTypeScriptDeclarations() {
 
 if (import.meta.main) {
 	const isNodeOnly = process.argv.includes("--node-only");
-	const build = isNodeOnly ? buildNodeOnly : buildAll;
+	const isEdgeOnly = process.argv.includes("--edge-only");
+	if (isNodeOnly && isEdgeOnly) {
+		throw new Error("Choose either --node-only or --edge-only, not both");
+	}
+	const build = isEdgeOnly ? buildEdge : isNodeOnly ? buildNodeOnly : buildAll;
 
 	withCoreBuildLock(async () => {
 		await execFileAsync("node", [CLEAN_SRC_ARTIFACTS_SCRIPT]);

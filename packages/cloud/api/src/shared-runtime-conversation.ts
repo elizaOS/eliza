@@ -1143,6 +1143,10 @@ export class SharedRuntimeConversation {
       const executionCtx = {
         waitUntil: (promise: Promise<unknown>) => this.state.waitUntil(promise),
       };
+      const executionEngine =
+        this.env.SHARED_ELIZA_AGENT_RUNTIME === "true"
+          ? ("eliza-runtime" as const)
+          : ("direct-model" as const);
       if (
         payload.operation === "stream" ||
         payload.operation === "personal-stream"
@@ -1154,6 +1158,7 @@ export class SharedRuntimeConversation {
           turnClaims,
           funding: personal ? "platform" : "organization-credits",
           trustedMessageRole: payload.trustedMessageRole,
+          executionEngine,
         });
       }
       const result = await sharedRuntimeChatService.bridge(agent, payload.rpc, {
@@ -1162,6 +1167,7 @@ export class SharedRuntimeConversation {
         turnClaims,
         funding: personal ? "platform" : "organization-credits",
         trustedMessageRole: payload.trustedMessageRole,
+        executionEngine,
       });
       return Response.json(result);
     });

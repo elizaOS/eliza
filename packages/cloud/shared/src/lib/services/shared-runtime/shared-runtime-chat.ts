@@ -142,6 +142,8 @@ export interface SharedRuntimeChatOptions {
   funding?: "organization-credits" | "platform";
   /** Server-authenticated lifecycle prompt; never derived from bridge params. */
   trustedMessageRole?: "system";
+  /** Local/transition gate for proving the genuine Workerd AgentRuntime path. */
+  executionEngine?: "direct-model" | "eliza-runtime";
 }
 
 export {
@@ -784,6 +786,14 @@ export class SharedRuntimeChatService {
         messageRole,
         messageIds,
         onProviderDispatch: billing?.markProviderDispatched,
+        ...(options.executionEngine === "eliza-runtime"
+          ? {
+              execution: {
+                engine: "eliza-runtime" as const,
+                agentKey: agent.id,
+              },
+            }
+          : {}),
       });
     } catch (error) {
       await settleFailedProviderWorkOffPath(

@@ -71,6 +71,11 @@
 			"import": "./dist/browser/index.browser.js",
 			"default": "./dist/browser/index.browser.js"
 		},
+		"./edge": {
+			"types": "./dist/edge/index.d.ts",
+			"import": "./dist/edge/index.edge.js",
+			"default": "./dist/edge/index.edge.js"
+		},
 		"./roles": {
 			"types": "./dist/roles.d.ts",
 			"import": "./dist/roles.js",
