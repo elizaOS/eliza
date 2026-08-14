@@ -621,6 +621,7 @@ export default function LandingPage() {
     "idle" | "copied" | "error"
   >("idle");
   const phoneCopyResetRef = useRef<number | null>(null);
+  const whatsappHref = buildElizaWhatsAppHref();
   const browserWindow = typeof window === "undefined" ? null : window;
   const signedIn =
     browserWindow !== null &&
@@ -637,14 +638,20 @@ export default function LandingPage() {
       }),
       icon: <TelegramIcon className="size-6" style={{ color: "#2AABEE" }} />,
     },
-    {
-      key: "whatsapp",
-      href: buildElizaWhatsAppHref(),
-      label: t("homepage_eliza.landing.channelWhatsapp", {
-        defaultValue: "Message Eliza on WhatsApp",
-      }),
-      icon: <WhatsAppIcon className="size-6" style={{ color: "#25D366" }} />,
-    },
+    ...(whatsappHref
+      ? [
+          {
+            key: "whatsapp",
+            href: whatsappHref,
+            label: t("homepage_eliza.landing.channelWhatsapp", {
+              defaultValue: "Message Eliza on WhatsApp",
+            }),
+            icon: (
+              <WhatsAppIcon className="size-6" style={{ color: "#25D366" }} />
+            ),
+          },
+        ]
+      : []),
     {
       key: "discord",
       href: buildElizaDiscordHref(),
