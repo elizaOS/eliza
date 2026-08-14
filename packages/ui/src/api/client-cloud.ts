@@ -144,7 +144,25 @@ type DirectCloudAgentCreateData = {
   agentName: string;
   status: string;
   jobId: string | null;
+  createdAt: string | null;
+  executionTier: CloudAgentExecutionTier | null;
 };
+
+type CloudAgentExecutionTier =
+  | "shared"
+  | "dedicated-lazy"
+  | "dedicated-always"
+  | "custom";
+
+interface CloudAgentDeleteCondition {
+  expectedAgentName: string;
+  expectedCreatedAt: string;
+  expectedExecutionTier: CloudAgentExecutionTier;
+}
+
+interface CloudAgentCleanupReceipt {
+  deleteCondition: CloudAgentDeleteCondition;
+}
 
 function requireConfirmedFreshCloudAgentCreate(
   forceCreate: boolean | undefined,
@@ -1000,7 +1018,25 @@ function parseDirectCloudAgentCreateData(
     jobId:
       firstString(data.jobId, data.job_id, job?.jobId, job?.job_id, job?.id) ??
       null,
+    createdAt: firstString(data.createdAt, data.created_at),
+    executionTier: parseCloudAgentExecutionTier(
+      firstString(data.executionTier, data.execution_tier),
+    ),
   };
+}
+
+function parseCloudAgentExecutionTier(
+  value: string | null,
+): CloudAgentExecutionTier | null {
+  switch (value) {
+    case "shared":
+    case "dedicated-lazy":
+    case "dedicated-always":
+    case "custom":
+      return value;
+    default:
+      return null;
+  }
 }
 
 function toCloudCompatAgent(input: DirectCloudAgent): CloudCompatAgent {
@@ -1369,6 +1405,9 @@ declare module "./client-base" {
         status: string;
         nodeId: string | null;
         message: string;
+        /** Authoritative create identity used only for conditional compensation. */
+        createdAt: string | null;
+        executionTier: CloudAgentExecutionTier | null;
       };
     }>;
     ensureCloudCompatManagedDiscordAgent(): Promise<{
@@ -1476,7 +1515,10 @@ declare module "./client-base" {
         githubUsername: string;
       };
     }>;
-    deleteCloudCompatAgent(agentId: string): Promise<{
+    deleteCloudCompatAgent(
+      agentId: string,
+      condition?: CloudAgentDeleteCondition,
+    ): Promise<{
       success: boolean;
       error?: string;
       data: { jobId: string; status: string; message: string };
@@ -1654,6 +1696,8 @@ declare module "./client-base" {
        */
       requiresAgentPairing?: boolean;
       executionTier?: string | null;
+      /** Exact fresh-create identity; absent for reused or legacy responses. */
+      cleanupReceipt?: CloudAgentCleanupReceipt;
     }>;
     /**
      * Background shared→personal handoff for a freshly provisioned cloud agent:
@@ -2164,6 +2208,8 @@ ElizaClient.prototype.createCloudCompatAgent = async function (
         status: data.status,
         nodeId: null,
         message: direct.success ? "Agent created" : (direct.error ?? ""),
+        createdAt: data.createdAt,
+        executionTier: data.executionTier,
       },
     };
   }
@@ -2178,6 +2224,8 @@ ElizaClient.prototype.createCloudCompatAgent = async function (
         status: "error",
         nodeId: null,
         message: directCloudAuthMissingMessage(),
+        createdAt: null,
+        executionTier: null,
       },
     };
   }
@@ -2222,6 +2270,8 @@ ElizaClient.prototype.createCloudCompatAgent = async function (
         status: data.status,
         nodeId: null,
         message: response.success ? "Agent created" : (response.error ?? ""),
+        createdAt: data.createdAt,
+        executionTier: data.executionTier,
       },
     };
   }
@@ -2539,6 +2589,7 @@ ElizaClient.prototype.getCloudCompatAgentGithubToken = async function (
 ElizaClient.prototype.deleteCloudCompatAgent = async function (
   this: ElizaClient,
   agentId,
+  condition,
 ) {
   const normalizeDelete = (response: {
     success?: boolean;
@@ -2548,9 +2599,10 @@ ElizaClient.prototype.deleteCloudCompatAgent = async function (
     success: response.success === true,
     ...(response.error ? { error: response.error } : {}),
     data: {
-      // A 202 async delete carries a jobId the caller can poll
-      // (`/api/v1/jobs/<id>`) to learn whether the teardown actually
-      // completed. A synchronous delete returns no jobId.
+      // A 202 async delete carries the durable jobId. Management surfaces may
+      // poll it for eventual teardown state; join cancellation only needs the
+      // accepted receipt because the server already owns recovery and billing.
+      // A synchronous delete returns no jobId.
       jobId: response.data?.jobId ?? "",
       status:
         response.data?.status ??
@@ -2569,6 +2621,7 @@ ElizaClient.prototype.deleteCloudCompatAgent = async function (
     error?: string;
   }>(this, `/api/v1/eliza/agents/${encodeURIComponent(agentId)}`, {
     method: "DELETE",
+    ...(condition ? { body: JSON.stringify(condition) } : {}),
   });
   if (direct) return normalizeDelete(direct);
 
@@ -2591,7 +2644,10 @@ ElizaClient.prototype.deleteCloudCompatAgent = async function (
       error?: string;
     }>(
       `/api/v1/eliza/agents/${encodeURIComponent(agentId)}`,
-      { method: "DELETE" },
+      {
+        method: "DELETE",
+        ...(condition ? { body: JSON.stringify(condition) } : {}),
+      },
       { allowNonOk: true },
     );
     return normalizeDelete(response);
@@ -2599,6 +2655,7 @@ ElizaClient.prototype.deleteCloudCompatAgent = async function (
 
   return this.fetch(`/api/cloud/compat/agents/${encodeURIComponent(agentId)}`, {
     method: "DELETE",
+    ...(condition ? { body: JSON.stringify(condition) } : {}),
   });
 };
 
@@ -4165,6 +4222,16 @@ ElizaClient.prototype.selectOrProvisionCloudAgent = async function (
   }
   requireConfirmedFreshCloudAgentCreate(mustForceCreate, created.created);
   const agentId = created.data.agentId;
+  const cleanupReceipt =
+    created.data.createdAt && created.data.executionTier
+      ? {
+          deleteCondition: {
+            expectedAgentName: created.data.agentName || name,
+            expectedCreatedAt: created.data.createdAt,
+            expectedExecutionTier: created.data.executionTier,
+          },
+        }
+      : undefined;
   const cancellationReceipt = () => ({
     agentId,
     agentName: created.data.agentName || name,
@@ -4173,6 +4240,7 @@ ElizaClient.prototype.selectOrProvisionCloudAgent = async function (
     created: created.created !== false,
     requiresAgentPairing: false,
     executionTier: preferSharedTier ? ("shared" as const) : null,
+    ...(cleanupReceipt ? { cleanupReceipt } : {}),
   });
   // Once create is accepted, callers need the authoritative id even if the
   // remaining wait is cancelled so they can compensate the external mutation.
@@ -4274,6 +4342,7 @@ ElizaClient.prototype.selectOrProvisionCloudAgent = async function (
     created: created.created !== false,
     requiresAgentPairing: false,
     executionTier: detailAgent?.execution_tier ?? null,
+    ...(cleanupReceipt ? { cleanupReceipt } : {}),
   };
 };
 

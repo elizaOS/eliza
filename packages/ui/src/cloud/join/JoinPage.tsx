@@ -75,6 +75,16 @@ function describeJoinError(err: unknown): string {
   return "Could not connect to your agent. Try again.";
 }
 
+function describeJoinCleanupError(
+  err: AggregateError,
+  abortReason: unknown,
+): string {
+  const cleanupError = err.errors.find(
+    (candidate) => candidate !== abortReason,
+  );
+  return `We couldn't finish removing the newly created agent: ${describeJoinError(cleanupError)} You are still signed in so you can retry safely.`;
+}
+
 export default function JoinPage(): React.JSX.Element {
   const t = useCloudT();
   const session = useJoinSessionAuth();
@@ -82,6 +92,7 @@ export default function JoinPage(): React.JSX.Element {
   const [detail, setDetail] = useState<string>("");
   const [error, setError] = useState<string | null>(null);
   const [signingOut, setSigningOut] = useState(false);
+  const [cleanupBlockedSignOut, setCleanupBlockedSignOut] = useState(false);
   const [creditGateWithheldReason, setCreditGateWithheldReason] = useState<
     "ip_daily_cap" | "count_unavailable" | null
   >(null);
@@ -105,12 +116,24 @@ export default function JoinPage(): React.JSX.Element {
       // No session — the auth gate below redirects to login; bail quietly.
       return;
     }
+    const previous = activeAttemptRef.current;
+    if (previous) {
+      previous.controller.abort(
+        new DOMException("Join attempt superseded", "AbortError"),
+      );
+      try {
+        await previous.promise;
+      } catch {
+        // error-policy:J5 the previous attempt surfaced its cleanup failure in
+        // the join error state; refusing to start another selection prevents a
+        // newly adopted row from racing the previous conditional deletion.
+        return;
+      }
+    }
     setPhase("connecting");
     setError(null);
+    setCleanupBlockedSignOut(false);
     setCreditGateWithheldReason(null);
-    activeAttemptRef.current?.controller.abort(
-      new DOMException("Join attempt superseded", "AbortError"),
-    );
     const controller = new AbortController();
     const attempt = (async () => {
       try {
@@ -140,7 +163,13 @@ export default function JoinPage(): React.JSX.Element {
         void result;
         if (typeof window !== "undefined") appModeNavigation.assign("/");
       } catch (err) {
-        if (controller.signal.aborted) return;
+        if (controller.signal.aborted) {
+          if (!(err instanceof AggregateError)) return;
+          setError(describeJoinCleanupError(err, controller.signal.reason));
+          setCleanupBlockedSignOut(true);
+          setPhase("error");
+          throw err;
+        }
         // The Cloud's credit gate (402) is a payment state, not a connection
         // failure: retry can never succeed, so render the server's explanation
         // (e.g. the welcome bonus withheld by the per-IP daily free-credit cap
@@ -162,9 +191,16 @@ export default function JoinPage(): React.JSX.Element {
       }
     })();
     activeAttemptRef.current = { controller, promise: attempt };
-    await attempt;
-    if (activeAttemptRef.current?.controller === controller) {
-      activeAttemptRef.current = null;
+    try {
+      await attempt;
+    } catch {
+      // error-policy:J5 the attempt's catch above rendered the cleanup failure;
+      // the abort initiator also awaits the same rejected promise before it may
+      // sign out or supersede this attempt.
+    } finally {
+      if (activeAttemptRef.current?.controller === controller) {
+        activeAttemptRef.current = null;
+      }
     }
   }, []);
 
@@ -217,7 +253,17 @@ export default function JoinPage(): React.JSX.Element {
     active?.controller.abort(
       new DOMException("User signed out during join", "AbortError"),
     );
-    await active?.promise.catch(() => undefined);
+    if (active) {
+      try {
+        await active.promise;
+      } catch {
+        // error-policy:J4 the attempt rendered the cleanup failure and kept the Steward
+        // session. A second, explicitly labelled action lets the user choose
+        // to abandon that recoverable state instead of doing so silently.
+        setSigningOut(false);
+        return;
+      }
+    }
     const { signOutFromSsoBridgedHost } = await import(
       "../sso-bridge/sso-bridge"
     );
@@ -235,7 +281,9 @@ export default function JoinPage(): React.JSX.Element {
     >
       {signingOut
         ? t("cloud.join.signingOut", { defaultValue: "Signing out..." })
-        : t("cloud.join.signOut", { defaultValue: "Sign out" })}
+        : cleanupBlockedSignOut
+          ? t("cloud.join.signOutAnyway", { defaultValue: "Sign out anyway" })
+          : t("cloud.join.signOut", { defaultValue: "Sign out" })}
     </Button>
   );
 
@@ -291,7 +339,7 @@ export default function JoinPage(): React.JSX.Element {
               onClick={() => {
                 void openCloudBillingConsole();
               }}
-              className="bg-txt px-6 py-2.5 font-semibold text-bg transition-colors hover:bg-txt/90"
+              className="bg-txt px-6 py-2.5 font-semibold text-bg transition-colors hover:bg-txt/90 hover:!text-bg"
             >
               {t("cloud.join.creditGateCta", { defaultValue: "Add funds" })}
             </Button>
@@ -324,7 +372,7 @@ export default function JoinPage(): React.JSX.Element {
               variant="ghost"
               type="button"
               onClick={handleRetry}
-              className="bg-txt px-6 py-2.5 font-semibold text-bg transition-colors hover:bg-txt/90"
+              className="bg-txt px-6 py-2.5 font-semibold text-bg transition-colors hover:bg-txt/90 hover:!text-bg"
             >
               {t("cloud.join.retry", { defaultValue: "Try again" })}
             </Button>

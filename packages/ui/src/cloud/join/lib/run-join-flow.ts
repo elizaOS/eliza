@@ -33,6 +33,22 @@ import {
   ELIZA_CLOUD_CONTROL_PLANE_HOSTS,
 } from "../../../utils/cloud-agent-base";
 
+type CloudAgentExecutionTier =
+  | "shared"
+  | "dedicated-lazy"
+  | "dedicated-always"
+  | "custom";
+
+interface CloudAgentDeleteCondition {
+  expectedAgentName: string;
+  expectedCreatedAt: string;
+  expectedExecutionTier: CloudAgentExecutionTier;
+}
+
+interface CloudAgentCleanupReceipt {
+  deleteCondition: CloudAgentDeleteCondition;
+}
+
 /** The slice of `ElizaClient` the join flow drives. */
 export interface JoinFlowClient {
   selectOrProvisionCloudAgent(options: {
@@ -51,10 +67,18 @@ export interface JoinFlowClient {
     apiBase: string;
     bridgeUrl: string | null;
     created: boolean;
+    cleanupReceipt?: CloudAgentCleanupReceipt;
   }>;
   setBaseUrl(baseUrl: string | null): void;
   setToken(token: string | null): void;
-  deleteCloudCompatAgent?(agentId: string): Promise<unknown>;
+  deleteCloudCompatAgent?(
+    agentId: string,
+    condition?: CloudAgentDeleteCondition,
+  ): Promise<{
+    success: boolean;
+    error?: string;
+    data?: { jobId?: string; status?: string; message?: string };
+  }>;
 }
 
 /** Persistence + lifecycle seams, injected so the controller stays testable. */
@@ -99,6 +123,43 @@ export interface JoinFlowResult {
   created: boolean;
   /** True when the dedicated container subdomain was selected. */
   dedicated: boolean;
+}
+
+async function compensateCreatedAgent(
+  client: JoinFlowClient,
+  selected: Awaited<ReturnType<JoinFlowClient["selectOrProvisionCloudAgent"]>>,
+): Promise<void> {
+  if (!client.deleteCloudCompatAgent) {
+    throw new Error("Join client cannot compensate a created agent");
+  }
+  if (!selected.cleanupReceipt) {
+    throw new Error(
+      "Eliza Cloud did not return the authoritative create identity required for cleanup",
+    );
+  }
+  // Conditional DELETE is the server-owned delete-wins transaction: it accepts
+  // an exact provisioning identity, retires conflicting lifecycle work,
+  // suspends billing, frees quota, and queues recoverable teardown atomically.
+  // Its durable acceptance—not eventual infrastructure teardown—is the browser
+  // compensation boundary, so sign-out never waits on background cleanup.
+  const cleanup = await client.deleteCloudCompatAgent(
+    selected.agentId,
+    selected.cleanupReceipt.deleteCondition,
+  );
+  if (!cleanup.success) {
+    throw new Error(
+      cleanup.error ??
+        cleanup.data?.message ??
+        "Compensating cloud agent deletion failed",
+    );
+  }
+  const jobId = cleanup.data?.jobId?.trim() ?? "";
+  const status = cleanup.data?.status?.trim().toLowerCase() ?? "";
+  if (!jobId && status !== "deleted") {
+    throw new Error(
+      "Eliza Cloud did not return a durable agent deletion receipt",
+    );
+  }
 }
 
 /**
@@ -190,11 +251,10 @@ export async function runJoinFlow(
   if (signal?.aborted) {
     if (selected.created && selected.agentId) {
       try {
-        if (!client.deleteCloudCompatAgent) {
-          throw new Error("Join client cannot compensate a created agent");
-        }
-        await client.deleteCloudCompatAgent(selected.agentId);
+        await compensateCreatedAgent(client, selected);
       } catch (cleanupError) {
+        // error-policy:J2 preserve both the user's cancellation and the
+        // compensation failure so the page can refuse to destroy auth.
         throw new AggregateError(
           [signal.reason, cleanupError],
           "Join was cancelled after create, and compensating deletion failed",

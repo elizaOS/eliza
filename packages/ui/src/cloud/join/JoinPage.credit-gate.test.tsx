@@ -101,6 +101,8 @@ describe("JoinPage credit-gate (402) surface", () => {
     expect(screen.queryByText("Couldn't connect to your agent")).toBeNull();
 
     const cta = screen.getByRole("button", { name: "Add funds" });
+    expect(cta.className).toContain("text-bg");
+    expect(cta.className).toContain("hover:!text-bg");
     act(() => {
       cta.click();
     });
