@@ -224,6 +224,12 @@ function isRecord(value: unknown): value is JsonObject {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+function safeDiagnosticText(value: unknown): string {
+  return typeof value === "string"
+    ? value.replace(/[\r\n]+/g, " ").slice(0, 240)
+    : "unavailable";
+}
+
 function exactKeys(record: JsonObject, keys: readonly string[]): boolean {
   const actual = Object.keys(record).sort();
   const expected = [...keys].sort();
@@ -399,7 +405,12 @@ async function jsonObject(
     fail(phase, "auth_denied");
   }
   if (response.status !== expectedStatus) {
-    await response.body?.cancel();
+    const body = await response.json().catch(() => null);
+    const code = isRecord(body) ? safeDiagnosticText(body.code) : "unavailable";
+    const error = isRecord(body) ? safeDiagnosticText(body.error) : "unavailable";
+    process.stderr.write(
+      `[agent-image-canary] ${phase} HTTP ${response.status} code=${code} error=${error}\n`,
+    );
     fail(phase, "request_failed");
   }
   let body: unknown;
