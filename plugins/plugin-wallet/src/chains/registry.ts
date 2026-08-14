@@ -1005,6 +1005,28 @@ async function fetchJupiterSwapTransaction(
   const transaction = VersionedTransaction.deserialize(
     Buffer.from(swapData.swapTransaction, "base64"),
   );
+  const dynamicSlippage = params.slippageBps === undefined;
+  const dynamicSlippageReport = swapData.dynamicSlippageReport;
+  const reportedSlippageBps =
+    dynamicSlippageReport !== null &&
+    typeof dynamicSlippageReport === "object" &&
+    !Array.isArray(dynamicSlippageReport)
+      ? (dynamicSlippageReport as Record<string, unknown>).slippageBps
+      : undefined;
+  const effectiveSlippageBps = dynamicSlippage
+    ? reportedSlippageBps
+    : quoteData.slippageBps;
+  if (
+    dynamicSlippage &&
+    (typeof effectiveSlippageBps !== "number" ||
+      !Number.isInteger(effectiveSlippageBps) ||
+      effectiveSlippageBps < 0 ||
+      effectiveSlippageBps > 10_000)
+  ) {
+    throw new Error(
+      "Jupiter dynamic slippage report is missing a valid slippageBps value",
+    );
+  }
 
   return {
     transaction,
@@ -1017,7 +1039,7 @@ async function fetchJupiterSwapTransaction(
       percent: typeof leg.percent === "number" ? leg.percent : null,
     })),
     effectiveSlippageBps:
-      typeof quoteData.slippageBps === "number" ? quoteData.slippageBps : null,
+      typeof effectiveSlippageBps === "number" ? effectiveSlippageBps : null,
     quoteSummary: {
       inToken: inputMint,
       outToken: outputMint,

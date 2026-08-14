@@ -246,7 +246,10 @@ describe("Solana simulate mode (GH #16613)", () => {
         });
       }
       if (url === "https://quote-api.jup.ag/v6/swap") {
-        return jsonResponse({ swapTransaction: swapTxBase64 });
+        return jsonResponse({
+          swapTransaction: swapTxBase64,
+          dynamicSlippageReport: { slippageBps: 12 },
+        });
       }
       throw new Error(`unexpected fetch url: ${url}`);
     });
@@ -285,7 +288,8 @@ describe("Solana simulate mode (GH #16613)", () => {
       },
     ]);
     expect(result.simulation?.requestedSlippageBps).toBeNull();
-    expect(result.simulation?.effectiveSlippageBps).toBe(50);
+    // Dynamic slippage is venue-applied by the swap builder, not the quote.
+    expect(result.simulation?.effectiveSlippageBps).toBe(12);
 
     expect(fakeConnection.simulateTransaction).toHaveBeenCalledTimes(1);
     expect(fakeConnection.simulateTransaction).toHaveBeenCalledWith(
@@ -352,7 +356,10 @@ describe("Solana simulate mode (GH #16613)", () => {
         });
       }
       if (url === "https://quote-api.jup.ag/v6/swap") {
-        return jsonResponse({ swapTransaction: swapTxBase64 });
+        return jsonResponse({
+          swapTransaction: swapTxBase64,
+          dynamicSlippageReport: { slippageBps: 25 },
+        });
       }
       if (url === PUMPFUN_TRADE_LOCAL_URL) {
         return binaryResponse(fakeTx.serialize());
@@ -400,7 +407,10 @@ describe("Solana simulate mode (GH #16613)", () => {
         });
       }
       if (url === "https://quote-api.jup.ag/v6/swap") {
-        return jsonResponse({ swapTransaction: swapTxBase64 });
+        return jsonResponse({
+          swapTransaction: swapTxBase64,
+          dynamicSlippageReport: { slippageBps: 25 },
+        });
       }
       throw new Error(`unexpected fetch url: ${url}`);
     });
@@ -500,7 +510,10 @@ describe("Solana simulate mode (GH #16613)", () => {
         });
       }
       if (url === "https://quote-api.jup.ag/v6/swap") {
-        return jsonResponse({ swapTransaction: swapTxBase64 });
+        return jsonResponse({
+          swapTransaction: swapTxBase64,
+          dynamicSlippageReport: { slippageBps: 25 },
+        });
       }
       throw new Error(`unexpected fetch url: ${url}`);
     });
@@ -548,6 +561,44 @@ describe("Solana simulate mode (GH #16613)", () => {
     expect(result.simulation?.effectiveSlippageBps).toBe(100);
   });
 
+  it("keeps fixed-slippage reporting on the quote value", async () => {
+    const fakeTx = buildFakeVersionedTransaction();
+    const swapTxBase64 = Buffer.from(fakeTx.serialize()).toString("base64");
+    const outputMint = Keypair.generate().publicKey.toBase58();
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = typeof input === "string" ? input : input.toString();
+        if (url.startsWith("https://quote-api.jup.ag/v6/quote")) {
+          return jsonResponse({
+            inAmount: "1000000000",
+            outAmount: "150000000",
+            slippageBps: 75,
+            routePlan: [],
+          });
+        }
+        if (url === "https://quote-api.jup.ag/v6/swap") {
+          return jsonResponse({ swapTransaction: swapTxBase64 });
+        }
+        throw new Error(`unexpected fetch url: ${url}`);
+      }),
+    );
+
+    const fakeConnection = createFakeConnection();
+    const runtime = createRuntime(fakeConnection, {
+      SOLANA_PUBLIC_KEY: walletPublicKey.toBase58(),
+    });
+
+    const result = await simulateSolanaSwap(
+      swapParams({ toToken: outputMint, slippageBps: 75 }),
+      createContext(runtime),
+    );
+
+    expect(result.simulation?.requestedSlippageBps).toBe(75);
+    expect(result.simulation?.effectiveSlippageBps).toBe(75);
+  });
+
   it("never creates or persists a wallet key when simulating without one configured (#19243 review, P2)", async () => {
     const fakeTx = buildFakeVersionedTransaction();
     const swapTxBase64 = Buffer.from(fakeTx.serialize()).toString("base64");
@@ -559,7 +610,10 @@ describe("Solana simulate mode (GH #16613)", () => {
         return jsonResponse({ inAmount: "1", outAmount: "1", routePlan: [] });
       }
       if (url === "https://quote-api.jup.ag/v6/swap") {
-        return jsonResponse({ swapTransaction: swapTxBase64 });
+        return jsonResponse({
+          swapTransaction: swapTxBase64,
+          dynamicSlippageReport: { slippageBps: 25 },
+        });
       }
       return binaryResponse(fakeTx.serialize());
     });
