@@ -47,6 +47,7 @@ import {
 } from "../../../voice/session/lib/provider-socket-factory";
 import { VoiceSession } from "../../../voice/session/lib/session";
 import {
+  awaitTwilioBootstrapPhase,
   resolveTwilioBootstrapLimits,
   TwilioBootstrapGate,
 } from "../lib/twilio-bootstrap-gate";
@@ -333,22 +334,25 @@ app.get("/", async (c) => {
     }
     const presentedToken = event.start.customParameters.token;
     const requestedSessionId = event.start.customParameters.sessionId;
-    const claims =
+    const verification = await awaitTwilioBootstrapPhase(
       presentedToken && requestedSessionId
-        ? await verifyTwilioStreamToken(presentedToken, streamSigningSecret)
-        : null;
+        ? verifyTwilioStreamToken(presentedToken, streamSigningSecret)
+        : Promise.resolve(null),
+      () => closed,
+    );
+    if (verification.status === "closed") return;
+    const claims = verification.value;
     if (!claims || claims.sessionId !== requestedSessionId) {
       logger.warn("[twilio-media] invalid stream bootstrap");
       closeBootstrapBoundary(1008, "invalid stream bootstrap");
       return;
     }
-    if (
-      !(await claimVoiceSessionToken(
-        claims.jti,
-        claims.exp,
-        rawRedis ?? undefined,
-      ))
-    ) {
+    const claim = await awaitTwilioBootstrapPhase(
+      claimVoiceSessionToken(claims.jti, claims.exp, rawRedis ?? undefined),
+      () => closed,
+    );
+    if (claim.status === "closed") return;
+    if (!claim.value) {
       logger.warn("[twilio-media] replayed stream bootstrap");
       closeBootstrapBoundary(1008, "stream bootstrap already used");
       return;

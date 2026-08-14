@@ -14,6 +14,24 @@ export interface TwilioBootstrapLease {
   release(): void;
 }
 
+export type TwilioBootstrapPhaseResult<T> =
+  | { status: "completed"; value: T }
+  | { status: "closed" };
+
+/**
+ * Re-check socket liveness after an asynchronous bootstrap phase. Twilio can
+ * send `stop` or close the socket while token verification or its durable
+ * single-use claim is awaiting I/O; callers must not open paid providers after
+ * either event.
+ */
+export async function awaitTwilioBootstrapPhase<T>(
+  phase: Promise<T>,
+  isClosed: () => boolean,
+): Promise<TwilioBootstrapPhaseResult<T>> {
+  const value = await phase;
+  return isClosed() ? { status: "closed" } : { status: "completed", value };
+}
+
 function parseBoundedPositiveInteger(
   raw: string | undefined,
   fallback: number,

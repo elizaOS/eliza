@@ -2,6 +2,7 @@
 
 import { describe, expect, test } from "bun:test";
 import {
+  awaitTwilioBootstrapPhase,
   resolveTwilioBootstrapLimits,
   TwilioBootstrapGate,
 } from "./twilio-bootstrap-gate";
@@ -47,5 +48,19 @@ describe("Twilio bootstrap admission", () => {
         TWILIO_VOICE_BOOTSTRAP_TIMEOUT_MS: "60001",
       }),
     ).toBeNull();
+  });
+
+  test("does not continue an async bootstrap phase after the socket closes", async () => {
+    let resolvePhase!: (value: string) => void;
+    const phase = new Promise<string>((resolve) => {
+      resolvePhase = resolve;
+    });
+    let closed = false;
+    const resultPromise = awaitTwilioBootstrapPhase(phase, () => closed);
+
+    closed = true;
+    resolvePhase("verified");
+
+    expect(await resultPromise).toEqual({ status: "closed" });
   });
 });
