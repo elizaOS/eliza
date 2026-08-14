@@ -83,6 +83,18 @@ export type ActionRetrievalResult = {
 	score: number;
 	rank: number;
 	rrfScore: number;
+	/**
+	 * Message-only keyword score (tie-breaker for exact-saturated results).
+	 * Computed from messageText and recentConversation only, without
+	 * self-manufactured candidate text.
+	 */
+	messageOnlyKeywordScore?: number;
+	/**
+	 * Message-only BM25 score (tie-breaker for exact-saturated results).
+	 * Computed from messageText and recentConversation only, without
+	 * self-manufactured candidate text.
+	 */
+	messageOnlyBm25Score?: number;
 	stageScores: Partial<Record<RetrievalStageName, number>>;
 	matchedBy: RetrievalStageName[];
 };
@@ -358,6 +370,16 @@ export function retrieveActions(
 						parentAliasesForCandidateAction(actionName).length > 0,
 				)
 			: candidateActions;
+	// Message-only evidence for tie-breaking exact-hint saturated results:
+	// when multiple candidates rank at score=1 with exact hints, we use
+	// message-only signals to disambiguate without self-manufactured candidate text.
+	const messageOnlyTokens = tokenizeActionSearchText(
+		[input.messageText ?? "", ...recentConversationText].join("\n"),
+	);
+	const messageOnlyKeywordTexts = [
+		input.messageText ?? "",
+		...recentConversationText,
+	].filter((text) => text.trim().length > 0);
 	const queryText = [
 		input.messageText ?? "",
 		...recentConversationText,
@@ -383,6 +405,16 @@ export function retrieveActions(
 		input.catalog.parents,
 		input.embedding,
 	);
+	// Message-only tie-breaker scores: for exact-hint saturated results,
+	// use keyword/BM25 from message text only (without appended candidates)
+	const messageOnlyKeywordScores = scoreKeywordMatches(
+		input.catalog.parents,
+		messageOnlyKeywordTexts,
+	);
+	const messageOnlyBm25Scores = scoreBm25(
+		input.catalog.parents,
+		messageOnlyTokens,
+	);
 	const isBareSingleTokenQuery =
 		parentActionHints.length === 0 &&
 		candidateActions.length === 0 &&
@@ -405,6 +437,11 @@ export function retrieveActions(
 	const maxKeyword = Math.max(0, ...keywordScores.values());
 	const maxBm25 = Math.max(0, ...bm25Scores.values());
 	const maxEmbedding = Math.max(0, ...embeddingScores.values());
+	const maxMessageOnlyKeyword = Math.max(0, ...messageOnlyKeywordScores.values());
+	const maxMessageOnlyBm25 = Math.max(
+		0,
+		...messageOnlyBm25Scores.values(),
+	);
 
 	const selectedContextSet = new Set(
 		(input.selectedContexts ?? []).map((c) => c.toLowerCase()),
@@ -421,6 +458,16 @@ export function retrieveActions(
 		const embedding = maxEmbedding > 0 ? embeddingRaw / maxEmbedding : 0;
 		const rrfRaw = rrfScores.get(normalizedName) ?? 0;
 		const rrf = maxRrf > 0 ? rrfRaw / maxRrf : 0;
+		// Message-only tie-breaker scores (for exact-saturated results):
+		// these use only the messageText and recentConversation, without
+		// self-manufactured candidate text that can artificially boost scores.
+		const messageOnlyKeywordRaw =
+			messageOnlyKeywordScores.get(normalizedName) ?? 0;
+		const messageOnlyBm25Raw = messageOnlyBm25Scores.get(normalizedName) ?? 0;
+		const messageOnlyKeyword =
+			maxMessageOnlyKeyword > 0 ? messageOnlyKeywordRaw / maxMessageOnlyKeyword : 0;
+		const messageOnlyBm25 =
+			maxMessageOnlyBm25 > 0 ? messageOnlyBm25Raw / maxMessageOnlyBm25 : 0;
 		const stageScores: ActionRetrievalResult["stageScores"] = {};
 
 		if (exact > 0) {
@@ -483,17 +530,38 @@ export function retrieveActions(
 			score,
 			rank: 0,
 			rrfScore: roundScore(rrfRaw),
+			messageOnlyKeywordScore: roundScore(messageOnlyKeyword),
+			messageOnlyBm25Score: roundScore(messageOnlyBm25),
 			stageScores,
 			matchedBy: Object.keys(stageScores) as RetrievalStageName[],
 		};
 	});
 
 	results.sort((left, right) => {
-		return (
-			right.score - left.score ||
-			right.rrfScore - left.rrfScore ||
-			left.normalizedName.localeCompare(right.normalizedName)
-		);
+		const scoreDiff = right.score - left.score;
+		if (scoreDiff !== 0) {
+			return scoreDiff;
+		}
+		// Tie-break exact-saturated results (score=1) with message-only evidence
+		// to avoid self-manufactured candidate text artificially boosting scores.
+		if (left.score === 1 && right.score === 1) {
+			const messageOnlyKeywordDiff =
+				right.messageOnlyKeywordScore - left.messageOnlyKeywordScore;
+			if (messageOnlyKeywordDiff !== 0) {
+				return messageOnlyKeywordDiff;
+			}
+			const messageOnlyBm25Diff =
+				right.messageOnlyBm25Score - left.messageOnlyBm25Score;
+			if (messageOnlyBm25Diff !== 0) {
+				return messageOnlyBm25Diff;
+			}
+		}
+		// Standard tie-breaker for non-saturated results
+		const rrfDiff = right.rrfScore - left.rrfScore;
+		if (rrfDiff !== 0) {
+			return rrfDiff;
+		}
+		return left.normalizedName.localeCompare(right.normalizedName);
 	});
 
 	const effectiveLimit =

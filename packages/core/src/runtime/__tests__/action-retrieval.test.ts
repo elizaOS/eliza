@@ -719,4 +719,153 @@ describe("action catalogue and retrieval", () => {
 		]);
 		expect(parentAliasesForCandidateAction("LAUNCH_APP")).toEqual(["APP"]);
 	});
+
+	it("breaks exact-saturated ties with message-only evidence (adversarial case)", () => {
+		// Issue #19347: when multiple candidates rank at score=1 with exact hints,
+		// tie-breaking must use message-only evidence (messageText + recentConversation)
+		// instead of RRF scores that include self-manufactured candidate text.
+		// Adversarial case: "quasar" candidate is a substring of MESSAGE parent.
+		// Without message-only tie-breaking, QUASAR would inflate its own score via
+		// BM25 + RRF because the candidate text is appended to the query.
+		const catalog = buildActionCatalog([
+			{
+				name: "MESSAGE",
+				description: "Search and manage messages.",
+				similes: ["SEARCH_MESSAGES"],
+				tags: ["messaging"],
+			},
+			{
+				name: "QUASAR",
+				description: "Query and analyze data.",
+				similes: ["QUERY_DATA"],
+				tags: ["analytics"],
+			},
+		]);
+
+		// Message hints both parents exactly (via exact hints),
+		// but only MESSAGE has message-only keyword signal.
+		const response = retrieveActions({
+			catalog,
+			messageText: "search my message history",
+			parentActionHints: ["MESSAGE", "QUASAR"],
+		});
+
+		// Both saturate at score=1 (exact match), so tie-breaker kicks in.
+		// MESSAGE should rank first because it has keyword match in messageText.
+		// QUASAR should rank second (no message-only keyword match).
+		expect(response.results[0]).toMatchObject({
+			name: "MESSAGE",
+			score: 1,
+			matchedBy: expect.arrayContaining(["exact"]),
+		});
+		expect(response.results[1]).toMatchObject({
+			name: "QUASAR",
+			score: 1,
+			matchedBy: expect.arrayContaining(["exact"]),
+		});
+		expect(
+			response.results.findIndex((r) => r.name === "MESSAGE"),
+		).toBeLessThan(
+			response.results.findIndex((r) => r.name === "QUASAR"),
+		);
+	});
+
+	it("breaks exact-saturated ties using BM25 when keywords are absent", () => {
+		// When message-only keyword scores are equal (both 0),
+		// fall back to message-only BM25 score as the next tie-breaker.
+		const catalog = buildActionCatalog([
+			{
+				name: "SEARCH_ACTION",
+				description: "Search for items in the catalog.",
+				tags: ["search"],
+			},
+			{
+				name: "FIND_ACTION",
+				description: "Find items that match criteria.",
+				tags: ["search"],
+			},
+		]);
+
+		// Both parents have exact hints, so both score=1.
+		// But only SEARCH_ACTION matches "search" in the message.
+		const response = retrieveActions({
+			catalog,
+			messageText: "search for something",
+			parentActionHints: ["SEARCH_ACTION", "FIND_ACTION"],
+		});
+
+		expect(response.results[0]).toMatchObject({
+			name: "SEARCH_ACTION",
+			score: 1,
+		});
+		expect(response.results[1]).toMatchObject({
+			name: "FIND_ACTION",
+			score: 1,
+		});
+	});
+
+	it("does not use message-only tie-breaking for non-saturated scores", () => {
+		// When results do not all saturate at score=1, use the standard RRF tie-breaker.
+		const catalog = buildActionCatalog([
+			{
+				name: "MUSIC",
+				description: "Control music playback.",
+				similes: ["PLAY"],
+				tags: ["audio"],
+			},
+			{
+				name: "PLAY",
+				description: "Play content.",
+				tags: ["playback"],
+			},
+		]);
+
+		// Only MUSIC gets an exact hint, so it scores 1.
+		// PLAY does not get an exact hint, so it scores lower via regex/BM25.
+		const response = retrieveActions({
+			catalog,
+			messageText: "play me some music",
+			parentActionHints: ["MUSIC"],
+		});
+
+		expect(response.results[0]).toMatchObject({
+			name: "MUSIC",
+			score: 1,
+		});
+		// PLAY ranks lower due to no exact match.
+		expect(response.results[0].score).toBeGreaterThan(response.results[1].score);
+	});
+
+	it("resolves ties at score=1 by using message-only keyword over message-only BM25", () => {
+		// Tie-breaking priority: message-only keyword > message-only BM25 > RRF > alphabetical.
+		const catalog = buildActionCatalog([
+			{
+				name: "SCHEDULE_TASK",
+				description: "Schedule a new task for later.",
+				tags: ["tasks"],
+			},
+			{
+				name: "TASK_SCHEDULER",
+				description: "Manage the task scheduler.",
+				tags: ["scheduler"],
+			},
+		]);
+
+		// Both get exact hints (score=1), but only SCHEDULE_TASK has
+		// "schedule" as a keyword in the external i18n data.
+		const response = retrieveActions({
+			catalog,
+			messageText: "schedule my work",
+			parentActionHints: ["SCHEDULE_TASK", "TASK_SCHEDULER"],
+		});
+
+		expect(response.results[0]).toMatchObject({
+			name: "SCHEDULE_TASK",
+			score: 1,
+		});
+		expect(response.results[1]).toMatchObject({
+			name: "TASK_SCHEDULER",
+			score: 1,
+		});
+	});
 });
