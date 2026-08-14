@@ -17,6 +17,54 @@ import {
 const textArbitrary = fc.string({ maxLength: 120 });
 
 describe("streaming text named regressions", () => {
+  it("does not duplicate combining marks when a decomposed suffix overlaps", () => {
+    // "cafe\u0301" (decomposed e + COMBINING ACUTE): the provider resends the
+    // accented grapheme, still decomposed, plus the continuation. The overlap
+    // is found against the NFC forms, so the appended remainder must also be
+    // sliced from the NFC form -- slicing the raw incoming at the NFC index
+    // used to re-append the combining mark ("cafe\u0301\u0301 more").
+    const existing = "cafe\u0301";
+    const incoming = "e\u0301 more";
+    const merged = mergeStreamingText(existing, incoming);
+    expect(merged.normalize("NFC")).toBe("caf\u00e9 more");
+    expect(merged).not.toContain("\u0301\u0301");
+    expect(merged.normalize("NFC")).not.toContain("\u0301");
+  });
+
+  it("keeps precomposed overlap merging byte-stable (no behavior change)", () => {
+    expect(mergeStreamingText("caf\u00e9", "\u00e9 more")).toBe(
+      "caf\u00e9 more",
+    );
+    expect(mergeStreamingText("Hello wor", "world!")).toBe("Hello world!");
+  });
+
+  it("merges a decomposed continuation through trailing whitespace cleanly", () => {
+    // Trailing whitespace on existing is trimmed for overlap detection; a
+    // decomposed overlap must still splice cleanly through the
+    // whitespace-aware prefix arithmetic.
+    const existing = "voila\u0300 ";
+    const merged = mergeStreamingText(existing, "a\u0300 magnifique");
+    expect(merged.normalize("NFC")).toBe("voil\u00e0 magnifique");
+  });
+
+  it("appends the untouched raw suffix when the overlap is ASCII and decomposed content follows the cut", () => {
+    // The byte-preservation contract: normalization exists for comparison
+    // only, so a decomposed sequence AFTER the overlap cut must reach the
+    // caller byte-for-byte (U+0065 U+0301, never a rewritten U+00E9) through
+    // every exported function.
+    const existing = "hello";
+    const incoming = "o cafe\u0301";
+    const merged = mergeStreamingText(existing, incoming);
+    expect(merged).toBe("hello cafe\u0301");
+    expect(merged).not.toContain("\u00e9");
+    expect(computeStreamingDelta(existing, incoming)).toBe(" cafe\u0301");
+    expect(resolveStreamingUpdate(existing, incoming)).toEqual({
+      kind: "append",
+      nextText: "hello cafe\u0301",
+      emittedText: " cafe\u0301",
+    });
+  });
+
   it("preserves repeated single-character deltas", () => {
     expect(mergeStreamingText("l", "l")).toBe("ll");
     expect(computeStreamingDelta("l", "l")).toBe("l");
