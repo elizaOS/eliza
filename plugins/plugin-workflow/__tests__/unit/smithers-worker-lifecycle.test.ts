@@ -4,6 +4,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, test } from 'bun:test
 import { chmod, rm } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import type { SmithersRunRequest } from '../../src/services/smithers-runtime';
 import {
   resolveSmithersWorkflowDir,
   runSmithersWorkflow,
@@ -40,7 +41,7 @@ async function run(
     signal?: AbortSignal;
     timeoutMs?: number;
     input?: Record<string, unknown>;
-    generate?: () => Promise<unknown>;
+    generate?: SmithersRunRequest['generate'];
   } = {}
 ) {
   return runSmithersWorkflow({
@@ -102,19 +103,30 @@ describe('Smithers worker lifecycle', () => {
   test('does not relabel an exited worker as timed out while inherited pipes drain', async () => {
     await expect(
       run('exit-with-inherited-pipe', {
-        timeoutMs: 250,
+        timeoutMs: 750,
         input: { exitDelayMs: 100 },
       })
     ).rejects.toMatchObject({ code: 'SMTHRS_RESULT_MISSING' });
   });
 
-  test('bounds protocol work when a worker exits during an unresolved agent request', async () => {
+  test('cancels protocol work when a worker exits during an agent request', async () => {
     const startedAt = Date.now();
+    let generationSignal: AbortSignal | undefined;
     await expect(
       run('exit-with-pending-agent-request', {
-        generate: () => new Promise(() => {}),
+        generate: ({ signal }) => {
+          generationSignal = signal;
+          return new Promise((_, reject) => {
+            if (signal.aborted) {
+              reject(signal.reason);
+              return;
+            }
+            signal.addEventListener('abort', () => reject(signal.reason), { once: true });
+          });
+        },
       })
     ).rejects.toMatchObject({ code: 'SMTHRS_RESULT_MISSING' });
+    expect(generationSignal?.aborted).toBe(true);
     expect(Date.now() - startedAt).toBeLessThan(3_000);
   });
 

@@ -540,11 +540,12 @@ export class EmbeddedWorkflowService extends Service {
         input: pending.input,
         signal: controller.signal,
         onEvent: (event) => this.recordEvent(running, event),
-        generate: async ({ prompt, messages, structured }) => {
+        generate: async ({ prompt, messages, structured, signal }) => {
           const promptText =
             typeof prompt === 'string' ? prompt : JSON.stringify(prompt ?? messages ?? '');
           const response = await this.runtime.useModel(ModelType.TEXT_LARGE, {
             prompt: promptText,
+            signal,
             ...(structured ? { responseFormat: { type: 'json_object' as const } } : {}),
           });
           if (!structured) return response;
