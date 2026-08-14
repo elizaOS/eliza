@@ -336,7 +336,7 @@ test("landing page renders its hero and messaging entrypoints", async ({
     page.getByRole("heading", { name: /Four hours of your time back/ }),
   ).toBeVisible({ timeout: 20_000 });
 
-  const textCta = page.getByRole("button", { name: "Message Eliza" });
+  const textCta = page.getByRole("button", { name: "Text" });
   await expect(textCta).toBeVisible();
   await textCta.click();
   await expect(page.getByRole("status")).toHaveText("Phone number copied");
@@ -380,14 +380,66 @@ test("landing keeps content reachable on a small viewport", async ({
   });
   expect(overflow).toBeLessThanOrEqual(0);
 
+  await expect(page.locator(".landing-header")).toBeHidden();
+  await expect(page.locator(".landing-hero-heading")).toHaveCSS(
+    "clip-path",
+    "inset(50%)",
+  );
+  await expect(page.locator(".landing-hero-actions")).toBeHidden();
+  const fullScreenThread = await page
+    .locator(".landing-iphone")
+    .evaluate((phone) => ({
+      ariaHidden: phone.getAttribute("aria-hidden"),
+      borderRadius: getComputedStyle(phone).borderRadius,
+      width: phone.getBoundingClientRect().width,
+    }));
+  expect(fullScreenThread.ariaHidden).toBeNull();
+  expect(fullScreenThread.borderRadius).toBe("0px");
+  expect(fullScreenThread.width).toBe(390);
+
+  const contactSheetTrigger = page.getByRole("button", {
+    name: "All the ways to reach Eliza",
+  });
+  await expect(contactSheetTrigger).toBeVisible();
+  await contactSheetTrigger.click();
+
+  const contactSheet = page.getByRole("dialog");
+  await expect(contactSheet).toBeVisible();
+  const textAction = contactSheet.getByRole("button", {
+    name: "Text Eliza on iMessage",
+  });
+  await expect(textAction).toBeVisible();
+  await expect(
+    contactSheet.getByRole("link", { name: "Call Eliza" }),
+  ).toHaveAttribute("href", "tel:+18087881821");
+  await expect(
+    contactSheet.getByRole("link", { name: "Message Eliza on Discord" }),
+  ).toHaveAttribute("href", /^https:\/\/discord\.com\//);
+  await expect(
+    contactSheet.getByRole("link", { name: "Message Eliza on Telegram" }),
+  ).toHaveAttribute("href", /^https:\/\/t\.me\//);
+  await expect(
+    contactSheet.getByRole("link", { name: "Message Eliza on WhatsApp" }),
+  ).toHaveAttribute("href", /^https:\/\/wa\.me\//);
+  await expect(
+    contactSheet.getByRole("link", { name: "Sign in to Eliza Cloud" }),
+  ).toBeVisible();
+
   const composer = page.locator(".landing-phone-composer");
   await composer.scrollIntoViewIfNeeded();
   await expect(composer).toBeVisible();
 
-  await page.getByRole("button", { name: "Message Eliza" }).click();
+  await textAction.click();
+  await expect(contactSheet).toBeHidden();
   await expect(page.getByRole("status")).toHaveText("Phone number copied");
   await page.waitForTimeout(2_250);
   await expect(page.getByRole("status")).toHaveText("Phone number copied");
+
+  // Leave the real sheet open as the terminal state so recorded evidence
+  // proves the mobile entrypoint and its complete option list, not just the
+  // transient interaction captured in the video.
+  await contactSheetTrigger.click();
+  await expect(contactSheet).toBeVisible();
 });
 
 test("landing keeps clipboard rejection visible", async ({ page }) => {
@@ -402,7 +454,7 @@ test("landing keeps clipboard rejection visible", async ({ page }) => {
   });
   await page.goto("/");
 
-  await page.getByRole("button", { name: "Message Eliza" }).click();
+  await page.getByRole("button", { name: "Text" }).click();
   await expect(page.getByRole("alert")).toHaveText(
     "Couldn't copy the phone number",
   );
