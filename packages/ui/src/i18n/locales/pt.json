@@ -7008,6 +7008,7 @@
   "cloud.affiliates.feeMarkupSetting": "Configuração de markup de taxa",
   "cloud.affiliates.feeMarkupDesc": "Defina o percentual exato que deseja cobrar dos usuários indicados sobre os preços base do elizaOS. Esta taxa se aplica a recargas de crédito e custo exato de uso para MCPs/Agentes.",
   "cloud.affiliates.markupPercentLabel": "Seu percentual de markup (0 - 1000%)",
+  "cloud.affiliates.markupPercentHelp": "De 0 a 1000. Adicionado aos preços base dos usuários indicados.",
   "cloud.affiliates.devApiTitle": "Integração de API para desenvolvedores (SKUs)",
   "cloud.affiliates.devApiDesc": "Incorpore seu código de afiliado diretamente nas suas chamadas de API. Todos os usuários que passarem o cabeçalho com seu código gerarão automaticamente receita com markup para você em cada inferência.",
   "cloud.notFound.title": "Não encontrado",

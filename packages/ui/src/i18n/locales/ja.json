@@ -7008,6 +7008,7 @@
   "cloud.affiliates.feeMarkupSetting": "手数料マークアップ設定",
   "cloud.affiliates.feeMarkupDesc": "紹介したユーザーに elizaOS の基本価格に上乗せして請求する正確な割合を設定します。この手数料はクレジットチャージと MCP/エージェントの使用コストに適用されます。",
   "cloud.affiliates.markupPercentLabel": "マークアップ割合（0〜1000%）",
+  "cloud.affiliates.markupPercentHelp": "0〜1000。紹介したユーザーの基本価格に上乗せされます。",
   "cloud.affiliates.devApiTitle": "デベロッパー API 連携（SKU）",
   "cloud.affiliates.devApiDesc": "アフィリエイトコードを API 呼び出しに直接埋め込みます。コードヘッダーを渡すすべてのユーザーは、すべての推論で自動的にマークアップ収益を生成します。",
   "cloud.notFound.title": "見つかりません",

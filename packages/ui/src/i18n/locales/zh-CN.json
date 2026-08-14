@@ -7008,6 +7008,7 @@
   "cloud.affiliates.feeMarkupSetting": "费用加价设置",
   "cloud.affiliates.feeMarkupDesc": "设置您希望在 elizaOS 基础价格之上向推荐用户收取的确切百分比。此费用适用于额度充值以及 MCP/智能体的精确使用成本。",
   "cloud.affiliates.markupPercentLabel": "您的加价百分比（0 - 1000%）",
+  "cloud.affiliates.markupPercentHelp": "0–1000。此比例将加到被推荐用户的基础价格上。",
   "cloud.affiliates.devApiTitle": "开发者 API 集成（SKU）",
   "cloud.affiliates.devApiDesc": "将您的推广码直接嵌入 API 调用中。所有传递您代码头的用户将在每次推理时自动为您生成加价收入。",
   "cloud.notFound.title": "未找到",

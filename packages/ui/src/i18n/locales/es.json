@@ -7008,6 +7008,7 @@
   "cloud.affiliates.feeMarkupSetting": "Configuración del margen de comisión",
   "cloud.affiliates.feeMarkupDesc": "Establece el porcentaje exacto que deseas cobrar a tus usuarios referidos sobre los precios base de elizaOS. Esta comisión se aplica a las recargas de créditos y al costo exacto de uso de MCPs/Agentes.",
   "cloud.affiliates.markupPercentLabel": "Tu porcentaje de margen (0 - 1000%)",
+  "cloud.affiliates.markupPercentHelp": "De 0 a 1000. Se añade a los precios base para los usuarios referidos.",
   "cloud.affiliates.devApiTitle": "Integración de API para desarrolladores (SKUs)",
   "cloud.affiliates.devApiDesc": "Incorpora tu código de afiliado directamente en tus llamadas de API. Todos los usuarios que pasen el encabezado de tu código generarán automáticamente ingresos con margen para ti en cada inferencia.",
   "cloud.notFound.title": "No encontrado",
