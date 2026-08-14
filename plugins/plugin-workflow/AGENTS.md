@@ -49,6 +49,10 @@ All routes are elizaOS routes under `/api/workflow`: status, definitions, genera
 
 The Workflows studio edits source, renders the Smithers step manifest, starts and cancels runs, follows live events, previews widgets, and restores revisions. Chat uses the same service. A run response emits a `[WORKFLOW]` block with workflow/run ids, step ids, and widget manifests; the inline widget hydrates from the execution API and links back to the studio.
 
+## Configuration
+
+`ELIZA_SMTHRS_TIMEOUT_MS` sets the maximum Smithers worker wall-clock time and defaults to 30 minutes. Operator values must be canonical decimal integers from `1` through `2147483647` with no sign, padding, whitespace, fraction, or exponent. Invalid values fail with `SMTHRS_TIMEOUT_INVALID` before a worker starts; an explicit validated run timeout takes precedence over the environment setting.
+
 ## Commands
 
 ```bash

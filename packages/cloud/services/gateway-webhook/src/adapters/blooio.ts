@@ -7,7 +7,8 @@ import { z } from "zod";
 import { logger } from "../logger";
 import type { ChatEvent, PlatformAdapter, WebhookConfig } from "./types";
 
-const BLOOIO_API_BASE = "https://api.blooio.com/v2/api";
+const BLOOIO_V2_API_BASE = "https://api.blooio.com/v2/api";
+const BLOOIO_V4_MESSAGES_URL = "https://api.blooio.com/v4/messages";
 
 const BlooioAttachmentSchema = z.union([
   z.string(),
@@ -20,6 +21,8 @@ const BlooioV2WebhookEventSchema = z.object({
   external_id: z.string().nullish(),
   internal_id: z.string().nullish(),
   sender: z.string().trim().min(1).nullish(),
+  channel_id: z.string().trim().min(1).nullish(),
+  channel_type: z.string().trim().min(1).nullish(),
   text: z.string().nullish(),
   attachments: z.array(BlooioAttachmentSchema).nullish(),
   protocol: z.string().nullish(),
@@ -33,6 +36,8 @@ const BlooioV4MessageSchema = z
     id: z.string().trim().min(1).nullish(),
     message_id: z.string().trim().min(1).nullish(),
     chat_id: z.string().nullish(),
+    channel_id: z.string().trim().min(1).nullish(),
+    channel_type: z.string().trim().min(1).nullish(),
     sender: z.string().trim().min(1).nullish(),
     recipient: z.string().nullish(),
     channel_address: z.string().nullish(),
@@ -71,6 +76,8 @@ function parseWebhookEvent(data: unknown): BlooioWebhookEvent | null {
     external_id: sender,
     internal_id: message.recipient ?? message.channel_address,
     sender,
+    channel_id: message.channel_id,
+    channel_type: message.channel_type,
     text: message.text,
     attachments: message.attachments,
     protocol: message.protocol,
@@ -242,6 +249,9 @@ export const blooioAdapter: PlatformAdapter = {
       platform: "blooio",
       messageId: event.message_id,
       chatId: event.sender,
+      channelId: event.channel_id ?? undefined,
+      channelType: event.channel_type ?? undefined,
+      protocol: event.protocol ?? undefined,
       senderId: event.sender,
       text:
         mediaUrls.length > 0 && !text
@@ -259,7 +269,6 @@ export const blooioAdapter: PlatformAdapter = {
   ): Promise<void> {
     if (!config.apiKey) throw new Error("Missing apiKey for Blooio reply");
 
-    const url = `${BLOOIO_API_BASE}/chats/${encodeURIComponent(event.senderId)}/messages`;
     const headers: Record<string, string> = {
       Authorization: `Bearer ${config.apiKey}`,
       "Content-Type": "application/json",
@@ -269,12 +278,18 @@ export const blooioAdapter: PlatformAdapter = {
       // double-text the user when retried.
       "Idempotency-Key": `gw-reply-${event.messageId}`,
     };
-    if (config.fromNumber) headers["X-From-Number"] = config.fromNumber;
 
-    const response = await fetch(url, {
+    const from = event.channelId ?? config.fromNumber;
+    const body: { to: string; text: string; from?: string } = {
+      to: event.senderId,
+      text,
+    };
+    if (from) body.from = from;
+
+    const response = await fetch(BLOOIO_V4_MESSAGES_URL, {
       method: "POST",
       headers,
-      body: JSON.stringify({ text }),
+      body: JSON.stringify(body),
     });
 
     if (!response.ok) {
@@ -289,7 +304,7 @@ export const blooioAdapter: PlatformAdapter = {
   ): Promise<void> {
     if (!config.apiKey) return;
     try {
-      const url = `${BLOOIO_API_BASE}/chats/${encodeURIComponent(event.senderId)}/read`;
+      const url = `${BLOOIO_V2_API_BASE}/chats/${encodeURIComponent(event.senderId)}/read`;
       const headers: Record<string, string> = {
         Authorization: `Bearer ${config.apiKey}`,
         "Content-Type": "application/json",

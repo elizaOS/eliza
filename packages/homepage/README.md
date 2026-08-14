@@ -24,11 +24,33 @@ cp .env.example .env.local
 | `VITE_TELEGRAM_BOT_USERNAME` | Optional Telegram bot username override (default `Elizav2_Bot`) |
 | `VITE_TELEGRAM_BOT_ID` | Optional numeric Telegram bot ID override (default `7684336618`) |
 | `VITE_DISCORD_CLIENT_ID` | Optional Discord Application ID override (default `1468649258654630063`) |
-| `VITE_WHATSAPP_PHONE_NUMBER` | WhatsApp Business phone number in E.164 format (defaults to `+14159611510`) |
+| `WHATSAPP_PUBLIC_ENABLED` | Deployment switch that must be true before the public WhatsApp CTA is built |
+| `VITE_WHATSAPP_PHONE_NUMBER` | Production WhatsApp Business sender in E.164 format; omitted by default |
 
 OAuth provider callback configuration belongs to the unified Cloud auth routes
 and API deployment. Do not register a callback against this source package or
 its optional test-harness port.
+
+### WhatsApp production activation
+
+The homepage is provider-neutral: it opens the admitted Business sender with
+`wa.me`, while the gateway can receive and reply through either the direct Meta
+Cloud API adapter or the Twilio adapter. Leave `WHATSAPP_PUBLIC_ENABLED=false`
+until one provider owns a registered production sender and a real handset
+round trip has succeeded.
+
+1. Register a production sender with Meta or Twilio and configure the matching
+   gateway credentials and webhook.
+2. Set the target GitHub environment's `VITE_WHATSAPP_PHONE_NUMBER` variable to
+   that exact sender.
+3. Set `WHATSAPP_PUBLIC_ENABLED=true` in the same environment and deploy the
+   consolidated app.
+4. Verify the rendered `wa.me` target, receive a handset message through the
+   signed webhook, and confirm the agent reply reaches the same handset.
+
+The release workflow rejects the Twilio shared sandbox (`+14155238886`), the
+current Meta developer test sender (`+15551649988`), and the former unverified
+homepage number (`+14159611510`).
 
 ### 2. Run the unified development server
 

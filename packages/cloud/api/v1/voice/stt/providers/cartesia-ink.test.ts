@@ -10,6 +10,10 @@ import {
   CARTESIA_INK_API_VERSION,
   CARTESIA_INK_CHUNK_BYTES,
   CARTESIA_INK_MODEL_ID,
+  CARTESIA_INK_TURN_EAGER_END_THRESHOLD,
+  CARTESIA_INK_TURN_END_THRESHOLD,
+  CARTESIA_INK_TURN_END_TIMEOUT_MILLISECONDS,
+  CARTESIA_INK_TURN_START_THRESHOLD,
   CARTESIA_INK_WEBSOCKET_URL,
   CartesiaInkAudioChunkError,
   CartesiaInkConfigError,
@@ -108,6 +112,24 @@ describe("Cartesia Ink realtime adapter", () => {
     expect(url.searchParams.get("model")).toBe(CARTESIA_INK_MODEL_ID);
     expect(url.searchParams.get("encoding")).toBe("pcm_s16le");
     expect(url.searchParams.get("sample_rate")).toBe("16000");
+    expect(url.searchParams.get("turn_start_threshold")).toBe(
+      String(CARTESIA_INK_TURN_START_THRESHOLD),
+    );
+    expect(url.searchParams.get("turn_eager_end_threshold")).toBe(
+      String(CARTESIA_INK_TURN_EAGER_END_THRESHOLD),
+    );
+    expect(url.searchParams.get("turn_end_threshold")).toBe(
+      String(CARTESIA_INK_TURN_END_THRESHOLD),
+    );
+    expect(url.searchParams.get("turn_end_timeout_ms")).toBe(
+      String(CARTESIA_INK_TURN_END_TIMEOUT_MILLISECONDS),
+    );
+    expect(CARTESIA_INK_TURN_START_THRESHOLD).toBeGreaterThan(
+      CARTESIA_INK_TURN_EAGER_END_THRESHOLD,
+    );
+    expect(CARTESIA_INK_TURN_EAGER_END_THRESHOLD).toBeGreaterThan(
+      CARTESIA_INK_TURN_END_THRESHOLD,
+    );
     expect(url.searchParams.get("cartesia_version")).toBe(
       CARTESIA_INK_API_VERSION,
     );

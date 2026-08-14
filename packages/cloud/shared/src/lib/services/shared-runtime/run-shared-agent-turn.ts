@@ -417,9 +417,11 @@ export async function runSharedAgentTurnStream(
 
     const providerReader = result.fullStream.getReader();
     let providerStreamDone = false;
+    let providerStreamCancelled = false;
     let providerCancelPromise: Promise<void> | null = null;
     const cancel = async (reason?: unknown): Promise<void> => {
       if (providerStreamDone) return;
+      providerStreamCancelled = true;
       providerCancelPromise ??= providerReader.cancel(reason).finally(() => {
         providerStreamDone = true;
       });
@@ -427,11 +429,26 @@ export async function runSharedAgentTurnStream(
     };
     const parts = (async function* (): AsyncIterable<SharedAgentTurnStreamPart> {
       let reply = "";
+      let finishSeen = false;
       try {
         for (;;) {
           const next = await providerReader.read();
           if (next.done) {
             providerStreamDone = true;
+            if (!finishSeen && !providerStreamCancelled) {
+              // Some AI SDK provider streams close cleanly after their text deltas
+              // without forwarding a finish part. The SDK result promises are the
+              // authoritative completion signal: they reject for a failed stream.
+              const finalText = (await result.text).trim();
+              if (!finalText) {
+                throw new Error("provider stream ended without text or a finish part");
+              }
+              yield {
+                type: "finish",
+                text: finalText,
+                usage: await result.totalUsage,
+              };
+            }
             break;
           }
           const part = next.value;
@@ -439,7 +456,13 @@ export async function runSharedAgentTurnStream(
             reply += part.text;
             yield { type: "text-delta", text: part.text };
           }
+          if (part.type === "error") {
+            throw part.error instanceof Error
+              ? part.error
+              : new Error("provider stream reported an unknown error");
+          }
           if (part.type === "finish") {
+            finishSeen = true;
             yield {
               type: "finish",
               text: reply.trim() || "…",

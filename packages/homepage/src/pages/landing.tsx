@@ -28,11 +28,10 @@ import {
 import elizaLogotextUrl from "@/assets/eliza-logotext.svg";
 import {
   buildElizaDiscordHref,
-  buildElizaSmsHref,
   buildElizaTelegramHref,
   buildElizaWhatsAppHref,
-  ELIZA_PHONE_FORMATTED,
   ELIZA_PHONE_NUMBER,
+  openOrCopyElizaMessage,
 } from "@/lib/contact";
 import { resolveHomepageProductNavigation } from "@/lib/product-navigation";
 import { useT } from "@/providers/I18nProvider";
@@ -621,6 +620,7 @@ export default function LandingPage() {
     "idle" | "copied" | "error"
   >("idle");
   const phoneCopyResetRef = useRef<number | null>(null);
+  const whatsappHref = buildElizaWhatsAppHref();
   const browserWindow = typeof window === "undefined" ? null : window;
   const signedIn =
     browserWindow !== null &&
@@ -637,14 +637,20 @@ export default function LandingPage() {
       }),
       icon: <TelegramIcon className="size-6" style={{ color: "#2AABEE" }} />,
     },
-    {
-      key: "whatsapp",
-      href: buildElizaWhatsAppHref(),
-      label: t("homepage_eliza.landing.channelWhatsapp", {
-        defaultValue: "Message Eliza on WhatsApp",
-      }),
-      icon: <WhatsAppIcon className="size-6" style={{ color: "#25D366" }} />,
-    },
+    ...(whatsappHref
+      ? [
+          {
+            key: "whatsapp",
+            href: whatsappHref,
+            label: t("homepage_eliza.landing.channelWhatsapp", {
+              defaultValue: "Message Eliza on WhatsApp",
+            }),
+            icon: (
+              <WhatsAppIcon className="size-6" style={{ color: "#25D366" }} />
+            ),
+          },
+        ]
+      : []),
     {
       key: "discord",
       href: buildElizaDiscordHref(),
@@ -664,10 +670,10 @@ export default function LandingPage() {
     [],
   );
 
-  const copyPhoneNumber = async () => {
+  const handleMessageEliza = async () => {
     try {
-      await navigator.clipboard.writeText(ELIZA_PHONE_NUMBER);
-      setPhoneCopyState("copied");
+      const outcome = await openOrCopyElizaMessage(window);
+      setPhoneCopyState(outcome === "copied" ? "copied" : "idle");
     } catch {
       setPhoneCopyState("error");
     }
@@ -683,13 +689,11 @@ export default function LandingPage() {
   const phoneCopyLabel =
     phoneCopyState === "copied"
       ? t("homepage_eliza.landing.phoneCopied", {
-          defaultValue: "Copied!",
+          defaultValue: "Phone number copied",
         })
-      : phoneCopyState === "error"
-        ? t("homepage_eliza.landing.phoneCopyFailed", {
-            defaultValue: "Couldn't copy",
-          })
-        : ELIZA_PHONE_FORMATTED;
+      : t("homepage_eliza.landing.phoneCopyFailed", {
+          defaultValue: "Couldn't copy the phone number",
+        });
   return (
     <div className="landing-page theme-app">
       <Suspense fallback={null}>
@@ -729,15 +733,16 @@ export default function LandingPage() {
             })}
           </h1>
           <div className="landing-hero-actions">
-            <a
+            <button
+              type="button"
               className="landing-cta landing-cta--black"
-              href={buildElizaSmsHref()}
+              onClick={() => void handleMessageEliza()}
             >
               <IMessageIcon className="size-5" />
               {t("homepage_eliza.landing.ctaText", {
-                defaultValue: "Text Eliza",
+                defaultValue: "Message Eliza",
               })}
-            </a>
+            </button>
             <a
               className="landing-cta landing-cta--white"
               href={`tel:${ELIZA_PHONE_NUMBER}`}
@@ -770,16 +775,15 @@ export default function LandingPage() {
               </a>
             ))}
           </div>
-          <button
-            type="button"
-            className="landing-phone-number"
-            onClick={() => void copyPhoneNumber()}
-            aria-label={t("homepage_eliza.landing.copyPhone", {
-              defaultValue: "Copy Eliza's phone number",
-            })}
-          >
-            <span aria-live="polite">{phoneCopyLabel}</span>
-          </button>
+          {phoneCopyState !== "idle" && (
+            <div
+              className={`landing-copy-notice landing-copy-notice--${phoneCopyState}`}
+              role="status"
+              aria-live="polite"
+            >
+              {phoneCopyLabel}
+            </div>
+          )}
         </div>
         <ResponsivePhoneMockup />
       </main>

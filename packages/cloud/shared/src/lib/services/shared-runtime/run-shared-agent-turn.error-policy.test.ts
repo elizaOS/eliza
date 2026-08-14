@@ -46,6 +46,8 @@ function aiFullStream(iterable: AsyncIterable<unknown>): ReadableStream<unknown>
 let lastStreamTextOptions: StreamTextOptions | undefined;
 let streamTextImpl: (options?: StreamTextOptions) => {
   fullStream: ReadableStream<unknown>;
+  text: Promise<string>;
+  totalUsage: Promise<unknown>;
 } = () => ({
   fullStream: aiFullStream(
     (async function* () {
@@ -54,6 +56,8 @@ let streamTextImpl: (options?: StreamTextOptions) => {
       yield { type: "finish", totalUsage: { totalTokens: 3 } };
     })(),
   ),
+  text: Promise.resolve("ok reply"),
+  totalUsage: Promise.resolve({ totalTokens: 3 }),
 });
 
 mock.module("../../providers/language-model", () => ({
@@ -93,6 +97,8 @@ beforeEach(() => {
         yield { type: "finish", totalUsage: { totalTokens: 3 } };
       })(),
     ),
+    text: Promise.resolve("ok reply"),
+    totalUsage: Promise.resolve({ totalTokens: 3 }),
   });
   globalThis.fetch = mock(async () => {
     throw new Error("no network expected in this unit test");
@@ -331,6 +337,34 @@ describe("runSharedAgentTurnStream — incremental provider policy", () => {
     ]);
   });
 
+  test("synthesizes finish from the SDK result when a provider closes cleanly after text", async () => {
+    streamTextImpl = () => ({
+      fullStream: aiFullStream(
+        (async function* () {
+          yield { type: "text-delta", text: "clean " };
+          yield { type: "text-delta", text: "eof" };
+        })(),
+      ),
+      text: Promise.resolve("clean eof"),
+      totalUsage: Promise.resolve({ totalTokens: 2 }),
+    });
+
+    const result = await runSharedAgentTurnStream({
+      character: { name: "Nova", system: "You are Nova.", model: "gpt-oss-120b" },
+      history: [],
+      message: "hello",
+    });
+    if (!("parts" in result)) throw new Error("expected streaming result");
+
+    const parts = [];
+    for await (const part of result.parts) parts.push(part);
+    expect(parts).toEqual([
+      { type: "text-delta", text: "clean " },
+      { type: "text-delta", text: "eof" },
+      { type: "finish", text: "clean eof", usage: { totalTokens: 2 } },
+    ]);
+  });
+
   test("keeps no-model turns degraded without starting a provider stream", async () => {
     providerConfigured = false;
     streamTextImpl = () => {
@@ -363,6 +397,8 @@ describe("runSharedAgentTurnStream — incremental provider policy", () => {
           throw new Error("provider stream reset");
         })(),
       ),
+      text: Promise.resolve("partial"),
+      totalUsage: Promise.resolve({ totalTokens: 0 }),
     });
 
     const result = await runSharedAgentTurnStream({
@@ -388,6 +424,70 @@ describe("runSharedAgentTurnStream — incremental provider policy", () => {
     expect(((error as Error).cause as Error).message).toContain("provider stream reset");
   });
 
+  test("propagates explicit provider error parts instead of treating them as clean EOF", async () => {
+    streamTextImpl = () => ({
+      fullStream: aiFullStream(
+        (async function* () {
+          yield { type: "text-delta", text: "partial" };
+          yield { type: "error", error: new Error("provider rejected stream") };
+        })(),
+      ),
+      text: Promise.resolve("partial"),
+      totalUsage: Promise.resolve({ totalTokens: 0 }),
+    });
+
+    const result = await runSharedAgentTurnStream({
+      character: { name: "Nova", model: "gpt-oss-120b" },
+      history: [],
+      message: "hello",
+    });
+    if (!("parts" in result)) throw new Error("expected streaming result");
+
+    const error = await (async () => {
+      try {
+        for await (const _part of result.parts) {
+          // Consume through the explicit provider error part.
+        }
+        throw new Error("expected stream consumption to fail");
+      } catch (caught) {
+        return caught;
+      }
+    })();
+    expect(error).toBeInstanceOf(Error);
+    expect(((error as Error).cause as Error).message).toBe("provider rejected stream");
+  });
+
+  test("propagates a clean EOF whose authoritative SDK result rejects", async () => {
+    streamTextImpl = () => {
+      const text = Promise.reject(new Error("provider completion failed"));
+      void text.catch(() => {
+        // The SUT observes the original rejecting promise after consuming fullStream.
+      });
+      return {
+        fullStream: aiFullStream(
+          (async function* () {
+            yield { type: "text-delta", text: "partial" };
+          })(),
+        ),
+        text,
+        totalUsage: Promise.resolve({ totalTokens: 0 }),
+      };
+    };
+
+    const result = await runSharedAgentTurnStream({
+      character: { name: "Nova", model: "gpt-oss-120b" },
+      history: [],
+      message: "hello",
+    });
+    if (!("parts" in result)) throw new Error("expected streaming result");
+
+    await expect(async () => {
+      for await (const _part of result.parts) {
+        // Consume through clean EOF so the SDK completion promise is checked.
+      }
+    }).toThrow("streaming agent turn failed");
+  });
+
   test("passes cancellation to the AI SDK and cancels its response reader", async () => {
     const abortController = new AbortController();
     let providerCancelReason: unknown;
@@ -400,6 +500,8 @@ describe("runSharedAgentTurnStream — incremental provider policy", () => {
           providerCancelReason = reason;
         },
       }),
+      text: new Promise(() => {}),
+      totalUsage: new Promise(() => {}),
     });
 
     const result = await runSharedAgentTurnStream({

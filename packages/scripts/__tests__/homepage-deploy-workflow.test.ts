@@ -120,6 +120,32 @@ describe("homepage deployment workflow", () => {
     );
   });
 
+  it("keeps WhatsApp disabled until a production sender is explicitly enabled", () => {
+    for (const source of [workflow, releaseWorkflow]) {
+      expect(source).toContain("WHATSAPP_PUBLIC_ENABLED");
+      expect(source).toContain(
+        "VITE_WHATSAPP_PHONE_NUMBER must be an E.164 number when WHATSAPP_PUBLIC_ENABLED is true",
+      );
+      expect(source).toContain(
+        "The public WhatsApp CTA cannot use a shared sandbox, developer test, or unverified sender",
+      );
+      expect(source).toContain("+14155238886|+15551649988|+14159611510");
+      expect(source).toContain('echo "phone_number=" >> "$GITHUB_OUTPUT"');
+    }
+    expect(workflow).toContain(
+      "VITE_WHATSAPP_PHONE_NUMBER: $" +
+        "{{ needs.resolve-pages-preview-config.outputs.whatsapp_phone_number }}",
+    );
+    expect(releaseWorkflow).toContain(
+      "VITE_WHATSAPP_PHONE_NUMBER: $" +
+        "{{ needs.resolve-pages-environment-config.outputs.whatsapp_phone_number }}",
+    );
+    expect(releaseWorkflow).toContain(
+      "VITE_WHATSAPP_PHONE_NUMBER: $" +
+        "{{ needs.build-pages.outputs.whatsapp_phone_number }}",
+    );
+  });
+
   it("validates homepage source while building only packages/app in quality CI", () => {
     expect(qualityWorkflow).toContain("consolidated-frontend-build:");
     expect(qualityWorkflow).toContain("Validate homepage source contracts");
