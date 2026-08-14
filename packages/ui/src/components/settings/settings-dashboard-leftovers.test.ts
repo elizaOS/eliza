@@ -27,6 +27,14 @@ const SETTINGS_MOUNTED_DIRS = [
   "components/settings",
 ];
 
+const CONVERTED_BRANDCARD_HOSTS = [
+  "cloud/account-security/components/profile-form.tsx",
+  "cloud/account-security/components/incident-report-panel.tsx",
+  "cloud/account-security/components/mfa-panel.tsx",
+  "cloud/account-security/components/recent-audit-events.tsx",
+  "cloud/billing/components/pay-as-you-go-card.tsx",
+];
+
 /**
  * Remaining BrandCard hosts and why they are not a SettingsStack/Group/Row
  * leftover of the already-shipped classes. Remove a row when that file
@@ -35,7 +43,7 @@ const SETTINGS_MOUNTED_DIRS = [
 const BRANDCARD_ALLOWLIST = new Map<string, string>([
   [
     "cloud/billing/components/auto-top-up-card.tsx",
-    "billing multi-field editor (switch + amounts + save)",
+    "billing multi-field editor (amounts + payment method + save; switch already converted)",
   ],
   [
     "cloud/billing/components/billing-tab.tsx",
@@ -124,10 +132,17 @@ describe("settings-mounted BrandCard leftover catalog", () => {
     expect(stale).toEqual([]);
   });
 
-  it("prints the remaining catalog (not a gate)", () => {
-    const remaining = [...BRANDCARD_ALLOWLIST.entries()].map(
-      ([rel, reason]) => `${rel} — ${reason}`,
+  it("keeps converted BrandCard hosts out of the allowlist", () => {
+    const regressions = CONVERTED_BRANDCARD_HOSTS.filter((rel) =>
+      BRANDCARD_ALLOWLIST.has(rel),
     );
-    expect(remaining.length).toBeGreaterThan(0);
+    expect(regressions).toEqual([]);
+  });
+
+  it("records a non-empty kind reason for every remaining host", () => {
+    const missingReasons = [...BRANDCARD_ALLOWLIST.entries()]
+      .filter(([, reason]) => reason.trim().length === 0)
+      .map(([rel]) => rel);
+    expect(missingReasons).toEqual([]);
   });
 });
