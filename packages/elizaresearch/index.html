@@ -257,7 +257,7 @@
   let W = 0, H = 0, dpr = 1, resizeFrame = 0;
   const boids = [];
   let targets = [];
-  const pointer = { x: -1e4, y: -1e4, vx: 0, vy: 0, down: false, t: 0 };
+  const pointer = { x: -1e4, y: -1e4, vx: 0, vy: 0, down: false, touch: false, t: 0 };
 
   function resize() {
     dpr = Math.min(devicePixelRatio || 1, 2);
@@ -329,22 +329,26 @@
     return { x: e.clientX - r.left, y: e.clientY - r.top };
   }
   header.addEventListener("pointermove", (e) => {
+    if (e.pointerType !== "mouse" && !pointer.down) return;
     const p = toLocal(e);
     const now = performance.now();
     const dt = Math.max(16, now - pointer.t);
     pointer.vx = (p.x - pointer.x) / dt * 16;
     pointer.vy = (p.y - pointer.y) / dt * 16;
     pointer.x = p.x; pointer.y = p.y; pointer.t = now;
+    pointer.touch = e.pointerType !== "mouse";
+    if (!pointer.touch) pointer.down = true;
   }, { passive: true });
   header.addEventListener("pointerdown", (e) => {
     pointer.down = true;
+    pointer.touch = e.pointerType !== "mouse";
     const p = toLocal(e);
     pointer.x = p.x; pointer.y = p.y; pointer.t = performance.now();
   }, { passive: true });
-  addEventListener("pointerup", () => { pointer.down = false; }, { passive: true });
-  addEventListener("pointercancel", () => { pointer.down = false; pointer.x = pointer.y = -1e4; }, { passive: true });
+  addEventListener("pointerup", (e) => { if (e.pointerType !== "mouse") pointer.down = false; }, { passive: true });
+  addEventListener("pointercancel", (e) => { if (e.pointerType !== "mouse") pointer.down = false; pointer.x = pointer.y = -1e4; }, { passive: true });
   addEventListener("scroll", () => {
-    if (!pointer.down) return;
+    if (!pointer.touch || !pointer.down) return;
     pointer.down = false; pointer.x = pointer.y = -1e4; pointer.vx = pointer.vy = 0;
   }, { passive: true });
   header.addEventListener("pointerleave", () => {
