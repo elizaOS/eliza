@@ -827,10 +827,7 @@ const PeoplePicker = memo(function PeoplePicker({
           <ChevronDown className="h-4 w-4 shrink-0 text-muted" aria-hidden />
         </Button>
       </PopoverTrigger>
-      <PopoverContent
-        align="start"
-        className="min-w-[14rem] space-y-2 p-2"
-      >
+      <PopoverContent align="start" className="min-w-[14rem] space-y-2 p-2">
         <Input
           density="compact"
           value={query}
