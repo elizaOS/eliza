@@ -73,6 +73,7 @@ import {
   listRunningSessions,
   markBackgrounded,
   markExited,
+  setJobTtlMs,
 } from "./processRegistry";
 
 const DEFAULT_TIMEOUT_SEC = 1800; // 30 minutes
@@ -107,6 +108,7 @@ export class ShellService extends Service {
   constructor(runtime?: IAgentRuntime) {
     super(runtime);
     this.shellConfig = loadShellConfig();
+    setJobTtlMs(this.shellConfig.jobTtlMs);
     this.currentDirectory = this.shellConfig.allowedDirectory;
     this.commandHistory = new Map();
   }

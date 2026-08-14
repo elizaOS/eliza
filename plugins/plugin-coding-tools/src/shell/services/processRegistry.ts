@@ -19,9 +19,7 @@ function clampTtl(value: number | undefined): number {
   return Math.min(Math.max(value, MIN_JOB_TTL_MS), MAX_JOB_TTL_MS);
 }
 
-let jobTtlMs = clampTtl(
-  Number.parseInt(process.env.SHELL_JOB_TTL_MS ?? "", 10),
-);
+let jobTtlMs = DEFAULT_JOB_TTL_MS;
 
 const runningSessions = new Map<string, ProcessSession>();
 const finishedSessions = new Map<string, FinishedSession>();
@@ -352,6 +350,7 @@ export function clearFinished(): void {
 export function resetProcessRegistryForTests(): void {
   runningSessions.clear();
   finishedSessions.clear();
+  jobTtlMs = DEFAULT_JOB_TTL_MS;
   stopSweeper();
 }
 
