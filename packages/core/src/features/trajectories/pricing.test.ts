@@ -7,6 +7,7 @@
  * vi.stubEnv.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
+import * as serviceRouting from "../../contracts/service-routing";
 import {
 	computeCallCostUsd,
 	isLocalProvider,
@@ -99,6 +100,106 @@ describe("MODEL_PRICES_USD_PER_M_TOKENS", () => {
 			cacheRead: 0.1,
 			cacheWrite: 1.25,
 		});
+	});
+});
+
+describe("routing-default text models are priced", () => {
+	// Regression guard for the drift that blinded the operator to spend: the
+	// runtime shipped `zai-glm-4.7` as DEFAULT_ELIZA_CLOUD_LARGE_TEXT_MODEL and
+	// added it to MODEL_CONTEXT_WINDOW_TOKENS, but never to the price table — so
+	// EVERY turn logged "[pricing] no price entry — cost_usd omitted
+	// (modelName=zai-glm-4.7, provider=cerebras)" and no trajectory carried a
+	// cost. Keyed on the exported routing constants rather than an enumerated
+	// name list, so any future DEFAULT_*_TEXT_MODEL joins the guard automatically
+	// and cannot land unpriced.
+	const routingDefaultModels = Object.entries(serviceRouting)
+		.filter(
+			(entry): entry is [string, string] =>
+				/^DEFAULT_[A-Z0-9_]*TEXT_MODEL$/.test(entry[0]) &&
+				typeof entry[1] === "string",
+		)
+		.map(([constantName, modelName]) => ({ constantName, modelName }));
+
+	it("exports at least the small and large cloud text-model defaults", () => {
+		expect(routingDefaultModels.length).toBeGreaterThanOrEqual(2);
+		expect(routingDefaultModels.map((m) => m.modelName)).toEqual(
+			expect.arrayContaining(["gemma-4-31b", "zai-glm-4.7"]),
+		);
+	});
+
+	it.each(routingDefaultModels)(
+		"$constantName ($modelName) resolves to a price entry",
+		({ modelName }) => {
+			const lookup = lookupModelPrice(modelName);
+			expect(lookup).not.toBeNull();
+			expect(lookup?.price.provider).toBe("cerebras");
+		},
+	);
+
+	it.each(routingDefaultModels)(
+		"$constantName ($modelName) computes a cost without hitting the warning path",
+		({ modelName }) => {
+			const warn = vi.fn();
+			const cost = computeCallCostUsd(
+				modelName,
+				{
+					promptTokens: 1_000_000,
+					completionTokens: 1_000_000,
+					totalTokens: 2_000_000,
+				},
+				{ provider: "cerebras", logger: { warn } },
+			);
+			expect(warn).not.toHaveBeenCalled();
+			expect(cost).toBeGreaterThan(0);
+		},
+	);
+});
+
+describe("Cerebras rate card (live-verified 2026-08-14)", () => {
+	// Captured from https://www.cerebras.ai/pricing on 2026-08-14; the same
+	// numbers Eliza Cloud bills against in
+	// packages/cloud/shared/src/lib/services/ai-pricing/providers/bitrouter.ts,
+	// so a trajectory cost_usd and the cloud ledger agree instead of drifting.
+	it("prices zai-glm-4.7 at the published Developer-tier rate", () => {
+		expect(MODEL_PRICES_USD_PER_M_TOKENS["zai-glm-4.7"]).toEqual({
+			provider: "cerebras",
+			input: 2.25,
+			output: 2.75,
+			cacheRead: 0,
+			cacheWrite: 0,
+		});
+	});
+
+	it("prices gemma-4-31b at the published Developer-tier rate", () => {
+		expect(MODEL_PRICES_USD_PER_M_TOKENS["gemma-4-31b"]).toEqual({
+			provider: "cerebras",
+			input: 0.99,
+			output: 1.49,
+			cacheRead: 0,
+			cacheWrite: 0,
+		});
+	});
+
+	it("computes a real cost for a zai-glm-4.7 planner call", () => {
+		// 1M input * $2.25 + 1M output * $2.75 = $5.00.
+		const cost = computeCallCostUsd("zai-glm-4.7", {
+			promptTokens: 1_000_000,
+			completionTokens: 1_000_000,
+			totalTokens: 2_000_000,
+		});
+		expect(cost).toBeCloseTo(5.0, 6);
+	});
+
+	it("resolves decorated Cerebras ids through the substring fallback", () => {
+		// Dedicated agents and the cloud router emit route-decorated ids
+		// (`cerebras:zai-glm-4.7`, `openai/zai-glm-4.7:nitro`); all must land on
+		// the same family entry rather than re-opening the warning path.
+		expect(lookupModelPrice("cerebras:zai-glm-4.7")?.matchedKey).toBe(
+			"zai-glm-4.7",
+		);
+		expect(lookupModelPrice("openai/zai-glm-4.7:nitro")?.matchedKey).toBe(
+			"zai-glm-4.7",
+		);
 	});
 });
 

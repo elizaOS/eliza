@@ -34,7 +34,7 @@ export type { TokenUsageForCost } from "./pricing-types";
  * so consumers can disambiguate cost numbers computed against different
  * snapshots.
  */
-export const PRICE_TABLE_ID = "eliza-v1-2026-07-02" as const;
+export const PRICE_TABLE_ID = "eliza-v1-2026-08-14" as const;
 export type PriceTableId = typeof PRICE_TABLE_ID;
 
 /**
@@ -186,8 +186,25 @@ export const MODEL_PRICES_USD_PER_M_TOKENS: Record<
 	},
 
 	// ---- Cerebras -----------------------------------------------------------
-	// Source: https://inference-docs.cerebras.ai/introduction (captured
-	// 2026-05-11). The gpt-oss family is served at https://api.cerebras.ai/v1.
+	// Source: https://www.cerebras.ai/pricing Developer-tier rate card (captured
+	// 2026-08-14). Cerebras publishes no separate cache rate for any of these,
+	// so cacheRead/cacheWrite stay 0 and `computeCallCostUsd` bills cached
+	// tokens at the regular input rate.
+	//
+	// gpt-oss-120b, gemma-4-31b and zai-glm-4.7 are the three ids the live rate
+	// card publishes, and they must stay in step with the forced pricing rows
+	// Eliza Cloud actually bills against in
+	// packages/cloud/shared/src/lib/services/ai-pricing/providers/bitrouter.ts —
+	// otherwise a trajectory's cost_usd and the credit ledger disagree for the
+	// same call. llama-3.3-70b below is retired from the public card; its
+	// 2026-05-11 rate is kept so existing callers still price instead of
+	// re-opening the missing-entry warning.
+	//
+	// KNOWN STALE, deliberately left alone: gpt-oss-120b below is $0.50/$0.80
+	// captured 2026-05-11, but the live rate card and the cloud ledger row both
+	// publish $0.35/$0.75. Correcting it is a separate, reviewable change — an
+	// existing rate may encode a negotiated tier, and re-pricing it moves
+	// numbers in trajectory-recorder / trajectory-validate fixtures too.
 	"gpt-oss-120b": {
 		provider: "cerebras",
 		input: 0.5,
@@ -195,12 +212,22 @@ export const MODEL_PRICES_USD_PER_M_TOKENS: Record<
 		cacheRead: 0,
 		cacheWrite: 0,
 	},
-	// Source: https://inference-docs.cerebras.ai/models/gemma-4-31b
-	// (captured 2026-07-01).
 	"gemma-4-31b": {
 		provider: "cerebras",
 		input: 0.99,
 		output: 1.49,
+		cacheRead: 0,
+		cacheWrite: 0,
+	},
+	// The default large/planner text model (DEFAULT_ELIZA_CLOUD_LARGE_TEXT_MODEL
+	// in contracts/service-routing). It shipped into MODEL_CONTEXT_WINDOW_TOKENS
+	// below but never into this table, so every turn on a Cerebras brain logged
+	// "[pricing] no price entry — cost_usd omitted (modelName=zai-glm-4.7,
+	// provider=cerebras)" and no trajectory carried a cost at all.
+	"zai-glm-4.7": {
+		provider: "cerebras",
+		input: 2.25,
+		output: 2.75,
 		cacheRead: 0,
 		cacheWrite: 0,
 	},
