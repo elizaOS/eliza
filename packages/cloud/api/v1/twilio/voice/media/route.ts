@@ -63,6 +63,8 @@ const app = new Hono<AppEnv>();
 // window instead of terminating ordinary first calls before setup completes.
 const MAX_PENDING_MEDIA_FRAMES = 512;
 const DEFAULT_MAX_CALL_SECONDS = 30 * 60;
+const FIRST_CALL_GREETING = "hello? who's this?";
+const RETURNING_CALLER_GREETING = "hey whats up";
 const bootstrapGate = new TwilioBootstrapGate();
 
 const TwilioStreamEventSchema = z.discriminatedUnion("event", [
@@ -397,6 +399,9 @@ app.get("/", async (c) => {
       elizaModel: resolveElizaModel(env),
       fetchImpl: elizaFetch,
       prewarmElizaContext: elizaFetch.prewarm,
+      openingGreeting: claims.returningCaller
+        ? RETURNING_CALLER_GREETING
+        : FIRST_CALL_GREETING,
       usageStore,
       usageLimits: resolveVoiceUsageLimits(env),
       isRevoked: (jti) =>
