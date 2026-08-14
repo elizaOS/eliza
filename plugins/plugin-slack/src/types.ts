@@ -387,13 +387,10 @@ export function isValidMessageTs(ts: string): boolean {
  * Current links use 16 digits, seconds-only links use 10, and the documented
  * `chat.getPermalink` examples use 15. Other widths stay rejected.
  *
- * The 15-digit width is padded on the right (`00008` -> `000080`), which is an
- * assumption the published documentation cannot settle: that page's own
- * `message_ts` argument example is the dot-less `135854651500008`, so its
- * 15-digit permalink may equally be a truncated 16-digit value needing a left
- * pad (`000008`). Both decodings satisfy `isValidMessageTs`, and the previous
- * code emitted a value this package's own contract rejected, so the ambiguity
- * is confined here: an API-verified correction changes only this function.
+ * The documented 15-digit examples omit a leading zero from the six-digit
+ * fractional field. Slack's threaded example exposes the corresponding
+ * six-decimal `thread_ts`, so left-padding restores the canonical value instead
+ * of shifting the message timestamp by a decimal place.
  */
 export function normalizeSlackPermalinkTimestamp(
   digits: string,
@@ -401,7 +398,7 @@ export function normalizeSlackPermalinkTimestamp(
   if (!/^(?:\d{16}|\d{15}|\d{10})$/.test(digits)) {
     return null;
   }
-  return `${digits.slice(0, 10)}.${digits.slice(10).padEnd(6, "0")}`;
+  return `${digits.slice(0, 10)}.${digits.slice(10).padStart(6, "0")}`;
 }
 
 /**
@@ -417,7 +414,7 @@ export function parseSlackMessageLink(
 ): { channelId: string; messageTs: string } | null {
   // Format: https://workspace.slack.com/archives/C12345678/p1234567890123456
   const match = link.match(
-    /^https?:\/\/[^/]+\/archives\/([CGD][A-Z0-9]+)\/p(\d{16}|\d{15}|\d{10})(?:[/?#].*)?$/i,
+    /^https?:\/\/[^./]+\.slack\.com\/archives\/([CGD][A-Z0-9]+)\/p(\d{16}|\d{15}|\d{10})\/?(?:[?#].*)?$/i,
   );
   if (!match) return null;
 

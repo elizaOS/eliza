@@ -185,7 +185,7 @@ describe("permalink build/parse round-trip", () => {
     expect(documented).toEqual({
       workspaceDomain: "ghostbusters",
       channelId: "C1H9RESGA",
-      messageTs: "1358546515.000080",
+      messageTs: "1358546515.000008",
     });
     expect(isValidMessageTs(documented?.messageTs ?? "")).toBe(true);
 
@@ -195,7 +195,7 @@ describe("permalink build/parse round-trip", () => {
     expect(threaded).toEqual({
       workspaceDomain: "ghostbusters",
       channelId: "C1H9RESGL",
-      messageTs: "1358546517.000230",
+      messageTs: "1358546517.000023",
     });
     expect(isValidMessageTs(threaded?.messageTs ?? "")).toBe(true);
   });
@@ -226,6 +226,11 @@ describe("permalink build/parse round-trip", () => {
         "https://acme.slack.com/archives/C0ABCDE/p1700000000123456evil",
       ),
     ).toBeNull(); // trailing garbage
+    expect(
+      parseSlackMessagePermalink(
+        "https://acme.slack.com/archives/C0ABCDE/p1700000000123456/evil",
+      ),
+    ).toBeNull();
   });
 });
 
@@ -273,7 +278,7 @@ describe("parseSlackMessageLink", () => {
     );
     expect(documented).toEqual({
       channelId: "C1H9RESGA",
-      messageTs: "1358546515.000080",
+      messageTs: "1358546515.000008",
     });
     expect(isValidMessageTs(documented?.messageTs ?? "")).toBe(true);
 
@@ -282,7 +287,7 @@ describe("parseSlackMessageLink", () => {
     );
     expect(threaded).toEqual({
       channelId: "C1H9RESGL",
-      messageTs: "1358546517.000230",
+      messageTs: "1358546517.000023",
     });
     expect(isValidMessageTs(threaded?.messageTs ?? "")).toBe(true);
   });
@@ -328,5 +333,15 @@ describe("parseSlackMessageLink", () => {
         "https://acme.slack.com/archives/C12345678/p1700000000123456evil",
       ),
     ).toBeNull(); // trailing garbage
+    expect(
+      parseSlackMessageLink(
+        "https://evil.example/archives/C12345678/p1700000000123456",
+      ),
+    ).toBeNull();
+    expect(
+      parseSlackMessageLink(
+        "https://acme.slack.com/archives/C12345678/p1700000000123456/evil",
+      ),
+    ).toBeNull();
   });
 });

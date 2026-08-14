@@ -488,7 +488,7 @@ export function parseSlackMessagePermalink(
   link: string,
 ): { workspaceDomain: string; channelId: string; messageTs: string } | null {
   const match = link.match(
-    /^https?:\/\/([^.]+)\.slack\.com\/archives\/([A-Z0-9]+)\/p(\d{16}|\d{15}|\d{10})(?:[/?#].*)?$/i,
+    /^https?:\/\/([^.]+)\.slack\.com\/archives\/([A-Z0-9]+)\/p(\d{16}|\d{15}|\d{10})\/?(?:[?#].*)?$/i,
   );
   if (!match) {
     return null;
