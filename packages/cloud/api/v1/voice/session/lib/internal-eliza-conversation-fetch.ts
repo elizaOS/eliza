@@ -133,7 +133,13 @@ export function createInternalElizaConversationFetchFactory(
       await runWithCloudBindingsAsync(
         env as unknown as Record<string, unknown>,
         async () => {
-          if (!(await readCachedAgent())) scheduleHydration();
+          if (await readCachedAgent()) return;
+          scheduleHydration();
+          // Capture before awaiting: the hydration's finally block clears the
+          // shared slot. Joining this exact promise lets the first voice turn
+          // use the freshly cached scope without cache-miss polling/backoff.
+          const pendingHydration = hydrationPromise;
+          if (pendingHydration) await pendingHydration;
         },
       );
     };

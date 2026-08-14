@@ -72,6 +72,11 @@ on:
         required: false
         default: true
         type: boolean
+      run_web_live_railway:
+        description: "Run the provisioned browser mic→agent→audio Railway lane"
+        required: false
+        default: false
+        type: boolean
       run_macos_electrobun:
         description: "Attempt the macOS Electrobun live-voice matrix lane"
         required: false
@@ -167,6 +172,105 @@ jobs:
         run: |
           set -euo pipefail
           bun test packages/cloud/api/__tests__/voice-kokoro-whisper-live.test.ts
+
+  # The service contract above does not exercise the shipped browser surface.
+  # This separately gated job runs the exact live matrix cell from #16937 only
+  # when a runner has been provisioned with Railway voice endpoints and a real
+  # model credential. The schedule stays opt-in through the repository variable
+  # so an unprovisioned nightly cannot turn into a misleading red run.
+  voice-web-live-railway:
+    name: Web Railway live mic → agent → audible TTS
+    if: ${{ (github.event_name == 'schedule' && vars.ELIZA_VOICE_WEB_LIVE_READY == '1') || (github.event_name == 'workflow_dispatch' && inputs.run_web_live_railway) }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      E2E_RECORD: "1"
+      ELIZA_UI_SMOKE_LIVE_STACK: "1"
+      ELIZA_VOICE_LIVE_RAILWAY: "1"
+      ELIZA_PROVIDER: "cerebras"
+      KOKORO_TTS_URL: ${{ vars.ELIZA_VOICE_KOKORO_TTS_URL }}
+      WHISPER_STT_URL: ${{ vars.ELIZA_VOICE_WHISPER_STT_URL }}
+      WHISPER_STT_MODEL: ${{ vars.ELIZA_VOICE_WHISPER_STT_MODEL }}
+      CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          show-progress: false
+
+      - name: Free disk space for browser recording
+        run: |
+          set -euxo pipefail
+          df -h /
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android || true
+          docker system prune -af || true
+          df -h /
+
+      - name: Require a live model credential
+        run: |
+          set -euo pipefail
+          if [ -z "${CEREBRAS_API_KEY:-}" ]; then
+            echo "::error::The web Railway voice lane requires the provisioned CEREBRAS_API_KEY live model credential."
+            exit 1
+          fi
+
+      - name: Setup workspace dependencies
+        uses: ./.github/actions/setup-bun-workspace
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+          node-version: ${{ env.NODE_VERSION }}
+          install-command: bun install --frozen-lockfile --ignore-scripts
+          install-native-deps: "false"
+          install-protoc: "false"
+          skip-avatar-clone: "true"
+          no-vision-deps: "true"
+
+      - name: Install Playwright Chromium
+        run: .github/scripts/install-playwright-browsers.sh chromium
+
+      - name: Generate shared i18n assets
+        run: bun run --cwd packages/shared build:i18n
+
+      - name: Build browser bundles
+        run: |
+          set -euo pipefail
+          bunx turbo run build --filter=@elizaos/core --filter=@elizaos/shared
+          bun run --cwd packages/app build:web
+
+      - name: Prove the live cell is explicit when ungated
+        env:
+          ELIZA_VOICE_LIVE_RAILWAY: ""
+        run: |
+          set -euo pipefail
+          bun run voice:matrix -- \
+            --platform web.live.railway-roundtrip \
+            --out "$RUNNER_TEMP/voice-web-live-ungated"
+
+      - name: Run the provisioned live browser matrix cell
+        env:
+          ELIZA_UI_SMOKE_BACKEND_LOG_PATH: ${{ runner.temp }}/voice-web-live/backend.log
+        run: |
+          set -euo pipefail
+          bun run voice:matrix -- \
+            --run \
+            --require-green \
+            --platform web.live.railway-roundtrip \
+            --out "$RUNNER_TEMP/voice-web-live-matrix"
+
+      - name: Upload web Railway voice evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: voice-web-live-railway
+          path: |
+            ${{ runner.temp }}/voice-web-live-ungated
+            ${{ runner.temp }}/voice-web-live-matrix
+            ${{ runner.temp }}/voice-web-live
+            packages/app/playwright-report/
+            packages/app/test-results/
+            e2e-recordings/app/test-results/
+          if-no-files-found: ignore
+          retention-days: 14
 
   # Build the fused libelizainference from the in-repo llama.cpp fork so the
   # self-hosted jobs never depend on hand-staged native libs. CPU variant with
