@@ -16,10 +16,20 @@ import {
   resolveIdentity,
 } from "./server-router";
 import { resolveWebhookConfig } from "./webhook-config";
+import {
+  type ClaimedWebhookDelivery,
+  claimDueWebhookDeliveries,
+  claimWebhookDelivery,
+  completeWebhookDelivery,
+  enqueueWebhookDelivery,
+  markWebhookSideEffectStarted,
+  rescheduleWebhookDelivery,
+  WEBHOOK_SIDE_EFFECT_STARTED,
+} from "./webhook-outbox";
 
-const DEDUP_TTL_SECONDS = 300;
 const PROCESSING_TTL_SECONDS = 60;
 const PERSONAL_SHARED_ATTEMPTS = 3;
+const DELIVERY_RECOVERY_BATCH_SIZE = 20;
 const TELEGRAM_DELIVERY_TTL_SECONDS = 30 * 24 * 60 * 60;
 const TELEGRAM_EGRESS_STARTED = "egress_started";
 const TELEGRAM_DELIVERED = "delivered";
@@ -28,15 +38,16 @@ class TelegramEgressAlreadyClaimedError extends Error {
   override readonly name = "TelegramEgressAlreadyClaimedError";
 }
 
-class PersonalSharedPreEgressError extends Error {
-  override readonly name = "PersonalSharedPreEgressError";
-}
-
 interface HandlerDeps {
   redis: GatewayRedis;
   cloudBaseUrl: string;
   getAuthHeader: () => { Authorization: string };
   reacquireAuthHeader?: () => Promise<Record<string, string>>;
+}
+
+interface DeliveryLifecycle {
+  beforeRuntimeDispatch?: () => Promise<void>;
+  beforeProviderEgress?: () => Promise<void>;
 }
 
 export async function handleWebhook(
@@ -120,6 +131,16 @@ export async function handleWebhook(
         },
       );
     }
+    if (priorDeliveryState === WEBHOOK_SIDE_EFFECT_STARTED) {
+      logger.error(
+        "Webhook delivery outcome is uncertain; refusing automatic replay",
+        {
+          platform: adapter.platform,
+          messageId: event.messageId,
+          dedupKey,
+        },
+      );
+    }
     logger.debug("Duplicate webhook skipped", {
       platform: adapter.platform,
       messageId: event.messageId,
@@ -143,14 +164,8 @@ export async function handleWebhook(
 
     let egressStarted = false;
     try {
-      await processMessage(
-        adapter,
-        config,
-        event,
-        deps,
-        project,
-        agentId,
-        async () => {
+      await processMessage(adapter, config, event, deps, project, agentId, {
+        beforeProviderEgress: async () => {
           // Write the no-replay barrier before the Bot API call. A crash or
           // ambiguous network failure after this point must fail visibly on a
           // Telegram retry instead of sending the same response twice.
@@ -169,7 +184,7 @@ export async function handleWebhook(
           }
           egressStarted = true;
         },
-      );
+      });
       await redis.set(dedupKey, TELEGRAM_DELIVERED, {
         ex: TELEGRAM_DELIVERY_TTL_SECONDS,
       });
@@ -194,11 +209,14 @@ export async function handleWebhook(
     }
   }
 
-  const isNew = await redis.set(dedupKey, "1", {
-    nx: true,
-    ex: DEDUP_TTL_SECONDS,
+  const queued = await enqueueWebhookDelivery(redis, {
+    dedupKey,
+    platform: adapter.platform,
+    project,
+    agentId,
+    event,
   });
-  if (!isNew) {
+  if (!queued) {
     logger.debug("Duplicate webhook skipped", {
       platform: adapter.platform,
       messageId: event.messageId,
@@ -207,39 +225,108 @@ export async function handleWebhook(
     return ackResponse(adapter.platform);
   }
 
-  // ── Async phase: identity → forward → reply (runs in background) ──
-
-  processMessage(adapter, config, event, deps, project, agentId).catch(
-    async (err) => {
-      logger.error("Background message processing failed", {
-        error: err instanceof Error ? err.message : String(err),
+  // The verified message and its dedupe ownership are durable before this ACK.
+  // The immediate worker is only a latency optimization; a process restart can
+  // reclaim the same queued job after its lease expires.
+  claimWebhookDelivery(redis, queued.jobKey, crypto.randomUUID())
+    .then(async (delivery) => {
+      if (delivery) {
+        await processClaimedWebhookDelivery(delivery, adapter, deps, config);
+      }
+    })
+    .catch((error) => {
+      // error-policy:J7 The durable queue remains the recovery authority when
+      // this latency-path worker fails before or during claim processing.
+      logger.error("Immediate webhook delivery worker failed", {
+        error: error instanceof Error ? error.message : String(error),
         project,
         platform: adapter.platform,
         messageId: event.messageId,
       });
-      if (err instanceof PersonalSharedPreEgressError) {
-        try {
-          // The personal endpoint is idempotent on platform + message id and
-          // no provider send has begun, so a later provider replay is safe.
-          await redis.del(dedupKey);
-        } catch (cleanupError) {
-          // error-policy:J7 Delivery diagnostics must not create a second
-          // unhandled rejection after the original failure was observed.
-          logger.error("Failed to reopen personal Shared webhook delivery", {
-            error:
-              cleanupError instanceof Error
-                ? cleanupError.message
-                : String(cleanupError),
-            project,
-            platform: adapter.platform,
-            messageId: event.messageId,
-          });
-        }
-      }
-    },
-  );
+    });
 
   return ackResponse(adapter.platform);
+}
+
+async function processClaimedWebhookDelivery(
+  delivery: ClaimedWebhookDelivery,
+  adapter: PlatformAdapter,
+  deps: HandlerDeps,
+  knownConfig?: WebhookConfig,
+): Promise<void> {
+  let sideEffectStarted = false;
+  try {
+    const config =
+      knownConfig ??
+      (await resolveWebhookConfig(
+        deps.redis,
+        deps.cloudBaseUrl,
+        deps.getAuthHeader(),
+        delivery.job.platform,
+        delivery.job.project,
+        delivery.job.agentId,
+        deps.reacquireAuthHeader ?? reacquireAuthHeader,
+      ));
+    if (!config) {
+      throw new Error("Webhook configuration is unavailable during recovery");
+    }
+
+    const startSideEffect = async (
+      sideEffect: "runtime_dispatch" | "provider_egress",
+    ) => {
+      await markWebhookSideEffectStarted(deps.redis, delivery, sideEffect);
+      sideEffectStarted = true;
+    };
+    await processMessage(
+      adapter,
+      config,
+      delivery.job.event,
+      deps,
+      delivery.job.project,
+      delivery.job.agentId,
+      {
+        beforeRuntimeDispatch: () => startSideEffect("runtime_dispatch"),
+        beforeProviderEgress: () => startSideEffect("provider_egress"),
+      },
+    );
+    await completeWebhookDelivery(deps.redis, delivery);
+  } catch (error) {
+    logger.error("Durable webhook delivery failed", {
+      error: error instanceof Error ? error.message : String(error),
+      project: delivery.job.project,
+      platform: delivery.job.platform,
+      messageId: delivery.job.event.messageId,
+      sideEffectStarted,
+      sideEffect: delivery.job.sideEffect,
+    });
+    if (sideEffectStarted) {
+      // error-policy:J1 A runtime/provider call has an ambiguous outcome. The
+      // durable no-replay state is intentionally retained for operator repair.
+      return;
+    }
+    await rescheduleWebhookDelivery(deps.redis, delivery, error);
+  }
+}
+
+export async function recoverQueuedWebhookDeliveries(
+  adapters: Record<Platform, PlatformAdapter>,
+  deps: HandlerDeps,
+): Promise<number> {
+  const deliveries = await claimDueWebhookDeliveries(
+    deps.redis,
+    crypto.randomUUID(),
+    DELIVERY_RECOVERY_BATCH_SIZE,
+  );
+  await Promise.all(
+    deliveries.map((delivery) =>
+      processClaimedWebhookDelivery(
+        delivery,
+        adapters[delivery.job.platform],
+        deps,
+      ),
+    ),
+  );
+  return deliveries.length;
 }
 
 function buildWebhookDedupeKey(
@@ -262,7 +349,7 @@ async function processMessage(
   deps: HandlerDeps,
   project: string,
   explicitAgentId?: string,
-  beforeEgress?: () => Promise<void>,
+  lifecycle: DeliveryLifecycle = {},
 ): Promise<void> {
   const { redis, cloudBaseUrl, getAuthHeader } = deps;
   const reauth = deps.reacquireAuthHeader ?? reacquireAuthHeader;
@@ -284,7 +371,13 @@ async function processMessage(
       platform: adapter.platform,
       senderId: event.senderId,
     });
-    await sendUnlinkedReply(adapter, config, event, deps, beforeEgress);
+    await sendUnlinkedReply(
+      adapter,
+      config,
+      event,
+      deps,
+      lifecycle.beforeProviderEgress,
+    );
     return;
   }
 
@@ -325,7 +418,13 @@ async function processMessage(
         agentId,
       },
     );
-    await sendUnlinkedReply(adapter, config, event, deps);
+    await sendUnlinkedReply(
+      adapter,
+      config,
+      event,
+      deps,
+      lifecycle.beforeProviderEgress,
+    );
     return;
   }
 
@@ -344,6 +443,7 @@ async function processMessage(
 
   let responseText: string;
   try {
+    await lifecycle.beforeRuntimeDispatch?.();
     responseText = await forwardToServer(
       server.serverUrl,
       server.serverName,
@@ -384,7 +484,7 @@ async function processMessage(
   }
 
   try {
-    await beforeEgress?.();
+    await lifecycle.beforeProviderEgress?.();
     await adapter.sendReply(config, event, responseText);
   } catch (err) {
     logger.error("Failed to send reply", {
@@ -400,13 +500,19 @@ async function sendUnlinkedReply(
   config: WebhookConfig,
   event: ChatEvent,
   deps: HandlerDeps,
-  beforeEgress?: () => Promise<void>,
+  beforeProviderEgress?: () => Promise<void>,
 ): Promise<void> {
   if (adapter.platform === "twilio" || adapter.platform === "blooio") {
-    await sendPersonalSharedReply(adapter, config, event, deps, beforeEgress);
+    await sendPersonalSharedReply(
+      adapter,
+      config,
+      event,
+      deps,
+      beforeProviderEgress,
+    );
     return;
   }
-  await sendOnboardingReply(adapter, config, event, deps, beforeEgress);
+  await sendOnboardingReply(adapter, config, event, deps, beforeProviderEgress);
 }
 
 async function sendPersonalSharedReply(
@@ -414,7 +520,7 @@ async function sendPersonalSharedReply(
   config: WebhookConfig,
   event: ChatEvent,
   deps: HandlerDeps,
-  beforeEgress?: () => Promise<void>,
+  beforeProviderEgress?: () => Promise<void>,
 ): Promise<void> {
   const { cloudBaseUrl, getAuthHeader } = deps;
   const reauth = deps.reacquireAuthHeader ?? reacquireAuthHeader;
@@ -461,7 +567,7 @@ async function sendPersonalSharedReply(
     await new Promise((resolve) => setTimeout(resolve, 200 * attempt));
   }
   if (!response) {
-    throw new PersonalSharedPreEgressError(
+    throw new Error(
       `personal shared chat transport failed: ${lastTransportError instanceof Error ? lastTransportError.message : String(lastTransportError)}`,
       { cause: lastTransportError },
     );
@@ -475,7 +581,7 @@ async function sendPersonalSharedReply(
       // boundary; preserve a failed optional body read in its diagnostic.
       diagnostics = `unable to read response body: ${error instanceof Error ? error.message : String(error)}`;
     }
-    throw new PersonalSharedPreEgressError(
+    throw new Error(
       `personal shared chat failed (${response.status}) ${diagnostics}`,
     );
   }
@@ -486,11 +592,9 @@ async function sendPersonalSharedReply(
       ? (body.data as { reply?: unknown } | null)?.reply
       : undefined;
   if (typeof reply !== "string" || reply.trim().length === 0) {
-    throw new PersonalSharedPreEgressError(
-      "personal shared chat returned no reply",
-    );
+    throw new Error("personal shared chat returned no reply");
   }
-  await beforeEgress?.();
+  await beforeProviderEgress?.();
   await adapter.sendReply(config, event, reply);
 }
 
@@ -499,7 +603,7 @@ async function sendOnboardingReply(
   config: WebhookConfig,
   event: ChatEvent,
   deps: HandlerDeps,
-  beforeEgress?: () => Promise<void>,
+  beforeProviderEgress?: () => Promise<void>,
 ): Promise<void> {
   const { cloudBaseUrl, getAuthHeader } = deps;
   const reauth = deps.reacquireAuthHeader ?? reacquireAuthHeader;
@@ -563,7 +667,7 @@ async function sendOnboardingReply(
   if (typeof reply !== "string" || reply.trim().length === 0) {
     throw new Error("onboarding chat returned no reply");
   }
-  await beforeEgress?.();
+  await beforeProviderEgress?.();
   await adapter.sendReply(config, event, reply);
 }
 

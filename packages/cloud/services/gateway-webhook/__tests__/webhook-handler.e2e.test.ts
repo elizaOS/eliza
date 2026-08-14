@@ -5,50 +5,13 @@ import type {
   PlatformAdapter,
   WebhookConfig,
 } from "../src/adapters/types";
-import type { GatewayRedis } from "../src/redis";
-import { handleWebhook } from "../src/webhook-handler";
+import { MemoryRedisAdapter as MemoryRedis } from "../src/redis";
+import {
+  handleWebhook,
+  recoverQueuedWebhookDeliveries,
+} from "../src/webhook-handler";
 
 type RedisSetOptions = { ex?: number; nx?: boolean };
-
-class MemoryRedis implements GatewayRedis {
-  readonly store = new Map<string, string>();
-
-  async get<T = unknown>(key: string): Promise<T | null> {
-    const value = this.store.get(key);
-    if (value === undefined) return null;
-    try {
-      return JSON.parse(value) as T;
-    } catch {
-      return value as T;
-    }
-  }
-
-  async set(
-    key: string,
-    value: string,
-    options: RedisSetOptions = {},
-  ): Promise<unknown> {
-    if (options.nx && this.store.has(key)) return null;
-    this.store.set(key, value);
-    return "OK";
-  }
-
-  async del(key: string): Promise<unknown> {
-    return this.store.delete(key) ? 1 : 0;
-  }
-
-  async lpush(): Promise<unknown> {
-    return 1;
-  }
-
-  async ltrim(): Promise<unknown> {
-    return "OK";
-  }
-
-  async expire(): Promise<unknown> {
-    return 1;
-  }
-}
 
 function createTwilioEvent(overrides: Partial<ChatEvent> = {}): ChatEvent {
   return {
@@ -110,10 +73,13 @@ function configureEnv(): void {
   process.env.ELIZA_APP_TWILIO_PHONE_NUMBER = "+15550000000";
 }
 
-async function waitFor(assertion: () => boolean, label: string): Promise<void> {
+async function waitFor(
+  assertion: () => boolean | Promise<boolean>,
+  label: string,
+): Promise<void> {
   const started = Date.now();
   while (Date.now() - started < 2_000) {
-    if (assertion()) return;
+    if (await assertion()) return;
     await new Promise((resolve) => setTimeout(resolve, 10));
   }
   throw new Error(`Timed out waiting for ${label}`);
@@ -194,6 +160,12 @@ describe("gateway webhook handler e2e routing", () => {
     expect(response.status).toBe(200);
     expect(response.headers.get("content-type")).toContain("text/xml");
     expect(adapter.replies).toEqual([]);
+    const dedupKey = `webhook:twilio:${event.messageId}`;
+    expect(await redis.get<string>(dedupKey)).toBe("queued");
+    expect(await redis.get(`${dedupKey}:delivery`)).toMatchObject({
+      event: { messageId: event.messageId },
+      state: "queued",
+    });
     await waitFor(
       () => personalMessageBody !== null,
       "background personal Shared request",
@@ -273,7 +245,7 @@ describe("gateway webhook handler e2e routing", () => {
     expect(adapter.replies).toEqual(["recovered without a duplicate turn"]);
   });
 
-  test("reopens dedupe only after personal Shared fails before provider egress", async () => {
+  test("recovers queued personal Shared work without a second provider webhook", async () => {
     configureEnv();
     const redis = new MemoryRedis();
     const event = createTwilioEvent({ messageId: "SM_personal_replay" });
@@ -323,14 +295,14 @@ describe("gateway webhook handler e2e routing", () => {
       "eliza-app",
     );
 
-    const dedupKey = `webhook:twilio:message:${event.messageId}`;
+    const dedupKey = `webhook:twilio:${event.messageId}`;
     await waitFor(() => personalCalls === 3, "personal retry exhaustion");
-    await waitFor(() => !redis.store.has(dedupKey), "safe dedupe reopening");
+    expect(await redis.get<string>(dedupKey)).toBe("queued");
     expect(firstAdapter.replies).toEqual([]);
 
     recovered = true;
     const replayAdapter = createAdapter(event);
-    await handleWebhook(
+    const replay = await handleWebhook(
       requestFor(event),
       replayAdapter,
       {
@@ -340,7 +312,16 @@ describe("gateway webhook handler e2e routing", () => {
       },
       "eliza-app",
     );
-    await waitFor(() => replayAdapter.replies.length === 1, "replayed reply");
+    expect(replay.status).toBe(200);
+    expect(replayAdapter.replies).toEqual([]);
+
+    await new Promise((resolve) => setTimeout(resolve, 1_050));
+    await recoverQueuedWebhookDeliveries({ twilio: replayAdapter } as never, {
+      redis,
+      cloudBaseUrl: "https://api.elizacloud.ai",
+      getAuthHeader: () => ({ Authorization: "Bearer internal-secret" }),
+    });
+    await waitFor(() => replayAdapter.replies.length === 1, "recovered reply");
     expect(replayAdapter.replies).toEqual([
       "safe provider replay recovered the reply",
     ]);
@@ -379,7 +360,7 @@ describe("gateway webhook handler e2e routing", () => {
       }
     }
     const redis = new EgressContendedRedis();
-    redis.store.set(
+    await redis.set(
       "identity:telegram:sender-1",
       JSON.stringify({
         userId: "user-1",
@@ -387,8 +368,8 @@ describe("gateway webhook handler e2e routing", () => {
         agentId: "agent-1",
       }),
     );
-    redis.store.set("agent:agent-1:server", "server-1");
-    redis.store.set("server:server-1:url", "http://agent-server.local");
+    await redis.set("agent:agent-1:server", "server-1");
+    await redis.set("server:server-1:url", "http://agent-server.local");
     globalThis.fetch = mock(
       async () =>
         new Response(JSON.stringify({ response: "agent reply" }), {
@@ -414,8 +395,8 @@ describe("gateway webhook handler e2e routing", () => {
     expect(response.status).toBe(503);
     expect(sendReply).not.toHaveBeenCalled();
     expect(
-      redis.store.has("webhook:telegram:scope:message:update-1:processing"),
-    ).toBe(false);
+      await redis.get("webhook:telegram:scope:message:update-1:processing"),
+    ).toBeNull();
   });
 
   test("releases Telegram processing ownership after a pre-egress failure so the update can retry immediately", async () => {
@@ -440,7 +421,7 @@ describe("gateway webhook handler e2e routing", () => {
       sendReply,
     };
     const redis = new MemoryRedis();
-    redis.store.set(
+    await redis.set(
       "identity:telegram:sender-1",
       JSON.stringify({ notFound: true }),
     );
@@ -471,12 +452,12 @@ describe("gateway webhook handler e2e routing", () => {
     await expect(
       handleWebhook(request(), adapter, deps, "eliza-app"),
     ).rejects.toThrow(/onboarding chat failed \(503\)/);
-    expect(redis.store.has(processingKey)).toBe(false);
+    expect(await redis.get(processingKey)).toBeNull();
 
     const retry = await handleWebhook(request(), adapter, deps, "eliza-app");
     expect(retry.status).toBe(200);
     expect(sendReply).toHaveBeenCalledTimes(1);
-    expect(redis.store.has(processingKey)).toBe(true);
+    expect(await redis.get(processingKey)).not.toBeNull();
   });
 
   test("retries personal Shared once with fresh auth and the same message id", async () => {
@@ -554,8 +535,8 @@ describe("gateway webhook handler e2e routing", () => {
   test("routes linked Twilio identity to the running agent server and sends the agent reply", async () => {
     configureEnv();
     const redis = new MemoryRedis();
-    redis.store.set("agent:agent-1:server", "server-1");
-    redis.store.set("server:server-1:url", "http://agent-server.local");
+    await redis.set("agent:agent-1:server", "server-1");
+    await redis.set("server:server-1:url", "http://agent-server.local");
     const event = createTwilioEvent({
       messageId: "SM_linked_1",
       text: "Are you running?",
@@ -627,8 +608,8 @@ describe("gateway webhook handler e2e routing", () => {
     // no reply is sent and no error is raised.
     configureEnv();
     const redis = new MemoryRedis();
-    redis.store.set("agent:agent-1:server", "server-1");
-    redis.store.set("server:server-1:url", "http://agent-server.local");
+    await redis.set("agent:agent-1:server", "server-1");
+    await redis.set("server:server-1:url", "http://agent-server.local");
     const event = createTwilioEvent({
       messageId: "SM_silent_1",
       text: "(a message the agent chooses not to answer)",
@@ -818,7 +799,7 @@ describe("gateway webhook handler e2e routing", () => {
     );
 
     expect(resolveCalls).toBe(2);
-    expect(redis.store.has("identity:twilio:+15551234567")).toBe(false);
+    expect(await redis.get("identity:twilio:+15551234567")).toBeNull();
   });
 
   test("uses personal Shared when the Dedicated server is not registered", async () => {
@@ -888,7 +869,7 @@ describe("gateway webhook handler e2e routing", () => {
     // transcript into their agent's memory again.
     configureEnv();
     const redis = new MemoryRedis();
-    redis.store.set("agent:agent-7:server", "server-7");
+    await redis.set("agent:agent-7:server", "server-7");
     const event = createTwilioEvent({
       messageId: "SM_down_1",
       text: "Are you there?",
@@ -948,8 +929,8 @@ describe("gateway webhook handler e2e routing", () => {
     // else's bot.
     configureEnv();
     const redis = new MemoryRedis();
-    redis.store.set("agent:bound-agent:server", "server-1");
-    redis.store.set("server:server-1:url", "http://agent-server.local");
+    await redis.set("agent:bound-agent:server", "server-1");
+    await redis.set("server:server-1:url", "http://agent-server.local");
     const event = createTwilioEvent({
       messageId: "SM_bound_1",
       text: "Hello bound agent",
