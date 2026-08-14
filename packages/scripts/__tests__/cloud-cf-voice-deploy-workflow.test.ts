@@ -1,10 +1,8 @@
 /**
- * Fail-closed deployment contracts for the staging realtime-voice soak.
- * Provider and bridge credentials must exist before a Worker advertising the
- * feature can deploy, while production may never inherit the repository Cloud
- * key as an implicit service authorization. Production remains deployable
- * while realtime is explicitly off; enabling it requires dedicated/provider
- * secrets so a managed deploy overwrites any stale Worker value first.
+ * Fail-closed deployment contracts for realtime voice across staging and
+ * production. Staging requires explicit credentials when opted in; production
+ * stays enabled for phone and app voice while preserving and verifying the
+ * dedicated provider and bridge bindings already managed on the Worker.
  */
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
@@ -91,9 +89,6 @@ function runPreflight(env: Record<string, string>) {
       VOICE_REALTIME_ELIZA_AUTHORIZATION: "Bearer dedicated-test",
       VOICE_REALTIME_WS_ENABLED: "false",
       STAGING_ELIZACLOUD_API_KEY: "",
-      PRODUCTION_REALTIME_WS_ENABLED: "false",
-      PRODUCTION_REALTIME_CARTESIA_VOICE_ID: "",
-      PRODUCTION_REALTIME_ELIZA_ENDPOINT: "",
       ...env,
     },
   });
@@ -162,7 +157,7 @@ describe("Cloud CF realtime voice deploy contract", () => {
     );
   });
 
-  test("keeps production wrangler vars and workflow env realtime-off with no dedicated-secret advertisement", () => {
+  test("keeps production realtime enabled and verifies managed secret bindings", () => {
     const wrangler = read("packages/cloud/api/wrangler.toml");
     expect(wrangler).toMatch(/^keep_vars = true$/m);
     const stagingVars = wrangler.slice(
@@ -172,8 +167,8 @@ describe("Cloud CF realtime voice deploy contract", () => {
     const productionVars = wrangler.slice(
       wrangler.indexOf("[env.production.vars]"),
     );
-    // Staging realtime is intentionally ON (#16809: toml aligned with the live
-    // staging worker); production remains explicitly off until its own gated flip.
+    // Both deployed environments intentionally serve realtime voice. Staging
+    // still requires its repository opt-in; production is pinned on.
     expect(stagingVars).toContain('VOICE_REALTIME_WS_ENABLED = "true"');
     expect(productionVars).toContain('VOICE_REALTIME_WS_ENABLED = "true"');
     expect(stagingVars).toContain('ELIZA_TTS_FISH_ENABLED = "false"');
@@ -187,11 +182,14 @@ describe("Cloud CF realtime voice deploy contract", () => {
     expect(publishStep.env?.VOICE_REALTIME_WS_ENABLED).toContain(
       "vars.VOICE_REALTIME_WS_ENABLED",
     );
-    expect(publishStep.env?.PRODUCTION_REALTIME_WS_ENABLED).toBe("false");
+    expect(publishStep.env?.VOICE_REALTIME_WS_ENABLED).toContain(
+      "deploy_environment == 'production'",
+    );
     expect(productionVars).not.toContain("VOICE_REALTIME_CARTESIA_VOICE_ID");
     expect(productionVars).not.toContain("VOICE_REALTIME_ELIZA_ENDPOINT");
-    expect(publishStep.env?.PRODUCTION_REALTIME_CARTESIA_VOICE_ID).toBe("");
-    expect(publishStep.env?.PRODUCTION_REALTIME_ELIZA_ENDPOINT).toBe("");
+    expect(publishStep.run).toContain('"VOICE_REALTIME_CARTESIA_VOICE_ID"');
+    expect(publishStep.run).toContain('"VOICE_REALTIME_ELIZA_ENDPOINT"');
+    expect(publishStep.run).toContain("managed Worker secret binding name(s)");
     expect(wrangler).not.toContain("VOICE_AMBIENT_ENABLED");
     expect(wrangler).not.toContain("VOICE_AMBIENT_PENDANT_BASE_URL");
   });
@@ -200,7 +198,7 @@ describe("Cloud CF realtime voice deploy contract", () => {
     const runtimeFlag = deployStep.env?.VOICE_REALTIME_WS_ENABLED;
     expect(runtimeFlag).toBe(publishStep.env?.VOICE_REALTIME_WS_ENABLED);
     expect(runtimeFlag).toContain("steps.env.outputs.deploy_environment");
-    expect(runtimeFlag).toContain("!= 'production'");
+    expect(runtimeFlag).toContain("== 'production'");
     expect(runtimeFlag).toContain("vars.VOICE_REALTIME_WS_ENABLED");
     expect(runtimeFlag).toContain("&& 'true' || 'false'");
     expect(deployStep.run).toContain(
@@ -208,7 +206,7 @@ describe("Cloud CF realtime voice deploy contract", () => {
     );
   });
 
-  test("runtime realtime override stays default-off and production-safe across Worker and frontend", () => {
+  test("runtime and frontend realtime stay enabled in production", () => {
     const wrangler = read("packages/cloud/api/wrangler.toml");
     const stagingVars = wrangler.slice(
       wrangler.indexOf("[env.staging.vars]"),
@@ -217,8 +215,7 @@ describe("Cloud CF realtime voice deploy contract", () => {
     const productionVars = wrangler.slice(
       wrangler.indexOf("[env.production.vars]"),
     );
-    // Staging is intentionally on (#16809); the production-safe invariant is
-    // that production's own var stays "false".
+    // Staging and production both intentionally serve realtime voice.
     expect(stagingVars).toContain('VOICE_REALTIME_WS_ENABLED = "true"');
     expect(productionVars).toContain('VOICE_REALTIME_WS_ENABLED = "true"');
     expect(deployStep.env?.VOICE_REALTIME_WS_ENABLED).toBe(
@@ -228,17 +225,15 @@ describe("Cloud CF realtime voice deploy contract", () => {
       "&& 'true' || 'false'",
     );
 
-    // Every frontend build in either workflow must resolve the realtime flag
-    // from the repository variable and must not be able to reach production
-    // with it on. The canonical release build carries the production guard in
-    // the expression itself; the pull-request preview build has no production
-    // path at all because its whole environment is pinned to staging.
+    // Canonical production builds pin the voice UI on. Staging and pull-request
+    // previews continue to use the repository variable.
     const flagPattern =
       /VITE_VOICE_REALTIME_WS: \$\{\{[^}]*vars\.VOICE_REALTIME_WS_ENABLED[^}]*&& '1' \|\| '0' \}\}/g;
     const releaseRealtimeFlags = workflowSource.match(flagPattern) ?? [];
     expect(releaseRealtimeFlags.length).toBeGreaterThanOrEqual(1);
     for (const flag of releaseRealtimeFlags) {
-      expect(flag).toContain("!(inputs.target_environment == 'production')");
+      expect(flag).toContain("inputs.target_environment == 'production'");
+      expect(flag).toContain("|| contains");
       expect(flag).toContain("vars.VOICE_REALTIME_WS_ENABLED");
     }
 
@@ -423,54 +418,6 @@ executedDescribe(
       });
       expect(empty.status).toBe(1);
       expect(empty.stdout).not.toContain("Bearer ");
-    });
-
-    test("keeps disabled production deployable but fails a future enable without dedicated secrets", () => {
-      const disabled = runPreflight({
-        DEPLOY_ENVIRONMENT: "production",
-        DEEPGRAM_API_KEY: "",
-        CARTESIA_API_KEY: "",
-        VOICE_REALTIME_ELIZA_AUTHORIZATION: "",
-        STAGING_ELIZACLOUD_API_KEY: "repo-key-must-not-be-used",
-      });
-      expect(disabled.status).toBe(0);
-      expect(disabled.stdout).not.toContain("Bearer repo-key-must-not-be-used");
-
-      const missingDedicated = runPreflight({
-        DEPLOY_ENVIRONMENT: "production",
-        PRODUCTION_REALTIME_WS_ENABLED: "true",
-        DEEPGRAM_API_KEY: "",
-        CARTESIA_API_KEY: "",
-        VOICE_REALTIME_ELIZA_AUTHORIZATION: "",
-        STAGING_ELIZACLOUD_API_KEY: "repo-key-must-not-be-used",
-      });
-      expect(missingDedicated.status).toBe(1);
-      expect(missingDedicated.stdout).toContain(
-        "Production realtime voice is enabled",
-      );
-      expect(missingDedicated.stdout).not.toContain("DEEPGRAM_API_KEY");
-      expect(missingDedicated.stdout).toContain("CARTESIA_API_KEY");
-      expect(missingDedicated.stdout).toContain(
-        "VOICE_REALTIME_ELIZA_AUTHORIZATION",
-      );
-      expect(missingDedicated.stdout).toContain(
-        "PRODUCTION_REALTIME_CARTESIA_VOICE_ID",
-      );
-      expect(missingDedicated.stdout).toContain(
-        "PRODUCTION_REALTIME_ELIZA_ENDPOINT",
-      );
-
-      const configured = runPreflight({
-        DEPLOY_ENVIRONMENT: "production",
-        PRODUCTION_REALTIME_WS_ENABLED: "true",
-        CARTESIA_API_KEY: "cartesia-production",
-        VOICE_REALTIME_ELIZA_AUTHORIZATION: "Bearer production-dedicated",
-        PRODUCTION_REALTIME_CARTESIA_VOICE_ID: "production-voice-id",
-        PRODUCTION_REALTIME_ELIZA_ENDPOINT:
-          "https://api.elizacloud.ai/api/v1/chat/completions",
-        STAGING_ELIZACLOUD_API_KEY: "repo-key-must-not-be-used",
-      });
-      expect(configured.status).toBe(0);
     });
   },
 );
