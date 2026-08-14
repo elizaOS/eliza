@@ -8,6 +8,7 @@ import { logger } from "../logger";
 import type { ChatEvent, PlatformAdapter, WebhookConfig } from "./types";
 
 const BLOOIO_API_BASE = "https://api.blooio.com/v2/api";
+const BLOOIO_V4_API_BASE = "https://api.blooio.com/v4/api";
 
 const BlooioAttachmentSchema = z.union([
   z.string(),
@@ -33,6 +34,8 @@ const BlooioV4MessageSchema = z
     id: z.string().trim().min(1).nullish(),
     message_id: z.string().trim().min(1).nullish(),
     chat_id: z.string().nullish(),
+    channel_id: z.string().trim().min(1).nullish(),
+    channel_type: z.string().trim().min(1).nullish(),
     sender: z.string().trim().min(1).nullish(),
     recipient: z.string().nullish(),
     channel_address: z.string().nullish(),
@@ -54,7 +57,10 @@ const BlooioV4WebhookEnvelopeSchema = z.object({
   data: BlooioV4MessageSchema,
 });
 
-type BlooioWebhookEvent = z.infer<typeof BlooioV2WebhookEventSchema>;
+type BlooioWebhookEvent = z.infer<typeof BlooioV2WebhookEventSchema> & {
+  channel_id?: string | null;
+  channel_type?: string | null;
+};
 
 function parseWebhookEvent(data: unknown): BlooioWebhookEvent | null {
   const v2 = BlooioV2WebhookEventSchema.safeParse(data);
@@ -77,6 +83,8 @@ function parseWebhookEvent(data: unknown): BlooioWebhookEvent | null {
     is_group: message.is_group ?? message.group != null,
     received_at: v4.data.created_at,
     timestamp: v4.data.created_at,
+    channel_id: message.channel_id,
+    channel_type: message.channel_type,
   };
 }
 
@@ -238,6 +246,14 @@ export const blooioAdapter: PlatformAdapter = {
 
     const mediaUrls = extractMediaUrls(event.attachments);
 
+    // Blooio v4 envelopes carry channel_id and channel_type on the message
+    // data; legacy v2 deliveries never do. When present, the channel metadata
+    // lets sendReply route to the v4 channel-aware message endpoint so the
+    // outbound reply is pinned to the exact inbound channel (e.g. a WhatsApp
+    // channel instead of the default iMessage/SMS channel).
+    const channelId = event.channel_id ?? undefined;
+    const channelType = event.channel_type ?? undefined;
+
     return {
       platform: "blooio",
       messageId: event.message_id,
@@ -248,6 +264,8 @@ export const blooioAdapter: PlatformAdapter = {
           ? `[media: ${mediaUrls.join(", ")}]`
           : text,
       mediaUrls: mediaUrls.length > 0 ? mediaUrls : undefined,
+      channelId,
+      channelType,
       rawPayload: data,
     };
   },
@@ -259,7 +277,15 @@ export const blooioAdapter: PlatformAdapter = {
   ): Promise<void> {
     if (!config.apiKey) throw new Error("Missing apiKey for Blooio reply");
 
-    const url = `${BLOOIO_API_BASE}/chats/${encodeURIComponent(event.senderId)}/messages`;
+    // When the inbound v4 envelope carried a channel_id, reply through the v4
+    // channel-aware endpoint so the message is pinned to the exact channel
+    // that delivered the inbound. Legacy v2 deliveries and v4 deliveries
+    // without a channel_id fall back to the v2 chat-scoped endpoint.
+    const { channelId } = event;
+    const url =
+      channelId != null
+        ? `${BLOOIO_V4_API_BASE}/channels/${encodeURIComponent(channelId)}/messages`
+        : `${BLOOIO_API_BASE}/chats/${encodeURIComponent(event.senderId)}/messages`;
     const headers: Record<string, string> = {
       Authorization: `Bearer ${config.apiKey}`,
       "Content-Type": "application/json",
@@ -271,10 +297,19 @@ export const blooioAdapter: PlatformAdapter = {
     };
     if (config.fromNumber) headers["X-From-Number"] = config.fromNumber;
 
+    const body =
+      channelId != null
+        ? JSON.stringify({
+            text,
+            channel_id: channelId,
+            ...(event.channelType ? { channel_type: event.channelType } : {}),
+          })
+        : JSON.stringify({ text });
+
     const response = await fetch(url, {
       method: "POST",
       headers,
-      body: JSON.stringify({ text }),
+      body,
     });
 
     if (!response.ok) {
@@ -289,7 +324,11 @@ export const blooioAdapter: PlatformAdapter = {
   ): Promise<void> {
     if (!config.apiKey) return;
     try {
-      const url = `${BLOOIO_API_BASE}/chats/${encodeURIComponent(event.senderId)}/read`;
+      const { channelId } = event;
+      const url =
+        channelId != null
+          ? `${BLOOIO_V4_API_BASE}/channels/${encodeURIComponent(channelId)}/read`
+          : `${BLOOIO_API_BASE}/chats/${encodeURIComponent(event.senderId)}/read`;
       const headers: Record<string, string> = {
         Authorization: `Bearer ${config.apiKey}`,
         "Content-Type": "application/json",

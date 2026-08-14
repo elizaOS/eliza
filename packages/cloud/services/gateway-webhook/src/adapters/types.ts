@@ -12,6 +12,10 @@ export interface ChatEvent {
   text: string;
   isCommand?: boolean;
   mediaUrls?: string[];
+  /** Blooio v4 channel id, preserved from the inbound envelope for channel-aware replies. */
+  channelId?: string;
+  /** Blooio v4 channel type (e.g. "blooio", "whatsapp"), preserved from the inbound envelope. */
+  channelType?: string;
   rawPayload: unknown;
 }
 
