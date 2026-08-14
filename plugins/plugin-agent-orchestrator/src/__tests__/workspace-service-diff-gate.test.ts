@@ -425,6 +425,65 @@ describe("CodingWorkspaceService workspace lifecycle seams", () => {
     expect(service.listScratchWorkspaces()).toEqual([]);
   });
 
+  it.each(["1.5", "1e3", "01", "2147483648", "0", "-1", "not-a-number"])(
+    "rejects invalid scratch decision TTL %s before scheduling cleanup",
+    async (configuredTtl) => {
+      const root = tmpRoot("workspace-service-invalid-scratch-ttl-");
+      const source = await makeScratchDir(root, "task-source");
+      const runtime = {
+        getSetting: vi.fn((key: string) =>
+          key === "ELIZA_SCRATCH_RETENTION"
+            ? "pending_decision"
+            : key === "ELIZA_SCRATCH_DECISION_TTL_MS"
+              ? configuredTtl
+              : undefined,
+        ),
+        reportError: vi.fn(),
+      } as unknown as IAgentRuntime;
+      const service = new CodingWorkspaceService(runtime, { baseDir: root });
+
+      await expect(
+        service.registerScratchWorkspace(
+          "session-invalid-ttl",
+          source,
+          "Feature Branch",
+          "task_complete",
+        ),
+      ).rejects.toMatchObject({ code: "INVALID_SCRATCH_DECISION_TTL" });
+      expect(service.listScratchWorkspaces()).toEqual([]);
+      expect(existsSync(source)).toBe(true);
+    },
+  );
+
+  it("accepts the maximum scratch decision TTL without changing valid behavior", async () => {
+    const root = tmpRoot("workspace-service-valid-scratch-ttl-");
+    const source = await makeScratchDir(root, "task-source");
+    const runtime = {
+      getSetting: vi.fn((key: string) =>
+        key === "ELIZA_SCRATCH_RETENTION"
+          ? "pending_decision"
+          : key === "ELIZA_SCRATCH_DECISION_TTL_MS"
+            ? "2147483647"
+            : undefined,
+      ),
+      reportError: vi.fn(),
+    } as unknown as IAgentRuntime;
+    const service = new CodingWorkspaceService(runtime, { baseDir: root });
+
+    const pending = await service.registerScratchWorkspace(
+      "session-valid-ttl",
+      source,
+      "Feature Branch",
+      "task_complete",
+    );
+
+    expect(pending).toMatchObject({
+      status: "pending_decision",
+      expiresAt: expect.any(Number),
+    });
+    await service.keepScratchWorkspace("session-valid-ttl");
+  });
+
   it("stops by clearing scratch timers and best-effort cleaning every workspace", async () => {
     const { service } = harness();
     const cleanup = vi

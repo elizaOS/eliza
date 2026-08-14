@@ -61,6 +61,9 @@ type GitHubPatProviderClient = Pick<
   "branchExists" | "createPullRequest"
 >;
 
+const DEFAULT_SCRATCH_DECISION_TTL_MS = 24 * 60 * 60 * 1000;
+const MAX_SCRATCH_DECISION_TTL_MS = 2_147_483_647;
+
 interface GitHubRepoParts {
   owner: string;
   repo: string;
@@ -1324,6 +1327,11 @@ export class CodingWorkspaceService {
       return null;
     }
 
+    const scratchDecisionTtlMs =
+      policy === "pending_decision"
+        ? this.getScratchDecisionTtlMs()
+        : undefined;
+
     const record: ScratchWorkspaceRecord = {
       ...base,
       label,
@@ -1336,9 +1344,14 @@ export class CodingWorkspaceService {
     this.scratchBySession.set(sessionId, record);
 
     if (record.status === "pending_decision") {
-      const ttlMs = this.getScratchDecisionTtlMs();
-      record.expiresAt = now + ttlMs;
-      this.scheduleScratchCleanup(sessionId, ttlMs);
+      if (scratchDecisionTtlMs === undefined) {
+        throw new ElizaError("Scratch decision TTL was not resolved", {
+          code: "SCRATCH_DECISION_TTL_UNAVAILABLE",
+          context: { sessionId, policy },
+        });
+      }
+      record.expiresAt = now + scratchDecisionTtlMs;
+      this.scheduleScratchCleanup(sessionId, scratchDecisionTtlMs);
       // Prompt user via chat: "Want to keep this code?"
       if (this.scratchDecisionCallback) {
         this.log(`Firing scratch decision prompt for "${label}" at ${dirPath}`);
@@ -1505,9 +1518,35 @@ export class CodingWorkspaceService {
       | string
       | number
       | undefined;
-    const parsed = Number(setting ?? process.env.ELIZA_SCRATCH_DECISION_TTL_MS);
-    if (Number.isFinite(parsed) && parsed > 0) return parsed;
-    return 24 * 60 * 60 * 1000;
+    const configured = setting ?? process.env.ELIZA_SCRATCH_DECISION_TTL_MS;
+    if (configured === undefined) return DEFAULT_SCRATCH_DECISION_TTL_MS;
+
+    const normalized =
+      typeof configured === "string" ? configured.trim() : configured;
+    const parsed =
+      typeof normalized === "number"
+        ? normalized
+        : /^[1-9]\d*$/.test(normalized)
+          ? Number(normalized)
+          : Number.NaN;
+    if (
+      !Number.isSafeInteger(parsed) ||
+      parsed < 1 ||
+      parsed > MAX_SCRATCH_DECISION_TTL_MS
+    ) {
+      throw new ElizaError(
+        `ELIZA_SCRATCH_DECISION_TTL_MS must be an integer from 1 through ${MAX_SCRATCH_DECISION_TTL_MS} milliseconds`,
+        {
+          code: "INVALID_SCRATCH_DECISION_TTL",
+          context: {
+            configured,
+            minimum: 1,
+            maximum: MAX_SCRATCH_DECISION_TTL_MS,
+          },
+        },
+      );
+    }
+    return parsed;
   }
 
   private requireScratchWorkspace(sessionId: string): ScratchWorkspaceRecord {
