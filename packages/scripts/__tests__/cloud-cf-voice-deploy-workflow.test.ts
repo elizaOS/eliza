@@ -79,6 +79,8 @@ function runPreflight(env: Record<string, string>) {
       DEPLOY_ENVIRONMENT: "staging",
       DEEPGRAM_API_KEY: "deepgram-test",
       CARTESIA_API_KEY: "cartesia-test",
+      CARTESIA_STT_USD_PER_CREDIT: "0.00005",
+      CARTESIA_BATCH_STT_TIMEOUT_MS: "120000",
       FISH_AUDIO_API_KEY: "fish-test",
       FISH_AUDIO_REFERENCE_ID: "fish-reference-test",
       ELIZA_TTS_FISH_ENABLED: "false",
@@ -115,7 +117,7 @@ describe("Cloud CF realtime voice deploy contract", () => {
       "is gated by VOICE_REALTIME_WS_ENABLED; skipping",
     );
     expect(publishStep.run).toContain(
-      "CARTESIA_API_KEY|VOICE_REALTIME_ELIZA_AUTHORIZATION",
+      "realtime voice or VOICE_BATCH_STT_PROVIDER=cartesia",
     );
     expect(publishStep.run).toContain(
       "is gated by VOICE_BATCH_STT_PROVIDER=deepgram; skipping",
@@ -126,6 +128,17 @@ describe("Cloud CF realtime voice deploy contract", () => {
     expect(publishStep.run).toContain(
       "is gated by realtime voice, Fish enablement, and data-governance approval; skipping",
     );
+  });
+
+  test("publishes deployment-owned Cartesia batch billing and timeout config", () => {
+    expect(publishStep.env?.CARTESIA_STT_USD_PER_CREDIT).toBe(
+      "$" + "{{ vars.CARTESIA_STT_USD_PER_CREDIT }}",
+    );
+    expect(publishStep.env?.CARTESIA_BATCH_STT_TIMEOUT_MS).toBe(
+      "$" + "{{ vars.CARTESIA_BATCH_STT_TIMEOUT_MS }}",
+    );
+    expect(publishStep.run).toContain("CARTESIA_STT_USD_PER_CREDIT");
+    expect(publishStep.run).toContain("CARTESIA_BATCH_STT_TIMEOUT_MS");
   });
 
   test("passes a production-off Fish opt-in and exact realtime format to the Worker", () => {
@@ -289,6 +302,30 @@ executedDescribe(
       });
       expect(result.status).toBe(0);
       expect(result.stdout).not.toContain("Bearer repo-key-must-not-be-used");
+    });
+
+    test("requires and publishes Cartesia batch provider billing authority independently of realtime", () => {
+      const missingKey = runPreflight({
+        CARTESIA_API_KEY: "",
+        VOICE_BATCH_STT_PROVIDER: "cartesia",
+        VOICE_REALTIME_WS_ENABLED: "false",
+      });
+      expect(missingKey.status).toBe(1);
+      expect(missingKey.stdout).toContain("CARTESIA_API_KEY");
+
+      const missingPrice = runPreflight({
+        CARTESIA_STT_USD_PER_CREDIT: "",
+        VOICE_BATCH_STT_PROVIDER: "cartesia",
+        VOICE_REALTIME_WS_ENABLED: "false",
+      });
+      expect(missingPrice.status).toBe(1);
+      expect(missingPrice.stdout).toContain("CARTESIA_STT_USD_PER_CREDIT");
+
+      const configured = runPreflight({
+        VOICE_BATCH_STT_PROVIDER: "cartesia",
+        VOICE_REALTIME_WS_ENABLED: "false",
+      });
+      expect(configured.status).toBe(0);
     });
 
     test("requires every realtime provider and bridge secret in opted-in staging", () => {

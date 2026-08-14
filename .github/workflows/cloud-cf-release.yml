@@ -464,6 +464,11 @@ jobs:
           # Environment-scoped opt-in for prerecorded Deepgram STT. Production
           # remains on its existing provider while this variable is unset.
           VOICE_BATCH_STT_PROVIDER: ${{ vars.VOICE_BATCH_STT_PROVIDER }}
+          # Cartesia batch STT is separately opt-in and billed. The price is
+          # deployment-owned rather than embedded in application code; the
+          # timeout may be tuned within the route's bounded parser.
+          CARTESIA_STT_USD_PER_CREDIT: ${{ vars.CARTESIA_STT_USD_PER_CREDIT }}
+          CARTESIA_BATCH_STT_TIMEOUT_MS: ${{ vars.CARTESIA_BATCH_STT_TIMEOUT_MS }}
           # Ed25519 keypair for the signed voice-model catalog —
           # /v1/voice-models/catalog 503s while the signing key is unset
           # (#13406). publish_secret no-ops with a notice while these are
@@ -582,6 +587,19 @@ jobs:
             fi
           fi
 
+          if [ "${VOICE_BATCH_STT_PROVIDER,,}" = "cartesia" ]; then
+            missing_cartesia_batch_config=()
+            for name in CARTESIA_API_KEY CARTESIA_STT_USD_PER_CREDIT; do
+              if ! has_nonblank_value "${!name:-}"; then
+                missing_cartesia_batch_config+=("$name")
+              fi
+            done
+            if [ "${#missing_cartesia_batch_config[@]}" -gt 0 ]; then
+              echo "::error::Cartesia batch STT is enabled but required provider/billing config is missing: ${missing_cartesia_batch_config[*]}"
+              exit 1
+            fi
+          fi
+
           # Value-safe validation: exact UUID allowlists, dedicated signing
           # key/kid, and the code/runtime version are all required before the
           # first QA-related Worker secret is touched.
@@ -631,7 +649,14 @@ jobs:
             local name="$1"
             local value="${!name:-}"
             case "$name" in
-              CARTESIA_API_KEY|VOICE_REALTIME_ELIZA_AUTHORIZATION)
+              CARTESIA_API_KEY)
+                if ! is_truthy "$VOICE_REALTIME_WS_ENABLED" && \
+                   [ "${VOICE_BATCH_STT_PROVIDER,,}" != "cartesia" ]; then
+                  echo "::notice::$name is gated by realtime voice or VOICE_BATCH_STT_PROVIDER=cartesia; skipping"
+                  return 0
+                fi
+                ;;
+              VOICE_REALTIME_ELIZA_AUTHORIZATION)
                 if ! is_truthy "$VOICE_REALTIME_WS_ENABLED"; then
                   echo "::notice::$name is gated by VOICE_REALTIME_WS_ENABLED; skipping"
                   return 0
@@ -790,6 +815,8 @@ jobs:
             WHISPER_STT_URL \
             WHISPER_STT_MODEL \
             VOICE_BATCH_STT_PROVIDER \
+            CARTESIA_STT_USD_PER_CREDIT \
+            CARTESIA_BATCH_STT_TIMEOUT_MS \
             ELIZA_APP_WEBHOOK_GATEWAY_URL
           do
             publish_toggle_secret "$name" || exit 1
