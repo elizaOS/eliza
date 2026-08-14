@@ -1,10 +1,14 @@
 /**
  * Exercises the mobile smoke CLI's host-side protocol, parsing, retry, and filesystem boundaries.
+ * Also covers fail-closed numeric env overrides so a typo cannot become a 1 ms
+ * timer or skip the AbortController timeout gate.
  */
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
+import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 const fakeDirectory = fs.mkdtempSync(
   path.join(os.tmpdir(), "eliza-mobile-tools-"),
@@ -542,5 +546,123 @@ describe("mobile smoke failure states", () => {
       diagnostics.keys["eliza:ios-full-bun-smoke:request"].defaultsValue,
     ).toBeNull();
     await smoke.main();
+  });
+});
+
+const SMOKE_SCRIPT = fileURLToPath(
+  new URL("./mobile-local-chat-smoke.mjs", import.meta.url),
+);
+
+function runSmokeCli(envOverrides) {
+  return spawnSync(process.execPath, [SMOKE_SCRIPT, "--platform", "skip"], {
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      ...envOverrides,
+    },
+    timeout: 8_000,
+  });
+}
+
+describe("resolveMobileSmokeNumericEnv", () => {
+  it("keeps documented defaults when knobs are unset or empty", () => {
+    expect(smoke.resolveMobileSmokeNumericEnv({})).toMatchObject({
+      androidFullTurnTimeoutMs: smoke.DEFAULT_ANDROID_FULL_TURN_TIMEOUT_MS,
+      androidHealthProbeTimeoutMs:
+        smoke.DEFAULT_ANDROID_HEALTH_PROBE_TIMEOUT_MS,
+      androidTransientRetryAttempts:
+        smoke.DEFAULT_ANDROID_TRANSIENT_RETRY_ATTEMPTS,
+      androidSmokeModelContextSize:
+        smoke.DEFAULT_ANDROID_SMOKE_MODEL_CONTEXT_SIZE,
+      androidSmokeModelSizeBytesOverride: null,
+    });
+    expect(
+      smoke.resolveMobileSmokeNumericEnv({
+        ANDROID_FULL_TURN_TIMEOUT_MS: "",
+        ANDROID_HEALTH_PROBE_TIMEOUT_MS: "   ",
+      }).androidFullTurnTimeoutMs,
+    ).toBe(smoke.DEFAULT_ANDROID_FULL_TURN_TIMEOUT_MS);
+  });
+
+  it("accepts canonical timer and count overrides through the Node ceiling", () => {
+    const parsed = smoke.resolveMobileSmokeNumericEnv({
+      ANDROID_FULL_TURN_TIMEOUT_MS: "800",
+      ANDROID_HEALTH_PROBE_TIMEOUT_MS: String(smoke.MAX_TIMER_DELAY_MS),
+      ANDROID_TRANSIENT_RETRY_ATTEMPTS: "1",
+      ANDROID_STABILITY_DELAY_MS: "0",
+      ANDROID_SMOKE_MODEL_CONTEXT_SIZE: "4096",
+      ANDROID_SMOKE_MODEL_SIZE_BYTES: "4",
+    });
+    expect(parsed.androidFullTurnTimeoutMs).toBe(800);
+    expect(parsed.androidHealthProbeTimeoutMs).toBe(smoke.MAX_TIMER_DELAY_MS);
+    expect(parsed.androidTransientRetryAttempts).toBe(1);
+    expect(parsed.androidStabilityDelayMs).toBe(0);
+    expect(parsed.androidSmokeModelContextSize).toBe(4096);
+    expect(parsed.androidSmokeModelSizeBytesOverride).toBe(4);
+  });
+
+  it("rejects scientific notation, partial tokens, and timer overflow", () => {
+    for (const value of [
+      "1e3",
+      "8abc",
+      "0x10",
+      "0.4",
+      "abc",
+      "-1",
+      "0",
+      String(smoke.MAX_TIMER_DELAY_MS + 1),
+    ]) {
+      expect(() =>
+        smoke.resolveMobileSmokeNumericEnv({
+          ANDROID_FULL_TURN_TIMEOUT_MS: value,
+        }),
+      ).toThrow(/ANDROID_FULL_TURN_TIMEOUT_MS/);
+    }
+    expect(() =>
+      smoke.resolveMobileSmokeNumericEnv({
+        ANDROID_HEALTH_PROBE_TIMEOUT_MS: "abc",
+      }),
+    ).toThrow(/ANDROID_HEALTH_PROBE_TIMEOUT_MS/);
+    expect(() =>
+      smoke.resolveMobileSmokeNumericEnv({
+        ANDROID_TRANSIENT_RETRY_ATTEMPTS: "1e3",
+      }),
+    ).toThrow(/ANDROID_TRANSIENT_RETRY_ATTEMPTS/);
+    expect(() =>
+      smoke.resolveMobileSmokeNumericEnv({
+        ANDROID_SMOKE_MODEL_CONTEXT_SIZE: "8abc",
+      }),
+    ).toThrow(/ANDROID_SMOKE_MODEL_CONTEXT_SIZE/);
+  });
+});
+
+describe("mobile smoke numeric env CLI boundary", () => {
+  it("rejects ANDROID_FULL_TURN_TIMEOUT_MS=1e3 before device or API work", () => {
+    const result = runSmokeCli({ ANDROID_FULL_TURN_TIMEOUT_MS: "1e3" });
+    expect(result.status).not.toBe(0);
+    const combined = `${result.stdout}${result.stderr}`;
+    expect(combined).toMatch(/ANDROID_FULL_TURN_TIMEOUT_MS/);
+    expect(combined).not.toContain("timed out after 1ms");
+    expect(combined).not.toContain("TimeoutOverflowWarning");
+    expect(combined).not.toContain("[local-chat-smoke]");
+  });
+
+  it("rejects overflowing and partial timeout tokens before spawn work", () => {
+    for (const value of ["8abc", "2147483648", "0.4"]) {
+      const result = runSmokeCli({ ANDROID_FULL_TURN_TIMEOUT_MS: value });
+      expect(result.status).not.toBe(0);
+      const combined = `${result.stdout}${result.stderr}`;
+      expect(combined).toMatch(/ANDROID_FULL_TURN_TIMEOUT_MS/);
+      expect(combined).not.toContain("TimeoutOverflowWarning");
+      expect(combined).not.toContain("[local-chat-smoke]");
+    }
+  });
+
+  it("rejects ANDROID_HEALTH_PROBE_TIMEOUT_MS=abc instead of hanging without a timer", () => {
+    const result = runSmokeCli({ ANDROID_HEALTH_PROBE_TIMEOUT_MS: "abc" });
+    expect(result.status).not.toBe(0);
+    const combined = `${result.stdout}${result.stderr}`;
+    expect(combined).toMatch(/ANDROID_HEALTH_PROBE_TIMEOUT_MS/);
+    expect(combined).not.toContain("[local-chat-smoke]");
   });
 });
