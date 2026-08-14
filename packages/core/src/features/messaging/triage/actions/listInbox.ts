@@ -22,7 +22,11 @@ import type {
 import { rankScored } from "../triage-engine.ts";
 import { getDefaultTriageService } from "../triage-service.ts";
 import { ALL_MESSAGE_SOURCES } from "../types.ts";
-import { parseListInboxParams, validateMessageAction } from "./_shared.ts";
+import {
+	describeMessageScope,
+	parseListInboxParams,
+	validateMessageAction,
+} from "./_shared.ts";
 
 export const listInboxAction: Action = {
 	name: "MESSAGE",
@@ -96,7 +100,9 @@ export const listInboxAction: Action = {
 				? cached.filter((m) => requestedSources.includes(m.source))
 				: cached;
 
+			let usedTriageFallback = false;
 			if (messages.length === 0) {
+				usedTriageFallback = true;
 				messages = await service.triage(runtime, {
 					sources: params.sources,
 					sinceMs: params.sinceMs,
@@ -117,10 +123,29 @@ export const listInboxAction: Action = {
 			// No visible callback: the bare count is tool-speak next to the
 			// evaluator's actual inbox rundown. The summary stays planner-facing
 			// in the result text with the messages in data.
+			//
+			// The feed is narrowed by requested sources, sinceMs, and limit before
+			// the unread filter runs, so an empty result claiming "across connected
+			// platforms" reports a clear inbox while unread mail sits in the
+			// sources that were filtered away. Name the scope and the counts that
+			// were actually measured.
+			// Announce ONLY the narrowings this path actually performed.
+			// Declaring a filter that never ran replaces one false statement with
+			// another: worldIds/channelIds are parsed but nothing here applies
+			// them, and sinceMs is applied by the triage fallback alone — the
+			// cached read (`store.listMessages()`) takes no arguments. Announcing
+			// them produced a self-contradicting sentence that claimed a since-
+			// window while counting a message older than it as "in scope".
+			const scope = describeMessageScope({
+				requestedSources: params.sources,
+				registeredSources: service.listRegisteredSources(),
+				...(usedTriageFallback ? { sinceMs: params.sinceMs } : {}),
+				limit: params.limit,
+			});
 			const text =
 				trimmed.length === 0
-					? "No unread messages across connected platforms."
-					: `${unread.length} unread message(s) across ${new Set(unread.map((m) => m.source)).size} platform(s); details in data.messages.`;
+					? `No unread messages in the checked scope (${scope}); ${messages.length} message(s) were in scope, none unread. This is a scoped view, not a statement that the whole inbox is clear — drop the filters to check every connected platform.`
+					: `${unread.length} unread message(s) across ${new Set(unread.map((m) => m.source)).size} platform(s) in the checked scope (${scope}); showing ${trimmed.length} in data.messages.`;
 
 			return {
 				success: true,

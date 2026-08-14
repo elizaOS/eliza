@@ -83,5 +83,45 @@ describe("SECRETS action=list", () => {
 
 		const data = result.data as { keys: string[] };
 		expect(data.keys).toEqual(["OPENAI_API_KEY"]);
+		// The prefix and the pre-filter total have to be in the text: this result
+		// is delivered verbatim, so a count that omits its filter reads as the
+		// level's total.
+		expect(result.text).toBe(
+			'Found 1 of 2 global secret(s) starting with "open".',
+		);
+	});
+
+	test("a prefix-filtered miss names the prefix and the level total", async () => {
+		const result = await listSecretsHandler(
+			createRuntime({
+				OPENAI_API_KEY: { status: "valid", createdAt: 1, validatedAt: 1 },
+				ANTHROPIC_API_KEY: { status: "valid", createdAt: 1, validatedAt: 1 },
+			}) as never,
+			createMessage() as never,
+			undefined,
+			{ parameters: { prefix: "aws" } } as never,
+			async () => [],
+		);
+
+		expect((result.data as { keys: string[] }).keys).toEqual([]);
+		// The old text claimed no secrets exist at this level at all.
+		expect(result.text).not.toBe(
+			"You don't have any global secrets stored yet.",
+		);
+		expect(result.text).toContain("2 global secret(s)");
+		expect(result.text).toContain('"aws"');
+		expect(result.text).toContain("drop the prefix");
+	});
+
+	test("an unfiltered empty level keeps the plain text", async () => {
+		const result = await listSecretsHandler(
+			createRuntime({}) as never,
+			createMessage() as never,
+			undefined,
+			{ parameters: {} } as never,
+			async () => [],
+		);
+
+		expect(result.text).toBe("You don't have any global secrets stored yet.");
 	});
 });

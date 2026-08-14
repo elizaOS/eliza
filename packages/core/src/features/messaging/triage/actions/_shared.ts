@@ -36,6 +36,61 @@ export function validateMessageAction(
 	return hasActionContext(message, state, { contexts });
 }
 
+/** Everything that can narrow a triage read, as measured at the call site. */
+export interface MessageScope {
+	/** Sources the planner asked for; absent means every registered source. */
+	requestedSources?: readonly MessageSource[];
+	/** Sources actually registered with the triage service. */
+	registeredSources: readonly MessageSource[];
+	worldIds?: readonly string[];
+	channelIds?: readonly string[];
+	sender?: SearchMessagesFilters["sender"];
+	content?: string;
+	tags?: readonly string[];
+	sinceMs?: number;
+	untilMs?: number;
+	limit?: number;
+}
+
+/**
+ * Render the scope of a triage read for the result text. An inbox or search
+ * result that does not name its own scope asserts full coverage: "no unread
+ * messages across connected platforms" while unread mail sits in a source the
+ * planner filtered out, or "no matching messages" for a since-window the user
+ * never asked for. Filter values supplied as free text (sender, content, tags)
+ * are named but never echoed, so a planner blob cannot ride out in the text.
+ */
+export function describeMessageScope(scope: MessageScope): string {
+	const clauses: string[] = [];
+	const registered = scope.registeredSources.length;
+	clauses.push(
+		scope.requestedSources && scope.requestedSources.length > 0
+			? `sources=${scope.requestedSources.join(",")} (${scope.requestedSources.length} of ${registered} connected)`
+			: `all ${registered} connected source(s)`,
+	);
+	if (scope.worldIds && scope.worldIds.length > 0) {
+		clauses.push(`${scope.worldIds.length} account filter(s)`);
+	}
+	if (scope.channelIds && scope.channelIds.length > 0) {
+		clauses.push(`${scope.channelIds.length} channel filter(s)`);
+	}
+	if (scope.sender) clauses.push("a sender filter");
+	if (scope.content) clauses.push("a content keyword");
+	if (scope.tags && scope.tags.length > 0) {
+		clauses.push(`${scope.tags.length} tag filter(s)`);
+	}
+	if (typeof scope.sinceMs === "number" && Number.isFinite(scope.sinceMs)) {
+		clauses.push(`since ${new Date(scope.sinceMs).toISOString()}`);
+	}
+	if (typeof scope.untilMs === "number" && Number.isFinite(scope.untilMs)) {
+		clauses.push(`until ${new Date(scope.untilMs).toISOString()}`);
+	}
+	if (typeof scope.limit === "number" && Number.isFinite(scope.limit)) {
+		clauses.push(`limit ${scope.limit}`);
+	}
+	return clauses.join("; ");
+}
+
 export const messageSourceParameter: ActionParameter = {
 	name: "sources",
 	description:

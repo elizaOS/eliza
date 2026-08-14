@@ -8,6 +8,7 @@
  */
 import { describe, expect, it, vi } from "vitest";
 import { hardenIncomingUserMessage } from "../../security/incoming-message-security.ts";
+import { CHANNEL_TOPICS_LRU_CAPACITY } from "../../services/channel-topics.ts";
 import type { Memory } from "../../types/memory.ts";
 import { channelTopicSearchAction } from "./actions/channel-topic-search.ts";
 import { CHANNEL_TOPICS_SEARCH_ROUTE } from "./channel-topics-routes.ts";
@@ -99,10 +100,52 @@ describe("SEARCH_CHANNEL_TOPICS action (#8927)", () => {
 			undefined,
 			{ parameters: { query: blob } },
 		);
-		expect(res.text).toBe("No channels found discussing that topic.");
+		expect(res.text).toContain("No channels found discussing that topic.");
+		// The blob is named, never echoed.
+		expect(res.text).not.toContain("lorem ipsum");
+		expect(res.text).not.toContain("first line of a pasted document");
 		const query = (res.data as { query: string }).query;
 		expect(query).not.toContain("\n");
 		expect(query.length).toBeLessThanOrEqual(121);
+	});
+
+	// Scope disclosure: the corpus is the per-room topic LRU — rooms touched
+	// since process start, each capped at CHANNEL_TOPICS_LRU_CAPACITY topics —
+	// and the action takes the top 10 hits. A bare "no channels found" reads as
+	// "no channel has ever discussed this".
+	it("names the searched room count and the topic-memory limits when empty", async () => {
+		const res = await channelTopicSearchAction.handler(
+			runtimeWith({
+				searchTopics: vi.fn(() => []),
+				getTopicsForAllRooms: () => ({ "room-a": ["billing"] }),
+			}),
+			{ content: { text: "" } } as never,
+			undefined,
+			{ parameters: { query: "stripe" } },
+		);
+		expect(res.text).not.toBe("No channels found discussing that topic.");
+		expect(res.text).toContain("1 room(s) with topics in memory");
+		expect(res.text).toContain("since the last restart");
+		expect(res.text).toContain(`last ${CHANNEL_TOPICS_LRU_CAPACITY} topics`);
+	});
+
+	it("says the hit limit was reached instead of reporting it as the total", async () => {
+		const hits = Array.from({ length: 10 }, (_, i) => ({
+			roomId: `room-${i}`,
+			matchedTopics: ["stripe payout"],
+			topics: ["stripe payout"],
+		}));
+		const res = await channelTopicSearchAction.handler(
+			runtimeWith({
+				searchTopics: vi.fn(() => hits),
+				getTopicsForAllRooms: () =>
+					Object.fromEntries(hits.map((h) => [h.roomId, h.topics])),
+			}),
+			{ content: { text: "" } } as never,
+			undefined,
+			{ parameters: { query: "stripe" } },
+		);
+		expect(res.text).toContain("10-hit limit was reached");
 	});
 });
 

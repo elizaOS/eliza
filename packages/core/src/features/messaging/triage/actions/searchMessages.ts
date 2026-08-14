@@ -20,7 +20,11 @@ import type {
 } from "../../../../types/index.ts";
 import { getDefaultTriageService } from "../triage-service.ts";
 import { ALL_MESSAGE_SOURCES } from "../types.ts";
-import { parseSearchMessagesParams, validateMessageAction } from "./_shared.ts";
+import {
+	describeMessageScope,
+	parseSearchMessagesParams,
+	validateMessageAction,
+} from "./_shared.ts";
 
 export const searchMessagesAction: Action = {
 	name: "MESSAGE",
@@ -119,10 +123,32 @@ export const searchMessagesAction: Action = {
 		const hits = await service.search(runtime, filters);
 
 		const sourcesHit = new Set(hits.map((m) => m.source));
+		// The filters are the search: an empty result that claims coverage
+		// "across connected channels" tells the user nobody messaged them about
+		// X when the message sits in a source or time window the planner filtered
+		// out, and a limit-capped count reads as the total.
+		const scope = describeMessageScope({
+			requestedSources: filters.sources,
+			registeredSources: service.listRegisteredSources(),
+			worldIds: filters.worldIds,
+			channelIds: filters.channelIds,
+			sender: filters.sender,
+			content: filters.content,
+			tags: filters.tags,
+			sinceMs: filters.sinceMs,
+			untilMs: filters.untilMs,
+			limit: filters.limit,
+		});
+		const capped =
+			typeof filters.limit === "number" && hits.length >= filters.limit;
 		const text =
 			hits.length === 0
-				? "No matching messages found across connected channels."
-				: `Found ${hits.length} match(es) across ${sourcesHit.size} channel(s).`;
+				? `No matching messages found in the searched scope (${scope}). This is a filtered search, not a statement that no such message exists — drop or widen the filters to search everything.`
+				: `Found ${hits.length} match(es) across ${sourcesHit.size} channel(s) in the searched scope (${scope}).${
+						capped
+							? ` The ${filters.limit}-result limit was reached, so more may match.`
+							: ""
+					}`;
 
 		logger.info(
 			`[SearchMessages] ${hits.length} hits across [${[...sourcesHit].join(",")}]`,

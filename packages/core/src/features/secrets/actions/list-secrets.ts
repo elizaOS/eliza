@@ -13,6 +13,7 @@ import type {
 	Memory,
 	State,
 } from "../../../types/index.ts";
+import { describeUserReference } from "../../../utils/reference-echo.ts";
 import {
 	SECRETS_SERVICE_TYPE,
 	type SecretsService,
@@ -73,8 +74,9 @@ export async function listSecretsHandler(
 	};
 
 	const allMetadata = await secretsService.list(context);
+	const allKeys = Object.keys(allMetadata);
 	const filterPrefix = prefix?.toUpperCase();
-	const keys = Object.keys(allMetadata)
+	const keys = allKeys
 		.filter((key) =>
 			filterPrefix ? key.toUpperCase().startsWith(filterPrefix) : true,
 		)
@@ -99,8 +101,20 @@ export async function listSecretsHandler(
 		`[SECRETS:list] level=${level} prefix=${prefix ?? ""} count=${keys.length}`,
 	);
 
-	const text =
-		keys.length === 0
+	// The prefix filter is invisible in the text unless it is named, and this
+	// result is delivered verbatim (verifiedUserFacing): a prefix-narrowed miss
+	// otherwise tells the user they have no secrets at this level at all, and a
+	// prefix-narrowed count is read as the level's total. `allKeys.length` is
+	// the measured pre-filter count at this level; the prefix is rendered
+	// blob-safely because it comes from planner text.
+	const prefixLabel = prefix
+		? describeUserReference(prefix, "that prefix")
+		: "";
+	const text = prefix
+		? keys.length === 0
+			? `None of your ${allKeys.length} ${level} secret(s) start with ${prefixLabel}. This is a prefix-filtered view — drop the prefix to see all ${level} secrets.`
+			: `Found ${keys.length} of ${allKeys.length} ${level} secret(s) starting with ${prefixLabel}.`
+		: keys.length === 0
 			? `You don't have any ${level} secrets stored yet.`
 			: `Found ${keys.length} ${level} secret(s).`;
 

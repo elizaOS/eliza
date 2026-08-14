@@ -410,6 +410,50 @@ function getDocumentFilterParams(
 	};
 }
 
+/**
+ * Name every narrowing a document search applied, for the result text. A
+ * retrieval that was filtered or capped and does not say so is read by the
+ * model as the whole picture: "nothing in your documents about X" when a
+ * planner-supplied tag or date filter dropped the matches, or "5 fragments" as
+ * if 5 were all there were. Only measured values are stated — the retrieved
+ * count, the post-filter count, the filters actually in effect, and the cap.
+ * Filter values that originate from planner text are rendered blob-safely.
+ */
+function describeSearchNarrowing(
+	filters: ReturnType<typeof getDocumentFilterParams>,
+	retrieved: number,
+	matched: number,
+	shown: number,
+	limit: number,
+): string {
+	const applied: string[] = [];
+	if (filters.scope) applied.push(`scope=${filters.scope}`);
+	if (filters.scopedToEntityId) applied.push("scopedToEntityId");
+	if (filters.addedBy) applied.push("addedBy");
+	if (filters.tags && filters.tags.length > 0) {
+		applied.push(
+			`tags=${filters.tags
+				.map((tag) => describeUserReference(tag, "a tag"))
+				.join("+")}`,
+		);
+	}
+	if (typeof filters.timeRangeStart === "number")
+		applied.push("timeRangeStart");
+	if (typeof filters.timeRangeEnd === "number") applied.push("timeRangeEnd");
+	const truncated = matched > shown;
+	if (applied.length === 0 && !truncated) return "";
+	const parts = [`searched ${retrieved} retrieved fragment(s)`];
+	if (applied.length > 0) {
+		parts.push(`${matched} matched filters (${applied.join(", ")})`);
+	}
+	if (truncated) parts.push(`showing the top ${limit}`);
+	const widen =
+		applied.length > 0
+			? " Retry without those filters to search the whole store."
+			: ` Raise limit above ${limit} to see the rest.`;
+	return ` This is a narrowed view: ${parts.join("; ")}.${widen}`;
+}
+
 function storedDocumentMatchesFilters(
 	document: StoredDocument,
 	filters: ReturnType<typeof getDocumentFilterParams>,
@@ -555,9 +599,10 @@ async function handleSearch(
 		getSearchMode(params.searchMode),
 	);
 	const limit = getLimit(params.limit, 5);
-	const visible = matches
-		.filter((item) => storedDocumentMatchesFilters(item, filters))
-		.slice(0, limit);
+	const matched = matches.filter((item) =>
+		storedDocumentMatchesFilters(item, filters),
+	);
+	const visible = matched.slice(0, limit);
 	const projected = visible.map((item) => {
 		const metadata = item.metadata as Record<string, unknown> | undefined;
 		return {
@@ -571,10 +616,17 @@ async function handleSearch(
 			endMs: typeof metadata?.endMs === "number" ? metadata.endMs : undefined,
 		};
 	});
+	const narrowing = describeSearchNarrowing(
+		filters,
+		matches.length,
+		matched.length,
+		projected.length,
+		limit,
+	);
 	const text =
 		projected.length === 0
-			? `I couldn't find any documents matching ${describeQuery(query)}.`
-			: `Found ${projected.length} document fragment(s) for ${describeQuery(query)}:\n\n${projected
+			? `I couldn't find any documents matching ${describeQuery(query)}.${narrowing}`
+			: `Found ${projected.length} document fragment(s) for ${describeQuery(query)}:${narrowing}\n\n${projected
 					.map((item, index) => `${index + 1}. ${item.content.text ?? ""}`)
 					.join("\n\n")}`;
 	// No visible callback: fragments are intermediate retrieval data for the
@@ -831,8 +883,40 @@ function formatDocumentListResult(result: DocumentListResult): string {
 				: "available documents";
 			return `Offset ${result.offset} is past the ${result.totalMatched} ${matchDescription}.`;
 		}
-		case "ok":
-			return formatDocumentList(result.documents);
+		case "ok": {
+			// A page is not the total. The sibling statuses above already name what
+			// narrowed them; `ok` printed only the current slice, so "how many
+			// documents do I have?" over 200 stored answered 25 — the default
+			// limit — as though that were the whole store. Every number here was
+			// measured by listDocumentsDetailed and is already in the result.
+			const shown = result.documents.length;
+			const notes: string[] = [];
+			if (shown < result.totalMatched) {
+				notes.push(
+					`Showing ${shown} of ${result.totalMatched} ${
+						result.query
+							? `document(s) matching ${describeQuery(result.query)}`
+							: "document(s)"
+					}${result.offset > 0 ? `, starting at offset ${result.offset}` : ""}.`,
+				);
+			}
+			if (result.totalMatched < result.totalVisible) {
+				notes.push(
+					`${result.totalVisible} document(s) are visible before the requested ${
+						result.query ? "query and filters" : "filters"
+					} narrowed the list.`,
+				);
+			}
+			if (result.hasMore) {
+				notes.push(
+					`More remain: request offset ${result.offset + shown}${
+						result.nextCursor ? " or the returned nextCursor" : ""
+					} for the next page.`,
+				);
+			}
+			const list = formatDocumentList(result.documents);
+			return notes.length === 0 ? list : `${notes.join(" ")}\n${list}`;
+		}
 	}
 }
 

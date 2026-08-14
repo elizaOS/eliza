@@ -8,7 +8,10 @@
  */
 
 import { unwrapUserMessageText } from "../../../security/incoming-message-security.ts";
-import type { TopicSearchHit } from "../../../services/channel-topics.ts";
+import {
+	CHANNEL_TOPICS_LRU_CAPACITY,
+	type TopicSearchHit,
+} from "../../../services/channel-topics.ts";
 import type {
 	Action,
 	ActionResult,
@@ -23,6 +26,31 @@ import {
 
 interface TopicSearchService {
 	searchTopics(query: string, limit?: number): TopicSearchHit[];
+	/** Present on ChannelTopicsService; used only to measure the scanned scope. */
+	getTopicsForAllRooms?(): Record<string, string[]>;
+}
+
+/** Hits returned per search; the corpus can hold more matching rooms. */
+const TOPIC_SEARCH_LIMIT = 10;
+
+/**
+ * State the real reach of a topic search. The corpus is the per-room topic LRU:
+ * only rooms touched since process start, only each room's last
+ * {@link CHANNEL_TOPICS_LRU_CAPACITY} topics, and only the top
+ * {@link TOPIC_SEARCH_LIMIT} hits. Without that, a flat "no channels found"
+ * reads as "no channel has ever discussed this".
+ */
+function describeTopicScope(svc: TopicSearchService, hitCount: number): string {
+	const rooms = svc.getTopicsForAllRooms?.();
+	const roomNote =
+		rooms === undefined
+			? "the rooms with topics in memory"
+			: `${Object.keys(rooms).length} room(s) with topics in memory`;
+	const capNote =
+		hitCount >= TOPIC_SEARCH_LIMIT
+			? ` The ${TOPIC_SEARCH_LIMIT}-hit limit was reached, so more channels may match.`
+			: "";
+	return ` Searched ${roomNote}: topic memory covers only rooms active since the last restart, and only each room's last ${CHANNEL_TOPICS_LRU_CAPACITY} topics.${capNote}`;
 }
 
 function getTopicsService(
@@ -91,11 +119,12 @@ export const channelTopicSearchAction: Action = {
 				data: { actionName: "SEARCH_CHANNEL_TOPICS" },
 			};
 		}
-		const hits = svc.searchTopics(query, 10);
+		const hits = svc.searchTopics(query, TOPIC_SEARCH_LIMIT);
+		const scope = describeTopicScope(svc, hits.length);
 		const text =
 			hits.length === 0
-				? `No channels found discussing ${describeQuery(query)}.`
-				: `Channels discussing ${describeQuery(query)}:\n${hits
+				? `No channels found discussing ${describeQuery(query)}.${scope}`
+				: `Channels discussing ${describeQuery(query)}:${scope}\n${hits
 						.map((h) => `- ${h.roomId}: ${h.matchedTopics.join(", ")}`)
 						.join("\n")}`;
 		return {
