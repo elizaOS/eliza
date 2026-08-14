@@ -864,9 +864,10 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
     const results: { embedding: number[]; levenshtein_score: number }[] = [];
     for (const memory of memories) {
       if (!memory.embedding) continue;
-      const record = memory as StoredMemory & Record<string, unknown>;
-      const fieldValue = record[params.query_field_name];
-      const text = String(fieldValue ?? "");
+      const content = memory.content as Record<string, unknown> | undefined;
+      const fieldValue = content?.[params.query_field_sub_name];
+      if (typeof fieldValue !== "string") continue;
+      const text = fieldValue;
       const score = levenshtein(params.query_input, text);
       if (score <= params.query_threshold) {
         results.push({ embedding: memory.embedding, levenshtein_score: score });
