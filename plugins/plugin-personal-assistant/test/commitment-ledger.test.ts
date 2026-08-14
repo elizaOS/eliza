@@ -111,6 +111,43 @@ describe("commitment ledger extraction and audit", () => {
     expect(audit.items[0]?.reasons).toContain("due inside audit horizon");
   });
 
+  it("uses record id as the stable final ranking tiebreaker", () => {
+    const common = {
+      agentId: AGENT_ID,
+      source: "chat" as const,
+      kind: "commitment" as const,
+      counterparty: null,
+      dueAt: "2026-07-10T17:00:00.000Z",
+      confidence: 0.7,
+      metadata: {},
+      createdAt: OBSERVED_AT,
+    };
+    const a = createLifeOpsCommitmentLedgerRecord({
+      ...common,
+      id: "commit_tie_a",
+      sourceKey: "chat:tie-a",
+      summary: "Send tied response A",
+    });
+    const b = createLifeOpsCommitmentLedgerRecord({
+      ...common,
+      id: "commit_tie_b",
+      sourceKey: "chat:tie-b",
+      summary: "Send tied response B",
+    });
+    const args = { nowIso: "2026-07-09T12:00:00.000Z", horizonDays: 7 };
+
+    expect(
+      buildCommitmentRegretAudit([b, a], args).items.map(
+        (item) => item.record.id,
+      ),
+    ).toEqual([a.id, b.id]);
+    expect(
+      buildCommitmentRegretAudit([a, b], args).items.map(
+        (item) => item.record.id,
+      ),
+    ).toEqual([a.id, b.id]);
+  });
+
   it("normalizes document contract deadlines as tracked renewal obligations", () => {
     const record = createDocumentObligationLedgerRecord({
       agentId: AGENT_ID,
@@ -210,6 +247,49 @@ describe("commitment ledger repository", () => {
       status: "tracked",
       scheduledTaskId: "st_deck_followup",
     });
+  });
+
+  it("rejects runtime-invalid ledger writes before persistence", async () => {
+    runtimeResult = await createLifeOpsTestRuntime();
+    const { runtime } = runtimeResult;
+    await LifeOpsRepository.bootstrapSchema(runtime);
+    const repository = new LifeOpsRepository(runtime);
+    const valid = createLifeOpsCommitmentLedgerRecord({
+      id: "commit_write_boundary",
+      agentId: runtime.agentId,
+      source: "chat",
+      sourceKey: "chat:write-boundary",
+      kind: "commitment",
+      summary: "Validate the write boundary",
+      counterparty: null,
+      dueAt: "2026-07-10T17:00:00.000Z",
+      confidence: 0.7,
+      metadata: {},
+      createdAt: OBSERVED_AT,
+    });
+
+    for (const [field, patch] of [
+      ["source", { source: "calendar" }],
+      ["kind", { kind: "chore" }],
+      ["confidence", { confidence: 4 }],
+      ["dueAt", { dueAt: "next Thursday" }],
+    ] as const) {
+      await expect(
+        repository.upsertCommitmentLedgerRecord({
+          ...valid,
+          id: `${valid.id}_${field}`,
+          sourceKey: `${valid.sourceKey}_${field}`,
+          ...patch,
+        } as never),
+      ).rejects.toMatchObject({
+        code: "LIFEOPS_COMMITMENT_LEDGER_INVALID_RECORD",
+        context: { field },
+      });
+    }
+
+    expect(
+      await repository.listCommitmentLedgerRecords(runtime.agentId),
+    ).toEqual([]);
   });
 
   it("tracks a standing document guarantee with one ledger row and one watcher", async () => {

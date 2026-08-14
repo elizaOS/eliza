@@ -5,25 +5,37 @@
  * renewal/filing deadlines, and "what will I regret" queries.
  */
 import crypto from "node:crypto";
+import { ElizaError } from "@elizaos/core";
+
+export const LIFEOPS_COMMITMENT_SOURCES = [
+  "sent_mail",
+  "transcript",
+  "chat",
+  "document",
+] as const;
 
 export type LifeOpsCommitmentSource =
-  | "sent_mail"
-  | "transcript"
-  | "chat"
-  | "document";
+  (typeof LIFEOPS_COMMITMENT_SOURCES)[number];
 
-export type LifeOpsCommitmentKind =
-  | "commitment"
-  | "renewal"
-  | "filing"
-  | "warranty";
+export const LIFEOPS_COMMITMENT_KINDS = [
+  "commitment",
+  "renewal",
+  "filing",
+  "warranty",
+] as const;
+
+export type LifeOpsCommitmentKind = (typeof LIFEOPS_COMMITMENT_KINDS)[number];
+
+export const LIFEOPS_COMMITMENT_STATUSES = [
+  "open",
+  "tracked",
+  "completed",
+  "dismissed",
+  "superseded",
+] as const;
 
 export type LifeOpsCommitmentStatus =
-  | "open"
-  | "tracked"
-  | "completed"
-  | "dismissed"
-  | "superseded";
+  (typeof LIFEOPS_COMMITMENT_STATUSES)[number];
 
 export interface LifeOpsCommitmentLedgerRecord {
   id: string;
@@ -94,6 +106,134 @@ const WEEKDAYS = [
   "friday",
   "saturday",
 ] as const;
+
+function invalidCommitmentLedgerRecord(
+  value: Record<string, unknown>,
+  field: string,
+): never {
+  throw new ElizaError(
+    "[LifeOpsCommitmentLedger] Record violates the commitment ledger contract",
+    {
+      code: "LIFEOPS_COMMITMENT_LEDGER_INVALID_RECORD",
+      context: {
+        field,
+        recordId:
+          typeof value.id === "string" && value.id.length > 0 ? value.id : null,
+        agentId:
+          typeof value.agentId === "string" && value.agentId.length > 0
+            ? value.agentId
+            : null,
+      },
+    },
+  );
+}
+
+function requiredLedgerText(
+  value: Record<string, unknown>,
+  field: string,
+): string {
+  const fieldValue = value[field];
+  if (typeof fieldValue !== "string" || fieldValue.trim().length === 0) {
+    return invalidCommitmentLedgerRecord(value, field);
+  }
+  return fieldValue;
+}
+
+function nullableLedgerText(
+  value: Record<string, unknown>,
+  field: string,
+): string | null {
+  const fieldValue = value[field];
+  if (fieldValue === null) return null;
+  if (typeof fieldValue !== "string") {
+    return invalidCommitmentLedgerRecord(value, field);
+  }
+  return fieldValue;
+}
+
+function ledgerEnum<const Values extends readonly string[]>(
+  value: Record<string, unknown>,
+  field: string,
+  allowed: Values,
+): Values[number] {
+  const fieldValue = requiredLedgerText(value, field);
+  if (!allowed.includes(fieldValue as Values[number])) {
+    return invalidCommitmentLedgerRecord(value, field);
+  }
+  return fieldValue as Values[number];
+}
+
+function canonicalLedgerInstant(
+  value: Record<string, unknown>,
+  field: string,
+): string {
+  const fieldValue = requiredLedgerText(value, field);
+  const timestamp = Date.parse(fieldValue);
+  if (
+    !Number.isFinite(timestamp) ||
+    new Date(timestamp).toISOString() !== fieldValue
+  ) {
+    return invalidCommitmentLedgerRecord(value, field);
+  }
+  return fieldValue;
+}
+
+function nullableLedgerInstant(
+  value: Record<string, unknown>,
+  field: string,
+): string | null {
+  if (value[field] === null) return null;
+  return canonicalLedgerInstant(value, field);
+}
+
+function ledgerConfidence(value: Record<string, unknown>): number {
+  const raw = value.confidence;
+  const confidence =
+    typeof raw === "number"
+      ? raw
+      : typeof raw === "string" && raw.trim().length > 0
+        ? Number(raw)
+        : Number.NaN;
+  if (!Number.isFinite(confidence) || confidence < 0 || confidence > 1) {
+    return invalidCommitmentLedgerRecord(value, "confidence");
+  }
+  return confidence;
+}
+
+/**
+ * Validate a commitment row at a persistence boundary. SQL adapters may return
+ * numeric columns as strings, but every other scalar must already match the
+ * canonical domain representation; malformed stored values fail typed rather
+ * than leaking through a public projection or being silently normalized.
+ */
+export function parseLifeOpsCommitmentLedgerRecord(
+  input: unknown,
+): LifeOpsCommitmentLedgerRecord {
+  if (!input || typeof input !== "object" || Array.isArray(input)) {
+    return invalidCommitmentLedgerRecord({}, "record");
+  }
+  const value = input as Record<string, unknown>;
+  const metadata = value.metadata;
+  if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) {
+    return invalidCommitmentLedgerRecord(value, "metadata");
+  }
+  return {
+    id: requiredLedgerText(value, "id"),
+    agentId: requiredLedgerText(value, "agentId"),
+    source: ledgerEnum(value, "source", LIFEOPS_COMMITMENT_SOURCES),
+    sourceKey: requiredLedgerText(value, "sourceKey"),
+    kind: ledgerEnum(value, "kind", LIFEOPS_COMMITMENT_KINDS),
+    summary: requiredLedgerText(value, "summary"),
+    counterparty: nullableLedgerText(value, "counterparty"),
+    dueAt: nullableLedgerInstant(value, "dueAt"),
+    confidence: ledgerConfidence(value),
+    status: ledgerEnum(value, "status", LIFEOPS_COMMITMENT_STATUSES),
+    scheduledTaskId: nullableLedgerText(value, "scheduledTaskId"),
+    metadata: metadata as Record<string, unknown>,
+    createdAt: canonicalLedgerInstant(value, "createdAt"),
+    updatedAt: canonicalLedgerInstant(value, "updatedAt"),
+  };
+}
 
 function sha16(input: string): string {
   return crypto.createHash("sha256").update(input).digest("hex").slice(0, 16);
@@ -313,7 +453,8 @@ export function buildCommitmentRegretAudit(
     .sort(
       (a, b) =>
         b.score - a.score ||
-        a.record.createdAt.localeCompare(b.record.createdAt),
+        a.record.createdAt.localeCompare(b.record.createdAt) ||
+        a.record.id.localeCompare(b.record.id),
     );
   return { generatedAt: args.nowIso, horizonEndAt, items };
 }

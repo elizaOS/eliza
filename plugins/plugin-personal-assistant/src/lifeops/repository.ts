@@ -111,11 +111,11 @@ import {
   type LifeOpsBriefItemSource,
   summarizeBriefEngagementRows,
 } from "./briefing/editorial-judgment.js";
-import type {
-  LifeOpsCommitmentKind,
-  LifeOpsCommitmentLedgerRecord,
-  LifeOpsCommitmentSource,
-  LifeOpsCommitmentStatus,
+import {
+  type LifeOpsCommitmentLedgerRecord,
+  type LifeOpsCommitmentSource,
+  type LifeOpsCommitmentStatus,
+  parseLifeOpsCommitmentLedgerRecord,
 } from "./commitments/index.js";
 import type {
   DelegationAutonomyLevel,
@@ -630,24 +630,22 @@ function parseAuditEvent(row: Record<string, unknown>): LifeOpsAuditEvent {
 function parseCommitmentLedgerRecord(
   row: Record<string, unknown>,
 ): LifeOpsCommitmentLedgerRecord {
-  return {
-    id: toText(row.id),
-    agentId: toText(row.agent_id),
-    source: toText(row.source) as LifeOpsCommitmentSource,
-    sourceKey: toText(row.source_key),
-    kind: toText(row.kind) as LifeOpsCommitmentKind,
-    summary: toText(row.summary),
-    counterparty: row.counterparty ? toText(row.counterparty) : null,
-    dueAt: row.due_at ? toText(row.due_at) : null,
-    confidence: toNumber(row.confidence),
-    status: toText(row.status, "open") as LifeOpsCommitmentStatus,
-    scheduledTaskId: row.scheduled_task_id
-      ? toText(row.scheduled_task_id)
-      : null,
+  return parseLifeOpsCommitmentLedgerRecord({
+    id: row.id,
+    agentId: row.agent_id,
+    source: row.source,
+    sourceKey: row.source_key,
+    kind: row.kind,
+    summary: row.summary,
+    counterparty: row.counterparty,
+    dueAt: row.due_at,
+    confidence: row.confidence,
+    status: row.status,
+    scheduledTaskId: row.scheduled_task_id,
     metadata: parseJsonRecord(row.metadata_json),
-    createdAt: toText(row.created_at),
-    updatedAt: toText(row.updated_at),
-  };
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  });
 }
 
 function parseDelegationContractRecord(
@@ -3611,6 +3609,7 @@ export class LifeOpsRepository {
   async upsertCommitmentLedgerRecord(
     record: LifeOpsCommitmentLedgerRecord,
   ): Promise<void> {
+    const validated = parseLifeOpsCommitmentLedgerRecord(record);
     await executeRawSql(
       this.runtime,
       `INSERT INTO app_lifeops.life_commitment_ledger (
@@ -3618,20 +3617,20 @@ export class LifeOpsRepository {
         confidence, status, scheduled_task_id, metadata_json, created_at,
         updated_at
       ) VALUES (
-        ${sqlQuote(record.id)},
-        ${sqlQuote(record.agentId)},
-        ${sqlQuote(record.source)},
-        ${sqlQuote(record.sourceKey)},
-        ${sqlQuote(record.kind)},
-        ${sqlQuote(record.summary)},
-        ${sqlText(record.counterparty)},
-        ${sqlText(record.dueAt)},
-        ${sqlNumber(record.confidence)},
-        ${sqlQuote(record.status)},
-        ${sqlText(record.scheduledTaskId)},
-        ${sqlJson(record.metadata)},
-        ${sqlQuote(record.createdAt)},
-        ${sqlQuote(record.updatedAt)}
+        ${sqlQuote(validated.id)},
+        ${sqlQuote(validated.agentId)},
+        ${sqlQuote(validated.source)},
+        ${sqlQuote(validated.sourceKey)},
+        ${sqlQuote(validated.kind)},
+        ${sqlQuote(validated.summary)},
+        ${sqlText(validated.counterparty)},
+        ${sqlText(validated.dueAt)},
+        ${sqlNumber(validated.confidence)},
+        ${sqlQuote(validated.status)},
+        ${sqlText(validated.scheduledTaskId)},
+        ${sqlJson(validated.metadata)},
+        ${sqlQuote(validated.createdAt)},
+        ${sqlQuote(validated.updatedAt)}
       )
       ON CONFLICT(agent_id, source, source_key, kind, summary)
       DO UPDATE SET
@@ -3688,7 +3687,7 @@ export class LifeOpsRepository {
       `SELECT *
          FROM app_lifeops.life_commitment_ledger
         WHERE ${clauses.join(" AND ")}
-        ORDER BY due_at ASC NULLS LAST, created_at ASC`,
+        ORDER BY due_at ASC NULLS LAST, created_at ASC, id ASC`,
     );
     return rows.map(parseCommitmentLedgerRecord);
   }

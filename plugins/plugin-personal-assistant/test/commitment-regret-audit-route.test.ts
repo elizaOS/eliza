@@ -10,6 +10,7 @@ import type { AgentRuntime } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createLifeOpsCommitmentLedgerRecord,
+  executeRawSql,
   LifeOpsRepository,
 } from "../src/lifeops/index.js";
 import {
@@ -252,6 +253,91 @@ describe("commitment regret audit route (real runtime + PGlite)", () => {
       expect(audit.items).toEqual([]);
     }
   });
+
+  it("uses record id as the stable final tiebreaker through the real route", async () => {
+    const createdAt = "2026-08-13T12:00:00.000Z";
+    const dueAt = "2026-08-15T12:00:00.000Z";
+    const tiedRecords = [
+      createLifeOpsCommitmentLedgerRecord({
+        id: "commit_tie_b",
+        agentId: runtime.agentId,
+        source: "chat",
+        sourceKey: "chat:tie-b",
+        kind: "commitment",
+        summary: "Send the tied response B",
+        counterparty: null,
+        dueAt,
+        confidence: 0.7,
+        metadata: {},
+        createdAt,
+      }),
+      createLifeOpsCommitmentLedgerRecord({
+        id: "commit_tie_a",
+        agentId: runtime.agentId,
+        source: "chat",
+        sourceKey: "chat:tie-a",
+        kind: "commitment",
+        summary: "Send the tied response A",
+        counterparty: null,
+        dueAt,
+        confidence: 0.7,
+        metadata: {},
+        createdAt,
+      }),
+    ];
+    for (const record of tiedRecords) {
+      await repository.upsertCommitmentLedgerRecord(record);
+    }
+
+    const { ctx, response } = buildGetContext(runtime, "?horizonDays=7");
+    expect(await handleLifeOpsRoutes(ctx)).toBe(true);
+    expect(response.statusCode).toBe(200);
+    const audit = JSON.parse(response.body ?? "{}") as {
+      items: Array<{ id: string }>;
+    };
+    expect(audit.items.map((item) => item.id)).toEqual([
+      "commit_tie_a",
+      "commit_tie_b",
+    ]);
+  });
+
+  it.each([
+    ["source", "source = 'calendar'"],
+    ["kind", "kind = 'chore'"],
+    ["confidence", "confidence = 4"],
+    ["dueAt", "due_at = 'next Thursday'"],
+  ])(
+    "fails typed before projecting a ledger row with invalid %s",
+    async (field, assignment) => {
+      const record = createLifeOpsCommitmentLedgerRecord({
+        id: `commit_invalid_${field}`,
+        agentId: runtime.agentId,
+        source: "chat",
+        sourceKey: `chat:invalid-${field}`,
+        kind: "commitment",
+        summary: `Invalid ${field} probe`,
+        counterparty: null,
+        dueAt: "2026-08-15T12:00:00.000Z",
+        confidence: 0.7,
+        metadata: {},
+        createdAt: "2026-08-13T12:00:00.000Z",
+      });
+      await repository.upsertCommitmentLedgerRecord(record);
+      await executeRawSql(
+        runtime,
+        `UPDATE app_lifeops.life_commitment_ledger
+            SET ${assignment}
+          WHERE id = '${record.id}'`,
+      );
+
+      const { ctx, response } = buildGetContext(runtime);
+      await expect(handleLifeOpsRoutes(ctx)).rejects.toMatchObject({
+        code: "LIFEOPS_COMMITMENT_LEDGER_INVALID_RECORD",
+        context: { field, recordId: record.id, agentId: runtime.agentId },
+      });
+      expect(response.statusCode).toBeUndefined();
+    },
+  );
 
   it.each([
     ["0", "horizonDays must be a positive integer"],
