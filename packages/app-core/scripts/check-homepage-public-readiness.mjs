@@ -84,12 +84,12 @@ function getRepoVariables() {
 }
 
 function normalizePhone(value) {
-  const trimmed = value?.trim() ?? "";
-  return /^\+[1-9]\d{7,14}$/.test(trimmed) ? trimmed : null;
+  const normalized = value ?? "";
+  return /^\+[1-9]\d{7,14}$/.test(normalized) ? normalized : null;
 }
 
 export function resolveWhatsAppAdmission(value) {
-  const normalized = value?.trim().toLowerCase() ?? "";
+  const normalized = value?.toLowerCase() ?? "";
   if (["", "0", "false", "no", "off"].includes(normalized)) {
     return { enabled: false, valid: true };
   }

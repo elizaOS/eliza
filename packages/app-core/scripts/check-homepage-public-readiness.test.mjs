@@ -37,16 +37,18 @@ test("matches the deployment workflow's admission values", () => {
       valid: true,
     });
   }
-  for (const value of ["1", "true", "yes", "on", " TRUE "]) {
+  for (const value of ["1", "true", "yes", "on"]) {
     expect(resolveWhatsAppAdmission(value)).toEqual({
       enabled: true,
       valid: true,
     });
   }
-  expect(resolveWhatsAppAdmission("maybe")).toEqual({
-    enabled: false,
-    valid: false,
-  });
+  for (const value of ["maybe", " TRUE ", " off "]) {
+    expect(resolveWhatsAppAdmission(value)).toEqual({
+      enabled: false,
+      valid: false,
+    });
+  }
 });
 
 test("fails closed for an invalid admission flag", () => {
@@ -107,6 +109,17 @@ test("requires the same admitted Blooio number when WhatsApp is enabled", () => 
     { whatsAppEnabled: true, whatsAppNumber: "+14159611510" },
   );
   expect(formerNumber.ok).toBe(false);
+
+  for (const paddedNumber of [" +18087881821", "+18087881821 "]) {
+    const padded = evaluatePublicSurface(
+      {
+        ...healthySurface,
+        whatsAppHrefs: ["https://wa.me/18087881821"],
+      },
+      { whatsAppEnabled: true, whatsAppNumber: paddedNumber },
+    );
+    expect(padded.ok).toBe(false);
+  }
 });
 
 test("rejects visible phone copy and incorrect call targets", () => {
