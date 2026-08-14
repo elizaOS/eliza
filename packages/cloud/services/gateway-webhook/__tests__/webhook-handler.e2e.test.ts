@@ -217,6 +217,135 @@ describe("gateway webhook handler e2e routing", () => {
     expect(adapter.replies).toEqual(["same personal Eliza, now on your phone"]);
   });
 
+  test("retries transient personal Shared failures before one provider reply", async () => {
+    configureEnv();
+    const redis = new MemoryRedis();
+    const event = createTwilioEvent({ messageId: "SM_personal_retry" });
+    const adapter = createAdapter(event);
+    let personalCalls = 0;
+
+    globalThis.fetch = mock(async (input, init) => {
+      const request = new Request(input, init);
+      if (
+        request.url ===
+        "https://api.elizacloud.ai/api/internal/identity/resolve"
+      ) {
+        return new Response(JSON.stringify({ success: false }), {
+          status: 404,
+        });
+      }
+      if (
+        request.url ===
+        "https://api.elizacloud.ai/api/internal/eliza-app/personal-shared/messages"
+      ) {
+        personalCalls += 1;
+        if (personalCalls < 3) {
+          return new Response("temporarily unavailable", { status: 503 });
+        }
+        return new Response(
+          JSON.stringify({
+            success: true,
+            data: { reply: "recovered without a duplicate turn" },
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      }
+      throw new Error(`Unexpected fetch: ${request.url}`);
+    }) as typeof fetch;
+
+    expect(
+      (
+        await handleWebhook(
+          requestFor(event),
+          adapter,
+          {
+            redis,
+            cloudBaseUrl: "https://api.elizacloud.ai",
+            getAuthHeader: () => ({ Authorization: "Bearer internal-secret" }),
+          },
+          "eliza-app",
+        )
+      ).status,
+    ).toBe(200);
+
+    await waitFor(() => adapter.replies.length === 1, "retried personal reply");
+    expect(personalCalls).toBe(3);
+    expect(adapter.replies).toEqual(["recovered without a duplicate turn"]);
+  });
+
+  test("reopens dedupe only after personal Shared fails before provider egress", async () => {
+    configureEnv();
+    const redis = new MemoryRedis();
+    const event = createTwilioEvent({ messageId: "SM_personal_replay" });
+    const firstAdapter = createAdapter(event);
+    let personalCalls = 0;
+    let recovered = false;
+
+    globalThis.fetch = mock(async (input, init) => {
+      const request = new Request(input, init);
+      if (
+        request.url ===
+        "https://api.elizacloud.ai/api/internal/identity/resolve"
+      ) {
+        return new Response(JSON.stringify({ success: false }), {
+          status: 404,
+        });
+      }
+      if (
+        request.url ===
+        "https://api.elizacloud.ai/api/internal/eliza-app/personal-shared/messages"
+      ) {
+        personalCalls += 1;
+        return recovered
+          ? new Response(
+              JSON.stringify({
+                success: true,
+                data: { reply: "safe provider replay recovered the reply" },
+              }),
+              {
+                status: 200,
+                headers: { "content-type": "application/json" },
+              },
+            )
+          : new Response("still unavailable", { status: 503 });
+      }
+      throw new Error(`Unexpected fetch: ${request.url}`);
+    }) as typeof fetch;
+
+    await handleWebhook(
+      requestFor(event),
+      firstAdapter,
+      {
+        redis,
+        cloudBaseUrl: "https://api.elizacloud.ai",
+        getAuthHeader: () => ({ Authorization: "Bearer internal-secret" }),
+      },
+      "eliza-app",
+    );
+
+    const dedupKey = `webhook:twilio:message:${event.messageId}`;
+    await waitFor(() => personalCalls === 3, "personal retry exhaustion");
+    await waitFor(() => !redis.store.has(dedupKey), "safe dedupe reopening");
+    expect(firstAdapter.replies).toEqual([]);
+
+    recovered = true;
+    const replayAdapter = createAdapter(event);
+    await handleWebhook(
+      requestFor(event),
+      replayAdapter,
+      {
+        redis,
+        cloudBaseUrl: "https://api.elizacloud.ai",
+        getAuthHeader: () => ({ Authorization: "Bearer internal-secret" }),
+      },
+      "eliza-app",
+    );
+    await waitFor(() => replayAdapter.replies.length === 1, "replayed reply");
+    expect(replayAdapter.replies).toEqual([
+      "safe provider replay recovered the reply",
+    ]);
+  });
+
   test("refuses Telegram egress when another worker atomically claimed delivery", async () => {
     process.env.ELIZA_APP_TELEGRAM_BOT_TOKEN = "telegram-test-token";
     const event: ChatEvent = {
