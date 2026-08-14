@@ -61,7 +61,6 @@ interface StoredConversation {
 const CONVERSATION_KEY = "conversation";
 const CUTOVER_SEAL_KEY = "personal-cutover-seal";
 const RETRY_DELAY_MS = 30_000;
-const COMMITTED_CUTOVER_SEAL_MS = 24 * 60 * 60 * 1000;
 
 interface StoredCutoverSeal {
   token: string;
@@ -377,7 +376,10 @@ export class SharedRuntimeConversation {
     const seal =
       (await this.state.storage.get<StoredCutoverSeal>(CUTOVER_SEAL_KEY)) ??
       null;
-    if (!seal || seal.expiresAt > Date.now()) return seal;
+    // A pending lease expires so a crashed migration cannot strand Shared.
+    // A committed seal is the durable cutover authority: expiring it would let
+    // a stale browser/native session resume the archived Shared transcript.
+    if (!seal || seal.committed || seal.expiresAt > Date.now()) return seal;
     await this.state.storage.delete(CUTOVER_SEAL_KEY);
     return null;
   }
@@ -449,7 +451,6 @@ export class SharedRuntimeConversation {
       }
       await this.state.storage.put(CUTOVER_SEAL_KEY, {
         ...existing,
-        expiresAt: Date.now() + COMMITTED_CUTOVER_SEAL_MS,
         committed: true,
       } satisfies StoredCutoverSeal);
       return Response.json({ success: true });

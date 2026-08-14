@@ -502,6 +502,19 @@ test("a cutover seal snapshots history and blocks new Shared turns until release
     code: "personal_eliza_dedicated",
     retryable: false,
   });
+
+  const storedSeal = data.get("personal-cutover-seal") as {
+    token: string;
+    expiresAt: number;
+    committed: boolean;
+  };
+  data.set("personal-cutover-seal", { ...storedSeal, expiresAt: 0 });
+  const staleSession = await personalTurn();
+  expect(staleSession.status).toBe(409);
+  expect(await staleSession.json()).toMatchObject({
+    code: "personal_eliza_dedicated",
+    retryable: false,
+  });
 });
 
 test("concurrent turns serialize through one room and retain both writes", async () => {
