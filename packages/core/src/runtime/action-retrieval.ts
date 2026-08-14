@@ -545,13 +545,15 @@ export function retrieveActions(
 	}
 
 	results.sort((left, right) => {
-		const saturatedExactHintTie =
-			left.score === 1 &&
-			right.score === 1 &&
-			((left.stageScores.exact ?? 0) > 0 || (right.stageScores.exact ?? 0) > 0);
+		// Use one key for the whole saturated cohort once an exact hint contests
+		// it. A pair-specific "one side is exact" key can make a three-result
+		// comparator non-transitive; runs without a saturated exact hint still
+		// fall through to their unchanged RRF ordering.
+		const saturatedHintCohortTie =
+			needsMessageOnlyTieBreak && left.score === 1 && right.score === 1;
 		return (
 			right.score - left.score ||
-			(saturatedExactHintTie
+			(saturatedHintCohortTie
 				? (messageEvidenceByParent.get(right.normalizedName) ?? 0) -
 					(messageEvidenceByParent.get(left.normalizedName) ?? 0)
 				: 0) ||
