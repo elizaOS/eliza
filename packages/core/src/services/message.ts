@@ -179,7 +179,11 @@ import type {
 import type { ResponseHandlerFieldSelectionOptions } from "../runtime/response-handler-field-registry";
 import type { RoomHandlerLease } from "../runtime/room-handler-queue";
 import type { ShortcutRegistry } from "../runtime/shortcut-registry";
-import { actionHasSubActions, runSubPlanner } from "../runtime/sub-planner";
+import {
+	actionHasSubActions,
+	runSubPlanner,
+	subPlannerCallDigest,
+} from "../runtime/sub-planner";
 import { buildCanonicalSystemPrompt } from "../runtime/system-prompt";
 import { resolveTraceCorrelationFromEnv } from "../runtime/trace-correlation";
 import {
@@ -6411,6 +6415,8 @@ function plannerToolCallHasActionParameter(toolCall: PlannerToolCall): boolean {
 interface SubPlannerSubStep {
 	action: string;
 	success: boolean;
+	callDigest: string;
+	retryable: boolean;
 	summary?: string;
 	internalTranscriptText?: string;
 	error?: string;
@@ -6446,6 +6452,8 @@ function collectSubPlannerSubSteps(
 		subSteps.push({
 			action: step.toolCall.name,
 			success: result.success,
+			callDigest: subPlannerCallDigest(step.toolCall),
+			retryable: result.data?.retryable !== false,
 			...(summarySource ? { summary: truncateSubStepText(summarySource) } : {}),
 			...(result.transcriptVisibility === "internal" &&
 			typeof result.text === "string"
