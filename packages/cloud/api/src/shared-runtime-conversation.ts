@@ -26,6 +26,7 @@ import type { AppEnv } from "@/types/cloud-worker-env";
 type ConversationRequest =
   | { operation: "bridge"; agent: CachedAgentSandbox; rpc: BridgeRequest }
   | { operation: "stream"; agent: CachedAgentSandbox; rpc: BridgeRequest }
+  | { operation: "prewarm"; agentId: string; roomId: string }
   | { operation: "history"; agentId: string; roomId: string }
   | { operation: "delete"; agentId: string };
 
@@ -180,6 +181,33 @@ export class SharedRuntimeConversation {
     throw new ConversationCacheWarmingError();
   }
 
+  /**
+   * Join cold history hydration and load the modules used at turn ingress.
+   * This is deliberately read-only: voice startup can pay the exact room's
+   * initialization cost under its fixed greeting without landing a fake turn.
+   */
+  private async prewarmConversation(
+    agentId: string,
+    channelId: string,
+  ): Promise<void> {
+    try {
+      await this.loadConversation(agentId, channelId);
+    } catch (error) {
+      if (!(error instanceof ConversationCacheWarmingError)) throw error;
+      const hydration = this.hydration;
+      if (hydration) await hydration;
+    }
+    if (!this.conversation) {
+      throw new Error("Conversation prewarm failed to hydrate history.");
+    }
+    await this.runWithBindings(async () => {
+      await Promise.all([
+        import("@/lib/services/shared-runtime/shared-runtime-chat"),
+        import("@/lib/services/shared-runtime/cached-agent-dates"),
+      ]);
+    });
+  }
+
   private async mirrorConversation(
     snapshot: StoredConversation,
   ): Promise<void> {
@@ -301,6 +329,10 @@ export class SharedRuntimeConversation {
     const payload = (await request.json()) as ConversationRequest;
     const historyStore = this.historyStore();
     const turnClaims = this.turnClaims();
+    if (payload.operation === "prewarm") {
+      await this.prewarmConversation(payload.agentId, payload.roomId);
+      return Response.json({ success: true });
+    }
     if (payload.operation === "history") {
       const history = await this.runWithBindings(async () => {
         const { sharedRuntimeChatService } = await import(
