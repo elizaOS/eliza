@@ -13,6 +13,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import {
+  ElizaError,
   getElizaNamespace,
   type IAgentRuntime,
   resolveStateDir,
@@ -224,19 +225,22 @@ const MAX_FRAMEWORK_PREFLIGHT_TIMEOUT_MS = 2_147_483_647;
 function resolveFrameworkPreflightTimeoutMs(): number {
   const raw = process.env.ELIZA_FRAMEWORK_PREFLIGHT_TIMEOUT_MS?.trim();
   if (!raw) return DEFAULT_FRAMEWORK_PREFLIGHT_TIMEOUT_MS;
-  if (!/^[1-9]\d*$/u.test(raw)) {
-    throw new TypeError(
-      `ELIZA_FRAMEWORK_PREFLIGHT_TIMEOUT_MS must be a decimal integer between 250 and ${MAX_FRAMEWORK_PREFLIGHT_TIMEOUT_MS}; received ${JSON.stringify(raw)}`,
-    );
-  }
-  const parsed = Number(raw);
+  const parsed = /^[1-9]\d*$/u.test(raw) ? Number(raw) : Number.NaN;
   if (
     !Number.isSafeInteger(parsed) ||
     parsed < 250 ||
     parsed > MAX_FRAMEWORK_PREFLIGHT_TIMEOUT_MS
   ) {
-    throw new TypeError(
-      `ELIZA_FRAMEWORK_PREFLIGHT_TIMEOUT_MS must be a decimal integer between 250 and ${MAX_FRAMEWORK_PREFLIGHT_TIMEOUT_MS}; received ${JSON.stringify(raw)}`,
+    throw new ElizaError(
+      `ELIZA_FRAMEWORK_PREFLIGHT_TIMEOUT_MS must be a decimal integer between 250 and ${MAX_FRAMEWORK_PREFLIGHT_TIMEOUT_MS}`,
+      {
+        code: "FRAMEWORK_PREFLIGHT_TIMEOUT_INVALID",
+        context: {
+          configured: raw,
+          minimum: 250,
+          maximum: MAX_FRAMEWORK_PREFLIGHT_TIMEOUT_MS,
+        },
+      },
     );
   }
   return parsed;
