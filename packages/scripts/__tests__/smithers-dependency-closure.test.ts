@@ -46,9 +46,7 @@ test("Smithers uses one peer-compatible Effect and React closure", () => {
   const hostReact = String(dependencies.react);
   expect(hostReact).toBe("19.2.7");
   expect(dependencies["react-dom"]).toBe(hostReact);
-  expect(overrides["@effect/platform-node-shared"]).toBe(
-    "4.0.0-beta.102",
-  );
+  expect(overrides["@effect/platform-node-shared"]).toBe("4.0.0-beta.102");
 
   const lock = object(
     Bun.JSONC.parse(readFileSync(path.join(repoRoot, "bun.lock"), "utf8")),
@@ -58,20 +56,80 @@ test("Smithers uses one peer-compatible Effect and React closure", () => {
   for (const [key, raw] of Object.entries(packages)) {
     if (!Array.isArray(raw) || typeof raw[0] !== "string") continue;
     const resolution = raw[0];
-    if (
-      resolution.startsWith("effect@") ||
-      resolution.startsWith("@effect/")
-    ) {
+    if (resolution.startsWith("effect@") || resolution.startsWith("@effect/")) {
       expect(versionOf(resolution), key).toBe("4.0.0-beta.102");
     }
   }
 
   const engine = packageTuple(packages, "@smthrs/engine");
   const engineDependencies = object(engine[2]?.dependencies, "Smithers deps");
-  expect(Bun.semver.satisfies(hostReact, String(engineDependencies.react))).toBe(
-    true,
-  );
+  expect(
+    Bun.semver.satisfies(hostReact, String(engineDependencies.react)),
+  ).toBe(true);
   expect(
     Bun.semver.satisfies(hostReact, String(engineDependencies["react-dom"])),
   ).toBe(true);
+});
+
+test("unsupported Smithers PGlite configuration remains fail-closed", () => {
+  const manifest = object(
+    JSON.parse(readFileSync(path.join(repoRoot, "package.json"), "utf8")),
+    "package.json",
+  );
+  const resolutions = object(manifest.resolutions, "resolutions");
+  const overrides = object(manifest.overrides, "overrides");
+  expect(resolutions).not.toHaveProperty("@electric-sql/pglite");
+  expect(overrides).not.toHaveProperty("@electric-sql/pglite");
+
+  for (const pluginManifestPath of [
+    "plugins/plugin-agent-orchestrator/package.json",
+    "plugins/plugin-workflow/package.json",
+  ]) {
+    const pluginManifest = object(
+      JSON.parse(readFileSync(path.join(repoRoot, pluginManifestPath), "utf8")),
+      pluginManifestPath,
+    );
+    const dependencies = object(
+      pluginManifest.dependencies,
+      `${pluginManifestPath} dependencies`,
+    );
+    expect(dependencies.smthrs, pluginManifestPath).toBe("0.33.0");
+  }
+
+  const lock = object(
+    Bun.JSONC.parse(readFileSync(path.join(repoRoot, "bun.lock"), "utf8")),
+    "bun.lock",
+  );
+  const packages = object(lock.packages, "bun.lock.packages");
+  const engine = packageTuple(packages, "@smthrs/engine");
+  expect(versionOf(engine[0])).toBe("0.33.0");
+  const optionalDependencies = object(
+    engine[2]?.optionalDependencies,
+    "Smithers optional deps",
+  );
+  expect(optionalDependencies["@electric-sql/pglite"]).toBe("^0.5.4");
+  expect(optionalDependencies["@electric-sql/pglite-socket"]).toBe("^0.2.6");
+
+  const socket = packageTuple(
+    packages,
+    "@smthrs/engine/@electric-sql/pglite-socket",
+  );
+  const socketPeers = object(socket[2]?.peerDependencies, "socket peers");
+  expect(socketPeers["@electric-sql/pglite"]).toBe("0.5.3");
+  expect(
+    Bun.semver.satisfies(
+      "0.5.3",
+      String(optionalDependencies["@electric-sql/pglite"]),
+    ),
+  ).toBe(false);
+
+  const runner = readFileSync(
+    path.join(
+      repoRoot,
+      "plugins/plugin-agent-orchestrator/src/services/smithers-task-runner.ts",
+    ),
+    "utf8",
+  );
+  expect(runner).toContain("SMITHERS_PGLITE_INCOMPATIBLE");
+  expect(runner).not.toContain("Smithers.pglite");
 });

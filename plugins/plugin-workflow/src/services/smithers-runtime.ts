@@ -75,6 +75,7 @@ export interface SmithersRunRequest {
     prompt: unknown;
     messages?: unknown;
     structured: boolean;
+    signal: AbortSignal;
   }) => Promise<unknown>;
 }
 
@@ -418,6 +419,17 @@ export async function runSmithersWorkflow(request: SmithersRunRequest): Promise<
   let stdoutNoise = '';
   let stdinError: Error | undefined;
   let lineProcessing = Promise.resolve();
+  const protocolController = new AbortController();
+
+  const protocolAbortOutcome = new Promise<{ kind: 'aborted' }>((resolve) => {
+    if (protocolController.signal.aborted) {
+      resolve({ kind: 'aborted' });
+      return;
+    }
+    protocolController.signal.addEventListener('abort', () => resolve({ kind: 'aborted' }), {
+      once: true,
+    });
+  });
 
   // A worker can close its input before the parent finishes an in-flight model
   // request. Observe that late EPIPE here so it cannot become a process-level
@@ -454,12 +466,21 @@ export async function runSmithersWorkflow(request: SmithersRunRequest): Promise<
     if (message.kind === 'error') workerError = message.error;
     if (message.kind === 'agent-request') {
       try {
-        const value = await request.generate({
-          prompt: message.prompt,
-          ...(message.messages !== undefined ? { messages: message.messages } : {}),
-          structured: message.structured,
-        });
-        writeWorkerResponse({ requestId: message.requestId, ok: true, value });
+        const generationOutcome = request
+          .generate({
+            prompt: message.prompt,
+            ...(message.messages !== undefined ? { messages: message.messages } : {}),
+            structured: message.structured,
+            signal: protocolController.signal,
+          })
+          .then(
+            (value) => ({ kind: 'value' as const, value }),
+            (error) => ({ kind: 'error' as const, error })
+          );
+        const generation = await Promise.race([generationOutcome, protocolAbortOutcome]);
+        if (generation.kind === 'aborted') return;
+        if (generation.kind === 'error') throw generation.error;
+        writeWorkerResponse({ requestId: message.requestId, ok: true, value: generation.value });
       } catch (error) {
         // error-policy:J1 model failures cross the worker boundary as a typed
         // rejection for the Smithers AgentLike invocation.
@@ -504,10 +525,12 @@ export async function runSmithersWorkflow(request: SmithersRunRequest): Promise<
   });
 
   let terminationCause: WorkerTerminationCause | undefined;
+  let processExited = false;
   let forceKillTimer: NodeJS.Timeout | undefined;
   const terminate = (cause: WorkerTerminationCause): void => {
-    if (terminationCause) return;
+    if (terminationCause || processExited) return;
     terminationCause = cause;
+    protocolController.abort(cause);
     worker.kill('SIGTERM');
     forceKillTimer = setTimeout(() => worker.kill('SIGKILL'), WORKER_TERMINATION_GRACE_MS);
     forceKillTimer.unref();
@@ -517,33 +540,44 @@ export async function runSmithersWorkflow(request: SmithersRunRequest): Promise<
   else request.signal?.addEventListener('abort', abort, { once: true });
   const timeoutTimer = setTimeout(() => terminate('timeout'), timeoutMs);
 
-  let closeObserved = false;
-  const outcome = await new Promise<{ exitCode: number | null; processError?: Error }>(
-    (resolve) => {
-      let settled = false;
-      let processError: Error | undefined;
-      let drainTimer: NodeJS.Timeout | undefined;
-      const settle = (exitCode: number | null): void => {
-        if (settled) return;
-        settled = true;
-        if (drainTimer) clearTimeout(drainTimer);
-        resolve({ exitCode, ...(processError ? { processError } : {}) });
-      };
-      const armDrainFallback = (exitCode: number | null): void => {
-        if (settled || drainTimer) return;
-        drainTimer = setTimeout(() => settle(exitCode), WORKER_STDIO_DRAIN_GRACE_MS);
-      };
-      worker.once('error', (error) => {
-        processError = error;
-        armDrainFallback(null);
-      });
-      worker.once('exit', (code) => armDrainFallback(code));
-      worker.once('close', (code) => {
-        closeObserved = true;
-        settle(code);
-      });
-    }
-  ).finally(async () => {
+  const outcome = await new Promise<{
+    exitCode: number | null;
+    processError?: { error: Error; phase: 'spawn' | 'runtime' };
+  }>((resolve) => {
+    let settled = false;
+    let spawnObserved = false;
+    let processError: { error: Error; phase: 'spawn' | 'runtime' } | undefined;
+    let drainTimer: NodeJS.Timeout | undefined;
+    const settle = (exitCode: number | null): void => {
+      if (settled) return;
+      settled = true;
+      if (drainTimer) clearTimeout(drainTimer);
+      resolve({ exitCode, ...(processError ? { processError } : {}) });
+    };
+    const armDrainFallback = (exitCode: number | null): void => {
+      if (settled || drainTimer) return;
+      drainTimer = setTimeout(() => settle(exitCode), WORKER_STDIO_DRAIN_GRACE_MS);
+    };
+    worker.once('spawn', () => {
+      spawnObserved = true;
+    });
+    worker.once('error', (error) => {
+      const phase = spawnObserved ? 'runtime' : 'spawn';
+      if (phase === 'spawn') processExited = true;
+      protocolController.abort(phase);
+      processError = { error, phase };
+      armDrainFallback(null);
+    });
+    worker.once('exit', (code) => {
+      processExited = true;
+      protocolController.abort('exit');
+      armDrainFallback(code);
+    });
+    worker.once('close', (code) => {
+      protocolController.abort('close');
+      settle(code);
+    });
+  }).finally(async () => {
     clearTimeout(timeoutTimer);
     if (forceKillTimer) clearTimeout(forceKillTimer);
     request.signal?.removeEventListener('abort', abort);
@@ -553,19 +587,48 @@ export async function runSmithersWorkflow(request: SmithersRunRequest): Promise<
       if (error.code !== 'ENOENT') stderr = `${stderr}\n${String(error)}`;
     });
   });
-  if (!closeObserved) {
-    for (const stream of [worker.stdin, worker.stdout, worker.stderr]) {
-      try {
-        stream?.destroy();
-      } catch {
-        // error-policy:J6 the worker outcome is settled; this only releases a
-        // pipe whose close event was withheld by inherited child descriptors.
-      }
+  for (const stream of [worker.stdin, worker.stdout, worker.stderr]) {
+    try {
+      stream?.destroy();
+    } catch {
+      // error-policy:J6 the worker outcome is settled; this only releases a
+      // terminal pipe or one whose close event was withheld by inherited child descriptors.
     }
   }
   if (stdoutBuffer) lineProcessing = lineProcessing.then(() => consumeLine(stdoutBuffer));
-  await lineProcessing;
+  let lineProcessingFailed = false;
+  let lineProcessingError: unknown;
+  const observedLineProcessing = lineProcessing.catch((error) => {
+    // error-policy:J5 this promise is the terminal observer for child protocol
+    // work that can outlive a worker which exited before answering its request.
+    lineProcessingFailed = true;
+    lineProcessingError = error;
+  });
+  let lineProcessingTimer: NodeJS.Timeout | undefined;
+  let releaseLineProcessingTimer: (() => void) | undefined;
+  const lineProcessingDeadline = new Promise<void>((resolve) => {
+    releaseLineProcessingTimer = resolve;
+    lineProcessingTimer = setTimeout(resolve, WORKER_STDIO_DRAIN_GRACE_MS);
+  });
+  await Promise.race([observedLineProcessing, lineProcessingDeadline]);
+  if (lineProcessingTimer) clearTimeout(lineProcessingTimer);
+  releaseLineProcessingTimer?.();
+  if (lineProcessingFailed) throw lineProcessingError;
 
+  if (outcome.processError) {
+    const spawnFailed = outcome.processError.phase === 'spawn';
+    throw new ElizaError(
+      spawnFailed ? 'Smithers worker could not be started' : 'Smithers worker process failed',
+      {
+        code: spawnFailed ? 'SMTHRS_WORKER_SPAWN_FAILED' : 'SMTHRS_WORKER_PROCESS_FAILED',
+        cause: outcome.processError.error,
+        context: {
+          workflowId: request.workflow.id,
+          ...(terminationCause ? { terminationCause } : {}),
+        },
+      }
+    );
+  }
   if (terminationCause === 'abort') {
     return { runId: request.runId, status: 'cancelled', events };
   }
@@ -574,13 +637,6 @@ export async function runSmithersWorkflow(request: SmithersRunRequest): Promise<
       code: 'SMTHRS_WORKFLOW_TIMEOUT',
       context: { timeoutMs, exitCode: outcome.exitCode, workflowId: request.workflow.id },
       severity: 'ephemeral',
-    });
-  }
-  if (outcome.processError) {
-    throw new ElizaError('Smithers worker could not be started', {
-      code: 'SMTHRS_WORKER_SPAWN_FAILED',
-      cause: outcome.processError,
-      context: { workflowId: request.workflow.id },
     });
   }
   if (workerError) {

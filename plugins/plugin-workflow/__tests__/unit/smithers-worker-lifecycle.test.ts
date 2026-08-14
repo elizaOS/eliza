@@ -4,6 +4,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, test } from 'bun:test
 import { chmod, rm } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import type { SmithersRunRequest } from '../../src/services/smithers-runtime';
 import {
   resolveSmithersWorkflowDir,
   runSmithersWorkflow,
@@ -34,16 +35,24 @@ function workflow(): WorkflowDefinitionResponse {
   };
 }
 
-async function run(mode: string, options: { signal?: AbortSignal; timeoutMs?: number } = {}) {
+async function run(
+  mode: string,
+  options: {
+    signal?: AbortSignal;
+    timeoutMs?: number;
+    input?: Record<string, unknown>;
+    generate?: SmithersRunRequest['generate'];
+  } = {}
+) {
   return runSmithersWorkflow({
     tenantId,
     workflow: workflow(),
     runId: `run-${mode}-${Date.now()}`,
     mode: 'manual',
-    input: { fixtureMode: mode },
+    input: { fixtureMode: mode, ...options.input },
     timeoutMs: options.timeoutMs ?? 20_000,
     ...(options.signal ? { signal: options.signal } : {}),
-    generate: async () => 'done',
+    generate: options.generate ?? (async () => 'done'),
   });
 }
 
@@ -87,6 +96,45 @@ describe('Smithers worker lifecycle', () => {
     const startedAt = Date.now();
     await expect(run('exit-with-inherited-pipe')).rejects.toMatchObject({
       code: 'SMTHRS_RESULT_MISSING',
+    });
+    expect(Date.now() - startedAt).toBeLessThan(3_000);
+  });
+
+  test('does not relabel an exited worker as timed out while inherited pipes drain', async () => {
+    await expect(
+      run('exit-with-inherited-pipe', {
+        timeoutMs: 750,
+        input: { exitDelayMs: 100 },
+      })
+    ).rejects.toMatchObject({ code: 'SMTHRS_RESULT_MISSING' });
+  });
+
+  test('cancels protocol work when a worker exits during an agent request', async () => {
+    const startedAt = Date.now();
+    let generationSignal: AbortSignal | undefined;
+    await expect(
+      run('exit-with-pending-agent-request', {
+        generate: ({ signal }) => {
+          generationSignal = signal;
+          return new Promise((_, reject) => {
+            if (signal.aborted) {
+              reject(signal.reason);
+              return;
+            }
+            signal.addEventListener('abort', () => reject(signal.reason), { once: true });
+          });
+        },
+      })
+    ).rejects.toMatchObject({ code: 'SMTHRS_RESULT_MISSING' });
+    expect(generationSignal?.aborted).toBe(true);
+    expect(Date.now() - startedAt).toBeLessThan(3_000);
+  });
+
+  test('reports spawn failure even when the configured timeout is shorter than drain grace', async () => {
+    process.env.BUN_BIN = `${fixturePath}.missing`;
+    const startedAt = Date.now();
+    await expect(run('ignore-termination', { timeoutMs: 250 })).rejects.toMatchObject({
+      code: 'SMTHRS_WORKER_SPAWN_FAILED',
     });
     expect(Date.now() - startedAt).toBeLessThan(3_000);
   });
