@@ -621,6 +621,7 @@ export default function LandingPage() {
     "idle" | "copied" | "error"
   >("idle");
   const phoneCopyResetRef = useRef<number | null>(null);
+  const whatsappHref = buildElizaWhatsAppHref();
   const browserWindow = typeof window === "undefined" ? null : window;
   const signedIn =
     browserWindow !== null &&
@@ -637,14 +638,20 @@ export default function LandingPage() {
       }),
       icon: <TelegramIcon className="size-6" style={{ color: "#2AABEE" }} />,
     },
-    {
-      key: "whatsapp",
-      href: buildElizaWhatsAppHref(),
-      label: t("homepage_eliza.landing.channelWhatsapp", {
-        defaultValue: "Message Eliza on WhatsApp",
-      }),
-      icon: <WhatsAppIcon className="size-6" style={{ color: "#25D366" }} />,
-    },
+    ...(whatsappHref
+      ? [
+          {
+            key: "whatsapp",
+            href: whatsappHref,
+            label: t("homepage_eliza.landing.channelWhatsapp", {
+              defaultValue: "Message Eliza on WhatsApp",
+            }),
+            icon: (
+              <WhatsAppIcon className="size-6" style={{ color: "#25D366" }} />
+            ),
+          },
+        ]
+      : []),
     {
       key: "discord",
       href: buildElizaDiscordHref(),
@@ -696,6 +703,90 @@ export default function LandingPage() {
         <ShaderBackground />
       </Suspense>
       <div aria-hidden="true" className="landing-grain" />
+      <nav
+        className="landing-topbar"
+        aria-label={t("homepage_eliza.landing.topbarAria", {
+          defaultValue: "Reach Eliza",
+        })}
+      >
+        <span className="landing-topbar-channels">
+          <a
+            className="landing-channel"
+            href={buildElizaSmsHref()}
+            aria-label={t("homepage_eliza.landing.channelImessage", {
+              defaultValue: "Text Eliza on iMessage",
+            })}
+          >
+            <IMessageIcon className="size-6" style={{ color: "#34C759" }} />
+            <span className="sr-only">iMessage</span>
+          </a>
+          <a
+            className="landing-channel"
+            href={`tel:${ELIZA_PHONE_NUMBER}`}
+            aria-label={t("homepage_eliza.landing.channelPhone", {
+              defaultValue: "Call Eliza",
+            })}
+          >
+            <svg
+              viewBox="0 0 24 24"
+              fill="currentColor"
+              className="size-6"
+              aria-hidden="true"
+            >
+              <path d="M6.62 10.79a15.05 15.05 0 0 0 6.59 6.59l2.2-2.2a1 1 0 0 1 1.02-.24 11.36 11.36 0 0 0 3.57.57 1 1 0 0 1 1 1V20a1 1 0 0 1-1 1A17 17 0 0 1 3 4a1 1 0 0 1 1-1h3.5a1 1 0 0 1 1 1 11.36 11.36 0 0 0 .57 3.57 1 1 0 0 1-.25 1.02Z" />
+            </svg>
+            <span className="sr-only">Call</span>
+          </a>
+          {channels.map((channel) => (
+            <a
+              key={channel.key}
+              className="landing-channel"
+              href={channel.href}
+              aria-label={channel.label}
+              target="_blank"
+              rel="noreferrer"
+            >
+              {channel.icon}
+              <span className="sr-only">{channel.label}</span>
+            </a>
+          ))}
+        </span>
+        <a
+          className="landing-account"
+          href={
+            signedIn
+              ? productNavigation.dashboardUrl
+              : productNavigation.signInUrl
+          }
+          aria-label={
+            signedIn
+              ? t("homepage_eliza.landing.dashboard", {
+                  defaultValue: "Dashboard",
+                })
+              : t("homepage_eliza.landing.signIn", { defaultValue: "Sign in" })
+          }
+        >
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.7"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            className="size-6"
+            aria-hidden="true"
+          >
+            <path d="M17.5 19a4.5 4.5 0 0 0 .4-8.98 6 6 0 0 0-11.63-1.4A4.25 4.25 0 0 0 6.5 19h11Z" />
+          </svg>
+          <span className="sr-only">
+            {signedIn
+              ? t("homepage_eliza.landing.dashboard", {
+                  defaultValue: "Dashboard",
+                })
+              : t("homepage_eliza.landing.signIn", { defaultValue: "Sign in" })}
+          </span>
+        </a>
+      </nav>
       <header className="landing-header">
         <a
           className="landing-brand"

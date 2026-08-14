@@ -1059,6 +1059,7 @@ jobs:
     outputs:
       telegram_bot_id: ${{ steps.telegram.outputs.bot_id }}
       telegram_bot_username: ${{ steps.telegram.outputs.bot_username }}
+      whatsapp_phone_number: ${{ steps.whatsapp.outputs.phone_number }}
     steps:
       - name: Validate Telegram configuration
         id: telegram
@@ -1079,6 +1080,34 @@ jobs:
           echo "bot_id=$TELEGRAM_BOT_ID" >> "$GITHUB_OUTPUT"
           echo "bot_username=$TELEGRAM_BOT_USERNAME" >> "$GITHUB_OUTPUT"
 
+      - name: Resolve public WhatsApp configuration
+        id: whatsapp
+        env:
+          WHATSAPP_PUBLIC_ENABLED: ${{ vars.WHATSAPP_PUBLIC_ENABLED }}
+          WHATSAPP_PHONE_NUMBER: ${{ vars.VITE_WHATSAPP_PHONE_NUMBER }}
+        run: |
+          set -euo pipefail
+          enabled="$(printf '%s' "$WHATSAPP_PUBLIC_ENABLED" | tr '[:upper:]' '[:lower:]')"
+          case "$enabled" in
+            ""|0|false|no|off)
+              echo "phone_number=" >> "$GITHUB_OUTPUT"
+              ;;
+            1|true|yes|on)
+              [[ "$WHATSAPP_PHONE_NUMBER" =~ ^\+[1-9][0-9]{7,14}$ ]] || { echo "::error::VITE_WHATSAPP_PHONE_NUMBER must be an E.164 number when WHATSAPP_PUBLIC_ENABLED is true"; exit 1; }
+              case "$WHATSAPP_PHONE_NUMBER" in
+                +14155238886|+15551649988|+14159611510)
+                  echo "::error::The public WhatsApp CTA cannot use a shared sandbox, developer test, or unverified sender"
+                  exit 1
+                  ;;
+              esac
+              echo "phone_number=$WHATSAPP_PHONE_NUMBER" >> "$GITHUB_OUTPUT"
+              ;;
+            *)
+              echo "::error::WHATSAPP_PUBLIC_ENABLED must be a boolean"
+              exit 1
+              ;;
+          esac
+
   build-pages:
     name: Build Pages artifacts
     needs: [migrate-db, resolve-pages-environment-config]
@@ -1095,6 +1124,7 @@ jobs:
       artifact_source_sha: ${{ steps.pages-artifact.outputs.source_sha }}
       telegram_bot_id: ${{ needs.resolve-pages-environment-config.outputs.telegram_bot_id }}
       telegram_bot_username: ${{ needs.resolve-pages-environment-config.outputs.telegram_bot_username }}
+      whatsapp_phone_number: ${{ needs.resolve-pages-environment-config.outputs.whatsapp_phone_number }}
     steps:
       - name: Validate PR preview identity
         if: github.event_name == 'pull_request'
@@ -1148,6 +1178,7 @@ jobs:
         env:
           VITE_TELEGRAM_BOT_ID: ${{ needs.resolve-pages-environment-config.outputs.telegram_bot_id }}
           VITE_TELEGRAM_BOT_USERNAME: ${{ needs.resolve-pages-environment-config.outputs.telegram_bot_username }}
+          VITE_WHATSAPP_PHONE_NUMBER: ${{ needs.resolve-pages-environment-config.outputs.whatsapp_phone_number }}
           VITE_API_URL: ${{ (inputs.target_environment == 'production') && 'https://api.eliza.app' || 'https://api-staging.eliza.app' }}
           NEXT_PUBLIC_API_URL: ${{ (inputs.target_environment == 'production') && 'https://api.eliza.app' || 'https://api-staging.eliza.app' }}
           VITE_OIDC_ISSUER_URL: ${{ (inputs.target_environment == 'production') && 'https://api.eliza.app' || 'https://api-staging.eliza.app' }}
@@ -1400,6 +1431,7 @@ jobs:
         env:
           VITE_TELEGRAM_BOT_ID: ${{ needs.build-pages.outputs.telegram_bot_id }}
           VITE_TELEGRAM_BOT_USERNAME: ${{ needs.build-pages.outputs.telegram_bot_username }}
+          VITE_WHATSAPP_PHONE_NUMBER: ${{ needs.build-pages.outputs.whatsapp_phone_number }}
           VITE_API_URL: ${{ (inputs.target_environment == 'production') && 'https://api.eliza.app' || 'https://api-staging.eliza.app' }}
           NEXT_PUBLIC_API_URL: ${{ (inputs.target_environment == 'production') && 'https://api.eliza.app' || 'https://api-staging.eliza.app' }}
           VITE_OIDC_ISSUER_URL: ${{ (inputs.target_environment == 'production') && 'https://api.eliza.app' || 'https://api-staging.eliza.app' }}

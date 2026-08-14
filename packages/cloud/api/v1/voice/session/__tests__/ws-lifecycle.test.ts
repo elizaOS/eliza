@@ -444,6 +444,7 @@ async function connectSession(opts: {
   client: FakeClientSocket;
   fetchImpl: typeof fetch;
   prewarmElizaContext?: () => Promise<void>;
+  cacheWarmingRetryDelaysMs?: readonly number[];
   fish?: {
     enabled?: boolean;
     firstAudioTimeoutMs?: number;
@@ -481,6 +482,11 @@ async function connectSession(opts: {
         fetchImpl: opts.fetchImpl,
         ...(opts.prewarmElizaContext
           ? { prewarmElizaContext: opts.prewarmElizaContext }
+          : {}),
+        ...(opts.cacheWarmingRetryDelaysMs
+          ? {
+              cacheWarmingRetryDelaysMs: opts.cacheWarmingRetryDelaysMs,
+            }
           : {}),
         usageStore,
         usageLimits: { organizationDailyMinutes: 600, userDailyMinutes: 120 },
@@ -1353,6 +1359,45 @@ describe("voice-session WS lifecycle", () => {
       usageCount,
     );
     expect(client.closedWith).toBeNull();
+  });
+
+  test("cache-warming 503s retry the same voice turn until it can speak", async () => {
+    const client = new FakeClientSocket();
+    const successFetch = makeSseFetch(["Cache warmed. Here is your answer."]);
+    let calls = 0;
+    await connectSession({
+      client,
+      cacheWarmingRetryDelaysMs: [0, 0, 0],
+      fetchImpl: (async (input: RequestInfo | URL, init?: RequestInit) => {
+        calls += 1;
+        if (calls <= 2) {
+          return Response.json(
+            {
+              success: false,
+              error: "Shared runtime cache is warming. Retry shortly.",
+              code: "shared_runtime_cache_warming",
+              retryable: true,
+            },
+            { status: 503 },
+          );
+        }
+        return successFetch(input, init);
+      }) as typeof fetch,
+    });
+    const ink = FakeInkSocket.instances.at(-1)!;
+    ink.emitTurn("turn.start");
+    ink.emitTurn("turn.end", "please answer once caches are warm");
+    await flush();
+    await flush();
+
+    expect(calls).toBe(3);
+    expect(client.controlTypes()).not.toContain("error");
+    expect(client.controlTypes()).toContain("llm_first_text");
+    const cartesia = FakeCartesiaSocket.instances.at(-1)!;
+    expect(cartesia.sentText()).toBe("Cache warmed.Here is your answer.");
+    cartesia.emitDone();
+    await flush();
+    expect(client.controlTypes()).toContain("speaking_end");
   });
 
   test("canonical 402 becomes a non-retryable insufficient-credits turn error", async () => {

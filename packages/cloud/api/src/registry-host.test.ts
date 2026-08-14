@@ -1,6 +1,6 @@
 /**
  * The registry hosts (`plugins.eliza.app` / `plugins-staging.eliza.app`) must
- * serve the committed registry artifacts from the worker itself: the
+ * serve committed registry artifacts only from the matching deployment. The
  * managed-agent wildcard route shadows the host, so before this handler the canonical registry URL
  * (`packages/registry` README) 404'd on the JSON router on every env.
  * Deterministic — upstream raw-GitHub fetch is stubbed via the global fetch;
@@ -141,5 +141,17 @@ describe("serveRegistryHostRequest", () => {
       ELIZA_CLOUD_AGENT_BASE_DOMAIN: "cloud-staging.eliza.app",
     } as typeof ENV);
     expect(response?.status).toBe(200);
+  });
+
+  test("does not synthesize registry hosts from arbitrary agent domains", async () => {
+    const { calls } = stubUpstream(() => new Response("{}", { status: 200 }));
+    const [request, url] = req(
+      "https://plugins.example.dev/generated-registry.json",
+    );
+    const response = await serveRegistryHostRequest(request, url, {
+      ELIZA_CLOUD_AGENT_BASE_DOMAIN: "example.dev",
+    } as typeof ENV);
+    expect(response).toBeNull();
+    expect(calls).toHaveLength(0);
   });
 });

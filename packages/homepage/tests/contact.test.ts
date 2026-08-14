@@ -16,6 +16,7 @@ import {
   getDiscordBotApplicationId,
   getTelegramBotId,
   getWhatsAppNumber,
+  resolveWhatsAppNumber,
 } from "../src/lib/contact";
 
 describe("Eliza contact links", () => {
@@ -35,6 +36,12 @@ describe("Eliza contact links", () => {
 
   test("keeps the WhatsApp fallback separate from the Blooio number", () => {
     expect(getWhatsAppNumber()).toBe("+14159611510");
+  });
+
+  test("fails closed when a production WhatsApp sender is absent or invalid", () => {
+    expect(resolveWhatsAppNumber(undefined, true)).toBeNull();
+    expect(resolveWhatsAppNumber("14159611510", true)).toBeNull();
+    expect(resolveWhatsAppNumber("+15551234567", true)).toBe("+15551234567");
   });
 
   test("builds direct web links for every supported messaging channel", () => {

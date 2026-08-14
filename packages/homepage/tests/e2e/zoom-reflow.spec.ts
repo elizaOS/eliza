@@ -60,9 +60,11 @@ for (const viewport of REFLOW_VIEWPORTS) {
     await applyTwoHundredPercentTextSize(page);
 
     await expectNoUnreachableOverflow(page);
-    // The zoomed page may scroll vertically; each control must be reachable
-    // by scrolling and fit fully inside the viewport once scrolled to.
-    const textCta = page.getByRole("link", { name: "Text Eliza" });
+    // Narrow viewports render the full-screen conversation with an icon top
+    // bar; wider ones keep the hero's labelled pills. Assert on the entry
+    // points themselves so the check holds for whichever layout is painted.
+    const textCta = page.locator('a[href^="sms:"]:visible').first();
+    const _callCta = page.locator('a[href^="tel:"]:visible').first();
     await textCta.scrollIntoViewIfNeeded();
     await expectFullyInViewport(page, textCta);
     await expect(page.getByText("+1 (808) 788-1821")).toBeVisible();

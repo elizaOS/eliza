@@ -35,13 +35,15 @@ for (const viewport of [
     }) => {
       await page.goto("/", { waitUntil: "domcontentloaded" });
       await waitForLandingIntro(page);
-      const landingHero = await page.locator(".landing-hero-copy").innerText();
+      const landingHero = await page
+        .locator("h1")
+        .evaluate((el) => el.textContent);
 
       await page.goto("/leaderboard", { waitUntil: "domcontentloaded" });
       await waitForLandingIntro(page);
       const leaderboardHero = await page
-        .locator(".landing-hero-copy")
-        .innerText();
+        .locator("h1")
+        .evaluate((el) => el.textContent);
 
       expect(leaderboardHero).toEqual(landingHero);
     });
