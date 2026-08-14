@@ -1642,8 +1642,8 @@ export default function StewardLoginSection() {
             type="button"
             aria-expanded={showWalletOptions || walletButtonsMounted}
             aria-controls="steward-wallet-options"
-            onClick={() => setShowWalletOptions(true)}
-            disabled={isLoading || showWalletOptions || walletButtonsMounted}
+            onClick={() => setShowWalletOptions((v) => !v)}
+            disabled={isLoading || walletButtonsMounted}
             className="hosted-signin-focus-emphasis flex min-h-touch items-center justify-center gap-2 rounded-md border border-border-strong bg-bg-elevated px-4 py-2.5 text-sm font-semibold text-txt transition-[background-color,border-color,transform] hover:border-border-hover hover:bg-bg-hover active:scale-[0.99] disabled:pointer-events-none disabled:opacity-50"
           >
             {t("cloud.login.moreOptions", {
@@ -1651,84 +1651,89 @@ export default function StewardLoginSection() {
             })}
           </Button>
 
-          {(showWalletOptions || walletButtonsMounted) && (
-            <div id="steward-wallet-options">
-              <div className="flex items-center gap-3">
-                <div className="h-px flex-1 bg-border" />
-                <span className="text-xs text-muted">
-                  {t("cloud.login.orSignInWallet", {
-                    defaultValue: "or sign in with a wallet",
-                  })}
-                </span>
-                <div className="h-px flex-1 bg-border" />
-              </div>
-
-              {walletButtonsMounted ? (
-                <Suspense
-                  fallback={
-                    <div className="flex min-h-touch items-center justify-center py-2.5">
-                      <Spinner />
-                    </div>
-                  }
-                >
-                  <StewardWalletProviders>
-                    <WalletButtons
-                      auth={auth}
-                      autoStart={autoStartWallet}
-                      disabled={isLoading}
-                      loadingProvider={
-                        loading === "ethereum" || loading === "solana"
-                          ? (loading as WalletKind)
-                          : null
-                      }
-                      onAutoStartHandled={() => setAutoStartWallet(null)}
-                      onLoadingChange={(kind) => setLoading(kind)}
-                      onSuccess={(result) =>
-                        handleSuccess(result.token, result.refreshToken)
-                      }
-                      onError={(walletError) => {
-                        setError(
-                          walletError.message ||
-                            t("cloud.login.error.walletFailed", {
-                              defaultValue: "Wallet sign-in failed",
-                            }),
-                        );
-                      }}
-                    />
-                  </StewardWalletProviders>
-                </Suspense>
-              ) : (
-                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                  {providers.siwe && (
-                    <Button
-                      variant="ghost"
-                      type="button"
-                      onClick={() => handleWalletIntent("ethereum")}
-                      disabled={isLoading}
-                      className="hosted-signin-focus-emphasis flex min-h-touch items-center justify-center gap-2 rounded-md border border-border-strong bg-bg-elevated px-4 py-2.5 text-sm font-semibold text-txt transition-[background-color,border-color,transform] hover:border-border-hover hover:bg-bg-hover active:scale-[0.99] disabled:pointer-events-none disabled:opacity-50"
-                    >
-                      {t("cloud.login.wallet.evm", {
-                        defaultValue: "EVM wallet",
-                      })}
-                    </Button>
-                  )}
-                  {providers.siws && (
-                    <Button
-                      variant="ghost"
-                      type="button"
-                      onClick={() => handleWalletIntent("solana")}
-                      disabled={isLoading}
-                      className="hosted-signin-focus-emphasis flex min-h-touch items-center justify-center gap-2 rounded-md border border-border-strong bg-bg-elevated px-4 py-2.5 text-sm font-semibold text-txt transition-[background-color,border-color,transform] hover:border-border-hover hover:bg-bg-hover active:scale-[0.99] disabled:pointer-events-none disabled:opacity-50"
-                    >
-                      {t("cloud.login.wallet.solana", {
-                        defaultValue: "Solana wallet",
-                      })}
-                    </Button>
-                  )}
+          <div
+            id="steward-wallet-options"
+            hidden={!showWalletOptions && !walletButtonsMounted}
+          >
+            {(showWalletOptions || walletButtonsMounted) && (
+              <>
+                <div className="flex items-center gap-3">
+                  <div className="h-px flex-1 bg-border" />
+                  <span className="text-xs text-muted">
+                    {t("cloud.login.orSignInWallet", {
+                      defaultValue: "or sign in with a wallet",
+                    })}
+                  </span>
+                  <div className="h-px flex-1 bg-border" />
                 </div>
-              )}
-            </div>
-          )}
+
+                {walletButtonsMounted ? (
+                  <Suspense
+                    fallback={
+                      <div className="flex min-h-touch items-center justify-center py-2.5">
+                        <Spinner />
+                      </div>
+                    }
+                  >
+                    <StewardWalletProviders>
+                      <WalletButtons
+                        auth={auth}
+                        autoStart={autoStartWallet}
+                        disabled={isLoading}
+                        loadingProvider={
+                          loading === "ethereum" || loading === "solana"
+                            ? (loading as WalletKind)
+                            : null
+                        }
+                        onAutoStartHandled={() => setAutoStartWallet(null)}
+                        onLoadingChange={(kind) => setLoading(kind)}
+                        onSuccess={(result) =>
+                          handleSuccess(result.token, result.refreshToken)
+                        }
+                        onError={(walletError) => {
+                          setError(
+                            walletError.message ||
+                              t("cloud.login.error.walletFailed", {
+                                defaultValue: "Wallet sign-in failed",
+                              }),
+                          );
+                        }}
+                      />
+                    </StewardWalletProviders>
+                  </Suspense>
+                ) : (
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                    {providers.siwe && (
+                      <Button
+                        variant="ghost"
+                        type="button"
+                        onClick={() => handleWalletIntent("ethereum")}
+                        disabled={isLoading}
+                        className="hosted-signin-focus-emphasis flex min-h-touch items-center justify-center gap-2 rounded-md border border-border-strong bg-bg-elevated px-4 py-2.5 text-sm font-semibold text-txt transition-[background-color,border-color,transform] hover:border-border-hover hover:bg-bg-hover active:scale-[0.99] disabled:pointer-events-none disabled:opacity-50"
+                      >
+                        {t("cloud.login.wallet.evm", {
+                          defaultValue: "EVM wallet",
+                        })}
+                      </Button>
+                    )}
+                    {providers.siws && (
+                      <Button
+                        variant="ghost"
+                        type="button"
+                        onClick={() => handleWalletIntent("solana")}
+                        disabled={isLoading}
+                        className="hosted-signin-focus-emphasis flex min-h-touch items-center justify-center gap-2 rounded-md border border-border-strong bg-bg-elevated px-4 py-2.5 text-sm font-semibold text-txt transition-[background-color,border-color,transform] hover:border-border-hover hover:bg-bg-hover active:scale-[0.99] disabled:pointer-events-none disabled:opacity-50"
+                      >
+                        {t("cloud.login.wallet.solana", {
+                          defaultValue: "Solana wallet",
+                        })}
+                      </Button>
+                    )}
+                  </div>
+                )}
+              </>
+            )}
+          </div>
         </>
       )}
 
