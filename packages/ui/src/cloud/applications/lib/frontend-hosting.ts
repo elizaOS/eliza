@@ -83,7 +83,7 @@ export async function publishFrontendBundle(
     `/api/v1/apps/${appId}/frontend`,
     {
       method: "POST",
-      json: { ...input, buildMeta: input.buildMeta ?? { source: "dashboard" } },
+      json: { ...input, buildMeta: input.buildMeta ?? { source: "cloud" } },
     },
   );
   return data.deployment;

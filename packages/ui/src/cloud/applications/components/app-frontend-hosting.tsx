@@ -119,7 +119,6 @@ export function AppFrontendHosting({ appId }: AppFrontendHostingProps) {
       const deployment = await publishFrontendBundle(appId, {
         files,
         activate: activateOnPublish,
-        buildMeta: { source: "dashboard" },
       });
       toast.success(
         t("cloud.appHosting.publishSuccess", {
