@@ -444,6 +444,8 @@ async function connectSession(opts: {
   client: FakeClientSocket;
   fetchImpl: typeof fetch;
   prewarmElizaContext?: () => Promise<void>;
+  openingGreeting?: string;
+  cacheWarmingRetryDelaysMs?: readonly number[];
   fish?: {
     enabled?: boolean;
     firstAudioTimeoutMs?: number;
@@ -481,6 +483,14 @@ async function connectSession(opts: {
         fetchImpl: opts.fetchImpl,
         ...(opts.prewarmElizaContext
           ? { prewarmElizaContext: opts.prewarmElizaContext }
+          : {}),
+        ...(opts.openingGreeting
+          ? { openingGreeting: opts.openingGreeting }
+          : {}),
+        ...(opts.cacheWarmingRetryDelaysMs
+          ? {
+              cacheWarmingRetryDelaysMs: opts.cacheWarmingRetryDelaysMs,
+            }
           : {}),
         usageStore,
         usageLimits: { organizationDailyMinutes: 600, userDailyMinutes: 120 },
@@ -525,6 +535,30 @@ function pcmChunk(bytes: number): Uint8Array {
 // --- tests ----------------------------------------------------------------
 
 describe("voice-session WS lifecycle", () => {
+  test("speaks a live opening greeting while the agent context warms", async () => {
+    const client = new FakeClientSocket();
+    let responseRequests = 0;
+    await connectSession({
+      client,
+      openingGreeting: "hello? who's this?",
+      fetchImpl: (async () => {
+        responseRequests += 1;
+        return makeCanonicalChunkFetch(["unused"])("", {});
+      }) as unknown as typeof fetch,
+    });
+    await flush();
+
+    const cartesia = FakeCartesiaSocket.instances.at(-1)!;
+    expect(cartesia.sentText()).toBe("hello? who's this?");
+    expect(client.audioFrames.length).toBeGreaterThan(0);
+    expect(client.controlTypes()).toContain("speaking_start");
+    expect(responseRequests).toBe(0);
+
+    cartesia.emitDone();
+    await flush();
+    expect(client.controlTypes()).toContain("speaking_end");
+  });
+
   test("stt_final posts the transcript to the canonical agent conversation stream with scoped identity", async () => {
     const requests: Array<{
       url: string;
@@ -1355,6 +1389,45 @@ describe("voice-session WS lifecycle", () => {
     expect(client.closedWith).toBeNull();
   });
 
+  test("cache-warming 503s retry the same voice turn until it can speak", async () => {
+    const client = new FakeClientSocket();
+    const successFetch = makeSseFetch(["Cache warmed. Here is your answer."]);
+    let calls = 0;
+    await connectSession({
+      client,
+      cacheWarmingRetryDelaysMs: [0, 0, 0],
+      fetchImpl: (async (input: RequestInfo | URL, init?: RequestInit) => {
+        calls += 1;
+        if (calls <= 2) {
+          return Response.json(
+            {
+              success: false,
+              error: "Shared runtime cache is warming. Retry shortly.",
+              code: "shared_runtime_cache_warming",
+              retryable: true,
+            },
+            { status: 503 },
+          );
+        }
+        return successFetch(input, init);
+      }) as typeof fetch,
+    });
+    const ink = FakeInkSocket.instances.at(-1)!;
+    ink.emitTurn("turn.start");
+    ink.emitTurn("turn.end", "please answer once caches are warm");
+    await flush();
+    await flush();
+
+    expect(calls).toBe(3);
+    expect(client.controlTypes()).not.toContain("error");
+    expect(client.controlTypes()).toContain("llm_first_text");
+    const cartesia = FakeCartesiaSocket.instances.at(-1)!;
+    expect(cartesia.sentText()).toBe("Cache warmed.Here is your answer.");
+    cartesia.emitDone();
+    await flush();
+    expect(client.controlTypes()).toContain("speaking_end");
+  });
+
   test("canonical 402 becomes a non-retryable insufficient-credits turn error", async () => {
     const client = new FakeClientSocket();
     await connectSession({
@@ -1495,6 +1568,69 @@ describe("voice-session WS lifecycle", () => {
     // Flushing here proves no late frame leaks through after the barge-in.
     await flush();
     expect(client.audioFrames.length).toBe(framesAfterInterrupt);
+  });
+
+  test("semantic turn-start interrupts immediately and the caller gets the next response", async () => {
+    const client = new FakeClientSocket();
+    await connectSession({
+      client,
+      fetchImpl: makeSseFetch([
+        "I will keep speaking until you say something.",
+      ]),
+    });
+    const ink = FakeInkSocket.instances.at(-1)!;
+
+    ink.emitTurn("turn.start");
+    ink.emitTurn("turn.end", "please explain");
+    await flush();
+    await flush();
+
+    const cartesia = FakeCartesiaSocket.instances.at(-1)!;
+    expect(client.controlTypes()).toContain("speaking_start");
+    expect(cartesia.closed).toBe(false);
+
+    const audioBeforeInterruption = client.audioFrames.length;
+    ink.emitTurn("turn.start");
+    await flush();
+    expect(client.controlFrames).toContainEqual(
+      expect.objectContaining({ t: "interrupted", reason: "acoustic" }),
+    );
+    expect(cartesia.closed).toBe(true);
+    expect(client.audioFrames).toHaveLength(audioBeforeInterruption);
+
+    ink.emitTurn("turn.update", "wait");
+    ink.emitTurn("turn.end", "wait");
+    await flush();
+    await flush();
+    expect(FakeCartesiaSocket.instances.at(-1)).not.toBe(cartesia);
+    expect(client.audioFrames.length).toBeGreaterThan(audioBeforeInterruption);
+  });
+
+  test("a final-only caller transcript still interrupts the active response", async () => {
+    const client = new FakeClientSocket();
+    await connectSession({
+      client,
+      fetchImpl: makeSseFetch(["The response is still in progress."]),
+    });
+    const ink = FakeInkSocket.instances.at(-1)!;
+
+    ink.emitTurn("turn.start");
+    ink.emitTurn("turn.end", "start talking");
+    await flush();
+    await flush();
+
+    const activeCartesia = FakeCartesiaSocket.instances.at(-1)!;
+    expect(client.controlTypes()).toContain("speaking_start");
+    expect(activeCartesia.closed).toBe(false);
+
+    // Ink may finalize a short utterance without sending an interim update.
+    ink.emitTurn("turn.start");
+    ink.emitTurn("turn.end", "stop");
+    await flush();
+    expect(client.controlFrames).toContainEqual(
+      expect.objectContaining({ t: "interrupted", reason: "acoustic" }),
+    );
+    expect(activeCartesia.closed).toBe(true);
   });
 
   test("interruption aborts the in-flight Eliza SSE fetch", async () => {

@@ -21,7 +21,7 @@ peer dependencies — the host application owns the React instance.
 bun add @elizaos/ui
 ```
 
-Requires `react` and `react-dom` `19.2.5` as peer dependencies.
+Requires `react` and `react-dom` `19.2.7` as peer dependencies.
 
 ## Usage
 

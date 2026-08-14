@@ -12,6 +12,10 @@ import { cache } from "@/lib/cache/client";
 import { CacheKeys, CacheTTL } from "@/lib/cache/keys";
 import { runWithCloudBindingsAsync } from "@/lib/runtime/cloud-bindings";
 import { warmInferenceAdmissionSnapshot } from "@/lib/services/inference-admission-snapshot";
+import {
+  isPersonalSharedAgentId,
+  personalSharedAgent,
+} from "@/lib/services/shared-runtime/personal-shared-agent";
 import { logger } from "@/lib/utils/logger";
 import type { Bindings } from "@/types/cloud-worker-env";
 import type { InternalElizaConversationFetchClaims } from "./internal-eliza-conversation-fetch";
@@ -24,6 +28,37 @@ export async function hydrateVoiceSharedAgentScope(
     env as unknown as Record<string, unknown>,
     () =>
       runWithDbCacheAsync(async () => {
+        if (isPersonalSharedAgentId(claims.agentId)) {
+          const agent = personalSharedAgent({
+            userId: claims.userId,
+            organizationId: claims.organizationId,
+          });
+          if (agent.id !== claims.agentId) return;
+          await warmInferenceAdmissionSnapshot(claims.organizationId).catch(
+            (error) => {
+              // error-policy:J7 the rowless voice turn remains fail-closed on
+              // its rate-policy cache if this optional prefill cannot finish.
+              logger.warn(
+                "[voice-scope-hydration] personal admission prefill failed",
+                {
+                  agentId: claims.agentId,
+                  organizationId: claims.organizationId,
+                  error: error instanceof Error ? error.message : String(error),
+                },
+              );
+            },
+          );
+          await cache.set(
+            CacheKeys.sharedAgentScope.voice(
+              claims.organizationId,
+              claims.userId,
+              claims.agentId,
+            ),
+            agent,
+            CacheTTL.sharedAgentScope.resolve,
+          );
+          return;
+        }
         const agent = await agentSandboxesRepository.findByIdAndOrg(
           claims.agentId,
           claims.organizationId,
