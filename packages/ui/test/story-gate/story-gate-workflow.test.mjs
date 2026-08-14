@@ -1,7 +1,12 @@
+/**
+ * Verifies the checked-in Story Gate workflow's shard matrix and fail-closed aggregation wiring.
+ */
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
 
+const ALWAYS_EXPRESSION = "$" + "{{ always() }}";
+const MATRIX_SHARD_EXPRESSION = "$" + "{{ matrix.shard }}";
 const workflow = readFileSync(
   new URL("../../../../.github/workflows/ui-story-gate.yml", import.meta.url),
   "utf8",
@@ -33,9 +38,9 @@ describe("UI Story Gate workflow", () => {
       matrix: { shard: [1, 2, 3, 4, 5, 6, 7, 8] },
     });
     expect(shardUpload).toMatchObject({
-      if: "${{ always() }}",
+      if: ALWAYS_EXPRESSION,
       with: {
-        name: "story-gate-shard-${{ matrix.shard }}-of-8",
+        name: `story-gate-shard-${MATRIX_SHARD_EXPRESSION}-of-8`,
         path: "packages/ui/test/story-gate/output",
       },
     });
@@ -43,8 +48,8 @@ describe("UI Story Gate workflow", () => {
 
   it("has an aggregate job that preserves fail-closed evidence", () => {
     expect(aggregateJob.needs).toEqual(["build-catalog", "story-shard"]);
-    expect(aggregateJob.if).toBe("${{ always() }}");
-    expect(aggregateMerge.if).toBe("${{ always() }}");
+    expect(aggregateJob.if).toBe(ALWAYS_EXPRESSION);
+    expect(aggregateMerge.if).toBe(ALWAYS_EXPRESSION);
     expect(aggregateMerge.run).toContain("--shards 8");
 
     const catalogDownload = aggregateJob.steps.find(
@@ -63,7 +68,7 @@ describe("UI Story Gate workflow", () => {
         (step) => step.name === "Upload aggregate Story Gate output",
       ),
     ).toMatchObject({
-      if: "${{ always() }}",
+      if: ALWAYS_EXPRESSION,
       with: { name: "story-gate-output" },
     });
   });

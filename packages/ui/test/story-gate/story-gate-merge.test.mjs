@@ -1,3 +1,6 @@
+/**
+ * Exercises sharded Story Gate aggregation with deterministic reports and temporary artifact trees.
+ */
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -179,6 +182,7 @@ describe("story-gate report aggregation", () => {
       );
       const shardDir = join(inputDir, "story-gate-shard-1-of-1");
       await mkdir(join(shardDir, "screenshots"), { recursive: true });
+      await writeFile(join(shardDir, "screenshots", "a--story.png"), "png");
       await writeFile(
         join(shardDir, "report.json"),
         JSON.stringify(
@@ -207,6 +211,65 @@ describe("story-gate report aggregation", () => {
       ).toMatchObject({
         totals: { stories: 1, failures: 1 },
       });
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("distinguishes malformed shard JSON from a missing artifact", async () => {
+    const root = await mkdtemp(join(tmpdir(), "story-gate-merge-"));
+    const catalogPath = join(root, "catalog.json");
+    const inputDir = join(root, "shards");
+    const outDir = join(root, "output");
+    const shardDir = join(inputDir, "story-gate-shard-1-of-1");
+
+    try {
+      await mkdir(shardDir, { recursive: true });
+      await writeFile(
+        catalogPath,
+        JSON.stringify({ entries: { a: { type: "story", id: "a--story" } } }),
+      );
+      await writeFile(join(shardDir, "report.json"), "{not-json");
+
+      await expect(
+        mergeStoryGateArtifacts({
+          catalogPath,
+          inputDir,
+          outDir,
+          shardCount: 1,
+        }),
+      ).rejects.toThrow("invalid shard report JSON: 1/1");
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("fails closed when a rendered story has no screenshot evidence", async () => {
+    const root = await mkdtemp(join(tmpdir(), "story-gate-merge-"));
+    const catalogPath = join(root, "catalog.json");
+    const inputDir = join(root, "shards");
+    const outDir = join(root, "output");
+    const shardDir = join(inputDir, "story-gate-shard-1-of-1");
+
+    try {
+      await mkdir(shardDir, { recursive: true });
+      await writeFile(
+        catalogPath,
+        JSON.stringify({ entries: { a: { type: "story", id: "a--story" } } }),
+      );
+      await writeFile(
+        join(shardDir, "report.json"),
+        JSON.stringify(report("1/1", [story("a--story")])),
+      );
+
+      await expect(
+        mergeStoryGateArtifacts({
+          catalogPath,
+          inputDir,
+          outDir,
+          shardCount: 1,
+        }),
+      ).rejects.toThrow("missing shard screenshots: 1/1");
     } finally {
       await rm(root, { recursive: true, force: true });
     }
