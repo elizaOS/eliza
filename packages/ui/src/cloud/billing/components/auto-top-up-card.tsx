@@ -142,6 +142,7 @@ export function AutoTopUpCard() {
         }),
       );
     } catch (error) {
+      // error-policy:J1 billing settings save boundary returns a toast
       toast.error(
         error instanceof ApiError
           ? error.message
@@ -154,12 +155,28 @@ export function AutoTopUpCard() {
     }
   };
 
+  const loadingLabel = t("cloud.autoTopUp.loading", {
+    defaultValue: "Loading auto top-up settings",
+  });
+  const saveLabel = t("cloud.autoTopUp.saveAction", {
+    defaultValue: "Save auto top-up",
+  });
+
   if (loading) {
     return (
       <BrandCard className="relative">
         <CornerBrackets size="sm" className="opacity-50" />
-        <div className="flex items-center justify-center py-12">
-          <Loader2 className="h-5 w-5 animate-spin text-muted" />
+        <div
+          className="flex items-center justify-center py-12"
+          role="status"
+          aria-busy="true"
+          aria-label={loadingLabel}
+        >
+          <Loader2
+            className="h-5 w-5 animate-spin text-muted motion-reduce:animate-none"
+            aria-hidden="true"
+          />
+          <span className="sr-only">{loadingLabel}</span>
         </div>
       </BrandCard>
     );
@@ -174,14 +191,14 @@ export function AutoTopUpCard() {
       <div className="relative z-10 space-y-6">
         <div className="flex flex-col gap-2">
           <div className="flex items-center gap-2">
-            <div className="w-2 h-2 rounded-full bg-muted" />
+            <div className="size-2 rounded-full bg-muted" aria-hidden="true" />
             <h3 className="text-base font-mono text-txt uppercase">
               {t("cloud.autoTopUp.title", {
-                defaultValue: "Auto Top-Up (Card)",
+                defaultValue: "Auto top-up (card)",
               })}
             </h3>
           </div>
-          <p className="text-xs font-mono text-muted tracking-tight">
+          <p className="text-pretty text-xs font-mono text-muted">
             {t("cloud.autoTopUp.description", {
               defaultValue:
                 "Automatically charge your saved card when credits dip below the threshold. Earnings auto-fund runs first, so this only fires if earnings can't cover the gap.",
@@ -207,9 +224,19 @@ export function AutoTopUpCard() {
         />
 
         {noPaymentMethod && (
-          <div className="flex items-start gap-2 border border-yellow-500/30 bg-yellow-500/5 p-3">
-            <Info className="h-4 w-4 text-yellow-400 mt-0.5 shrink-0" />
-            <p className="text-xs font-mono text-yellow-300">
+          <div
+            role="status"
+            aria-labelledby="cloud-billing-auto-top-up-payment-warning"
+            className="flex items-start gap-2 border border-status-warning/30 bg-status-warning-bg p-3"
+          >
+            <Info
+              className="mt-0.5 h-4 w-4 shrink-0 text-status-warning"
+              aria-hidden="true"
+            />
+            <p
+              id="cloud-billing-auto-top-up-payment-warning"
+              className="text-pretty text-xs font-mono text-status-warning"
+            >
               {t("cloud.autoTopUp.noPaymentMethod", {
                 defaultValue:
                   "No saved payment method. Add a card on the billing page first to enable auto top-up.",
@@ -267,17 +294,18 @@ export function AutoTopUpCard() {
             type="button"
             onClick={handleSave}
             disabled={saving || !!noPaymentMethod}
+            aria-busy={saving}
             className="bg-txt hover:bg-txt/90 text-bg font-mono"
           >
             {saving ? (
-              <>
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" /> Saving
-              </>
+              <Loader2
+                className="h-4 w-4 animate-spin motion-reduce:animate-none"
+                aria-hidden="true"
+              />
             ) : (
-              <>
-                <CreditCard className="h-4 w-4 mr-2" /> Save
-              </>
+              <CreditCard className="h-4 w-4" aria-hidden="true" />
             )}
+            {saveLabel}
           </Button>
         </div>
       </div>
