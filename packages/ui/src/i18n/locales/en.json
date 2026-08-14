@@ -8217,6 +8217,7 @@
   "cloud.join.retry": "Try again",
   "cloud.join.signingOut": "Signing out...",
   "cloud.join.signOut": "Sign out",
+  "cloud.join.signOutAnyway": "Sign out anyway",
   "cloud.login.back": "Back",
   "cloud.login.callback.codeRejected": "That sign-in link expired or was already used. Please sign in again below.",
   "cloud.login.callback.invalidLink": "We couldn't verify that sign-in link. Request a new one. If it keeps happening, contact support.",
