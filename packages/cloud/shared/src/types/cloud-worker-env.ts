@@ -481,6 +481,7 @@ export interface Bindings {
  */
 export interface AuthedUser {
   id: string;
+  created_at?: Date | string;
   email?: string | null;
   /** Whether `email` is verified — gates the @elizalabs.ai super_admin grant. */
   email_verified?: boolean | null;

@@ -13,18 +13,21 @@ const account = {
 };
 
 describe("personalSharedAgent", () => {
-  test("derives one stable namespaced id per account", () => {
-    const id = personalSharedAgentId(account);
-    expect(personalSharedAgentId({ ...account })).toBe(id);
-    expect(id).toMatch(/^personal:[0-9a-f-]+$/);
-    expect(isPersonalSharedAgentId(id)).toBe(true);
-    expect(isPersonalSharedAgentId(id.slice("personal:".length))).toBe(false);
-    expect(
-      personalSharedAgentId({
-        ...account,
-        userId: "00000000-0000-4000-8000-000000000003",
-      }),
-    ).not.toBe(id);
+  test("derives one stable identity per account without a sandbox row", () => {
+    const first = personalSharedAgentId(account);
+    const second = personalSharedAgentId({ ...account });
+    const otherUser = personalSharedAgentId({
+      ...account,
+      userId: "00000000-0000-4000-8000-000000000003",
+    });
+
+    expect(first).toBe(second);
+    expect(first).toMatch(
+      /^personal:[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+    );
+    expect(isPersonalSharedAgentId(first)).toBe(true);
+    expect(isPersonalSharedAgentId(first.slice("personal:".length))).toBe(false);
+    expect(otherUser).not.toBe(first);
   });
 
   test("projects Eliza without a sandbox record", () => {

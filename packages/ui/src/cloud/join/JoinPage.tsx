@@ -1,13 +1,9 @@
 /**
- * Join page (`/join`) — the post-login landing that drops the user straight into
- * their agent (the headline migration outcome).
+ * Post-login landing that opens the account-native personal Eliza in chat.
  *
- * After Steward login the user is redirected here. This page runs the join flow
- * (select-or-provision a Cloud agent, point the live client at it, persist the
- * `cloud:<agentId>` active server, mark first-run complete), shows a brief
- * progress state, then hard-navigates to `/` — the tab/view app, where chat is
- * home. A full navigation (not an in-router push) is deliberate: it lets the
- * app's startup coordinator boot fresh against the just-persisted cloud server.
+ * After Steward login the page resolves the account-native rowless Shared
+ * Eliza, persists its Cloud binding, then hard-navigates to chat. A full
+ * navigation lets startup restore the new binding from a clean boot.
  *
  * Signed-out app-host visitors first restore a live apex session through the
  * PKCE SSO bridge, or fall back to `/login?returnTo=/join` when no apex session
@@ -22,14 +18,11 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Navigate } from "react-router-dom";
 import { client } from "../../api";
 import { Button } from "../../components/ui/button";
-import { getBootConfig } from "../../config/boot-config-store";
 import {
-  clearPersistedActiveServer,
   savePersistedActiveServer,
   savePersistedFirstRunComplete,
 } from "../../state/persistence";
 import { appModeNavigation } from "../app-mode/app-mode";
-import { openCloudBillingConsole } from "../billing-console";
 import { useCloudT } from "../shell/CloudI18nProvider";
 import {
   clearSsoLoggedOut,
@@ -37,7 +30,6 @@ import {
   shouldAutoBridgeToSso,
 } from "../sso-bridge/sso-bridge";
 import { resolveApexJoinHandoff } from "./lib/apex-app-handoff";
-import { describeJoinCreditGateError } from "./lib/join-credit-gate-error";
 import {
   resolveJoinAuthToken,
   resolveJoinCloudApiBase,
@@ -45,44 +37,11 @@ import {
 import { runJoinFlow } from "./lib/run-join-flow";
 import { useJoinSessionAuth } from "./lib/use-join-session";
 
-/** Default agent name when the user has none and we provision a fresh one. */
-const DEFAULT_AGENT_NAME = "Eliza";
-const DEFAULT_AGENT_BIO = ["An autonomous AI agent powered by elizaOS."];
-
-type JoinPhase = "connecting" | "ready" | "error" | "credit-gate";
-
-/** The last-active Cloud agent id, used as `preferAgentId` so a returning user
- * with several agents resumes the one they used last (not a guess). */
-function readLastActiveCloudAgentId(): string | null {
-  if (typeof window === "undefined") return null;
-  try {
-    const raw = window.localStorage.getItem("elizaos:active-server");
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as { kind?: string; id?: string };
-    if (parsed.kind !== "cloud" || typeof parsed.id !== "string") return null;
-    return parsed.id.startsWith("cloud:")
-      ? parsed.id.slice("cloud:".length).trim() || null
-      : null;
-  } catch {
-    // error-policy:J3 corrupt persisted server entry — no reusable agent id;
-    // the join flow provisions from scratch.
-    return null;
-  }
-}
+type JoinPhase = "connecting" | "ready" | "error";
 
 function describeJoinError(err: unknown): string {
   if (err instanceof Error && err.message.trim()) return err.message;
   return "Could not connect to your agent. Try again.";
-}
-
-function describeJoinCleanupError(
-  err: AggregateError,
-  abortReason: unknown,
-): string {
-  const cleanupError = err.errors.find(
-    (candidate) => candidate !== abortReason,
-  );
-  return `We couldn't finish removing the newly created agent: ${describeJoinError(cleanupError)} You are still signed in so you can retry safely.`;
 }
 
 export default function JoinPage(): React.JSX.Element {
@@ -92,18 +51,13 @@ export default function JoinPage(): React.JSX.Element {
   const [detail, setDetail] = useState<string>("");
   const [error, setError] = useState<string | null>(null);
   const [signingOut, setSigningOut] = useState(false);
-  const [cleanupBlockedSignOut, setCleanupBlockedSignOut] = useState(false);
-  const [creditGateWithheldReason, setCreditGateWithheldReason] = useState<
-    "ip_daily_cap" | "count_unavailable" | null
-  >(null);
   const appHandoff =
     typeof window === "undefined"
       ? null
       : resolveApexJoinHandoff(window.location.hostname);
   const ssoDecisionRef = useRef(false);
   const [ssoBridging, setSsoBridging] = useState<boolean | null>(null);
-  // Guard so React StrictMode's double-mount (and re-renders) don't double-run
-  // the provisioning network calls.
+  // Guard so React StrictMode's double-mount does not duplicate identity reads.
   const startedRef = useRef(false);
   const activeAttemptRef = useRef<{
     controller: AbortController;
@@ -116,24 +70,11 @@ export default function JoinPage(): React.JSX.Element {
       // No session — the auth gate below redirects to login; bail quietly.
       return;
     }
-    const previous = activeAttemptRef.current;
-    if (previous) {
-      previous.controller.abort(
-        new DOMException("Join attempt superseded", "AbortError"),
-      );
-      try {
-        await previous.promise;
-      } catch {
-        // error-policy:J5 the previous attempt surfaced its cleanup failure in
-        // the join error state; refusing to start another selection prevents a
-        // newly adopted row from racing the previous conditional deletion.
-        return;
-      }
-    }
     setPhase("connecting");
     setError(null);
-    setCleanupBlockedSignOut(false);
-    setCreditGateWithheldReason(null);
+    activeAttemptRef.current?.controller.abort(
+      new DOMException("Join attempt superseded", "AbortError"),
+    );
     const controller = new AbortController();
     const attempt = (async () => {
       try {
@@ -141,15 +82,10 @@ export default function JoinPage(): React.JSX.Element {
           client,
           effects: {
             savePersistedActiveServer,
-            clearPersistedActiveServer,
             savePersistedFirstRunComplete,
           },
           cloudApiBase: resolveJoinCloudApiBase(),
           authToken,
-          agentName: DEFAULT_AGENT_NAME,
-          bio: DEFAULT_AGENT_BIO,
-          preferAgentId: readLastActiveCloudAgentId(),
-          preferSharedTier: getBootConfig().preferSharedCloudTier ?? undefined,
           signal: controller.signal,
           onProgress: (_status, progressDetail) => {
             if (progressDetail) setDetail(progressDetail);
@@ -163,44 +99,15 @@ export default function JoinPage(): React.JSX.Element {
         void result;
         if (typeof window !== "undefined") appModeNavigation.assign("/");
       } catch (err) {
-        if (controller.signal.aborted) {
-          if (!(err instanceof AggregateError)) return;
-          setError(describeJoinCleanupError(err, controller.signal.reason));
-          setCleanupBlockedSignOut(true);
-          setPhase("error");
-          throw err;
-        }
-        // The Cloud's credit gate (402) is a payment state, not a connection
-        // failure: retry can never succeed, so render the server's explanation
-        // (e.g. the welcome bonus withheld by the per-IP daily free-credit cap
-        // — CGNAT networks) with an add-funds path instead of the dead-end
-        // "Couldn't connect to your agent" + Retry.
-        const creditGate = describeJoinCreditGateError(err);
-        if (creditGate) {
-          setError(creditGate.message);
-          setCreditGateWithheldReason(
-            creditGate.welcomeBonusWithheld
-              ? (creditGate.welcomeBonusWithheldReason ?? "count_unavailable")
-              : null,
-          );
-          setPhase("credit-gate");
-          return;
-        }
+        if (controller.signal.aborted) return;
         setError(describeJoinError(err));
         setPhase("error");
       }
     })();
     activeAttemptRef.current = { controller, promise: attempt };
-    try {
-      await attempt;
-    } catch {
-      // error-policy:J5 the attempt's catch above rendered the cleanup failure;
-      // the abort initiator also awaits the same rejected promise before it may
-      // sign out or supersede this attempt.
-    } finally {
-      if (activeAttemptRef.current?.controller === controller) {
-        activeAttemptRef.current = null;
-      }
+    await attempt;
+    if (activeAttemptRef.current?.controller === controller) {
+      activeAttemptRef.current = null;
     }
   }, []);
 
@@ -230,9 +137,8 @@ export default function JoinPage(): React.JSX.Element {
     clearSsoLoggedOut();
     if (appHandoff) {
       // The apex is the billing console and cannot boot chat. Hand off before
-      // any join/provisioning request. Preserve /join so the app host restores
-      // the domain-wide session through the existing SSO bridge, then selects
-      // or provisions the agent before opening chat.
+      // any Shared identity request. Preserve /join so the app host restores
+      // the domain-wide session before opening the same account-native Eliza.
       appModeNavigation.replace(appHandoff);
       return;
     }
@@ -253,17 +159,7 @@ export default function JoinPage(): React.JSX.Element {
     active?.controller.abort(
       new DOMException("User signed out during join", "AbortError"),
     );
-    if (active) {
-      try {
-        await active.promise;
-      } catch {
-        // error-policy:J4 the attempt rendered the cleanup failure and kept the Steward
-        // session. A second, explicitly labelled action lets the user choose
-        // to abandon that recoverable state instead of doing so silently.
-        setSigningOut(false);
-        return;
-      }
-    }
+    await active?.promise;
     const { signOutFromSsoBridgedHost } = await import(
       "../sso-bridge/sso-bridge"
     );
@@ -281,9 +177,7 @@ export default function JoinPage(): React.JSX.Element {
     >
       {signingOut
         ? t("cloud.join.signingOut", { defaultValue: "Signing out..." })
-        : cleanupBlockedSignOut
-          ? t("cloud.join.signOutAnyway", { defaultValue: "Sign out anyway" })
-          : t("cloud.join.signOut", { defaultValue: "Sign out" })}
+        : t("cloud.join.signOut", { defaultValue: "Sign out" })}
     </Button>
   );
 
@@ -305,61 +199,11 @@ export default function JoinPage(): React.JSX.Element {
           draggable={false}
         />
 
-        {phase === "credit-gate" ? (
-          <div
-            className="flex flex-col items-center gap-4"
-            data-testid="join-credit-gate"
-          >
-            <h1 className="font-poppins text-lg font-semibold text-white">
-              {creditGateWithheldReason
-                ? t("cloud.join.creditGateWithheldTitle", {
-                    defaultValue: "Welcome credit unavailable",
-                  })
-                : t("cloud.join.creditGateTitle", {
-                    defaultValue: "Add funds to start your agent",
-                  })}
-            </h1>
-            <p className="text-sm text-white/70">
-              {error ??
-                t("cloud.join.creditGateBody", {
-                  defaultValue: "Add funds to start an agent.",
-                })}
-            </p>
-            {creditGateWithheldReason === "ip_daily_cap" ? (
-              <p className="text-sm text-white/50">
-                {t("cloud.join.creditGateWithheldHint", {
-                  defaultValue:
-                    "This limit is per network and resets daily. Your account itself is fine.",
-                })}
-              </p>
-            ) : null}
-            <Button
-              variant="ghost"
-              type="button"
-              onClick={() => {
-                void openCloudBillingConsole();
-              }}
-              className="bg-txt px-6 py-2.5 font-semibold text-bg transition-colors hover:bg-txt/90 hover:!text-bg"
-            >
-              {t("cloud.join.creditGateCta", { defaultValue: "Add funds" })}
-            </Button>
-            <Button
-              variant="ghost"
-              type="button"
-              onClick={handleRetry}
-              className="px-6 py-2 text-sm text-white/70 transition-colors hover:text-white"
-            >
-              {t("cloud.join.creditGateRecheck", {
-                defaultValue: "I've added funds, try again",
-              })}
-            </Button>
-            {signOutButton}
-          </div>
-        ) : phase === "error" ? (
+        {phase === "error" ? (
           <div className="flex flex-col items-center gap-4">
             <h1 className="font-poppins text-lg font-semibold text-white">
               {t("cloud.join.errorTitle", {
-                defaultValue: "Couldn't connect to your agent",
+                defaultValue: "Couldn't open your Eliza",
               })}
             </h1>
             <p className="text-sm text-white/70">
@@ -388,7 +232,7 @@ export default function JoinPage(): React.JSX.Element {
             <p className="text-sm text-white/72">
               {detail ||
                 t("cloud.join.connecting", {
-                  defaultValue: "Connecting you to your agent...",
+                  defaultValue: "Opening your personal Eliza...",
                 })}
             </p>
             {signOutButton}

@@ -34,6 +34,7 @@ export interface CanonicalScopedStreamRequest {
   orgId: string;
   conversationId: string;
   userId?: string;
+  agentKind?: "sandbox" | "personal";
   namespace: RuntimeDurableObjectNamespace;
   executionCtx: BridgeExecutionContext;
   abortSignal?: AbortSignal;
@@ -111,6 +112,7 @@ export async function handleCanonicalScopedAgentStream(
       abortSignal: request.abortSignal,
       namespace: request.namespace,
       executionCtx: request.executionCtx,
+      agentKind: request.agentKind,
     });
     timings.bridge = elapsedMs(bridgeStartedAt);
   } catch (error) {
