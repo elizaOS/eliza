@@ -5,11 +5,12 @@
  *
  * The fakes here are transports only — fake Ink socket, fake Sonic
  * socket, fake client socket, fake Eliza SSE fetch. Everything under test
- * (hello-first auth, framing, uplink re-framing, phrase aggregation, TTS
- * streaming, interruption, metering, revoke-to-silence) is the real code path.
+ * (hello-first auth, framing, uplink re-framing, whole-answer speech routing,
+ * TTS streaming, interruption, metering, revoke-to-silence) is the real path.
  */
 
 import { afterEach, beforeAll, describe, expect, mock, test } from "bun:test";
+import { projectVoiceOutput } from "@elizaos/shared";
 import { decode, encode } from "@msgpack/msgpack";
 
 // Break the logger -> @elizaos/core transitive import chain (repo-standard
@@ -26,7 +27,10 @@ mock.module("@elizaos/core", () => ({
 
 import type { CartesiaWebSocketLike } from "../../../../../shared/src/lib/services/cartesia-sonic-tts";
 import type { FishAudioWebSocketLike } from "../../../../../shared/src/lib/services/fish-audio-tts";
-import { InMemoryVoiceUsageStore } from "../../../../../shared/src/lib/services/voice-usage-meter";
+import {
+  InMemoryVoiceUsageStore,
+  type VoiceUsageStore,
+} from "../../../../../shared/src/lib/services/voice-usage-meter";
 import {
   mintVoiceSessionToken,
   VoiceSessionTokenError,
@@ -39,7 +43,11 @@ import {
 import { installVoiceSessionTestSigningKey } from "../../../../../shared/src/lib/voice-session/test-signing";
 import { attachVoiceWsHandler } from "../../../../../shared/src/lib/voice-session/ws-handler";
 import type { CartesiaInkWebSocket } from "../../stt/providers/cartesia-ink";
-import { VoiceSession } from "../lib/session";
+import {
+  type AcousticInterruptPolicy,
+  isSpokenStopCommand,
+  VoiceSession,
+} from "../lib/session";
 
 // --- signing setup --------------------------------------------------------
 
@@ -459,6 +467,8 @@ async function connectSession(opts: {
   prewarmElizaContext?: () => Promise<void>;
   openingGreeting?: string;
   cacheWarmingRetryDelaysMs?: readonly number[];
+  acousticInterruptPolicy?: AcousticInterruptPolicy;
+  usageStore?: VoiceUsageStore;
   onClearAudio?: () => void;
   fish?: {
     enabled?: boolean;
@@ -467,7 +477,7 @@ async function connectSession(opts: {
   };
 }): Promise<{ sessionId: string }> {
   const minted = await mintVoiceSessionToken(CLAIMS);
-  const usageStore = new InMemoryVoiceUsageStore();
+  const usageStore = opts.usageStore ?? new InMemoryVoiceUsageStore();
 
   attachVoiceWsHandler(opts.client, {
     requestedSessionId: CLAIMS.sessionId,
@@ -480,6 +490,8 @@ async function connectSession(opts: {
         agentId: claims.agentId,
         conversationId: claims.conversationId,
         tokenExpSeconds,
+        acousticInterruptPolicy:
+          opts.acousticInterruptPolicy ?? "confirmed_speech",
         cartesiaInkWebSocketFactory:
           opts.inkSocketFactory ?? (() => new FakeInkSocket()),
         cartesiaApiKey: "ct-key",
@@ -552,9 +564,55 @@ function pcmChunk(bytes: number): Uint8Array {
   return new Uint8Array(bytes);
 }
 
+function expectLegacyTerminalBeforeTurnEnd(
+  client: FakeClientSocket,
+  outcome: "no_response" | "error" | "stopped",
+): void {
+  const turnEndIndex = client.controlFrames.findIndex(
+    (frame) => frame.t === "turn_end" && frame.outcome === outcome,
+  );
+  expect(turnEndIndex).toBeGreaterThanOrEqual(0);
+  const turnEnd = client.controlFrames[turnEndIndex];
+  if (turnEnd?.t !== "turn_end") {
+    throw new Error(`missing ${outcome} turn_end`);
+  }
+  const legacyEndIndex = client.controlFrames.findIndex(
+    (frame, index) =>
+      index < turnEndIndex &&
+      frame.t === "speaking_end" &&
+      frame.traceId === turnEnd.traceId,
+  );
+  expect(legacyEndIndex).toBeGreaterThanOrEqual(0);
+  expect(legacyEndIndex).toBeLessThan(turnEndIndex);
+}
+
 // --- tests ----------------------------------------------------------------
 
 describe("voice-session WS lifecycle", () => {
+  test("spoken stop classifier accepts only self-contained control utterances", () => {
+    for (const command of [
+      "stop",
+      "Okay, stop.",
+      "please stop talking",
+      "STOP SPEAKING NOW!",
+      "be quiet",
+      "never mind",
+      "that's enough",
+    ]) {
+      expect(isSpokenStopCommand(command)).toBe(true);
+    }
+    for (const ordinaryTurn of [
+      "do not stop",
+      "don't stop",
+      "stop the timer",
+      "stop talking and open notes",
+      "can you please stop talking",
+      "unstoppable",
+    ]) {
+      expect(isSpokenStopCommand(ordinaryTurn)).toBe(false);
+    }
+  });
+
   test("speaks a live opening greeting while the agent context warms", async () => {
     const client = new FakeClientSocket();
     let responseRequests = 0;
@@ -577,6 +635,9 @@ describe("voice-session WS lifecycle", () => {
     cartesia.emitDone();
     await flush();
     expect(client.controlTypes()).toContain("speaking_end");
+    expect(client.controlFrames).toContainEqual(
+      expect.objectContaining({ t: "turn_end", outcome: "spoken" }),
+    );
   });
 
   test("stt_final posts the transcript to the canonical agent conversation stream with scoped identity", async () => {
@@ -616,6 +677,7 @@ describe("voice-session WS lifecycle", () => {
     );
     expect(requests[0].body).toEqual({
       text: "hello agent",
+      clientMessageId: expect.stringContaining("voice:sess-lifecycle:turn:1:"),
       metadata: { clientTransport: "realtime_voice" },
       streamProtocol: "delta-v2",
     });
@@ -946,7 +1008,9 @@ describe("voice-session WS lifecycle", () => {
     expect(fish.sentText()).toBe(
       "Fish primary response reaches audio quickly.",
     );
-    expect(fish.sentFrames()).toContainEqual({ event: "flush" });
+    expect(
+      fish.sentFrames().filter((frame) => frame.event === "text"),
+    ).toHaveLength(1);
     expect(fish.sentFrames().at(-1)).toEqual({ event: "stop" });
     expect(client.audioFrames.at(-1)).toEqual(new Uint8Array([9, 8, 7, 6]));
   });
@@ -1066,9 +1130,12 @@ describe("voice-session WS lifecycle", () => {
     expect(cartesia.closed).toBe(true);
     expect(client.controlTypes()).toContain("usage");
     expect(client.controlTypes()).not.toContain("speaking_start");
+    expect(client.controlFrames).toContainEqual(
+      expect.objectContaining({ t: "turn_end", outcome: "no_response" }),
+    );
   });
 
-  test("starts TTS after 24 chars before an unpunctuated LLM stream completes", async () => {
+  test("keeps every raw delta out of TTS until an explicit terminal frame", async () => {
     let aborted = false;
     const client = new FakeClientSocket();
     await connectSession({
@@ -1089,8 +1156,9 @@ describe("voice-session WS lifecycle", () => {
     await flush();
     await flush();
 
-    // No punctuation or stream-end was delivered, but the voice-specific
-    // clause ceiling must already have sent a continuation phrase to Cartesia.
+    // The first delta is long and speakable, but it is not authoritative until
+    // the stream terminates. This is the boundary that prevents split secrets,
+    // paths, code, and tables from leaking a prefix to synthesis.
     const cartesia = FakeCartesiaSocket.instances.at(-1)!;
     const requests = cartesia.sent
       .map(
@@ -1098,20 +1166,26 @@ describe("voice-session WS lifecycle", () => {
           JSON.parse(entry) as { transcript?: string; continue?: boolean },
       )
       .filter((entry) => entry.transcript);
-    expect(requests.length).toBeGreaterThan(0);
-    expect(requests[0]?.continue).toBe(true);
-    expect(client.controlTypes()).toContain("speaking_start");
+    expect(requests).toHaveLength(0);
+    expect(client.controlTypes()).not.toContain("speaking_start");
 
     client.clientSend(JSON.stringify({ t: "barge_in" }));
     await flush();
     expect(aborted).toBe(true);
+    expect(cartesia.closed).toBe(true);
+    expect(cartesia.sentText()).toBe("");
   });
 
-  test("starts TTS from a phrase prefix while retaining a non-empty terminal suffix", async () => {
+  test("projects safe terminal prose into exactly one bounded TTS input", async () => {
     const client = new FakeClientSocket();
+    const canonical = `${"A useful sentence with ordinary prose. ".repeat(30)}Done.`;
     await connectSession({
       client,
-      fetchImpl: makeSseFetch(["Sunlight reaches Earth quickly."]),
+      fetchImpl: makeSseFetch([
+        canonical.slice(0, 210),
+        canonical.slice(210, 640),
+        canonical.slice(640),
+      ]),
     });
     const ink = FakeInkSocket.instances.at(-1)!;
     ink.emitTurn("turn.start");
@@ -1126,12 +1200,171 @@ describe("voice-session WS lifecycle", () => {
           JSON.parse(entry) as { transcript?: string; continue?: boolean },
       )
       .filter((entry) => entry.transcript);
-    expect(requests.length).toBeGreaterThanOrEqual(2);
-    expect(requests.map((request) => request.transcript).join("")).toBe(
-      "Sunlight reaches Earth quickly.",
+    expect(requests).toHaveLength(1);
+    const expected = projectVoiceOutput(
+      { policy: "both", display: { markdown: canonical } },
+      { maxSpeechChars: 600 },
     );
-    expect(requests[0]?.continue).toBe(true);
-    expect(requests.at(-1)?.continue).toBe(false);
+    expect(expected.captions).toBe(expected.speechText);
+    if (expected.captions === null) {
+      throw new Error("safe prose projection unexpectedly blocked speech");
+    }
+    expect(requests[0]?.transcript).toBe(expected.captions);
+    expect(requests[0]?.transcript?.length).toBeLessThanOrEqual(600);
+    expect(requests[0]?.transcript).not.toBe(canonical);
+    expect(requests[0]?.transcript?.endsWith("…")).toBe(true);
+    expect(requests[0]?.continue).toBe(false);
+  });
+
+  test("blocks a credential whose signature is split across SSE deltas", async () => {
+    const client = new FakeClientSocket();
+    await connectSession({
+      client,
+      fetchImpl: makeSseFetch([
+        "The configured key is sk_car_",
+        "AAAAAAAAAAAAAAAAAAAAAA and must stay on screen.",
+      ]),
+    });
+    const ink = FakeInkSocket.instances.at(-1)!;
+    ink.emitTurn("turn.start");
+    ink.emitTurn("turn.end", "read the key");
+    await flush();
+    await flush();
+
+    const cartesia = FakeCartesiaSocket.instances.at(-1)!;
+    expect(cartesia.sentText()).toBe("");
+    expect(cartesia.closed).toBe(true);
+    expect(client.controlFrames).toContainEqual(
+      expect.objectContaining({ t: "turn_end", outcome: "displayed" }),
+    );
+    expect(client.controlFrames).toContainEqual(
+      expect.objectContaining({ t: "usage", ttsChars: 0 }),
+    );
+  });
+
+  test.each([
+    ["code", "```ts\nconst answer = 42;\n```"],
+    ["table", "| Name | Value |\n| --- | --- |\n| answer | 42 |"],
+    ["path", "Open /var/tmp/eliza/report.txt for the exact report."],
+  ])(
+    "summarizes terminal %s for speech without sending the structured payload",
+    async (_kind, canonical) => {
+      const client = new FakeClientSocket();
+      await connectSession({
+        client,
+        fetchImpl: makeSseFetch([
+          canonical.slice(0, Math.floor(canonical.length / 2)),
+          canonical.slice(Math.floor(canonical.length / 2)),
+        ]),
+      });
+      const ink = FakeInkSocket.instances.at(-1)!;
+      ink.emitTurn("turn.start");
+      ink.emitTurn("turn.end", "show the exact details");
+      await flush();
+      await flush();
+
+      const cartesia = FakeCartesiaSocket.instances.at(-1)!;
+      const requests = cartesia.sent
+        .map(
+          (entry) =>
+            JSON.parse(entry) as {
+              transcript?: string;
+              continue?: boolean;
+            },
+        )
+        .filter((entry) => typeof entry.transcript === "string");
+      expect(requests).toHaveLength(1);
+      expect(requests[0]?.transcript).toContain("screen");
+      expect(requests[0]?.transcript).not.toBe(canonical);
+      expect(requests[0]?.continue).toBe(false);
+    },
+  );
+
+  test.each(["show", "never_speak"] as const)(
+    "honors terminal %s policy with canonical display and zero TTS input",
+    async (policy) => {
+      const canonical = `Display-only answer for ${policy}.`;
+      const client = new FakeClientSocket();
+      await connectSession({
+        client,
+        fetchImpl: makeLocalTokenFetch([{ text: canonical }], {
+          fullText: canonical,
+          voiceOutput: { policy },
+        }),
+      });
+      const ink = FakeInkSocket.instances.at(-1)!;
+      ink.emitTurn("turn.start");
+      ink.emitTurn("turn.end", "show this without speaking");
+      await flush();
+      await flush();
+
+      const cartesia = FakeCartesiaSocket.instances.at(-1)!;
+      expect(cartesia.sentText()).toBe("");
+      expect(cartesia.closed).toBe(true);
+      expect(client.controlFrames).toContainEqual(
+        expect.objectContaining({ t: "turn_end", outcome: "displayed" }),
+      );
+      expect(client.controlFrames).toContainEqual(
+        expect.objectContaining({ t: "usage", ttsChars: 0 }),
+      );
+    },
+  );
+
+  test("uses explicit concise speech while canonical display remains authoritative", async () => {
+    const canonical =
+      "Canonical display includes exact details the chat already persisted.";
+    const spoken = "I put the exact details on screen.";
+    const client = new FakeClientSocket();
+    await connectSession({
+      client,
+      fetchImpl: makeLocalTokenFetch([{ text: canonical }], {
+        fullText: canonical,
+        voiceOutput: { policy: "both", spoken },
+      }),
+    });
+    const ink = FakeInkSocket.instances.at(-1)!;
+    ink.emitTurn("turn.start");
+    ink.emitTurn("turn.end", "give me both outputs");
+    await flush();
+    await flush();
+
+    const cartesia = FakeCartesiaSocket.instances.at(-1)!;
+    const requests = cartesia.sent
+      .map(
+        (entry) =>
+          JSON.parse(entry) as { transcript?: string; continue?: boolean },
+      )
+      .filter((entry) => typeof entry.transcript === "string");
+    expect(requests).toEqual([
+      expect.objectContaining({ transcript: spoken, continue: false }),
+    ]);
+    expect(cartesia.sentText()).not.toContain(canonical);
+  });
+
+  test("coerces unsupported say-only policy to both without hiding canonical display", async () => {
+    const canonical = "This canonical answer remains in normal chat.";
+    const client = new FakeClientSocket();
+    await connectSession({
+      client,
+      fetchImpl: makeLocalTokenFetch([{ text: canonical }], {
+        fullText: canonical,
+        voiceOutput: { policy: "say" },
+      }),
+    });
+    const ink = FakeInkSocket.instances.at(-1)!;
+    ink.emitTurn("turn.start");
+    ink.emitTurn("turn.end", "say it");
+    await flush();
+    await flush();
+
+    const cartesia = FakeCartesiaSocket.instances.at(-1)!;
+    expect(cartesia.sentText()).toBe(canonical);
+    expect(
+      cartesia.sent.filter((entry) => {
+        const request = JSON.parse(entry) as { transcript?: unknown };
+        return typeof request.transcript === "string";
+      }),
+    ).toHaveLength(1);
   });
 
   test("canonical chunk/done SSE frames are parsed into speakable LLM text", async () => {
@@ -1261,7 +1494,7 @@ describe("voice-session WS lifecycle", () => {
     expect(client.controlTypes()).toContain("speaking_end");
   });
 
-  test("canonical incremental SSE chunk reaches Cartesia before stream completion", async () => {
+  test("canonical incremental SSE chunk reaches Cartesia only after stream completion", async () => {
     const controlled = makeControlledCanonicalChunkFetch();
     const client = new FakeClientSocket();
     await connectSession({
@@ -1280,26 +1513,36 @@ describe("voice-session WS lifecycle", () => {
 
     const cartesia = FakeCartesiaSocket.instances.at(-1)!;
     expect(client.controlTypes()).toContain("llm_first_text");
-    const spokenPrefix = cartesia.sentText();
-    expect(spokenPrefix.length).toBeGreaterThan(0);
-    expect(streamedChunk.startsWith(spokenPrefix)).toBe(true);
-    expect(client.audioFrames.length).toBeGreaterThan(0);
+    expect(cartesia.sentText()).toBe("");
+    expect(client.audioFrames).toHaveLength(0);
     expect(client.controlTypes()).not.toContain("usage");
 
     controlled.finish();
     await flush();
+    const synthesisRequests = cartesia.sent
+      .map(
+        (entry) =>
+          JSON.parse(entry) as { transcript?: string; continue?: boolean },
+      )
+      .filter((entry) => typeof entry.transcript === "string");
+    expect(synthesisRequests).toEqual([
+      expect.objectContaining({
+        transcript: streamedChunk.trim(),
+        continue: false,
+      }),
+    ]);
+    expect(client.audioFrames.length).toBeGreaterThan(0);
     cartesia.emitDone();
     await flush();
     expect(client.controlTypes()).toContain("usage");
   });
 
-  test("terminal Cartesia phrase carries continue:false and no empty-transcript finish (live-provider fix)", async () => {
+  test("the one terminal Cartesia input carries continue:false and is never empty", async () => {
     // Regression from the LIVE-provider evidence run: the session used to send
     // every phrase with continue:true then an empty-transcript finish(), which
     // the real Cartesia API rejects with "No valid transcripts passed" (400) ->
-    // tts_error, zero audio. The fix holds one phrase back so the terminal
-    // speakable phrase closes the context with continue:false, and NEVER sends
-    // an empty transcript.
+    // tts_error, zero audio. Whole-answer routing now sends one safe non-empty
+    // terminal input with continue:false and never needs an empty finish.
     const client = new FakeClientSocket();
     await connectSession({
       client,
@@ -1320,14 +1563,13 @@ describe("voice-session WS lifecycle", () => {
         (r) => typeof r.transcript !== "string" || r.transcript.length > 0,
       ),
     ).toBe(true);
-    // Exactly the terminal speakable phrase closes the context (continue:false);
-    // all earlier phrases keep it open (continue:true).
+    // The one whole-answer projection closes the context (continue:false).
     const withText = requests.filter(
       (r) => typeof r.transcript === "string" && r.transcript.length > 0,
     );
-    expect(withText.length).toBeGreaterThan(0);
+    expect(withText).toHaveLength(1);
     expect(withText.at(-1)!.continue).toBe(false);
-    for (const r of withText.slice(0, -1)) expect(r.continue).toBe(true);
+    expect(withText[0]?.transcript).toBe("Hello there. The weather is sunny.");
   });
 
   test("end_audio is a graceful no-op (not control_unknown_type) after ready", async () => {
@@ -1349,28 +1591,38 @@ describe("voice-session WS lifecycle", () => {
     expect(client.closedWith).toBeNull();
   });
 
-  test("empty-transcript final closes the turn (usage + clears turn id)", async () => {
-    const client = new FakeClientSocket();
-    await connectSession({ client, fetchImpl: makeSseFetch(["unused."]) });
-    const ink = FakeInkSocket.instances.at(-1)!;
-    ink.emitTurn("turn.start");
-    ink.emitTurn("turn.end", ""); // silence/noise: empty final.
-    await flush();
-    // The empty turn is closed out: a usage frame is emitted and no TTS runs.
-    expect(client.controlTypes()).toContain("stt_final");
-    expect(client.controlTypes()).toContain("usage");
-    expect(client.controlTypes()).not.toContain("speaking_start");
-    // A stray barge_in now does NOT emit interrupted (no active turn).
-    const beforeInterrupt = client.controlFrames.filter(
-      (f) => f.t === "interrupted",
-    ).length;
-    client.clientSend(JSON.stringify({ t: "barge_in" }));
-    await flush();
-    const afterInterrupt = client.controlFrames.filter(
-      (f) => f.t === "interrupted",
-    ).length;
-    expect(afterInterrupt).toBe(beforeInterrupt);
-  });
+  test.each([
+    ["empty", ""],
+    ["punctuation", "..."],
+  ])(
+    "%s-transcript final closes with legacy and explicit no-response terminals",
+    async (_kind, transcript) => {
+      const client = new FakeClientSocket();
+      await connectSession({ client, fetchImpl: makeSseFetch(["unused."]) });
+      const ink = FakeInkSocket.instances.at(-1)!;
+      ink.emitTurn("turn.start");
+      ink.emitTurn("turn.end", transcript);
+      await flush();
+      // The empty turn is closed out: a usage frame is emitted and no TTS runs.
+      expect(client.controlTypes()).toContain("stt_final");
+      expect(client.controlTypes()).toContain("usage");
+      expect(client.controlFrames).toContainEqual(
+        expect.objectContaining({ t: "turn_end", outcome: "no_response" }),
+      );
+      expectLegacyTerminalBeforeTurnEnd(client, "no_response");
+      expect(client.controlTypes()).not.toContain("speaking_start");
+      // A stray barge_in now does NOT emit interrupted (no active turn).
+      const beforeInterrupt = client.controlFrames.filter(
+        (f) => f.t === "interrupted",
+      ).length;
+      client.clientSend(JSON.stringify({ t: "barge_in" }));
+      await flush();
+      const afterInterrupt = client.controlFrames.filter(
+        (f) => f.t === "interrupted",
+      ).length;
+      expect(afterInterrupt).toBe(beforeInterrupt);
+    },
+  );
 
   test("uplink is re-framed to exact 3200-byte Ink chunks", async () => {
     const client = new FakeClientSocket();
@@ -1414,6 +1666,7 @@ describe("voice-session WS lifecycle", () => {
       }),
     );
     expect(client.controlTypes()).toContain("usage");
+    expectLegacyTerminalBeforeTurnEnd(client, "error");
     expect(client.closedWith).toBeNull();
   });
 
@@ -1435,6 +1688,9 @@ describe("voice-session WS lifecycle", () => {
     );
     expect(error).toMatchObject({ retryable: true });
     expect(client.controlTypes()).toContain("usage");
+    expect(client.controlFrames).toContainEqual(
+      expect.objectContaining({ t: "turn_end", outcome: "error" }),
+    );
 
     const usageCount = client
       .controlTypes()
@@ -1480,7 +1736,7 @@ describe("voice-session WS lifecycle", () => {
     expect(client.controlTypes()).not.toContain("error");
     expect(client.controlTypes()).toContain("llm_first_text");
     const cartesia = FakeCartesiaSocket.instances.at(-1)!;
-    expect(cartesia.sentText()).toBe("Cache warmed.Here is your answer.");
+    expect(cartesia.sentText()).toBe("Cache warmed. Here is your answer.");
     cartesia.emitDone();
     await flush();
     expect(client.controlTypes()).toContain("speaking_end");
@@ -1580,6 +1836,9 @@ describe("voice-session WS lifecycle", () => {
       }),
     );
     expect(client.controlTypes()).toContain("usage");
+    expect(client.controlFrames).toContainEqual(
+      expect.objectContaining({ t: "turn_end", outcome: "error" }),
+    );
     const usageCount = client
       .controlTypes()
       .filter((t) => t === "usage").length;
@@ -1628,10 +1887,11 @@ describe("voice-session WS lifecycle", () => {
     expect(client.audioFrames.length).toBe(framesAfterInterrupt);
   });
 
-  test("semantic turn-start interrupts immediately and the caller gets the next response", async () => {
+  test("semantic-start policy interrupts immediately and the caller gets the next response", async () => {
     const client = new FakeClientSocket();
     await connectSession({
       client,
+      acousticInterruptPolicy: "semantic_start",
       fetchImpl: makeSseFetch([
         "I will keep speaking until you say something.",
       ]),
@@ -1664,11 +1924,375 @@ describe("voice-session WS lifecycle", () => {
     expect(client.audioFrames.length).toBeGreaterThan(audioBeforeInterruption);
   });
 
+  test("confirmed-speech policy preserves an active response across empty and punctuation false starts", async () => {
+    const client = new FakeClientSocket();
+    await connectSession({
+      client,
+      fetchImpl: makeSseFetch(["This response must survive false starts."]),
+    });
+    const ink = FakeInkSocket.instances.at(-1)!;
+
+    ink.emitTurn("turn.start");
+    ink.emitTurn("turn.end", "begin speaking");
+    await flush();
+    await flush();
+
+    const activeCartesia = FakeCartesiaSocket.instances.at(-1)!;
+    const interruptedBefore = client
+      .controlTypes()
+      .filter((type) => type === "interrupted").length;
+    const finalsBefore = client
+      .controlTypes()
+      .filter((type) => type === "stt_final").length;
+
+    for (const falseTranscript of ["", "..."]) {
+      ink.emitTurn("turn.start");
+      ink.emitTurn("turn.eager_end", falseTranscript);
+      ink.emitTurn("turn.end", falseTranscript);
+      await flush();
+      expect(activeCartesia.closed).toBe(false);
+    }
+
+    expect(
+      client.controlTypes().filter((type) => type === "interrupted"),
+    ).toHaveLength(interruptedBefore);
+    expect(
+      client.controlTypes().filter((type) => type === "stt_final"),
+    ).toHaveLength(finalsBefore);
+
+    // The old completion callback is still authoritative after both false
+    // starts; losing its turn id would drop this terminal event.
+    activeCartesia.emitDone();
+    await flush();
+    expect(client.controlFrames).toContainEqual(
+      expect.objectContaining({ t: "turn_end", outcome: "spoken" }),
+    );
+  });
+
+  test("discarded protected false starts do not leak STT accounting into the response or next turn", async () => {
+    const client = new FakeClientSocket();
+    await connectSession({
+      client,
+      fetchImpl: makeSseFetch(["First response.", "Second response."]),
+    });
+    const ink = FakeInkSocket.instances.at(-1)!;
+
+    // Admission charges one five-second STT window. Keep it as the old turn's
+    // baseline, then accrue another five seconds only while Ink evaluates a
+    // protected noise start.
+    client.clientSend(pcmChunk(3200));
+    await flush();
+    ink.emitTurn("turn.start");
+    ink.emitTurn("turn.end", "first real turn");
+    await flush();
+    await flush();
+    const firstCartesia = FakeCartesiaSocket.instances.at(-1)!;
+
+    ink.emitTurn("turn.start");
+    for (let second = 0; second < 5; second += 1) {
+      for (let chunk = 0; chunk < 10; chunk += 1) {
+        client.clientSend(pcmChunk(3200));
+      }
+      await flush();
+    }
+    ink.emitTurn("turn.end", "...");
+    await flush();
+    firstCartesia.emitDone();
+    await flush();
+
+    const firstEnd = client.controlFrames.find(
+      (frame) => frame.t === "turn_end" && frame.outcome === "spoken",
+    );
+    if (firstEnd?.t !== "turn_end") {
+      throw new Error("missing first spoken turn terminal");
+    }
+    expect(
+      client.controlFrames.find(
+        (frame) => frame.t === "usage" && frame.traceId === firstEnd.traceId,
+      ),
+    ).toMatchObject({ sttMs: 5_000 });
+
+    ink.emitTurn("turn.start");
+    ink.emitTurn("turn.end", "second real turn");
+    await flush();
+    await flush();
+    FakeCartesiaSocket.instances.at(-1)!.emitDone();
+    await flush();
+
+    const spokenEnds = client.controlFrames.filter(
+      (frame) => frame.t === "turn_end" && frame.outcome === "spoken",
+    );
+    const secondEnd = spokenEnds.at(-1);
+    if (secondEnd?.t !== "turn_end") {
+      throw new Error("missing second spoken turn terminal");
+    }
+    expect(
+      client.controlFrames.find(
+        (frame) => frame.t === "usage" && frame.traceId === secondEnd.traceId,
+      ),
+    ).toMatchObject({ sttMs: 0 });
+  });
+
+  test("a response completing during a protected false start excludes provisional audio", async () => {
+    const client = new FakeClientSocket();
+    await connectSession({
+      client,
+      fetchImpl: makeSseFetch(["First response.", "Second response."]),
+    });
+    const ink = FakeInkSocket.instances.at(-1)!;
+
+    client.clientSend(pcmChunk(3200));
+    await flush();
+    ink.emitTurn("turn.start");
+    ink.emitTurn("turn.end", "first real turn");
+    await flush();
+    await flush();
+    const firstCartesia = FakeCartesiaSocket.instances.at(-1)!;
+
+    ink.emitTurn("turn.start");
+    for (let chunk = 0; chunk < 10; chunk += 1) {
+      client.clientSend(pcmChunk(3200));
+    }
+    await flush();
+
+    // The old response can finish while Ink is still deciding whether the
+    // acoustic start contains speech. Its terminal usage must contain only
+    // the old response's admitted telemetry, never the provisional second.
+    firstCartesia.emitDone();
+    await flush();
+    const firstEnd = client.controlFrames.find(
+      (frame) => frame.t === "turn_end" && frame.outcome === "spoken",
+    );
+    if (firstEnd?.t !== "turn_end") {
+      throw new Error("missing first spoken turn terminal");
+    }
+    expect(
+      client.controlFrames.find(
+        (frame) => frame.t === "usage" && frame.traceId === firstEnd.traceId,
+      ),
+    ).toMatchObject({ sttMs: 5_000 });
+
+    ink.emitTurn("turn.end", "...");
+    await flush();
+    ink.emitTurn("turn.start");
+    ink.emitTurn("turn.end", "second real turn");
+    await flush();
+    await flush();
+    FakeCartesiaSocket.instances.at(-1)!.emitDone();
+    await flush();
+
+    const secondEnd = client.controlFrames
+      .filter((frame) => frame.t === "turn_end" && frame.outcome === "spoken")
+      .at(-1);
+    if (secondEnd?.t !== "turn_end") {
+      throw new Error("missing second spoken turn terminal");
+    }
+    expect(
+      client.controlFrames.find(
+        (frame) => frame.t === "usage" && frame.traceId === secondEnd.traceId,
+      ),
+    ).toMatchObject({ sttMs: 0 });
+  });
+
+  test("false-start telemetry reset keeps the irreversible five-second quota accumulator monotonic", async () => {
+    const recordedMinutes: number[] = [];
+    const usageStore: VoiceUsageStore = {
+      async checkAndRecord(_identity, requestedMinutes) {
+        recordedMinutes.push(requestedMinutes);
+        const used = recordedMinutes.reduce((sum, value) => sum + value, 0);
+        return {
+          allowed: true,
+          organizationUsedMinutes: used,
+          userUsedMinutes: used,
+          day: "2026-08-14",
+        };
+      },
+      async release() {},
+    };
+    const client = new FakeClientSocket();
+    await connectSession({
+      client,
+      usageStore,
+      fetchImpl: makeSseFetch(["Response stays active."]),
+    });
+    const ink = FakeInkSocket.instances.at(-1)!;
+
+    client.clientSend(pcmChunk(3200));
+    await flush();
+    ink.emitTurn("turn.start");
+    ink.emitTurn("turn.end", "start response");
+    await flush();
+    await flush();
+    const activeCartesia = FakeCartesiaSocket.instances.at(-1)!;
+
+    // Four seconds are below the ongoing five-second flush boundary.
+    for (let chunk = 0; chunk < 40; chunk += 1) {
+      client.clientSend(pcmChunk(3200));
+    }
+    ink.emitTurn("turn.start");
+    // Two false-start seconds cross the boundary once (4 + 2 = 6 seconds).
+    for (let chunk = 0; chunk < 20; chunk += 1) {
+      client.clientSend(pcmChunk(3200));
+    }
+    await flush();
+    ink.emitTurn("turn.end", "...");
+    await flush();
+    // A later second must not be charged again by rewinding the quota carry.
+    for (let chunk = 0; chunk < 10; chunk += 1) {
+      client.clientSend(pcmChunk(3200));
+    }
+    await flush();
+
+    expect(recordedMinutes).toHaveLength(2);
+    expect(recordedMinutes[0]).toBeCloseTo(5 / 60, 10);
+    expect(recordedMinutes[1]).toBeCloseTo(5 / 60, 10);
+    activeCartesia.emitDone();
+    await flush();
+  });
+
+  test("confirmed provisional speech moves its STT telemetry to the replacement turn", async () => {
+    const client = new FakeClientSocket();
+    await connectSession({
+      client,
+      fetchImpl: makeSseFetch(["First response.", "Replacement response."]),
+    });
+    const ink = FakeInkSocket.instances.at(-1)!;
+    client.clientSend(pcmChunk(3200));
+    await flush();
+    ink.emitTurn("turn.start");
+    ink.emitTurn("turn.end", "first turn");
+    await flush();
+    await flush();
+
+    ink.emitTurn("turn.start");
+    for (let chunk = 0; chunk < 10; chunk += 1) {
+      client.clientSend(pcmChunk(3200));
+    }
+    ink.emitTurn("turn.update", "wait");
+    await flush();
+    ink.emitTurn("turn.end", "wait");
+    await flush();
+    await flush();
+    FakeCartesiaSocket.instances.at(-1)!.emitDone();
+    await flush();
+
+    const interruption = client.controlFrames.find(
+      (frame) => frame.t === "interrupted" && frame.reason === "acoustic",
+    );
+    if (interruption?.t !== "interrupted") {
+      throw new Error("missing acoustic interruption");
+    }
+    expect(
+      client.controlFrames.find(
+        (frame) =>
+          frame.t === "usage" && frame.traceId === interruption.traceId,
+      ),
+    ).toMatchObject({ sttMs: 5_000 });
+    const replacementEnd = client.controlFrames
+      .filter((frame) => frame.t === "turn_end" && frame.outcome === "spoken")
+      .at(-1);
+    if (replacementEnd?.t !== "turn_end") {
+      throw new Error("missing replacement terminal");
+    }
+    expect(
+      client.controlFrames.find(
+        (frame) =>
+          frame.t === "usage" && frame.traceId === replacementEnd.traceId,
+      ),
+    ).toMatchObject({ sttMs: 1_000 });
+  });
+
+  test("confirmed-speech policy interrupts on the first caller word and runs the replacement turn", async () => {
+    const client = new FakeClientSocket();
+    let responseRequests = 0;
+    const responseFetch = makeSseFetch(["A response for each real turn."]);
+    await connectSession({
+      client,
+      fetchImpl: (async (input: RequestInfo | URL, init?: RequestInit) => {
+        responseRequests += 1;
+        return responseFetch(input, init);
+      }) as typeof fetch,
+    });
+    const ink = FakeInkSocket.instances.at(-1)!;
+
+    ink.emitTurn("turn.start");
+    ink.emitTurn("turn.end", "explain this");
+    await flush();
+    await flush();
+
+    const firstCartesia = FakeCartesiaSocket.instances.at(-1)!;
+    const interruptionsBefore = client
+      .controlTypes()
+      .filter((type) => type === "interrupted").length;
+    ink.emitTurn("turn.start");
+    await flush();
+    expect(firstCartesia.closed).toBe(false);
+    expect(
+      client.controlTypes().filter((type) => type === "interrupted"),
+    ).toHaveLength(interruptionsBefore);
+
+    ink.emitTurn("turn.update", "wait");
+    await flush();
+    expect(firstCartesia.closed).toBe(true);
+    expect(client.controlFrames).toContainEqual(
+      expect.objectContaining({ t: "interrupted", reason: "acoustic" }),
+    );
+
+    ink.emitTurn("turn.end", "wait");
+    await flush();
+    await flush();
+    expect(responseRequests).toBe(2);
+    expect(FakeCartesiaSocket.instances.at(-1)).not.toBe(firstCartesia);
+  });
+
+  test("spoken stop cancels locally without a second LLM or TTS turn", async () => {
+    const client = new FakeClientSocket();
+    let responseRequests = 0;
+    const responseFetch = makeSseFetch(["I am speaking until cancelled."]);
+    await connectSession({
+      client,
+      fetchImpl: (async (input: RequestInfo | URL, init?: RequestInit) => {
+        responseRequests += 1;
+        return responseFetch(input, init);
+      }) as typeof fetch,
+    });
+    const ink = FakeInkSocket.instances.at(-1)!;
+
+    ink.emitTurn("turn.start");
+    ink.emitTurn("turn.end", "tell me a story");
+    await flush();
+    await flush();
+
+    const activeCartesia = FakeCartesiaSocket.instances.at(-1)!;
+    const ttsContextsBefore = FakeCartesiaSocket.instances.length;
+    ink.emitTurn("turn.start");
+    ink.emitTurn("turn.end", "Okay, stop.");
+    await flush();
+
+    expect(activeCartesia.closed).toBe(true);
+    expect(responseRequests).toBe(1);
+    expect(FakeCartesiaSocket.instances).toHaveLength(ttsContextsBefore);
+    expect(client.controlFrames).toContainEqual(
+      expect.objectContaining({ t: "interrupted", reason: "explicit" }),
+    );
+    expect(client.controlFrames).toContainEqual(
+      expect.objectContaining({
+        t: "stt_final",
+        text: "Okay, stop.",
+      }),
+    );
+    expect(client.controlFrames).toContainEqual(
+      expect.objectContaining({ t: "turn_end", outcome: "stopped" }),
+    );
+    expectLegacyTerminalBeforeTurnEnd(client, "stopped");
+  });
+
   test("semantic turn-start flushes transport audio after server TTS completed", async () => {
     const client = new FakeClientSocket();
     let clearCount = 0;
     await connectSession({
       client,
+      acousticInterruptPolicy: "semantic_start",
       fetchImpl: makeSseFetch(["A response Twilio may buffer."]),
       onClearAudio: () => {
         clearCount += 1;
@@ -1690,7 +2314,7 @@ describe("voice-session WS lifecycle", () => {
     expect(clearCount).toBe(1);
   });
 
-  test("a final-only caller transcript still interrupts the active response", async () => {
+  test("a final-only caller word interrupts the active response", async () => {
     const client = new FakeClientSocket();
     await connectSession({
       client,
@@ -1709,7 +2333,7 @@ describe("voice-session WS lifecycle", () => {
 
     // Ink may finalize a short utterance without sending an interim update.
     ink.emitTurn("turn.start");
-    ink.emitTurn("turn.end", "stop");
+    ink.emitTurn("turn.end", "wait");
     await flush();
     expect(client.controlFrames).toContainEqual(
       expect.objectContaining({ t: "interrupted", reason: "acoustic" }),
@@ -1781,6 +2405,7 @@ describe("voice-session WS lifecycle", () => {
           agentId: claims.agentId,
           conversationId: claims.conversationId,
           tokenExpSeconds,
+          acousticInterruptPolicy: "confirmed_speech",
           cartesiaInkWebSocketFactory: () => new FakeInkSocket(),
           cartesiaApiKey: "ct-key",
           cartesiaVoiceId: "db6b0ed5-d5d3-463d-ae85-518a07d3c2b4",
@@ -1976,6 +2601,7 @@ describe("voice-session WS lifecycle", () => {
           agentId: claims.agentId,
           conversationId: claims.conversationId,
           tokenExpSeconds,
+          acousticInterruptPolicy: "confirmed_speech",
           cartesiaInkWebSocketFactory: () => {
             ink = new FakeInkSocket();
             return ink;
@@ -2091,6 +2717,7 @@ describe("voice-session WS lifecycle", () => {
           agentId: claims.agentId,
           conversationId: claims.conversationId,
           tokenExpSeconds,
+          acousticInterruptPolicy: "confirmed_speech",
           cartesiaInkWebSocketFactory: () => new FakeInkSocket(),
           cartesiaApiKey: "ct",
           cartesiaVoiceId: "db6b0ed5-d5d3-463d-ae85-518a07d3c2b4",
@@ -2205,6 +2832,7 @@ describe("voice-session WS lifecycle", () => {
           agentId: claims.agentId,
           conversationId: claims.conversationId,
           tokenExpSeconds,
+          acousticInterruptPolicy: "confirmed_speech",
           cartesiaInkWebSocketFactory: () => new FakeInkSocket(),
           cartesiaApiKey: "ct",
           cartesiaVoiceId: "db6b0ed5-d5d3-463d-ae85-518a07d3c2b4",
@@ -2255,6 +2883,7 @@ describe("voice-session WS lifecycle", () => {
           agentId: claims.agentId,
           conversationId: claims.conversationId,
           tokenExpSeconds,
+          acousticInterruptPolicy: "confirmed_speech",
           cartesiaInkWebSocketFactory: () => new FakeInkSocket(),
           cartesiaApiKey: "ct",
           cartesiaVoiceId: "db6b0ed5-d5d3-463d-ae85-518a07d3c2b4",

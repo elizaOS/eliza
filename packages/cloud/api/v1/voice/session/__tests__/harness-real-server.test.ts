@@ -99,6 +99,7 @@ if (process.env.ELIZA_PROCESS_ISOLATED_TEST === "1") {
     },
   }));
   let lastSessionOptions: {
+    acousticInterruptPolicy?: unknown;
     isRevoked?: (jti: string) => Promise<boolean>;
     onTeardownRevoke?: unknown;
     fetchImpl?: typeof fetch;
@@ -106,6 +107,7 @@ if (process.env.ELIZA_PROCESS_ISOLATED_TEST === "1") {
   mock.module("../lib/session", () => ({
     VoiceSession: class {
       constructor(options: {
+        acousticInterruptPolicy?: unknown;
         isRevoked?: (jti: string) => Promise<boolean>;
         onTeardownRevoke?: unknown;
         fetchImpl?: typeof fetch;
@@ -233,6 +235,9 @@ if (process.env.ELIZA_PROCESS_ISOLATED_TEST === "1") {
       // certify production behavior, and its revocation poll is wired through
       // the real jwt module.
       expect(lastSessionOptions).not.toBeNull();
+      expect(lastSessionOptions?.acousticInterruptPolicy).toBe(
+        "confirmed_speech",
+      );
       expect(lastSessionOptions?.fetchImpl).toBe(fetch);
       expect(
         lastSessionOptions && "onTeardownRevoke" in lastSessionOptions

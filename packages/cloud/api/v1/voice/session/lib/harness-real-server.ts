@@ -539,6 +539,7 @@ export async function startRealVoiceServer(
           agentId: claims.agentId,
           conversationId: claims.conversationId,
           tokenExpSeconds,
+          acousticInterruptPolicy: "confirmed_speech",
           cartesiaInkWebSocketFactory: makeNodeCartesiaInkFactory(
             hooks,
             config.faultInjection,
