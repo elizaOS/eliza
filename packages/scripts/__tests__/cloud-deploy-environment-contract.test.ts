@@ -432,4 +432,31 @@ describe("canonical cloud deployment environment contract", () => {
       "pages project create eliza-app --production-branch=main 2>/dev/null || true",
     );
   });
+
+  test("scopes post-deploy routing verification to the deployed environment", () => {
+    const resolve = step(
+      cloud,
+      "verify-routing",
+      "Resolve deployed environment",
+    );
+    expect(resolve.env?.TARGET_ENVIRONMENT).toContain(
+      "inputs.target_environment",
+    );
+    expect(resolve.run).toContain("set -euo pipefail");
+    expect(resolve.run).toContain("staging|production");
+    expect(resolve.run).toContain(
+      'echo "environment=$TARGET_ENVIRONMENT" >> "$GITHUB_OUTPUT"',
+    );
+    expect(resolve.run).not.toContain('echo "environment=$env"');
+
+    const verify = step(
+      cloud,
+      "verify-routing",
+      "Verify the just-deployed environment serves itself",
+    );
+    expect(verify.run).toContain(
+      '--environment "${' + '{ steps.env.outputs.environment }}"',
+    );
+    expect(verify.run).toContain("--require-beacon");
+  });
 });

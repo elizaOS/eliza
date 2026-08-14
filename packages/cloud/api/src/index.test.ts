@@ -9,6 +9,7 @@ import cloudApiWorker, {
   isCanonicalInferencePath,
   isThinInferenceEnabled,
   isThinStewardPublicPath,
+  isUnsupportedLegacyWildcardHostname,
   redirectFrontendHost,
   SharedRuntimeConversation,
 } from "./index";
@@ -341,6 +342,26 @@ describe("cloud-api worker entrypoint", () => {
         "https://cloud.eliza.app/cloud/billing?from=legacy",
       ],
       [
+        "https://app.elizacloud.ai/dashboard/image?from=legacy",
+        "https://cloud.eliza.app/cloud/api-explorer?from=legacy",
+      ],
+      [
+        "https://elizacloud.ai/dashboard/build/new?template=starter",
+        "https://cloud.eliza.app/cloud/my-agents?template=starter",
+      ],
+      [
+        "https://app.elizacloud.ai/dashboard/containers/agents/agent-7",
+        "https://cloud.eliza.app/cloud/agents/agent-7",
+      ],
+      [
+        "https://app-staging.elizacloud.ai/dashboard/agents/agent-8/chat?room=1",
+        "https://cloud-staging.eliza.app/cloud/agents/agent-8?room=1",
+      ],
+      [
+        "https://elizacloud.ai/dashboard/settings?tab=billing&payment=success",
+        "https://cloud.eliza.app/cloud/billing?tab=billing&payment=success",
+      ],
+      [
         "https://api.elizacloud.ai/api/health?probe=1",
         "https://api.eliza.app/api/health?probe=1",
       ],
@@ -410,6 +431,10 @@ describe("cloud-api worker entrypoint", () => {
         "https://blob.elizacloud.ai/object.bin",
         "https://blob.eliza.app/object.bin",
       ],
+      [
+        "https://blob.elizacloud.ai/dashboard/image",
+        "https://blob.eliza.app/dashboard/image",
+      ],
       ["https://x402.elizacloud.ai/pay", "https://x402.eliza.app/pay"],
       [
         "https://relay.elizacloud.ai/v1/agent-tunnel",
@@ -438,6 +463,49 @@ describe("cloud-api worker entrypoint", () => {
       });
       expect(serviceResponse?.status).toBe(308);
       expect(serviceResponse?.headers.get("location")).toBe(canonicalUrl);
+    }
+  });
+
+  test("identifies only unhandled legacy wildcard hosts", () => {
+    expect(isUnsupportedLegacyWildcardHostname("unknown.elizacloud.ai")).toBe(
+      true,
+    );
+    expect(isUnsupportedLegacyWildcardHostname("app-dev.elizacloud.ai")).toBe(
+      true,
+    );
+    expect(
+      isUnsupportedLegacyWildcardHostname("nested.unknown.elizacloud.ai"),
+    ).toBe(true);
+    expect(
+      isUnsupportedLegacyWildcardHostname(
+        "e06bb509-6c52-4c33-a9f7-66addc43e8c8.elizacloud.ai",
+      ),
+    ).toBe(false);
+    expect(isUnsupportedLegacyWildcardHostname("blob.elizacloud.ai")).toBe(
+      false,
+    );
+    expect(isUnsupportedLegacyWildcardHostname("app.elizacloud.ai")).toBe(
+      false,
+    );
+    expect(isUnsupportedLegacyWildcardHostname("unknown.example.com")).toBe(
+      false,
+    );
+  });
+
+  test("fails unknown legacy wildcard requests closed before API dispatch", async () => {
+    for (const hostname of [
+      "unknown.elizacloud.ai",
+      "app-dev.elizacloud.ai",
+      "nested.unknown.elizacloud.ai",
+    ]) {
+      const response = await cloudApiWorker.fetch(
+        new Request(`https://${hostname}/api/health`),
+        {} as never,
+        {} as never,
+      );
+      expect(response.status).toBe(404);
+      expect(response.headers.get("cache-control")).toBe("no-store, max-age=0");
+      expect(await response.text()).toBe('{"error":"not_found"}');
     }
   });
 
