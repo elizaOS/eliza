@@ -261,7 +261,6 @@ describe("canonical cloud deployment environment contract", () => {
     for (const name of [
       "DEPLOY_HOST",
       "DEPLOY_SSH_KEY",
-      "HEADSCALE_API_URL",
       "HEADSCALE_PUBLIC_URL",
       "HEADSCALE_API_KEY",
       "DATABASE_URL",
@@ -279,6 +278,11 @@ describe("canonical cloud deployment environment contract", () => {
     expect(preflight.run).not.toContain('echo "$value"');
     expect(preflight.run).toContain("https://headscale.eliza.app");
     expect(preflight.run).toContain("https://headscale-staging.eliza.app");
+    expect(preflight.run).toContain("http://127.0.0.1:8081");
+    expect(preflight.run).toContain("http://127.0.0.1:8080");
+    expect(preflight.run).toContain(
+      'echo "HEADSCALE_API_URL=$resolved_headscale_api_url" >> "$GITHUB_ENV"',
+    );
     expect(preflight.run).toContain('"cloud.eliza.app"');
     expect(preflight.run).toContain('"cloud-staging.eliza.app"');
 

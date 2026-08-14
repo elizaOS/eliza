@@ -10,14 +10,6 @@ on:
         options:
           - staging
           - production
-      headscale_api_url:
-        description: Loopback Headscale API URL (blank uses the environment default)
-        required: false
-        type: string
-      listen_addr:
-        description: Loopback Headscale listen address (blank uses the environment default)
-        required: false
-        type: string
 
 permissions:
   contents: read
@@ -39,12 +31,30 @@ jobs:
       DEPLOY_SSH_KNOWN_HOSTS: ${{ secrets.ELIZA_PROVISIONING_SSH_KNOWN_HOSTS }}
       HEADSCALE_API_KEY: ${{ secrets.HEADSCALE_API_KEY }}
       HEADSCALE_PUBLIC_URL: ${{ vars.HEADSCALE_PUBLIC_URL }}
-      HEADSCALE_API_URL: ${{ inputs.headscale_api_url }}
-      HEADSCALE_LISTEN_ADDR: ${{ inputs.listen_addr }}
       AGENT_TOKEN_PRIVATE_KEY_PEM: ${{ secrets.AGENT_TOKEN_PRIVATE_KEY_PEM }}
       ELIZA_LOCAL_ROOT_KEY: ${{ secrets.ELIZA_LOCAL_ROOT_KEY }}
     steps:
+      - name: Validate protected deploy source
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "$TARGET_ENVIRONMENT" in
+            staging) expected_ref="refs/heads/develop" ;;
+            production) expected_ref="refs/heads/main" ;;
+            *)
+              echo "::error::Unsupported Headscale target environment"
+              exit 1
+              ;;
+          esac
+          if [ "$GITHUB_REF" != "$expected_ref" ]; then
+            echo "::error::$TARGET_ENVIRONMENT Headscale deploys must run from $expected_ref"
+            exit 1
+          fi
+
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
@@ -67,22 +77,26 @@ jobs:
             exit 1
           fi
 
-          if [ "$TARGET_ENVIRONMENT" = "production" ]; then
-            expected_public_url="https://headscale.eliza.app"
-            default_api_url="http://127.0.0.1:8081"
-            default_listen_addr="127.0.0.1:8081"
-          else
-            expected_public_url="https://headscale-staging.eliza.app"
-            default_api_url="http://127.0.0.1:8080"
-            default_listen_addr="127.0.0.1:8080"
-          fi
+          case "$TARGET_ENVIRONMENT" in
+            production)
+              expected_public_url="https://headscale.eliza.app"
+              expected_legacy_public_url="https://headscale.elizacloud.ai"
+              ;;
+            staging)
+              expected_public_url="https://headscale-staging.eliza.app"
+              expected_legacy_public_url="https://headscale-staging.elizacloud.ai"
+              ;;
+            *)
+              echo "::error::Unsupported Headscale target environment"
+              exit 1
+              ;;
+          esac
           if [ "$HEADSCALE_PUBLIC_URL" != "$expected_public_url" ]; then
             echo "::error::HEADSCALE_PUBLIC_URL does not match the canonical $TARGET_ENVIRONMENT contract"
             exit 1
           fi
 
-          echo "resolved_api_url=${HEADSCALE_API_URL:-$default_api_url}" >> "$GITHUB_ENV"
-          echo "resolved_listen_addr=${HEADSCALE_LISTEN_ADDR:-$default_listen_addr}" >> "$GITHUB_ENV"
+          echo "resolved_legacy_public_url=$expected_legacy_public_url" >> "$GITHUB_ENV"
 
       - name: Install deploy SSH identity
         id: key
@@ -112,22 +126,72 @@ jobs:
             --ssh-key "$DEPLOY_SSH_KEY_PATH" \
             --ssh-known-hosts "${{ steps.key.outputs.known_hosts_path }}" \
             --headscale-public-url "$HEADSCALE_PUBLIC_URL" \
-            --headscale-api-url "$resolved_api_url" \
-            --listen-addr "$resolved_listen_addr"
+            --headscale-legacy-public-url "$resolved_legacy_public_url"
 
-      - name: Verify canonical public health
+      - name: Verify dual-SAN public identity and health
         shell: bash
         run: |
           set -euo pipefail
-          for _ in $(seq 1 30); do
-            if curl --fail --silent --show-error --max-time 10 \
-              "$HEADSCALE_PUBLIC_URL/health" >/dev/null; then
-              exit 0
+          for public_url in "$HEADSCALE_PUBLIC_URL" "$resolved_legacy_public_url"; do
+            healthy=false
+            for _ in $(seq 1 30); do
+              if curl --fail --silent --show-error --max-time 10 \
+                "$public_url/health" >/dev/null; then
+                healthy=true
+                break
+              fi
+              sleep 5
+            done
+            if [ "$healthy" != "true" ]; then
+              echo "::error::Headscale health did not become ready at $public_url"
+              exit 1
             fi
-            sleep 5
           done
-          echo "::error::Canonical Headscale health did not become ready"
-          exit 1
+
+          leaf_has_exact_san() {
+            local leaf_pem="$1"
+            local required_hostname="$2"
+            printf '%s\n' "$leaf_pem" \
+              | openssl x509 -noout -ext subjectAltName \
+              | tr ',' '\n' \
+              | sed -n 's/^[[:space:]]*DNS://p' \
+              | grep -Fx -- "$required_hostname" >/dev/null
+          }
+
+          expected_fingerprint=""
+          for public_url in "$HEADSCALE_PUBLIC_URL" "$resolved_legacy_public_url"; do
+            host="${public_url#https://}"
+            leaf_pem="$(
+              openssl s_client \
+                -connect "$host:443" \
+                -servername "$host" \
+                -verify_hostname "$host" \
+                -verify_return_error \
+                -showcerts </dev/null 2>/dev/null \
+                | openssl x509 -outform PEM
+            )"
+            for required_hostname in \
+              "${HEADSCALE_PUBLIC_URL#https://}" \
+              "${resolved_legacy_public_url#https://}"; do
+              if ! leaf_has_exact_san "$leaf_pem" "$required_hostname"; then
+                echo "::error::$host did not serve a leaf with exact SAN $required_hostname"
+                exit 1
+              fi
+            done
+            fingerprint="$(
+              printf '%s\n' "$leaf_pem" \
+                | openssl x509 -outform DER \
+                | openssl dgst -sha256 -r \
+                | awk '{print $1}'
+            )"
+            if [ -z "$expected_fingerprint" ]; then
+              expected_fingerprint="$fingerprint"
+            elif [ "$fingerprint" != "$expected_fingerprint" ]; then
+              echo "::error::Canonical and legacy SNI names served different certificate leaves"
+              exit 1
+            fi
+          done
+          echo "Both Headscale SNI names served the same exact dual-SAN certificate leaf"
 
       - name: Remove deploy SSH identity
         if: always()

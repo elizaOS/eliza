@@ -41,10 +41,10 @@ import { Button } from "../ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card";
 import { Input } from "../ui/input";
 import { SaveFooter } from "../ui/save-footer";
-import { SettingsInput } from "../ui/settings-controls";
 import { Switch } from "../ui/switch";
 import { AdvancedToggle } from "./AdvancedToggle";
 import { useAdvancedSettingsEnabled } from "./AdvancedToggle.hooks";
+import { SettingsInputRow } from "./settings-agent-rows";
 import { useSettingsSave } from "./settings-control-primitives.hooks";
 import { SettingsGroup, SettingsRow, SettingsStack } from "./settings-layout";
 
@@ -1184,17 +1184,7 @@ export function VoiceConfigView() {
     setDirty(true);
   }, []);
 
-  const { ref: apiKeyRef, agentProps: apiKeyAgentProps } =
-    useAgentElement<HTMLInputElement>({
-      id: "voice-tts-elevenlabs-key",
-      role: "text-input",
-      label: t("settings.voice.elevenLabsApiKey", {
-        defaultValue: "ElevenLabs API key",
-      }),
-      group: "voice-tts",
-      getValue: () => voiceConfig.elevenlabs?.apiKey ?? "",
-      onFill: handleApiKeyChange,
-    });
+  const [apiKeyDraft, setApiKeyDraft] = useState("");
 
   const handleTestVoice = useCallback((previewUrl: string) => {
     if (audioRef.current) {
@@ -1355,8 +1345,13 @@ export function VoiceConfigView() {
             </SettingsRow>
           ) : null}
           {currentMode === "own-key" ? (
-            <SettingsRow
-              label={t("settings.voice.elevenLabsApiKey")}
+            <SettingsInputRow
+              agentId="voice-tts-elevenlabs-key"
+              group="voice-tts"
+              type="password"
+              label={t("settings.voice.elevenLabsApiKey", {
+                defaultValue: "ElevenLabs API key",
+              })}
               description={
                 <>
                   {t("voiceconfigview.GetYourKeyAt")}{" "}
@@ -1373,22 +1368,18 @@ export function VoiceConfigView() {
                   <code>{DEFAULT_ELEVEN_FAST_MODEL}</code>
                 </>
               }
-              stacked
-            >
-              <SettingsInput
-                ref={apiKeyRef}
-                variant="touch"
-                className="w-full"
-                type="password"
-                placeholder={
-                  voiceConfig.elevenlabs?.apiKey
-                    ? t("mediasettingssection.ApiKeySetLeaveBlank")
-                    : t("mediasettingssection.EnterApiKey")
-                }
-                onChange={(e) => handleApiKeyChange(e.target.value)}
-                {...apiKeyAgentProps}
-              />
-            </SettingsRow>
+              value={apiKeyDraft}
+              onValueChange={(next) => {
+                setApiKeyDraft(next);
+                handleApiKeyChange(next);
+              }}
+              placeholder={
+                voiceConfig.elevenlabs?.apiKey
+                  ? t("mediasettingssection.ApiKeySetLeaveBlank")
+                  : t("mediasettingssection.EnterApiKey")
+              }
+              inputClassName="w-full"
+            />
           ) : null}
           <SettingsRow label={t("common.voice")} stacked>
             <div className="grid gap-1.5 sm:grid-cols-2 xl:grid-cols-3">

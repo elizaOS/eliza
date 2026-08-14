@@ -21,9 +21,9 @@ cp .env.example .env.local
 | Variable | Description |
 |---|---|
 | `VITE_ELIZACLOUD_API_URL` | Eliza Cloud backend URL (defaults to `https://api.eliza.app`) |
-| `VITE_TELEGRAM_BOT_USERNAME` | Optional Telegram bot username override (default `Elizav2_Bot`) |
-| `VITE_TELEGRAM_BOT_ID` | Optional numeric Telegram bot ID override (default `7684336618`) |
-| `VITE_DISCORD_CLIENT_ID` | Optional Discord Application ID override (default `1468649258654630063`) |
+| `VITE_TELEGRAM_BOT_USERNAME` | Optional Telegram bot username override (default `ElizaIsNotABot`) |
+| `VITE_TELEGRAM_BOT_ID` | Optional numeric Telegram bot ID override (default `8931353359`) |
+| `VITE_DISCORD_CLIENT_ID` | Optional Discord Application ID override (default `1474591626759376967`) |
 | `WHATSAPP_PUBLIC_ENABLED` | Deployment switch that must be true before the public WhatsApp CTA is built |
 | `VITE_WHATSAPP_PHONE_NUMBER` | Production WhatsApp Business sender in E.164 format; omitted by default |
 
