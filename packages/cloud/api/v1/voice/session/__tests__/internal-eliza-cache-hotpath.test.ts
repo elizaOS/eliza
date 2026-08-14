@@ -97,6 +97,8 @@ test("real cache + canonical coordinator dispatch performs no response-path DB w
     },
     executionCtx,
   );
+  await fetchImpl.prewarm();
+  expect(background).toHaveLength(0);
   const response = await fetchImpl(
     `https://voice.internal/api/v1/eliza/agents/${AGENT_ID}/api/conversations/${CONVERSATION_ID}/messages/stream`,
     {
