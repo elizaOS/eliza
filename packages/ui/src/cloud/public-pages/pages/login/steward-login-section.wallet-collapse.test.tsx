@@ -158,7 +158,7 @@ describe("StewardLoginSection wallet collapse (#19217)", () => {
     vi.clearAllMocks();
   });
 
-  it("collapses wallet methods behind a single toggle and expands on click", async () => {
+  it("collapses wallet methods behind a two-way disclosure toggle", async () => {
     renderSection();
 
     // Wait for provider discovery to settle, then the collapsed toggle appears.
@@ -166,11 +166,19 @@ describe("StewardLoginSection wallet collapse (#19217)", () => {
       name: /Continue with a wallet/i,
     });
 
-    // Disclosure semantics: collapsed state has aria-expanded=false.
+    // Disclosure semantics: collapsed state has aria-expanded=false and the
+    // button is NOT disabled — keyboard users can focus and activate it.
     expect(walletToggle.getAttribute("aria-expanded")).toBe("false");
     expect(walletToggle.getAttribute("aria-controls")).toBe(
       "steward-wallet-options",
     );
+    expect(walletToggle.hasAttribute("disabled")).toBe(false);
+
+    // The controlled region is always in the DOM (aria-controls resolves) but
+    // hidden when collapsed, so screen readers don't announce stale contents.
+    const region = document.getElementById("steward-wallet-options");
+    expect(region).toBeTruthy();
+    expect(region?.hasAttribute("hidden")).toBe(true);
 
     // Wallet peer buttons must NOT be visible until the user expands.
     expect(screen.queryByText("EVM wallet")).toBeNull();
@@ -181,12 +189,20 @@ describe("StewardLoginSection wallet collapse (#19217)", () => {
     expect(await screen.findByText("EVM wallet")).toBeTruthy();
     expect(screen.getByText("Solana wallet")).toBeTruthy();
 
-    // The toggle persists as a disabled disclosure (aria-expanded=true) so
-    // focus is not lost when the wallet options appear.
-    const toggleAfter = screen.getByRole("button", {
+    // The toggle is an enabled disclosure with aria-expanded=true — focus is
+    // never lost because the control does not get disabled on expansion.
+    const toggleExpanded = screen.getByRole("button", {
       name: /Continue with a wallet/i,
     });
-    expect(toggleAfter.getAttribute("aria-expanded")).toBe("true");
-    expect(toggleAfter.hasAttribute("disabled")).toBe(true);
+    expect(toggleExpanded.getAttribute("aria-expanded")).toBe("true");
+    expect(toggleExpanded.hasAttribute("disabled")).toBe(false);
+    expect(region?.hasAttribute("hidden")).toBe(false);
+
+    // Collapsing again hides the wallet buttons (two-way disclosure).
+    fireEvent.click(toggleExpanded);
+    expect(toggleExpanded.getAttribute("aria-expanded")).toBe("false");
+    expect(region?.hasAttribute("hidden")).toBe(true);
+    expect(screen.queryByText("EVM wallet")).toBeNull();
+    expect(screen.queryByText("Solana wallet")).toBeNull();
   });
 });
