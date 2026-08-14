@@ -39,4 +39,13 @@ describe("coding tool planner summaries", () => {
       ),
     ).toBe("bun run test --filt…");
   });
+
+  it("prefers the redacted command from the action result", () => {
+    expect(
+      summarizeShellCommand(
+        { command: "bun run --token=secret test" },
+        { data: { command: "bun run --token=[REDACTED] test" } },
+      ),
+    ).toBe("ran `bun run --token=[REDACTED] test`");
+  });
 });

@@ -1256,7 +1256,9 @@ export const shellAction: Action = {
   ],
   validate: async () => true,
   summarize: (result, params) =>
-    result?.success === true ? summarizeShellCommand(params) : undefined,
+    result?.success === true
+      ? summarizeShellCommand(params, result)
+      : undefined,
   handler: async (
     runtime: IAgentRuntime,
     message: Memory,
@@ -1527,7 +1529,7 @@ export const shellAction: Action = {
       if (v.ok === false) {
         return failureToActionResult({
           reason: v.reason === "blocked" ? "path_blocked" : "invalid_param",
-          message: v.message,
+          message: redactShellText(runtime, v.message),
         });
       }
       try {
@@ -1552,11 +1554,11 @@ export const shellAction: Action = {
         const fallback = await session.getExistingCwd(conversationId);
         cwd = fallback.cwd;
         coreLogger.warn(
-          `${CODING_TOOLS_LOG_PREFIX} SHELL cwd not found; using session cwd (requested=${cwdParam}, fallback=${cwd})`,
+          `${CODING_TOOLS_LOG_PREFIX} SHELL cwd not found; using session cwd (requested=${redactShellText(runtime, cwdParam)}, fallback=${redactShellText(runtime, cwd)})`,
         );
         if (fallback.reset && fallback.previousCwd) {
           coreLogger.warn(
-            `${CODING_TOOLS_LOG_PREFIX} SHELL reset missing session cwd (previous=${fallback.previousCwd}, fallback=${cwd})`,
+            `${CODING_TOOLS_LOG_PREFIX} SHELL reset missing session cwd (previous=${redactShellText(runtime, fallback.previousCwd)}, fallback=${redactShellText(runtime, cwd)})`,
           );
         }
       }
@@ -1570,11 +1572,11 @@ export const shellAction: Action = {
       ) {
         cwd = sessionCwd.cwd;
         coreLogger.warn(
-          `${CODING_TOOLS_LOG_PREFIX} SHELL ignored ungrounded runtime cwd; using session cwd (requested=${v.resolved}, fallback=${cwd})`,
+          `${CODING_TOOLS_LOG_PREFIX} SHELL ignored ungrounded runtime cwd; using session cwd (requested=${redactShellText(runtime, v.resolved)}, fallback=${redactShellText(runtime, cwd)})`,
         );
         if (sessionCwd.reset && sessionCwd.previousCwd) {
           coreLogger.warn(
-            `${CODING_TOOLS_LOG_PREFIX} SHELL reset missing session cwd (previous=${sessionCwd.previousCwd}, fallback=${cwd})`,
+            `${CODING_TOOLS_LOG_PREFIX} SHELL reset missing session cwd (previous=${redactShellText(runtime, sessionCwd.previousCwd)}, fallback=${redactShellText(runtime, cwd)})`,
           );
         }
       }
@@ -1584,7 +1586,7 @@ export const shellAction: Action = {
       cwd = sessionCwd.cwd;
       if (sessionCwd.reset && sessionCwd.previousCwd) {
         coreLogger.warn(
-          `${CODING_TOOLS_LOG_PREFIX} SHELL reset missing session cwd (previous=${sessionCwd.previousCwd}, fallback=${cwd})`,
+          `${CODING_TOOLS_LOG_PREFIX} SHELL reset missing session cwd (previous=${redactShellText(runtime, sessionCwd.previousCwd)}, fallback=${redactShellText(runtime, cwd)})`,
         );
       }
     }
@@ -1597,7 +1599,7 @@ export const shellAction: Action = {
     if (groundedCommand !== command) {
       command = groundedCommand;
       coreLogger.warn(
-        `${CODING_TOOLS_LOG_PREFIX} SHELL removed ungrounded runtime directory override; using cwd=${cwd}`,
+        `${CODING_TOOLS_LOG_PREFIX} SHELL removed ungrounded runtime directory override; using cwd=${redactShellText(runtime, cwd)}`,
       );
     }
     // The disk / memory / source-search / crypto command rewrites below are
@@ -1631,7 +1633,10 @@ export const shellAction: Action = {
       const confirmed = readBoolParam(options, "confirm") === true;
       if (verdict.destructive && !confirmed) {
         const targetList =
-          verdict.targets.filter(Boolean).join(", ") || "its targets";
+          verdict.targets
+            .filter(Boolean)
+            .map((target) => redactShellText(runtime, target))
+            .join(", ") || "its targets";
         return failureToActionResult(
           {
             reason: "needs_confirmation",
@@ -1768,12 +1773,14 @@ export const shellAction: Action = {
     );
 
     coreLogger.debug(
-      `${CODING_TOOLS_LOG_PREFIX} SHELL cwd=${cwd} timeout=${timeout}ms`,
+      `${CODING_TOOLS_LOG_PREFIX} SHELL cwd=${redactShellText(runtime, cwd)} timeout=${timeout}ms`,
     );
 
     const startedAt = Date.now();
     const mode = resolveRuntimeExecutionMode(runtime);
-    coreLogger.info(`${CODING_TOOLS_LOG_PREFIX} SHELL mode=${mode} cwd=${cwd}`);
+    coreLogger.info(
+      `${CODING_TOOLS_LOG_PREFIX} SHELL mode=${mode} cwd=${redactShellText(runtime, cwd)}`,
+    );
 
     let result: ShellResult;
     try {

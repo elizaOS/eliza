@@ -7,12 +7,7 @@
 import { type IAgentRuntime, redactSensitiveText } from "@elizaos/core";
 
 export function redactShellText(runtime: IAgentRuntime, text: string): string {
-  const runtimeRedactor = Reflect.get(runtime, "redactSecrets");
-  const runtimeRedacted =
-    typeof runtimeRedactor === "function"
-      ? runtimeRedactor.call(runtime, text)
-      : text;
-  return redactSensitiveText(runtimeRedacted, { mode: "tools" });
+  return redactSensitiveText(runtime.redactSecrets(text), { mode: "tools" });
 }
 
 export function redactShellValue<T>(runtime: IAgentRuntime, value: T): T {

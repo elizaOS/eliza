@@ -170,7 +170,9 @@ describePosixShell("shell plugin real local integration", () => {
     // of being silently swallowed.
     expect(reported).toHaveLength(1);
     expect(reported[0]?.scope).toBe("shellHistoryProvider");
-    expect(reported[0]?.error).toBe(boom);
+    const reportedError = reported[0]?.error;
+    expect(reportedError).toBeInstanceOf(Error);
+    expect((reportedError as Error).message).toBe("history backend exploded");
   });
 
   it("still logs the failure when the runtime lacks reportError (older runtimes/test doubles)", async () => {

@@ -31,8 +31,9 @@ export function summarizeFileOperation(
 
 export function summarizeShellCommand(
   params: Record<string, unknown>,
+  result?: { data?: Record<string, unknown> },
 ): string | undefined {
-  const command = params.command;
+  const command = result?.data?.command ?? params.command;
   if (typeof command !== "string" || command.trim().length === 0) {
     return undefined;
   }

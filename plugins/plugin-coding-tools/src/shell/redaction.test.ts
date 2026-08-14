@@ -7,12 +7,9 @@ import { describe, expect, it, vi } from "vitest";
 import { redactShellText } from "./redaction.ts";
 
 describe("shell redaction boundary", () => {
-  it("remains pattern-safe for lightweight runtimes without redactSecrets", () => {
+  it("requires the runtime-owned redaction boundary", () => {
     const runtime = {} as IAgentRuntime;
-
-    expect(
-      redactShellText(runtime, "Bearer token-value-123456789"),
-    ).not.toContain("token-value-123456789");
+    expect(() => redactShellText(runtime, "secret")).toThrow();
   });
 
   it("composes runtime-known and pattern redaction", () => {

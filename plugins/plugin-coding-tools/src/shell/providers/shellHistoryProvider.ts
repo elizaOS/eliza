@@ -182,7 +182,7 @@ ${addHeader("# Shell History (Last 10)", historyText)}${fileOpsText}`;
         error instanceof Error ? error.message : String(error),
       );
       if (typeof runtime?.reportError === "function") {
-        runtime.reportError("shellHistoryProvider", error, {
+        runtime.reportError("shellHistoryProvider", new Error(errMsg), {
           roomId: message.roomId,
           agentId: message.agentId,
         });

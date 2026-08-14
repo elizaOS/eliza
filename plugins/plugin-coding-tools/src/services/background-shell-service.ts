@@ -22,6 +22,7 @@ import { redactShellText } from "../shell/redaction.js";
 import { BACKGROUND_SHELL_SERVICE, CODING_TOOLS_LOG_PREFIX } from "../types.js";
 
 const DEFAULT_BUFFER_CHARS = 64_000;
+const REDACTION_CONTEXT_CHARS = 4_096;
 const DEFAULT_KILL_GRACE_MS = 1_500;
 const MAX_WRITE_CHARS = 1_000_000;
 const MAX_SESSIONS_PER_CONVERSATION = 16;
@@ -333,11 +334,11 @@ function appendRing(ring: StreamRing, text: string, cap: number): void {
   if (!text) return;
   ring.text += text;
   ring.endOffset += text.length;
-  if (ring.text.length > cap) {
-    const drop = ring.text.length - cap;
+  if (ring.text.length > cap + REDACTION_CONTEXT_CHARS) {
+    const drop = ring.text.length - (cap + REDACTION_CONTEXT_CHARS);
     ring.text = ring.text.slice(drop);
     ring.startOffset += drop;
-    ring.truncatedBefore = ring.startOffset;
+    ring.truncatedBefore = Math.max(0, ring.endOffset - cap);
   }
 }
 
@@ -350,7 +351,7 @@ function readRing(
     requestedOffset === undefined || !Number.isFinite(requestedOffset)
       ? ring.startOffset
       : Math.max(0, Math.floor(requestedOffset));
-  const start = Math.max(offset, ring.startOffset);
+  const start = Math.max(offset, ring.startOffset, ring.truncatedBefore);
   const index = start - ring.startOffset;
   const redactedFull = redactShellText(runtime, ring.text);
   const redactedPrefix = redactShellText(runtime, ring.text.slice(0, index));
