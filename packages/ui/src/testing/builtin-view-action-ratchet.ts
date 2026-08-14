@@ -385,8 +385,7 @@ export const BUILTIN_VIEW_MUTATION_BASELINE = [
         id: "relaunch.verify.agent",
         sourceFile:
           "packages/ui/src/components/settings/AppsManagementSection.tsx",
-        sourceSignature:
-          'useAgentElement<HTMLButtonElement>({\n      id: "apps-verify-on-relaunch",',
+        sourceSignature: "onCheckedChange={setVerifyOnRelaunch}",
         semanticAction: "APP",
         actionOperations: ["relaunch"],
       },
@@ -443,15 +442,6 @@ export const BUILTIN_VIEW_MUTATION_BASELINE = [
           "onClick={() => {\n              setShowLoad((v) => !v);",
         semanticAction: "APP",
         actionOperations: ["load_from_directory"],
-      },
-      {
-        id: "relaunch.verify.pointer",
-        sourceFile:
-          "packages/ui/src/components/settings/AppsManagementSection.tsx",
-        sourceSignature:
-          'onCheckedChange={(checked: boolean | "indeterminate") =>\n                  setVerifyOnRelaunch(!!checked)',
-        semanticAction: "APP",
-        actionOperations: ["relaunch"],
       },
       {
         id: "create.submit.pointer",
@@ -553,7 +543,7 @@ export const BUILTIN_VIEW_MUTATION_BASELINE = [
         actionOperations: ["stop"],
       },
     ],
-    maxMutationSites: 25,
+    maxMutationSites: 24,
     notes:
       "The standalone page mounts AppsManagementSection, so its complete app-control surface is inventoried here instead of disappearing behind a child component. APP owns app lifecycle; VIEWS owns the signed-in Cloud Apps shell navigation.",
   },

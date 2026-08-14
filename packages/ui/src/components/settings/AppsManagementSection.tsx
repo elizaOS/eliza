@@ -14,12 +14,12 @@ import type {
 } from "../../api/client-types-cloud";
 import { useAppSelector } from "../../state";
 import { Button } from "../ui/button";
-import { Checkbox } from "../ui/checkbox";
 import { AdvancedToggle } from "./AdvancedToggle";
 import { useAdvancedSettingsEnabled } from "./AdvancedToggle.hooks";
 import {
   SettingsInputRow,
   SettingsSelectRow,
+  SettingsSwitchRow,
   SettingsTextareaRow,
 } from "./settings-agent-rows";
 import { SettingsGroup, SettingsRow, SettingsStack } from "./settings-layout";
@@ -407,17 +407,6 @@ export function AppsManagementSection() {
         setShowCreate(false);
       },
     });
-  const { ref: verifyRef, agentProps: verifyAgentProps } =
-    useAgentElement<HTMLButtonElement>({
-      id: "apps-verify-on-relaunch",
-      role: "toggle",
-      label: t("settings.sections.apps.verifyOnRelaunch", {
-        defaultValue: "Verify on relaunch",
-      }),
-      group: "apps-management",
-      status: verifyOnRelaunch ? "active" : "inactive",
-      onActivate: () => setVerifyOnRelaunch((v) => !v),
-    });
   const { ref: createSubmitRef, agentProps: createSubmitAgentProps } =
     useAgentElement<HTMLButtonElement>({
       id: "apps-create-submit",
@@ -509,24 +498,15 @@ export function AppsManagementSection() {
           </Button>
         </div>
         {advancedEnabled ? (
-          <SettingsRow
+          <SettingsSwitchRow
+            agentId="apps-verify-on-relaunch"
+            group="apps-management"
             label={t("settings.sections.apps.verifyOnRelaunch", {
               defaultValue: "Verify on relaunch",
             })}
-            control={
-              <Checkbox
-                ref={verifyRef}
-                checked={verifyOnRelaunch}
-                onCheckedChange={(checked: boolean | "indeterminate") =>
-                  setVerifyOnRelaunch(!!checked)
-                }
-                aria-current={verifyOnRelaunch ? "true" : undefined}
-                aria-label={t("settings.sections.apps.verifyOnRelaunchLabel", {
-                  defaultValue: "Verify on relaunch",
-                })}
-                {...verifyAgentProps}
-              />
-            }
+            checked={verifyOnRelaunch}
+            agentStatus={verifyOnRelaunch ? "active" : "inactive"}
+            onCheckedChange={setVerifyOnRelaunch}
           />
         ) : null}
       </SettingsGroup>
