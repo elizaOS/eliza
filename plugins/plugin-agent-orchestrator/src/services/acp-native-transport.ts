@@ -142,6 +142,7 @@ export class NativeAcpClient {
   private readBuffer = "";
   private stderrBuffer = "";
   private pending = new Map<JsonRpcId, PendingRequest>();
+  private activePrompts = new Map<string, Promise<NativeAcpPromptResult>>();
   private terminals = new Map<string, TerminalRecord>();
   private closed = false;
 
@@ -234,33 +235,43 @@ export class NativeAcpClient {
     sessionId: string,
     text: string,
   ): Promise<NativeAcpPromptResult> {
-    const result = asRecord(
-      await this.request(
-        "session/prompt",
-        {
-          sessionId,
-          prompt: [{ type: "text", text }],
-        },
-        this.opts.timeoutMs,
-        () => {
-          // error-policy:J6 best-effort teardown — cancelling a timed-out
-          // prompt; a cancel that itself fails cannot rescue the turn.
-          void this.cancel(sessionId).catch(() => undefined);
-        },
-      ),
-    );
-    return {
-      stopReason: stringValue(result?.stopReason) ?? "end_turn",
-    };
+    const prompt = this.request(
+      "session/prompt",
+      {
+        sessionId,
+        prompt: [{ type: "text", text }],
+      },
+      this.opts.timeoutMs,
+      () => {
+        // error-policy:J6 best-effort teardown — cancelling a timed-out
+        // prompt; a cancel that itself fails cannot rescue the turn.
+        void this.cancel(sessionId).catch(() => undefined);
+      },
+    ).then((value) => {
+      const result = asRecord(value);
+      return {
+        stopReason: stringValue(result?.stopReason) ?? "end_turn",
+      };
+    });
+    this.activePrompts.set(sessionId, prompt);
+    try {
+      return await prompt;
+    } finally {
+      if (this.activePrompts.get(sessionId) === prompt) {
+        this.activePrompts.delete(sessionId);
+      }
+    }
   }
 
-  async cancel(sessionId: string): Promise<void> {
-    // error-policy:J6 best-effort teardown — if the request/cancel round-trip
-    // fails, fall back to a fire-and-forget cancel notification; neither path
-    // can do more than ask a possibly-dead subprocess to stop.
-    await this.request("session/cancel", { sessionId }, 5_000).catch(() => {
-      void this.notify("session/cancel", { sessionId }).catch(() => undefined);
-    });
+  async cancel(sessionId: string): Promise<NativeAcpPromptResult | undefined> {
+    const activePrompt = this.activePrompts.get(sessionId);
+    // ACP defines session/cancel as a notification. It has no independent
+    // acknowledgement: the authoritative terminal result remains the response
+    // to the original session/prompt request, whose JSON-RPC id provides the
+    // correlation. Capture that promise before notifying so a synchronous
+    // terminal response cannot race past this caller.
+    await this.notify("session/cancel", { sessionId });
+    return activePrompt;
   }
 
   async closeSession(sessionId: string): Promise<void> {
