@@ -118,6 +118,7 @@ app.post("/", async (c) => {
   const conversationId = randomUUID();
   try {
     scheduleTwilioVoiceScopePrewarm({
+      agent: phoneNumber.agent,
       env: c.env,
       executionCtx: c.executionCtx,
       claims: {

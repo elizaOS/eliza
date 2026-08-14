@@ -9,6 +9,15 @@ const claims = {
   organizationId: "org-voice",
   userId: "user-voice",
 };
+const agent = {
+  id: claims.agentId,
+  organization_id: claims.organizationId,
+  user_id: claims.userId,
+  character_id: "character-voice",
+  agent_name: "Eliza",
+  agent_config: null,
+  execution_tier: "shared" as const,
+};
 
 describe("Twilio voice scope prewarm", () => {
   test("registers and runs hydration without blocking the caller", async () => {
@@ -22,6 +31,7 @@ describe("Twilio voice scope prewarm", () => {
     );
 
     const prewarm = scheduleTwilioVoiceScopePrewarm({
+      agent: agent as never,
       claims,
       env: {} as never,
       executionCtx: { waitUntil: (promise) => waits.push(promise) },
@@ -29,7 +39,7 @@ describe("Twilio voice scope prewarm", () => {
     });
 
     await Promise.resolve();
-    expect(hydrateScope).toHaveBeenCalledWith({}, claims);
+    expect(hydrateScope).toHaveBeenCalledWith({}, claims, agent);
     expect(waits).toEqual([prewarm]);
     releaseHydration?.();
     await prewarm;

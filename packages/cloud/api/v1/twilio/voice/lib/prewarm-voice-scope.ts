@@ -3,6 +3,7 @@
  * cold database work overlaps call setup, the greeting, and caller speech.
  */
 
+import type { AgentSandbox } from "@/db/repositories/agent-sandboxes";
 import { logger } from "@/lib/utils/logger";
 import type { Bindings } from "@/types/cloud-worker-env";
 import type { InternalElizaConversationFetchClaims } from "../../../voice/session/lib/internal-eliza-conversation-fetch";
@@ -14,9 +15,11 @@ interface VoicePrewarmExecutionContext {
 type HydrateVoiceScope = (
   env: Bindings,
   claims: InternalElizaConversationFetchClaims,
+  preloadedAgent?: AgentSandbox,
 ) => Promise<void>;
 
 interface ScheduleVoiceScopePrewarmOptions {
+  agent?: AgentSandbox;
   claims: InternalElizaConversationFetchClaims;
   env: Bindings;
   executionCtx: VoicePrewarmExecutionContext;
@@ -25,6 +28,7 @@ interface ScheduleVoiceScopePrewarmOptions {
 
 /** Registers a safe background prewarm at the earliest authenticated call boundary. */
 export function scheduleTwilioVoiceScopePrewarm({
+  agent,
   claims,
   env,
   executionCtx,
@@ -36,7 +40,7 @@ export function scheduleTwilioVoiceScopePrewarm({
         hydrateScope ??
         (await import("../../../voice/session/lib/voice-agent-scope-hydration"))
           .hydrateVoiceSharedAgentScope;
-      await hydrate(env, claims);
+      await hydrate(env, claims, agent);
     })
     .catch((error) => {
       // error-policy:J7 this is a latency hint; the media session retains its
