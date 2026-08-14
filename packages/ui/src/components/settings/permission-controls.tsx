@@ -1,9 +1,9 @@
 /**
  * Presentational rows for the Permissions settings section. `PermissionRow`
  * renders one OS/app permission (icon, name, status badge, request/open-settings
- * action, and the optional shell-enable switch); `CapabilityToggle` renders a
- * capability on/off row. Status/badge/action copy is resolved through
- * `permission-types`; the controls are agent-addressable via `useAgentElement`.
+ * action, and the optional shell-enable switch); `CapabilityToggle` is a
+ * SettingsSwitchRow for a capability on/off. Status/badge/action copy is
+ * resolved through `permission-types`.
  */
 
 import {
@@ -46,6 +46,7 @@ import {
   getPermissionBadge,
   translateWithFallback,
 } from "./permission-types";
+import { SettingsSwitchRow } from "./settings-agent-rows";
 import { SettingsRow } from "./settings-layout";
 
 const PERMISSION_ICONS: Record<string, LucideIcon> = {
@@ -234,24 +235,6 @@ export function CapabilityToggle({
     cap.descriptionKey,
     cap.description,
   );
-  const toggleActionLabel = `${
-    enabled
-      ? translateWithFallback(t, "permissionssection.Disable", "Disable")
-      : translateWithFallback(t, "permissionssection.Enable", "Enable")
-  } ${label}`;
-
-  const { ref: toggleRef, agentProps: toggleAgentProps } =
-    useAgentElement<HTMLButtonElement>({
-      id: `perm-capability-${cap.id}`,
-      role: "toggle",
-      label,
-      group: "permissions",
-      description,
-      status: enabled ? "on" : "off",
-      getValue: () => enabled,
-      onActivate: canEnable ? () => onToggle(!enabled) : undefined,
-    });
-
   const rowLabel = (
     <span className="flex flex-wrap items-center gap-2">
       {label}
@@ -273,44 +256,16 @@ export function CapabilityToggle({
   );
 
   return (
-    <SettingsRow
+    <SettingsSwitchRow
+      agentId={`perm-capability-${cap.id}`}
+      agentLabel={label}
+      group="permissions"
       label={rowLabel}
       description={description}
-      control={
-        <Switch
-          ref={toggleRef}
-          checked={enabled}
-          onCheckedChange={onToggle}
-          disabled={!canEnable}
-          aria-label={toggleActionLabel}
-          {...toggleAgentProps}
-          title={
-            !available
-              ? translateWithFallback(
-                  t,
-                  "permissionssection.PluginNotAvailable",
-                  "Plugin not available",
-                )
-              : !permissionsGranted
-                ? translateWithFallback(
-                    t,
-                    "permissionssection.GrantRequiredPermissionsFirst",
-                    "Grant required permissions first",
-                  )
-                : enabled
-                  ? translateWithFallback(
-                      t,
-                      "permissionssection.Disable",
-                      "Disable",
-                    )
-                  : translateWithFallback(
-                      t,
-                      "permissionssection.Enable",
-                      "Enable",
-                    )
-          }
-        />
-      }
+      checked={enabled}
+      disabled={!canEnable}
+      agentStatus={enabled ? "on" : "off"}
+      onCheckedChange={onToggle}
     />
   );
 }

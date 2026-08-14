@@ -45,9 +45,9 @@ const RAW_SWITCH_OCCURRENCES = new Map<
   [
     "permission-controls.tsx",
     {
-      count: 2,
+      count: 1,
       reason:
-        "compound permission rows mix badges with Switch or Button trailing controls",
+        "PermissionRow shell toggle shares the row with a badge and grant button",
     },
   ],
 ]);
