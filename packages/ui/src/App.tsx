@@ -228,10 +228,7 @@ import {
   resolveBuiltinRoutedViewManifest,
   resolveBuiltinTabId,
 } from "./builtin-tab-registry";
-import {
-  isManagedCloudRuntime,
-  managedCloudPageOwnsStartupFailure,
-} from "./cloud/managed-cloud-runtime";
+import { isManagedCloudRuntime } from "./cloud/managed-cloud-runtime";
 // DesktopTabBar stays static: it is already pulled
 // eagerly elsewhere in the app graph (plugin-loader / boot-config), so a
 // lazy() boundary here would only fold back into main. The remaining page
@@ -2272,10 +2269,6 @@ function AppContent() {
   const { views: availableViewsForDesktopTabs } = useRoutableViews();
   const [viewLayout, setViewLayout] = useState<ActiveViewLayout | null>(null);
   const navigationPath = useCurrentNavigationPath();
-  const cloudManagementOwnsStartupFailure = managedCloudPageOwnsStartupFailure(
-    navigationPath,
-    startupCoordinator.target,
-  );
   const screenBackgroundPolicy = useActiveScreenBackgroundPolicy({
     tab,
     navigationPath,
@@ -2668,10 +2661,7 @@ function AppContent() {
     );
   }
 
-  if (
-    (!isShellPaintableNow || bootstrapGateHolds) &&
-    !cloudManagementOwnsStartupFailure
-  ) {
+  if (!isShellPaintableNow || bootstrapGateHolds) {
     return (
       <BugReportProvider value={bugReport}>
         <StartupScreen />

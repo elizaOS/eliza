@@ -10,6 +10,8 @@ const listByOrganization = mock();
 const createAgent = mock();
 const enqueueAgentProvision = mock();
 const deleteSandbox = mock();
+const hasElizaAppInitialFreeCredits = mock();
+const addCredits = mock();
 const checkAgentCreditGate = mock();
 
 const deleteSandboxSpy = spyOn(agentSandboxesRepository, "delete").mockImplementation(
@@ -32,6 +34,39 @@ const listByOrganizationSpy = spyOn(
   agentSandboxesRepository,
   "listByOrganization",
 ).mockImplementation((...args) => listByOrganization(...args) as never);
+
+mock.module("../../../db/repositories/credit-transactions", () => ({
+  creditTransactionsRepository: {
+    hasElizaAppInitialFreeCredits,
+  },
+}));
+
+class InsufficientCreditsError extends Error {
+  constructor(
+    public readonly required: number,
+    public readonly available: number,
+    public readonly reason?: string,
+  ) {
+    super(
+      `Insufficient credits. Required: $${required.toFixed(4)}, Available: $${available.toFixed(4)}`,
+    );
+    this.name = "InsufficientCreditsError";
+  }
+}
+
+class CreditsService {}
+
+mock.module("../credits", () => ({
+  creditsService: {
+    addCredits,
+  },
+  CreditsService,
+  InsufficientCreditsError,
+  COST_BUFFER: 1.5,
+  MIN_RESERVATION: 0.000001,
+  EPSILON: 0.0000001,
+  DEFAULT_OUTPUT_TOKENS: 500,
+}));
 
 const createAgentSpy = spyOn(elizaSandboxService, "createAgent").mockImplementation(
   (...args) => createAgent(...args) as never,
@@ -70,12 +105,19 @@ describe("ensureElizaAppProvisioning", () => {
     createAgent.mockReset();
     enqueueAgentProvision.mockReset();
     deleteSandbox.mockReset();
+    hasElizaAppInitialFreeCredits.mockReset();
+    addCredits.mockReset();
     checkAgentCreditGate.mockReset();
     findLatestAgentLifecycleJob.mockReset();
   });
 
-  test("checks paid credit before provisioning a new Eliza App agent", async () => {
+  test("grants starter credits before provisioning a new Eliza App agent", async () => {
+    hasElizaAppInitialFreeCredits.mockResolvedValue(false);
     listByOrganization.mockResolvedValue([]);
+    addCredits.mockResolvedValue({
+      transaction: { id: "credit-tx-1" },
+      newBalance: 5,
+    });
     checkAgentCreditGate.mockResolvedValue({ allowed: true, balance: 5 });
     createAgent.mockResolvedValue({
       agent: { id: "agent-1", status: "provisioning", bridge_url: null },
@@ -87,6 +129,20 @@ describe("ensureElizaAppProvisioning", () => {
       userId: "user-1",
     });
 
+    expect(hasElizaAppInitialFreeCredits).toHaveBeenCalledWith("org-1");
+    expect(addCredits).toHaveBeenCalledWith({
+      organizationId: "org-1",
+      amount: 5,
+      description: "Eliza App - Welcome bonus",
+      metadata: {
+        type: "initial_free_credits",
+        source: "eliza-app-onboarding",
+        userId: "user-1",
+      },
+      stripePaymentIntentId: "eliza-app-initial-free-credits:org-1",
+    });
+    // Fresh org: the starter grant lands before the gate runs, so the gate
+    // sees the $5 balance and provisioning proceeds.
     expect(checkAgentCreditGate).toHaveBeenCalledWith("org-1");
     expect(createAgent).toHaveBeenCalledWith({
       organizationId: "org-1",
@@ -109,6 +165,7 @@ describe("ensureElizaAppProvisioning", () => {
   });
 
   test("reuses an in-flight sandbox without enqueuing a second provision job", async () => {
+    hasElizaAppInitialFreeCredits.mockResolvedValue(true);
     listByOrganization.mockResolvedValue([]);
     checkAgentCreditGate.mockResolvedValue({ allowed: true, balance: 5 });
     createAgent.mockResolvedValue({
@@ -131,6 +188,7 @@ describe("ensureElizaAppProvisioning", () => {
   });
 
   test("deletes the just-created sandbox when the provision enqueue throws", async () => {
+    hasElizaAppInitialFreeCredits.mockResolvedValue(true);
     listByOrganization.mockResolvedValue([]);
     checkAgentCreditGate.mockResolvedValue({ allowed: true, balance: 5 });
     createAgent.mockResolvedValue({
@@ -150,7 +208,8 @@ describe("ensureElizaAppProvisioning", () => {
     expect(deleteSandbox).toHaveBeenCalledWith("agent-1", "org-1");
   });
 
-  test("returns an existing running sandbox without consulting the credit gate", async () => {
+  test("does not grant duplicate starter credits when an existing transaction is present", async () => {
+    hasElizaAppInitialFreeCredits.mockResolvedValue(true);
     listByOrganization.mockResolvedValue([
       {
         id: "agent-1",
@@ -164,6 +223,7 @@ describe("ensureElizaAppProvisioning", () => {
       userId: "user-1",
     });
 
+    expect(addCredits).not.toHaveBeenCalled();
     expect(createAgent).not.toHaveBeenCalled();
     expect(enqueueAgentProvision).not.toHaveBeenCalled();
     // The existing-sandbox early return sits before the credit gate, so a
@@ -177,6 +237,10 @@ describe("ensureElizaAppProvisioning", () => {
   });
 
   test("returns insufficient_credits without provisioning when a drained org fails the credit gate", async () => {
+    // Returning drained org: the one-time starter grant was already consumed,
+    // so ensureElizaAppStarterCredits is a no-op and the gate sees the real
+    // (empty) balance.
+    hasElizaAppInitialFreeCredits.mockResolvedValue(true);
     listByOrganization.mockResolvedValue([]);
     checkAgentCreditGate.mockResolvedValue({
       allowed: false,
@@ -191,6 +255,7 @@ describe("ensureElizaAppProvisioning", () => {
     });
 
     expect(checkAgentCreditGate).toHaveBeenCalledWith("org-1");
+    expect(addCredits).not.toHaveBeenCalled();
     // The denial must return a status, not throw — runOnboardingChat has no
     // enclosing try/catch, so a throwing gate would 500 the onboarding turn.
     expect(createAgent).not.toHaveBeenCalled();
@@ -212,6 +277,8 @@ describe("a dead sandbox no longer locks the organization out (#17924)", () => {
     createAgent.mockReset();
     enqueueAgentProvision.mockReset();
     deleteSandbox.mockReset();
+    hasElizaAppInitialFreeCredits.mockReset();
+    addCredits.mockReset();
     checkAgentCreditGate.mockReset();
     findLatestAgentLifecycleJob.mockReset();
   });
@@ -225,6 +292,7 @@ describe("a dead sandbox no longer locks the organization out (#17924)", () => {
   const HOUR_AGO = new Date(Date.now() - 60 * 60 * 1000).toISOString();
 
   function orgWithNewestRow(row: Record<string, unknown>) {
+    hasElizaAppInitialFreeCredits.mockResolvedValue(true);
     checkAgentCreditGate.mockResolvedValue({ allowed: true, balance: 5 });
     listByOrganization.mockResolvedValue([row]);
   }

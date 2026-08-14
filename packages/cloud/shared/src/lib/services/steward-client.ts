@@ -12,10 +12,8 @@
 
 import { StewardClient } from "@stwd/sdk";
 import { getCloudAwareEnv } from "../runtime/cloud-bindings";
-import type { StewardUrlEnv } from "../steward-url";
 import { resolveServerStewardApiUrlFromEnv } from "../steward-url";
 import { logger } from "../utils/logger";
-import { isValidE164, normalizePhoneNumber } from "../utils/phone-normalization";
 import {
   type ResolveStewardTenantCredentialsOptions,
   resolveDefaultStewardTenantId,
@@ -35,27 +33,6 @@ let hasWarnedMissingStewardTenantApiKey = false;
 let _client: { key: string; value: StewardClient } | null = null;
 
 export interface StewardClientOptions extends ResolveStewardTenantCredentialsOptions {}
-
-export type StewardPhoneOwnershipErrorCode =
-  | "invalid_phone"
-  | "upstream_unavailable"
-  | "invalid_upstream_response";
-
-export class StewardPhoneOwnershipError extends Error {
-  override readonly name = "StewardPhoneOwnershipError";
-
-  constructor(
-    readonly code: StewardPhoneOwnershipErrorCode,
-    message: string,
-    options?: ErrorOptions,
-  ) {
-    super(message, options);
-  }
-}
-
-export type StewardPhoneOwnershipResult =
-  | { status: "verified"; phoneNumber: string }
-  | { status: "not_linked" };
 
 function resolveStewardHostUrl(): string {
   const env = getCloudAwareEnv();
@@ -117,94 +94,6 @@ export async function createStewardClient(
     apiKey: credentials.apiKey,
     tenantId: credentials.tenantId,
   });
-}
-
-/**
- * Confirms that a Steward bearer owns a linked phone account. The request's
- * phone is only a lookup hint; authority comes from Steward's authenticated
- * account list, so a forged session-sync body cannot claim another phone-first
- * Cloud account.
- */
-export async function verifyStewardBearerPhone(params: {
-  env: StewardUrlEnv;
-  bearerToken: string;
-  tenantId?: string;
-  phoneNumber: string;
-}): Promise<StewardPhoneOwnershipResult> {
-  const normalizedPhone = normalizePhoneNumber(params.phoneNumber);
-  if (!isValidE164(normalizedPhone)) {
-    throw new StewardPhoneOwnershipError(
-      "invalid_phone",
-      "Steward phone verification requires an E.164 phone number",
-    );
-  }
-
-  let accounts: unknown;
-  try {
-    const headers = new Headers({
-      Accept: "application/json",
-      Authorization: `Bearer ${params.bearerToken}`,
-    });
-    if (params.tenantId) {
-      headers.set("X-Steward-Tenant", params.tenantId);
-    }
-    const response = await fetch(
-      `${resolveServerStewardApiUrlFromEnv(params.env)}/user/me/accounts`,
-      {
-        headers,
-        signal: AbortSignal.timeout(25_000),
-      },
-    );
-    if (!response.ok) {
-      throw new Error(`Steward account lookup returned ${response.status}`);
-    }
-    const payload: unknown = await response.json();
-    const data =
-      payload && typeof payload === "object" && "data" in payload
-        ? (payload as { data?: unknown }).data
-        : undefined;
-    accounts =
-      data && typeof data === "object" && "accounts" in data
-        ? (data as { accounts?: unknown }).accounts
-        : undefined;
-  } catch (error) {
-    if (error instanceof StewardPhoneOwnershipError) throw error;
-    throw new StewardPhoneOwnershipError(
-      "upstream_unavailable",
-      "Steward linked-account verification failed",
-      { cause: error },
-    );
-  }
-
-  if (!Array.isArray(accounts)) {
-    throw new StewardPhoneOwnershipError(
-      "invalid_upstream_response",
-      "Steward linked-account response is malformed",
-    );
-  }
-
-  const ownsPhone = accounts.some((account) => {
-    if (!account || typeof account !== "object") return false;
-    const record = account as Record<string, unknown>;
-    const provider =
-      typeof record.provider === "string" ? record.provider.trim().toLowerCase() : "";
-    const type = typeof record.type === "string" ? record.type.trim().toLowerCase() : "";
-    const isPhoneAccount =
-      provider === "phone" ||
-      provider === "sms" ||
-      provider.startsWith("phone:") ||
-      type === "phone" ||
-      type === "sms";
-    if (!isPhoneAccount || typeof record.providerAccountId !== "string") {
-      return false;
-    }
-    const accountPhone = normalizePhoneNumber(record.providerAccountId);
-    return isValidE164(accountPhone) && accountPhone === normalizedPhone;
-  });
-
-  return ownsPhone
-    ? { status: "verified", phoneNumber: normalizedPhone }
-    : { status: "not_linked" };
 }
 
 // ---------------------------------------------------------------------------

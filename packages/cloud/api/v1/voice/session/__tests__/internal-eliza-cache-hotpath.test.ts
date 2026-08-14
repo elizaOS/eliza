@@ -97,6 +97,8 @@ test("real cache + canonical coordinator dispatch performs no response-path DB w
     },
     executionCtx,
   );
+  await fetchImpl.prewarm();
+  expect(background).toHaveLength(0);
   const response = await fetchImpl(
     `https://voice.internal/api/v1/eliza/agents/${AGENT_ID}/api/conversations/${CONVERSATION_ID}/messages/stream`,
     {
@@ -238,6 +240,5 @@ test("hot module and canonical handler structurally exclude legacy DB turn depen
 
   expect(canonicalSource).not.toContain("elizaSandboxService");
   expect(canonicalSource).not.toContain('import("../eliza-sandbox")');
-  expect(canonicalSource).toContain("agent: SharedRuntimeAgent;");
-  expect(canonicalSource).not.toContain("agent: AgentSandbox;");
+  expect(canonicalSource).toContain("agent: AgentSandbox;");
 });

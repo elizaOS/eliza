@@ -67,9 +67,6 @@ const { CacheKeys } = await import("@/lib/cache/keys");
 const { runWithCloudBindingsAsync } = await import(
   "@/lib/runtime/cloud-bindings"
 );
-const { personalSharedAgentId } = await import(
-  "@/lib/services/shared-runtime/personal-shared-agent"
-);
 const { hydrateVoiceSharedAgentScope } = await import(
   "../lib/voice-agent-scope-hydration"
 );
@@ -80,15 +77,6 @@ const SCOPE_KEY = CacheKeys.sharedAgentScope.voice(
   AGENT_ID,
 );
 const CHARACTER_KEY = `character:data:${CHARACTER_ID}`;
-const PERSONAL_AGENT_ID = personalSharedAgentId({
-  userId: USER_ID,
-  organizationId: ORGANIZATION_ID,
-});
-const PERSONAL_SCOPE_KEY = CacheKeys.sharedAgentScope.voice(
-  ORGANIZATION_ID,
-  USER_ID,
-  PERSONAL_AGENT_ID,
-);
 const env = {
   CACHE_ENABLED: "true",
   DATABASE_URL: "postgresql://must-not-connect.invalid/eliza",
@@ -98,7 +86,6 @@ afterEach(async () => {
   await runWithCloudBindingsAsync(env, async () => {
     await cache.del(SCOPE_KEY);
     await cache.del(CHARACTER_KEY);
-    await cache.del(PERSONAL_SCOPE_KEY);
   });
   findByIdAndOrg.mockClear();
   findByIdInOrganization.mockClear();
@@ -124,27 +111,6 @@ test("one cold hydration warms BOTH the scope gate and the linked character", as
       CHARACTER_ID,
       ORGANIZATION_ID,
     );
-    expect(warmInferenceAdmissionSnapshot).toHaveBeenCalledWith(
-      ORGANIZATION_ID,
-    );
-  });
-});
-
-test("hydrates the rowless personal Shared identity without reading an agent row", async () => {
-  await runWithCloudBindingsAsync(env, async () => {
-    await hydrateVoiceSharedAgentScope(
-      env as unknown as Parameters<typeof hydrateVoiceSharedAgentScope>[0],
-      { ...claims, agentId: PERSONAL_AGENT_ID },
-    );
-
-    expect(await cache.get(PERSONAL_SCOPE_KEY)).toMatchObject({
-      id: PERSONAL_AGENT_ID,
-      organization_id: ORGANIZATION_ID,
-      user_id: USER_ID,
-      execution_tier: "shared",
-    });
-    expect(findByIdAndOrg).not.toHaveBeenCalled();
-    expect(findByIdInOrganization).not.toHaveBeenCalled();
     expect(warmInferenceAdmissionSnapshot).toHaveBeenCalledWith(
       ORGANIZATION_ID,
     );

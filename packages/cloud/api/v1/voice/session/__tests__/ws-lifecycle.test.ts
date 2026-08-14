@@ -789,6 +789,44 @@ describe("voice-session WS lifecycle", () => {
     expect(prewarmCalls).toBe(1);
   });
 
+  test("first response joins prewarm and an interruption discards the obsolete turn", async () => {
+    let resolvePrewarm: () => void = () => {};
+    const prewarm = new Promise<void>((resolve) => {
+      resolvePrewarm = resolve;
+    });
+    const requestTexts: string[] = [];
+    const successFetch = makeSseFetch(["Replacement response."]);
+    const client = new FakeClientSocket();
+    await connectSession({
+      client,
+      prewarmElizaContext: () => prewarm,
+      fetchImpl: (async (input: RequestInfo | URL, init?: RequestInit) => {
+        const body = JSON.parse(String(init?.body)) as { text: string };
+        requestTexts.push(body.text);
+        return successFetch(input, init);
+      }) as typeof fetch,
+    });
+    const ink = FakeInkSocket.instances.at(-1)!;
+    const ttsBefore = FakeCartesiaSocket.instances.length;
+
+    ink.emitTurn("turn.start");
+    ink.emitTurn("turn.end", "obsolete first request");
+    await flush();
+    expect(FakeCartesiaSocket.instances.length).toBe(ttsBefore + 1);
+    expect(requestTexts).toEqual([]);
+
+    ink.emitTurn("turn.start");
+    ink.emitTurn("turn.end", "replacement request");
+    await flush();
+    expect(requestTexts).toEqual([]);
+
+    resolvePrewarm();
+    await flush();
+    await flush();
+    expect(requestTexts).toEqual(["replacement request"]);
+    expect(client.controlTypes()).toContain("llm_first_text");
+  });
+
   test("caps Cartesia server-side buffer delay for realtime voice", async () => {
     const client = new FakeClientSocket();
     await connectSession({

@@ -65,11 +65,15 @@ describe("what a wallet signup asserts about the wallet", () => {
     "an address the caller was merely handed creates an UNVERIFIED wallet",
     async () => {
       if (!pgliteReady) throw pgliteError;
-      const evm = await walletSignup.findOrCreateUserByWalletAddress(NAMED_EVM);
+      const evm = await walletSignup.findOrCreateUserByWalletAddress(NAMED_EVM, {
+        grantInitialCredits: false,
+      });
       expect(evm.isNewAccount).toBe(true);
       expect(evm.user.wallet_verified).toBe(false);
 
-      const solana = await walletSignup.findOrCreateSolanaUserByWalletAddress(NAMED_SOLANA);
+      const solana = await walletSignup.findOrCreateSolanaUserByWalletAddress(NAMED_SOLANA, {
+        grantInitialCredits: false,
+      });
       expect(solana.isNewAccount).toBe(true);
       expect(solana.user.wallet_verified).toBe(false);
     },
@@ -81,11 +85,13 @@ describe("what a wallet signup asserts about the wallet", () => {
     async () => {
       if (!pgliteReady) throw pgliteError;
       const evm = await walletSignup.findOrCreateUserByWalletAddress(PROVEN_EVM, {
+        grantInitialCredits: false,
         walletProven: true,
       });
       expect(evm.user.wallet_verified).toBe(true);
 
       const solana = await walletSignup.findOrCreateSolanaUserByWalletAddress(PROVEN_SOLANA, {
+        grantInitialCredits: false,
         walletProven: true,
       });
       expect(solana.user.wallet_verified).toBe(true);
@@ -100,10 +106,13 @@ describe("what a wallet signup asserts about the wallet", () => {
       // An x402 topup can be the first thing that ever mentions this wallet.
       // Without the upgrade the owner would sign a SIWE challenge and still hold
       // an unverified wallet forever — no identity at any relying party.
-      const named = await walletSignup.findOrCreateUserByWalletAddress(UPGRADED_EVM);
+      const named = await walletSignup.findOrCreateUserByWalletAddress(UPGRADED_EVM, {
+        grantInitialCredits: false,
+      });
       expect(named.user.wallet_verified).toBe(false);
 
       const proven = await walletSignup.findOrCreateUserByWalletAddress(UPGRADED_EVM, {
+        grantInitialCredits: false,
         walletProven: true,
       });
       expect(proven.isNewAccount).toBe(false);
@@ -111,7 +120,9 @@ describe("what a wallet signup asserts about the wallet", () => {
       expect(proven.user.wallet_verified).toBe(true);
 
       // A later unproven mention is not evidence against a checked signature.
-      const namedAgain = await walletSignup.findOrCreateUserByWalletAddress(UPGRADED_EVM);
+      const namedAgain = await walletSignup.findOrCreateUserByWalletAddress(UPGRADED_EVM, {
+        grantInitialCredits: false,
+      });
       expect(namedAgain.user.wallet_verified).toBe(true);
     },
     PGLITE_TIMEOUT,

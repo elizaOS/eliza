@@ -1,4 +1,4 @@
-/** Verifies that managed-app /join completes the PKCE SSO bridge before resolving the account-native personal Eliza. */
+/** Verifies that managed-app /join completes the real PKCE SSO bridge before provisioning, using the canonical production app origin and deterministic navigation/network stubs. */
 // @vitest-environment jsdom
 // @vitest-environment-options {"url": "https://cloud.eliza.app/join"}
 
@@ -64,7 +64,7 @@ afterEach(() => {
 });
 
 describe("JoinPage managed-app SSO handoff", () => {
-  it("bridges a live apex session back to /join before identity resolution", async () => {
+  it("bridges a live apex session back to /join before provisioning", async () => {
     // biome-ignore lint/suspicious/noDocumentCookie: jsdom exposes no Cookie Store API.
     document.cookie = "steward-authed=1; path=/";
     render(<JoinPage />);
@@ -90,7 +90,7 @@ describe("JoinPage managed-app SSO handoff", () => {
     expect(runJoinFlowMock).not.toHaveBeenCalled();
   });
 
-  it("resolves identity exactly once after the bridge restores authentication", async () => {
+  it("provisions exactly once after the bridge restores authentication", async () => {
     authenticatedRef.current = true;
     runJoinFlowMock.mockResolvedValue({ agentId: "agent-1" });
     render(<JoinPage />);

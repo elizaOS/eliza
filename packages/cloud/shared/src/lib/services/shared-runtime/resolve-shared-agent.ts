@@ -24,8 +24,6 @@ import { CacheKeys, CacheTTL } from "../../cache/keys";
 import { logger } from "../../utils/logger";
 import { type CachedAgentSandbox, rehydrateCachedAgentDates } from "./cached-agent-dates";
 import { isDedicatedBootstrapWindow } from "./dedicated-bootstrap";
-import { isPersonalSharedAgentId, personalSharedAgent } from "./personal-shared-agent";
-import type { SharedRuntimeAgent } from "./shared-runtime-agent";
 
 export { type CachedAgentSandbox, rehydrateCachedAgentDates } from "./cached-agent-dates";
 
@@ -58,14 +56,6 @@ export type ResolvedSharedAgent =
       code?: "agent_cache_warming" | "agent_cache_unavailable";
       /** Advertised retry delay for warming responses; render as `Retry-After`. */
       retryAfterSeconds?: number;
-    }
-  | {
-      agent: SharedRuntimeAgent;
-      agentId: string;
-      orgId: string;
-      agentName: string;
-      agentKind: "personal";
-      createdAt: Date;
     }
   | { agent: AgentSandbox; agentId: string; orgId: string; agentName: string };
 
@@ -292,37 +282,6 @@ export async function resolveSharedAgent(
       error: "Agent authorization cache context is unavailable. Retry shortly.",
       status: 503,
     };
-  }
-
-  // A reserved personal id is a rowless account identity, not an
-  // agent_sandboxes lookup. Authenticate the account first, then require the
-  // requested deterministic id to match it exactly; another account's id is
-  // indistinguishable from a missing agent.
-  if (isPersonalSharedAgentId(agentId)) {
-    try {
-      const { requireUserOrApiKeyWithOrg } = await import("../../auth/workers-hono-auth");
-      const user = await requireUserOrApiKeyWithOrg(c);
-      const agent = personalSharedAgent({
-        userId: user.id,
-        organizationId: user.organization_id,
-      });
-      if (agent.id !== agentId) {
-        return { error: "Agent not found", status: 404 };
-      }
-      return {
-        agent,
-        agentId,
-        orgId: user.organization_id,
-        agentName: agent.agent_name ?? "Eliza",
-        agentKind: "personal",
-        createdAt: user.created_at ? new Date(user.created_at) : new Date(0),
-      };
-    } catch (error) {
-      if (error instanceof ApiError && isSharedAgentResolutionStatus(error.status)) {
-        return { error: error.message, status: error.status };
-      }
-      throw error;
-    }
   }
 
   // COLD-PATH fast lane (COLDPATH-FIX-2026-07-21): on the API-key path, a fresh
@@ -661,12 +620,7 @@ export async function resolveSharedAgent(
     else void write;
   }
 
-  return {
-    agent,
-    agentId,
-    orgId: entry.orgId,
-    agentName: agent.agent_name ?? "Eliza",
-  };
+  return { agent, agentId, orgId: entry.orgId, agentName: agent.agent_name ?? "Eliza" };
 }
 
 /**

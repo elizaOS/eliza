@@ -8,6 +8,7 @@
  * contract cannot select the legacy database-backed bridge.
  */
 
+import type { AgentSandbox } from "@/db/repositories/agent-sandboxes";
 import { timingSafeEqualSecret } from "@/lib/auth/cron";
 import { cache } from "@/lib/cache/client";
 import { CacheKeys } from "@/lib/cache/keys";
@@ -16,7 +17,6 @@ import {
   runWithCloudBindingsAsync,
 } from "@/lib/runtime/cloud-bindings";
 import { handleCanonicalScopedAgentStream } from "@/lib/services/shared-runtime/canonical-scoped-stream";
-import type { SharedRuntimeAgent } from "@/lib/services/shared-runtime/shared-runtime-agent";
 import type { BridgeExecutionContext } from "@/lib/services/shared-runtime/shared-runtime-chat";
 import { logger } from "@/lib/utils/logger";
 import type {
@@ -43,14 +43,14 @@ export type InternalElizaConversationFetchFactory = (
 interface InternalVoiceSharedRuntime {
   executionCtx?: BridgeExecutionContext;
   namespace?: RuntimeDurableObjectNamespace;
-  readCachedAgent(): Promise<SharedRuntimeAgent | null>;
+  readCachedAgent(): Promise<AgentSandbox | null>;
   scheduleHydration(): boolean;
 }
 
 function isCachedVoiceAgent(
-  agent: SharedRuntimeAgent | null,
+  agent: AgentSandbox | null,
   claims: InternalElizaConversationFetchClaims,
-): agent is SharedRuntimeAgent {
+): agent is AgentSandbox {
   return Boolean(
     agent &&
       agent.id === claims.agentId &&
@@ -98,8 +98,8 @@ export function createInternalElizaConversationFetchFactory(
     );
     let hydrationPromise: Promise<void> | null = null;
 
-    const readCachedAgent = async (): Promise<SharedRuntimeAgent | null> => {
-      const cached = await cache.get<SharedRuntimeAgent>(cacheKey);
+    const readCachedAgent = async (): Promise<AgentSandbox | null> => {
+      const cached = await cache.get<AgentSandbox>(cacheKey);
       return isCachedVoiceAgent(cached, claims) ? cached : null;
     };
 
@@ -133,7 +133,13 @@ export function createInternalElizaConversationFetchFactory(
       await runWithCloudBindingsAsync(
         env as unknown as Record<string, unknown>,
         async () => {
-          if (!(await readCachedAgent())) scheduleHydration();
+          if (await readCachedAgent()) return;
+          scheduleHydration();
+          // Capture before awaiting: the hydration's finally block clears the
+          // shared slot. Joining this exact promise lets the first voice turn
+          // use the freshly cached scope without cache-miss polling/backoff.
+          const pendingHydration = hydrationPromise;
+          if (pendingHydration) await pendingHydration;
         },
       );
     };

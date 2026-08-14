@@ -149,7 +149,6 @@ function defaultProviders() {
 
 describe("StewardLoginSection passkey capability gating", () => {
   beforeEach(() => {
-    window.localStorage.clear();
     capabilityRef.usable = false;
     capabilityRef.reason = "native-without-bridge";
     stewardAuthSpies.getProviders.mockResolvedValue(defaultProviders());

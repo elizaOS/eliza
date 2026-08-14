@@ -14,8 +14,8 @@
  * when a sole-member owner of an empty solo org can accept — moved into the
  * inviting org with the invited role, characters + conversations re-homed, and
  * the vacated solo org deleted. The remaining cases pin the boundary: owners
- * whose org has other members, deployed apps/agents/domains, or any credits
- * stay blocked with actionable errors.
+ * whose org has other members, deployed apps/agents/domains, or more credits
+ * than the signup grant stay blocked with actionable errors.
  *
  * Fails loudly (via the `pgliteReady` guard) if PGlite/pushSchema ever fails
  * to initialize — never a silent skip.
@@ -93,7 +93,7 @@ async function seedInviteScenario(options?: {
       id: inviteeOrgId,
       name: "Solo Org",
       slug: `solo-${inviteeOrgId}`,
-      credit_balance: options?.inviteeOrgBalance ?? "0.000000",
+      credit_balance: options?.inviteeOrgBalance ?? "5.000000",
     },
   ]);
   await dbWrite.insert(schemas.users).values([
@@ -453,7 +453,7 @@ describe("acceptInvite — existing owner of an empty solo org (#11332)", () => 
   );
 
   test(
-    "owner whose org holds credits stays blocked",
+    "owner whose org holds more credits than the signup grant stays blocked",
     async () => {
       expect(pgliteReady).toBe(true);
       const seeded = await seedInviteScenario({

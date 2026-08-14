@@ -16,6 +16,7 @@ import { normalizePhoneNumber } from "@/lib/utils/phone-normalization";
 import { verifyTwilioSignature } from "@/lib/utils/twilio-api";
 import { recordVoiceSessionJti } from "@/lib/voice-session/jwt";
 import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
+import { scheduleTwilioVoiceScopePrewarm } from "../lib/prewarm-voice-scope";
 import { resolveTwilioVoiceTarget } from "../lib/resolve-voice-target";
 import { mintTwilioStreamToken } from "../lib/twilio-stream-token";
 import {
@@ -114,6 +115,27 @@ app.post("/", async (c) => {
   }
 
   const id = randomUUID();
+  const conversationId = randomUUID();
+  try {
+    scheduleTwilioVoiceScopePrewarm({
+      agent: phoneNumber.agent,
+      env: c.env,
+      executionCtx: c.executionCtx,
+      claims: {
+        agentId: phoneNumber.agentId,
+        conversationId,
+        organizationId: phoneNumber.organizationId,
+        userId: phoneNumber.userId,
+      },
+    });
+  } catch (error) {
+    // error-policy:J7 local/test contexts can omit a Worker execution context;
+    // the media session remains the authoritative cold-hydration boundary.
+    logger.warn("[twilio-voice-inbound] early scope prewarm unavailable", {
+      agentId: phoneNumber.agentId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
   const [priorCall] = await dbRead
     .select({ id: twilioInboundCalls.id })
     .from(twilioInboundCalls)
@@ -157,7 +179,6 @@ app.post("/", async (c) => {
     agentId: phoneNumber?.agentId,
   });
 
-  const conversationId = randomUUID();
   const minted = await mintTwilioStreamToken(
     {
       accountSid: event.AccountSid,

@@ -1,11 +1,13 @@
 // Coordinates cloud service provisioning behavior behind route handlers.
 import { agentSandboxesRepository } from "../../../db/repositories/agent-sandboxes";
+import { creditTransactionsRepository } from "../../../db/repositories/credit-transactions";
 import { jobsRepository } from "../../../db/repositories/jobs";
 import type { AgentSandbox, AgentSandboxStatus } from "../../../db/schemas/agent-sandboxes";
 import { ApiError } from "../../api/cloud-worker-errors";
 import { containersEnv } from "../../config/containers-env";
 import { logger } from "../../utils/logger";
 import { checkAgentCreditGate } from "../agent-billing-gate";
+import { creditsService } from "../credits";
 import { elizaSandboxService } from "../eliza-sandbox";
 import { provisioningJobService } from "../provisioning-jobs";
 
@@ -15,6 +17,7 @@ const DEFAULT_AGENT_NAME = "Eliza";
 // A bare name like "elizaos/eliza:latest" causes Docker to resolve against
 // docker.io, producing an "unauthorized" / "pull access denied" error.
 const DEFAULT_DOCKER_IMAGE = containersEnv.defaultAgentImage();
+const ELIZA_APP_INITIAL_CREDITS = 5.0;
 
 /**
  * Minimum gap between two onboarding-driven provision attempts for one sandbox.
@@ -134,10 +137,36 @@ export async function getElizaAppProvisioningStatus(
   return toElizaAppProvisioningStatus(sandboxes[0]);
 }
 
+async function ensureElizaAppStarterCredits(params: {
+  organizationId: string;
+  userId: string;
+}): Promise<void> {
+  if (ELIZA_APP_INITIAL_CREDITS <= 0) return;
+
+  const hasStarterCredits = await creditTransactionsRepository.hasElizaAppInitialFreeCredits(
+    params.organizationId,
+  );
+  if (hasStarterCredits) return;
+
+  await creditsService.addCredits({
+    organizationId: params.organizationId,
+    amount: ELIZA_APP_INITIAL_CREDITS,
+    description: "Eliza App - Welcome bonus",
+    metadata: {
+      type: "initial_free_credits",
+      source: "eliza-app-onboarding",
+      userId: params.userId,
+    },
+    stripePaymentIntentId: `eliza-app-initial-free-credits:${params.organizationId}`,
+  });
+}
+
 export async function ensureElizaAppProvisioning(params: {
   organizationId: string;
   userId: string;
 }): Promise<ElizaAppProvisioningStatus> {
+  await ensureElizaAppStarterCredits(params);
+
   const existing = await getElizaAppProvisioningStatus(params.organizationId);
   // Only a sandbox still heading toward a working agent short-circuits here.
   // Testing the ROW'S EXISTENCE instead of its state is what stranded every
