@@ -253,9 +253,9 @@ export async function handleStandaloneCloudPairRoute(
   const exchangeUrl = `${resolveCloudAuthRoot()}/api/auth/pair`;
   let exchanged: CloudPairRelaySession | null = null;
   let status = 0;
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), RELAY_TIMEOUT_MS);
   try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), RELAY_TIMEOUT_MS);
     const response = await fetch(exchangeUrl, {
       method: "POST",
       headers: {
@@ -265,7 +265,6 @@ export async function handleStandaloneCloudPairRoute(
       body: JSON.stringify({ token, agentId }),
       signal: controller.signal,
     });
-    clearTimeout(timeoutId);
     status = response.status;
     if (response.ok) {
       // error-policy:J3 a successful dependency response is still untrusted;
@@ -293,12 +292,14 @@ export async function handleStandaloneCloudPairRoute(
       renderErrorHtml(
         "Eliza Cloud is unreachable",
         timedOut
-          ? "Eliza Cloud did not respond in time, so your sign-in link was never verified. Open your agent again from Eliza Cloud to get a fresh link."
-          : "We could not reach Eliza Cloud, so your sign-in link was never verified. Open your agent again from Eliza Cloud to get a fresh link.",
+          ? "Eliza Cloud did not respond in time. We could not confirm whether sign-in completed. Open your agent again from Eliza Cloud to get a fresh link."
+          : "We could not reach Eliza Cloud or confirm whether sign-in completed. Open your agent again from Eliza Cloud to get a fresh link.",
       ),
       { "retry-after": "60" },
     );
     return true;
+  } finally {
+    clearTimeout(timeoutId);
   }
 
   if (status === 401 || status === 403 || status === 410) {
@@ -334,16 +335,15 @@ export async function handleStandaloneCloudPairRoute(
   }
 
   if (status >= 500) {
-    // Upstream 5xx means Cloud failed before verifying anything — it never
-    // accepted the link, so the copy must not claim it did. Pairing tokens are
-    // short-lived one-time secrets, so recovery is a fresh link, not a retry
-    // of this URL; Retry-After signals when the upstream is worth trying again.
+    // A 5xx does not reveal whether Cloud consumed the one-time token before
+    // failing. Keep the copy neutral and recover through a fresh link rather
+    // than inviting a replay; Retry-After describes upstream availability.
     sendHtml(
       res,
       502,
       renderErrorHtml(
         "Eliza Cloud hit an error",
-        "Eliza Cloud had an internal error before your sign-in link could be verified, so the link was not accepted. Wait a moment, then open your agent again from Eliza Cloud to get a fresh link.",
+        "Eliza Cloud returned an internal error, so we could not confirm whether sign-in completed. Wait a moment, then open your agent again from Eliza Cloud to get a fresh link.",
       ),
       { "retry-after": "60" },
     );
