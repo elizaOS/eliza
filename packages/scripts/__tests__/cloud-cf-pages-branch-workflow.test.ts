@@ -169,10 +169,11 @@ describe("Cloud CF PR preview workflow contract", () => {
 
   test("keeps PR builds reachable and gates canonical Pages on the API", () => {
     const buildJob = producer.jobs?.["build-pages"];
-    expect(buildJob?.needs).toEqual([
-      "validate-deploy-source",
-      "resolve-pages-preview-config",
-    ]);
+    // build-pages must never need the dispatch-only validate-deploy-source
+    // job: with a plain `if` (no status-check function), a skipped need
+    // skips the producer and PR preview consumers 404 on the Pages artifact.
+    expect(buildJob?.needs).toEqual(["resolve-pages-preview-config"]);
+    expect(buildJob?.needs).not.toContain("validate-deploy-source");
     expect(buildJob?.if).toBe(
       "$" +
         "{{ github.event_name == 'pull_request' && needs.resolve-pages-preview-config.result == 'success' }}",

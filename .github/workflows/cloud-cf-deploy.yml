@@ -280,7 +280,12 @@ jobs:
 
   build-pages:
     name: Build Pages artifacts
-    needs: [validate-deploy-source, resolve-pages-preview-config]
+    # PR-only producer. It must not need validate-deploy-source: that job is
+    # skipped outside workflow_dispatch, and an `if` without a status-check
+    # function implies success() of every needed job, so GitHub skipped this
+    # upload on every pull request and cloud-cf-pr-preview-deploy.yml failed
+    # with "Artifact not found for name: pages-app-<run>-<attempt>".
+    needs: [resolve-pages-preview-config]
     if: ${{ github.event_name == 'pull_request' && needs.resolve-pages-preview-config.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
