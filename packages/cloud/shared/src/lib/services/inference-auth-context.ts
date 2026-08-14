@@ -157,6 +157,8 @@ interface MutableInferenceAuthTrace {
 
 const apiKeyHydrations = new Map<string, Promise<void>>();
 const AUTH_CONTEXT_REFRESH_AFTER_MS = 30_000;
+const DEFAULT_HYDRATION_DEADLINE_MS = 10_000;
+const MAX_HYDRATION_DEADLINE_MS = 2_147_483_647;
 
 const OPAQUE_TRACE_ID =
   /^(?:[0-9a-f]{32}|[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$/i;
@@ -286,7 +288,28 @@ export function extractApiKeyCredential(req: Request): string | null {
  * settled). On deadline the slot clears so the next request starts a fresh
  * attempt, and the miss counts toward the authoritative-escape threshold.
  */
-const HYDRATION_DEADLINE_MS = Number(process.env.INFERENCE_AUTH_HYDRATION_DEADLINE_MS ?? "10000");
+export function resolveInferenceAuthHydrationDeadlineMs(raw: string | undefined): number {
+  if (raw === undefined || raw.trim() === "") {
+    return DEFAULT_HYDRATION_DEADLINE_MS;
+  }
+  const normalized = raw.trim();
+  if (!/^\d+$/.test(normalized)) {
+    throw new Error(
+      `INFERENCE_AUTH_HYDRATION_DEADLINE_MS must be an integer from 1 through ${MAX_HYDRATION_DEADLINE_MS} milliseconds`,
+    );
+  }
+  const parsed = Number(normalized);
+  if (!Number.isSafeInteger(parsed) || parsed < 1 || parsed > MAX_HYDRATION_DEADLINE_MS) {
+    throw new Error(
+      `INFERENCE_AUTH_HYDRATION_DEADLINE_MS must be an integer from 1 through ${MAX_HYDRATION_DEADLINE_MS} milliseconds`,
+    );
+  }
+  return parsed;
+}
+
+const HYDRATION_DEADLINE_MS = resolveInferenceAuthHydrationDeadlineMs(
+  process.env.INFERENCE_AUTH_HYDRATION_DEADLINE_MS,
+);
 
 /**
  * After this many consecutive failed or timed-out hydrations for one key,
