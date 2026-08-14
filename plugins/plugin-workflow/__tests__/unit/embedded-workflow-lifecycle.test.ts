@@ -135,6 +135,49 @@ describe('embedded native workflow lifecycle', () => {
     expect((await service.listWorkflowRevisions('review')).data[0].operation).toBe('delete');
   });
 
+  test('preserves user-created triggers while synchronizing the owned cron schedule', async () => {
+    const { service, tasks, runtime } = await harness();
+    const created = await service.createWorkflow({ ...definition('Triggered'), id: 'triggered' });
+    const eventTaskId = await runtime.createTask({
+      name: 'TRIGGER_DISPATCH',
+      description: 'Message trigger',
+      tags: ['queue', 'repeat', 'trigger'],
+      metadata: {
+        updatedAt: Date.now(),
+        updateInterval: 31_536_000_000,
+        trigger: {
+          version: 1,
+          triggerId: '00000000-0000-4000-8000-000000000099',
+          displayName: 'Message',
+          instructions: 'Run workflow Triggered',
+          triggerType: 'event',
+          enabled: true,
+          wakeMode: 'inject_now',
+          createdBy: 'workflow.studio',
+          eventKind: 'MESSAGE_RECEIVED',
+          runCount: 0,
+          kind: 'workflow',
+          workflowId: created.id,
+          workflowName: created.name,
+        },
+      },
+    } as Task);
+
+    await service.activateWorkflow(created.id);
+    expect(tasks).toHaveLength(2);
+    expect(tasks.some((task) => task.id === eventTaskId)).toBe(true);
+
+    await service.updateWorkflow(created.id, {
+      ...created,
+      schedule: { cron: '0 * * * *', timezone: 'UTC', enabled: false },
+    });
+    expect(tasks).toHaveLength(1);
+    expect(tasks[0]?.id).toBe(eventTaskId);
+
+    await service.deleteWorkflow(created.id);
+    expect(tasks).toHaveLength(0);
+  });
+
   test('resumes an unfinished persisted run with its exact workflow version', async () => {
     const { service, client, runtime } = await harness();
     const workflow = await service.createWorkflow({

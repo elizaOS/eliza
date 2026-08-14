@@ -105,6 +105,7 @@ Source contract:
 - Import createSmithers from "smthrs/create", other public APIs from supported smthrs subpaths, and schemas from "zod".
 - Start with /** @jsxImportSource smthrs */.
 - Use createSmithers schemas and pass { dbPath: process.env.ELIZA_SMTHRS_DB_PATH }.
+- Register the final task schema under the key "output" so its durable result is returned to elizaOS run surfaces.
 - Default-export the result of smithers(...).
 - Use globalThis.__elizaSmithers.agent for every Task agent so all inference is routed through elizaOS Cloud. Never instantiate OpenAI, Anthropic, Claude, Codex, or Gateway clients.
 - Use Smithers Workflow, Task, Sequence, Parallel, Branch, Loop, Approval, Signal, Timer, UI, and TUI primitives as appropriate.
