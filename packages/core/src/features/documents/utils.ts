@@ -28,6 +28,14 @@ const PLAIN_TEXT_CONTENT_TYPES = [
 const MAX_FALLBACK_SIZE_BYTES = 5 * 1024 * 1024;
 const BINARY_CHECK_BYTES = 1024;
 
+/**
+ * Return the case-insensitive MIME essence used for routing document content.
+ * Parameters belong to the media type but do not change its routing identity.
+ */
+export function normalizeDocumentContentType(contentType: string): string {
+	return contentType.split(";", 1)[0]?.trim().toLowerCase() ?? "";
+}
+
 export async function extractTextFromFileBuffer(
 	fileBuffer: Buffer,
 	contentType: string,
@@ -139,6 +147,7 @@ export function isBinaryContentType(
 	contentType: string,
 	filename: string,
 ): boolean {
+	const normalizedContentType = normalizeDocumentContentType(contentType);
 	const textContentTypes = [
 		"text/",
 		"application/json",
@@ -150,7 +159,7 @@ export function isBinaryContentType(
 	];
 
 	const isTextMimeType = textContentTypes.some((type) =>
-		contentType.includes(type),
+		normalizedContentType.includes(type),
 	);
 	if (isTextMimeType) {
 		return false;
@@ -171,7 +180,7 @@ export function isBinaryContentType(
 	];
 
 	const isBinaryMimeType = binaryContentTypes.some((type) =>
-		contentType.includes(type),
+		normalizedContentType.includes(type),
 	);
 
 	if (isBinaryMimeType) {

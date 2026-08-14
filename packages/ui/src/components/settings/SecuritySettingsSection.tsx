@@ -21,7 +21,6 @@ import {
   type ReactNode,
   useCallback,
   useEffect,
-  useId,
   useState,
 } from "react";
 import { useAgentElement } from "../../agent-surface";
@@ -36,19 +35,17 @@ import {
   authSetup,
 } from "../../api/auth-client";
 import { useBootConfig } from "../../config/boot-config-react.hooks";
-import { cn } from "../../lib/utils";
 import { useTranslation } from "../../state/TranslationContext.hooks";
 import { OwnerOnlyNotice, RoleGate } from "../RoleGate";
 import { Button } from "../ui/button";
-import { Input } from "../ui/input";
-import { Label } from "../ui/label";
 import {
   StatusBadge as SharedStatusBadge,
   type StatusVariant,
 } from "../ui/status-badge";
 import { AdvancedToggle } from "./AdvancedToggle";
 import { useAdvancedSettingsEnabled } from "./AdvancedToggle.hooks";
-import { SettingsGroup, SettingsStack } from "./settings-layout";
+import { SettingsInputRow } from "./settings-agent-rows";
+import { SettingsGroup, SettingsRow, SettingsStack } from "./settings-layout";
 
 function formatRelativeTime(ms: number | null): string {
   if (ms == null) return "local only";
@@ -229,15 +226,17 @@ function AccessInfoRow({
   detail: string;
 }) {
   return (
-    <div className="grid gap-1 py-2 sm:grid-cols-[10rem_minmax(0,1fr)] sm:gap-3">
-      <div className="text-xs font-medium text-muted">{label}</div>
-      <div className="min-w-0 space-y-0.5">
-        <div className="break-words text-sm font-medium text-txt-strong">
-          {value}
-        </div>
-        <p className="text-xs leading-5 text-muted">{detail}</p>
-      </div>
-    </div>
+    <SettingsRow
+      label={label}
+      description={
+        <span className="flex min-w-0 flex-col gap-0.5">
+          <span className="break-words text-sm font-medium text-txt-strong">
+            {value}
+          </span>
+          <span>{detail}</span>
+        </span>
+      }
+    />
   );
 }
 
@@ -709,63 +708,68 @@ const SessionRow = memo(function SessionRow({
       onActivate: () => onRevoke(session.id),
     });
   return (
-    <div className="flex items-start gap-3 py-3">
-      <DeviceIcon userAgent={session.userAgent} />
-      <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-        <div className="flex items-center gap-2">
-          <span className="text-sm font-medium capitalize text-txt-strong">
-            {session.kind}
-          </span>
-          {session.current && (
-            <span className="rounded-full border border-ok/35 bg-ok/12 px-2 py-0.5 text-xs font-medium text-ok">
+    <SettingsRow
+      icon={() => <DeviceIcon userAgent={session.userAgent} />}
+      active={session.current}
+      label={
+        <span className="flex min-w-0 flex-wrap items-center gap-2">
+          <span className="capitalize">{session.kind}</span>
+          {session.current ? (
+            <span className="rounded-full border border-border px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted">
               {t("security.sessions.thisSession", {
                 defaultValue: "This session",
               })}
             </span>
-          )}
-        </div>
-        <p className="truncate text-xs text-muted">
-          {session.ip ??
-            t("security.sessions.unknownIp", {
-              defaultValue: "Unknown IP",
-            })}{" "}
-          &middot;{" "}
-          {session.userAgent
-            ? session.userAgent.slice(0, 60)
-            : t("security.sessions.unknownClient", {
-                defaultValue: "Unknown client",
-              })}
-        </p>
-        <p className="text-xs text-muted">
-          {t("security.sessions.lastSeenExpires", {
-            lastSeen: formatRelativeTime(session.lastSeenAt),
-            expires: formatRelativeTime(session.expiresAt),
-            defaultValue: "Last seen {{lastSeen}} · expires {{expires}}",
-          })}
-        </p>
-      </div>
-
-      {!session.current && (
-        <Button
-          ref={revokeRef}
-          {...revokeAgentProps}
-          variant="ghost"
-          size="sm"
-          disabled={revoking}
-          onClick={() => onRevoke(session.id)}
-          className="shrink-0 text-xs text-danger hover:bg-danger/10 hover:text-danger"
-          aria-label={t("security.sessions.revoke", {
-            defaultValue: "Revoke this session",
-          })}
-        >
-          {revoking ? (
-            <Loader2 className="h-3 w-3 animate-spin" />
-          ) : (
-            <Trash2 className="h-3 w-3" />
-          )}
-        </Button>
-      )}
-    </div>
+          ) : null}
+        </span>
+      }
+      description={
+        <span className="flex min-w-0 flex-col gap-0.5">
+          <span className="truncate">
+            {session.ip ??
+              t("security.sessions.unknownIp", {
+                defaultValue: "Unknown IP",
+              })}{" "}
+            &middot;{" "}
+            {session.userAgent
+              ? session.userAgent.slice(0, 60)
+              : t("security.sessions.unknownClient", {
+                  defaultValue: "Unknown client",
+                })}
+          </span>
+          <span>
+            {t("security.sessions.lastSeenExpires", {
+              lastSeen: formatRelativeTime(session.lastSeenAt),
+              expires: formatRelativeTime(session.expiresAt),
+              defaultValue: "Last seen {{lastSeen}} · expires {{expires}}",
+            })}
+          </span>
+        </span>
+      }
+      control={
+        session.current ? undefined : (
+          <Button
+            ref={revokeRef}
+            {...revokeAgentProps}
+            variant="ghost"
+            size="sm"
+            disabled={revoking}
+            onClick={() => onRevoke(session.id)}
+            className="shrink-0 text-xs text-danger hover:bg-danger/10 hover:text-danger"
+            aria-label={t("security.sessions.revoke", {
+              defaultValue: "Revoke this session",
+            })}
+            data-testid={`security-session-revoke-${session.id}`}
+          >
+            {revoking ? (
+              <Loader2 className="h-3 w-3 animate-spin" />
+            ) : (
+              <Trash2 className="h-3 w-3" />
+            )}
+          </Button>
+        )
+      }
+    />
   );
 });
 
@@ -783,53 +787,12 @@ function RemotePasswordSection({
   onAccessChanged: () => Promise<void>;
 }) {
   const { t } = useTranslation();
-  const displayNameId = useId().replace(/:/g, "");
-  const currentPasswordId = useId().replace(/:/g, "");
-  const newPasswordId = useId().replace(/:/g, "");
-  const confirmPasswordId = useId().replace(/:/g, "");
-
   const [displayName, setDisplayName] = useState("Owner");
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [state, setState] = useState<PasswordState>({ phase: "idle" });
 
-  const { ref: displayNameRef, agentProps: displayNameAgentProps } =
-    useAgentElement<HTMLInputElement>({
-      id: "security-password-display-name",
-      role: "text-input",
-      label: "Owner display name",
-      group: "security-password",
-      getValue: () => displayName,
-      onFill: (v) => setDisplayName(v),
-    });
-  const { ref: currentPasswordRef, agentProps: currentPasswordAgentProps } =
-    useAgentElement<HTMLInputElement>({
-      id: "security-password-current",
-      role: "text-input",
-      label: "Current password",
-      group: "security-password",
-      getValue: () => currentPassword,
-      onFill: (v) => setCurrentPassword(v),
-    });
-  const { ref: newPasswordRef, agentProps: newPasswordAgentProps } =
-    useAgentElement<HTMLInputElement>({
-      id: "security-password-new",
-      role: "text-input",
-      label: "New remote password",
-      group: "security-password",
-      getValue: () => newPassword,
-      onFill: (v) => setNewPassword(v),
-    });
-  const { ref: confirmPasswordRef, agentProps: confirmPasswordAgentProps } =
-    useAgentElement<HTMLInputElement>({
-      id: "security-password-confirm",
-      role: "text-input",
-      label: "Confirm new remote password",
-      group: "security-password",
-      getValue: () => confirmPassword,
-      onFill: (v) => setConfirmPassword(v),
-    });
   const { ref: passwordSubmitRef, agentProps: passwordSubmitAgentProps } =
     useAgentElement<HTMLButtonElement>({
       id: "security-password-submit",
@@ -970,107 +933,86 @@ function RemotePasswordSection({
     >
       <form onSubmit={handleSubmit} className="flex flex-col gap-3" noValidate>
         {setupMode && (
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor={displayNameId} className="text-xs text-muted">
-              {t("security.password.field.displayName", {
-                defaultValue: "Display name",
-              })}
-            </Label>
-            <Input
-              ref={displayNameRef}
-              {...displayNameAgentProps}
-              id={displayNameId}
-              type="text"
-              autoComplete="username"
-              value={displayName}
-              onChange={(event) => {
-                setDisplayName(event.target.value);
-                if (state.phase === "error") setState({ phase: "idle" });
-              }}
-              disabled={isSubmitting}
-              className="h-11"
-            />
-          </div>
+          <SettingsInputRow
+            agentId="security-password-display-name"
+            agentLabel="Owner display name"
+            group="security-password"
+            label={t("security.password.field.displayName", {
+              defaultValue: "Display name",
+            })}
+            type="text"
+            autoComplete="username"
+            value={displayName}
+            onValueChange={(next) => {
+              setDisplayName(next);
+              if (state.phase === "error") setState({ phase: "idle" });
+            }}
+            disabled={isSubmitting}
+          />
         )}
 
         {currentPasswordRequired && (
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor={currentPasswordId} className="text-xs text-muted">
-              {t("security.password.field.current", {
-                defaultValue: "Current password",
-              })}
-            </Label>
-            <Input
-              ref={currentPasswordRef}
-              {...currentPasswordAgentProps}
-              id={currentPasswordId}
-              type="password"
-              autoComplete="current-password"
-              value={currentPassword}
-              onChange={(event) => {
-                setCurrentPassword(event.target.value);
-                if (state.phase === "error") setState({ phase: "idle" });
-              }}
-              disabled={isSubmitting}
-              className="h-11"
-            />
-          </div>
+          <SettingsInputRow
+            agentId="security-password-current"
+            agentLabel="Current password"
+            group="security-password"
+            label={t("security.password.field.current", {
+              defaultValue: "Current password",
+            })}
+            type="password"
+            autoComplete="current-password"
+            value={currentPassword}
+            onValueChange={(next) => {
+              setCurrentPassword(next);
+              if (state.phase === "error") setState({ phase: "idle" });
+            }}
+            disabled={isSubmitting}
+          />
         )}
 
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor={newPasswordId} className="text-xs text-muted">
-            {t("security.password.field.new", {
-              defaultValue: "New password",
-            })}
-          </Label>
-          <Input
-            ref={newPasswordRef}
-            {...newPasswordAgentProps}
-            id={newPasswordId}
-            type="password"
-            autoComplete="new-password"
-            placeholder={t("security.password.field.newPlaceholder", {
-              defaultValue: "At least 12 characters",
-            })}
-            value={newPassword}
-            onChange={(event) => {
-              setNewPassword(event.target.value);
-              if (state.phase === "error") setState({ phase: "idle" });
-            }}
-            disabled={isSubmitting}
-            className="h-11"
-          />
-        </div>
+        <SettingsInputRow
+          agentId="security-password-new"
+          agentLabel="New remote password"
+          group="security-password"
+          label={t("security.password.field.new", {
+            defaultValue: "New password",
+          })}
+          type="password"
+          autoComplete="new-password"
+          placeholder={t("security.password.field.newPlaceholder", {
+            defaultValue: "At least 12 characters",
+          })}
+          value={newPassword}
+          onValueChange={(next) => {
+            setNewPassword(next);
+            if (state.phase === "error") setState({ phase: "idle" });
+          }}
+          disabled={isSubmitting}
+        />
 
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor={confirmPasswordId} className="text-xs text-muted">
-            {t("security.password.field.confirm", {
-              defaultValue: "Confirm new password",
-            })}
-          </Label>
-          <Input
-            ref={confirmPasswordRef}
-            {...confirmPasswordAgentProps}
-            id={confirmPasswordId}
-            type="password"
-            autoComplete="new-password"
-            value={confirmPassword}
-            onChange={(event) => {
-              setConfirmPassword(event.target.value);
-              if (state.phase === "error") setState({ phase: "idle" });
-            }}
-            disabled={isSubmitting}
-            aria-invalid={confirmMismatch}
-            className={cn("h-11", confirmMismatch && "border-danger ")}
-          />
-          {confirmMismatch && (
-            <p className="text-xs text-danger">
-              {t("security.password.error.mismatchShort", {
-                defaultValue: "Passwords do not match.",
-              })}
-            </p>
-          )}
-        </div>
+        <SettingsInputRow
+          agentId="security-password-confirm"
+          agentLabel="Confirm new remote password"
+          group="security-password"
+          label={t("security.password.field.confirm", {
+            defaultValue: "Confirm new password",
+          })}
+          type="password"
+          autoComplete="new-password"
+          value={confirmPassword}
+          onValueChange={(next) => {
+            setConfirmPassword(next);
+            if (state.phase === "error") setState({ phase: "idle" });
+          }}
+          disabled={isSubmitting}
+          error={
+            confirmMismatch
+              ? t("security.password.error.mismatchShort", {
+                  defaultValue: "Passwords do not match.",
+                })
+              : undefined
+          }
+        />
 
         {state.phase === "error" && (
           <p role="alert" className="text-sm text-danger">

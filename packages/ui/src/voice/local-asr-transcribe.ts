@@ -55,11 +55,18 @@ export interface TranscribeCloudWavOptions extends TranscribeWavOptions {
 export class CloudSttError extends Error {
   /** HTTP status when the failure was a response; `undefined` for transport/timeout. */
   readonly status?: number;
+  /** Machine-readable server error code when the response provides one. */
+  readonly code?: string;
   /** True when this failure class is safe to retry once (network/timeout/5xx/429). */
   readonly retryable: boolean;
   constructor(
     message: string,
-    opts: { status?: number; retryable: boolean; cause?: unknown },
+    opts: {
+      status?: number;
+      code?: string;
+      retryable: boolean;
+      cause?: unknown;
+    },
   ) {
     super(
       message,
@@ -67,8 +74,47 @@ export class CloudSttError extends Error {
     );
     this.name = "CloudSttError";
     this.status = opts.status;
+    this.code = opts.code;
     this.retryable = opts.retryable;
   }
+}
+
+const CLOUD_STT_STARTING_RETRY_LIMIT = 30;
+const CLOUD_STT_STARTING_RETRY_DELAY_MS = 1_000;
+
+function readCloudSttErrorCode(body: string): string | undefined {
+  try {
+    const parsed = JSON.parse(body) as { code?: unknown; error?: unknown };
+    if (typeof parsed.code === "string") return parsed.code;
+    return typeof parsed.error === "string" ? parsed.error : undefined;
+  } catch {
+    // error-policy:J3 an unparseable diagnostic body has no machine-readable
+    // code; status-based retry classification remains authoritative.
+    return undefined;
+  }
+}
+
+async function waitForCloudSttStartup(signal?: AbortSignal): Promise<void> {
+  if (signal?.aborted) {
+    throw new CloudSttError("Cloud ASR request was cancelled", {
+      retryable: false,
+    });
+  }
+  await new Promise<void>((resolve, reject) => {
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(
+        new CloudSttError("Cloud ASR request was cancelled", {
+          retryable: false,
+        }),
+      );
+    };
+    const timer = setTimeout(() => {
+      signal?.removeEventListener("abort", onAbort);
+      resolve();
+    }, CLOUD_STT_STARTING_RETRY_DELAY_MS);
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
 }
 
 /** HTTP statuses worth one automatic retry (transient upstream/transport). */
@@ -170,6 +216,9 @@ function bytesToBase64(bytes: Uint8Array): string {
  * failure (transport error, timeout, 5xx, 429) so a flaky-cellular STT doesn't
  * hard-fail the turn on the first hiccup. Terminal client errors (401/402/413)
  * and an empty transcript are NOT retried — retrying won't change the outcome.
+ * A dedicated runtime's explicit `feature_starting` response gets its own
+ * bounded 30-second readiness window so an immediate post-launch mic tap waits
+ * for deferred route registration instead of firing two back-to-back failures.
  * A caller-initiated abort (`options.signal`) is honored immediately and never
  * retried.
  */
@@ -271,7 +320,11 @@ export async function transcribeCloudWav(
         const body = await res.text().catch(() => "");
         throw new CloudSttError(
           `Cloud ASR ${res.status}: ${body.slice(0, 200)}`,
-          { status: res.status, retryable: isRetryableStatus(res.status) },
+          {
+            status: res.status,
+            code: readCloudSttErrorCode(body),
+            retryable: isRetryableStatus(res.status),
+          },
         );
       }
       // error-policy:J3 unparseable body falls through to the empty-transcript
@@ -323,18 +376,32 @@ export async function transcribeCloudWav(
     }
   };
 
-  try {
-    return await attempt();
-  } catch (err) {
-    // One auto-retry on a network-class failure, unless the caller cancelled.
-    if (
-      err instanceof CloudSttError &&
-      err.retryable &&
-      !callerSignal?.aborted
-    ) {
+  let transientRetries = 0;
+  let startingRetries = 0;
+  for (;;) {
+    try {
       return await attempt();
+    } catch (err) {
+      if (!(err instanceof CloudSttError)) throw err;
+      if (callerSignal?.aborted) {
+        throw new CloudSttError("Cloud ASR request was cancelled", {
+          retryable: false,
+          cause: err,
+        });
+      }
+      if (err.code === "feature_starting") {
+        if (startingRetries >= CLOUD_STT_STARTING_RETRY_LIMIT) throw err;
+        startingRetries++;
+        await waitForCloudSttStartup(callerSignal);
+        continue;
+      }
+      // One auto-retry on an ordinary network-class failure.
+      if (err.retryable && transientRetries < 1) {
+        transientRetries++;
+        continue;
+      }
+      throw err;
     }
-    throw err;
   }
 }
 

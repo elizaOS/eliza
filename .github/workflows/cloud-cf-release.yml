@@ -464,6 +464,11 @@ jobs:
           # Environment-scoped opt-in for prerecorded Deepgram STT. Production
           # remains on its existing provider while this variable is unset.
           VOICE_BATCH_STT_PROVIDER: ${{ vars.VOICE_BATCH_STT_PROVIDER }}
+          # Cartesia batch STT is separately opt-in and billed. The price is
+          # deployment-owned rather than embedded in application code; the
+          # timeout may be tuned within the route's bounded parser.
+          CARTESIA_STT_USD_PER_CREDIT: ${{ vars.CARTESIA_STT_USD_PER_CREDIT }}
+          CARTESIA_BATCH_STT_TIMEOUT_MS: ${{ vars.CARTESIA_BATCH_STT_TIMEOUT_MS }}
           # Ed25519 keypair for the signed voice-model catalog —
           # /v1/voice-models/catalog 503s while the signing key is unset
           # (#13406). publish_secret no-ops with a notice while these are
@@ -582,6 +587,19 @@ jobs:
             fi
           fi
 
+          if [ "${VOICE_BATCH_STT_PROVIDER,,}" = "cartesia" ]; then
+            missing_cartesia_batch_config=()
+            for name in CARTESIA_API_KEY CARTESIA_STT_USD_PER_CREDIT; do
+              if ! has_nonblank_value "${!name:-}"; then
+                missing_cartesia_batch_config+=("$name")
+              fi
+            done
+            if [ "${#missing_cartesia_batch_config[@]}" -gt 0 ]; then
+              echo "::error::Cartesia batch STT is enabled but required provider/billing config is missing: ${missing_cartesia_batch_config[*]}"
+              exit 1
+            fi
+          fi
+
           # Value-safe validation: exact UUID allowlists, dedicated signing
           # key/kid, and the code/runtime version are all required before the
           # first QA-related Worker secret is touched.
@@ -631,7 +649,14 @@ jobs:
             local name="$1"
             local value="${!name:-}"
             case "$name" in
-              CARTESIA_API_KEY|VOICE_REALTIME_ELIZA_AUTHORIZATION)
+              CARTESIA_API_KEY)
+                if ! is_truthy "$VOICE_REALTIME_WS_ENABLED" && \
+                   [ "${VOICE_BATCH_STT_PROVIDER,,}" != "cartesia" ]; then
+                  echo "::notice::$name is gated by realtime voice or VOICE_BATCH_STT_PROVIDER=cartesia; skipping"
+                  return 0
+                fi
+                ;;
+              VOICE_REALTIME_ELIZA_AUTHORIZATION)
                 if ! is_truthy "$VOICE_REALTIME_WS_ENABLED"; then
                   echo "::notice::$name is gated by VOICE_REALTIME_WS_ENABLED; skipping"
                   return 0
@@ -790,6 +815,8 @@ jobs:
             WHISPER_STT_URL \
             WHISPER_STT_MODEL \
             VOICE_BATCH_STT_PROVIDER \
+            CARTESIA_STT_USD_PER_CREDIT \
+            CARTESIA_BATCH_STT_TIMEOUT_MS \
             ELIZA_APP_WEBHOOK_GATEWAY_URL
           do
             publish_toggle_secret "$name" || exit 1
@@ -931,6 +958,93 @@ jobs:
             [ "$attempt" -lt 6 ] && sleep 10
           done
           echo "::error::API health did not serve the deployed commit ${expected_commit} for ${expected_environment}."
+          exit 1
+
+      - name: Canary authenticated staging realtime and rollback on failure
+        if: steps.cf.outputs.configured == 'true' && steps.freshness.outputs.should_deploy == 'true' && steps.env.outputs.deploy_environment == 'staging'
+        working-directory: ${{ env.CHECKOUT_DIR }}/packages/cloud/api
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          STAGING_ELIZACLOUD_API_KEY: ${{ secrets.ELIZACLOUD_API_KEY }}
+          VOICE_REALTIME_WS_ENABLED: ${{ contains(fromJSON('["1","true","TRUE","True","yes","YES","Yes","on","ON","On"]'), vars.VOICE_REALTIME_WS_ENABLED) && 'true' || 'false' }}
+          ELIZA_TTS_FISH_ENABLED: ${{ contains(fromJSON('["1","true","TRUE","True","yes","YES","Yes","on","ON","On"]'), vars.ELIZA_TTS_FISH_ENABLED) && 'true' || 'false' }}
+          FISH_AUDIO_DATA_GOVERNANCE_APPROVED: ${{ contains(fromJSON('["1","true","TRUE","True","yes","YES","Yes","on","ON","On"]'), vars.FISH_AUDIO_DATA_GOVERNANCE_APPROVED) && 'true' || 'false' }}
+          FISH_AUDIO_MODEL: ${{ vars.FISH_AUDIO_MODEL || 's2.1-pro' }}
+          FISH_AUDIO_SAMPLE_RATE: "16000"
+          FISH_AUDIO_FIRST_AUDIO_TIMEOUT_MS: ${{ vars.FISH_AUDIO_FIRST_AUDIO_TIMEOUT_MS || '1500' }}
+          KOKORO_TTS_URL: ${{ vars.ELIZA_VOICE_KOKORO_TTS_URL }}
+        run: |
+          set -euo pipefail
+          if [ "$VOICE_REALTIME_WS_ENABLED" != "true" ]; then
+            echo "Realtime remains disabled; authenticated staging canary is not applicable."
+            exit 0
+          fi
+          rollback_realtime() {
+            echo "::warning::Realtime canary failed; redeploying the exact commit with its served gate off"
+            rollback_args=(
+              --env staging
+              --var ELIZA_DEPLOY_COMMIT:"$GITHUB_SHA"
+              --var VOICE_REALTIME_WS_ENABLED:"false"
+              --var ELIZA_TTS_FISH_ENABLED:"$ELIZA_TTS_FISH_ENABLED"
+              --var FISH_AUDIO_DATA_GOVERNANCE_APPROVED:"$FISH_AUDIO_DATA_GOVERNANCE_APPROVED"
+              --var FISH_AUDIO_MODEL:"$FISH_AUDIO_MODEL"
+              --var FISH_AUDIO_SAMPLE_RATE:"$FISH_AUDIO_SAMPLE_RATE"
+              --var FISH_AUDIO_FIRST_AUDIO_TIMEOUT_MS:"$FISH_AUDIO_FIRST_AUDIO_TIMEOUT_MS"
+            )
+            if [ -n "${KOKORO_TTS_URL:-}" ]; then
+              rollback_args+=(--var KOKORO_TTS_URL:"$KOKORO_TTS_URL")
+            fi
+            bunx wrangler deploy "${rollback_args[@]}"
+            for attempt in 1 2 3 4 5 6; do
+              code="$(curl -sS -o /tmp/realtime-rollback.json -w '%{http_code}' -m 20 \
+                -X POST -H "X-API-Key: $STAGING_ELIZACLOUD_API_KEY" \
+                https://api-staging.eliza.app/api/v1/voice/session/consent || echo '000')"
+              [ "$code" = "404" ] && return 0
+              [ "$attempt" -lt 6 ] && sleep 10
+            done
+            echo "::error::Realtime rollback redeployed but served-state 404 was not confirmed"
+            return 1
+          }
+
+          canary_proven=false
+          rollback_on_unproven_exit() {
+            status=$?
+            if [ "$canary_proven" != "true" ]; then
+              rollback_realtime || status=1
+            fi
+            exit "$status"
+          }
+          trap rollback_on_unproven_exit EXIT
+          trap 'exit 1' INT TERM
+
+          if [ -z "${STAGING_ELIZACLOUD_API_KEY//[[:space:]]/}" ]; then
+            echo "::error::Enabled staging realtime requires an authenticated canary credential"
+            exit 1
+          fi
+
+          for attempt in 1 2 3 4 5 6; do
+            body="$(mktemp)"
+            code="$(curl -sS -o "$body" -w '%{http_code}' -m 20 \
+              -X POST -H "X-API-Key: $STAGING_ELIZACLOUD_API_KEY" \
+              https://api-staging.eliza.app/api/v1/voice/session/consent || echo '000')"
+            if [ "$code" = "200" ] && node - "$body" <<'NODE'
+          const fs = require("fs");
+          const body = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
+          if (typeof body.consentNonce !== "string" || body.consentNonce.length < 1) process.exit(1);
+          if (typeof body.expiresAt !== "string" || Number.isNaN(Date.parse(body.expiresAt))) process.exit(1);
+          NODE
+            then
+              rm -f "$body"
+              canary_proven=true
+              trap - EXIT INT TERM
+              echo "Authenticated staging realtime consent canary passed."
+              exit 0
+            fi
+            rm -f "$body"
+            [ "$attempt" -lt 6 ] && sleep 10
+          done
+          echo "::error::Authenticated staging realtime canary did not prove the deployed route"
           exit 1
 
       - name: Activate and verify staging session exchange after deploy proof
@@ -1701,8 +1815,8 @@ jobs:
     name: Verify ${{ inputs.target_environment }} routing
     needs: [deploy-api, deploy-app]
     # Custom domains only exist for the real environments -- PR previews deploy to
-    # a preview branch alias, so skip them. Require all three deploys to have
-    # landed (the beacon is served by the API Worker; both frontend domains by
+    # a preview branch alias, so skip them. Require both deploys to have landed
+    # (the beacon is served by the API Worker; both frontend domains by
     # one Pages project), else there is nothing trustworthy to probe.
     if: ${{ !cancelled() && github.event_name != 'pull_request' && needs.deploy-api.result == 'success' && needs.deploy-app.result == 'success' }}
     runs-on: ubuntu-latest
@@ -1721,9 +1835,18 @@ jobs:
 
       - name: Resolve deployed environment
         id: env
+        env:
+          TARGET_ENVIRONMENT: ${{ inputs.target_environment }}
         run: |
-          echo "environment=${{ inputs.target_environment }}" >> "$GITHUB_OUTPUT"
-          echo "environment=$env" >> "$GITHUB_OUTPUT"
+          set -euo pipefail
+          case "$TARGET_ENVIRONMENT" in
+            staging|production) ;;
+            *)
+              echo "::error::Unsupported deployed environment: ${TARGET_ENVIRONMENT:-<missing>}"
+              exit 1
+              ;;
+          esac
+          echo "environment=$TARGET_ENVIRONMENT" >> "$GITHUB_OUTPUT"
 
       - name: Verify the just-deployed environment serves itself
         # This run built AND deployed the beacon-carrying Worker for this env, so

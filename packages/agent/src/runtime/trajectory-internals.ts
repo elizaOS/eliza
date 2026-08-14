@@ -1585,6 +1585,28 @@ function snapshotCaptureParams(
 }
 
 /**
+ * Snapshot an LLM capture with its completeness fields first in the shared
+ * byte budget. Optional prompts and metadata may exhaust that budget, but the
+ * persisted record must still identify the model, purpose, action type, and
+ * bounded response without adding data after sanitization.
+ */
+function snapshotLlmCaptureParams(
+  params: Record<string, unknown>,
+  stepId: string,
+): Record<string, unknown> {
+  return snapshotCaptureParams(
+    {
+      model: params.model,
+      response: params.response,
+      purpose: params.purpose,
+      actionType: params.actionType,
+      ...params,
+    },
+    stepId,
+  );
+}
+
+/**
  * A tool-call-only completion (`finishReason=tool-calls` — a planner turn that
  * emits only a tool call, or a Stage-1 truncated at its completion-token cap)
  * produces no assistant text, so producers hand this recorder
@@ -1626,7 +1648,7 @@ export function normalizeLlmCallPayload(
       }),
     );
     validateLlmCapture(params, stepId);
-    const snapshot = snapshotCaptureParams(params, stepId);
+    const snapshot = snapshotLlmCaptureParams(params, stepId);
     validateLlmCapture(snapshot, stepId);
     return {
       stepId,
@@ -1654,7 +1676,7 @@ export function normalizeLlmCallPayload(
     coerceAbsentLlmResponse(normalizedParams),
   );
   validateLlmCapture(redactedParams, stepId);
-  const snapshot = snapshotCaptureParams(redactedParams, stepId);
+  const snapshot = snapshotLlmCaptureParams(redactedParams, stepId);
   validateLlmCapture(snapshot, stepId);
   return {
     stepId,

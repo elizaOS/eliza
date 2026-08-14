@@ -35,6 +35,9 @@ const clientMock = vi.hoisted(() => ({
   listAutomations: vi.fn(),
   listScheduledTasks: vi.fn(),
   applyScheduledTask: vi.fn(),
+  getTriggers: vi.fn(),
+  getWorkflowExecutions: vi.fn(),
+  getWorkflowRevisions: vi.fn(),
   runWorkflowDefinition: vi.fn(),
 }));
 const openExternalUrlMock = vi.hoisted(() => vi.fn(async () => undefined));
@@ -170,6 +173,12 @@ beforeEach(() => {
   clientMock.baseUrl = DEFAULT_AGENT_BASE;
   clientMock.listAutomations.mockResolvedValue(responseFixture());
   clientMock.listScheduledTasks.mockResolvedValue({ tasks: [] });
+  clientMock.getTriggers.mockResolvedValue({ triggers: [] });
+  clientMock.getWorkflowExecutions.mockResolvedValue([]);
+  clientMock.getWorkflowRevisions.mockResolvedValue({
+    currentVersionId: null,
+    revisions: [],
+  });
   clientMock.runWorkflowDefinition.mockResolvedValue({ id: "execution-1" });
 });
 
@@ -183,23 +192,12 @@ afterEach(() => {
 });
 
 describe("AutomationsFeed", () => {
-  it("shows a compact status overview and truthful workflow run action", async () => {
+  it("shows a visual filter strip and truthful workflow run action", async () => {
     render(<AutomationsFeed />);
 
     expect(await screen.findByText("Nightly review")).toBeTruthy();
 
-    expect(
-      within(screen.getByTestId("automation-stat-total")).getByText("3"),
-    ).toBeTruthy();
-    expect(
-      within(screen.getByTestId("automation-stat-active")).getByText("2"),
-    ).toBeTruthy();
-    expect(
-      within(screen.getByTestId("automation-stat-passed")).getByText("1"),
-    ).toBeTruthy();
-    expect(
-      within(screen.getByTestId("automation-stat-failed")).getByText("1"),
-    ).toBeTruthy();
+    expect(screen.queryByTestId("automation-stat-total")).toBeNull();
     expect(screen.getByText("Failed: HTTP request failed")).toBeTruthy();
     expect(screen.getAllByText("Every hour").length).toBeGreaterThan(0);
 
@@ -227,11 +225,15 @@ describe("AutomationsFeed", () => {
     expect(clientMock.listAutomations).toHaveBeenCalledTimes(2);
   });
 
-  it("keeps the feed header focused on status instead of generic creation", async () => {
+  it("creates a workflow from the visible add menu", async () => {
     render(<AutomationsFeed />);
 
     await screen.findByText("Nightly review");
-    expect(screen.queryByRole("button", { name: "New" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "New automation" }));
+    expect(screen.getByTestId("automation-create-menu")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "New workflow" }));
+    expect(await screen.findByTestId("workflow-studio")).toBeTruthy();
+    expect(screen.getByLabelText("Workflow name")).toBeTruthy();
   });
 
   it("never paints one Cloud agent's cached workflows after switching agents", async () => {
@@ -529,12 +531,8 @@ describe("AutomationsFeed", () => {
     expect(
       screen.getByText("Run history unavailable: execution store unavailable"),
     ).toBeTruthy();
-    expect(
-      within(screen.getByTestId("automation-stat-passed")).getByText("0"),
-    ).toBeTruthy();
-    expect(
-      within(screen.getByTestId("automation-stat-failed")).getByText("0"),
-    ).toBeTruthy();
+    expect(screen.queryByTestId("automation-stat-passed")).toBeNull();
+    expect(screen.queryByTestId("automation-stat-failed")).toBeNull();
   });
 
   it("serves mobile-through-cloud rows and keys them to the linked Cloud agent", async () => {

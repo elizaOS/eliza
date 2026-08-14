@@ -4,7 +4,7 @@ Eliza Cloud integration — multi-model inference, container provisioning, agent
 
 ## Purpose / role
 
-Connects an Eliza agent to Eliza Cloud for hosted AI inference (text, embeddings, TTS, STT, image), container lifecycle management, real-time agent bridging via WebSocket, and billing/credit flows. Auto-enables when `ELIZAOS_CLOUD_API_KEY` or `ELIZAOS_CLOUD_ENABLED=true` is present (see `auto-enable.ts`). This plugin has priority 50, which means it wins the default text-generation slot over other direct provider plugins (priority 0) when no explicit routing preference is configured — **unless the host writes `ELIZAOS_CLOUD_USE_INFERENCE=false`** (`applyCloudConfigToEnv`), in which case the chat-brain handlers (`TEXT_*`, `RESPONSE_HANDLER`, `ACTION_PLANNER`) are not registered at all and only the capability handlers (IMAGE, IMAGE_DESCRIPTION, TEXT_TO_SPEECH, TRANSCRIPTION, embeddings, RESEARCH) stay active. This capability-only mode is how an agent keeps Cloud image/media/TTS while an external provider (a CLI/SDK subscription brain, a local model) owns the text brain (elizaOS/eliza#10819).
+Connects an Eliza agent to Eliza Cloud for hosted AI inference (text, embeddings, TTS, STT, image), container lifecycle management, real-time agent bridging via WebSocket, and billing/credit flows. Auto-enables when `ELIZAOS_CLOUD_API_KEY` or `ELIZAOS_CLOUD_ENABLED=true` is present (see `auto-enable.ts`). This plugin has priority 50, which means it wins the default text-generation slot over other direct provider plugins (priority 0) when no explicit routing preference is configured — **unless the host writes `ELIZAOS_CLOUD_USE_INFERENCE=false`** (`applyCloudConfigToEnv`), in which case the chat-brain handlers (`TEXT_*`, `RESPONSE_HANDLER`, `ACTION_PLANNER`) are not registered at all and only the capability handlers (IMAGE, IMAGE_DESCRIPTION, TEXT_TO_SPEECH, TRANSCRIPTION, embeddings) stay active. This capability-only mode is how an agent keeps Cloud image/media/TTS while an external provider (a CLI/SDK subscription brain, a local model) owns the text brain (elizaOS/eliza#10819).
 
 The plugin has two distinct export surfaces:
 
@@ -23,7 +23,6 @@ compete with the chat brain and must survive an external text provider:
 | Slot | Handler | File |
 |---|---|---|
 | `TEXT_EMBEDDING` | `handleTextEmbedding` | `src/models/embeddings.ts` |
-| `RESEARCH` | `handleResearch` | `src/models/research.ts` |
 | `IMAGE` | `handleImageGeneration` | `src/models/image.ts` |
 | `IMAGE_DESCRIPTION` | `handleImageDescription` | `src/models/image.ts` |
 | `TEXT_TO_SPEECH` | `handleTextToSpeech` | `src/models/speech.ts` |
@@ -63,7 +62,6 @@ compete with the chat brain and must survive an external text provider:
 | `CLOUD_CONTAINER` | `CloudContainerService` | `src/services/cloud-container.ts` | ECS container lifecycle: create, list, poll status, delete |
 | `CLOUD_BRIDGE` | `CloudBridgeService` | `src/services/cloud-bridge.ts` | JSON-RPC 2.0 WebSocket bridge to cloud-hosted agents with exponential-backoff reconnect |
 | `CLOUD_BACKUP` | `CloudBackupService` | `src/services/cloud-backup.ts` | Agent state snapshots/restore; periodic auto-backup and pre-eviction snapshots |
-| `workflow_credential_provider` | `CloudCredentialProvider` | `src/services/cloud-credential-provider.ts` | Bridges plugin-workflow's credential slot to Cloud OAuth connector surface |
 
 ### Events
 
@@ -100,7 +98,6 @@ plugins/plugin-elizacloud/
       embeddings.ts                 TEXT_EMBEDDING handler
       image.ts                      IMAGE and IMAGE_DESCRIPTION handlers
       speech.ts                     TEXT_TO_SPEECH handler + CloudTtsUnavailableError
-      research.ts                   RESEARCH handler
       transcription.ts              TRANSCRIPTION handler
       tokenization.ts               TEXT_TOKENIZER_ENCODE/DECODE handlers
       index.ts                      Re-exports all model handlers
@@ -112,7 +109,6 @@ plugins/plugin-elizacloud/
       cloud-container.ts            CloudContainerService (CLOUD_CONTAINER)
       cloud-bridge.ts               CloudBridgeService (CLOUD_BRIDGE)
       cloud-backup.ts               CloudBackupService (CLOUD_BACKUP)
-      cloud-credential-provider.ts  CloudCredentialProvider (workflow_credential_provider)
     cloud-providers/
       cloud-status.ts               elizacloud_status provider
       credit-balance.ts             elizacloud_credits provider
@@ -157,7 +153,6 @@ plugins/plugin-elizacloud/
       cloud-secrets.ts              getCloudSecret, clearCloudSecrets, scrubCloudSecretsFromEnv
       config-env.ts                 Env-to-config mapping
       config-like.ts                ElizaConfig type
-      credential-type-map.ts        credTypeToConnector mapping
       feature-flags.ts              Feature flag helpers
       http.ts                       sendJson HTTP helper
       server-cloud-tts.ts           TTS compat layer, resolveCloudTtsBaseUrl
@@ -230,7 +225,6 @@ All settings are optional except `ELIZAOS_CLOUD_API_KEY` (required for any authe
 | `ELIZAOS_CLOUD_MEGA_MODEL` | `MEGA_MODEL` | falls back to large |
 | `ELIZAOS_CLOUD_RESPONSE_HANDLER_MODEL` | `RESPONSE_HANDLER_MODEL` | falls back to small model |
 | `ELIZAOS_CLOUD_ACTION_PLANNER_MODEL` | `ACTION_PLANNER_MODEL` | falls back to large model |
-| `ELIZAOS_CLOUD_RESEARCH_MODEL` | `RESEARCH_MODEL` | `o3-deep-research` |
 
 ### Optional — embeddings
 

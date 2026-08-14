@@ -500,11 +500,11 @@ await snap("surface-monetization-affiliates-desktop");
 // Security: panels + the hash-anchor links to sibling sections.
 await page.goto(`${ORIGIN}/?surface=security`);
 await page
-  .getByRole("link", { name: /Plugin permissions/i })
+  .getByRole("link", { name: /Manage permissions/i })
   .waitFor({ timeout: 60_000 });
 await page.waitForTimeout(2000);
 await snap("surface-security-desktop");
-await page.getByRole("link", { name: /Plugin permissions/i }).click();
+await page.getByRole("link", { name: /Manage permissions/i }).click();
 const secHash = await page.evaluate(() => window.location.hash);
 assert(
   secHash === "#cloud-plugin-grants",

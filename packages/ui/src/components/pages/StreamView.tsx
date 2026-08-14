@@ -11,7 +11,7 @@ import { isElectrobunRuntime } from "../../bridge/electrobun-runtime";
 import { getBootConfig } from "../../config/boot-config";
 import { getCached, setCached } from "../../hooks/resource-cache";
 import { useIntervalWhenDocumentVisible } from "../../hooks/useDocumentVisibility";
-import { useAppSelector } from "../../state";
+import { useAppSelectorShallow } from "../../state";
 import { formatUptime } from "../../utils/format";
 import { IS_POPOUT } from "../stream/helpers";
 import { openStreamPopout } from "../stream/popout-url";
@@ -24,8 +24,10 @@ type StreamStatus = Awaited<ReturnType<typeof client.streamStatus>>;
 const STREAM_STATUS_CACHE_KEY = "stream:status";
 
 export function StreamView({ inModal }: { inModal?: boolean } = {}) {
-  const agentStatus = useAppSelector((s) => s.agentStatus);
-  const t = useAppSelector((s) => s.t);
+  const { agentStatus, t } = useAppSelectorShallow((s) => ({
+    agentStatus: s.agentStatus,
+    t: s.t,
+  }));
   const { branding } = getBootConfig();
   const agentName = agentStatus?.agentName ?? branding.appName ?? "Eliza";
   const isElectrobun = isElectrobunRuntime();

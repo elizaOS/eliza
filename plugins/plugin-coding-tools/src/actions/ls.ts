@@ -33,6 +33,9 @@ import {
 } from "../types.js";
 
 const ENTRY_LIMIT = 1000;
+const LIST_SCOPE = "Scope: one directory level only (not recursive).";
+const FILTER_GUIDANCE =
+  "ls does not accept pattern or glob filters; use FILE action=glob with a valid recursive glob pattern";
 
 type EntryType = "file" | "dir" | "symlink";
 
@@ -59,6 +62,7 @@ function formatListText(params: {
   totalAfterIgnore: number;
 }): string {
   const lines = [
+    LIST_SCOPE,
     `Directory: ${params.dir}`,
     ...params.entries.map((e) => (e.type === "dir" ? `${e.name}/` : e.name)),
   ];
@@ -184,6 +188,19 @@ export async function lsHandler(
     return failureToActionResult({
       reason: "internal",
       message: "coding-tools services unavailable",
+    });
+  }
+
+  // Returning a successful unfiltered listing for a filtered request creates
+  // plausible but false totals. Fail before touching either filesystem path so
+  // the planner must choose the tool that owns recursive matching.
+  if (
+    readStringParam(options, "pattern") !== undefined ||
+    readStringParam(options, "glob") !== undefined
+  ) {
+    return failureToActionResult({
+      reason: "invalid_param",
+      message: FILTER_GUIDANCE,
     });
   }
 

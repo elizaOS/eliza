@@ -13,6 +13,8 @@
  * `MessageUiSpecBlock`, `SensitiveRequestBlock`, and `MessagePermissionCard`
  * exports here drive their own mutations through the typed `ElizaClient`.
  */
+
+import { stripUnclaimedInteractionMarkup } from "@elizaos/core";
 import {
   type FormEvent,
   memo,
@@ -1310,7 +1312,11 @@ export function MessageContent({
   // Incremental prefix-cached parse: a streaming turn re-parses only its changed
   // tail instead of the whole buffer every rAF flush (#15280). Byte-identical to
   // parseSegments; falls back to raw text if the markup is malformed.
-  const segments = useParsedSegments(message.text, analysisMode);
+  const displayText =
+    message.role === "assistant"
+      ? stripUnclaimedInteractionMarkup(message.text)
+      : message.text;
+  const segments = useParsedSegments(displayText, analysisMode);
 
   // Handlers handed to every inline widget at render: the SAME shared contract
   // the overlay surface (InlineWidgetText) uses, so a CHOICE pick / FOLLOWUPS

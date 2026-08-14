@@ -8,7 +8,7 @@
 import { BRAND_PATHS, LOGO_FILES } from "@elizaos/shared/brand";
 import { isElizaManagedCloudUiHostname } from "@elizaos/shared/elizacloud";
 import { CheckCircle2 } from "lucide-react";
-import { lazy, Suspense, useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { Button } from "../../../../components/primitives";
 import { isAppModeHost } from "../../../app-mode/app-mode";
@@ -17,11 +17,13 @@ import { useCloudT } from "../../../shell/CloudI18nProvider";
 import {
   redirectToSsoBridge,
   sanitizeBridgeReturnTo,
+  shouldAttemptSsoBridge,
 } from "../../../sso-bridge/sso-bridge";
 import { usePageTitle } from "../../lib/use-page-title";
 import { LoginOptionsSkeleton } from "./login-section-skeleton";
 
 const StewardLoginSection = lazy(() => import("./steward-login-section"));
+const MANAGED_CLOUD_HANDOFF_TIMEOUT_MS = 5_000;
 
 // Chunk-load fallback with the SAME geometry as the section's own
 // provider-discovery skeleton and the final option stack, so the card holds
@@ -94,13 +96,42 @@ function sessionIdFromLoginReturnTo(returnTo: string | null): string | null {
 function ManagedCloudLoginHandoff(): React.JSX.Element {
   const [searchParams] = useSearchParams();
   const [failed, setFailed] = useState(false);
+  const attemptRef = useRef<Promise<boolean> | null>(null);
+  const returnTo = sanitizeBridgeReturnTo(searchParams.get("returnTo"));
 
   useEffect(() => {
-    const returnTo = sanitizeBridgeReturnTo(searchParams.get("returnTo"));
-    void redirectToSsoBridge(returnTo).then((started) => {
-      if (!started) setFailed(true);
-    });
-  }, [searchParams]);
+    let attempt = attemptRef.current;
+    if (!attempt) {
+      if (!shouldAttemptSsoBridge()) {
+        setFailed(true);
+        return;
+      }
+      attempt = redirectToSsoBridge(returnTo);
+      attemptRef.current = attempt;
+    }
+
+    let active = true;
+    const timeout = window.setTimeout(() => {
+      if (!active) return;
+      active = false;
+      setFailed(true);
+    }, MANAGED_CLOUD_HANDOFF_TIMEOUT_MS);
+
+    void attempt
+      .then((started) => {
+        if (active && !started) setFailed(true);
+      })
+      .catch(() => {
+        // error-policy:J4 bridge initiation failed before navigation; keep
+        // sign-in available on this host through the normal Steward form.
+        if (active) setFailed(true);
+      });
+
+    return () => {
+      active = false;
+      window.clearTimeout(timeout);
+    };
+  }, [returnTo]);
 
   if (failed) return <PublicLoginPage />;
   return (

@@ -5,14 +5,11 @@
 import {
   Activity,
   ArchiveRestore,
-  Bot,
   Braces,
   Check,
   CircleStop,
-  Clock3,
   FileInput,
   FileOutput,
-  GitBranch,
   History,
   LayoutDashboard,
   ListTree,
@@ -30,7 +27,6 @@ import type {
   WorkflowDefinitionWriteRequest,
   WorkflowExecution,
   WorkflowRevision,
-  WorkflowStepManifest,
   WorkflowWidgetManifest,
 } from "../../api/client-types-chat";
 import { dispatchChatPrefill } from "../../events";
@@ -39,15 +35,25 @@ import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Spinner } from "../ui/spinner";
 import { Textarea } from "../ui/textarea";
+import { WorkflowCanvas } from "./WorkflowCanvas";
+import { WorkflowTriggerPanel } from "./WorkflowTriggerPanel";
 
 type StudioTab = "build" | "source" | "runs" | "widgets" | "history";
+
+const STUDIO_TABS = [
+  ["build", "Build", WorkflowIcon],
+  ["source", "Source", Braces],
+  ["runs", "Runs", Activity],
+  ["widgets", "Widgets", LayoutDashboard],
+  ["history", "History", History],
+] as const;
 
 const EMPTY_SOURCE = `/** @jsxImportSource smthrs */
 import { createSmithers } from "smthrs/create";
 import { z } from "zod";
 
 const { Workflow, Task, smithers, outputs } = createSmithers(
-  { result: z.object({ message: z.string() }) },
+  { output: z.object({ message: z.string() }) },
   { dbPath: process.env.ELIZA_SMTHRS_DB_PATH },
 );
 
@@ -55,7 +61,7 @@ const agent = globalThis.__elizaSmithers.agent;
 
 export default smithers(() => (
   <Workflow name="New workflow">
-    <Task id="run" output={outputs.result} agent={agent}>
+    <Task id="run" output={outputs.output} agent={agent}>
       Complete the requested workflow and return a concise result.
     </Task>
   </Workflow>
@@ -98,95 +104,57 @@ function pretty(value: unknown): string {
   }
 }
 
+function dataAtPath(value: unknown, path?: string): unknown {
+  if (!path) return value;
+  return path.split(".").reduce<unknown>((current, segment) => {
+    if (!current || typeof current !== "object") return undefined;
+    return (current as Record<string, unknown>)[segment];
+  }, value);
+}
+
+interface InputField {
+  key: string;
+  type: "string" | "number" | "integer" | "boolean";
+  title: string;
+  required: boolean;
+  defaultValue?: unknown;
+}
+
+function schemaFields(schema?: Record<string, unknown>): InputField[] {
+  const properties = schema?.properties;
+  if (!properties || typeof properties !== "object") return [];
+  const required = new Set(
+    Array.isArray(schema.required)
+      ? schema.required.filter(
+          (value): value is string => typeof value === "string",
+        )
+      : [],
+  );
+  return Object.entries(properties).flatMap(([key, raw]) => {
+    if (!raw || typeof raw !== "object") return [];
+    const property = raw as Record<string, unknown>;
+    const type = property.type;
+    if (
+      !(["string", "number", "integer", "boolean"] as const).includes(
+        type as never,
+      )
+    )
+      return [];
+    return [
+      {
+        key,
+        type: type as InputField["type"],
+        title: typeof property.title === "string" ? property.title : key,
+        required: required.has(key),
+        defaultValue: property.default,
+      },
+    ];
+  });
+}
+
 function hasObjectValues(value: unknown): boolean {
   return Boolean(
     value && typeof value === "object" && Object.keys(value).length > 0,
-  );
-}
-
-function StepIcon({ kind }: { kind: WorkflowStepManifest["kind"] }) {
-  if (kind === "branch") return <GitBranch className="h-4 w-4" />;
-  if (kind === "approval") return <Check className="h-4 w-4" />;
-  if (kind === "timer") return <Clock3 className="h-4 w-4" />;
-  if (kind === "ui") return <LayoutDashboard className="h-4 w-4" />;
-  return <Bot className="h-4 w-4" />;
-}
-
-function SmithersCanvas({
-  steps,
-  execution,
-}: {
-  steps: WorkflowStepManifest[];
-  execution: WorkflowExecution | null;
-}) {
-  const eventTypes = useMemo(() => {
-    const map = new Map<string, string>();
-    for (const event of execution?.events ?? []) {
-      if (event.nodeId) map.set(event.nodeId, event.type);
-    }
-    return map;
-  }, [execution]);
-  if (steps.length === 0) {
-    return (
-      <div
-        className="grid h-full min-h-64 place-items-center rounded-xl bg-muted/10"
-        title="No visual steps"
-      >
-        <WorkflowIcon className="h-8 w-8 text-muted-foreground/50" />
-        <span className="sr-only">No visual steps</span>
-      </div>
-    );
-  }
-  return (
-    <div
-      data-testid="smithers-canvas"
-      className="min-h-0 overflow-auto bg-[radial-gradient(circle_at_1px_1px,hsl(var(--border)/0.38)_1px,transparent_0)] bg-[size:20px_20px] p-5"
-    >
-      <div className="mx-auto flex w-full max-w-xl flex-col items-center">
-        {steps.map((step, index) => {
-          const eventType = eventTypes.get(step.id);
-          const active = Boolean(
-            eventType && !/finish|complete|fail/i.test(eventType),
-          );
-          const failed = Boolean(eventType && /fail|error/i.test(eventType));
-          return (
-            <div key={step.id} className="contents">
-              {index > 0 ? <div className="h-7 w-px bg-border" /> : null}
-              <div
-                className={`w-fit min-w-44 max-w-full rounded-xl border bg-card p-3 shadow-sm transition ${active ? "border-primary shadow-[0_0_0_2px_hsl(var(--primary)/0.12)]" : failed ? "border-destructive/60" : "border-border/60"}`}
-                title={[
-                  step.kind,
-                  step.agent,
-                  step.description,
-                  step.dependsOn?.length
-                    ? `After ${step.dependsOn.join(", ")}`
-                    : null,
-                  eventType,
-                ]
-                  .filter(Boolean)
-                  .join(" · ")}
-              >
-                <div className="flex items-center gap-3">
-                  <div className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary">
-                    <StepIcon kind={step.kind} />
-                  </div>
-                  <p className="min-w-0 flex-1 truncate text-sm font-semibold">
-                    {step.label}
-                  </p>
-                  {eventType ? (
-                    <span
-                      className={`h-2.5 w-2.5 shrink-0 rounded-full ${failed ? "bg-destructive" : active ? "animate-pulse bg-primary" : "bg-emerald-500"}`}
-                    >
-                      <span className="sr-only">{eventType}</span>
-                    </span>
-                  ) : null}
-                </div>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    </div>
   );
 }
 
@@ -199,6 +167,21 @@ function WorkflowWidget({
   output: unknown;
   runId?: string;
 }) {
+  const value = dataAtPath(output, widget.dataPath);
+  const rows = Array.isArray(value)
+    ? value.filter(
+        (row): row is Record<string, unknown> =>
+          Boolean(row) && typeof row === "object",
+      )
+    : [];
+  const columns = rows.length > 0 ? Object.keys(rows[0]).slice(0, 6) : [];
+  const chartValues = rows
+    .map((row, index) => ({
+      label: String(row.label ?? row.name ?? index + 1),
+      value: Number(row.value ?? row.count ?? 0),
+    }))
+    .filter((item) => Number.isFinite(item.value));
+  const chartMax = Math.max(1, ...chartValues.map((item) => item.value));
   return (
     <div className="rounded-xl border border-border/60 bg-card p-4 shadow-sm">
       <div className="flex items-start justify-between gap-3">
@@ -212,9 +195,87 @@ function WorkflowWidget({
           <span className="sr-only">{widget.component}</span>
         </span>
       </div>
-      <pre className="mt-4 max-h-64 overflow-auto rounded-lg bg-muted/40 p-3 text-xs leading-relaxed">
-        {pretty(output)}
-      </pre>
+      <div className="mt-4 max-h-72 overflow-auto text-xs leading-relaxed">
+        {widget.component === "status" ? (
+          <div className="flex items-center gap-2 rounded-lg bg-muted/30 p-3">
+            <span
+              className={`h-2.5 w-2.5 rounded-full ${value === false || value === "failed" || value === "error" ? "bg-destructive" : "bg-emerald-500"}`}
+            />
+            <span className="font-medium">
+              {typeof value === "string" || typeof value === "number"
+                ? String(value)
+                : "Ready"}
+            </span>
+          </div>
+        ) : widget.component === "data-table" && columns.length > 0 ? (
+          <table className="w-full border-collapse">
+            <thead>
+              <tr>
+                {columns.map((column) => (
+                  <th
+                    key={column}
+                    className="border-b px-2 py-1 text-left font-medium text-muted-foreground"
+                  >
+                    {column}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row, index) => (
+                <tr key={String(row.id ?? index)}>
+                  {columns.map((column) => (
+                    <td
+                      key={column}
+                      className="border-b border-border/40 px-2 py-1.5"
+                    >
+                      {String(row[column] ?? "")}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        ) : widget.component === "chart" && chartValues.length > 0 ? (
+          <div className="space-y-2">
+            {chartValues.map((item) => (
+              <div
+                key={item.label}
+                className="grid grid-cols-[minmax(4rem,auto)_1fr_auto] items-center gap-2"
+              >
+                <span className="truncate text-muted-foreground">
+                  {item.label}
+                </span>
+                <span className="h-2 overflow-hidden rounded-full bg-muted">
+                  <span
+                    className="block h-full rounded-full bg-primary"
+                    style={{ width: `${(item.value / chartMax) * 100}%` }}
+                  />
+                </span>
+                <span className="tabular-nums">{item.value}</span>
+              </div>
+            ))}
+          </div>
+        ) : widget.component === "issue-list" && Array.isArray(value) ? (
+          <ul className="space-y-1.5">
+            {value.map((item) => (
+              <li
+                key={pretty(item)}
+                className="flex gap-2 rounded-lg bg-muted/30 p-2"
+              >
+                <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-primary" />
+                <span>{typeof item === "string" ? item : pretty(item)}</span>
+              </li>
+            ))}
+          </ul>
+        ) : widget.component === "markdown" && typeof value === "string" ? (
+          <div className="whitespace-pre-wrap rounded-lg bg-muted/30 p-3">
+            {value}
+          </div>
+        ) : (
+          <pre className="rounded-lg bg-muted/40 p-3">{pretty(value)}</pre>
+        )}
+      </div>
       {widget.actions?.length ? (
         <div className="mt-3 flex flex-wrap gap-2">
           {widget.actions.map((action) => (
@@ -254,18 +315,30 @@ export function WorkflowEditor({
     () => initial ?? newWorkflow(),
   );
   const [tab, setTab] = useState<StudioTab>("build");
-  const [scheduleOpen, setScheduleOpen] = useState(Boolean(initial?.schedule));
+  const [savedVersion, setSavedVersion] = useState(() =>
+    JSON.stringify(workflow),
+  );
   const [saving, setSaving] = useState(false);
   const [running, setRunning] = useState(false);
+  const [runInputOpen, setRunInputOpen] = useState(false);
+  const [runInput, setRunInput] = useState<Record<string, unknown>>({});
   const [error, setError] = useState<string | null>(null);
   const [executions, setExecutions] = useState<WorkflowExecution[]>([]);
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
   const [revisions, setRevisions] = useState<WorkflowRevision[]>([]);
+  const [cancelArmedId, setCancelArmedId] = useState<string | null>(null);
+  const [restoreArmedId, setRestoreArmedId] = useState<string | null>(null);
 
   useEffect(() => {
-    setWorkflow(initial ?? newWorkflow());
-    setScheduleOpen(Boolean(initial?.schedule));
+    const next = initial ?? newWorkflow();
+    setWorkflow(next);
+    setSavedVersion(JSON.stringify(next));
   }, [initial]);
+  const inputFields = useMemo(
+    () => schemaFields(workflow.inputSchema),
+    [workflow.inputSchema],
+  );
+  const dirty = JSON.stringify(workflow) !== savedVersion;
   const selectedRun =
     executions.find((run) => run.id === selectedRunId) ?? executions[0] ?? null;
 
@@ -323,6 +396,7 @@ export function WorkflowEditor({
         ? await client.updateWorkflowDefinition(workflow.id, request)
         : await client.createWorkflowDefinition(request);
       setWorkflow(saved);
+      setSavedVersion(JSON.stringify(saved));
       onSaved?.(saved);
       const next = await client.getWorkflowRevisions(saved.id, 30);
       setRevisions(next.revisions);
@@ -337,36 +411,70 @@ export function WorkflowEditor({
     }
   }, [onSaved, workflow]);
 
-  const run = useCallback(async () => {
-    setRunning(true);
-    setError(null);
-    try {
-      const workflowId = workflow.id || (await save())?.id;
-      if (!workflowId) return;
-      const execution = await client.runWorkflowDefinition(workflowId);
-      setExecutions((current) => [
-        execution,
-        ...current.filter((run) => run.id !== execution.id),
-      ]);
-      setSelectedRunId(execution.id);
-      setTab("runs");
-    } catch (cause) {
-      setError(
-        cause instanceof Error ? cause.message : "Unable to start workflow.",
-      );
-    } finally {
-      setRunning(false);
+  const run = useCallback(
+    async (input: Record<string, unknown> = {}) => {
+      setRunning(true);
+      setError(null);
+      try {
+        const workflowId =
+          !workflow.id || dirty ? (await save())?.id : workflow.id;
+        if (!workflowId) return;
+        const execution = await client.runWorkflowDefinition(workflowId, input);
+        setExecutions((current) => [
+          execution,
+          ...current.filter((run) => run.id !== execution.id),
+        ]);
+        setSelectedRunId(execution.id);
+        setTab("runs");
+      } catch (cause) {
+        setError(
+          cause instanceof Error ? cause.message : "Unable to start workflow.",
+        );
+      } finally {
+        setRunning(false);
+      }
+    },
+    [dirty, save, workflow.id],
+  );
+
+  const requestRun = useCallback(() => {
+    if (inputFields.length === 0) {
+      void run();
+      return;
     }
-  }, [save, workflow.id]);
+    setRunInput(
+      Object.fromEntries(
+        inputFields.flatMap((field) => {
+          if (field.defaultValue !== undefined) {
+            return [[field.key, field.defaultValue]];
+          }
+          return field.type === "boolean" && field.required
+            ? [[field.key, false]]
+            : [];
+        }),
+      ),
+    );
+    setRunInputOpen(true);
+  }, [inputFields, run]);
 
   const toggleActive = useCallback(async () => {
-    if (!workflow.id) return;
-    const updated = workflow.active
-      ? await client.deactivateWorkflowDefinition(workflow.id)
-      : await client.activateWorkflowDefinition(workflow.id);
-    setWorkflow(updated);
-    onSaved?.(updated);
-  }, [onSaved, workflow.active, workflow.id]);
+    setError(null);
+    try {
+      const current = dirty ? await save() : workflow;
+      if (!current?.id) return;
+      const updated = current.active
+        ? await client.deactivateWorkflowDefinition(current.id)
+        : await client.activateWorkflowDefinition(current.id);
+      setWorkflow(updated);
+      setSavedVersion(JSON.stringify(updated));
+      onSaved?.(updated);
+    } catch (cause) {
+      // error-policy:J4 activation failures preserve the saved workflow and surface the error.
+      setError(
+        cause instanceof Error ? cause.message : "Unable to update workflow.",
+      );
+    }
+  }, [dirty, onSaved, save, workflow]);
 
   const openInChat = useCallback(() => {
     dispatchChatPrefill({
@@ -379,9 +487,9 @@ export function WorkflowEditor({
   return (
     <PagePanel
       data-testid="workflow-studio"
-      className="flex min-h-0 flex-1 flex-col overflow-hidden p-0 pb-20"
+      className="relative flex min-h-0 flex-1 flex-col overflow-hidden p-0 pb-20"
     >
-      <div className="flex items-center gap-1 border-b border-transparent bg-card/70 px-3 py-2 backdrop-blur-sm lg:border-border/70 lg:px-4">
+      <div className="flex flex-wrap items-center gap-1 border-b border-transparent bg-card/90 px-3 py-2 lg:border-border/70 lg:px-4">
         <Input
           value={workflow.name}
           onChange={(event) =>
@@ -390,20 +498,15 @@ export function WorkflowEditor({
               name: event.target.value,
             }))
           }
-          className="h-8 min-w-20 flex-1 border-0 bg-transparent px-0 text-sm font-semibold shadow-none focus-visible:ring-0 sm:text-base"
+          className="h-8 min-w-20 flex-1 border-0 bg-transparent px-0 text-sm font-semibold shadow-none sm:text-base"
           aria-label="Workflow name"
           title={workflow.description || undefined}
         />
-        <nav className="flex items-center gap-0.5" aria-label="Workflow views">
-          {(
-            [
-              ["build", "Build", WorkflowIcon],
-              ["source", "Source", Braces],
-              ["runs", "Runs", Activity],
-              ["widgets", "Widgets", LayoutDashboard],
-              ["history", "History", History],
-            ] as const
-          ).map(([value, label, Icon]) => (
+        <nav
+          className="order-last flex basis-full items-center justify-center gap-2 pt-1 sm:order-none sm:basis-auto sm:gap-0.5 sm:pt-0"
+          aria-label="Workflow views"
+        >
+          {STUDIO_TABS.map(([value, label, Icon]) => (
             <button
               key={value}
               type="button"
@@ -432,7 +535,16 @@ export function WorkflowEditor({
             />
           </button>
         ) : null}
+        {dirty ? (
+          <span
+            className="h-2 w-2 shrink-0 rounded-full bg-primary"
+            title="Unsaved changes"
+          >
+            <span className="sr-only">Unsaved changes</span>
+          </span>
+        ) : null}
         <Button
+          className="hidden sm:inline-flex"
           variant="ghost"
           size="icon-sm"
           onClick={openInChat}
@@ -458,7 +570,7 @@ export function WorkflowEditor({
         </Button>
         <Button
           size="icon-sm"
-          onClick={() => void run()}
+          onClick={requestRun}
           disabled={running}
           aria-label="Run"
           title="Run"
@@ -481,6 +593,14 @@ export function WorkflowEditor({
         ) : null}
       </div>
 
+      <WorkflowTriggerPanel
+        workflowId={workflow.id}
+        workflowName={workflow.name}
+        onNeedsSave={async () =>
+          !workflow.id || dirty ? ((await save())?.id ?? null) : workflow.id
+        }
+      />
+
       {error ? (
         <div className="mx-4 mt-3 rounded-lg border border-destructive/25 bg-destructive/10 px-3 py-2 text-xs text-destructive">
           {error}
@@ -489,9 +609,21 @@ export function WorkflowEditor({
 
       {tab === "build" ? (
         <div className="min-h-0 flex-1 p-2">
-          <SmithersCanvas
+          <WorkflowCanvas
             steps={workflow.steps ?? []}
             execution={selectedRun}
+            onAddStep={() =>
+              dispatchChatPrefill({
+                text: workflow.id
+                  ? `Add a step to workflow ${workflow.id}: `
+                  : "Create a Smithers workflow with ",
+              })
+            }
+            onEditStep={(step) =>
+              dispatchChatPrefill({
+                text: `Edit step ${step.id} in workflow ${workflow.id || workflow.name}: `,
+              })
+            }
           />
         </div>
       ) : null}
@@ -511,86 +643,6 @@ export function WorkflowEditor({
             aria-label="Smithers workflow source"
             className="min-h-[420px] flex-1 resize-none rounded-xl border-0 bg-zinc-950 p-4 font-mono text-[12px] leading-5 text-zinc-100"
           />
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon-sm"
-            className="absolute bottom-4 right-4 text-muted-foreground"
-            onClick={() => setScheduleOpen((current) => !current)}
-            aria-expanded={scheduleOpen}
-            aria-label="Schedule"
-            title={workflow.schedule?.enabled ? "Scheduled" : "Schedule"}
-          >
-            <Clock3
-              className={`h-4 w-4 ${workflow.schedule?.enabled ? "text-primary" : ""}`}
-            />
-          </Button>
-          {scheduleOpen ? (
-            <div className="absolute inset-x-3 bottom-14 grid gap-2 rounded-xl bg-card/95 p-2 shadow-lg backdrop-blur sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
-              <Input
-                value={workflow.schedule?.cron ?? ""}
-                onChange={(event) =>
-                  setWorkflow((current) => ({
-                    ...current,
-                    schedule: {
-                      cron: event.target.value,
-                      timezone:
-                        current.schedule?.timezone ??
-                        Intl.DateTimeFormat().resolvedOptions().timeZone,
-                      enabled: current.schedule?.enabled ?? false,
-                    },
-                  }))
-                }
-                placeholder="Cron schedule (optional)"
-                aria-label="Workflow cron schedule"
-              />
-              <Input
-                value={workflow.schedule?.timezone ?? ""}
-                onChange={(event) =>
-                  setWorkflow((current) => ({
-                    ...current,
-                    schedule: {
-                      cron: current.schedule?.cron ?? "",
-                      timezone: event.target.value,
-                      enabled: current.schedule?.enabled ?? false,
-                    },
-                  }))
-                }
-                placeholder="Timezone"
-                aria-label="Workflow schedule timezone"
-              />
-              <Button
-                type="button"
-                variant={workflow.schedule?.enabled ? "default" : "outline"}
-                size="icon"
-                disabled={!workflow.schedule?.cron}
-                aria-label={
-                  workflow.schedule?.enabled
-                    ? "Disable schedule"
-                    : "Enable schedule"
-                }
-                title={
-                  workflow.schedule?.enabled
-                    ? "Disable schedule"
-                    : "Enable schedule"
-                }
-                onClick={() =>
-                  setWorkflow((current) => ({
-                    ...current,
-                    schedule: {
-                      cron: current.schedule?.cron ?? "",
-                      timezone:
-                        current.schedule?.timezone ??
-                        Intl.DateTimeFormat().resolvedOptions().timeZone,
-                      enabled: !current.schedule?.enabled,
-                    },
-                  }))
-                }
-              >
-                <Clock3 className="h-4 w-4" />
-              </Button>
-            </div>
-          ) : null}
         </section>
       ) : null}
 
@@ -660,15 +712,30 @@ export function WorkflowEditor({
                   <div className="flex-1" />
                   {!terminal(selectedRun.status) ? (
                     <Button
-                      variant="ghost"
+                      variant={
+                        cancelArmedId === selectedRun.id
+                          ? "destructive"
+                          : "ghost"
+                      }
                       size="icon-sm"
-                      aria-label="Cancel run"
-                      title="Cancel"
-                      onClick={() =>
+                      aria-label={
+                        cancelArmedId === selectedRun.id
+                          ? "Confirm cancel run"
+                          : "Cancel run"
+                      }
+                      title={
+                        cancelArmedId === selectedRun.id ? "Confirm" : "Cancel"
+                      }
+                      onClick={() => {
+                        if (cancelArmedId !== selectedRun.id) {
+                          setCancelArmedId(selectedRun.id);
+                          return;
+                        }
+                        setCancelArmedId(null);
                         void client
                           .cancelWorkflowExecution(selectedRun.id)
-                          .then(refreshRuns)
-                      }
+                          .then(refreshRuns);
+                      }}
                     >
                       <CircleStop className="h-4 w-4" />
                     </Button>
@@ -853,18 +920,28 @@ export function WorkflowEditor({
                   </p>
                 </div>
                 <Button
-                  variant="ghost"
+                  variant={restoreArmedId === revision.id ? "default" : "ghost"}
                   size="icon-sm"
-                  aria-label="Restore revision"
-                  title="Restore"
-                  onClick={() =>
+                  aria-label={
+                    restoreArmedId === revision.id
+                      ? "Confirm restore revision"
+                      : "Restore revision"
+                  }
+                  title={restoreArmedId === revision.id ? "Confirm" : "Restore"}
+                  onClick={() => {
+                    if (restoreArmedId !== revision.id) {
+                      setRestoreArmedId(revision.id);
+                      return;
+                    }
+                    setRestoreArmedId(null);
                     void client
                       .restoreWorkflowRevision(workflow.id, revision.versionId)
                       .then((restored) => {
                         setWorkflow(restored);
+                        setSavedVersion(JSON.stringify(restored));
                         void refreshRevisions();
-                      })
-                  }
+                      });
+                  }}
                 >
                   <ArchiveRestore className="h-4 w-4" />
                 </Button>
@@ -880,6 +957,89 @@ export function WorkflowEditor({
               </div>
             ) : null}
           </div>
+        </div>
+      ) : null}
+
+      {runInputOpen ? (
+        <div className="absolute inset-0 z-30 grid place-items-center bg-background/80 p-4">
+          <form
+            aria-label="Workflow input"
+            className="w-full max-w-md rounded-2xl border border-border/60 bg-card p-4 shadow-xl"
+            onSubmit={(event) => {
+              event.preventDefault();
+              setRunInputOpen(false);
+              void run(runInput);
+            }}
+          >
+            <div className="mb-3 flex items-center gap-2">
+              <FileInput className="h-4 w-4 text-primary" />
+              <span className="text-sm font-semibold">Input</span>
+              <div className="flex-1" />
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                aria-label="Close input"
+                onClick={() => setRunInputOpen(false)}
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+            <div className="space-y-2.5">
+              {inputFields.map((field) => (
+                <label
+                  key={field.key}
+                  htmlFor={`workflow-input-${field.key}`}
+                  className="block"
+                >
+                  <span className="sr-only">{field.title}</span>
+                  {field.type === "boolean" ? (
+                    <span className="flex items-center justify-between rounded-lg bg-muted/35 px-3 py-2 text-sm">
+                      {field.title}
+                      <input
+                        id={`workflow-input-${field.key}`}
+                        type="checkbox"
+                        checked={Boolean(runInput[field.key])}
+                        onChange={(event) =>
+                          setRunInput((current) => ({
+                            ...current,
+                            [field.key]: event.target.checked,
+                          }))
+                        }
+                      />
+                    </span>
+                  ) : (
+                    <Input
+                      id={`workflow-input-${field.key}`}
+                      aria-label={field.title}
+                      required={field.required}
+                      type={field.type === "string" ? "text" : "number"}
+                      step={field.type === "integer" ? 1 : undefined}
+                      placeholder={field.title}
+                      value={String(runInput[field.key] ?? "")}
+                      onChange={(event) =>
+                        setRunInput((current) => ({
+                          ...current,
+                          [field.key]:
+                            field.type === "string"
+                              ? event.target.value
+                              : Number(event.target.value),
+                        }))
+                      }
+                    />
+                  )}
+                </label>
+              ))}
+            </div>
+            <Button type="submit" className="mt-4 w-full" disabled={running}>
+              {running ? (
+                <Spinner className="h-4 w-4" />
+              ) : (
+                <Play className="h-4 w-4" />
+              )}
+              <span className="sr-only">Run workflow</span>
+            </Button>
+          </form>
         </div>
       ) : null}
     </PagePanel>

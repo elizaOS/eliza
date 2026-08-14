@@ -258,11 +258,13 @@ export const BUILTIN_VIEW_MUTATION_BASELINE = [
       "packages/ui/src/components/pages/TaskEditor.tsx",
       "packages/ui/src/components/pages/ScheduledTaskEditor.tsx",
       "packages/ui/src/components/pages/WorkflowEditor.tsx",
+      "packages/ui/src/components/pages/WorkflowTriggerPanel.tsx",
+      "packages/ui/src/components/pages/WorkflowCanvas.tsx",
     ],
     semanticActions: ["SCHEDULED_TASKS", "TRIGGER"],
-    maxMutationSites: 71,
+    maxMutationSites: 68,
     notes:
-      "Automations feed plus its task/workflow editors all write ScheduledTask records through the one scheduler; SCHEDULED_TASKS is the umbrella twin and TRIGGER pairs the trigger steps inside workflow editing.",
+      "Automations feed, workflow canvas, and task/workflow editors write ScheduledTask records through the one scheduler; SCHEDULED_TASKS covers workflow authoring routed through chat, while TRIGGER pairs the trigger steps inside workflow editing.",
   },
   {
     viewId: "triggers",
@@ -384,19 +386,9 @@ export const BUILTIN_VIEW_MUTATION_BASELINE = [
         id: "relaunch.verify.agent",
         sourceFile:
           "packages/ui/src/components/settings/AppsManagementSection.tsx",
-        sourceSignature:
-          'useAgentElement<HTMLButtonElement>({\n      id: "apps-verify-on-relaunch",',
+        sourceSignature: "onCheckedChange={setVerifyOnRelaunch}",
         semanticAction: "APP",
         actionOperations: ["relaunch"],
-      },
-      {
-        id: "create.intent.agent",
-        sourceFile:
-          "packages/ui/src/components/settings/AppsManagementSection.tsx",
-        sourceSignature:
-          'useAgentElement<HTMLTextAreaElement>({\n      id: "apps-create-intent",',
-        semanticAction: "APP",
-        actionOperations: ["create"],
       },
       {
         id: "create.submit.agent",
@@ -415,15 +407,6 @@ export const BUILTIN_VIEW_MUTATION_BASELINE = [
           'useAgentElement<HTMLButtonElement>({\n      id: "apps-create-cancel",',
         semanticAction: "APP",
         actionOperations: ["create"],
-      },
-      {
-        id: "load.directory.agent",
-        sourceFile:
-          "packages/ui/src/components/settings/AppsManagementSection.tsx",
-        sourceSignature:
-          'useAgentElement<HTMLInputElement>({\n      id: "apps-load-directory",',
-        semanticAction: "APP",
-        actionOperations: ["load_from_directory"],
       },
       {
         id: "load.submit.agent",
@@ -462,15 +445,6 @@ export const BUILTIN_VIEW_MUTATION_BASELINE = [
         actionOperations: ["load_from_directory"],
       },
       {
-        id: "relaunch.verify.pointer",
-        sourceFile:
-          "packages/ui/src/components/settings/AppsManagementSection.tsx",
-        sourceSignature:
-          'onCheckedChange={(checked: boolean | "indeterminate") =>\n                  setVerifyOnRelaunch(!!checked)',
-        semanticAction: "APP",
-        actionOperations: ["relaunch"],
-      },
-      {
         id: "create.submit.pointer",
         sourceFile:
           "packages/ui/src/components/settings/AppsManagementSection.tsx",
@@ -482,7 +456,7 @@ export const BUILTIN_VIEW_MUTATION_BASELINE = [
         id: "create.intent.pointer",
         sourceFile:
           "packages/ui/src/components/settings/AppsManagementSection.tsx",
-        sourceSignature: "onChange={(e) => setCreateIntent(e.target.value)}",
+        sourceSignature: "onValueChange={setCreateIntent}",
         semanticAction: "APP",
         actionOperations: ["create"],
       },
@@ -516,8 +490,7 @@ export const BUILTIN_VIEW_MUTATION_BASELINE = [
         id: "load.directory.pointer",
         sourceFile:
           "packages/ui/src/components/settings/AppsManagementSection.tsx",
-        sourceSignature:
-          "onChange={(e: React.ChangeEvent<HTMLInputElement>) =>\n                  setLoadDirectory(e.target.value)",
+        sourceSignature: "onValueChange={setLoadDirectory}",
         semanticAction: "APP",
         actionOperations: ["load_from_directory"],
       },
@@ -571,7 +544,7 @@ export const BUILTIN_VIEW_MUTATION_BASELINE = [
         actionOperations: ["stop"],
       },
     ],
-    maxMutationSites: 27,
+    maxMutationSites: 24,
     notes:
       "The standalone page mounts AppsManagementSection, so its complete app-control surface is inventoried here instead of disappearing behind a child component. APP owns app lifecycle; VIEWS owns the signed-in Cloud Apps shell navigation.",
   },

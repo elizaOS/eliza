@@ -35,6 +35,8 @@ interface TriggerConfigBase {
 	scheduledAtIso?: string;
 	cronExpression?: string;
 	eventKind?: string;
+	/** Deep-subset payload match for event triggers. */
+	eventFilter?: Record<string, unknown>;
 	maxRuns?: number;
 	runCount: number;
 	nextRunAtMs?: number;

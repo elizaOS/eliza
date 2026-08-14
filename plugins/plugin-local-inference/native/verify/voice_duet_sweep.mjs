@@ -56,7 +56,51 @@ const VOICE_DUET = path.join(
 // CLI
 // ---------------------------------------------------------------------------
 
-function parseArgs(argv) {
+/**
+ * Accept only a complete positive decimal integer string in [1, maxInclusive].
+ * Full-string digits only (`/^\d+$/`) so zero-padded tokens like `01` remain
+ * valid (matches develop `Number()` acceptance); range checks reject `0`/`00`.
+ * Used by the `--turns` / `--cell-timeout-ms` branches so mistyped sweep flags
+ * fail closed before any cell work starts. Exported for focused unit tests.
+ *
+ * `--cell-timeout-ms` is capped at MAX_NODE_TIMER_MS (2^31-1): larger values
+ * clamp to 1 ms in Bun/Node setTimeout and would silently kill cells early.
+ */
+export const MAX_NODE_TIMER_MS = 2_147_483_647;
+
+export function parsePositiveInteger(
+  raw,
+  flag,
+  maxInclusive = Number.MAX_SAFE_INTEGER,
+) {
+  if (raw === undefined || raw === null) {
+    throw new Error(`${flag} requires a positive integer >= 1`);
+  }
+  const value = String(raw);
+  if (value.startsWith("--")) {
+    throw new Error(`${flag} requires a value`);
+  }
+  // Complete decimal digit string only — not Number()'s partial parse
+  // ("10junk" → 10). Leading zeroes are allowed when the value is still >= 1.
+  if (!/^\d+$/.test(value)) {
+    throw new Error(
+      `${flag} must be a positive integer 1..${maxInclusive} (received ${JSON.stringify(value)})`,
+    );
+  }
+  const parsed = Number(value);
+  if (
+    !Number.isSafeInteger(parsed) ||
+    parsed < 1 ||
+    parsed > maxInclusive
+  ) {
+    throw new Error(
+      `${flag} must be a positive integer 1..${maxInclusive} (received ${JSON.stringify(value)})`,
+    );
+  }
+  return parsed;
+}
+
+export function parseArgs(argv) {
   const out = {
     model: "eliza-1-2b",
     turns: 20,
@@ -82,13 +126,18 @@ function parseArgs(argv) {
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === "--model") out.model = argv[++i] ?? out.model;
-    else if (a === "--turns") out.turns = Number(argv[++i]) || out.turns;
-    else if (a === "--out") out.out = argv[++i] ?? null;
+    else if (a === "--turns") {
+      out.turns = parsePositiveInteger(argv[++i], "--turns");
+    } else if (a === "--out") out.out = argv[++i] ?? null;
     else if (a === "--dry-run") out.dryRun = true;
     else if (a === "--two-process") out.twoProcess = true;
-    else if (a === "--cell-timeout-ms")
-      out.timeoutMs = Number(argv[++i]) || out.timeoutMs;
-    else if (a === "--parallel") out.parallel = list(argv[++i]);
+    else if (a === "--cell-timeout-ms") {
+      out.timeoutMs = parsePositiveInteger(
+        argv[++i],
+        "--cell-timeout-ms",
+        MAX_NODE_TIMER_MS,
+      );
+    } else if (a === "--parallel") out.parallel = list(argv[++i]);
     else if (a === "--draft-max") out.draftMax = list(argv[++i]);
     else if (a === "--ctx-size-draft") out.ctxSizeDraft = list(argv[++i]);
     else if (a === "--chunk-words") out.chunkWords = list(argv[++i]);
@@ -420,9 +469,12 @@ async function main() {
   process.exit(0);
 }
 
-main().catch((err) => {
-  process.stderr.write(
-    `[voice-duet-sweep] fatal: ${err instanceof Error ? (err.stack ?? err.message) : String(err)}\n`,
-  );
-  process.exit(1);
-});
+if (import.meta.main) {
+  // error-policy:J1 CLI boundary — invalid flags / sweep failures exit non-zero.
+  main().catch((err) => {
+    process.stderr.write(
+      `[voice-duet-sweep] fatal: ${err instanceof Error ? (err.stack ?? err.message) : String(err)}\n`,
+    );
+    process.exit(1);
+  });
+}

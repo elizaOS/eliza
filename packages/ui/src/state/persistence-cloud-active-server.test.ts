@@ -10,6 +10,7 @@
 import { logger } from "@elizaos/logger";
 import { writeStoredStewardToken } from "@elizaos/shared/steward-session-client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { DEFAULT_DIRECT_CLOUD_API_BASE_URL } from "../api/direct-cloud-endpoints";
 import { DEFAULT_BOOT_CONFIG, setBootConfig } from "../config/boot-config";
 import { shellLocalStorage } from "../surface-realm-channel";
 import { ELIZA_CLOUD_CONTROL_PLANE_HOSTS } from "../utils/cloud-agent-base";
@@ -79,6 +80,38 @@ describe("Cloud active server persistence", () => {
     savePersistedActiveServer(server);
 
     expect(loadPersistedActiveServer()).toEqual(server);
+  });
+
+  it("persists a stable personal identity separately from its Dedicated runtime", () => {
+    const personalId = "personal:00000000-0000-5000-8000-000000000001";
+    const server = createPersistedActiveServer({
+      kind: "cloud",
+      id: `cloud:${personalId}`,
+      label: "Eliza",
+      apiBase: `https://${agentId}.cloud.eliza.app`,
+      accessToken: "cloud-token",
+      cloudRuntimeAgentId: agentId,
+      cloudRuntime: "dedicated",
+    });
+
+    savePersistedActiveServer(server);
+
+    expect(loadPersistedActiveServer()).toEqual({
+      id: `cloud:${personalId}`,
+      kind: "cloud",
+      label: "Eliza",
+      apiBase: `https://${agentId}.cloud.eliza.app`,
+      accessToken: "cloud-token",
+      cloudRuntimeAgentId: agentId,
+      cloudRuntime: "dedicated",
+    });
+    expect(
+      canRestoreActiveServer({
+        server,
+        clientApiAvailable: true,
+        isDesktop: false,
+      }),
+    ).toBe(true);
   });
 
   it("normalizes legacy saved Cloud control-plane records", () => {
@@ -237,7 +270,7 @@ describe("Cloud active server persistence", () => {
       clientRef: { setBaseUrl, setToken },
     });
 
-    const expectedApiBase = `https://${agentId}.elizacloud.ai`;
+    const expectedApiBase = `https://${agentId}.cloud.eliza.app`;
     expect(setBaseUrl).toHaveBeenCalledWith(expectedApiBase);
     expect(setToken).toHaveBeenCalledWith("cloud-token");
     expect(loadPersistedActiveServer()).toEqual(
@@ -249,7 +282,7 @@ describe("Cloud active server persistence", () => {
     );
   });
 
-  it("preserves a shared adapter until server-authoritative tier selection", async () => {
+  it("canonicalizes then drops a shared adapter without Steward owner authority", async () => {
     const server = createPersistedActiveServer({
       kind: "cloud",
       id: `cloud:${agentId}`,
@@ -266,16 +299,12 @@ describe("Cloud active server persistence", () => {
       clientRef: { setBaseUrl, setToken },
     });
 
-    const expectedApiBase = `https://api.elizacloud.ai/api/v1/eliza/agents/${agentId}`;
+    const expectedApiBase = `${DEFAULT_DIRECT_CLOUD_API_BASE_URL}/api/v1/eliza/agents/${agentId}`;
     expect(setBaseUrl).toHaveBeenCalledWith(expectedApiBase);
     expect(setToken).toHaveBeenCalledWith("cloud-token");
-    expect(loadPersistedActiveServer()).toEqual(
-      expect.objectContaining({
-        id: `cloud:${agentId}`,
-        kind: "cloud",
-        apiBase: expectedApiBase,
-      }),
-    );
+    expect(setToken).toHaveBeenLastCalledWith(null);
+    expect(setBaseUrl).toHaveBeenLastCalledWith(null);
+    expect(loadPersistedActiveServer()).toBeNull();
   });
 
   it("preserves the injected desktop API base when restoring a local session", async () => {

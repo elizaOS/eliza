@@ -28,8 +28,10 @@ on:
 
 # A reusable caller's scope separates it from the standalone ref domain. PRs
 # still supersede obsolete work; scheduled and exhaustive work always completes.
+# A manual run also gets a run-scoped identity so an on-demand health read is
+# not parked behind — and then superseded by — the develop push queue.
 concurrency:
-  group: scenario-pr-e2e-${{ inputs.concurrency_scope || 'standalone' }}-${{ github.event.pull_request.number || github.ref }}
+  group: scenario-pr-e2e-${{ inputs.concurrency_scope || 'standalone' }}-${{ github.event_name == 'workflow_dispatch' && format('dispatch-{0}', github.run_id) || github.event.pull_request.number || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
@@ -60,39 +62,9 @@ jobs:
     # `ci:full` label. Every downstream job needs this one, so an unlabeled PR
     # skips the whole workflow without touching a runner.
     if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'ci:full')
-    # Path classifier is a git-diff + node script: no self-hosted resources.
-    # Keep it on GitHub-hosted so a drained hetzner fleet cannot leave it
-    # queued indefinitely and pile up runs (#13617/#8501).
-    runs-on: ${{ fromJSON(github.event_name == 'pull_request' && '["ubuntu-24.04"]' || vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
-    timeout-minutes: 10
-    outputs:
-      run_scenario_pr: ${{ steps.filter.outputs.run_scenario_pr }}
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-        with:
-          fetch-depth: 0
-          submodules: false
-
-      - name: Setup Node.js for path gate
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-
-      - name: Determine affected CI surface
-        id: filter
-        shell: bash
-        env:
-          PR_LABELS: ${{ github.event_name == 'pull_request' && join(github.event.pull_request.labels.*.name, ',') || '' }}
-        run: |
-          set -euo pipefail
-          node packages/scripts/ci-path-gate.mjs \
-            --config scenario-pr \
-            --event "${{ github.event_name }}" \
-            --base "${{ github.event.pull_request.base.sha }}" \
-            --head "${{ github.event.pull_request.head.sha }}" \
-            --labels "$PR_LABELS" \
-            --output "$GITHUB_OUTPUT" \
-            --summary "$GITHUB_STEP_SUMMARY"
+    uses: ./.github/workflows/classify-paths.yml
+    with:
+      config: scenario-pr
 
   scenario-unit-coverage:
     name: Zero-Key unit + UI coverage
@@ -425,6 +397,9 @@ jobs:
 
       - name: Actual app ratcheted keyless browser coverage
         run: bun run --cwd packages/app test:e2e test/ui-smoke/ai-qa-capture.spec.ts test/ui-smoke/android-system-apps.spec.ts test/ui-smoke/apps-session.spec.ts test/ui-smoke/apps-session-direct-a.spec.ts test/ui-smoke/apps-session-direct-b.spec.ts test/ui-smoke/auth-startup.spec.ts test/ui-smoke/automations.spec.ts test/ui-smoke/browser-workspace.spec.ts test/ui-smoke/character-editor.spec.ts test/ui-smoke/wallet-inventory.spec.ts test/ui-smoke/workflow-editor.spec.ts test/ui-smoke/computer-use.spec.ts test/ui-smoke/connectors.spec.ts test/ui-smoke/first-run-startup.spec.ts test/ui-smoke/model-download-deferral.spec.ts test/ui-smoke/history-navigation.spec.ts test/ui-smoke/orchestrator-gui-workbench.spec.ts test/ui-smoke/reset-returns-to-onboarding.spec.ts test/ui-smoke/tutorial-chat.spec.ts test/ui-smoke/warming-shell-startup.spec.ts test/ui-smoke/runtime-configurability.spec.ts test/ui-smoke/perf-load-kpi.spec.ts test/ui-smoke/perf-reduced-motion.spec.ts test/ui-smoke/task-coordinator-gui-interactions.spec.ts test/ui-smoke/titlebar-navigation.spec.ts test/ui-smoke/ui-smoke.spec.ts --project=chromium
+
+      - name: Native workflow browser-to-runtime coverage
+        run: ELIZA_UI_SMOKE_REAL_LOCAL_STACK=1 ELIZA_UI_SMOKE_WORKFLOW_JOURNEY=1 ELIZA_UI_SMOKE_DISABLE_VIDEO=1 bun run --cwd packages/app test:e2e test/ui-smoke/workflow-real-local.spec.ts --project=chromium
 
       - name: Upload app browser ratcheted artifacts
         if: always()

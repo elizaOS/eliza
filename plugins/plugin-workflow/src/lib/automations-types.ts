@@ -79,6 +79,7 @@ export interface TriggerSummary {
   scheduledAtIso?: string;
   cronExpression?: string;
   eventKind?: string;
+  eventFilter?: Record<string, unknown>;
   maxRuns?: number;
   runCount: number;
   nextRunAtMs?: number;
@@ -106,6 +107,7 @@ interface TriggerConfigShape {
   scheduledAtIso?: string;
   cronExpression?: string;
   eventKind?: string;
+  eventFilter?: Record<string, unknown>;
   maxRuns?: number;
   runCount?: number;
   nextRunAtMs?: number;
@@ -214,6 +216,7 @@ export function taskToTriggerSummary(task: Task): TriggerSummary | null {
       ...(trigger.scheduledAtIso !== undefined ? { scheduledAtIso: trigger.scheduledAtIso } : {}),
       ...(trigger.cronExpression !== undefined ? { cronExpression: trigger.cronExpression } : {}),
       ...(trigger.eventKind !== undefined ? { eventKind: trigger.eventKind } : {}),
+      ...(trigger.eventFilter !== undefined ? { eventFilter: trigger.eventFilter } : {}),
       ...(trigger.maxRuns !== undefined ? { maxRuns: trigger.maxRuns } : {}),
       runCount: typeof trigger.runCount === 'number' ? trigger.runCount : 0,
       ...(trigger.nextRunAtMs !== undefined ? { nextRunAtMs: trigger.nextRunAtMs } : {}),

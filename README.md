@@ -159,9 +159,9 @@ Open an issue before a non-trivial change and submit work through a pull request
 against `develop`. [CONTRIBUTING.md](CONTRIBUTING.md) defines the coordination,
 testing, synchronization, and human-verifiable evidence requirements.
 
-- [Bug report](.github/ISSUE_TEMPLATE/bug_report.md)
-- [Feature request](.github/ISSUE_TEMPLATE/feature_request.md)
-- [Agent work item](.github/ISSUE_TEMPLATE/agent_work_item.md)
+- [Bug Report](.github/ISSUE_TEMPLATE/bug_report.md)
+- [Feature Request](.github/ISSUE_TEMPLATE/feature_request.md)
+- [Agent Work Item](.github/ISSUE_TEMPLATE/agent_work_item.md)
 - [Windows setup](WINDOWS.md)
 - [Security policy](SECURITY.md)
 - [Security architecture documentation](packages/docs/security.md)

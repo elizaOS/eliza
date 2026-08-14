@@ -300,10 +300,9 @@ README → "GitHub credentials".
 | `ELIZA_ORCHESTRATOR_AUTO_GOAL_VERIFY` | unset | Enable LLM-based goal verification on task completion |
 | `ELIZA_REQUIRE_GOAL_CONTRACT` | `1` (enabled) | Auto-generate 3-5 measurable default acceptance criteria for a criteria-free, non-trivial task so the verifier always fires. Set to `0` to keep criteria-free tasks criteria-free (prior behavior). |
 | `ELIZA_ORCHESTRATOR_RESIDUALS_GATE` | `1` (enabled) | Deterministic completion-residuals gate: before a task may promote to `done`, the reporting session's git workspace must have no uncommitted changes or unpushed commits, and a valid CompletionEnvelope must report no failing tests or residual risks. Fail-closed (a missing/non-git claimed workspace blocks). Set to `0` to disable. |
-| `SMITHERS_DB_PROVIDER` | unset | Database provider for smithers task storage |
+| `SMITHERS_DB_PROVIDER` | `sqlite` | Database provider for Smithers task storage (`sqlite` or `postgres`). `pglite` is fail-closed with `SMITHERS_PGLITE_INCOMPATIBLE` until the upstream adapter dependency closure is compatible. |
 | `SMITHERS_DB_URL` | unset | Database URL for smithers task storage |
-| `SMITHERS_DB_DATA_DIR` | unset | Data directory for smithers file-backed storage |
-| `ELIZA_SMITHERS_TIMEOUT_MS` | `300000` | Maximum wall-clock time for a Smithers durable task run; `TASKS` request timeouts override it per run. |
+| `ELIZA_SMITHERS_TIMEOUT_MS` | `300000` | Maximum wall-clock time for a Smithers durable task run. Values must be exact decimal integers from `1` through `2147483647`; missing/blank uses the default, and invalid environment or `TASKS` request overrides fail before a worker starts. |
 | `ELIZA_SCRATCH_RETENTION` | unset | How long to retain scratch workspace dirs |
 | `ELIZA_SCRATCH_DECISION_TTL_MS` | unset | TTL for scratch workspace GC decisions |
 | `ELIZAOS_CLOUD_API_KEY` / `ELIZAOS_CLOUD_URL` | unset | Owner Cloud creds. **Broker-first (#14118): NOT forwarded to sub-agents by default** — a child reaches Cloud via the parent broker (`apps.create` / `containers.create`, spend-gated). Set `ELIZA_FORWARD_CLOUD_KEY_TO_SUBAGENTS=1` to restore raw forwarding. |

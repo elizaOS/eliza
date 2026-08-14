@@ -7,6 +7,7 @@
 
 import { logger } from "@elizaos/logger";
 import { shellLocalStorage } from "../surface-realm-channel";
+import { isManagedCloudSharedAgentBase } from "../utils/cloud-agent-base";
 import type { AgentProfile, AgentProfileRegistry } from "./agent-profile-types";
 import {
   type PersistedActiveServer,
@@ -65,6 +66,15 @@ function migrateFromPersistedActiveServer(): AgentProfileRegistry | null {
     id: generateId(),
     label: parsed.label,
     kind: parsed.kind,
+    ...(parsed.kind === "cloud" && parsed.id.startsWith("cloud:")
+      ? { cloudAgentId: parsed.id.slice("cloud:".length) }
+      : {}),
+    ...(parsed.kind === "cloud" && parsed.cloudRuntimeAgentId
+      ? { cloudRuntimeAgentId: parsed.cloudRuntimeAgentId }
+      : {}),
+    ...(parsed.kind === "cloud" && parsed.cloudRuntime
+      ? { cloudRuntime: parsed.cloudRuntime }
+      : {}),
     apiBase: parsed.apiBase,
     accessToken: parsed.accessToken,
     createdAt: new Date().toISOString(),
@@ -256,6 +266,10 @@ export function upsertAndActivateAgentProfile(
     ...registry.profiles[existingIdx],
     label: profile.label || registry.profiles[existingIdx].label,
     ...(profile.cloudAgentId ? { cloudAgentId: profile.cloudAgentId } : {}),
+    ...(profile.cloudRuntimeAgentId
+      ? { cloudRuntimeAgentId: profile.cloudRuntimeAgentId }
+      : {}),
+    ...(profile.cloudRuntime ? { cloudRuntime: profile.cloudRuntime } : {}),
     ...(profile.apiBase !== undefined ? { apiBase: profile.apiBase } : {}),
     // A fresh token supersedes a stale one; an absent token leaves the prior in
     // place (a re-activate that carries no new token must not blank it out).
@@ -272,6 +286,23 @@ export function activeServerIdForAgentProfile(profile: AgentProfile): string {
   return profile.kind === "cloud" && profile.cloudAgentId
     ? `cloud:${profile.cloudAgentId}`
     : profile.id;
+}
+
+/** Remove every profile owned by the ending shared Cloud account session. */
+export function removeManagedSharedCloudAgentProfiles(): void {
+  const registry = loadAgentProfileRegistry();
+  const profiles = registry.profiles.filter(
+    (profile) => !isManagedCloudSharedAgentBase(profile.apiBase),
+  );
+  if (profiles.length === registry.profiles.length) return;
+  const activeStillPresent = profiles.some(
+    (profile) => profile.id === registry.activeProfileId,
+  );
+  saveAgentProfileRegistry({
+    version: 1,
+    activeProfileId: activeStillPresent ? registry.activeProfileId : null,
+    profiles,
+  });
 }
 
 export function removeAgentProfile(id: string): void {

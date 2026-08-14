@@ -20,16 +20,19 @@ core smoke tests. It never publishes packages or creates releases.
 
 Several branch-scoped and path-scoped workflows run alongside the canonical CI
 gate for specific surfaces. This list is non-exhaustive; other specialized
-gates such as `gitleaks.yml`, `cloud-tests.yml`, `chat-shell-gestures.yml`, and
-the `pr.yaml` title check cover narrower contracts. None replaces the
-`CI / Required` status. Representative examples:
+gates such as `cloud-tests.yml`, `chat-shell-gestures.yml`, and the `pr.yaml`
+title check cover narrower contracts. None replaces the `CI / Required` status.
+Representative examples:
 
-- `develop-pr.yml` runs lint, typecheck, build, and changed-plugin tests for
-  `develop`-targeted PRs. `actionlint` reaches merge-critical workflows through
-  the pinned installer in `install-workflow-linters.sh`.
-- `quality.yml` builds the single `packages/app` frontend artifact, validates
-  the embedded homepage source contracts, and supplies the workspace format
-  gate for `main`-targeted PRs and post-merge pushes.
+- `develop-pr.yml` is called from canonical `ci.yml` for `develop`-targeted PRs
+  and runs lint, typecheck, build, changed-plugin tests, and pinned `actionlint`.
+  It has no direct pull-request trigger, so outside contributors encounter only
+  the canonical workflow's approval boundary.
+- `gitleaks.yml` scans protected-branch pushes. Canonical `ci.yml` owns the
+  equivalent diff-scoped pull-request secret scan on a hosted runner.
+- `quality.yml` supplies the extended homepage build and workspace format gate
+  for `main`-targeted PRs and post-merge pushes, including the single
+  `packages/app` frontend artifact and embedded homepage source contracts.
 - `scenario-pr.yml` supplies the opt-in scenario-runner and browser matrix for
   `main`-targeted PRs carrying the `ci:full` label.
 - `ui-e2e-gate.yml` and `ui-fixture-e2e.yml` run the packages/ui Chromium and
@@ -50,6 +53,25 @@ the `pr.yaml` title check cover narrower contracts. None replaces the
   that commit, and uploads signed desktop assets without creating or replacing
   the release. `snap-publish.yml` owns Snap Store publication.
 - `infra.yml` is the only Terraform plan, apply, and state-edit entry point.
+  Each protected Environment supplies a distinct RSA public-key variable
+  `TERRAFORM_PLAN_ARTIFACT_PUBLIC_KEY` and apply-only private-key secret
+  `TERRAFORM_PLAN_ARTIFACT_PRIVATE_KEY`. Plan runs wrap a fresh AES-256-GCM key
+  with RSA-OAEP, encrypt the saved plan before it leaves the runner, and
+  authenticate its review metadata. An apply requires the exact plan run id,
+  run attempt, GitHub artifact id, and GitHub service digest shown in the plan
+  summary; it downloads by artifact id, decrypts only after every identity
+  check, and never creates a replacement plan. Plaintext plan files are
+  shredded on every plan/apply outcome.
+- `arm-headscale-control-plane.yml` is the protected Hetzner Headscale
+  convergence path. Its default operation converges the environment-fixed
+  canonical/legacy overlap. Staging additionally exposes a read-only inspection
+  of the exact reviewed `/etc/nginx/conf.d/headscale-staging.conf` artifact and
+  a separate explicit retirement operation. The latter validates the regular
+  root-owned legacy-only two-listener contract, requires the exact SHA-256
+  emitted by the reviewed inspection, backs up both nginx files, and
+  restores them on any ownership, SAN, nginx, reload, public-health, router,
+  environment-write, worker-restart, or final service-liveness failure.
+  Production has no legacy-file cleanup path.
 - `deploy-tunnel-proxy.yml` is the protected Railway + Headscale convergence
   path for the customer tunnel proxy. It validates canonical staging/production
   hosts, rotates the reusable `tag:eliza-proxy` enrollment key without logging

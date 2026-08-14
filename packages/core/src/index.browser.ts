@@ -57,6 +57,7 @@ export {
 	type FetchedDocumentUrlKind,
 	fetchDocumentFromUrl,
 	isYouTubeUrl,
+	normalizeDocumentContentType,
 } from "./features/documents/index";
 export type {
 	DeferredMessageScheduleCommit,

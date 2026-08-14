@@ -1,7 +1,7 @@
 /**
- * The registry host (`plugins.eliza.app`) must serve the committed registry
- * artifacts from the worker itself: the managed-agent wildcard
- * route shadows the host, so before this handler the canonical registry URL
+ * The registry hosts (`plugins.eliza.app` / `plugins-staging.eliza.app`) must
+ * serve committed registry artifacts only from the matching deployment. The
+ * managed-agent wildcard route shadows the host, so before this handler the canonical registry URL
  * (`packages/registry` README) 404'd on the JSON router on every env.
  * Deterministic — upstream raw-GitHub fetch is stubbed via the global fetch;
  * no network.
@@ -66,15 +66,14 @@ describe("serveRegistryHostRequest", () => {
     );
   });
 
-  test("serves the staging host from the same allowlist", async () => {
-    stubUpstream(() => new Response("{}", { status: 200 }));
+  test("does not serve the staging host from a production deployment", async () => {
+    const { calls } = stubUpstream(() => new Response("{}", { status: 200 }));
     const [request, url] = req(
       "https://plugins-staging.eliza.app/generated-registry.json",
     );
-    const response = await serveRegistryHostRequest(request, url, {
-      ELIZA_CLOUD_AGENT_BASE_DOMAIN: "cloud-staging.eliza.app",
-    } as typeof ENV);
-    expect(response?.status).toBe(200);
+    const response = await serveRegistryHostRequest(request, url, ENV);
+    expect(response).toBeNull();
+    expect(calls).toHaveLength(0);
   });
 
   test("404s paths outside the artifact allowlist without touching upstream", async () => {
@@ -131,6 +130,17 @@ describe("serveRegistryHostRequest", () => {
     const response = await serveRegistryHostRequest(request, url, ENV);
     expect(response?.status).toBe(200);
     expect(await response?.text()).toBe("");
+  });
+
+  test("selects the staging registry host from the configured agent domain", async () => {
+    stubUpstream(() => new Response("{}", { status: 200 }));
+    const [request, url] = req(
+      "https://plugins-staging.eliza.app/generated-registry.json",
+    );
+    const response = await serveRegistryHostRequest(request, url, {
+      ELIZA_CLOUD_AGENT_BASE_DOMAIN: "cloud-staging.eliza.app",
+    } as typeof ENV);
+    expect(response?.status).toBe(200);
   });
 
   test("does not synthesize registry hosts from arbitrary agent domains", async () => {

@@ -36,14 +36,36 @@ export function isProxyMode(runtime: IAgentRuntime): boolean {
   return isBrowser() && !!getSetting(runtime, "ELIZAOS_CLOUD_BROWSER_BASE_URL");
 }
 
+export type EndpointSettingReader = (key: string) => string | undefined;
+
+/** Pure endpoint policy shared by inference and diagnostic surfaces. */
+export function resolveElizaCloudBaseURL(
+  readSetting: EndpointSettingReader,
+  options: { browser?: boolean } = {}
+): string {
+  const read = (key: string): string | undefined => {
+    const value = readSetting(key)?.trim();
+    return value ? value : undefined;
+  };
+  return (
+    (options.browser ? read("ELIZAOS_CLOUD_BROWSER_BASE_URL") : undefined) ??
+    read("ELIZAOS_CLOUD_BASE_URL") ??
+    "https://api.eliza.app/api/v1"
+  );
+}
+
 export function getBaseURL(runtime: IAgentRuntime): string {
-  const browserURL = getSetting(runtime, "ELIZAOS_CLOUD_BROWSER_BASE_URL");
-  const baseURL = (
-    isBrowser() && browserURL
-      ? browserURL
-      : getSetting(runtime, "ELIZAOS_CLOUD_BASE_URL", "https://api.eliza.app/api/v1")
-  ) as string;
-  return baseURL;
+  return resolveElizaCloudBaseURL(
+    (key) => {
+      const runtimeValue = runtime.getSetting(key);
+      const normalizedRuntime =
+        runtimeValue === undefined || runtimeValue === null
+          ? undefined
+          : String(runtimeValue).trim() || undefined;
+      return normalizedRuntime ?? resolveSetting(null, key);
+    },
+    { browser: isBrowser() }
+  );
 }
 
 export function getEmbeddingBaseURL(runtime: IAgentRuntime): string {
@@ -230,12 +252,6 @@ export function getImageGenerationModel(runtime: IAgentRuntime): string {
   );
 }
 
-export function getResearchModel(runtime: IAgentRuntime): string {
-  return (
-    getSetting(runtime, "ELIZAOS_CLOUD_RESEARCH_MODEL") ??
-    (getSetting(runtime, "RESEARCH_MODEL", "o3-deep-research") as string)
-  );
-}
 
 export function getTTSModel(runtime: IAgentRuntime): string {
   return getSetting(runtime, "ELIZAOS_CLOUD_TTS_MODEL", "gpt-5-mini-tts") as string;

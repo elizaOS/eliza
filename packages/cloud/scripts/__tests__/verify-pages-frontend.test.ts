@@ -5,7 +5,13 @@
  * bundle, which leaves onboarding fixes absent from the user-facing app.
  */
 import { afterEach, describe, expect, it } from "bun:test";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  truncateSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -18,18 +24,24 @@ import { parseArgs } from "../verify-pages-frontend-cli.mjs";
 
 const tmpRoots: string[] = [];
 
-function makeDist(asset = "assets/index-fresh.js") {
+function makeDist(
+  asset = "assets/index-fresh.js",
+  contents = "Signing in to your agent\nCloudPairRelay",
+) {
   const dir = mkdtempSync(join(tmpdir(), "pages-frontend-"));
   tmpRoots.push(dir);
   writeFileSync(
     join(dir, "index.html"),
     `<html><head><script type="module" src="/${asset}"></script></head></html>`,
   );
+  mkdirSync(join(dir, "assets"), { recursive: true });
+  writeFileSync(join(dir, asset), contents);
   return dir;
 }
 
 function response(body: string, ok = true, status = ok ? 200 : 500) {
-  return { ok, status, text: async () => body };
+  const bytes = new TextEncoder().encode(body);
+  return { ok, status, arrayBuffer: async () => bytes.buffer };
 }
 
 afterEach(() => {
@@ -70,8 +82,6 @@ describe("normalizers", () => {
 });
 
 describe("verifyPagesFrontendOnce", () => {
-  const noSleep = async () => {};
-
   it("passes when the live index serves the local entry bundle with required text", async () => {
     const distDir = makeDist();
     const fetchImpl = (async (url: string) => {
@@ -91,7 +101,6 @@ describe("verifyPagesFrontendOnce", () => {
       distDir,
       requiredTexts: ["Signing in to your agent", "CloudPairRelay"],
       fetchImpl,
-      retrySleep: noSleep,
     });
 
     expect(report.ok).toBe(true);
@@ -109,7 +118,6 @@ describe("verifyPagesFrontendOnce", () => {
       servedUrl: "https://app.elizacloud.ai",
       distDir,
       fetchImpl,
-      retrySleep: noSleep,
     });
 
     expect(report.ok).toBe(false);
@@ -119,7 +127,10 @@ describe("verifyPagesFrontendOnce", () => {
   });
 
   it("fails when the served entry bundle misses required onboarding text", async () => {
-    const distDir = makeDist();
+    const distDir = makeDist(
+      "assets/index-fresh.js",
+      "Sign in with your password",
+    );
     const fetchImpl = (async (url: string) => {
       if (url.endsWith("/assets/index-fresh.js")) {
         return response("Sign in with your password");
@@ -134,7 +145,6 @@ describe("verifyPagesFrontendOnce", () => {
       distDir,
       requiredTexts: ["Signing in to your agent"],
       fetchImpl,
-      retrySleep: noSleep,
     });
 
     expect(report.ok).toBe(false);
@@ -142,6 +152,181 @@ describe("verifyPagesFrontendOnce", () => {
     expect(report.requiredTextResults).toEqual([
       { text: "Signing in to your agent", present: false },
     ]);
+  });
+
+  it("searches required text in lazy JavaScript while proving every emitted asset", async () => {
+    const entry = 'import("./AppContext-lazy.js");';
+    const lazy =
+      "Signing in to your agent\nThis tab will continue automatically";
+    const distDir = makeDist("assets/index-fresh.js", entry);
+    writeFileSync(join(distDir, "assets/AppContext-lazy.js"), lazy);
+    const fetchImpl = (async (url: string) => {
+      if (url === "https://app.elizacloud.ai/") {
+        return response(
+          '<script type="module" src="/assets/index-fresh.js"></script>',
+        );
+      }
+      if (url.endsWith("/assets/index-fresh.js")) return response(entry);
+      if (url.endsWith("/assets/AppContext-lazy.js")) return response(lazy);
+      throw new Error(`unexpected URL ${url}`);
+    }) as unknown as typeof fetch;
+
+    const report = await verifyPagesFrontendOnce({
+      servedUrl: "https://app.elizacloud.ai",
+      distDir,
+      requiredTexts: [
+        "Signing in to your agent",
+        "This tab will continue automatically",
+      ],
+      fetchImpl,
+    });
+
+    expect(report.ok).toBe(true);
+    expect(report.detail).toContain("2 emitted JavaScript asset(s)");
+  });
+
+  it("fails when a live lazy asset does not exactly match local bytes", async () => {
+    const distDir = makeDist("assets/index-fresh.js", "entry");
+    writeFileSync(join(distDir, "assets/AppContext-lazy.js"), "local lazy");
+    const fetchImpl = (async (url: string) => {
+      if (url === "https://app.elizacloud.ai/") {
+        return response(
+          '<script type="module" src="/assets/index-fresh.js"></script>',
+        );
+      }
+      if (url.endsWith("/assets/index-fresh.js")) return response("entry");
+      if (url.endsWith("/assets/AppContext-lazy.js")) {
+        return response("different live lazy");
+      }
+      throw new Error(`unexpected URL ${url}`);
+    }) as unknown as typeof fetch;
+
+    const report = await verifyPagesFrontendOnce({
+      servedUrl: "https://app.elizacloud.ai",
+      distDir,
+      fetchImpl,
+    });
+
+    expect(report.ok).toBe(false);
+    expect(report.reason).toBe("asset_bytes_mismatch");
+    expect(report.detail).toContain("assets/AppContext-lazy.js");
+  });
+
+  it("fails when a public-root service worker is stale", async () => {
+    const distDir = makeDist("assets/index-fresh.js", "entry");
+    writeFileSync(join(distDir, "sw.js"), 'const BUILD_REV = "fresh";');
+    const fetchImpl = (async (url: string) => {
+      if (url === "https://app.elizacloud.ai/") {
+        return response(
+          '<script type="module" src="/assets/index-fresh.js"></script>',
+        );
+      }
+      if (url.endsWith("/assets/index-fresh.js")) return response("entry");
+      if (url.endsWith("/sw.js")) {
+        return response('const BUILD_REV = "stale";');
+      }
+      throw new Error(`unexpected URL ${url}`);
+    }) as unknown as typeof fetch;
+
+    const report = await verifyPagesFrontendOnce({
+      servedUrl: "https://app.elizacloud.ai",
+      distDir,
+      fetchImpl,
+    });
+
+    expect(report.ok).toBe(false);
+    expect(report.reason).toBe("asset_bytes_mismatch");
+    expect(report.detail).toContain("sw.js");
+  });
+
+  it("returns a structured timeout when a live asset body never settles", async () => {
+    const distDir = makeDist("assets/index-fresh.js", "entry");
+    const fetchImpl = ((url: string) => {
+      if (url === "https://app.elizacloud.ai/") {
+        return Promise.resolve(
+          response(
+            '<script type="module" src="/assets/index-fresh.js"></script>',
+          ),
+        );
+      }
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        arrayBuffer: () => new Promise(() => {}),
+      });
+    }) as unknown as typeof fetch;
+
+    const startedAt = Date.now();
+    const report = await verifyPagesFrontendOnce({
+      servedUrl: "https://app.elizacloud.ai",
+      distDir,
+      fetchImpl,
+      verificationTimeoutMs: 30,
+    });
+
+    expect(report.ok).toBe(false);
+    expect(report.reason).toBe("verification_timeout");
+    expect(Date.now() - startedAt).toBeLessThan(250);
+  });
+
+  it("cancels a hanging sibling when another asset fails", async () => {
+    const distDir = makeDist("assets/index-fresh.js", "entry");
+    writeFileSync(join(distDir, "assets/a-fail.js"), "bad");
+    writeFileSync(join(distDir, "assets/b-hang.js"), "hang");
+    const fetchImpl = ((url: string) => {
+      if (url === "https://app.elizacloud.ai/") {
+        return Promise.resolve(
+          response(
+            '<script type="module" src="/assets/index-fresh.js"></script>',
+          ),
+        );
+      }
+      if (url.endsWith("/a-fail.js"))
+        return Promise.resolve(response("", false, 404));
+      if (url.endsWith("/b-hang.js")) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          arrayBuffer: () => new Promise(() => {}),
+        });
+      }
+      if (url.endsWith("/assets/index-fresh.js"))
+        return Promise.resolve(response("entry"));
+      throw new Error(`unexpected URL ${url}`);
+    }) as unknown as typeof fetch;
+
+    const startedAt = Date.now();
+    const report = await verifyPagesFrontendOnce({
+      servedUrl: "https://app.elizacloud.ai",
+      distDir,
+      fetchImpl,
+      fetchTimeoutMs: 1_000,
+      verificationTimeoutMs: 2_000,
+    });
+
+    expect(report.ok).toBe(false);
+    expect(report.reason).toBe("javascript_asset_unreachable");
+    expect(report.detail).toContain("assets/a-fail.js");
+    expect(Date.now() - startedAt).toBeLessThan(250);
+  });
+
+  it("rejects an emitted JavaScript graph above its byte budget", async () => {
+    const distDir = makeDist("assets/index-fresh.js", "entry");
+    const oversizedAsset = join(distDir, "assets/oversized.js");
+    writeFileSync(oversizedAsset, "");
+    truncateSync(oversizedAsset, 128 * 1024 * 1024 + 1);
+
+    const report = await verifyPagesFrontendOnce({
+      servedUrl: "https://app.elizacloud.ai",
+      distDir,
+      fetchImpl: (async () => {
+        throw new Error("asset budget must fail before network access");
+      }) as unknown as typeof fetch,
+    });
+
+    expect(report.ok).toBe(false);
+    expect(report.reason).toBe("asset_budget_exceeded");
+    expect(report.detail).toContain("134217728 bytes");
   });
 
   it("reports an unreachable live index", async () => {
@@ -153,8 +338,6 @@ describe("verifyPagesFrontendOnce", () => {
       servedUrl: "https://app.elizacloud.ai",
       distDir,
       fetchImpl,
-      fetchAttempts: 1,
-      retrySleep: noSleep,
     });
 
     expect(report.ok).toBe(false);

@@ -3,7 +3,7 @@
  */
 
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test } from "vitest";
 import { evaluatePerformance } from "./local-inference-performance-check.mjs";
 
 const policy = {

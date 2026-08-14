@@ -26,8 +26,8 @@ describe("Eliza contact links", () => {
     expect(buildElizaSmsHref()).toBe(
       `sms:${ELIZA_PHONE_NUMBER}?&body=Hey%20Eliza%2C%20what%20can%20you%20do%3F`,
     );
-    expect(buildElizaSmsHref("Hi Eliza")).toBe(
-      `sms:${ELIZA_PHONE_NUMBER}?&body=Hi%20Eliza`,
+    expect(buildElizaSmsHref("hello")).toBe(
+      `sms:${ELIZA_PHONE_NUMBER}?&body=hello`,
     );
     expect(buildElizaSmsHref()).not.toContain("14159611510");
     expect(buildElizaSmsHref()).not.toContain("4153024399");
@@ -82,7 +82,7 @@ describe("Eliza contact links", () => {
           },
         },
       }),
-    ).resolves.toBe("opened");
+    ).resolves.toBe("handoff");
     expect(location.href).toBe(buildElizaSmsHref());
     expect(clipboardWrites).toEqual([]);
   });

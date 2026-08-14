@@ -2,14 +2,13 @@
  * `/get-started` on the cloud app hosts — the messaging → cloud signup
  * continuation landing.
  *
- * A messaging onboarding funnel (Discord DM today) hands the browser
+ * A messaging onboarding funnel hands the browser
  * `?onboardingSession=<opaque token>`. This page persists the token across the
- * Steward login round trip, then redeems it server-side with the Steward
- * bearer: the onboarding chat endpoint binds the session to the account, links
- * the gateway-attested platform identity (e.g. discord_id, so DMs route to the
- * provisioned agent instead of onboarding forever), and starts provisioning.
- * On success the user is told to head back to their DM, with a button into the
- * in-app chat (`/join`) as the alternative.
+ * Steward login round trip. Ordinary identity-link continuations are previewed
+ * and explicitly confirmed here. Telegram account-claim continuations are
+ * consumed earlier by Steward sync so the DM-created user and organization are
+ * adopted before generic signup can create duplicates; after auth this page
+ * simply forwards to `/join`.
  *
  * Signed-out visitors bounce to `/login?returnTo=/get-started`; the token
  * survives in storage, not the URL. A visit with no pending token just
@@ -17,9 +16,11 @@
  */
 
 import { BRAND_PATHS, LOGO_FILES } from "@elizaos/shared/brand";
+import { readStoredStewardToken } from "@elizaos/shared/steward-session-client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Navigate, useSearchParams } from "react-router-dom";
 import { Button } from "../../components/ui/button";
+import { syncStewardSessionCookie } from "../public-pages/lib/steward-session";
 import { useCloudT } from "../shell/CloudI18nProvider";
 import {
   completePendingOnboardingContinuation,
@@ -28,6 +29,7 @@ import {
   previewPendingOnboardingContinuation,
   sanitizeOnboardingSessionToken,
   storePendingOnboardingSession,
+  TELEGRAM_ACCOUNT_CLAIM_PURPOSE,
 } from "./lib/onboarding-continuation";
 import { useJoinSessionAuth } from "./lib/use-join-session";
 
@@ -67,24 +69,59 @@ export default function GetStartedPage(): React.JSX.Element {
   // Ingest the URL credential exactly once. The state initializer persists it
   // before a login redirect can drop the query string, then removes it from the
   // address bar so a remount cannot resurrect a successfully consumed token.
-  const [urlToken] = useState(() => {
+  const [urlContinuation] = useState(() => {
     const token = sanitizeOnboardingSessionToken(
       searchParams.get("onboardingSession"),
     );
     if (!token) return null;
 
-    storePendingOnboardingSession(token);
+    const purpose =
+      searchParams.get("accountClaim") === "telegram"
+        ? TELEGRAM_ACCOUNT_CLAIM_PURPOSE
+        : "link";
+    const persisted = storePendingOnboardingSession(token, purpose);
     const nextUrl = new URL(window.location.href);
     nextUrl.searchParams.delete("onboardingSession");
+    nextUrl.searchParams.delete("accountClaim");
     window.history.replaceState(
       window.history.state,
       "",
       `${nextUrl.pathname}${nextUrl.search}${nextUrl.hash}`,
     );
-    return token;
+    return { token, purpose, persisted };
   });
 
-  const pendingToken = urlToken ?? peekPendingOnboardingSession();
+  const pendingToken = urlContinuation?.token ?? peekPendingOnboardingSession();
+  const telegramClaimToken =
+    urlContinuation?.purpose === TELEGRAM_ACCOUNT_CLAIM_PURPOSE
+      ? urlContinuation.token
+      : peekPendingOnboardingSession(TELEGRAM_ACCOUNT_CLAIM_PURPOSE);
+  const telegramClaimPersistenceBlocked = Boolean(
+    session.ready &&
+      !session.authenticated &&
+      urlContinuation?.purpose === TELEGRAM_ACCOUNT_CLAIM_PURPOSE &&
+      !urlContinuation.persisted,
+  );
+
+  const claimTelegramAccount = useCallback(async (continuation: string) => {
+    setPhase("linking");
+    setError(null);
+    try {
+      const stewardToken = readStoredStewardToken();
+      if (!stewardToken) {
+        throw new Error("Sign in again to connect this Telegram chat.");
+      }
+      await syncStewardSessionCookie(stewardToken, undefined, {
+        telegramContinuation: continuation,
+      });
+      setPhase("done");
+    } catch (err) {
+      // error-policy:J4 claim failures remain visible and retryable; the
+      // pending authority is cleared only by a successful server sync.
+      setError(describeContinuationError(err));
+      setPhase("error");
+    }
+  }, []);
 
   // Stable identity (no deps): the effect below keys on session readiness
   // only, so a re-render can never re-trigger — or abort — an in-flight
@@ -122,13 +159,28 @@ export default function GetStartedPage(): React.JSX.Element {
   useEffect(() => {
     if (!session.ready || !session.authenticated) return;
     if (startedRef.current) return;
+    if (telegramClaimToken) {
+      startedRef.current = true;
+      void claimTelegramAccount(telegramClaimToken);
+      return;
+    }
     const token = peekPendingOnboardingSession();
     if (!token) return;
     startedRef.current = true;
     void preview(token);
-  }, [session.ready, session.authenticated, preview]);
+  }, [
+    session.ready,
+    session.authenticated,
+    telegramClaimToken,
+    claimTelegramAccount,
+    preview,
+  ]);
 
-  if (session.ready && !session.authenticated) {
+  if (
+    session.ready &&
+    !session.authenticated &&
+    !telegramClaimPersistenceBlocked
+  ) {
     // The token is already persisted in storage; the URL param never needs to
     // survive the login round trip.
     return <Navigate to="/login?returnTo=/get-started" replace />;
@@ -138,6 +190,15 @@ export default function GetStartedPage(): React.JSX.Element {
     // Nothing to redeem — treat as a plain post-login entry.
     return <Navigate to="/join" replace />;
   }
+
+  if (phase === "done" && telegramClaimToken) {
+    return <Navigate to="/join" replace />;
+  }
+
+  const renderedPhase = telegramClaimPersistenceBlocked ? "error" : phase;
+  const renderedError = telegramClaimPersistenceBlocked
+    ? "Allow browser storage, then try again. Your Telegram account was not changed."
+    : error;
 
   return (
     <div
@@ -152,7 +213,7 @@ export default function GetStartedPage(): React.JSX.Element {
           draggable={false}
         />
 
-        {phase === "confirm" && platformIdentity ? (
+        {renderedPhase === "confirm" && platformIdentity ? (
           <div className="flex flex-col items-center gap-4">
             <h1 className="font-poppins text-lg font-semibold text-white">
               Connect your {messagingPlatformLabel(platformIdentity.platform)}{" "}
@@ -182,7 +243,7 @@ export default function GetStartedPage(): React.JSX.Element {
               account
             </Button>
           </div>
-        ) : phase === "done" ? (
+        ) : renderedPhase === "done" ? (
           <div className="flex flex-col items-center gap-4">
             <h1 className="font-poppins text-lg font-semibold text-white">
               {t("cloud.getStarted.linkedTitle", {
@@ -216,18 +277,26 @@ export default function GetStartedPage(): React.JSX.Element {
               })}
             </Button>
           </div>
-        ) : phase === "error" ? (
+        ) : renderedPhase === "error" ? (
           <div className="flex flex-col items-center gap-4">
             <h1 className="font-poppins text-lg font-semibold text-white">
               {t("cloud.getStarted.errorTitle", {
                 defaultValue: "Couldn't connect your account",
               })}
             </h1>
-            <p className="text-sm text-white/70">{error}</p>
+            <p className="text-sm text-white/70">{renderedError}</p>
             <Button
               variant="ghost"
               type="button"
               onClick={() => {
+                if (telegramClaimPersistenceBlocked) {
+                  window.location.reload();
+                  return;
+                }
+                if (telegramClaimToken) {
+                  void claimTelegramAccount(telegramClaimToken);
+                  return;
+                }
                 const token = peekPendingOnboardingSession();
                 if (!token) return;
                 if (platformIdentity) void redeem(token);
@@ -248,7 +317,7 @@ export default function GetStartedPage(): React.JSX.Element {
             <p className="text-sm text-white/72">
               {t("cloud.getStarted.linking", {
                 defaultValue:
-                  phase === "checking"
+                  renderedPhase === "checking"
                     ? "Checking your connection..."
                     : "Connecting your account...",
               })}

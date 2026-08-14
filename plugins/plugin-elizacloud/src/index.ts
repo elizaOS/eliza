@@ -17,7 +17,6 @@ import {
   handleImageDescription,
   handleImageGeneration,
   handleAudioGeneration,
-  handleResearch,
   handleResponseHandler,
   handleBatchTextEmbedding,
   handleTextEmbedding,
@@ -36,7 +35,6 @@ import { CloudBackupService } from "./services/cloud-backup";
 import { CloudBootstrapServiceImpl } from "./services/cloud-bootstrap";
 import { CloudBridgeService } from "./services/cloud-bridge";
 import { CloudContainerService } from "./services/cloud-container";
-import { CloudCredentialProvider } from "./services/cloud-credential-provider";
 import { CloudManagedGatewayRelayService } from "./services/cloud-managed-gateway-relay";
 import { CloudModelRegistryService } from "./services/cloud-model-registry";
 import {
@@ -77,7 +75,7 @@ const env = getProcessEnv();
 // Registered from init() rather than the static `models` map so a host can
 // run a DIFFERENT text brain (a CLI/SDK subscription provider, a local
 // model, …) while keeping Cloud's capability handlers — IMAGE,
-// IMAGE_DESCRIPTION, TEXT_TO_SPEECH, embeddings, RESEARCH — active. At
+// IMAGE_DESCRIPTION, TEXT_TO_SPEECH, embeddings — active. At
 // priority 50 a static registration silently steals the chat-brain slots
 // from priority-0 provider plugins whenever a Cloud key is present, which
 // forced hosts to nuke ELIZAOS_CLOUD_API_KEY wholesale and lose image/media
@@ -227,8 +225,6 @@ export const elizaOSCloudPlugin: Plugin = {
     PLANNER_MODEL: env.PLANNER_MODEL ?? null,
     RESPONSE_MODEL: env.RESPONSE_MODEL ?? null,
     // Research model
-    ELIZAOS_CLOUD_RESEARCH_MODEL: env.ELIZAOS_CLOUD_RESEARCH_MODEL ?? null,
-    RESEARCH_MODEL: env.RESEARCH_MODEL ?? null,
     // Embedding
     ELIZAOS_CLOUD_EMBEDDING_MODEL: env.ELIZAOS_CLOUD_EMBEDDING_MODEL ?? null,
     ELIZAOS_CLOUD_EMBEDDING_API_KEY: env.ELIZAOS_CLOUD_EMBEDDING_API_KEY ?? null,
@@ -298,10 +294,6 @@ export const elizaOSCloudPlugin: Plugin = {
     CloudContainerService,
     CloudBridgeService,
     CloudBackupService,
-    // Bridges plugin-workflow's `workflow_credential_provider` slot to the
-    // cloud's per-connector OAuth surface. Must start after CloudAuthService
-    // because it reads the authenticated client via getService("CLOUD_AUTH").
-    CloudCredentialProvider,
   ],
 
   // ─── Cloud Providers ─────────────────────────────────────────────────
@@ -356,7 +348,6 @@ export const elizaOSCloudPlugin: Plugin = {
   // handlers are registered conditionally from init() — see textInferenceModels
   // and cloudEmbeddingModels above.
   models: {
-    [ModelType.RESEARCH]: handleResearch,
     [ModelType.IMAGE]: handleImageGeneration,
     [ModelType.IMAGE_DESCRIPTION]: handleImageDescription,
     [ModelType.TEXT_TO_SPEECH]: handleTextToSpeech,
@@ -516,7 +507,6 @@ export const elizaOSCloudPlugin: Plugin = {
 
   async dispose(runtime) {
     // Stop in reverse dependency order (auth last since others depend on it).
-    await runtime.getService(CloudCredentialProvider.serviceType)?.stop();
     await runtime.getService(CloudBackupService.serviceType)?.stop();
     await runtime.getService(CloudBridgeService.serviceType)?.stop();
     await runtime.getService(CloudContainerService.serviceType)?.stop();

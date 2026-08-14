@@ -26,6 +26,7 @@ import { isDirectCloudSharedAgentBase } from "../api/client-cloud";
 import {
   dedicatedCloudAgentIdFromBase,
   ELIZA_CLOUD_CONTROL_PLANE_HOSTS,
+  isPersonalSharedElizaId,
 } from "../utils/cloud-agent-base";
 import type { PersistedActiveServer } from "./persistence";
 
@@ -123,7 +124,7 @@ export function shouldShowCloudAgentReauthNotice(input: {
   return (
     input.isHostedLocation ||
     Boolean(input.recoveryStatus) ||
-    (input.isNative && isManagedCloudAgentServer(input.activeServer))
+    isManagedCloudAgentServer(input.activeServer)
   );
 }
 
@@ -162,20 +163,30 @@ export function dedicatedAgentIdFromApiBase(
 }
 
 /**
- * Extract the dedicated agent id from a persisted cloud runtime record. Prefers
- * the `cloud:<id>` id form written by `silentlyRepointToDedicated`, then falls
- * back to parsing the API base, so older persisted records without the id
- * prefix still recover.
+ * Extract the dedicated agent id from a persisted cloud runtime record. A
+ * personal profile keeps `cloud:<personal:*>` stable, so its explicit runtime
+ * id must agree with the Dedicated base. Legacy records fall back to their
+ * `cloud:<dedicated-id>` key.
  */
 export function resolveDedicatedAgentId(
   server: PersistedActiveServer,
 ): string | null {
+  const apiBaseAgentId = dedicatedAgentIdFromApiBase(server.apiBase);
+  const runtimeAgentId = server.cloudRuntimeAgentId?.trim() ?? "";
+  if (
+    runtimeAgentId &&
+    apiBaseAgentId &&
+    runtimeAgentId.toLowerCase() === apiBaseAgentId.toLowerCase()
+  ) {
+    return runtimeAgentId;
+  }
+  if (apiBaseAgentId) return apiBaseAgentId;
+
   if (server.id.startsWith("cloud:")) {
     const id = server.id.slice("cloud:".length).trim();
-    if (id) return id;
+    if (id && !isPersonalSharedElizaId(id)) return id;
   }
-
-  return dedicatedAgentIdFromApiBase(server.apiBase);
+  return null;
 }
 
 /**

@@ -8,10 +8,20 @@
  * never-ageable — token is cleared on a refresh 401 so the session self-heals.
  */
 
-import { STEWARD_TOKEN_KEY } from "@elizaos/shared/steward-session-client";
+import {
+  STEWARD_SESSION_CHANGE_EVENT,
+  STEWARD_TOKEN_KEY,
+  type StewardSessionChangeDetail,
+} from "@elizaos/shared/steward-session-client";
 import { cleanup, render, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  clearPendingOnboardingSession,
+  peekPendingOnboardingSession,
+  storePendingOnboardingSession,
+  TELEGRAM_ACCOUNT_CLAIM_PURPOSE,
+} from "../join/lib/onboarding-continuation";
 
 // AuthTokenSync's 401 handling is the load-bearing fix for the re-login loop:
 // a 401 from session-sync or refresh must NOT wipe a still-valid token (a
@@ -114,15 +124,51 @@ beforeEach(() => {
   vi.stubEnv("VITE_API_URL", "");
   vi.stubEnv("NEXT_PUBLIC_API_URL", "");
   stubFetchWith401s();
+  clearPendingOnboardingSession();
 });
 
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
   vi.unstubAllEnvs();
+  window.sessionStorage.clear();
 });
 
 describe("AuthTokenSync 401 handling", () => {
+  it("carries a pending Telegram account claim through background token sync", async () => {
+    const token = makeJwt({
+      sub: "u1",
+      exp: Math.floor(Date.now() / 1000) + 3600,
+    });
+    storage.setItem(STEWARD_TOKEN_KEY, token);
+    storePendingOnboardingSession(
+      "opaque-telegram-claim-token",
+      TELEGRAM_ACCOUNT_CLAIM_PURPOSE,
+    );
+    let requestBody: unknown;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        calls.push({
+          url: String(input),
+          method: init?.method ?? "GET",
+        });
+        if (String(input).includes("steward-session")) {
+          requestBody = JSON.parse(String(init?.body));
+        }
+        return Response.json({ ok: true });
+      }),
+    );
+
+    mount();
+
+    await waitFor(() => expect(peekPendingOnboardingSession()).toBeNull());
+    expect(requestBody).toEqual({
+      token,
+      telegramContinuation: "opaque-telegram-claim-token",
+    });
+  });
+
   it("keeps a still-valid token when session-sync and refresh both 401 (no re-login loop), then retries the cookie sync on the next trigger", async () => {
     // exp 60s out: valid, but inside the 120s refresh-ahead window so the
     // mount-time checkAndRefresh actually POSTs the refresh endpoint.
@@ -206,5 +252,49 @@ describe("AuthTokenSync 401 handling", () => {
     mount();
 
     await waitFor(() => expect(storage.getItem(STEWARD_TOKEN_KEY)).toBeNull());
+  });
+
+  it("publishes exactly one present transition when refresh stores a rotated token", async () => {
+    const currentToken = makeJwt({
+      sub: "u1",
+      exp: Math.floor(Date.now() / 1000) + 60,
+    });
+    const rotatedToken = makeJwt({
+      sub: "u1",
+      exp: Math.floor(Date.now() / 1000) + 3600,
+    });
+    storage.setItem(STEWARD_TOKEN_KEY, currentToken);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        const method = init?.method ?? "GET";
+        calls.push({ url, method });
+        if (url.includes("steward-refresh")) {
+          return new Response(JSON.stringify({ token: rotatedToken }), {
+            status: 200,
+          });
+        }
+        return new Response(JSON.stringify({}), { status: 401 });
+      }),
+    );
+    const transitions: StewardSessionChangeDetail[] = [];
+    const listener = (event: Event) => {
+      transitions.push(
+        (event as CustomEvent<StewardSessionChangeDetail>).detail,
+      );
+    };
+    window.addEventListener(STEWARD_SESSION_CHANGE_EVENT, listener);
+
+    try {
+      mount();
+      await waitFor(() =>
+        expect(storage.getItem(STEWARD_TOKEN_KEY)).toBe(rotatedToken),
+      );
+    } finally {
+      window.removeEventListener(STEWARD_SESSION_CHANGE_EVENT, listener);
+    }
+
+    expect(transitions.map(({ state }) => state)).toEqual(["present"]);
   });
 });

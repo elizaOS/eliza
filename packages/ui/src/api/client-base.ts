@@ -26,13 +26,23 @@ import { isAndroidLocalSideloadBuild } from "../platform/android-runtime";
 import {
   loadAgentProfileRegistry,
   saveAgentProfileRegistry,
+  upsertAndActivateAgentProfile,
 } from "../state/agent-profiles";
 import {
   clearPersistedActiveServer,
+  createPersistedActiveServer,
   loadPersistedActiveServer,
+  savePersistedActiveServer,
 } from "../state/persistence";
-import { isTrustedRestoreApiBaseUrl } from "../state/runtime-url-trust";
+import {
+  isTrustedCloudApiBaseUrl,
+  isTrustedRestoreApiBaseUrl,
+} from "../state/runtime-url-trust";
 import { shellLocalStorage } from "../surface-realm-channel";
+import {
+  directCloudSharedAgentIdFromBase,
+  isPersonalSharedElizaId,
+} from "../utils/cloud-agent-base";
 import {
   clearElizaApiBase,
   getElizaApiBase,
@@ -750,6 +760,7 @@ export class ElizaClient {
   private _token: string | null;
   /** Last cloud agent base released after an agent-gone 404 (idempotency). */
   private _releasedGoneAgentBase: string | null = null;
+  private personalElizaRuntimeRepoint: Promise<boolean> | null = null;
   private readonly clientId: string;
   private requestTransport: AgentRequestTransport = fetchAgentTransport;
   private ws: WebSocket | null = null;
@@ -1031,9 +1042,9 @@ export class ElizaClient {
    *
    * The transcript was already copied to the dedicated agent by the handoff
    * supervisor, so live updates resume against the dedicated host with no
-   * full-screen reload, no coordinator re-entry, and no draft loss. Used ONLY by
-   * the handoff's silent re-point — every other base change still goes through
-   * `setBaseUrl`.
+   * full-screen reload, no coordinator re-entry, and no draft loss. Used by the
+   * handoff and by authoritative personal-runtime recovery after another client
+   * completes that same cutover; ordinary base changes use `setBaseUrl`.
    *
    * Note on the WS swap: on cloud bases (the shared REST adapter and
    * `*.cloud.eliza.app`) `connectWs()` reports connected-over-REST and no socket
@@ -1106,6 +1117,157 @@ export class ElizaClient {
     return false;
   }
 
+  /**
+   * Resolve the serving runtime after Shared rejects a turn because another
+   * client completed the authoritative personal-Eliza cutover. The persisted
+   * selection remains keyed by `personal:*`; only its runtime target and API
+   * base change. Concurrent rejected requests share one resolution and each
+   * caller retries its own idempotent request against the resolved target.
+   */
+  private async repointAfterPersonalElizaCutover(
+    response: Response,
+    requestBase: string,
+    authToken: string | null,
+    signal?: AbortSignal | null,
+  ): Promise<boolean> {
+    if (response.status !== 409 || !authToken) return false;
+
+    let payload: unknown;
+    try {
+      payload = await response.clone().json();
+    } catch {
+      // error-policy:J3 only the exact structured cutover rejection is trusted.
+      return false;
+    }
+    if (
+      typeof payload !== "object" ||
+      payload === null ||
+      (payload as { code?: unknown }).code !== "personal_eliza_dedicated"
+    ) {
+      return false;
+    }
+
+    const normalizedRequestBase = normalizeBaseUrl(requestBase);
+    const personalElizaId = directCloudSharedAgentIdFromBase(
+      normalizedRequestBase,
+    );
+    if (!personalElizaId || !isPersonalSharedElizaId(personalElizaId)) {
+      return false;
+    }
+    const persisted = loadPersistedActiveServer();
+    if (
+      persisted?.kind !== "cloud" ||
+      persisted.id !== `cloud:${personalElizaId}`
+    ) {
+      return false;
+    }
+
+    const liveBase = normalizeBaseUrl(this.baseUrl);
+    if (liveBase !== normalizedRequestBase) {
+      return (
+        persisted.cloudRuntime === "dedicated" &&
+        isDedicatedCloudAgentBase(liveBase)
+      );
+    }
+    if (this.personalElizaRuntimeRepoint) {
+      return await this.personalElizaRuntimeRepoint;
+    }
+
+    const resolver = (
+      this as ElizaClient & {
+        getPersonalSharedEliza?: (options: {
+          cloudApiBase: string;
+          authToken: string;
+          signal?: AbortSignal;
+        }) => Promise<{
+          personalElizaId: string;
+          agentId: string;
+          activeAgentId: string;
+          agentName: string;
+          apiBase: string;
+          runtime: "shared" | "dedicated";
+        }>;
+      }
+    ).getPersonalSharedEliza;
+    if (typeof resolver !== "function") return false;
+
+    const cloudApiBase = new URL(normalizedRequestBase).origin;
+    const repoint = (async (): Promise<boolean> => {
+      try {
+        const resolved = await resolver.call(this, {
+          cloudApiBase,
+          authToken,
+          ...(signal ? { signal } : {}),
+        });
+        if (
+          resolved.runtime !== "dedicated" ||
+          resolved.personalElizaId !== personalElizaId ||
+          resolved.agentId !== personalElizaId ||
+          !resolved.activeAgentId ||
+          !isTrustedCloudApiBaseUrl(resolved.apiBase, resolved.activeAgentId)
+        ) {
+          return false;
+        }
+
+        const current = loadPersistedActiveServer();
+        const currentBase = normalizeBaseUrl(current?.apiBase);
+        if (
+          current?.kind !== "cloud" ||
+          current.id !== `cloud:${personalElizaId}` ||
+          (currentBase && currentBase !== normalizedRequestBase)
+        ) {
+          return false;
+        }
+
+        const server = createPersistedActiveServer({
+          kind: "cloud",
+          id: `cloud:${personalElizaId}`,
+          label: resolved.agentName || current.label,
+          apiBase: resolved.apiBase,
+          accessToken: authToken,
+          cloudRuntimeAgentId: resolved.activeAgentId,
+          cloudRuntime: "dedicated",
+        });
+        if (!savePersistedActiveServer(server)) {
+          logger.warn(
+            "[ElizaClient] Dedicated runtime resolved but active-server persistence was unavailable",
+          );
+        }
+        upsertAndActivateAgentProfile({
+          kind: "cloud",
+          label: server.label,
+          cloudAgentId: personalElizaId,
+          cloudRuntimeAgentId: resolved.activeAgentId,
+          cloudRuntime: "dedicated",
+          apiBase: resolved.apiBase,
+          accessToken: authToken,
+        });
+
+        if (normalizeBaseUrl(this.baseUrl) !== normalizedRequestBase) {
+          return isDedicatedCloudAgentBase(this.baseUrl);
+        }
+        this.repointBaseUrl(resolved.apiBase, authToken);
+        return true;
+      } catch (error) {
+        // error-policy:J4 the original structured Shared rejection remains the
+        // visible failure when the read-only authority lookup is unavailable.
+        logger.warn(
+          { error },
+          "[ElizaClient] failed to resolve authoritative personal Eliza runtime after cutover",
+        );
+        return false;
+      }
+    })();
+    this.personalElizaRuntimeRepoint = repoint;
+    try {
+      return await repoint;
+    } finally {
+      if (this.personalElizaRuntimeRepoint === repoint) {
+        this.personalElizaRuntimeRepoint = null;
+      }
+    }
+  }
+
   // --- REST API ---
 
   async rawRequest(
@@ -1138,11 +1300,24 @@ export class ElizaClient {
     }
     // Capture the base this request was issued against so a concurrent
     // setBaseUrl cannot attribute another host's 404 to the new binding.
-    const requestBase = this.baseUrl;
-    const requestUrl = this.rawRequestUrl(path);
-    const token =
+    let requestBase = this.baseUrl;
+    let requestUrl = this.rawRequestUrl(path);
+    let token =
       this.apiToken ?? (await hydrateAndroidLocalAgentTokenForUrl(requestUrl));
     let res = await this.rawRequestOnce(path, requestUrl, init, options, token);
+    if (
+      await this.repointAfterPersonalElizaCutover(
+        res,
+        requestBase,
+        token,
+        init?.signal,
+      )
+    ) {
+      requestBase = this.baseUrl;
+      requestUrl = this.rawRequestUrl(path);
+      token = this.apiToken;
+      res = await this.rawRequestOnce(path, requestUrl, init, options, token);
+    }
     if (res.status === 401) {
       const hydratedToken = await hydrateAndroidLocalAgentTokenForUrl(
         requestUrl,

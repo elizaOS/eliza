@@ -466,6 +466,7 @@ function reconcileAuthority(authStatus: AuthStatusState): void {
   // repointBaseUrl, so rotating again here would be redundant).
   const isSubsequentAuthOnlySwitch =
     !isAnonAuthorityKey(currentAuthorityKey) &&
+    currentAuthorityKey !== INVALIDATED_AUTHORITY_KEY &&
     currentAuthorityBaseUrl === baseUrl;
   currentAuthorityKey = nextKey;
   currentAuthorityBaseUrl = baseUrl;
@@ -485,16 +486,21 @@ const INVALIDATED_AUTHORITY_KEY = "credential-invalidated";
 /**
  * `useAuthStatus` deliberately keeps the previous authenticated snapshot
  * until the async `/api/auth/me` probe resolves. The typed Steward session
- * event distinguishes a real clear from login/refresh without consulting the
- * unrelated Eliza API bearer. A clear invalidates synchronously; a present
- * transition reconciles against the latest typed auth snapshot.
+ * event distinguishes a real credential mutation from background auth-status
+ * refreshes without exposing either token or identity. Both present and clear
+ * transitions invalidate synchronously: a direct account-A to account-B token
+ * replacement can otherwise leave A's inbox visible until the asynchronous
+ * auth probe publishes B's identity.
  */
 function onStewardSessionChange(event: Event): void {
   const detail = (event as CustomEvent<StewardSessionChangeDetail>).detail;
   if (!detail || detail.sessionEpoch <= lastStewardSessionEpoch) return;
   lastStewardSessionEpoch = detail.sessionEpoch;
   if (detail.state === "present") {
-    reconcileAuthority(getAuthStatusSnapshot());
+    currentAuthorityKey = INVALIDATED_AUTHORITY_KEY;
+    bindLiveNotificationStream(currentAuthorityKey);
+    clearForAuthorityChange();
+    client.rotateConnection();
     return;
   }
   if (currentAuthorityKey === INVALIDATED_AUTHORITY_KEY) return;
