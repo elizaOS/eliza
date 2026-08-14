@@ -277,6 +277,11 @@ app.get("/", async (c) => {
     sendControl(frame) {
       if (frame.t === "interrupted" && streamSid) {
         sendEvent({ event: "clear", streamSid });
+        logger.info("[twilio-media] caller barge-in cleared audio", {
+          streamSid,
+          traceId: frame.traceId,
+          reason: frame.reason,
+        });
       }
       if (frame.t === "error") {
         logger.warn("[twilio-media] voice session error", {
@@ -305,6 +310,13 @@ app.get("/", async (c) => {
         event: "media",
         streamSid,
         media: { payload: encodeTwilioMedia(bytes) },
+      });
+    },
+    clearAudio() {
+      if (!streamSid) return;
+      sendEvent({ event: "clear", streamSid });
+      logger.info("[twilio-media] caller turn-start flushed buffered audio", {
+        streamSid,
       });
     },
     close(code, reason) {
