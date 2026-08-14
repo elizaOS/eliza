@@ -9,8 +9,9 @@
  * home. A full navigation (not an in-router push) is deliberate: it lets the
  * app's startup coordinator boot fresh against the just-persisted cloud server.
  *
- * Signed-out visitors are bounced to `/login?returnTo=/join` so the same URL is
- * a safe deep link from marketing / emails.
+ * Signed-out app-host visitors first restore a live apex session through the
+ * PKCE SSO bridge, or fall back to `/login?returnTo=/join` when no apex session
+ * marker exists. This keeps the same URL safe for marketing and email links.
  *
  * Web-build-only (mounted by the cloud router shell); never loaded by the native
  * tab/view app directly.
@@ -30,6 +31,11 @@ import {
 import { appModeNavigation } from "../app-mode/app-mode";
 import { openCloudBillingConsole } from "../billing-console";
 import { useCloudT } from "../shell/CloudI18nProvider";
+import {
+  clearSsoLoggedOut,
+  redirectToSsoBridge,
+  shouldAutoBridgeToSso,
+} from "../sso-bridge/sso-bridge";
 import { resolveApexJoinHandoff } from "./lib/apex-app-handoff";
 import { describeJoinCreditGateError } from "./lib/join-credit-gate-error";
 import {
@@ -83,6 +89,8 @@ export default function JoinPage(): React.JSX.Element {
     typeof window === "undefined"
       ? null
       : resolveApexJoinHandoff(window.location.hostname);
+  const ssoDecisionRef = useRef(false);
+  const [ssoBridging, setSsoBridging] = useState<boolean | null>(null);
   // Guard so React StrictMode's double-mount (and re-renders) don't double-run
   // the provisioning network calls.
   const startedRef = useRef(false);
@@ -172,12 +180,25 @@ export default function JoinPage(): React.JSX.Element {
   );
 
   useEffect(() => {
-    if (!session.ready || !session.authenticated) return;
+    if (!session.ready) return;
+    if (!session.authenticated) {
+      if (ssoDecisionRef.current) return;
+      ssoDecisionRef.current = true;
+      if (!shouldAutoBridgeToSso()) {
+        setSsoBridging(false);
+        return;
+      }
+      void redirectToSsoBridge("/join").then((started) => {
+        setSsoBridging(started);
+      });
+      return;
+    }
+    clearSsoLoggedOut();
     if (appHandoff) {
       // The apex is the billing console and cannot boot chat. Hand off before
-      // any join/provisioning request. The app host restores the domain-wide
-      // session through the existing SSO bridge, then its entry gate selects
-      // or provisions the agent and opens chat.
+      // any join/provisioning request. Preserve /join so the app host restores
+      // the domain-wide session through the existing SSO bridge, then selects
+      // or provisions the agent before opening chat.
       appModeNavigation.replace(appHandoff);
       return;
     }
@@ -209,7 +230,7 @@ export default function JoinPage(): React.JSX.Element {
   }, [signingOut]);
 
   // Signed out → send to login, returning here once authenticated.
-  if (session.ready && !session.authenticated) {
+  if (session.ready && !session.authenticated && ssoBridging === false) {
     return <Navigate to="/login?returnTo=/join" replace />;
   }
 

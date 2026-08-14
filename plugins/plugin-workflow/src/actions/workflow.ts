@@ -244,10 +244,14 @@ export const workflowAction: Action = {
       }
       if (op === 'run') {
         const workflow = await service.getWorkflow(workflowId as string, ownerId);
-        const execution = await service.startWorkflow(workflowId as string, {
-          mode: 'chat',
-          input: record(params.input),
-        });
+        const execution = await service.startWorkflow(
+          workflowId as string,
+          {
+            mode: 'chat',
+            input: record(params.input),
+          },
+          ownerId
+        );
         const marker = JSON.stringify({
           id: execution.id,
           workflowId,

@@ -309,6 +309,7 @@
     "@elizaos/app-core": "workspace:*",
     "@elizaos/agent": "workspace:*",
     "@elizaos/plugin-solana": "2.0.0-alpha.3",
+    "@effect/platform-node-shared": "4.0.0-beta.102",
     "playwright": "1.61.1",
     "playwright-core": "1.61.1",
     "@playwright/test": "1.61.1",

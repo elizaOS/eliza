@@ -5,7 +5,10 @@
  */
 import {
   type ConnectorAccount,
+  DEFAULT_SERVER_ONLY_PORT,
   getConnectorAccountManager,
+  isLoopbackBindHost,
+  isWildcardBindHost,
 } from "@elizaos/core";
 import { assessGoogleOAuthCallbackConfig } from "@elizaos/plugin-google-workspace";
 import type {
@@ -17,6 +20,7 @@ import type {
   StartLifeOpsGoogleConnectorRequest,
   StartLifeOpsGoogleConnectorResponse,
 } from "../../contracts/index.js";
+import { INTERNAL_URL } from "../access.js";
 import {
   disconnectedGoogleStatus,
   googleAccountIdFromGrantId,
@@ -35,6 +39,71 @@ import {
   normalizeOptionalConnectorMode,
   normalizeOptionalConnectorSide,
 } from "../service-normalize-connector.js";
+
+/**
+ * Resolve the externally served connector origin. HTTP requests carry it
+ * directly. Chat and provider snapshots use the synthetic INTERNAL_URL, so
+ * public callbacks rely on ELIZA_EXTERNAL_BASE_URL while loopback callbacks
+ * infer the same API-port precedence as the agent host.
+ */
+function servedOriginFromRequestUrl(
+  runtime: LifeOpsContext["runtime"],
+  requestUrl: URL,
+): string | undefined {
+  if (requestUrl.href !== INTERNAL_URL.href) return requestUrl.origin;
+
+  const externalBase = nonEmptySetting(runtime, "ELIZA_EXTERNAL_BASE_URL");
+  if (externalBase) return externalBase;
+
+  const redirect = nonEmptySetting(runtime, "GOOGLE_REDIRECT_URI");
+  if (!redirect) return undefined;
+  let callback: URL;
+  try {
+    callback = new URL(redirect);
+  } catch {
+    // error-policy:J3 callback assessment reports the malformed setting.
+    return undefined;
+  }
+  if (!isLoopbackBindHost(callback.hostname)) return undefined;
+
+  const configuredBind =
+    nonEmptySetting(runtime, "ELIZA_API_BIND") ?? "127.0.0.1";
+  const callbackHost = callback.hostname.replace(/^\[|\]$/g, "");
+  const servedHost = isWildcardBindHost(configuredBind)
+    ? callbackHost
+    : configuredBind;
+  const originHost = servedHost.includes(":")
+    ? `[${servedHost.replace(/^\[|\]$/g, "")}]`
+    : servedHost;
+  const apiPort =
+    positivePortSetting(runtime, "ELIZA_API_PORT") ??
+    positivePortSetting(runtime, "ELIZA_PORT") ??
+    positivePortSetting(runtime, "ELIZA_UI_PORT") ??
+    DEFAULT_SERVER_ONLY_PORT;
+  return `http://${originHost}:${apiPort}`;
+}
+
+function nonEmptySetting(
+  runtime: LifeOpsContext["runtime"],
+  key: string,
+): string | undefined {
+  const value = runtime.getSetting?.(key);
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  return trimmed || undefined;
+}
+
+function positivePortSetting(
+  runtime: LifeOpsContext["runtime"],
+  key: string,
+): number | undefined {
+  const value = nonEmptySetting(runtime, key);
+  if (!value || !/^\d+$/.test(value)) return undefined;
+  const port = Number(value);
+  return Number.isInteger(port) && port >= 1 && port <= 65_535
+    ? port
+    : undefined;
+}
 
 function roleForSide(side: LifeOpsConnectorSide): "OWNER" | "AGENT" {
   return side === "agent" ? "AGENT" : "OWNER";
@@ -75,6 +144,17 @@ function assertLocalMode(mode?: LifeOpsConnectorMode): void {
   }
 }
 
+function googleOAuthCallbackDegradations(
+  assessment: ReturnType<typeof assessGoogleOAuthCallbackConfig>,
+): NonNullable<LifeOpsGoogleConnectorStatus["degradations"]> {
+  return assessment.issues.map((issue) => ({
+    axis: "disconnected" as const,
+    code: `google_oauth_callback_${issue.code}`,
+    message: issue.message,
+    retryable: true,
+  }));
+}
+
 function googleOAuthCallbackMisconfigStatus(
   side: LifeOpsConnectorSide,
   assessment: ReturnType<typeof assessGoogleOAuthCallbackConfig>,
@@ -98,12 +178,7 @@ function googleOAuthCallbackMisconfigStatus(
     expiresAt: null,
     hasRefreshToken: false,
     grant: null,
-    degradations: assessment.issues.map((issue) => ({
-      axis: "disconnected",
-      code: `google_oauth_callback_${issue.code}`,
-      message: issue.message,
-      retryable: true,
-    })),
+    degradations: googleOAuthCallbackDegradations(assessment),
   };
 }
 
@@ -356,7 +431,7 @@ export class GoogleDomain {
   }
 
   async getGoogleConnectorStatus(
-    _requestUrl: URL,
+    requestUrl: URL,
     requestedMode?: LifeOpsConnectorMode,
     requestedSide?: LifeOpsConnectorSide,
     grantId?: string,
@@ -369,20 +444,43 @@ export class GoogleDomain {
     if (!manager?.getProvider?.("google")) {
       return googlePluginUnavailableStatus(side);
     }
-    const callbackAssessment = assessGoogleOAuthCallbackConfig(
-      this.ctx.runtime,
-    );
-    if (!callbackAssessment.configured) {
-      return googleOAuthCallbackMisconfigStatus(side, callbackAssessment);
-    }
+    // Resolve the persisted account BEFORE assessing callback readiness: a
+    // CONNECTED grant works through its stored/refresh tokens regardless of
+    // the callback config, so a config mistake must not make it look
+    // disconnected (#18455). Pending/error accounts need a fresh OAuth flow,
+    // which the callback gates — those keep the callback diagnostics.
     const account = await resolveGoogleConnectorAccount({
       runtime: this.ctx.runtime,
       requestedSide: side,
       grantId,
     });
-    return account
-      ? this.googleAccountStatus(account)
-      : disconnectedGoogleStatus(side);
+    if (account?.status === "connected") {
+      return this.googleAccountStatus(account);
+    }
+    const servedOrigin = servedOriginFromRequestUrl(
+      this.ctx.runtime,
+      requestUrl,
+    );
+    const callbackAssessment = assessGoogleOAuthCallbackConfig(
+      this.ctx.runtime,
+      servedOrigin ? { servedOrigin } : undefined,
+    );
+    if (account) {
+      const status = this.googleAccountStatus(account);
+      return callbackAssessment.configured
+        ? status
+        : {
+            ...status,
+            degradations: [
+              ...(status.degradations ?? []),
+              ...googleOAuthCallbackDegradations(callbackAssessment),
+            ],
+          };
+    }
+    if (!callbackAssessment.configured) {
+      return googleOAuthCallbackMisconfigStatus(side, callbackAssessment);
+    }
+    return disconnectedGoogleStatus(side);
   }
 
   async getGoogleConnectorAccounts(
@@ -424,7 +522,7 @@ export class GoogleDomain {
 
   async startGoogleConnector(
     request: StartLifeOpsGoogleConnectorRequest,
-    _requestUrl: URL,
+    requestUrl: URL,
   ): Promise<StartLifeOpsGoogleConnectorResponse> {
     const mode = normalizeOptionalConnectorMode(request.mode, "mode");
     assertLocalMode(mode);
@@ -440,11 +538,35 @@ export class GoogleDomain {
         "@elizaos/plugin-google-workspace is required before starting Google OAuth.",
       );
     }
+    // Fail closed before redirecting the user to Google: a callback that
+    // cannot reach the origin serving this request would strand the grant.
+    // Chat has no request URL (INTERNAL_URL sentinel), so it uses an explicit
+    // external base when configured or infers the local agent API port.
+    const servedOrigin = servedOriginFromRequestUrl(
+      this.ctx.runtime,
+      requestUrl,
+    );
+    const callbackAssessment = assessGoogleOAuthCallbackConfig(
+      this.ctx.runtime,
+      servedOrigin ? { servedOrigin } : undefined,
+    );
+    if (!callbackAssessment.configured) {
+      fail(
+        503,
+        `Google OAuth callback is not usable: ${callbackAssessment.issues
+          .map((issue) => issue.message)
+          .join(" ")}`,
+      );
+    }
+    const providerServedOrigin = servedOrigin
+      ? new URL(servedOrigin).origin
+      : undefined;
 
     const requestedAccountId = googleAccountIdFromGrantId(request.grantId);
     const flow = await manager.startOAuth("google", {
       accountId: requestedAccountId ?? undefined,
       scopes: requestedScopesForCapabilities(requestedCapabilities),
+      servedOrigin: providerServedOrigin,
       metadata: {
         lifeops: true,
         side: requestedSide,

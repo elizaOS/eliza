@@ -49,9 +49,15 @@ describe("redactSensitiveText (pattern detection)", () => {
 		const httpsUrl = "https://admin:hunter2hunter2@host.example.com/private";
 		const postgresUrl =
 			"postgres://service:database-password-123@db.example.com:5432/app";
+		const tokenUrl =
+			"https://github-token-value-123456789@github.com/org/repo.git";
+		const passwordOnlyUrl =
+			"https://:password-only-value-123456789@host.example/db";
 
 		const redactedHttps = redactSensitiveText(httpsUrl);
 		const redactedPostgres = redactSensitiveText(postgresUrl);
+		const redactedToken = redactSensitiveText(tokenUrl);
+		const redactedPasswordOnly = redactSensitiveText(passwordOnlyUrl);
 
 		expect(redactedHttps).toContain("https://");
 		expect(redactedHttps).toContain("@host.example.com/private");
@@ -61,6 +67,33 @@ describe("redactSensitiveText (pattern detection)", () => {
 		expect(redactedPostgres).toContain("@db.example.com:5432/app");
 		expect(redactedPostgres).not.toContain("service");
 		expect(redactedPostgres).not.toContain("database-password-123");
+		expect(redactedToken).toContain("@github.com/org/repo.git");
+		expect(redactedToken).not.toContain("github-token-value-123456789");
+		expect(redactedPasswordOnly).toContain("@host.example/db");
+		expect(redactedPasswordOnly).not.toContain("password-only-value-123456789");
+	});
+
+	it("rewrites the userinfo span, never the scheme, for short user names", () => {
+		// A first-occurrence `replace(userinfo, "***")` matches inside the scheme
+		// whenever the userinfo is a substring of it: "https://s@host/x" became
+		// "http***://s@host/x", leaving the credential fully intact.
+		const shortUser = redactSensitiveText("https://s@host/x");
+		expect(shortUser).toBe("https://***@host/x");
+		expect(shortUser).toContain("https://");
+
+		const postgres = redactSensitiveText("postgres://p@db");
+		expect(postgres).toBe("postgres://***@db");
+		expect(postgres).toContain("postgres://");
+	});
+
+	it("masks the leading userinfo of a password containing a literal @", () => {
+		// Documented residual: the userinfo class cannot cross an `@`, so only the
+		// span up to the first `@` is masked. The scheme must still survive intact
+		// and the leading credential must be gone.
+		const out = redactSensitiveText("https://user:p@ss@host/db");
+		expect(out).toContain("https://");
+		expect(out).not.toContain("user:p");
+		expect(out.startsWith("https://***@")).toBe(true);
 	});
 
 	it("redacts both spaced and equals-form credential flags", () => {

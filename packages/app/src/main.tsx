@@ -143,7 +143,7 @@ import {
   shouldInstallMainWindowFirstRunPatches,
   syncDetachedShellLocation,
 } from "@elizaos/ui/platform/window-shell";
-import { AppProvider } from "@elizaos/ui/state";
+import { AppProvider } from "@elizaos/ui/state/AppContext";
 import { upsertAndActivateAgentProfile } from "@elizaos/ui/state/agent-profiles";
 import { resolveDedicatedAgentId } from "@elizaos/ui/state/agent-session-recovery";
 import { initOcrBridge } from "@elizaos/ui/state/ocr-bridge";

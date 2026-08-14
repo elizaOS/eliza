@@ -82,7 +82,7 @@ describe("CLOUD_ACCOUNT_STATUS", () => {
     );
     expect(result.success).toBe(true);
     expect(replies[0]?.text).toContain("critically low");
-    expect(replies[0]?.text).toContain("dashboard/settings?tab=billing");
+    expect(replies[0]?.text).toContain("cloud.eliza.app/cloud/billing");
   });
 
   it("re-guards in the handler when signed out (validate is advisory)", async () => {
@@ -244,7 +244,7 @@ describe("CLOUD_CREATE_API_KEY", () => {
     expect(result.success).toBe(false);
     expect(result.data).toMatchObject({ reason: "session_required" });
     expect(replies[0]?.text).toContain("signed-in session");
-    expect(replies[0]?.text).toContain("Cloud app");
+    expect(replies[0]?.text).toContain("cloud.eliza.app/cloud/api-keys");
   });
 
   it("refuses the reserved agent-sandbox: prefix without any network call", async () => {

@@ -397,6 +397,75 @@ describe("executeTriggerTask", () => {
     expect(handle.updatedTasks).toHaveLength(0);
   });
 
+  it("dispatches only when a nested event filter matches the Smithers event", async () => {
+    const task = makeTriggerTask({
+      triggerType: "event",
+      eventKind: "workflow_run_event",
+      eventFilter: {
+        event: {
+          type: "NodeFinished",
+          workflowId: "source-workflow",
+          nodeId: "collect",
+        },
+      },
+    });
+
+    const matching = await executeTriggerTask(handle.runtime, task, {
+      source: "event",
+      event: {
+        kind: "workflow_run_event",
+        payload: {
+          event: {
+            type: "NodeFinished",
+            workflowId: "source-workflow",
+            nodeId: "collect",
+            output: { count: 3 },
+          },
+        },
+      },
+    });
+
+    expect(matching.status).toBe("success");
+    expect(handle.dispatchCalls).toHaveLength(1);
+
+    const nonMatching = await executeTriggerTask(handle.runtime, task, {
+      source: "event",
+      event: {
+        kind: "workflow_run_event",
+        payload: {
+          event: {
+            type: "NodeFinished",
+            workflowId: "source-workflow",
+            nodeId: "publish",
+          },
+        },
+      },
+    });
+
+    expect(nonMatching.status).toBe("skipped");
+    expect(handle.dispatchCalls).toHaveLength(1);
+
+    const nullFilter = makeTriggerTask({
+      triggerType: "event",
+      eventKind: "workflow_run_event",
+      eventFilter: { event: { output: null } },
+    });
+    const nonNullPayload = await executeTriggerTask(
+      handle.runtime,
+      nullFilter,
+      {
+        source: "event",
+        event: {
+          kind: "workflow_run_event",
+          payload: { event: { output: "not-null" } },
+        },
+      },
+    );
+
+    expect(nonNullPayload.status).toBe("skipped");
+    expect(handle.dispatchCalls).toHaveLength(1);
+  });
+
   it("skips a non-event trigger fired from an event source", async () => {
     const task = makeTriggerTask({ triggerType: "interval" });
 

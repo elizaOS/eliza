@@ -352,4 +352,87 @@ describe("handlePluginRoutes config persistence", () => {
       vi.useRealTimers();
     }
   });
+
+  it("uses runtime settings instead of a poisoned process env in the plugin catalog", async () => {
+    process.env.DISCORD_API_TOKEN = "host-token-must-not-count";
+    const config = {
+      env: {},
+      plugins: { entries: { discord: { enabled: true } } },
+    };
+    const ctx = makeContext({}, config, {
+      method: "GET",
+      pathname: "/api/plugins",
+      url: new URL("http://localhost/api/plugins"),
+    });
+    ctx.state.plugins[0].parameters[0].required = true;
+    ctx.buildPluginEvmDiagnosticEntry = vi.fn(() => ({
+      ...makePlugin(),
+      id: "evm",
+      name: "EVM",
+      npmName: "@elizaos/plugin-evm",
+    })) as never;
+    ctx.state.runtime = {
+      plugins: [{ name: "discord" }],
+      getSetting: vi.fn(() => null),
+      getService: vi.fn(() => null),
+    } as never;
+
+    await handlePluginRoutes(ctx);
+
+    const response = vi.mocked(ctx.json).mock.calls.at(-1)?.[1] as {
+      plugins: ReturnType<typeof makePlugin>[];
+    };
+    const discord = response.plugins.find((plugin) => plugin.id === "discord");
+    expect(discord).toEqual(
+      expect.objectContaining({ configured: false, isActive: false }),
+    );
+    expect(discord?.parameters[0]).toEqual(
+      expect.objectContaining({ isSet: false, currentValue: null }),
+    );
+  });
+
+  it.each([
+    [false, false],
+    [true, true],
+  ])(
+    "reports loaded Discord active=%s only when its gateway is healthy",
+    async (healthy, expectedActive) => {
+      const config = {
+        env: {},
+        plugins: { entries: { discord: { enabled: true } } },
+      };
+      const ctx = makeContext({}, config, {
+        method: "GET",
+        pathname: "/api/plugins",
+        url: new URL("http://localhost/api/plugins"),
+      });
+      ctx.state.plugins[0].parameters[0].required = true;
+      ctx.buildPluginEvmDiagnosticEntry = vi.fn(() => ({
+        ...makePlugin(),
+        id: "evm",
+        name: "EVM",
+        npmName: "@elizaos/plugin-evm",
+      })) as never;
+      ctx.state.runtime = {
+        plugins: [{ name: "discord" }],
+        getSetting: vi.fn(() => "runtime-discord-token"),
+        getService: vi.fn(() => ({ isHealthy: () => healthy })),
+      } as never;
+
+      await handlePluginRoutes(ctx);
+
+      const response = vi.mocked(ctx.json).mock.calls.at(-1)?.[1] as {
+        plugins: ReturnType<typeof makePlugin>[];
+      };
+      const discord = response.plugins.find(
+        (plugin) => plugin.id === "discord",
+      );
+      expect(discord).toEqual(
+        expect.objectContaining({ configured: true, isActive: expectedActive }),
+      );
+      expect(discord?.parameters[0]).toEqual(
+        expect.objectContaining({ isSet: true, currentValue: "***21" }),
+      );
+    },
+  );
 });

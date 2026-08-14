@@ -28,6 +28,7 @@ import type { Tab } from "../navigation";
 import { shellLocalStorage } from "../surface-realm-channel";
 import {
   ELIZA_CLOUD_CONTROL_PLANE_HOSTS,
+  isManagedCloudSharedAgentBase,
   normalizeDirectCloudSharedAgentApiBase,
 } from "../utils/cloud-agent-base";
 import { DEFAULT_LOCAL_ASR_AUTO_STOP } from "../voice/local-asr-capture";
@@ -1402,6 +1403,21 @@ export function clearPersistedActiveServer(): void {
   tryLocalStorage(() => {
     shellLocalStorage.removeItem(ACTIVE_SERVER_STORAGE_KEY);
   }, undefined);
+}
+
+/**
+ * Clear an account-scoped shared Cloud selection after the Steward account
+ * session ends. Shared runtimes have no independent agent credential, so the
+ * selected agent id is valid only within the account that selected it; the next
+ * login must resolve that account's organization-scoped agent list again.
+ */
+export function clearPersistedSharedCloudActiveServer(): boolean {
+  const current = loadPersistedActiveServer();
+  if (!isManagedCloudSharedAgentBase(current?.apiBase)) {
+    return false;
+  }
+  clearPersistedActiveServer();
+  return true;
 }
 
 /**

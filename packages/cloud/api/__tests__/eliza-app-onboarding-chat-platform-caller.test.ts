@@ -301,6 +301,74 @@ describe("onboarding chat — trusted platform gateway caller", () => {
     });
   });
 
+  test("requires a matching signed Discord session before browser handoff", async () => {
+    resolveIdentity.mockResolvedValue(null);
+    await post({
+      sessionId: "platform:discord:777123",
+      message: "My name is Ada",
+      platform: "discord",
+      platformUserId: "777123",
+      platformDisplayName: "Ada",
+    });
+    // Discord replies carry the login URL on the CTA, not inline, so read the
+    // opaque continuation credential from the stored session.
+    const stored = sessionCache.get(
+      "eliza-app:onboarding:platform:discord:777123",
+    ) as { continuationToken?: string };
+    const continuation = stored?.continuationToken;
+    if (!continuation) throw new Error("Expected a Discord continuation token");
+
+    spyOn(elizaAppSessionService, "validateAuthHeader").mockResolvedValue({
+      userId: "user-9",
+      organizationId: "org-9",
+      discordId: "different-discord-user",
+    });
+    const mismatchedPreview = await get(continuation, "Bearer browser-session");
+    expect(mismatchedPreview.status).toBe(403);
+    expect(await mismatchedPreview.json()).toMatchObject({
+      success: false,
+      code: "access_denied",
+    });
+    const mismatch = await post(
+      {
+        sessionId: continuation,
+        platform: "discord",
+      },
+      "Bearer browser-session",
+    );
+    expect(mismatch.status).toBe(403);
+    expect(await mismatch.json()).toMatchObject({
+      success: false,
+      code: "access_denied",
+    });
+    expect(linkDiscordToUser).not.toHaveBeenCalled();
+    expect(ensureElizaAppProvisioning).not.toHaveBeenCalled();
+
+    spyOn(elizaAppSessionService, "validateAuthHeader").mockResolvedValue({
+      userId: "user-9",
+      organizationId: "org-9",
+      discordId: "777123",
+    });
+    const matched = await post(
+      {
+        sessionId: continuation,
+        platform: "discord",
+      },
+      "Bearer browser-session",
+    );
+    expect(matched.status).toBe(200);
+    expect(await dataOf(matched)).toMatchObject({
+      requiresLogin: false,
+    });
+    // The signed-id match is the ownership proof; the identity is already
+    // linked, so the turn binds and provisions without a re-link.
+    expect(linkDiscordToUser).not.toHaveBeenCalled();
+    expect(ensureElizaAppProvisioning).toHaveBeenCalledWith({
+      userId: "user-9",
+      organizationId: "org-9",
+    });
+  });
+
   test("maps twilio and blooio onto the phone identity provider", async () => {
     resolveIdentity.mockResolvedValue(null);
 

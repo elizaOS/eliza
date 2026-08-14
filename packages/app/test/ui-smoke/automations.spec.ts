@@ -681,7 +681,7 @@ test("automations empty state remains reachable beside chat in short landscape",
   await expect(headline).toBeVisible();
   await expect(
     page.getByText("Ask in chat to set up a workflow and it will run here."),
-  ).toBeVisible();
+  ).toHaveCount(0);
 
   const geometry = await page.evaluate(() => {
     const scroll = document.querySelector<HTMLElement>(

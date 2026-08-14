@@ -14,12 +14,15 @@ describe("ElizaClient native workflow transport", () => {
     const fetch = vi.fn(async () => ({ execution }));
     client.fetch = fetch as typeof client.fetch;
 
-    await expect(client.runWorkflowDefinition("workflow/1")).resolves.toEqual(
-      execution,
-    );
+    await expect(
+      client.runWorkflowDefinition("workflow/1", { topic: "release" }),
+    ).resolves.toEqual(execution);
     expect(fetch).toHaveBeenCalledWith(
       "/api/workflow/workflows/workflow%2F1/run",
-      { method: "POST" },
+      {
+        method: "POST",
+        body: JSON.stringify({ input: { topic: "release" } }),
+      },
       { timeoutMs: 30_000, skipResume: true },
     );
   });
