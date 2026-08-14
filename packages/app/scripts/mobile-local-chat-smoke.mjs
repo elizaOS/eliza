@@ -103,9 +103,13 @@ export const DEFAULT_ANDROID_LOCAL_INFERENCE_READY_ATTEMPTS = 180;
 export const DEFAULT_ANDROID_LOCAL_INFERENCE_READY_DELAY_MS = 2000;
 export const DEFAULT_ANDROID_SMOKE_MODEL_CONTEXT_SIZE = 4096;
 
-/** The bundled eliza-1 GGUF advertises a 128k context; anything above it is a
- * typo, and full width already OOMs a phone/simulator. */
-export const MAX_MODEL_CONTEXT_TOKENS = 131_072;
+/** Operational context ceiling for smoke devices. The bundled eliza-1 GGUF
+ * advertises 128k (131072), but that full width allocates a multi-GB KV cache
+ * and OOMs a phone/simulator — the format ceiling is a rejection case, not a
+ * bound. 32768 keeps the KV cache at ~1/4 of the known-OOM size while giving
+ * 8× headroom over the proven 4096 smoke width; tighten further if device
+ * measurements prove a lower safe cap. */
+export const MAX_MODEL_CONTEXT_TOKENS = 32_768;
 /** Retry/readiness/stability loops are dev-lane scale; five digits of attempts
  * is already three orders past any documented default. */
 export const MAX_LOOP_COUNT = 10_000;
@@ -139,10 +143,10 @@ function parseEnvInteger(raw, label, { min, max }) {
   return parsed;
 }
 
-function assertLoopBudget(attemptsName, attempts, delayName, delayMs) {
-  if (attempts * delayMs > MAX_LOOP_BUDGET_MS) {
+function assertLoopBudget(label, attempts, perAttemptMs) {
+  if (attempts * perAttemptMs > MAX_LOOP_BUDGET_MS) {
     throw new Error(
-      `Invalid ${attemptsName} × ${delayName}: ${attempts} × ${delayMs}ms exceeds the ${MAX_LOOP_BUDGET_MS}ms (24h) loop budget`,
+      `Invalid ${label}: ${attempts} × ${perAttemptMs}ms exceeds the ${MAX_LOOP_BUDGET_MS}ms (24h) loop budget`,
     );
   }
 }
@@ -249,23 +253,33 @@ export function resolveMobileSmokeNumericEnv(env = process.env) {
       `Invalid ANDROID_STABILITY_SAMPLES: ${resolved.androidStabilitySamples} exceeds ANDROID_STABILITY_ATTEMPTS ${resolved.androidStabilityAttempts}`,
     );
   }
+  // Composite budgets count the WORK an attempt can consume (probe timeouts,
+  // nested retries), not only the inter-attempt delay: 10000 attempts at
+  // delay 0 with a max probe timeout is centuries of wall clock, not zero.
+  const retryAttemptMs =
+    resolved.androidHealthProbeTimeoutMs +
+    resolved.androidTransientRetryDelayMs;
+  const retryBudgetMs = resolved.androidTransientRetryAttempts * retryAttemptMs;
   assertLoopBudget(
-    "ANDROID_TRANSIENT_RETRY_ATTEMPTS",
+    "ANDROID_TRANSIENT_RETRY_ATTEMPTS × (ANDROID_HEALTH_PROBE_TIMEOUT_MS + ANDROID_TRANSIENT_RETRY_DELAY_MS)",
     resolved.androidTransientRetryAttempts,
-    "ANDROID_TRANSIENT_RETRY_DELAY_MS",
-    resolved.androidTransientRetryDelayMs,
+    retryAttemptMs,
   );
   assertLoopBudget(
-    "ANDROID_STABILITY_ATTEMPTS",
+    "ANDROID_TRANSIENT_RETRY_ATTEMPTS × (ANDROID_FULL_TURN_TIMEOUT_MS + ANDROID_TRANSIENT_RETRY_DELAY_MS)",
+    resolved.androidTransientRetryAttempts,
+    resolved.androidFullTurnTimeoutMs + resolved.androidTransientRetryDelayMs,
+  );
+  assertLoopBudget(
+    "ANDROID_STABILITY_ATTEMPTS × (transient-retry budget + ANDROID_STABILITY_DELAY_MS)",
     resolved.androidStabilityAttempts,
-    "ANDROID_STABILITY_DELAY_MS",
-    resolved.androidStabilityDelayMs,
+    retryBudgetMs + resolved.androidStabilityDelayMs,
   );
   assertLoopBudget(
-    "ANDROID_LOCAL_INFERENCE_READY_ATTEMPTS",
+    "ANDROID_LOCAL_INFERENCE_READY_ATTEMPTS × (3 × ANDROID_HEALTH_PROBE_TIMEOUT_MS + ANDROID_LOCAL_INFERENCE_READY_DELAY_MS)",
     resolved.androidLocalInferenceReadyAttempts,
-    "ANDROID_LOCAL_INFERENCE_READY_DELAY_MS",
-    resolved.androidLocalInferenceReadyDelayMs,
+    3 * resolved.androidHealthProbeTimeoutMs +
+      resolved.androidLocalInferenceReadyDelayMs,
   );
   return resolved;
 }
@@ -2046,12 +2060,15 @@ async function requestTextResponse(
 }
 
 async function requestOptionalJson(method, pathname, baseUrl, authToken) {
+  // Every readiness probe carries the bounded probe timeout: an un-timed
+  // fetch here could stay pending forever regardless of any loop budget.
   const { response, data, text } = await requestJsonResponse(
     method,
     pathname,
     undefined,
     baseUrl,
     authToken,
+    { timeoutMs: ANDROID_HEALTH_PROBE_TIMEOUT_MS },
   );
   if (response.status === 404) return null;
   if (!response.ok) {

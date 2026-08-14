@@ -597,14 +597,14 @@ describe("resolveMobileSmokeNumericEnv", () => {
   it("accepts canonical timer and count overrides through the Node ceiling", () => {
     const parsed = smoke.resolveMobileSmokeNumericEnv({
       ANDROID_FULL_TURN_TIMEOUT_MS: "800",
-      ANDROID_HEALTH_PROBE_TIMEOUT_MS: String(smoke.MAX_TIMER_DELAY_MS),
+      ANDROID_HEALTH_PROBE_TIMEOUT_MS: "60000",
       ANDROID_TRANSIENT_RETRY_ATTEMPTS: "1",
       ANDROID_STABILITY_DELAY_MS: "0",
       ANDROID_SMOKE_MODEL_CONTEXT_SIZE: "4096",
       ANDROID_SMOKE_MODEL_SIZE_BYTES: "4",
     });
     expect(parsed.androidFullTurnTimeoutMs).toBe(800);
-    expect(parsed.androidHealthProbeTimeoutMs).toBe(smoke.MAX_TIMER_DELAY_MS);
+    expect(parsed.androidHealthProbeTimeoutMs).toBe(60000);
     expect(parsed.androidTransientRetryAttempts).toBe(1);
     expect(parsed.androidStabilityDelayMs).toBe(0);
     expect(parsed.androidSmokeModelContextSize).toBe(4096);
@@ -660,7 +660,7 @@ describe("resolveMobileSmokeNumericEnv", () => {
     ).toBe(0);
   });
 
-  it("bounds context sizes at the model's advertised 128k", () => {
+  it("bounds context sizes at the operational cap, rejecting the known-OOM full width", () => {
     for (const name of [
       "IOS_FULL_BUN_SMOKE_CONTEXT_SIZE",
       "ANDROID_SMOKE_MODEL_CONTEXT_SIZE",
@@ -670,8 +670,11 @@ describe("resolveMobileSmokeNumericEnv", () => {
           [name]: String(smoke.MAX_MODEL_CONTEXT_TOKENS),
         }),
       ).toBeTruthy();
+      // 131072 is the model's format ceiling AND the documented phone OOM
+      // width — it must be a rejection case, not the bound.
       for (const value of [
         String(smoke.MAX_MODEL_CONTEXT_TOKENS + 1),
+        "131072",
         String(Number.MAX_SAFE_INTEGER),
       ]) {
         expect(() =>
@@ -704,6 +707,30 @@ describe("resolveMobileSmokeNumericEnv", () => {
     ).toThrow(/ANDROID_SMOKE_MODEL_SIZE_BYTES/);
   });
 
+  it("budgets count per-attempt work, not only delay (review counterexamples)", () => {
+    // 10000 attempts at delay 0 with a max probe timeout asserted a zero
+    // delay-budget but could consume ~680 years of probe work.
+    expect(() =>
+      smoke.resolveMobileSmokeNumericEnv({
+        ANDROID_TRANSIENT_RETRY_ATTEMPTS: String(smoke.MAX_LOOP_COUNT),
+        ANDROID_TRANSIENT_RETRY_DELAY_MS: "0",
+        ANDROID_HEALTH_PROBE_TIMEOUT_MS: String(smoke.MAX_TIMER_DELAY_MS),
+      }),
+    ).toThrow(/loop budget/);
+    // A max probe or full-turn timeout alone now exceeds the composite
+    // stability/retry budgets at the documented default attempt counts.
+    expect(() =>
+      smoke.resolveMobileSmokeNumericEnv({
+        ANDROID_HEALTH_PROBE_TIMEOUT_MS: String(smoke.MAX_TIMER_DELAY_MS),
+      }),
+    ).toThrow(/loop budget/);
+    expect(() =>
+      smoke.resolveMobileSmokeNumericEnv({
+        ANDROID_FULL_TURN_TIMEOUT_MS: String(smoke.MAX_TIMER_DELAY_MS),
+      }),
+    ).toThrow(/loop budget/);
+  });
+
   it("rejects over-budget loop combinations and inconsistent stability windows", () => {
     // 10_000 attempts × 8_640_001ms ≈ 2.7 years — each value alone is legal.
     expect(() =>
@@ -726,6 +753,31 @@ describe("resolveMobileSmokeNumericEnv", () => {
     ).toThrow(/ANDROID_STABILITY_SAMPLES.*exceeds ANDROID_STABILITY_ATTEMPTS/);
     // The documented defaults stay well inside every budget.
     expect(smoke.resolveMobileSmokeNumericEnv({})).toBeTruthy();
+  });
+});
+
+describe("readiness request timeout boundary", () => {
+  it("a never-settling readiness fetch rejects within the probe timeout", async () => {
+    // requestOptionalJson used to issue an un-timed fetch, so one hung
+    // readiness endpoint outlived any loop budget. Harness probe timeout is
+    // 50ms (module preamble), so the hang must reject fast.
+    const hang = Bun.serve({
+      port: 0,
+      fetch: () => new Promise(() => {}),
+    });
+    try {
+      const startedAt = Date.now();
+      await expect(
+        smoke.requestOptionalJson(
+          "GET",
+          "/api/local-inference/hub",
+          `http://127.0.0.1:${hang.port}`,
+        ),
+      ).rejects.toThrow();
+      expect(Date.now() - startedAt).toBeLessThan(2_000);
+    } finally {
+      hang.stop(true);
+    }
   });
 });
 
