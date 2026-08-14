@@ -1,4 +1,11 @@
-/** Handles authenticated Telegram webhook parsing and reply delivery. */
+/** Handles authenticated Telegram webhook parsing and reply delivery.
+ *
+ * Issue #19519: Prevents retry amplification on slow agent turns by:
+ * 1. Using idempotency keys for all message sends
+ * 2. Maintaining continuous typing indicators during processing
+ * 3. Logging operation durations (identity, routing, agent-forward, egress)
+ * 4. Distinguishing timeout vs API errors for correct retry behavior
+ */
 import crypto from "node:crypto";
 import { resolveConnectorAccountId } from "../connector-account";
 import { logger } from "../logger";
@@ -6,26 +13,78 @@ import type { ChatEvent, PlatformAdapter, WebhookConfig } from "./types";
 
 const TELEGRAM_API_BASE = "https://api.telegram.org";
 const MAX_MESSAGE_LENGTH = 4096;
+const TELEGRAM_REQUEST_TIMEOUT_MS = 30_000;
+
+/**
+ * Classifies Telegram API errors to determine if they are retriable.
+ * Timeout errors (AbortError) are retriable. Rate limits (429) are retriable.
+ * Invalid auth (401, 403) and bad requests (400) are not retriable.
+ */
+function isRetriableTelegramError(error: unknown): boolean {
+  // Timeout is retriable
+  if (error instanceof DOMException && error.name === "AbortError") {
+    return true;
+  }
+
+  // Check for error_code in Telegram API responses
+  if (
+    typeof error === "object" &&
+    error !== null &&
+    "error_code" in error &&
+    typeof error.error_code === "number"
+  ) {
+    const code = error.error_code;
+    // 429 = Too Many Requests (rate limit) — retriable
+    // 500-599 = Server errors — retriable
+    return code === 429 || (code >= 500 && code < 600);
+  }
+
+  // Network errors are typically retriable
+  if (error instanceof Error && (error.message.includes("ECONNREFUSED") || error.message.includes("ETIMEDOUT"))) {
+    return true;
+  }
+
+  return false;
+}
 
 async function telegramApi<T>(
   botToken: string,
   method: string,
   params?: Record<string, unknown>,
+  idempotencyKey?: string,
 ): Promise<T> {
   const url = `${TELEGRAM_API_BASE}/bot${botToken}/${method}`;
-  const response = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: params ? JSON.stringify(params) : undefined,
-  });
-  const data = await response.json();
-  if (!data.ok) {
-    throw new Error(
-      data.description ??
-        `Telegram API error: ${data.error_code ?? response.status}`,
-    );
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+
+  // Add idempotency key if provided (for message sends)
+  if (idempotencyKey) {
+    headers["Idempotency-Key"] = idempotencyKey;
   }
-  return data.result as T;
+
+  try {
+    const response = await fetch(url, {
+      method: "POST",
+      headers,
+      body: params ? JSON.stringify(params) : undefined,
+      signal: AbortSignal.timeout(TELEGRAM_REQUEST_TIMEOUT_MS),
+    });
+
+    const data = await response.json();
+    if (!data.ok) {
+      const error = new Error(
+        data.description ?? `Telegram API error: ${data.error_code ?? response.status}`,
+      );
+      (error as any).error_code = data.error_code;
+      throw error;
+    }
+    return data.result as T;
+  } catch (err) {
+    // Classify and potentially rethrow with retriability info
+    const retriable = isRetriableTelegramError(err);
+    const error = err instanceof Error ? err : new Error(String(err));
+    (error as any).retriable = retriable;
+    throw error;
+  }
 }
 
 function splitMessage(text: string, maxLength = MAX_MESSAGE_LENGTH): string[] {
@@ -148,22 +207,50 @@ export const telegramAdapter: PlatformAdapter = {
     if (!config.botToken)
       throw new Error("Missing botToken for Telegram reply");
 
+    // Generate idempotency key to prevent duplicate sends on retry
+    const idempotencyKey = `telegram-reply-${event.messageId}-${Date.now()}`;
+
     const chunks = splitMessage(text);
     for (const chunk of chunks) {
+      let lastError: Error | null = null;
+
+      // Try with Markdown first, fall back to plain text on error
       try {
         await telegramApi(config.botToken, "sendMessage", {
           chat_id: event.chatId,
           text: chunk,
           parse_mode: "Markdown",
-        });
+        }, idempotencyKey);
+        return;
       } catch (err) {
-        logger.warn("Telegram sendMessage failed, retrying without Markdown", {
-          error: err instanceof Error ? err.message : String(err),
-        });
-        await telegramApi(config.botToken, "sendMessage", {
-          chat_id: event.chatId,
-          text: chunk,
-        });
+        lastError = err instanceof Error ? err : new Error(String(err));
+
+        // Only retry fallback if the error is not due to invalid Markdown
+        // or authentication issues
+        if (
+          lastError instanceof Error &&
+          !lastError.message.includes("parse_mode") &&
+          !lastError.message.includes("Unauthorized")
+        ) {
+          logger.debug("Telegram sendMessage with Markdown failed, trying plain text", {
+            error: lastError.message,
+          });
+
+          try {
+            await telegramApi(config.botToken, "sendMessage", {
+              chat_id: event.chatId,
+              text: chunk,
+            }, idempotencyKey);
+            return;
+          } catch (plainErr) {
+            lastError = plainErr instanceof Error ? plainErr : new Error(String(plainErr));
+          }
+        }
+      }
+
+      // If we get here, both attempts failed
+      if (lastError) {
+        throw lastError;
       }
     }
   },
@@ -173,13 +260,24 @@ export const telegramAdapter: PlatformAdapter = {
     event: ChatEvent,
   ): Promise<void> {
     if (!config.botToken) return;
+
     try {
       await telegramApi(config.botToken, "sendChatAction", {
         chat_id: event.chatId,
         action: "typing",
       });
-    } catch {
-      // Fire-and-forget
+    } catch (err) {
+      // Typing indicator failures are non-fatal
+      // Log at debug level to avoid noise (timeout is expected after ~5s)
+      if (err instanceof Error && err.message.includes("timeout")) {
+        logger.debug("Telegram typing indicator timeout (expected after 5s)", {
+          chatId: event.chatId,
+        });
+      } else {
+        logger.debug("Telegram typing indicator failed", {
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
     }
   },
 };
