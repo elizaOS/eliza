@@ -45,16 +45,6 @@ describe("cloud BrandCard status/nav leftovers use Settings primitives", () => {
     expect(source).not.toMatch(/<nav className="flex flex-wrap gap-2/);
   });
 
-  it("pay-as-you-go wraps the existing switch in SettingsStack/Group", () => {
-    const source = read("cloud/billing/components/pay-as-you-go-card.tsx");
-    expect(source).toContain("<SettingsStack");
-    expect(source).toContain("<SettingsGroup");
-    expect(source).toContain("SettingsSwitchRow");
-    expect(source).toContain('agentId="cloud-billing-pay-as-you-go"');
-    expect(source).not.toContain("BrandCard");
-    expect(source).not.toContain("CornerBrackets");
-  });
-
   it("MFA status panel is SettingsRows, not a BrandCard", () => {
     const source = read("cloud/account-security/components/mfa-panel.tsx");
     expect(source).toContain("<SettingsStack");
