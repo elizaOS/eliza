@@ -17,7 +17,7 @@ type Fetch = typeof globalThis.fetch;
 
 export const AGENT_IMAGE_CANARY_PRODUCTION_ORIGIN = "https://api.eliza.app";
 export const AGENT_IMAGE_CANARY_FIXED_AGENT_ID =
-  "747a415a-e1ac-4c32-a147-9ab8c5a69d99";
+  "4602b3be-2c01-4e7e-9cdc-849604e1bef7";
 export const AGENT_IMAGE_CANARY_DEMO_REPOSITORY = "ghcr.io/elizaos/eliza-demo";
 export const AGENT_IMAGE_CANARY_CANONICAL_REPOSITORY = "ghcr.io/elizaos/eliza";
 
