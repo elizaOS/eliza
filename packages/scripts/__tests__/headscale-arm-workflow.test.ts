@@ -848,6 +848,45 @@ server {
     expect(result.stdout).not.toContain(privateInclude);
   });
 
+  test("rejects multiple directives on one physical line without echoing values", () => {
+    const privateInclude = "/etc/nginx/canary-private-include.conf";
+    const quotedHashRedirect = "https://redirect.invalid/#canary-fragment";
+    const allowedDenseSource = expectedLegacySource.replace(
+      "  proxy_pass http://127.0.0.1:8080;",
+      "  proxy_pass http://127.0.0.1:8080; proxy_read_timeout 30s;",
+    );
+    const unexpectedDenseSource = expectedLegacySource.replace(
+      "  proxy_pass http://127.0.0.1:8080;",
+      `  proxy_pass http://127.0.0.1:8080; include ${privateInclude};`,
+    );
+    const quotedHashDenseSource = expectedLegacySource.replace(
+      "  return 301 https://$host$request_uri;",
+      `  return 302 "${quotedHashRedirect}"; include ${privateInclude};`,
+    );
+
+    for (const source of [
+      allowedDenseSource,
+      unexpectedDenseSource,
+      quotedHashDenseSource,
+    ]) {
+      const inspection = runLegacyVhostInspection(source, expectedLoadedConfig);
+      expect(inspection.status).not.toBe(0);
+      expect(inspection.stdout).toContain("unsupported dense directive syntax");
+      expect(inspection.stdout).not.toContain(privateInclude);
+      expect(inspection.stdout).not.toContain(quotedHashRedirect);
+
+      const retirement = runLegacyVhostValidation({
+        source,
+        loadedConfig: expectedLoadedConfig,
+        enforceDirectiveAllowlist: true,
+      });
+      expect(retirement.status).not.toBe(0);
+      expect(retirement.stdout).toContain("unsupported dense directive syntax");
+      expect(retirement.stdout).not.toContain(privateInclude);
+      expect(retirement.stdout).not.toContain(quotedHashRedirect);
+    }
+  });
+
   test("rejects inspection or retirement for production without a reviewed path", () => {
     const result = runDryArm(
       "https://headscale.eliza.app",

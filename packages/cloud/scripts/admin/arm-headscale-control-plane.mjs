@@ -379,12 +379,42 @@ validate_retirable_legacy_vhost() {
     echo "legacy Headscale vhost bytes changed after inspection; refusing retirement"
     return 1
   fi
+  ambiguous_legacy_lines=$(printf '%s\\n' "$legacy_vhost_source" | awk '
+    {
+      line = $0
+      sub(/^[[:space:]]+/, "", line)
+      sub(/[[:space:]]+$/, "", line)
+      if (line == "" || line ~ /^#/) next
+      if (index(line, "#") > 0) {
+        printf "line %d: hash token in active syntax\\n", NR
+        next
+      }
+      semicolons = gsub(/;/, ";", line)
+      opens = gsub(/[{]/, "{", line)
+      closes = gsub(/[}]/, "}", line)
+      if (semicolons > 1) {
+        printf "line %d: multiple semicolon-terminated directives\\n", NR
+      } else if (semicolons == 1 && (line !~ /;$/ || opens > 0 || closes > 0)) {
+        printf "line %d: mixed block and directive syntax\\n", NR
+      } else if (opens > 1 || closes > 1 || (opens > 0 && closes > 0)) {
+        printf "line %d: multiple block boundaries\\n", NR
+      } else if (opens == 1 && line !~ /[{]$/) {
+        printf "line %d: content follows an opening block boundary\\n", NR
+      } else if (closes == 1 && line != "}") {
+        printf "line %d: content shares a closing block boundary\\n", NR
+      }
+    }
+  ')
+  if [ -n "$ambiguous_legacy_lines" ]; then
+    echo "legacy Headscale vhost uses unsupported dense directive syntax:"
+    printf '%s\\n' "$ambiguous_legacy_lines"
+    return 1
+  fi
   legacy_vhost_directives=$(printf '%s\\n' "$legacy_vhost_source" | awk '
     {
       line = $0
-      sub(/[[:space:]]*#.*/, "", line)
       sub(/^[[:space:]]+/, "", line)
-      if (line == "" || line ~ /^[{}]/) next
+      if (line == "" || line ~ /^#/ || line ~ /^[{}]/) next
       split(line, fields, /[[:space:]]+/)
       directive = fields[1]
       sub(/;.*$/, "", directive)
