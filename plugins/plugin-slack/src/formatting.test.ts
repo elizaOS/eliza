@@ -178,6 +178,28 @@ describe("permalink build/parse round-trip", () => {
     expect(isValidMessageTs(parsed10?.messageTs ?? "")).toBe(true);
   });
 
+  it("normalizes Slack's documented 15-digit chat.getPermalink examples", () => {
+    const documented = parseSlackMessagePermalink(
+      "https://ghostbusters.slack.com/archives/C1H9RESGA/p135854651500008",
+    );
+    expect(documented).toEqual({
+      workspaceDomain: "ghostbusters",
+      channelId: "C1H9RESGA",
+      messageTs: "1358546515.000080",
+    });
+    expect(isValidMessageTs(documented?.messageTs ?? "")).toBe(true);
+
+    const threaded = parseSlackMessagePermalink(
+      "https://ghostbusters.slack.com/archives/C1H9RESGL/p135854651700023?thread_ts=1358546515.000008&cid=C1H9RESGL",
+    );
+    expect(threaded).toEqual({
+      workspaceDomain: "ghostbusters",
+      channelId: "C1H9RESGL",
+      messageTs: "1358546517.000230",
+    });
+    expect(isValidMessageTs(threaded?.messageTs ?? "")).toBe(true);
+  });
+
   it("returns null for malformed timestamps, wrong lengths, or trailing garbage", () => {
     expect(
       parseSlackMessagePermalink(
@@ -191,9 +213,9 @@ describe("permalink build/parse round-trip", () => {
     ).toBeNull(); // 11 digits
     expect(
       parseSlackMessagePermalink(
-        "https://acme.slack.com/archives/C0ABCDE/p170000000012345",
+        "https://acme.slack.com/archives/C0ABCDE/p17000000001234",
       ),
-    ).toBeNull(); // 15 digits
+    ).toBeNull(); // 14 digits
     expect(
       parseSlackMessagePermalink(
         "https://acme.slack.com/archives/C0ABCDE/p17000000001234567",
@@ -245,6 +267,24 @@ describe("parseSlackMessageLink", () => {
       messageTs: "1700000000.000000",
     });
     expect(isValidMessageTs(res10?.messageTs ?? "")).toBe(true);
+
+    const documented = parseSlackMessageLink(
+      "https://ghostbusters.slack.com/archives/C1H9RESGA/p135854651500008",
+    );
+    expect(documented).toEqual({
+      channelId: "C1H9RESGA",
+      messageTs: "1358546515.000080",
+    });
+    expect(isValidMessageTs(documented?.messageTs ?? "")).toBe(true);
+
+    const threaded = parseSlackMessageLink(
+      "https://ghostbusters.slack.com/archives/C1H9RESGL/p135854651700023?thread_ts=1358546515.000008&cid=C1H9RESGL",
+    );
+    expect(threaded).toEqual({
+      channelId: "C1H9RESGL",
+      messageTs: "1358546517.000230",
+    });
+    expect(isValidMessageTs(threaded?.messageTs ?? "")).toBe(true);
   });
 
   it("returns null for malformed lengths, invalid digits, or trailing garbage", () => {
@@ -258,9 +298,9 @@ describe("parseSlackMessageLink", () => {
     ).toBeNull(); // 11 digits
     expect(
       parseSlackMessageLink(
-        "https://acme.slack.com/archives/C12345678/p170000000012345",
+        "https://acme.slack.com/archives/C12345678/p17000000001234",
       ),
-    ).toBeNull(); // 15 digits
+    ).toBeNull(); // 14 digits
     expect(
       parseSlackMessageLink(
         "https://acme.slack.com/archives/C12345678/p17000000001234567",
