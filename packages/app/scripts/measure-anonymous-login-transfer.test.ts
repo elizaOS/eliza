@@ -1,8 +1,7 @@
 /**
- * Unit and CLI-boundary tests for the login-transfer measurement argument
- * parser. The harness is deterministic here: invalid flags must fail closed
- * before Chromium launches, so subprocess cases never need a renderer or
- * browser.
+ * Unit and CLI-boundary tests for the login-transfer measurement harness. The
+ * deterministic cases verify invalid flags fail before Chromium launches and
+ * broken renderers cannot qualify as performance improvements.
  */
 import { spawnSync } from "node:child_process";
 import { mkdtempSync, rmSync, symlinkSync } from "node:fs";
@@ -10,6 +9,9 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
+  assertLoginSurfaceReady,
+  assertNoRuntimeErrors,
+  collectLoginSurfaceProbe,
   MAX_TIMER_DELAY_MS,
   parseArgs,
   parseDecimalInt,
@@ -181,6 +183,224 @@ describe("parseArgs --settle-ms / --timeout", () => {
   });
 });
 
+describe("assertNoRuntimeErrors", () => {
+  it("accepts a clean renderer", () => {
+    expect(() => assertNoRuntimeErrors([], "desktop")).not.toThrow();
+  });
+
+  it("rejects a crashed renderer with bounded diagnostics", () => {
+    expect(() =>
+      assertNoRuntimeErrors(
+        ["console: React is not defined", "page: mount failed"],
+        "mobile",
+      ),
+    ).toThrow(
+      "mobile /login emitted 2 runtime error(s): console: React is not defined | page: mount failed",
+    );
+  });
+});
+
+/** @param {"blank" | "valid"} fixture */
+function installLoginProbeDom(fixture) {
+  const previousDocument = globalThis.document;
+  const previousGetComputedStyle = globalThis.getComputedStyle;
+
+  /** @param {any} node @param {string} selector */
+  function matches(node, selector) {
+    if (selector.startsWith("#")) return node.id === selector.slice(1);
+    if (selector.startsWith("[") && selector.endsWith("]")) {
+      const body = selector.slice(1, -1);
+      const eq = body.indexOf("=");
+      if (eq === -1) return node.getAttribute(body) != null;
+      const key = body.slice(0, eq);
+      let value = body.slice(eq + 1);
+      if (
+        (value.startsWith('"') && value.endsWith('"')) ||
+        (value.startsWith("'") && value.endsWith("'"))
+      ) {
+        value = value.slice(1, -1);
+      }
+      return node.getAttribute(key) === value;
+    }
+    if (selector.includes("[")) {
+      const tag = selector.slice(0, selector.indexOf("["));
+      const attrPart = selector.slice(selector.indexOf("["));
+      return node.tagName === tag.toUpperCase() && matches(node, attrPart);
+    }
+    return node.tagName === selector.toUpperCase();
+  }
+
+  /** @param {string} tagName @param {Record<string, unknown>} [attrs] @param {any[]} [children] */
+  function el(tagName, attrs = {}, children = []) {
+    /** @type {any} */
+    const node = {
+      tagName: tagName.toUpperCase(),
+      attrs: { ...attrs },
+      children,
+      ownerDocument: null,
+      parentElement: null,
+      getAttribute(name) {
+        const value = node.attrs[name];
+        return value == null ? null : String(value);
+      },
+      get id() {
+        return node.attrs.id == null ? "" : String(node.attrs.id);
+      },
+      get textContent() {
+        if (typeof node.attrs.text === "string") return node.attrs.text;
+        return node.children.map((child) => child.textContent).join("");
+      },
+      get style() {
+        return {
+          display: node.attrs.display ?? "",
+          visibility: node.attrs.visibility ?? "",
+          opacity: node.attrs.opacity ?? "",
+        };
+      },
+      getBoundingClientRect() {
+        if (node.attrs.hidden === true) {
+          return { width: 0, height: 0, top: 0, left: 0, right: 0, bottom: 0 };
+        }
+        const width = Number(node.attrs.width ?? 120);
+        const height = Number(node.attrs.height ?? 24);
+        return { width, height, top: 0, left: 0, right: width, bottom: height };
+      },
+      querySelector(selector) {
+        return node.querySelectorAll(selector)[0] ?? null;
+      },
+      querySelectorAll(selector) {
+        const out = [];
+        const visit = (current) => {
+          if (matches(current, selector)) out.push(current);
+          for (const child of current.children) visit(child);
+        };
+        for (const child of node.children) visit(child);
+        return out;
+      },
+    };
+    for (const child of children) child.parentElement = node;
+    return node;
+  }
+
+  /** @type {Record<string, any>} */
+  let byId = {};
+  /** @type {any} */
+  let body = null;
+
+  if (fixture === "blank") {
+    const root = el("div", { id: "root" });
+    body = el("body", {}, [root]);
+    byId = { root };
+  } else {
+    const email = el("input", {
+      id: "steward-login-email",
+      type: "email",
+      name: "email",
+      width: 280,
+      height: 44,
+    });
+    const heading = el("h1", {
+      text: "Sign in to Eliza",
+      width: 200,
+      height: 32,
+    });
+    const form = el("form", { width: 320, height: 200 }, [email]);
+    const marker = el("div", {
+      "data-testid": "login-safe-area-fill",
+      width: 390,
+      height: 844,
+    });
+    const main = el("main", { width: 360, height: 480 }, [heading, form]);
+    const root = el("div", { id: "root" }, [marker, main]);
+    body = el("body", { text: "Sign in to Eliza" }, [root]);
+    byId = { root, "steward-login-email": email };
+  }
+
+  const doc = {
+    body,
+    documentElement: body,
+    getElementById(id) {
+      return byId[id] ?? null;
+    },
+    querySelector(selector) {
+      if (selector.startsWith("#"))
+        return this.getElementById(selector.slice(1));
+      return body.querySelector(selector);
+    },
+    querySelectorAll(selector) {
+      return body.querySelectorAll(selector);
+    },
+  };
+  body.ownerDocument = doc;
+  for (const node of Object.values(byId)) node.ownerDocument = doc;
+
+  globalThis.document = doc;
+  globalThis.getComputedStyle = (element) => ({
+    display: element?.style?.display || "block",
+    visibility: element?.style?.visibility || "visible",
+    opacity: element?.style?.opacity || "1",
+  });
+
+  return () => {
+    globalThis.document = previousDocument;
+    globalThis.getComputedStyle = previousGetComputedStyle;
+  };
+}
+
+describe("login surface contract", () => {
+  it("rejects a silent blank renderer with bounded diagnostics", () => {
+    const restore = installLoginProbeDom("blank");
+    try {
+      const probe = collectLoginSurfaceProbe();
+      expect(probe.ok).toBe(false);
+      expect(() => assertLoginSurfaceReady(probe, "desktop")).toThrow(
+        /desktop \/login failed visible login contract/,
+      );
+      try {
+        assertLoginSurfaceReady(probe, "desktop");
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        expect(message.length).toBeLessThan(500);
+        expect(message).toMatch(/rootChildren=0|emailVisible=false/);
+        expect(message).not.toMatch(/console\.error|pageerror/);
+      }
+    } finally {
+      restore();
+    }
+  });
+
+  it("accepts a stable visible login surface (email + heading/form)", () => {
+    const restore = installLoginProbeDom("valid");
+    try {
+      const probe = collectLoginSurfaceProbe();
+      expect(probe.ok).toBe(true);
+      expect(probe.emailVisible).toBe(true);
+      expect(probe.headingVisible || probe.formVisible).toBe(true);
+      expect(() => assertLoginSurfaceReady(probe, "mobile")).not.toThrow();
+    } finally {
+      restore();
+    }
+  });
+
+  it("assertLoginSurfaceReady rejects incomplete probes without requiring runtime errors", () => {
+    expect(() =>
+      assertLoginSurfaceReady(
+        {
+          ok: false,
+          failure: "missing-email",
+          rootChildren: 1,
+          emailVisible: false,
+          headingVisible: true,
+          formVisible: false,
+          appMarker: "login-safe-area-fill",
+          bodySample: "",
+        },
+        "desktop",
+      ),
+    ).toThrow(/missing-email/);
+  });
+});
+
 describe("measure-anonymous-login-transfer CLI", () => {
   it("exits non-zero on invalid --settle-ms without launching Chromium", () => {
     const result = spawnSync(
@@ -254,5 +474,5 @@ describe("measure-anonymous-login-transfer CLI", () => {
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }
-  });
+  }, 30_000);
 });

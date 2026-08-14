@@ -1387,6 +1387,62 @@ describe("runOnboardingChat", () => {
       expect(ensureElizaAppProvisioning).not.toHaveBeenCalled();
     });
 
+    test("rejects a continuation whose signed Discord identity mismatches the session, even when confirmed", async () => {
+      const gatewayTurn = await runTrustedDiscordTurn("My name is Sam");
+
+      await expect(
+        runOnboardingChat({
+          sessionId: continuationToken(gatewayTurn),
+          platform: "web",
+          authenticatedUser: {
+            userId: "other-user",
+            organizationId: "other-org",
+            discordId: "111100000000000011",
+          },
+          confirmPlatformLink: true,
+        }),
+      ).rejects.toMatchObject({
+        code: "ONBOARDING_PLATFORM_IDENTITY_MISMATCH",
+      });
+      expect(linkDiscordToUser).not.toHaveBeenCalled();
+      expect(ensureElizaAppProvisioning).not.toHaveBeenCalled();
+    });
+
+    test("a signed Discord identity matching the session resumes it without a confirmation detour", async () => {
+      ensureElizaAppProvisioning.mockResolvedValue({
+        status: "provisioning",
+        agentId: "agent-d",
+        bridgeUrl: null,
+        sandbox: null,
+      });
+
+      const gatewayTurn = await runTrustedDiscordTurn("My name is Sam");
+      const continued = await runOnboardingChat({
+        sessionId: continuationToken(gatewayTurn),
+        platform: "web",
+        authenticatedUser: {
+          userId: "discord-oauth-user",
+          organizationId: "discord-oauth-org",
+          discordId: DISCORD_ID,
+        },
+      });
+
+      expect(continued.session.id).toBe(gatewayTurn.session.id);
+      expect(continued.session.userId).toBe("discord-oauth-user");
+      expect(
+        continued.session.history.some(
+          (m: OnboardingChatMessage) => m.content === "My name is Sam",
+        ),
+      ).toBe(true);
+      // Discord OAuth login already created the identity projection; the
+      // signed-id match is the ownership proof, so no re-link is issued.
+      expect(linkDiscordToUser).not.toHaveBeenCalled();
+      expect(ensureElizaAppProvisioning).toHaveBeenCalledWith({
+        userId: "discord-oauth-user",
+        organizationId: "discord-oauth-org",
+      });
+    });
+
     test("refuses confirmPlatformLink for a forged opaque session without a trusted Discord preview", async () => {
       await expect(
         runOnboardingChat({

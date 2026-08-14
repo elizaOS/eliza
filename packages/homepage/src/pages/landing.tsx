@@ -22,10 +22,10 @@ import {
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import {
   buildElizaDiscordHref,
-  buildElizaSmsHref,
   buildElizaTelegramHref,
   buildElizaWhatsAppHref,
   ELIZA_PHONE_NUMBER,
+  openOrCopyElizaMessage,
 } from "@/lib/contact";
 import { useT } from "@/providers/I18nProvider";
 
@@ -531,6 +531,11 @@ const CLOUD_DASHBOARD_URL = `${EXTERNAL_URLS.app}/cloud-apps`;
 
 export default function LandingPage() {
   const t = useT();
+  const [phoneCopyState, setPhoneCopyState] = useState<
+    "idle" | "copied" | "error"
+  >("idle");
+  const phoneCopyResetRef = useRef<number | null>(null);
+  const whatsappHref = buildElizaWhatsAppHref();
   const signedIn =
     typeof window !== "undefined" &&
     window.localStorage.getItem(SESSION_STORAGE_KEY) !== null;
@@ -544,6 +549,19 @@ export default function LandingPage() {
       }),
       icon: <TelegramIcon className="size-6 text-[#2AABEE]" />,
     },
+    ...(whatsappHref
+      ? [
+          {
+            key: "whatsapp",
+            href: whatsappHref,
+            external: true,
+            label: t("homepage_eliza.landing.channelWhatsapp", {
+              defaultValue: "Message Eliza on WhatsApp",
+            }),
+            icon: <WhatsAppIcon className="size-6 text-[#25D366]" />,
+          },
+        ]
+      : []),
     {
       key: "discord",
       href: buildElizaDiscordHref(),
@@ -553,16 +571,41 @@ export default function LandingPage() {
       }),
       icon: <DiscordIcon className="size-6 text-[#5865F2]" />,
     },
-    {
-      key: "whatsapp",
-      href: buildElizaWhatsAppHref(),
-      external: true,
-      label: t("homepage_eliza.landing.channelWhatsapp", {
-        defaultValue: "Message Eliza on WhatsApp",
-      }),
-      icon: <WhatsAppIcon className="size-6 text-[#25D366]" />,
-    },
   ];
+
+  useEffect(
+    () => () => {
+      if (phoneCopyResetRef.current !== null) {
+        window.clearTimeout(phoneCopyResetRef.current);
+      }
+    },
+    [],
+  );
+
+  const handleMessageEliza = async () => {
+    try {
+      const outcome = await openOrCopyElizaMessage(window);
+      setPhoneCopyState(outcome === "copied" ? "copied" : "idle");
+    } catch {
+      setPhoneCopyState("error");
+    }
+    if (phoneCopyResetRef.current !== null) {
+      window.clearTimeout(phoneCopyResetRef.current);
+    }
+    phoneCopyResetRef.current = window.setTimeout(
+      () => setPhoneCopyState("idle"),
+      2_000,
+    );
+  };
+
+  const phoneCopyLabel =
+    phoneCopyState === "copied"
+      ? t("homepage_eliza.landing.phoneCopied", {
+          defaultValue: "Phone number copied",
+        })
+      : t("homepage_eliza.landing.phoneCopyFailed", {
+          defaultValue: "Couldn't copy the phone number",
+        });
 
   return (
     <div className="landing-page theme-app">
@@ -602,15 +645,16 @@ export default function LandingPage() {
             })}
           </h1>
           <div className="landing-hero-actions">
-            <a
+            <button
+              type="button"
               className="landing-cta landing-cta--black"
-              href={buildElizaSmsHref()}
+              onClick={() => void handleMessageEliza()}
             >
               <IMessageIcon className="size-5" />
               {t("homepage_eliza.landing.ctaText", {
-                defaultValue: "Text",
+                defaultValue: "Message Eliza",
               })}
-            </a>
+            </button>
             <a
               className="landing-cta landing-cta--white"
               href={`tel:${ELIZA_PHONE_NUMBER}`}
@@ -641,6 +685,15 @@ export default function LandingPage() {
               </a>
             ))}
           </div>
+          {phoneCopyState !== "idle" && (
+            <div
+              className={`landing-copy-notice landing-copy-notice--${phoneCopyState}`}
+              role="status"
+              aria-live="polite"
+            >
+              {phoneCopyLabel}
+            </div>
+          )}
         </div>
         <PhoneMockup />
       </main>

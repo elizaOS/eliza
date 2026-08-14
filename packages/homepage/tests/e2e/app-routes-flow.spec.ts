@@ -3,7 +3,6 @@
  */
 
 import { expect, type Page, test } from "playwright/test";
-import { ELIZA_PHONE_FORMATTED } from "../../src/lib/contact";
 import { waitForLandingIntro } from "./landing-readiness";
 
 const TEST_TOKEN = "homepage-e2e-token";
@@ -319,30 +318,31 @@ test("connected page exercises account menu, copy controls, link-phone form, and
   await page.getByLabel("Phone number").fill("416 555 0123");
   await page.getByRole("button", { name: "Link Phone" }).click();
   await expect(page.getByLabel("Phone number", { exact: true })).toHaveCount(0);
-  await expect(
-    page.getByRole("button", {
-      name: new RegExp(
-        `iMessage ${ELIZA_PHONE_FORMATTED.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`,
-      ),
-    }),
-  ).toBeVisible();
+  await expect(page.getByRole("button", { name: /^iMessage$/ })).toBeVisible();
+  await expect(page.getByText("+1 (808) 788-1821")).toHaveCount(0);
 
   await page.getByRole("button", { name: "Connect Discord" }).click();
   await expect(page).toHaveURL(/\/get-started\?method=discord&link=true/);
 });
 
 test("landing page renders its hero and messaging entrypoints", async ({
+  context,
   page,
 }) => {
+  await context.grantPermissions(["clipboard-write"]);
   await page.goto("/");
 
   await expect(
     page.getByRole("heading", { name: /Four hours of your time back/ }),
   ).toBeVisible({ timeout: 20_000 });
 
-  const textCta = page.getByRole("link", { name: "Text" });
+  const textCta = page.getByRole("button", {
+    name: /^(Text|Message Eliza)$/,
+  });
   await expect(textCta).toBeVisible();
-  await expect(textCta).toHaveAttribute("href", /^sms:\+18087881821/);
+  await textCta.click();
+  await expect(page.getByRole("status")).toHaveText("Phone number copied");
+  await expect(page.getByText("+1 (808) 788-1821")).toHaveCount(0);
   const callCta = page.getByRole("link", { name: "Call" });
   await expect(callCta).toBeVisible();
   await expect(callCta).toHaveAttribute("href", "tel:+18087881821");

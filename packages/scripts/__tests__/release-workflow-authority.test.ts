@@ -15,12 +15,39 @@ describe("release workflow authority", () => {
     const workflowFiles = readdirSync(workflowDirectory).filter((name) =>
       /\.ya?ml$/.test(name),
     );
-    const releaseEntries = workflowFiles.filter((name) =>
-      /^(?:release|publish|update-homebrew|.*-release)\.(?:yml|yaml)$/.test(
-        name,
-      ),
+    const releaseEntries = workflowFiles
+      .filter((name) =>
+        /^(?:release|publish|update-homebrew|.*-release)\.(?:yml|yaml)$/.test(
+          name,
+        ),
+      )
+      .sort();
+    expect(releaseEntries).toEqual(["cloud-cf-release.yml", "release.yaml"]);
+
+    // `cloud-cf-release.yml` shares the name but not the authority: it is the
+    // reusable Cloudflare deployment leg of `cloud-cf-deploy.yml`. It must stay
+    // callable only by that workflow and must never publish packages, or the
+    // repository would have a second release entry point.
+    const cloudRelease = readFileSync(
+      join(workflowDirectory, "cloud-cf-release.yml"),
+      "utf8",
     );
-    expect(releaseEntries).toEqual(["release.yaml"]);
+    const cloudReleaseWorkflow = Bun.YAML.parse(cloudRelease) as {
+      on?: Record<string, unknown>;
+    };
+    expect(Object.keys(cloudReleaseWorkflow.on ?? {})).toEqual([
+      "workflow_call",
+    ]);
+    for (const publication of [
+      "npm publish",
+      "bun publish",
+      "npm dist-tag",
+      "registry.npmjs.org",
+      "release-candidate",
+      "NPM_TOKEN",
+    ]) {
+      expect(cloudRelease).not.toContain(publication);
+    }
 
     const source = readFileSync(
       join(workflowDirectory, "release.yaml"),
