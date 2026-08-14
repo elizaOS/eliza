@@ -34,10 +34,6 @@ const SETTINGS_MOUNTED_DIRS = [
  */
 const BRANDCARD_ALLOWLIST = new Map<string, string>([
   [
-    "cloud/billing/components/pay-as-you-go-card.tsx",
-    "BrandCard wrap around an already-converted SettingsSwitchRow",
-  ],
-  [
     "cloud/billing/components/auto-top-up-card.tsx",
     "billing multi-field editor (switch + amounts + save)",
   ],
