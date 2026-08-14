@@ -1,6 +1,7 @@
 /** Exercises the real forwarding boundary with deterministic network responses. */
 import { afterEach, describe, expect, mock, test } from "bun:test";
 import {
+  __serverRouterTestHooks,
   forwardToServer,
   getCanonicalAgentFallbackBase,
   getCanonicalAgentFallbackTarget,
@@ -13,9 +14,36 @@ const originalFetch = globalThis.fetch;
 
 afterEach(() => {
   globalThis.fetch = originalFetch;
+  __serverRouterTestHooks.resetMessageForwardTimeoutMs();
 });
 
 describe("canonical agent forwarding fallback", () => {
+  test("does not replay a non-idempotent message after its response times out", async () => {
+    __serverRouterTestHooks.setMessageForwardTimeoutMs(10);
+    let requests = 0;
+    globalThis.fetch = mock(
+      async (_input: string | URL | Request, init?: RequestInit) => {
+        requests += 1;
+        return await new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () => {
+            reject(init.signal?.reason);
+          });
+        });
+      },
+    ) as typeof fetch;
+
+    await expect(
+      forwardToServer(
+        "http://slow-agent.example/api",
+        "slow-agent",
+        AGENT_ID,
+        "user-1",
+        "hello once",
+      ),
+    ).rejects.toThrow("Agent forward timed out after 10ms");
+    expect(requests).toBe(1);
+  });
+
   test("derives a configured canonical fallback only for UUID agent ids", () => {
     const env = {
       AGENT_ROUTER_ORIGIN_HOST: "eliza-production-1.eliza.app",
