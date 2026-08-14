@@ -7,7 +7,7 @@ export interface SSEEvent {
 }
 
 export async function* parseSSE(stream: ReadableStream<Uint8Array>): AsyncGenerator<SSEEvent> {
-  const decoder = new TextDecoder();
+  const decoder = new TextDecoder("utf-8", { ignoreBOM: true });
   const reader = stream.getReader();
   let buffer = "";
   let eventName: string | undefined;
@@ -56,10 +56,13 @@ export async function* parseSSE(stream: ReadableStream<Uint8Array>): AsyncGenera
         }
         if (line.startsWith(":")) continue;
 
-        const colon = line.indexOf(":");
-        const field = colon === -1 ? line : line.slice(0, colon);
-        let valueText = colon === -1 ? "" : line.slice(colon + 1);
+        const hasLeadingBom = line.startsWith("\uFEFF");
+        const normalizedLine = hasLeadingBom ? line.slice(1) : line;
+        const colon = normalizedLine.indexOf(":");
+        const field = colon === -1 ? normalizedLine : normalizedLine.slice(0, colon);
+        let valueText = colon === -1 ? "" : normalizedLine.slice(colon + 1);
         if (valueText.startsWith(" ")) valueText = valueText.slice(1);
+        if (hasLeadingBom && field === "data") valueText = `\uFEFF${valueText}`;
 
         if (field === "event") eventName = valueText;
         else if (field === "data") dataLines.push(valueText);
@@ -79,10 +82,13 @@ export async function* parseSSE(stream: ReadableStream<Uint8Array>): AsyncGenera
           const event = emit();
           if (event) yield event;
         } else if (!line.startsWith(":")) {
-          const colon = line.indexOf(":");
-          const field = colon === -1 ? line : line.slice(0, colon);
-          let valueText = colon === -1 ? "" : line.slice(colon + 1);
+          const hasLeadingBom = line.startsWith("\uFEFF");
+          const normalizedLine = hasLeadingBom ? line.slice(1) : line;
+          const colon = normalizedLine.indexOf(":");
+          const field = colon === -1 ? normalizedLine : normalizedLine.slice(0, colon);
+          let valueText = colon === -1 ? "" : normalizedLine.slice(colon + 1);
           if (valueText.startsWith(" ")) valueText = valueText.slice(1);
+          if (hasLeadingBom && field === "data") valueText = `\uFEFF${valueText}`;
           if (field === "event") eventName = valueText;
           else if (field === "data") dataLines.push(valueText);
           else if (field === "id") eventId = valueText;

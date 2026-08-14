@@ -100,6 +100,14 @@ describe("SSE parser", () => {
     expect(events).toEqual([{ data: "first" }]);
   });
 
+  it("preserves a second consecutive leading BOM", async () => {
+    const stream = new Response("\uFEFF\uFEFFdata: first\n\n").body;
+    expect(stream).toBeTruthy();
+    const events = [];
+    for await (const event of parseSSE(stream as ReadableStream<Uint8Array>)) events.push(event);
+    expect(events).toEqual([{ data: "\uFEFFfirst" }]);
+  });
+
   it("preserves later BOM characters as event data", async () => {
     const stream = new Response("data: before\uFEFFafter\n\n").body;
     expect(stream).toBeTruthy();
