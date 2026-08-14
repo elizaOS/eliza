@@ -6,6 +6,7 @@
  * so this module stays decoupled from the full runtime type.
  */
 import { type Content, type Memory, stringToUuid } from "@elizaos/core";
+import { WechatDeliveryError } from "./delivery-error";
 import type { WechatMessageContext } from "./types";
 
 type ResponseCallback = (content: Content) => Promise<Memory[]>;
@@ -65,8 +66,8 @@ export async function deliverIncomingWechatMessage(
       return [];
     }
 
-    replyDelivered = true;
     await options.sendText(options.accountId, replyTarget, replyText);
+    replyDelivered = true;
 
     const replyMemory = buildReplyMemory(
       agentId,
@@ -94,39 +95,49 @@ export async function deliverIncomingWechatMessage(
     worldName: "WeChat",
   });
 
-  if (typeof runtime.elizaOS?.sendMessage === "function") {
-    const result = await runtime.elizaOS.sendMessage(
-      options.runtime,
-      incomingMemory,
-      { onResponse },
+  try {
+    if (typeof runtime.elizaOS?.sendMessage === "function") {
+      const result = await runtime.elizaOS.sendMessage(
+        options.runtime,
+        incomingMemory,
+        { onResponse },
+      );
+      await maybeHandleResponseContent(result, replyDelivered, onResponse);
+      return;
+    }
+
+    if (typeof runtime.messageService?.handleMessage === "function") {
+      const result = await runtime.messageService.handleMessage(
+        options.runtime,
+        incomingMemory,
+        onResponse,
+      );
+      await maybeHandleResponseContent(result, replyDelivered, onResponse);
+      return;
+    }
+
+    if (typeof runtime.emitEvent === "function") {
+      await runtime.emitEvent(["MESSAGE_RECEIVED"], {
+        runtime: options.runtime,
+        message: incomingMemory,
+        callback: onResponse,
+        source: "wechat",
+      });
+      return;
+    }
+
+    runtime.logger?.warn?.(
+      "[wechat] No inbound runtime message pipeline is available",
     );
-    await maybeHandleResponseContent(result, replyDelivered, onResponse);
-    return;
+  } catch (error) {
+    if (replyDelivered) {
+      throw new WechatDeliveryError(
+        "WeChat delivery failed after an outbound reply was committed",
+        { cause: error, sideEffectCommitted: true },
+      );
+    }
+    throw error;
   }
-
-  if (typeof runtime.messageService?.handleMessage === "function") {
-    const result = await runtime.messageService.handleMessage(
-      options.runtime,
-      incomingMemory,
-      onResponse,
-    );
-    await maybeHandleResponseContent(result, replyDelivered, onResponse);
-    return;
-  }
-
-  if (typeof runtime.emitEvent === "function") {
-    await runtime.emitEvent(["MESSAGE_RECEIVED"], {
-      runtime: options.runtime,
-      message: incomingMemory,
-      callback: onResponse,
-      source: "wechat",
-    });
-    return;
-  }
-
-  runtime.logger?.warn?.(
-    "[wechat] No inbound runtime message pipeline is available",
-  );
 }
 
 function buildIncomingMemory(

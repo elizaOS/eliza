@@ -63,6 +63,8 @@ const app = new Hono<AppEnv>();
 // window instead of terminating ordinary first calls before setup completes.
 const MAX_PENDING_MEDIA_FRAMES = 512;
 const DEFAULT_MAX_CALL_SECONDS = 30 * 60;
+const FIRST_CALL_GREETING = "hello? who's this?";
+const RETURNING_CALLER_GREETING = "hey whats up";
 const bootstrapGate = new TwilioBootstrapGate();
 
 const TwilioStreamEventSchema = z.discriminatedUnion("event", [
@@ -275,6 +277,11 @@ app.get("/", async (c) => {
     sendControl(frame) {
       if (frame.t === "interrupted" && streamSid) {
         sendEvent({ event: "clear", streamSid });
+        logger.info("[twilio-media] caller barge-in cleared audio", {
+          streamSid,
+          traceId: frame.traceId,
+          reason: frame.reason,
+        });
       }
       if (frame.t === "error") {
         logger.warn("[twilio-media] voice session error", {
@@ -303,6 +310,13 @@ app.get("/", async (c) => {
         event: "media",
         streamSid,
         media: { payload: encodeTwilioMedia(bytes) },
+      });
+    },
+    clearAudio() {
+      if (!streamSid) return;
+      sendEvent({ event: "clear", streamSid });
+      logger.info("[twilio-media] caller turn-start flushed buffered audio", {
+        streamSid,
       });
     },
     close(code, reason) {
@@ -397,6 +411,9 @@ app.get("/", async (c) => {
       elizaModel: resolveElizaModel(env),
       fetchImpl: elizaFetch,
       prewarmElizaContext: elizaFetch.prewarm,
+      openingGreeting: claims.returningCaller
+        ? RETURNING_CALLER_GREETING
+        : FIRST_CALL_GREETING,
       usageStore,
       usageLimits: resolveVoiceUsageLimits(env),
       isRevoked: (jti) =>

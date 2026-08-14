@@ -31,6 +31,7 @@ import {
   SelectValue,
 } from "../../ui/select";
 import { SettingsSelectTrigger } from "../../ui/settings-controls";
+import { SettingsSelectRow } from "../settings-agent-rows";
 import type {
   AgentSummary,
   InstalledApp,
@@ -76,16 +77,6 @@ export function RoutingTab(props: RoutingTabProps) {
   const [profileId, setProfileId] = useState("");
   const [rulesFilter, setRulesFilter] = useState("");
 
-  const { ref: defaultProfileRef, agentProps: defaultProfileAgentProps } =
-    useAgentElement<HTMLButtonElement>({
-      id: "routing-default-profile",
-      role: "select",
-      label: "Default routing profile",
-      group: "routing",
-      description: "Profile applied when no rule matches",
-      getValue: () => config.defaultProfile ?? "default",
-      onFill: (v) => void onDefaultProfileChange(v),
-    });
   const { ref: addRuleToggleRef, agentProps: addRuleToggleAgentProps } =
     useAgentElement<HTMLButtonElement>({
       id: "routing-add-rule-toggle",
@@ -330,46 +321,23 @@ export function RoutingTab(props: RoutingTabProps) {
 
   return (
     <div data-testid="routing-tab" className="space-y-4">
-      {/* Default profile */}
-      <section className="space-y-2 rounded-sm border border-border/40 bg-card/30 p-3">
-        <div className="flex items-center justify-between gap-2">
-          <div className="min-w-0">
-            <p className="text-sm font-medium text-txt">
-              {t("routing.defaultProfile.title", {
-                defaultValue: "Default profile",
-              })}
-            </p>
-            <p className="text-2xs text-muted">
-              {t("routing.defaultProfile.description", {
-                defaultValue:
-                  'Applied when no rule matches. Falls back to "default".',
-              })}
-            </p>
-          </div>
-          <Select
-            value={config.defaultProfile ?? "default"}
-            onValueChange={(value) => void onDefaultProfileChange(value)}
-            disabled={saving}
-          >
-            <SettingsSelectTrigger
-              ref={defaultProfileRef}
-              {...defaultProfileAgentProps}
-              variant="filter"
-              data-testid="routing-default-profile"
-              className="w-40"
-            >
-              <SelectValue />
-            </SettingsSelectTrigger>
-            <SelectContent>
-              {allProfileIds.map((id) => (
-                <SelectItem key={id} value={id}>
-                  {id}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-      </section>
+      <SettingsSelectRow
+        agentId="routing-default-profile"
+        agentLabel="Default routing profile"
+        group="routing"
+        label={t("routing.defaultProfile.title", {
+          defaultValue: "Default profile",
+        })}
+        description={t("routing.defaultProfile.description", {
+          defaultValue:
+            'Applied when no rule matches. Falls back to "default".',
+        })}
+        value={config.defaultProfile ?? "default"}
+        onValueChange={(value) => void onDefaultProfileChange(value)}
+        disabled={saving}
+        testId="routing-default-profile"
+        options={allProfileIds.map((id) => ({ value: id, label: id }))}
+      />
 
       {/* Rules table */}
       <section className="space-y-2">

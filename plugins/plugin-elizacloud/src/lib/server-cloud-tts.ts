@@ -22,6 +22,7 @@ import {
   ttsDebug,
   ttsDebugTextPreview,
 } from "@elizaos/shared";
+import { warmingRetryWaitSeconds } from "../utils/warming";
 
 export {
   __resetCloudBaseUrlCache,
@@ -238,23 +239,36 @@ export async function handleCloudTtsPreviewRoute(
       // instead of charging the same utterance a second time through this
       // fallback transport.
       const idempotencyKey = req.headers["idempotency-key"];
-      const attempt = await fetch(cloudUrl, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${cloudApiKey}`,
-          "x-api-key": cloudApiKey,
-          "Content-Type": "application/json",
-          Accept: "audio/mpeg",
-          ...(typeof idempotencyKey === "string" && idempotencyKey
-            ? { "Idempotency-Key": idempotencyKey }
-            : {}),
-        },
-        body: JSON.stringify({
-          text,
-          voiceId: cloudVoice,
-          modelId: cloudModel,
-        }),
-      });
+      let attempt: Response;
+      let warmingRetries = 0;
+      for (;;) {
+        attempt = await fetch(cloudUrl, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${cloudApiKey}`,
+            "x-api-key": cloudApiKey,
+            "Content-Type": "application/json",
+            Accept: "audio/mpeg",
+            ...(typeof idempotencyKey === "string" && idempotencyKey
+              ? { "Idempotency-Key": idempotencyKey }
+              : {}),
+          },
+          body: JSON.stringify({
+            text,
+            voiceId: cloudVoice,
+            modelId: cloudModel,
+          }),
+        });
+
+        if (attempt.ok || warmingRetries >= 2) break;
+        const waitSeconds = await warmingRetryWaitSeconds(attempt);
+        if (waitSeconds === null) break;
+        warmingRetries++;
+        logger.warn(
+          `[Cloud TTS] authorization cache warming (503), retry ${warmingRetries}/2 after ${waitSeconds}s`,
+        );
+        await new Promise((resolve) => setTimeout(resolve, waitSeconds * 1000));
+      }
 
       if (attempt.ok) {
         cloudResponse = attempt;
@@ -405,20 +419,32 @@ export async function handleCloudSttRoute(
     for (let i = 0; i < cloudUrls.length; i++) {
       const cloudUrl = cloudUrls[i];
       if (cloudUrl === undefined) continue;
-      const form = new FormData();
-      form.append(
-        "audio",
-        new Blob([new Uint8Array(rawBody)], { type: mime }),
-        filename,
-      );
-      const attempt = await fetch(cloudUrl, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${cloudApiKey}`,
-          "x-api-key": cloudApiKey,
-        },
-        body: form,
-      });
+      let attempt: Response;
+      let warmingRetries = 0;
+      for (;;) {
+        const form = new FormData();
+        form.append(
+          "audio",
+          new Blob([new Uint8Array(rawBody)], { type: mime }),
+          filename,
+        );
+        attempt = await fetch(cloudUrl, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${cloudApiKey}`,
+            "x-api-key": cloudApiKey,
+          },
+          body: form,
+        });
+        if (attempt.ok || warmingRetries >= 2) break;
+        const waitSeconds = await warmingRetryWaitSeconds(attempt);
+        if (waitSeconds === null) break;
+        warmingRetries++;
+        logger.warn(
+          `[Cloud STT] authorization cache warming (503), retry ${warmingRetries}/2 after ${waitSeconds}s`,
+        );
+        await new Promise((resolve) => setTimeout(resolve, waitSeconds * 1000));
+      }
       if (attempt.ok) {
         cloudResponse = attempt;
         break;

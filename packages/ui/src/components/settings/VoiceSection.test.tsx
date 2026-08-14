@@ -40,7 +40,7 @@ describe("VoiceSection", () => {
     expect(screen.getByTestId("voice-section")).toBeTruthy();
     expect(screen.getByTestId("voice-tier-banner")).toBeTruthy();
     expect(screen.getByTestId("voice-section-continuous-row")).toBeTruthy();
-    expect(screen.getByTestId("voice-section-wake-row")).toBeTruthy();
+    expect(screen.getByTestId("voice-section-wake-toggle")).toBeTruthy();
     expect(screen.getByTestId("voice-section-models")).toBeTruthy();
     expect(screen.getByTestId("voice-profile-section")).toBeTruthy();
     // The local-vs-cloud strategy control was removed — per-modality routing
@@ -87,6 +87,29 @@ describe("VoiceSection", () => {
     expect(screen.getByTestId("voice-section-models-empty")).toBeTruthy();
   });
 
+  it("toggles wake word through SettingsSwitchRow", () => {
+    const onWakeWordToggle = vi.fn();
+    render(
+      <VoiceSection
+        {...baseProps}
+        prefs={DEFAULT_VOICE_SECTION_PREFS}
+        onPrefsChange={() => {}}
+        wakeWordEnabled={false}
+        onWakeWordToggle={onWakeWordToggle}
+      />,
+    );
+    const wake = screen.getByTestId("voice-section-wake-toggle");
+    expect(wake.getAttribute("role")).toBe("switch");
+    expect(wake.getAttribute("data-agent-id")).toBe(
+      "voice-section-wake-toggle",
+    );
+    expect(wake.getAttribute("aria-checked")).toBe("false");
+    expect(wake.getAttribute("aria-label")).toBeNull();
+    expect(screen.getByLabelText("Wake word")).toBe(wake);
+    fireEvent.click(wake);
+    expect(onWakeWordToggle).toHaveBeenCalledWith(true);
+  });
+
   it("propagates continuous-mode changes", () => {
     const onPrefsChange = vi.fn();
     render(
@@ -114,14 +137,13 @@ describe("VoiceSection", () => {
         onPrefsChange={onPrefsChange}
       />,
     );
-    const voice = screen.getByTestId(
-      "voice-section-intent-autostart-voice",
-    ) as HTMLInputElement;
+    const voice = screen.getByTestId("voice-section-intent-autostart-voice");
     const transcription = screen.getByTestId(
       "voice-section-intent-autostart-transcription",
-    ) as HTMLInputElement;
-    expect(voice.checked).toBe(false);
-    expect(transcription.checked).toBe(false);
+    );
+    expect(voice.getAttribute("role")).toBe("switch");
+    expect(voice.getAttribute("aria-checked")).toBe("false");
+    expect(transcription.getAttribute("aria-checked")).toBe("false");
 
     fireEvent.click(voice);
     expect(onPrefsChange).toHaveBeenLastCalledWith({

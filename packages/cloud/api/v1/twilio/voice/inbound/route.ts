@@ -4,9 +4,10 @@
  */
 
 import { randomUUID } from "node:crypto";
+import { and, eq } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
-import { dbWrite } from "@/db/helpers";
+import { dbRead, dbWrite } from "@/db/helpers";
 import { twilioInboundCalls } from "@/db/schemas";
 import { ObjectNamespaces } from "@/lib/storage/object-namespace";
 import { offloadJsonField } from "@/lib/storage/object-store";
@@ -15,6 +16,7 @@ import { normalizePhoneNumber } from "@/lib/utils/phone-normalization";
 import { verifyTwilioSignature } from "@/lib/utils/twilio-api";
 import { recordVoiceSessionJti } from "@/lib/voice-session/jwt";
 import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
+import { scheduleTwilioVoiceScopePrewarm } from "../lib/prewarm-voice-scope";
 import { resolveTwilioVoiceTarget } from "../lib/resolve-voice-target";
 import { mintTwilioStreamToken } from "../lib/twilio-stream-token";
 import {
@@ -113,6 +115,38 @@ app.post("/", async (c) => {
   }
 
   const id = randomUUID();
+  const conversationId = randomUUID();
+  try {
+    scheduleTwilioVoiceScopePrewarm({
+      agent: phoneNumber.agent,
+      env: c.env,
+      executionCtx: c.executionCtx,
+      claims: {
+        agentId: phoneNumber.agentId,
+        conversationId,
+        organizationId: phoneNumber.organizationId,
+        userId: phoneNumber.userId,
+      },
+    });
+  } catch (error) {
+    // error-policy:J7 local/test contexts can omit a Worker execution context;
+    // the media session remains the authoritative cold-hydration boundary.
+    logger.warn("[twilio-voice-inbound] early scope prewarm unavailable", {
+      agentId: phoneNumber.agentId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+  const [priorCall] = await dbRead
+    .select({ id: twilioInboundCalls.id })
+    .from(twilioInboundCalls)
+    .where(
+      and(
+        eq(twilioInboundCalls.from_number, normalizedFrom),
+        eq(twilioInboundCalls.to_number, normalizedTo),
+        eq(twilioInboundCalls.agent_id, phoneNumber.agentId),
+      ),
+    )
+    .limit(1);
   const rawPayload = await offloadJsonField<Record<string, string>>({
     namespace: ObjectNamespaces.TwilioInboundPayloads,
     organizationId: phoneNumber?.organizationId ?? "twilio",
@@ -145,7 +179,6 @@ app.post("/", async (c) => {
     agentId: phoneNumber?.agentId,
   });
 
-  const conversationId = randomUUID();
   const minted = await mintTwilioStreamToken(
     {
       accountSid: event.AccountSid,
@@ -155,6 +188,7 @@ app.post("/", async (c) => {
       agentId: phoneNumber.agentId,
       conversationId,
       calledNumber: normalizedTo,
+      returningCaller: Boolean(priorCall),
     },
     authToken,
   );
@@ -173,7 +207,6 @@ app.post("/", async (c) => {
       streamUrl: publicUrl.toString(),
       sessionId: minted.claims.sessionId,
       token: minted.token,
-      greeting: "Hi, you're connected to Eliza.",
     }),
     {
       headers: { "Content-Type": "text/xml" },

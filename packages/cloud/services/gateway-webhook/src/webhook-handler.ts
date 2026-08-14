@@ -16,26 +16,25 @@ import {
   resolveIdentity,
 } from "./server-router";
 import { resolveWebhookConfig } from "./webhook-config";
-import {
-  type ClaimedWebhookDelivery,
-  claimDueWebhookDeliveries,
-  claimWebhookDelivery,
-  completeWebhookDelivery,
-  enqueueWebhookDelivery,
-  markWebhookSideEffectStarted,
-  rescheduleWebhookDelivery,
-  WEBHOOK_SIDE_EFFECT_STARTED,
-} from "./webhook-outbox";
 
-const PROCESSING_TTL_SECONDS = 60;
+const DEDUP_TTL_SECONDS = 300;
+// Must outlive the 75s non-idempotent message-forward budget plus Telegram
+// egress. Otherwise a provider retry can reclaim the update while the first
+// worker is still generating and execute the same user turn twice.
+const PROCESSING_TTL_SECONDS = 120;
 const PERSONAL_SHARED_ATTEMPTS = 3;
-const DELIVERY_RECOVERY_BATCH_SIZE = 20;
+const PERSONAL_SHARED_RETRY_DELAY_CAP_MS = 5_000;
 const TELEGRAM_DELIVERY_TTL_SECONDS = 30 * 24 * 60 * 60;
 const TELEGRAM_EGRESS_STARTED = "egress_started";
 const TELEGRAM_DELIVERED = "delivered";
+const TELEGRAM_TYPING_REFRESH_MS = 4_000;
 
 class TelegramEgressAlreadyClaimedError extends Error {
   override readonly name = "TelegramEgressAlreadyClaimedError";
+}
+
+class PersonalSharedPreEgressError extends Error {
+  override readonly name = "PersonalSharedPreEgressError";
 }
 
 interface HandlerDeps {
@@ -43,11 +42,6 @@ interface HandlerDeps {
   cloudBaseUrl: string;
   getAuthHeader: () => { Authorization: string };
   reacquireAuthHeader?: () => Promise<Record<string, string>>;
-}
-
-interface DeliveryLifecycle {
-  beforeRuntimeDispatch?: () => Promise<void>;
-  beforeProviderEgress?: () => Promise<void>;
 }
 
 export async function handleWebhook(
@@ -131,16 +125,6 @@ export async function handleWebhook(
         },
       );
     }
-    if (priorDeliveryState === WEBHOOK_SIDE_EFFECT_STARTED) {
-      logger.error(
-        "Webhook delivery outcome is uncertain; refusing automatic replay",
-        {
-          platform: adapter.platform,
-          messageId: event.messageId,
-          dedupKey,
-        },
-      );
-    }
     logger.debug("Duplicate webhook skipped", {
       platform: adapter.platform,
       messageId: event.messageId,
@@ -164,8 +148,14 @@ export async function handleWebhook(
 
     let egressStarted = false;
     try {
-      await processMessage(adapter, config, event, deps, project, agentId, {
-        beforeProviderEgress: async () => {
+      await processMessage(
+        adapter,
+        config,
+        event,
+        deps,
+        project,
+        agentId,
+        async () => {
           // Write the no-replay barrier before the Bot API call. A crash or
           // ambiguous network failure after this point must fail visibly on a
           // Telegram retry instead of sending the same response twice.
@@ -184,7 +174,7 @@ export async function handleWebhook(
           }
           egressStarted = true;
         },
-      });
+      );
       await redis.set(dedupKey, TELEGRAM_DELIVERED, {
         ex: TELEGRAM_DELIVERY_TTL_SECONDS,
       });
@@ -209,14 +199,11 @@ export async function handleWebhook(
     }
   }
 
-  const queued = await enqueueWebhookDelivery(redis, {
-    dedupKey,
-    platform: adapter.platform,
-    project,
-    agentId,
-    event,
+  const isNew = await redis.set(dedupKey, "1", {
+    nx: true,
+    ex: DEDUP_TTL_SECONDS,
   });
-  if (!queued) {
+  if (!isNew) {
     logger.debug("Duplicate webhook skipped", {
       platform: adapter.platform,
       messageId: event.messageId,
@@ -225,108 +212,39 @@ export async function handleWebhook(
     return ackResponse(adapter.platform);
   }
 
-  // The verified message and its dedupe ownership are durable before this ACK.
-  // The immediate worker is only a latency optimization; a process restart can
-  // reclaim the same queued job after its lease expires.
-  claimWebhookDelivery(redis, queued.jobKey, crypto.randomUUID())
-    .then(async (delivery) => {
-      if (delivery) {
-        await processClaimedWebhookDelivery(delivery, adapter, deps, config);
-      }
-    })
-    .catch((error) => {
-      // error-policy:J7 The durable queue remains the recovery authority when
-      // this latency-path worker fails before or during claim processing.
-      logger.error("Immediate webhook delivery worker failed", {
-        error: error instanceof Error ? error.message : String(error),
+  // ── Async phase: identity → forward → reply (runs in background) ──
+
+  processMessage(adapter, config, event, deps, project, agentId).catch(
+    async (err) => {
+      logger.error("Background message processing failed", {
+        error: err instanceof Error ? err.message : String(err),
         project,
         platform: adapter.platform,
         messageId: event.messageId,
       });
-    });
+      if (err instanceof PersonalSharedPreEgressError) {
+        try {
+          // The Shared endpoint is idempotent and provider egress has not
+          // started, so reopening lets the messaging provider retry safely.
+          await redis.del(dedupKey);
+        } catch (cleanupError) {
+          // error-policy:J7 The original delivery failure is already observed;
+          // cleanup diagnostics must not create another unhandled rejection.
+          logger.error("Failed to reopen personal Shared webhook delivery", {
+            error:
+              cleanupError instanceof Error
+                ? cleanupError.message
+                : String(cleanupError),
+            project,
+            platform: adapter.platform,
+            messageId: event.messageId,
+          });
+        }
+      }
+    },
+  );
 
   return ackResponse(adapter.platform);
-}
-
-async function processClaimedWebhookDelivery(
-  delivery: ClaimedWebhookDelivery,
-  adapter: PlatformAdapter,
-  deps: HandlerDeps,
-  knownConfig?: WebhookConfig,
-): Promise<void> {
-  let sideEffectStarted = false;
-  try {
-    const config =
-      knownConfig ??
-      (await resolveWebhookConfig(
-        deps.redis,
-        deps.cloudBaseUrl,
-        deps.getAuthHeader(),
-        delivery.job.platform,
-        delivery.job.project,
-        delivery.job.agentId,
-        deps.reacquireAuthHeader ?? reacquireAuthHeader,
-      ));
-    if (!config) {
-      throw new Error("Webhook configuration is unavailable during recovery");
-    }
-
-    const startSideEffect = async (
-      sideEffect: "runtime_dispatch" | "provider_egress",
-    ) => {
-      await markWebhookSideEffectStarted(deps.redis, delivery, sideEffect);
-      sideEffectStarted = true;
-    };
-    await processMessage(
-      adapter,
-      config,
-      delivery.job.event,
-      deps,
-      delivery.job.project,
-      delivery.job.agentId,
-      {
-        beforeRuntimeDispatch: () => startSideEffect("runtime_dispatch"),
-        beforeProviderEgress: () => startSideEffect("provider_egress"),
-      },
-    );
-    await completeWebhookDelivery(deps.redis, delivery);
-  } catch (error) {
-    logger.error("Durable webhook delivery failed", {
-      error: error instanceof Error ? error.message : String(error),
-      project: delivery.job.project,
-      platform: delivery.job.platform,
-      messageId: delivery.job.event.messageId,
-      sideEffectStarted,
-      sideEffect: delivery.job.sideEffect,
-    });
-    if (sideEffectStarted) {
-      // error-policy:J1 A runtime/provider call has an ambiguous outcome. The
-      // durable no-replay state is intentionally retained for operator repair.
-      return;
-    }
-    await rescheduleWebhookDelivery(deps.redis, delivery, error);
-  }
-}
-
-export async function recoverQueuedWebhookDeliveries(
-  adapters: Record<Platform, PlatformAdapter>,
-  deps: HandlerDeps,
-): Promise<number> {
-  const deliveries = await claimDueWebhookDeliveries(
-    deps.redis,
-    crypto.randomUUID(),
-    DELIVERY_RECOVERY_BATCH_SIZE,
-  );
-  await Promise.all(
-    deliveries.map((delivery) =>
-      processClaimedWebhookDelivery(
-        delivery,
-        adapters[delivery.job.platform],
-        deps,
-      ),
-    ),
-  );
-  return deliveries.length;
 }
 
 function buildWebhookDedupeKey(
@@ -349,11 +267,41 @@ async function processMessage(
   deps: HandlerDeps,
   project: string,
   explicitAgentId?: string,
-  lifecycle: DeliveryLifecycle = {},
+  beforeEgress?: () => Promise<void>,
 ): Promise<void> {
+  const startedAt = Date.now();
+  let stageStartedAt = startedAt;
   const { redis, cloudBaseUrl, getAuthHeader } = deps;
   const reauth = deps.reacquireAuthHeader ?? reacquireAuthHeader;
   const authHeader = getAuthHeader();
+
+  // The public eliza.app phone/Telegram endpoints are account transports, not
+  // arbitrary agent webhooks. Always converge them through the same internal
+  // personal route, including after Dedicated cutover. Direct agent-server
+  // forwarding used `userId` as its room and forked connector turns away from
+  // the imported `personal:*` conversation.
+  if (!explicitAgentId && isPersonalElizaTransport(adapter.platform)) {
+    const stopTyping = beginTypingFeedback(adapter, config, event);
+    try {
+      await sendPersonalSharedReply(
+        adapter,
+        config,
+        event,
+        deps,
+        project,
+        beforeEgress,
+      );
+      logger.info("Personal Eliza connector message completed", {
+        project,
+        platform: adapter.platform,
+        messageId: event.messageId,
+        totalMs: Date.now() - startedAt,
+      });
+    } finally {
+      stopTyping();
+    }
+    return;
+  }
 
   const identity = await resolveIdentity(
     redis,
@@ -364,41 +312,55 @@ async function processMessage(
     event.senderName,
     reauth,
   );
+  const identityMs = Date.now() - stageStartedAt;
+  stageStartedAt = Date.now();
 
   if (!identity) {
-    logger.info("Identity not linked; routing message to personal chat", {
-      project,
-      platform: adapter.platform,
-      senderId: event.senderId,
-    });
+    logger.info(
+      "Identity not linked; routing message to the account entry service",
+      {
+        project,
+        platform: adapter.platform,
+        senderId: event.senderId,
+      },
+    );
     await sendUnlinkedReply(
       adapter,
       config,
       event,
       deps,
-      lifecycle.beforeProviderEgress,
+      project,
+      beforeEgress,
     );
     return;
   }
 
-  // A per-agent webhook URL names the agent to serve, so among linked senders
-  // it keeps precedence over their account-native personal Eliza. Diverting a
-  // linked sender onto Shared here would answer from the wrong identity on
-  // somebody else's bot.
+  // A per-agent webhook URL names the agent to serve, so among senders who
+  // reach this point it keeps precedence over whatever they happen to own —
+  // diverting a sender with a cloud account but no sandbox onto personal
+  // onboarding would run that flow on somebody else's bot. (A sender with no
+  // account at all is already onboarded by the branch above, per-agent URL or
+  // not; that predates this routing and is unchanged here.)
   //
   // On the shared webhook the decision is "is there an agent that can actually
   // serve this message", which needs both the sandbox row AND its registry key:
-  // the row appears the moment Dedicated provisioning starts, but the key only
-  // once a container has booted. Until then the shared webhook must keep using
-  // the personal Shared identity so activation never creates a chat blackout.
-  // Never branch on `sandbox.status`: the registry is the serving authority.
+  // the row appears the moment provisioning starts, the key only once a
+  // container has booted. Branching on the row alone would answer the first
+  // message and then go silent again for every message until boot — for good,
+  // if provisioning ends in error. Never branch on `sandbox.status`: a stopped
+  // agent is still a resolved agent, and re-onboarding one would provision a
+  // duplicate (the single guard against that is the early return on an
+  // existing sandbox in ensureElizaAppProvisioning).
   //
-  // `unreachable` is deliberately not rerouted: that agent previously served
-  // traffic, so falling back would split one conversation across two runtimes.
+  // `unreachable` is deliberately NOT onboarding: that is an established agent
+  // whose pod stopped heartbeating, and the onboarding state machine would tell
+  // its owner "you're live" while the message goes nowhere, then copy the
+  // transcript into the agent's memory a second time.
   const agentId = explicitAgentId ?? identity.agentId;
   const server = agentId
     ? await resolveAgentServer(redis, agentId)
     : ({ kind: "unregistered" } as const);
+  const routingMs = Date.now() - stageStartedAt;
 
   if (!agentId || server.kind !== "ready") {
     if (explicitAgentId || server.kind === "unreachable") {
@@ -410,7 +372,7 @@ async function processMessage(
       return;
     }
     logger.info(
-      "Sender has no running agent; routing message to personal chat",
+      "Sender has no running agent; routing message to the account entry service",
       {
         project,
         platform: adapter.platform,
@@ -423,17 +385,13 @@ async function processMessage(
       config,
       event,
       deps,
-      lifecycle.beforeProviderEgress,
+      project,
+      beforeEgress,
     );
     return;
   }
 
-  adapter.sendTypingIndicator(config, event).catch((err) => {
-    logger.debug("sendTypingIndicator failed", {
-      platform: adapter.platform,
-      error: err instanceof Error ? err.message : String(err),
-    });
-  });
+  const stopTyping = beginTypingFeedback(adapter, config, event);
   refreshKedaActivity(redis, server.serverName).catch((err) => {
     logger.warn("refreshKedaActivity failed", {
       serverName: server.serverName,
@@ -442,8 +400,8 @@ async function processMessage(
   });
 
   let responseText: string;
+  stageStartedAt = Date.now();
   try {
-    await lifecycle.beforeRuntimeDispatch?.();
     responseText = await forwardToServer(
       server.serverUrl,
       server.serverName,
@@ -467,7 +425,10 @@ async function processMessage(
       agentId,
     });
     throw err;
+  } finally {
+    stopTyping();
   }
+  const forwardMs = Date.now() - stageStartedAt;
 
   // An empty responseText is a deliberate no-response from the agent (mute /
   // shouldRespond=no), not content: forwarding it would make platform adapters
@@ -484,8 +445,20 @@ async function processMessage(
   }
 
   try {
-    await lifecycle.beforeProviderEgress?.();
+    stageStartedAt = Date.now();
+    await beforeEgress?.();
     await adapter.sendReply(config, event, responseText);
+    logger.info("Connector message completed", {
+      project,
+      platform: adapter.platform,
+      agentId,
+      messageId: event.messageId,
+      identityMs,
+      routingMs,
+      forwardMs,
+      egressMs: Date.now() - stageStartedAt,
+      totalMs: Date.now() - startedAt,
+    });
   } catch (err) {
     logger.error("Failed to send reply", {
       error: err instanceof Error ? err.message : String(err),
@@ -495,24 +468,94 @@ async function processMessage(
   }
 }
 
+/**
+ * Telegram expires a `typing` action after roughly five seconds. Refresh it
+ * while the agent turn is in flight so a slow but healthy response never looks
+ * like a dead bot. The loop is presentation-only and never enters the egress
+ * dedupe boundary.
+ */
+export function startTypingRefreshLoop(
+  adapter: PlatformAdapter,
+  config: WebhookConfig,
+  event: ChatEvent,
+  intervalMs = TELEGRAM_TYPING_REFRESH_MS,
+): () => void {
+  let stopped = false;
+  let sending = false;
+
+  const send = async (): Promise<void> => {
+    if (stopped || sending) return;
+    sending = true;
+    try {
+      await adapter.sendTypingIndicator(config, event);
+    } catch (err) {
+      logger.debug("sendTypingIndicator failed", {
+        platform: adapter.platform,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    } finally {
+      sending = false;
+    }
+  };
+
+  void send();
+  const timer = setInterval(() => void send(), intervalMs);
+  timer.unref?.();
+  return () => {
+    stopped = true;
+    clearInterval(timer);
+  };
+}
+
+function isPersonalElizaTransport(
+  platform: Platform,
+): platform is "telegram" | "twilio" | "blooio" {
+  return (
+    platform === "telegram" || platform === "twilio" || platform === "blooio"
+  );
+}
+
+function beginTypingFeedback(
+  adapter: PlatformAdapter,
+  config: WebhookConfig,
+  event: ChatEvent,
+): () => void {
+  if (adapter.platform === "telegram") {
+    return startTypingRefreshLoop(adapter, config, event);
+  }
+  adapter.sendTypingIndicator(config, event).catch((err) => {
+    logger.debug("sendTypingIndicator failed", {
+      platform: adapter.platform,
+      error: err instanceof Error ? err.message : String(err),
+    });
+  });
+  return () => undefined;
+}
+
 async function sendUnlinkedReply(
   adapter: PlatformAdapter,
   config: WebhookConfig,
   event: ChatEvent,
   deps: HandlerDeps,
-  beforeProviderEgress?: () => Promise<void>,
+  project: string,
+  beforeEgress?: () => Promise<void>,
 ): Promise<void> {
-  if (adapter.platform === "twilio" || adapter.platform === "blooio") {
+  if (
+    adapter.platform === "telegram" ||
+    adapter.platform === "twilio" ||
+    adapter.platform === "blooio"
+  ) {
     await sendPersonalSharedReply(
       adapter,
       config,
       event,
       deps,
-      beforeProviderEgress,
+      project,
+      beforeEgress,
     );
     return;
   }
-  await sendOnboardingReply(adapter, config, event, deps, beforeProviderEgress);
+  await sendOnboardingReply(adapter, config, event, deps, beforeEgress);
 }
 
 async function sendPersonalSharedReply(
@@ -520,24 +563,31 @@ async function sendPersonalSharedReply(
   config: WebhookConfig,
   event: ChatEvent,
   deps: HandlerDeps,
-  beforeProviderEgress?: () => Promise<void>,
+  project: string,
+  beforeEgress?: () => Promise<void>,
 ): Promise<void> {
   const { cloudBaseUrl, getAuthHeader } = deps;
   const reauth = deps.reacquireAuthHeader ?? reacquireAuthHeader;
-
   const postMessage = (authHeader: Record<string, string>) =>
     fetch(`${cloudBaseUrl}/api/internal/eliza-app/personal-shared/messages`, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        ...authHeader,
-      },
-      body: JSON.stringify({
-        platform: adapter.platform,
-        phoneNumber: event.senderId,
-        messageId: event.messageId,
-        message: event.text,
-      }),
+      headers: { "Content-Type": "application/json", ...authHeader },
+      body: JSON.stringify(
+        adapter.platform === "telegram"
+          ? {
+              platform: "telegram",
+              telegramUserId: event.senderId,
+              displayName: event.senderName,
+              messageId: `telegram:${project}:${event.messageId}`,
+              message: event.text,
+            }
+          : {
+              platform: adapter.platform,
+              phoneNumber: event.senderId,
+              messageId: `${adapter.platform}:${project}:${event.messageId}`,
+              message: event.text,
+            },
+      ),
       signal: AbortSignal.timeout(30_000),
     });
 
@@ -564,11 +614,21 @@ async function sendPersonalSharedReply(
       lastTransportError = error;
       if (attempt === PERSONAL_SHARED_ATTEMPTS) break;
     }
-    await new Promise((resolve) => setTimeout(resolve, 200 * attempt));
+    const retryAfterSeconds = Number.parseInt(
+      response?.headers.get("Retry-After") ?? "",
+      10,
+    );
+    const retryDelayMs = Number.isFinite(retryAfterSeconds)
+      ? Math.min(
+          Math.max(retryAfterSeconds, 0) * 1_000,
+          PERSONAL_SHARED_RETRY_DELAY_CAP_MS,
+        )
+      : 200 * attempt;
+    await new Promise((resolve) => setTimeout(resolve, retryDelayMs));
   }
   if (!response) {
-    throw new Error(
-      `personal shared chat transport failed: ${lastTransportError instanceof Error ? lastTransportError.message : String(lastTransportError)}`,
+    throw new PersonalSharedPreEgressError(
+      `personal Shared chat transport failed: ${lastTransportError instanceof Error ? lastTransportError.message : String(lastTransportError)}`,
       { cause: lastTransportError },
     );
   }
@@ -577,24 +637,27 @@ async function sendPersonalSharedReply(
     try {
       diagnostics = (await response.text()).slice(0, 200);
     } catch (error) {
-      // error-policy:J1 The HTTP status is authoritative at this delivery
-      // boundary; preserve a failed optional body read in its diagnostic.
+      // error-policy:J1 preserve a failed optional diagnostic body read.
       diagnostics = `unable to read response body: ${error instanceof Error ? error.message : String(error)}`;
     }
-    throw new Error(
-      `personal shared chat failed (${response.status}) ${diagnostics}`,
+    throw new PersonalSharedPreEgressError(
+      `personal Shared chat failed (${response.status}) ${diagnostics}`,
     );
   }
-
   const body: unknown = await response.json();
   const reply =
     body && typeof body === "object" && "data" in body
       ? (body.data as { reply?: unknown } | null)?.reply
       : undefined;
-  if (typeof reply !== "string" || reply.trim().length === 0) {
-    throw new Error("personal shared chat returned no reply");
+  if (typeof reply !== "string") {
+    throw new PersonalSharedPreEgressError(
+      "personal Shared chat returned no reply",
+    );
   }
-  await beforeProviderEgress?.();
+  // Empty is the agent's deliberate shouldRespond=no result. It is a
+  // successful turn with no provider egress, not a malformed response.
+  if (reply.length === 0) return;
+  await beforeEgress?.();
   await adapter.sendReply(config, event, reply);
 }
 
@@ -603,7 +666,7 @@ async function sendOnboardingReply(
   config: WebhookConfig,
   event: ChatEvent,
   deps: HandlerDeps,
-  beforeProviderEgress?: () => Promise<void>,
+  beforeEgress?: () => Promise<void>,
 ): Promise<void> {
   const { cloudBaseUrl, getAuthHeader } = deps;
   const reauth = deps.reacquireAuthHeader ?? reacquireAuthHeader;
@@ -667,7 +730,7 @@ async function sendOnboardingReply(
   if (typeof reply !== "string" || reply.trim().length === 0) {
     throw new Error("onboarding chat returned no reply");
   }
-  await beforeProviderEgress?.();
+  await beforeEgress?.();
   await adapter.sendReply(config, event, reply);
 }
 

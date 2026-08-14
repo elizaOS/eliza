@@ -1,17 +1,12 @@
-/**
- * Resolves explicit requests for stateful or device-owning features that the
- * container-free Shared runtime cannot perform. Precision-first matching keeps
- * ordinary discussion and code generation in chat while execution requests
- * receive a truthful Dedicated boundary before any model can hallucinate one.
- */
+/** Keeps Shared honest when a request requires stateful tools or device control. */
 
 export type SharedDedicatedCapability =
-  | "notes"
   | "calendar"
   | "reminders"
   | "bookings"
   | "communications"
   | "purchases"
+  | "notes"
   | "cloud-apps"
   | "coding-runtime"
   | "shell"
@@ -27,19 +22,14 @@ export interface SharedCapabilityWall {
 const NON_EXECUTION_CONTEXT =
   /^(?:please\s+)?(?:(?:can|could|would)\s+you\s+)?(?:do\s+not|don't|dont|never|explain|describe|define|translate|teach\s+me|tell\s+me\s+how|show\s+me\s+how|how\s+(?:do|would|can|to)|what\s+(?:is|are|would|happens?)|why\s+(?:do|would|can|is|are)|if\s+(?:i|we|you)|before\s+you)\b/i;
 
-const RULES: ReadonlyArray<{
-  capability: SharedDedicatedCapability;
-  label: string;
-  pattern: RegExp;
-  reply: string;
-}> = [
+const RULES: ReadonlyArray<SharedCapabilityWall & { pattern: RegExp }> = [
   {
     capability: "reminders",
     label: "Reminders",
     pattern:
       /\b(?:remind\s+me|(?:set|create|add|schedule|cancel|delete|change|list|show)\b[\s\S]{0,36}\breminders?)\b/i,
     reply:
-      "Reminders require Dedicated. Shared chat and conversation memory remain available; activate Dedicated when you want Eliza to schedule and deliver reminders.",
+      "Reminders need Dedicated. I can still help you plan it here, but Shared can't schedule or deliver reminders.",
   },
   {
     capability: "calendar",
@@ -47,15 +37,15 @@ const RULES: ReadonlyArray<{
     pattern:
       /\b(?:add|create|book|schedule|cancel|delete|move|reschedule|check|show|list|open)\b[\s\S]{0,36}\b(?:calendar|events?|appointments?|meetings?)\b/i,
     reply:
-      "Calendar actions require Dedicated. Shared chat remains available; activate Dedicated when you want Eliza to read or change your calendar.",
+      "Calendar actions need Dedicated. I can help plan the event here, but Shared can't read or change your calendar.",
   },
   {
     capability: "bookings",
     label: "Bookings",
     pattern:
-      /\b(?:(?:can|could|would|will)\s+you\s+)?(?:(?:book|reserve)\b[\s\S]{0,48}\b(?:flights?|tables?|restaurants?|reservations?|hotels?|rooms?|tickets?|dinner|lunch|appointments?)|make\b[\s\S]{0,36}\b(?:reservations?|bookings?))\b/i,
+      /\b(?:(?:can|could|would|will)\s+you\s+)?(?:(?:book|reserve)\s+(?:it|that|this)|(?:book|reserve)\b[\s\S]{0,48}\b(?:flights?|tables?|restaurants?|reservations?|hotels?|rooms?|tickets?|dinner|lunch|appointments?)|make\b[\s\S]{0,36}\b(?:reservations?|bookings?))\b/i,
     reply:
-      "Bookings require Dedicated. Shared can research and help you choose, but it cannot reserve a table, flight, hotel, appointment, or ticket.",
+      "Bookings need Dedicated. I can research options and help you choose, but Shared can't make the reservation or purchase.",
   },
   {
     capability: "communications",
@@ -63,7 +53,7 @@ const RULES: ReadonlyArray<{
     pattern:
       /\b(?:(?:can|could|would|will)\s+you\s+)?(?:(?:email|call|text|message|dm)\b(?!\s+(?:this|the|a|an)\s+(?:\w+\s+){0,2}(?:function|method|api|endpoint|class|variable|command)\b)|send\b[\s\S]{0,32}\b(?:email|text|message|dm)\b)/i,
     reply:
-      "Calling or messaging people requires Dedicated. Shared can draft what you want to say, but it cannot send email, texts, DMs, or place calls.",
+      "Calling or messaging people needs Dedicated. I can draft it here, but Shared can't send email, texts, DMs, or place calls.",
   },
   {
     capability: "purchases",
@@ -71,7 +61,7 @@ const RULES: ReadonlyArray<{
     pattern:
       /\b(?:(?:can|could|would|will)\s+you\s+)?(?:order|buy|purchase)\b[\s\S]{0,48}\b(?:food|groceries|meal|dinner|lunch|breakfast|item|product|gift|flowers|bottle|coffee|pizza|tickets?)\b/i,
     reply:
-      "Purchases require Dedicated. Shared can compare options and help you decide, but it cannot place an order or buy anything.",
+      "Purchases need Dedicated. I can compare options here, but Shared can't place an order or buy anything.",
   },
   {
     capability: "notes",
@@ -79,15 +69,14 @@ const RULES: ReadonlyArray<{
     pattern:
       /\b(?:create|save|add|store|write|read|show|list|open|delete|remove|update|edit)\b[\s\S]{0,28}\bnotes?\b/i,
     reply:
-      "Persistent notes require Dedicated. Shared can discuss and remember this conversation, but it cannot create or manage a notes store.",
+      "Persistent notes need Dedicated. I can remember this conversation, but Shared doesn't manage a separate notes store.",
   },
   {
     capability: "cloud-apps",
     label: "Cloud apps",
     pattern:
       /\b(?:connect|open|read|send|search|manage|update|upload|download)\b[\s\S]{0,36}\b(?:gmail|google\s+drive|google\s+docs?|slack|notion|dropbox|microsoft\s+365|outlook)\b/i,
-    reply:
-      "Connected cloud apps require Dedicated. Shared chat remains available; activate Dedicated before Eliza can access or act inside external accounts.",
+    reply: "Connected apps need Dedicated. Shared can't access or act inside external accounts.",
   },
   {
     capability: "shell",
@@ -95,7 +84,7 @@ const RULES: ReadonlyArray<{
     pattern:
       /\b(?:run|execute|start)\b[\s\S]{0,20}\b(?:a\s+)?(?:shell|terminal|command|script|npm|bun|git|docker)\b/i,
     reply:
-      "Running commands requires Dedicated. Shared can help reason about commands in chat, but it has no shell or execution environment.",
+      "Running commands needs Dedicated. I can reason about commands here, but Shared has no shell.",
   },
   {
     capability: "filesystem",
@@ -103,15 +92,14 @@ const RULES: ReadonlyArray<{
     pattern:
       /\b(?:read|open|edit|write|create|delete|remove|move|rename|upload|download|search)\b[\s\S]{0,28}\b(?:files?|folders?|directories|workspace|path)\b/i,
     reply:
-      "File access requires Dedicated. Shared can work with text you provide in chat, but it cannot read or change a filesystem.",
+      "File access needs Dedicated. Shared can use text you paste here, but it can't read or change a filesystem.",
   },
   {
     capability: "browser-control",
     label: "Browser control",
     pattern:
       /\b(?:open|navigate|visit|click|fill|submit|scroll|control|log\s*in)\b[\s\S]{0,32}\b(?:browser|website|webpage|page|tab|form)\b/i,
-    reply:
-      "Browser control requires Dedicated. Shared chat remains available, but it cannot operate websites or a browser session.",
+    reply: "Browser control needs Dedicated. Shared can't operate websites or a browser session.",
   },
   {
     capability: "coding-runtime",
@@ -119,7 +107,7 @@ const RULES: ReadonlyArray<{
     pattern:
       /\b(?:run|execute|test|build|compile|deploy|debug|fix|refactor)\b[\s\S]{0,36}\b(?:repository|repo|codebase|project|workspace|tests?|build)\b/i,
     reply:
-      "A coding workspace requires Dedicated. Shared can write and explain code in chat, but it cannot execute, test, or edit a repository.",
+      "A coding workspace needs Dedicated. I can write and explain code here, but Shared can't execute or edit a repository.",
   },
 ];
 
@@ -128,38 +116,21 @@ export function resolveSharedCapabilityWall(
 ): SharedCapabilityWall | null {
   const text = (message ?? "").trim();
   if (!text || NON_EXECUTION_CONTEXT.test(text)) return null;
-  const rule = RULES.find((candidate) => candidate.pattern.test(text));
-  return rule
-    ? {
-        capability: rule.capability,
-        label: rule.label,
-        reply: rule.reply,
-      }
-    : null;
+  const match = RULES.find((rule) => rule.pattern.test(text));
+  return match ? { capability: match.capability, label: match.label, reply: match.reply } : null;
 }
 
-export function capabilityWallActionResult(wall: SharedCapabilityWall): {
-  actionName: "DEDICATED_CAPABILITY_REQUIRED";
-  success: false;
-  text: string;
-  values: {
-    capability: SharedDedicatedCapability;
-    currentExecutionTier: "shared";
-    requiredExecutionTier: "dedicated-always";
-    automatic: false;
-    source: "agent";
-  };
-} {
+export function capabilityWallActionResult(wall: SharedCapabilityWall) {
   return {
-    actionName: "DEDICATED_CAPABILITY_REQUIRED",
-    success: false,
+    actionName: "DEDICATED_CAPABILITY_REQUIRED" as const,
+    success: false as const,
     text: wall.reply,
     values: {
       capability: wall.capability,
-      currentExecutionTier: "shared",
-      requiredExecutionTier: "dedicated-always",
-      automatic: false,
-      source: "agent",
+      currentExecutionTier: "shared" as const,
+      requiredExecutionTier: "dedicated-always" as const,
+      automatic: false as const,
+      source: "agent" as const,
     },
   };
 }

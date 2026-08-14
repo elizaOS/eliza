@@ -68,8 +68,6 @@ interface ElizaAgentActionsProps {
   executionTier: AgentExecutionTier;
   status: string;
   webUiUrl: string | null;
-  /** Rowless Shared has no container lifecycle or deletable agent record. */
-  personalRowless?: boolean;
 }
 
 interface DedicatedActivationQuote {
@@ -99,7 +97,6 @@ export function ElizaAgentActions({
   executionTier,
   status,
   webUiUrl,
-  personalRowless = false,
 }: ElizaAgentActionsProps) {
   const t = useT();
   const navigate = useNavigate();
@@ -501,70 +498,20 @@ export function ElizaAgentActions({
     }
   }
 
-  const upgradeButton = canUpgrade ? (
-    <BrandButton
-      variant="primary"
-      size="sm"
-      onClick={() => void reviewDedicatedQuote()}
-      disabled={!!loading || isBusy}
-      data-testid="agent-upgrade-tier-button"
-      title={t("cloud.containers.agentActions.upgradeHint", {
-        defaultValue:
-          "Move this agent to its own always-on container. Your conversation moves with it.",
-      })}
-    >
-      {loading === "upgrade-tier" || loading === "upgrade-quote" ? (
-        <Loader2 className="h-4 w-4 animate-spin" />
-      ) : (
-        <Rocket className="h-4 w-4" />
-      )}
-      {t("cloud.containers.agentActions.upgrade", {
-        defaultValue: "Upgrade to Dedicated",
-      })}
-    </BrandButton>
-  ) : null;
-
   return (
-    <BrandCard
-      className={
-        personalRowless
-          ? "relative rounded-none border-0 bg-transparent p-0 md:p-0"
-          : "relative"
-      }
-      corners={!personalRowless}
-      cornerSize="md"
-    >
+    <BrandCard className="relative" cornerSize="md">
       <div className="relative z-10 space-y-4">
-        {personalRowless ? (
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <h3 className="text-sm font-medium text-txt-strong">
-                {t("cloud.containers.agentActions.dedicatedTitle", {
-                  defaultValue: "Dedicated",
-                })}
-              </h3>
-              <p className="mt-1 max-w-2xl text-sm leading-6 text-muted">
-                {t("cloud.containers.agentActions.dedicatedSummary", {
-                  defaultValue:
-                    "Move your same Eliza and conversation to private, always-on compute when you want it.",
-                })}
-              </p>
-            </div>
-            <div className="shrink-0">{upgradeButton}</div>
-          </div>
-        ) : (
-          <div className="flex items-center gap-2 border-b border-white/10 pb-4">
-            <span className="inline-block h-2 w-2 rounded-full bg-muted" />
-            <h2
-              className="text-xl font-normal text-white"
-              style={{ fontFamily: "var(--font-roboto-mono)" }}
-            >
-              {t("cloud.containers.agentActions.title", {
-                defaultValue: "Agent Actions",
-              })}
-            </h2>
-          </div>
-        )}
+        <div className="flex items-center gap-2 pb-4 border-b border-white/10">
+          <span className="inline-block w-2 h-2 rounded-full bg-muted" />
+          <h2
+            className="text-xl font-normal text-white"
+            style={{ fontFamily: "var(--font-roboto-mono)" }}
+          >
+            {t("cloud.containers.agentActions.title", {
+              defaultValue: "Agent Actions",
+            })}
+          </h2>
+        </div>
 
         {isSleeping && (
           <div
@@ -584,176 +531,195 @@ export function ElizaAgentActions({
           </div>
         )}
 
-        {!personalRowless ? (
-          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-            <div className="flex flex-wrap gap-3">
-              {hasStandaloneWebUi && (
-                <BrandButton
-                  variant="primary"
-                  size="sm"
-                  onClick={() => void openWebUIWithPairing(agentId)}
-                >
-                  <ExternalLink className="h-4 w-4" />
-                  {t("cloud.containers.agentActions.openWebUi", {
-                    defaultValue: "Open Web UI",
-                  })}
-                </BrandButton>
-              )}
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+          <div className="flex flex-wrap gap-3">
+            {hasStandaloneWebUi && (
+              <BrandButton
+                variant="primary"
+                size="sm"
+                onClick={() => void openWebUIWithPairing(agentId)}
+              >
+                <ExternalLink className="h-4 w-4" />
+                {t("cloud.containers.agentActions.openWebUi", {
+                  defaultValue: "Open Web UI",
+                })}
+              </BrandButton>
+            )}
 
-              {upgradeButton}
+            {canUpgrade && (
+              <BrandButton
+                variant="primary"
+                size="sm"
+                onClick={() => void reviewDedicatedQuote()}
+                disabled={!!loading || isBusy}
+                data-testid="agent-upgrade-tier-button"
+                title={t("cloud.containers.agentActions.upgradeHint", {
+                  defaultValue:
+                    "Move this agent to its own always-on container. Your conversation moves with it.",
+                })}
+              >
+                {loading === "upgrade-tier" || loading === "upgrade-quote" ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Rocket className="h-4 w-4" />
+                )}
+                {t("cloud.containers.agentActions.upgrade", {
+                  defaultValue: "Upgrade to Dedicated",
+                })}
+              </BrandButton>
+            )}
 
-              {isStopped && (
-                <BrandButton
-                  variant="primary"
-                  size="sm"
-                  onClick={() => doAction("resume")}
-                  disabled={!!loading || isBusy}
-                >
-                  {loading === "resume" ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <Play className="h-4 w-4" />
-                  )}
-                  {t("cloud.containers.agentActions.resume", {
-                    defaultValue: "Resume Agent",
-                  })}
-                </BrandButton>
-              )}
+            {isStopped && (
+              <BrandButton
+                variant="primary"
+                size="sm"
+                onClick={() => doAction("resume")}
+                disabled={!!loading || isBusy}
+              >
+                {loading === "resume" ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Play className="h-4 w-4" />
+                )}
+                {t("cloud.containers.agentActions.resume", {
+                  defaultValue: "Resume Agent",
+                })}
+              </BrandButton>
+            )}
 
-              {canWake && (
-                <BrandButton
-                  variant="primary"
-                  size="sm"
-                  onClick={() => doAction("wake")}
-                  disabled={!!loading || isBusy}
-                  title={t("cloud.containers.agentActions.reactivateHint", {
-                    defaultValue:
-                      "Restores the agent from its encrypted backup and starts it again. This can take a few minutes.",
-                  })}
-                >
-                  {loading === "wake" ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <Sun className="h-4 w-4" />
-                  )}
-                  {t("cloud.containers.agentActions.reactivate", {
-                    defaultValue: "Reactivate Agent",
-                  })}
-                </BrandButton>
-              )}
+            {canWake && (
+              <BrandButton
+                variant="primary"
+                size="sm"
+                onClick={() => doAction("wake")}
+                disabled={!!loading || isBusy}
+                title={t("cloud.containers.agentActions.reactivateHint", {
+                  defaultValue:
+                    "Restores the agent from its encrypted backup and starts it again. This can take a few minutes.",
+                })}
+              >
+                {loading === "wake" ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Sun className="h-4 w-4" />
+                )}
+                {t("cloud.containers.agentActions.reactivate", {
+                  defaultValue: "Reactivate Agent",
+                })}
+              </BrandButton>
+            )}
 
-              {isRunning && !personalRowless && (
-                <BrandButton
-                  variant="outline"
-                  size="sm"
-                  onClick={() => doAction("snapshot")}
-                  disabled={!!loading || isBusy}
-                >
-                  {loading === "snapshot" ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <Camera className="h-4 w-4" />
-                  )}
-                  {t("cloud.containers.agentActions.saveSnapshot", {
-                    defaultValue: "Save Snapshot",
-                  })}
-                </BrandButton>
-              )}
+            {isRunning && (
+              <BrandButton
+                variant="outline"
+                size="sm"
+                onClick={() => doAction("snapshot")}
+                disabled={!!loading || isBusy}
+              >
+                {loading === "snapshot" ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Camera className="h-4 w-4" />
+                )}
+                {t("cloud.containers.agentActions.saveSnapshot", {
+                  defaultValue: "Save Snapshot",
+                })}
+              </BrandButton>
+            )}
 
-              {isRunning && !personalRowless && (
-                <BrandButton
-                  variant="outline"
-                  size="sm"
-                  onClick={() => doAction("suspend", "PATCH")}
-                  disabled={!!loading || isBusy}
-                >
-                  {loading === "suspend" ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <Pause className="h-4 w-4" />
-                  )}
-                  {t("cloud.containers.agentActions.suspend", {
-                    defaultValue: "Suspend Agent",
-                  })}
-                </BrandButton>
-              )}
-            </div>
-
-            <div className="flex flex-wrap gap-2 lg:justify-end">
-              {canSleep && (
-                <BrandButton
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setShowDeactivateConfirm(true)}
-                  disabled={!!loading || isBusy}
-                  title={t("cloud.containers.agentActions.deactivateHint", {
-                    defaultValue:
-                      "Stops the agent and its hourly billing. Data is kept in an encrypted backup; reactivate anytime.",
-                  })}
-                >
-                  {loading === "sleep" ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <Moon className="h-4 w-4" />
-                  )}
-                  {t("cloud.containers.agentActions.deactivate", {
-                    defaultValue: "Deactivate Agent",
-                  })}
-                </BrandButton>
-              )}
-
-              {!personalRowless && !showDeleteConfirm ? (
-                <BrandButton
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setShowDeleteConfirm(true)}
-                  disabled={!!loading || isBusy}
-                  className="text-red-400 border-red-500/30 hover:bg-red-500/10 hover:text-red-300"
-                >
-                  <Trash2 className="h-4 w-4" />
-                  {t("cloud.containers.agentActions.delete", {
-                    defaultValue: "Delete Agent",
-                  })}
-                </BrandButton>
-              ) : !personalRowless ? (
-                <div className="flex flex-wrap items-center gap-2 rounded-sm border border-red-500/30 bg-red-950/20 p-3">
-                  <span
-                    className="text-sm text-red-400"
-                    style={{ fontFamily: "var(--font-roboto-mono)" }}
-                  >
-                    {t("cloud.containers.agentActions.confirmDelete", {
-                      defaultValue: "Confirm delete?",
-                    })}
-                  </span>
-                  <BrandButton
-                    variant="outline"
-                    size="sm"
-                    onClick={() => doAction("delete", "DELETE")}
-                    disabled={!!loading}
-                    className="text-red-400 border-red-500/50 hover:bg-red-500/20"
-                  >
-                    {loading === "delete" ? (
-                      <Loader2 className="h-3 w-3 animate-spin" />
-                    ) : null}
-                    {t("cloud.containers.agentActions.yesDelete", {
-                      defaultValue: "Yes, delete",
-                    })}
-                  </BrandButton>
-                  <BrandButton
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setShowDeleteConfirm(false)}
-                    className="text-white/60"
-                  >
-                    {t("cloud.containers.agentActions.cancel", {
-                      defaultValue: "Cancel",
-                    })}
-                  </BrandButton>
-                </div>
-              ) : null}
-            </div>
+            {isRunning && (
+              <BrandButton
+                variant="outline"
+                size="sm"
+                onClick={() => doAction("suspend", "PATCH")}
+                disabled={!!loading || isBusy}
+              >
+                {loading === "suspend" ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Pause className="h-4 w-4" />
+                )}
+                {t("cloud.containers.agentActions.suspend", {
+                  defaultValue: "Suspend Agent",
+                })}
+              </BrandButton>
+            )}
           </div>
-        ) : null}
+
+          <div className="flex flex-wrap gap-2 lg:justify-end">
+            {canSleep && (
+              <BrandButton
+                variant="outline"
+                size="sm"
+                onClick={() => setShowDeactivateConfirm(true)}
+                disabled={!!loading || isBusy}
+                title={t("cloud.containers.agentActions.deactivateHint", {
+                  defaultValue:
+                    "Stops the agent and its hourly billing. Data is kept in an encrypted backup; reactivate anytime.",
+                })}
+              >
+                {loading === "sleep" ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Moon className="h-4 w-4" />
+                )}
+                {t("cloud.containers.agentActions.deactivate", {
+                  defaultValue: "Deactivate Agent",
+                })}
+              </BrandButton>
+            )}
+
+            {!showDeleteConfirm ? (
+              <BrandButton
+                variant="outline"
+                size="sm"
+                onClick={() => setShowDeleteConfirm(true)}
+                disabled={!!loading || isBusy}
+                className="text-red-400 border-red-500/30 hover:bg-red-500/10 hover:text-red-300"
+              >
+                <Trash2 className="h-4 w-4" />
+                {t("cloud.containers.agentActions.delete", {
+                  defaultValue: "Delete Agent",
+                })}
+              </BrandButton>
+            ) : (
+              <div className="flex flex-wrap items-center gap-2 rounded-sm border border-red-500/30 bg-red-950/20 p-3">
+                <span
+                  className="text-sm text-red-400"
+                  style={{ fontFamily: "var(--font-roboto-mono)" }}
+                >
+                  {t("cloud.containers.agentActions.confirmDelete", {
+                    defaultValue: "Confirm delete?",
+                  })}
+                </span>
+                <BrandButton
+                  variant="outline"
+                  size="sm"
+                  onClick={() => doAction("delete", "DELETE")}
+                  disabled={!!loading}
+                  className="text-red-400 border-red-500/50 hover:bg-red-500/20"
+                >
+                  {loading === "delete" ? (
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                  ) : null}
+                  {t("cloud.containers.agentActions.yesDelete", {
+                    defaultValue: "Yes, delete",
+                  })}
+                </BrandButton>
+                <BrandButton
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowDeleteConfirm(false)}
+                  className="text-white/60"
+                >
+                  {t("cloud.containers.agentActions.cancel", {
+                    defaultValue: "Cancel",
+                  })}
+                </BrandButton>
+              </div>
+            )}
+          </div>
+        </div>
 
         {upgradeTargetId && (
           <div className="space-y-1" data-testid="agent-upgrade-progress">

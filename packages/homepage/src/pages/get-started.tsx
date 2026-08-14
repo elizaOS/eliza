@@ -10,7 +10,7 @@ import {
   TelegramIcon,
   WhatsAppIcon,
 } from "@elizaos/ui/cloud-ui/components/icons";
-import { ArrowLeft, Check, Copy, ExternalLink, Info, Send } from "lucide-react";
+import { ArrowLeft, Check, ExternalLink, Info, Send } from "lucide-react";
 import {
   type CSSProperties,
   lazy,
@@ -42,14 +42,13 @@ const ShaderBackground = lazy(
 
 import { elizacloudAuthFetch } from "@/lib/api/client";
 import {
-  buildElizaSmsHref,
   buildElizaTelegramHref,
-  ELIZA_PHONE_FORMATTED,
   ELIZA_PHONE_NUMBER,
   getDiscordBotApplicationId,
   getTelegramBotId,
   getTelegramBotUsername,
   getWhatsAppNumber,
+  openOrCopyElizaMessage,
 } from "@/lib/contact";
 import {
   getAuthToken,
@@ -707,7 +706,10 @@ export default function GetStartedPage() {
   const [isSubmittingPhone, setIsSubmittingPhone] = useState(false);
 
   const [suppressRedirect, setSuppressRedirect] = useState(false);
-  const [copied, setCopied] = useState(false);
+  const [messageNotice, setMessageNotice] = useState<
+    "idle" | "handoff" | "copied" | "error"
+  >("idle");
+  const messageNoticeOperation = useRef(0);
   const [showContent, setShowContent] = useState(false);
 
   useEffect(() => {
@@ -1288,14 +1290,30 @@ export default function GetStartedPage() {
     await handleDiscordAuthSubmit();
   }, [handleDiscordAuthSubmit]);
 
-  const handleCopyNumber = async () => {
-    await navigator.clipboard.writeText(ELIZA_PHONE_NUMBER);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+  const handleOpenMessages = async () => {
+    const operation = ++messageNoticeOperation.current;
+    try {
+      const outcome = await openOrCopyElizaMessage(window);
+      if (operation === messageNoticeOperation.current)
+        setMessageNotice(outcome);
+    } catch {
+      // error-policy:J4 Clipboard rejection stays visible as a distinct UI error.
+      if (operation === messageNoticeOperation.current)
+        setMessageNotice("error");
+    }
   };
 
-  const handleOpenMessages = () => {
-    window.location.href = buildElizaSmsHref();
+  const handleCopyMessageNumber = async () => {
+    const operation = ++messageNoticeOperation.current;
+    try {
+      await navigator.clipboard.writeText(ELIZA_PHONE_NUMBER);
+      if (operation === messageNoticeOperation.current)
+        setMessageNotice("copied");
+    } catch {
+      // error-policy:J4 Clipboard rejection stays visible as a distinct UI error.
+      if (operation === messageNoticeOperation.current)
+        setMessageNotice("error");
+    }
   };
 
   const handleContinueToConnected = () => {
@@ -1792,35 +1810,55 @@ export default function GetStartedPage() {
                 })}
               </p>
 
-              <div className={`w-full p-4 ${GLASS_TILE} rounded-2xl mb-6`}>
-                <div className="flex items-center justify-between gap-3">
-                  <span className="text-lg font-medium tabular-nums tracking-wide text-neutral-900">
-                    {ELIZA_PHONE_FORMATTED}
-                  </span>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={handleCopyNumber}
-                    className="shrink-0 text-neutral-500 hover:text-neutral-900 hover:bg-neutral-200/50"
-                  >
-                    {copied ? (
-                      <Check className="size-4 text-green-500" />
-                    ) : (
-                      <Copy className="size-4" />
-                    )}
-                  </Button>
-                </div>
-              </div>
-
               <Button
-                onClick={handleOpenMessages}
+                onClick={() => void handleOpenMessages()}
                 className="w-full h-[52px] rounded-full bg-neutral-900 hover:bg-neutral-800 text-white font-medium gap-2"
               >
                 <IMessageIcon className="size-5 text-[#34C759]" />
                 {t("homepage_eliza.getStarted.openImessage", {
-                  defaultValue: "Open iMessage",
+                  defaultValue: "Message Eliza",
                 })}
               </Button>
+
+              {messageNotice !== "idle" && (
+                <p
+                  role={messageNotice === "error" ? "alert" : "status"}
+                  aria-live="polite"
+                  className={`mt-3 text-center text-sm font-medium ${
+                    messageNotice === "copied"
+                      ? "text-green-700"
+                      : messageNotice === "error"
+                        ? "text-red-700"
+                        : "text-neutral-700"
+                  }`}
+                >
+                  {messageNotice === "copied"
+                    ? t("homepage_eliza.getStarted.phoneCopied", {
+                        defaultValue: "Phone number copied",
+                      })
+                    : messageNotice === "handoff"
+                      ? t("homepage_eliza.common.messageHandoff", {
+                          defaultValue:
+                            "Opening Messages. If nothing happens, copy the number.",
+                        })
+                      : t("homepage_eliza.getStarted.phoneCopyFailed", {
+                          defaultValue: "Couldn't copy the phone number",
+                        })}
+                </p>
+              )}
+
+              {messageNotice === "handoff" && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => void handleCopyMessageNumber()}
+                  className="mt-3 h-11 w-full rounded-full"
+                >
+                  {t("homepage_eliza.connected.copyPhoneAria", {
+                    defaultValue: "Copy phone number",
+                  })}
+                </Button>
+              )}
 
               <button
                 type="button"
@@ -2085,7 +2123,7 @@ export default function GetStartedPage() {
                     <div className="flex-1">
                       <p className="text-sm font-medium text-neutral-900">
                         {t("homepage_eliza.getStarted.guideStep1", {
-                          defaultValue: "Add Eliza to your server",
+                          defaultValue: "Install Eliza for your account",
                         })}
                       </p>
                       <Button
@@ -2093,8 +2131,13 @@ export default function GetStartedPage() {
                         size="sm"
                         onClick={() => {
                           const clientId = getDiscordClientId();
+                          const params = new URLSearchParams({
+                            client_id: clientId,
+                            integration_type: "1",
+                            scope: "applications.commands",
+                          });
                           window.open(
-                            `https://discord.com/oauth2/authorize?client_id=${clientId}&permissions=2048&scope=bot`,
+                            `https://discord.com/oauth2/authorize?${params.toString()}`,
                             "_blank",
                           );
                         }}
@@ -2102,7 +2145,7 @@ export default function GetStartedPage() {
                       >
                         <ExternalLink className="size-3.5" />
                         {t("homepage_eliza.getStarted.guideInviteToServer", {
-                          defaultValue: "Invite to Server",
+                          defaultValue: "Install for DMs",
                         })}
                       </Button>
                     </div>

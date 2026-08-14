@@ -353,13 +353,7 @@ describe("shared agent messages/stream", () => {
       String(coordinatorFetch.mock.calls[0]?.[1]?.body),
     ) as Record<string, unknown>;
     expect(envelope).toMatchObject({
-      operation: "personal-stream",
-      agent: {
-        id: AGENT,
-        organization_id: ORG,
-        user_id: "user-voice",
-        execution_tier: "shared",
-      },
+      operation: "stream",
       rpc: {
         jsonrpc: "2.0",
         method: "message.send",
@@ -483,10 +477,17 @@ describe("shared agent messages/stream", () => {
     expect(res.status).toBe(200);
     expect(findByIdAndOrg).not.toHaveBeenCalled();
     expect(bridgeStream).not.toHaveBeenCalled();
-    expect(runtime.fetch).toHaveBeenCalledTimes(1);
+    expect(runtime.fetch).toHaveBeenCalledTimes(2);
+    const operations = runtime.fetch.mock.calls.map(([, init]) =>
+      JSON.parse(String(init?.body)),
+    ) as Array<{ operation: string }>;
+    expect(operations.map(({ operation }) => operation)).toEqual([
+      "prewarm",
+      "stream",
+    ]);
   });
 
-  test("cache miss returns warming without joining in-flight DB hydration", async () => {
+  test("cache miss returns warming while prewarm joins in-flight DB hydration", async () => {
     const runtime = voiceWorkerRuntime("hydrated ok");
     const env = {
       CACHE_ENABLED: "true",
@@ -519,9 +520,9 @@ describe("shared agent messages/stream", () => {
       organizationId: ORG,
       userId: VOICE_USER,
     });
-    await fetchImpl.prewarm();
-    expect(runtime.background).toHaveLength(1);
+    const prewarm = fetchImpl.prewarm();
     await hydrationStarted;
+    expect(runtime.background).toHaveLength(1);
 
     const res = await fetchImpl(
       `https://api-staging.elizacloud.ai/api/v1/eliza/agents/${AGENT}/api/conversations/${VOICE_CONVERSATION}/messages/stream`,
@@ -537,6 +538,7 @@ describe("shared agent messages/stream", () => {
     expect(bridgeStream).not.toHaveBeenCalled();
 
     releaseHydration(cachedVoiceAgent());
+    await prewarm;
     await runtime.background[0];
 
     const retry = await fetchImpl(
@@ -546,7 +548,14 @@ describe("shared agent messages/stream", () => {
     expect(retry.status).toBe(200);
     await expect(retry.text()).resolves.toContain("hydrated ok");
     expect(findByIdAndOrg).toHaveBeenCalledTimes(1);
-    expect(runtime.fetch).toHaveBeenCalledTimes(1);
+    expect(runtime.fetch).toHaveBeenCalledTimes(2);
+    const operations = runtime.fetch.mock.calls.map(([, init]) =>
+      JSON.parse(String(init?.body)),
+    ) as Array<{ operation: string }>;
+    expect(operations.map(({ operation }) => operation)).toEqual([
+      "prewarm",
+      "stream",
+    ]);
     expect(bridgeStream).not.toHaveBeenCalled();
   });
 

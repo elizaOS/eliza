@@ -25,6 +25,16 @@ export type CharacterDefinition = {
   adjectives: StylePreset["adjectives"];
   style: StylePreset["style"];
   topics: StylePreset["topics"];
+  /**
+   * In-character replacements for the framework's canned failure replies.
+   * Optional per persona — omitting it keeps the voice-neutral defaults, which
+   * is why only the default `eliza` persona carries them today.
+   *
+   * Language-independent by construction: the runtime emits these verbatim
+   * (no handlebars pass, no per-locale resolution), exactly like the English
+   * framework strings they replace.
+   */
+  templates?: StylePreset["templates"];
   messageExamples: StylePreset["messageExamples"];
   variants: Record<CharacterLanguage, CharacterVariant>;
 };
@@ -76,6 +86,25 @@ export const CHARACTER_DEFINITIONS: CharacterDefinition[] = [
       "understanding context",
       "getting things right",
     ],
+    // Failure replies in Eliza's own voice. Without these the runtime falls
+    // back to voice-neutral framework text, so the persona visibly breaks at
+    // the exact moment the user is already having a bad time. Each one names
+    // what happened and what the user can do about it; none of them use
+    // {{name}} (the runtime emits these verbatim, so a placeholder would leak)
+    // or the agent's own name (the default persona is renameable via
+    // setDefaultAgentName).
+    templates: {
+      authFailedReply:
+        "my model provider isn't accepting my key right now, so i can't work through this. worth checking that the key is still valid and the account is active, then send that again.",
+      insufficientCreditsReply:
+        "my model provider is out of credits, so i can't answer this one. waiting won't fix it. add credits or raise the quota and i'll be back, then send that again.",
+      noModelProviderReply:
+        "i don't have a model provider set up yet, so i can't answer anything. set ANTHROPIC_API_KEY, OPENAI_API_KEY, or OPENROUTER_API_KEY in your environment, or sign in to eliza cloud (ELIZAOS_CLOUD_API_KEY), then try me again.",
+      rateLimitedReply:
+        "my model provider is throttling me right now. give it a few seconds and send that again, it should go through.",
+      transientFailureReply:
+        "something broke on my end and i didn't get an answer out. it wasn't anything you did. try that again in a moment.",
+    },
     style: {
       all: [
         "warm and direct",

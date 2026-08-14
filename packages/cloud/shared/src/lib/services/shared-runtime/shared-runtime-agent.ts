@@ -1,10 +1,4 @@
-/**
- * Minimal agent identity consumed by the container-free shared runtime.
- *
- * Database-backed shared agents and the account-native personal Eliza both
- * satisfy this contract. Keeping the runtime on this structural boundary lets
- * the personal service remain rowless without fabricating an AgentSandbox.
- */
+/** Minimal identity consumed by container-free Shared execution. */
 
 import type { AgentExecutionTier } from "../../../db/schemas/agent-sandboxes";
 

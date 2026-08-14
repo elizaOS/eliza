@@ -33,6 +33,7 @@ class MockStewardPhoneOwnershipError extends Error {
 }
 
 class MockStewardPhoneAccountConflictError extends Error {}
+class MockStewardTelegramAccountClaimError extends Error {}
 
 mock.module("@/api-app/services/audit-dispatcher-singleton", () => ({
   getAuditDispatcher: () => ({ emit: emitAudit }),
@@ -55,6 +56,7 @@ mock.module("@/lib/steward-sync", () => ({
   describeSyncError: (error: unknown) =>
     error instanceof Error ? error.message : String(error),
   StewardPhoneAccountConflictError: MockStewardPhoneAccountConflictError,
+  StewardTelegramAccountClaimError: MockStewardTelegramAccountClaimError,
   syncUserFromSteward,
 }));
 
@@ -124,7 +126,56 @@ describe("POST /api/auth/steward-session phone convergence", () => {
       walletAddress: undefined,
       walletChainType: undefined,
       verifiedPhone: "+14155552671",
+      telegramContinuation: undefined,
     });
+  });
+
+  test("passes an opaque Telegram account claim into pre-creation convergence", async () => {
+    const response = await post({
+      token: "steward-session-token",
+      telegramContinuation: "opaque-telegram-claim-token",
+    });
+
+    expect(response.status).toBe(200);
+    expect(syncUserFromSteward).toHaveBeenCalledWith({
+      stewardUserId: "steward-user-1",
+      email: undefined,
+      walletAddress: undefined,
+      walletChainType: undefined,
+      verifiedPhone: undefined,
+      telegramContinuation: "opaque-telegram-claim-token",
+    });
+  });
+
+  test("rejects malformed Telegram claims before Steward sync", async () => {
+    const response = await post({
+      token: "steward-session-token",
+      telegramContinuation: "platform:telegram:123456789",
+    });
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      code: "telegram_claim_conflict",
+    });
+    expect(syncUserFromSteward).not.toHaveBeenCalled();
+    expect(response.headers.get("set-cookie")).toBeNull();
+  });
+
+  test("returns an explicit conflict and no cookie when Telegram ownership disagrees", async () => {
+    syncUserFromSteward.mockRejectedValueOnce(
+      new MockStewardTelegramAccountClaimError("telegram conflict"),
+    );
+
+    const response = await post({
+      token: "steward-session-token",
+      telegramContinuation: "opaque-telegram-claim-token",
+    });
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      code: "telegram_claim_conflict",
+    });
+    expect(response.headers.get("set-cookie")).toBeNull();
   });
 
   test("rejects a phone absent from the bearer's Steward accounts", async () => {

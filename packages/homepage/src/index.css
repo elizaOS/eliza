@@ -1386,17 +1386,24 @@ html:has(.landing-page)::-webkit-scrollbar-thumb:hover {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 1.1rem clamp(1.25rem, 4vw, 3rem) 0;
+  padding: 1.1rem clamp(0.5rem, 4vw, 3rem) 0;
 }
 
 .landing-brand {
   display: inline-flex;
   align-items: center;
+  gap: 0.48rem;
   text-decoration: none;
 }
 
-.landing-brand img {
-  height: 2.1rem;
+.landing-brand-mark {
+  height: 2.65rem;
+  width: 2.65rem;
+  border-radius: 0.42rem;
+}
+
+.landing-brand-wordmark {
+  height: 2rem;
   width: auto;
 }
 
@@ -1456,34 +1463,49 @@ html:has(.landing-page)::-webkit-scrollbar-thumb:hover {
   flex-wrap: wrap;
   align-items: center;
   justify-content: center;
+  min-width: 0;
+  width: 100%;
   gap: 0.65rem;
   margin-top: 1.65rem;
 }
 
-.landing-phone-number {
+.landing-copy-notice {
+  position: fixed;
+  left: 50%;
+  bottom: max(1rem, env(safe-area-inset-bottom));
+  z-index: 40;
   display: inline-flex;
   align-items: center;
   min-height: 2.25rem;
   margin: 0.2rem 0 0;
   padding: 0 0.75rem;
-  border: 0;
   border-radius: 999px;
-  background: transparent;
-  color: #111;
+  background: rgb(255 255 255 / 76%);
+  color: #166534;
   font-size: 0.92rem;
   font-weight: 650;
-  letter-spacing: 0.02em;
+  box-shadow: 0 8px 24px rgb(0 0 0 / 14%);
+  transform: translateX(-50%);
+}
+
+.landing-copy-notice-action {
+  min-height: 2.75rem;
+  margin-left: 0.75rem;
+  border: 0;
+  background: transparent;
+  color: currentColor;
+  font: inherit;
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
   cursor: pointer;
-  transition: background-color 160ms ease-out;
 }
 
-.landing-phone-number:hover {
-  background: rgb(255 255 255 / 48%);
+.landing-copy-notice--handoff {
+  color: #404040;
 }
 
-.landing-phone-number:focus-visible {
-  outline: 3px solid #111;
-  outline-offset: 2px;
+.landing-copy-notice--error {
+  color: #991b1b;
 }
 
 .landing-secondary-channels {
@@ -1494,6 +1516,7 @@ html:has(.landing-page)::-webkit-scrollbar-thumb:hover {
 }
 
 .landing-channel {
+  border: 0;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1502,6 +1525,7 @@ html:has(.landing-page)::-webkit-scrollbar-thumb:hover {
   border-radius: 50%;
   background: rgb(255 255 255 / 76%);
   box-shadow: 0 6px 18px rgb(0 0 0 / 9%);
+  cursor: pointer;
   transition:
     transform 160ms ease-out,
     background-color 160ms ease-out,
@@ -1520,15 +1544,18 @@ html:has(.landing-page)::-webkit-scrollbar-thumb:hover {
 }
 
 .landing-cta {
+  border: 0;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 0.55rem;
   min-height: 3.25rem;
-  padding: 0 1.6rem;
+  padding: 0 clamp(0.7rem, 6vw, 1.6rem);
   border-radius: 999px;
   font-weight: 600;
   font-size: 1.05rem;
+  font-family: inherit;
+  cursor: pointer;
   text-decoration: none;
   white-space: nowrap;
   max-width: 100%;
@@ -1670,20 +1697,13 @@ html:has(.landing-page)::-webkit-scrollbar-thumb:hover {
   margin: 0;
   background: #ffffff;
   overflow: hidden;
+  /* Hold the keyboard color until its collapsing surface has nearly cleared.
+     Painting this element directly avoids a composited pseudo-element seam. */
+  transition: background-color 0ms linear 180ms;
 }
 
 .landing-iphone-homebar::before {
-  position: absolute;
-  inset: 0;
-  background: #d3d6dd;
-  content: "";
-  transform: scaleY(0);
-  transform-origin: bottom;
-  /* The keyboard surface crosses this short inset almost immediately while
-     opening, then remains behind it until the keyboard has nearly cleared.
-     Matching the inset to the full keyboard duration leaves a white strip
-     beside an already-visible gray keyboard. */
-  transition: transform 60ms linear 180ms;
+  content: none;
 }
 
 .landing-iphone-homebar::after {
@@ -1821,11 +1841,14 @@ html:has(.landing-page)::-webkit-scrollbar-thumb:hover {
   border-radius: 50%;
   background: #eeeef0;
   color: #3c3c43;
+  line-height: 0;
 }
 
 .landing-composer-plus svg {
+  display: block;
   width: 1.05rem;
   height: 1.05rem;
+  transform: translateY(-0.03rem);
 }
 
 .landing-phone-composer {
@@ -2015,8 +2038,9 @@ html:has(.landing-page)::-webkit-scrollbar-thumb:hover {
   grid-template-rows: 1fr;
 }
 
-.landing-keyboard[data-open="true"] + .landing-iphone-homebar::before {
-  transform: scaleY(1);
+.landing-keyboard[data-open="true"] + .landing-iphone-homebar {
+  background: #d3d6dd;
+  box-shadow: 0 -1px 0 #d3d6dd;
   transition-delay: 0ms;
 }
 
@@ -2108,34 +2132,101 @@ html:has(.landing-page)::-webkit-scrollbar-thumb:hover {
   height: 1.35rem;
 }
 
-/* Desktop keeps the hero composition; the top bar is a mobile-only surface. */
-.landing-topbar {
+.landing-tap-target {
   display: none;
 }
 
-.landing-channel,
-.landing-account {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 2.75rem;
-  height: 2.75rem;
-  border-radius: 50%;
+.landing-sheet {
+  width: min(100%, 26rem);
+  padding: 0;
+  border: 0;
+  border-radius: 1.4rem;
   background: #ffffff;
   color: var(--brand-black);
-  box-shadow: 0 2px 10px rgb(0 0 0 / 10%);
+  box-shadow: 0 30px 80px rgb(0 0 0 / 28%);
 }
 
-.landing-account {
-  color: #5b6270;
+.landing-sheet::backdrop {
+  background: rgb(10 10 12 / 45%);
+  backdrop-filter: blur(3px);
 }
 
-/* ---------------------------------------------------------------------------
- * Mobile ("the screen is the page"): a row of channel buttons over an
- * iMessage-style thread that fills the viewport. The device frame, hero
- * headline, and marketing header all fall away, so a visitor lands in
- * something that already looks like their messages app.
- * ------------------------------------------------------------------------- */
+.landing-sheet-body {
+  display: grid;
+  gap: 1rem;
+  padding: 1.4rem 1.25rem 1.1rem;
+}
+
+.landing-sheet-head {
+  display: grid;
+  justify-items: center;
+  gap: 0.2rem;
+  text-align: center;
+}
+
+.landing-sheet-avatar {
+  width: 3.4rem;
+  height: 3.4rem;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.landing-sheet-head strong {
+  font-size: 1.05rem;
+}
+
+.landing-sheet-head span {
+  max-width: 22rem;
+  color: rgb(0 0 0 / 60%);
+  font-size: 0.9rem;
+  line-height: 1.35;
+}
+
+.landing-sheet-options {
+  display: grid;
+  gap: 0.4rem;
+}
+
+.landing-sheet-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  width: 100%;
+  min-height: 3rem;
+  padding: 0 0.9rem;
+  border: 1px solid rgb(0 0 0 / 8%);
+  border-radius: 0.9rem;
+  background: #ffffff;
+  color: var(--brand-black);
+  font: inherit;
+  font-size: 0.98rem;
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.landing-sheet-row:hover,
+.landing-sheet-row:focus-visible {
+  background: rgb(0 0 0 / 4%);
+}
+
+.landing-sheet-row--account {
+  margin-top: 0.35rem;
+  border-color: rgb(0 0 0 / 14%);
+  font-weight: 600;
+}
+
+.landing-sheet-close {
+  min-height: 2.75rem;
+  border: 0;
+  border-radius: 0.9rem;
+  background: rgb(0 0 0 / 6%);
+  color: var(--brand-black);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
 @media (max-width: 640px) {
   .landing-page {
     height: 100svh;
@@ -2143,7 +2234,6 @@ html:has(.landing-page)::-webkit-scrollbar-thumb:hover {
     background: #ffffff;
   }
 
-  /* the shader/grain would only burn battery behind an opaque thread */
   .landing-grain,
   [data-shader-background] {
     display: none;
@@ -2153,8 +2243,6 @@ html:has(.landing-page)::-webkit-scrollbar-thumb:hover {
     display: none;
   }
 
-  /* The pitch still belongs to the document for search and assistive tech —
-     it is the page's h1 — it just is not painted over the conversation. */
   .landing-hero-copy {
     display: contents;
   }
@@ -2170,8 +2258,6 @@ html:has(.landing-page)::-webkit-scrollbar-thumb:hover {
     clip-path: inset(50%);
   }
 
-  /* the top bar owns every entry point on mobile; no duplicate links or
-     stray copy competing with the thread for width */
   .landing-hero-actions,
   .landing-secondary-channels,
   .landing-phone-number,
@@ -2179,38 +2265,18 @@ html:has(.landing-page)::-webkit-scrollbar-thumb:hover {
     display: none;
   }
 
-  .landing-topbar {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    /* wraps rather than overflowing when the reader zooms text to 200% */
-    flex-wrap: wrap;
-    gap: 0.5rem;
-    padding: max(0.7rem, env(safe-area-inset-top)) 0.9rem 0.6rem;
-  }
-
-  .landing-topbar-channels {
-    display: inline-flex;
-    align-items: center;
-    flex-wrap: wrap;
-    justify-content: center;
-    gap: 0.5rem;
-  }
-
   .landing-hero {
     display: flex;
     align-items: stretch;
     flex: 1;
     min-height: 0;
-    padding: 0;
-    margin: 0;
     width: 100%;
     max-width: none;
+    margin: 0;
+    padding: 0;
     gap: 0;
   }
 
-  /* the stage exists to center the device on desktop; on mobile it just needs
-     to pass the viewport height straight through to the screen */
   .landing-phone-stage {
     display: flex;
     flex-direction: column;
@@ -2218,19 +2284,20 @@ html:has(.landing-page)::-webkit-scrollbar-thumb:hover {
     min-height: 0;
     width: 100%;
     max-width: none;
-    padding: 0;
     margin: 0;
+    padding: 0;
   }
 
-  /* desktop centers and scales the device inside the stage; mobile lets it
-     fill the stage instead */
   .landing-phone-stage > .landing-iphone {
     position: static;
     transform: none;
   }
 
-  /* unframe the device: the page itself becomes the screen */
   .landing-iphone {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
     width: 100%;
     margin: 0;
     padding: 0;
@@ -2240,44 +2307,51 @@ html:has(.landing-page)::-webkit-scrollbar-thumb:hover {
   }
 
   .landing-iphone-screen {
+    display: flex;
     aspect-ratio: auto;
     flex: 1;
     min-height: 0;
     border-radius: 0;
   }
 
-  /* keep the contact header, drop the faked device chrome around it */
   .landing-iphone-statusbar,
   .landing-iphone-homebar {
     display: none;
   }
 
   .landing-phone-top {
-    position: static;
+    position: relative;
+    z-index: 2;
     padding: 0;
-    background: none;
+    background: #ffffff;
     border-bottom: 0;
   }
 
   .landing-phone-header {
-    padding: 0.2rem 1rem 0.7rem;
+    padding: max(0.5rem, env(safe-area-inset-top)) 0.75rem 0.6rem;
   }
 
-  .landing-iphone {
-    display: flex;
-    flex-direction: column;
-    flex: 1;
-    min-height: 0;
+  .landing-sheet {
+    width: 100%;
+    max-width: none;
+    margin: auto 0 0;
+    border-radius: 1.4rem 1.4rem 0 0;
   }
 
-  .landing-iphone-screen {
-    display: flex;
-    /* the page is the screen: height comes from the viewport, not a device
-       aspect ratio */
-    aspect-ratio: auto;
-    flex: 1;
-    min-height: 0;
-    border-radius: 0;
+  .landing-sheet-body {
+    padding-bottom: max(1.1rem, env(safe-area-inset-bottom));
+  }
+
+  .landing-tap-target {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 5;
+    border: 0;
+    padding: 0;
+    background: transparent;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
   }
 
   .landing-phone-thread {
@@ -2286,34 +2360,30 @@ html:has(.landing-page)::-webkit-scrollbar-thumb:hover {
     padding: 0.25rem 0.9rem 0.5rem;
   }
 
-  /* messages settle against the composer the way a real thread does; the auto
-     margin keeps the top reachable once the thread overflows */
   .landing-phone-thread::before {
     content: "";
     margin-top: auto;
   }
 
-  .landing-bubble,
-  .landing-demo-card {
+  .landing-bubble {
+    max-width: 78%;
+    padding: 0.5rem 0.8rem;
     font-size: 0.98rem;
     line-height: 1.32;
   }
 
-  .landing-bubble {
-    max-width: 78%;
-    padding: 0.5rem 0.8rem;
+  .landing-demo-card {
+    font-size: 0.92rem;
   }
 
   .landing-demo-card strong {
     font-size: 0.98rem;
   }
+
   .landing-demo-card-row {
     font-size: 0.9rem;
   }
-  .landing-demo-card-label,
-  .landing-demo-card-status {
-    font-size: 0.72rem;
-  }
+
   .landing-thread-timestamp {
     font-size: 0.75rem;
   }
@@ -2324,8 +2394,8 @@ html:has(.landing-page)::-webkit-scrollbar-thumb:hover {
   }
 
   .landing-phone-composer {
-    font-size: 0.95rem;
     padding: 0.5rem 0.55rem 0.5rem 1rem;
+    font-size: 0.95rem;
   }
 
   .landing-keyboard[data-open="true"] {
