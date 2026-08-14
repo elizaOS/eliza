@@ -55,11 +55,13 @@ import {
 import { verifyConnection } from "./lib/verify.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const rawConsolePort = process.env.ELIZA_TEST_CONSOLE_PORT?.trim();
-const PORT = rawConsolePort
-  ? parseTcpPort(rawConsolePort, "ELIZA_TEST_CONSOLE_PORT")
-  : 31338;
+const DEFAULT_PORT = 31338;
 const HOST = "127.0.0.1";
+
+function resolveConsolePort(env = process.env) {
+  const raw = env.ELIZA_TEST_CONSOLE_PORT?.trim();
+  return raw ? parseTcpPort(raw, "ELIZA_TEST_CONSOLE_PORT") : DEFAULT_PORT;
+}
 
 export const runManager = new RunManager();
 const sseClients = new Set();
@@ -365,8 +367,17 @@ const server = http.createServer(async (req, res) => {
 // Keep route imports side-effect free while preserving startup through
 // canonical, symlinked, and URL-escaped entrypoint paths.
 if (import.meta.main) {
-  server.listen(PORT, HOST, () => {
-    console.log(`[TestConsole] listening on http://${HOST}:${PORT}`);
-    console.log(`[TestConsole] state dir: ${consoleDir()}`);
-  });
+  try {
+    const port = resolveConsolePort();
+    server.listen(port, HOST, () => {
+      console.log(`[TestConsole] listening on http://${HOST}:${port}`);
+      console.log(`[TestConsole] state dir: ${consoleDir()}`);
+    });
+  } catch (error) {
+    // error-policy:J1 Startup configuration errors become bounded usage failures.
+    console.error(
+      `[TestConsole] ${error instanceof Error ? error.message : String(error)}`,
+    );
+    process.exitCode = 2;
+  }
 }

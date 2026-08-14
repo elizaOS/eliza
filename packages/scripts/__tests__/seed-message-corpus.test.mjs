@@ -123,8 +123,10 @@ describe("parseArgs canonical integer flags", () => {
     for (const argv of [
       ["--seed=0x10"],
       ["--seed=1e2"],
+      ["--seed= 42 "],
       ["--seed= 7 8"],
       ["--conversations=1e2"],
+      ["--conversations= 12 "],
       ["--conversations=010"],
       ["--conversations=12abc"],
       ["--messages=3.5"],

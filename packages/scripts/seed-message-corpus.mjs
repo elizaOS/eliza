@@ -127,7 +127,7 @@ export function parseTcpPort(value, label) {
 function parseIntStrict(value, flag) {
   // Canonical decimal only: Number() accepted "0x10" and "1e2" here, so a
   // hex seed or scientific count silently became a different valid integer.
-  const raw = String(value ?? "").trim();
+  const raw = String(value ?? "");
   const n = Number.parseInt(raw, 10);
   if (!/^-?\d+$/.test(raw) || !Number.isSafeInteger(n) || String(n) !== raw) {
     throw new Error(`${flag} must be an integer`);

@@ -16,7 +16,6 @@ describe("parseCanonicalInt", () => {
     expect(parseCanonicalInt("1", "flag")).toBe(1);
     expect(parseCanonicalInt("31337", "flag")).toBe(31337);
     expect(parseCanonicalInt(8, "flag")).toBe(8);
-    expect(parseCanonicalInt(" 42 ", "flag")).toBe(42);
     expect(parseCanonicalInt("7", "flag", { min: 7, max: 7 })).toBe(7);
   });
 
@@ -36,6 +35,7 @@ describe("parseCanonicalInt", () => {
       null,
       "Infinity",
       "NaN",
+      " 42 ",
       String(Number.MAX_SAFE_INTEGER + 1),
     ]) {
       expect(() => parseCanonicalInt(value, "flag")).toThrow(/flag must be/);

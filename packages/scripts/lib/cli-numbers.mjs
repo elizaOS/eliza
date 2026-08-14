@@ -20,7 +20,7 @@
  */
 export function parseCanonicalInt(value, label, bounds = {}) {
   const { min = 1, max = Number.MAX_SAFE_INTEGER } = bounds;
-  const raw = String(value ?? "").trim();
+  const raw = String(value ?? "");
   const fail = () => {
     throw new Error(
       `${label} must be a whole decimal integer from ${min} to ${max} (received ${JSON.stringify(String(value ?? ""))})`,

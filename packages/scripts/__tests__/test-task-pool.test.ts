@@ -191,6 +191,7 @@ describe("normalizeConcurrency", () => {
       "8abc",
       "3.9",
       "08",
+      " 4 ",
       "0x10",
       String(MAX_TASK_CONCURRENCY + 1),
       "999999",
@@ -333,6 +334,7 @@ describe("run-all-tests plan mode", () => {
         TEST_SCRIPT_FILTER: "",
         TEST_SHARD: "",
         TEST_START_AT: "",
+        TEST_CONCURRENCY: "",
         ...env,
       },
     });

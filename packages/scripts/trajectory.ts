@@ -1258,11 +1258,14 @@ function flagInt(
   flags: Map<string, string | true>,
   key: string,
 ): number | undefined {
-  const v = flagString(flags, key);
-  if (v === undefined) return undefined;
+  if (!flags.has(key)) return undefined;
+  const v = flags.get(key);
+  if (typeof v !== "string" || v.length === 0) {
+    throw new Error(`--${key} requires a value`);
+  }
   // Fail closed on non-canonical input: parseInt("1e3") is 1 and NaN used to
   // mean "flag omitted", so typos silently listed the wrong number of rows.
-  const raw = v.trim();
+  const raw = v;
   const n = Number.parseInt(raw, 10);
   if (
     !/^\d+$/.test(raw) ||

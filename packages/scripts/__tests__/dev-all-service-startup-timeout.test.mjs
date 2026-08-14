@@ -144,4 +144,20 @@ describe("dev-all CLI boundary", () => {
     const combined = `${result.stdout}${result.stderr}`;
     expect(combined).toContain("[dev:all] local stack");
   });
+
+  test("rejects malformed port configuration through a bounded usage error", () => {
+    for (const [key, value] of [
+      ["DEV_ALL_AGENT_API_PORT", "1e4"],
+      ["DEV_ALL_FRONTEND_PORT", "abc"],
+      ["DEV_ALL_CLOUD_API_PORT", "080"],
+      ["DEV_ALL_CLOUD_DB_PORT", "0"],
+    ]) {
+      const result = runCli(["--dry-run", "--no-prepare"], { [key]: value });
+      expect(result.status).toBe(2);
+      expect(result.stdout).toBe("");
+      expect(result.stderr).toContain(`[dev:all] ${key} must be`);
+      expect(result.stderr).not.toContain("at parseCanonicalInt");
+      expect(result.stderr).not.toContain("Bun v");
+    }
+  });
 });

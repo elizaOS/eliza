@@ -143,11 +143,31 @@ describe("trajectory list", () => {
 
       // parseInt("1e3") is 1 and parseInt("abc") is NaN (treated as
       // "flag omitted"), so both used to succeed with the wrong row count.
-      for (const bad of ["1e3", "abc", "20foo", "-5", "0x10", "0"]) {
+      for (const bad of ["1e3", "abc", "20foo", "-5", "0x10", "0", " 2 "]) {
         const result = runList(directory, ["--limit", bad]);
         expect(result.status).not.toBe(0);
         expect(result.stderr).toContain("--limit");
         expect(result.stdout).not.toContain("row-");
+      }
+    }));
+
+  test("a present --limit without a value fails before listing", () =>
+    withFixture((directory) => {
+      writeTrajectory(directory, {
+        id: "must-not-list",
+        agent: "target-agent",
+        mtimeMs: BASE_TIME_MS,
+      });
+
+      for (const args of [
+        ["--limit"],
+        ["--limit", "--agent", "target-agent"],
+        ["--limit="],
+      ]) {
+        const result = runList(directory, args);
+        expect(result.status).not.toBe(0);
+        expect(result.stderr).toContain("--limit requires a value");
+        expect(result.stdout).not.toContain("must-not-list");
       }
     }));
 
