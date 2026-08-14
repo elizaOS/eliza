@@ -29,13 +29,14 @@ mock.module("../eliza-sandbox", () => ({
 
 const {
   coordinateSharedBridge,
+  coordinateSharedConversationPrewarm,
   coordinateSharedHistory,
   coordinateSharedStream,
   purgeSharedConversationRooms,
 } = await import("./conversation-coordinator");
 
 describe("shared conversation coordinator", () => {
-  test("routes bridge, stream, and history through one room object", async () => {
+  test("routes bridge, stream, prewarm, and history through one room object", async () => {
     const names: string[] = [];
     const envelopes: unknown[] = [];
     const signals: Array<AbortSignal | null | undefined> = [];
@@ -56,6 +57,9 @@ describe("shared conversation coordinator", () => {
               return Response.json({
                 history: [{ role: "assistant", content: "cached" }],
               });
+            }
+            if (envelope.operation === "prewarm") {
+              return Response.json({ success: true });
             }
             return Response.json({
               jsonrpc: "2.0",
@@ -93,17 +97,19 @@ describe("shared conversation coordinator", () => {
         })
       )?.text(),
     ).toContain("event: done");
+    await coordinateSharedConversationPrewarm("agent-1", "room-1", { namespace });
     expect(await coordinateSharedHistory("agent-1", "room-1", { namespace })).toEqual([
       { role: "assistant", content: "cached" },
     ]);
 
-    expect(names).toEqual(["agent-1:room-1", "agent-1:room-1", "agent-1:room-1"]);
+    expect(names).toEqual(["agent-1:room-1", "agent-1:room-1", "agent-1:room-1", "agent-1:room-1"]);
     expect(envelopes.map((value) => (value as { operation: string }).operation)).toEqual([
       "bridge",
       "stream",
+      "prewarm",
       "history",
     ]);
-    expect(signals).toEqual([undefined, abortController.signal, undefined]);
+    expect(signals).toEqual([undefined, abortController.signal, undefined, undefined]);
     expect(directBridge).not.toHaveBeenCalled();
     expect(directStream).not.toHaveBeenCalled();
     expect(directHistory).not.toHaveBeenCalled();
@@ -141,6 +147,13 @@ describe("shared conversation coordinator", () => {
     });
     await expect(
       coordinateSharedStream(agent, rpc, { namespace, executionCtx }),
+    ).rejects.toMatchObject({
+      name: "SharedRuntimeCacheWarmingError",
+    });
+    await expect(
+      coordinateSharedConversationPrewarm("agent-1", "room-1", {
+        namespace,
+      }),
     ).rejects.toMatchObject({
       name: "SharedRuntimeCacheWarmingError",
     });
