@@ -1336,9 +1336,11 @@ body {
  * ------------------------------------------------------------------------- */
 .landing-page {
   --landing-orange: #ff5800;
-  min-height: 100svh;
+  height: 100svh;
+  min-height: 0;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
   background: var(--brand-white);
   color: var(--brand-black);
   font-family: "Geist", Arial, sans-serif;
@@ -1378,6 +1380,7 @@ html:has(.landing-page)::-webkit-scrollbar-thumb:hover {
 }
 
 .landing-header {
+  flex: 0 0 auto;
   position: relative;
   z-index: 1;
   display: flex;
@@ -1401,19 +1404,23 @@ html:has(.landing-page)::-webkit-scrollbar-thumb:hover {
   position: relative;
   z-index: 1;
   flex: 1;
+  min-height: 0;
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  gap: clamp(2.5rem, 6vw, 5rem);
-  align-items: center;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: clamp(0.75rem, 2.5svh, 2rem);
+  align-items: stretch;
   width: min(100%, 72rem);
   margin: 0 auto;
-  padding: clamp(1.5rem, 4vw, 3rem) clamp(1.25rem, 4vw, 3rem)
-    clamp(3rem, 6vw, 5rem);
+  padding: clamp(0.65rem, 2.5svh, 2rem) clamp(1rem, 4vw, 3rem)
+    clamp(0.65rem, 2.5svh, 2rem);
 }
 
 @media (min-width: 900px) {
   .landing-hero {
     grid-template-columns: minmax(0, 1.1fr) minmax(20rem, 0.9fr);
+    grid-template-rows: minmax(0, 1fr);
+    align-items: center;
   }
 }
 
@@ -1555,9 +1562,20 @@ html:has(.landing-page)::-webkit-scrollbar-thumb:hover {
 }
 
 /* iPhone-styled iMessage preview */
+.landing-phone-stage {
+  --landing-phone-scale: 1;
+
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
 .landing-iphone {
   justify-self: center;
-  width: min(100%, 19.5rem);
+  width: 19.5rem;
   border-radius: 3.2rem;
   padding: 0.55rem;
   background: #0b0b0f;
@@ -1567,6 +1585,14 @@ html:has(.landing-page)::-webkit-scrollbar-thumb:hover {
   box-shadow:
     0 40px 90px rgb(0 0 0 / 30%),
     inset 0 0 0 2px rgb(255 255 255 / 14%);
+}
+
+.landing-phone-stage > .landing-iphone {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%) scale(var(--landing-phone-scale));
+  transform-origin: center;
 }
 
 .landing-iphone img {
@@ -2083,6 +2109,18 @@ html:has(.landing-page)::-webkit-scrollbar-thumb:hover {
 }
 
 @media (max-width: 640px) {
+  .landing-header {
+    padding-top: clamp(0.65rem, 2svh, 1rem);
+  }
+
+  .landing-brand img {
+    height: clamp(1.7rem, 7vw, 2.1rem);
+  }
+
+  .landing-header-cta {
+    min-height: 2.6rem;
+  }
+
   .landing-hero-heading {
     font-size: clamp(1.6rem, 7.5vw, 2.1rem);
   }

@@ -14,7 +14,14 @@ import {
   TelegramIcon,
   WhatsAppIcon,
 } from "@elizaos/ui/cloud-ui/components/icons";
-import { lazy, Suspense, useEffect, useRef, useState } from "react";
+import {
+  lazy,
+  Suspense,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 // Imported through the bundler (not referenced from public/) so the wordmark
 // ships with whichever build consumes this source; a public/ path depends on
 // the host app's asset-sync allowlist and 404s when it drifts.
@@ -495,6 +502,34 @@ function PhoneMockup() {
   );
 }
 
+function ResponsivePhoneMockup() {
+  const stageRef = useRef<HTMLDivElement>(null);
+
+  useLayoutEffect(() => {
+    const stage = stageRef.current;
+    const frame = stage?.querySelector<HTMLElement>(".landing-iphone");
+    if (!stage || !frame) return;
+
+    const fitFrame = () => {
+      const widthScale = stage.clientWidth / frame.offsetWidth;
+      const heightScale = stage.clientHeight / frame.offsetHeight;
+      const scale = Math.max(0.1, Math.min(1, widthScale, heightScale));
+      stage.style.setProperty("--landing-phone-scale", String(scale));
+    };
+
+    fitFrame();
+    const observer = new ResizeObserver(fitFrame);
+    observer.observe(stage);
+    return () => observer.disconnect();
+  }, []);
+
+  return (
+    <div className="landing-phone-stage" ref={stageRef}>
+      <PhoneMockup />
+    </div>
+  );
+}
+
 const KEYBOARD_ROWS = ["qwertyuiop", "asdfghjkl", "zxcvbnm"] as const;
 
 /**
@@ -746,7 +781,7 @@ export default function LandingPage() {
             <span aria-live="polite">{phoneCopyLabel}</span>
           </button>
         </div>
-        <PhoneMockup />
+        <ResponsivePhoneMockup />
       </main>
     </div>
   );
