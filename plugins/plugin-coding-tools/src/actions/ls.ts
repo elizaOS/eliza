@@ -199,6 +199,24 @@ export async function lsHandler(
   }
   const dir = validation.resolved;
 
+  const pattern = readStringParam(options, "pattern");
+  if (pattern !== undefined) {
+    return failureToActionResult({
+      reason: "invalid_param",
+      message:
+        "FILE action=ls does not support pattern filtering. Use action=glob for file pattern matching. For example: action=glob, pattern='**/*.ts', path='/path/to/search'",
+    });
+  }
+
+  const glob = readStringParam(options, "glob");
+  if (glob !== undefined) {
+    return failureToActionResult({
+      reason: "invalid_param",
+      message:
+        "FILE action=ls does not support glob filtering. Use action=glob for file pattern matching. For example: action=glob, pattern='**/*.ts', path='/path/to/search'",
+    });
+  }
+
   const ignore = (readArrayParam(options, "ignore") ?? []).filter(
     (entry): entry is string => typeof entry === "string" && entry.length > 0,
   );

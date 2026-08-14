@@ -263,6 +263,32 @@ describe("LS", () => {
     expect(alpha?.type).toBe("file");
     expect(typeof alpha?.size).toBe("number");
   });
+
+  it("rejects pattern parameter with guidance to use glob", async () => {
+    const { runtime, message } = await buildRuntime();
+    const result = await lsHandler(runtime, message, state, {
+      parameters: { pattern: "*.ts" },
+    });
+    expect(result.success).toBe(false);
+    expect(result.text).toContain("invalid_param");
+    expect(result.text).toContain("action=glob");
+    expect(result.text).toContain(
+      "FILE action=ls does not support pattern filtering"
+    );
+  });
+
+  it("rejects glob parameter with guidance to use glob action", async () => {
+    const { runtime, message } = await buildRuntime();
+    const result = await lsHandler(runtime, message, state, {
+      parameters: { glob: "*.ts" },
+    });
+    expect(result.success).toBe(false);
+    expect(result.text).toContain("invalid_param");
+    expect(result.text).toContain("action=glob");
+    expect(result.text).toContain(
+      "FILE action=ls does not support glob filtering"
+    );
+  });
 });
 
 describe("lsHandler — read-only query stays silent", () => {
