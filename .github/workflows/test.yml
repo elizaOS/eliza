@@ -161,24 +161,30 @@ jobs:
           retention-days: 30
 
   server-tests:
-    name: Server Tests
+    name: Server Tests${{ github.event_name == 'pull_request' && needs.changes.outputs.server != 'true' && ' — not affected' || '' }}
     needs: changes
-    if: github.event_name != 'pull_request' || needs.changes.outputs.server == 'true'
     runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 60
     env:
       PGLITE_WASM_MODE: node
     steps:
+      - name: Server test lane not affected
+        if: github.event_name == 'pull_request' && needs.changes.outputs.server != 'true'
+        run: echo "No server test lane is affected."
+
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        if: github.event_name != 'pull_request' || needs.changes.outputs.server == 'true'
         with:
           submodules: false
 
       - name: Setup Node.js
+        if: github.event_name != 'pull_request' || needs.changes.outputs.server == 'true'
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
           node-version: ${{ env.NODE_VERSION }}
 
       - name: Setup workspace dependencies
+        if: github.event_name != 'pull_request' || needs.changes.outputs.server == 'true'
         uses: ./.github/actions/setup-bun-workspace
         with:
           bun-version: ${{ env.BUN_VERSION }}
@@ -188,38 +194,49 @@ jobs:
           no-vision-deps: "true"
 
       - name: Build view bundles
+        if: github.event_name != 'pull_request' || needs.changes.outputs.server == 'true'
         run: bun run build:views
 
       - name: Views system tests
+        if: github.event_name != 'pull_request' || needs.changes.outputs.server == 'true'
         # views-registry.integration.test.ts is discovered by the agent
         # integration lane (pattern), not hand-enumerated here (#17778 / #17838).
         run: bunx vitest run packages/agent/src/__tests__/views-system-smoke.test.ts
 
       - name: Remote capability router tests
+        if: github.event_name != 'pull_request' || needs.changes.outputs.server == 'true'
         run: bun run test:remote-capabilities
 
       - name: Remote capability plugin surface audit
+        if: github.event_name != 'pull_request' || needs.changes.outputs.server == 'true'
         run: bun run test:remote-capabilities:surface-audit
 
       - name: Remote capability naming audit
+        if: github.event_name != 'pull_request' || needs.changes.outputs.server == 'true'
         run: bun run test:remote-capabilities:naming-audit
 
       - name: Remote capability naming audit self-test
+        if: github.event_name != 'pull_request' || needs.changes.outputs.server == 'true'
         run: bun run test:remote-capabilities:naming-audit:self-test
 
       - name: Remote capability source-build smoke
+        if: github.event_name != 'pull_request' || needs.changes.outputs.server == 'true'
         run: bun run test:remote-capabilities:source-build
 
       - name: Remote capability fixture server smoke
+        if: github.event_name != 'pull_request' || needs.changes.outputs.server == 'true'
         run: bun run test:remote-capabilities:fixture-server
 
       - name: Remote capability live report validator self-test
+        if: github.event_name != 'pull_request' || needs.changes.outputs.server == 'true'
         run: bun run test:remote-capabilities:validate-live-reports:self-test
 
       - name: Remote capability GitHub live evidence self-test
+        if: github.event_name != 'pull_request' || needs.changes.outputs.server == 'true'
         run: bun run test:remote-capabilities:github-live-evidence:self-test
 
       - name: Remote capability GitHub live artifact self-test
+        if: github.event_name != 'pull_request' || needs.changes.outputs.server == 'true'
         run: bun run test:remote-capabilities:github-live-artifacts:self-test
 
       # `docker info` alone is not enough of a health signal on the shared
@@ -230,6 +247,7 @@ jobs:
       # this also warms the pull cache — and skip the smoke with a warning when
       # it cannot.
       - name: Check Docker container-start health
+        if: github.event_name != 'pull_request' || needs.changes.outputs.server == 'true'
         id: docker-health
         run: |
           if timeout 300 docker pull node:24-alpine >/dev/null 2>&1 \
@@ -241,29 +259,36 @@ jobs:
           fi
 
       - name: Remote capability Docker smoke
-        if: steps.docker-health.outputs.healthy == 'true'
+        if: (github.event_name != 'pull_request' || needs.changes.outputs.server == 'true') && steps.docker-health.outputs.healthy == 'true'
         run: bun run test:remote-capabilities:docker
 
       - name: Run server tests
+        if: github.event_name != 'pull_request' || needs.changes.outputs.server == 'true'
         run: bun run test:server
 
   client-tests:
-    name: Client Tests
+    name: Client Tests${{ github.event_name == 'pull_request' && needs.changes.outputs.client != 'true' && ' — not affected' || '' }}
     needs: changes
-    if: github.event_name != 'pull_request' || needs.changes.outputs.client == 'true'
     runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 60
     steps:
+      - name: Client test lane not affected
+        if: github.event_name == 'pull_request' && needs.changes.outputs.client != 'true'
+        run: echo "No client test lane is affected."
+
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        if: github.event_name != 'pull_request' || needs.changes.outputs.client == 'true'
         with:
           submodules: false
 
       - name: Setup Node.js
+        if: github.event_name != 'pull_request' || needs.changes.outputs.client == 'true'
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
           node-version: ${{ env.NODE_VERSION }}
 
       - name: Setup workspace dependencies
+        if: github.event_name != 'pull_request' || needs.changes.outputs.client == 'true'
         uses: ./.github/actions/setup-bun-workspace
         with:
           bun-version: ${{ env.BUN_VERSION }}
@@ -273,12 +298,15 @@ jobs:
           no-vision-deps: "true"
 
       - name: Run client tests
+        if: github.event_name != 'pull_request' || needs.changes.outputs.client == 'true'
         run: bun run test:client
 
       - name: Install Playwright Chromium
+        if: github.event_name != 'pull_request' || needs.changes.outputs.client == 'true'
         run: .github/scripts/install-playwright-browsers.sh chromium
 
       - name: Remote capability UI smoke
+        if: github.event_name != 'pull_request' || needs.changes.outputs.client == 'true'
         run: bun run test:remote-capabilities:ui
 
   # Perf gate (#9954) runs in its own job pinned to GitHub-hosted ubuntu-24.04:

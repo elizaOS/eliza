@@ -145,6 +145,32 @@ describe("root test lane require-work wiring (#13620)", () => {
     );
   });
 
+  test("affected server and client lanes visibly report a no-op PR path (#19351)", () => {
+    const workflow = readFileSync(
+      join(repoRoot, ".github", "workflows", "test.yml"),
+      "utf8",
+    );
+    for (const [job, nextJob, lane, label] of [
+      ["server-tests", "client-tests", "server", "Server"],
+      ["client-tests", "client-perf-gate", "client", "Client"],
+    ]) {
+      const jobStart = workflow.indexOf(`  ${job}:`);
+      const jobEnd = workflow.indexOf(`\n  ${nextJob}:`, jobStart);
+      expect(jobStart).toBeGreaterThan(-1);
+      expect(jobEnd).toBeGreaterThan(jobStart);
+      const source = workflow.slice(jobStart, jobEnd);
+      expect(source).toContain(
+        `name: ${label} Tests` +
+          "${{ github.event_name == 'pull_request' && needs.changes.outputs." +
+          `${lane} != 'true' && ' — not affected' || '' }}`,
+      );
+      expect(source).toContain(`No ${lane} test lane is affected.`);
+      expect(source).toContain(
+        `if: github.event_name != 'pull_request' || needs.changes.outputs.${lane} == 'true'`,
+      );
+    }
+  });
+
   test("the standalone guard installs the Bun contract dependency first", () => {
     const workflow = readFileSync(
       join(repoRoot, ".github", "workflows", "test.yml"),
