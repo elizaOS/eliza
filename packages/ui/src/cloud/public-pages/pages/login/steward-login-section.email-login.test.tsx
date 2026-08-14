@@ -242,4 +242,29 @@ describe("StewardLoginSection email magic-link companion code", () => {
     expect(await screen.findByText("Email expired")).toBeTruthy();
     expect(sessionSpies.sync).not.toHaveBeenCalled();
   });
+
+  it("shows magic-link-only message when companion code is not available", async () => {
+    emailLoginSpies.start.mockResolvedValue({
+      expiresAt: Date.now() + 600_000,
+      challengeId: undefined,
+      pollSecret: undefined,
+    });
+    renderSection();
+    const emailInput = await screen.findByPlaceholderText("you@example.com");
+    fireEvent.change(emailInput, { target: { value: "person@example.com" } });
+    fireEvent.click(screen.getByRole("button", { name: /Magic Link/i }));
+
+    // Verify that the code input is NOT shown (magic-link-only case)
+    expect(screen.queryByLabelText("Six-digit code")).toBeNull();
+
+    // Verify that the magic-link-only message is shown
+    expect(
+      await screen.findByText(
+        "Check your inbox and open the magic link to sign in.",
+      ),
+    ).toBeTruthy();
+
+    // Verify that the verify code button is NOT shown
+    expect(screen.queryByRole("button", { name: /Verify code/i })).toBeNull();
+  });
 });

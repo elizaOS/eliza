@@ -1158,9 +1158,7 @@ export default function StewardLoginSection() {
             ? "Too many attempts were made. Request a new email in a moment."
             : emailCheckState === "invalid"
               ? "That sign-in email is no longer valid. Request a new email to continue."
-              : hasCompanionCode
-                ? "Open the link on this device or enter the six-digit code we sent."
-                : "Check your inbox and open the magic link to sign in.";
+              : "Check your inbox and open the magic link to sign in.";
 
     return (
       <div className="space-y-4 py-4 text-center">
