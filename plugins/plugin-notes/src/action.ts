@@ -40,13 +40,26 @@ function readString(value: unknown): string | undefined {
   return trimmed.length > 0 ? trimmed : undefined;
 }
 
-function readOp(params: Record<string, unknown>): NotesOp | undefined {
+/**
+ * `undefined` means the caller named no operation at all — a bare NOTES call,
+ * which reads. An unrecognised name is NOT that: it is a caller asking for
+ * something specific that this action cannot do, and it must surface as an
+ * explicit invalid result. Collapsing the two into one `undefined` made
+ * `action: "remove"` silently LIST the notes instead of deleting one, directly
+ * contradicting this action's own routing contract ("Deleting and updating are
+ * NOT reads: never answer a removal or change request with action=list").
+ */
+type NotesOpParse =
+  | { recognized: true; op: NotesOp }
+  | { recognized: false; requested: string };
+
+function readOp(params: Record<string, unknown>): NotesOpParse | undefined {
   const raw = readString(params.action ?? params.subaction ?? params.op);
   if (!raw) return undefined;
   const normalized = raw.toLowerCase();
   return (NOTES_OPS as readonly string[]).includes(normalized)
-    ? (normalized as NotesOp)
-    : undefined;
+    ? { recognized: true, op: normalized as NotesOp }
+    : { recognized: false, requested: raw };
 }
 
 /** One-line rendering; the body is the user's own text, already user-safe. */
@@ -114,7 +127,16 @@ export const notesAction: Action = {
     callback?: HandlerCallback,
   ): Promise<ActionResult> => {
     const params = readParams(options);
-    const op = readOp(params) ?? "list";
+    const parsed = readOp(params);
+    if (parsed && !parsed.recognized) {
+      // error-policy:J3 an unrecognised operation is untrusted planner input;
+      // it becomes an explicit invalid result, never a fake-valid default.
+      return failure(
+        `I can create, list, update, or delete a note — I don't have a "${parsed.requested}" one.`,
+        "NOTES_UNKNOWN_OP",
+      );
+    }
+    const op: NotesOp = parsed?.op ?? "list";
     const service = getNotesService(runtime);
 
     const deliver = async (text: string) => {
