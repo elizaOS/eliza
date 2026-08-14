@@ -1,18 +1,19 @@
 /**
- * TaskExecutor for research-shaped work. Routes matching task specs through the
- * runtime's RESEARCH model when one is available, otherwise decomposes the question
- * into sub-questions, answers each via TEXT_LARGE, and synthesizes a final report.
+ * TaskExecutor for research-shaped work. It requires a real RESEARCH model and
+ * translates provider failures into an explicit task failure at the executor boundary.
  */
-import { type IAgentRuntime, ModelType } from "@elizaos/core";
+import {
+  ElizaError,
+  type IAgentRuntime,
+  isElizaError,
+  ModelType,
+} from "@elizaos/core";
 import type { TaskExecutor, TaskResult, TaskSpec } from "./task-executor.ts";
 
 const RESEARCH_PATTERNS =
   /\b(research|investigate|analyze|find out|look into|explore|summarize|compare|evaluate|review|study|assess)\b/i;
 
-/**
- * Decomposes research questions into sub-questions, answers each via the
- * runtime's LLM, and synthesizes a final report.
- */
+/** Executes research only through a provider that implements the RESEARCH contract. */
 export class ResearchTaskExecutor implements TaskExecutor {
   readonly type = "research";
   readonly description =
@@ -26,8 +27,14 @@ export class ResearchTaskExecutor implements TaskExecutor {
   async execute(spec: TaskSpec, runtime: IAgentRuntime): Promise<TaskResult> {
     const startTime = Date.now();
     try {
+      let researchResult:
+        | {
+            text?: string;
+            annotations?: Array<{ url?: string; title?: string }>;
+          }
+        | string;
       try {
-        const researchResult = (await runtime.useModel(ModelType.RESEARCH, {
+        researchResult = (await runtime.useModel(ModelType.RESEARCH, {
           input: spec.description,
           tools: [{ type: "web_search_preview" }],
           background: true,
@@ -38,119 +45,53 @@ export class ResearchTaskExecutor implements TaskExecutor {
               annotations?: Array<{ url?: string; title?: string }>;
             }
           | string;
-
-        const output =
-          typeof researchResult === "string"
-            ? researchResult
-            : (researchResult.text ?? "");
-        if (output.trim().length > 0) {
-          return {
-            taskId: spec.id,
-            success: true,
-            output,
-            durationMs: Date.now() - startTime,
-          };
-        }
-      } catch {
-        // Fall through to the sequential synthesis path when the runtime
-        // does not expose a RESEARCH model or the provider rejects it.
+      } catch (cause) {
+        // error-policy:J2 provider errors gain a stable research-task code and
+        // preserve their cause before the executor boundary translates them.
+        const detail = cause instanceof Error ? cause.message : String(cause);
+        throw new ElizaError(
+          `The configured research provider failed: ${detail}`,
+          {
+            code: "RESEARCH_PROVIDER_FAILED",
+            cause,
+            context: { taskId: spec.id },
+            severity: "ephemeral",
+          },
+        );
       }
 
-      // Step 1: Decompose the research question into sub-questions
-      const decomposition = await runtime.useModel(ModelType.TEXT_LARGE, {
-        prompt: [
-          "Decompose this research question into 3-5 focused sub-questions",
-          "that can be answered independently:",
-          "",
-          spec.description,
-          "",
-          "Return each sub-question on its own line, one per line. No numbering, no bullets, no prose.",
-        ].join("\n"),
-      });
-
-      let subQuestions: string[];
-      try {
-        // Parse line-delimited questions from the response.
-        // Strip markdown fences and numbering if the model adds them.
-        let raw: string =
-          typeof decomposition === "string"
-            ? decomposition
-            : String(decomposition);
-        const fenceMatch = raw.match(/```(?:\w+)?\s*\n?([\s\S]*?)\n?\s*```/);
-        if (fenceMatch) raw = fenceMatch[1];
-
-        // Try line-based parsing first (preferred)
-        const lines = raw
-          .split(/\r?\n/)
-          .map((line) =>
-            line
-              .replace(
-                /^\s{0,32}(?:\d{1,8}[.)]\s{0,32}|-\s{0,32}|\*\s{0,32})/,
-                "",
-              )
-              .trim(),
-          )
-          .filter((line) => line.length > 0);
-
-        if (lines.length >= 2) {
-          subQuestions = lines;
-        } else {
-          subQuestions = [spec.description];
-        }
-        if (subQuestions.length === 0) subQuestions = [spec.description];
-      } catch {
-        subQuestions = [spec.description];
-      }
-
-      // Step 2: Answer each sub-question
-      const answers: Array<{ question: string; answer: string }> = [];
-      for (const question of subQuestions) {
-        const answer = await runtime.useModel(ModelType.TEXT_LARGE, {
-          prompt: [
-            "Answer this research question concisely but thoroughly:",
-            "",
-            question,
-            "",
-            `Context: This is part of a larger research task: "${spec.description}"`,
-          ].join("\n"),
-        });
-        answers.push({
-          question,
-          answer: typeof answer === "string" ? answer : String(answer),
+      const output =
+        typeof researchResult === "string"
+          ? researchResult
+          : (researchResult.text ?? "");
+      if (output.trim().length === 0) {
+        throw new ElizaError("The research provider returned no report", {
+          code: "RESEARCH_EMPTY_RESULT",
+          context: { taskId: spec.id },
         });
       }
-
-      // Step 3: Synthesize into a final report
-      const findingsBlock = answers
-        .map((a, i) => `${i + 1}. Q: ${a.question}\n   A: ${a.answer}`)
-        .join("\n\n");
-
-      const synthesis = await runtime.useModel(ModelType.TEXT_LARGE, {
-        prompt: [
-          "Synthesize these research findings into a coherent report:",
-          "",
-          `Original question: ${spec.description}`,
-          "",
-          `Findings:\n${findingsBlock}`,
-          "",
-          "Provide a structured summary with key findings, conclusions, and any caveats.",
-        ].join("\n"),
-      });
-
-      const report =
-        typeof synthesis === "string" ? synthesis : String(synthesis);
 
       return {
         taskId: spec.id,
         success: true,
-        output: report,
+        output,
         durationMs: Date.now() - startTime,
       };
     } catch (error) {
+      // error-policy:J1 TaskExecutor is the result boundary consumed by the
+      // orchestrator, so typed failures become an explicit unsuccessful result.
+      const failure = isElizaError(error)
+        ? error
+        : new ElizaError("Research execution failed", {
+            code: "RESEARCH_EXECUTION_FAILED",
+            cause: error,
+            context: { taskId: spec.id },
+          });
       return {
         taskId: spec.id,
         success: false,
-        error: error instanceof Error ? error.message : String(error),
+        errorCode: failure.code,
+        error: failure.message,
         durationMs: Date.now() - startTime,
       };
     }
