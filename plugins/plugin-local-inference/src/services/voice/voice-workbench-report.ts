@@ -15,6 +15,11 @@
 import type { VoiceE2eCaseResult } from "./e2e-harness";
 import { percentile, round4 } from "./metric-math";
 import type { VoiceScenarioClass } from "./voice-scenario";
+import {
+	buildVoiceWorkbenchEvidenceReport,
+	type VoiceWorkbenchEvidenceReport,
+	type VoiceWorkbenchScenarioEvidence,
+} from "./workbench-evidence";
 
 export type VoiceWorkbenchStatus = "ran" | "skipped";
 export type VoiceWorkbenchVerdict = "pass" | "fail" | "skipped";
@@ -49,6 +54,8 @@ export interface VoiceWorkbenchScenarioRun {
 	skipReason?: string;
 	/** `.wav` artifacts written when a capture sink was active (else absent). */
 	audioArtifacts?: VoiceAudioArtifact[];
+	/** Content-free trace/device observations produced by an instrumented lane. */
+	evidence?: VoiceWorkbenchScenarioEvidence;
 }
 
 export interface VoiceWorkbenchScenarioReport {
@@ -58,9 +65,12 @@ export interface VoiceWorkbenchScenarioReport {
 	verdict: VoiceWorkbenchVerdict;
 	caseCount: number;
 	failedCaseKinds: string[];
-	measurementCoverage: Array<{
+	/** Added additively to schema v1; absent historical reports mean no coverage rows. */
+	measurementCoverage?: Array<{
 		metric: string;
 		count: number;
+		/** Added additively to schema v1; absent historical entries mean one required sample. */
+		expectedCount?: number;
 		passed: boolean;
 	}>;
 	skipReason?: string;
@@ -114,6 +124,8 @@ export interface VoiceWorkbenchReport {
 	scenariosSkipped: number;
 	scenarios: VoiceWorkbenchScenarioReport[];
 	metrics: VoiceWorkbenchMetrics;
+	/** Added additively to schema v1; historical reports may omit it. */
+	evidence?: VoiceWorkbenchEvidenceReport;
 }
 
 function mean(values: ReadonlyArray<number>): number | null {
@@ -168,6 +180,7 @@ export function buildVoiceWorkbenchReport(
 				.map((entry) => ({
 					metric: entry.metric,
 					count: entry.count,
+					expectedCount: entry.expectedCount,
 					passed: entry.passed,
 				})),
 			skipReason: run.skipReason,
@@ -248,6 +261,9 @@ export function buildVoiceWorkbenchReport(
 		: anyRanPassed
 			? "pass"
 			: "skipped";
+	const evidence = buildVoiceWorkbenchEvidenceReport(
+		runs.flatMap((run) => (run.evidence ? [run.evidence] : [])),
+	);
 
 	return {
 		schemaVersion: 1,
@@ -274,6 +290,7 @@ export function buildVoiceWorkbenchReport(
 			erleDb: rollupMin(erleDb),
 			partialRetractions: rollupMax(partialRetractions),
 		},
+		...(evidence ? { evidence } : {}),
 	};
 }
 
@@ -321,17 +338,36 @@ export function formatVoiceWorkbenchMarkdown(
 		const failed =
 			s.failedCaseKinds.length > 0 ? s.failedCaseKinds.join(", ") : "—";
 		const skip = s.skipReason ? ` (${s.skipReason})` : "";
+		const coverageEntries = s.measurementCoverage ?? [];
 		const coverage =
-			s.measurementCoverage.length > 0
-				? s.measurementCoverage
+			coverageEntries.length > 0
+				? coverageEntries
 						.map(
 							(entry) =>
-								`${entry.metric}=${entry.count}${entry.passed ? "" : "!"}`,
+								`${entry.metric}=${entry.count}/${entry.expectedCount ?? 1}${entry.passed ? "" : "!"}`,
 						)
 						.join(", ")
 				: "—";
 		lines.push(
 			`| ${s.scenarioId} | ${s.classes.join(", ")} | ${s.verdict}${skip} | ${s.caseCount} | ${coverage} | ${failed} |`,
+		);
+	}
+	if (report.evidence) {
+		const evidence = report.evidence;
+		lines.push(
+			"",
+			"## Content-free realtime and device evidence",
+			"",
+			`**Release gate:** ${evidence.releaseGatePassed ? "PASS" : "FAIL"}`,
+			"",
+			`- Trace artifacts: ${evidence.traceCount}/${evidence.expectedTraceCount} expected; ${evidence.liveProviderTraceCount} physical-device/live-provider`,
+			`- Trace artifact coverage: ${evidence.traceArtifactCoveragePassed ? "pass" : "fail"}`,
+			`- Diagnostic latency (includes synthetic): ${evidence.diagnosticLatency.passed ? "pass" : "fail"}`,
+			`- Release latency (live evidence only): ${evidence.releaseLatency.passed ? "pass" : "fail"}`,
+			`- Device observations: ${evidence.deviceEvaluation.validObservationCount}; release matrix: ${evidence.deviceEvaluation.passed ? "pass" : "fail"}`,
+			`- Release blockers: ${evidence.releaseBlockers.length > 0 ? evidence.releaseBlockers.join(", ") : "none"}`,
+			"",
+			"Synthetic/mock diagnostics never satisfy the live release gate.",
 		);
 	}
 	return lines.join("\n");

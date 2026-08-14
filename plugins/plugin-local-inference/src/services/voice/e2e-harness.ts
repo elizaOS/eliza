@@ -1028,6 +1028,7 @@ export interface MeasurementCoverageResult {
 	kind: "measurement-coverage";
 	metric: string;
 	count: number;
+	expectedCount: number;
 	passed: boolean;
 }
 
@@ -1035,12 +1036,18 @@ export interface MeasurementCoverageResult {
 export function scoreMeasurementCoverage(
 	metric: string,
 	count: number,
+	expectedCount = 1,
 ): MeasurementCoverageResult {
 	return {
 		kind: "measurement-coverage",
 		metric,
 		count,
-		passed: Number.isInteger(count) && count > 0,
+		expectedCount,
+		passed:
+			Number.isInteger(count) &&
+			Number.isInteger(expectedCount) &&
+			expectedCount > 0 &&
+			count >= expectedCount,
 	};
 }
 

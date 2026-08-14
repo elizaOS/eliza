@@ -484,6 +484,17 @@ class RealVoiceWorkbenchAdapter implements RealVoiceWorkbenchRuntime {
 		};
 		this.services = {
 			strictMeasurementCoverage: true,
+			evidence: {
+				lane: "offline_provider",
+				providerPath: {
+					sttProvider: "local-asr",
+					modelProvider: "none",
+					ttsProvider: "local-kokoro",
+					transport: "local",
+					roundTrip: "not_measured",
+				},
+				requestedFrameDurationMs: 20,
+			},
 			prepareScenario: (input) => this.prepareScenario(input),
 			observeDiarization: (input) => this.observeDiarization(input),
 			observeTurn: (input) => this.observeTurn(input),

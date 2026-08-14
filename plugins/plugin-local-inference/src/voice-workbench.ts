@@ -52,6 +52,18 @@ export {
 	writeVoiceWorkbenchResult,
 } from "./services/voice/workbench-entrypoint";
 export {
+	buildVoiceWorkbenchEvidenceReport,
+	buildVoiceWorkbenchScenarioEvidence,
+	DEFAULT_VOICE_WORKBENCH_RELEASE_REQUIREMENTS,
+	type VoiceWorkbenchEvidenceLane,
+	type VoiceWorkbenchEvidenceReport,
+	type VoiceWorkbenchEvidenceSettings,
+	type VoiceWorkbenchLiveDeviceEvidence,
+	type VoiceWorkbenchObservedTurnEvidence,
+	type VoiceWorkbenchRealtimeTurnEvidence,
+	type VoiceWorkbenchScenarioEvidence,
+} from "./services/voice/workbench-evidence";
+export {
 	type RunVoiceScenarioHeadlessArgs,
 	type RunVoiceWorkbenchArgs,
 	runVoiceScenarioHeadless,
