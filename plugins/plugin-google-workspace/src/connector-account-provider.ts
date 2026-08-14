@@ -224,6 +224,15 @@ function normalizeGrantedCapabilities(scopes: readonly string[]): {
   // error-policy:J3 Provider-returned scopes are untrusted external input. Keep
   // exact recognized capabilities, retain unknown scopes as metadata, and make
   // an empty connector grant an explicit failure instead of inventing access.
+
+  // Normalize all incoming scopes to lowercase for matching
+  const normalizedScopesSet = new Set(
+    scopes
+      .map((s) => s.trim())
+      .filter(Boolean)
+      .map((s) => s.toLowerCase())
+  );
+
   for (const scope of scopes) {
     const normalized = scope.trim();
     if (!normalized) continue;
@@ -231,7 +240,7 @@ function normalizeGrantedCapabilities(scopes: readonly string[]): {
       capabilities.add(normalized);
       continue;
     }
-    const matched = matchCapabilityFromScope(normalized);
+    const matched = matchCapabilityFromScope(normalized, normalizedScopesSet);
     if (matched) {
       capabilities.add(matched);
       continue;
@@ -244,17 +253,40 @@ function normalizeGrantedCapabilities(scopes: readonly string[]): {
   return { capabilities: [...capabilities], ignoredScopes };
 }
 
-function matchCapabilityFromScope(scope: string): GoogleCapability | undefined {
+function matchCapabilityFromScope(
+  scope: string,
+  allAvailableScopesLower?: Set<string>
+): GoogleCapability | undefined {
   // Scope URL → capability ID mapping. Pulls from the canonical capability
   // metadata so additions to scopes.ts propagate automatically.
+  //
+  // For compound capabilities (e.g. gmail.manage requires both gmail.modify AND
+  // gmail.settings.basic), only return the capability if ALL constituent scopes
+  // are present. This prevents partial grants from being recorded as fully granted,
+  // which would cause re-auth to re-request previously-denied scopes (#19158).
   const trimmed = scope.trim().toLowerCase();
   for (const capability of GOOGLE_CAPABILITIES) {
     const capabilityScopes = scopesForGoogleCapabilities([capability], {
       includeIdentityScopes: false,
     });
-    if (capabilityScopes.some((value) => value.toLowerCase() === trimmed)) {
-      return capability;
+
+    // Check if this scope matches any scope for the capability
+    if (!capabilityScopes.some((value) => value.toLowerCase() === trimmed)) {
+      continue;
     }
+
+    // If we have the full scope set available, verify all constituent scopes are present
+    // for this capability before returning it (required for compound capabilities)
+    if (allAvailableScopesLower) {
+      const allScopesLower = capabilityScopes.map((s) => s.toLowerCase());
+      const allPresent = allScopesLower.every((s) => allAvailableScopesLower.has(s));
+      if (!allPresent) {
+        // This is a partial grant of a compound capability; do not record it as granted
+        return undefined;
+      }
+    }
+
+    return capability;
   }
   return undefined;
 }
