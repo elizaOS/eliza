@@ -384,8 +384,16 @@ export function isValidMessageTs(ts: string): boolean {
 /**
  * Normalizes a Slack permalink path timestamp (`p` digits with the decimal
  * removed) to the `seconds.microseconds` form `isValidMessageTs` accepts.
- * Official `chat.getPermalink` examples use 15 digits; current links use 16;
- * seconds-only links use 10. Other widths stay rejected.
+ * Current links use 16 digits, seconds-only links use 10, and the documented
+ * `chat.getPermalink` examples use 15. Other widths stay rejected.
+ *
+ * The 15-digit width is padded on the right (`00008` -> `000080`), which is an
+ * assumption the published documentation cannot settle: that page's own
+ * `message_ts` argument example is the dot-less `135854651500008`, so its
+ * 15-digit permalink may equally be a truncated 16-digit value needing a left
+ * pad (`000008`). Both decodings satisfy `isValidMessageTs`, and the previous
+ * code emitted a value this package's own contract rejected, so the ambiguity
+ * is confined here: an API-verified correction changes only this function.
  */
 export function normalizeSlackPermalinkTimestamp(
   digits: string,
@@ -397,7 +405,12 @@ export function normalizeSlackPermalinkTimestamp(
 }
 
 /**
- * Parses a Slack message link to extract channel and message IDs
+ * Parses a Slack message link to extract channel and message IDs.
+ *
+ * The match is anchored, so the argument must be a bare permalink: a link
+ * embedded in surrounding prose or wrapped in mrkdwn (`<https://…|label>`)
+ * returns `null`. Callers holding message text extract the URL first, with
+ * `extractUrlFromSlackLink` for the mrkdwn form.
  */
 export function parseSlackMessageLink(
   link: string,
