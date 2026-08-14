@@ -192,6 +192,7 @@ public class ElizaAgentService extends Service {
     private static final long AGENT_BOOT_GRACE_MS = 120_000L;
 
     private final Object processLock = new Object();
+    private final Object notificationLock = new Object();
     private Process agentProcess;
     private Thread stdoutPump;
     private Thread stderrPump;
@@ -199,13 +200,14 @@ public class ElizaAgentService extends Service {
     /** In-process bionic GPU inference host; non-null only when delegating. */
     private volatile ElizaBionicInferenceServer bionicInferenceServer;
     private volatile Thread startWorker;
+    private volatile Thread notificationWorker;
     private volatile boolean shuttingDown;
     private volatile boolean foregroundStartDenied;
     private volatile boolean detachedAgentMode;
     private volatile long detachedLaunchStartedAtMs;
     private long detachedProbeArmedForLaunchMs;
     private int restartAttempts;
-    private String currentStatus = "starting";
+    private volatile String currentStatus = "starting";
 
     // Per-boot bearer token for the WebView↔agent loopback. Generated when
     // the service first starts the agent process and cleared on stop.
@@ -751,7 +753,7 @@ public class ElizaAgentService extends Service {
         activeInstance = this;
         ensureNotificationChannel();
 
-        Notification notification = buildNotification("Eliza agent", "Starting…");
+        Notification notification = buildBootstrapNotification("Eliza agent", "Starting…");
 
         // Enter the foreground BEFORE any diagnostic IO. Android's FGS-start
         // timeout begins ticking at onCreate; spending it on the synchronous
@@ -3808,6 +3810,39 @@ public class ElizaAgentService extends Service {
     }
 
     private void updateNotification() {
+        synchronized (notificationLock) {
+            if (notificationWorker != null && notificationWorker.isAlive()) {
+                return;
+            }
+            notificationWorker = new Thread(() -> {
+                try {
+                    pushNotification();
+                } finally {
+                    synchronized (notificationLock) {
+                        notificationWorker = null;
+                    }
+                }
+            }, "ElizaAgent-notification");
+            notificationWorker.start();
+        }
+    }
+
+    /**
+     * The first foreground notification must avoid PendingIntent binder calls:
+     * a loaded system_server can stall them beyond Android's service timeout.
+     */
+    private Notification buildBootstrapNotification(String title, String text) {
+        return new NotificationCompat.Builder(this, CHANNEL_ID)
+            .setSmallIcon(R.mipmap.ic_launcher)
+            .setContentTitle(title)
+            .setContentText(text)
+            .setOngoing(true)
+            .setOnlyAlertOnce(true)
+            .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
+            .build();
+    }
+
+    private void pushNotification() {
         String title;
         String text;
         switch (currentStatus) {

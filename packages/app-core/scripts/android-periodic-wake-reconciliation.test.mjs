@@ -158,4 +158,24 @@ describe("Android periodic wake reconciliation (#17874)", () => {
       /Thread activeStartWorker = startWorker;[\s\S]*activeStartWorker != null[\s\S]*activeStartWorker\.isAlive\(\)[\s\S]*return;[\s\S]*synchronized \(processLock\)/,
     );
   });
+
+  it("enters foreground without PendingIntent binder work on the main thread", () => {
+    for (const name of [
+      "ElizaAgentService.java",
+      "GatewayConnectionService.java",
+    ]) {
+      const service = source(name);
+      const onCreateBody = service.match(
+        /public void onCreate\(\) \{([\s\S]*?)\n    \}\n\n    @Override\n    public int onStartCommand/,
+      )?.[1];
+      const bootstrapBody = service.match(
+        /private Notification buildBootstrapNotification\([\s\S]*?\) \{([\s\S]*?)\n    \}/,
+      )?.[1];
+
+      expect(onCreateBody).toContain("buildBootstrapNotification");
+      expect(onCreateBody).not.toContain("buildNotification(");
+      expect(bootstrapBody).toBeDefined();
+      expect(bootstrapBody).not.toContain("PendingIntent");
+    }
+  });
 });
