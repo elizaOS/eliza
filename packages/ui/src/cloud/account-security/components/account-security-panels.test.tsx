@@ -82,6 +82,7 @@ vi.mock("sonner", () => ({
 import { ActiveSessionsPanel } from "./active-sessions-panel";
 import { ApiKeysLink } from "./api-keys-link";
 import { MfaPanel } from "./mfa-panel";
+import { PluginPermissionsLink } from "./plugin-permissions-link";
 import { RecentAuditEvents } from "./recent-audit-events";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -171,6 +172,12 @@ describe("account-security panels", () => {
     render(<ApiKeysLink />);
     const link = screen.getByRole("link", { name: "Manage keys" });
     expect(link.getAttribute("href")).toBe("#cloud-api-keys");
+  });
+
+  it("routes the plugin permissions nav row to the cloud-plugin-grants hash", () => {
+    render(<PluginPermissionsLink />);
+    const link = screen.getByRole("link", { name: "Manage permissions" });
+    expect(link.getAttribute("href")).toBe("#cloud-plugin-grants");
   });
 
   it("renders malformed session DTOs as errors, not healthy empty state", async () => {
