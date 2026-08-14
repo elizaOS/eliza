@@ -1196,13 +1196,25 @@ jobs:
       - name: Verify frontend chunk safety
         run: bun run --cwd packages/app verify:chunks
 
+      - name: Build self-contained Pages Functions bundle
+        working-directory: packages/app
+        run: |
+          set -euo pipefail
+          functions_bundle="$RUNNER_TEMP/pages-functions-bundle"
+          bunx wrangler@4.100.0 pages functions build functions \
+            --outdir "$functions_bundle" \
+            --project-directory . \
+            --build-output-directory dist
+          test -s "$functions_bundle/index.js"
+          install -m 0644 "$functions_bundle/index.js" dist/_worker.js
+          node --check dist/_worker.js
+
       - name: Upload consolidated frontend artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: pages-app-${{ steps.pages-artifact.outputs.run_id }}-${{ steps.pages-artifact.outputs.run_attempt }}
           path: |
             packages/app/dist
-            packages/app/functions
             packages/app/wrangler.toml
           if-no-files-found: error
           retention-days: 1
@@ -1370,6 +1382,13 @@ jobs:
         with:
           name: ${{ steps.pages-artifact.outputs.name }}
           path: ${{ env.CHECKOUT_DIR }}/packages/app
+
+      - name: Verify immutable Pages Functions bundle
+        working-directory: ${{ env.CHECKOUT_DIR }}/packages/app
+        run: |
+          set -euo pipefail
+          test -s dist/_worker.js
+          node --check dist/_worker.js
 
       - name: Legacy inline fallback - install dependencies
         if: ${{ vars.CLOUD_CF_LEGACY_INLINE_BUILD == 'true' }}
