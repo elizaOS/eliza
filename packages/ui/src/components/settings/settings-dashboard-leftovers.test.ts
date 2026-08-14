@@ -51,7 +51,7 @@ const BRANDCARD_ALLOWLIST = new Map<string, string>([
   ],
   [
     "cloud/monetization/affiliates/AffiliatesPageClient.tsx",
-    "affiliates dashboard cards/tables",
+    "affiliates dashboard cards; copy rows converted; markup SettingsInputRow",
   ],
   [
     "cloud/monetization/earnings/EarningsPageClient.tsx",
