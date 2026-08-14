@@ -17,9 +17,11 @@
  */
 
 import type { PluginListenerHandle } from "@capacitor/core";
+import { logger } from "@elizaos/logger";
 import * as React from "react";
 import {
   getSwabblePlugin,
+  type SwabbleConfig,
   type SwabbleWakeWordEvent,
 } from "../bridge/native-plugins";
 import {
@@ -27,6 +29,11 @@ import {
   probeFusedWake,
   subscribeFusedWake,
 } from "./fused-wake-bridge";
+import {
+  isDesktopFusedWakeListening,
+  startDesktopFusedWake,
+  stopDesktopFusedWake,
+} from "./fused-wake-desktop-bridge";
 import {
   DEFAULT_CONFIRM_WINDOW_MS,
   initialWakeControllerState,
@@ -39,7 +46,7 @@ import {
   type WakeDetectionPath,
   wakeControllerReducer,
 } from "./wake-controller";
-import type { WakeNameMatchOptions } from "./wake-name-match";
+import { normalizeForWake, type WakeNameMatchOptions } from "./wake-name-match";
 
 /**
  * Character names that ship with a trained openWakeWord head (enabling the head
@@ -79,6 +86,16 @@ export interface UseWakeControllerOptions {
    * capabilities declare `openWakeWord`.
    */
   fusedWakeSource?: (listener: (event: FusedWakeEvent) => void) => () => void;
+  /** Native fused detector lifecycle (injectable for deterministic tests). */
+  fusedLifecycle?: FusedWakeLifecycle;
+  /** Persisted Swabble config source used when the plugin has no live config. */
+  swabbleConfigSource?: () => Promise<Partial<SwabbleConfig> | null>;
+}
+
+export interface FusedWakeLifecycle {
+  isListening(): Promise<boolean | null>;
+  start(head: string): Promise<{ started: boolean; reason?: string }>;
+  stop(): Promise<void>;
 }
 
 export interface WakeControllerHandle {
@@ -90,8 +107,100 @@ export interface WakeControllerHandle {
 
 /** True when the Swabble native plugin is actually present on this platform. */
 function probeSwabble(): boolean {
-  const plugin = getSwabblePlugin() as { addListener?: unknown };
-  return typeof plugin.addListener === "function";
+  const plugin = getSwabblePlugin() as Record<string, unknown>;
+  return (
+    typeof plugin.addListener === "function" &&
+    typeof plugin.getConfig === "function" &&
+    typeof plugin.isListening === "function" &&
+    typeof plugin.start === "function" &&
+    typeof plugin.stop === "function"
+  );
+}
+
+const DESKTOP_FUSED_LIFECYCLE: FusedWakeLifecycle = {
+  isListening: isDesktopFusedWakeListening,
+  start: startDesktopFusedWake,
+  stop: stopDesktopFusedWake,
+};
+
+const NO_PERSISTED_SWABBLE_CONFIG = async (): Promise<null> => null;
+
+function readPositiveNumber(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) && value > 0
+    ? value
+    : undefined;
+}
+
+const SWABBLE_MODEL_SIZES = new Set<NonNullable<SwabbleConfig["modelSize"]>>([
+  "tiny",
+  "base",
+  "small",
+  "medium",
+  "large",
+]);
+
+/** Build a character-aware config without discarding user-customized fields. */
+export function buildWakeSwabbleConfig(
+  characterName: string,
+  pluginConfig?: Partial<SwabbleConfig> | null,
+  persistedConfig?: Partial<SwabbleConfig> | null,
+): SwabbleConfig {
+  const derivedTrigger = normalizeForWake(characterName) || "eliza";
+  const source = { ...(persistedConfig ?? {}), ...(pluginConfig ?? {}) };
+  const configuredTriggers = Array.isArray(source.triggers)
+    ? source.triggers
+        .filter((trigger): trigger is string => typeof trigger === "string")
+        .map(normalizeForWake)
+        .filter(Boolean)
+    : [];
+  const triggers = Array.from(
+    new Set(
+      configuredTriggers.includes(derivedTrigger)
+        ? configuredTriggers
+        : configuredTriggers.length === 1 && configuredTriggers[0] === "eliza"
+          ? [derivedTrigger]
+          : [derivedTrigger, ...configuredTriggers],
+    ),
+  );
+
+  const config: SwabbleConfig = { triggers };
+  const minPostTriggerGap = readPositiveNumber(source.minPostTriggerGap);
+  if (minPostTriggerGap !== undefined)
+    config.minPostTriggerGap = minPostTriggerGap;
+  const minCommandLength = readPositiveNumber(source.minCommandLength);
+  if (minCommandLength !== undefined)
+    config.minCommandLength = minCommandLength;
+  const sampleRate = readPositiveNumber(source.sampleRate);
+  if (sampleRate !== undefined) config.sampleRate = sampleRate;
+  if (typeof source.locale === "string" && source.locale.trim()) {
+    config.locale = source.locale.trim();
+  }
+  if (
+    source.modelSize &&
+    SWABBLE_MODEL_SIZES.has(
+      source.modelSize as NonNullable<SwabbleConfig["modelSize"]>,
+    )
+  ) {
+    config.modelSize = source.modelSize;
+  }
+  return config;
+}
+
+function fusedHeadForCharacter(characterName: string): string {
+  const normalized = normalizeForWake(characterName) || "eliza";
+  return `hey-${normalized.replace(/\s+/gu, "-")}`;
+}
+
+async function stopOwnedDetector(
+  detector: "fused" | "swabble",
+  stop: () => Promise<void>,
+): Promise<void> {
+  try {
+    await stop();
+  } catch (error) {
+    // error-policy:J6 detector teardown is best-effort after ownership ends.
+    logger.warn({ error, detector }, "[wake-controller] detector stop failed");
+  }
 }
 
 export function useWakeController(
@@ -108,6 +217,8 @@ export function useWakeController(
     tickMs = 500,
     now = Date.now,
     fusedWakeSource = subscribeFusedWake,
+    fusedLifecycle = DESKTOP_FUSED_LIFECYCLE,
+    swabbleConfigSource = NO_PERSISTED_SWABBLE_CONFIG,
   } = options;
 
   // Probe the available wake sources once. The fused on-device path is preferred
@@ -115,14 +226,46 @@ export function useWakeController(
   // the Web-Speech fallback. A host can still override `capabilities` explicitly.
   const swabblePresent = React.useMemo(() => probeSwabble(), []);
   const fusedPresent = React.useMemo(() => probeFusedWake(), []);
-  const capabilities = React.useMemo<WakeCapabilities>(
+  const declaredCapabilities = React.useMemo<WakeCapabilities>(
     () =>
       options.capabilities ?? {
         openWakeWord: fusedPresent,
         asrConfirm: fusedPresent,
         swabble: swabblePresent,
       },
-    [options.capabilities, fusedPresent, swabblePresent],
+    [
+      options.capabilities,
+      options.capabilities?.openWakeWord,
+      options.capabilities?.asrConfirm,
+      options.capabilities?.swabble,
+      fusedPresent,
+      swabblePresent,
+    ],
+  );
+  const fusedLifecycleKey = JSON.stringify([
+    enabled,
+    alwaysOn,
+    characterName,
+    declaredCapabilities.openWakeWord,
+    declaredCapabilities.asrConfirm,
+  ]);
+  const [failedFusedLifecycleKey, setFailedFusedLifecycleKey] = React.useState<
+    string | null
+  >(null);
+  const fusedUnavailable = failedFusedLifecycleKey === fusedLifecycleKey;
+  React.useEffect(() => {
+    if (!enabled || alwaysOn) setFailedFusedLifecycleKey(null);
+  }, [enabled, alwaysOn]);
+  const capabilities = React.useMemo<WakeCapabilities>(
+    () =>
+      fusedUnavailable
+        ? {
+            openWakeWord: false,
+            asrConfirm: false,
+            swabble: declaredCapabilities.swabble,
+          }
+        : declaredCapabilities,
+    [declaredCapabilities, fusedUnavailable],
   );
 
   const config = React.useMemo<WakeControllerConfig>(
@@ -150,6 +293,8 @@ export function useWakeController(
   const stateRef = React.useRef<WakeControllerState>(
     initialWakeControllerState(),
   );
+  const swabbleOperationRef = React.useRef<Promise<void>>(Promise.resolve());
+  const fusedOperationRef = React.useRef<Promise<void>>(Promise.resolve());
 
   const dispatch = React.useCallback((event: WakeControllerEvent) => {
     const step = wakeControllerReducer(
@@ -167,17 +312,23 @@ export function useWakeController(
     if (!enabled || alwaysOn) dispatch({ type: "reset" });
   }, [enabled, alwaysOn, dispatch]);
 
-  // Subscribe to the live native wake source (Swabble). When the fused detector
-  // becomes bridged its Stage-A / head events route through the same dispatch.
+  // The selected Swabble fallback owns both its listener and microphone
+  // lifecycle. Listener registration completes before start so a fast native
+  // fire cannot be missed. Operations serialize across React cleanup/restart,
+  // preventing a late old start from stopping a newer lifecycle.
   React.useEffect(() => {
-    if (!enabled || alwaysOn || !capabilities.swabble) return;
+    if (!enabled || alwaysOn || path !== "swabble-fallback") return;
     let handle: PluginListenerHandle | null = null;
     let cancelled = false;
-    void (async () => {
+    let armed = false;
+    let ownsLifecycle = false;
+    const plugin = getSwabblePlugin();
+    const operation = swabbleOperationRef.current.then(async () => {
       try {
-        const h = await getSwabblePlugin().addListener(
+        const h = await plugin.addListener(
           "wakeWord",
           (event?: SwabbleWakeWordEvent) => {
+            if (!armed || cancelled) return;
             dispatch({
               type: "swabble-wake",
               wakeWord: event?.wakeWord ?? configRef.current.characterName,
@@ -187,29 +338,84 @@ export function useWakeController(
             });
           },
         );
-        if (cancelled) void h.remove();
-        else handle = h;
-      } catch {
+        if (cancelled) {
+          await stopOwnedDetector("swabble", () => h.remove());
+          return;
+        }
+        handle = h;
+
+        const { listening } = await plugin.isListening();
+        if (cancelled) return;
+        if (listening) {
+          armed = true;
+          return;
+        }
+
+        let pluginConfig: Partial<SwabbleConfig> | null = null;
+        try {
+          pluginConfig = (await plugin.getConfig()).config;
+        } catch {
+          // error-policy:J4 a missing live config falls back to the persisted
+          // config and never fabricates an active detector.
+        }
+        const persistedConfig = await swabbleConfigSource();
+        if (cancelled) return;
+        const result = await plugin.start({
+          config: buildWakeSwabbleConfig(
+            characterName,
+            pluginConfig,
+            persistedConfig,
+          ),
+        });
+        if (!result.started) return;
+        if (cancelled) {
+          await stopOwnedDetector("swabble", () => plugin.stop());
+          return;
+        }
+        ownsLifecycle = true;
+        armed = true;
+      } catch (error) {
         // error-policy:J4 wake-word plugin unavailable on this platform — the
-        // opt-in feature degrades to "wake never fires"
+        // opt-in feature fails closed and never treats a listener as armed.
+        logger.warn({ error }, "[wake-controller] Swabble start unavailable");
       }
-    })();
+    });
+    swabbleOperationRef.current = operation;
     return () => {
       cancelled = true;
-      if (handle) void handle.remove();
+      armed = false;
+      if (handle) {
+        const listenerHandle = handle;
+        void stopOwnedDetector("swabble", () => listenerHandle.remove());
+        handle = null;
+      }
+      const cleanupOperation = swabbleOperationRef.current.then(async () => {
+        if (!ownsLifecycle) return;
+        ownsLifecycle = false;
+        await stopOwnedDetector("swabble", () => plugin.stop());
+      });
+      swabbleOperationRef.current = cleanupOperation;
     };
-  }, [enabled, alwaysOn, capabilities.swabble, dispatch]);
+  }, [enabled, alwaysOn, path, characterName, dispatch, swabbleConfigSource]);
 
   const fusedSourceRef = React.useRef(fusedWakeSource);
   fusedSourceRef.current = fusedWakeSource;
 
-  // Subscribe to the fused on-device wake path when the host declares it. Its
-  // head-fire / Stage-A candidate / Stage-B transcript stages route through the
-  // SAME reducer dispatch as Swabble, so the battery-efficient path drives chat
-  // identically — closing the "fused path built+tested but never bridged" gap.
+  // The preferred fused detector is also opt-in and lifecycle-owned here. When
+  // its model/bridge cannot start, capability selection falls back to Swabble
+  // for this enablement rather than leaving a dead preferred path selected.
   React.useEffect(() => {
-    if (!enabled || alwaysOn || !capabilities.openWakeWord) return;
+    if (
+      !enabled ||
+      alwaysOn ||
+      (path !== "head-fast-path" && path !== "two-stage-asr")
+    )
+      return;
+    let cancelled = false;
+    let armed = false;
+    let ownsLifecycle = false;
     const unsubscribe = fusedSourceRef.current((event) => {
+      if (!armed || cancelled) return;
       if (event.stage === "head-fired") {
         dispatch({
           type: "head-fired",
@@ -226,8 +432,62 @@ export function useWakeController(
         });
       }
     });
-    return unsubscribe;
-  }, [enabled, alwaysOn, capabilities.openWakeWord, dispatch]);
+    const operation = fusedOperationRef.current.then(async () => {
+      try {
+        const listening = await fusedLifecycle.isListening();
+        if (cancelled) return;
+        if (listening === true) {
+          armed = true;
+          return;
+        }
+        if (listening === null) {
+          setFailedFusedLifecycleKey(fusedLifecycleKey);
+          return;
+        }
+        const result = await fusedLifecycle.start(
+          fusedHeadForCharacter(characterName),
+        );
+        if (!result.started) {
+          if (!cancelled) setFailedFusedLifecycleKey(fusedLifecycleKey);
+          return;
+        }
+        if (cancelled) {
+          await stopOwnedDetector("fused", () => fusedLifecycle.stop());
+          return;
+        }
+        ownsLifecycle = true;
+        armed = true;
+      } catch (error) {
+        // error-policy:J4 an unavailable native detector fails closed and lets
+        // the declared Swabble capability become the selected fallback.
+        logger.warn(
+          { error },
+          "[wake-controller] fused wake start unavailable",
+        );
+        if (!cancelled) setFailedFusedLifecycleKey(fusedLifecycleKey);
+      }
+    });
+    fusedOperationRef.current = operation;
+    return () => {
+      cancelled = true;
+      armed = false;
+      unsubscribe();
+      const cleanupOperation = fusedOperationRef.current.then(async () => {
+        if (!ownsLifecycle) return;
+        ownsLifecycle = false;
+        await stopOwnedDetector("fused", () => fusedLifecycle.stop());
+      });
+      fusedOperationRef.current = cleanupOperation;
+    };
+  }, [
+    enabled,
+    alwaysOn,
+    path,
+    characterName,
+    dispatch,
+    fusedLifecycle,
+    fusedLifecycleKey,
+  ]);
 
   // Tick the Stage-B confirm-window timeout only while a candidate is armed.
   React.useEffect(() => {

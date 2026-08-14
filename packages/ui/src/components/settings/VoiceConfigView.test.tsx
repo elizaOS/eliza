@@ -8,7 +8,8 @@
  * and native-plugin bridge mocked.
  */
 
-import { cleanup, render, waitFor } from "@testing-library/react";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getSwabblePlugin } from "../../bridge/native-plugins";
 import { VoiceConfigView } from "./VoiceConfigView";
@@ -88,6 +89,7 @@ vi.mock("../../state", () => ({
 
 describe("VoiceConfigView Swabble audio meter listener lifecycle", () => {
   beforeEach(() => {
+    window.localStorage.clear();
     clientMock.getConfig.mockResolvedValue({
       messages: { tts: { provider: "edge" } },
     });
@@ -123,5 +125,29 @@ describe("VoiceConfigView Swabble audio meter listener lifecycle", () => {
 
     await waitFor(() => expect(remove).toHaveBeenCalledTimes(1));
     expect(getSwabblePlugin).toHaveBeenCalled();
+  });
+
+  it("uses the shared opt-in switch without directly starting a second lifecycle", async () => {
+    swabbleMock.addListener.mockResolvedValue({
+      remove: vi.fn(async () => undefined),
+    });
+    const user = userEvent.setup();
+    render(<VoiceConfigView />);
+
+    const toggle = await screen.findByRole("switch", {
+      name: "Enable wake word",
+    });
+    expect(toggle.getAttribute("aria-checked")).toBe("false");
+
+    await user.click(toggle);
+
+    await waitFor(() =>
+      expect(toggle.getAttribute("aria-checked")).toBe("true"),
+    );
+    expect(window.localStorage.getItem("eliza:voice:wake-word-enabled")).toBe(
+      "true",
+    );
+    expect(swabbleMock.start).not.toHaveBeenCalled();
+    expect(swabbleMock.stop).not.toHaveBeenCalled();
   });
 });

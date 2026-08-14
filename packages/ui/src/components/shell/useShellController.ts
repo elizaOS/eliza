@@ -54,7 +54,6 @@ import type { AppContextValue } from "../../state/internal";
 import {
   loadContinuousChatMode,
   loadVadAutoStop,
-  loadWakeWordEnabled,
   saveContinuousChatMode,
 } from "../../state/persistence";
 import { goHome } from "../../state/shell-surface-store";
@@ -73,6 +72,7 @@ import {
   stripExitPhrase,
 } from "../../voice/transcription-exit";
 import { useWakeListenWindow } from "../../voice/useWakeListenWindow";
+import { useWakeWordEnabledPreference } from "../../voice/useWakeWordPreference";
 import {
   createVoiceCapture,
   type VoiceCaptureBackend,
@@ -2031,12 +2031,10 @@ export function useShellController(): ShellController {
   // ../../voice/VOICE_UX.md.
   const wakeAlreadyAlwaysOn =
     handsFree && loadContinuousChatMode() === "always-on";
-  // The Settings → Voice "Wake word" toggle gates this listening loop. Read the
-  // persisted pref synchronously each render (same direct-read pattern as
-  // loadContinuousChatMode above); it defaults ON so wake stays available unless
-  // the user turns it off. A disabled pref makes useWakeListenWindow inert (no
-  // native subscription, no mic effect).
-  const wakeWordEnabled = loadWakeWordEnabled();
+  // The Settings → Voice master switch gates this listening loop. Its external
+  // store subscription updates the already-mounted shell in the same window;
+  // the privacy-safe default is off until the user opts in.
+  const wakeWordEnabled = useWakeWordEnabledPreference();
   useWakeListenWindow({
     enabled: wakeWordEnabled,
     alwaysOn: wakeAlreadyAlwaysOn,

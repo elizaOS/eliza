@@ -24,6 +24,7 @@ import {
 } from "vitest";
 import type { RealtimeVoiceStartOutcome } from "../../../hooks/useRealtimeVoiceSession";
 import { RESYNC_EVENT } from "../../../state/AppContext.hooks";
+import { saveWakeWordEnabled } from "../../../state/persistence";
 import {
   getShellSurface,
   goLauncher,
@@ -1927,9 +1928,9 @@ describe("useShellController — wake-word enablement", () => {
     } catch {}
   });
 
-  it("enables wake listening by default (no stored pref)", () => {
+  it("keeps wake listening off by default until explicit opt-in", () => {
     renderHook(() => useShellController());
-    expect(wakeListenMock.lastEnabled).toBe(true);
+    expect(wakeListenMock.lastEnabled).toBe(false);
   });
 
   it("disables wake listening when the persisted pref is off", () => {
@@ -1941,6 +1942,15 @@ describe("useShellController — wake-word enablement", () => {
   it("re-enables wake listening when the pref is on", () => {
     window.localStorage.setItem("eliza:voice:wake-word-enabled", "true");
     renderHook(() => useShellController());
+    expect(wakeListenMock.lastEnabled).toBe(true);
+  });
+
+  it("reacts immediately when settings changes the pref in the same window", () => {
+    renderHook(() => useShellController());
+    expect(wakeListenMock.lastEnabled).toBe(false);
+
+    act(() => saveWakeWordEnabled(true));
+
     expect(wakeListenMock.lastEnabled).toBe(true);
   });
 });

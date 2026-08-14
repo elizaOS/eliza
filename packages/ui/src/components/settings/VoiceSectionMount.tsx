@@ -22,12 +22,12 @@ import type { DeviceTier } from "../../api/client-local-inference";
 import { createVoiceProfilesClient } from "../../api/client-voice-profiles";
 import { useViewEvent } from "../../hooks/useViewEvent";
 import {
-  loadWakeWordEnabled,
   saveContinuousChatMode,
   saveOsIntentAutoStartConsent,
   saveVadAutoStop,
   saveWakeWordEnabled,
 } from "../../state/persistence";
+import { useWakeWordEnabledPreference } from "../../voice/useWakeWordPreference";
 import {
   VOICE_CONTINUOUS_MODES,
   type VoiceContinuousMode,
@@ -98,9 +98,7 @@ export function VoiceSectionMount(): React.ReactElement {
   // Wake-word listening is a device-local pref (localStorage mirror the shell
   // reads synchronously — see useShellController's useWakeListenWindow), not part
   // of the `messages.voice` config blob. Seed from the persisted value.
-  const [wakeWordEnabled, setWakeWordEnabled] = React.useState<boolean>(() =>
-    loadWakeWordEnabled(),
-  );
+  const wakeWordEnabled = useWakeWordEnabledPreference();
   const [tier, setTier] = React.useState<DeviceTier | null>(null);
   const [tierSummary, setTierSummary] = React.useState<string | undefined>(
     undefined,
@@ -177,10 +175,9 @@ export function VoiceSectionMount(): React.ReactElement {
     };
   }, []);
 
-  // Persist the wake-word toggle and update local state so the control reflects
-  // it immediately; the shell picks the new value up on its next render.
+  // The shared preference subscription updates both settings and the shell in
+  // this window immediately; persistence also carries it across restarts.
   const handleWakeWordToggle = React.useCallback((next: boolean) => {
-    setWakeWordEnabled(next);
     saveWakeWordEnabled(next);
   }, []);
 

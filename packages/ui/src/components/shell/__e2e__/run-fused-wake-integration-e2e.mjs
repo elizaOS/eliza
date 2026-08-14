@@ -128,6 +128,9 @@ try {
     await manager.stop();
     return undefined;
   });
+  await p.exposeFunction("__hostFusedWakeIsListening", async () =>
+    manager.isListening(),
+  );
 
   await p.goto(url);
   await p.waitForSelector('[data-testid="shell-home-pill"]', { timeout: 20000 });

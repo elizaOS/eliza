@@ -6,7 +6,8 @@
 // the REAL `registerDesktopFusedWake` desktop transport — so the renderer half
 // runs exactly as in the shipping app: registerDesktopFusedWake sets
 // `__ELIZA_FUSED_WAKE__`, subscribes to the `voice:fusedWake` channel, and
-// invokes `fusedWake:start`. The harness (Bun) runs the REAL `FusedWakeManager`,
+// and the enabled wake controller invokes `fusedWake:start`. The harness (Bun)
+// runs the REAL `FusedWakeManager`,
 // feeds it the real "hey eliza" clip, and delivers the manager's
 // `sendToWebview('voice:fusedWake', …)` back through this mock RPC. The only
 // thing mocked is the electrobun IPC pipe itself (not the producer, not the
@@ -39,11 +40,14 @@ declare global {
     /** Page → harness (Playwright binding): start the real FusedWakeManager. */
     __hostFusedWakeStart?: (params: unknown) => Promise<unknown>;
     __hostFusedWakeStop?: () => Promise<unknown>;
+    __hostFusedWakeIsListening?: () => Promise<unknown>;
   }
 }
 
 window.__ELIZA_ELECTROBUN_RPC__ = {
   request: {
+    fusedWakeIsListening: async () =>
+      (await window.__hostFusedWakeIsListening?.()) ?? { listening: false },
     fusedWakeStart: async (params) =>
       (await window.__hostFusedWakeStart?.(params)) ?? { started: false },
     fusedWakeStop: async () => window.__hostFusedWakeStop?.(),
@@ -60,9 +64,9 @@ window.__deliverElectrobunMessage = (name, payload) => {
   for (const l of listeners.get(name) ?? []) l(payload);
 };
 
-// Wire the REAL desktop transport (sets the capability flag, subscribes to
-// voice:fusedWake → emitFusedWake, invokes fusedWake:start). Done before the
-// shell mounts so useWakeController's capability probe sees the flag.
+// Wire the REAL desktop transport (sets the capability flag and subscribes to
+// voice:fusedWake → emitFusedWake). Done before the shell mounts so the enabled
+// wake controller sees the capability and owns the native start/stop lifecycle.
 registerDesktopFusedWake();
 
 const SEED: ShellMessage[] = [

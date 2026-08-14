@@ -6,6 +6,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 // Capture the registered wakeWord listener so tests can fire detections.
 let wakeListener: (() => void) | null = null;
 const removeSpy = vi.fn(async () => {});
+const startSpy = vi.fn(async () => ({ started: true }));
+const stopSpy = vi.fn(async () => {});
 
 vi.mock("../bridge/native-plugins", () => ({
   getSwabblePlugin: () => ({
@@ -13,6 +15,10 @@ vi.mock("../bridge/native-plugins", () => ({
       wakeListener = fn;
       return { remove: removeSpy };
     },
+    getConfig: async () => ({ config: { triggers: ["eliza"] } }),
+    isListening: async () => ({ listening: false }),
+    start: startSpy,
+    stop: stopSpy,
   }),
 }));
 
@@ -21,7 +27,7 @@ import { useWakeListenWindow } from "./useWakeListenWindow";
 function fireWake() {
   // The hook subscribes asynchronously; flush microtasks first.
   return act(async () => {
-    await Promise.resolve();
+    for (let i = 0; i < 8; i += 1) await Promise.resolve();
     wakeListener?.();
   });
 }
@@ -35,6 +41,8 @@ describe("useWakeListenWindow", () => {
     nowValue = 1000;
     wakeListener = null;
     removeSpy.mockClear();
+    startSpy.mockClear();
+    stopSpy.mockClear();
   });
   afterEach(() => {
     vi.useRealTimers();

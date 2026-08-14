@@ -57,10 +57,10 @@ function toFusedWakeEvent(payload: unknown): FusedWakeEvent | null {
 }
 
 /**
- * Wire the desktop fused-wake channel into the renderer and arm the native
- * detector. Returns an unsubscribe function (which also stops the detector). On
- * a non-desktop host (no electrobun RPC) it is a no-op that returns a no-op
- * cleanup, leaving `window.__ELIZA_FUSED_WAKE__` unset so
+ * Wire the desktop fused-wake channel into the renderer without opening the
+ * microphone. The wake controller starts the detector only after the persisted
+ * user opt-in and owns the corresponding stop. On a non-desktop host (no
+ * electrobun RPC) this is a no-op, leaving the capability flag unset so
  * {@link useWakeController} keeps the Swabble fallback.
  */
 export function registerDesktopFusedWake(): () => void {
@@ -76,19 +76,49 @@ export function registerDesktopFusedWake(): () => void {
       if (event) emitFusedWake(event);
     },
   });
-  // Arm the native libwakeword detector in the main process (best-effort). It
-  // returns `{ started: false }` and stays inert when the model is not staged,
-  // so this never forces mic access without the on-device wake assets present.
-  void invokeDesktopBridgeRequest<{ started: boolean; reason?: string }>({
-    rpcMethod: "fusedWakeStart",
-    ipcChannel: "fusedWake:start",
-    params: {},
-  });
   return () => {
     unsubscribe();
-    void invokeDesktopBridgeRequest({
-      rpcMethod: "fusedWakeStop",
-      ipcChannel: "fusedWake:stop",
-    });
+    if (typeof window !== "undefined") {
+      window.__ELIZA_FUSED_WAKE__ = false;
+    }
   };
+}
+
+export interface DesktopFusedWakeStartResult {
+  started: boolean;
+  reason?: string;
+}
+
+/** Query the native detector without changing microphone state. */
+export async function isDesktopFusedWakeListening(): Promise<boolean | null> {
+  const result = await invokeDesktopBridgeRequest<{ listening: boolean }>({
+    rpcMethod: "fusedWakeIsListening",
+    ipcChannel: "fusedWake:isListening",
+  });
+  return result?.listening ?? null;
+}
+
+/** Start the registered native detector after the user has opted in. */
+export async function startDesktopFusedWake(
+  head: string,
+): Promise<DesktopFusedWakeStartResult> {
+  const result = await invokeDesktopBridgeRequest<DesktopFusedWakeStartResult>({
+    rpcMethod: "fusedWakeStart",
+    ipcChannel: "fusedWake:start",
+    params: { head },
+  });
+  return (
+    result ?? {
+      started: false,
+      reason: "desktop-wake-bridge-unavailable",
+    }
+  );
+}
+
+/** Stop a native detector lifecycle previously started by the wake controller. */
+export async function stopDesktopFusedWake(): Promise<void> {
+  await invokeDesktopBridgeRequest({
+    rpcMethod: "fusedWakeStop",
+    ipcChannel: "fusedWake:stop",
+  });
 }

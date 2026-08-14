@@ -74,6 +74,8 @@ export {
 export { StreamingLinearResampler } from "./streaming-linear-resampler";
 export * from "./types";
 export {
+  buildWakeSwabbleConfig,
+  type FusedWakeLifecycle,
   SHIPPED_WAKE_HEADS,
   type UseWakeControllerOptions,
   useWakeController,
@@ -83,6 +85,7 @@ export {
   type UseWakeListenWindowOptions,
   useWakeListenWindow,
 } from "./useWakeListenWindow";
+export { useWakeWordEnabledPreference } from "./useWakeWordPreference";
 export {
   createVoiceCapture,
   type VoiceCaptureBackend,

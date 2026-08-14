@@ -71,11 +71,11 @@ describe("VoiceSectionMount — wake-word toggle wiring (FIX 3)", () => {
     cleanup();
   });
 
-  it("defaults the wake-word toggle ON (no stored pref) and reflects it", async () => {
+  it("defaults the wake-word toggle OFF until the user opts in", async () => {
     render(<VoiceSectionMount />);
     const toggle = await screen.findByTestId("voice-section-wake-toggle");
     expect(toggle.getAttribute("role")).toBe("switch");
-    expect(toggle.getAttribute("aria-checked")).toBe("true");
+    expect(toggle.getAttribute("aria-checked")).toBe("false");
     // Let the mount-time async config/tier fetches settle to avoid act warnings.
     await waitFor(() =>
       expect(clientMock.getLocalInferenceDeviceTier).toHaveBeenCalled(),
@@ -87,19 +87,19 @@ describe("VoiceSectionMount — wake-word toggle wiring (FIX 3)", () => {
     render(<VoiceSectionMount />);
     const toggle = await screen.findByTestId("voice-section-wake-toggle");
 
-    // Turning it off writes the persisted pref the shell reads for wake gating.
-    await user.click(toggle);
-    await waitFor(() =>
-      expect(toggle.getAttribute("aria-checked")).toBe("false"),
-    );
-    expect(window.localStorage.getItem(WAKE_KEY)).toBe("false");
-
-    // Turning it back on flips the pref again.
+    // Turning it on writes the persisted opt-in the shell subscribes to.
     await user.click(toggle);
     await waitFor(() =>
       expect(toggle.getAttribute("aria-checked")).toBe("true"),
     );
     expect(window.localStorage.getItem(WAKE_KEY)).toBe("true");
+
+    // Turning it back off flips the same master preference again.
+    await user.click(toggle);
+    await waitFor(() =>
+      expect(toggle.getAttribute("aria-checked")).toBe("false"),
+    );
+    expect(window.localStorage.getItem(WAKE_KEY)).toBe("false");
   });
 
   it("reflects a persisted wake-word-disabled pref on mount", async () => {

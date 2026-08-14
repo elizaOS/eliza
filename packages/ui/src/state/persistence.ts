@@ -1022,23 +1022,47 @@ export function saveOsIntentAutoStartConsent(
 /* ── Wake-word listening persistence ────────────────────────────────────── */
 // Device-local master switch for the "hey <name>" wake-word listening window
 // (see useWakeListenWindow). Stored here — not under `messages.voice` — because
-// it gates a device-local capture loop the shell reads synchronously on render,
-// the same dual-store pattern continuous-chat-mode and vad-auto-stop use. It
-// defaults ON so existing installs keep the always-available wake entry ramp;
-// the Settings → Voice toggle is what lets a user turn it off.
+// it gates an idle microphone loop. A missing preference is deliberately OFF:
+// microphone-backed wake detection must begin only after an explicit opt-in.
 const WAKE_WORD_ENABLED_KEY = "eliza:voice:wake-word-enabled";
+const WAKE_WORD_ENABLED_CHANGED_EVENT = "eliza:wake-word-enabled-changed";
 
 export function loadWakeWordEnabled(): boolean {
   return tryLocalStorage(() => {
     const stored = localStorage.getItem(WAKE_WORD_ENABLED_KEY);
-    return stored === null ? true : stored === "true";
-  }, true);
+    return stored === "true";
+  }, false);
 }
 
 export function saveWakeWordEnabled(value: boolean): void {
-  tryLocalStorage(() => {
+  const saved = tryLocalStorage(() => {
     shellLocalStorage.setItem(WAKE_WORD_ENABLED_KEY, String(value));
-  }, undefined);
+    return true;
+  }, false);
+  if (saved && typeof window !== "undefined") {
+    window.dispatchEvent(new Event(WAKE_WORD_ENABLED_CHANGED_EVENT));
+  }
+}
+
+/** Subscribe to wake-word preference changes in this realm and other tabs. */
+export function subscribeWakeWordEnabled(listener: () => void): () => void {
+  if (typeof window === "undefined") return () => {};
+  const handlePreferenceChange = (): void => listener();
+  const handleStorage = (event: StorageEvent): void => {
+    if (event.key === WAKE_WORD_ENABLED_KEY) listener();
+  };
+  window.addEventListener(
+    WAKE_WORD_ENABLED_CHANGED_EVENT,
+    handlePreferenceChange,
+  );
+  window.addEventListener("storage", handleStorage);
+  return () => {
+    window.removeEventListener(
+      WAKE_WORD_ENABLED_CHANGED_EVENT,
+      handlePreferenceChange,
+    );
+    window.removeEventListener("storage", handleStorage);
+  };
 }
 
 /* ── VAD auto-stop persistence ──────────────────────────────────────────── */

@@ -74,7 +74,7 @@ describe("shell preference persistence", () => {
     expect(loadRecentApps()).toEqual([]);
     expect(loadWalletEnabled()).toBe(true);
     expect(loadContinuousChatMode()).toBe("off");
-    expect(loadWakeWordEnabled()).toBe(true);
+    expect(loadWakeWordEnabled()).toBe(false);
     expect(loadBrowserEnabled()).toBe(true);
     expect(loadComputerUseEnabled()).toBe(false);
     expect(loadChatAvatarVisible()).toBe(true);
@@ -94,7 +94,7 @@ describe("shell preference persistence", () => {
     saveLastNativeTab("settings");
     saveWalletEnabled(false);
     saveContinuousChatMode("vad-gated");
-    saveWakeWordEnabled(false);
+    saveWakeWordEnabled(true);
     saveBrowserEnabled(false);
     saveComputerUseEnabled(true);
     saveChatAvatarVisible(false);
@@ -107,7 +107,7 @@ describe("shell preference persistence", () => {
     expect(loadLastNativeTab()).toBe("settings");
     expect(loadWalletEnabled()).toBe(false);
     expect(loadContinuousChatMode()).toBe("vad-gated");
-    expect(loadWakeWordEnabled()).toBe(false);
+    expect(loadWakeWordEnabled()).toBe(true);
     expect(loadBrowserEnabled()).toBe(false);
     expect(loadComputerUseEnabled()).toBe(true);
     expect(loadChatAvatarVisible()).toBe(false);

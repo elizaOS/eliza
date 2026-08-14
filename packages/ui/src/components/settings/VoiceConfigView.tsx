@@ -25,6 +25,7 @@ import { dispatchWindowEvent, VOICE_CONFIG_UPDATED_EVENT } from "../../events";
 import { useDefaultProviderPresets } from "../../hooks/useDefaultProviderPresets";
 import { useResolvedTtsDefault } from "../../hooks/useResolvedTtsDefault";
 import { useAppSelector } from "../../state";
+import { saveWakeWordEnabled } from "../../state/persistence";
 import {
   hasConfiguredApiKey,
   isCloudVoiceRunnable,
@@ -33,6 +34,7 @@ import {
   sanitizeApiKey,
   VOICE_PROVIDERS,
 } from "../../voice";
+import { useWakeWordEnabledPreference } from "../../voice/useWakeWordPreference";
 import {
   CloudConnectionStatus,
   CloudSourceModeToggle,
@@ -525,28 +527,22 @@ export function WakeWordSection({
   const [modelSize, setModelSize] =
     useState<NonNullable<SwabbleConfig["modelSize"]>>("base");
   const meterRef = useRef<HTMLDivElement | null>(null);
-  const [enabled, setEnabled] = useState(false);
+  const enabled = useWakeWordEnabledPreference();
 
   useEffect(() => {
     void (async () => {
       try {
         const swabble = getSwabblePlugin();
-        const [{ config }, { listening }] = await Promise.all([
-          swabble.getConfig(),
-          swabble.isListening(),
-        ]);
+        const { config } = await swabble.getConfig();
         const resolved = config ?? serverConfig ?? null;
         if (resolved) {
           if (resolved.triggers?.length) {
             setTriggers(resolved.triggers);
-            if (resolved.triggers.length === 1)
-              autoTriggerRef.current = resolved.triggers[0];
           }
           if (resolved.minPostTriggerGap != null)
             setPostTriggerGap(resolved.minPostTriggerGap);
           if (resolved.modelSize) setModelSize(resolved.modelSize);
         }
-        setEnabled(listening);
       } catch {
         // Plugin not available on this platform — silently ignore
       }
@@ -587,15 +583,6 @@ export function WakeWordSection({
       if (handle) void handle.remove();
     };
   }, []);
-
-  const buildConfig = useCallback(
-    (): SwabbleConfig => ({
-      triggers,
-      minPostTriggerGap: postTriggerGap,
-      modelSize,
-    }),
-    [triggers, postTriggerGap, modelSize],
-  );
 
   const handleTriggersChange = useCallback(async (next: string[]) => {
     setTriggers(next);
@@ -660,21 +647,9 @@ export function WakeWordSection({
     [],
   );
 
-  const handleToggle = useCallback(async () => {
-    try {
-      if (enabled) {
-        await getSwabblePlugin().stop();
-        setEnabled(false);
-      } else {
-        const result = await getSwabblePlugin().start({
-          config: buildConfig(),
-        });
-        if (result.started) setEnabled(true);
-      }
-    } catch {
-      // Ignore
-    }
-  }, [enabled, buildConfig]);
+  const handleToggle = useCallback(() => {
+    saveWakeWordEnabled(!enabled);
+  }, [enabled]);
 
   const { ref: enableRef, agentProps: enableAgentProps } =
     useAgentElement<HTMLButtonElement>({
@@ -686,7 +661,7 @@ export function WakeWordSection({
       group: "voice-wakeword",
       status: enabled ? "on" : "off",
       getValue: () => enabled,
-      onActivate: () => void handleToggle(),
+      onActivate: handleToggle,
     });
   const { ref: addTriggerRef, agentProps: addTriggerAgentProps } =
     useAgentElement<HTMLInputElement>({
@@ -734,7 +709,7 @@ export function WakeWordSection({
           <Switch
             ref={enableRef}
             checked={enabled}
-            onCheckedChange={() => void handleToggle()}
+            onCheckedChange={handleToggle}
             aria-label={
               enabled
                 ? t("voiceconfigview.DisableWakeWord", {

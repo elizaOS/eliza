@@ -8,12 +8,24 @@
 // opens the listening window (the bar's mic) — closing the "fused path built +
 // tested but never bridged" gap.
 
-import { act, renderHook } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { act, renderHook, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // Swabble absent so only the fused path is exercised.
 vi.mock("../bridge/native-plugins", () => ({
   getSwabblePlugin: () => ({}),
+}));
+
+const fusedLifecycleMock = vi.hoisted(() => ({
+  isListening: vi.fn(async () => false),
+  start: vi.fn(async () => ({ started: true })),
+  stop: vi.fn(async () => {}),
+}));
+
+vi.mock("./fused-wake-desktop-bridge", () => ({
+  isDesktopFusedWakeListening: fusedLifecycleMock.isListening,
+  startDesktopFusedWake: fusedLifecycleMock.start,
+  stopDesktopFusedWake: fusedLifecycleMock.stop,
 }));
 
 import { emitFusedWake, type FusedWakeEvent } from "./fused-wake-bridge";
@@ -47,6 +59,12 @@ function clearFusedFlag() {
 }
 
 describe("useWakeController — fused on-device path", () => {
+  beforeEach(() => {
+    fusedLifecycleMock.isListening.mockResolvedValue(false);
+    fusedLifecycleMock.start.mockResolvedValue({ started: true });
+    fusedLifecycleMock.stop.mockResolvedValue(undefined);
+  });
+
   afterEach(() => {
     clearFusedFlag();
     vi.clearAllMocks();
@@ -65,6 +83,8 @@ describe("useWakeController — fused on-device path", () => {
         fusedWakeSource: source,
       }),
     );
+    await waitFor(() => expect(fusedLifecycleMock.start).toHaveBeenCalled());
+    expect(fusedLifecycleMock.start).toHaveBeenCalledWith("hey-eliza");
     await fire({ stage: "head-fired", confidence: 0.92 });
     expect(onWake).toHaveBeenCalledTimes(1);
     expect(onWake.mock.calls[0][0].path).toBe("head-fast-path");
@@ -86,6 +106,8 @@ describe("useWakeController — fused on-device path", () => {
         now: () => t,
       }),
     );
+    await waitFor(() => expect(fusedLifecycleMock.start).toHaveBeenCalled());
+    expect(fusedLifecycleMock.start).toHaveBeenCalledWith("hey-ada");
     await fire({ stage: "stage-a-candidate" });
     expect(onWake).not.toHaveBeenCalled();
     t = 1200;
@@ -130,6 +152,7 @@ describe("useWakeController — fused on-device path", () => {
         // default fusedWakeSource = subscribeFusedWake (real window CustomEvent)
       }),
     );
+    await waitFor(() => expect(fusedLifecycleMock.start).toHaveBeenCalled());
     await act(async () => {
       emitFusedWake({ stage: "head-fired", confidence: 0.8 });
     });
@@ -150,6 +173,7 @@ describe("useWakeController — fused on-device path", () => {
     );
     expect(result.current.capabilities.openWakeWord).toBe(true);
     expect(result.current.path).toBe("head-fast-path");
+    await waitFor(() => expect(fusedLifecycleMock.start).toHaveBeenCalled());
     await act(async () => {
       emitFusedWake({ stage: "head-fired" });
     });
@@ -158,6 +182,12 @@ describe("useWakeController — fused on-device path", () => {
 });
 
 describe("useWakeListenWindow — fused wake opens the bar", () => {
+  beforeEach(() => {
+    fusedLifecycleMock.isListening.mockResolvedValue(false);
+    fusedLifecycleMock.start.mockResolvedValue({ started: true });
+    fusedLifecycleMock.stop.mockResolvedValue(undefined);
+  });
+
   afterEach(() => {
     clearFusedFlag();
   });
@@ -179,6 +209,7 @@ describe("useWakeListenWindow — fused wake opens the bar", () => {
         tickMs: 500,
       }),
     );
+    await waitFor(() => expect(fusedLifecycleMock.start).toHaveBeenCalled());
     await act(async () => {
       emitFusedWake({ stage: "head-fired", confidence: 0.9 });
     });
