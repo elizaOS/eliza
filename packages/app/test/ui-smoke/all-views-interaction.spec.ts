@@ -70,6 +70,7 @@ type ControlSnapshot = {
 
 const CLICK_OBSERVED_ATTRIBUTES = [
   "data-agent-id",
+  "data-chat-open",
   "aria-expanded",
   "aria-pressed",
   "aria-selected",
@@ -476,6 +477,13 @@ function documentedClickNoop(
     // runtime; the DOM outcome depends on the agent round-trip, which the
     // keyless stub does not perform.
     return "spatial agent-dispatch control routes its action to the agent runtime; no local DOM outcome in the keyless stub";
+  }
+  if (details.attributes["data-chat-open"]) {
+    // chat-open dispatch controls (data-chat-open) route their action to the
+    // ChatOverlay, which the interaction harness hides in setup via
+    // hideChatOverlay so overlay chrome does not shadow the view controls;
+    // opening it therefore produces no observable local DOM outcome here.
+    return "chat-open dispatch control routes its action to the ChatOverlay, which the interaction harness hides in setup; no local DOM outcome";
   }
   return null;
 }
