@@ -51,24 +51,6 @@ async function expectFullyInViewport(page: Page, locator: Locator) {
   );
 }
 
-async function expectControlsNotToOverlap(first: Locator, second: Locator) {
-  const firstBounds = await first.boundingBox();
-  const secondBounds = await second.boundingBox();
-  expect(firstBounds).not.toBeNull();
-  expect(secondBounds).not.toBeNull();
-  const overlapWidth =
-    Math.min(
-      (firstBounds?.x ?? 0) + (firstBounds?.width ?? 0),
-      (secondBounds?.x ?? 0) + (secondBounds?.width ?? 0),
-    ) - Math.max(firstBounds?.x ?? 0, secondBounds?.x ?? 0);
-  const overlapHeight =
-    Math.min(
-      (firstBounds?.y ?? 0) + (firstBounds?.height ?? 0),
-      (secondBounds?.y ?? 0) + (secondBounds?.height ?? 0),
-    ) - Math.max(firstBounds?.y ?? 0, secondBounds?.y ?? 0);
-  expect(overlapWidth <= 1 || overlapHeight <= 1).toBe(true);
-}
-
 for (const viewport of REFLOW_VIEWPORTS) {
   test(`landing reflows at 200% in ${viewport.width}x${viewport.height}`, async ({
     page,
@@ -80,13 +62,10 @@ for (const viewport of REFLOW_VIEWPORTS) {
     await expectNoUnreachableOverflow(page);
     // The zoomed page may scroll vertically; each control must be reachable
     // by scrolling and fit fully inside the viewport once scrolled to.
-    const textCta = page.getByRole("link", { name: "Text" });
-    const callCta = page.getByRole("link", { name: "Call" });
+    const textCta = page.getByRole("link", { name: "Text Eliza" });
     await textCta.scrollIntoViewIfNeeded();
     await expectFullyInViewport(page, textCta);
-    await callCta.scrollIntoViewIfNeeded();
-    await expectFullyInViewport(page, callCta);
-    await expectControlsNotToOverlap(textCta, callCta);
+    await expect(page.getByText("+1 (808) 788-1821")).toBeVisible();
   });
 
   test(`downloads reflows at 200% in ${viewport.width}x${viewport.height}`, async ({

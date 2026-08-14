@@ -1,399 +1,165 @@
-/**
- * Unit coverage for the org/agent join flow (dedicated subdomain resolution,
- * effects). Client + effects injected, no network.
- */
-import { beforeEach, describe, expect, test, vi } from "vitest";
+/** Verifies that Cloud join binds the rowless personal Eliza without provisioning compute. */
+
+import { describe, expect, test, vi } from "vitest";
 import {
-  dedicatedSubdomainBase,
   type JoinFlowClient,
   type JoinFlowEffects,
   runJoinFlow,
 } from "./run-join-flow";
 
 const CLOUD_API_BASE = "https://api.eliza.app";
-const SHARED_BASE = "https://api.eliza.app/api/v1/eliza/agents/agent-123";
+const PERSONAL_ID = "personal:00000000-0000-5000-8000-000000000001";
+const PERSONAL_BASE = `${CLOUD_API_BASE}/api/v1/eliza/agents/personal%3A00000000-0000-5000-8000-000000000001`;
 
-function makeClient(
-  selectResult: Awaited<
-    ReturnType<JoinFlowClient["selectOrProvisionCloudAgent"]>
-  >,
-): {
-  client: JoinFlowClient;
-  setBaseUrl: ReturnType<typeof vi.fn>;
-  setToken: ReturnType<typeof vi.fn>;
-  select: ReturnType<typeof vi.fn>;
-} {
+function harness() {
+  const getPersonalSharedEliza = vi.fn().mockResolvedValue({
+    agentId: PERSONAL_ID,
+    agentName: "Eliza",
+    apiBase: PERSONAL_BASE,
+    runtime: "shared" as const,
+  });
   const setBaseUrl = vi.fn();
   const setToken = vi.fn();
-  const select = vi.fn().mockResolvedValue(selectResult);
-  return {
-    client: {
-      selectOrProvisionCloudAgent: select,
-      setBaseUrl,
-      setToken,
-    },
+  const savePersistedActiveServer = vi.fn();
+  const savePersistedFirstRunComplete = vi.fn();
+  const client: JoinFlowClient = {
+    getPersonalSharedEliza,
     setBaseUrl,
     setToken,
-    select,
   };
-}
-
-function makeEffects(): {
-  effects: JoinFlowEffects;
-  saveServer: ReturnType<typeof vi.fn>;
-  clearServer: ReturnType<typeof vi.fn>;
-  saveFirstRun: ReturnType<typeof vi.fn>;
-} {
-  const saveServer = vi.fn();
-  const clearServer = vi.fn();
-  const saveFirstRun = vi.fn();
+  const effects: JoinFlowEffects = {
+    savePersistedActiveServer,
+    savePersistedFirstRunComplete,
+  };
   return {
-    effects: {
-      savePersistedActiveServer: saveServer,
-      clearPersistedActiveServer: clearServer,
-      savePersistedFirstRunComplete: saveFirstRun,
-    },
-    saveServer,
-    clearServer,
-    saveFirstRun,
+    client,
+    effects,
+    getPersonalSharedEliza,
+    setBaseUrl,
+    setToken,
+    savePersistedActiveServer,
+    savePersistedFirstRunComplete,
   };
 }
-
-/** The wrapped list-lookup failure `selectOrProvisionCloudAgent` throws when
- * the bound (deleted) agent's origin answers the agent list with the cloud
- * router's structural agent-gone shape (`agent_not_found` code). */
-function agentGoneError(): Error {
-  return new Error("agent not found or not running", {
-    cause: Object.assign(new Error("agent not found or not running"), {
-      kind: "http",
-      status: 404,
-      code: "agent_not_found",
-      path: "/api/cloud/compat/agents",
-    }),
-  });
-}
-
-describe("dedicatedSubdomainBase", () => {
-  test("returns the dedicated container apex for an agent subdomain", () => {
-    expect(
-      dedicatedSubdomainBase(
-        "https://agent-123.cloud.eliza.app/api/conversations",
-      ),
-    ).toBe("https://agent-123.cloud.eliza.app");
-  });
-
-  test("returns null for the shared-tier control-plane REST base", () => {
-    expect(dedicatedSubdomainBase(SHARED_BASE)).toBeNull();
-  });
-
-  test("returns null for the bare control-plane host", () => {
-    expect(dedicatedSubdomainBase("https://api.eliza.app")).toBeNull();
-    expect(dedicatedSubdomainBase("https://eliza.app")).toBeNull();
-  });
-
-  test("returns null for non-https or non-cloud hosts", () => {
-    expect(dedicatedSubdomainBase("http://agent-123.elizacloud.ai")).toBeNull();
-    expect(dedicatedSubdomainBase("https://example.com")).toBeNull();
-    expect(dedicatedSubdomainBase("not a url")).toBeNull();
-  });
-});
 
 describe("runJoinFlow", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
-
-  test("connects to a reused shared-tier agent and lands first-run complete", async () => {
-    const { client, setBaseUrl, setToken, select } = makeClient({
-      agentId: "agent-123",
-      agentName: "Eliza",
-      apiBase: SHARED_BASE,
-      bridgeUrl: null,
-      created: false,
-    });
-    const { effects, saveServer, saveFirstRun } = makeEffects();
+  test("resolves and persists the account-native Shared identity", async () => {
+    const h = harness();
+    const onProgress = vi.fn();
 
     const result = await runJoinFlow({
-      client,
-      effects,
+      client: h.client,
+      effects: h.effects,
       cloudApiBase: CLOUD_API_BASE,
-      authToken: "tok-abc",
-      agentName: "Eliza",
-      preferAgentId: "agent-123",
+      authToken: "session-token",
+      onProgress,
     });
 
-    expect(select).toHaveBeenCalledWith(
-      expect.objectContaining({
-        cloudApiBase: CLOUD_API_BASE,
-        authToken: "tok-abc",
-        preferAgentId: "agent-123",
-      }),
+    expect(h.getPersonalSharedEliza).toHaveBeenCalledWith({
+      cloudApiBase: CLOUD_API_BASE,
+      authToken: "session-token",
+    });
+    expect(onProgress).toHaveBeenCalledWith(
+      "connecting",
+      "Opening your personal Eliza…",
     );
-    expect(setBaseUrl).toHaveBeenCalledWith(SHARED_BASE);
-    expect(setToken).toHaveBeenCalledWith("tok-abc");
-    expect(saveServer).toHaveBeenCalledWith({
-      id: "cloud:agent-123",
+    expect(h.setBaseUrl).toHaveBeenCalledWith(PERSONAL_BASE);
+    expect(h.setToken).toHaveBeenCalledWith("session-token");
+    expect(h.savePersistedActiveServer).toHaveBeenCalledWith({
+      id: `cloud:${PERSONAL_ID}`,
       kind: "cloud",
       label: "Eliza",
-      apiBase: SHARED_BASE,
-      accessToken: "tok-abc",
+      apiBase: PERSONAL_BASE,
+      accessToken: "session-token",
     });
-    expect(saveFirstRun).toHaveBeenCalledWith(true);
+    expect(h.savePersistedFirstRunComplete).toHaveBeenCalledWith(true);
     expect(result).toEqual({
-      agentId: "agent-123",
+      agentId: PERSONAL_ID,
       agentName: "Eliza",
-      apiBase: SHARED_BASE,
-      created: false,
-      dedicated: false,
+      apiBase: PERSONAL_BASE,
+      runtime: "shared",
     });
   });
 
-  test("prefers the dedicated container subdomain when reported", async () => {
-    const { client, setBaseUrl } = makeClient({
-      agentId: "agent-xyz",
-      agentName: "Dedicated",
-      apiBase: "https://agent-xyz.cloud.eliza.app/api/conversations",
-      bridgeUrl: null,
-      created: true,
-    });
-    const { effects, saveServer } = makeEffects();
-
-    const result = await runJoinFlow({
-      client,
-      effects,
-      cloudApiBase: CLOUD_API_BASE,
-      authToken: "tok",
-      agentName: "Dedicated",
-    });
-
-    expect(setBaseUrl).toHaveBeenCalledWith(
-      "https://agent-xyz.cloud.eliza.app",
+  test("fails closed without persisting when identity resolution fails", async () => {
+    const h = harness();
+    h.getPersonalSharedEliza.mockRejectedValueOnce(
+      new Error("Cloud unavailable"),
     );
-    expect(saveServer).toHaveBeenCalledWith(
-      expect.objectContaining({
-        id: "cloud:agent-xyz",
-        apiBase: "https://agent-xyz.cloud.eliza.app",
-      }),
-    );
-    expect(result.dedicated).toBe(true);
-    expect(result.created).toBe(true);
-  });
-
-  test("derives a per-agent REST base when the agent reports a blank apiBase", async () => {
-    const { client, setBaseUrl } = makeClient({
-      agentId: "agent-new",
-      agentName: "Fresh",
-      apiBase: "",
-      bridgeUrl: null,
-      created: true,
-    });
-    const { effects } = makeEffects();
-
-    const result = await runJoinFlow({
-      client,
-      effects,
-      cloudApiBase: CLOUD_API_BASE,
-      authToken: "tok",
-      agentName: "Fresh",
-    });
-
-    expect(setBaseUrl).toHaveBeenCalledWith(
-      "https://api.eliza.app/api/v1/eliza/agents/agent-new",
-    );
-    expect(result.apiBase).toBe(
-      "https://api.eliza.app/api/v1/eliza/agents/agent-new",
-    );
-    expect(result.dedicated).toBe(false);
-  });
-
-  test("clears a stale binding and reselects fresh when the bound agent is gone (404)", async () => {
-    const setBaseUrl = vi.fn();
-    const setToken = vi.fn();
-    const select = vi
-      .fn()
-      .mockRejectedValueOnce(agentGoneError())
-      .mockResolvedValueOnce({
-        agentId: "agent-alive",
-        agentName: "Eliza",
-        apiBase: "https://api.eliza.app/api/v1/eliza/agents/agent-alive",
-        bridgeUrl: null,
-        created: false,
-      });
-    const client: JoinFlowClient = {
-      selectOrProvisionCloudAgent: select,
-      setBaseUrl,
-      setToken,
-    };
-    const { effects, saveServer, clearServer, saveFirstRun } = makeEffects();
-
-    const result = await runJoinFlow({
-      client,
-      effects,
-      cloudApiBase: CLOUD_API_BASE,
-      authToken: "tok",
-      agentName: "Eliza",
-      preferAgentId: "agent-deleted",
-    });
-
-    // The stale binding is dropped and the client reset to the fresh-visit
-    // state BEFORE the fallback selection, so the retry resolves the control
-    // plane instead of misrouting through the dead agent origin again.
-    expect(clearServer).toHaveBeenCalledTimes(1);
-    expect(setBaseUrl.mock.calls[0]).toEqual([null]);
-    expect(select).toHaveBeenCalledTimes(2);
-    expect(select.mock.calls[1][0]).not.toHaveProperty("preferAgentId");
-    // The fallback selection binds normally — no terminal error state.
-    expect(result.agentId).toBe("agent-alive");
-    expect(saveServer).toHaveBeenCalledWith(
-      expect.objectContaining({ id: "cloud:agent-alive" }),
-    );
-    expect(saveFirstRun).toHaveBeenCalledWith(true);
-  });
-
-  test("reaches the provisioning path when the org has zero agents after dropping the stale binding", async () => {
-    const select = vi
-      .fn()
-      .mockRejectedValueOnce(agentGoneError())
-      .mockResolvedValueOnce({
-        agentId: "agent-created",
-        agentName: "Eliza",
-        apiBase: "https://agent-created.cloud.eliza.app",
-        bridgeUrl: null,
-        created: true,
-      });
-    const client: JoinFlowClient = {
-      selectOrProvisionCloudAgent: select,
-      setBaseUrl: vi.fn(),
-      setToken: vi.fn(),
-    };
-    const { effects, clearServer } = makeEffects();
-
-    const result = await runJoinFlow({
-      client,
-      effects,
-      cloudApiBase: CLOUD_API_BASE,
-      authToken: "tok",
-      agentName: "Eliza",
-      preferAgentId: "agent-deleted",
-    });
-
-    expect(clearServer).toHaveBeenCalledTimes(1);
-    expect(result.created).toBe(true);
-    expect(result.agentId).toBe("agent-created");
-  });
-
-  test("keeps the terminal error for a transport-level failure of a valid binding", async () => {
-    const select = vi.fn().mockRejectedValue(new TypeError("Failed to fetch"));
-    const client: JoinFlowClient = {
-      selectOrProvisionCloudAgent: select,
-      setBaseUrl: vi.fn(),
-      setToken: vi.fn(),
-    };
-    const { effects, clearServer, saveFirstRun } = makeEffects();
 
     await expect(
       runJoinFlow({
-        client,
-        effects,
+        client: h.client,
+        effects: h.effects,
         cloudApiBase: CLOUD_API_BASE,
-        authToken: "tok",
-        agentName: "Eliza",
-        preferAgentId: "agent-bound",
+        authToken: "session-token",
       }),
-    ).rejects.toThrow(/failed to fetch/i);
-    // Network-down is not agent-gone: the binding survives, no blind retry.
-    expect(clearServer).not.toHaveBeenCalled();
-    expect(select).toHaveBeenCalledTimes(1);
-    expect(saveFirstRun).not.toHaveBeenCalled();
+    ).rejects.toThrow("Cloud unavailable");
+
+    expect(h.setBaseUrl).not.toHaveBeenCalled();
+    expect(h.savePersistedActiveServer).not.toHaveBeenCalled();
+    expect(h.savePersistedFirstRunComplete).not.toHaveBeenCalled();
   });
 
-  test("rethrows an agent-gone failure when no binding was remembered", async () => {
-    const select = vi.fn().mockRejectedValue(agentGoneError());
-    const client: JoinFlowClient = {
-      selectOrProvisionCloudAgent: select,
-      setBaseUrl: vi.fn(),
-      setToken: vi.fn(),
-    };
-    const { effects, clearServer } = makeEffects();
-
-    await expect(
-      runJoinFlow({
-        client,
-        effects,
-        cloudApiBase: CLOUD_API_BASE,
-        authToken: "tok",
-        agentName: "Eliza",
-      }),
-    ).rejects.toThrow(/agent not found/i);
-    expect(clearServer).not.toHaveBeenCalled();
-    expect(select).toHaveBeenCalledTimes(1);
-  });
-
-  test("throws when no agent id is returned", async () => {
-    const { client } = makeClient({
-      agentId: "",
-      agentName: "",
-      apiBase: "",
-      bridgeUrl: null,
-      created: false,
-    });
-    const { effects, saveFirstRun } = makeEffects();
-
-    await expect(
-      runJoinFlow({
-        client,
-        effects,
-        cloudApiBase: CLOUD_API_BASE,
-        authToken: "tok",
-        agentName: "Eliza",
-      }),
-    ).rejects.toThrow(/did not return an agent/i);
-    expect(saveFirstRun).not.toHaveBeenCalled();
-  });
-
-  test("compensates a fresh agent before an aborted join attempt settles", async () => {
-    type Selection = Awaited<
-      ReturnType<JoinFlowClient["selectOrProvisionCloudAgent"]>
-    >;
-    let resolveSelection: (value: Selection) => void = () => undefined;
-    const select = vi.fn(
+  test("does not bind or persist when identity resolution finishes after cancellation", async () => {
+    const h = harness();
+    let resolveIdentity: (value: {
+      agentId: string;
+      agentName: string;
+      apiBase: string;
+      runtime: "shared";
+    }) => void = () => undefined;
+    h.getPersonalSharedEliza.mockImplementationOnce(
       () =>
-        new Promise<Selection>((resolve) => {
-          resolveSelection = resolve;
+        new Promise((resolve) => {
+          resolveIdentity = resolve;
         }),
     );
-    const deleteCloudCompatAgent = vi.fn().mockResolvedValue({ success: true });
-    const client: JoinFlowClient = {
-      selectOrProvisionCloudAgent: select,
-      deleteCloudCompatAgent,
-      setBaseUrl: vi.fn(),
-      setToken: vi.fn(),
-    };
-    const { effects, saveServer, saveFirstRun } = makeEffects();
     const controller = new AbortController();
     const flow = runJoinFlow({
-      client,
-      effects,
+      client: h.client,
+      effects: h.effects,
       cloudApiBase: CLOUD_API_BASE,
-      authToken: "tok",
-      agentName: "Eliza",
+      authToken: "session-token",
       signal: controller.signal,
     });
 
     controller.abort(new DOMException("User signed out", "AbortError"));
-    resolveSelection({
-      agentId: "agent-created-after-cancel",
+    resolveIdentity({
+      agentId: PERSONAL_ID,
       agentName: "Eliza",
-      apiBase: SHARED_BASE,
-      bridgeUrl: null,
-      created: true,
+      apiBase: PERSONAL_BASE,
+      runtime: "shared",
     });
 
     await expect(flow).rejects.toMatchObject({ name: "AbortError" });
-    expect(deleteCloudCompatAgent).toHaveBeenCalledWith(
-      "agent-created-after-cancel",
-    );
-    expect(saveServer).not.toHaveBeenCalled();
-    expect(saveFirstRun).not.toHaveBeenCalled();
+    expect(h.getPersonalSharedEliza).toHaveBeenCalledWith({
+      cloudApiBase: CLOUD_API_BASE,
+      authToken: "session-token",
+      signal: controller.signal,
+    });
+    expect(h.setBaseUrl).not.toHaveBeenCalled();
+    expect(h.setToken).not.toHaveBeenCalled();
+    expect(h.savePersistedActiveServer).not.toHaveBeenCalled();
+    expect(h.savePersistedFirstRunComplete).not.toHaveBeenCalled();
+  });
+
+  test("rejects a pre-aborted attempt before starting identity resolution", async () => {
+    const h = harness();
+    const controller = new AbortController();
+    controller.abort(new DOMException("Already signed out", "AbortError"));
+
+    await expect(
+      runJoinFlow({
+        client: h.client,
+        effects: h.effects,
+        cloudApiBase: CLOUD_API_BASE,
+        authToken: "session-token",
+        signal: controller.signal,
+      }),
+    ).rejects.toMatchObject({ name: "AbortError" });
+
+    expect(h.getPersonalSharedEliza).not.toHaveBeenCalled();
+    expect(h.savePersistedActiveServer).not.toHaveBeenCalled();
   });
 });

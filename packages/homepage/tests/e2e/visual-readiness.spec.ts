@@ -74,3 +74,24 @@ test("landing has no horizontal overflow at mobile width", async ({ page }) => {
   });
   expect(overflow).toBeLessThanOrEqual(0);
 });
+
+test("landing keeps the document scrollbar slim and translucent", async ({
+  page,
+}) => {
+  await page.goto("/");
+
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () => getComputedStyle(document.documentElement).scrollbarWidth,
+      ),
+    )
+    .toBe("thin");
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () => getComputedStyle(document.documentElement).scrollbarColor,
+      ),
+    )
+    .toContain("rgba(17, 17, 17, 0.3)");
+});

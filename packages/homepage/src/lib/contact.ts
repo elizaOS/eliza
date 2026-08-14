@@ -44,5 +44,5 @@ export function buildElizaTelegramHref(): string {
 }
 
 export function buildElizaDiscordHref(): string {
-  return `https://discord.com/users/${getDiscordBotApplicationId()}`;
+  return `discord://-/users/${getDiscordBotApplicationId()}`;
 }

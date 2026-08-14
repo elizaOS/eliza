@@ -10,6 +10,7 @@ const findByCanonicalDiscordIdWithOrganization = mock();
 const findByPhoneNumberWithOrganization = mock();
 const update = mock();
 const linkVerifiedPhone = mock();
+const findOrCreatePhonePersonalAccount = mock();
 const linkTelegramAndPhoneIdentity = mock();
 const refreshDiscordProjectionForWrite = mock();
 const linkDiscordIdentity = mock();
@@ -25,6 +26,7 @@ mock.module("../../../db/repositories/users", () => ({
     findWithOrganization: mock(),
     update,
     linkVerifiedPhone,
+    findOrCreatePhonePersonalAccount,
     linkTelegramAndPhoneIdentity,
     refreshDiscordProjectionForWrite,
     linkDiscordIdentity,
@@ -50,6 +52,7 @@ mock.module("../../utils/logger", () => ({
 
 mock.module("../../utils/phone-normalization", () => ({
   normalizePhoneNumber: mock((phone: string) => phone),
+  isValidE164: mock(() => true),
 }));
 
 mock.module("../api-keys", () => ({ apiKeysService: { create: mock() } }));
