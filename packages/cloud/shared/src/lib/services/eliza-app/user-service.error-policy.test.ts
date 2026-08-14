@@ -72,6 +72,7 @@ const { elizaAppUserService } = await import(
 
 describe("ElizaAppUserService account opening balance", () => {
   beforeEach(() => {
+    findOrCreatePhonePersonalAccount.mockReset();
     findByPhoneNumberWithOrganization.mockReset();
     createOrganization.mockReset();
     createUser.mockReset();
@@ -80,16 +81,18 @@ describe("ElizaAppUserService account opening balance", () => {
   });
 
   test("creates a phone-first personal account at zero without an automatic credit transaction", async () => {
-    findByPhoneNumberWithOrganization.mockResolvedValue(undefined);
-    createOrganization.mockResolvedValue({ id: "org-new", credit_balance: "0.00" });
-    createUser.mockResolvedValue({ id: "user-new", phone_number: "+15551234567" });
-    createApiKey.mockResolvedValue({ id: "key-new" });
+    findOrCreatePhonePersonalAccount.mockResolvedValue({
+      user: { id: "user-new", phone_number: "+15551234567" },
+      organization: { id: "org-new", credit_balance: "0.00" },
+      isNew: true,
+    });
 
     const result = await elizaAppUserService.findOrCreateByPhone("+15551234567");
 
     expect(result.isNew).toBe(true);
-    expect(createOrganization).toHaveBeenCalledWith(
-      expect.objectContaining({ credit_balance: "0.00" }),
+    expect(result.organization.credit_balance).toBe("0.00");
+    expect(findOrCreatePhonePersonalAccount).toHaveBeenCalledWith(
+      expect.objectContaining({ phoneNumber: "+15551234567" }),
     );
     expect(addCredits).not.toHaveBeenCalled();
   });
