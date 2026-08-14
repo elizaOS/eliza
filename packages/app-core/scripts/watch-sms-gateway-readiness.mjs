@@ -5,10 +5,14 @@
  * By default this only reports the command to run. Pass --run-install to run
  * the Android pair/connect/install/watch flow automatically once a wireless
  * pairing endpoint or exactly one adb device is visible.
+ *
+ * `--timeout` and `--interval` must be complete positive decimal integers in
+ * `1..86400` seconds. `Number.parseInt` previously turned `1e3` into a 1s
+ * wait and `8abc` into an 8s wait.
  */
 import { spawnSync } from "node:child_process";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const installScript = path.join(scriptDir, "install-android-sms-gateway.mjs");
@@ -20,40 +24,66 @@ function usage() {
     "Usage: node packages/app-core/scripts/watch-sms-gateway-readiness.mjs [options]",
     "",
     "Options:",
-    "  --timeout <seconds>   Stop waiting after this many seconds. Defaults to 300.",
-    "  --interval <seconds>  Poll interval. Defaults to 5.",
+    "  --timeout <seconds>   Stop waiting after this many seconds (1-86400). Defaults to 300.",
+    "  --interval <seconds>  Poll interval (1-86400). Defaults to 5.",
     "  --run-install         Run Android pair/connect/install/watch flow when actionable.",
   ].join("\n");
 }
 
-function parseArgs(argv) {
+export const DEFAULT_TIMEOUT_SECONDS = 300;
+export const DEFAULT_INTERVAL_SECONDS = 5;
+/** Upper bound for a watch window or poll interval (24 hours). */
+export const MAX_WATCH_SECONDS = 86_400;
+
+/**
+ * Parse `--timeout` / `--interval` as a complete positive decimal second count.
+ * Rejects scientific notation, trailing junk, leading zeros, and zero.
+ * @param {string} raw
+ * @param {string} label
+ */
+export function parseWatchSeconds(raw, label) {
+  if (typeof raw !== "string" || !/^[1-9]\d*$/.test(raw)) {
+    throw new Error(
+      `${label} must be a positive decimal integer from 1 to ${MAX_WATCH_SECONDS}`,
+    );
+  }
+  const parsed = Number(raw);
+  if (!Number.isSafeInteger(parsed) || parsed > MAX_WATCH_SECONDS) {
+    throw new Error(
+      `${label} must be a positive decimal integer from 1 to ${MAX_WATCH_SECONDS}`,
+    );
+  }
+  return parsed;
+}
+
+/**
+ * Parse CLI argv into watch options. Exported for focused tests.
+ * @param {string[]} argv
+ */
+export function parseArgs(argv) {
   const args = {
-    timeoutSeconds: 300,
-    intervalSeconds: 5,
+    timeoutSeconds: DEFAULT_TIMEOUT_SECONDS,
+    intervalSeconds: DEFAULT_INTERVAL_SECONDS,
     runInstall: false,
   };
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
     const next = () => {
       const value = argv[++i];
-      if (!value) throw new Error(`${arg} requires a value`);
+      if (!value || value.startsWith("--")) {
+        throw new Error(`${arg} requires a value`);
+      }
       return value;
     };
-    if (arg === "--timeout") args.timeoutSeconds = Number.parseInt(next(), 10);
+    if (arg === "--timeout") args.timeoutSeconds = parseWatchSeconds(next(), "--timeout");
     else if (arg === "--interval")
-      args.intervalSeconds = Number.parseInt(next(), 10);
+      args.intervalSeconds = parseWatchSeconds(next(), "--interval");
     else if (arg === "--run-install") args.runInstall = true;
     else if (arg === "--help" || arg === "-h") {
       console.log(usage());
       process.exit(0);
     } else {
       throw new Error(`Unknown argument: ${arg}\n${usage()}`);
-    }
-  }
-  for (const [key, value] of Object.entries(args)) {
-    if (key === "runInstall") continue;
-    if (!Number.isInteger(value) || value < 0) {
-      throw new Error(`${key} must be a non-negative integer`);
     }
   }
   return args;
@@ -317,9 +347,17 @@ async function main() {
   );
 }
 
-main().catch((error) => {
-  console.error(
-    `[sms-gateway-watch] ${error instanceof Error ? error.message : String(error)}`,
-  );
-  process.exit(1);
-});
+const isDirectRun =
+  import.meta.main === true ||
+  (typeof process.argv[1] === "string" &&
+    import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href);
+
+if (isDirectRun) {
+  main().catch((error) => {
+    // error-policy:J1 CLI boundary — invalid flags or a missed gateway exit 1
+    console.error(
+      `[sms-gateway-watch] ${error instanceof Error ? error.message : String(error)}`,
+    );
+    process.exit(1);
+  });
+}
