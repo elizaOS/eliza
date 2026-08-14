@@ -18,7 +18,7 @@
  * by the registry-to-worker end-to-end test.
  */
 
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import http from "node:http";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -490,6 +490,88 @@ describe("AppWorkerHostService worker bridge", () => {
 			expect(reply.ok).toBe(false);
 			if (reply.ok) return;
 			expect(reply.reason).toContain("escapes the sandbox statePath");
+		});
+	});
+
+	// `trust: "external"` promotes EVERY registered app to isolation:"worker",
+	// including static frontend apps that ship no agent-side module. Those apps
+	// declare `main: "./dist/index.js"` for their bundler; the file is not a
+	// plugin and often is not built. Resolving through to some source file the
+	// package never pointed at made every one of them boot, import a React
+	// entry, and report "no plugin export found in module" — 20 warnings per
+	// boot on a real install, burying the spawns that actually broke.
+	describe("apps with no worker surface are classified, not failed", () => {
+		function makeRegistryRuntime(entry: Record<string, unknown>) {
+			return {
+				agentId: "00000000-0000-0000-0000-000000000001",
+				getService: (type: string) =>
+					type === "app-registry"
+						? {
+								list: async () => [entry],
+								getPermissionsView: async () => null,
+							}
+						: null,
+			} as unknown as IAgentRuntime;
+		}
+
+		it("does not import a source file the package never declared", async () => {
+			// Declares an entry that is absent (unbuilt static app) but ships a
+			// src/index.ts a naive fallback would have imported.
+			const dir = mkdtempSync(path.join(tmpdir(), "app-static-"));
+			writeFileSync(
+				path.join(dir, "package.json"),
+				JSON.stringify({ name: "static-app", main: "./dist/index.js" }),
+			);
+			mkdirSync(path.join(dir, "src"), { recursive: true });
+			writeFileSync(
+				path.join(dir, "src", "index.ts"),
+				"export const ui = 1;\n",
+			);
+
+			const svc = new AppWorkerHostService(
+				makeRegistryRuntime({
+					slug: "static-app",
+					directory: dir,
+					isolation: "worker",
+				}),
+			);
+			const result = await svc.startForRegisteredApp("static-app");
+			rmSync(dir, { recursive: true, force: true });
+
+			expect(result.ok).toBe(false);
+			if (result.ok) return;
+			// Classified as "no surface", so the caller logs it at debug.
+			expect(result.kind).toBe("no-worker-surface");
+			expect(result.reason).toContain("No worker plugin entry found");
+		});
+
+		it("still uses the conventional fallbacks when nothing is declared", async () => {
+			const dir = mkdtempSync(path.join(tmpdir(), "app-undeclared-"));
+			writeFileSync(
+				path.join(dir, "package.json"),
+				JSON.stringify({ name: "undeclared-app" }),
+			);
+			mkdirSync(path.join(dir, "src"), { recursive: true });
+			writeFileSync(path.join(dir, "src", "index.ts"), "export default {};\n");
+
+			const svc = new AppWorkerHostService(
+				makeRegistryRuntime({
+					slug: "undeclared-app",
+					directory: dir,
+					isolation: "worker",
+				}),
+			);
+			// Resolution succeeds here, so the call proceeds to a real spawn — which
+			// may then reject because the fixture is not a plugin. Either way it got
+			// PAST classification, which is the only thing this pins.
+			const outcome = await svc
+				.startForRegisteredApp("undeclared-app")
+				.then((r) => (r.ok ? "ok" : r.kind))
+				.catch(() => "threw-during-spawn");
+			await svc.stop().catch(() => {});
+			rmSync(dir, { recursive: true, force: true });
+
+			expect(outcome).not.toBe("no-worker-surface");
 		});
 	});
 });

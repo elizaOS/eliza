@@ -165,16 +165,31 @@ async function resolvePluginEntryPath(
 		!Array.isArray(pkg.exports)
 			? readStringFromExports((pkg.exports as Record<string, unknown>)["."])
 			: null);
-	const candidates = [
+	const declared = [
 		exportsEntry,
 		readString(pkg.module),
 		readString(pkg.main),
-		"src/index.ts",
-		"src/index.js",
-		"dist/index.js",
-		"index.ts",
-		"index.js",
 	].filter((candidate): candidate is string => candidate !== null);
+
+	// The conventional fallbacks apply ONLY to a package that declares no entry
+	// at all. A package that declared one whose file is absent is unbuilt, and
+	// importing some source file it never pointed at turns that into a
+	// different, misleading story: a static frontend app (index.html +
+	// src/index.tsx, no agent-side module) declares `main: "./dist/index.js"`,
+	// the fallback imports its React entry instead, and the worker reports
+	// "no plugin export found in module" on every boot — for an app that has no
+	// worker surface at all. Resolving nothing is the honest answer here; the
+	// caller already renders it as "no worker plugin entry found".
+	const candidates =
+		declared.length > 0
+			? declared
+			: [
+					"src/index.ts",
+					"src/index.js",
+					"dist/index.js",
+					"index.ts",
+					"index.js",
+				];
 
 	for (const candidate of candidates) {
 		const resolved = path.isAbsolute(candidate)
@@ -242,12 +257,19 @@ export class AppWorkerHostService extends Service {
 	 * Look up the registered entry and spawn a worker if the entry
 	 * declares isolation:"worker". Returns the spawn snapshot or a
 	 * structured reason if no worker was spawned.
+	 *
+	 * `kind` separates "this app has no worker surface" from "this app has one
+	 * and it failed". Both are `ok: false`, but only the second is a problem:
+	 * `trust: "external"` promotes EVERY registered app to isolation:"worker",
+	 * including static frontend apps that ship no agent-side module, so the
+	 * first case is routine and must not be logged as a failure. Callers branch
+	 * on this field rather than matching the reason text.
 	 */
 	async startForRegisteredApp(
 		slug: string,
 	): Promise<
 		| { ok: true; snapshot: SpawnedWorkerSnapshot }
-		| { ok: false; reason: string }
+		| { ok: false; kind: "no-worker-surface" | "error"; reason: string }
 	> {
 		const registry = this.runtime.getService(APP_REGISTRY_SERVICE_TYPE) as
 			| AppRegistryService
@@ -256,17 +278,23 @@ export class AppWorkerHostService extends Service {
 		if (!registry) {
 			return {
 				ok: false,
+				kind: "error",
 				reason: "AppRegistryService is not registered on the runtime",
 			};
 		}
 		const entries = await registry.list();
 		const entry = entries.find((e: AppRegistryEntry) => e.slug === slug);
 		if (!entry) {
-			return { ok: false, reason: `No app registered under slug=${slug}` };
+			return {
+				ok: false,
+				kind: "error",
+				reason: `No app registered under slug=${slug}`,
+			};
 		}
 		if (entry.isolation !== "worker") {
 			return {
 				ok: false,
+				kind: "no-worker-surface",
 				reason: `App ${slug} declared isolation:'${entry.isolation ?? "none"}'; nothing to spawn`,
 			};
 		}
@@ -275,6 +303,7 @@ export class AppWorkerHostService extends Service {
 		if (!pluginEntryPath) {
 			return {
 				ok: false,
+				kind: "no-worker-surface",
 				reason: `No worker plugin entry found for app ${slug} under ${entry.directory}`,
 			};
 		}
@@ -539,13 +568,26 @@ export class AppWorkerHostService extends Service {
 			const result = await this.startForRegisteredApp(entry.slug).catch(
 				(error: unknown) => ({
 					ok: false as const,
+					kind: "error" as const,
 					reason: error instanceof Error ? error.message : String(error),
 				}),
 			);
 			if (!result.ok) {
-				logger.warn(
-					`[app-worker-host] bootstrap spawn failed for slug=${entry.slug}: ${result.reason}`,
-				);
+				// An app with no worker surface is the common case, not a fault:
+				// `trust: "external"` promotes every registered app to
+				// isolation:"worker", and most are static frontends with no
+				// agent-side module. Warning on those made boot emit one failure
+				// line per installed app forever, burying the spawns that really
+				// did break.
+				if (result.kind === "no-worker-surface") {
+					logger.debug(
+						`[app-worker-host] no worker surface for slug=${entry.slug}: ${result.reason}`,
+					);
+				} else {
+					logger.warn(
+						`[app-worker-host] bootstrap spawn failed for slug=${entry.slug}: ${result.reason}`,
+					);
+				}
 			}
 		}
 	}
