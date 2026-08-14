@@ -1,5 +1,5 @@
 /**
- * Steward canonical-callback deploy probe tests use deterministic fetch fakes;
+ * Steward canonical sign-in deploy probe tests use deterministic fetch fakes;
  * no provider request or tenant mutation leaves the process.
  */
 
@@ -7,6 +7,7 @@ import { describe, expect, test } from "bun:test";
 import {
   parseStewardCallbackProbeArgs,
   verifyStewardOAuthCallbacks,
+  verifyStewardWalletOrigin,
 } from "../verify-steward-oauth-callbacks.mjs";
 
 const CONFIG = {
@@ -88,5 +89,52 @@ describe("Steward OAuth callback deployment probe", () => {
     expect(() => parseStewardCallbackProbeArgs([])).toThrow(
       "--base-url is required",
     );
+  });
+});
+
+describe("Steward wallet-origin deployment probe", () => {
+  test("sends the browser host as the exact Origin and accepts a nonce", async () => {
+    let requestedUrl = "";
+    let requestedInit: RequestInit | undefined;
+    const result = await verifyStewardWalletOrigin(CONFIG, {
+      fetchImpl: async (input: string | URL | Request, init?: RequestInit) => {
+        requestedUrl = String(input);
+        requestedInit = init;
+        return Response.json({ nonce: "deployment-probe-nonce" });
+      },
+    });
+
+    expect(result).toEqual({ origin: CONFIG.baseUrl });
+    expect(requestedUrl).toBe(`${CONFIG.baseUrl}/steward/auth/nonce`);
+    expect(requestedInit).toEqual({
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+        Origin: CONFIG.baseUrl,
+      },
+    });
+  });
+
+  test("fails closed when Steward rejects the canonical Origin", async () => {
+    await expect(
+      verifyStewardWalletOrigin(CONFIG, {
+        fetchImpl: async () =>
+          Response.json(
+            {
+              ok: false,
+              error: "SIWE nonce requests require an allowed Origin or Referer",
+            },
+            { status: 400 },
+          ),
+      }),
+    ).rejects.toThrow("wallet origin probe returned HTTP 400");
+  });
+
+  test("fails closed on a malformed success response", async () => {
+    await expect(
+      verifyStewardWalletOrigin(CONFIG, {
+        fetchImpl: async () => Response.json({ ok: true }),
+      }),
+    ).rejects.toThrow("wallet origin probe returned no nonce");
   });
 });

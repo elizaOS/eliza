@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 /**
- * Verify that a deployed Eliza browser host can begin every supported Steward
- * OAuth flow with its exact canonical callback. The probe stops at the first
- * provider redirect, so it validates Pages routing, tenant allowlists, and
- * provider configuration without authenticating a user or mutating a session.
+ * Verify the externally managed Steward sign-in configuration for a deployed
+ * Eliza browser host. OAuth probes stop at the provider redirect, while the
+ * wallet probe requests only the public nonce used before SIWE/SIWS signing;
+ * neither path authenticates a user or creates an Eliza session.
  */
 
 import { createHash } from "node:crypto";
@@ -94,6 +94,43 @@ export async function verifyStewardOAuthCallbacks(
   return results;
 }
 
+export async function verifyStewardWalletOrigin(
+  { baseUrl },
+  { fetchImpl = fetch } = {},
+) {
+  const response = await fetchImpl(`${baseUrl}/steward/auth/nonce`, {
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+      Origin: baseUrl,
+    },
+  });
+
+  if (response.status !== 200) {
+    throw new Error(
+      `wallet origin probe returned HTTP ${response.status}; expected a nonce response`,
+    );
+  }
+
+  let payload;
+  try {
+    payload = await response.json();
+  } catch (cause) {
+    // error-policy:J1 Translate the deployed HTTP boundary into a fail-closed probe result.
+    throw new Error("wallet origin probe returned invalid JSON", { cause });
+  }
+  if (
+    typeof payload !== "object" ||
+    payload === null ||
+    typeof payload.nonce !== "string" ||
+    payload.nonce.length === 0
+  ) {
+    throw new Error("wallet origin probe returned no nonce");
+  }
+
+  return { origin: baseUrl };
+}
+
 export async function main(argv = process.argv.slice(2)) {
   const config = parseStewardCallbackProbeArgs(argv);
   const results = await verifyStewardOAuthCallbacks(config);
@@ -102,6 +139,8 @@ export async function main(argv = process.argv.slice(2)) {
       `Verified ${result.provider} canonical callback via ${result.destinationHostname}.`,
     );
   }
+  const wallet = await verifyStewardWalletOrigin(config);
+  console.log(`Verified canonical wallet origin ${wallet.origin}.`);
 }
 
 const invokedPath = process.argv[1]
