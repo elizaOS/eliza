@@ -142,4 +142,4 @@ Prefer these implementation surfaces:
 - `packages/cloud/api/v1/x402/requests/route.ts`
 - `packages/ui/src/cloud/applications/components/app-monetization-settings.tsx`
 - `packages/ui/src/cloud/applications/components/app-earnings-dashboard.tsx`
-- `packages/cloud-frontend/src/pages/login/` (app-auth OAuth is served by the cloud-frontend, not a `/api` route)
+- `packages/ui/src/cloud/public-pages/pages/login/` and `packages/ui/src/cloud/public-pages/pages/app-auth/` (app-auth OAuth login is served by the consolidated app's public pages, not a `/api` route)
