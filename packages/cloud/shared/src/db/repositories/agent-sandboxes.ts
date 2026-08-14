@@ -46,7 +46,7 @@ import {
 } from "../../lib/services/provisioning-job-types";
 import { mergeWarmClaimEnvironmentVars } from "../../lib/services/warm-claim-character-push";
 import { ObjectNamespaces } from "../../lib/storage/object-namespace";
-import { getObjectText, offloadJsonField } from "../../lib/storage/object-store";
+import { deleteObjectByKey, getObjectText, offloadJsonField } from "../../lib/storage/object-store";
 import { logger } from "../../lib/utils/logger";
 import { decryptAgentBackupStateData, encryptAgentBackupStateData } from "../crypto/agent-backups";
 import { ensureAgentSandboxSchema } from "../ensure-agent-sandbox-schema";
@@ -314,19 +314,38 @@ export async function prepareAgentBackupInsertData(
   };
 }
 
+const PREDELETION_RETENTION_DEFAULT_DAYS = 30;
+
+/** Bounded lifetime for pre-deletion retention rows: created_at plus the
+ *  `AGENT_PREDELETION_RETENTION_DAYS` window (default 30). The cron purge
+ *  removes the row AND its offloaded object once this passes. */
+function predeletionRetentionExpiry(createdAt: Date): Date {
+  const raw = Number(process.env.AGENT_PREDELETION_RETENTION_DAYS);
+  const days = Number.isFinite(raw) && raw > 0 ? raw : PREDELETION_RETENTION_DEFAULT_DAYS;
+  return new Date(createdAt.getTime() + days * 24 * 60 * 60 * 1000);
+}
+
 /**
  * Encrypt + offload a cascade-immune pre-deletion retention row (#18517),
  * mirroring {@link prepareAgentBackupInsertData}'s lifecycle under its own
  * object namespace. Waiver rows (`capture_unsupported`) carry the empty
- * state and skip offload entirely.
+ * state and skip offload entirely. Every row is stamped with its bounded
+ * `expires_at` so retention can never grow unbounded.
  */
 export async function preparePredeletionBackupInsertData(
-  data: NewAgentSandboxPredeletionBackup,
+  data: Omit<NewAgentSandboxPredeletionBackup, "expires_at"> & { expires_at?: Date },
 ): Promise<NewAgentSandboxPredeletionBackup> {
   const id = data.id ?? randomUUID();
   const createdAt = data.created_at ?? new Date();
+  const expiresAt = data.expires_at ?? predeletionRetentionExpiry(createdAt);
   if (data.capture_unsupported) {
-    return { ...data, id, created_at: createdAt, state_data: EMPTY_BACKUP_STATE };
+    return {
+      ...data,
+      id,
+      created_at: createdAt,
+      expires_at: expiresAt,
+      state_data: EMPTY_BACKUP_STATE,
+    };
   }
   const encryptedStateData = await encryptAgentBackupStateData(
     data.organization_id,
@@ -346,6 +365,7 @@ export async function preparePredeletionBackupInsertData(
     ...data,
     id,
     created_at: createdAt,
+    expires_at: expiresAt,
     state_data: stateData.value ?? EMPTY_BACKUP_STATE,
     state_data_storage: stateData.storage,
     state_data_key: stateData.key,
@@ -2108,6 +2128,73 @@ export class AgentSandboxesRepository {
       .orderBy(desc(agentSandboxPredeletionBackups.created_at))
       .limit(1);
     return r ?? undefined;
+  }
+
+  /** Newest retention row for one agent under its owning organization — the
+   *  recovery lookup, valid AFTER the sandbox row is gone. Metadata only;
+   *  callers decrypt via {@link hydratePredeletionBackup}. */
+  async getLatestPredeletionBackupForOrg(
+    agentId: string,
+    orgId: string,
+  ): Promise<AgentSandboxPredeletionBackup | undefined> {
+    await ensureAgentSandboxSchema();
+    const [r] = await dbRead
+      .select()
+      .from(agentSandboxPredeletionBackups)
+      .where(
+        and(
+          eq(agentSandboxPredeletionBackups.agent_id, agentId),
+          eq(agentSandboxPredeletionBackups.organization_id, orgId),
+        ),
+      )
+      .orderBy(desc(agentSandboxPredeletionBackups.created_at))
+      .limit(1);
+    return r ?? undefined;
+  }
+
+  /**
+   * Bounded retention purge: remove rows whose `expires_at` has passed,
+   * deleting each offloaded object BEFORE its database row so a failed object
+   * delete keeps the row for the next sweep instead of leaking the payload.
+   */
+  async purgeExpiredPredeletionBackups(params?: {
+    now?: Date;
+    max?: number;
+  }): Promise<{ purged: number; objectDeleteFailures: number }> {
+    await ensureAgentSandboxSchema();
+    const now = params?.now ?? new Date();
+    const max = Math.min(Math.max(params?.max ?? 50, 1), 500);
+    const expired = await dbRead
+      .select()
+      .from(agentSandboxPredeletionBackups)
+      .where(lt(agentSandboxPredeletionBackups.expires_at, now))
+      .orderBy(asc(agentSandboxPredeletionBackups.expires_at))
+      .limit(max);
+    let purged = 0;
+    let objectDeleteFailures = 0;
+    for (const row of expired) {
+      if (row.state_data_storage === "r2" && row.state_data_key) {
+        try {
+          await deleteObjectByKey(row.state_data_key);
+        } catch (error) {
+          // error-policy:J6 best-effort sweep teardown: the row is kept so the
+          // next tick retries this object delete; removing it now would leak
+          // the offloaded payload forever.
+          objectDeleteFailures += 1;
+          logger.warn("[agent-sandboxes] Retention purge could not delete offloaded object", {
+            rowId: row.id,
+            key: row.state_data_key,
+            error: error instanceof Error ? error.message : String(error),
+          });
+          continue;
+        }
+      }
+      await dbWrite
+        .delete(agentSandboxPredeletionBackups)
+        .where(eq(agentSandboxPredeletionBackups.id, row.id));
+      purged += 1;
+    }
+    return { purged, objectDeleteFailures };
   }
 
   async getLatestBackupByType(

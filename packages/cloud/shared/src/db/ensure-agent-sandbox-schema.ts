@@ -230,8 +230,13 @@ async function runEnsureAgentSandboxSchema(): Promise<void> {
       "state_data_storage" text NOT NULL DEFAULT 'inline',
       "state_data_key" text,
       "size_bytes" bigint,
-      "created_at" timestamptz NOT NULL DEFAULT now()
+      "created_at" timestamptz NOT NULL DEFAULT now(),
+      "expires_at" timestamptz NOT NULL DEFAULT now() + interval '30 days'
     )
+  `);
+  await dbWrite.execute(sql`
+    ALTER TABLE "agent_sandbox_predeletion_backups"
+      ADD COLUMN IF NOT EXISTS "expires_at" timestamptz NOT NULL DEFAULT now() + interval '30 days'
   `);
   await dbWrite.execute(sql`
     CREATE INDEX IF NOT EXISTS "agent_sandbox_predeletion_agent_attempt_idx"
@@ -240,6 +245,10 @@ async function runEnsureAgentSandboxSchema(): Promise<void> {
   await dbWrite.execute(sql`
     CREATE INDEX IF NOT EXISTS "agent_sandbox_predeletion_org_idx"
       ON "agent_sandbox_predeletion_backups" ("organization_id")
+  `);
+  await dbWrite.execute(sql`
+    CREATE INDEX IF NOT EXISTS "agent_sandbox_predeletion_expires_idx"
+      ON "agent_sandbox_predeletion_backups" ("expires_at")
   `);
 
   await dbWrite.execute(sql`

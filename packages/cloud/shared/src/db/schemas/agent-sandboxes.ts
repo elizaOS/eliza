@@ -553,6 +553,8 @@ export const agentSandboxBackups = pgTable(
  * for images with no snapshot endpoint, so a post-teardown retry converges
  * without contacting the dead bridge. `state_data` uses the same encrypt +
  * offload lifecycle as `agent_sandbox_backups` (empty for waiver rows).
+ * Retention is bounded: every row carries `expires_at`, and the agent-backups
+ * cron purges expired rows together with their offloaded objects.
  */
 export const agentSandboxPredeletionBackups = pgTable(
   "agent_sandbox_predeletion_backups",
@@ -570,6 +572,7 @@ export const agentSandboxPredeletionBackups = pgTable(
     state_data_key: text("state_data_key"),
     size_bytes: bigint("size_bytes", { mode: "number" }),
     created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    expires_at: timestamp("expires_at", { withTimezone: true }).notNull(),
   },
   (table) => ({
     agent_attempt_idx: index("agent_sandbox_predeletion_agent_attempt_idx").on(
@@ -577,6 +580,7 @@ export const agentSandboxPredeletionBackups = pgTable(
       table.deletion_attempt_id,
     ),
     org_idx: index("agent_sandbox_predeletion_org_idx").on(table.organization_id),
+    expires_idx: index("agent_sandbox_predeletion_expires_idx").on(table.expires_at),
   }),
 );
 

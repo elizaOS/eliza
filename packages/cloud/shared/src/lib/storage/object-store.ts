@@ -1,5 +1,5 @@
 // Defines cloud shared object store behavior for backend service consumers.
-import { GetObjectCommand, PutObjectCommand } from "@aws-sdk/client-s3";
+import { DeleteObjectCommand, GetObjectCommand, PutObjectCommand } from "@aws-sdk/client-s3";
 import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 import type { ObjectNamespace } from "./object-namespace";
 import { getRuntimeR2Bucket, runtimeR2BucketConfigured } from "./r2-runtime-binding";
@@ -156,6 +156,28 @@ export async function getObjectText(key: string): Promise<string | null> {
   if (!bucket || !client) return null;
   const out = await client.send(new GetObjectCommand({ Bucket: bucket, Key: key }));
   return (await out.Body?.transformToString()) ?? null;
+}
+
+/**
+ * Remove an offloaded object. Callers that delete database rows referencing an
+ * offloaded key must delete the object FIRST — a row deleted before its object
+ * leaves the payload unreachable and leaked forever. Throws when no storage
+ * backend is configured, so purge sweeps surface the misconfiguration instead
+ * of silently orphaning objects.
+ */
+export async function deleteObjectByKey(key: string): Promise<void> {
+  const runtimeBucket = getRuntimeR2Bucket();
+  if (runtimeBucket) {
+    await runtimeBucket.delete(key);
+    return;
+  }
+
+  const bucket = heavyPayloadBucket();
+  const client = getObjectStorageClient();
+  if (!bucket || !client) {
+    throw new Error("Object delete requested but client or bucket is not configured");
+  }
+  await client.send(new DeleteObjectCommand({ Bucket: bucket, Key: key }));
 }
 
 export async function offloadTextField(params: {

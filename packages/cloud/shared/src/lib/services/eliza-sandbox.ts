@@ -23,6 +23,7 @@ import {
   type AgentSandboxBackupMetadata,
   type AgentSandboxStatus,
   agentSandboxesRepository,
+  hydratePredeletionBackup,
   prepareAgentBackupInsertData,
   preparePredeletionBackupInsertData,
 } from "../../db/repositories/agent-sandboxes";
@@ -32,6 +33,7 @@ import { sharedRuntimeHistoryRepository } from "../../db/repositories/shared-run
 import {
   type AgentBackupStateData,
   type AgentExecutionTier,
+  type AgentSandboxPredeletionBackup,
   agentSandboxBackups,
   agentSandboxes,
   agentSandboxPredeletionBackups,
@@ -415,6 +417,20 @@ type BoundedDeletionSandboxStopResult =
   | SandboxDeletionStopOutcome
   | { kind: "stop-failed"; error: unknown }
   | { kind: "stop-timed-out"; error: unknown };
+
+/**
+ * The container generation phase 0 of `deleteAgent` actually inspected —
+ * captured BEFORE any bridge request and re-compared under the lifecycle lock
+ * (#18517). A capture or supported-404 waiver is only valid for the exact
+ * generation it was taken against; carrying the full tuple (not just
+ * `sandbox_id`) is what closes the restart/replacement race where a stale
+ * result would otherwise be stamped with the current row's identity.
+ */
+interface PreDeleteGenerationIdentity {
+  sandboxId: string | null;
+  bridgeUrl: string | null;
+  lifecycleRevision: number;
+}
 
 export interface BridgeRequest {
   jsonrpc: "2.0";
@@ -1925,6 +1941,25 @@ export class ElizaSandboxService {
     return agentSandboxesRepository.listByOrganization(orgId);
   }
 
+  /**
+   * Recovery lookup for a deleted agent's final pre-deletion capture
+   * (#18517). Organization scope is the recovery authority: the caller's org
+   * must own the retention row, and the sandbox row itself is expected to be
+   * gone — retention rows are the artifact that outlives it. Returns the
+   * newest row with `state_data` decrypted and fetched from the object store
+   * when offloaded; `null` when the org has no retention for this agent.
+   * Waiver rows return with `capture_unsupported` set and the empty state, a
+   * visibly distinct "no snapshot existed by construction" outcome.
+   */
+  async getPredeletionRecovery(
+    agentId: string,
+    orgId: string,
+  ): Promise<AgentSandboxPredeletionBackup | null> {
+    const row = await agentSandboxesRepository.getLatestPredeletionBackupForOrg(agentId, orgId);
+    if (!row) return null;
+    return hydratePredeletionBackup(row);
+  }
+
   async deleteAgent(
     agentId: string,
     orgId: string,
@@ -1946,6 +1981,7 @@ export class ElizaSandboxService {
       sizeBytes: number;
       bridgeUrl: string;
     } | null = null;
+    let preDeleteIdentity: PreDeleteGenerationIdentity | null = null;
     const snapshotSource = await this.getAgentForWrite(agentId, orgId);
     // An unauthorized delete of a still-`running` row is refused by
     // prepareAgentDelete no matter what happens here, so it skips the capture
@@ -1964,18 +2000,39 @@ export class ElizaSandboxService {
     const captureSkippedForUnauthorizedRunning =
       !options.authorization && snapshotSource?.status === "running";
     if (!captureSkippedForUnauthorizedRunning && this.requiresPreDeleteCapture(snapshotSource)) {
+      // The generation this phase inspects, captured BEFORE any bridge
+      // request. Every capture outcome below — snapshot, waiver, or retained
+      // retry — is only valid for this exact tuple, and prepareAgentDelete
+      // re-compares it under the lifecycle lock so a restart/replacement that
+      // completes mid-flight can never have a stale result stamped onto it.
+      preDeleteIdentity = {
+        sandboxId: snapshotSource.sandbox_id,
+        bridgeUrl: snapshotSource.bridge_url,
+        lifecycleRevision: snapshotSource.lifecycle_revision,
+      };
       // A deletion retry whose earlier attempt already captured (or recorded
       // a supported-404 waiver) must not refuse forever against a bridge the
       // teardown already killed. The retention row is bound to THIS deletion
-      // attempt and container generation; the match is re-validated under the
-      // lifecycle lock in prepareAgentDelete.
+      // attempt and container placement — `sandbox_id` AND `bridge_url`, not
+      // just the container id, since a replacement keeps neither and a moved
+      // bridge is another generation's endpoint. `lifecycle_revision` is
+      // deliberately NOT part of this retry match: the BEFORE UPDATE trigger
+      // bumps it on every row write — including this deletion's own CAS and
+      // later bookkeeping — so revision equality would invalidate every
+      // retention row one update later and reintroduce the dead-bridge
+      // non-convergence this row exists to prevent. The match is re-validated
+      // under the lifecycle lock in prepareAgentDelete.
       const retained = snapshotSource.deletion_attempt_id
         ? await agentSandboxesRepository.getPredeletionBackup(
             agentId,
             snapshotSource.deletion_attempt_id,
           )
         : undefined;
-      if (retained && retained.sandbox_id === snapshotSource.sandbox_id) {
+      if (
+        retained &&
+        retained.sandbox_id === snapshotSource.sandbox_id &&
+        retained.bridge_url === snapshotSource.bridge_url
+      ) {
         captureAlreadyPersisted = true;
       } else if (!snapshotSource.bridge_url) {
         // Data-bearing placement (container id present) with no reachable
@@ -2039,6 +2096,7 @@ export class ElizaSandboxService {
     // SANDBOX_DELETE_STOP_TIMEOUT_MS) would wedge concurrent lifecycle ops on the
     // same agent/org. The lock + transaction are released the moment this returns.
     const precheck = await this.prepareAgentDelete(agentId, orgId, options.authorization, {
+      identity: preDeleteIdentity,
       snapshot: preDeleteSnapshot,
       captureUnsupported,
       alreadyPersisted: captureAlreadyPersisted,
@@ -2314,6 +2372,9 @@ export class ElizaSandboxService {
     orgId: string,
     authorization?: DeleteAuthorization,
     preDeleteCapture?: {
+      /** Generation phase 0 inspected, captured before its bridge request;
+       *  null when phase 0 saw no capture-requiring row. */
+      identity: PreDeleteGenerationIdentity | null;
       snapshot: {
         stateData: AgentBackupStateData;
         sizeBytes: number;
@@ -2374,29 +2435,72 @@ export class ElizaSandboxService {
       if (this.requiresPreDeleteCapture(rec)) {
         if (preDeleteCapture?.alreadyPersisted) {
           // Re-validate the retained capture/waiver under the lifecycle lock:
-          // it must belong to THIS deletion attempt and container generation,
-          // never a predecessor's.
-          const retained = rec.deletion_attempt_id
-            ? await agentSandboxesRepository.getPredeletionBackup(rec.id, rec.deletion_attempt_id)
-            : undefined;
-          if (!retained || retained.sandbox_id !== rec.sandbox_id) {
+          // it must belong to THIS deletion attempt and container placement
+          // (`sandbox_id` AND `bridge_url`), never a predecessor's. Revision
+          // equality is excluded here for the reason documented at the
+          // phase-0 retry match: the update trigger bumps the revision on
+          // every row write — including this deletion's own CAS below — so it
+          // cannot identify a container generation across retries. The read
+          // goes through the transaction, not the read pool: this check
+          // gates the locked deletion intent, and a lagging replica must not
+          // be able to refuse (or admit) it.
+          const [retained] = rec.deletion_attempt_id
+            ? await tx
+                .select()
+                .from(agentSandboxPredeletionBackups)
+                .where(
+                  and(
+                    eq(agentSandboxPredeletionBackups.agent_id, rec.id),
+                    eq(agentSandboxPredeletionBackups.deletion_attempt_id, rec.deletion_attempt_id),
+                  ),
+                )
+                .orderBy(desc(agentSandboxPredeletionBackups.created_at))
+                .limit(1)
+            : [];
+          if (
+            !retained ||
+            retained.sandbox_id !== rec.sandbox_id ||
+            retained.bridge_url !== rec.bridge_url
+          ) {
             return {
               ok: false as const,
               error:
                 "Refusing to delete: the retained pre-deletion capture no longer matches this deletion generation; retry the delete.",
             };
           }
-        } else if (!preDeleteCapture?.captureUnsupported) {
-          const snapshot = preDeleteCapture?.snapshot ?? null;
-          // The capture must be OF THIS generation (shutdown's rule): a
-          // capture taken against a different bridge_url is another
-          // container's state. Refuse, leaving the row for a retry.
-          if (!snapshot || rec.bridge_url !== snapshot.bridgeUrl) {
+        } else {
+          // A fresh capture AND the supported-404 waiver are each only valid
+          // for the exact generation phase 0 inspected. The row can restart
+          // or be replaced while the unlocked phase-0 fetch is in flight, so
+          // BOTH paths compare the full captured tuple — container id, bridge
+          // and lifecycle revision — against the locked row before the
+          // deletion intent is stamped. Without this, a waiver observed on a
+          // predecessor would be persisted with THIS row's identity.
+          const identity = preDeleteCapture?.identity ?? null;
+          const identityMatchesLockedRow =
+            identity !== null &&
+            identity.sandboxId === rec.sandbox_id &&
+            identity.bridgeUrl === rec.bridge_url &&
+            identity.lifecycleRevision === rec.lifecycle_revision;
+          if (!identityMatchesLockedRow) {
             return {
               ok: false as const,
               error:
                 "Refusing to delete: the agent's lifecycle generation moved after the pre-deletion capture; retry the delete.",
             };
+          }
+          if (!preDeleteCapture?.captureUnsupported) {
+            const snapshot = preDeleteCapture?.snapshot ?? null;
+            // The capture must be OF THIS generation (shutdown's rule): a
+            // capture taken against a different bridge_url is another
+            // container's state. Refuse, leaving the row for a retry.
+            if (!snapshot || rec.bridge_url !== snapshot.bridgeUrl) {
+              return {
+                ok: false as const,
+                error:
+                  "Refusing to delete: the agent's lifecycle generation moved after the pre-deletion capture; retry the delete.",
+              };
+            }
           }
         }
       }

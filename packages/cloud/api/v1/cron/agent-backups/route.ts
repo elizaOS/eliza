@@ -1,5 +1,6 @@
 // Handles v1 cloud API v1 cron agent backups route traffic with route-local auth expectations.
 import { Hono } from "hono";
+import { agentSandboxesRepository } from "@/db/repositories/agent-sandboxes";
 import { verifyCronSecret } from "@/lib/auth/cron";
 import { provisioningJobService } from "@/lib/services/provisioning-jobs";
 import { logger } from "@/lib/utils/logger";
@@ -23,7 +24,8 @@ import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
  * recovery sweep never runs and `deletion_failed` rows leak forever.
  *
  * Tunables via query string: `?intervalMs=<n>&max=<n>` (snapshots),
- * `?deletionMinAgeMs=<n>&deletionMax=<n>` (deletion recovery).
+ * `?deletionMinAgeMs=<n>&deletionMax=<n>` (deletion recovery),
+ * `?retentionPurgeMax=<n>` (pre-deletion retention purge).
  */
 async function handle(c: AppContext, env?: AppEnv["Bindings"]) {
   const authError = verifyCronSecret(c.req.raw, "[Agent Backups]", env);
@@ -65,11 +67,36 @@ async function handle(c: AppContext, env?: AppEnv["Bindings"]) {
     });
   }
 
+  // Bounded pre-deletion retention purge (#18517): expired retention rows and
+  // their offloaded objects are removed on the same low-frequency tick. This
+  // is the retention policy's enforcement point — without a caller the
+  // cascade-immune rows would accumulate forever, the exact unbounded-growth
+  // failure the expiry column exists to prevent. Best-effort and reported
+  // separately for the same reason as the deletion-recovery sweep.
+  let retentionPurge: Awaited<
+    ReturnType<typeof agentSandboxesRepository.purgeExpiredPredeletionBackups>
+  > | null = null;
+  try {
+    const retentionPurgeMax = Number(url.searchParams.get("retentionPurgeMax"));
+    retentionPurge =
+      await agentSandboxesRepository.purgeExpiredPredeletionBackups({
+        max:
+          Number.isFinite(retentionPurgeMax) && retentionPurgeMax > 0
+            ? retentionPurgeMax
+            : undefined,
+      });
+  } catch (error) {
+    logger.error("[Agent Backups] pre-deletion retention purge failed", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+
   logger.info("[Agent Backups] Scheduled backup sweep complete", {
     ...result,
     deletionRecovery,
+    retentionPurge,
   });
-  return c.json({ success: true, ...result, deletionRecovery });
+  return c.json({ success: true, ...result, deletionRecovery, retentionPurge });
 }
 
 const __hono_app = new Hono<AppEnv>();
