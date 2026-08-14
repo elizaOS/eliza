@@ -99,7 +99,12 @@ const CELLS = [
       "--grep",
       "live cloud voice round-trip",
     ],
-    env: UI_SMOKE_MATRIX_ENV,
+    env: {
+      ...UI_SMOKE_MATRIX_ENV,
+      // createLiveRuntimeChildEnv preserves the Cloud media credential beside
+      // the isolated Cerebras brain only for an explicitly Cloud-live lane.
+      ELIZA_UI_SMOKE_CLOUD_LIVE: "1",
+    },
     evidence: ["packages/app/test-results", "e2e-recordings/app/test-results"],
     probe: "webLiveRailway",
   },
