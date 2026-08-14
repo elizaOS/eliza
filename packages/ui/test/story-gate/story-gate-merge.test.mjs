@@ -47,7 +47,12 @@ describe("story-gate report aggregation", () => {
 
   it("merges a complete shard set and preserves every result", () => {
     const merged = mergeStoryGateReports({
-      catalog: { entries: { a: { type: "story", id: "a--story" }, z: { type: "story", id: "z--story" } } },
+      catalog: {
+        entries: {
+          a: { type: "story", id: "a--story" },
+          z: { type: "story", id: "z--story" },
+        },
+      },
       reports: [
         report("1/2", [story("a--story")]),
         report("2/2", [story("z--story")]),
@@ -77,7 +82,12 @@ describe("story-gate report aggregation", () => {
   ])("fails closed when %s", (_label, reports, expected) => {
     expect(() =>
       mergeStoryGateReports({
-        catalog: { entries: { a: { type: "story", id: "a--story" }, z: { type: "story", id: "z--story" } } },
+        catalog: {
+          entries: {
+            a: { type: "story", id: "a--story" },
+            z: { type: "story", id: "z--story" },
+          },
+        },
         reports,
         expectedShards: ["1/2", "2/2"],
       }),
@@ -86,11 +96,18 @@ describe("story-gate report aggregation", () => {
 
   it("retains shard failures for the aggregate gate to reject", () => {
     const merged = mergeStoryGateReports({
-      catalog: { entries: { a: { type: "story", id: "a--story" }, z: { type: "story", id: "z--story" } } },
+      catalog: {
+        entries: {
+          a: { type: "story", id: "a--story" },
+          z: { type: "story", id: "z--story" },
+        },
+      },
       reports: [
-        report("1/2", [story("a--story")], [
-          { id: "a--story", kind: "broken", detail: "render threw" },
-        ]),
+        report(
+          "1/2",
+          [story("a--story")],
+          [{ id: "a--story", kind: "broken", detail: "render threw" }],
+        ),
         report("2/2", [story("z--story")]),
       ],
       expectedShards: ["1/2", "2/2"],
@@ -110,7 +127,9 @@ describe("story-gate report aggregation", () => {
     const outDir = join(root, "output");
 
     try {
-      await mkdir(join(inputDir, "story-gate-shard-1-of-2"), { recursive: true });
+      await mkdir(join(inputDir, "story-gate-shard-1-of-2"), {
+        recursive: true,
+      });
       await writeFile(
         catalogPath,
         JSON.stringify({
@@ -163,9 +182,11 @@ describe("story-gate report aggregation", () => {
       await writeFile(
         join(shardDir, "report.json"),
         JSON.stringify(
-          report("1/1", [story("a--story")], [
-            { id: "a--story", kind: "broken", detail: "render threw" },
-          ]),
+          report(
+            "1/1",
+            [story("a--story")],
+            [{ id: "a--story", kind: "broken", detail: "render threw" }],
+          ),
         ),
       );
 
@@ -178,10 +199,12 @@ describe("story-gate report aggregation", () => {
         }),
       ).rejects.toThrow("shard failures: 1/1: 1");
 
-      expect(await readFile(join(outDir, "manual-review.md"), "utf8")).toContain(
-        "FAIL: 1 regression(s)",
-      );
-      expect(JSON.parse(await readFile(join(outDir, "report.json"), "utf8"))).toMatchObject({
+      expect(
+        await readFile(join(outDir, "manual-review.md"), "utf8"),
+      ).toContain("FAIL: 1 regression(s)");
+      expect(
+        JSON.parse(await readFile(join(outDir, "report.json"), "utf8")),
+      ).toMatchObject({
         totals: { stories: 1, failures: 1 },
       });
     } finally {

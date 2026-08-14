@@ -24,7 +24,9 @@ describe("UI Story Gate workflow", () => {
   it("runs eight shards and uploads shard evidence", () => {
     expect(shardJob["timeout-minutes"]).toBe(35);
     expect(
-      shardJob.steps.find((step) => step.name === "Run deterministic Story Gate shard"),
+      shardJob.steps.find(
+        (step) => step.name === "Run deterministic Story Gate shard",
+      ),
     ).toMatchObject({ "timeout-minutes": 20 });
     expect(shardJob.strategy).toMatchObject({
       "fail-fast": false,
