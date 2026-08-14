@@ -18,7 +18,7 @@ import { getSetting } from "./utils/settings";
  */
 export const twitterEnvSchema = z.object({
   // Auth mode
-  TWITTER_AUTH_MODE: z.enum(["env", "oauth"]).default("env"),
+  TWITTER_AUTH_MODE: z.enum(["env", "oauth", "broker"]).default("env"),
 
   // Account routing. TWITTER_ACCOUNTS may contain sensitive credentials.
   TWITTER_ACCOUNT_ID: z.string().default(""),
@@ -37,6 +37,10 @@ export const twitterEnvSchema = z.object({
   TWITTER_SCOPES: z
     .string()
     .default("tweet.read tweet.write users.read offline.access"),
+
+  // Broker configuration (managed OAuth via Eliza Cloud)
+  TWITTER_BROKER_URL: z.string().default("https://api.eliza.app/api/v1/twitter"),
+  TWITTER_BROKER_TOKEN: z.string().default(""),
 
   // Core configuration
   TWITTER_DRY_RUN: z.string().default("false"),
@@ -140,10 +144,10 @@ export async function validateTwitterConfig(
       typeof rawMode === "string" && rawMode.trim() ? rawMode.trim() : "env";
 
     const isAuthMode = (v: string): v is TwitterConfig["TWITTER_AUTH_MODE"] =>
-      v === "env" || v === "oauth";
+      v === "env" || v === "oauth" || v === "broker";
     if (!isAuthMode(normalizedMode)) {
       throw new Error(
-        `Invalid TWITTER_AUTH_MODE=${normalizedMode}. Expected env|oauth.`,
+        `Invalid TWITTER_AUTH_MODE=${normalizedMode}. Expected env|oauth|broker.`,
       );
     }
 

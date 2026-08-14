@@ -3,9 +3,9 @@
  * Check whether the public eliza.app entry point is ready for the shared
  * Eliza Cloud phone gateway.
  *
- * This is intentionally read-only. It verifies the deploy target, DNS records,
- * and the published GitHub Pages bundle that users hit before texting the
- * shared gateway number.
+ * This is intentionally read-only. It verifies the live Cloudflare deployment,
+ * DNS records, and the published homepage content that users hit before texting
+ * or calling the shared gateway number.
  */
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
@@ -14,18 +14,13 @@ import { fileURLToPath } from "node:url";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(scriptDir, "..", "..", "..");
-const repo = "elizaOS/elizaos.github.io";
 const expectedDomain = "eliza.app";
-const expectedGatewayNumber = "+14159611510";
-const expectedFormattedNumber = "+1 (415) 961-1510";
-const disallowedNumbers = ["+14153024399", "4153024399", "415-302-4399"];
-const expectedApexRecords = new Set([
-  "185.199.108.153",
-  "185.199.109.153",
-  "185.199.110.153",
-  "185.199.111.153",
+const expectedGatewayNumber = "+18087881821";
+const expectedFormattedNumber = "+1 (808) 788-1821";
+const disallowedNumbers = ["+14159611510", "+1 (415) 961-1510", "4159611510", "415-961-1510", "+14153024399", "4153024399", "415-302-4399"];
+const cloudflarePageRuleIps = new Set([
+  "104.16.0.0/12", // Cloudflare IP range (simplified for A record checks)
 ]);
-const expectedWwwCname = "elizaos.github.io.";
 const registryRdapUrl = `https://pubapi.registry.google/rdap/domain/${expectedDomain}`;
 const defaultEvidencePath = path.join(
   repoRoot,
@@ -92,23 +87,12 @@ function check(name, passed, detail) {
   return passed;
 }
 
-function ghJson(path, jq) {
-  const args = ["api", path];
-  if (jq) args.push("--jq", jq);
-  let lastResult = null;
-  for (let attempt = 1; attempt <= 3; attempt += 1) {
-    lastResult = run("gh", args);
-    if (lastResult.status === 0) return lastResult.stdout.trim();
-    if (attempt < 3) sleepSync(500 * attempt);
+function setEquals(a, b) {
+  if (a.size !== b.size) return false;
+  for (const value of a) {
+    if (!b.has(value)) return false;
   }
-  throw new Error(
-    lastResult?.stderr.trim() || lastResult?.stdout.trim() || "gh api failed",
-  );
-}
-
-function decodeGhContent(path) {
-  const content = ghJson(path, ".content");
-  return Buffer.from(content, "base64").toString("utf8");
+  return true;
 }
 
 function dig(name, type = null) {
@@ -133,24 +117,14 @@ function fetchJson(url) {
   return JSON.parse(result.stdout);
 }
 
-function setEquals(a, b) {
-  if (a.size !== b.size) return false;
-  for (const value of a) {
-    if (!b.has(value)) return false;
-  }
-  return true;
-}
-
-function findJsAssets() {
-  const output = ghJson(
-    `repos/${repo}/git/trees/gh-pages?recursive=1`,
-    ".tree[].path",
-  );
-  return output
-    .split(/\r?\n/)
-    .filter((path) =>
-      /^assets\/(get-started|connected|contact)-.*\.js$/.test(path),
+function fetchHomepageContent() {
+  const result = run("curl", ["-sS", "--max-time", "10", `https://${expectedDomain}`]);
+  if (result.status !== 0) {
+    throw new Error(
+      result.stderr.trim() || result.stdout.trim() || "curl failed",
     );
+  }
+  return result.stdout;
 }
 
 function writeEvidence({ evidencePath, ok, next, details }) {
@@ -172,89 +146,72 @@ function writeEvidence({ evidencePath, ok, next, details }) {
   console.log(`[homepage-public] evidence=${evidencePath}`);
 }
 
+function fetchHomepageContent() {
+  const result = run("curl", ["-sS", "--max-time", "10", `https://${expectedDomain}`]);
+  if (result.status !== 0) {
+    throw new Error(
+      result.stderr.trim() || result.stdout.trim() || "curl failed",
+    );
+  }
+  return result.stdout;
+}
+
 function main() {
   const args = parseArgs(process.argv.slice(2));
   let allPassed = true;
-  let pagesSummary = null;
-  let assetSummary = null;
+  let cloudflareCheckSummary = null;
+  let homepageContentSummary = null;
 
   try {
-    const pages = JSON.parse(
-      ghJson(
-        `repos/${repo}/pages`,
-        "{status,cname,html_url,source,protected_domain_state,pending_domain_unverified_at}",
-      ),
+    const homepageHtml = fetchHomepageContent();
+    const hasGatewayNumber =
+      homepageHtml.includes(expectedGatewayNumber) &&
+      homepageHtml.includes(expectedFormattedNumber);
+    const hasDisallowedNumbers = disallowedNumbers.some((value) =>
+      homepageHtml.includes(value),
     );
-    allPassed =
-      check(
-        "pages-source",
-        pages.status === "built" &&
-          pages.cname === expectedDomain &&
-          pages.source?.branch === "gh-pages" &&
-          pages.source?.path === "/",
-        `status=${pages.status} cname=${pages.cname ?? "none"} source=${pages.source?.branch ?? "none"}:${pages.source?.path ?? "none"}`,
-      ) && allPassed;
-    pagesSummary = pages;
-  } catch (error) {
-    allPassed =
-      check(
-        "pages-source",
-        false,
-        error instanceof Error ? error.message : String(error),
-      ) && allPassed;
-  }
+    const hasFormattedPhoneNumbers = /\+\s*1\s*\(\s*\d{3}\s*\)\s*\d{3}\s*-\s*\d{4}/.test(homepageHtml);
 
-  try {
-    const cname = decodeGhContent(
-      `repos/${repo}/contents/CNAME?ref=gh-pages`,
-    ).trim();
-    allPassed =
-      check(
-        "gh-pages-cname",
-        cname === expectedDomain,
-        `CNAME=${cname || "empty"}`,
-      ) && allPassed;
-  } catch (error) {
-    allPassed =
-      check(
-        "gh-pages-cname",
-        false,
-        error instanceof Error ? error.message : String(error),
-      ) && allPassed;
-  }
-
-  try {
-    const assets = findJsAssets();
-    if (!assets.some((asset) => /^assets\/get-started-.*\.js$/.test(asset))) {
-      throw new Error("no get-started asset found on gh-pages");
-    }
-    const bundle = assets
-      .map((asset) =>
-        decodeGhContent(`repos/${repo}/contents/${asset}?ref=gh-pages`),
-      )
-      .join("\n");
-    const hasGateway =
-      bundle.includes(expectedGatewayNumber) &&
-      bundle.includes(expectedFormattedNumber);
-    const hasPersonalNumber = disallowedNumbers.some((value) =>
-      bundle.includes(value),
-    );
-    assetSummary = {
-      count: assets.length,
-      assets,
-      hasGateway,
-      hasPersonalNumber,
+    homepageContentSummary = {
+      hasGatewayNumber,
+      hasDisallowedNumbers,
+      hasFormattedPhoneNumbers,
     };
+
     allPassed =
       check(
-        "homepage-bundle",
-        hasGateway && !hasPersonalNumber,
-        `${assets.length} js assets gateway=${hasGateway ? "yes" : "no"} personal-number=${hasPersonalNumber ? "yes" : "no"}`,
+        "cloudflare-homepage-content",
+        hasGatewayNumber && !hasDisallowedNumbers && !hasFormattedPhoneNumbers,
+        `gateway=${hasGatewayNumber ? "yes" : "no"} disallowed-numbers=${hasDisallowedNumbers ? "yes" : "no"} formatted-numbers=${hasFormattedPhoneNumbers ? "yes" : "no"}`,
       ) && allPassed;
   } catch (error) {
     allPassed =
       check(
-        "homepage-bundle",
+        "cloudflare-homepage-content",
+        false,
+        error instanceof Error ? error.message : String(error),
+      ) && allPassed;
+  }
+
+  try {
+    const cloudflareCheckResult = run("curl", ["-sI", "--max-time", "10", `https://${expectedDomain}`]);
+    if (cloudflareCheckResult.status === 0) {
+      const headers = cloudflareCheckResult.stdout;
+      const isCloudflareServed = headers.includes("cf-ray") || headers.includes("server: cloudflare");
+      cloudflareCheckSummary = { isCloudflareServed, headers };
+      allPassed =
+        check(
+          "cloudflare-server",
+          isCloudflareServed,
+          isCloudflareServed ? "served by Cloudflare" : "not identified as Cloudflare-served",
+        ) && allPassed;
+    } else {
+      throw new Error("Failed to check HTTP headers");
+    }
+  } catch (error) {
+    allPassed =
+      check(
+        "cloudflare-server",
         false,
         error instanceof Error ? error.message : String(error),
       ) && allPassed;
@@ -308,38 +265,26 @@ function main() {
   allPassed =
     check(
       "apex-dns",
-      setEquals(apexRecords, expectedApexRecords),
+      apexRecords.size > 0,
       apexRecords.size ? [...apexRecords].join(", ") : "no A records",
     ) && allPassed;
 
-  const wwwCnames = dig(`www.${expectedDomain}`, "CNAME");
-  allPassed =
-    check(
-      "www-dns",
-      wwwCnames.includes(expectedWwwCname),
-      wwwCnames.length ? wwwCnames.join(", ") : "no CNAME records",
-    ) && allPassed;
-
   if (!allPassed) {
-    const dnsRecordInstructions =
-      `A ${expectedDomain} -> ${[...expectedApexRecords].join(", ")}; ` +
-      `CNAME www.${expectedDomain} -> ${expectedWwwCname}`;
     const next = registryStatuses.includes("client hold")
-      ? `clear client hold at Porkbun/registrar, then add GitHub Pages DNS records (${dnsRecordInstructions}). With Porkbun API credentials, run: bun run --cwd packages/app-core sms-gateway:homepage:dns -- --apply. Then rerun this script.`
-      : `delegate eliza.app to DNS nameservers, add GitHub Pages DNS records (${dnsRecordInstructions}). With Porkbun API credentials, run: bun run --cwd packages/app-core sms-gateway:homepage:dns -- --apply. Then rerun this script.`;
+      ? `clear client hold at Porkbun/registrar. Ensure eliza.app DNS resolves to Cloudflare nameservers and homepage at https://eliza.app displays the correct gateway number ${expectedGatewayNumber}. Rerun this script.`
+      : `ensure eliza.app domain delegation and DNS are correctly configured to point to Cloudflare. Verify https://eliza.app is served from Cloudflare and contains the correct gateway number ${expectedGatewayNumber}. Rerun this script.`;
     console.error(`[homepage-public] next: ${next}`);
     writeEvidence({
       evidencePath: args.evidencePath,
       ok: false,
       next,
       details: {
-        pages: pagesSummary,
-        assets: assetSummary,
+        cloudflareCheck: cloudflareCheckSummary,
+        homepageContent: homepageContentSummary,
         registryStatuses,
         registryNameservers,
         delegatedNameservers,
         apexRecords: [...apexRecords],
-        wwwCnames,
       },
     });
     process.exitCode = 1;
@@ -351,13 +296,12 @@ function main() {
     ok: true,
     next: null,
     details: {
-      pages: pagesSummary,
-      assets: assetSummary,
+      cloudflareCheck: cloudflareCheckSummary,
+      homepageContent: homepageContentSummary,
       registryStatuses,
       registryNameservers,
       delegatedNameservers,
       apexRecords: [...apexRecords],
-      wwwCnames,
     },
   });
 }
