@@ -151,6 +151,7 @@ describe("Cloud CF realtime voice deploy contract", () => {
 
   test("keeps production wrangler vars and workflow env realtime-off with no dedicated-secret advertisement", () => {
     const wrangler = read("packages/cloud/api/wrangler.toml");
+    expect(wrangler).toMatch(/^keep_vars = true$/m);
     const stagingVars = wrangler.slice(
       wrangler.indexOf("[env.staging.vars]"),
       wrangler.indexOf("[env.production.vars]"),
