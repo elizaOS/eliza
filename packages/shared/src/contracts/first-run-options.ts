@@ -79,6 +79,22 @@ export interface StylePreset {
    * preset without it keeps the voice-neutral framework defaults.
    */
   templates?: CharacterFailureTemplates;
+  /**
+   * Baked-in knowledge for this persona, as INLINE TEXT — never file paths.
+   *
+   * Each entry is ingested verbatim as a `text/plain` document by
+   * `DocumentService.processCharacterDocuments`, which only treats an entry as
+   * a path when `existsSync` resolves it against the agent process CWD. A
+   * bundled path would not resolve on an end user's machine and would then be
+   * silently ingested as a document whose whole body is the path string, so
+   * presets must ship the text itself. This package is also imported by the
+   * browser app, which rules out any `fs`/`import.meta.url` resolution here.
+   *
+   * Keep each entry under 2000 characters: document identity is a hash of only
+   * the first 2000 chars (`generateContentBasedId`), so edits past that window
+   * reuse the existing id and are silently skipped on re-ingest.
+   */
+  knowledge?: string[];
   postExamples: string[];
   postExamples_zhCN?: string[];
   messageExamples: Array<

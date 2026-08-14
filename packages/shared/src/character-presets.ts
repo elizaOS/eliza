@@ -62,6 +62,9 @@ function resolveCharacterVariant(
     // templates keep the key absent and the runtime's `|| <builtin>` fallback
     // stays reachable.
     ...(definition.templates ? { templates: { ...definition.templates } } : {}),
+    ...(definition.knowledge
+      ? { knowledge: [...definition.knowledge] }
+      : undefined),
     postExamples: [...variant.postExamples],
     messageExamples: [...definition.messageExamples],
   };

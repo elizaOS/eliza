@@ -89,7 +89,11 @@ export function buildCharacterFromConfig(config: ElizaConfig): Character {
     agentEntry?.advancedMemory ??
     config.agents?.defaults?.advancedMemory ??
     true;
-  const knowledge = agentEntry?.knowledge as
+  // A preset's `knowledge` is inline text, not paths (see StylePreset), so it
+  // needs no resolution here. Config knowledge replaces rather than merges with
+  // the preset's: an operator who lists their own sources is describing the
+  // whole knowledge base, matching how bio/system/topics defer to config.
+  const knowledge = (agentEntry?.knowledge ?? bundledPreset?.knowledge) as
     | CharacterInput["knowledge"]
     | undefined;
   // Lean cloud chat agents (ELIZA_PLUGIN_SET=lean-chat) skip advanced

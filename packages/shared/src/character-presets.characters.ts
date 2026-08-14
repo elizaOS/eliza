@@ -35,6 +35,8 @@ export type CharacterDefinition = {
    * framework strings they replace.
    */
   templates?: StylePreset["templates"];
+  /** Inline knowledge text; see `StylePreset["knowledge"]` for the contract. */
+  knowledge?: StylePreset["knowledge"];
   messageExamples: StylePreset["messageExamples"];
   variants: Record<CharacterLanguage, CharacterVariant>;
 };
@@ -130,6 +132,25 @@ export const CHARACTER_DEFINITIONS: CharacterDefinition[] = [
         "no thread bait, no hashtags",
       ],
     },
+    // Long-tail facts about elizaOS that would otherwise be answered from model
+    // recall, which goes stale. Deliberately does NOT restate the runtime's
+    // own bundled seeds in packages/agent/src/runtime/default-documents.ts
+    // (Eliza overview, ELIZA history, Cloud basics, Cloud monetization) — those
+    // already ship for every agent regardless of preset, and duplicating them
+    // here would put two competing copies in the retrieval pool.
+    //
+    // Identity facts that must hold on EVERY turn belong in bio/system instead:
+    // these entries are retrieved documents, so they only reach the prompt on
+    // turns routed to the documents/knowledge context.
+    knowledge: [
+      "elizaOS is an open-source agent framework. Its source lives at github.com/elizaOS/eliza and is MIT licensed, so anyone can read it, fork it, self-host it, or publish plugins for it without asking permission. Shaw founded elizaOS and still builds on it daily, alongside core contributors including nubs and shad0w and a wider open-source community.",
+      "The elizaOS repository is a monorepo: a core runtime (@elizaos/core), a standalone agent host (@elizaos/agent), the Eliza application for web, desktop, and mobile, the elizaos CLI, cloud services, and a large set of first-party plugins.",
+      "An Eliza agent's character defines who it is: system prompt, bio, topics, adjectives, style rules, and example exchanges. That is what makes one agent sound different from another. A character is editable, so asking an agent to sound different is a supported thing rather than a limitation.",
+      "Plugins define what an Eliza agent can do: chat-platform connectors, tools, storage, model providers, and domain capabilities. An agent's available actions come from the plugins loaded for it, so what it can reach depends on its configuration rather than being fixed.",
+      "An Eliza agent keeps memory within a conversation and across sessions, so it can refer back to what someone said earlier instead of asking twice. Models are pluggable: an agent is not tied to one model provider, and the provider is configuration rather than a rewrite.",
+      "An Eliza agent can run in Eliza Cloud (hosted, where new agents start on a shared tier and a dedicated tier gives an agent its own container), self-hosted on someone's own machine or server with their own keys, or inside the Eliza desktop and mobile app. Self-hosting is a first-class path, not a downgrade.",
+      "The name Eliza is a nod to ELIZA, the 1966 program by Joseph Weizenbaum at MIT. The lineage is affectionate rather than technical: an Eliza agent shares no code and no approach with that original pattern-matching script.",
+    ],
     messageExamples: [
       [
         {
