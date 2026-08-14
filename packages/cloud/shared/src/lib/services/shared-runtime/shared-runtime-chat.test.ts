@@ -771,6 +771,45 @@ describe("SharedRuntimeChatService", () => {
     );
   });
 
+  test("stream cancellation reports provider teardown that never settles", async () => {
+    const service = new SharedRuntimeChatService();
+    const h = harness();
+    let releaseProviderStream = () => {};
+    const providerStreamGate = new Promise<void>((resolve) => {
+      releaseProviderStream = resolve;
+    });
+    streamTurn = {
+      degraded: false,
+      cancel: async () => {
+        await new Promise<void>(() => undefined);
+      },
+      parts: (async function* () {
+        yield { type: "text-delta", text: "partial " };
+        await providerStreamGate;
+      })(),
+    };
+
+    const response = await service.stream(agent, rpc, h);
+    const reader = response.body!.getReader();
+    await reader.read();
+    await reader.cancel("barge-in");
+    releaseProviderStream();
+    await Promise.all(h.background);
+
+    expect(h.history().at(-1)).toMatchObject({
+      role: "assistant",
+      content: "partial",
+      interrupted: true,
+    });
+    expect(loggerWarn).toHaveBeenCalledWith(
+      "[SharedRuntimeChatService] provider stream cancellation did not settle cleanly",
+      expect.objectContaining({
+        agentId: agent.id,
+        outcome: "timed_out",
+      }),
+    );
+  }, 10_000);
+
   test("stream finalization retries after a failed history write", async () => {
     const service = new SharedRuntimeChatService();
     let attempts = 0;

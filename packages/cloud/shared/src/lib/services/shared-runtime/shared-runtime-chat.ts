@@ -580,6 +580,8 @@ function observeProviderCancellationOffPath(
     const outcome = await Promise.race([
       cancellation.then(
         () => ({ state: "settled" as const }),
+        // error-policy:J6 provider teardown is best-effort after the durable
+        // interrupted turn has released the room lock; keep failure observable.
         (error: unknown) => ({ state: "rejected" as const, error }),
       ),
       new Promise<{ state: "timed_out" }>((resolve) => {
