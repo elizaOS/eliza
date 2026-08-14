@@ -24,6 +24,7 @@
 import { mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { ELIZA_DOMAIN_CONTRACTS, ELIZA_SERVICE_DOMAIN_CONTRACTS } from "@elizaos/shared/elizacloud/domain-contract";
 import { expect, type Page, type Route, test } from "@playwright/test";
 import { installDefaultAppRoutes, openAppPath } from "./helpers";
 import { seedStewardSession } from "./helpers/test-auth";
@@ -58,7 +59,7 @@ function mockApp(): Record<string, unknown> {
     contact_email: null,
     metadata: {},
     deployment_status: "READY",
-    production_url: "https://deploy-proof.apps.elizacloud.ai",
+    production_url: `https://deploy-proof${ELIZA_SERVICE_DOMAIN_CONTRACTS.production.hostedAppHostnameSuffix}`,
     last_deployed_at: "2026-07-01T00:00:00.000Z",
     github_repo: "elizaOS/eliza",
     linked_character_ids: null,
@@ -101,7 +102,8 @@ async function installCloudApiMocks(
   unmocked: string[],
   deployRequests: unknown[],
 ): Promise<void> {
-  await page.route("https://api.elizacloud.ai/**", async (route) => {
+  const cloudApiOrigin = ELIZA_DOMAIN_CONTRACTS.production.cloudApiOrigin;
+  await page.route(`${cloudApiOrigin}/**`, async (route) => {
     const url = new URL(route.request().url());
     const path = url.pathname;
     const method = route.request().method();
@@ -133,7 +135,7 @@ async function installCloudApiMocks(
         success: true,
         deploymentId: "dep-1",
         status: "READY",
-        vercelUrl: "https://deploy-proof.apps.elizacloud.ai",
+        vercelUrl: `https://deploy-proof${ELIZA_SERVICE_DOMAIN_CONTRACTS.production.hostedAppHostnameSuffix}`,
         error: null,
         startedAt: "2026-07-01T00:00:00.000Z",
       });

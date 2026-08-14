@@ -2,6 +2,7 @@
  * Playwright UI-smoke spec for the Cloud Provisioning Startup app flow using
  * the real renderer fixture.
  */
+import { ELIZA_DOMAIN_CONTRACTS } from "@elizaos/shared/elizacloud/domain-contract";
 import {
   expect,
   type Locator,
@@ -184,8 +185,9 @@ async function installDirectCloudSandboxRoutes(
     state: DirectCloudSandboxRouteState;
   },
 ): Promise<void> {
+  const cloudApiOrigin = ELIZA_DOMAIN_CONTRACTS.production.cloudApiOrigin;
   await page.route(
-    "https://api.elizacloud.ai/api/v1/eliza/agents",
+    `${cloudApiOrigin}/api/v1/eliza/agents`,
     async (route) => {
       if (route.request().method() !== "POST") {
         await route.fallback();
@@ -204,7 +206,7 @@ async function installDirectCloudSandboxRoutes(
   );
 
   await page.route(
-    `https://api.elizacloud.ai/api/v1/eliza/agents/${options.agentId}/provision`,
+    `${cloudApiOrigin}/api/v1/eliza/agents/${options.agentId}/provision`,
     async (route) => {
       if (route.request().method() !== "POST") {
         await route.fallback();
@@ -219,7 +221,7 @@ async function installDirectCloudSandboxRoutes(
   );
 
   await page.route(
-    `https://api.elizacloud.ai/api/v1/jobs/${options.jobId}`,
+    `${cloudApiOrigin}/api/v1/jobs/${options.jobId}`,
     async (route) => {
       if (route.request().method() !== "GET") {
         await route.fallback();
@@ -256,6 +258,8 @@ async function installDirectCloudLoginRoutes(
   page: Page,
   userId: string,
 ): Promise<void> {
+  const cloudAppOrigin = ELIZA_DOMAIN_CONTRACTS.production.cloudAppOrigin;
+  const cloudApiOrigin = ELIZA_DOMAIN_CONTRACTS.production.cloudApiOrigin;
   await page.route("**/api/cloud/login", async (route) => {
     if (route.request().method() !== "POST") {
       await route.fallback();
@@ -264,7 +268,7 @@ async function installDirectCloudLoginRoutes(
     await fulfillJson(route, 200, {
       ok: true,
       sessionId: "ui-smoke-cloud-session",
-      browserUrl: "https://www.elizacloud.ai/device/ui-smoke-cloud-session",
+      browserUrl: `${cloudAppOrigin}/device/ui-smoke-cloud-session`,
     });
   });
 
@@ -652,7 +656,7 @@ for (const viewport of VIEWPORTS) {
             agentId: "agent-1",
             agentName: "My Agent",
             appUrl:
-              "https://app.elizacloud.ai/?cloudLaunchSession=launch-1&cloudLaunchBase=https%3A%2F%2Fapi.elizacloud.ai",
+              `${cloudAppOrigin}/?cloudLaunchSession=launch-1&cloudLaunchBase=${encodeURIComponent(cloudApiOrigin)}`,
             launchSessionId: "launch-1",
             issuedAt: "2026-01-01T00:00:02.000Z",
             connection: {

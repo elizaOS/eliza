@@ -4,6 +4,7 @@
  *
  * The PR split the Cloud login entry points: interactive surfaces must go
  * through `handleInteractiveCloudLogin` (which pre-opens the named popup via
+import { ELIZA_DOMAIN_CONTRACTS } from "@elizaos/shared/elizacloud/domain-contract";
  * `preOpenCloudLoginWindow` → `window.open("about:blank", "eliza-cloud-auth")`),
  * while the raw null-window path is only reachable through the separately named
  * `handleCloudLoginRecovery` at the two sanctioned boot sites. This spec proves
@@ -73,7 +74,7 @@ async function installCloudLoginRoutes(page: Page): Promise<void> {
         ok: true,
         sessionId: "ui-smoke-callsite-session",
         browserUrl:
-          "https://www.elizacloud.ai/device/ui-smoke-callsite-session",
+          `${ELIZA_DOMAIN_CONTRACTS.production.cloudAppOrigin}/device/ui-smoke-callsite-session`,
       }),
     });
   });

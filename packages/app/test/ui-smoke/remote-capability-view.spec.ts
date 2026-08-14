@@ -4,6 +4,7 @@
  */
 import {
   createServer,
+import { ELIZA_DOMAIN_CONTRACTS } from "@elizaos/shared/elizacloud/domain-contract";
   type IncomingMessage,
   type ServerResponse,
 } from "node:http";
@@ -278,7 +279,7 @@ test("settings provisions a cloud capability sandbox", async ({ page }) => {
   await page.getByRole("radio", { name: "Cloud", exact: true }).click();
   await page
     .getByLabel("Capability cloud API base URL")
-    .fill("https://api.elizacloud.ai");
+    .fill("ELIZA_DOMAIN_CONTRACTS.production.cloudApiOrigin");
   await page.getByLabel("Capability cloud auth token").fill("cloud-auth");
   await page
     .getByLabel("Capability cloud sandbox name")
@@ -301,7 +302,7 @@ test("settings provisions a cloud capability sandbox", async ({ page }) => {
   await expect(page.getByText("@remote/cloud-capability")).toBeVisible();
   expect(connectPayload).toMatchObject({
     cloud: {
-      cloudApiBase: "https://api.elizacloud.ai",
+      cloudApiBase: "ELIZA_DOMAIN_CONTRACTS.production.cloudApiOrigin",
       authToken: "cloud-auth",
       name: "Cloud Remote Tools",
       bio: ["Builds remote plugins"],

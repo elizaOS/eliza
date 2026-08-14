@@ -1,3 +1,4 @@
+import { ELIZA_DOMAIN_CONTRACTS } from "@elizaos/shared/elizacloud/domain-contract";
 /**
  * Shared onboarding-to-home flow helpers used by desktop and mobile UI-smoke
  * specs.
@@ -599,7 +600,7 @@ export async function installCloudRoutes(
       ok: true,
       sessionId: "ui-smoke-onboarding-cloud-session",
       browserUrl:
-        "https://www.elizacloud.ai/device/ui-smoke-onboarding-cloud-session",
+        `${ELIZA_DOMAIN_CONTRACTS.production.cloudAppOrigin}/device/ui-smoke-onboarding-cloud-session`,
     });
   });
   await page.route("**/api/cloud/login/status**", async (route) => {

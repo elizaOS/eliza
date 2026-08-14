@@ -2,6 +2,7 @@
  * Playwright UI-smoke spec for the Cloud Agent Lifecycle app flow using the
  * real renderer fixture.
  */
+import { ELIZA_DOMAIN_CONTRACTS } from "@elizaos/shared/elizacloud/domain-contract";
 import { expect, type Page, type Route, test } from "@playwright/test";
 import {
   installDefaultAppRoutes,
@@ -56,7 +57,7 @@ type AgentStore = {
 };
 
 function dedicatedAgentApiBase(agentId: string): string {
-  return `https://${agentId}.elizacloud.ai`;
+  return `https://${agentId}${ELIZA_DOMAIN_CONTRACTS.production.dedicatedAgentHostnameSuffix}`;
 }
 
 async function fulfillJson(
@@ -92,7 +93,7 @@ async function installCloudOriginFallbacks(
     dedicatedAgentApiBase(KEEP_AGENT_ID),
     dedicatedAgentApiBase(DROP_AGENT_ID),
     dedicatedAgentApiBase(NEW_AGENT_ID),
-    "https://api.elizacloud.ai",
+    ELIZA_DOMAIN_CONTRACTS.production.cloudApiOrigin,
   ]) {
     await page.route(`${origin}/**`, async (route) => {
       const requestUrl = new URL(route.request().url());
@@ -112,7 +113,8 @@ async function installCloudOriginFallbacks(
  * these after the origin adapter so the exact account contracts win.
  */
 async function installConnectedCloudAccount(page: Page): Promise<void> {
-  await page.route("https://api.elizacloud.ai/api/v1/user", async (route) => {
+  const cloudApiOrigin = ELIZA_DOMAIN_CONTRACTS.production.cloudApiOrigin;
+  await page.route(`${cloudApiOrigin}/api/v1/user`, async (route) => {
     if (route.request().method() !== "GET") {
       await route.fallback();
       return;
@@ -124,7 +126,7 @@ async function installConnectedCloudAccount(page: Page): Promise<void> {
     });
   });
   await page.route(
-    "https://api.elizacloud.ai/api/v1/credits/balance",
+    `${cloudApiOrigin}/api/v1/credits/balance`,
     async (route) => {
       if (route.request().method() !== "GET") {
         await route.fallback();
@@ -174,10 +176,11 @@ async function installAgentStoreRoutes(
   page: Page,
   store: AgentStore,
 ): Promise<void> {
+  const cloudApiOrigin = ELIZA_DOMAIN_CONTRACTS.production.cloudApiOrigin;
   // Collection: GET = list, POST = create. Match the exact collection paths
   // (no trailing segment) so the per-agent routes below own `/<id>`.
   await page.route(
-    "https://api.elizacloud.ai/api/v1/eliza/agents",
+    `${cloudApiOrigin}/api/v1/eliza/agents`,
     async (route) => {
       expectStewardAuthorization(route);
       const method = route.request().method();
@@ -225,7 +228,7 @@ async function installAgentStoreRoutes(
 
   // Per-agent: GET = detail, DELETE = remove, POST(.../provision) = ack.
   await page.route(
-    "https://api.elizacloud.ai/api/v1/eliza/agents/*",
+    `${cloudApiOrigin}/api/v1/eliza/agents/*`,
     async (route) => {
       expectStewardAuthorization(route);
       const url = route.request().url();

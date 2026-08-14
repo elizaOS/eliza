@@ -2,6 +2,7 @@
  * Playwright UI-smoke spec for the Apps Comms Device Interactions app flow
  * using the real renderer fixture.
  */
+import { ELIZA_DOMAIN_CONTRACTS } from "@elizaos/shared/elizacloud/domain-contract";
 import { expect, type Page, test } from "@playwright/test";
 import {
   assertReadyChecks,
@@ -1001,7 +1002,8 @@ test.beforeEach(async ({ page }) => {
     "eliza:ui-theme": "dark",
     "elizaos:ui-theme": "dark",
   });
-  await page.route("https://api.elizacloud.ai/api/v1/user", async (route) => {
+  const cloudApiOrigin = ELIZA_DOMAIN_CONTRACTS.production.cloudApiOrigin;
+  await page.route(`${cloudApiOrigin}/api/v1/user`, async (route) => {
     await route.fulfill({
       status: 200,
       contentType: "application/json",
@@ -1013,7 +1015,7 @@ test.beforeEach(async ({ page }) => {
     });
   });
   await page.route(
-    "https://api.elizacloud.ai/api/v1/credits/balance",
+    `${cloudApiOrigin}/api/v1/credits/balance`,
     async (route) => {
       await route.fulfill({
         status: 200,

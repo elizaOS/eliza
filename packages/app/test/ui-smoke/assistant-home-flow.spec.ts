@@ -4,6 +4,7 @@
  */
 import { mkdir, rm } from "node:fs/promises";
 import path from "node:path";
+import { ELIZA_DOMAIN_CONTRACTS } from "@elizaos/shared/elizacloud/domain-contract";
 import { expect, type Page, type Route, test } from "@playwright/test";
 import {
   expectNoPageDiagnostics,
@@ -113,7 +114,7 @@ async function installAssistantFlowRoutes(page: Page): Promise<{
       ok: true,
       sessionId: "assistant-flow-cloud-login",
       browserUrl:
-        "https://www.elizacloud.ai/auth/cli-login?session=assistant-flow-cloud-login",
+        `${ELIZA_DOMAIN_CONTRACTS.production.marketingOrigin}/auth/cli-login?session=assistant-flow-cloud-login`,
     });
   });
   await page.route("**/api/cloud/login/status**", async (route) => {

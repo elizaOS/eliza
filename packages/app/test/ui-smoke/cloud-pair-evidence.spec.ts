@@ -29,6 +29,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { expect, type Page, test } from "@playwright/test";
 import { build, type Plugin as EsbuildPlugin, transform } from "esbuild";
+import { ELIZA_DOMAIN_CONTRACTS } from "@elizaos/shared/elizacloud/domain-contract";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 // HERE = packages/app/test/ui-smoke → up 2 = packages/app
@@ -318,7 +319,7 @@ const IN_PAGE_RUNNER = async (mainSource: string) => {
         id: `cloud:${agentA}`,
         kind: "cloud",
         label: "Eliza Cloud",
-        apiBase: `https://${agentA}.elizacloud.ai`,
+        apiBase: `https://${agentA}${ELIZA_DOMAIN_CONTRACTS.production.dedicatedAgentHostnameSuffix}`,
         accessToken: tokenA,
       }),
     );
@@ -334,7 +335,7 @@ const IN_PAGE_RUNNER = async (mainSource: string) => {
     // dedicated origin mirrors it for Gate 3 (owner-bound read).
     const bootAdopter = makeBootAdopter(
       client,
-      () => ({ apiBase: `https://${agentA}.elizacloud.ai` }),
+      () => ({ apiBase: `https://${agentA}${ELIZA_DOMAIN_CONTRACTS.production.dedicatedAgentHostnameSuffix}` }),
       () => false,
       cloudAgentBase.isDedicatedCloudAgentBase,
       cloudAgentBase.dedicatedCloudAgentIdFromBase,
