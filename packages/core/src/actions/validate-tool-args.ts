@@ -8,7 +8,7 @@
  * `pattern`s are compiled defensively and bounded by input length to blunt ReDoS,
  * since a JS regex runs synchronously and cannot be interrupted.
  */
-import type { Action } from "../types";
+import type { Action, ActionParameter, ActionParameterSchema } from "../types";
 import { isObjectRecord as isRecord } from "../utils/type-guards";
 import { actionToJsonSchema, type JsonSchema } from "./action-schema";
 
@@ -81,6 +81,45 @@ function hasOwn(record: Record<string, unknown>, key: string): boolean {
 
 function formatPath(path: string): string {
 	return path || "<args>";
+}
+
+function applyNullabilityPolicies(
+	schema: JsonSchema,
+	parameters: readonly ActionParameter[],
+): void {
+	const properties = schema.properties;
+	if (!properties) return;
+	for (const parameter of parameters) {
+		const child = properties[parameter.name];
+		if (!child) continue;
+		if (parameter.schema.nullable !== undefined) {
+			child.nullable = parameter.schema.nullable;
+		}
+		applyNestedNullabilityPolicies(child, parameter.schema);
+	}
+}
+
+function applyNestedNullabilityPolicies(
+	jsonSchema: JsonSchema,
+	parameterSchema: ActionParameterSchema,
+): void {
+	if (parameterSchema.nullable !== undefined) {
+		jsonSchema.nullable = parameterSchema.nullable;
+	}
+	if (jsonSchema.items && parameterSchema.items) {
+		applyNestedNullabilityPolicies(jsonSchema.items, parameterSchema.items);
+	}
+	if (!jsonSchema.properties || !parameterSchema.properties) return;
+	for (const [name, nestedParameterSchema] of Object.entries(
+		parameterSchema.properties,
+	)) {
+		const child = jsonSchema.properties[name];
+		if (!child) continue;
+		if (nestedParameterSchema.nullable !== undefined) {
+			child.nullable = nestedParameterSchema.nullable;
+		}
+		applyNestedNullabilityPolicies(child, nestedParameterSchema);
+	}
 }
 
 function validateEnum(
@@ -357,6 +396,9 @@ export function validateToolArgs(
 	args: unknown,
 ): ValidateToolArgsResult {
 	const schema = actionToJsonSchema(action);
+	// Null rejection is execution policy, not provider-facing JSON Schema. Add
+	// it only to this private validation copy after the public schema is built.
+	applyNullabilityPolicies(schema, action.parameters ?? []);
 	const errors: string[] = [];
 
 	if (!isRecord(args)) {

@@ -159,6 +159,7 @@ describe("tool translation", () => {
       handler,
     };
     const [tool] = buildPlannerToolsFromActions([action]);
+    expect(JSON.stringify(tool.parameters)).not.toContain("nullable");
     const codexTool = toOpenAITool(tool);
     expect(codexTool.parameters).toMatchObject({
       required: ["action", "content", "limit"],

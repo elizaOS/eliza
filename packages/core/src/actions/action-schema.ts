@@ -220,9 +220,6 @@ export function actionParameterSchemaToJsonSchema(
 	if (defaultValue !== undefined) {
 		jsonSchema.default = defaultValue;
 	}
-	if (schema.nullable !== undefined) {
-		jsonSchema.nullable = schema.nullable;
-	}
 	if (schema.minimum !== undefined) {
 		jsonSchema.minimum = schema.minimum;
 	}
@@ -375,7 +372,6 @@ function jsonSchemaFromLocal(local: JsonSchema): JSONSchema {
 	if (local.enum !== undefined) out.enum = local.enum;
 	if (local.default !== undefined)
 		out.default = local.default as JSONSchema["default"];
-	if (local.nullable !== undefined) out.nullable = local.nullable;
 	if (local.minimum !== undefined) out.minimum = local.minimum;
 	if (local.maximum !== undefined) out.maximum = local.maximum;
 	if (local.minLength !== undefined) out.minLength = local.minLength;
