@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 /**
- * Executes every test-bearing file under packages/scripts from one fail-closed inventory.
+ * Executes every test-bearing file under packages/scripts, packages/cloud/scripts,
+ * and the root scripts/ tree from one fail-closed inventory.
  *
  * This tree has no package manifest and is invisible to workspace test fan-out,
  * so the runner passes each Git-discovered test to Bun explicitly and records

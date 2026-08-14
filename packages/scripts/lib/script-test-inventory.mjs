@@ -1,11 +1,20 @@
 /**
- * Complete executable-test inventory for the non-workspace packages/scripts tree.
+ * Complete executable-test inventory for the non-workspace scripts trees.
  *
  * Bun receives every discovered file explicitly, so nested tests and supported
  * extension or casing variants cannot fall outside its directory heuristics.
  * The same inventory also binds that runner to root test commands and the
  * required consolidated CI workflow; a test list without an executing lane is
  * invalid.
+ *
+ * Three path roots are covered:
+ *   - `packages/scripts` (build tooling and audit helpers)
+ *   - `packages/cloud/scripts` (cloud ops scripts that share no workspace)
+ *   - `scripts` (repository-root check, release, evidence, and security helpers)
+ *
+ * The root `scripts/` tree grew executable tests after the inventory was
+ * originally scoped to `packages/scripts`. Widening here keeps all three in a
+ * single CI lane so coverage gaps are impossible by construction.
  */
 
 import { createHash } from "node:crypto";
@@ -37,10 +46,11 @@ export const SCRIPT_TEST_EXTENSIONS = [
   "cjs",
 ];
 
-// Cloud ops scripts live with the cloud package (packages/cloud/scripts) but
-// have no workspace manifest either, so this runner owns their tests too.
+// Cloud ops scripts live with the cloud package (packages/cloud/scripts) and
+// repository-root check/release/evidence/security helpers live in scripts/,
+// neither of which has a workspace manifest. This runner owns their tests too.
 const SCRIPT_TEST_PATTERN = new RegExp(
-  `^packages/(?:scripts|cloud/scripts)/(?:.+/)?[^/]*[._](?:test|spec)\\.(?:${SCRIPT_TEST_EXTENSIONS.join("|")})$`,
+  `^(?:scripts|packages/(?:scripts|cloud/scripts))/(?:.+/)?[^/]*[._](?:test|spec)\\.(?:${SCRIPT_TEST_EXTENSIONS.join("|")})$`,
   "i",
 );
 
@@ -49,6 +59,18 @@ export const SCRIPT_TEST_EXCLUSIONS = new Map([
   [
     "packages/scripts/__tests__/release-verdaccio.integration.test.ts",
     "the release-candidate workflow owns this slow real-registry transport test",
+  ],
+  [
+    "scripts/federated-agent-charter-conformance.test.mjs",
+    "references docs/federated-agent-charter.schema.json deleted in #17695; repair tracked separately before re-enabling",
+  ],
+  [
+    "scripts/lifeops/connector-paths.test.mjs",
+    "references docs/testing/hitl-probes.md and docs/testing/hitl-identity-slots.md deleted in #17695; repair tracked separately before re-enabling",
+  ],
+  [
+    "scripts/lifeops/env-layers.test.mjs",
+    "references scripts/lifeops/run-11632-live-lanes.mjs deleted in #17695; repair tracked separately before re-enabling",
   ],
 ]);
 
@@ -67,7 +89,9 @@ export function isScriptTestPath(value) {
 }
 
 function listRepositoryFiles(repoRoot) {
-  const pathspecs = ["packages/scripts", "packages/cloud/scripts"];
+  // Root scripts/ is listed alongside packages/scripts and packages/cloud/scripts
+  // so every non-workspace test tree is covered by one CI lane.
+  const pathspecs = ["scripts", "packages/scripts", "packages/cloud/scripts"];
   const candidates = execFileSync(
     "git",
     [

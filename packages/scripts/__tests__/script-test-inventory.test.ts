@@ -102,6 +102,25 @@ describe("packages/scripts executable-test inventory", () => {
     ).toThrow("backslash");
   });
 
+  test("discovers root scripts/ test files alongside packages/scripts and packages/cloud/scripts", () => {
+    const files = [
+      "scripts/vast/run-certification.test.mjs",
+      "scripts/check-pr-agent-attribution.test.mjs",
+      "scripts/e2e-recordings/agent-surface-recording-contract.test.mjs",
+      "scripts/not-a-test.mjs",
+      "packages/scripts/root.test.ts",
+      "packages/cloud/scripts/nested.test.ts",
+      "packages/other/ignored.test.ts",
+    ];
+    expect(inventory(files).files.map(({ file }) => file)).toEqual([
+      "packages/cloud/scripts/nested.test.ts",
+      "packages/scripts/root.test.ts",
+      "scripts/check-pr-agent-attribution.test.mjs",
+      "scripts/e2e-recordings/agent-surface-recording-contract.test.mjs",
+      "scripts/vast/run-certification.test.mjs",
+    ]);
+  });
+
   test("rejects empty inventories and case-colliding paths", () => {
     expect(() => inventory(["packages/scripts/helper.ts"])).toThrow(
       "discovered zero",
@@ -905,6 +924,21 @@ jobs:
         file: "packages/scripts/__tests__/release-verdaccio.integration.test.ts",
         reason:
           "the release-candidate workflow owns this slow real-registry transport test",
+      },
+      {
+        file: "scripts/federated-agent-charter-conformance.test.mjs",
+        reason:
+          "references docs/federated-agent-charter.schema.json deleted in #17695; repair tracked separately before re-enabling",
+      },
+      {
+        file: "scripts/lifeops/connector-paths.test.mjs",
+        reason:
+          "references docs/testing/hitl-probes.md and docs/testing/hitl-identity-slots.md deleted in #17695; repair tracked separately before re-enabling",
+      },
+      {
+        file: "scripts/lifeops/env-layers.test.mjs",
+        reason:
+          "references scripts/lifeops/run-11632-live-lanes.mjs deleted in #17695; repair tracked separately before re-enabling",
       },
     ]);
     expect(
