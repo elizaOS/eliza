@@ -13,8 +13,10 @@ import { offloadJsonField } from "@/lib/storage/object-store";
 import { logger } from "@/lib/utils/logger";
 import { normalizePhoneNumber } from "@/lib/utils/phone-normalization";
 import { verifyTwilioSignature } from "@/lib/utils/twilio-api";
+import { recordVoiceSessionJti } from "@/lib/voice-session/jwt";
 import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
 import { resolveTwilioVoiceTarget } from "../lib/resolve-voice-target";
+import { mintTwilioStreamToken } from "../lib/twilio-stream-token";
 import {
   buildRealtimeVoiceTwiML,
   buildTerminalVoiceTwiML,
@@ -53,8 +55,21 @@ function resolvePublicUrl(c: AppContext): URL {
 app.post("/", async (c) => {
   const rawBody = await c.req.text();
   const params = Object.fromEntries(new URLSearchParams(rawBody));
+  const parsed = TwilioVoicePayloadSchema.safeParse(params);
+  if (!parsed.success) {
+    logger.warn("[twilio-voice-inbound] invalid payload", {
+      errors: parsed.error.format(),
+    });
+    return new Response("Invalid payload", { status: 400 });
+  }
+
+  const event = parsed.data;
+  const normalizedFrom = normalizePhoneNumber(event.From);
+  const normalizedTo = normalizePhoneNumber(event.To);
   const telephonyEnv = c.env as unknown as {
+    TWILIO_ACCOUNT_SID?: string;
     TWILIO_AUTH_TOKEN?: string;
+    ELIZA_APP_TWILIO_ACCOUNT_SID?: string;
     ELIZA_APP_TWILIO_AUTH_TOKEN?: string;
   };
   const authToken = (
@@ -65,6 +80,13 @@ app.post("/", async (c) => {
       "[twilio-voice-inbound] auth token not configured; refusing call",
     );
     return new Response("Twilio auth token not configured", { status: 503 });
+  }
+  const expectedAccountSid = (
+    telephonyEnv.TWILIO_ACCOUNT_SID ?? telephonyEnv.ELIZA_APP_TWILIO_ACCOUNT_SID
+  )?.trim();
+  if (expectedAccountSid && event.AccountSid !== expectedAccountSid) {
+    logger.warn("[twilio-voice-inbound] account SID mismatch");
+    return new Response("Invalid account", { status: 403 });
   }
 
   const publicUrl = resolvePublicUrl(c);
@@ -83,18 +105,12 @@ app.post("/", async (c) => {
     return new Response("Invalid signature", { status: 403 });
   }
 
-  const parsed = TwilioVoicePayloadSchema.safeParse(params);
-  if (!parsed.success) {
-    logger.warn("[twilio-voice-inbound] invalid payload", {
-      errors: parsed.error.format(),
-    });
-    return new Response("Invalid payload", { status: 400 });
-  }
-
-  const event = parsed.data;
-  const normalizedFrom = normalizePhoneNumber(event.From);
-  const normalizedTo = normalizePhoneNumber(event.To);
   const phoneNumber = await resolveTwilioVoiceTarget(c.env, normalizedTo);
+  if (!phoneNumber) {
+    return new Response(buildTerminalVoiceTwiML(NOT_CONFIGURED_PROMPT), {
+      headers: { "Content-Type": "text/xml" },
+    });
+  }
 
   const id = randomUUID();
   const rawPayload = await offloadJsonField<Record<string, string>>({
@@ -129,20 +145,35 @@ app.post("/", async (c) => {
     agentId: phoneNumber?.agentId,
   });
 
-  if (!phoneNumber) {
-    return new Response(buildTerminalVoiceTwiML(NOT_CONFIGURED_PROMPT), {
-      headers: { "Content-Type": "text/xml" },
-    });
-  }
-
+  const conversationId = randomUUID();
+  const minted = await mintTwilioStreamToken(
+    {
+      accountSid: event.AccountSid,
+      callSid: event.CallSid,
+      organizationId: phoneNumber.organizationId,
+      userId: phoneNumber.userId,
+      agentId: phoneNumber.agentId,
+      conversationId,
+      calledNumber: normalizedTo,
+    },
+    authToken,
+  );
+  await recordVoiceSessionJti({
+    organizationId: phoneNumber.organizationId,
+    userId: phoneNumber.userId,
+    sessionId: minted.claims.sessionId,
+    jti: minted.claims.jti,
+    expSeconds: minted.claims.exp,
+  });
   publicUrl.pathname = "/api/v1/twilio/voice/media";
-  publicUrl.search = "";
+  publicUrl.search = new URLSearchParams({
+    sessionId: minted.claims.sessionId,
+    token: minted.token,
+  }).toString();
   publicUrl.protocol = publicUrl.protocol === "http:" ? "ws:" : "wss:";
   return new Response(
     buildRealtimeVoiceTwiML({
       streamUrl: publicUrl.toString(),
-      calledNumber: normalizedTo,
-      conversationId: randomUUID(),
       greeting: "Hi, you're connected to Eliza.",
     }),
     {

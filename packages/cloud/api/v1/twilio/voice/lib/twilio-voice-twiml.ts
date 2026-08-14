@@ -15,9 +15,7 @@ export function buildTerminalVoiceTwiML(prompt: string): string {
 
 export function buildRealtimeVoiceTwiML(options: {
   streamUrl: string;
-  calledNumber: string;
-  conversationId: string;
   greeting: string;
 }): string {
-  return `<?xml version="1.0" encoding="UTF-8"?><Response><Say>${escapeXml(options.greeting)}</Say><Connect><Stream url="${escapeXml(options.streamUrl)}"><Parameter name="calledNumber" value="${escapeXml(options.calledNumber)}"/><Parameter name="conversationId" value="${escapeXml(options.conversationId)}"/></Stream></Connect></Response>`;
+  return `<?xml version="1.0" encoding="UTF-8"?><Response><Say>${escapeXml(options.greeting)}</Say><Connect><Stream url="${escapeXml(options.streamUrl)}"/></Connect></Response>`;
 }

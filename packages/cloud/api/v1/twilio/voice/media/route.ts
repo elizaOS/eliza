@@ -5,6 +5,7 @@
 
 import { Hono } from "hono";
 import { z } from "zod";
+import { buildRedisClient } from "@/lib/cache/redis-factory";
 import { runWithCloudBindingsAsync } from "@/lib/runtime/cloud-bindings";
 import type { BridgeExecutionContext } from "@/lib/services/shared-runtime/shared-runtime-chat";
 import {
@@ -13,8 +14,6 @@ import {
   type VoiceUsageStore,
 } from "@/lib/services/voice-usage-meter";
 import { logger } from "@/lib/utils/logger";
-import { normalizePhoneNumber } from "@/lib/utils/phone-normalization";
-import { verifyTwilioSignature } from "@/lib/utils/twilio-api";
 import {
   isFishAudioDataGovernanceApproved,
   isFishRealtimeTtsEnabled,
@@ -28,12 +27,17 @@ import {
   resolveVoiceUsageLimits,
   type VoiceRealtimeEnv,
 } from "@/lib/voice-session/config";
+import {
+  claimVoiceSessionToken,
+  isVoiceSessionTokenRevoked,
+  revokeVoiceSessionToken,
+} from "@/lib/voice-session/jwt";
 import { getVoiceSessionRegistry } from "@/lib/voice-session/session-registry";
 import type {
   ServerWebSocketLike,
   VoiceSessionDownlink,
 } from "@/lib/voice-session/ws-handler";
-import type { AppContext, AppEnv, Bindings } from "@/types/cloud-worker-env";
+import type { AppEnv, Bindings } from "@/types/cloud-worker-env";
 import { createInternalElizaConversationFetchFactory } from "../../../voice/session/lib/internal-eliza-conversation-fetch";
 import {
   createWorkerCartesiaFactory,
@@ -42,11 +46,11 @@ import {
   isWorkerOutboundWsAvailable,
 } from "../../../voice/session/lib/provider-socket-factory";
 import { VoiceSession } from "../../../voice/session/lib/session";
-import { resolveTwilioVoiceTarget } from "../lib/resolve-voice-target";
 import {
   decodeTwilioMedia,
   encodeTwilioMedia,
 } from "../lib/twilio-media-codec";
+import { verifyTwilioStreamToken } from "../lib/twilio-stream-token";
 
 const app = new Hono<AppEnv>();
 // Twilio sends 20 ms frames immediately after `start`. A cold Hyperdrive
@@ -62,6 +66,7 @@ const TwilioStreamEventSchema = z.discriminatedUnion("event", [
       event: z.literal("start"),
       streamSid: z.string().min(1),
       start: z.object({
+        accountSid: z.string().min(1),
         callSid: z.string().min(1),
         streamSid: z.string().min(1),
         mediaFormat: z.object({
@@ -91,21 +96,6 @@ function getFallbackUsageStore(): InMemoryVoiceUsageStore {
   return fallbackUsageStore;
 }
 
-function resolvePublicUrl(c: AppContext): URL {
-  const url = new URL(c.req.url);
-  const forwardedProto = c.req.header("x-forwarded-proto");
-  const forwardedHost = c.req.header("x-forwarded-host");
-  if (forwardedProto) url.protocol = `${forwardedProto}:`;
-  if (forwardedHost) url.host = forwardedHost;
-  const configured = (c.env.TWILIO_PUBLIC_URL as string | undefined)?.trim();
-  if (configured) {
-    const publicBase = new URL(configured);
-    url.protocol = publicBase.protocol;
-    url.host = publicBase.host;
-  }
-  return url;
-}
-
 function resolveMaxCallSeconds(env: VoiceRealtimeEnv): number {
   const raw = (
     env as VoiceRealtimeEnv & { TWILIO_VOICE_MAX_CALL_SECONDS?: string }
@@ -126,39 +116,27 @@ app.get("/", async (c) => {
     return c.json({ error: "expected a websocket upgrade" }, 426);
   }
 
-  const telephonyEnv = c.env as unknown as {
-    TWILIO_AUTH_TOKEN?: string;
-    ELIZA_APP_TWILIO_AUTH_TOKEN?: string;
-  };
-  const authToken = (
-    telephonyEnv.TWILIO_AUTH_TOKEN ?? telephonyEnv.ELIZA_APP_TWILIO_AUTH_TOKEN
-  )?.trim();
-  const signature = c.req.header("x-twilio-signature") ?? "";
-  if (!authToken || !signature)
-    return c.json({ error: "invalid signature" }, 403);
-  const publicUrl = resolvePublicUrl(c);
-  const websocketUrl = new URL(publicUrl);
-  websocketUrl.protocol = websocketUrl.protocol === "http:" ? "ws:" : "wss:";
-  const signatureValid =
-    (await verifyTwilioSignature(
-      authToken,
-      signature,
-      publicUrl.toString(),
-      {},
-    )) ||
-    (await verifyTwilioSignature(
-      authToken,
-      signature,
-      websocketUrl.toString(),
-      {},
-    ));
-  if (!signatureValid) {
-    logger.warn("[twilio-media] signature verification failed", {
-      url: publicUrl.toString(),
-    });
-    return c.json({ error: "invalid signature" }, 403);
+  const authToken =
+    (
+      c.env as unknown as {
+        TWILIO_AUTH_TOKEN?: string;
+        ELIZA_APP_TWILIO_AUTH_TOKEN?: string;
+      }
+    ).TWILIO_AUTH_TOKEN ??
+    (c.env as unknown as { ELIZA_APP_TWILIO_AUTH_TOKEN?: string })
+      .ELIZA_APP_TWILIO_AUTH_TOKEN;
+  const requestUrl = new URL(c.req.url);
+  const requestedSessionId = requestUrl.searchParams.get("sessionId") ?? "";
+  const token = requestUrl.searchParams.get("token") ?? "";
+  const claims = authToken
+    ? await verifyTwilioStreamToken(token, authToken.trim())
+    : null;
+  if (!claims || claims.sessionId !== requestedSessionId) {
+    return c.json({ error: "invalid stream token" }, 403);
   }
-
+  const rawRedis = buildRedisClient(
+    env as unknown as Parameters<typeof buildRedisClient>[0],
+  );
   if (getVoiceSessionRegistry().size() >= resolveMaxSessions(env)) {
     return c.json(
       { error: "voice realtime capacity reached", code: "at_capacity" },
@@ -193,6 +171,15 @@ app.get("/", async (c) => {
   ) {
     logger.error("[twilio-media] provider/config missing; refusing upgrade");
     return c.json({ error: "voice realtime session misconfigured" }, 503);
+  }
+  if (
+    !(await claimVoiceSessionToken(
+      claims.jti,
+      claims.exp,
+      rawRedis ?? undefined,
+    ))
+  ) {
+    return c.json({ error: "stream token already used" }, 409);
   }
 
   const WebSocketPairCtor = (
@@ -296,35 +283,30 @@ app.get("/", async (c) => {
       closed = true;
       return;
     }
-    const calledNumberRaw = event.start.customParameters.calledNumber;
-    const conversationId = event.start.customParameters.conversationId;
-    if (!calledNumberRaw || !conversationId) {
-      server.close(1008, "missing stream parameters");
-      closed = true;
-      return;
-    }
-    const calledNumber = normalizePhoneNumber(calledNumberRaw);
-    const mapping = await resolveTwilioVoiceTarget(c.env, calledNumber);
-    if (!mapping) {
-      server.close(1008, "phone number not configured");
+    if (
+      event.start.callSid !== claims.callSid ||
+      event.start.accountSid !== claims.accountSid
+    ) {
+      server.close(1008, "call identity mismatch");
       closed = true;
       return;
     }
     const elizaFetch = createScopedElizaFetch({
-      agentId: mapping.agentId,
-      conversationId,
-      organizationId: mapping.organizationId,
-      userId: mapping.userId,
+      agentId: claims.agentId,
+      conversationId: claims.conversationId,
+      organizationId: claims.organizationId,
+      userId: claims.userId,
     });
+    const callExpSeconds =
+      Math.floor(Date.now() / 1_000) + resolveMaxCallSeconds(env);
     session = new VoiceSession({
-      sessionId: event.start.callSid,
-      jti: event.start.callSid,
-      organizationId: mapping.organizationId,
-      userId: mapping.userId,
-      agentId: mapping.agentId,
-      conversationId,
-      tokenExpSeconds:
-        Math.floor(Date.now() / 1_000) + resolveMaxCallSeconds(env),
+      sessionId: claims.sessionId,
+      jti: claims.jti,
+      organizationId: claims.organizationId,
+      userId: claims.userId,
+      agentId: claims.agentId,
+      conversationId: claims.conversationId,
+      tokenExpSeconds: callExpSeconds,
       cartesiaApiKey,
       cartesiaInkWebSocketFactory: createWorkerCartesiaInkFactory(),
       cartesiaVoiceId,
@@ -343,6 +325,10 @@ app.get("/", async (c) => {
       prewarmElizaContext: elizaFetch.prewarm,
       usageStore,
       usageLimits: resolveVoiceUsageLimits(env),
+      isRevoked: (jti) =>
+        isVoiceSessionTokenRevoked(jti, rawRedis ?? undefined),
+      onTeardownRevoke: (jti, expSeconds) =>
+        revokeVoiceSessionToken(jti, expSeconds),
       downlink,
     });
     session.start();
@@ -350,7 +336,7 @@ app.get("/", async (c) => {
     logger.info("[twilio-media] realtime call connected", {
       callSid: event.start.callSid,
       streamSid,
-      agentId: mapping.agentId,
+      agentId: claims.agentId,
     });
   };
 
