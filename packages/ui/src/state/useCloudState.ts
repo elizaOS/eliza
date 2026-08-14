@@ -380,11 +380,25 @@ function resolveStewardRefreshEndpoint(): string | undefined {
   const cloudBase =
     getBootConfig().cloudApiBase?.trim() || DEFAULT_DIRECT_CLOUD_BASE_URL;
   try {
-    return `${resolveDirectCloudAuthApiBase(cloudBase)}${STEWARD_REFRESH_PATH}`;
-  } catch {
+    const url = new URL(resolveDirectCloudAuthApiBase(cloudBase));
+    const host = url.hostname.toLowerCase();
+    const apiHost =
+      host === "elizacloud.ai" ||
+      host === "www.elizacloud.ai" ||
+      host === "dev.elizacloud.ai"
+        ? "api.elizacloud.ai"
+        : host;
+    const port = url.port ? `:${url.port}` : "";
+    return `${url.protocol}//${apiHost}${port}${STEWARD_REFRESH_PATH}`;
+  } catch (err) {
     // error-policy:J3 malformed cloud base URL → use the shared default
     // refresh endpoint (the documented `undefined` contract of this helper).
-    return undefined;
+    // Only catch URL parsing errors; re-throw anything else so non-URL
+    // failures (getBootConfig crashes, out-of-memory, etc.) are visible.
+    if (err instanceof TypeError && err.message.includes("Invalid URL")) {
+      return undefined;
+    }
+    throw err;
   }
 }
 
