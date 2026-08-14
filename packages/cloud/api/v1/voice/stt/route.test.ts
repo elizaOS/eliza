@@ -1664,6 +1664,35 @@ describe("POST /api/v1/voice/stt — Cartesia batch lane (opt-in)", () => {
     expect(billFlatUsage).not.toHaveBeenCalled();
   });
 
+  test("a stalled Cartesia response body refunds and returns a typed 504", async () => {
+    cartesiaReply = (init) =>
+      new Response(
+        new ReadableStream<Uint8Array>({
+          start(controller) {
+            const signal = init?.signal;
+            if (!signal) {
+              throw new Error("Cartesia body timeout test expected a signal");
+            }
+            signal.addEventListener(
+              "abort",
+              () => controller.error(signal.reason),
+              { once: true },
+            );
+          },
+        }),
+        { headers: { "content-type": "application/json" } },
+      );
+    const res = await app.request(sttRequest(), undefined, {
+      ...(cartesiaEnv as Record<string, string>),
+      CARTESIA_BATCH_STT_TIMEOUT_MS: "1",
+    } as never);
+
+    expect(res.status).toBe(504);
+    expect(await readJson(res)).toEqual({ error: "Speech-to-text timed out" });
+    expect(reconcile).toHaveBeenCalledWith(0);
+    expect(billFlatUsage).not.toHaveBeenCalled();
+  });
+
   test("a success payload without authoritative duration is rejected and refunded", async () => {
     cartesiaReply = () =>
       Response.json({ type: "transcript", text: "missing duration" });

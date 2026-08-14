@@ -904,6 +904,7 @@ async function __hono_POST(c: AppContext) {
       }
       cartesiaForm.append("timestamp_granularities[]", "word");
 
+      const cartesiaTimeoutSignal = AbortSignal.timeout(cartesiaTimeoutMs);
       let cartesiaResponse: Response;
       try {
         await cartesiaAdmission.markProviderDispatched?.();
@@ -914,7 +915,7 @@ async function __hono_POST(c: AppContext) {
             "Cartesia-Version": CARTESIA_BATCH_STT_API_VERSION,
           },
           body: cartesiaForm,
-          signal: AbortSignal.timeout(cartesiaTimeoutMs),
+          signal: cartesiaTimeoutSignal,
         });
       } catch (error) {
         // error-policy:J1 provider transport failures translate at the route boundary.
@@ -955,6 +956,13 @@ async function __hono_POST(c: AppContext) {
       } catch {
         // error-policy:J3 provider JSON is untrusted input at the HTTP boundary.
         await refundCartesiaReservation();
+        if (cartesiaTimeoutSignal.aborted) {
+          logger.error("[Voice STT API] Cartesia response body timed out");
+          return Response.json(
+            { error: "Speech-to-text timed out" },
+            { status: 504 },
+          );
+        }
         logger.error("[Voice STT API] Cartesia returned unparseable JSON");
         return Response.json(
           { error: "Speech-to-text failed" },
