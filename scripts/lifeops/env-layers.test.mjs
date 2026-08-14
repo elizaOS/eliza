@@ -3,7 +3,7 @@
  * real-filesystem load/save against temp dirs (mode 600 asserted), a linked
  * worktree fixture, and the #14793 writer residuals — duplicate-key collapse,
  * trailing-blank preservation, serialized separate-process writes, atomic
- * tmp cleanup, and permission repair.
+ * tmp cleanup, permission repair, and live lock-owner integrity.
  */
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
@@ -16,6 +16,7 @@ import {
   realpathSync,
   rmSync,
   statSync,
+  unlinkSync,
   utimesSync,
   writeFileSync,
 } from "node:fs";
@@ -409,22 +410,14 @@ test("surviving HITL consumers import the shared layered env module", () => {
     "scripts/lifeops/hitl-credential-dashboard.mjs",
     "scripts/lifeops/env-layers.test.mjs",
   ];
-  let seen = 0;
   for (const relativePath of importers) {
-    const fullPath = join(ROOT, relativePath);
-    if (!existsSync(fullPath)) continue;
-    seen += 1;
-    const text = readFileSync(fullPath, "utf8");
+    const text = readFileSync(join(ROOT, relativePath), "utf8");
     assert.match(
       text,
       /from "\.\/env-layers\.mjs"/,
       `${relativePath} must import scripts/lifeops/env-layers.mjs`,
     );
   }
-  assert.ok(
-    seen >= 2,
-    "at least the dashboard and this test must still import env-layers",
-  );
 });
 
 test("writeSecret collapses duplicate keys so parseDotenv cannot return a stale later value", () => {
@@ -489,7 +482,9 @@ test("writeSecret recovers from a stale sibling lock file", () => {
     const homeEnvPath = join(base, ".eliza", ".env");
     mkdirSync(dirname(homeEnvPath), { recursive: true });
     const lockPath = `${homeEnvPath}.lock`;
-    writeFileSync(lockPath, "999999\n", "utf8");
+    const deadOwner = spawnSync(process.execPath, ["-e", ""]);
+    assert.equal(deadOwner.status, 0);
+    writeFileSync(lockPath, `${deadOwner.pid}:${"d".repeat(32)}\n`, "utf8");
     const stale = new Date(Date.now() - 30_000);
     utimesSync(lockPath, stale, stale);
     writeSecret("RECOVERED", "yes", {
@@ -571,6 +566,69 @@ test("writeSecret serializes separate-process multi-key writes so neither save i
     const parsed = parseDotenv(readFileSync(join(base, ".env"), "utf8"));
     assert.equal(parsed.KEY_A, "aaa");
     assert.equal(parsed.KEY_B, "bbb");
+  } finally {
+    rmSync(base, { recursive: true, force: true });
+  }
+});
+
+test("an aged live writer keeps lock ownership until its transaction finishes", async () => {
+  const base = tempDir("env-layers-live-lock-");
+  try {
+    const lockPath = `${join(base, ".env")}.lock`;
+    const waitPath = join(base, "release-first-writer");
+    const first = writeSecretInChild(base, "KEY_A", "aaa", waitPath);
+    const started = Date.now();
+    while (Date.now() - started < 2000 && !existsSync(lockPath)) {
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
+    }
+    assert.equal(
+      existsSync(lockPath),
+      true,
+      "first writer must acquire the lock",
+    );
+    const firstOwner = readFileSync(lockPath, "utf8");
+    const stale = new Date(Date.now() - 30_000);
+    utimesSync(lockPath, stale, stale);
+
+    const second = writeSecretInChild(base, "KEY_B", "bbb");
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 150);
+    assert.equal(
+      existsSync(lockPath),
+      true,
+      "live owner lock must remain present",
+    );
+    assert.equal(readFileSync(lockPath, "utf8"), firstOwner);
+
+    writeFileSync(waitPath, "go\n");
+    await Promise.all([first, second]);
+    const parsed = parseDotenv(readFileSync(join(base, ".env"), "utf8"));
+    assert.equal(parsed.KEY_A, "aaa");
+    assert.equal(parsed.KEY_B, "bbb");
+  } finally {
+    rmSync(base, { recursive: true, force: true });
+  }
+});
+
+test("a writer releases only the lock record it acquired", async () => {
+  const base = tempDir("env-layers-owned-lock-");
+  try {
+    const lockPath = `${join(base, ".env")}.lock`;
+    const waitPath = join(base, "release-writer");
+    const writer = writeSecretInChild(base, "TOKEN", "secret", waitPath);
+    const started = Date.now();
+    while (Date.now() - started < 2000 && !existsSync(lockPath)) {
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
+    }
+    assert.equal(existsSync(lockPath), true, "writer must acquire the lock");
+
+    unlinkSync(lockPath);
+    const replacementOwner = `${process.pid}:${"a".repeat(32)}\n`;
+    writeFileSync(lockPath, replacementOwner, { mode: 0o600 });
+    writeFileSync(waitPath, "go\n");
+    await writer;
+
+    assert.equal(readFileSync(lockPath, "utf8"), replacementOwner);
+    unlinkSync(lockPath);
   } finally {
     rmSync(base, { recursive: true, force: true });
   }

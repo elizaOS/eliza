@@ -11,9 +11,11 @@
  * Saves default to ~/.eliza/.env — the layer that survives worktree churn —
  * with repo .env as the per-save alternative. Each target file is serialized
  * through an exclusive lock, reread, then written atomically (tmp file mode
- * 600 + rename, tmp unlinked on failure). Upserts collapse every definition
+ * 600 + rename, tmp unlinked on failure). Lock records bind a live PID to a
+ * random owner token, so an aged-but-live writer is never stolen and cleanup
+ * cannot remove a replacement owner's lock. Upserts collapse every definition
  * of the written key so parseDotenv's last-wins read cannot resurrect a stale
- * later line, and they preserve unrelated lines, comments, and trailing blanks.
+ * later line, and preserve unrelated lines, comments, and trailing blanks.
  * The parse, merge, and upsert primitives stay unit-testable without touching
  * the real operator files. Values returned by loadLayeredEnv are real secrets:
  * callers must never render them — the display-safe surface is listPresent(),
@@ -220,47 +222,132 @@ function sleepMs(ms) {
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
 }
 
+function readLockOwner(lockPath) {
+  let record;
+  try {
+    record = readFileSync(lockPath, "utf8");
+  } catch (err) {
+    // error-policy:J3 lock ownership changed while contention was inspected
+    if (err.code === "ENOENT") return { state: "missing" };
+    throw err;
+  }
+
+  const match = /^([1-9][0-9]*)(?::([a-f0-9]{32}))?\n$/.exec(record);
+  if (!match) {
+    let ageMs;
+    try {
+      ageMs = Date.now() - statSync(lockPath).mtimeMs;
+    } catch (err) {
+      // error-policy:J3 malformed lock disappeared before its age was checked
+      if (err.code === "ENOENT") return { state: "missing" };
+      throw err;
+    }
+    return ageMs > LOCK_STALE_MS
+      ? { state: "reclaim", record }
+      : { state: "held" };
+  }
+
+  const pid = Number(match[1]);
+  if (!Number.isSafeInteger(pid)) {
+    return { state: "held" };
+  }
+  try {
+    process.kill(pid, 0);
+    return { state: "held" };
+  } catch (err) {
+    // error-policy:J3 process liveness is the lock-owner validity boundary
+    if (err.code === "ESRCH") return { state: "reclaim", record };
+    if (err.code === "EPERM") return { state: "held" };
+    throw err;
+  }
+}
+
+function removeObservedLock(lockPath, observedRecord) {
+  try {
+    if (readFileSync(lockPath, "utf8") !== observedRecord) return false;
+    unlinkSync(lockPath);
+    return true;
+  } catch (err) {
+    // error-policy:J6 another owner released or reclaimed the observed lock
+    if (err.code === "ENOENT") return true;
+    throw err;
+  }
+}
+
 function acquireTargetLock(targetPath) {
   const lockPath = `${targetPath}.lock`;
   mkdirSync(dirname(targetPath), { recursive: true });
   const deadline = Date.now() + LOCK_WAIT_MS;
   while (true) {
+    let fd;
     try {
-      const fd = openSync(lockPath, "wx", 0o600);
-      writeFileSync(fd, `${process.pid}\n`);
-      return { fd, lockPath };
+      fd = openSync(lockPath, "wx", 0o600);
     } catch (err) {
       // error-policy:J3 exclusive-create miss means another writer holds the lock
       if (err.code !== "EEXIST") throw err;
-      try {
-        const st = statSync(lockPath);
-        if (Date.now() - st.mtimeMs > LOCK_STALE_MS) {
-          unlinkSync(lockPath);
-          continue;
-        }
-      } catch (statErr) {
-        // error-policy:J6 lock disappeared between EEXIST and stat
-        if (statErr.code !== "ENOENT") throw statErr;
+      const owner = readLockOwner(lockPath);
+      if (owner.state === "missing") continue;
+      if (
+        owner.state === "reclaim" &&
+        removeObservedLock(lockPath, owner.record)
+      ) {
+        continue;
       }
       if (Date.now() >= deadline) {
         throw new Error(`writeSecret: timed out waiting for lock ${lockPath}`);
       }
       sleepMs(LOCK_POLL_MS);
+      continue;
+    }
+
+    const ownerRecord = `${process.pid}:${randomBytes(16).toString("hex")}\n`;
+    try {
+      writeFileSync(fd, ownerRecord);
+      return { fd, lockPath, ownerRecord };
+    } catch (err) {
+      const cleanupErrors = [];
+      try {
+        closeSync(fd);
+      } catch (candidate) {
+        // error-policy:J6 partial lock initialization must close its descriptor
+        cleanupErrors.push(candidate);
+      }
+      try {
+        unlinkSync(lockPath);
+      } catch (candidate) {
+        // error-policy:J6 partial lock initialization must remove its lock path
+        if (candidate.code !== "ENOENT") cleanupErrors.push(candidate);
+      }
+      if (cleanupErrors.length > 0) {
+        throw new AggregateError(
+          [err, ...cleanupErrors],
+          `writeSecret: failed to initialize lock ${lockPath}`,
+        );
+      }
+      throw err;
     }
   }
 }
 
 function releaseTargetLock(lock) {
+  const errors = [];
   try {
     closeSync(lock.fd);
-  } catch {
-    // error-policy:J6 lock fd already closed during teardown
+  } catch (err) {
+    // error-policy:J6 release attempts both descriptor and owned-path teardown
+    errors.push(err);
   }
   try {
-    unlinkSync(lock.lockPath);
+    removeObservedLock(lock.lockPath, lock.ownerRecord);
   } catch (err) {
-    // error-policy:J6 lock file already removed
-    if (err.code !== "ENOENT") throw err;
+    // error-policy:J6 release attempts both descriptor and owned-path teardown
+    errors.push(err);
+  }
+  if (errors.length > 0) {
+    throw new AggregateError(
+      errors,
+      `writeSecret: failed to release lock ${lock.lockPath}`,
+    );
   }
 }
 
@@ -324,10 +411,20 @@ export function writeSecret(key, value, options = {}) {
     atomicWriteEnvFile(path, upsertEnvContent(existing, { [key]: value }));
     chmodSync(path, 0o600);
     processEnv[key] = value;
-    return { key, scope, path };
-  } finally {
-    releaseTargetLock(lock);
+  } catch (err) {
+    try {
+      releaseTargetLock(lock);
+    } catch (releaseError) {
+      // error-policy:J2 preserve both the transaction and teardown failures
+      throw new AggregateError(
+        [err, releaseError],
+        `writeSecret(${key}): write and lock release both failed`,
+      );
+    }
+    throw err;
   }
+  releaseTargetLock(lock);
+  return { key, scope, path };
 }
 
 export function saveEnvVar(key, value, target = "home", options = {}) {
