@@ -475,6 +475,7 @@ jobs:
             WHERE id = '$agent_id';
             SQL
       - name: Enqueue the corrected runtime start
+        if: false
         uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2
         with:
           host: ${{ env.DEPLOY_HOST }}
@@ -503,6 +504,25 @@ jobs:
             jq -e '.success == true' "$response_file" >/dev/null
             psql "$database_url" -v ON_ERROR_STOP=1 -c \
               "SELECT id, type, status, created_at FROM jobs WHERE agent_id = '$agent_id' ORDER BY created_at DESC LIMIT 3"
+      - name: Inspect Docker placement capacity
+        uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2
+        with:
+          host: ${{ env.DEPLOY_HOST }}
+          username: deploy
+          key: ${{ env.DEPLOY_SSH_KEY }}
+          command_timeout: 2m
+          script: |
+            set -euo pipefail
+            database_url="$(sed -n 's/^DATABASE_URL=//p' /opt/eliza/cloud/.env.local | tail -1)"
+            database_url="${database_url/sslmode=no-verify/sslmode=require}"
+            psql "$database_url" -v ON_ERROR_STOP=1 -c \
+              "SELECT id, status, node_id, container_name, docker_image, lifecycle_job_id, error_message, updated_at FROM agent_sandboxes WHERE id = '4602b3be-2c01-4e7e-9cdc-849604e1bef7'"
+            psql "$database_url" -v ON_ERROR_STOP=1 -c \
+              "SELECT node_id, enabled, placement_state, status, capacity, allocated_count, last_health_check, updated_at FROM docker_nodes ORDER BY node_id"
+            psql "$database_url" -v ON_ERROR_STOP=1 -c \
+              "SELECT node_id, count(*) AS active_agent_rows FROM agent_sandboxes WHERE node_id IS NOT NULL AND status NOT IN ('stopped','error','sleeping','deletion_failed') GROUP BY node_id ORDER BY node_id"
+            psql "$database_url" -v ON_ERROR_STOP=1 -c \
+              "SELECT node_id, count(*) AS active_app_rows FROM containers WHERE node_id IS NOT NULL AND status NOT IN ('failed','stopped','deleted') GROUP BY node_id ORDER BY node_id"
 
   changes:
     name: Classify changed paths
