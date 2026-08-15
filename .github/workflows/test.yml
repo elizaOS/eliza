@@ -491,11 +491,13 @@ jobs:
             test "$state" = "stopped|$expected_image"
             service_key="$(sed -n 's/^WAIFU_SERVICE_KEY=//p' /opt/eliza/cloud/.env.local | tail -1)"
             test -n "${service_key//[[:space:]]/}"
-            response="$(curl --silent --show-error --fail-with-body --max-time 30 \
+            response_file="$(mktemp)"
+            curl --silent --show-error --fail-with-body --max-time 30 \
               --request POST \
               --header "X-Service-Key: $service_key" \
-              "https://api.eliza.app/api/v1/agents/$agent_id/restart")"
-            printf '%s' "$response" | jq -e '.success == true' >/dev/null
+              --output "$response_file" \
+              "https://api.eliza.app/api/v1/agents/$agent_id/restart"
+            jq -e '.success == true' "$response_file" >/dev/null
             psql "$database_url" -v ON_ERROR_STOP=1 -c \
               "SELECT id, type, status, created_at FROM jobs WHERE agent_id = '$agent_id' ORDER BY created_at DESC LIMIT 3"
 
