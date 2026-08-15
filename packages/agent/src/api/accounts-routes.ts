@@ -1390,17 +1390,18 @@ function handleOAuthStatusSse(
     }
   };
 
-  const unsubscribe = subscribeFlow(sessionId, (state) => {
+  let unsubscribe: (() => void) | undefined;
+  unsubscribe = subscribeFlow(sessionId, (state) => {
     if (closed) return;
     writeEvent(state);
     if (state.status !== "pending") {
-      unsubscribe();
+      unsubscribe?.();
       finish();
     }
   });
 
   req.on("close", () => {
-    unsubscribe();
+    unsubscribe?.();
     finish();
   });
   return true;
