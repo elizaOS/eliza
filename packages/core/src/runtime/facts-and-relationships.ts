@@ -574,7 +574,6 @@ function extractText(raw: unknown): string {
 				params?: unknown;
 			}>;
 		};
-		if (typeof r.text === "string" && r.text.trim()) return r.text;
 		const tool = r.toolCalls?.[0];
 		// Tool-call args land under different keys across model providers /
 		// SDK versions: AI SDK v5 + Cerebras gpt-oss-120b use `input`, older
@@ -590,6 +589,7 @@ function extractText(raw: unknown): string {
 		if (typeof toolArgs === "string") {
 			return toolArgs;
 		}
+		if (typeof r.text === "string" && r.text.trim()) return r.text;
 	}
 	return "";
 }
