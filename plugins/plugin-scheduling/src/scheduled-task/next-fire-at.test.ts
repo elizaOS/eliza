@@ -192,3 +192,93 @@ describe("computeNextFireAt owner_local cron tz resolution", () => {
     expect(next).toBe("2026-05-11T15:00:00.000Z");
   });
 });
+
+describe("computeNextFireAt during_window bounds", () => {
+  function duringWindow(windowKey: string) {
+    return taskWith({
+      trigger: { kind: "during_window", windowKey },
+    });
+  }
+
+  it("uses shared defaults when owner window facts are absent", async () => {
+    await expect(
+      computeNextFireAt(duringWindow("morning"), {
+        now: NOW,
+        ownerFacts: {},
+        anchors: null,
+      }),
+    ).resolves.toBe("2026-05-12T06:00:00.000Z");
+    await expect(
+      computeNextFireAt(duringWindow("evening"), {
+        now: NOW,
+        ownerFacts: {},
+        anchors: null,
+      }),
+    ).resolves.toBe("2026-05-11T18:00:00.000Z");
+  });
+
+  it.each(["", "not-a-time", "25:00"])(
+    "rejects a present invalid morning bound %j instead of disguising it as a default",
+    async (start) => {
+      await expect(
+        computeNextFireAt(duringWindow("morning"), {
+          now: NOW,
+          ownerFacts: { timezone: "UTC", morningWindow: { start } },
+          anchors: null,
+        }),
+      ).rejects.toMatchObject({
+        code: "invalid_local_time",
+        reason: "malformed_hhmm",
+        localTime: start,
+      });
+    },
+  );
+
+  it("applies the owner's timezone to a default window bound", async () => {
+    await expect(
+      computeNextFireAt(duringWindow("morning"), {
+        now: NOW,
+        ownerFacts: { timezone: "America/Denver" },
+        anchors: null,
+      }),
+    ).resolves.toBe("2026-05-11T12:00:00.000Z");
+  });
+
+  it("rejects an invalid owner timezone", async () => {
+    await expect(
+      computeNextFireAt(duringWindow("morning"), {
+        now: NOW,
+        ownerFacts: { timezone: "Mars/Olympus" },
+        anchors: null,
+      }),
+    ).rejects.toMatchObject({
+      code: "invalid_local_time",
+      reason: "invalid_time_zone",
+      timeZone: "Mars/Olympus",
+    });
+  });
+
+  it.each([
+    [
+      "spring-forward",
+      "2026-03-08T08:00:00.000Z",
+      "2026-03-08T13:00:00.000Z",
+    ],
+    [
+      "fall-back",
+      "2026-11-01T07:00:00.000Z",
+      "2026-11-01T14:00:00.000Z",
+    ],
+  ])(
+    "indexes the default morning window across %s",
+    async (_label, now, expected) => {
+      await expect(
+        computeNextFireAt(duringWindow("morning"), {
+          now: new Date(now),
+          ownerFacts: { timezone: "America/Los_Angeles" },
+          anchors: null,
+        }),
+      ).resolves.toBe(expected);
+    },
+  );
+});
