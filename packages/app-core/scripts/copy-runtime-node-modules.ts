@@ -27,6 +27,14 @@ type Options = {
 type DependencyEntry = {
   name: string;
   spec: string | null;
+  /**
+   * True only for entries in the package's own `dependencies` — a hard
+   * requirement its code may import eagerly. Optional/peer entries are false.
+   * The plugin filter in the transitive walk uses this to keep dropping
+   * optional plugin *peers* (whose deep trees bloat the bundle) while never
+   * dropping a hard dependency out from under a package that is shipping.
+   */
+  required: boolean;
 };
 
 type QueueEntry = DependencyEntry & {
@@ -114,6 +122,11 @@ const RUNTIME_COPY_PRUNED_DIR_NAMES = new Set([
   "test",
   "tests",
   "__tests__",
+  // Jest/Vitest image-snapshot fixtures. Never loaded at runtime, and their
+  // generated basenames blow the tar-safe path limits the Electrobun
+  // self-extractor enforces (e.g. @jimp/plugin-print snapshots at 175 chars).
+  "__image_snapshots__",
+  "__snapshots__",
 ]);
 const RUNTIME_COPY_PRUNED_FILE_EXTENSIONS = new Set([
   ".html",
@@ -195,6 +208,10 @@ function isRequiredRuntimeDocDirectory(entryPath: string): boolean {
   return (
     normalizedPath.endsWith("/yaml/dist/doc") ||
     normalizedPath.endsWith("/viem/_esm/actions/test") ||
+    // viem ships its CJS build alongside ESM; `_cjs/clients/decorators/test.js`
+    // requires `../../actions/test/*.js` at load, so pruning the CJS copy makes
+    // plugin-wallet fail to load and its routes 404.
+    normalizedPath.endsWith("/viem/_cjs/actions/test") ||
     normalizedPath.endsWith("/viem/actions/test")
   );
 }
@@ -2042,17 +2059,17 @@ export function getRuntimeDependencyEntries(
     peerDependencies?: Record<string, string>;
     peerDependenciesMeta?: Record<string, { optional?: boolean }>;
   }>(pkgPath);
-  const entries = new Map<string, string | null>();
+  const entries = new Map<string, { spec: string | null; required: boolean }>();
 
   for (const [name, spec] of Object.entries(pkg.dependencies ?? {})) {
     if (!DEP_SKIP.has(name)) {
-      entries.set(name, spec);
+      entries.set(name, { spec, required: true });
     }
   }
 
   for (const [name, spec] of Object.entries(pkg.optionalDependencies ?? {})) {
     if (!DEP_SKIP.has(name) && !entries.has(name)) {
-      entries.set(name, spec);
+      entries.set(name, { spec, required: false });
     }
   }
 
@@ -2066,12 +2083,16 @@ export function getRuntimeDependencyEntries(
       continue;
     }
 
-    entries.set(name, spec);
+    entries.set(name, { spec, required: false });
   }
 
   return [...entries.entries()]
     .sort(([left], [right]) => left.localeCompare(right))
-    .map(([name, spec]) => ({ name, spec }));
+    .map(([name, value]) => ({
+      name,
+      spec: value.spec,
+      required: value.required,
+    }));
 }
 
 export function getRuntimeDependencies(pkgPath: string): string[] {
@@ -2627,7 +2648,18 @@ function main(): void {
         // Without this, a peerDep on an optional plugin drags its entire
         // deep tree (e.g. @solana/codecs* nested 8 levels) into the bundle
         // and trips assertTarSafeRuntimePaths.
-        if (!shouldBundleDiscoveredPackage(dep.name, alwaysBundled)) {
+        //
+        // Scoped to non-required edges. A HARD dependency of a package that is
+        // itself shipping must ship too: its dependent may import it eagerly,
+        // and dropping it produces a packaged runtime that throws
+        // `Cannot find module` at boot instead of degrading. That is how
+        // `plugin-personal-assistant` shipped without `plugin-calendar` /
+        // `plugin-blocker` and failed the post-ready app-route tail, pinning
+        // health `startup.phase` at "degraded" so the desktop UI never mounted.
+        if (
+          !dep.required &&
+          !shouldBundleDiscoveredPackage(dep.name, alwaysBundled)
+        ) {
           filteredOptionalPlugins.add(dep.name);
           continue;
         }

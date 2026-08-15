@@ -113,6 +113,7 @@
         "@elizaos/plugin-app-control": "workspace:*",
         "@elizaos/plugin-app-manager": "workspace:*",
         "@elizaos/plugin-browser": "workspace:*",
+        "@elizaos/plugin-calendar": "workspace:*",
         "@elizaos/plugin-capacitor-bridge": "workspace:*",
         "@elizaos/plugin-cloud-apps": "workspace:*",
         "@elizaos/plugin-coding-tools": "workspace:*",
