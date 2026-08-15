@@ -22,6 +22,7 @@
 
 import { ElizaError } from "../errors";
 import { resolveCanonicalOwnerIdForMessage } from "../roles";
+import { stringToUuid } from "../utils";
 import type { DisclosureGate } from "../types/components";
 import type { Memory } from "../types/memory";
 import { ChannelType, type UUID } from "../types/primitives";
@@ -194,6 +195,60 @@ function normalizeTtlMs(ttlMs: number | undefined): number {
 	return Math.floor(ttlMs);
 }
 
+/**
+ * Drop the runtime's own synthetic actors from a room's participant census
+ * before it becomes audience evidence. Trigger fires join their per-trigger
+ * entity (`stringToUuid("trigger-entity:" + triggerId)`) to the originating
+ * room as a durable participant, so the first reminder that fires in an owner
+ * DM permanently inflates the census past two and kills owner-exclusive
+ * disclosure there (#19999). Exclusion is self-certifying, never name-based:
+ * an entity is dropped only when its stored `metadata.triggerEntity.triggerId`
+ * recomputes to its own id (connector-minted entities derive their ids
+ * differently and cannot write this metadata), or when it is registered as a
+ * runtime-managed internal actor in this process. Entity lookups that fail
+ * keep the participant — the gate fails closed. Rooms already at two
+ * participants skip the lookup entirely.
+ */
+async function filterRuntimeInternalParticipants(
+	runtime: IAgentRuntime,
+	participants: readonly UUID[],
+): Promise<UUID[]> {
+	if (participants.length <= 2) {
+		return [...participants];
+	}
+	const kept = await Promise.all(
+		participants.map(async (participantId) => {
+			if (participantId === runtime.agentId) {
+				return participantId;
+			}
+			if (isRuntimeManagedInternalActor(runtime, participantId)) {
+				return null;
+			}
+			try {
+				const entity = await runtime.getEntityById(participantId);
+				const marker = (
+					entity?.metadata as
+						| { triggerEntity?: { triggerId?: unknown } }
+						| undefined
+				)?.triggerEntity;
+				if (
+					typeof marker?.triggerId === "string" &&
+					marker.triggerId.length > 0 &&
+					stringToUuid(`trigger-entity:${marker.triggerId}`) === participantId
+				) {
+					return null;
+				}
+			} catch {
+				// error-policy:J3 an unreadable entity stays in the census; the
+				// disclosure gate then fails closed on the inflated count rather
+				// than opening on unverified membership.
+			}
+			return participantId;
+		}),
+	);
+	return kept.filter((id): id is UUID => id !== null);
+}
+
 function canonicalParticipants(participants: readonly UUID[]): UUID[] {
 	return [
 		...new Set(participants.filter((id) => typeof id === "string" && id)),
@@ -331,11 +386,15 @@ export async function attestDeliveryAudienceFromCanonicalRoom(
 	options: { nowMs?: number; ttlMs?: number } = {},
 ): Promise<TrustedDeliveryAudience> {
 	const nowMs = options.nowMs ?? Date.now();
-	const [room, participants, canonicalOwnerEntityId] = await Promise.all([
+	const [room, rawParticipants, canonicalOwnerEntityId] = await Promise.all([
 		runtime.getRoom(message.roomId),
 		runtime.getParticipantsForRoom(message.roomId),
 		resolveCanonicalOwnerIdForMessage(runtime, message),
 	]);
+	const participants = await filterRuntimeInternalParticipants(
+		runtime,
+		rawParticipants,
+	);
 	const audience = createAudience({
 		kind: classifyCanonicalRoom(room?.type),
 		provenance: "canonical_room",
@@ -363,10 +422,14 @@ export async function attestAuthenticatedApiDeliveryAudience(
 	options: { nowMs?: number; ttlMs?: number } = {},
 ): Promise<TrustedDeliveryAudience> {
 	const nowMs = options.nowMs ?? Date.now();
-	const [canonicalOwnerEntityId, participants] = await Promise.all([
+	const [canonicalOwnerEntityId, rawParticipants] = await Promise.all([
 		resolveCanonicalOwnerIdForMessage(runtime, message),
 		runtime.getParticipantsForRoom(message.roomId),
 	]);
+	const participants = await filterRuntimeInternalParticipants(
+		runtime,
+		rawParticipants,
+	);
 	const ownerPrincipal =
 		principal.kind === "owner_session" || principal.kind === "owner_api_token";
 	const audience = createAudience({

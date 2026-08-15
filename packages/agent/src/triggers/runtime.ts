@@ -480,6 +480,37 @@ async function dispatchPrompt(
       userName: "trigger",
       source: room?.source ?? MESSAGE_SOURCE_TRIGGER_PROMPT,
     });
+    // Self-certifying provenance for the owner-exclusive disclosure census
+    // (#19999): the synthetic author stays a durable room participant after
+    // this turn, so the census must be able to verify — not trust — that it is
+    // runtime-made. The marker holds the triggerId whose hash IS this entity's
+    // id; connector-minted entities derive their ids differently and cannot
+    // reproduce the relationship.
+    try {
+      const authorEntity = await runtime.getEntityById(entityId);
+      const marker = (
+        authorEntity?.metadata as
+          | { triggerEntity?: { triggerId?: unknown } }
+          | undefined
+      )?.triggerEntity;
+      if (authorEntity && marker?.triggerId !== trigger.triggerId) {
+        await runtime.updateEntity({
+          ...authorEntity,
+          metadata: {
+            ...authorEntity.metadata,
+            triggerEntity: { triggerId: trigger.triggerId },
+          },
+        });
+      }
+    } catch (err) {
+      // error-policy:J7 a failed marker write must not block the fire; the
+      // census then keeps this participant and the disclosure gate stays
+      // strict until a later fire re-stamps it.
+      runtime.reportError("TriggerRuntime.entityProvenanceMarker", err, {
+        triggerId: trigger.triggerId,
+        entityId,
+      });
+    }
     const releaseInternalActor = registerRuntimeManagedInternalActor(
       runtime,
       entityId,

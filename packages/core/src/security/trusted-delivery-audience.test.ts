@@ -5,6 +5,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { IAgentRuntime, Memory, Room, UUID } from "../types";
 import { ChannelType } from "../types";
+import { stringToUuid } from "../utils";
 import {
 	attestAuthenticatedApiDeliveryAudience,
 	attestDeliveryAudienceFromCanonicalRoom,
@@ -394,5 +395,138 @@ describe("trusted delivery audience", () => {
 				code: "DELIVERY_AUDIENCE_LOOKUP_FAILED",
 			}),
 		);
+	});
+});
+
+describe("runtime-internal participant census (#19999)", () => {
+	const TRIGGER_ID = "39f2604e-4d3c-4ab3-94c0-ba6e85fe70cb";
+	const TRIGGER_ENTITY = stringToUuid(`trigger-entity:${TRIGGER_ID}`);
+
+	function censusHarness(entities: Map<UUID, { metadata?: unknown }>): {
+		runtime: IAgentRuntime;
+		getEntityById: ReturnType<typeof vi.fn>;
+		setParticipants: (next: UUID[]) => void;
+	} {
+		let participants: UUID[] = [OWNER, AGENT];
+		const getEntityById = vi.fn(async (id: UUID) => {
+			const entry = entities.get(id);
+			if (!entry) {
+				throw new Error(`no entity ${id}`);
+			}
+			return { id, ...entry };
+		});
+		const runtime = {
+			agentId: AGENT,
+			getRoom: vi.fn(async () => ({
+				id: ROOM,
+				agentId: AGENT,
+				type: ChannelType.DM,
+				source: "test",
+			})),
+			getParticipantsForRoom: vi.fn(async () => [...participants]),
+			getEntityById,
+			getSetting: vi.fn((key: string) =>
+				key === "ELIZA_ADMIN_ENTITY_ID" ? OWNER : undefined,
+			),
+			reportError: vi.fn(),
+			logger: {
+				debug: vi.fn(),
+				info: vi.fn(),
+				warn: vi.fn(),
+				error: vi.fn(),
+			},
+		} as unknown as IAgentRuntime;
+		return {
+			runtime,
+			getEntityById,
+			setParticipants: (next) => {
+				participants = next;
+			},
+		};
+	}
+
+	it("a self-certified trigger entity is excluded and owner disclosure survives a fired reminder", async () => {
+		const { runtime, setParticipants } = censusHarness(
+			new Map([
+				[
+					TRIGGER_ENTITY,
+					{ metadata: { triggerEntity: { triggerId: TRIGGER_ID } } },
+				],
+			]),
+		);
+		setParticipants([OWNER, AGENT, TRIGGER_ENTITY]);
+		const turn = message();
+		await attestAuthenticatedApiDeliveryAudience(runtime, turn, {
+			kind: "owner_api_token",
+			principalId: "owner-token",
+		});
+		expect(evaluateOwnerExclusiveDisclosure(turn)).toMatchObject({
+			allowed: true,
+		});
+	});
+
+	it("a forged marker whose triggerId does not hash to the entity id keeps the participant and fails closed", async () => {
+		const { runtime, setParticipants } = censusHarness(
+			new Map([
+				// GUEST claims to be a trigger entity, but no triggerId hashes to
+				// GUEST's id — the census must not take the metadata's word for it.
+				[GUEST, { metadata: { triggerEntity: { triggerId: TRIGGER_ID } } }],
+			]),
+		);
+		setParticipants([OWNER, AGENT, GUEST]);
+		const turn = message();
+		await attestAuthenticatedApiDeliveryAudience(runtime, turn, {
+			kind: "owner_api_token",
+			principalId: "owner-token",
+		});
+		expect(evaluateOwnerExclusiveDisclosure(turn)).toMatchObject({
+			allowed: false,
+			reason: "participant_mismatch",
+		});
+	});
+
+	it("entity lookup failures keep the participant and the gate fails closed", async () => {
+		const { runtime, setParticipants } = censusHarness(new Map());
+		setParticipants([OWNER, AGENT, TRIGGER_ENTITY]);
+		const turn = message();
+		await attestAuthenticatedApiDeliveryAudience(runtime, turn, {
+			kind: "owner_api_token",
+			principalId: "owner-token",
+		});
+		expect(evaluateOwnerExclusiveDisclosure(turn)).toMatchObject({
+			allowed: false,
+			reason: "participant_mismatch",
+		});
+	});
+
+	it("two-participant rooms never pay for entity lookups", async () => {
+		const { runtime, getEntityById } = censusHarness(new Map());
+		const turn = message();
+		await attestAuthenticatedApiDeliveryAudience(runtime, turn, {
+			kind: "owner_api_token",
+			principalId: "owner-token",
+		});
+		expect(getEntityById).not.toHaveBeenCalled();
+		expect(evaluateOwnerExclusiveDisclosure(turn)).toMatchObject({
+			allowed: true,
+		});
+	});
+
+	it("a registered runtime-managed internal actor is excluded without a marker", async () => {
+		const { runtime, setParticipants } = censusHarness(new Map());
+		setParticipants([OWNER, AGENT, GUEST]);
+		const release = registerRuntimeManagedInternalActor(runtime, GUEST);
+		try {
+			const turn = message();
+			await attestAuthenticatedApiDeliveryAudience(runtime, turn, {
+				kind: "owner_api_token",
+				principalId: "owner-token",
+			});
+			expect(evaluateOwnerExclusiveDisclosure(turn)).toMatchObject({
+				allowed: true,
+			});
+		} finally {
+			release();
+		}
 	});
 });
