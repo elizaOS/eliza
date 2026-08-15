@@ -6745,6 +6745,8 @@
   "cloud.paymentRequest.cancelled": "Cancelled",
   "cloud.paymentRequest.failed": "Failed",
   "cloud.paymentRequest.expired": "Expired",
+  "cloud.paymentRequest.invalidExpiry": "This payment request has an invalid expiry date and cannot be paid.",
+  "cloud.paymentRequest.invalidExpiryShort": "Invalid expiry date",
   "cloud.paymentRequest.pendingExpires": "Pending - expires {{date}}",
   "cloud.paymentRequest.pending": "Pending",
   "cloud.paymentRequest.alreadyPaid": "Already paid",
