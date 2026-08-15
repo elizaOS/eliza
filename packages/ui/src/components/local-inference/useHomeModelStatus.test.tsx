@@ -185,15 +185,41 @@ describe("useHomeModelStatus", () => {
       textReadiness: {
         slots: {
           TEXT_SMALL: {
-            status: "missing",
-            modelId: "eliza-1-2b",
-            modelName: "eliza-1-2b",
+            slot: "TEXT_SMALL",
+            assigned: true,
+            assignedModelId: "eliza-1-2b",
+            displayName: "Eliza 1 2B",
+            primaryDownloaded: false,
+            downloaded: false,
+            active: false,
+            ready: false,
+            state: "missing",
+            requiredModelIds: ["eliza-1-2b"],
+            missingModelIds: ["eliza-1-2b"],
+            installedBytes: 0,
+            expectedBytes: 0,
+            download: {
+              state: "missing",
+              receivedBytes: 0,
+              totalBytes: 0,
+              percent: null,
+              bytesPerSec: 0,
+              etaMs: null,
+              updatedAt: null,
+              errors: [],
+            },
+            errors: [],
           },
         },
       },
     });
 
     const { result } = renderHook(() => useHomeModelStatus());
+
+    await waitFor(() => {
+      expect(result.current.kind).toBe("missing");
+      expect(result.current.blocksSend).toBe(true);
+    });
 
     await waitFor(
       () => {
