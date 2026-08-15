@@ -11,8 +11,10 @@ import * as path from "node:path";
 import { promisify } from "node:util";
 import {
   type ActionResult,
+  AgentRuntime,
   CAPABILITY_ROUTER_SERVICE_TYPE,
   CapabilityError,
+  type Character,
   logger as coreLogger,
   type ElizaCapabilityRouter,
   type IAgentRuntime,
@@ -125,6 +127,75 @@ interface RuntimeOptions {
   configuredSecret?: string;
 }
 
+type RuntimeSecretFragment = Parameters<
+  IAgentRuntime["locateConfiguredSecretFragmentTaint"]
+>[0][number];
+type RuntimeSecretTaint = ReturnType<
+  IAgentRuntime["locateConfiguredSecretFragmentTaint"]
+>;
+
+function locateTestSecretTaint(
+  fragments: readonly RuntimeSecretFragment[],
+  secret: string | undefined,
+): RuntimeSecretTaint {
+  if (!secret || secret.length < 8) {
+    return { status: "complete", ranges: [], maxSecretLength: 0 };
+  }
+  const found: Array<{
+    source: string;
+    startOffset: number;
+    endOffset: number;
+  }> = [];
+  const visit = (
+    fragmentIndex: number,
+    secretOffset: number,
+    path: typeof found,
+  ): void => {
+    const fragment = fragments[fragmentIndex];
+    if (!fragment) return;
+    for (let end = secretOffset + 1; end <= secret.length; end += 1) {
+      const segment = secret.slice(secretOffset, end);
+      let occurrence = fragment.text.indexOf(segment);
+      while (occurrence >= 0) {
+        const nextPath = [
+          ...path,
+          {
+            source: fragment.source,
+            startOffset: fragment.startOffset + occurrence,
+            endOffset: fragment.startOffset + occurrence + segment.length,
+          },
+        ];
+        if (end === secret.length) found.push(...nextPath);
+        else visit(fragmentIndex + 1, end, nextPath);
+        occurrence = fragment.text.indexOf(segment, occurrence + 1);
+      }
+    }
+  };
+  for (let start = 0; start < fragments.length; start += 1) {
+    visit(start, 0, []);
+  }
+  const ranges = found
+    .sort(
+      (left, right) =>
+        left.source.localeCompare(right.source) ||
+        left.startOffset - right.startOffset ||
+        left.endOffset - right.endOffset,
+    )
+    .reduce<typeof found>((merged, range) => {
+      const previous = merged.at(-1);
+      if (
+        previous?.source === range.source &&
+        range.startOffset <= previous.endOffset
+      ) {
+        previous.endOffset = Math.max(previous.endOffset, range.endOffset);
+      } else {
+        merged.push({ ...range });
+      }
+      return merged;
+    }, []);
+  return { status: "complete", ranges, maxSecretLength: secret.length };
+}
+
 function requireActionResult(result: ActionResult | undefined): ActionResult {
   if (!result) throw new Error("Expected SHELL action result");
   return result;
@@ -162,6 +233,10 @@ async function makeRuntime(opts: RuntimeOptions = {}): Promise<{
       opts.configuredSecret
         ? text.replaceAll(opts.configuredSecret, "[REDACTED:TEST_SECRET]")
         : text,
+    ),
+    locateConfiguredSecretFragmentTaint: vi.fn(
+      (fragments: readonly RuntimeSecretFragment[]) =>
+        locateTestSecretTaint(fragments, opts.configuredSecret),
     ),
   } as IAgentRuntime;
 
@@ -2037,7 +2112,304 @@ describeIfPosix("shellAction", () => {
         >
       ).startOffset,
     ).toBe(3);
-    expect(partialPoll.text).toContain("[REDACTED:chunk-boundary]");
+    expect(partialPoll.text).toContain("[REDACTED:configured-secret-fragment]");
+  });
+
+  it("maps a configured secret across ordered stdout and stderr fragments without breaking offsets", async () => {
+    const secret = "marigold9";
+    const { runtime } = await makeRuntime({ configuredSecret: secret });
+    const secretOwner = new AgentRuntime({
+      character: {
+        name: "fragment-redaction-integration",
+        settings: { secrets: { TEST_SECRET: secret } },
+      } as Character,
+    });
+    vi.mocked(runtime.locateConfiguredSecretFragmentTaint).mockImplementation(
+      (fragments: readonly RuntimeSecretFragment[]) =>
+        secretOwner.locateConfiguredSecretFragmentTaint(fragments),
+    );
+    const actor = makeMessage();
+    const command = [
+      "printf '\\x6d\\x61\\x72\\x69X'",
+      "sleep 0.05",
+      "printf '\\x67\\x6f\\x6c\\x64\\x39' >&2",
+      "sleep 0.05",
+      "printf 'later-safe'",
+    ].join("; ");
+    const posts: Array<{ text: string }> = [];
+    const callback = async (content: unknown) => {
+      posts.push(content as { text: string });
+      return [];
+    };
+    const start = requireActionResult(
+      await shellAction.handler?.(
+        runtime,
+        actor,
+        undefined,
+        { action: "start_background", command },
+        callback,
+      ),
+    );
+    expect((start.data as Record<string, unknown>).command).toBe(command);
+    const handle = (start.data as Record<string, unknown>).handle as string;
+    const poll = await pollUntil(
+      runtime,
+      actor,
+      handle,
+      (data) => data.status === "exited",
+    );
+    const data = poll.data as Record<string, unknown>;
+    const stdout = data.stdout as Record<string, unknown>;
+    const stderr = data.stderr as Record<string, unknown>;
+
+    expect(JSON.stringify({ stdout, stderr })).not.toContain("mari");
+    expect(JSON.stringify({ stdout, stderr })).not.toContain("gold9");
+    expect(stdout.text).toContain("[REDACTED:configured-secret-fragment]");
+    expect(stdout.text).toContain("Xlater-safe");
+    expect(stderr.text).toContain("[REDACTED:configured-secret-fragment]");
+    expect(stdout.startOffset).toBe(0);
+    expect(stdout.endOffset).toBe("mariXlater-safe".length);
+    expect(stderr.startOffset).toBe(0);
+    expect(stderr.endOffset).toBe("gold9".length);
+    expect(
+      vi
+        .mocked(runtime.locateConfiguredSecretFragmentTaint)
+        .mock.calls.some(
+          ([fragments]) =>
+            fragments.map((fragment) => fragment.source).join(",") ===
+              "stdout,stderr,stdout" &&
+            fragments[0]?.startOffset === 0 &&
+            fragments[1]?.startOffset === 0 &&
+            fragments[2]?.startOffset === "mariX".length,
+        ),
+    ).toBe(true);
+
+    const repeated = requireActionResult(
+      await shellAction.handler?.(
+        runtime,
+        actor,
+        undefined,
+        {
+          action: "poll_background",
+          handle,
+          stdout_offset: 0,
+          stderr_offset: 0,
+        },
+        callback,
+      ),
+    );
+    expect(repeated.data).toMatchObject({ stdout, stderr });
+    const list = requireActionResult(
+      await shellAction.handler?.(
+        runtime,
+        actor,
+        undefined,
+        { action: "list_background" },
+        callback,
+      ),
+    );
+    expect(JSON.stringify({ repeated, list, posts })).not.toContain("mari");
+    expect(JSON.stringify({ repeated, list, posts })).not.toContain("gold9");
+
+    const afterTaint = requireActionResult(
+      await shellAction.handler?.(runtime, actor, undefined, {
+        action: "poll_background",
+        handle,
+        stdout_offset: 4,
+        stderr_offset: 99,
+      }),
+    );
+    const afterData = afterTaint.data as Record<string, unknown>;
+    expect(afterData.stdout).toMatchObject({
+      text: "Xlater-safe",
+      startOffset: 4,
+      endOffset: "mariXlater-safe".length,
+    });
+    expect(afterData.stderr).toMatchObject({
+      text: "",
+      startOffset: "gold9".length,
+      endOffset: "gold9".length,
+    });
+    expect(JSON.stringify(afterTaint)).not.toContain(secret);
+  });
+
+  it("keeps a split configured secret tainted through tiny visible caps", async () => {
+    const secret = "marigold9";
+    const { runtime } = await makeRuntime({
+      configuredSecret: secret,
+      backgroundBufferChars: 5,
+    });
+    const actor = makeMessage();
+    const start = requireActionResult(
+      await shellAction.handler?.(runtime, actor, undefined, {
+        action: "start_background",
+        command:
+          "printf '\\x6d\\x61\\x72\\x69X'; sleep 0.05; printf '\\x67\\x6f\\x6c\\x64\\x39' >&2; sleep 0.05; printf 'later-safe'",
+      }),
+    );
+    const handle = (start.data as Record<string, unknown>).handle as string;
+    const poll = await pollUntil(
+      runtime,
+      actor,
+      handle,
+      (data) => data.status === "exited",
+    );
+    const data = poll.data as Record<string, unknown>;
+
+    expect(
+      JSON.stringify({ stdout: data.stdout, stderr: data.stderr }),
+    ).not.toContain("mari");
+    expect(
+      JSON.stringify({ stdout: data.stdout, stderr: data.stderr }),
+    ).not.toContain("gold9");
+    expect(data.stdout).toMatchObject({
+      text: "-safe",
+      startOffset: "mariXlater-safe".length - 5,
+      endOffset: "mariXlater-safe".length,
+    });
+    expect((data.stderr as Record<string, unknown>).text).toContain(
+      "[REDACTED:configured-secret-fragment]",
+    );
+  });
+
+  it("preserves same-stream event boundaries around harmless bytes", async () => {
+    const secret = "marigold9";
+    const { runtime } = await makeRuntime({ configuredSecret: secret });
+    const actor = makeMessage();
+    const start = requireActionResult(
+      await shellAction.handler?.(runtime, actor, undefined, {
+        action: "start_background",
+        command:
+          "printf '\\x6d\\x61\\x72\\x69X'; sleep 0.05; printf '\\x67\\x6f\\x6c\\x64\\x39'; sleep 0.05; printf 'later-safe'",
+      }),
+    );
+    const handle = (start.data as Record<string, unknown>).handle as string;
+    const poll = await pollUntil(
+      runtime,
+      actor,
+      handle,
+      (data) => data.status === "exited",
+    );
+    const stdout = (poll.data as Record<string, unknown>).stdout as Record<
+      string,
+      unknown
+    >;
+
+    expect(stdout.startOffset).toBe(0);
+    expect(stdout.endOffset).toBe("mariXgold9later-safe".length);
+    expect(stdout.text).toContain("X");
+    expect(stdout.text).toContain("later-safe");
+    expect(JSON.stringify(stdout)).not.toContain("mari");
+    expect(JSON.stringify(stdout)).not.toContain("gold9");
+    expect(
+      vi
+        .mocked(runtime.locateConfiguredSecretFragmentTaint)
+        .mock.calls.some(
+          ([fragments]) =>
+            fragments.map((fragment) => fragment.source).join(",") ===
+            "stdout,stdout,stdout",
+        ),
+    ).toBe(true);
+  });
+
+  it("taints both public stream presentation orders", async () => {
+    const secret = "marigold9";
+    const { runtime } = await makeRuntime({ configuredSecret: secret });
+    const actor = makeMessage();
+    const start = requireActionResult(
+      await shellAction.handler?.(runtime, actor, undefined, {
+        action: "start_background",
+        command:
+          "printf '\\x67\\x6f\\x6c\\x64\\x39' >&2; sleep 0.05; printf '\\x6d\\x61\\x72\\x69X'",
+      }),
+    );
+    const handle = (start.data as Record<string, unknown>).handle as string;
+    const poll = await pollUntil(
+      runtime,
+      actor,
+      handle,
+      (data) => data.status === "exited",
+    );
+    const data = poll.data as Record<string, unknown>;
+    const exposed = JSON.stringify({
+      stdout: data.stdout,
+      stderr: data.stderr,
+    });
+
+    expect(exposed).not.toContain("mari");
+    expect(exposed).not.toContain("gold9");
+    expect((data.stdout as Record<string, unknown>).text).toContain(
+      "[REDACTED:configured-secret-fragment]",
+    );
+    expect((data.stderr as Record<string, unknown>).text).toContain(
+      "[REDACTED:configured-secret-fragment]",
+    );
+  });
+
+  it("fails closed when the runtime cannot complete fragment analysis", async () => {
+    const { runtime } = await makeRuntime();
+    vi.mocked(runtime.locateConfiguredSecretFragmentTaint).mockReturnValue({
+      status: "incomplete",
+      reason: "resource-limit",
+      ranges: [],
+      maxSecretLength: 128,
+    });
+    const actor = makeMessage();
+    const start = requireActionResult(
+      await shellAction.handler?.(runtime, actor, undefined, {
+        action: "start_background",
+        command: "printf 'safe-output'",
+      }),
+    );
+    const handle = (start.data as Record<string, unknown>).handle as string;
+    const poll = await pollUntil(
+      runtime,
+      actor,
+      handle,
+      (data) => data.status === "exited",
+    );
+
+    expect(poll.text).toContain("[REDACTED:configured-secret-fragment]");
+    expect(poll.text).not.toContain("safe-output");
+  });
+
+  it("bounds an incomplete scan and releases later safe output", async () => {
+    const { runtime } = await makeRuntime();
+    vi.mocked(runtime.locateConfiguredSecretFragmentTaint).mockImplementation(
+      (fragments: readonly RuntimeSecretFragment[]) =>
+        fragments.some((fragment) => fragment.text.includes("unsafe"))
+          ? {
+              status: "incomplete",
+              reason: "resource-limit",
+              ranges: [],
+              maxSecretLength: 8,
+            }
+          : { status: "complete", ranges: [], maxSecretLength: 8 },
+    );
+    const actor = makeMessage();
+    const start = requireActionResult(
+      await shellAction.handler?.(runtime, actor, undefined, {
+        action: "start_background",
+        command:
+          "printf 'unsafe'; sleep 0.05; printf '12345678'; sleep 0.05; printf 'later-safe'",
+      }),
+    );
+    const handle = (start.data as Record<string, unknown>).handle as string;
+    const poll = await pollUntil(
+      runtime,
+      actor,
+      handle,
+      (data) => data.status === "exited",
+    );
+    const stdout = (poll.data as Record<string, unknown>).stdout as Record<
+      string,
+      unknown
+    >;
+
+    expect(stdout.text).toContain("[REDACTED:configured-secret-fragment]");
+    expect(stdout.text).toContain("later-safe");
+    expect(stdout.text).not.toContain("unsafe");
+    expect(stdout.text).not.toContain("12345678");
   });
 
   it("keeps an eviction-split configured secret inside the private overlap", async () => {
@@ -2064,7 +2436,7 @@ describeIfPosix("shellAction", () => {
       unknown
     >;
 
-    expect(stdout.text).toContain("[REDACTED:chunk-boundary]");
+    expect(stdout.text).toContain("[REDACTED:configured-secret-fragment]");
     expect(stdout.startOffset).toBe(30);
     expect(JSON.stringify(poll)).not.toContain(secret);
     expect(JSON.stringify(poll)).not.toContain(secret.slice(4));
@@ -2079,6 +2451,10 @@ describeIfPosix("shellAction", () => {
     };
     vi.mocked(runtime.redactSecrets).mockImplementation((text: string) =>
       text.replaceAll(rotatedSecret, "[REDACTED:ROTATED_SECRET]"),
+    );
+    vi.mocked(runtime.locateConfiguredSecretFragmentTaint).mockImplementation(
+      (fragments: readonly RuntimeSecretFragment[]) =>
+        locateTestSecretTaint(fragments, rotatedSecret),
     );
     const actor = makeMessage();
     const start = requireActionResult(
@@ -2096,8 +2472,67 @@ describeIfPosix("shellAction", () => {
       );
     });
 
-    expect(poll.text).toContain("[REDACTED:chunk-boundary]");
+    expect(poll.text).toContain("[REDACTED:configured-secret-fragment]");
     expect(JSON.stringify(poll)).not.toContain(rotatedSecret.slice(-12));
+  });
+
+  it("rescans retained cross-stream output when a secret rotates before the first poll", async () => {
+    const rotatedSecret = "marigold9";
+    const { runtime, backgroundShell } = await makeRuntime();
+    const actor = makeMessage();
+    const start = requireActionResult(
+      await shellAction.handler?.(runtime, actor, undefined, {
+        action: "start_background",
+        command:
+          "printf '\\x6d\\x61\\x72\\x69X'; sleep 0.05; printf '\\x67\\x6f\\x6c\\x64\\x39' >&2",
+      }),
+    );
+    const handle = (start.data as Record<string, unknown>).handle as string;
+    for (let attempt = 0; attempt < 40; attempt += 1) {
+      const session = backgroundShell
+        .list(String(actor.roomId))
+        .find((candidate) => candidate.handle === handle);
+      if (session?.status === "exited") break;
+      await delay(25);
+    }
+    expect(
+      backgroundShell
+        .list(String(actor.roomId))
+        .find((candidate) => candidate.handle === handle)?.status,
+    ).toBe("exited");
+
+    runtime.character.settings = {
+      secrets: { ROTATED_SECRET: rotatedSecret },
+    };
+    vi.mocked(runtime.redactSecrets).mockImplementation((text: string) =>
+      text.replaceAll(rotatedSecret, "[REDACTED:ROTATED_SECRET]"),
+    );
+    vi.mocked(runtime.locateConfiguredSecretFragmentTaint).mockImplementation(
+      (fragments: readonly RuntimeSecretFragment[]) =>
+        locateTestSecretTaint(fragments, rotatedSecret),
+    );
+
+    const poll = requireActionResult(
+      await shellAction.handler?.(runtime, actor, undefined, {
+        action: "poll_background",
+        handle,
+        stdout_offset: 0,
+        stderr_offset: 0,
+      }),
+    );
+    const data = poll.data as Record<string, unknown>;
+    expect(
+      JSON.stringify({ stdout: data.stdout, stderr: data.stderr }),
+    ).not.toContain("mari");
+    expect(
+      JSON.stringify({ stdout: data.stdout, stderr: data.stderr }),
+    ).not.toContain("gold9");
+    expect((data.stdout as Record<string, unknown>).text).toContain(
+      "[REDACTED:configured-secret-fragment]",
+    );
+    expect((data.stderr as Record<string, unknown>).text).toContain(
+      "[REDACTED:configured-secret-fragment]",
+    );
   });
 });
 
