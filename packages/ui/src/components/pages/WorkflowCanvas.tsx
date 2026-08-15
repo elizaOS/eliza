@@ -10,6 +10,7 @@ import {
   Position,
   ReactFlow,
 } from "@xyflow/react";
+import "@xyflow/react/dist/style.css";
 import {
   Bot,
   Check,
