@@ -563,7 +563,7 @@ describe("SharedRuntimeChatService", () => {
     });
   });
 
-  test("enables reminders only for platform-funded turns with trusted Telegram delivery", async () => {
+  test("enables reminders only for platform-funded turns with trusted private delivery", async () => {
     const service = new SharedRuntimeChatService();
     const trustedRpc = {
       ...rpc,
@@ -606,6 +606,34 @@ describe("SharedRuntimeChatService", () => {
       agentKey: agent.id,
       todos: expectedTodoExecution,
     });
+
+    for (const delivery of [
+      {
+        platform: "blooio",
+        project: "eliza-app",
+        phoneNumber: "+15551234567",
+      },
+      {
+        platform: "discord",
+        discordUserId: "123456789012345678",
+      },
+    ] as const) {
+      await service.bridge(
+        agent,
+        {
+          ...rpc,
+          params: { ...rpc.params, trustedDelivery: delivery },
+        },
+        {
+          ...harness(),
+          funding: "platform",
+          executionEngine: "eliza-runtime",
+        },
+      );
+      expect(lastTurnInput?.execution).toMatchObject({
+        reminders: { delivery },
+      });
+    }
   });
 
   test("rate denial and policy warming stop before billing admission or provider dispatch", async () => {

@@ -46,12 +46,20 @@ class MemoryRedis implements GatewayRedis {
 
 const originalFetch = globalThis.fetch;
 const originalToken = process.env.ELIZA_APP_TELEGRAM_BOT_TOKEN;
+const originalBlooioKey = process.env.ELIZA_APP_BLOOIO_API_KEY;
+const originalBlooioNumber = process.env.ELIZA_APP_BLOOIO_PHONE_NUMBER;
 
 afterEach(() => {
   globalThis.fetch = originalFetch;
   if (originalToken === undefined)
     delete process.env.ELIZA_APP_TELEGRAM_BOT_TOKEN;
   else process.env.ELIZA_APP_TELEGRAM_BOT_TOKEN = originalToken;
+  if (originalBlooioKey === undefined)
+    delete process.env.ELIZA_APP_BLOOIO_API_KEY;
+  else process.env.ELIZA_APP_BLOOIO_API_KEY = originalBlooioKey;
+  if (originalBlooioNumber === undefined)
+    delete process.env.ELIZA_APP_BLOOIO_PHONE_NUMBER;
+  else process.env.ELIZA_APP_BLOOIO_PHONE_NUMBER = originalBlooioNumber;
   mock.restore();
 });
 
@@ -114,6 +122,52 @@ describe("internal proactive delivery", () => {
         parse_mode: "Markdown",
       },
     ]);
+  });
+
+  test("delivers Blooio iMessage once with the provider idempotency key and receipt", async () => {
+    process.env.ELIZA_APP_BLOOIO_API_KEY = "blooio-test-key";
+    process.env.ELIZA_APP_BLOOIO_PHONE_NUMBER = "+15550001111";
+    const redis = new MemoryRedis();
+    const requests: Request[] = [];
+    globalThis.fetch = mock(async (input, init) => {
+      requests.push(new Request(input, init));
+      return Response.json({ id: "blooio-message-1" });
+    }) as typeof fetch;
+    const delivery = request({
+      platform: "blooio",
+      phoneNumber: "+15551234567",
+    });
+
+    const first = await deliverInternalMessage(delivery, dependencies(redis));
+    const replay = await deliverInternalMessage(
+      request({
+        platform: "blooio",
+        phoneNumber: "+15551234567",
+      }),
+      dependencies(redis),
+    );
+
+    expect(first.status).toBe(200);
+    await expect(first.json()).resolves.toMatchObject({
+      success: true,
+      replayed: false,
+      providerMessageIds: ["blooio-message-1"],
+    });
+    await expect(replay.json()).resolves.toMatchObject({
+      success: true,
+      replayed: true,
+      providerMessageIds: ["blooio-message-1"],
+    });
+    expect(requests).toHaveLength(1);
+    expect(requests[0]?.url).toBe("https://api.blooio.com/v4/messages");
+    expect(requests[0]?.headers.get("Idempotency-Key")).toBe(
+      "gw-reply-task-1:2026-08-14T20:00:00.000Z",
+    );
+    await expect(requests[0]?.json()).resolves.toEqual({
+      to: "+15551234567",
+      from: "+15550001111",
+      text: "take a break",
+    });
   });
 
   test("rejects a concurrent duplicate while the first send owns delivery", async () => {
