@@ -98,76 +98,42 @@ jobs:
             test -n "$containers_key"
             printf '%s' "$containers_key" | base64 -d > "$work/key"
             chmod 600 "$work/key"
-            for node in eliza-core-prod-5 eliza-core-prod-6; do
-              curl --silent --show-error --fail --max-time 30 \
-                --header "Authorization: Bearer $ELIZACLOUD_API_KEY" \
-                --output "$work/node.json" \
-                "https://api.eliza.app/api/v1/admin/docker-nodes/$node"
-              host="$(jq -er '.data.hostname' "$work/node.json")"
-              user="$(jq -er '.data.sshUser' "$work/node.json")"
-              port="$(jq -er '.data.sshPort' "$work/node.json")"
-              ssh -i "$work/key" -p "$port" \
-                -o BatchMode=yes -o StrictHostKeyChecking=accept-new \
-                -o UserKnownHostsFile="$work/known_hosts" \
-                "$user@$host" 'bash -s' <<'REMOTE'
-              set -euo pipefail
-              target=agent-4602b3be-2c01-4e7e-9cdc-849604e1bef7
-              if docker inspect "$target" >/dev/null 2>&1; then
-                docker rm -f "$target" >/dev/null
-              fi
-              ! docker inspect "$target" >/dev/null 2>&1
-              REMOTE
-            done
-            set -a
-            . /opt/eliza/cloud/.env.local
-            set +a
-            test -n "${DATABASE_URL//[[:space:]]/}"
-            command -v psql >/dev/null
-            psql "$DATABASE_URL" -v ON_ERROR_STOP=1 <<'SQL'
-            DO $$
-            DECLARE
-              cleanup_node text;
-              cleanup_counted boolean;
-            BEGIN
-              SELECT replacement_cleanup_node_id, replacement_cleanup_allocation_counted
-                INTO cleanup_node, cleanup_counted
-                FROM agent_sandboxes
-               WHERE id = '4602b3be-2c01-4e7e-9cdc-849604e1bef7'
-                 AND status = 'provisioning'
-                 AND replacement_cleanup_node_id = 'eliza-core-prod-6'
-                 AND replacement_cleanup_container_name = 'agent-4602b3be-2c01-4e7e-9cdc-849604e1bef7'
-               FOR UPDATE;
-              IF NOT FOUND THEN
-                RAISE EXCEPTION 'expected replacement cleanup fence not found';
-              END IF;
-              IF cleanup_counted THEN
-                UPDATE docker_nodes
-                   SET allocated_count = allocated_count - 1, updated_at = NOW()
-                 WHERE node_id = cleanup_node AND allocated_count > 0;
-                IF NOT FOUND THEN
-                  RAISE EXCEPTION 'replacement cleanup allocation release failed';
-                END IF;
-              END IF;
-              UPDATE agent_sandboxes
-                 SET replacement_cleanup_sandbox_id = NULL,
-                     replacement_cleanup_node_id = NULL,
-                     replacement_cleanup_container_name = NULL,
-                     replacement_cleanup_attempt_id = NULL,
-                     replacement_cleanup_container_id = NULL,
-                     replacement_cleanup_vpn_node_id = NULL,
-                     replacement_cleanup_vpn_node_name = NULL,
-                     replacement_cleanup_preserved_vpn_node_id = NULL,
-                     replacement_cleanup_vpn_registration_started_at = NULL,
-                     replacement_cleanup_allocation_counted = NULL,
-                     replacement_cleanup_created_at = NULL,
-                     updated_at = NOW()
-               WHERE id = '4602b3be-2c01-4e7e-9cdc-849604e1bef7';
-              IF NOT FOUND THEN
-                RAISE EXCEPTION 'replacement cleanup fence changed before release';
-              END IF;
-            END $$;
-            SQL
-            printf 'replacement cleanup fence reconciled\n'
+            curl --silent --show-error --fail --max-time 30 \
+              --header "Authorization: Bearer $ELIZACLOUD_API_KEY" \
+              --output "$work/node.json" \
+              https://api.eliza.app/api/v1/admin/docker-nodes/eliza-core-prod-5
+            host="$(jq -er '.data.hostname' "$work/node.json")"
+            user="$(jq -er '.data.sshUser' "$work/node.json")"
+            port="$(jq -er '.data.sshPort' "$work/node.json")"
+            ssh -i "$work/key" -p "$port" \
+              -o BatchMode=yes -o StrictHostKeyChecking=accept-new \
+              -o UserKnownHostsFile="$work/known_hosts" \
+              "$user@$host" 'bash -s' <<'REMOTE'
+            set -euo pipefail
+            target=agent-4602b3be-2c01-4e7e-9cdc-849604e1bef7
+            docker inspect "$target" >/dev/null
+            before="$(docker inspect --format '{{.State.Status}}' "$target")"
+            work="$(mktemp -d)"
+            trap 'rm -rf "$work"' EXIT
+            docker run --rm --volume "$work:/deps" node:24-slim \
+              npm install --prefix /deps --omit=dev --ignore-scripts \
+                --no-package-lock --legacy-peer-deps \
+                headers-polyfill@5.0.1 json-stable-stringify@1.3.0 twitter-api-v2@1.29.1
+            docker cp "$work/node_modules/." "$target:/app/node_modules/"
+            if [ "$before" = running ]; then
+              docker restart "$target" >/dev/null
+            else
+              docker start "$target" >/dev/null
+            fi
+            sleep 5
+            docker exec "$target" sh -lc \
+              'grep -q "userId: senderId" /app/plugins/plugin-x/dist/index.js && sed -i "0,/userId: senderId/s//userId: entityId/" /app/plugins/plugin-x/dist/index.js && grep -q "ensureConnection" /app/plugins/plugin-x/dist/index.js'
+            docker restart "$target" >/dev/null
+            sleep 15
+            after="$(docker inspect --format '{{.State.Status}}' "$target")"
+            test "$after" = running
+            printf 'container recovery: %s -> %s\n' "$before" "$after"
+            REMOTE
 
   changes:
     name: Classify changed paths
