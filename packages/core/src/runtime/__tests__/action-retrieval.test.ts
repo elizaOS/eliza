@@ -988,3 +988,41 @@ describe("F21 alias rows: email + terminal candidates bind to real parents", () 
 		]);
 	});
 });
+describe("F21 aliases survive production retrieval topology filtering", () => {
+	it.each([
+		["EMAIL", "MESSAGE"],
+		["EMAIL_SEARCH", "INBOX"],
+		["TERMINAL_COMMAND", "SHELL"],
+		["RUN_COMMAND", "TERMINAL_SHELL"],
+	])("binds %s to the available %s parent", (candidate, parentName) => {
+		const catalog = buildActionCatalog([
+			{
+				name: parentName,
+				description: "A registered runtime surface with no candidate-name overlap.",
+			},
+		]);
+		const response = retrieveActions({
+			catalog,
+			messageText: "",
+			candidateActions: [candidate],
+		});
+
+		expect(response.results[0]).toMatchObject({ name: parentName });
+	});
+
+	it("keeps a registered EMAIL parent authoritative over its fallback aliases", () => {
+		const catalog = buildActionCatalog([
+			{ name: "EMAIL", description: "Direct email capability." },
+			{ name: "MESSAGE", description: "Per-channel message triage." },
+			{ name: "INBOX", description: "Cross-channel inbox triage." },
+		]);
+		const response = retrieveActions({
+			catalog,
+			messageText: "",
+			candidateActions: ["EMAIL"],
+		});
+
+		expect(response.query.parentActionHints).toEqual(["EMAIL"]);
+		expect(response.results[0]).toMatchObject({ name: "EMAIL" });
+	});
+});
