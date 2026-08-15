@@ -104,6 +104,16 @@ const WORKER_ENTRY = existsSync(SOURCE_WORKER_ENTRY)
 	: DIST_WORKER_ENTRY;
 const SHUTDOWN_GRACE_MS = 5_000;
 
+class WorkerBootError extends Error {
+	constructor(
+		readonly kind: "no-worker-surface" | "error",
+		message: string,
+	) {
+		super(message);
+		this.name = "WorkerBootError";
+	}
+}
+
 function readString(value: unknown): string | null {
 	if (typeof value !== "string") return null;
 	const trimmed = value.trim();
@@ -288,6 +298,13 @@ export class AppWorkerHostService extends Service {
 	 * Look up the registered entry and spawn a worker if the entry
 	 * declares isolation:"worker". Returns the spawn snapshot or a
 	 * structured reason if no worker was spawned.
+	 *
+	 * `kind` separates "this app has no worker surface" from "this app has one
+	 * and it failed". Both are `ok: false`, but only the second is a problem:
+	 * `trust: "external"` promotes EVERY registered app to isolation:"worker",
+	 * including static frontend apps that ship no agent-side module, so the
+	 * first case is routine and must not be logged as a failure. Callers branch
+	 * on this field rather than matching the reason text.
 	 */
 	async startForRegisteredApp(
 		slug: string,
@@ -341,18 +358,26 @@ export class AppWorkerHostService extends Service {
 		if (workerSurface.kind === "error") {
 			return { ok: false, kind: "error", reason: workerSurface.reason };
 		}
-		const snapshot = await this.spawn({
-			slug,
-			isolation: "worker",
-			// path.basename contains the slug to a single segment so a traversal
-			// slug (e.g. "../../etc") from an untrusted app manifest cannot escape
-			// the app-state dir (defense-in-depth; register() also rejects it).
-			statePath: path.join(this.stateDir, "app-state", path.basename(slug)),
-			requestedPermissions: entry.requestedPermissions ?? null,
-			grantedNamespaces: view?.grantedNamespaces ?? [],
-			pluginEntryPath: workerSurface.path,
-		});
-		return { ok: true, snapshot };
+		try {
+			const snapshot = await this.spawn({
+				slug,
+				isolation: "worker",
+				// path.basename contains the slug to a single segment so a traversal
+				// slug (e.g. "../../etc") from an untrusted app manifest cannot escape
+				// the app-state dir (defense-in-depth; register() also rejects it).
+				statePath: path.join(this.stateDir, "app-state", path.basename(slug)),
+				requestedPermissions: entry.requestedPermissions ?? null,
+				grantedNamespaces: view?.grantedNamespaces ?? [],
+				pluginEntryPath: workerSurface.path,
+			});
+			return { ok: true, snapshot };
+		} catch (error) {
+			return {
+				ok: false,
+				kind: error instanceof WorkerBootError ? error.kind : "error",
+				reason: error instanceof Error ? error.message : String(error),
+			};
+		}
 	}
 
 	/**
@@ -404,6 +429,7 @@ export class AppWorkerHostService extends Service {
 					ok: boolean;
 					result?: unknown;
 					reason?: string;
+					kind?: "no-worker-surface" | "error";
 				};
 				if (msg.id === 0) {
 					if (msg.ok === true) {
@@ -411,7 +437,8 @@ export class AppWorkerHostService extends Service {
 						resolve();
 					} else {
 						reject(
-							new Error(
+							new WorkerBootError(
+								msg.kind ?? "error",
 								msg.reason ?? "Worker boot failed (no reason supplied)",
 							),
 						);
@@ -607,6 +634,12 @@ export class AppWorkerHostService extends Service {
 				}),
 			);
 			if (!result.ok) {
+				// An app with no worker surface is the common case, not a fault:
+				// `trust: "external"` promotes every registered app to
+				// isolation:"worker", and most are static frontends with no
+				// agent-side module. Warning on those made boot emit one failure
+				// line per installed app forever, burying the spawns that really
+				// did break.
 				if (result.kind === "no-worker-surface") {
 					logger.debug(
 						`[app-worker-host] no worker surface for slug=${entry.slug}: ${result.reason}`,

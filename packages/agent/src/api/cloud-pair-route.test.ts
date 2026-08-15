@@ -340,8 +340,203 @@ describe("handleStandaloneCloudPairRoute", () => {
 
       expect(harness.status()).toBe(502);
       expect(harness.body()).toContain("Sign-in failed");
+      // Cloud really did return 2xx here, so "accepted the link" is honest,
+      // but recovery must point at a fresh link (the token is spent), and the
+      // response is not retryable at this URL — no Retry-After.
+      expect(harness.body()).toContain("accepted the link");
+      expect(harness.body()).toContain("fresh link");
+      expect(harness.headers()["retry-after"]).toBeUndefined();
       expect(harness.body()).not.toContain('window.location.replace("/")');
     }
+  });
+
+  it("reports upstream 5xx without asserting whether Cloud consumed the link", async () => {
+    for (const upstreamStatus of [500, 502, 503]) {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn().mockResolvedValue(
+          new Response("<html>upstream degraded</html>", {
+            status: upstreamStatus,
+          }),
+        ),
+      );
+
+      const harness = fakeRes();
+      await handleStandaloneCloudPairRoute(
+        fakeReq({ pathname: "/pair", search: "?token=pair-token" }),
+        harness.res,
+      );
+
+      expect(harness.status()).toBe(502);
+      expect(harness.headers()["retry-after"]).toBe("60");
+      expect(harness.body()).not.toContain("accepted the link");
+      expect(harness.body()).not.toContain("was not accepted");
+      expect(harness.body()).toContain(
+        "could not confirm whether sign-in completed",
+      );
+      expect(harness.body()).toContain("fresh link");
+      expect(harness.body()).not.toContain('window.location.replace("/")');
+    }
+  });
+
+  it("aborts at the relay deadline without guessing whether Cloud consumed the link", async () => {
+    vi.useFakeTimers();
+    try {
+      let upstreamCompletedAfterAbort = false;
+      vi.stubGlobal(
+        "fetch",
+        vi.fn((_input: string | URL | Request, init?: RequestInit) => {
+          const signal = init?.signal;
+          if (!signal) throw new Error("Expected the relay abort signal.");
+          return new Promise<Response>((_resolve, reject) => {
+            signal.addEventListener(
+              "abort",
+              () => {
+                // A caller-side abort does not roll back work already running
+                // upstream; model the Cloud claim committing afterward.
+                setTimeout(() => {
+                  upstreamCompletedAfterAbort = true;
+                }, 1_000);
+                reject(
+                  Object.assign(new Error("This operation was aborted"), {
+                    name: "AbortError",
+                  }),
+                );
+              },
+              { once: true },
+            );
+          });
+        }),
+      );
+
+      const harness = fakeRes();
+      let settled = false;
+      const handled = handleStandaloneCloudPairRoute(
+        fakeReq({ pathname: "/pair", search: "?token=pair-token" }),
+        harness.res,
+      ).finally(() => {
+        settled = true;
+      });
+
+      await vi.advanceTimersByTimeAsync(14_999);
+      expect(settled).toBe(false);
+      expect(harness.body()).toBe("");
+
+      await vi.advanceTimersByTimeAsync(1);
+      await expect(handled).resolves.toBe(true);
+      expect(harness.status()).toBe(503);
+      expect(harness.headers()["retry-after"]).toBe("60");
+      expect(harness.body()).toContain("did not respond in time");
+      expect(harness.body()).not.toContain("accepted the link");
+      expect(harness.body()).not.toContain("was not accepted");
+      expect(harness.body()).toContain(
+        "could not confirm whether sign-in completed",
+      );
+      expect(harness.body()).toContain("fresh link");
+      expect(upstreamCompletedAfterAbort).toBe(false);
+
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(upstreamCompletedAfterAbort).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("keeps a stalled successful response body on the timeout path", async () => {
+    vi.useFakeTimers();
+    try {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn((_input: string | URL | Request, init?: RequestInit) => {
+          const signal = init?.signal;
+          if (!signal) throw new Error("Expected the relay abort signal.");
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            json: () =>
+              new Promise<never>((_resolve, reject) => {
+                signal.addEventListener(
+                  "abort",
+                  () =>
+                    reject(
+                      Object.assign(new Error("This operation was aborted"), {
+                        name: "AbortError",
+                      }),
+                    ),
+                  { once: true },
+                );
+              }),
+          } as Response);
+        }),
+      );
+
+      const harness = fakeRes();
+      const handled = handleStandaloneCloudPairRoute(
+        fakeReq({ pathname: "/pair", search: "?token=pair-token" }),
+        harness.res,
+      );
+
+      await vi.advanceTimersByTimeAsync(14_999);
+      expect(harness.body()).toBe("");
+      await vi.advanceTimersByTimeAsync(1);
+      await expect(handled).resolves.toBe(true);
+      expect(harness.status()).toBe(503);
+      expect(harness.headers()["retry-after"]).toBe("60");
+      expect(harness.body()).toContain(
+        "could not confirm whether sign-in completed",
+      );
+      expect(harness.body()).not.toContain("accepted the link");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("emits Retry-After and honest copy on transport failure", async () => {
+    vi.useFakeTimers();
+    try {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn().mockRejectedValue(new Error("connect ECONNREFUSED")),
+      );
+
+      const harness = fakeRes();
+      await handleStandaloneCloudPairRoute(
+        fakeReq({ pathname: "/pair", search: "?token=pair-token" }),
+        harness.res,
+      );
+
+      expect(harness.status()).toBe(503);
+      expect(harness.headers()["retry-after"]).toBe("60");
+      expect(harness.body()).toContain("could not reach Eliza Cloud");
+      expect(harness.body()).not.toContain("accepted the link");
+      expect(harness.body()).not.toContain("was not accepted");
+      expect(harness.body()).toContain(
+        "could not reach Eliza Cloud or confirm whether sign-in completed",
+      );
+      expect(harness.body()).toContain("fresh link");
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("reports unexpected non-2xx statuses without claiming acceptance", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(new Response("not found", { status: 404 })),
+    );
+
+    const harness = fakeRes();
+    await handleStandaloneCloudPairRoute(
+      fakeReq({ pathname: "/pair", search: "?token=pair-token" }),
+      harness.res,
+    );
+
+    expect(harness.status()).toBe(502);
+    expect(harness.body()).not.toContain("accepted the link");
+    expect(harness.body()).toContain("unexpected response (status 404)");
+    expect(harness.body()).toContain("fresh link");
+    expect(harness.headers()["retry-after"]).toBeUndefined();
   });
 
   it("escapes script-closing content while preserving the exact bearer", async () => {
