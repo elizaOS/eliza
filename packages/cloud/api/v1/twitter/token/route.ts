@@ -30,6 +30,11 @@ const app = new Hono<AppEnv>();
  *       "expires_at": 1735689600
  *     }
  *
+ * OAuth 2.0 tokens are refreshed server-side before vending whenever the
+ * stored token is expired (or has no recorded expiry) and a refresh token is
+ * available, so the response always carries a live token plus its
+ * `expires_at` deadline when X reported one.
+ *
  * Auth: standard Cloud auth (Bearer JWT, eliza_* API key, or X-API-Key) — same
  * as every other v1 route. The authenticated user/org owns the X connection
  * being read.
@@ -38,14 +43,15 @@ app.get("/", async (c) => {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
     const role =
-      c.req.query("connectionRole") === "owner" ? "owner" : ("agent" as const);
+      c.req.query("connectionRole") === "agent" ? "agent" : ("owner" as const);
 
-    const creds = await twitterAutomationService.getCredentialsForAgent(
+    const broker = await twitterAutomationService.getBrokerCredentials(
       user.organization_id,
+      user.id,
       role,
     );
 
-    if (!creds) {
+    if (!broker) {
       return c.json(
         {
           error: "no_x_connection",
@@ -57,7 +63,8 @@ app.get("/", async (c) => {
       );
     }
 
-    if (creds.TWITTER_AUTH_MODE === "oauth1a") {
+    if (broker.authMode === "oauth1a") {
+      const creds = broker.credentials;
       return c.json({
         auth_mode: "oauth1" as const,
         consumer_key: creds.TWITTER_API_KEY,
@@ -68,24 +75,13 @@ app.get("/", async (c) => {
       });
     }
 
-    if (creds.TWITTER_AUTH_MODE === "oauth2") {
-      return c.json({
-        auth_mode: "oauth2" as const,
-        access_token: creds.TWITTER_OAUTH_ACCESS_TOKEN,
-        ...(creds.TWITTER_OAUTH_SCOPE
-          ? { scopes: creds.TWITTER_OAUTH_SCOPE }
-          : {}),
-        ...(creds.TWITTER_USER_ID ? { user_id: creds.TWITTER_USER_ID } : {}),
-      });
-    }
-
-    return c.json(
-      {
-        error: "unsupported_auth_mode",
-        message: `Stored TWITTER_AUTH_MODE=${creds.TWITTER_AUTH_MODE} is not supported by the broker endpoint.`,
-      },
-      500,
-    );
+    return c.json({
+      auth_mode: "oauth2" as const,
+      access_token: broker.accessToken,
+      ...(broker.expiresAt !== null ? { expires_at: broker.expiresAt } : {}),
+      ...(broker.scope ? { scopes: broker.scope } : {}),
+      ...(broker.twitterUserId ? { user_id: broker.twitterUserId } : {}),
+    });
   } catch (error) {
     return failureResponse(c, error);
   }

@@ -56,6 +56,7 @@ const TWITTER_SECRET_FIELDS = {
   oauth2AccessToken: "OAUTH2_ACCESS_TOKEN",
   oauth2RefreshToken: "OAUTH2_REFRESH_TOKEN",
   oauth2Scope: "OAUTH2_SCOPE",
+  oauth2ExpiresAt: "OAUTH2_EXPIRES_AT",
   authMode: "AUTH_MODE",
   username: "USERNAME",
   userId: "USER_ID",
@@ -75,6 +76,16 @@ const LEGACY_TWITTER_SECRET_NAMES: Partial<
 function normalizeConnectionRole(role?: OAuthConnectionRole): OAuthConnectionRole {
   return role === "agent" ? "agent" : "owner";
 }
+
+/** Converts an OAuth2 `expires_in` lifetime into an absolute epoch-seconds deadline. */
+function oauth2ExpiryFromLifetime(expiresInSeconds: number | undefined): number | null {
+  return typeof expiresInSeconds === "number" && Number.isFinite(expiresInSeconds)
+    ? Math.floor(Date.now() / 1000) + Math.floor(expiresInSeconds)
+    : null;
+}
+
+/** Refresh this many seconds ahead of the stored expiry so vended tokens outlive transit. */
+const OAUTH2_BROKER_REFRESH_MARGIN_SECONDS = 5 * 60;
 
 function roleSecretName(
   role: OAuthConnectionRole,
@@ -150,6 +161,7 @@ async function getRoleCredentials(
   oauth2AccessToken: string | null;
   oauth2RefreshToken: string | null;
   oauth2Scope: string | null;
+  oauth2ExpiresAt: number | null;
   authMode: string | null;
   username: string | null;
   twitterUserId: string | null;
@@ -160,6 +172,7 @@ async function getRoleCredentials(
     oauth2AccessToken,
     oauth2RefreshToken,
     oauth2Scope,
+    oauth2ExpiresAtRaw,
     authMode,
     username,
     twitterUserId,
@@ -169,16 +182,19 @@ async function getRoleCredentials(
     getRoleSecret(organizationId, role, "oauth2AccessToken"),
     getRoleSecret(organizationId, role, "oauth2RefreshToken"),
     getRoleSecret(organizationId, role, "oauth2Scope"),
+    getRoleSecret(organizationId, role, "oauth2ExpiresAt"),
     getRoleSecret(organizationId, role, "authMode"),
     getRoleSecret(organizationId, role, "username"),
     getRoleSecret(organizationId, role, "userId"),
   ]);
+  const oauth2ExpiresAtParsed = Number.parseInt(oauth2ExpiresAtRaw ?? "", 10);
   return {
     accessToken,
     accessSecret,
     oauth2AccessToken,
     oauth2RefreshToken,
     oauth2Scope,
+    oauth2ExpiresAt: Number.isFinite(oauth2ExpiresAtParsed) ? oauth2ExpiresAtParsed : null,
     authMode,
     username,
     twitterUserId,
@@ -290,6 +306,16 @@ export interface TwitterAutomationSettings {
 
 class TwitterAutomationService {
   private readonly removeRequests = new Map<string, Promise<void>>();
+  private readonly refreshRequests = new Map<
+    string,
+    Promise<{
+      authMode: "oauth2";
+      accessToken: string;
+      expiresAt: number | null;
+      scope: string | null;
+      twitterUserId: string | null;
+    }>
+  >();
 
   private getOAuth2Client(): TwitterApi {
     return new TwitterApi({
@@ -420,6 +446,8 @@ class TwitterAutomationService {
     accessToken: string;
     refreshToken: string | null;
     scope: string[];
+    /** Unix epoch seconds at which the access token expires, when X reported a lifetime. */
+    expiresAt: number | null;
     screenName?: string;
     userId?: string;
     identityLookupError?: string;
@@ -470,6 +498,7 @@ class TwitterAutomationService {
           ? tokenResponse.refresh_token
           : null,
       scope: scope.length > 0 ? scope : TWITTER_OAUTH2_SCOPES,
+      expiresAt: oauth2ExpiryFromLifetime(tokenResponse.expires_in),
       screenName,
       userId,
       identityLookupError,
@@ -487,6 +516,8 @@ class TwitterAutomationService {
       accessSecret?: string | null;
       refreshToken?: string | null;
       scope?: string[] | null;
+      /** Unix epoch seconds at which an OAuth2 access token expires. */
+      expiresAt?: number | null;
       screenName?: string;
       twitterUserId?: string;
       authMode?: TwitterOAuthFlow;
@@ -557,6 +588,7 @@ class TwitterAutomationService {
         deleteRoleSecret(organizationId, role, "oauth2AccessToken", audit),
         deleteRoleSecret(organizationId, role, "oauth2RefreshToken", audit),
         deleteRoleSecret(organizationId, role, "oauth2Scope", audit),
+        deleteRoleSecret(organizationId, role, "oauth2ExpiresAt", audit),
       );
     } else {
       writes.push(
@@ -576,6 +608,15 @@ class TwitterAutomationService {
         }),
         deleteRoleSecret(organizationId, role, "accessToken", audit),
         deleteRoleSecret(organizationId, role, "accessTokenSecret", audit),
+        typeof credentials.expiresAt === "number"
+          ? upsertRoleSecret({
+              organizationId,
+              userId,
+              name: roleSecretName(role, "oauth2ExpiresAt"),
+              value: String(credentials.expiresAt),
+              audit,
+            })
+          : deleteRoleSecret(organizationId, role, "oauth2ExpiresAt", audit),
       );
       if (credentials.refreshToken) {
         writes.push(
@@ -587,6 +628,8 @@ class TwitterAutomationService {
             audit,
           }),
         );
+      } else if (credentials.refreshToken === null) {
+        writes.push(deleteRoleSecret(organizationId, role, "oauth2RefreshToken", audit));
       }
     }
 
@@ -637,6 +680,7 @@ class TwitterAutomationService {
       roleSecretName(role, "oauth2AccessToken"),
       roleSecretName(role, "oauth2RefreshToken"),
       roleSecretName(role, "oauth2Scope"),
+      roleSecretName(role, "oauth2ExpiresAt"),
       roleSecretName(role, "authMode"),
       roleSecretName(role, "username"),
       roleSecretName(role, "userId"),
@@ -766,6 +810,7 @@ class TwitterAutomationService {
       oauth2AccessToken,
       oauth2RefreshToken,
       oauth2Scope,
+      oauth2ExpiresAt,
       twitterUserId,
     } = credentials;
 
@@ -786,11 +831,140 @@ class TwitterAutomationService {
         TWITTER_OAUTH_ACCESS_TOKEN: oauth2AccessToken,
         ...(oauth2RefreshToken ? { TWITTER_OAUTH_REFRESH_TOKEN: oauth2RefreshToken } : {}),
         ...(oauth2Scope ? { TWITTER_OAUTH_SCOPE: oauth2Scope } : {}),
+        ...(oauth2ExpiresAt !== null ? { TWITTER_OAUTH_EXPIRES_AT: String(oauth2ExpiresAt) } : {}),
         ...(twitterUserId ? { TWITTER_USER_ID: twitterUserId } : {}),
       };
     }
 
     return null;
+  }
+
+  /**
+   * Vends broker credentials for `GET /api/v1/twitter/token`, owning the
+   * OAuth2 refresh-and-rotate contract: when the stored access token is past
+   * (or within the margin of) its recorded expiry — or has no recorded expiry,
+   * which means it predates expiry tracking and X's two-hour token life has
+   * certainly elapsed — and a refresh token exists, the token is refreshed
+   * against X, the rotated access/refresh/expiry secrets are persisted, and
+   * the fresh token is returned. Concurrent callers share one refresh so X's
+   * single-use refresh tokens are never burned twice. A refresh failure
+   * throws; it is never masked by vending a token known to be stale.
+   */
+  async getBrokerCredentials(
+    organizationId: string,
+    userId: string,
+    connectionRole: OAuthConnectionRole = "agent",
+  ): Promise<
+    | { authMode: "oauth1a"; credentials: Record<string, string> }
+    | {
+        authMode: "oauth2";
+        accessToken: string;
+        expiresAt: number | null;
+        scope: string | null;
+        twitterUserId: string | null;
+      }
+    | null
+  > {
+    const role = normalizeConnectionRole(connectionRole);
+    const stored = await getRoleCredentials(organizationId, role);
+
+    if (stored.accessToken && stored.accessSecret) {
+      const oauth1 = await this.getCredentialsForAgent(organizationId, role);
+      return oauth1 ? { authMode: "oauth1a", credentials: oauth1 } : null;
+    }
+    if (!stored.oauth2AccessToken) {
+      return null;
+    }
+
+    const nowSeconds = Math.floor(Date.now() / 1000);
+    const needsRefresh =
+      stored.oauth2ExpiresAt === null ||
+      nowSeconds >= stored.oauth2ExpiresAt - OAUTH2_BROKER_REFRESH_MARGIN_SECONDS;
+
+    if (!needsRefresh) {
+      return {
+        authMode: "oauth2",
+        accessToken: stored.oauth2AccessToken,
+        expiresAt: stored.oauth2ExpiresAt,
+        scope: stored.oauth2Scope,
+        twitterUserId: stored.twitterUserId,
+      };
+    }
+    if (!stored.oauth2RefreshToken) {
+      throw new Error(
+        `Stored X OAuth2 ${role} token is expired but has no refresh token; reconnect the X account`,
+      );
+    }
+
+    const refreshKey = `${organizationId}:${role}`;
+    const pending = this.refreshRequests.get(refreshKey);
+    if (pending) return pending;
+    const request = this.refreshOAuth2BrokerToken(
+      organizationId,
+      userId,
+      role,
+      stored.oauth2RefreshToken,
+    ).finally(() => {
+      this.refreshRequests.delete(refreshKey);
+    });
+    this.refreshRequests.set(refreshKey, request);
+    return request;
+  }
+
+  private async refreshOAuth2BrokerToken(
+    organizationId: string,
+    userId: string,
+    role: OAuthConnectionRole,
+    refreshToken: string,
+  ): Promise<{
+    authMode: "oauth2";
+    accessToken: string;
+    expiresAt: number | null;
+    scope: string | null;
+    twitterUserId: string | null;
+  }> {
+    const tokenResponse = await requestTwitterOAuth2Token({
+      grant_type: "refresh_token",
+      refresh_token: refreshToken,
+    });
+    if (typeof tokenResponse.access_token !== "string" || tokenResponse.access_token.length === 0) {
+      throw new Error("Twitter OAuth2 refresh response did not include an access token");
+    }
+
+    const stored = await getRoleCredentials(organizationId, role);
+    const scope = parseTwitterOAuth2Scope(tokenResponse.scope);
+    const expiresAt = oauth2ExpiryFromLifetime(tokenResponse.expires_in);
+    await this.storeCredentials(
+      organizationId,
+      userId,
+      {
+        accessToken: tokenResponse.access_token,
+        refreshToken:
+          typeof tokenResponse.refresh_token === "string" && tokenResponse.refresh_token.length > 0
+            ? tokenResponse.refresh_token
+            : refreshToken,
+        scope: scope.length > 0 ? scope : parseTwitterOAuth2Scope(stored.oauth2Scope ?? undefined),
+        expiresAt,
+        screenName: stored.username ?? undefined,
+        twitterUserId: stored.twitterUserId ?? undefined,
+        authMode: "oauth2",
+      },
+      role,
+    );
+
+    logger.info("[TwitterAutomation] OAuth2 broker token refreshed", {
+      organizationId,
+      connectionRole: role,
+      expiresAt,
+    });
+
+    return {
+      authMode: "oauth2",
+      accessToken: tokenResponse.access_token,
+      expiresAt,
+      scope: scope.length > 0 ? scope.join(" ") : stored.oauth2Scope,
+      twitterUserId: stored.twitterUserId,
+    };
   }
 
   hasOAuth1AppCredentials(): boolean {
