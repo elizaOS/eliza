@@ -69,6 +69,8 @@ describe("fixture bundle", () => {
     expect(cdn).toContain('<html class="dark">');
     expect(cdn).toContain("cdn.tailwindcss.com");
     expect(cdn).toContain("window.process=");
+    expect(cdn).toContain("/api/runtime/mode");
+    expect(cdn).toContain('deploymentRuntime:"local"');
     expect(cdn).toContain("background:#16121c");
 
     const compiled = buildFixtureHtml({

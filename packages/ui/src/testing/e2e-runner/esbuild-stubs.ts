@@ -95,6 +95,7 @@ export default anyfn;
 export const createRequire = () => anyfn;
 export const homedir = anyfn;
 export const tmpdir = anyfn;
+export const hostname = () => "eliza-browser-fixture";
 export const platform = anyfn;
 export const isAbsolute = anyfn;
 export const join = anyfn;
