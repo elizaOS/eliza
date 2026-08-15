@@ -1041,5 +1041,3 @@ packages/ui/src/components/shell/__e2e__/output-home-locale/
 /eliza/
 .cloud-production-main/
 .mooncycles-latest/
-
-<!-- ci-retrigger 2026-08-15 -->
