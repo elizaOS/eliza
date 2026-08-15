@@ -36,6 +36,8 @@ function isElectrobunHost(): boolean {
   );
 }
 
+let registrationStarted = false;
+
 /**
  * When a NEW service worker reaches `installed` while an existing controller is
  * present, a fresh renderer was just deployed. Tell the waiting worker to take
@@ -88,6 +90,8 @@ export function registerViewServiceWorker(): void {
   if (!("serviceWorker" in navigator)) return;
   if (isCapacitorNative()) return;
   if (isElectrobunHost()) return;
+  if (registrationStarted) return;
+  registrationStarted = true;
 
   navigator.serviceWorker
     .register("/sw.js", { scope: "/" })

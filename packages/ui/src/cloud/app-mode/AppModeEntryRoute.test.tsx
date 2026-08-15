@@ -352,16 +352,15 @@ describe("AppModeEntryRoute — rowless personal entry", () => {
     expect(assignedUrls).toEqual([]);
   });
 
-  it("fresh browser, clean account → authoritative binding persisted, then one clean-boot reload", async () => {
+  it("fresh browser, clean account → authoritative binding persists and chat mounts without a document reload", async () => {
     signIn();
     stubNetwork({ agents: agentsOk([]), personal: personalOk() });
     renderEntry();
 
-    await waitFor(() => expect(assignedUrls).toEqual(["/"]));
+    expect(await screen.findByTestId("agent-app")).toBeTruthy();
     expect(loadPersistedActiveServer()?.id).toBe(`cloud:${PERSONAL_ID}`);
     expect(screen.queryByTestId("join-page")).toBeNull();
-    // Chat must boot from the clean reload, not from the stale in-page boot.
-    expect(screen.queryByTestId("agent-app")).toBeNull();
+    expect(assignedUrls).toEqual([]);
   });
 
   it("stale cross-account binding is repaired to the authenticated identity before any boot", async () => {
@@ -370,9 +369,9 @@ describe("AppModeEntryRoute — rowless personal entry", () => {
     stubNetwork({ agents: agentsOk([]), personal: personalOk() });
     renderEntry();
 
-    await waitFor(() => expect(assignedUrls).toEqual(["/"]));
+    expect(await screen.findByTestId("agent-app")).toBeTruthy();
     expect(loadPersistedActiveServer()?.id).toBe(`cloud:${PERSONAL_ID}`);
-    expect(screen.queryByTestId("agent-app")).toBeNull();
+    expect(assignedUrls).toEqual([]);
   });
 
   it("an invalid identity response → /join, never a wrong-runtime chat boot", async () => {

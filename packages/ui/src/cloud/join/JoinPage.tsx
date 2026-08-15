@@ -2,8 +2,8 @@
  * Post-login landing that opens the account-native personal Eliza in chat.
  *
  * After Steward login the page resolves the account-native rowless Shared
- * Eliza, persists its Cloud binding, then hard-navigates to chat. A full
- * navigation lets startup restore the new binding from a clean boot.
+ * Eliza, persists its Cloud binding, then transitions to chat in the current
+ * document. The configured client and persisted binding are already ready.
  *
  * Signed-out app-host visitors first restore a live apex session through the
  * PKCE SSO bridge, or fall back to `/login?returnTo=/join` when no apex session
@@ -93,11 +93,10 @@ export default function JoinPage(): React.JSX.Element {
         });
         controller.signal.throwIfAborted();
         setPhase("ready");
-        // Hard navigation to chat home so the startup coordinator restores the
-        // just-persisted cloud connection from a clean boot. `void result` keeps
-        // the resolved agent in scope for future telemetry without unused-var noise.
+        // The flow has configured the in-memory client and persisted the exact
+        // binding, so chat can mount without replacing the browser document.
+        // `void result` keeps the resolved identity available for telemetry.
         void result;
-        if (typeof window !== "undefined") appModeNavigation.assign("/");
       } catch (err) {
         if (controller.signal.aborted) return;
         setError(describeJoinError(err));
@@ -184,6 +183,10 @@ export default function JoinPage(): React.JSX.Element {
   // Signed out → send to login, returning here once authenticated.
   if (session.ready && !session.authenticated && ssoBridging === false) {
     return <Navigate to="/login?returnTo=/join" replace />;
+  }
+
+  if (phase === "ready") {
+    return <Navigate to="/" replace />;
   }
 
   return (
