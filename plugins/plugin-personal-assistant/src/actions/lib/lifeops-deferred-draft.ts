@@ -62,9 +62,36 @@ export function isExplicitLifeCreateConfirmation(text: string): boolean {
   return false;
 }
 
+/**
+ * Explicit date-decline vocabulary for a pending schedule question, aligned
+ * with the extract-task-plan ruling: `unscheduled` applies ONLY when the owner
+ * explicitly declines a date ("no due date", "just a plain todo", "someday").
+ * This routes the answer turn back to the owning action; the LLM plan
+ * extraction still owns mapping the words to the `unscheduled` cadence.
+ */
+const SCHEDULE_DECLINE_CUE_RE =
+  /\b(?:no\s+(?:deadline|due\s*date|date|time(?:\s+needed)?)|without\s+a\s+(?:deadline|date)|just\s+a\s+(?:plain|general|simple|regular)\s+(?:todo|task|item)|someday|whenever|no\s+particular\s+(?:time|date))\b/iu;
+const SCHEDULE_DECLINE_VETO_RE =
+  /\b(?:not\s+(?:a\s+)?(?:plain|general|simple)|never\s*mind|cancel|forget\s+it|don'?t\s+(?:save|add|create))\b/iu;
+
+export function isExplicitScheduleDecline(text: string): boolean {
+  const normalized = text.toLowerCase().replace(/\s+/gu, " ").trim();
+  if (!normalized || SCHEDULE_DECLINE_VETO_RE.test(normalized)) {
+    return false;
+  }
+  return SCHEDULE_DECLINE_CUE_RE.test(normalized);
+}
+
 export type DeferredLifeDefinitionDraft = {
   intent: string;
   operation: "create_definition";
+  /**
+   * Set when the draft was parked by a clarify turn that is still waiting on
+   * one required field. `cadence` may be absent only while this is set — the
+   * owner's next answer supplies it (or explicitly declines a date, which the
+   * extract-task-plan ruling maps to the `unscheduled` cadence).
+   */
+  awaitingField?: "schedule";
   /** Epoch ms when the draft was created. Used for expiry. */
   createdAt?: number;
   /**
@@ -75,7 +102,7 @@ export type DeferredLifeDefinitionDraft = {
    */
   sourceMessageId?: string;
   request: {
-    cadence: LifeOpsCadence;
+    cadence?: LifeOpsCadence;
     description?: string;
     goalRef?: string;
     kind: CreateLifeOpsDefinitionRequest["kind"];
@@ -250,10 +277,15 @@ export function coerceDeferredLifeDraft(
         ? (request.kind as CreateLifeOpsDefinitionRequest["kind"])
         : null;
     const cadence = request.cadence as LifeOpsCadence | undefined;
-    if (!kind || !cadence) {
+    const awaitingField =
+      record.awaitingField === "schedule" ? ("schedule" as const) : undefined;
+    // A cadence-less definition draft is only coherent while a clarify turn
+    // is still waiting on the schedule answer; anything else is malformed.
+    if (!kind || (!cadence && awaitingField !== "schedule")) {
       return null;
     }
     return {
+      awaitingField,
       createdAt,
       intent,
       operation,
@@ -585,7 +617,9 @@ function isDeferredOwnerTodoDraft(
   const ownerSurface = draft.request.metadata?.ownerSurface;
   return (
     ownerSurface === OWNER_TODOS_ACTION ||
-    (ownerSurface === undefined && draft.request.cadence.kind === "unscheduled")
+    (ownerSurface === undefined &&
+      (draft.request.cadence?.kind === "unscheduled" ||
+        draft.awaitingField === "schedule"))
   );
 }
 
@@ -638,22 +672,40 @@ export const deferredOwnerTodoRoutingEvaluator: ResponseHandlerEvaluator = {
     "Routes owner consent or an applied completion claim for a pending Todo draft through OWNER_TODOS before completion text can reach the user.",
   priority: 25,
   async shouldRun(context) {
-    const ownerConfirmedDraft = isExplicitLifeCreateConfirmation(
+    const messageBody =
       typeof context.message.content.text === "string"
         ? context.message.content.text
-        : "",
-    );
+        : "";
+    const ownerConfirmedDraft = isExplicitLifeCreateConfirmation(messageBody);
+    const declinedSchedule = isExplicitScheduleDecline(messageBody);
     if (
       context.messageHandler.processMessage !== "RESPOND" ||
       (context.messageHandler.plan.replyEffectStatus !== "applied" &&
-        !ownerConfirmedDraft) ||
+        !ownerConfirmedDraft &&
+        !declinedSchedule) ||
       !context.runtime.actions.some(
         (action) => action.name === OWNER_TODOS_ACTION,
       )
     ) {
       return false;
     }
-    return (await routedOwnerTodoDraft(context)) !== null;
+    const draft = await routedOwnerTodoDraft(context);
+    if (!draft) {
+      return false;
+    }
+    if (
+      context.messageHandler.plan.replyEffectStatus === "applied" ||
+      ownerConfirmedDraft
+    ) {
+      return true;
+    }
+    // A date-decline is a real ANSWER to the pending schedule question, not
+    // chat: Stage-1 routinely classifies "no deadline, it's just a general
+    // todo" as simple and acks without any tool call, so the parked draft
+    // never persists (live matrix F32, tj-ea2db8b2be106f). Route it back to
+    // the owning action; the LLM plan extraction maps the decline to the
+    // `unscheduled` cadence under its existing ruling.
+    return declinedSchedule && draft.awaitingField === "schedule";
   },
   async evaluate(context) {
     const draft = await routedOwnerTodoDraft(context);
@@ -669,7 +721,9 @@ export const deferredOwnerTodoRoutingEvaluator: ResponseHandlerEvaluator = {
       addParentActionHints: [OWNER_TODOS_ACTION],
       clearReply: true,
       debug: [
-        `pending owner Todo draft "${draft.request.title}" requires a durable OWNER_TODOS result before completion`,
+        draft.awaitingField === "schedule"
+          ? `pending owner Todo draft "${draft.request.title}" received its schedule answer; routing through OWNER_TODOS`
+          : `pending owner Todo draft "${draft.request.title}" requires a durable OWNER_TODOS result before completion`,
       ],
     };
   },
