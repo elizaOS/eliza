@@ -1299,3 +1299,98 @@ export function inferWebSearchQueryFromMessageText(
 
 	return query.length > 0 ? query : messageText.trim();
 }
+
+/**
+ * Minimal dialogue-message shape for continuation resolution. Kept structural
+ * (a subset of core `Memory`) so this heuristics module stays free of runtime
+ * type dependencies and callers can pass provider-shaped rows directly.
+ */
+export interface ContinuationDialogueMessage {
+	entityId?: string;
+	createdAt?: number;
+	content?: {
+		text?: unknown;
+	};
+}
+
+// Explicit continuation/approval phrases only: each pattern anchors the WHOLE
+// (normalized) message, so any turn that introduces its own topic falls
+// through to the ordinary current-request inference. Ambiguous pronoun asks
+// ("what about it?") and generic praise embedded in longer sentences do not
+// match by construction.
+const EXPLICIT_CONTINUATION_PATTERNS: readonly RegExp[] = [
+	/^(?:please\s+|ok(?:ay)?[,\s]+|yes[,\s]+)?(?:finish|complete|continue|resume)(?:\s+(?:my|the|that|this|your))?(?:\s+(?:request|task|work|job))?(?:\s+(?:please|now))?$/iu,
+	/^(?:please\s+)?(?:finish|complete)\s+(?:it|that|this)(?:\s+please)?$/iu,
+	/^(?:ok(?:ay)?[,\s]+|yes[,\s]+|sure[,\s]+)?(?:go\s+ahead|proceed|keep\s+going|carry\s+on|go\s+on)(?:\s+please)?$/iu,
+	/^(?:ok(?:ay)?[,\s]+|yes[,\s]+|sure[,\s]+)?(?:please\s+)?do\s+(?:it|that|this)(?:\s+please)?$/iu,
+	/^(?:that|this)(?:'s|\s+is|\s+looks|\s+sounds)\s+(?:good|great|fine|perfect|right|correct)(?:[,\s]+(?:go\s+ahead|proceed|do\s+it|continue|finish\s+it))?$/iu,
+	/^(?:sounds|looks)\s+(?:good|great|right|perfect)(?:[,\s]+(?:go\s+ahead|proceed|do\s+it|continue|finish\s+it))?$/iu,
+	/^yes[,\s]+(?:please\s+)?(?:do\s+(?:it|that)|go\s+ahead|proceed|continue|finish\s+(?:it|my\s+request))$/iu,
+];
+
+/**
+ * True when the whole message is an explicit continuation or approval of a
+ * pending prior request ("finish my request", "that is good, go ahead") and
+ * carries no topic of its own. Structural text classification only — never
+ * keyed off prompt instructions.
+ */
+export function looksLikeExplicitContinuationTurn(text: string): boolean {
+	const normalized = text
+		.replace(/\s+/gu, " ")
+		.trim()
+		.replace(/[.!]+$/u, "");
+	if (!normalized || normalized.length > 80) {
+		return false;
+	}
+	return EXPLICIT_CONTINUATION_PATTERNS.some((pattern) =>
+		pattern.test(normalized),
+	);
+}
+
+const MIN_CONTINUATION_SOURCE_LENGTH = 12;
+const MAX_CONTINUATION_SOURCE_LENGTH = 2000;
+
+/**
+ * Resolves an explicit continuation turn against the nearest prior substantive
+ * user request in the recent dialogue window, so candidate-action inference
+ * can rerun on the request being continued instead of on the bare approval
+ * text. Returns null when the current turn is not an explicit continuation or
+ * no resolvable prior user intent exists (topic switches and ambiguous
+ * pronouns resolve to nothing).
+ */
+export function resolveContinuationRequestText(args: {
+	currentText: string;
+	recentMessages: readonly ContinuationDialogueMessage[];
+	agentId: string;
+}): string | null {
+	if (!looksLikeExplicitContinuationTurn(args.currentText)) {
+		return null;
+	}
+	const currentTrimmed = args.currentText.trim();
+	const ordered = [...args.recentMessages].sort(
+		(a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0),
+	);
+	for (let i = ordered.length - 1; i >= 0; i--) {
+		const candidate = ordered[i];
+		if (!candidate || candidate.entityId === args.agentId) {
+			continue;
+		}
+		const raw =
+			typeof candidate.content?.text === "string"
+				? candidate.content.text.trim()
+				: "";
+		if (!raw || raw === currentTrimmed) {
+			continue;
+		}
+		if (looksLikeExplicitContinuationTurn(raw)) {
+			continue;
+		}
+		if (raw.length < MIN_CONTINUATION_SOURCE_LENGTH) {
+			continue;
+		}
+		return raw.length > MAX_CONTINUATION_SOURCE_LENGTH
+			? raw.slice(0, MAX_CONTINUATION_SOURCE_LENGTH)
+			: raw;
+	}
+	return null;
+}

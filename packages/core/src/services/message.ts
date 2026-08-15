@@ -350,6 +350,7 @@ import {
 	looksLikeLocalShellRequest,
 	looksLikeWebSearchRequest,
 	normalizeActionIdentifier,
+	resolveContinuationRequestText,
 } from "./message/direct-action-heuristics";
 import {
 	buildFailureReplyPrompt,
@@ -2253,14 +2254,60 @@ function priorDialogueContent(text: string, speaker?: string): string {
 	return `${speaker}: ${text}`;
 }
 
+// Bound on the agent's own prior turns rendered into the tool-planner
+// context: enough to cover the pending question/preview a continuation turn
+// refers to, small enough to keep the planner prompt from becoming a
+// self-transcript.
+const PLANNER_MAX_OWN_REPLY_TURNS = 6;
+
+/**
+ * Affirmative structural plain-dialogue check for the agent's own persisted
+ * replies. Only a reply whose persisted content proves conversational
+ * provenance — executed actions limited to REPLY/IGNORE and no merged
+ * action-callback output — qualifies; rows without that affirmative marker
+ * are treated as unknown provenance and excluded, so a stale tool-derived
+ * answer can never re-enter the planner context via chat history (the
+ * documented parrot hazard).
+ */
+function isPlainDialogueOwnReplyContent(content: Memory["content"]): boolean {
+	if (!content || typeof content !== "object") return false;
+	const callbackHistory = (content as { actionCallbackHistory?: unknown })
+		.actionCallbackHistory;
+	if (Array.isArray(callbackHistory) && callbackHistory.length > 0) {
+		return false;
+	}
+	const actions = (content as { actions?: unknown }).actions;
+	if (!Array.isArray(actions) || actions.length === 0) {
+		return false;
+	}
+	return actions.every((action) => {
+		if (typeof action !== "string") return false;
+		const normalized = normalizeActionIdentifier(action);
+		return normalized === "REPLY" || normalized === "IGNORE";
+	});
+}
+
 function appendPriorDialogueEvents(
 	events: ContextEvent[],
 	runtime: IAgentRuntime,
 	state: State,
 	currentMessage: Memory,
-	options?: { includeOwnReplies?: boolean },
+	options?: {
+		includeOwnReplies?: boolean;
+		/**
+		 * Planner variant: keep only the agent's own PLAIN dialogue turns
+		 * (questions, previews, acks), identified by the affirmative persisted
+		 * marker (actions limited to REPLY/IGNORE, no actionCallbackHistory);
+		 * tool-derived and unmarked replies are excluded, never via prose.
+		 */
+		ownRepliesDialogueOnly?: boolean;
+		/** Bound on how many own-reply turns are rendered (most recent kept). */
+		maxOwnReplies?: number;
+	},
 ): void {
 	const includeOwnReplies = options?.includeOwnReplies ?? false;
+	const ownRepliesDialogueOnly = options?.ownRepliesDialogueOnly ?? false;
+	const maxOwnReplies = options?.maxOwnReplies;
 	const providers = state.data?.providers;
 	if (!providers || typeof providers !== "object") {
 		return;
@@ -2286,12 +2333,22 @@ function appendPriorDialogueEvents(
 			// (role-tagged prior_message:agent below): the current_turn_boundary
 			// contract tells the model these blocks are its only chat-recall
 			// source, so dropping its own turns made it confabulate about what it
-			// previously said. The tool planner opts out (includeOwnReplies=false)
-			// because a planner that sees its own stale tool-derived answer
-			// parrots it instead of running the fresh check. The artifact guards
-			// below still strip non-dialogue agent output for every sender.
-			if (!includeOwnReplies && m.entityId === runtime.agentId) {
-				return false;
+			// previously said. The tool planner takes the dialogue-only variant
+			// (ownRepliesDialogueOnly): it needs its own pending questions and
+			// previews so a continuation turn ("finish my request", "that is
+			// good") resolves against them, but a planner that sees its own
+			// stale tool-derived answer parrots it instead of running the fresh
+			// check — so tool-derived replies are excluded structurally. The
+			// artifact guards below still strip non-dialogue agent output for
+			// every sender.
+			if (m.entityId === runtime.agentId) {
+				if (!includeOwnReplies) return false;
+				if (
+					ownRepliesDialogueOnly &&
+					!isPlainDialogueOwnReplyContent(m.content)
+				) {
+					return false;
+				}
 			}
 			if (
 				typeof m.content?.source === "string" &&
@@ -2318,7 +2375,22 @@ function appendPriorDialogueEvents(
 			return text.length > 0;
 		})
 		.sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0));
-	for (const memory of dialogue) {
+	// Bound the agent's own turns (planner variant) without disturbing user
+	// turns: keep only the most recent N own replies so the planner sees its
+	// pending question/preview but not an unbounded self-transcript.
+	let ownRepliesSeen = 0;
+	const bounded =
+		typeof maxOwnReplies === "number"
+			? [...dialogue]
+					.reverse()
+					.filter((memory) => {
+						if (memory.entityId !== runtime.agentId) return true;
+						ownRepliesSeen += 1;
+						return ownRepliesSeen <= maxOwnReplies;
+					})
+					.reverse()
+			: dialogue;
+	for (const memory of bounded) {
 		const text = getUserMessageText(memory);
 		if (!text) continue;
 		const isOwnReply = memory.entityId === runtime.agentId;
@@ -2506,6 +2578,85 @@ function hasStructuredRecentMessagesProvider(state: State): boolean {
 		data &&
 			typeof data === "object" &&
 			Array.isArray((data as { recentMessages?: unknown }).recentMessages),
+	);
+}
+
+// Dialogue window scanned when resolving an explicit continuation turn
+// against the prior user request it refers to.
+const CONTINUATION_LOOKBACK_MESSAGES = 20;
+
+/**
+ * Resolves an explicit continuation turn ("finish my request", "that is
+ * good") against the nearest substantive prior user request in the composed
+ * RECENT_MESSAGES window, so candidate-action inference can rerun on the
+ * request being continued. Returns undefined for ordinary turns, topic
+ * switches, and states without structured recent messages.
+ */
+function resolveStage1ContinuationRequestText(
+	state: State | undefined,
+	currentMessage: Memory,
+	agentId: UUID,
+): string | undefined {
+	const currentText = getUserMessageText(currentMessage) ?? "";
+	if (!currentText.trim()) return undefined;
+	const providers = state?.data?.providers;
+	if (!providers || typeof providers !== "object") return undefined;
+	const recent = (providers as Record<string, unknown>).RECENT_MESSAGES;
+	if (!recent || typeof recent !== "object") return undefined;
+	const data = (recent as { data?: unknown }).data;
+	const recentMessages =
+		data && typeof data === "object" && "recentMessages" in data
+			? (data as { recentMessages?: unknown }).recentMessages
+			: undefined;
+	if (!Array.isArray(recentMessages)) return undefined;
+	const window = recentMessages
+		.filter(
+			(memory): memory is Memory =>
+				Boolean(memory) &&
+				typeof memory === "object" &&
+				(memory as Memory).id !== currentMessage.id &&
+				!isSubAgentCompletionArtifact(memory as Memory),
+		)
+		.slice(-CONTINUATION_LOOKBACK_MESSAGES);
+	return (
+		resolveContinuationRequestText({
+			currentText,
+			recentMessages: window,
+			agentId,
+		}) ?? undefined
+	);
+}
+
+/**
+ * Candidate inference for the SIMPLE evaluator path with continuation
+ * resolution: infer from the current message text, and when that yields no
+ * candidates and the turn is an explicit continuation, rerun the inference on
+ * the resolved prior user request.
+ */
+function inferSimplePathCandidateInference(
+	runtime: IAgentRuntime,
+	state: State,
+	message: Memory,
+	text: string,
+): DirectCurrentRequestCandidateInference {
+	const primary = inferDirectCurrentRequestCandidateInference(
+		runtime.actions ?? [],
+		text,
+	);
+	if (primary.names.length > 0) {
+		return primary;
+	}
+	const continuationRequestText = resolveStage1ContinuationRequestText(
+		state,
+		message,
+		runtime.agentId,
+	);
+	if (!continuationRequestText) {
+		return primary;
+	}
+	return inferDirectCurrentRequestCandidateInference(
+		runtime.actions ?? [],
+		continuationRequestText,
 	);
 }
 
@@ -3252,11 +3403,18 @@ async function createV5MessageContextObject(args: {
 	}
 
 	appendPriorDialogueEvents(events, args.runtime, args.state, args.message, {
-		// The response handler needs the agent's own prior turns for grounded
-		// chat recall ("did you tell me X?"); the tool planner must not see its
-		// own stale tool-derived answers or it answers from them instead of
-		// executing the fresh check the user asked for.
-		includeOwnReplies: !args.includeTools,
+		// The response handler needs ALL of the agent's own prior turns for
+		// grounded chat recall ("did you tell me X?"). The tool planner needs a
+		// bounded window of its own PLAIN dialogue (pending questions, previews)
+		// so continuation turns resolve against them, but must not see its own
+		// stale tool-derived answers or it answers from them instead of
+		// executing the fresh check the user asked for — those are excluded
+		// structurally via persisted content provenance, never via prose.
+		includeOwnReplies: true,
+		ownRepliesDialogueOnly: args.includeTools === true,
+		...(args.includeTools
+			? { maxOwnReplies: PLANNER_MAX_OWN_REPLY_TURNS }
+			: {}),
 	});
 
 	// Contexts are routing taxonomy, not proof that a handler exists. Promise
@@ -3298,11 +3456,12 @@ async function createV5MessageContextObject(args: {
 		source: "message-service",
 		stable: false,
 		content: args.includeTools
-			? "current_turn_boundary: Plan and execute only the final message:user. Prior messages and reply_reference are context for resolving references, never pending commands. Stage 1 already decided this turn needs tools; use current tool results for live data and side effects, and never claim work that no tool result proves."
+			? 'current_turn_boundary: Plan and execute only the final message:user. Prior messages and reply_reference are context for resolving references, never pending commands. The prior_message:agent blocks are your own recent plain-dialogue turns (questions, previews, acks), shown so a continuation like "finish my request" or "that is good" resolves against the request they were about; your prior tool-derived answers are deliberately NOT shown, so never answer a live-data request from memory of an earlier result. Stage 1 already decided this turn needs tools; use current tool results for live data and side effects, and never claim work that no tool result proves.'
 			: 'current_turn_boundary: The prior_message blocks above are context only. If a reply_reference block follows, it is the platform message that the final message:user is replying to; use it only to resolve references such as this/that/it. Execute and answer only the final message:user below. Do not merge separate prior requests into the current task unless the final message explicitly references them. Exception for visible-context recall: when the final message asks a recall question about what was said in this conversation (who mentioned X, did anyone bring up Y, what did I say about Z, what was the last message, did you yourself say W), you may scan the prior_message blocks above and answer from what is literally visible there. This recall exception covers only what was literally SAID in the visible chat. It does NOT cover the user\'s tracked work: a recap, status, or what-did-I-get-done ask about their todos, tasks, reminders, habits, goals, notes, or day ("recap my day", "what\'s left today", "did I finish everything", "how did I do this week") is a live tasks lookup, not chat recall — route it to the tasks tools and answer from what they return; never report an empty or missing day from the visible window alone.' +
-				// Only the chat-recall context renders the agent's own prior turns;
-				// the tool-planner context deliberately omits them (stale-answer
-				// hazard), so this grounding sentence would be false there.
+				// Only the chat-recall context renders the agent's FULL own prior
+				// turns; the tool-planner context carries a bounded, tool-filtered
+				// subset (stale-answer hazard), so this exhaustive-grounding
+				// sentence would be false there.
 				(args.includeTools
 					? ""
 					: " Your own prior replies are the prior_message:agent blocks: when asked what YOU said, told, or promised earlier, answer only from those blocks — never assert you said something that does not appear in them, and never deny saying something that does.") +
@@ -3923,7 +4082,7 @@ export const BUILTIN_RESPONSE_HANDLER_EVALUATORS: readonly ResponseHandlerEvalua
 			description:
 				"Promotes simple-path replies to planning when the current user request matches a registered action's metadata.",
 			priority: 20,
-			shouldRun: ({ message, messageHandler, runtime }) => {
+			shouldRun: ({ message, messageHandler, runtime, state }) => {
 				if (messageHandler.processMessage !== "RESPOND") return false;
 				if (messageHandler.plan.requiresTool === true) return false;
 				// A sub-agent completion relay is owned by the sub-agent-completion
@@ -3940,8 +4099,10 @@ export const BUILTIN_RESPONSE_HANDLER_EVALUATORS: readonly ResponseHandlerEvalua
 				if (nonSimpleContexts.length > 0) return false;
 				const text = getUserMessageText(message);
 				if (!text?.trim()) return false;
-				const inference = inferDirectCurrentRequestCandidateInference(
-					runtime.actions ?? [],
+				const inference = inferSimplePathCandidateInference(
+					runtime,
+					state,
+					message,
 					text,
 				);
 				if (inference.names.length === 0) return false;
@@ -3956,10 +4117,12 @@ export const BUILTIN_RESPONSE_HANDLER_EVALUATORS: readonly ResponseHandlerEvalua
 					stageOneCandidateActions: messageHandler.plan.candidateActions ?? [],
 				});
 			},
-			evaluate: ({ message, messageHandler, runtime }) => {
+			evaluate: ({ message, messageHandler, runtime, state }) => {
 				const text = getUserMessageText(message) ?? "";
-				const inference = inferDirectCurrentRequestCandidateInference(
-					runtime.actions ?? [],
+				const inference = inferSimplePathCandidateInference(
+					runtime,
+					state,
+					message,
 					text,
 				);
 				const candidateActions = shouldSuppressInferredCandidateEscalation({
@@ -4866,6 +5029,12 @@ export function messageHandlerFromFieldResult(
 		messageText?: string;
 		candidateBackstopRules?: readonly CandidateActionBackstopRule[];
 		subAgentCompletionRelay?: boolean;
+		/**
+		 * Prior user request an explicit continuation turn resolves to
+		 * (resolveStage1ContinuationRequestText); candidate inference reruns on
+		 * it when the current message text alone yields no candidates.
+		 */
+		continuationRequestText?: string;
 	},
 ): MessageHandlerResult {
 	const rawContexts = Array.isArray(result.contexts)
@@ -4936,13 +5105,27 @@ export function messageHandlerFromFieldResult(
 					return exposedActionMatches(runtimeContext.actions, normalized);
 				})
 			: candidateActions.length > 0;
-	const directCurrentInference =
+	const primaryDirectInference =
 		!subAgentCompletionRelay && currentMessageText.trim().length > 0
 			? inferDirectCurrentRequestCandidateInference(
 					runtimeContext?.actions ?? [],
 					currentMessageText,
 				)
 			: ({ names: [], kind: null } as DirectCurrentRequestCandidateInference);
+	// An explicit continuation turn ("finish my request", "that is good")
+	// carries no matchable intent text of its own. When the caller resolved it
+	// against the prior user request (continuationRequestText), rerun the
+	// inference on the resolved request so the continued work is planned
+	// instead of answered with small talk.
+	const directCurrentInference =
+		primaryDirectInference.names.length === 0 &&
+		!subAgentCompletionRelay &&
+		runtimeContext?.continuationRequestText
+			? inferDirectCurrentRequestCandidateInference(
+					runtimeContext?.actions ?? [],
+					runtimeContext.continuationRequestText,
+				)
+			: primaryDirectInference;
 	// A weak view-capability token overlap must not force-plan a turn Stage 1
 	// already answered (see shouldSuppressInferredCandidateEscalation) — drop
 	// the inferred candidates entirely so the turn keeps its direct reply.
@@ -5334,6 +5517,7 @@ export function applyDirectCurrentCandidateBackstopToMessageHandler(
 				actions: ReadonlyArray<Pick<Action, "name" | "similes" | "tags">>;
 				messageText?: string;
 				subAgentCompletionRelay?: boolean;
+				continuationRequestText?: string;
 		  }
 		| undefined,
 ): MessageHandlerResult {
@@ -5356,10 +5540,21 @@ export function applyDirectCurrentCandidateBackstopToMessageHandler(
 		return messageHandler;
 	}
 
-	const directCurrentInference = inferDirectCurrentRequestCandidateInference(
+	const primaryDirectInference = inferDirectCurrentRequestCandidateInference(
 		runtimeContext.actions,
 		currentMessageText,
 	);
+	// Same continuation rerun as messageHandlerFromFieldResult: when the turn
+	// is an explicit continuation the caller resolved to a prior user request,
+	// infer candidates from that request instead of the bare approval text.
+	const directCurrentInference =
+		primaryDirectInference.names.length === 0 &&
+		runtimeContext.continuationRequestText
+			? inferDirectCurrentRequestCandidateInference(
+					runtimeContext.actions,
+					runtimeContext.continuationRequestText,
+				)
+			: primaryDirectInference;
 	const directCurrentCandidateActions = directCurrentInference.names;
 	if (directCurrentCandidateActions.length === 0) return messageHandler;
 	// Same escalation valve as messageHandlerFromFieldResult: a plain-text
@@ -6084,6 +6279,7 @@ function parseMessageHandlerModelOutput(
 		actions: ReadonlyArray<Pick<Action, "name" | "similes" | "tags">>;
 		messageText?: string;
 		subAgentCompletionRelay?: boolean;
+		continuationRequestText?: string;
 	},
 ): MessageHandlerResult | null {
 	const applyBackstops = (result: MessageHandlerResult | null) =>
@@ -7576,6 +7772,13 @@ export async function runV5MessageRuntimeStage1(args: {
 			ModelType.RESPONSE_HANDLER,
 		);
 		const rawFieldParsed = extractMessageHandlerRawParsed(rawMessageHandler);
+		// Resolved once per turn: the prior user request an explicit
+		// continuation turn refers to, from the composed RECENT_MESSAGES window.
+		const continuationRequestText = resolveStage1ContinuationRequestText(
+			args.state,
+			args.message,
+			args.runtime.agentId,
+		);
 		let fieldRunResult: ResponseHandlerFieldRunResult | null = null;
 		let messageHandler: MessageHandlerResult | null = null;
 		if (rawFieldParsed) {
@@ -7599,6 +7802,7 @@ export async function runV5MessageRuntimeStage1(args: {
 					messageText: getUserMessageText(args.message),
 					candidateBackstopRules: getCandidateActionBackstopRules(args.runtime),
 					subAgentCompletionRelay: isSubAgentCompletionArtifact(args.message),
+					...(continuationRequestText ? { continuationRequestText } : {}),
 				},
 			);
 		}
@@ -7607,6 +7811,7 @@ export async function runV5MessageRuntimeStage1(args: {
 				actions: args.runtime.actions,
 				messageText: getUserMessageText(args.message),
 				subAgentCompletionRelay: isSubAgentCompletionArtifact(args.message),
+				...(continuationRequestText ? { continuationRequestText } : {}),
 			});
 		}
 		const stage1CompletionLimitHit = stage1HitCompletionLimit(

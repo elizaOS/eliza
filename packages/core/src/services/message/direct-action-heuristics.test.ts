@@ -19,8 +19,10 @@ import {
 	isShellDirectActionName,
 	linkShareOwnText,
 	looksLikeBareLinkShare,
+	looksLikeExplicitContinuationTurn,
 	looksLikeLocalShellRequest,
 	looksLikeWebSearchRequest,
+	resolveContinuationRequestText,
 } from "./direct-action-heuristics.ts";
 
 /** The exact processed-content shape Discord produces for a shared link with a
@@ -926,5 +928,102 @@ describe("cloud-apps surface request inference", () => {
 				"settings",
 			),
 		).toEqual(["VIEWS"]);
+	});
+});
+
+describe("looksLikeExplicitContinuationTurn", () => {
+	it("fires on whole-message continuation and approval phrases", () => {
+		expect(looksLikeExplicitContinuationTurn("finish my request")).toBe(true);
+		expect(looksLikeExplicitContinuationTurn("Finish my request.")).toBe(true);
+		expect(looksLikeExplicitContinuationTurn("please continue")).toBe(true);
+		expect(looksLikeExplicitContinuationTurn("that is good")).toBe(true);
+		expect(looksLikeExplicitContinuationTurn("that's good, go ahead")).toBe(
+			true,
+		);
+		expect(looksLikeExplicitContinuationTurn("ok go ahead")).toBe(true);
+		expect(looksLikeExplicitContinuationTurn("yes, do it")).toBe(true);
+		expect(looksLikeExplicitContinuationTurn("sounds good, proceed")).toBe(
+			true,
+		);
+	});
+
+	it("does not fire on turns that carry their own topic", () => {
+		expect(looksLikeExplicitContinuationTurn("tell me a joke")).toBe(false);
+		expect(
+			looksLikeExplicitContinuationTurn("finish the essay about whales"),
+		).toBe(false);
+		expect(
+			looksLikeExplicitContinuationTurn("that is good music, what genre is it"),
+		).toBe(false);
+		expect(looksLikeExplicitContinuationTurn("what about it?")).toBe(false);
+		expect(looksLikeExplicitContinuationTurn("")).toBe(false);
+		expect(
+			looksLikeExplicitContinuationTurn(
+				"that is good but first check the weather in tokyo and then book my flight",
+			),
+		).toBe(false);
+	});
+});
+
+describe("resolveContinuationRequestText", () => {
+	const agentId = "agent-1";
+	const dialogue = [
+		{
+			entityId: "user-1",
+			createdAt: 1,
+			content: { text: "check git status locally and summarize the diff" },
+		},
+		{
+			entityId: agentId,
+			createdAt: 2,
+			content: { text: "Do you want the full diff or a summary only?" },
+		},
+		{ entityId: "user-1", createdAt: 3, content: { text: "summary" } },
+	];
+
+	it("resolves an explicit continuation to the nearest substantive prior user request", () => {
+		expect(
+			resolveContinuationRequestText({
+				currentText: "finish my request",
+				recentMessages: dialogue,
+				agentId,
+			}),
+		).toBe("check git status locally and summarize the diff");
+	});
+
+	it("skips prior user turns that are themselves continuations or too short", () => {
+		expect(
+			resolveContinuationRequestText({
+				currentText: "that is good",
+				recentMessages: [
+					...dialogue,
+					{ entityId: "user-1", createdAt: 4, content: { text: "go ahead" } },
+				],
+				agentId,
+			}),
+		).toBe("check git status locally and summarize the diff");
+	});
+
+	it("resolves nothing for a topic-switch turn", () => {
+		expect(
+			resolveContinuationRequestText({
+				currentText: "actually, tell me a joke instead",
+				recentMessages: dialogue,
+				agentId,
+			}),
+		).toBeNull();
+	});
+
+	it("resolves nothing when no substantive prior user request exists", () => {
+		expect(
+			resolveContinuationRequestText({
+				currentText: "finish my request",
+				recentMessages: [
+					{ entityId: agentId, createdAt: 1, content: { text: "Hello!" } },
+					{ entityId: "user-1", createdAt: 2, content: { text: "hi" } },
+				],
+				agentId,
+			}),
+		).toBeNull();
 	});
 });

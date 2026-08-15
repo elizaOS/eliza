@@ -2781,6 +2781,68 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(routed.plan.candidateActions).toEqual(["TASKS"]);
 	});
 
+	it("reruns candidate inference on the resolved prior request for explicit continuation turns", () => {
+		// "finish my request" carries no matchable intent text of its own; with
+		// the caller-resolved continuation text the shell candidate is inferred
+		// from the prior request instead of dropping the turn to small talk.
+		const routed = messageHandlerFromFieldResult(
+			{
+				shouldRespond: "RESPOND",
+				contexts: [],
+				intents: [],
+				replyText: "Sure!",
+				candidateActionNames: [],
+				facts: [],
+				relationships: [],
+				addressedTo: [],
+			},
+			undefined,
+			{
+				actions: [
+					{
+						name: "SHELL_COMMAND",
+						similes: [],
+						tags: ["domain:system", "resource:shell", "capability:execute"],
+					},
+				],
+				messageText: "finish my request",
+				continuationRequestText: "check git status locally",
+			},
+		);
+
+		expect(routed.plan.requiresTool).toBe(true);
+		expect(routed.plan.candidateActions).toContain("SHELL_COMMAND");
+	});
+
+	it("does not rerun continuation inference when the current turn has its own answerable intent", () => {
+		const routed = messageHandlerFromFieldResult(
+			{
+				shouldRespond: "RESPOND",
+				contexts: ["simple"],
+				intents: [],
+				replyText: "Here's a joke: two atoms walk into a bar.",
+				candidateActionNames: [],
+				facts: [],
+				relationships: [],
+				addressedTo: [],
+			},
+			undefined,
+			{
+				actions: [
+					{
+						name: "SHELL_COMMAND",
+						similes: [],
+						tags: ["domain:system", "resource:shell", "capability:execute"],
+					},
+				],
+				messageText: "tell me a joke",
+			},
+		);
+
+		expect(routed.plan.requiresTool).toBe(false);
+		expect(routed.plan.candidateActions ?? []).not.toContain("SHELL_COMMAND");
+	});
+
 	it("repairs build requests misrouted to backstop-protected scheduled tasks", () => {
 		const routed = messageHandlerFromFieldResult(
 			{
@@ -4108,6 +4170,112 @@ describe("runV5MessageRuntimeStage1", () => {
 		// The contract now grounds own-reply recall on the prior_message:agent blocks.
 		expect(userContent).toContain(
 			"Your own prior replies are the prior_message:agent blocks",
+		);
+	});
+
+	it("planner context includes the agent's plain prior dialogue but excludes tool-derived own replies", async () => {
+		// A continuation turn ("finish my request") is only resolvable when the
+		// planner can see the assistant's own pending question/preview. Tool-
+		// derived prior answers stay excluded structurally (persisted
+		// actionCallbackHistory / executed non-REPLY actions) so the planner
+		// never parrots a stale result instead of rerunning the check.
+		const runtime = makeRuntime([
+			stage1Response({
+				contexts: ["general"],
+				replyText: "On it.",
+				extra: { requiresTool: true },
+			}),
+			JSON.stringify({
+				thought: "Finished.",
+				toolCalls: [],
+				messageToUser: "Done — summarized the diff.",
+			}),
+		]);
+		const state: State = {
+			values: {
+				availableContexts: "simple, general",
+			},
+			data: {
+				providers: {
+					RECENT_MESSAGES: {
+						text: "# Conversation Messages\nprovider text should not render",
+						data: {
+							recentMessages: [
+								{
+									id: "00000000-0000-0000-0000-00000000dd01" as UUID,
+									entityId: "00000000-0000-0000-0000-00000000dd11" as UUID,
+									agentId: runtime.agentId,
+									roomId: "00000000-0000-0000-0000-000000002222" as UUID,
+									createdAt: 1,
+									content: {
+										text: "check git status and summarize the diff",
+										source: "app",
+									},
+									metadata: {
+										type: "message",
+										sender: { id: "user-dd11", name: "shaw" },
+									},
+								},
+								{
+									id: "00000000-0000-0000-0000-00000000dd02" as UUID,
+									entityId: runtime.agentId,
+									agentId: runtime.agentId,
+									roomId: "00000000-0000-0000-0000-000000002222" as UUID,
+									createdAt: 2,
+									content: {
+										text: "Do you want the full diff or a summary only?",
+										source: "app",
+										actions: ["REPLY"],
+									},
+								},
+								{
+									id: "00000000-0000-0000-0000-00000000dd03" as UUID,
+									entityId: runtime.agentId,
+									agentId: runtime.agentId,
+									roomId: "00000000-0000-0000-0000-000000002222" as UUID,
+									createdAt: 3,
+									content: {
+										text: "The diff touches 3 files: a.ts, b.ts, c.ts.",
+										source: "app",
+										actionCallbackHistory: [
+											"The diff touches 3 files: a.ts, b.ts, c.ts.",
+										],
+									},
+								},
+							],
+						},
+						providerName: "RECENT_MESSAGES",
+					},
+				},
+			},
+			text: "fallback text should not be needed",
+		};
+		// The planner recomposes state; serve the same provider snapshot.
+		runtime.composeState = vi.fn(async () => state);
+
+		await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({ text: "finish my request" }),
+			state,
+			responseId: "00000000-0000-0000-0000-000000000006" as UUID,
+		});
+
+		const plannerCall = useModelCalls(runtime)[1];
+		const plannerParams = plannerCall?.[1] as {
+			messages?: Array<{ role?: string; content?: string | null }>;
+		};
+		const plannerContent = (plannerParams?.messages ?? [])
+			.map((m) => m?.content ?? "")
+			.join("\n");
+		// The plain own-dialogue turn (the pending question) is visible…
+		expect(plannerContent).toContain(
+			"Do you want the full diff or a summary only?",
+		);
+		// …while the tool-derived own answer stays out of the planner window.
+		expect(plannerContent).not.toContain("The diff touches 3 files");
+		// The planner boundary explains the bounded own-dialogue window.
+		expect(plannerContent).toContain(
+			"your prior tool-derived answers are deliberately NOT shown",
 		);
 	});
 
