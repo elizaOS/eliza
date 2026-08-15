@@ -199,9 +199,22 @@ jobs:
           command_timeout: 2m
           script: |
             set -euo pipefail
-            journalctl --since '2026-08-15 03:13:00 UTC' --no-pager \
-              | grep -E '41634d57-c296-40c2-9ad7-dbf90a6eac1e|4602b3be-2c01-4e7e-9cdc-849604e1bef7|a4d6156aef4c79fc01709a85025fd1a9f010a99279493e9545ed14f7137bd8cd' \
-              | tail -200
+            database_url="$(sed -n 's/^DATABASE_URL=//p' /opt/eliza/cloud/.env.local | tail -1)"
+            database_url="${database_url/sslmode=no-verify/sslmode=require}"
+            psql "$database_url" -v ON_ERROR_STOP=1 <<'SQL'
+            SELECT id, status, lifecycle_job_id, lifecycle_execution_generation,
+                   node_id, container_name
+            FROM agent_sandboxes
+            WHERE id = '4602b3be-2c01-4e7e-9cdc-849604e1bef7';
+            SELECT id, type, status, execution_generation, execution_quiesced_at,
+                   attempts, updated_at
+            FROM jobs
+            WHERE id IN (
+              'c87baa5a-fb91-4747-8eac-3b5757b868da',
+              '41634d57-c296-40c2-9ad7-dbf90a6eac1e'
+            )
+            ORDER BY created_at;
+            SQL
 
   changes:
     name: Classify changed paths
