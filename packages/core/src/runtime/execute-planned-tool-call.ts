@@ -72,7 +72,7 @@ export interface ExecutePlannedToolCallContext {
 
 export interface ToolArgAliasCapability {
 	/** Exact redacted token emitted into this turn's planner context. */
-	token: `[REDACTED:]`;
+	token: string;
 	/** Already-authorized value; never read from a model-authored setting name. */
 	value: string;
 	kind: "entity_id";
@@ -355,6 +355,9 @@ function runWithMessageTrajectoryContext<T>(
  * The model cannot name a runtime setting here: aliases were authorized before
  * execution, and the raw planner call remains unchanged for redacted diagnostics.
  */
+const UUID_SHAPE =
+	/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export function resolveToolArgAliases(
 	args: Record<string, unknown>,
 	capabilities: readonly ToolArgAliasCapability[] = [],
