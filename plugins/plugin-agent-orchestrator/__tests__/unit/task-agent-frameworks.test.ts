@@ -388,9 +388,15 @@ describe("getTaskAgentFrameworkState", () => {
 
   it("accepts Node's maximum timer delay for framework preflight", async () => {
     setEnv({ ELIZA_FRAMEWORK_PREFLIGHT_TIMEOUT_MS: "2147483647" });
+    const setTimeoutSpy = vi.spyOn(globalThis, "setTimeout");
 
     const state = await getTaskAgentFrameworkState(runtime(), installedProbe());
 
+    expect(setTimeoutSpy).toHaveBeenCalledWith(
+      expect.any(Function),
+      2_147_483_647,
+    );
+    setTimeoutSpy.mockRestore();
     expect(
       state.frameworks.find((item) => item.id === "codex")?.installed,
     ).toBe(true);
