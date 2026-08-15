@@ -138,16 +138,27 @@ function isColorSignal(value: unknown): boolean {
   );
 }
 
-function isBoundingBox(value: unknown): boolean {
+function isNormalizedCoordinate(value: unknown): value is number {
   return (
-    value === undefined ||
-    value === null ||
-    (Array.isArray(value) &&
-      value.length === 4 &&
-      value.every(
-        (coordinate) =>
-          typeof coordinate === "number" && Number.isFinite(coordinate),
-      ))
+    typeof value === "number" &&
+    Number.isFinite(value) &&
+    value >= 0 &&
+    value <= 1
+  );
+}
+
+function isBoundingBox(value: unknown): boolean {
+  if (value === undefined || value === null) return true;
+  if (!Array.isArray(value) || value.length !== 4) return false;
+
+  const [minX, minY, maxX, maxY] = value;
+  return (
+    isNormalizedCoordinate(minX) &&
+    isNormalizedCoordinate(minY) &&
+    isNormalizedCoordinate(maxX) &&
+    isNormalizedCoordinate(maxY) &&
+    minX <= maxX &&
+    minY <= maxY
   );
 }
 

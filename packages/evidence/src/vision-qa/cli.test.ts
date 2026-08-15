@@ -188,6 +188,24 @@ describe("runVisionQaCli ask", () => {
         },
       },
     ],
+    [
+      "an out-of-range normalized box",
+      {
+        change_vs_baseline: {
+          changed_fraction: 0.2,
+          changed_bbox_norm: [-0.1, 0, 1.1, 1],
+        },
+      },
+    ],
+    [
+      "an inverted normalized box",
+      {
+        changeVsBaseline: {
+          changedFraction: 0.2,
+          changedBboxNorm: [0.8, 0.8, 0.2, 0.2],
+        },
+      },
+    ],
   ])(
     "rejects %s in --context with a typed usage error",
     async (_name, value) => {
