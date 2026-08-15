@@ -3,7 +3,11 @@
  * fixtures; no network, browser, or provider account is used by this suite.
  */
 import { expect, test } from "vitest";
-import { evaluatePublicSurface } from "./check-homepage-public-readiness.mjs";
+import {
+  evaluatePublicSurface,
+  messageButtonAccessibleName,
+  resolveWhatsAppAdmission,
+} from "./check-homepage-public-readiness.mjs";
 
 const healthySurface = {
   finalUrl: "https://eliza.app/",
@@ -11,18 +15,58 @@ const healthySurface = {
   bodyText: "Four hours of your time back every week.",
   messageButtonCount: 1,
   copiedPhone: "+18087881821",
-  copyNotice: "Phone number copied",
+  copyNotice: "Copied!",
   telHrefs: ["tel:+18087881821"],
   whatsAppHrefs: [],
   consoleErrors: [],
 };
 
+test("targets the shipped primary messaging action", () => {
+  expect(messageButtonAccessibleName).toBe("Text Eliza");
+});
+
 test("accepts the Cloudflare homepage with WhatsApp disabled", () => {
+  for (const whatsAppNumber of ["", "+14159611510"]) {
+    const result = evaluatePublicSurface(healthySurface, {
+      whatsAppEnabled: false,
+      whatsAppNumber,
+    });
+    expect(result.ok).toBe(true);
+  }
+});
+
+test("matches the deployment workflow's admission values", () => {
+  for (const value of [undefined, "", "0", "false", "no", "off"]) {
+    expect(resolveWhatsAppAdmission(value)).toEqual({
+      enabled: false,
+      valid: true,
+    });
+  }
+  for (const value of ["1", "true", "yes", "on"]) {
+    expect(resolveWhatsAppAdmission(value)).toEqual({
+      enabled: true,
+      valid: true,
+    });
+  }
+  for (const value of ["maybe", " TRUE ", " off "]) {
+    expect(resolveWhatsAppAdmission(value)).toEqual({
+      enabled: false,
+      valid: false,
+    });
+  }
+});
+
+test("fails closed for an invalid admission flag", () => {
   const result = evaluatePublicSurface(healthySurface, {
     whatsAppEnabled: false,
-    whatsAppNumber: "+18087881821",
+    whatsAppAdmissionValid: false,
+    whatsAppNumber: "",
   });
-  expect(result.ok).toBe(true);
+  expect(result.ok).toBe(false);
+  expect(
+    result.checks.find((entry) => entry.name === "whatsapp-sender-config")
+      ?.passed,
+  ).toBe(false);
 });
 
 test("evaluates an explicitly selected public origin", () => {
@@ -70,6 +114,17 @@ test("requires the same admitted Blooio number when WhatsApp is enabled", () => 
     { whatsAppEnabled: true, whatsAppNumber: "+14159611510" },
   );
   expect(formerNumber.ok).toBe(false);
+
+  for (const paddedNumber of [" +18087881821", "+18087881821 "]) {
+    const padded = evaluatePublicSurface(
+      {
+        ...healthySurface,
+        whatsAppHrefs: ["https://wa.me/18087881821"],
+      },
+      { whatsAppEnabled: true, whatsAppNumber: paddedNumber },
+    );
+    expect(padded.ok).toBe(false);
+  }
 });
 
 test("rejects visible phone copy and incorrect call targets", () => {

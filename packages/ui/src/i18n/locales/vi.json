@@ -7008,6 +7008,7 @@
   "cloud.affiliates.feeMarkupSetting": "Cài đặt markup phí",
   "cloud.affiliates.feeMarkupDesc": "Đặt chính xác phần trăm bạn muốn tính thêm cho người dùng được giới thiệu trên giá elizaOS gốc. Phí này áp dụng cho nạp tín dụng và chi phí sử dụng chính xác cho MCP/Agent.",
   "cloud.affiliates.markupPercentLabel": "Phần trăm markup của bạn (0 - 1000%)",
+  "cloud.affiliates.markupPercentHelp": "Từ 0 đến 1000. Được cộng vào giá cơ bản cho người dùng được giới thiệu.",
   "cloud.affiliates.devApiTitle": "Tích hợp API dành cho nhà phát triển (SKU)",
   "cloud.affiliates.devApiDesc": "Nhúng mã liên kết trực tiếp vào lệnh gọi API. Tất cả người dùng truyền header mã của bạn sẽ tự động tạo doanh thu đã markup cho bạn trên mỗi lần suy luận.",
   "cloud.notFound.title": "Không tìm thấy",

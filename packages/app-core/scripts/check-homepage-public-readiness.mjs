@@ -17,6 +17,7 @@ const repo = "elizaOS/eliza";
 const defaultOrigin = "https://eliza.app";
 const expectedGatewayNumber = "+18087881821";
 const expectedFormattedNumber = "+1 (808) 788-1821";
+export const messageButtonAccessibleName = "Text Eliza";
 const rejectedWhatsAppNumbers = [
   "+14155238886",
   "+15551649988",
@@ -76,13 +77,27 @@ function run(command, args) {
   return result.stdout.trim();
 }
 
-function getRepoVariable(name) {
-  return run("gh", ["variable", "get", name, "--repo", repo]).trim();
+function getRepoVariables() {
+  const rows = JSON.parse(
+    run("gh", ["variable", "list", "--repo", repo, "--json", "name,value"]),
+  );
+  return Object.fromEntries(rows.map(({ name, value }) => [name, value]));
 }
 
 function normalizePhone(value) {
-  const trimmed = value.trim();
-  return /^\+[1-9]\d{7,14}$/.test(trimmed) ? trimmed : null;
+  const normalized = value ?? "";
+  return /^\+[1-9]\d{7,14}$/.test(normalized) ? normalized : null;
+}
+
+export function resolveWhatsAppAdmission(value) {
+  const normalized = value?.toLowerCase() ?? "";
+  if (["", "0", "false", "no", "off"].includes(normalized)) {
+    return { enabled: false, valid: true };
+  }
+  if (["1", "true", "yes", "on"].includes(normalized)) {
+    return { enabled: true, valid: true };
+  }
+  return { enabled: false, valid: false };
 }
 
 export function evaluatePublicSurface(surface, config) {
@@ -107,7 +122,7 @@ export function evaluatePublicSurface(surface, config) {
     "message-copy-fallback",
     surface.messageButtonCount === 1 &&
       surface.copiedPhone === expectedGatewayNumber &&
-      surface.copyNotice === "Phone number copied",
+      surface.copyNotice === "Copied!",
     `buttons=${surface.messageButtonCount} clipboard=${surface.copiedPhone || "empty"} notice=${surface.copyNotice || "missing"}`,
   );
   check(
@@ -125,12 +140,14 @@ export function evaluatePublicSurface(surface, config) {
 
   const configuredWhatsApp = normalizePhone(config.whatsAppNumber);
   const configSafe =
-    configuredWhatsApp === expectedGatewayNumber &&
-    !rejectedWhatsAppNumbers.includes(configuredWhatsApp);
+    config.whatsAppAdmissionValid !== false &&
+    (!config.whatsAppEnabled ||
+      (configuredWhatsApp === expectedGatewayNumber &&
+        !rejectedWhatsAppNumbers.includes(configuredWhatsApp)));
   check(
     "whatsapp-sender-config",
     configSafe,
-    `configured=${configuredWhatsApp ?? "invalid"}`,
+    `enabled=${String(config.whatsAppEnabled)} admission=${config.whatsAppAdmissionValid === false ? "invalid" : "valid"} configured=${configuredWhatsApp ?? "unset"}`,
   );
 
   if (config.whatsAppEnabled) {
@@ -196,7 +213,10 @@ async function inspectPublicSurface(origin) {
             .filter((value) => typeof value === "string"),
         );
 
-    const messageButton = page.getByRole("button", { name: "Message Eliza" });
+    const messageButton = page.getByRole("button", {
+      name: messageButtonAccessibleName,
+      exact: true,
+    });
     const messageButtonCount = await messageButton.count();
     let copiedPhone = "";
     let copyNotice = "";
@@ -233,12 +253,17 @@ function writeEvidence(evidencePath, evidence) {
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
-  const whatsAppEnabled = getRepoVariable("WHATSAPP_PUBLIC_ENABLED") === "true";
-  const whatsAppNumber = getRepoVariable("VITE_WHATSAPP_PHONE_NUMBER");
+  const variables = getRepoVariables();
+  const whatsAppAdmission = resolveWhatsAppAdmission(
+    variables.WHATSAPP_PUBLIC_ENABLED,
+  );
+  const whatsAppEnabled = whatsAppAdmission.enabled;
+  const whatsAppNumber = variables.VITE_WHATSAPP_PHONE_NUMBER ?? "";
   const surface = await inspectPublicSurface(args.origin);
   const result = evaluatePublicSurface(surface, {
     origin: args.origin,
     whatsAppEnabled,
+    whatsAppAdmissionValid: whatsAppAdmission.valid,
     whatsAppNumber,
   });
 
@@ -254,6 +279,7 @@ async function main() {
     origin: args.origin,
     expectedGatewayNumber,
     whatsAppEnabled,
+    whatsAppAdmissionValid: whatsAppAdmission.valid,
     whatsAppNumber,
     checks: result.checks,
     surface: {

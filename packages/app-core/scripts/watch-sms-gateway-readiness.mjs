@@ -5,10 +5,14 @@
  * By default this only reports the command to run. Pass --run-install to run
  * the Android pair/connect/install/watch flow automatically once a wireless
  * pairing endpoint or exactly one adb device is visible.
+ *
+ * `--timeout` and `--interval` must be complete positive decimal integers in
+ * `1..86400` seconds. `Number.parseInt` previously turned `1e3` into a 1s
+ * wait and `8abc` into an 8s wait.
  */
 import { spawnSync } from "node:child_process";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const installScript = path.join(scriptDir, "install-android-sms-gateway.mjs");
@@ -20,28 +24,61 @@ function usage() {
     "Usage: node packages/app-core/scripts/watch-sms-gateway-readiness.mjs [options]",
     "",
     "Options:",
-    "  --timeout <seconds>   Stop waiting after this many seconds. Defaults to 300.",
-    "  --interval <seconds>  Poll interval. Defaults to 5.",
+    "  --timeout <seconds>   Stop waiting after this many seconds (1-86400). Defaults to 300.",
+    "  --interval <seconds>  Poll interval (1-86400). Defaults to 5.",
     "  --run-install         Run Android pair/connect/install/watch flow when actionable.",
   ].join("\n");
 }
 
-function parseArgs(argv) {
+export const DEFAULT_TIMEOUT_SECONDS = 300;
+export const DEFAULT_INTERVAL_SECONDS = 5;
+/** Upper bound for a watch window or poll interval (24 hours). */
+export const MAX_WATCH_SECONDS = 86_400;
+
+/**
+ * Parse `--timeout` / `--interval` as a complete positive decimal second count.
+ * Rejects scientific notation, trailing junk, leading zeros, and zero.
+ * @param {string} raw
+ * @param {string} label
+ */
+export function parseWatchSeconds(raw, label) {
+  if (typeof raw !== "string" || !/^[1-9]\d*$/.test(raw)) {
+    throw new Error(
+      `${label} must be a positive decimal integer from 1 to ${MAX_WATCH_SECONDS}`,
+    );
+  }
+  const parsed = Number(raw);
+  if (!Number.isSafeInteger(parsed) || parsed > MAX_WATCH_SECONDS) {
+    throw new Error(
+      `${label} must be a positive decimal integer from 1 to ${MAX_WATCH_SECONDS}`,
+    );
+  }
+  return parsed;
+}
+
+/**
+ * Parse CLI argv into watch options. Exported for focused tests.
+ * @param {string[]} argv
+ */
+export function parseArgs(argv) {
   const args = {
-    timeoutSeconds: 300,
-    intervalSeconds: 5,
+    timeoutSeconds: DEFAULT_TIMEOUT_SECONDS,
+    intervalSeconds: DEFAULT_INTERVAL_SECONDS,
     runInstall: false,
   };
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
     const next = () => {
       const value = argv[++i];
-      if (!value) throw new Error(`${arg} requires a value`);
+      if (!value || value.startsWith("--")) {
+        throw new Error(`${arg} requires a value`);
+      }
       return value;
     };
-    if (arg === "--timeout") args.timeoutSeconds = Number.parseInt(next(), 10);
+    if (arg === "--timeout")
+      args.timeoutSeconds = parseWatchSeconds(next(), "--timeout");
     else if (arg === "--interval")
-      args.intervalSeconds = Number.parseInt(next(), 10);
+      args.intervalSeconds = parseWatchSeconds(next(), "--interval");
     else if (arg === "--run-install") args.runInstall = true;
     else if (arg === "--help" || arg === "-h") {
       console.log(usage());
@@ -50,19 +87,28 @@ function parseArgs(argv) {
       throw new Error(`Unknown argument: ${arg}\n${usage()}`);
     }
   }
-  for (const [key, value] of Object.entries(args)) {
-    if (key === "runInstall") continue;
-    if (!Number.isInteger(value) || value < 0) {
-      throw new Error(`${key} must be a non-negative integer`);
-    }
-  }
   return args;
 }
 
+// Absolute probe deadline for the current watch. Every subprocess a probe
+// spawns is killed at the remaining budget, so a stalled adb/ioreg/curl can
+// overshoot --timeout by at most process-kill latency, never its own runtime.
+let probeDeadlineAtMs = Number.POSITIVE_INFINITY;
+
+function remainingProbeMs() {
+  return probeDeadlineAtMs - Date.now();
+}
+
 function run(command, args) {
+  const budgetMs = Math.max(1, Math.floor(remainingProbeMs()));
   const result = spawnSync(command, args, {
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"],
+    // SIGKILL, not the default SIGTERM: spawnSync keeps waiting when a child
+    // handles SIGTERM without exiting, and these probes are disposable — a
+    // stalled probe must die at the budget, not negotiate.
+    killSignal: "SIGKILL",
+    ...(Number.isFinite(budgetMs) ? { timeout: budgetMs } : {}),
   });
   return {
     status: result.status ?? (result.error ? 1 : 0),
@@ -154,10 +200,16 @@ function listHostUsbDevices() {
 }
 
 function readBridgeDoctor() {
+  // curl's own cap must never exceed the remaining watch budget: a stalled
+  // doctor endpoint used to stretch a 1s watch to curl's independent 5s.
+  const capSeconds = Math.min(
+    5,
+    Math.max(1, Math.ceil(remainingProbeMs() / 1000)),
+  );
   const result = run("curl", [
     "-sS",
     "--max-time",
-    "5",
+    String(Number.isFinite(capSeconds) ? capSeconds : 5),
     "http://127.0.0.1:8795/doctor",
   ]);
   if (result.status !== 0 || !result.stdout.trim()) return null;
@@ -200,16 +252,25 @@ function runInstallFlow(extraArgs = [], waitDeviceSeconds = "1") {
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   const deadline = Date.now() + args.timeoutSeconds * 1000;
+  probeDeadlineAtMs = deadline;
   let lastWirelessAdbSummary = "";
   let lastWirelessAdbSeenAt = 0;
   let printedBlueBubblesValidationHint = false;
 
-  while (Date.now() <= deadline) {
+  const expired = () => Date.now() > deadline;
+  while (!expired()) {
+    // Re-check the budget between probes: each subprocess is individually
+    // bounded, but a sequence of near-budget probes must not stack.
     const adbDeviceRows = listAdbDeviceRows();
+    if (expired()) break;
     const devices = listAdbDevices();
+    if (expired()) break;
     const wirelessAdb = listWirelessAdbServices();
+    if (expired()) break;
     const hostUsbDevices = listHostUsbDevices();
+    if (expired()) break;
     const bridgeDoctor = readBridgeDoctor();
+    if (expired()) break;
     const bridgeReady = bridgeOutboundReady(bridgeDoctor);
     const wirelessSummary = wirelessAdb
       .map((service) => `${service.type}:${service.endpoint}`)
@@ -309,7 +370,13 @@ async function main() {
     console.log(
       `[sms-gateway-watch] waiting: adb=${adbSummary}; wireless=${wirelessSummary || "none"}${lastWireless}${connectProbe ? `; connect-probe=${connectProbe.detail}` : ""}; host-usb=${hostUsbDevices.join(", ") || "none"}; bridge=${bridgeDoctor?.status ?? "unknown"}${bridgeSummary ? ` (${bridgeSummary})` : ""}`,
     );
-    await sleep(Math.max(1, args.intervalSeconds) * 1000);
+    // Clip every wait to the remaining deadline: --timeout 1 --interval 86400
+    // must stop ~1s in, not sleep the whole accepted interval past the stop.
+    const remainingMs = deadline - Date.now();
+    if (remainingMs <= 0) break;
+    await sleep(
+      Math.min(Math.max(1, args.intervalSeconds) * 1000, remainingMs),
+    );
   }
 
   throw new Error(
@@ -317,9 +384,17 @@ async function main() {
   );
 }
 
-main().catch((error) => {
-  console.error(
-    `[sms-gateway-watch] ${error instanceof Error ? error.message : String(error)}`,
-  );
-  process.exit(1);
-});
+const isDirectRun =
+  import.meta.main === true ||
+  (typeof process.argv[1] === "string" &&
+    import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href);
+
+if (isDirectRun) {
+  main().catch((error) => {
+    // error-policy:J1 CLI boundary — invalid flags or a missed gateway exit 1
+    console.error(
+      `[sms-gateway-watch] ${error instanceof Error ? error.message : String(error)}`,
+    );
+    process.exit(1);
+  });
+}

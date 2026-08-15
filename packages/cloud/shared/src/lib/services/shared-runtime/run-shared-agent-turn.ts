@@ -20,12 +20,14 @@
  *  - route only shared-eligible agents here (see `agent-tier.ts`)
  */
 
+import { replaceNameTokens } from "@elizaos/core";
 import { generateText, streamText } from "ai";
 import { CEREBRAS_DEFAULT_TEXT_SMALL_MODEL } from "../../models/catalog";
 import {
   getInteractiveCerebrasLanguageModel,
   hasLanguageModelProviderConfigured,
 } from "../../providers/language-model";
+import { resolveSharedCapabilityWall, type SharedCapabilityWall } from "./shared-capability-wall";
 import { resolveSharedNavIntent, type SharedNavIntent } from "./shared-nav-intent";
 
 export interface SharedTurnMessage {
@@ -89,6 +91,8 @@ export interface RunSharedAgentTurnResult {
    * `done` SSE frame so the PWA opens the view. See shared-nav-intent.ts.
    */
   navIntent?: SharedNavIntent;
+  /** Typed refusal for a tool or device action Shared cannot execute. */
+  capabilityWall?: SharedCapabilityWall;
 }
 
 export type SharedAgentTurnStreamPart =
@@ -110,6 +114,8 @@ export interface RunSharedAgentTurnStreamResult {
    * PWA opens the view. See shared-nav-intent.ts.
    */
   navIntent?: SharedNavIntent;
+  /** Typed refusal for a tool or device action Shared cannot execute. */
+  capabilityWall?: SharedCapabilityWall;
 }
 
 /**
@@ -180,18 +186,35 @@ export function resolveSharedAgentTurnModel(preferred?: string): string | null {
   return hasLanguageModelProviderConfigured(DEFAULT_SHARED_MODEL) ? DEFAULT_SHARED_MODEL : null;
 }
 
+/**
+ * Assemble the turn's system prompt.
+ *
+ * `{{name}}` / `{{agentName}}` tokens are resolved here because a character can
+ * reach this path still carrying them: the shipped presets ship tokenized
+ * `system` / `bio` so a later rename keeps propagating, and the cloud create
+ * path seeds one verbatim. A container-backed agent gets the same substitution
+ * from `@elizaos/core`'s prompt builder; the shared turn talks to the provider
+ * directly, so it is the only renderer on this side.
+ */
 function buildSystemPrompt(character: SharedAgentCharacter): string {
   const parts: string[] = [];
-  const system = character.system?.trim();
+  const system = replaceNameTokens(character.system ?? "", character.name).trim();
   if (system) parts.push(system);
   if (character.bio?.length) {
     parts.push(
       `About you:\n- ${character.bio
-        .map((b) => b.trim())
+        .map((b) => replaceNameTokens(b, character.name).trim())
         .filter(Boolean)
         .join("\n- ")}`,
     );
   }
+  parts.push(
+    "Shared runtime boundaries:\n" +
+      "- You can converse, reason, draft, and help the user plan.\n" +
+      "- You have no external tools, live browser, connected accounts, calendar, reminders, calling, messaging, purchasing, notes store, shell, filesystem, or code execution in this runtime.\n" +
+      "- Never claim that you performed, scheduled, sent, booked, bought, saved, opened, searched live data, or changed anything outside this conversation.\n" +
+      "- When an ambiguous follow-up asks you to execute a prior external action, state that the action needs Dedicated and offer the useful planning or drafting help you can provide here.",
+  );
   return parts.join("\n\n") || `You are ${character.name}, a helpful assistant.`;
 }
 
@@ -227,6 +250,17 @@ export async function runSharedAgentTurn(
   input: RunSharedAgentTurnInput,
 ): Promise<RunSharedAgentTurnResult> {
   const message = input.message.trim();
+
+  const capabilityWall = resolveSharedCapabilityWall(message);
+  if (capabilityWall) {
+    return {
+      reply: capabilityWall.reply,
+      history: appendTurn(input.history, message, capabilityWall.reply, input.messageIds),
+      model: "capability-wall",
+      degraded: false,
+      capabilityWall,
+    };
+  }
 
   // Deterministic in-app navigation fast path (no LLM, no plugin). A Tier-0
   // shared agent has no VIEWS action, so "go to settings" would otherwise be a
@@ -306,6 +340,23 @@ export async function runSharedAgentTurnStream(
   input: RunSharedAgentTurnInput,
 ): Promise<RunSharedAgentTurnStreamResult> {
   const message = input.message.trim();
+
+  const capabilityWall = resolveSharedCapabilityWall(message);
+  if (capabilityWall) {
+    const reply = capabilityWall.reply;
+    const parts = (async function* (): AsyncIterable<SharedAgentTurnStreamPart> {
+      yield { type: "text-delta", text: reply };
+      yield { type: "finish", text: reply };
+    })();
+    return {
+      model: "capability-wall",
+      degraded: false,
+      reply,
+      history: appendTurn(input.history, message, reply, input.messageIds),
+      parts,
+      capabilityWall,
+    };
+  }
 
   // Deterministic in-app navigation fast path (no LLM, no plugin). Synthesize a
   // one-shot stream that yields the confirmation text so the SSE shape is

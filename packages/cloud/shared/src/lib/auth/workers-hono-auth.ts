@@ -62,6 +62,7 @@ function localDevAdminUser(): AuthedUser & {
 } {
   return {
     id: "00000000-0000-4000-8000-000000000001",
+    created_at: new Date(0),
     email: "local-dev-admin@localhost",
     organization_id: "00000000-0000-4000-8000-000000000002",
     organization: {
@@ -80,6 +81,7 @@ function localDevAdminUser(): AuthedUser & {
 function toAuthedUser(user: UserWithOrganization): AuthedUser {
   return {
     id: user.id,
+    created_at: user.created_at,
     email: user.email ?? null,
     email_verified: user.email_verified ?? null,
     organization_id: user.organization_id ?? null,

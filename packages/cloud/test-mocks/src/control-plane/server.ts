@@ -1369,6 +1369,35 @@ export function buildControlPlaneApp(options: ControlPlaneMockOptions): {
     },
   );
 
+  app.post(
+    "/api/compat/agents/:id/api/conversations/:convId/messages",
+    async (c) => {
+      await latency();
+      const sandboxId = c.req.param("id");
+      const conversationId = decodeURIComponent(c.req.param("convId"));
+      const body = (await c.req.json().catch(() => null)) as Record<
+        string,
+        unknown
+      > | null;
+      const text = typeof body?.text === "string" ? body.text.trim() : "";
+      if (!text) return c.json({ error: "Message text is required" }, 400);
+      const result = store.appendConversationTurn(
+        sandboxId,
+        conversationId,
+        text,
+        typeof body?.clientMessageId === "string"
+          ? body.clientMessageId
+          : undefined,
+      );
+      if (!result) return c.json({ error: "Conversation not found" }, 404);
+      return c.json({
+        text: result.reply,
+        agentName: "Mock Agent",
+        replayed: result.replayed,
+      });
+    },
+  );
+
   async function hetznerFetch(
     path: string,
     init: RequestInit = {},

@@ -10,6 +10,20 @@ on:
         options:
           - staging
           - production
+      operation:
+        description: Inspect, converge, or retire the reviewed staging legacy vhost while converging
+        required: true
+        type: choice
+        default: converge
+        options:
+          - inspect-legacy-vhost
+          - converge
+          - retire-legacy-vhost-and-converge
+      reviewed_legacy_vhost_sha256:
+        description: Exact SHA-256 printed by the reviewed staging inspection (retirement only)
+        required: false
+        type: string
+        default: ""
 
 permissions:
   contents: read
@@ -26,6 +40,8 @@ jobs:
     environment: ${{ inputs.environment }}
     env:
       TARGET_ENVIRONMENT: ${{ inputs.environment }}
+      TARGET_OPERATION: ${{ inputs.operation }}
+      TARGET_REVIEWED_LEGACY_VHOST_SHA256: ${{ inputs.reviewed_legacy_vhost_sha256 }}
       DEPLOY_HOST: ${{ secrets.ELIZA_PROVISIONING_HOST }}
       DEPLOY_SSH_KEY: ${{ secrets.ELIZA_PROVISIONING_SSH_KEY }}
       DEPLOY_SSH_KNOWN_HOSTS: ${{ secrets.ELIZA_PROVISIONING_SSH_KNOWN_HOSTS }}
@@ -50,6 +66,38 @@ jobs:
             echo "::error::$TARGET_ENVIRONMENT Headscale deploys must run from $expected_ref"
             exit 1
           fi
+          case "$TARGET_OPERATION" in
+            converge)
+              if [ -n "$TARGET_REVIEWED_LEGACY_VHOST_SHA256" ]; then
+                echo "::error::reviewed_legacy_vhost_sha256 is accepted only for retirement"
+                exit 1
+              fi
+              ;;
+            inspect-legacy-vhost)
+              if [ "$TARGET_ENVIRONMENT" != "staging" ]; then
+                echo "::error::$TARGET_OPERATION is registered only for the reviewed staging legacy vhost"
+                exit 1
+              fi
+              if [ -n "$TARGET_REVIEWED_LEGACY_VHOST_SHA256" ]; then
+                echo "::error::reviewed_legacy_vhost_sha256 is accepted only for retirement"
+                exit 1
+              fi
+              ;;
+            retire-legacy-vhost-and-converge)
+              if [ "$TARGET_ENVIRONMENT" != "staging" ]; then
+                echo "::error::$TARGET_OPERATION is registered only for the reviewed staging legacy vhost"
+                exit 1
+              fi
+              if ! [[ "$TARGET_REVIEWED_LEGACY_VHOST_SHA256" =~ ^[0-9a-f]{64}$ ]]; then
+                echo "::error::retirement requires the exact lowercase SHA-256 printed by the reviewed inspection"
+                exit 1
+              fi
+              ;;
+            *)
+              echo "::error::Unsupported Headscale operation"
+              exit 1
+              ;;
+          esac
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -115,20 +163,35 @@ jobs:
           echo "path=$key_path" >> "$GITHUB_OUTPUT"
           echo "known_hosts_path=$known_hosts_path" >> "$GITHUB_OUTPUT"
 
-      - name: Converge Headscale, canonical TLS, and control-plane router
+      - name: Inspect or converge Headscale control plane
         shell: bash
         env:
           DEPLOY_SSH_KEY_PATH: ${{ steps.key.outputs.path }}
         run: |
           set -euo pipefail
-          node packages/cloud/scripts/admin/arm-headscale-control-plane.mjs \
-            --host "$DEPLOY_HOST" \
-            --ssh-key "$DEPLOY_SSH_KEY_PATH" \
-            --ssh-known-hosts "${{ steps.key.outputs.known_hosts_path }}" \
-            --headscale-public-url "$HEADSCALE_PUBLIC_URL" \
+          args=(
+            node packages/cloud/scripts/admin/arm-headscale-control-plane.mjs
+            --host "$DEPLOY_HOST"
+            --ssh-key "$DEPLOY_SSH_KEY_PATH"
+            --ssh-known-hosts "${{ steps.key.outputs.known_hosts_path }}"
+            --headscale-public-url "$HEADSCALE_PUBLIC_URL"
             --headscale-legacy-public-url "$resolved_legacy_public_url"
+          )
+          case "$TARGET_OPERATION" in
+            inspect-legacy-vhost)
+              args+=(--inspect-retirable-legacy-vhost)
+              ;;
+            retire-legacy-vhost-and-converge)
+              args+=(
+                --retire-retirable-legacy-vhost
+                --retirable-legacy-vhost-sha256 "$TARGET_REVIEWED_LEGACY_VHOST_SHA256"
+              )
+              ;;
+          esac
+          "${args[@]}"
 
       - name: Verify dual-SAN public identity and health
+        if: inputs.operation != 'inspect-legacy-vhost'
         shell: bash
         run: |
           set -euo pipefail

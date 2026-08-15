@@ -169,10 +169,7 @@ describe("Cloud CF PR preview workflow contract", () => {
 
   test("keeps PR builds reachable and gates canonical Pages on the API", () => {
     const buildJob = producer.jobs?.["build-pages"];
-    expect(buildJob?.needs).toEqual([
-      "validate-deploy-source",
-      "resolve-pages-preview-config",
-    ]);
+    expect(buildJob?.needs).toEqual(["resolve-pages-preview-config"]);
     expect(buildJob?.if).toBe(
       "$" +
         "{{ github.event_name == 'pull_request' && needs.resolve-pages-preview-config.result == 'success' }}",

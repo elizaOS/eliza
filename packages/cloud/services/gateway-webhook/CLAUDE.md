@@ -26,8 +26,8 @@ system) from trusted in-cluster callers and forwards those to agents.
   `verifyWebhook` / `extractEvent` / `sendReply` / `sendTypingIndicator`.
 - `src/webhook-handler.ts` — the core flow: sync phase (resolve config → verify
   signature → extract event → dedup), then a fire-and-forget async phase
-  (resolve identity → forward to agent-server → send reply). Unlinked senders
-  are routed to the cloud onboarding chat.
+  (resolve identity → forward to agent-server → send reply). Unlinked Telegram
+  senders enter personal Shared; SMS transports retain the onboarding flow.
 - `src/server-router.ts` — `resolveIdentity`, `resolveAgentServer`,
   `forwardToServer` / `forwardEventToServer` (retry + fallback + KEDA
   wake-on-zero), and `refreshKedaActivity`.

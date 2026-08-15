@@ -82,6 +82,38 @@ describe("Cloud active server persistence", () => {
     expect(loadPersistedActiveServer()).toEqual(server);
   });
 
+  it("persists a stable personal identity separately from its Dedicated runtime", () => {
+    const personalId = "personal:00000000-0000-5000-8000-000000000001";
+    const server = createPersistedActiveServer({
+      kind: "cloud",
+      id: `cloud:${personalId}`,
+      label: "Eliza",
+      apiBase: `https://${agentId}.cloud.eliza.app`,
+      accessToken: "cloud-token",
+      cloudRuntimeAgentId: agentId,
+      cloudRuntime: "dedicated",
+    });
+
+    savePersistedActiveServer(server);
+
+    expect(loadPersistedActiveServer()).toEqual({
+      id: `cloud:${personalId}`,
+      kind: "cloud",
+      label: "Eliza",
+      apiBase: `https://${agentId}.cloud.eliza.app`,
+      accessToken: "cloud-token",
+      cloudRuntimeAgentId: agentId,
+      cloudRuntime: "dedicated",
+    });
+    expect(
+      canRestoreActiveServer({
+        server,
+        clientApiAvailable: true,
+        isDesktop: false,
+      }),
+    ).toBe(true);
+  });
+
   it("normalizes legacy saved Cloud control-plane records", () => {
     localStorage.setItem(
       "elizaos:active-server",
