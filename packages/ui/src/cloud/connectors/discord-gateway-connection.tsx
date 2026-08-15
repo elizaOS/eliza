@@ -819,72 +819,77 @@ export function DiscordGatewayConnection() {
                 >
                   <div className="border rounded-sm">
                     <CollapsibleTrigger asChild>
-                      <div className="flex items-center gap-4 p-4 cursor-pointer hover:bg-muted/50 transition-colors">
-                        <div className="h-12 w-12 rounded-full bg-accent flex items-center justify-center flex-shrink-0">
-                          <Bot className="h-6 w-6 text-txt-strong" />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2">
-                            <span className="font-semibold truncate">
-                              {t("cloud.discord.appLabel", {
-                                appId: conn.applicationId,
-                                defaultValue: "App: {{appId}}",
-                              })}
-                            </span>
-                            {getStatusBadge(conn.status, t)}
+                      <div
+                        data-testid="discord-connection-summary"
+                        className="flex cursor-pointer flex-col items-stretch gap-3 p-4 transition-colors hover:bg-muted/50 sm:!flex-row sm:!items-center sm:!gap-4"
+                      >
+                        <div className="flex min-w-0 items-center gap-3 sm:!contents">
+                          <div className="h-12 w-12 rounded-full bg-accent flex items-center justify-center flex-shrink-0">
+                            <Bot className="h-6 w-6 text-txt-strong" />
                           </div>
-                          <div className="text-sm text-muted-foreground">
-                            {character ? (
-                              t("cloud.discord.characterLabel", {
-                                name: character.name,
-                                defaultValue: "Character: {{name}}",
-                              })
-                            ) : (
-                              <span className="text-yellow-600">
-                                {t("cloud.discord.noCharacterLinked", {
-                                  defaultValue: "No character linked",
+                          <div className="min-w-0 flex-1">
+                            <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                              <span className="font-semibold truncate">
+                                {t("cloud.discord.appLabel", {
+                                  appId: conn.applicationId,
+                                  defaultValue: "App: {{appId}}",
                                 })}
                               </span>
-                            )}
-                            {conn.metadata?.responseMode && (
-                              <>
-                                {" "}
-                                {t("cloud.discord.modeLabel", {
-                                  mode: conn.metadata.responseMode,
-                                  defaultValue: "· Mode: {{mode}}",
-                                })}
-                              </>
-                            )}
-                          </div>
-                          <div className="flex items-center gap-3 text-xs text-muted-foreground mt-1">
-                            <span>
-                              {t("cloud.discord.serverCount", {
-                                count: conn.guildCount,
-                                defaultValue: "{{count}} servers",
-                              })}
-                            </span>
-                            <span>·</span>
-                            <span>
-                              {t("cloud.discord.eventsReceived", {
-                                count: conn.eventsReceived,
-                                defaultValue: "{{count}} events received",
-                              })}
-                            </span>
-                            <span>·</span>
-                            <span>
-                              {t("cloud.discord.eventsRouted", {
-                                count: conn.eventsRouted,
-                                defaultValue: "{{count}} routed",
-                              })}
-                            </span>
-                          </div>
-                          {conn.errorMessage && (
-                            <div className="text-sm text-red-500 mt-1">
-                              {conn.errorMessage}
+                              {getStatusBadge(conn.status, t)}
                             </div>
-                          )}
+                            <div className="text-sm text-muted-foreground">
+                              {character ? (
+                                t("cloud.discord.characterLabel", {
+                                  name: character.name,
+                                  defaultValue: "Character: {{name}}",
+                                })
+                              ) : (
+                                <span className="text-yellow-600">
+                                  {t("cloud.discord.noCharacterLinked", {
+                                    defaultValue: "No character linked",
+                                  })}
+                                </span>
+                              )}
+                              {conn.metadata?.responseMode && (
+                                <>
+                                  {" "}
+                                  {t("cloud.discord.modeLabel", {
+                                    mode: conn.metadata.responseMode,
+                                    defaultValue: "· Mode: {{mode}}",
+                                  })}
+                                </>
+                              )}
+                            </div>
+                            <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+                              <span>
+                                {t("cloud.discord.serverCount", {
+                                  count: conn.guildCount,
+                                  defaultValue: "{{count}} servers",
+                                })}
+                              </span>
+                              <span className="hidden sm:inline">·</span>
+                              <span>
+                                {t("cloud.discord.eventsReceived", {
+                                  count: conn.eventsReceived,
+                                  defaultValue: "{{count}} events received",
+                                })}
+                              </span>
+                              <span className="hidden sm:inline">·</span>
+                              <span>
+                                {t("cloud.discord.eventsRouted", {
+                                  count: conn.eventsRouted,
+                                  defaultValue: "{{count}} routed",
+                                })}
+                              </span>
+                            </div>
+                            {conn.errorMessage && (
+                              <div className="text-sm text-red-500 mt-1">
+                                {conn.errorMessage}
+                              </div>
+                            )}
+                          </div>
                         </div>
-                        <div className="flex items-center gap-2">
+                        <div className="flex w-full items-center justify-end gap-2 sm:!w-auto">
                           <Button
                             variant="outline"
                             size="sm"
@@ -957,13 +962,13 @@ export function DiscordGatewayConnection() {
                             {edit.pendingConflict && (
                               <Alert>
                                 <AlertCircle aria-hidden />
-                                <AlertTitle>
+                                <AlertTitle className="line-clamp-none break-words">
                                   {t("cloud.discord.connectionConflictTitle", {
                                     defaultValue:
                                       "Connection settings changed elsewhere",
                                   })}
                                 </AlertTitle>
-                                <AlertDescription>
+                                <AlertDescription className="min-w-0">
                                   {edit.pendingConflict.status ===
                                     "loading" && (
                                     <p>
@@ -1025,11 +1030,15 @@ export function DiscordGatewayConnection() {
                                           )}
                                         </p>
                                       )}
-                                      <div className="mt-2 flex flex-wrap gap-2">
+                                      <div
+                                        data-testid="discord-conflict-actions"
+                                        className="mt-3 grid w-full gap-2 sm:!flex sm:!flex-wrap"
+                                      >
                                         <Button
                                           type="button"
                                           variant="outline"
                                           size="sm"
+                                          className="h-auto min-h-11 w-full min-w-0 whitespace-normal px-3 py-2 text-left leading-snug sm:!w-auto sm:!text-center"
                                           onClick={() =>
                                             resolveEditConflict(
                                               conn.id,
@@ -1048,6 +1057,7 @@ export function DiscordGatewayConnection() {
                                         <Button
                                           type="button"
                                           size="sm"
+                                          className="h-auto min-h-11 w-full min-w-0 whitespace-normal px-3 py-2 text-left leading-snug sm:!w-auto sm:!text-center"
                                           onClick={() =>
                                             resolveEditConflict(
                                               conn.id,
@@ -1316,7 +1326,10 @@ export function DiscordGatewayConnection() {
                             </div>
 
                             {/* Action Buttons */}
-                            <div className="flex items-center justify-between pt-2">
+                            <div
+                              data-testid="discord-connection-actions"
+                              className="flex flex-col gap-2 pt-2 sm:!flex-row sm:!items-center sm:!justify-between"
+                            >
                               <ConnectionDisconnectAction
                                 title={t("cloud.discord.deleteTitle", {
                                   defaultValue:
@@ -1343,6 +1356,7 @@ export function DiscordGatewayConnection() {
                               />
 
                               <Button
+                                className="w-full sm:!w-auto"
                                 onClick={() => handleSaveChanges(conn.id)}
                                 disabled={
                                   savingId === conn.id ||
