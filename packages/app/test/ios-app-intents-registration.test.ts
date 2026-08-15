@@ -50,6 +50,13 @@ const bridgeViewControllerSwift = readFileSync(
   path.join(iosAppRoot, "App/ElizaBridgeViewController.swift"),
   "utf8",
 );
+const screenTimeReportSwift = readFileSync(
+  path.join(
+    iosAppRoot,
+    "App/DeviceActivityReportExtension/DeviceActivityReportExtension.swift",
+  ),
+  "utf8",
+);
 interface StringCatalogEntry {
   localizations?: Record<
     string,
@@ -67,6 +74,15 @@ interface StringCatalog {
 
 const localizableCatalog = JSON.parse(
   readFileSync(path.join(iosAppRoot, "App/Localizable.xcstrings"), "utf8"),
+) as StringCatalog;
+const screenTimeReportCatalog = JSON.parse(
+  readFileSync(
+    path.join(
+      iosAppRoot,
+      "App/DeviceActivityReportExtension/Localizable.xcstrings",
+    ),
+    "utf8",
+  ),
 ) as StringCatalog;
 function parseAppleStrings(source: string): Map<string, string> {
   return new Map(
@@ -387,6 +403,74 @@ describe("native assistant entry contracts", () => {
         new RegExp(`isa = PBXBuildFile; fileRef = ${shortcutsFileRef} `, "g"),
       )?.length,
     ).toBe(1);
+
+    const screenTimeReportModelFileRef = "DAREP000100000000000106";
+    expect(
+      pbxproj.match(
+        new RegExp(
+          `isa = PBXBuildFile; fileRef = ${screenTimeReportModelFileRef} `,
+          "g",
+        ),
+      )?.length,
+    ).toBe(2);
+    expect(pbxproj).toContain("ScreenTimeReportModelTests.swift in Sources");
+
+    const screenTimeCatalogFileRef = "DAREP000100000000000105";
+    expect(pbxproj).toContain(
+      `${screenTimeCatalogFileRef} /* Localizable.xcstrings */ = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; path = Localizable.xcstrings; sourceTree = "<group>"; };`,
+    );
+    expect(
+      pbxproj.match(
+        new RegExp(
+          `isa = PBXBuildFile; fileRef = ${screenTimeCatalogFileRef} `,
+          "g",
+        ),
+      )?.length,
+    ).toBe(1);
+  });
+
+  it("renders localized Screen Time results only inside the report extension", () => {
+    expect(screenTimeReportSwift).toContain("for await deviceActivity in data");
+    expect(screenTimeReportSwift).toContain(
+      "for await segment in deviceActivity.activitySegments",
+    );
+    expect(screenTimeReportSwift).toContain(
+      "for await categoryActivity in segment.categories",
+    );
+    expect(screenTimeReportSwift).not.toContain(
+      "Screen Time activity is available for this report.",
+    );
+    expect(screenTimeReportSwift).not.toMatch(
+      /UserDefaults|URLSession|appGroup|containerURL/,
+    );
+    expect(screenTimeReportSwift).toContain(
+      "ScreenTimeReportModel.topCategories(from: durationsByCategory)",
+    );
+    expect(screenTimeReportSwift).toContain(
+      "ScreenTimeReportModel.formatDuration(",
+    );
+    expect(
+      screenTimeReportSwift.match(/accessibilityAddTraits\(\.isHeader\)/g)
+        ?.length,
+    ).toBe(2);
+
+    const requiredKeys = [
+      "Screen Time",
+      "Top categories",
+      "Other",
+      "Less than a minute",
+      "No Screen Time activity is available for this period.",
+      "Total activity: %@",
+    ];
+    expect(screenTimeReportCatalog.sourceLanguage).toBe("en");
+    expect(Object.keys(screenTimeReportCatalog.strings).sort()).toEqual(
+      [...requiredKeys].sort(),
+    );
+    for (const key of requiredKeys) {
+      expect(
+        screenTimeReportCatalog.strings[key]?.localizations?.es?.stringUnit,
+      ).toEqual({ state: "translated", value: expect.any(String) });
+    }
   });
 
   it("builds the ElizaWidgets extension target with widget + controls sources", () => {

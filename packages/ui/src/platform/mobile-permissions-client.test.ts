@@ -177,6 +177,13 @@ describe("createMobileSignalsPermissionsRegistry", () => {
             status: "not-determined",
             canRequest: false,
           },
+          android: {
+            usageAccessGranted: false,
+            packageUsageStatsPermissionDeclared: true,
+            canOpenUsageAccessSettings: true,
+            foregroundEventsAvailable: false,
+            totalTimeForegroundMs: null,
+          },
           reason: "Enable Usage Access in Android Settings.",
         },
       }),
@@ -189,6 +196,74 @@ describe("createMobileSignalsPermissionsRegistry", () => {
     });
 
     expect(native.openSettings).toHaveBeenCalled();
+    expect(native.requestPermissions).not.toHaveBeenCalled();
+  });
+
+  it("does not report unavailable iOS Screen Time as granted", async () => {
+    const native = plugin(
+      permissions({
+        screenTime: {
+          ...permissions().screenTime,
+          authorization: {
+            status: "approved",
+            canRequest: false,
+          },
+          provisioning: {
+            satisfied: false,
+            inspected: "not-inspectable",
+            reason:
+              "iOS entitlement inspection is handled by build validation and provisioning profile checks.",
+          },
+          reason: null,
+        },
+      }),
+    );
+    const registry = createMobileSignalsPermissionsRegistry(native);
+
+    await expect(registry.check("screentime")).resolves.toMatchObject({
+      id: "screentime",
+      status: "restricted",
+      canRequest: false,
+      restrictedReason: "os_policy",
+    });
+  });
+
+  it("does not open settings for unavailable iOS Screen Time", async () => {
+    const native = plugin(
+      permissions({
+        screenTime: {
+          ...permissions().screenTime,
+          authorization: {
+            status: "approved",
+            canRequest: false,
+          },
+          reason: null,
+        },
+        setupActions: [
+          {
+            id: "screen_time_authorization",
+            label: "Screen Time",
+            status: "unavailable",
+            canRequest: false,
+            canOpenSettings: false,
+            settingsTarget: "screenTime",
+            reason: null,
+          },
+        ],
+      }),
+    );
+    const registry = createMobileSignalsPermissionsRegistry(native);
+
+    const state = await registry.request("screentime", {
+      reason: "Read usage summaries.",
+      feature: { app: "lifeops", action: "usage.read" },
+    });
+
+    expect(state).toMatchObject({
+      status: "restricted",
+      canRequest: false,
+    });
+    expect(native.openSettings).not.toHaveBeenCalled();
     expect(native.requestPermissions).not.toHaveBeenCalled();
   });
 

@@ -1,0 +1,12 @@
+{
+  "sourceLanguage" : "en",
+  "strings" : {
+    "Less than a minute" : { "localizations" : { "es" : { "stringUnit" : { "state" : "translated", "value" : "Menos de un minuto" } } } },
+    "No Screen Time activity is available for this period." : { "localizations" : { "es" : { "stringUnit" : { "state" : "translated", "value" : "No hay actividad de Tiempo de uso disponible para este periodo." } } } },
+    "Other" : { "localizations" : { "es" : { "stringUnit" : { "state" : "translated", "value" : "Otros" } } } },
+    "Screen Time" : { "localizations" : { "es" : { "stringUnit" : { "state" : "translated", "value" : "Tiempo de uso" } } } },
+    "Top categories" : { "localizations" : { "es" : { "stringUnit" : { "state" : "translated", "value" : "Categorías principales" } } } },
+    "Total activity: %@" : { "localizations" : { "es" : { "stringUnit" : { "state" : "translated", "value" : "Actividad total: %@" } } } }
+  },
+  "version" : "1.0"
+}
