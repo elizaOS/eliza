@@ -388,6 +388,11 @@ export default function StewardLoginSection() {
   // reveals the EVM / Solana peer buttons; clicking one mounts the lazy wallet
   // stack as before.
   const [showWalletOptions, setShowWalletOptions] = useState(false);
+  // Focus target for the controlled wallet region. After a chain intent locks
+  // the disclosure toggle (walletButtonsMounted), keyboard focus must move
+  // into this live region so it is not stranded on a newly-disabled control or
+  // an unmounted peer button.
+  const walletOptionsRegionRef = useRef<HTMLDivElement>(null);
   const [callbackError, setCallbackError] = useState<string | null>(null);
   const [redirectTo, setRedirectTo] = useState<string | null>(null);
   // Detected once, synchronously, BEFORE the callback-consuming effect below
@@ -985,6 +990,15 @@ export default function StewardLoginSection() {
     setWalletButtonsMounted(true);
     setAutoStartWallet(kind);
   }
+
+  // Distinct post-intent lock state: the disclosure toggle becomes disabled
+  // once the lazy wallet stack is mounted. Move focus into the always-mounted
+  // controlled region so keyboard users are not left without a focused target
+  // when the peer intent button unmounts and the toggle locks.
+  useEffect(() => {
+    if (!walletButtonsMounted) return;
+    walletOptionsRegionRef.current?.focus({ preventScroll: true });
+  }, [walletButtonsMounted]);
 
   if (redirectTo) {
     return <Navigate to={redirectTo} replace />;
@@ -1653,6 +1667,8 @@ export default function StewardLoginSection() {
 
           <div
             id="steward-wallet-options"
+            ref={walletOptionsRegionRef}
+            tabIndex={-1}
             hidden={!showWalletOptions && !walletButtonsMounted}
           >
             {(showWalletOptions || walletButtonsMounted) && (
