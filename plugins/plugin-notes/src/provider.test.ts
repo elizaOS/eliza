@@ -14,11 +14,11 @@ import {
   AgentRuntime,
   createCharacter,
   ElizaError,
+  filterProvidersByContextGate,
   type IAgentRuntime,
   type Memory,
   type Provider,
   type State,
-  filterProvidersByContextGate,
   stringToUuid,
 } from "@elizaos/core";
 import { afterEach, describe, expect, it } from "vitest";
