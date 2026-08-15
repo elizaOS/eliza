@@ -74,12 +74,25 @@ add_executable(wakeword_runtime_test test/wakeword_runtime_test.c)
 target_link_libraries(wakeword_runtime_test PRIVATE wakeword)
 target_compile_options(wakeword_runtime_test PRIVATE -O2 -Wall -Wextra)
 
-# Real-audio scorer (no add_test — it needs an audio file). Drives arbitrary
-# 16 kHz mono f32 PCM through the runtime so the shipped head can be verified
-# against real speech. See test/wakeword_score_raw.c.
+# Real-audio scorer. Drives arbitrary 16 kHz mono f32 PCM through the runtime so
+# the shipped head can be verified against real speech. Its optional sustained
+# gate mode mirrors OpenWakeWordDetector's threshold + activation-frame rule.
 add_executable(wakeword_score_raw test/wakeword_score_raw.c)
 target_link_libraries(wakeword_score_raw PRIVATE wakeword)
 target_compile_options(wakeword_score_raw PRIVATE -O2 -Wall -Wextra)
+
+# The tracked real-speech fixture prevents a renamed placeholder or broken head
+# from passing the synthetic silence/chirp smoke. Eight consecutive hot frames
+# is the production detector default; a single score spike is not a wake event.
+set(WAKEWORD_REAL_POSITIVE_F32
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../../../plugins/plugin-local-inference/src/services/voice/__fixtures__/hey-eliza-16k.f32)
+add_test(NAME wakeword_real_positive_test
+         COMMAND wakeword_score_raw
+                 ${CMAKE_BINARY_DIR}/wakeword/hey-eliza.melspec.gguf
+                 ${CMAKE_BINARY_DIR}/wakeword/hey-eliza.embedding.gguf
+                 ${CMAKE_BINARY_DIR}/wakeword/hey-eliza.classifier.gguf
+                 ${WAKEWORD_REAL_POSITIVE_F32}
+                 0.5 8 fire)
 add_test(NAME wakeword_runtime_test
          COMMAND wakeword_runtime_test
                  ${CMAKE_BINARY_DIR}/wakeword/hey-eliza.melspec.gguf

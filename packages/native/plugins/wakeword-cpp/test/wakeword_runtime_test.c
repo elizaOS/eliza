@@ -5,10 +5,8 @@
  * seconds of synthesized audio through `wakeword_process`. Asserts:
  *
  *   - silence holds the score in a low band (< 0.5),
- *   - a synthetic "speech-like" chirp produces a non-zero score
- *     (every probability the head emits is in [0, 1]; we just check
- *     activity, not class assignment, since the pretrained head
- *     responds to "hey jarvis"-shaped audio rather than chirps).
+ *   - a synthetic "speech-like" chirp produces a finite score in [0, 1]
+ *     (this checks pipeline activity, not class assignment),
  *   - threshold setter is honored (round-trip via the public ABI).
  *   - the round-trip GGUF reader works (validated by the simple fact
  *     that `wakeword_open` returns 0).
@@ -131,19 +129,13 @@ int main(int argc, char **argv) {
         fprintf(stderr, "[wakeword-runtime-test] silence score %.4f out of [0, 1]\n", (double)silence_score);
         ++failures;
     }
-    /* Honest gate: silence must stay below the openWakeWord upstream
-     * default trigger threshold (0.5 is the API default, but the
-     * temporary hey-jarvis-v0.1-derived head shipped today scores ≈0.5 on
-     * pure silence due to the per-call relmax floor masquerading as
-     * signal. The real "hey eliza" head, when trained, is expected to
-     * settle below 0.2 on silence.) Cap at 0.7 — well below the
-     * "definitely a wake event" band. */
-    if (silence_score >= 0.7f) {
-        fprintf(stderr, "[wakeword-runtime-test] silence score %.4f >= 0.7\n", (double)silence_score);
+    /* The published no-mel-rescale "hey eliza" head must keep pure silence
+     * below the production 0.5 score threshold. */
+    if (silence_score >= 0.5f) {
+        fprintf(stderr, "[wakeword-runtime-test] silence score %.4f >= 0.5\n", (double)silence_score);
         ++failures;
     }
-    printf("[wakeword-runtime-test] silence score = %.4f (temporary head; real head trained for hey-eliza will lower this)\n",
-           (double)silence_score);
+    printf("[wakeword-runtime-test] silence score = %.4f\n", (double)silence_score);
 
     /* --- chirp (NOT "hey eliza"; just non-silence audio) --- */
     /* Re-open to clear streaming state (the public ABI doesn't expose a
