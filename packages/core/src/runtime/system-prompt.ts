@@ -3,7 +3,8 @@
  * character's `system` + `bio` (name-token expanded) plus the caller's role, and
  * resolves the effective system prompt from explicit params, a leading `system`
  * chat message, or a fallback — de-duplicating that leading system message when it
- * already matches the resolved prompt.
+ * already matches the resolved prompt. Also renders the character's static chat
+ * style directions for the v5 stable prefix.
  */
 
 import { replaceNameTokens } from "../name-tokens";
@@ -59,6 +60,42 @@ export function buildCanonicalSystemPrompt(args: {
 		.filter(Boolean)
 		.join("\n\n")
 		.trim();
+}
+
+function renderStyleRules(value: unknown): string[] {
+	if (!Array.isArray(value)) {
+		return [];
+	}
+	return value
+		.map((entry) => (typeof entry === "string" ? entry.trim() : ""))
+		.filter(Boolean);
+}
+
+/**
+ * Renders the character's chat-facing style directions (`style.all` +
+ * `style.chat`) as a single self-headed block for the canonical v5 message
+ * pipeline. Computed statically from the character — never through the
+ * per-room CHARACTER provider — so the rendered block is byte-stable and safe
+ * inside the KV-cacheable stable prefix. Returns "" when the character
+ * declares no chat style.
+ */
+export function buildCharacterStyleDirections(args: {
+	character?: Pick<Character, "name" | "style"> | null;
+}): string {
+	const character = args.character;
+	const name =
+		typeof character?.name === "string" && character.name.trim()
+			? character.name.trim()
+			: "the agent";
+	const style = character?.style;
+	const rules = [
+		...renderStyleRules(style?.all),
+		...renderStyleRules(style?.chat),
+	].map((rule) => replaceNameTokens(rule, name));
+	if (rules.length === 0) {
+		return "";
+	}
+	return `# Message Directions for ${name}\n${rules.join("\n")}`;
 }
 
 export function textFromChatMessageContent(content: unknown): string {

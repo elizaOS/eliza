@@ -185,7 +185,10 @@ import {
 	runSubPlanner,
 	subPlannerCallDigest,
 } from "../runtime/sub-planner";
-import { buildCanonicalSystemPrompt } from "../runtime/system-prompt";
+import {
+	buildCanonicalSystemPrompt,
+	buildCharacterStyleDirections,
+} from "../runtime/system-prompt";
 import { resolveTraceCorrelationFromEnv } from "../runtime/trace-correlation";
 import {
 	buildProviderAttributionsFromState,
@@ -877,8 +880,9 @@ function alwaysOnResponseStateProviderNames(runtime: IAgentRuntime): string[] {
  *   - ACTIONS / PROVIDERS / ACTION_STATE: meta-listings — the planner sees
  *     actions as native function tools, so a parallel text block is
  *     duplicative and confusing.
- *   - CHARACTER: already rendered via `staticPrefix.systemPrompt` (which
- *     includes system + bio + role) so the text-block CHARACTER provider
+ *   - CHARACTER: identity is already rendered via `staticPrefix.systemPrompt`
+ *     (system + bio + role) and chat style directions via
+ *     `staticPrefix.characterPrompt`, so the text-block CHARACTER provider
  *     would duplicate the same content.
  * RECENT_MESSAGES stays included because Stage 1 needs full prior dialogue
  * text when no structured `recentMessages` array is available from the
@@ -3425,6 +3429,13 @@ async function createV5MessageContextObject(args: {
 		character: args.runtime.character,
 		userRole: args.userRoles?.[0],
 	});
+	// Chat style directions (style.all + style.chat) render exactly once here,
+	// in the stable prefix. Computed statically from the character — not via the
+	// per-room CHARACTER provider — so the KV-cacheable prefix stays
+	// byte-identical across turns (#17026).
+	const characterStyleDirections = buildCharacterStyleDirections({
+		character: args.runtime.character,
+	});
 	// Stage 2 exposes each Action as its own native tool. Per-action specs live
 	// in `events[type=tool]`; the LLM calls each action directly by name. We
 	// also expose the universal terminal-sentinel tools (REPLY / IGNORE / STOP)
@@ -3458,6 +3469,14 @@ async function createV5MessageContextObject(args: {
 						id: "system",
 						label: "system",
 						content: systemPrompt,
+						stable: true,
+					}
+				: undefined,
+			characterPrompt: characterStyleDirections
+				? {
+						id: "character-style",
+						label: "system",
+						content: characterStyleDirections,
 						stable: true,
 					}
 				: undefined,
