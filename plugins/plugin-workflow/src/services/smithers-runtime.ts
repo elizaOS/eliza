@@ -163,7 +163,7 @@ async function linkWorkflowDependency(
   }
 }
 
-export function validateSmithersSource(source: string): void {
+export function validateSmithersSource(source: unknown): void {
   // A stored workflow record can reach dispatch without a source (stale
   // trigger pointing at a legacy or partially-saved definition, live repro:
   // system-device-health-check). That must fail as the typed
