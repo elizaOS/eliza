@@ -102,6 +102,10 @@ import type {
 	PlannerTrajectory,
 } from "./planner-types";
 import {
+	containsReasoningMarkup,
+	stripReasoningArtifacts,
+} from "./reasoning-artifacts";
+import {
 	buildPlannerActionGrammarStrict,
 	buildSpanSamplerPlan,
 	withGuidedDecodeProviderOptions,
@@ -117,10 +121,6 @@ import type {
 	TrajectoryRecorder,
 } from "./trajectory-recorder";
 import { captureToolStageIO } from "./trajectory-recorder";
-import {
-	containsReasoningMarkup,
-	stripReasoningArtifacts,
-} from "./reasoning-artifacts";
 import { sanitizeUserVisibleModelOutput } from "./user-visible-model-output";
 
 export {
@@ -5422,8 +5422,8 @@ export function isUnsafeUserVisibleText(value: string | undefined): boolean {
 		return true;
 	}
 	// Reasoning-token residue and evaluator protocol envelopes are internals,
-	// never replies: a `</think>` anywhere means upstream stripping failed, and
-	// a JSON body carrying the evaluator's decision/success protocol keys is
+	// never replies: any canonical reasoning tag means upstream stripping
+	// failed, and a JSON body carrying evaluator decision/success protocol keys is
 	// the verdict envelope itself (live tj-b8809c9841cdfd delivered
 	// `None</think>\`\`\`json {"success": true, "decision": "FINISH"…}` to
 	// Discord when a think-prefixed envelope defeated the parser). Egress is
