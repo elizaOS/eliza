@@ -37,9 +37,7 @@ const UpdateConnectionSchema = z
     // preserves the established v1 contract for existing API clients.
     expectedEditVersion: z
       .string()
-      .regex(/^\d+$/)
-      .transform(Number)
-      .pipe(z.number().int().nonnegative().max(2_147_483_646))
+      .regex(/^(0|[1-9]\d*)$/)
       .optional(),
   })
   .refine(

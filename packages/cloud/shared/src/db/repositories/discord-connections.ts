@@ -338,7 +338,7 @@ export const discordConnectionsRepository = {
   async updateConfiguration(
     id: string,
     updates: Partial<typeof discordConnections.$inferInsert>,
-    expectedConfigurationRevision?: number,
+    expectedConfigurationRevision?: string,
     newBotToken?: string,
   ): Promise<DiscordConnectionWithVersion | null> {
     const tokenUpdates = newBotToken === undefined ? {} : await encryptDiscordBotToken(newBotToken);

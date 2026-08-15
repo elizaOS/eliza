@@ -45,7 +45,7 @@ const connection: DiscordConnectionWithVersion = {
   connected_at: null,
   intents: 1,
   is_active: true,
-  configuration_revision: 4271,
+  configuration_revision: "4271",
   metadata: {
     responseMode: "keyword",
     keywords: ["support"],
@@ -58,7 +58,7 @@ const connection: DiscordConnectionWithVersion = {
 
 const updatedConnection: DiscordConnectionWithVersion = {
   ...connection,
-  configuration_revision: 4272,
+  configuration_revision: "4272",
   edit_version: "4272",
 };
 
@@ -182,7 +182,7 @@ describe("PATCH /api/v1/discord/connections/:id metadata concurrency", () => {
         status: "pending",
         metadata,
       },
-      4271,
+      "4271",
       "replacement-token",
     );
     expect(await response.json()).toMatchObject({
@@ -215,13 +215,39 @@ describe("PATCH /api/v1/discord/connections/:id metadata concurrency", () => {
     expect(updateConfiguration).not.toHaveBeenCalled();
   });
 
-  test("rejects a revision that cannot be incremented in PostgreSQL", async () => {
+  test("keeps revisions opaque beyond the PostgreSQL bigint ceiling", async () => {
+    updateConfiguration.mockResolvedValueOnce({
+      ...updatedConnection,
+      configuration_revision: "9223372036854775808",
+      edit_version: "9223372036854775808",
+    });
     const response = await patch({
       metadata: { responseMode: "mention" },
-      expectedEditVersion: "2147483647",
+      expectedEditVersion: "9223372036854775807",
     });
 
-    expect(response.status).toBe(400);
-    expect(updateConfiguration).not.toHaveBeenCalled();
+    expect(response.status).toBe(200);
+    expect(updateConfiguration).toHaveBeenCalledWith(
+      CONNECTION_ID,
+      { metadata: { responseMode: "mention" } },
+      "9223372036854775807",
+      undefined,
+    );
+    expect(await response.json()).toMatchObject({
+      connection: { editVersion: "9223372036854775808" },
+    });
   });
+
+  test.each(["-1", "1.0", "1e3", "01"])(
+    "rejects a non-canonical revision token %s",
+    async (expectedEditVersion) => {
+      const response = await patch({
+        metadata: { responseMode: "mention" },
+        expectedEditVersion,
+      });
+
+      expect(response.status).toBe(400);
+      expect(updateConfiguration).not.toHaveBeenCalled();
+    },
+  );
 });

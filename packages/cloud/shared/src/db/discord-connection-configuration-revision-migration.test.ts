@@ -42,12 +42,20 @@ describe("0208 Discord connection configuration revision", () => {
     await client.exec(migration);
     await client.exec(migration);
 
-    const initial = await client.query<{ configuration_revision: number }>(`
-      SELECT configuration_revision
+    const initial = await client.query<{ configuration_revision: string }>(`
+      SELECT configuration_revision::text AS configuration_revision
       FROM discord_connections
       WHERE id = '00000000-0000-4000-8000-000000000001'
     `);
-    expect(initial.rows).toEqual([{ configuration_revision: 0 }]);
+    expect(initial.rows).toEqual([{ configuration_revision: "0" }]);
+
+    const column = await client.query<{ data_type: string }>(`
+      SELECT data_type
+      FROM information_schema.columns
+      WHERE table_name = 'discord_connections'
+        AND column_name = 'configuration_revision'
+    `);
+    expect(column.rows).toEqual([{ data_type: "numeric" }]);
 
     await client.exec(`
       UPDATE discord_connections
@@ -55,12 +63,12 @@ describe("0208 Discord connection configuration revision", () => {
       WHERE id = '00000000-0000-4000-8000-000000000001'
     `);
     const afterTelemetry = await client.query<{
-      configuration_revision: number;
+      configuration_revision: string;
     }>(`
-      SELECT configuration_revision
+      SELECT configuration_revision::text AS configuration_revision
       FROM discord_connections
       WHERE id = '00000000-0000-4000-8000-000000000001'
     `);
-    expect(afterTelemetry.rows).toEqual([{ configuration_revision: 0 }]);
+    expect(afterTelemetry.rows).toEqual([{ configuration_revision: "0" }]);
   });
 });

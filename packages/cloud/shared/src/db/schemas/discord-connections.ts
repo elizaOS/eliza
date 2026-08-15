@@ -5,6 +5,7 @@ import {
   index,
   integer,
   jsonb,
+  numeric,
   pgTable,
   text,
   timestamp,
@@ -130,7 +131,7 @@ export const discordConnections = pgTable(
     // Configuration
     intents: integer("intents").default(DISCORD_DEFAULT_INTENTS),
     is_active: boolean("is_active").default(true).notNull(),
-    configuration_revision: integer("configuration_revision").default(0).notNull(),
+    configuration_revision: numeric("configuration_revision").default("0").notNull(),
 
     /**
      * Bot behavior configuration metadata.

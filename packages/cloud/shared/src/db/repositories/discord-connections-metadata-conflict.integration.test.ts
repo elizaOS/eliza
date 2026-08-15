@@ -4,6 +4,7 @@
  */
 
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
+import { eq } from "drizzle-orm";
 
 const AMBIENT_DATABASE_URL = process.env.DATABASE_URL ?? "";
 const CAN_USE_ISOLATED_PGLITE =
@@ -84,8 +85,8 @@ describe("discordConnectionsRepository.updateConfiguration", () => {
     const initial = await discordConnectionsRepository.findById(CONNECTION_ID);
     expect(initial).not.toBeNull();
     if (!initial) throw new Error("seeded Discord connection is required");
-    const initialRevision = Number(initial.edit_version);
-    expect(initialRevision).toBe(0);
+    const initialRevision = initial.edit_version;
+    expect(initialRevision).toBe("0");
 
     await discordConnectionsRepository.updateHeartbeat(CONNECTION_ID);
     await discordConnectionsRepository.updateStats(CONNECTION_ID, {
@@ -127,7 +128,7 @@ describe("discordConnectionsRepository.updateConfiguration", () => {
     expect(initial).not.toBeNull();
     if (!initial) throw new Error("seeded Discord connection is required");
     expect(initial.edit_version).toMatch(/^\d+$/);
-    const initialRevision = Number(initial.edit_version);
+    const initialRevision = initial.edit_version;
     const current = await discordConnectionsRepository.updateConfiguration(
       CONNECTION_ID,
       {
@@ -172,7 +173,7 @@ describe("discordConnectionsRepository.updateConfiguration", () => {
     const initial = await discordConnectionsRepository.findById(CONNECTION_ID);
     expect(initial).not.toBeNull();
     if (!initial) throw new Error("seeded Discord connection is required");
-    const initialRevision = Number(initial.edit_version);
+    const initialRevision = initial.edit_version;
     const [first, second] = await Promise.all([
       discordConnectionsRepository.updateConfiguration(
         CONNECTION_ID,
@@ -208,7 +209,7 @@ describe("discordConnectionsRepository.updateConfiguration", () => {
     const stale = await discordConnectionsRepository.updateConfiguration(
       CONNECTION_ID,
       { metadata: { responseMode: "always" } },
-      0,
+      "0",
     );
     expect(stale).toBeNull();
 
@@ -216,5 +217,24 @@ describe("discordConnectionsRepository.updateConfiguration", () => {
     const afterDeactivate = await discordConnectionsRepository.findById(CONNECTION_ID);
     expect(afterDeactivate?.edit_version).toBe("2");
     expect(afterDeactivate?.is_active).toBe(false);
+  });
+
+  test("advances atomically beyond the PostgreSQL bigint ceiling", async () => {
+    await dbWrite
+      .update(discordConnections)
+      .set({ configuration_revision: "9223372036854775807" })
+      .where(eq(discordConnections.id, CONNECTION_ID));
+
+    const versioned = await discordConnectionsRepository.updateConfiguration(
+      CONNECTION_ID,
+      { metadata: { responseMode: "mention" } },
+      "9223372036854775807",
+    );
+    expect(versioned?.edit_version).toBe("9223372036854775808");
+
+    const versionless = await discordConnectionsRepository.updateConfiguration(CONNECTION_ID, {
+      metadata: { responseMode: "always" },
+    });
+    expect(versionless?.edit_version).toBe("9223372036854775809");
   });
 });
