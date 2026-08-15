@@ -1,13 +1,4 @@
-/**
- * Pins which agent contexts select the DOCUMENTS provider, using the real
- * `filterByContextGate` and the real default context registry — no mocks.
- *
- * `knowledge` is declared as a subcontext of `documents`, but gate matching is
- * exact set membership with no parent expansion, so a provider that only
- * declares `documents` is skipped on the turns Stage-1 routes to `knowledge`
- * ("answer from stored knowledge/RAG") — the turns baked-in character knowledge
- * exists to answer.
- */
+/** Verifies the real context registry and gate select document retrieval on stored-knowledge turns. */
 import { describe, expect, it } from "vitest";
 import { filterByContextGate } from "../../runtime/context-gates.ts";
 import { getDefaultContextDefinitions } from "../../runtime/default-contexts.ts";

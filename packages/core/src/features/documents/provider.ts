@@ -52,12 +52,7 @@ export const documentsProvider: Provider = {
 		"Relevant and recent documents from the agent document store, including snippets and document IDs for follow-up reads.",
 	position: -10,
 	dynamic: true,
-	// `knowledge` is a subcontext of `documents`, but gate matching is exact set
-	// membership with no parent expansion (see satisfiesContextGate and
-	// shouldIncludeByContext), so it has to be listed explicitly. Without it a
-	// Stage-1 classification of "answer from stored knowledge/RAG" — the routing
-	// for questions this provider exists to answer — resolves to `knowledge`
-	// alone and the retrieval never runs.
+	// Context gates use exact membership rather than expanding parent contexts.
 	contexts: ["documents", "knowledge"],
 	contextGate: { anyOf: ["documents", "knowledge"] },
 	cacheStable: false,

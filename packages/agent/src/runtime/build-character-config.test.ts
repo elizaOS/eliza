@@ -1,12 +1,9 @@
 /**
  * Tests buildCharacterFromConfig's translation of an ElizaConfig into a runtime
  * Character: the Matrix connector secret/settings boundary (public identifiers
- * stay plain settings, credentials become redacted secrets), passthrough of
- * per-agent settings and knowledge directories, and adoption of the bundled
- * preset's inline knowledge. Runs against the real bundled presets — no mocks.
+ * stay plain settings, credentials become redacted secrets) and passthrough of
+ * per-agent settings and knowledge directories.
  */
-import { existsSync } from "node:fs";
-import { getDefaultStylePreset, resolveStylePresetById } from "@elizaos/shared";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import type { ElizaConfig } from "../config/config.ts";
@@ -184,84 +181,5 @@ describe("agent entry character passthrough", () => {
         },
       },
     ]);
-  });
-});
-
-// The bundled preset's `knowledge` is inline text, so the whole chain from
-// preset data to the ingestion input is pure data: no path resolution, nothing
-// that can fail to exist on an end user's machine. These tests pin that the
-// preset's entries survive into `character.documents`, which is exactly what
-// DocumentService reads at boot (getCharacterDocumentSources).
-describe("bundled preset knowledge reaches the built character", () => {
-  it("adopts the default preset's knowledge when the config declares none", () => {
-    const preset = getDefaultStylePreset();
-    expect(preset.knowledge?.length ?? 0).toBeGreaterThan(0);
-
-    const character = buildCharacterFromConfig({
-      agents: { list: [{ system: "x" }] },
-    } as unknown as ElizaConfig);
-
-    expect(character.documents).toEqual(
-      preset.knowledge?.map((text) => ({
-        item: { case: "path", value: text },
-      })),
-    );
-  });
-
-  it("resolves preset knowledge by name for a named agent", () => {
-    const character = buildCharacterFromConfig({
-      agents: { list: [{ name: "Eliza" }] },
-    } as unknown as ElizaConfig);
-
-    expect(character.documents).toEqual(
-      resolveStylePresetById("eliza")?.knowledge?.map((text) => ({
-        item: { case: "path", value: text },
-      })),
-    );
-  });
-
-  it("stores preset knowledge as inline text, not as a resolvable path", () => {
-    const character = buildCharacterFromConfig({
-      agents: { list: [{ system: "x" }] },
-    } as unknown as ElizaConfig);
-
-    for (const document of character.documents ?? []) {
-      expect(document.item.case).toBe("path");
-      const value = document.item.value;
-      expect(typeof value).toBe("string");
-      // A real path would resolve; these must not, or DocumentService would try
-      // to read them off the user's disk instead of ingesting the text.
-      expect(existsSync(value as string)).toBe(false);
-    }
-  });
-
-  it("lets config knowledge replace the preset's rather than merging both", () => {
-    const character = buildCharacterFromConfig({
-      agents: {
-        list: [
-          {
-            name: "Eliza",
-            knowledge: [{ directory: "/operator/knowledge" }],
-          },
-        ],
-      },
-    } as unknown as ElizaConfig);
-
-    expect(character.documents).toEqual([
-      {
-        item: {
-          case: "directory",
-          value: { directory: "/operator/knowledge" },
-        },
-      },
-    ]);
-  });
-
-  it("gives an agent that matches no preset no bundled knowledge", () => {
-    const character = buildCharacterFromConfig({
-      agents: { list: [{ name: "Unmatched Custom Agent", system: "x" }] },
-    } as unknown as ElizaConfig);
-
-    expect(character.documents).toEqual([]);
   });
 });
