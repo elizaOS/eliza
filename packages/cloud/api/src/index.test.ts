@@ -12,11 +12,16 @@ import cloudApiWorker, {
   isUnsupportedLegacyWildcardHostname,
   redirectFrontendHost,
   SharedRuntimeConversation,
+  TwitterOAuthRefreshCoordinator,
 } from "./index";
 import { resetProvidersResponseCacheForTests } from "./steward/embedded";
 
 test("exports the shared-runtime conversation Durable Object", () => {
   expect(typeof SharedRuntimeConversation).toBe("function");
+});
+
+test("exports the X OAuth refresh Durable Object", () => {
+  expect(typeof TwitterOAuthRefreshCoordinator).toBe("function");
 });
 
 describe("thin inference entry dispatch", () => {

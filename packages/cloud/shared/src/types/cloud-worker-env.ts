@@ -95,6 +95,9 @@ export interface Bindings {
   /** One strongly ordered transcript and replay ledger per onboarding session. */
   ONBOARDING_SESSIONS?: RuntimeDurableObjectNamespace;
 
+  /** One strongly ordered X credential refresh coordinator per organization and role. */
+  TWITTER_OAUTH_REFRESH_COORDINATORS?: RuntimeDurableObjectNamespace;
+
   // ---- Cloudflare machine-local protective rate limits ----
   GLOBAL_RATE_LIMITER?: RuntimeRateLimitBinding;
   CHAT_ROUTE_RATE_LIMITER?: RuntimeRateLimitBinding;
