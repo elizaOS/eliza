@@ -976,6 +976,24 @@ server {
     });
     expect(doubleQuotedValid.status).toBe(0);
 
+    for (const quotedHeader of [
+      'map "$http_upgrade" "$connection_upgrade" {',
+      "map '$http_upgrade' '$connection_upgrade' {",
+    ]) {
+      const quotedHeaderValid = runLegacyVhostValidation({
+        source: expectedLegacySource.replace(
+          "map $http_upgrade $connection_upgrade {",
+          quotedHeader,
+        ),
+        loadedConfig: expectedLoadedConfig.replace(
+          "map $http_upgrade $connection_upgrade {",
+          quotedHeader,
+        ),
+        enforceDirectiveAllowlist: true,
+      });
+      expect(quotedHeaderValid.status).toBe(0);
+    }
+
     for (const source of [
       expectedLegacySource.replace("$http_upgrade", "$http_connection"),
       expectedLegacySource.replace("$connection_upgrade", "$shared_upgrade"),
@@ -989,6 +1007,18 @@ server {
       expectedLegacySource.replace(
         "  ''      close;",
         "  ''      close;\n  \"\"      close;",
+      ),
+      expectedLegacySource.replace(
+        "map $http_upgrade $connection_upgrade {",
+        'map "$http_upgrade\' "$connection_upgrade" {',
+      ),
+      expectedLegacySource.replace(
+        "map $http_upgrade $connection_upgrade {",
+        'map "$http_connection" "$connection_upgrade" {',
+      ),
+      expectedLegacySource.replace(
+        "map $http_upgrade $connection_upgrade {",
+        'map "$http_upgrade" "$connection_upgrade" extra {',
       ),
     ]) {
       const invalid = runLegacyVhostValidation({

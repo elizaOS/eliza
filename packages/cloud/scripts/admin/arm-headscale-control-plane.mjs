@@ -422,6 +422,14 @@ validate_retirable_legacy_vhost() {
     }
   ')
   legacy_upgrade_map_shape=$(printf '%s\\n' "$legacy_vhost_source" | awk '
+    function is_exact_map_token(token, expected, quote) {
+      if (token == expected) return 1
+      if (length(token) != length(expected) + 2) return 0
+      quote = substr(token, 1, 1)
+      if (quote != sprintf("%c", 39) && quote != sprintf("%c", 34)) return 0
+      if (substr(token, length(token), 1) != quote) return 0
+      return substr(token, 2, length(token) - 2) == expected
+    }
     {
       line = $0
       sub(/^[[:space:]]+/, "", line)
@@ -444,7 +452,12 @@ validate_retirable_legacy_vhost() {
         next
       }
       if (normalized ~ /^map[[:space:]]/) {
-        if (normalized == "map $http_upgrade $connection_upgrade {") {
+        map_field_count = split(normalized, map_fields, /[[:space:]]+/)
+        if (map_field_count == 4 \
+            && map_fields[1] == "map" \
+            && is_exact_map_token(map_fields[2], "$http_upgrade") \
+            && is_exact_map_token(map_fields[3], "$connection_upgrade") \
+            && map_fields[4] == "{") {
           blocks += 1
           in_upgrade_map = 1
         } else {
