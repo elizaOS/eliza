@@ -17,18 +17,14 @@ import {
 } from "../../runtime/cloud-bindings";
 import { logger } from "../../utils/logger";
 import { normalizePhoneNumber } from "../../utils/phone-normalization";
-import { launchManagedElizaAgent } from "../eliza-managed-launch";
+import { readManagedElizaAgentConnection } from "../eliza-managed-launch";
 import { readOnboardingCoordinatorResult } from "./onboarding-coordinator-transport";
 import {
   enqueueDiscordProactiveGreeting,
   PROACTIVE_GREETING_QUEUE_PREFIX,
   type ProactiveGreetingRequest,
 } from "./onboarding-proactive-greeting";
-import {
-  type ElizaAppProvisioningStatus,
-  ensureElizaAppProvisioning,
-  getElizaAppProvisioningStatus,
-} from "./provisioning";
+import { type ElizaAppProvisioningStatus, getElizaAppProvisioningStatus } from "./provisioning";
 import { elizaAppUserService } from "./user-service";
 
 export type OnboardingChatRole = "user" | "assistant";
@@ -1164,18 +1160,15 @@ function fallbackReply(args: {
     return `you're in, ${name}. your shared Eliza is connected and already knows everything from this chat. just keep talking here.`;
   }
   if (args.provisioning.status === "running") {
-    return `almost there, ${name}. finishing setup now.`;
+    return `your Dedicated agent is running, ${name}. I'm finishing the existing connection now.`;
   }
   if (args.provisioning.status === "error") {
-    // The row is still `error` at this instant — the retry only flips it once
-    // the daemon claims the job — so this promises a retry, not progress, and
-    // sends nobody to a dashboard that has no button to fix it.
-    return `last attempt failed, ${name}. I've queued another one, nothing for you to do. keep chatting here.`;
+    return `the last Dedicated setup failed, ${name}. nothing was restarted from this chat.`;
   }
-  if (args.provisioning.status === "insufficient_credits") {
-    return `you're out of credits, ${name}. top up at ${onboardingAppPath("/cloud/billing")} and I'll get your agent going.`;
+  if (args.provisioning.status === "pending" || args.provisioning.status === "provisioning") {
+    return `an existing Dedicated setup is still in progress, ${name}. this chat did not start or restart it.`;
   }
-  return `on it, ${name}. your agent is spinning up now, takes a minute or two. keep chatting here in the meantime.`;
+  return `your account is connected, ${name}. Dedicated compute stays off until you explicitly start it.`;
 }
 
 function sanitizeReplyText(reply: string): string {
@@ -1240,18 +1233,17 @@ async function copyTranscriptToManagedAgent(session: OnboardingSession): Promise
   }
 
   try {
-    const launch = await launchManagedElizaAgent({
+    const connection = await readManagedElizaAgentConnection({
       agentId: session.agentId,
       organizationId: session.organizationId,
-      userId: session.userId,
     });
 
     const rememberResponse = await fetch(
-      `${launch.connection.apiBase.replace(/\/+$/, "")}/api/memory/remember`,
+      `${connection.apiBase.replace(/\/+$/, "")}/api/memory/remember`,
       {
         method: "POST",
         headers: {
-          Authorization: `Bearer ${launch.connection.token}`,
+          Authorization: `Bearer ${connection.token}`,
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
@@ -1278,10 +1270,10 @@ async function copyTranscriptToManagedAgent(session: OnboardingSession): Promise
     return {
       session: {
         ...session,
-        launchUrl: launch.appUrl,
+        launchUrl: controlPanelUrl(session.agentId),
         handoffCopiedAt: nowIso(),
       },
-      launchUrl: launch.appUrl,
+      launchUrl: controlPanelUrl(session.agentId),
       copied: true,
     };
   } catch (error) {
@@ -1455,11 +1447,6 @@ export async function runOnboardingChatWithStore(
   }
 
   const requiresLogin = !session.userId || !session.organizationId;
-  const preferredNameCaptured =
-    hasPreferredName(session) &&
-    (!isPhoneLikePlatformIdentity(input) ||
-      preferredNameProvidedThisTurn ||
-      Boolean(input.authenticatedUser));
   let provisioning: ElizaAppProvisioningStatus = {
     status: "none",
     agentId: null,
@@ -1468,15 +1455,10 @@ export async function runOnboardingChatWithStore(
   };
 
   if (!requiresLogin && session.userId && session.organizationId) {
-    // statusOnly polls are read-only — never trigger provisioning, even if
-    // preferredNameCaptured is true. A read-only poll must not provision.
-    const shouldProvision = preferredNameCaptured && !input.statusOnly;
-    provisioning = shouldProvision
-      ? await ensureElizaAppProvisioning({
-          userId: session.userId,
-          organizationId: session.organizationId,
-        })
-      : await getElizaAppProvisioningStatus(session.organizationId);
+    // Account claim and onboarding turns never create or restart Dedicated
+    // compute. Provisioning is an explicit lifecycle action owned by its
+    // dedicated route; this conversation only reports the current state.
+    provisioning = await getElizaAppProvisioningStatus(session.organizationId);
     session.agentId = provisioning.agentId ?? session.agentId;
   }
 

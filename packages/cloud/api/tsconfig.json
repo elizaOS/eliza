@@ -36,7 +36,7 @@
       "@elizaos/cloud-sdk": ["../sdk/src/index.ts"],
       "@elizaos/cloud-sdk/*": ["../sdk/src/*"],
       "@elizaos/cloud-routing": ["../routing/src/index.ts"],
-      "@elizaos/core/edge": ["../../../packages/core/dist/edge/index.edge"],
+      "@elizaos/core/edge": ["../../../packages/core/src/index.edge.ts"],
       "@elizaos/core": ["../../../packages/core/src/index.node.ts"],
       "@elizaos/core/*": ["../../../packages/core/src/*"],
       "@elizaos/logger": ["../../../packages/logger/src/index.ts"],

@@ -23,6 +23,7 @@ import {
   type AgentSandboxBackupMetadata,
   type AgentSandboxStatus,
   agentSandboxesRepository,
+  PRE_DELETE_BACKUP_RETENTION_MS,
   prepareAgentBackupInsertData,
 } from "../../db/repositories/agent-sandboxes";
 import { userCharactersRepository } from "../../db/repositories/characters";
@@ -1956,8 +1957,16 @@ export class ElizaSandboxService {
     // this later from the job worker — there the container is still live with
     // its bridge intact, the capture happens before any teardown, and a
     // refusal leaves a recoverable tombstone the next attempt retries.
-    let captureUnsupported = false;
-    let captureAlreadyPersisted = false;
+    let captureWaiverAlreadyPersisted = false;
+    let captureUnsupportedGeneration: {
+      bridgeUrl: string;
+      environmentRevision: number;
+      sandboxId: string | null;
+    } | null = null;
+    let preDeleteBackupCandidate: {
+      id: string;
+      deletionAttemptId: string;
+    } | null = null;
     let preDeleteSnapshot: {
       stateData: AgentBackupStateData;
       sizeBytes: number;
@@ -1981,20 +1990,36 @@ export class ElizaSandboxService {
     const captureSkippedForUnauthorizedRunning =
       !options.authorization && snapshotSource?.status === "running";
     if (!captureSkippedForUnauthorizedRunning && this.requiresPreDeleteCapture(snapshotSource)) {
-      // A deletion retry whose earlier attempt already captured (and whose
-      // container may since have been torn down) must not refuse forever
-      // against a dead bridge: a `pre-delete` backup taken at or after this
-      // deletion's start proves the capture happened for THIS intent.
+      // A deletion retry whose earlier attempt already captured (or recorded
+      // the image's supported no-snapshot response) must not contact a bridge
+      // the teardown may already have killed. Both candidates are revalidated
+      // under the lifecycle lock before they authorize the delete.
       const priorBackup =
-        snapshotSource.deletion_started_at !== null
+        snapshotSource.deletion_started_at !== null && snapshotSource.deletion_attempt_id !== null
           ? await agentSandboxesRepository.getLatestBackupByType(agentId, "pre-delete")
           : undefined;
       if (
         priorBackup &&
         snapshotSource.deletion_started_at !== null &&
+        snapshotSource.deletion_attempt_id !== null &&
         priorBackup.created_at >= snapshotSource.deletion_started_at
       ) {
-        captureAlreadyPersisted = true;
+        preDeleteBackupCandidate = {
+          id: priorBackup.id,
+          deletionAttemptId: snapshotSource.deletion_attempt_id,
+        };
+      } else if (this.hasCurrentPreDeleteCaptureWaiver(snapshotSource)) {
+        captureWaiverAlreadyPersisted = true;
+      } else if (!snapshotSource.bridge_url) {
+        logger.error("[agent-sandbox] Delete refused: data-bearing container has no bridge", {
+          agentId,
+          status: snapshotSource.status,
+        });
+        return {
+          success: false,
+          error:
+            "Refusing to delete without a current backup: the agent's container has no reachable bridge to capture from",
+        };
       } else {
         try {
           preDeleteSnapshot = await this.fetchSnapshotState(snapshotSource);
@@ -2006,7 +2031,11 @@ export class ElizaSandboxService {
           // an image that cannot snapshot by construction proceeds.
           const message = error instanceof Error ? error.message : String(error);
           if (message === SNAPSHOT_ENDPOINT_UNSUPPORTED) {
-            captureUnsupported = true;
+            captureUnsupportedGeneration = {
+              bridgeUrl: snapshotSource.bridge_url,
+              environmentRevision: snapshotSource.environment_revision,
+              sandboxId: snapshotSource.sandbox_id,
+            };
             logger.warn(
               "[agent-sandbox] Delete proceeding without capture: image has no snapshot endpoint",
               { agentId },
@@ -2045,13 +2074,15 @@ export class ElizaSandboxService {
     // same agent/org. The lock + transaction are released the moment this returns.
     const precheck = await this.prepareAgentDelete(agentId, orgId, options.authorization, {
       snapshot: preDeleteSnapshot,
-      captureUnsupported,
-      alreadyPersisted: captureAlreadyPersisted,
+      captureUnsupportedGeneration,
+      captureWaiverAlreadyPersisted,
+      existingBackup: preDeleteBackupCandidate,
     });
 
     if (!precheck.ok) {
       return { success: false, error: precheck.error };
     }
+    let deletionOwnership = precheck;
 
     logger.info("[agent-sandbox] Deleting agent", {
       agentId,
@@ -2130,12 +2161,20 @@ export class ElizaSandboxService {
     // completes deletion but leaves the slot counted until the orphan
     // reconciler proves the container absent.
     if (containerProvenNotRunning && precheck.nodeId) {
-      const outcome = await agentSandboxesRepository.tryReleaseDeletionAllocation(
+      const release = await agentSandboxesRepository.tryReleaseDeletionAllocationForCommit(
         agentId,
         orgId,
         precheck.deletionAttemptId,
         precheck.nodeId,
+        precheck.lifecycleRevision,
       );
+      const outcome = release.outcome;
+      if (release.lifecycleRevision !== null) {
+        deletionOwnership = {
+          ...deletionOwnership,
+          lifecycleRevision: release.lifecycleRevision,
+        };
+      }
       // `not-owned` is the expected retry outcome and stays at info; only a
       // counter that failed to move while ownership WAS ours is an accounting
       // problem worth an operator's attention.
@@ -2169,7 +2208,7 @@ export class ElizaSandboxService {
     // would erase the only proof that the node counter still includes this slot.
     let result: DeleteAgentResult;
     if (containerProvenNotRunning) {
-      result = await this.commitAgentRowDelete(agentId, orgId, precheck);
+      result = await this.commitAgentRowDelete(agentId, orgId, deletionOwnership);
     } else {
       if (!reconciliationReason) {
         throw new Error("Unresolved deletion is missing its reconciliation reason");
@@ -2177,7 +2216,7 @@ export class ElizaSandboxService {
       result = await this.commitAgentReconciliationPending(
         agentId,
         orgId,
-        precheck,
+        deletionOwnership,
         reconciliationReason,
       );
     }
@@ -2250,22 +2289,48 @@ export class ElizaSandboxService {
     return result;
   }
 
-  /** Whether deleting this row must first prove a current backup (#18517): a
-   *  live dedicated container holds unreplicated local state, while shared
-   *  runtimes and unclaimed warm-pool entries hold none of the org's data.
-   *  `deletion_pending` with a live bridge is the primary v1 path — the
-   *  enqueue stamps the status before the job worker ever calls deleteAgent,
-   *  so the container has not been stopped and still needs its capture. */
-  private requiresPreDeleteCapture(
-    rec: AgentSandbox | null | undefined,
-  ): rec is AgentSandbox & { bridge_url: string } {
+  /** Whether this row carries a waiver for its current deletion generation. */
+  private hasCurrentPreDeleteCaptureWaiver(rec: AgentSandbox): boolean {
     return (
-      !!rec &&
-      (rec.status === "running" || rec.status === "deletion_pending") &&
-      Boolean(rec.bridge_url) &&
-      rec.execution_tier !== "shared" &&
-      !(rec.organization_id === WARM_POOL_ORG_ID && rec.pool_status === "unclaimed")
+      rec.deletion_attempt_id !== null &&
+      rec.pre_delete_capture_waiver_attempt_id === rec.deletion_attempt_id &&
+      rec.pre_delete_capture_waiver_environment_revision === rec.environment_revision &&
+      rec.pre_delete_capture_waiver_sandbox_id === rec.sandbox_id &&
+      rec.pre_delete_capture_waiver_bridge_url !== null &&
+      rec.pre_delete_capture_waiver_bridge_url === rec.bridge_url
     );
+  }
+
+  /**
+   * Whether deleting this row must first prove a current backup (#18517).
+   * Running rows always require proof. Error/disconnected rows require it when
+   * they retain a container locator. A deletion continuation with no live
+   * bridge requires it unless allocation ownership proves the row was already
+   * stopped; this avoids mistaking a stopped row's retained `sandbox_id` for a
+   * live container while still failing closed on ambiguous legacy intents.
+   */
+  private requiresPreDeleteCapture(rec: AgentSandbox | null | undefined): rec is AgentSandbox {
+    if (
+      !rec ||
+      rec.execution_tier === "shared" ||
+      (rec.organization_id === WARM_POOL_ORG_ID && rec.pool_status === "unclaimed")
+    ) {
+      return false;
+    }
+    if (rec.status === "running") return true;
+    const hasContainerLocator = Boolean(
+      rec.sandbox_id || rec.node_id || rec.container_name || rec.bridge_url,
+    );
+    if (rec.status === "disconnected" || rec.status === "error") {
+      return hasContainerLocator;
+    }
+    if (rec.status === "deletion_pending" || rec.status === "deletion_failed") {
+      return (
+        Boolean(rec.bridge_url) ||
+        (rec.deletion_allocation_counted !== false && hasContainerLocator)
+      );
+    }
+    return false;
   }
 
   /**
@@ -2285,8 +2350,16 @@ export class ElizaSandboxService {
         sizeBytes: number;
         bridgeUrl: string;
       } | null;
-      captureUnsupported: boolean;
-      alreadyPersisted?: boolean;
+      captureUnsupportedGeneration: {
+        bridgeUrl: string;
+        environmentRevision: number;
+        sandboxId: string | null;
+      } | null;
+      captureWaiverAlreadyPersisted: boolean;
+      existingBackup: {
+        id: string;
+        deletionAttemptId: string;
+      } | null;
     },
   ): Promise<
     | {
@@ -2298,6 +2371,8 @@ export class ElizaSandboxService {
         environmentRevision: number;
         lifecycleRevision: number;
         deletionAttemptId: string;
+        deletionStartedAt: Date;
+        preDeleteBackupId: string | null;
       }
     | { ok: false; error: string }
   > {
@@ -2337,35 +2412,68 @@ export class ElizaSandboxService {
           error: "Agent is running; suspend it before deletion",
         };
       }
-      if (
-        this.requiresPreDeleteCapture(rec) &&
-        !preDeleteCapture?.captureUnsupported &&
-        !preDeleteCapture?.alreadyPersisted
-      ) {
-        const snapshot = preDeleteCapture?.snapshot ?? null;
-        // The capture must be OF THIS generation (shutdown's rule): a capture
-        // taken against a different bridge_url is another container's state,
-        // and stamping deletion intent without a current capture would let the
-        // reconciler finish a delete that skipped it. Both refuse, leaving the
-        // row untouched for a retry.
-        if (!snapshot || rec.bridge_url !== snapshot.bridgeUrl) {
-          return {
-            ok: false as const,
-            error:
-              "Refusing to delete: the agent's lifecycle generation moved after the pre-deletion capture; retry the delete.",
-          };
+      let preDeleteBackupId: string | null = null;
+      let captureWaiverToPersist: {
+        bridgeUrl: string;
+        environmentRevision: number;
+        sandboxId: string | null;
+      } | null = null;
+      let snapshotToPersist: {
+        stateData: AgentBackupStateData;
+        sizeBytes: number;
+      } | null = null;
+      if (this.requiresPreDeleteCapture(rec)) {
+        const existingBackup = preDeleteCapture?.existingBackup ?? null;
+        if (
+          existingBackup &&
+          rec.deletion_attempt_id === existingBackup.deletionAttemptId &&
+          rec.deletion_started_at !== null &&
+          (await agentSandboxesRepository.validateAttachedPreDeleteBackupForDeletion(tx, {
+            backupId: existingBackup.id,
+            sandboxRecordId: rec.id,
+            deletionStartedAt: rec.deletion_started_at,
+          }))
+        ) {
+          preDeleteBackupId = existingBackup.id;
         }
-        await this.persistSnapshotWithinTransaction(
-          tx,
-          rec.id,
-          rec.organization_id,
-          "pre-delete",
-          snapshot.stateData,
-          snapshot.sizeBytes,
-        );
+
+        const captureWaiverIsCurrent =
+          preDeleteCapture?.captureWaiverAlreadyPersisted === true &&
+          this.hasCurrentPreDeleteCaptureWaiver(rec);
+        if (preDeleteBackupId === null && !captureWaiverIsCurrent) {
+          const unsupported = preDeleteCapture?.captureUnsupportedGeneration ?? null;
+          if (unsupported) {
+            if (
+              rec.bridge_url !== unsupported.bridgeUrl ||
+              rec.environment_revision !== unsupported.environmentRevision ||
+              rec.sandbox_id !== unsupported.sandboxId
+            ) {
+              return {
+                ok: false as const,
+                error:
+                  "Refusing to delete: the agent's lifecycle generation moved after the pre-deletion capture; retry the delete.",
+              };
+            }
+            captureWaiverToPersist = unsupported;
+          } else {
+            const snapshot = preDeleteCapture?.snapshot ?? null;
+            // The capture must be OF THIS generation (shutdown's rule): a
+            // capture taken against a different bridge_url is another
+            // container's state. Refuse, leaving the row for a retry.
+            if (!snapshot || rec.bridge_url !== snapshot.bridgeUrl) {
+              return {
+                ok: false as const,
+                error:
+                  "Refusing to delete: the agent's lifecycle generation moved after the pre-deletion capture; retry the delete.",
+              };
+            }
+            snapshotToPersist = snapshot;
+          }
+        }
       }
 
       const deletionAttemptId = rec.deletion_attempt_id ?? crypto.randomUUID();
+      const deletionStartedAt = rec.deletion_started_at ?? new Date();
       // A retry preserves the original audit timestamp while taking a fresh
       // database generation for the new teardown attempt.
       //
@@ -2379,10 +2487,19 @@ export class ElizaSandboxService {
         .set({
           status: "deletion_pending",
           deletion_attempt_id: deletionAttemptId,
-          ...(rec.deletion_started_at === null ? { deletion_started_at: new Date() } : {}),
+          ...(rec.deletion_started_at === null ? { deletion_started_at: deletionStartedAt } : {}),
           ...(isDeletionContinuation(rec)
             ? {}
             : { deletion_allocation_counted: holdsCountedNodeSlot(rec) }),
+          ...(captureWaiverToPersist
+            ? {
+                pre_delete_capture_waiver_attempt_id: deletionAttemptId,
+                pre_delete_capture_waiver_environment_revision:
+                  captureWaiverToPersist.environmentRevision,
+                pre_delete_capture_waiver_sandbox_id: captureWaiverToPersist.sandboxId,
+                pre_delete_capture_waiver_bridge_url: captureWaiverToPersist.bridgeUrl,
+              }
+            : {}),
           updated_at: new Date(),
         })
         .where(
@@ -2405,6 +2522,26 @@ export class ElizaSandboxService {
         throw new Error("Agent deletion intent was not persisted");
       }
 
+      // The retention predicate deliberately requires a pre-delete backup to
+      // be no older than this deletion intent. Persist only after the intent is
+      // durable in the same transaction; otherwise the backup helper stamps
+      // created_at first and the freshly captured row cannot be detached at
+      // commit. The backup metadata update advances lifecycle_revision, so use
+      // the post-trigger revision it returns as the ownership fence.
+      let lifecycleRevision = owned.lifecycleRevision;
+      if (snapshotToPersist) {
+        const persisted = await this.persistSnapshotWithinTransaction(
+          tx,
+          rec.id,
+          rec.organization_id,
+          "pre-delete",
+          snapshotToPersist.stateData,
+          snapshotToPersist.sizeBytes,
+        );
+        preDeleteBackupId = persisted.backupId;
+        lifecycleRevision = persisted.lifecycleRevision;
+      }
+
       return {
         ok: true as const,
         sandboxId: rec.sandbox_id,
@@ -2412,8 +2549,10 @@ export class ElizaSandboxService {
         status: rec.status,
         sourcePoolId: rec.warm_claim_source_pool_id,
         environmentRevision: rec.environment_revision,
-        lifecycleRevision: owned.lifecycleRevision,
+        lifecycleRevision,
         deletionAttemptId: owned.deletionAttemptId,
+        deletionStartedAt: owned.deletionStartedAt,
+        preDeleteBackupId,
       };
     });
   }
@@ -2431,6 +2570,8 @@ export class ElizaSandboxService {
       environmentRevision: number;
       lifecycleRevision: number;
       deletionAttemptId: string;
+      deletionStartedAt: Date;
+      preDeleteBackupId: string | null;
     },
   ): Promise<DeleteAgentResult> {
     return dbWrite.transaction(async (tx) => {
@@ -2460,6 +2601,29 @@ export class ElizaSandboxService {
         } as const;
       }
 
+      if (ownership.preDeleteBackupId) {
+        const retained = await agentSandboxesRepository.retainPreDeleteBackupForDeletedAgent(tx, {
+          backupId: ownership.preDeleteBackupId,
+          sandboxRecordId: agentId,
+          organizationId: orgId,
+          deletionAttemptId: ownership.deletionAttemptId,
+          deletionStartedAt: ownership.deletionStartedAt,
+          expiresAt: new Date(Date.now() + PRE_DELETE_BACKUP_RETENTION_MS),
+        });
+        if (!retained) {
+          throw new ElizaError("Pre-delete recovery backup ownership changed", {
+            code: "PRE_DELETE_BACKUP_RETENTION_LOST",
+            context: {
+              agentId,
+              organizationId: orgId,
+              deletionAttemptId: ownership.deletionAttemptId,
+              backupId: ownership.preDeleteBackupId,
+            },
+            severity: "fatal",
+          });
+        }
+      }
+
       const [deletedSandbox] = await tx
         .delete(agentSandboxes)
         .where(
@@ -2475,9 +2639,17 @@ export class ElizaSandboxService {
         )
         .returning();
 
-      return deletedSandbox
-        ? ({ success: true, rowDeleted: true, deletedSandbox } as const)
-        : ({ success: false, error: "Agent not found" } as const);
+      if (!deletedSandbox) {
+        // Throwing rolls back the recovery detachment above; returning a
+        // structured miss would commit an orphaned backup while retaining the
+        // agent row, making the next retry unable to find its capture.
+        throw new ElizaError("Agent row delete lost its lifecycle ownership", {
+          code: "AGENT_DELETE_COMMIT_LOST",
+          context: { agentId, organizationId: orgId, ...ownership },
+          severity: "ephemeral",
+        });
+      }
+      return { success: true, rowDeleted: true, deletedSandbox } as const;
     });
   }
 
@@ -10640,7 +10812,7 @@ export class ElizaSandboxService {
     type: AgentBackupSnapshotType,
     stateData: AgentBackupStateData,
     sizeBytes: number,
-  ): Promise<void> {
+  ): Promise<{ backupId: string; lifecycleRevision: number }> {
     const [backup] = await tx
       .insert(agentSandboxBackups)
       .values(
@@ -10656,19 +10828,32 @@ export class ElizaSandboxService {
       )
       .returning();
 
-    await tx.execute(sql`
-      UPDATE ${agentSandboxes}
-      SET
-        last_backup_at = NOW(),
-        updated_at = NOW()
-      WHERE id = ${sandboxRecordId}
-    `);
+    if (!backup) {
+      throw new ElizaError("Backup insert did not return the persisted row", {
+        code: "AGENT_BACKUP_INSERT_MISSING",
+        context: { sandboxRecordId, organizationId, snapshotType: type },
+        severity: "fatal",
+      });
+    }
+    const [sandbox] = await tx
+      .update(agentSandboxes)
+      .set({ last_backup_at: new Date(), updated_at: new Date() })
+      .where(eq(agentSandboxes.id, sandboxRecordId))
+      .returning({ lifecycleRevision: agentSandboxes.lifecycle_revision });
+    if (!sandbox) {
+      throw new ElizaError("Backup metadata update lost its sandbox row", {
+        code: "AGENT_BACKUP_SANDBOX_MISSING",
+        context: { sandboxRecordId, organizationId, snapshotType: type, backupId: backup.id },
+        severity: "fatal",
+      });
+    }
 
     logger.info("[agent-sandbox] Backup created", {
       agentId: sandboxRecordId,
       type,
-      bytes: backup?.size_bytes ?? sizeBytes,
+      bytes: backup.size_bytes ?? sizeBytes,
     });
+    return { backupId: backup.id, lifecycleRevision: sandbox.lifecycleRevision };
   }
 
   /**

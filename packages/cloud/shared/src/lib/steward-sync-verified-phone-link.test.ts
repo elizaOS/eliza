@@ -169,7 +169,8 @@ beforeEach(() => {
   phoneLinkConflict = false;
   findPendingPhoneTelegramPersonalAccountConvergence.mockReset();
   findPendingPhoneTelegramPersonalAccountConvergence.mockResolvedValue({ status: "not_found" });
-  promotePhonePersonalAccountToSteward.mockClear();
+  promotePhonePersonalAccountToSteward.mockReset();
+  promotePhonePersonalAccountToSteward.mockResolvedValue({ status: "not_found" });
   linkVerifiedPhone.mockClear();
 });
 
@@ -281,6 +282,63 @@ describe("syncUserFromSteward verified-phone mature-account convergence", () => 
     });
     expect(emailUser.steward_user_id).toBe("legacy-subject");
     expect(callsFor("upsertStewardIdentity")).toHaveLength(0);
+  });
+
+  test("links an unowned verified phone to the existing Steward subject without attempting promotion", async () => {
+    emailUser = matureUser({ steward_user_id: "steward-existing" });
+    // Real repository behavior for this state: the subject already owns a
+    // canonical row, so promotion would misreport it as owned by another user
+    // and 409 the first verified-phone session (#19365).
+    promotePhonePersonalAccountToSteward.mockResolvedValue({
+      status: "steward_subject_owned_by_other_user" as never,
+    });
+
+    const result = await syncUserFromSteward({
+      stewardUserId: "steward-existing",
+      verifiedPhone: PHONE,
+    });
+
+    expect(result.id).toBe("mature-user");
+    expect(result.phone_number).toBe(PHONE);
+    expect(result.phone_verified).toBe(true);
+    expect(promotePhonePersonalAccountToSteward).not.toHaveBeenCalled();
+    expect(callsFor("linkVerifiedPhone")).toEqual([["mature-user", PHONE]]);
+  });
+
+  test("repeats the existing-subject phone link idempotently on retry", async () => {
+    emailUser = matureUser({ steward_user_id: "steward-existing" });
+    promotePhonePersonalAccountToSteward.mockResolvedValue({
+      status: "steward_subject_owned_by_other_user" as never,
+    });
+    const params = { stewardUserId: "steward-existing", verifiedPhone: PHONE };
+
+    const first = await syncUserFromSteward(params);
+    const retry = await syncUserFromSteward(params);
+
+    expect(first.id).toBe("mature-user");
+    expect(retry.id).toBe("mature-user");
+    expect(promotePhonePersonalAccountToSteward).not.toHaveBeenCalled();
+    expect(callsFor("create")).toHaveLength(0);
+    expect(callsFor("linkVerifiedPhone")).toEqual([
+      ["mature-user", PHONE],
+      ["mature-user", PHONE],
+    ]);
+  });
+
+  test("fails closed for an existing subject when another account owns the phone", async () => {
+    emailUser = matureUser({ steward_user_id: "steward-existing" });
+    phoneLinkConflict = true;
+
+    await expect(
+      syncUserFromSteward({
+        stewardUserId: "steward-existing",
+        verifiedPhone: PHONE,
+      }),
+    ).rejects.toMatchObject<Partial<InstanceType<typeof StewardPhoneAccountConflictError>>>({
+      reason: "verified_phone_unique_conflict",
+    });
+    expect(emailUser).toMatchObject({ phone_number: null, phone_verified: false });
+    expect(promotePhonePersonalAccountToSteward).not.toHaveBeenCalled();
   });
 
   test("links the verified phone in unique-conflict recovery before returning the mature row", async () => {

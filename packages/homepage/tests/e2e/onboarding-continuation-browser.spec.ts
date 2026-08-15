@@ -16,7 +16,7 @@ async function installContinuationRoutes(
   platform: Platform,
   confirmedBodies: Array<Record<string, unknown>>,
 ): Promise<void> {
-  await page.route("https://elizacloud.ai/api/eliza-app/**", async (route) => {
+  await page.route("https://api.eliza.app/api/eliza-app/**", async (route) => {
     const request = route.request();
     const url = new URL(request.url());
     if (url.pathname === "/api/eliza-app/user/me") {
@@ -63,6 +63,65 @@ async function installContinuationRoutes(
     }
     await route.fulfill({ status: 404, json: { error: "Unhandled mock" } });
   });
+}
+
+async function installDedicatedOffRoutes(
+  page: Page,
+): Promise<() => Array<Record<string, unknown>>> {
+  let onboardingReads = 0;
+  const statusPollBodies: Array<Record<string, unknown>> = [];
+  await page.route("https://api.eliza.app/api/eliza-app/**", async (route) => {
+    const request = route.request();
+    const url = new URL(request.url());
+    if (url.pathname === "/api/eliza-app/user/me") {
+      await route.fulfill({
+        json: {
+          user: {
+            id: "user-dedicated-off-proof",
+            organization_id: "org-dedicated-off-proof",
+            name: "Proof User",
+          },
+          organization: {
+            id: "org-dedicated-off-proof",
+            name: "Proof Org",
+            credit_balance: "10.00",
+          },
+        },
+      });
+      return;
+    }
+    if (url.pathname === "/api/eliza-app/onboarding/chat") {
+      if (request.method() === "POST") {
+        statusPollBodies.push(
+          request.postDataJSON() as Record<string, unknown>,
+        );
+        await route.fulfill({
+          json: {
+            success: true,
+            data: { provisioning: { status: "none" }, messages: [] },
+          },
+        });
+        return;
+      }
+      onboardingReads += 1;
+      if (onboardingReads === 1) {
+        await route.fulfill({
+          status: 404,
+          json: { error: "Phone continuation" },
+        });
+        return;
+      }
+      await route.fulfill({
+        json: {
+          success: true,
+          data: { provisioning: { status: "none" }, messages: [] },
+        },
+      });
+      return;
+    }
+    await route.fulfill({ status: 404, json: { error: "Unhandled mock" } });
+  });
+  return () => statusPollBodies;
 }
 
 for (const viewport of [
@@ -127,4 +186,37 @@ for (const viewport of [
       });
     });
   }
+
+  test(`dedicated-off continuation ${viewport.name}: observes status without provisioning`, async ({
+    page,
+  }, testInfo) => {
+    await page.setViewportSize(viewport);
+    await page.addInitScript((token) => {
+      localStorage.setItem("eliza_app_session", token as string);
+    }, TOKEN);
+    const statusPollBodies = await installDedicatedOffRoutes(page);
+
+    await page.goto(`/get-started?onboardingSession=${SESSION}`);
+    await expect(page.getByText("Dedicated compute off")).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "Continue to Eliza" }),
+    ).toBeVisible();
+    await expect(
+      page.getByPlaceholder("Dedicated is off — continue to Eliza"),
+    ).toBeDisabled();
+    expect(statusPollBodies().length).toBeGreaterThan(0);
+    for (const body of statusPollBodies()) {
+      expect(body).toEqual({
+        sessionId: SESSION,
+        platform: "blooio",
+        statusOnly: true,
+      });
+    }
+    await page.screenshot({
+      path: testInfo.outputPath(`dedicated-off-${viewport.name}.png`),
+      fullPage: true,
+    });
+    await page.getByRole("button", { name: "Continue to Eliza" }).click();
+    await expect(page).toHaveURL(/\/connected$/);
+  });
 }

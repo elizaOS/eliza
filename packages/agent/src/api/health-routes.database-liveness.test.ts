@@ -67,6 +67,7 @@ describe("GET /api/health database liveness", () => {
       adapter: { getRawConnection: () => pglite },
       plugins: [],
       getModel: () => undefined,
+      getServiceHealth: () => ({}),
     } as unknown as AgentRuntime;
 
     const green = makeContext(runtime);
@@ -105,6 +106,7 @@ describe("GET /api/health database liveness", () => {
       },
       plugins: [{ name: "sql" }],
       getModel: () => undefined,
+      getServiceHealth: () => ({}),
     } as unknown as AgentRuntime;
 
     const transient = makeContext(runtime);

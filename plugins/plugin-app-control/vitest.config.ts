@@ -153,6 +153,14 @@ export default defineConfig({
 				find: /^@elizaos\/core\/(.*)\.js$/,
 				replacement: path.join(coreSrc, "$1.ts"),
 			},
+			// Bare subpath exports must be pinned before the plain string alias
+			// below: a string alias rewrites "@elizaos/core/client-public" to
+			// "<coreSrc>/index.node.ts/client-public" (ENOTDIR) instead of the
+			// subpath source module.
+			{
+				find: /^@elizaos\/core\/client-public$/,
+				replacement: path.join(coreSrc, "client-public.ts"),
+			},
 			{
 				find: "@elizaos/core",
 				replacement: path.join(coreSrc, "index.node.ts"),

@@ -139,4 +139,26 @@ describe("Shared reminder cron", () => {
       });
     });
   }
+
+  test("does not record an indeterminate provider receipt as fired", async () => {
+    globalThis.fetch = mock(async () =>
+      Response.json(
+        {
+          success: false,
+          acceptance: "unknown",
+          acceptanceUnknown: true,
+          retryable: false,
+        },
+        { status: 202 },
+      ),
+    ) as typeof fetch;
+
+    await expect(processDueSharedReminders(env)).resolves.toEqual({
+      scanned: 1,
+      fired: 0,
+      raced: 0,
+      deferred: 1,
+      failed: 0,
+    });
+  });
 });

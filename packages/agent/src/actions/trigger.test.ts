@@ -130,6 +130,7 @@ describe("TRIGGER create — prompt-kind reminders", () => {
     const trigger = createdTasks[0].metadata.trigger;
     expect(trigger?.kind).toBe("prompt");
     expect(trigger?.triggerType).toBe("once");
+    expect(trigger?.notifyOnOutcome).toBe(true);
     const at = Date.parse(trigger?.scheduledAtIso ?? "");
     expect(at).toBeGreaterThanOrEqual(before + 89_000);
     expect(at).toBeLessThanOrEqual(Date.now() + 91_000);

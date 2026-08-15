@@ -357,10 +357,18 @@ export class SharedRuntimeConversation {
       throw new Error("Conversation prewarm failed to hydrate history.");
     }
     await this.runWithBindings(async () => {
-      await Promise.all([
+      const imports: Promise<unknown>[] = [
         import("@/lib/services/shared-runtime/shared-runtime-chat"),
         import("@/lib/services/shared-runtime/cached-agent-dates"),
-      ]);
+      ];
+      if (this.env.SHARED_ELIZA_AGENT_RUNTIME === "true") {
+        imports.push(
+          import("@/lib/services/shared-runtime/shared-eliza-runtime").then(
+            ({ prewarmSharedElizaRuntime }) => prewarmSharedElizaRuntime(),
+          ),
+        );
+      }
+      await Promise.all(imports);
     });
   }
 

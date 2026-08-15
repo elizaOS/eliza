@@ -58,7 +58,14 @@ let previewResult: {
   platformDisplayName: "shadow#0001",
 };
 let previewError: Error | null = null;
-const chatFetch = mock(async (_path: string, init?: RequestInit) => {
+let legacyStatus = "none";
+const chatFetch = mock(async (path: string, init?: RequestInit) => {
+  if (path === "/api/eliza-app/provisioning-agent") {
+    return {
+      success: true,
+      data: { status: legacyStatus, agentId: null, bridgeUrl: null },
+    };
+  }
   const isPreview = !init?.method || init.method === "GET";
   if (isPreview && !init?.body) {
     if (previewError) throw previewError;
@@ -70,7 +77,7 @@ const chatFetch = mock(async (_path: string, init?: RequestInit) => {
   return {
     success: true,
     data: {
-      provisioning: { status: "pending", agentId: null, bridgeUrl: null },
+      provisioning: { status: legacyStatus, agentId: null, bridgeUrl: null },
       messages: [],
     },
   };
@@ -241,6 +248,7 @@ describe("GetStartedPage platform continuation", () => {
       platformDisplayName: "shadow#0001",
     };
     previewError = null;
+    legacyStatus = "none";
     chatFetch.mockClear();
   });
 
@@ -338,19 +346,48 @@ describe("GetStartedPage platform continuation", () => {
   test("a non-Discord continuation falls back to the provisioning chat", async () => {
     authState = { isAuthenticated: true, isLoading: false };
     previewResult = null; // preview rejects (e.g. phone-originated session)
+    legacyStatus = "none";
     const page = await renderPage(
       "/get-started?onboardingSession=0f5f9f9a-72cf-45e1-b1a1-2b7f9b1de111",
     );
 
     expect(page.query("continuation-confirm")).toBeNull();
-    // Fallback mounts the provisioning chat, which fires its POST.
+    // Fallback mounts the status surface. Its continuation poll remains
+    // status-only, while the legacy provisioning chat stays disabled when no
+    // Dedicated agent exists.
     const chatPost = chatFetch.mock.calls.find(
       ([, init]) => typeof (init as RequestInit)?.body === "string",
     );
     expect(chatPost).toBeDefined();
+    expect(page.html()).toContain("Dedicated compute off");
+    expect(page.html()).toContain("Continue to Eliza");
+    expect(document.querySelector("input[disabled]")).not.toBeNull();
+    expect(
+      chatFetch.mock.calls.some(
+        ([path, init]) =>
+          path === "/api/eliza-app/provisioning-agent" &&
+          (init as RequestInit | undefined)?.method === "POST",
+      ),
+    ).toBe(false);
 
     page.unmount();
   });
+
+  test.each(["pending", "provisioning", "error"])(
+    "an authoritative %s continuation can skip Dedicated compute",
+    async (status) => {
+      authState = { isAuthenticated: true, isLoading: false };
+      previewResult = null;
+      legacyStatus = status;
+      const page = await renderPage(
+        "/get-started?onboardingSession=0f5f9f9a-72cf-45e1-b1a1-2b7f9b1de111",
+      );
+
+      expect(page.query("continuation-confirm")).toBeNull();
+      expect(page.html()).toContain("Skip to Eliza");
+      page.unmount();
+    },
+  );
 
   test("a transient preview failure stays on the continuation and retries", async () => {
     authState = { isAuthenticated: true, isLoading: false };

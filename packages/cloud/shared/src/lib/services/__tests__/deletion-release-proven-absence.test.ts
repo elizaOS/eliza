@@ -57,6 +57,7 @@ let pgliteReady = true;
 let dbWrite: typeof import("../../../db/client").dbWrite;
 let closeDb: typeof import("../../../db/client").closeDatabaseConnectionsForTests | undefined;
 let ElizaSandboxService: typeof import("../eliza-sandbox").ElizaSandboxService;
+let snapshotEndpointUnsupported: string;
 
 let seq = 0;
 function uniq(p: string): string {
@@ -72,7 +73,8 @@ beforeAll(async () => {
   }
   try {
     ({ closeDatabaseConnectionsForTests: closeDb, dbWrite } = await import("../../../db/client"));
-    ({ ElizaSandboxService } = await import("../eliza-sandbox"));
+    ({ ElizaSandboxService, SNAPSHOT_ENDPOINT_UNSUPPORTED: snapshotEndpointUnsupported } =
+      await import("../eliza-sandbox"));
     // Plain DDL rather than drizzle-kit pushSchema: the generated path spends
     // minutes on "Pulling schema from database" here and blows the hook budget.
     // This is the same helper the other provisioning-job PGlite suites use.
@@ -142,6 +144,8 @@ async function seedPlacedAgent(): Promise<{
       node_id: nodeId,
       container_name: uniq("container"),
       sandbox_id: uniq("sandbox"),
+      bridge_url: "http://100.64.0.10:3000",
+      headscale_ip: "100.64.0.10",
     })
     .where(eq(agentSandboxes.id, created.agent.id));
   return { service, agentId: created.agent.id, orgId: org.id, nodeId };
@@ -153,7 +157,17 @@ function scriptProvider(
   stop: () => Promise<void>,
   outcome: SandboxDeletionStopOutcome = { kind: "not-running-proven" },
 ): void {
-  (service as unknown as { _provider: unknown })._provider = {
+  const seams = service as unknown as {
+    _provider: unknown;
+    fetchSnapshotState: () => Promise<never>;
+  };
+  // This suite owns allocation-release behavior, not snapshot transport. Model
+  // an older image's supported no-snapshot response so the real delete path
+  // persists its generation-scoped waiver before exercising teardown.
+  seams.fetchSnapshotState = async () => {
+    throw new Error(snapshotEndpointUnsupported);
+  };
+  seams._provider = {
     stopForDeletion: async () => {
       await stop();
       return outcome;

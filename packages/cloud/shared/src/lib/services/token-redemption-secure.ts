@@ -1284,6 +1284,30 @@ export class SecureTokenRedemptionService {
   // FRAUD DETECTION
   // ========================================
 
+  /** Parses a non-negative SQL aggregate without allowing corrupt values to disable checks. */
+  private parseFraudAggregate(value: unknown): number | null {
+    if (value === null || value === undefined) return null;
+    const raw = typeof value === "number" ? value : Number(String(value).trim() || "NaN");
+    if (!Number.isFinite(raw) || raw < 0) return null;
+    return raw;
+  }
+
+  /** Shared corrupt-aggregate outcome: flag for admin review, never skip silently. */
+  private corruptFraudAggregate(
+    field: string,
+    userId: string,
+  ): { flagged: boolean; warning: string; requiresReview: boolean } {
+    logger.error(
+      "[SecureRedemption] corrupt fraud-heuristic aggregate — flagging redemption for review",
+      { field, userId },
+    );
+    return {
+      flagged: true,
+      warning: `Flagged: fraud-heuristic data unavailable (corrupt ${field} aggregate) — manual review required`,
+      requiresReview: true,
+    };
+  }
+
   /**
    * Check for potentially fraudulent redemption patterns.
    */
@@ -1306,8 +1330,15 @@ export class SecureTokenRedemptionService {
         AND created_at >= ${oneHourAgo}
       `);
 
-      const recentCount = Number((recentEarnings.rows[0] as { count: string })?.count || 0);
-      const recentTotal = Number((recentEarnings.rows[0] as { total: string })?.total || 0);
+      const recentCount = this.parseFraudAggregate(
+        (recentEarnings.rows[0] as { count: string })?.count,
+      );
+      const recentTotal = this.parseFraudAggregate(
+        (recentEarnings.rows[0] as { total: string })?.total,
+      );
+      if (recentCount === null || recentTotal === null) {
+        return this.corruptFraudAggregate("app_earnings_transactions(last hour)", userId);
+      }
 
       if (recentCount > 0 && recentTotal > (pointsAmount / 100) * 0.5) {
         return {
@@ -1333,8 +1364,16 @@ export class SecureTokenRedemptionService {
         AND status IN ('completed', 'approved', 'processing')
       `);
 
-      const earned = Number((totalEarned.rows[0] as { total: string })?.total || 0);
-      const redeemed = Number((totalRedeemed.rows[0] as { total: string })?.total || 0);
+      const earned = this.parseFraudAggregate((totalEarned.rows[0] as { total: string })?.total);
+      const redeemed = this.parseFraudAggregate(
+        (totalRedeemed.rows[0] as { total: string })?.total,
+      );
+      if (earned === null || redeemed === null) {
+        return this.corruptFraudAggregate(
+          "app_earnings_transactions/token_redemptions(lifetime totals)",
+          userId,
+        );
+      }
 
       if (earned > 0) {
         const redemptionRatio = (redeemed + pointsAmount / 100) / earned;
@@ -1358,9 +1397,12 @@ export class SecureTokenRedemptionService {
         AND status IN ('completed', 'approved', 'processing', 'pending')
       `);
 
-      const otherUsersCount = Number(
-        (sharedAddressCheck.rows[0] as { user_count: string })?.user_count || 0,
+      const otherUsersCount = this.parseFraudAggregate(
+        (sharedAddressCheck.rows[0] as { user_count: string })?.user_count,
       );
+      if (otherUsersCount === null) {
+        return this.corruptFraudAggregate("token_redemptions(shared payout address)", userId);
+      }
 
       if (otherUsersCount >= FRAUD_THRESHOLDS.SHARED_ADDRESS_MAX_USERS) {
         return {

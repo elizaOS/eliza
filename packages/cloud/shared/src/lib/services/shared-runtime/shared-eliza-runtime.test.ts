@@ -43,6 +43,182 @@ afterEach(() => {
 });
 
 describe("Shared Eliza Workerd runtime", () => {
+  test("prewarms the genuine runtime kernel without dispatching inference", async () => {
+    const { prewarmSharedElizaRuntime } = await import("./shared-eliza-runtime");
+    let providerCalls = 0;
+    globalThis.fetch = (async () => {
+      providerCalls += 1;
+      throw new Error("Runtime prewarm must not contact Cerebras");
+    }) as typeof fetch;
+
+    await Promise.all([prewarmSharedElizaRuntime(), prewarmSharedElizaRuntime()]);
+
+    expect(providerCalls).toBe(0);
+  });
+
+  test("streams HANDLE_RESPONSE reply text through the genuine runtime", async () => {
+    const requests: Array<Record<string, unknown>> = [];
+    globalThis.fetch = (async (_url: RequestInfo | URL, init?: RequestInit) => {
+      requests.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
+      const argumentsText = JSON.stringify({
+        shouldRespond: "RESPOND",
+        thought: "The genuine runtime streamed this turn.",
+        contexts: ["simple"],
+        intents: [],
+        candidateActionNames: [],
+        replyText: "hello from streaming Eliza",
+        replyEffectStatus: "none",
+        facts: [],
+        relationships: [],
+        addressedTo: [],
+      });
+      const body =
+        `data: ${JSON.stringify({
+          id: "chatcmpl-shared-runtime-stream",
+          object: "chat.completion.chunk",
+          created: 0,
+          model: "gemma-4-31b",
+          choices: [
+            {
+              index: 0,
+              delta: {
+                role: "assistant",
+                tool_calls: [
+                  {
+                    index: 0,
+                    id: "shared-handle-response-stream",
+                    type: "function",
+                    function: {
+                      name: "HANDLE_RESPONSE",
+                      arguments: argumentsText.slice(0, 48),
+                    },
+                  },
+                ],
+              },
+              finish_reason: null,
+            },
+          ],
+        })}\n\n` +
+        `data: ${JSON.stringify({
+          id: "chatcmpl-shared-runtime-stream",
+          object: "chat.completion.chunk",
+          created: 0,
+          model: "gemma-4-31b",
+          choices: [
+            {
+              index: 0,
+              delta: {
+                tool_calls: [
+                  {
+                    index: 0,
+                    function: { arguments: argumentsText.slice(48) },
+                  },
+                ],
+              },
+              finish_reason: null,
+            },
+          ],
+        })}\n\n` +
+        `data: ${JSON.stringify({
+          id: "chatcmpl-shared-runtime-stream",
+          object: "chat.completion.chunk",
+          created: 0,
+          model: "gemma-4-31b",
+          choices: [{ index: 0, delta: {}, finish_reason: "tool_calls" }],
+          usage: { prompt_tokens: 41, completion_tokens: 17, total_tokens: 58 },
+        })}\n\n` +
+        "data: [DONE]\n\n";
+      return new Response(body, {
+        status: 200,
+        headers: { "Content-Type": "text/event-stream" },
+      });
+    }) as typeof fetch;
+
+    const { runSharedAgentTurnStream } = await import("./run-shared-agent-turn");
+    let dispatches = 0;
+    const result = await runSharedAgentTurnStream({
+      character: {
+        name: "Shared Eliza",
+        system: "You are Eliza.",
+        model: "gemma-4-31b",
+      },
+      history: [],
+      message: "say hello",
+      messageIds: {
+        user: "c92f5aaa-59ce-40a6-994b-e9e16dc85198",
+        assistant: "f492130b-2fc6-4b2b-bdca-51f441b0483d",
+      },
+      onProviderDispatch: async () => {
+        dispatches += 1;
+      },
+      execution: {
+        engine: "eliza-runtime",
+        agentKey: "personal:39e40424-28eb-41fc-8844-63d16e84e14f",
+      },
+    });
+    const parts = [];
+    for await (const part of result.parts ?? []) parts.push(part);
+
+    expect(
+      parts
+        .filter((part) => part.type === "text-delta")
+        .map((part) => part.text)
+        .join(""),
+    ).toBe("hello from streaming Eliza");
+    expect(parts.at(-1)).toMatchObject({
+      type: "finish",
+      text: "hello from streaming Eliza",
+    });
+    expect(dispatches).toBe(1);
+    expect(requests).toHaveLength(1);
+    expect(requests[0]).toMatchObject({ stream: true });
+  });
+
+  test("aborts the genuine runtime provider stream before barge-in can emit text", async () => {
+    const providerStarted = Promise.withResolvers<AbortSignal>();
+    globalThis.fetch = (async (_url: RequestInfo | URL, init?: RequestInit) => {
+      const signal = init?.signal;
+      if (!signal) throw new Error("Expected the runtime provider abort signal");
+      providerStarted.resolve(signal);
+      return new Response(
+        new ReadableStream({
+          start(controller) {
+            signal.addEventListener(
+              "abort",
+              () => controller.error(signal.reason ?? new DOMException("Aborted", "AbortError")),
+              { once: true },
+            );
+          },
+        }),
+        { status: 200, headers: { "Content-Type": "text/event-stream" } },
+      );
+    }) as typeof fetch;
+
+    const { runSharedAgentTurnStream } = await import("./run-shared-agent-turn");
+    const result = await runSharedAgentTurnStream({
+      character: {
+        name: "Shared Eliza",
+        system: "You are Eliza.",
+        model: "gemma-4-31b",
+      },
+      history: [],
+      message: "do not finish this turn",
+      execution: {
+        engine: "eliza-runtime",
+        agentKey: "personal:39e40424-28eb-41fc-8844-63d16e84e14f",
+      },
+    });
+    const iterator = result.parts?.[Symbol.asyncIterator]();
+    if (!iterator || !result.cancel) throw new Error("Expected a cancellable runtime stream");
+    const nextPart = iterator.next();
+    const providerSignal = await providerStarted.promise;
+
+    await result.cancel("confirmed caller speech");
+
+    expect(providerSignal.aborted).toBe(true);
+    await expect(nextPart).rejects.toThrow();
+  });
+
   test("runs HANDLE_RESPONSE through AgentRuntime and preserves native usage", async () => {
     const requests: Array<Record<string, unknown>> = [];
     globalThis.fetch = (async (_url: RequestInfo | URL, init?: RequestInit) => {

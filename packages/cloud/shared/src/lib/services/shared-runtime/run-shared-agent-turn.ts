@@ -450,6 +450,21 @@ export async function runSharedAgentTurnStream(
     };
   }
 
+  if (input.execution?.engine === "eliza-runtime") {
+    const { runSharedElizaRuntimeTurnStream } = await import("./shared-eliza-runtime");
+    return await runSharedElizaRuntimeTurnStream({
+      ...input,
+      character: {
+        ...input.character,
+        system: buildSystemPrompt(input.character, {
+          reminders: false,
+        }),
+      },
+      agentKey: input.execution.agentKey,
+      model: modelId,
+    });
+  }
+
   try {
     const model = getInteractiveCerebrasLanguageModel(modelId);
     const system = buildSystemPrompt(input.character, {

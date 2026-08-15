@@ -78,6 +78,42 @@ function resolveManagedAgentApiBase(sandbox: AgentSandbox): string | null {
   return null;
 }
 
+/**
+ * Reads the connection already installed on a running managed agent without
+ * rotating credentials or invoking any sandbox lifecycle operation.
+ */
+export async function readManagedElizaAgentConnection(params: {
+  agentId: string;
+  organizationId: string;
+}): Promise<ManagedLaunchConnection> {
+  const sandbox = await elizaSandboxService.getAgent(params.agentId, params.organizationId);
+  if (!sandbox) {
+    throw new ManagedElizaLaunchError("Agent not found", 404);
+  }
+  if (sandbox.status !== "running") {
+    throw new ManagedElizaLaunchError("Managed agent is not running", 409);
+  }
+  if (sandbox.claimed_at && !hasReadyWarmClaimCredential(sandbox)) {
+    throw new ManagedElizaLaunchError("Agent credential recovery is still in progress", 409);
+  }
+
+  const apiBase = resolveManagedAgentApiBase(sandbox);
+  if (!apiBase) {
+    throw new ManagedElizaLaunchError(
+      "Managed connection is unavailable because no agent web endpoint is configured",
+      503,
+    );
+  }
+
+  const materialized = await decryptAgentEnvVars(sandbox.environment_vars);
+  const token = materialized.ELIZA_API_TOKEN?.trim();
+  if (!token) {
+    throw new ManagedElizaLaunchError("Managed connection credential is unavailable", 409);
+  }
+
+  return { apiBase, token };
+}
+
 async function requestManagedAgent(
   apiBase: string,
   token: string,
