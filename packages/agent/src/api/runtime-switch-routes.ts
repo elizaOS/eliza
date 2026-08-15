@@ -58,6 +58,23 @@ const LOCAL_TEXT_PROVIDER: ProviderId = "eliza-local-inference";
 const CLOUD_TEXT_PROVIDER: ProviderId = "elizacloud";
 
 const PREFIX = "/api/runtime";
+let modelSwitchOperation: Promise<void> | undefined;
+
+async function withModelSwitchLock<T>(operation: () => Promise<T>): Promise<T> {
+  const previous = modelSwitchOperation;
+  let release: () => void = () => undefined;
+  const current = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  modelSwitchOperation = current;
+  if (previous) await previous;
+  try {
+    return await operation();
+  } finally {
+    release();
+    if (modelSwitchOperation === current) modelSwitchOperation = undefined;
+  }
+}
 
 /** How long the model-load call may take before the switch reports an error. */
 const ACTIVE_LOAD_TIMEOUT_MS = 120_000;
@@ -375,16 +392,17 @@ export async function handleRuntimeSwitchRoutes(
     }
 
     try {
-      const result =
+      const result = await withModelSwitchLock(async () =>
         target === "local"
-          ? await switchToLocal(
+          ? switchToLocal(
               fetchImpl,
               await resolveLocalModelId(fetchImpl, requestedModel),
             )
-          : await switchToCloud(
+          : switchToCloud(
               fetchImpl,
               requestedModel ?? DEFAULT_ELIZA_CLOUD_TEXT_MODEL,
-            );
+            ),
+      );
 
       logger.info(
         {

@@ -1,9 +1,9 @@
 /**
- * Deterministic response-handler shortcut for APP/VIEWS create choice replies.
+ * Deterministic response-handler shortcut for persisted app-control choices.
  *
- * The create flows persist a pending intent task after showing a [CHOICE] block.
- * A later bare reply like "cancel" or "edit-1" is therefore domain input, not
- * a chat message to paraphrase. Force it back through the owning action so the
+ * App/view creation and model-target clarification persist room-scoped
+ * AWAITING_CHOICE tasks. A later bare reply is therefore domain input, not a
+ * chat message to paraphrase. Force it back through the owning action so the
  * model cannot answer with REPLY and leave the task stranded.
  */
 
@@ -15,10 +15,15 @@ import {
 	hasPendingIntent,
 	isChoiceReply as isAppCreateChoiceReply,
 } from "../actions/app-create.js";
+import {
+	hasPendingModelSwitchTarget,
+	isModelSwitchTargetChoice,
+} from "../actions/model-switch.js";
 import { hasPendingViewsCreateIntent } from "../actions/views-create.js";
 import { userRequestMessageText } from "../params.js";
 
 const APP_ACTION_NAME = "APP";
+const MODEL_SWITCH_ACTION_NAME = "MODEL_SWITCH";
 const VIEWS_ACTION_NAME = "VIEWS";
 const GENERAL_CONTEXT = "general";
 
@@ -46,27 +51,44 @@ function hasRegisteredAction(
 
 async function resolvePendingChoiceAction(
 	context: ResponseHandlerEvaluatorContext,
-): Promise<typeof APP_ACTION_NAME | typeof VIEWS_ACTION_NAME | null> {
+): Promise<
+	| typeof APP_ACTION_NAME
+	| typeof MODEL_SWITCH_ACTION_NAME
+	| typeof VIEWS_ACTION_NAME
+	| null
+> {
 	if (context.messageHandler.processMessage === "STOP") return null;
 	const choice = messageText(context).trim();
-	if (!isAppCreateChoiceReply(choice)) return null;
 	const id = roomId(context);
-	const [appPending, viewsPending] = await Promise.all([
-		hasRegisteredAction(context, APP_ACTION_NAME)
+	const appChoice = isAppCreateChoiceReply(choice);
+	const modelChoice = isModelSwitchTargetChoice(choice);
+	if (!appChoice && !modelChoice) return null;
+	const [appPending, viewsPending, modelPending] = await Promise.all([
+		appChoice && hasRegisteredAction(context, APP_ACTION_NAME)
 			? hasPendingIntent(context.runtime, id)
 			: Promise.resolve(false),
-		hasRegisteredAction(context, VIEWS_ACTION_NAME)
+		appChoice && hasRegisteredAction(context, VIEWS_ACTION_NAME)
 			? hasPendingViewsCreateIntent(context.runtime, id)
 			: Promise.resolve(false),
+		modelChoice && hasRegisteredAction(context, MODEL_SWITCH_ACTION_NAME)
+			? hasPendingModelSwitchTarget(context.runtime, id)
+			: Promise.resolve(false),
 	]);
-	if (appPending === viewsPending) return null;
-	return appPending ? APP_ACTION_NAME : VIEWS_ACTION_NAME;
+	const pending: Array<
+		| typeof APP_ACTION_NAME
+		| typeof MODEL_SWITCH_ACTION_NAME
+		| typeof VIEWS_ACTION_NAME
+	> = [];
+	if (appPending) pending.push(APP_ACTION_NAME);
+	if (viewsPending) pending.push(VIEWS_ACTION_NAME);
+	if (modelPending) pending.push(MODEL_SWITCH_ACTION_NAME);
+	return pending.length === 1 ? pending[0] : null;
 }
 
 export const createChoiceShortcutEvaluator: ResponseHandlerEvaluator = {
 	name: "app-control.create-choice-shortcut",
 	description:
-		"Deterministically routes APP/VIEWS create [CHOICE] replies back through the pending create action.",
+		"Deterministically routes app-control choice replies back through the action that persisted the pending choice.",
 	priority: 12,
 	shouldRun: async (context) =>
 		(await resolvePendingChoiceAction(context)) !== null,
@@ -74,6 +96,10 @@ export const createChoiceShortcutEvaluator: ResponseHandlerEvaluator = {
 		const actionName = await resolvePendingChoiceAction(context);
 		if (!actionName) return undefined;
 		const choice = messageText(context).trim().toLowerCase();
+		const params: Record<string, string> =
+			actionName === MODEL_SWITCH_ACTION_NAME
+				? { target: choice }
+				: { action: "create", choice };
 		return {
 			requiresTool: true,
 			clearReply: true,
@@ -84,10 +110,10 @@ export const createChoiceShortcutEvaluator: ResponseHandlerEvaluator = {
 			addContexts: [GENERAL_CONTEXT],
 			deterministicToolCall: {
 				name: actionName,
-				params: { action: "create", choice },
+				params,
 			},
 			debug: [
-				`pending ${actionName} create choice "${choice}" routed deterministically`,
+				`pending ${actionName} choice "${choice}" routed deterministically`,
 			],
 		};
 	},

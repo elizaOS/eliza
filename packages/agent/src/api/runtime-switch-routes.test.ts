@@ -286,6 +286,77 @@ describe("POST /api/runtime/model-switch", () => {
       502,
     );
   });
+
+  it("serializes concurrent callers so text-slot routing cannot interleave", async () => {
+    const calls: Array<{ path: string; body: Body | null }> = [];
+    let releaseFirstPreferred: (() => void) | undefined;
+    const firstPreferredBlocked = new Promise<void>((resolve) => {
+      releaseFirstPreferred = resolve;
+    });
+    let preferredCount = 0;
+    const fetchImpl = (async (url: string | URL, init?: RequestInit) => {
+      const path = new URL(String(url)).pathname;
+      const body = init?.body ? (JSON.parse(String(init.body)) as Body) : null;
+      calls.push({ path, body });
+      if (path === "/api/local-inference/routing/preferred") {
+        preferredCount += 1;
+        if (preferredCount === 1) await firstPreferredBlocked;
+      }
+      if (path === "/api/local-inference/installed") {
+        return Response.json({ models: [] });
+      }
+      if (path === "/api/local-inference/downloads") {
+        return Response.json(
+          { job: { modelId: "eliza-1-2b" } },
+          { status: 202 },
+        );
+      }
+      return Response.json({ ok: true });
+    }) as typeof fetch;
+    const cloud = makeCtx(
+      "POST",
+      "/api/runtime/model-switch",
+      { target: "cloud" },
+      fetchImpl,
+    );
+    const local = makeCtx(
+      "POST",
+      "/api/runtime/model-switch",
+      { target: "local", model: "eliza-1-2b" },
+      fetchImpl,
+    );
+
+    const cloudResult = handleRuntimeSwitchRoutes(cloud.ctx);
+    await flushUntil(() => preferredCount === 1);
+    const localResult = handleRuntimeSwitchRoutes(local.ctx);
+    await flushUntil(() => calls.length > 1, 10);
+    expect(calls).toEqual([
+      {
+        path: "/api/local-inference/routing/preferred",
+        body: { slot: "TEXT_SMALL", provider: "elizacloud" },
+      },
+    ]);
+
+    releaseFirstPreferred?.();
+    await Promise.all([cloudResult, localResult]);
+    const preferredProviders = calls
+      .filter((call) => call.path === "/api/local-inference/routing/preferred")
+      .map((call) => call.body?.provider);
+    expect(preferredProviders).toEqual([
+      "elizacloud",
+      "elizacloud",
+      "eliza-local-inference",
+      "eliza-local-inference",
+    ]);
+    expect(cloud.json).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ ok: true, target: "cloud" }),
+    );
+    expect(local.json).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ ok: true, target: "local" }),
+    );
+  });
 });
 
 describe("POST /api/runtime/agent-switch", () => {
