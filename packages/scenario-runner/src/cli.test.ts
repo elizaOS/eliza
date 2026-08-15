@@ -282,7 +282,7 @@ describe("scenario-runner CLI", () => {
     vi.restoreAllMocks();
   });
 
-  it("parses run filters and rejects invalid lanes without exiting the process", () => {
+  it("parses run filters and provider selection, rejecting invalid values", () => {
     const parsed = parseArgs([
       "run",
       tempDir,
@@ -290,6 +290,8 @@ describe("scenario-runner CLI", () => {
       "alpha,beta",
       "--lane",
       "pr-deterministic",
+      "--provider",
+      "cli",
       "nested/*.scenario.ts",
     ]);
 
@@ -297,9 +299,30 @@ describe("scenario-runner CLI", () => {
     expect(parsed.dir).toBe(path.resolve(tempDir));
     expect([...(parsed.filter ?? [])]).toEqual(["alpha", "beta"]);
     expect(parsed.lane).toBe("pr-deterministic");
+    expect(parsed.provider).toBe("cli");
     expect(parsed.fileGlobs).toEqual(["nested/*.scenario.ts"]);
     expect(() => parseArgs(["list", tempDir, "--lane", "bad-lane"])).toThrow(
       CliUsageError,
+    );
+    expect(() =>
+      parseArgs(["run", tempDir, "--provider", "not-a-provider"]),
+    ).toThrow(CliUsageError);
+  });
+
+  it("passes the requested live provider to runtime construction", async () => {
+    writeScenario(tempDir, "provider-selected", { lane: "live-only" });
+    const createScenarioRuntime = vi.fn(
+      createDependencies(() => "passed").createScenarioRuntime,
+    );
+    const dependencies = createDependencies(() => "passed", {
+      createScenarioRuntime,
+    });
+
+    await expect(
+      runCli(["run", tempDir, "--provider", "anthropic"], dependencies),
+    ).resolves.toBe(0);
+    expect(createScenarioRuntime).toHaveBeenCalledWith(
+      expect.objectContaining({ preferredProvider: "anthropic" }),
     );
   });
 

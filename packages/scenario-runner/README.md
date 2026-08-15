@@ -80,6 +80,8 @@ eliza-scenarios run  <dir>
   --export-native <path>   Export trajectory JSONL for training corpus
   --runId <id>             Override the auto-generated run UUID
   --scenario id1,id2       Filter to specific scenario IDs
+  --provider <name>        Pin the live provider: groq, openai, anthropic,
+                           google, openrouter, or cli
   [fileGlob ...]           Filter by file glob pattern
 ```
 
