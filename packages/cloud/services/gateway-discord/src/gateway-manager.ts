@@ -30,6 +30,7 @@ import {
   parseDiscordConnectionDmPolicyState,
 } from "./dm-policy";
 import { pollTrackedDiscordDms, type TrackedDiscordDm } from "./dm-polling";
+import { tryConfirmDiscordIdentityLink } from "./identity-link";
 import { logger } from "./logger";
 import {
   createManagedGuildVoiceCloudBridge,
@@ -2388,6 +2389,34 @@ export class GatewayManager {
     }
     const trimmedContent = message.content.trim();
     if (!trimmedContent) return;
+    try {
+      const linkAttempt = await tryConfirmDiscordIdentityLink(
+        {
+          cloudBaseUrl: this.config.elizaCloudUrl,
+          getAuthHeader: () => this.getAuthHeader(),
+        },
+        {
+          text: trimmedContent,
+          discordUserId: message.author.id,
+          discordUsername: message.author.username,
+        },
+      );
+      if (linkAttempt.handled) {
+        await message.reply(linkAttempt.reply);
+        return;
+      }
+    } catch (error) {
+      // error-policy:J4 A recognizable link challenge must not become agent
+      // chat when Cloud is unavailable; expose a distinct retryable failure.
+      logger.warn("Discord identity-link confirmation unavailable", {
+        messageId: message.id,
+        error: sanitizeError(error),
+      });
+      await message.reply(
+        "I couldn't verify that link code right now. Please try sending it again in a moment.",
+      );
+      return;
+    }
     await this.routeManagedAgentMessage(message, trimmedContent);
   }
 

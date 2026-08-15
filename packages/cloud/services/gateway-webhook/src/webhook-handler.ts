@@ -7,6 +7,7 @@ import type {
 } from "./adapters/types";
 import { reacquireAuthHeader } from "./auth";
 import { resolveConnectorAccountId } from "./connector-account";
+import { tryConfirmIdentityLink } from "./identity-link";
 import { logger } from "./logger";
 import type { GatewayRedis } from "./redis";
 import {
@@ -310,6 +311,23 @@ async function processMessage(
   const { redis, cloudBaseUrl, getAuthHeader } = deps;
   const reauth = deps.reacquireAuthHeader ?? reacquireAuthHeader;
   const authHeader = getAuthHeader();
+
+  // Link challenges are proof-bearing control messages, including when the
+  // handle currently resolves to a provisional onboarding account. Inspect
+  // them before every personal or agent route so no existing row can swallow
+  // the challenge as ordinary agent text.
+  const linkAttempt = await tryConfirmIdentityLink(
+    { redis, cloudBaseUrl, getAuthHeader },
+    adapter.platform,
+    event.senderId,
+    event.senderName,
+    event.text,
+  );
+  if (linkAttempt.handled && linkAttempt.reply) {
+    await beforeEgress?.();
+    await adapter.sendReply(config, event, linkAttempt.reply);
+    return;
+  }
 
   // The public eliza.app phone/Telegram endpoints are account transports, not
   // arbitrary agent webhooks. Always converge them through the same internal
