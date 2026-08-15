@@ -4,11 +4,11 @@
  * terminal answer and covers success, failure, and delivered suppression.
  */
 import { describe, expect, it } from "vitest";
+import { FAILED_TOOL_FALLBACK_MESSAGE } from "../runtime/planner-loop";
 import {
 	resolveZeroDeliveryRecovery,
 	type ZeroDeliveryRecovery,
 } from "../services/message";
-import { FAILED_TOOL_FALLBACK_MESSAGE } from "../runtime/planner-loop";
 
 function recover(
 	overrides: Partial<Parameters<typeof resolveZeroDeliveryRecovery>[0]> = {},
