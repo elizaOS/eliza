@@ -655,15 +655,15 @@ jobs:
               return 0
             fi
             for attempt in 1 2 3; do
-              if printf '%s' "$value" | bunx wrangler secret put "$name" ${{ steps.env.outputs.wrangler_args }}; then
+              if printf '%s' "$value" | bunx wrangler versions secret put "$name" ${{ steps.env.outputs.wrangler_args }}; then
                 return 0
               fi
               if [ "$attempt" -lt 3 ]; then
-                echo "::warning::wrangler secret put $name failed on attempt $attempt; retrying in 10s"
+                echo "::warning::wrangler versions secret put $name failed on attempt $attempt; retrying in 10s"
                 sleep 10
               fi
             done
-            echo "::error::wrangler secret put $name failed after 3 attempts"
+            echo "::error::wrangler versions secret put $name failed after 3 attempts"
             return 1
           }
 
@@ -714,7 +714,7 @@ jobs:
             # absence is success without depending on Wrangler error prose.
             local result
             if ! result=$(node "$CHECKOUT_DIR/packages/cloud/scripts/ensure-worker-secret-absent.mjs" \
-              "$name" ${{ steps.env.outputs.wrangler_args }}); then
+              --versions "$name" ${{ steps.env.outputs.wrangler_args }}); then
               echo "::error::$name is unset but its absence could not be confirmed"
               return 1
             fi
@@ -722,10 +722,10 @@ jobs:
             return 0
           }
 
-          # QA cutover is OFF-FIRST. Secret mutations update the currently
-          # served Worker immediately, so remove the activation bit before
-          # changing any version, signer, or allowlist. If any later config or
-          # code deploy fails, the served feature remains absent.
+          # Build the next Worker version with the QA activation bit absent.
+          # The served gate was already disabled above; version-aware updates
+          # now prepare the new config without deploying stale code between
+          # secret publication and the intentional code cutover.
           STAGING_SESSION_EXCHANGE_ENABLED=""
           export STAGING_SESSION_EXCHANGE_ENABLED
           publish_toggle_secret STAGING_SESSION_EXCHANGE_ENABLED || exit 1
@@ -814,9 +814,9 @@ jobs:
             publish_toggle_secret "$name" || exit 1
           done
 
-          # GitHub and Cloudflare are separate write-only authorities. Verify
-          # the live names only after configured values have had a chance to
-          # create their bindings, but still before any Worker code deploys.
+          # Keep production voice fail-closed against its currently served
+          # credential set. The post-deploy check below verifies the complete
+          # served binding set after the intentional code cutover.
           verify_production_voice_secret_bindings || exit 1
 
       - name: Deploy to Cloudflare Workers
@@ -842,7 +842,7 @@ jobs:
             fi
             echo "::warning::Worker deploy failed after retiring legacy onboarding URL secrets; restoring the staging value."
             for name in ELIZA_ONBOARDING_LOGIN_APP_URL ELIZA_APP_ONBOARDING_LOGIN_APP_URL; do
-              if ! printf '%s' "$STAGING_ONBOARDING_LOGIN_APP_URL" | bunx wrangler secret put "$name" --env staging; then
+              if ! printf '%s' "$STAGING_ONBOARDING_LOGIN_APP_URL" | bunx wrangler versions secret put "$name" --env staging; then
                 echo "::error::Failed to restore legacy staging binding $name; staging onboarding CTA configuration requires operator repair."
               fi
             done
@@ -852,7 +852,7 @@ jobs:
             local name="$1"
             local result
             if ! result=$(node "$CHECKOUT_DIR/packages/cloud/scripts/ensure-worker-secret-absent.mjs" \
-              "$name" --env staging); then
+              --versions "$name" --env staging); then
               echo "::error::Could not retire legacy staging secret binding $name."
               return 1
             fi
