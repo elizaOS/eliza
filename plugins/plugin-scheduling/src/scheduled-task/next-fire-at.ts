@@ -17,10 +17,6 @@
 
 import { computeNextCronRunAtMs } from "@elizaos/core/edge";
 
-import {
-  formatLocalHHMM,
-  resolveOwnerWindowBoundsMinutes,
-} from "./window-bounds.js";
 import type { AnchorRegistry } from "../anchors/anchor-registry.js";
 import { resolveLocalHHMMToIso } from "./local-time.js";
 import { resolveTriggerTz } from "./trigger-tz.js";

@@ -11,7 +11,6 @@
 
 import { computeNextCronRunAtMs, stringToUuid } from "@elizaos/core/edge";
 
-import { resolveOwnerWindowBoundsMinutes } from "./window-bounds.js";
 import type { AnchorRegistry } from "../anchors/anchor-registry.js";
 import { resolveLocalHHMMToIso } from "./local-time.js";
 import { resolveTriggerTz } from "./trigger-tz.js";
