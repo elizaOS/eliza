@@ -34,17 +34,23 @@ const workflowSource = read(".github/workflows/cloud-cf-release.yml");
 const workflow = Bun.YAML.parse(workflowSource) as Workflow;
 const entryWorkflow = Bun.YAML.parse(entrySource) as Workflow;
 const publishStep = workflow.jobs?.["deploy-api"]?.steps?.find(
-  (step) => step.name === "Publish Worker AI secrets",
+  (step) => step.name === "Prepare Worker secrets for atomic deploy",
 );
 const deployStep = workflow.jobs?.["deploy-api"]?.steps?.find(
   (step) => step.name === "Deploy to Cloudflare Workers",
 );
+const verifyBindingsStep = workflow.jobs?.["deploy-api"]?.steps?.find(
+  (step) => step.name === "Verify required Worker secret binding names",
+);
 
 if (!publishStep?.run) {
-  throw new Error("Missing Publish Worker AI secrets workflow step");
+  throw new Error("Missing atomic Worker secret preparation workflow step");
 }
 if (!deployStep?.run) {
   throw new Error("Missing Deploy to Cloudflare Workers workflow step");
+}
+if (!verifyBindingsStep?.run) {
+  throw new Error("Missing Worker binding verification workflow step");
 }
 
 const preflight = publishStep.run.slice(
@@ -55,10 +61,10 @@ const shellHelpers = publishStep.run.slice(
   0,
   publishStep.run.indexOf("# Construct the staging fallback"),
 );
-const secretFunctions = publishStep.run
+const productionVoiceCandidateFunction = publishStep.run
   .slice(
-    publishStep.run.indexOf("publish_secret() {"),
-    publishStep.run.indexOf("# Like publish_secret"),
+    publishStep.run.indexOf("verify_production_voice_secret_candidates() {"),
+    publishStep.run.indexOf("# Like queue_secret"),
   )
   .replaceAll("$" + "{{ steps.env.outputs.wrangler_args }}", "");
 
@@ -79,8 +85,9 @@ function requirePreflightBash(): string {
   return GNU_BASH;
 }
 
-function runPreflight(env: Record<string, string>) {
-  return spawnSync(requirePreflightBash(), ["-c", preflight], {
+function runPreflight(env: Record<string, string>, after = "") {
+  return spawnSync(requirePreflightBash(), ["-c", `${preflight}\n${after}`], {
+    cwd: new URL("packages/cloud/api/", repoRoot).pathname,
     encoding: "utf8",
     env: {
       ...process.env,
@@ -98,55 +105,30 @@ function runPreflight(env: Record<string, string>) {
       FISH_AUDIO_FIRST_AUDIO_TIMEOUT_MS: "1500",
       VOICE_REALTIME_ELIZA_AUTHORIZATION: "Bearer dedicated-test",
       VOICE_REALTIME_WS_ENABLED: "false",
+      VOICE_BATCH_STT_PROVIDER: "",
       STAGING_ELIZACLOUD_API_KEY: "",
       ...env,
     },
   });
 }
 
-function runProductionVoiceBootstrap(
-  cartesiaApiKey: string,
-  putSucceeds = true,
+function runProductionVoiceCandidateCheck(
+  existingNames: string[],
+  queuedNames: string[],
 ) {
-  const initialInventory = JSON.stringify([
-    { name: "VOICE_REALTIME_CARTESIA_VOICE_ID" },
-    { name: "VOICE_REALTIME_ELIZA_AUTHORIZATION" },
-    { name: "VOICE_REALTIME_ELIZA_ENDPOINT" },
-  ]);
-  const completeInventory = JSON.stringify([
-    { name: "CARTESIA_API_KEY" },
-    { name: "VOICE_REALTIME_CARTESIA_VOICE_ID" },
-    { name: "VOICE_REALTIME_ELIZA_AUTHORIZATION" },
-    { name: "VOICE_REALTIME_ELIZA_ENDPOINT" },
-  ]);
   const script = `${shellHelpers}
-STATE_FILE="$(mktemp)"
-trap 'rm -f "$STATE_FILE"' EXIT
-printf '%s' '${initialInventory}' > "$STATE_FILE"
 bunx() {
-  if [[ "$1" == wrangler* && "$2" == "versions" && "$3" == "secret" && "$4" == "put" ]]; then
-    cat >/dev/null
-    if [ "$PUT_SUCCEEDS" != "true" ]; then
-      return 1
-    fi
-    printf '%s' '${completeInventory}' > "$STATE_FILE"
-    return 0
-  fi
   if [[ "$1" == wrangler* && "$2" == "secret" && "$3" == "list" ]]; then
-    cat "$STATE_FILE"
+    printf '%s' '${JSON.stringify(existingNames.map((name) => ({ name })))}'
     return 0
   fi
   return 1
 }
-${secretFunctions}
 DEPLOY_ENVIRONMENT=production
 VOICE_REALTIME_WS_ENABLED=true
-VOICE_BATCH_STT_PROVIDER=""
-CARTESIA_API_KEY=${JSON.stringify(cartesiaApiKey)}
-PUT_SUCCEEDS=${JSON.stringify(String(putSucceeds))}
-sleep() { :; }
-publish_secret CARTESIA_API_KEY || exit 1
-verify_production_voice_secret_bindings || exit 1
+worker_secret_names=(${queuedNames.map((name) => JSON.stringify(name)).join(" ")})
+${productionVoiceCandidateFunction}
+verify_production_voice_secret_candidates
 `;
   return spawnSync(requirePreflightBash(), ["-c", script], {
     encoding: "utf8",
@@ -247,16 +229,23 @@ describe("Cloud CF realtime voice deploy contract", () => {
     );
     expect(productionVars).not.toContain("VOICE_REALTIME_CARTESIA_VOICE_ID");
     expect(productionVars).not.toContain("VOICE_REALTIME_ELIZA_ENDPOINT");
-    expect(publishStep.run).toContain('"VOICE_REALTIME_CARTESIA_VOICE_ID"');
-    expect(publishStep.run).toContain('"VOICE_REALTIME_ELIZA_ENDPOINT"');
-    expect(publishStep.run).toContain("managed Worker secret binding name(s)");
-    const lastPublish = publishStep.run.lastIndexOf(
-      'publish_toggle_secret "$name" || exit 1',
+    expect(verifyBindingsStep.run).toContain(
+      '"VOICE_REALTIME_CARTESIA_VOICE_ID"',
     );
-    const productionBindingVerification = publishStep.run.lastIndexOf(
-      "verify_production_voice_secret_bindings || exit 1",
+    expect(verifyBindingsStep.run).toContain('"VOICE_REALTIME_ELIZA_ENDPOINT"');
+    expect(verifyBindingsStep.run).toContain(
+      'process.env.DEPLOY_ENVIRONMENT === "production"',
     );
-    expect(productionBindingVerification).toBeGreaterThan(lastPublish);
+    expect(verifyBindingsStep.run).toContain(
+      'process.env.VOICE_REALTIME_WS_ENABLED === "true"',
+    );
+    expect(publishStep.run).toContain(
+      "verify_production_voice_secret_candidates || exit 1",
+    );
+    expect(publishStep.run).toContain(
+      "missing existing or configured Worker binding name(s)",
+    );
+    expect(deployStep.run).toContain('--secrets-file "$WORKER_SECRETS_FILE"');
     expect(wrangler).not.toContain("VOICE_AMBIENT_ENABLED");
     expect(wrangler).not.toContain("VOICE_AMBIENT_PENDANT_BASE_URL");
   });
@@ -354,26 +343,32 @@ const executedDescribe = GNU_BASH ? describe : describe.skip;
 executedDescribe(
   "Cloud CF realtime voice deploy preflight (executed verbatim)",
   () => {
-    test("bootstraps a missing production Cartesia binding before verifying names", () => {
-      const result = runProductionVoiceBootstrap("cartesia-test");
+    test("accepts a configured production voice binding without a pre-deploy write", () => {
+      const result = runProductionVoiceCandidateCheck(
+        [
+          "VOICE_REALTIME_CARTESIA_VOICE_ID",
+          "VOICE_REALTIME_ELIZA_AUTHORIZATION",
+          "VOICE_REALTIME_ELIZA_ENDPOINT",
+        ],
+        ["CARTESIA_API_KEY"],
+      );
       expect(result.status, `${result.stdout}${result.stderr}`).toBe(0);
       expect(result.stdout).toContain(
-        "Verified 4 managed production voice secret binding names",
+        "Verified 4 existing or configured production voice binding names",
       );
     });
 
-    test("fails closed when a missing production binding has no configured source", () => {
-      const result = runProductionVoiceBootstrap(" ");
+    test("fails before deploy when a production voice binding is neither existing nor configured", () => {
+      const result = runProductionVoiceCandidateCheck(
+        [
+          "VOICE_REALTIME_CARTESIA_VOICE_ID",
+          "VOICE_REALTIME_ELIZA_AUTHORIZATION",
+          "VOICE_REALTIME_ELIZA_ENDPOINT",
+        ],
+        [],
+      );
       expect(result.status).toBe(1);
       expect(`${result.stdout}${result.stderr}`).toContain("CARTESIA_API_KEY");
-    });
-
-    test("fails closed when first-time production secret publication fails", () => {
-      const result = runProductionVoiceBootstrap("cartesia-test", false);
-      expect(result.status).toBe(1);
-      expect(`${result.stdout}${result.stderr}`).toContain(
-        "wrangler versions secret put CARTESIA_API_KEY failed after 3 attempts",
-      );
     });
 
     test("does not require realtime secrets when staging opt-in is absent", () => {
@@ -478,24 +473,13 @@ executedDescribe(
     });
 
     test("constructs the staging fallback only after truthy opt-in and a nonblank source key", () => {
-      const configured = spawnSync(
-        requirePreflightBash(),
-        [
-          "-c",
-          `${preflight}\nprintf '<%s>' "$VOICE_REALTIME_ELIZA_AUTHORIZATION"`,
-        ],
+      const configured = runPreflight(
         {
-          encoding: "utf8",
-          env: {
-            ...process.env,
-            DEPLOY_ENVIRONMENT: "staging",
-            DEEPGRAM_API_KEY: "deepgram-test",
-            CARTESIA_API_KEY: "cartesia-test",
-            VOICE_REALTIME_WS_ENABLED: "true",
-            VOICE_REALTIME_ELIZA_AUTHORIZATION: "",
-            STAGING_ELIZACLOUD_API_KEY: "stage-cloud-key",
-          },
+          VOICE_REALTIME_WS_ENABLED: "true",
+          VOICE_REALTIME_ELIZA_AUTHORIZATION: "",
+          STAGING_ELIZACLOUD_API_KEY: "stage-cloud-key",
         },
+        `printf '<%s>' "$VOICE_REALTIME_ELIZA_AUTHORIZATION"`,
       );
       expect(configured.status).toBe(0);
       expect(configured.stdout).toBe("<Bearer stage-cloud-key>");
