@@ -21,12 +21,20 @@ export interface SharedConversationCoordinatorOptions {
   abortSignal?: AbortSignal;
   /** Personal operations are server-selected and always platform-funded. */
   agentKind?: "sandbox" | "personal";
+  /** Authenticated server-only role override; never accepted from RPC params. */
+  trustedMessageRole?: "system";
 }
 
 export interface SharedConversationHistoryCoordinatorOptions {
   namespace: RuntimeDurableObjectNamespace;
   /** A newly minted room has no legacy history and can skip Postgres migration. */
   startEmpty?: boolean;
+}
+
+export interface SharedConversationLifecycleEvent {
+  id: string;
+  content: string;
+  createdAt: number;
 }
 
 export interface SharedCutoverSeal {
@@ -76,6 +84,31 @@ export async function coordinateSharedConversationPrewarm(
   await requireCoordinatorResponse(response, "conversation prewarm");
   // The Durable Object releases its per-room queue when the response body is
   // consumed. Drain this tiny acknowledgement before the first real turn.
+  await response.arrayBuffer();
+}
+
+/** Persist one idempotent lifecycle marker without dispatching or billing a model turn. */
+export async function coordinateSharedLifecycleEvent(
+  agentId: string,
+  roomId: string,
+  event: SharedConversationLifecycleEvent,
+  options: SharedConversationHistoryCoordinatorOptions,
+): Promise<void> {
+  const namespace = requireHistoryCoordinator(options);
+  const response = await coordinatorStub(namespace, agentId, roomId).fetch(
+    "https://shared-runtime.internal/lifecycle",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        operation: "lifecycle",
+        agentId,
+        roomId,
+        event,
+      }),
+    },
+  );
+  await requireCoordinatorResponse(response, "conversation lifecycle");
   await response.arrayBuffer();
 }
 
@@ -186,6 +219,7 @@ export async function coordinateSharedBridge(
         operation: options.agentKind === "personal" ? "personal-bridge" : "bridge",
         agent,
         rpc,
+        ...(options.trustedMessageRole ? { trustedMessageRole: options.trustedMessageRole } : {}),
       }),
     });
   await requireCoordinatorResponse(response, "conversation");
@@ -207,6 +241,7 @@ export async function coordinateSharedStream(
         operation: options.agentKind === "personal" ? "personal-stream" : "stream",
         agent,
         rpc,
+        ...(options.trustedMessageRole ? { trustedMessageRole: options.trustedMessageRole } : {}),
       }),
       ...(options.abortSignal ? { signal: options.abortSignal } : {}),
     });

@@ -26,17 +26,29 @@ import type { AppEnv } from "@/types/cloud-worker-env";
 // `Date` columns arrive as ISO strings; `handle` rehydrates them before any
 // service consumes the row (the CONVERSATIONS-500 defect class).
 type ConversationRequest =
-  | { operation: "bridge"; agent: CachedAgentSandbox; rpc: BridgeRequest }
+  | {
+      operation: "bridge";
+      agent: CachedAgentSandbox;
+      rpc: BridgeRequest;
+      trustedMessageRole?: "system";
+    }
   | {
       operation: "personal-bridge";
       agent: SharedRuntimeAgent;
       rpc: BridgeRequest;
+      trustedMessageRole?: "system";
     }
-  | { operation: "stream"; agent: CachedAgentSandbox; rpc: BridgeRequest }
+  | {
+      operation: "stream";
+      agent: CachedAgentSandbox;
+      rpc: BridgeRequest;
+      trustedMessageRole?: "system";
+    }
   | {
       operation: "personal-stream";
       agent: SharedRuntimeAgent;
       rpc: BridgeRequest;
+      trustedMessageRole?: "system";
     }
   | {
       operation: "prewarm";
@@ -45,6 +57,12 @@ type ConversationRequest =
       startEmpty?: boolean;
     }
   | { operation: "history"; agentId: string; roomId: string }
+  | {
+      operation: "lifecycle";
+      agentId: string;
+      roomId: string;
+      event: { id: string; content: string; createdAt: number };
+    }
   | {
       operation: "cutover-seal";
       agentId: string;
@@ -611,6 +629,7 @@ export class SharedRuntimeConversation {
     } else if (
       payload.operation === "prewarm" ||
       payload.operation === "history" ||
+      payload.operation === "lifecycle" ||
       payload.operation === "cutover-seal"
     ) {
       forwarded = {
@@ -976,6 +995,35 @@ export class SharedRuntimeConversation {
         { status: 423, headers: { "Retry-After": "1" } },
       );
     }
+    if (payload.operation === "lifecycle") {
+      if (
+        !payload.event?.id?.trim() ||
+        !payload.event.content?.trim() ||
+        !Number.isFinite(payload.event.createdAt)
+      ) {
+        return Response.json(
+          { success: false, code: "invalid_lifecycle_event" },
+          { status: 400 },
+        );
+      }
+      await this.runWithBindings(async () => {
+        const { sharedRuntimeChatService } = await import(
+          "@/lib/services/shared-runtime/shared-runtime-chat"
+        );
+        await sharedRuntimeChatService.recordLifecycleEvent(
+          payload.agentId,
+          payload.roomId,
+          {
+            id: payload.event.id,
+            role: "system",
+            content: payload.event.content,
+            createdAt: payload.event.createdAt,
+          },
+          historyStore,
+        );
+      });
+      return Response.json({ success: true });
+    }
     if (payload.operation === "prewarm") {
       await this.prewarmConversation(
         payload.agentId,
@@ -1115,6 +1163,7 @@ export class SharedRuntimeConversation {
           historyStore,
           turnClaims,
           funding: personal ? "platform" : "organization-credits",
+          trustedMessageRole: payload.trustedMessageRole,
         });
       }
       const result = await sharedRuntimeChatService.bridge(agent, payload.rpc, {
@@ -1122,6 +1171,7 @@ export class SharedRuntimeConversation {
         historyStore,
         turnClaims,
         funding: personal ? "platform" : "organization-credits",
+        trustedMessageRole: payload.trustedMessageRole,
       });
       return Response.json(result);
     });

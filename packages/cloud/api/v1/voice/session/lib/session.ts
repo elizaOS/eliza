@@ -155,6 +155,9 @@ export interface VoiceSessionConfig {
   prewarmElizaContext?: () => Promise<void>;
   /** Optional provider-synthesized opener that runs while agent context warms. */
   openingGreeting?: string;
+  /** Optional canonical agent turn that generates and persists the opener. */
+  openingPrompt?: string;
+  openingClientMessageId?: string;
   /** Deterministic test override; production uses bounded exponential backoff. */
   cacheWarmingRetryDelaysMs?: readonly number[];
   /** Deterministic test override for the bounded Ink reconnect schedule. */
@@ -181,6 +184,8 @@ export interface VoiceSessionConfig {
    * second paid session within the token's remaining TTL. Best-effort.
    */
   onTeardownRevoke?: (jti: string, expSeconds: number) => Promise<void>;
+  /** Persist transport lifecycle after the synchronous session is safely closed. */
+  onTeardown?: (reason: VoiceSessionSeverReason) => Promise<void>;
 }
 
 type SessionState =
@@ -342,7 +347,16 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
     const sessionTrace = this.mintTraceId("session");
     this.currentTraceId = sessionTrace;
     this.send({ t: "ready", sessionId: this.sessionId, traceId: sessionTrace });
-    if (this.config.openingGreeting?.trim()) {
+    if (this.config.openingPrompt?.trim()) {
+      const traceId = this.mintTraceId("turn");
+      this.currentTraceId = traceId;
+      this.currentVoiceTurnId = traceId;
+      this.state = "thinking";
+      void this.runResponseTurn(this.config.openingPrompt.trim(), traceId, {
+        messageRole: "system",
+        clientMessageId: this.config.openingClientMessageId,
+      });
+    } else if (this.config.openingGreeting?.trim()) {
       this.speakOpeningGreeting(this.config.openingGreeting.trim());
     }
   }
@@ -813,6 +827,10 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
   private async runResponseTurn(
     transcript: string,
     traceId: string,
+    options: {
+      messageRole?: "system";
+      clientMessageId?: string;
+    } = {},
   ): Promise<void> {
     const responseStartedAt = this.now();
     let firstModelTextAt: number | null = null;
@@ -900,6 +918,10 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
         authorization: this.config.elizaAuthorization,
         model: this.config.elizaModel,
         transcript,
+        ...(options.messageRole ? { messageRole: options.messageRole } : {}),
+        ...(options.clientMessageId
+          ? { clientMessageId: options.clientMessageId }
+          : {}),
         agentId: this.config.agentId,
         conversationId: this.config.conversationId,
         organizationId: this.config.organizationId,
@@ -1202,6 +1224,17 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
           // error-policy:J6 best-effort teardown — revoke-on-end is defense in
           // depth; the token still dies at its <=120s TTL.
         });
+    }
+    if (this.config.onTeardown) {
+      void this.config.onTeardown(reason).catch((error) => {
+        // error-policy:J6 session closure is already committed; the durable
+        // lifecycle marker is idempotent and may be recovered by provider retry.
+        logger.warn("[voice-session] lifecycle teardown persistence failed", {
+          sessionId: this.sessionId,
+          reason,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      });
     }
 
     // Invalidate any live turn so racing callbacks are dropped.
