@@ -945,7 +945,7 @@ ${tweet.text}`;
         await this.runtime.ensureConnection({
           entityId,
           roomId,
-          userId,
+          userId: entityId,
           userName: username,
           name: tweet.name,
           source: "twitter",

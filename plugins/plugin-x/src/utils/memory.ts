@@ -165,7 +165,7 @@ export async function ensureTwitterContext(
     await runtime.ensureConnection({
       entityId,
       roomId,
-      userId,
+      userId: entityId,
       userName: username,
       name: name,
       source: "twitter",

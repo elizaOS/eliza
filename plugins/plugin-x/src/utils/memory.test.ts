@@ -100,6 +100,12 @@ describe("Twitter memory utilities", () => {
         }),
       }),
     );
+    expect(ensureConnection).toHaveBeenCalledWith(
+      expect.objectContaining({
+        entityId: context.entityId,
+        userId: context.entityId,
+      }),
+    );
     expect(context.entityId).not.toBe("1830340867737178112");
   });
 
