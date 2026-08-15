@@ -75,6 +75,7 @@ export * from "./services/setup-rpc";
 export * from "./services/setup-state";
 export * from "./services/tool-policy";
 export * from "./services/trajectories";
+export * from "./services/triggerScheduling";
 export * from "./settings";
 export * from "./streaming-context";
 export * from "./trajectory-context";

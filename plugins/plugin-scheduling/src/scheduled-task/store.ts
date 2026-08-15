@@ -15,8 +15,9 @@ import type {
   ScheduledTaskUpsertOptions,
 } from "./runner.js";
 import {
-  executeRawSql,
+  createRuntimeSchedulingSqlExecutor,
   parseJsonRecord,
+  type SchedulingSqlExecutor,
   sqlBoolean,
   sqlInteger,
   sqlJson,
@@ -151,15 +152,29 @@ export function parseScheduledTaskLogRow(
   };
 }
 
-export interface SchedulingSqlStoreOptions {
-  runtime: IAgentRuntime;
+interface SchedulingSqlStoreBaseOptions {
   agentId: string;
+}
+
+export type SchedulingSqlStoreOptions = SchedulingSqlStoreBaseOptions &
+  (
+    | { executeSql: SchedulingSqlExecutor; runtime?: never }
+    | { runtime: IAgentRuntime; executeSql?: never }
+  );
+
+function schedulingSqlExecutor(
+  options: SchedulingSqlStoreOptions,
+): SchedulingSqlExecutor {
+  return typeof options.executeSql === "function"
+    ? options.executeSql
+    : createRuntimeSchedulingSqlExecutor(options.runtime);
 }
 
 export function createSchedulingSqlScheduledTaskStore(
   opts: SchedulingSqlStoreOptions,
 ): ScheduledTaskStore {
-  const { runtime, agentId } = opts;
+  const { agentId } = opts;
+  const executeSql = schedulingSqlExecutor(opts);
   return {
     async upsert(task: ScheduledTask, options?: ScheduledTaskUpsertOptions) {
       const now = isoNow();
@@ -169,8 +184,7 @@ export function createSchedulingSqlScheduledTaskStore(
         options.nextFireAtIso.length === 0
           ? "NULL"
           : `${sqlQuote(options.nextFireAtIso)}::timestamptz`;
-      await executeRawSql(
-        runtime,
+      await executeSql(
         `INSERT INTO ${TASK_TABLE} (
           id, agent_id, kind, prompt_instructions, context_request_json,
           trigger_json, priority, should_fire_json, completion_check_json,
@@ -245,8 +259,7 @@ export function createSchedulingSqlScheduledTaskStore(
                 : `(state_json::jsonb ->> 'firedAt') = ${sqlQuote(expected.firedAtIso)}`
             }`
         : `AND (state_json::jsonb ->> 'status') = 'scheduled'`;
-      const rows = await executeRawSql(
-        runtime,
+      const rows = await executeSql(
         `UPDATE ${TASK_TABLE}
             SET state_json = jsonb_set(
                                 jsonb_set(
@@ -272,8 +285,7 @@ export function createSchedulingSqlScheduledTaskStore(
       return { kind: "fired", task: parseScheduledTaskRow(row) };
     },
     async get(taskId: string) {
-      const rows = await executeRawSql(
-        runtime,
+      const rows = await executeSql(
         `SELECT *
            FROM ${TASK_TABLE}
           WHERE agent_id = ${sqlQuote(agentId)}
@@ -284,8 +296,7 @@ export function createSchedulingSqlScheduledTaskStore(
       return row ? parseScheduledTaskRow(row) : null;
     },
     async findByIdempotencyKey(key: string) {
-      const rows = await executeRawSql(
-        runtime,
+      const rows = await executeSql(
         `SELECT *
            FROM ${TASK_TABLE}
           WHERE agent_id = ${sqlQuote(agentId)}
@@ -322,8 +333,7 @@ export function createSchedulingSqlScheduledTaskStore(
           `(state_json::jsonb ->> 'firedAt') >= ${sqlQuote(filter.firedSince)}`,
         );
       }
-      const rows = await executeRawSql(
-        runtime,
+      const rows = await executeSql(
         `SELECT *
            FROM ${TASK_TABLE}
           WHERE ${clauses.join(" AND ")}
@@ -332,14 +342,12 @@ export function createSchedulingSqlScheduledTaskStore(
       return rows.map(parseScheduledTaskRow);
     },
     async delete(taskId: string) {
-      await executeRawSql(
-        runtime,
+      await executeSql(
         `DELETE FROM ${TASK_TABLE}
           WHERE agent_id = ${sqlQuote(agentId)}
             AND id = ${sqlQuote(taskId)}`,
       );
-      await executeRawSql(
-        runtime,
+      await executeSql(
         `DELETE FROM ${LOG_TABLE}
           WHERE agent_id = ${sqlQuote(agentId)}
             AND task_id = ${sqlQuote(taskId)}`,
@@ -351,11 +359,11 @@ export function createSchedulingSqlScheduledTaskStore(
 export function createSchedulingSqlScheduledTaskLogStore(
   opts: SchedulingSqlStoreOptions,
 ): ScheduledTaskLogStore {
-  const { runtime, agentId } = opts;
+  const { agentId } = opts;
+  const executeSql = schedulingSqlExecutor(opts);
   return {
     async append(entry: ScheduledTaskLogEntry) {
-      await executeRawSql(
-        runtime,
+      await executeSql(
         `INSERT INTO ${LOG_TABLE} (
           id, agent_id, task_id, occurred_at, transition, reason, rolled_up, detail_json
         ) VALUES (
@@ -386,8 +394,7 @@ export function createSchedulingSqlScheduledTaskLogStore(
         typeof args.limit === "number" && args.limit > 0
           ? `LIMIT ${sqlInteger(args.limit)}`
           : "";
-      const rows = await executeRawSql(
-        runtime,
+      const rows = await executeSql(
         `SELECT *
            FROM ${LOG_TABLE}
           WHERE ${clauses.join(" AND ")}
@@ -397,8 +404,7 @@ export function createSchedulingSqlScheduledTaskLogStore(
       return rows.map(parseScheduledTaskLogRow);
     },
     async rollupOlderThan(args) {
-      const rows = await executeRawSql(
-        runtime,
+      const rows = await executeSql(
         `SELECT *
            FROM ${LOG_TABLE}
           WHERE agent_id = ${sqlQuote(agentId)}
@@ -433,8 +439,7 @@ export function createSchedulingSqlScheduledTaskLogStore(
           });
         }
       }
-      await executeRawSql(
-        runtime,
+      await executeSql(
         `DELETE FROM ${LOG_TABLE}
           WHERE agent_id = ${sqlQuote(agentId)}
             AND rolled_up = FALSE
@@ -444,8 +449,7 @@ export function createSchedulingSqlScheduledTaskLogStore(
       for (const item of summary.values()) {
         counter += 1;
         const id = `rollup-${item.taskId}-${item.dayIso}-${item.transition}-${counter}`;
-        await executeRawSql(
-          runtime,
+        await executeSql(
           `INSERT INTO ${LOG_TABLE} (
             id, agent_id, task_id, occurred_at, transition, reason, rolled_up, detail_json
           ) VALUES (
