@@ -399,6 +399,27 @@ async function readViewPaint(
       const visibleText: string[] = [];
       const loadingLabels = new Set<string>();
       const terminalLoadingLabel = new RegExp(terminalLoadingPattern, "i");
+      const inlineTextTags = new Set([
+        "A",
+        "ABBR",
+        "B",
+        "CODE",
+        "EM",
+        "I",
+        "LABEL",
+        "MARK",
+        "S",
+        "SMALL",
+        "SPAN",
+        "STRONG",
+        "SUB",
+        "SUP",
+      ]);
+      const laysOutInlineItems = (display: string): boolean =>
+        display === "flex" ||
+        display === "inline-flex" ||
+        display === "grid" ||
+        display === "inline-grid";
       const visibleTextOf = (element: Element): string => {
         const pieces: string[] = [];
         const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
@@ -416,6 +437,9 @@ async function readViewPaint(
       const inlineRunLabels = (container: Element): string[] => {
         const labels: string[] = [];
         let run: string[] = [];
+        const containerOwnsInlineItems = laysOutInlineItems(
+          getComputedStyle(container).display,
+        );
         const flush = () => {
           const label = run.join(" ").replace(/\s+/g, " ").trim();
           if (label) labels.push(label);
@@ -431,7 +455,11 @@ async function readViewPaint(
           if (!(child instanceof Element)) continue;
           if (!isVisibleInViewport(child)) continue;
           const display = getComputedStyle(child).display;
-          if (display === "contents" || display.startsWith("inline")) {
+          if (
+            display === "contents" ||
+            display.startsWith("inline") ||
+            (containerOwnsInlineItems && inlineTextTags.has(child.tagName))
+          ) {
             const text = visibleTextOf(child);
             if (text) run.push(text);
           } else {
@@ -456,7 +484,17 @@ async function readViewPaint(
           );
         }
         const display = getComputedStyle(element).display;
-        if (display !== "contents" && !display.startsWith("inline")) {
+        const parentDisplay = element.parentElement
+          ? getComputedStyle(element.parentElement).display
+          : "";
+        const parentOwnsThisInlineItem =
+          laysOutInlineItems(parentDisplay) &&
+          inlineTextTags.has(element.tagName);
+        if (
+          !parentOwnsThisInlineItem &&
+          display !== "contents" &&
+          !display.startsWith("inline")
+        ) {
           for (const label of inlineRunLabels(element)) {
             if (terminalLoadingLabel.test(label)) loadingLabels.add(label);
           }
@@ -1576,9 +1614,26 @@ test.describe("all-views aesthetic audit (#8796)", () => {
       loadingStateLabels: ["Loading"],
     });
 
+    for (const terminalInlineLayout of [
+      '<div style="display: flex"><span>Loading</span></div>',
+      '<div style="display: grid"><span>Loading</span></div>',
+    ]) {
+      await viewRoot.evaluate((root, content) => {
+        root.innerHTML = `<h1>Tasks</h1>${content}`;
+      }, terminalInlineLayout);
+      await expect(
+        readViewPaint(viewRoot, overlay, tasksPolicy.expectation),
+      ).resolves.toMatchObject({
+        semanticReady: true,
+        loadingStateLabels: ["Loading"],
+      });
+    }
+
     for (const descriptiveLoading of [
       "<div>Loading <span>history</span></div>",
       "<div><span>Loading</span> <span>history</span></div>",
+      '<div style="display: flex; gap: 4px"><span>Loading</span><span>history</span></div>',
+      '<div style="display: grid; grid-template-columns: auto auto; gap: 4px"><span>Loading</span><span>history</span></div>',
     ]) {
       await viewRoot.evaluate((root, content) => {
         root.innerHTML = `<h1>Tasks</h1>${content}`;
