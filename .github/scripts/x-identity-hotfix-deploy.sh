@@ -24,4 +24,4 @@ node_port="$(jq -er '.data.sshPort' "$work/node.json")"
 ssh -i "$work/key" -p "$node_port" -o BatchMode=yes \
   -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile="$work/known_hosts" \
   "$node_user@$node_host" \
-  "set -euo pipefail; test \"\$(docker inspect --format '{{.Config.Image}}' '$container_name')\" = '$expected_image'; docker exec '$container_name' sh -lc 'printf \"psql=\"; command -v psql || true; printf \"database env names:\\n\"; env | cut -d= -f1 | grep -E \"DATABASE|POSTGRES|PG\" | sort'"
+  "set -euo pipefail; test \"\$(docker inspect --format '{{.Config.Image}}' '$container_name')\" = '$expected_image'; docker exec '$container_name' sh -lc 'cd /app && bun -e '\''for (const name of [\"postgres\",\"pg\",\"@electric-sql/pglite\"]) { try { await import(name); console.log(name + \"=available\"); } catch { console.log(name + \"=missing\"); } }'\'''"
