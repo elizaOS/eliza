@@ -611,9 +611,12 @@ export async function importTodoMutationRecordsInTransaction<
     if (existing) {
       if (
         existing.mutationId !== source.mutationId ||
+        existing.agentId !== input.targetScope.agentId ||
+        existing.entityId !== input.targetScope.entityId ||
         existing.operation !== source.operation ||
         existing.requestDigest !== source.requestDigest ||
         existing.applied !== source.applied ||
+        existing.committedAt.getTime() !== source.committedAt.getTime() ||
         JSON.stringify(canonicalize(existing.resultJson)) !==
           JSON.stringify(canonicalize(resultJson))
       ) {

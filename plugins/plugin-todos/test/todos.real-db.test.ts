@@ -1015,6 +1015,36 @@ describe("TodosService + currentTodosProvider — real PGLite", () => {
         imported: 0,
         skipped: 1,
       });
+      const originalCommittedAt = records[0]?.committedAt;
+      if (!originalCommittedAt) throw new Error("Expected mutation timestamp");
+      const conflictProbeId = crypto.randomUUID() as UUID;
+      await expect(
+        targetDb.transaction(async (tx) => {
+          await tx.insert(todosTable).values({
+            id: conflictProbeId,
+            agentId: targetScope.agentId,
+            entityId: targetScope.entityId,
+            roomId: null,
+            worldId: null,
+            content: "Must roll back with ledger conflict",
+            activeForm: "Rolling back with ledger conflict",
+            status: "pending",
+            parentTodoId: null,
+            parentTrajectoryStepId: null,
+            metadata: {},
+          });
+          await importTodoMutationRecordsInTransaction(tx, {
+            ...importInput,
+            records: records.map((record) => ({
+              ...record,
+              committedAt: new Date(originalCommittedAt.getTime() + 1_000),
+            })),
+          });
+        }),
+      ).rejects.toMatchObject({
+        code: TODO_IDEMPOTENCY_CONFLICT_ERROR_CODE,
+      });
+      expect(await targetService.get(targetScope, conflictProbeId)).toBeNull();
       const targetSnapshot = await targetService.readCutoverState(targetScope);
       expect(targetSnapshot.todos[0]).toMatchObject({
         id: sourceTodo.id,
@@ -1023,6 +1053,7 @@ describe("TodosService + currentTodosProvider — real PGLite", () => {
       expect(targetSnapshot.mutations[0]).toMatchObject({
         mutationId: sourceSnapshot.mutations[0]?.mutationId,
         scope: targetScope,
+        committedAt: originalCommittedAt,
       });
       const result = targetSnapshot.mutations[0]?.result;
       if (result?.action !== "create") {
