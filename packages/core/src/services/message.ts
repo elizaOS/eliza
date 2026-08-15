@@ -60,8 +60,8 @@ import {
 	checkSenderRole,
 	getUnresolvedSenderRoleFloor,
 	hasAtLeastRole,
-	resolveCanonicalOwnerIdForMessage,
 	isAdminRank,
+	resolveCanonicalOwnerIdForMessage,
 } from "../roles";
 import {
 	type ActionCatalog,
@@ -120,6 +120,8 @@ import {
 	type ExecutePlannedToolCallContext,
 	type ExecutePlannedToolCallOptions,
 	executePlannedToolCall,
+	projectActionResultForClipboard,
+	shouldSuppressActionResultClipboard,
 	type ToolArgAliasCapability,
 	projectActionResultForClipboard,
 	shouldSuppressActionResultClipboard,
@@ -6497,6 +6499,7 @@ export async function buildOwnerEntityToolArgAliases(args: {
 			]
 		: [];
 }
+
 interface ExecuteV5PlannedToolCallParams {
 	runtime: IAgentRuntime;
 	toolCall: PlannerToolCall;
@@ -8324,7 +8327,8 @@ export async function runV5MessageRuntimeStage1(args: {
 		const plannerState = withContextRoutingValues(
 			attachAvailableContexts(recomposedPlannerState, args.runtime),
 			selectedContextRoutingState,
-		);		const ownerEntityToolArgAliases = await buildOwnerEntityToolArgAliases({
+		);
+		const ownerEntityToolArgAliases = await buildOwnerEntityToolArgAliases({
 			runtime: args.runtime,
 			message: args.message,
 			state: plannerState,
@@ -8736,6 +8740,7 @@ export async function runV5MessageRuntimeStage1(args: {
 										plannerRuntime,
 										executorOptions: {
 											actions: exposedPlannerActions,
+											toolArgAliases: ownerEntityToolArgAliases,
 											...(args.onSettledActionResult
 												? {
 														onSettledResult: args.onSettledActionResult,
