@@ -1400,7 +1400,7 @@ export async function handleChatCompletionsPOST(
                   code: "rate_limit_cache_warming",
                 },
               },
-              { status: 503 },
+              { status: 503, headers: { "Retry-After": "1" } },
             ),
           ),
         );
@@ -1608,7 +1608,7 @@ export async function handleChatCompletionsPOST(
                 code: "inference_dependency_cache_warming",
               },
             },
-            { status: 503 },
+            { status: 503, headers: { "Retry-After": "1" } },
           ),
         ),
       );

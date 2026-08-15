@@ -716,6 +716,7 @@ app.post("/", async (c) => {
           "api_error",
           "Application authorization cache is warming. Retry shortly.",
           503,
+          { "Retry-After": "1" },
         );
       }
       monetizedApp = appResolution.app;

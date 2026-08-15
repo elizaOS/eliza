@@ -20,6 +20,11 @@ import {
 } from "./app-credit-math";
 import { APP_USAGE_PROJECTION_VERSION } from "./app-usage-projections";
 import {
+  getAppByIdHydrationGeneration,
+  invalidateInferenceAppByIdState,
+  setInferenceAppById,
+} from "./inference-app-memory-cache";
+import {
   APP_CHAT_RESERVATION_SETTLEMENT_MARKER,
   type CreditReconciliationResult,
   type CreditReservation,
@@ -67,20 +72,35 @@ interface NoneMarker {
 }
 
 /**
- * Invalidate the cached app row + markup config after a mutation that touches
- * fields read on the LLM hot path (monetization toggle, markup %, earnings
- * counters, etc.). Direct cache.del to avoid a circular dependency on
- * appsService — both modules sit in the same layer.
+ * Publish the authoritative app row after a mutation that touches fields read
+ * on the LLM hot path (monetization toggle, markup %). A bare eviction here
+ * manufactured a cold cache-only miss: the Worker's next inference for the app
+ * returned a warming 503 even though the mutation had authoritative state in
+ * hand (#17007). The mutation therefore writes the fresh post-commit row
+ * through under the hydration generation fence; derived keys (costMarkup,
+ * bySlug) are still evicted and rehydrate lazily off the hot path. Direct
+ * cache access avoids a circular dependency on appsService — both modules sit
+ * in the same layer and share the fence via inference-app-memory-cache.
  */
-async function invalidateAppCacheKeys(appId: string, slug?: string): Promise<void> {
-  const promises: Promise<void>[] = [
-    cache.del(CacheKeys.app.byId(appId)),
-    cache.del(CacheKeys.app.costMarkup(appId)),
-  ];
+async function publishAppCacheAfterMutation(appId: string, slug?: string): Promise<void> {
+  invalidateInferenceAppByIdState(appId);
+  const generation = getAppByIdHydrationGeneration(appId);
+  const derivedEvictions: Promise<void>[] = [cache.del(CacheKeys.app.costMarkup(appId))];
   if (slug) {
-    promises.push(cache.del(CacheKeys.app.bySlug(slug)));
+    derivedEvictions.push(cache.del(CacheKeys.app.bySlug(slug)));
   }
-  await Promise.all(promises);
+  const [updated] = await Promise.all([appsRepository.findById(appId), ...derivedEvictions]);
+  if (getAppByIdHydrationGeneration(appId) !== generation) {
+    // A concurrent mutation superseded this publication; its own write-through
+    // or eviction owns the cached state now.
+    return;
+  }
+  if (updated) {
+    await cache.set(CacheKeys.app.byId(appId), updated, CacheTTL.app.byId);
+    setInferenceAppById(appId, updated);
+  } else {
+    await cache.del(CacheKeys.app.byId(appId));
+  }
 }
 
 function parseOrgCreditBalance(value: string | number | null | undefined): number {
@@ -1865,9 +1885,10 @@ export class AppCreditsService {
     });
 
     // Critical: monetization config is read by /v1/messages and /v1/chat/* on
-    // every inference via calculateCostWithMarkup(). Evict the cached app row
-    // and the markup-config cache so the toggle takes effect immediately.
-    await invalidateAppCacheKeys(appId, existing?.slug ?? undefined);
+    // every inference via calculateCostWithMarkup(). Write the updated row
+    // through (fenced) so the toggle takes effect immediately without
+    // manufacturing a cold cache-only miss on the very next inference.
+    await publishAppCacheAfterMutation(appId, existing?.slug ?? undefined);
 
     // When enabling monetization, ensure earnings record exists
     // This prevents null state when viewing earnings dashboard
