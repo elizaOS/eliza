@@ -1,14 +1,16 @@
 /**
- * Exercises signed Discord application event webhooks and real REST request
- * shapes with deterministic cryptographic and network fixtures.
+ * Exercises signed Discord application-event parsing and the Hono route's
+ * bounded durable-enqueue boundary with deterministic crypto fixtures.
  */
 import { describe, expect, test } from "bun:test";
 import { generateKeyPairSync, sign } from "node:crypto";
 import {
+  createDiscordEventWebhookApp,
   createDiscordPublicKeyResolver,
   handleDiscordEventWebhook,
   verifyDiscordEventSignature,
 } from "../src/discord-event-webhook";
+import type { DiscordInstallWelcomeJob } from "../src/discord-install-welcome-queue";
 
 const APPLICATION_ID = "1474591626759376967";
 const { privateKey, publicKey } = generateKeyPairSync("ed25519");
@@ -36,6 +38,21 @@ function signedRequest(payload: unknown, valid = true): Request {
   });
 }
 
+function userInstallPayload(integrationType = 1) {
+  return {
+    application_id: APPLICATION_ID,
+    type: 1,
+    event: {
+      type: "APPLICATION_AUTHORIZED",
+      timestamp: "2026-08-14T09:00:00.000000",
+      data: {
+        integration_type: integrationType,
+        user: { id: "498273781589213185", global_name: "shaw" },
+      },
+    },
+  };
+}
+
 describe("Discord application event webhook", () => {
   test("verifies Ed25519 signatures and rejects invalid requests", async () => {
     const body = JSON.stringify({ type: 0 });
@@ -61,8 +78,8 @@ describe("Discord application event webhook", () => {
       signedRequest({ type: 0 }, false),
       {
         applicationId: APPLICATION_ID,
-        botToken: "token",
         getPublicKey: async () => rawPublicKey,
+        enqueue: async () => undefined,
       },
     );
     expect(response.status).toBe(401);
@@ -73,82 +90,97 @@ describe("Discord application event webhook", () => {
       signedRequest({ application_id: APPLICATION_ID, type: 0 }),
       {
         applicationId: APPLICATION_ID,
-        botToken: "token",
         getPublicKey: async () => rawPublicKey,
+        enqueue: async () => undefined,
       },
     );
     expect(response.status).toBe(204);
   });
 
-  test("opens a DM and sends one welcome for user installs", async () => {
-    const calls: Array<{ url: string; body: Record<string, unknown> }> = [];
-    const fetchImpl: typeof fetch = async (input, init) => {
-      const url = String(input);
-      calls.push({
-        url,
-        body: JSON.parse(String(init?.body)) as Record<string, unknown>,
-      });
-      return Response.json(
-        url.endsWith("/users/@me/channels")
-          ? { id: "dm-channel" }
-          : { id: "message" },
-      );
-    };
+  test("durably enqueues a stable welcome job without calling Discord REST", async () => {
+    const jobs: DiscordInstallWelcomeJob[] = [];
     const response = await handleDiscordEventWebhook(
-      signedRequest({
-        version: 1,
-        application_id: APPLICATION_ID,
-        type: 1,
-        event: {
-          type: "APPLICATION_AUTHORIZED",
-          timestamp: "2026-08-14T09:00:00.000000",
-          data: {
-            integration_type: 1,
-            scopes: ["applications.commands"],
-            user: { id: "498273781589213185", global_name: "shaw" },
-          },
-        },
-      }),
+      signedRequest(userInstallPayload()),
       {
         applicationId: APPLICATION_ID,
-        botToken: "token",
         getPublicKey: async () => rawPublicKey,
-        fetchImpl,
+        enqueue: async (job) => {
+          jobs.push(job);
+        },
       },
     );
+
     expect(response.status).toBe(204);
-    expect(calls).toHaveLength(2);
-    expect(calls[0]?.body).toEqual({ recipient_id: "498273781589213185" });
-    expect(calls[1]?.url).toEndWith("/channels/dm-channel/messages");
-    expect(calls[1]?.body.content).toContain("Hey shaw");
-    expect(calls[1]?.body.enforce_nonce).toBe(true);
-    expect(String(calls[1]?.body.nonce)).toMatch(/^\d+$/);
+    expect(jobs).toHaveLength(1);
+    expect(jobs[0]).toMatchObject({
+      eventTimestamp: "2026-08-14T09:00:00.000000",
+      user: { id: "498273781589213185", globalName: "shaw" },
+    });
+    expect(jobs[0]?.id).toMatch(/^[0-9a-f]{64}$/);
   });
 
   test("ignores guild installs", async () => {
     let called = false;
     const response = await handleDiscordEventWebhook(
-      signedRequest({
-        application_id: APPLICATION_ID,
-        type: 1,
-        event: {
-          type: "APPLICATION_AUTHORIZED",
-          timestamp: "2026-08-14T09:00:00.000000",
-          data: { integration_type: 0, user: { id: "user" } },
-        },
-      }),
+      signedRequest(userInstallPayload(0)),
       {
         applicationId: APPLICATION_ID,
-        botToken: "token",
         getPublicKey: async () => rawPublicKey,
-        fetchImpl: async () => {
+        enqueue: async () => {
           called = true;
-          return Response.json({});
         },
       },
     );
     expect(response.status).toBe(204);
     expect(called).toBe(false);
+  });
+
+  test("Hono boundary honors the bot-enabled flag", async () => {
+    let keyResolved = false;
+    const app = createDiscordEventWebhookApp({
+      enabled: false,
+      applicationId: APPLICATION_ID,
+      getPublicKey: async () => {
+        keyResolved = true;
+        return rawPublicKey;
+      },
+      enqueue: async () => undefined,
+    });
+
+    const response = await app.request(signedRequest(userInstallPayload()));
+    expect(response.status).toBe(503);
+    expect(keyResolved).toBe(false);
+  });
+
+  test("Hono boundary ACKs well under three seconds after Redis enqueue", async () => {
+    const app = createDiscordEventWebhookApp({
+      enabled: true,
+      applicationId: APPLICATION_ID,
+      getPublicKey: async () => rawPublicKey,
+      enqueue: async () => undefined,
+    });
+    const startedAt = performance.now();
+    const response = await app.request(signedRequest(userInstallPayload()));
+    expect(response.status).toBe(204);
+    expect(performance.now() - startedAt).toBeLessThan(500);
+  });
+
+  test("Hono boundary fails within the ACK budget when Redis stalls", async () => {
+    const errors: string[] = [];
+    const app = createDiscordEventWebhookApp({
+      enabled: true,
+      applicationId: APPLICATION_ID,
+      getPublicKey: async () => rawPublicKey,
+      enqueue: () => new Promise(() => undefined),
+      logError: (_message, context) => errors.push(context.error),
+    });
+    const startedAt = performance.now();
+    const response = await app.request(signedRequest(userInstallPayload()));
+    const elapsed = performance.now() - startedAt;
+    expect(response.status).toBe(503);
+    expect(elapsed).toBeGreaterThanOrEqual(1_000);
+    expect(elapsed).toBeLessThan(2_500);
+    expect(errors).toEqual(["Discord install welcome enqueue timed out"]);
   });
 
   test("resolves and caches the application public key", async () => {

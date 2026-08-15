@@ -9,8 +9,8 @@ import { hostname } from "node:os";
 import { serve } from "@hono/node-server";
 import { Hono } from "hono";
 import {
+  createDiscordEventWebhookApp,
   createDiscordPublicKeyResolver,
-  handleDiscordEventWebhook,
 } from "./discord-event-webhook";
 import { GatewayManager } from "./gateway-manager";
 import { logger } from "./logger";
@@ -63,6 +63,7 @@ const gatewayManager = new GatewayManager({
 });
 
 const elizaAppBotToken = process.env.ELIZA_APP_DISCORD_BOT_TOKEN?.trim();
+const elizaAppBotEnabled = process.env.ELIZA_APP_DISCORD_BOT_ENABLED === "true";
 const elizaAppApplicationId =
   process.env.ELIZA_APP_DISCORD_APPLICATION_ID?.trim() ?? "1474591626759376967";
 const resolveDiscordPublicKey = elizaAppBotToken
@@ -72,25 +73,20 @@ const resolveDiscordPublicKey = elizaAppBotToken
     })
   : null;
 
-app.post("/discord/event-webhook", async (c) => {
-  if (!elizaAppBotToken || !resolveDiscordPublicKey) {
-    return c.json({ error: "Discord app bot is not configured" }, 503);
-  }
-  try {
-    return await handleDiscordEventWebhook(c.req.raw, {
-      applicationId: elizaAppApplicationId,
-      botToken: elizaAppBotToken,
-      getPublicKey: resolveDiscordPublicKey,
-    });
-  } catch (error) {
-    // error-policy:J1 The HTTP webhook boundary acknowledges only completed
-    // delivery so Discord retries transient API failures.
-    logger.error("Discord application event webhook failed", {
-      error: error instanceof Error ? error.message : String(error),
-    });
-    return c.json({ error: "Discord webhook processing failed" }, 502);
-  }
-});
+app.route(
+  "/",
+  createDiscordEventWebhookApp({
+    enabled: elizaAppBotEnabled && Boolean(resolveDiscordPublicKey),
+    applicationId: elizaAppApplicationId,
+    getPublicKey:
+      resolveDiscordPublicKey ??
+      (async () => {
+        throw new Error("Discord application public key is unavailable");
+      }),
+    enqueue: (job) => gatewayManager.enqueueDiscordInstallWelcome(job),
+    logError: (message, context) => logger.error(message, context),
+  }),
+);
 
 // Liveness check - is the pod alive and should NOT be restarted?
 // Returns 200 for healthy/degraded (don't restart), 503 for unhealthy (restart)
