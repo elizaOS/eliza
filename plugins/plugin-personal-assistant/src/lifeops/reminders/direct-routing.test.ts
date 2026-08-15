@@ -60,6 +60,14 @@ describe("owner reminder direct routing", () => {
     "Remind me and Alex to call Pat tomorrow.",
     "Remind me plus Alex to call Pat tomorrow.",
     "Remind me, Alex, and Sam to call Pat tomorrow.",
+    "Remind me and @Alex to call Pat tomorrow.",
+    "Remind me and <@123456> to call Pat tomorrow.",
+    "Remind me, and Alex to call Pat tomorrow.",
+    "Remind me as well as Alex to call Pat tomorrow.",
+    "Remind me and 3 teammates to call Pat tomorrow.",
+    "Remind me to call Pat tomorrow, said Alice.",
+    "Remind me to call Pat tomorrow was written on the whiteboard.",
+    "Remind me to call Pat tomorrow; disregard that request.",
   ])("does not claim adjacent or read-only intent: %s", (text) => {
     expect(looksLikeOwnerReminderCreateRequest(text)).toBe(false);
   });
