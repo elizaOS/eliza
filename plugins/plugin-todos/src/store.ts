@@ -121,6 +121,19 @@ export interface TodoMutationImportResult {
   skipped: number;
 }
 
+export interface TodoScopeConvergenceInput {
+  sourceScope: TodoScope;
+  targetScope: TodoScope;
+  roomIdMap?: Readonly<Record<string, string | null>>;
+  worldIdMap?: Readonly<Record<string, string | null>>;
+}
+
+export interface TodoScopeConvergenceReceipt {
+  sourceTodoCount: number;
+  sourceMutationCount: number;
+  sourceDigest: string;
+}
+
 export interface TodoStore {
   applyMutation(input: TodoMutationInput): Promise<TodoMutationExecution>;
   readCutoverState(scope: TodoScope): Promise<TodoCutoverState>;
@@ -166,6 +179,8 @@ export const TODO_DUPLICATE_ID_ERROR_CODE = "TODO_DUPLICATE_ID";
 export const TODO_INVALID_PARENT_ERROR_CODE = "TODO_INVALID_PARENT";
 export const TODO_PARENT_CYCLE_ERROR_CODE = "TODO_PARENT_CYCLE";
 export const TODO_IDEMPOTENCY_CONFLICT_ERROR_CODE = "TODO_IDEMPOTENCY_CONFLICT";
+export const TODO_SCOPE_CONVERGENCE_ERROR_CODE =
+  "TODO_SCOPE_CONVERGENCE_CONFLICT";
 
 /** Return the first repeated persisted id in a desired todo list. */
 export function findDuplicateTodoId(

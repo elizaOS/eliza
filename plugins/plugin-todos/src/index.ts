@@ -73,4 +73,9 @@ export {
   TodosService,
   type UpdateTodoInput,
 } from "./service.js";
+export { convergeTodoScopesInTransaction } from "./sql-store.js";
+export type {
+  TodoScopeConvergenceInput,
+  TodoScopeConvergenceReceipt,
+} from "./store.js";
 export * from "./types.js";

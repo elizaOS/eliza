@@ -22,6 +22,7 @@ import {
   TODO_INVALID_PARENT_ERROR_CODE,
   TODO_LIST_LIMIT_ERROR_CODE,
   TODO_PARENT_CYCLE_ERROR_CODE,
+  TODO_SCOPE_CONVERGENCE_ERROR_CODE,
   type TodoCutoverState,
   type TodoFilter,
   type TodoMutation,
@@ -33,11 +34,18 @@ import {
   type TodoMutationRecordWire,
   type TodoMutationResult,
   type TodoScope,
+  type TodoScopeConvergenceInput,
+  type TodoScopeConvergenceReceipt,
   type TodoStore,
   type UpdateTodoInput,
   type WriteTodoListInput,
 } from "./store.js";
-import { TODOS_LOG_PREFIX, type Todo, type TodoStatus } from "./types.js";
+import {
+  TODO_STATUSES,
+  TODOS_LOG_PREFIX,
+  type Todo,
+  type TodoStatus,
+} from "./types.js";
 
 interface TodoHierarchyRow {
   id: string;
@@ -133,7 +141,7 @@ function deserializeTodo(value: unknown): Todo {
     });
   }
   const status = requiredString(candidate.status, "todo.status");
-  if (!["pending", "in_progress", "completed", "cancelled"].includes(status)) {
+  if (!(TODO_STATUSES as readonly string[]).includes(status)) {
     throw new ElizaError(`${TODOS_LOG_PREFIX} invalid persisted todo.status`, {
       code: TODO_MUTATION_RECORD_ERROR_CODE,
       context: { status },
@@ -501,7 +509,12 @@ function remapNullableTodoId(
   return id === null ? null : (idMap?.[id] ?? id);
 }
 
-function remapTodo(todo: Todo, input: TodoMutationImportInput): Todo {
+type TodoStateRemap = Pick<
+  TodoMutationImportInput,
+  "targetScope" | "todoIdMap" | "roomIdMap" | "worldIdMap"
+>;
+
+function remapTodo(todo: Todo, input: TodoStateRemap): Todo {
   return {
     ...todo,
     id: input.todoIdMap?.[todo.id] ?? todo.id,
@@ -515,7 +528,7 @@ function remapTodo(todo: Todo, input: TodoMutationImportInput): Todo {
 
 function remapMutationResult(
   result: TodoMutationResult,
-  input: TodoMutationImportInput,
+  input: TodoStateRemap,
 ): TodoMutationResult {
   switch (result.action) {
     case "create":
@@ -572,6 +585,285 @@ async function lockTodoScope<TSchema extends Record<string, unknown>>(
   await tx.execute(
     sql`SELECT pg_advisory_xact_lock(hashtext(${scopeLockKey(scope)}))`,
   );
+}
+
+async function lockTodoScopes<TSchema extends Record<string, unknown>>(
+  tx: TodoTransaction<TSchema>,
+  scopes: readonly TodoScope[],
+): Promise<void> {
+  const ordered = [
+    ...new Map(scopes.map((scope) => [scopeLockKey(scope), scope])),
+  ]
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([, scope]) => scope);
+  for (const scope of ordered) await lockTodoScope(tx, scope);
+}
+
+function todoScopeConvergenceError(
+  message: string,
+  context: Record<string, unknown>,
+): ElizaError {
+  return new ElizaError(`${TODOS_LOG_PREFIX} ${message}`, {
+    code: TODO_SCOPE_CONVERGENCE_ERROR_CODE,
+    context,
+  });
+}
+
+function todoMutationResultTodos(result: TodoMutationResult): Todo[] {
+  switch (result.action) {
+    case "create":
+      return [result.todo];
+    case "update":
+    case "complete":
+    case "cancel":
+      return result.todo ? [result.todo] : [];
+    case "delete":
+      return result.deleted ? [result.deleted] : [];
+    case "write":
+      return [...result.before, ...result.after];
+    case "clear":
+      return [];
+  }
+}
+
+function assertMutationResultScope(
+  mutation: TodoMutationRecord,
+  sourceScope: TodoScope,
+): void {
+  for (const todo of todoMutationResultTodos(mutation.result)) {
+    if (
+      todo.agentId !== sourceScope.agentId ||
+      todo.entityId !== sourceScope.entityId
+    ) {
+      throw todoScopeConvergenceError(
+        "mutation result is outside its persisted source scope",
+        {
+          mutationId: mutation.mutationId,
+          todoId: todo.id,
+          sourceAgentId: sourceScope.agentId,
+          sourceEntityId: sourceScope.entityId,
+          resultAgentId: todo.agentId,
+          resultEntityId: todo.entityId,
+        },
+      );
+    }
+  }
+}
+
+async function todoScopeStateDigest(
+  sourceScope: TodoScope,
+  todoRows: TodoRow[],
+  mutationRows: TodoMutationRow[],
+): Promise<string> {
+  const serialized = JSON.stringify(
+    canonicalize({
+      version: 1,
+      sourceScope,
+      todos: todoRows.map((row) => ({
+        id: row.id,
+        entityId: row.entityId,
+        agentId: row.agentId,
+        roomId: row.roomId ?? null,
+        worldId: row.worldId ?? null,
+        content: row.content,
+        activeForm: row.activeForm,
+        status: row.status,
+        parentTodoId: row.parentTodoId ?? null,
+        parentTrajectoryStepId: row.parentTrajectoryStepId ?? null,
+        metadata: row.metadata,
+        createdAt: row.createdAt.toISOString(),
+        updatedAt: row.updatedAt.toISOString(),
+        completedAt: row.completedAt?.toISOString() ?? null,
+      })),
+      mutations: mutationRows.map((row) => ({
+        mutationId: row.mutationId,
+        entityId: row.entityId,
+        agentId: row.agentId,
+        idempotencyKey: row.idempotencyKey,
+        operation: row.operation,
+        requestDigest: row.requestDigest,
+        resultJson: row.resultJson,
+        applied: row.applied,
+        committedAt: row.committedAt.toISOString(),
+      })),
+    }),
+  );
+  if (serialized === undefined) {
+    throw todoScopeConvergenceError("source state is not serializable", {
+      sourceAgentId: sourceScope.agentId,
+      sourceEntityId: sourceScope.entityId,
+    });
+  }
+  return sha256(serialized);
+}
+
+/**
+ * Atomically move Todo state and replay authority between two identity scopes.
+ * The receipt binds the exact pre-move rows so the account-convergence record
+ * can prove what was transferred even though a source-empty retry cannot
+ * reconstruct provenance from the merged target scope.
+ */
+export async function convergeTodoScopesInTransaction<
+  TSchema extends Record<string, unknown>,
+>(
+  tx: TodoTransaction<TSchema>,
+  input: TodoScopeConvergenceInput,
+): Promise<TodoScopeConvergenceReceipt> {
+  if (
+    input.sourceScope.agentId === input.targetScope.agentId &&
+    input.sourceScope.entityId === input.targetScope.entityId
+  ) {
+    throw todoScopeConvergenceError("source and target scopes are identical", {
+      agentId: input.sourceScope.agentId,
+      entityId: input.sourceScope.entityId,
+    });
+  }
+
+  await lockTodoScopes(tx, [input.sourceScope, input.targetScope]);
+  const sourceTodoRows = await tx
+    .select()
+    .from(todosTable)
+    .where(
+      and(
+        eq(todosTable.agentId, input.sourceScope.agentId as UUID),
+        eq(todosTable.entityId, input.sourceScope.entityId as UUID),
+      ),
+    )
+    .orderBy(asc(todosTable.id));
+  const sourceMutationRows = await tx
+    .select()
+    .from(todoMutationsTable)
+    .where(
+      and(
+        eq(todoMutationsTable.agentId, input.sourceScope.agentId as UUID),
+        eq(todoMutationsTable.entityId, input.sourceScope.entityId as UUID),
+      ),
+    )
+    .orderBy(asc(todoMutationsTable.mutationId));
+  const receipt = {
+    sourceTodoCount: sourceTodoRows.length,
+    sourceMutationCount: sourceMutationRows.length,
+    sourceDigest: await todoScopeStateDigest(
+      input.sourceScope,
+      sourceTodoRows,
+      sourceMutationRows,
+    ),
+  };
+  if (sourceTodoRows.length === 0 && sourceMutationRows.length === 0) {
+    return receipt;
+  }
+
+  const sourceTodos = sourceTodoRows.map((row) => {
+    if (
+      !record(row.metadata) ||
+      !(TODO_STATUSES as readonly string[]).includes(row.status)
+    ) {
+      throw todoScopeConvergenceError("source Todo row is invalid", {
+        todoId: row.id,
+      });
+    }
+    return rowToTodo(row);
+  });
+  assertTodoHierarchy(
+    sourceTodos.map(({ id, parentTodoId }) => ({ id, parentTodoId })),
+  );
+  const targetHierarchy = await tx
+    .select({ id: todosTable.id, parentTodoId: todosTable.parentTodoId })
+    .from(todosTable)
+    .where(
+      and(
+        eq(todosTable.agentId, input.targetScope.agentId as UUID),
+        eq(todosTable.entityId, input.targetScope.entityId as UUID),
+      ),
+    );
+  assertTodoHierarchy([
+    ...targetHierarchy,
+    ...sourceTodos.map(({ id, parentTodoId }) => ({ id, parentTodoId })),
+  ]);
+
+  const sourceMutations = sourceMutationRows.map(rowToMutationRecord);
+  for (const mutation of sourceMutations) {
+    assertMutationResultScope(mutation, input.sourceScope);
+  }
+  if (sourceMutations.length > 0) {
+    const [conflict] = await tx
+      .select({
+        mutationId: todoMutationsTable.mutationId,
+        idempotencyKey: todoMutationsTable.idempotencyKey,
+      })
+      .from(todoMutationsTable)
+      .where(
+        and(
+          eq(todoMutationsTable.agentId, input.targetScope.agentId as UUID),
+          eq(todoMutationsTable.entityId, input.targetScope.entityId as UUID),
+          inArray(
+            todoMutationsTable.idempotencyKey,
+            sourceMutations.map((mutation) => mutation.idempotencyKey),
+          ),
+        ),
+      )
+      .orderBy(asc(todoMutationsTable.idempotencyKey))
+      .limit(1);
+    if (conflict) {
+      throw idempotencyConflict(input.targetScope, conflict.idempotencyKey);
+    }
+  }
+
+  const remapInput: TodoStateRemap = {
+    targetScope: input.targetScope,
+    ...(input.roomIdMap ? { roomIdMap: input.roomIdMap } : {}),
+    ...(input.worldIdMap ? { worldIdMap: input.worldIdMap } : {}),
+  };
+  for (const todo of sourceTodos) {
+    const remapped = remapTodo(todo, remapInput);
+    const moved = await tx
+      .update(todosTable)
+      .set({
+        agentId: input.targetScope.agentId as UUID,
+        entityId: input.targetScope.entityId as UUID,
+        roomId: remapped.roomId as UUID | null,
+        worldId: remapped.worldId as UUID | null,
+      })
+      .where(
+        and(
+          eq(todosTable.id, todo.id as UUID),
+          eq(todosTable.agentId, input.sourceScope.agentId as UUID),
+          eq(todosTable.entityId, input.sourceScope.entityId as UUID),
+        ),
+      )
+      .returning({ id: todosTable.id });
+    if (moved.length !== 1) {
+      throw todoScopeConvergenceError("Todo row changed during convergence", {
+        todoId: todo.id,
+      });
+    }
+  }
+  for (const mutation of sourceMutations) {
+    const moved = await tx
+      .update(todoMutationsTable)
+      .set({
+        agentId: input.targetScope.agentId as UUID,
+        entityId: input.targetScope.entityId as UUID,
+        resultJson: serializeMutationResult(
+          remapMutationResult(mutation.result, remapInput),
+        ),
+      })
+      .where(
+        and(
+          eq(todoMutationsTable.mutationId, mutation.mutationId as UUID),
+          eq(todoMutationsTable.agentId, input.sourceScope.agentId as UUID),
+          eq(todoMutationsTable.entityId, input.sourceScope.entityId as UUID),
+        ),
+      )
+      .returning({ mutationId: todoMutationsTable.mutationId });
+    if (moved.length !== 1) {
+      throw todoScopeConvergenceError(
+        "mutation row changed during convergence",
+        { mutationId: mutation.mutationId },
+      );
+    }
+  }
+  return receipt;
 }
 
 /** Import mutation replay authority inside the caller's existing SQL transaction. */
@@ -1390,6 +1682,7 @@ export {
   TODO_INVALID_PARENT_ERROR_CODE,
   TODO_LIST_LIMIT_ERROR_CODE,
   TODO_PARENT_CYCLE_ERROR_CODE,
+  TODO_SCOPE_CONVERGENCE_ERROR_CODE,
   type TodoCutoverState,
   type TodoFilter,
   type TodoMutation,
@@ -1400,6 +1693,8 @@ export {
   type TodoMutationRecord,
   type TodoMutationResult,
   type TodoScope,
+  type TodoScopeConvergenceInput,
+  type TodoScopeConvergenceReceipt,
   type TodoStore,
   type UpdateTodoInput,
   type WriteTodoListInput,

@@ -84,11 +84,12 @@ describe("Todo edge package export", () => {
         "--conditions=worker",
         "--input-type=module",
         "--eval",
-        'const edge = await import("@elizaos/plugin-todos/edge"); process.stdout.write(JSON.stringify({ plugin: typeof edge.createTodosEdgePlugin, store: typeof edge.createTodosSqlStore }));',
+        'const edge = await import("@elizaos/plugin-todos/edge"); process.stdout.write(JSON.stringify({ converge: typeof edge.convergeTodoScopesInTransaction, plugin: typeof edge.createTodosEdgePlugin, store: typeof edge.createTodosSqlStore }));',
       ],
       temporaryDirectory,
     );
     expect(JSON.parse(output)).toEqual({
+      converge: "function",
       plugin: "function",
       store: "function",
     });

@@ -6,6 +6,7 @@ import { createCurrentTodosProvider } from "./providers/current-todos.js";
 import type { TodoStore } from "./store.js";
 
 export {
+  convergeTodoScopesInTransaction,
   createTodosSqlStore,
   deserializeTodoMutationRecord,
   importTodoMutationRecordsInTransaction,
@@ -58,6 +59,8 @@ export type {
   TodoMutationRecordWire,
   TodoMutationResult,
   TodoScope,
+  TodoScopeConvergenceInput,
+  TodoScopeConvergenceReceipt,
   TodoStore,
   UpdateTodoInput,
   WriteTodoListInput,
