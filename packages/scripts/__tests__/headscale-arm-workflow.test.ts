@@ -1004,9 +1004,23 @@ server {
       ]).toEqual([quotedHeader, 0, ""]);
     }
 
+    const customOutputVariable = "$headscale_connection_upgrade";
+    const customOutputValid = runLegacyVhostValidation({
+      source: expectedLegacySource.replace(
+        "$connection_upgrade",
+        customOutputVariable,
+      ),
+      loadedConfig: expectedLoadedConfig.replaceAll(
+        "$connection_upgrade",
+        customOutputVariable,
+      ),
+      enforceDirectiveAllowlist: true,
+    });
+    expect(customOutputValid.status).toBe(0);
+    expect(customOutputValid.stdout).toBe("");
+
     for (const source of [
       expectedLegacySource.replace("$http_upgrade", "$http_connection"),
-      expectedLegacySource.replace("$connection_upgrade", "$shared_upgrade"),
       expectedLegacySource.replace("default upgrade;", "default close;"),
       expectedLegacySource.replace("''      close;", "''      upgrade;"),
       expectedLegacySource.replace("  ''      close;\n", ""),
@@ -1072,20 +1086,39 @@ proxy_set_header Connection $connection_upgrade;
     expect(externallyReferenced.stdout).toContain(
       "upgrade-map output is referenced outside the reviewed file",
     );
+
+    const customExternalOutputVariable = "$headscale_connection_upgrade";
+    const customOutputExternallyReferenced = runLegacyVhostValidation({
+      source: expectedLegacySource.replace(
+        "$connection_upgrade",
+        customExternalOutputVariable,
+      ),
+      loadedConfig: `${expectedLoadedConfig.replaceAll("$connection_upgrade", customExternalOutputVariable)}
+# configuration file /etc/nginx/conf.d/unrelated-custom.conf:
+proxy_set_header Connection ${customExternalOutputVariable};
+`,
+      enforceDirectiveAllowlist: true,
+    });
+    expect(customOutputExternallyReferenced.status).not.toBe(0);
+    expect(customOutputExternallyReferenced.stdout).toContain(
+      "upgrade-map output is referenced outside the reviewed file",
+    );
+    expect(customOutputExternallyReferenced.stdout).not.toContain(
+      customExternalOutputVariable,
+    );
   }, 10_000);
 
   test("profiles rejected map headers without exposing their tokens", () => {
     const otherOutputVariable = runLegacyVhostValidation({
-      source: expectedLegacySource.replace(
-        "$connection_upgrade",
-        "$headscale_connection_upgrade",
-      ),
+      source: expectedLegacySource
+        .replace("$http_upgrade", "$http_connection")
+        .replace("$connection_upgrade", "$headscale_connection_upgrade"),
       loadedConfig: expectedLoadedConfig,
       enforceDirectiveAllowlist: true,
     });
     expect(otherOutputVariable.status).not.toBe(0);
     expect(otherOutputVariable.stdout).toContain(
-      "upgrade map header profile: candidates=1 fields=2 source-form=exact target-form=other-variable extra-fields=no brace=same-line",
+      "upgrade map header profile: candidates=1 fields=2 source-form=other-variable target-form=other-variable extra-fields=no brace=same-line",
     );
     expect(otherOutputVariable.stdout).not.toContain(
       "$headscale_connection_upgrade",
