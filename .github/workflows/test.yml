@@ -529,6 +529,23 @@ jobs:
             journalctl --since '15 minutes ago' --no-pager 2>/dev/null \
               | grep -E 'Node refused for placement|No reachable healthy nodes|Skipping node with incompatible architecture|DOCKER_PLACEMENT_UNAVAILABLE' \
               | tail -120 || true
+            work="$(mktemp -d)"
+            trap 'rm -rf "$work"' EXIT
+            containers_key="$(sed -n 's/^CONTAINERS_SSH_KEY=//p' /opt/eliza/cloud/.env.local | tail -1)"
+            printf '%s' "$containers_key" | base64 -d > "$work/key"
+            chmod 600 "$work/key"
+            psql "$database_url" -v ON_ERROR_STOP=1 -Atc \
+              "SELECT node_id || '|' || hostname || '|' || ssh_port || '|' || ssh_user FROM docker_nodes WHERE enabled = true AND placement_state = 'open' ORDER BY node_id" \
+              > "$work/nodes"
+            while IFS='|' read -r node_id node_host node_port node_user; do
+              echo "NODE $node_id"
+              ssh -i "$work/key" -p "$node_port" \
+                -o BatchMode=yes -o ConnectTimeout=8 -o StrictHostKeyChecking=accept-new \
+                -o UserKnownHostsFile="$work/known_hosts" \
+                "$node_user@$node_host" \
+                "docker info --format '{{.ID}}|{{.Architecture}}'; awk '/MemTotal|MemAvailable/ {print}' /proc/meminfo; echo DECLARED_MEMORY_BYTES; docker ps -q | xargs -r docker inspect -f '{{.HostConfig.Memory}}'; echo IO_PRESSURE; cat /proc/pressure/io" \
+                || true
+            done < "$work/nodes"
 
   changes:
     name: Classify changed paths
