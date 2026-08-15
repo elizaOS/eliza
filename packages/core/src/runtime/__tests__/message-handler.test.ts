@@ -238,7 +238,6 @@ describe("v5 message handler routing", () => {
 		}
 	});
 
-
 	it("promotes a short progress-shaped ack on the pure-simple path to planning", () => {
 		const parsed = parseMessageHandlerOutput(
 			JSON.stringify({
