@@ -118,27 +118,17 @@ export interface MobileSignalsScreenTimeStatus {
     }>;
   };
   reportAvailable: boolean;
-  /**
-   * Coarse, in-extension-rendered category summaries available to the host.
-   * Permanently `false` on iOS — Apple's DeviceActivity privacy model forbids
-   * exfiltrating category summaries from the report extension. There is no
-   * lawful host-readable producer. See ScreenTimeCapabilityPolicy.swift.
-   */
-  coarseSummaryAvailable: false;
-  /**
-   * `DeviceActivityMonitor` threshold-crossing events available to the host.
-   * Permanently `false` until the app actually schedules and handles a typed
-   * threshold event. Bundling the monitor extension alone is insufficient.
-   * See ScreenTimeCapabilityPolicy.swift.
-   */
-  thresholdEventsAvailable: false;
+  /** Coarse, in-extension-rendered category summaries are available (no raw export). */
+  coarseSummaryAvailable: boolean;
+  /** `DeviceActivityMonitor` threshold-crossing events are available. */
+  thresholdEventsAvailable: boolean;
   /**
    * Permanently `false` — a platform constraint, not a TODO. Apple's
    * DeviceActivity / FamilyControls model (iOS 15+) forbids exporting raw
    * per-app usage to the host app: usage is only readable inside a rendered
    * `DeviceActivityReport` extension (never exfiltrated) plus
    * `DeviceActivityMonitor` threshold events. Host-side mobile screen-time is
-   * therefore scoped to the in-extension report surface only; there is no
+   * therefore scoped to coarse summaries + threshold events; there is no
    * macOS-style per-window dwell on iOS. See issue #9970.
    */
   rawUsageExportAvailable: false;
