@@ -148,6 +148,7 @@ import {
 	FAILED_TOOL_FALLBACK_MESSAGE,
 	isTerminalPlannerToolName,
 	type PlannerLoopParams,
+	type PlannerLoopResult,
 	type PlannerRuntime,
 	type PlannerToolCall,
 	type PlannerToolResult,
@@ -195,9 +196,11 @@ import {
 	flattenTrajectoryMessages,
 } from "../runtime/trajectory-provider-attribution";
 import {
+	captureToolStageIO,
 	createJsonFileTrajectoryRecorder,
 	finalizeTrajectoryRecording,
 	isTrajectoryRecordingEnabled,
+	type RecordedStage,
 	type TrajectoryRecorder,
 } from "../runtime/trajectory-recorder";
 import { TurnAbortedError } from "../runtime/turn-controller";
@@ -8604,6 +8607,148 @@ export async function runV5MessageRuntimeStage1(args: {
 			result: PlannerToolResult;
 		}> = [];
 
+		const invokeDeterministicToolCall =
+			async (): Promise<PlannerLoopResult> => {
+				const selected = messageHandler.plan.deterministicToolCall;
+				if (!selected) {
+					throw new Error(
+						"Deterministic tool execution requires a selected call",
+					);
+				}
+				const actionLookup = buildRuntimeActionLookup(args.runtime);
+				const action = resolveRuntimeAction(actionLookup, selected.name);
+				const toolCall: PlannerToolCall = {
+					id: `response-handler:${normalizeActionIdentifier(action?.name ?? selected.name)}`,
+					name: action?.name ?? selected.name,
+					...(selected.params ? { params: selected.params } : {}),
+				};
+				const startedAt = Date.now();
+				let callbackDelivered = false;
+				const deterministicCallback: HandlerCallback | undefined =
+					recordingCallback
+						? async (...callbackArgs) => {
+								callbackDelivered = true;
+								return recordingCallback(...callbackArgs);
+							}
+						: undefined;
+				let result: PlannerToolResult;
+				try {
+					result = trackSettledPlannerToolResult(
+						settledPlannerToolResults,
+						toolCall.name,
+						await executeV5PlannedToolCall({
+							runtime: args.runtime,
+							toolCall,
+							plannerContext: plannerContextAfterEarlyReply,
+							executorCtx: buildV5ExecutorContext({
+								message: args.message,
+								state: plannerState,
+								selectedContexts,
+								senderRole,
+								previousResults: [],
+								...(deterministicCallback
+									? { callback: deterministicCallback }
+									: {}),
+							}),
+							plannerRuntime,
+							executorOptions: {
+								// The evaluator selected one exact action. Keep that single-action
+								// surface while the canonical executor rechecks role, context,
+								// private-action, argument, account, and validate gates.
+								actions: action ? [action] : [],
+								...(args.onSettledActionResult
+									? { onSettledResult: args.onSettledActionResult }
+									: {}),
+							},
+							evaluatorEffects,
+							recorder,
+							trajectoryId,
+							plannerLoopConfig: args.plannerLoopConfig,
+						}),
+					);
+				} catch (error) {
+					// error-policy:J1 Match the planner loop's tool boundary: a handler or
+					// sub-planner throw becomes one explicit failed result for the normal
+					// reply/error path rather than falling through to a second planner call.
+					result = trackSettledPlannerToolResult(
+						settledPlannerToolResults,
+						toolCall.name,
+						{
+							success: false,
+							error,
+							text: error instanceof Error ? error.message : String(error),
+						},
+					);
+				}
+				const endedAt = Date.now();
+				if (recorder && trajectoryId) {
+					try {
+						const input = selected.params ?? {};
+						const io = captureToolStageIO({
+							input,
+							output: result,
+							error: result.error,
+						});
+						const stage: RecordedStage = {
+							stageId: `stage-tool-${toolCall.name}-${startedAt}`,
+							kind: "tool",
+							startedAt,
+							endedAt,
+							latencyMs: endedAt - startedAt,
+							tool: {
+								name: toolCall.name,
+								args: input,
+								result,
+								success: result.success,
+								durationMs: endedAt - startedAt,
+								description: action?.description,
+								input: io.input,
+								output: io.output,
+								errorText: io.errorText,
+								truncated: io.truncated,
+							},
+						};
+						await recorder.recordStage(trajectoryId, stage);
+					} catch (error) {
+						// error-policy:J7 Trajectory persistence is diagnostic and cannot
+						// change the already-settled deterministic action result.
+						args.runtime.reportError(
+							"MessageService.recordDeterministicTool",
+							error,
+							{ trajectoryId, tool: toolCall.name },
+						);
+						args.runtime.logger.warn(
+							{
+								src: "service:message",
+								err: error instanceof Error ? error.message : String(error),
+								trajectoryId,
+								tool: toolCall.name,
+							},
+							"Failed to record deterministic tool stage",
+						);
+					}
+				}
+
+				const reportableResultText = result.userFacingText?.trim();
+				const finalMessage =
+					!callbackDelivered &&
+					reportableResultText &&
+					(result.success === true || result.verifiedUserFacing === true)
+						? reportableResultText
+						: undefined;
+				return {
+					status: "finished",
+					trajectory: {
+						context: plannerContextAfterEarlyReply,
+						steps: [{ iteration: 0, toolCall, result }],
+						archivedSteps: [],
+						plannedQueue: [],
+						evaluatorOutputs: [],
+					},
+					...(finalMessage ? { finalMessage } : {}),
+				};
+			};
+
 		const invokePlannerLoop = (
 			loopContext: typeof plannerContextAfterEarlyReply,
 		) =>
@@ -8725,7 +8870,12 @@ export async function runV5MessageRuntimeStage1(args: {
 
 		let plannerResult: Awaited<ReturnType<typeof invokePlannerLoop>>;
 		try {
-			plannerResult = await invokePlannerLoop(plannerContextAfterEarlyReply);
+			plannerResult = messageHandler.plan.deterministicToolCall
+				? await timeInferenceSpan(
+						"actions:response-handler-deterministic-tool",
+						invokeDeterministicToolCall,
+					)
+				: await invokePlannerLoop(plannerContextAfterEarlyReply);
 		} catch (error) {
 			const preservedAnswer = prePatchStageOneReplyIsUngroundedAppliedClaim
 				? undefined
@@ -8957,6 +9107,7 @@ export async function runV5MessageRuntimeStage1(args: {
 		const preservedAnswerFallback =
 			!plannedText &&
 			!suppressesPlannerReply &&
+			!messageHandler.plan.deterministicToolCall &&
 			prePatchStageOneReply &&
 			!prePatchStageOneReplyIsUngroundedAppliedClaim &&
 			!PROGRESS_ONLY_ANSWER_REJECT.test(prePatchStageOneReply.trim()) &&
