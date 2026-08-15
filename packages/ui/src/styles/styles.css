@@ -173,6 +173,12 @@ html.eliza-chat-overlay-shell .shell-assistant-overlay-panel {
   left: 50%;
   width: min(560px, calc(100% - 24px));
   height: min(600px, calc(100% - 80px));
+  /* Tailwind's responsive utilities set the individual `translate` property in
+     a separate generated stylesheet. The scoped important reset must survive
+     cross-asset minification and override that utility before the desktop-only
+     centering transform is applied. */
+  /* biome-ignore lint/complexity/noImportantStyles: cross-asset Tailwind reset */
+  translate: none !important;
   transform: translateX(-50%);
   border-radius: 1.5rem;
   border-color: rgb(255 255 255 / 72%);
