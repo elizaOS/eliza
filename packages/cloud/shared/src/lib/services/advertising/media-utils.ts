@@ -82,9 +82,18 @@ export async function downloadAdMedia(
       throw new Error(`Unsupported ad media content type: ${contentType || "unknown"}`);
     }
 
-    const contentLength = Number(response.headers.get("content-length") ?? 0);
-    if (contentLength > maxBytes) {
-      throw new Error(`Ad media exceeds maximum size of ${maxBytes} bytes`);
+    const rawContentLength = response.headers.get("content-length");
+    if (rawContentLength !== null) {
+      if (!/^\d+$/.test(rawContentLength)) {
+        throw new Error("Invalid content-length header for ad media");
+      }
+      const contentLength = Number(rawContentLength);
+      if (!Number.isSafeInteger(contentLength)) {
+        throw new Error("Invalid content-length header for ad media");
+      }
+      if (contentLength > maxBytes) {
+        throw new Error(`Ad media exceeds maximum size of ${maxBytes} bytes`);
+      }
     }
 
     const bytes = new Uint8Array(await response.arrayBuffer());
