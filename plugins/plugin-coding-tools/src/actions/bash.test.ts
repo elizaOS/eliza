@@ -17,6 +17,7 @@ import {
   type Character,
   logger as coreLogger,
   type ElizaCapabilityRouter,
+  executePlannedToolCall,
   type IAgentRuntime,
   type Memory,
   UnavailableCapabilityRouter,
@@ -166,6 +167,7 @@ async function makeRuntime(opts: RuntimeOptions = {}): Promise<{
   const secretOwner = new AgentRuntime({ character });
   const runtime = {
     agentId: "11111111-1111-1111-1111-111111111111" as UUID,
+    actions: [shellAction],
     character,
     getSetting: vi.fn((key: string) => settings[key]),
     getService: vi.fn(<T>(type: string) => services.get(type) as T | null),
@@ -178,6 +180,11 @@ async function makeRuntime(opts: RuntimeOptions = {}): Promise<{
       (fragments: readonly RuntimeSecretFragment[]) =>
         secretOwner.locateConfiguredSecretFragmentTaint(fragments),
     ),
+    logger: {
+      debug: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+    },
   } as IAgentRuntime;
 
   const sandbox = await SandboxService.start(runtime);
@@ -2652,6 +2659,131 @@ describeIfPosix("shellAction", () => {
       ((poll.data as Record<string, unknown>).stdout as Record<string, unknown>)
         .text,
     ).toBe("");
+  });
+});
+
+describe("shell structured operation routing", () => {
+  it.each([
+    [
+      "show command history under /tmp/history",
+      "printf structured-view-authority",
+      "structured-view-authority",
+    ],
+    [
+      "clear shell history under /tmp/history",
+      "printf structured-clear-authority",
+      "structured-clear-authority",
+    ],
+  ])(
+    "executes a structured command despite history-like message text: %s",
+    async (text, command, output) => {
+      const calls: Array<{ command: string }> = [];
+      const router = makeShellRouter(async (params) => {
+        calls.push(params);
+        return { output: `${output}\n`, exitCode: 0, timedOut: false };
+      });
+      const { runtime, shellHistoryService } = await makeRuntime({
+        capabilityRouter: router,
+        withShellHistoryService: true,
+      });
+
+      const result = await executePlannedToolCall(
+        runtime,
+        {
+          message: makeMessage(undefined, text),
+          activeContexts: ["code"],
+          userRoles: ["OWNER"],
+        },
+        { name: "SHELL", params: { command } },
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.text).toContain(output);
+      expect(calls).toEqual([expect.objectContaining({ command })]);
+      expect(shellHistoryService?.getCommandHistory).not.toHaveBeenCalled();
+      expect(shellHistoryService?.clearCommandHistory).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([
+    ["empty", ""],
+    ["whitespace", "   "],
+    ["non-string", { nested: "command" }],
+  ] as const)(
+    "rejects a %s command without inferring a history operation",
+    async (_label, command) => {
+      const calls: Array<{ command: string }> = [];
+      const router = makeShellRouter(async (params) => {
+        calls.push(params);
+        return { output: "unexpected\n", exitCode: 0, timedOut: false };
+      });
+      const { runtime, shellHistoryService } = await makeRuntime({
+        capabilityRouter: router,
+        withShellHistoryService: true,
+      });
+
+      const result = await shellAction.handler?.(
+        runtime,
+        makeMessage(undefined, "show and clear shell command history"),
+        undefined,
+        { command },
+      );
+
+      expect(result?.success).toBe(false);
+      expect(result?.text).toContain("missing_param");
+      expect(calls).toHaveLength(0);
+      expect(shellHistoryService?.getCommandHistory).not.toHaveBeenCalled();
+      expect(shellHistoryService?.clearCommandHistory).not.toHaveBeenCalled();
+    },
+  );
+
+  it("keeps explicit structured history actions available", async () => {
+    const { runtime, shellHistoryService } = await makeRuntime({
+      shellHistoryCommands: ["git status"],
+      withShellHistoryService: true,
+    });
+    const message = makeMessage(undefined, "unrelated prose");
+
+    const viewed = await shellAction.handler?.(runtime, message, undefined, {
+      action: "view_history",
+    });
+    const cleared = await shellAction.handler?.(runtime, message, undefined, {
+      action: "clear_history",
+    });
+
+    expect(viewed?.success).toBe(true);
+    expect(viewed?.text).toContain("git status");
+    expect(cleared?.success).toBe(true);
+    expect(shellHistoryService?.getCommandHistory).toHaveBeenCalledOnce();
+    expect(shellHistoryService?.clearCommandHistory).toHaveBeenCalledOnce();
+  });
+
+  it("denies a non-owner planned command before shell dispatch", async () => {
+    const calls: Array<{ command: string }> = [];
+    const router = makeShellRouter(async (params) => {
+      calls.push(params);
+      return { output: "unexpected\n", exitCode: 0, timedOut: false };
+    });
+    const { runtime, shellHistoryService } = await makeRuntime({
+      capabilityRouter: router,
+      withShellHistoryService: true,
+    });
+
+    const result = await executePlannedToolCall(
+      runtime,
+      {
+        message: makeMessage(undefined, "show shell history"),
+        activeContexts: ["code"],
+        userRoles: ["USER"],
+      },
+      { name: "SHELL", params: { command: "printf must-not-run" } },
+    );
+
+    expect(result.success).toBe(false);
+    expect(String(result.error)).toContain("not allowed");
+    expect(calls).toHaveLength(0);
+    expect(shellHistoryService?.getCommandHistory).not.toHaveBeenCalled();
+    expect(shellHistoryService?.clearCommandHistory).not.toHaveBeenCalled();
   });
 });
 

@@ -6,7 +6,13 @@
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import type { IAgentRuntime, Memory, Service, UUID } from "@elizaos/core";
+import {
+  executePlannedToolCall,
+  type IAgentRuntime,
+  type Memory,
+  type Service,
+  type UUID,
+} from "@elizaos/core";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import * as pluginModule from "../src/index.ts";
 import codingToolsPlugin, {
@@ -220,9 +226,15 @@ describe("@elizaos/plugin-coding-tools — end-to-end smoke", () => {
     services = new Map();
     runtime = {
       agentId: "00000000-0000-0000-0000-000000000000" as UUID,
+      actions: codingToolsPlugin.actions ?? [],
       getSetting: (_key: string) => undefined,
       getService: (key: string) => services.get(key) ?? null,
       redactSecrets: (text: string) => text,
+      logger: {
+        debug: vi.fn(),
+        warn: vi.fn(),
+        error: vi.fn(),
+      },
     } as IAgentRuntime;
 
     const fileState = await FileStateService.start(runtime);
@@ -258,8 +270,8 @@ describe("@elizaos/plugin-coding-tools — end-to-end smoke", () => {
     return a;
   }
 
-  function makeMessage(): Memory {
-    return { roomId: "smoke-room" } as Memory;
+  function makeMessage(text = ""): Memory {
+    return { roomId: "smoke-room", content: { text } } as Memory;
   }
 
   it("FILE action=read returns a known file's contents", async () => {
@@ -293,6 +305,25 @@ describe("@elizaos/plugin-coding-tools — end-to-end smoke", () => {
     expect(result.success).toBe(true);
     expect(result.text).toContain("smoke-bash-ok");
     expect(result.text).toContain("[exit 0]");
+  });
+
+  it("SHELL planned action executes the exact structured command despite history-like prose", async () => {
+    const command = "echo planned-shell-authority";
+    const result = await executePlannedToolCall(
+      runtime,
+      {
+        message: makeMessage(
+          "show command history under the history directory",
+        ),
+        activeContexts: ["code"],
+        userRoles: ["OWNER"],
+      },
+      { name: "SHELL", params: { command, cwd: tmpDir } },
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.text).toContain("planned-shell-authority");
+    expect(result.data).toMatchObject({ command });
   });
 
   it("FILE action=glob lists *.txt files", async () => {
