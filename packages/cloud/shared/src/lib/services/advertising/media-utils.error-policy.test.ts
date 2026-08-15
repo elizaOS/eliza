@@ -136,9 +136,9 @@ describe("#13415 — downloadAdMedia surfaces fetch failures, never fabricates a
         };
         return response;
       };
-      await expect(
-        downloadAdMedia(URL_UNDER_TEST, { maxBytes: 10 }),
-      ).rejects.toThrow(/invalid content-length/i);
+      await expect(downloadAdMedia(URL_UNDER_TEST, { maxBytes: 10 })).rejects.toThrow(
+        /invalid content-length/i,
+      );
       expect(buffered).toBe(false);
     }
   });
@@ -158,9 +158,9 @@ describe("#13415 — downloadAdMedia surfaces fetch failures, never fabricates a
       return response;
     };
     const { downloadAdMedia } = await import("./media-utils");
-    await expect(
-      downloadAdMedia(URL_UNDER_TEST, { maxBytes: 10 }),
-    ).resolves.toMatchObject({ bytes: new Uint8Array([1]) });
+    await expect(downloadAdMedia(URL_UNDER_TEST, { maxBytes: 10 })).resolves.toMatchObject({
+      bytes: new Uint8Array([1]),
+    });
     expect(buffered).toBe(true);
   });
 });

@@ -1,4 +1,6 @@
-// Coordinates cloud service media utils behavior behind route handlers.
+/**
+ * Downloads advertising media through the SSRF-safe transport and enforces trusted byte bounds.
+ */
 import { assertSafeOutboundUrl } from "../../security/outbound-url";
 import { safeFetch } from "../../security/safe-fetch";
 
