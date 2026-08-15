@@ -523,6 +523,11 @@ export async function sharedRestMessageSend(
   namespace: RuntimeDurableObjectNamespace,
   clientMessageId?: string,
   funding: "organization-credits" | "platform" = "organization-credits",
+  trustedDelivery?: {
+    platform: "telegram";
+    project: string;
+    chatId: string;
+  },
 ): Promise<{ text: string; agentName: string }> {
   const rpc: BridgeRequest = {
     jsonrpc: "2.0",
@@ -534,6 +539,7 @@ export async function sharedRestMessageSend(
       text,
       roomId: conversationId,
       ...(clientMessageId ? { clientMessageId } : {}),
+      ...(trustedDelivery ? { trustedDelivery } : {}),
     },
   };
   // The production coordinator and Worker lifetime are required together so a

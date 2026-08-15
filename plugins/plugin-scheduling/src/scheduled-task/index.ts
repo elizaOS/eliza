@@ -127,6 +127,7 @@ export {
   ScheduledTaskRunnerService,
 } from "./runner-service.js";
 export {
+  isScheduledTask,
   scheduledTaskFilterSchema,
   scheduledTaskInputSchema,
   scheduledTaskSchema,
@@ -142,6 +143,10 @@ export {
   seedRegisteredTaskPacks,
 } from "./seed-registry.js";
 export {
+  createRuntimeSchedulingSqlExecutor,
+  type SchedulingSqlExecutor,
+} from "./sql.js";
+export {
   createInMemoryScheduledTaskLogStore,
   createStateLogger,
   type ScheduledTaskLogStore,
@@ -150,8 +155,11 @@ export {
 export {
   createSchedulingSqlScheduledTaskLogStore,
   createSchedulingSqlScheduledTaskStore,
+  type DueScheduledTaskRef,
+  listDueScheduledTaskRefs,
   parseScheduledTaskLogRow,
   parseScheduledTaskRow,
+  type SchedulingSqlStoreOptions,
 } from "./store.js";
 export { OWNER_LOCAL_TZ, resolveTriggerTz } from "./trigger-tz.js";
 export type {
