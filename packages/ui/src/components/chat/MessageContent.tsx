@@ -48,7 +48,10 @@ import {
 import { renderPermissionCardFromPayload } from "../composites/chat/permission-card.render";
 import { ConfigRenderer } from "../config-ui/config-renderer";
 import { defaultRegistry } from "../config-ui/config-renderer.helpers";
-import { UiRenderer } from "../config-ui/ui-renderer";
+import {
+  type UiActionDispatchMetadata,
+  UiRenderer,
+} from "../config-ui/ui-renderer";
 import { ToolCallEventLog } from "../tool-events/ToolCallEventLog";
 import { Button } from "../ui/button";
 import { CodeBlock } from "../ui/code-block";
@@ -756,10 +759,20 @@ export function MessageUiSpecBlock({
   const [showRaw, setShowRaw] = useState(false);
 
   const handleAction = useCallback(
-    (action: string, params?: Record<string, unknown>) => {
+    (
+      action: string,
+      params?: Record<string, unknown>,
+      metadata?: UiActionDispatchMetadata,
+    ) => {
       // Plugin actions are handled directly via the API instead of
       // being sent back as chat messages.
-      if (action === "plugin:save" && params?.pluginId) {
+      if (action === "plugin:save") {
+        if (!params?.pluginId) {
+          void sendActionMessage(
+            "[Failed to save plugin config: pluginId is required]",
+          );
+          return;
+        }
         const pluginId = String(params.pluginId);
         const config: Record<string, string> = {};
         // Collect all config.* state values
@@ -773,6 +786,12 @@ export function MessageUiSpecBlock({
               config[key.slice(7)] = value.trim();
             }
           }
+        }
+        if (Object.keys(config).length === 0) {
+          void sendActionMessage(
+            "[Failed to save plugin config: no configuration values were provided]",
+          );
+          return;
         }
         void client
           .updatePlugin(pluginId, { config })
@@ -815,7 +834,15 @@ export function MessageUiSpecBlock({
         );
         return;
       }
-      const paramsStr = params ? ` ${JSON.stringify(params)}` : "";
+      // Generic UiSpec actions remain planner-readable, including literal and
+      // live non-secret params. The renderer supplies a history-safe copy when
+      // a payload contains values sourced from password fields; direct
+      // allowlisted handlers above still receive the complete resolved params.
+      const historySafeParams = metadata?.historySafeParams ?? params;
+      const paramsStr =
+        historySafeParams && Object.keys(historySafeParams).length > 0
+          ? ` ${JSON.stringify(historySafeParams)}`
+          : "";
       void sendActionMessage(`[action:${action}]${paramsStr}`);
     },
     [sendActionMessage],

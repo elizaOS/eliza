@@ -27,6 +27,8 @@ export interface SharedConversationCoordinatorOptions {
 
 export interface SharedConversationHistoryCoordinatorOptions {
   namespace: RuntimeDurableObjectNamespace;
+  /** A newly minted room has no legacy history and can skip Postgres migration. */
+  startEmpty?: boolean;
 }
 
 export interface SharedConversationLifecycleEvent {
@@ -71,7 +73,12 @@ export async function coordinateSharedConversationPrewarm(
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ operation: "prewarm", agentId, roomId }),
+      body: JSON.stringify({
+        operation: "prewarm",
+        agentId,
+        roomId,
+        startEmpty: options.startEmpty === true,
+      }),
     },
   );
   await requireCoordinatorResponse(response, "conversation prewarm");

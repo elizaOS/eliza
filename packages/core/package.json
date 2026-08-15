@@ -1,7 +1,7 @@
 {
 	"name": "@elizaos/core",
 	"version": "2.0.3-beta.7",
-	"description": "Core runtime, plugin abstractions, and AgentRuntime for elizaOS — actions, providers, evaluators, services, models, and types.",
+	"description": "Core runtime, plugin abstractions, and AgentRuntime for elizaOS \u2014 actions, providers, evaluators, services, models, and types.",
 	"homepage": "https://github.com/elizaOS/eliza",
 	"repository": {
 		"type": "git",
@@ -33,6 +33,16 @@
 				"types": "./src/index.ts",
 				"import": "./src/index.ts",
 				"default": "./src/index.ts"
+			},
+			"workerd": {
+				"types": "./dist/edge/index.d.ts",
+				"import": "./dist/edge/index.edge.js",
+				"default": "./dist/edge/index.edge.js"
+			},
+			"edge-light": {
+				"types": "./dist/edge/index.d.ts",
+				"import": "./dist/edge/index.edge.js",
+				"default": "./dist/edge/index.edge.js"
 			},
 			"browser": {
 				"types": "./dist/index.browser.d.ts",
@@ -71,10 +81,39 @@
 			"import": "./dist/browser/index.browser.js",
 			"default": "./dist/browser/index.browser.js"
 		},
+		"./edge": {
+			"types": "./dist/edge/index.d.ts",
+			"import": "./dist/edge/index.edge.js",
+			"default": "./dist/edge/index.edge.js"
+		},
 		"./roles": {
 			"types": "./dist/roles.d.ts",
 			"import": "./dist/roles.js",
 			"default": "./dist/roles.js"
+		},
+		"./client-public": {
+			"types": "./dist/client-public.d.ts",
+			"eliza-source": {
+				"types": "./src/client-public.ts",
+				"import": "./src/client-public.ts",
+				"default": "./src/client-public.ts"
+			},
+			"browser": {
+				"types": "./dist/client-public.d.ts",
+				"import": "./dist/browser/client-public.js",
+				"default": "./dist/browser/client-public.js"
+			},
+			"node": {
+				"types": "./dist/client-public.d.ts",
+				"import": "./dist/node/client-public.js",
+				"default": "./dist/node/client-public.js"
+			},
+			"bun": {
+				"types": "./dist/client-public.d.ts",
+				"import": "./dist/node/client-public.js",
+				"default": "./dist/node/client-public.js"
+			},
+			"default": "./dist/node/client-public.js"
 		},
 		"./testing": {
 			"types": "./dist/testing/index.d.ts",

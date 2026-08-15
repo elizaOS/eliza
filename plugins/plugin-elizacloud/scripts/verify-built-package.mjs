@@ -19,6 +19,23 @@ const probe = `
   if (module.default?.name !== "elizaOSCloud") {
     throw new Error("built plugin export is missing or malformed");
   }
+  const directResearch = await import("@elizaos/plugin-elizacloud/models/research");
+  const modelBarrel = await import("@elizaos/plugin-elizacloud/models/index");
+  const endpointConfig = await import("@elizaos/plugin-elizacloud/endpoint-config");
+  for (const handler of [directResearch.handleResearch, modelBarrel.handleResearch]) {
+    try {
+      await handler({}, {});
+      throw new Error("retired research handler returned fabricated success");
+    } catch (error) {
+      if (error?.code !== "ELIZA_CLOUD_RESEARCH_UNAVAILABLE") throw error;
+    }
+  }
+  try {
+    endpointConfig.getResearchModel({});
+    throw new Error("retired research getter returned a text model");
+  } catch (error) {
+    if (error?.code !== "ELIZA_CLOUD_RESEARCH_UNAVAILABLE") throw error;
+  }
 `;
 
 export function verifyBuiltPackage({

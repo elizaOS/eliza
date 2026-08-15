@@ -546,6 +546,14 @@ export async function installHomeRoutes(
 // funnel as Local — so the POST-once contract holds across runtimes.
 export const CLOUD_AUTH_TOKEN = UI_SMOKE_STEWARD_OPAQUE_TOKEN;
 export const CLOUD_AGENT_ID = "ui-smoke-cloud-agent-1";
+// Personal-Eliza identity (#19511): cloud onboarding binds the account's one
+// personal Eliza through GET /api/v1/eliza/personal. The dedicated runtime
+// shape lets the identity point back at the local Playwright origin (loopback
+// origins are trusted cloud API bases), keeping the real agent surface live.
+export const PERSONAL_ELIZA_ID =
+  "personal:11111111-1111-5111-8111-111111111111";
+export const PERSONAL_ACTIVE_AGENT_ID =
+  "22222222-2222-4222-8222-222222222222";
 export const CLOUD_AGENT_NAME = "Smoke Cloud Agent";
 
 /** Inject the cloud session token before React boots (getCloudAuthToken reads
@@ -687,6 +695,35 @@ export async function installCloudRoutes(
         created_at: "2026-01-01T00:00:00.000Z",
         updated_at: "2026-01-01T00:00:00.000Z",
         last_heartbeat_at: "2026-01-01T00:00:00.000Z",
+      },
+    });
+  });
+
+  // #19511: the actual bind call for cloud onboarding. The identity's apiBase
+  // must be the LOCAL Playwright origin: the client resolves this request
+  // against the direct cloud base (https://eliza.app when boot config leaves
+  // it unset), and a control-plane host is only trusted with an agent path,
+  // while a loopback origin is trusted bare - so point the runtime at the
+  // page's own server, which also keeps the real agent surface serving chat.
+  await page.route("**/api/v1/eliza/personal", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    const pageUrl = page.url();
+    const origin = pageUrl.startsWith("http")
+      ? new URL(pageUrl).origin
+      : new URL(route.request().url()).origin;
+    await fulfillJson(route, {
+      success: true,
+      data: {
+        identity: {
+          id: PERSONAL_ELIZA_ID,
+          displayName: CLOUD_AGENT_NAME,
+          runtime: "dedicated",
+          activeAgentId: PERSONAL_ACTIVE_AGENT_ID,
+          apiBase: origin,
+        },
       },
     });
   });
@@ -1026,10 +1063,12 @@ export async function completeCloudOnboardingToHome(
 
   const surface = await expectPopulatedHome(page);
 
+  // #19511: the personal Eliza is account-native; cloud onboarding completes
+  // without writing a local first-run profile.
   expect(
     state.firstRunPosts.length,
-    "POST /api/first-run must fire exactly once for the cloud path",
-  ).toBe(1);
+    "POST /api/first-run must not fire for the cloud path",
+  ).toBe(0);
 
   return { surface };
 }
@@ -1102,10 +1141,11 @@ async function expectCloudOnlyCompletion(
   await expect(page.getByTestId(TUTORIAL_CHOICE("start"))).toHaveCount(0);
   await expect(page.getByTestId(TUTORIAL_CHOICE("skip"))).toHaveCount(0);
   const surface = await expectPopulatedHome(page);
+  // #19511: account-native identity; no local first-run profile write.
   expect(
     state.firstRunPosts.length,
-    "POST /api/first-run must fire exactly once for cloud-only onboarding",
-  ).toBe(1);
+    "POST /api/first-run must not fire for cloud-only onboarding",
+  ).toBe(0);
   return { surface };
 }
 

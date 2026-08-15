@@ -1,11 +1,11 @@
 /**
- * Edge runtime entry point for @elizaos/core (Vercel Edge, Cloudflare Workers, Deno Deploy).
- * Same API as node minus Node-only modules: character-loader, sessions, plugins discovery,
- * media, network/ssrf, services/hook, provisioning, utils/node.
+ * Cloudflare Workers entry point for the Eliza runtime and plugin contracts.
  *
- * WHY separate entry: Edge runtimes cannot load Node APIs; provisioning uses process.env
- * and is not safe on edge. This keeps the bundle edge-compatible and avoids pulling
- * in code that would fail at runtime.
+ * Workers run this surface with `nodejs_compat`, which supplies the supported
+ * Node APIs used by core while preserving Web Platform request and storage
+ * boundaries. Host-only provisioning and plugin discovery stay outside this
+ * entry; durable product state must still live in an injected database adapter,
+ * Durable Object, or external service rather than the request-local filesystem.
  */
 
 export * from "./access-context";
@@ -47,6 +47,7 @@ export * from "./logger";
 export * from "./markdown";
 export * from "./memory";
 export * from "./messaging/interactions";
+export * from "./name-tokens";
 export * from "./plugin";
 export * from "./prompts";
 export * from "./providers/recent-errors";
@@ -60,6 +61,7 @@ export * from "./schemas/character";
 export * from "./schemas/index";
 export { type BaseTables, buildBaseTables } from "./schemas/index";
 export * from "./search";
+export * from "./search/keyless-web-search";
 export * from "./security";
 export * from "./services";
 export * from "./services/agentEvent";
@@ -74,6 +76,7 @@ export * from "./services/setup-rpc";
 export * from "./services/setup-state";
 export * from "./services/tool-policy";
 export * from "./services/trajectories";
+export * from "./services/triggerScheduling";
 export * from "./settings";
 export * from "./streaming-context";
 export * from "./trajectory-context";
@@ -101,6 +104,7 @@ export { Semaphore } from "./utils/batch-queue/semaphore.js";
 export * from "./utils/buffer";
 export * from "./utils/channel-utils";
 export * from "./utils/description-compressed-lint";
+export { stableStringify } from "./utils/deterministic";
 export * from "./utils/environment";
 export * from "./utils/prompt-compression";
 export * from "./utils/read-env";

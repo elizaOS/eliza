@@ -1677,3 +1677,50 @@ describe("TRIGGER list — dropped rows are counted, not hidden", () => {
     expect(result.data).toMatchObject({ count: 1, unreadable: 0 });
   });
 });
+
+describe("one-shot cron reminder confirmation", () => {
+  it("describes a maxRuns=1 cron by its next occurrence, never as recurring", async () => {
+    const { runtime } = makeRuntime({ enableAutonomy: false });
+    const result = await create(runtime, {
+      instructions: "call the bank",
+      cronExpression: "0 9 * * *",
+      maxRuns: 1,
+    });
+    expect(result?.success).toBe(true);
+    // The trigger fires once at the next 9am and stops; the confirmation must
+    // read as a one-shot, not a recurrence the trigger cannot have.
+    expect(result?.text).not.toContain("every morning");
+    expect(result?.text).not.toContain("every day");
+    expect(result?.text).toMatch(/9(:00)?\s?(a\.?m\.?)/i);
+  });
+
+  it("describes the persisted occurrence when persistence crosses the cron boundary", async () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date("2026-08-15T08:59:59.000Z"));
+      const { runtime, createdTasks } = makeRuntime({
+        enableAutonomy: false,
+        timeZone: "UTC",
+      });
+      vi.mocked(runtime.createTask).mockImplementation(async (task) => {
+        createdTasks.push(task as CreatedTask);
+        vi.setSystemTime(new Date("2026-08-15T09:00:01.000Z"));
+        return stringToUuid("created-across-cron-boundary");
+      });
+
+      const result = await create(runtime, {
+        instructions: "call the bank",
+        cronExpression: "0 9 * * *",
+        maxRuns: 1,
+      });
+
+      expect(createdTasks[0]?.metadata.trigger?.nextRunAtMs).toBe(
+        Date.parse("2026-08-15T09:00:00.000Z"),
+      );
+      expect(result?.text).toContain("today at 9am");
+      expect(result?.text).not.toContain("tomorrow");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});

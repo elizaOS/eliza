@@ -50,7 +50,12 @@ type ConversationRequest =
       rpc: BridgeRequest;
       trustedMessageRole?: "system";
     }
-  | { operation: "prewarm"; agentId: string; roomId: string }
+  | {
+      operation: "prewarm";
+      agentId: string;
+      roomId: string;
+      startEmpty?: boolean;
+    }
   | { operation: "history"; agentId: string; roomId: string }
   | {
       operation: "lifecycle";
@@ -339,9 +344,10 @@ export class SharedRuntimeConversation {
   private async prewarmConversation(
     agentId: string,
     channelId: string,
+    startEmpty: boolean,
   ): Promise<void> {
     try {
-      await this.loadConversation(agentId, channelId, false);
+      await this.loadConversation(agentId, channelId, startEmpty);
     } catch (error) {
       if (!(error instanceof ConversationCacheWarmingError)) throw error;
       const hydration = this.hydration;
@@ -1019,7 +1025,11 @@ export class SharedRuntimeConversation {
       return Response.json({ success: true });
     }
     if (payload.operation === "prewarm") {
-      await this.prewarmConversation(payload.agentId, payload.roomId);
+      await this.prewarmConversation(
+        payload.agentId,
+        payload.roomId,
+        payload.startEmpty === true,
+      );
       return Response.json({ success: true });
     }
     if (payload.operation === "cutover-seal") {
@@ -1143,6 +1153,10 @@ export class SharedRuntimeConversation {
       const executionCtx = {
         waitUntil: (promise: Promise<unknown>) => this.state.waitUntil(promise),
       };
+      const executionEngine =
+        this.env.SHARED_ELIZA_AGENT_RUNTIME === "true"
+          ? ("eliza-runtime" as const)
+          : ("direct-model" as const);
       if (
         payload.operation === "stream" ||
         payload.operation === "personal-stream"
@@ -1154,6 +1168,7 @@ export class SharedRuntimeConversation {
           turnClaims,
           funding: personal ? "platform" : "organization-credits",
           trustedMessageRole: payload.trustedMessageRole,
+          executionEngine,
         });
       }
       const result = await sharedRuntimeChatService.bridge(agent, payload.rpc, {
@@ -1162,6 +1177,7 @@ export class SharedRuntimeConversation {
         turnClaims,
         funding: personal ? "platform" : "organization-credits",
         trustedMessageRole: payload.trustedMessageRole,
+        executionEngine,
       });
       return Response.json(result);
     });
