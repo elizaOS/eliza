@@ -48,6 +48,11 @@ import {
 } from "../../components/ui/select";
 import { ApiError, api, apiFetch } from "../lib/api-client";
 import { useCloudT } from "../shell/CloudI18nProvider";
+import {
+  buildDiscordConnectionMetadataUpdate,
+  type DiscordConnectionMetadata,
+  type DiscordDmPolicy,
+} from "./discord-connection-metadata";
 
 type TFn = ReturnType<typeof useCloudT>;
 
@@ -83,8 +88,6 @@ async function fetchRuntimeCharacters(
   return normalizeCharacters(data.agents);
 }
 
-type DiscordDmPolicy = "open" | "allowlist" | "pairing" | "disabled";
-
 const DISCORD_SNOWFLAKE_RE = /^\d{15,20}$/;
 
 /**
@@ -106,12 +109,7 @@ function parseSnowflakeList(raw: string): string[] | null {
 interface DiscordConnectionPatch {
   characterId: string | null;
   isActive: boolean;
-  metadata: {
-    responseMode: "always" | "mention" | "keyword";
-    ownerDiscordUserId?: string;
-    dmPolicy?: DiscordDmPolicy;
-    dmAllowFrom?: string[];
-  };
+  metadata: DiscordConnectionMetadata;
   botToken?: string;
 }
 
@@ -126,15 +124,7 @@ interface DiscordGatewayConnection {
   eventsReceived: number;
   eventsRouted: number;
   isActive: boolean;
-  metadata: {
-    responseMode?: "always" | "mention" | "keyword";
-    keywords?: string[];
-    enabledChannels?: string[];
-    disabledChannels?: string[];
-    ownerDiscordUserId?: string;
-    dmPolicy?: DiscordDmPolicy;
-    dmAllowFrom?: string[];
-  } | null;
+  metadata: DiscordConnectionMetadata | null;
   connectedAt: string | null;
   lastHeartbeat: string | null;
   createdAt: string;
@@ -230,6 +220,7 @@ export function DiscordGatewayConnection() {
         ownerDiscordUserId: string;
         dmPolicy: DiscordDmPolicy;
         dmAllowFrom: string;
+        storedMetadata: DiscordConnectionMetadata | null;
         botToken: string;
         isActive: boolean;
       }
@@ -465,16 +456,12 @@ export function DiscordGatewayConnection() {
       const payload: DiscordConnectionPatch = {
         characterId: edit.characterId || null,
         isActive: edit.isActive,
-        metadata: {
+        metadata: buildDiscordConnectionMetadataUpdate(edit.storedMetadata, {
           responseMode: edit.responseMode,
-          ...(edit.ownerDiscordUserId.trim()
-            ? { ownerDiscordUserId: edit.ownerDiscordUserId.trim() }
-            : {}),
-          ...(edit.dmPolicy !== "open" ? { dmPolicy: edit.dmPolicy } : {}),
-          ...(parsedDmAllowFrom.length > 0
-            ? { dmAllowFrom: parsedDmAllowFrom }
-            : {}),
-        },
+          ownerDiscordUserId: edit.ownerDiscordUserId,
+          dmPolicy: edit.dmPolicy,
+          dmAllowFrom: parsedDmAllowFrom,
+        }),
       };
 
       // Only include botToken if it was changed (not empty)
@@ -562,6 +549,7 @@ export function DiscordGatewayConnection() {
           ownerDiscordUserId: conn.metadata?.ownerDiscordUserId || "",
           dmPolicy: conn.metadata?.dmPolicy || "open",
           dmAllowFrom: (conn.metadata?.dmAllowFrom || []).join(", "),
+          storedMetadata: conn.metadata,
           botToken: "",
           isActive: conn.isActive,
         },
