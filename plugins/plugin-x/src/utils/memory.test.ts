@@ -56,14 +56,17 @@ describe("Twitter memory utilities", () => {
     expect(createMemory).toHaveBeenCalledTimes(2);
   });
 
-  it("falls back to unprocessed when tweet lookup storage fails", async () => {
+  it("surfaces tweet lookup storage failures instead of permitting replay", async () => {
+    const storageFailure = new Error("storage unavailable");
     const runtime = runtimeWithStorage({
       getMemoryById: vi.fn(async () => {
-        throw new Error("storage unavailable");
+        throw storageFailure;
       }),
     });
 
-    await expect(isTweetProcessed(runtime, "tweet-1")).resolves.toBe(false);
+    await expect(isTweetProcessed(runtime, "tweet-1")).rejects.toBe(
+      storageFailure,
+    );
   });
 
   it("stores the canonical entity UUID as the Twitter world owner", async () => {
