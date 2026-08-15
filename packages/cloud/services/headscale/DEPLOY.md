@@ -98,10 +98,12 @@ gh workflow run arm-headscale-control-plane.yml --repo elizaOS/eliza \
 The inspection requires a regular, root-owned, non-group/world-writable file,
 exactly two server blocks that name only `headscale-staging.elizacloud.ai`, and
 exactly two loaded nginx owners from that path. A file-local websocket upgrade
-map may wrap each exact map variable in balanced single or double quotes and
-may spell its empty-string key with nginx's equivalent single or double quotes.
-Mismatched quotes, different variables, additional tokens or entries, and any
-external reference remain fail-closed. The inspection reports file metadata,
+map may use nginx's exact `$variable` or `${variable}` spelling, may wrap either
+in balanced single or double quotes, and may place its opening brace on the
+header or the immediately following line. Its empty-string key may use nginx's
+equivalent single or double quotes. Mismatched quotes, different variables,
+additional tokens or entries, an intervening header line, and any external
+reference remain fail-closed. The inspection reports file metadata,
 SHA-256, directive-name counts, and the validated server-block/name/map shape
 for review without printing directive literal values. If the map is rejected,
 only structural counts are printed so operators can distinguish formatting
