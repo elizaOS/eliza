@@ -118,10 +118,39 @@ describe("ManagedGuildVoiceController", () => {
     harness.client.emit(Events.InteractionCreate, command.interaction);
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(join).not.toHaveBeenCalled();
-    expect(command.reply).toHaveBeenCalledWith(
-      expect.objectContaining({
-        content: expect.stringContaining("canonical owner"),
-      }),
+    expect(command.deferReply).toHaveBeenCalledTimes(1);
+    expect(command.editReply).toHaveBeenCalledWith(
+      expect.stringContaining("canonical owner"),
+    );
+    await controller.stop();
+  });
+
+  test("acknowledges before delayed Cloud authorization", async () => {
+    const harness = clientHarness();
+    let releaseAuthorization: (() => void) | undefined;
+    const authorize = mock(
+      () =>
+        new Promise<{ allowed: boolean }>((resolve) => {
+          releaseAuthorization = () => resolve({ allowed: false });
+        }),
+    );
+    const controller = new ManagedGuildVoiceController({
+      client: harness.client as never,
+      bridge: { authorize, turn: mock() },
+    });
+    await controller.start();
+    const command = interactionHarness("join");
+    harness.client.emit(Events.InteractionCreate, command.interaction);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(command.deferReply).toHaveBeenCalledTimes(1);
+    expect(authorize).toHaveBeenCalledTimes(1);
+    expect(command.editReply).not.toHaveBeenCalled();
+
+    releaseAuthorization?.();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(command.editReply).toHaveBeenCalledWith(
+      expect.stringContaining("canonical owner"),
     );
     await controller.stop();
   });

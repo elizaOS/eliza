@@ -227,4 +227,48 @@ describe("browser workspace web-mode real-code command flow", () => {
       "Form submission reached the routed POST response.",
     );
   });
+
+  it("scrolls and hovers a routed page through the command router (#18259)", async () => {
+    const tab = await openBrowserWorkspaceTab(
+      { show: true, url: "about:blank" },
+      webEnv,
+    );
+    await executeBrowserWorkspaceCommand(
+      {
+        id: tab.id,
+        networkAction: "route",
+        responseBody: homeHtml,
+        subaction: "network",
+        url: "https://example.test/",
+      },
+      webEnv,
+    );
+    await executeBrowserWorkspaceCommand(
+      { id: tab.id, subaction: "navigate", url: "https://example.test/" },
+      webEnv,
+    );
+
+    const scrolledDown = await executeBrowserWorkspaceCommand(
+      { direction: "down", id: tab.id, pixels: 480, subaction: "scroll" },
+      webEnv,
+    );
+    expect(scrolledDown.mode).toBe("web");
+    expect(scrolledDown.value).toMatchObject({ axis: "y", value: 480 });
+
+    const scrolledUp = await executeBrowserWorkspaceCommand(
+      { direction: "up", id: tab.id, pixels: 200, subaction: "scroll" },
+      webEnv,
+    );
+    expect(scrolledUp.value).toMatchObject({ axis: "y", value: 280 });
+
+    const hovered = await executeBrowserWorkspaceCommand(
+      { id: tab.id, selector: "#details-link", subaction: "hover" },
+      webEnv,
+    );
+    expect(hovered.mode).toBe("web");
+    expect(hovered.value).toMatchObject({
+      hovered: true,
+      selector: "#details-link",
+    });
+  });
 });

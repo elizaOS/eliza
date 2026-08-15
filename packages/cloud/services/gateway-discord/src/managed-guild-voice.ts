@@ -26,6 +26,7 @@ import {
   Events,
   GatewayIntentBits,
   InteractionContextType,
+  MessageFlags,
   PermissionFlagsBits,
 } from "discord.js";
 import prism from "prism-media";
@@ -231,7 +232,13 @@ export class ManagedGuildVoiceController {
     const command = interaction as ChatInputCommandInteraction;
     if (!command.isChatInputCommand?.() || command.commandName !== "voice")
       return;
+    let acknowledged = false;
     try {
+      // Discord invalidates an unacknowledged interaction after three seconds.
+      // Cloud authorization and guild-member fetches are network I/O, so the
+      // ephemeral acknowledgement must be the first awaited command operation.
+      await command.deferReply({ flags: MessageFlags.Ephemeral });
+      acknowledged = true;
       await this.dispatchCommand(command);
     } catch (error) {
       logger.error("Managed guild voice command failed", {
@@ -239,13 +246,9 @@ export class ManagedGuildVoiceController {
         discordUserId: command.user.id,
         error: error instanceof Error ? error.message : String(error),
       });
-      const payload = {
-        content: "Voice is temporarily unavailable.",
-        ephemeral: true,
-      };
-      if (command.deferred || command.replied)
-        await command.editReply(payload.content);
-      else await command.reply(payload);
+      if (acknowledged || command.deferred || command.replied) {
+        await command.editReply("Voice is temporarily unavailable.");
+      }
     }
   };
 
@@ -253,17 +256,11 @@ export class ManagedGuildVoiceController {
     interaction: ChatInputCommandInteraction,
   ): Promise<void> {
     if (!interaction.guild || !interaction.guildId) {
-      await interaction.reply({
-        content: "Voice controls are server-only.",
-        ephemeral: true,
-      });
+      await interaction.editReply("Voice controls are server-only.");
       return;
     }
     if (!interaction.memberPermissions?.has(PermissionFlagsBits.ManageGuild)) {
-      await interaction.reply({
-        content: "Manage Server permission is required.",
-        ephemeral: true,
-      });
+      await interaction.editReply("Manage Server permission is required.");
       return;
     }
 
@@ -272,11 +269,9 @@ export class ManagedGuildVoiceController {
       guildId: interaction.guildId,
     });
     if (!authorization.allowed) {
-      await interaction.reply({
-        content:
-          "Only the canonical owner of this Eliza account can control voice.",
-        ephemeral: true,
-      });
+      await interaction.editReply(
+        "Only the canonical owner of this Eliza account can control voice.",
+      );
       return;
     }
 
@@ -284,29 +279,21 @@ export class ManagedGuildVoiceController {
     if (subcommand === "leave") {
       const session = this.sessions.get(interaction.guildId);
       if (!session || session.ownerDiscordUserId !== interaction.user.id) {
-        await interaction.reply({
-          content: "I am not in your voice session.",
-          ephemeral: true,
-        });
+        await interaction.editReply("I am not in your voice session.");
         return;
       }
       this.destroySession(session);
       this.sessions.delete(interaction.guildId);
-      await interaction.reply({
-        content: "Left your voice channel.",
-        ephemeral: true,
-      });
+      await interaction.editReply("Left your voice channel.");
       return;
     }
 
     const member = await interaction.guild.members.fetch(interaction.user.id);
     const channel = member.voice.channel;
     if (!channel?.isVoiceBased() || channel.guild.id !== interaction.guildId) {
-      await interaction.reply({
-        content:
-          "Join a voice channel in this server first, then run `/voice join`.",
-        ephemeral: true,
-      });
+      await interaction.editReply(
+        "Join a voice channel in this server first, then run `/voice join`.",
+      );
       return;
     }
     const botMember = interaction.guild.members.me;
@@ -315,15 +302,12 @@ export class ManagedGuildVoiceController {
       !permissions?.has(PermissionFlagsBits.Connect) ||
       !permissions.has(PermissionFlagsBits.Speak)
     ) {
-      await interaction.reply({
-        content:
-          "I need View Channel, Connect, and Speak permissions in your voice channel.",
-        ephemeral: true,
-      });
+      await interaction.editReply(
+        "I need View Channel, Connect, and Speak permissions in your voice channel.",
+      );
       return;
     }
 
-    await interaction.deferReply({ ephemeral: true });
     const prior = this.sessions.get(interaction.guildId);
     if (prior) this.destroySession(prior);
     const connection = this.join({

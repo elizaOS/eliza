@@ -24,6 +24,33 @@ import { usersRepository } from "../users";
 
 const PGLITE_TIMEOUT = 120_000;
 
+function createStartBarrier(participantCount: number): {
+  arrive: () => Promise<void>;
+  releaseWhenReady: () => Promise<void>;
+} {
+  let release!: () => void;
+  const released = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let signalReady!: () => void;
+  const allReady = new Promise<void>((resolve) => {
+    signalReady = resolve;
+  });
+  let readyCount = 0;
+
+  return {
+    arrive: async () => {
+      readyCount += 1;
+      if (readyCount === participantCount) signalReady();
+      await released;
+    },
+    releaseWhenReady: async () => {
+      await allReady;
+      release();
+    },
+  };
+}
+
 describe("UsersRepository phone identity transactions (real PGlite)", () => {
   let pgliteReady = true;
   let sequence = 0;
@@ -314,6 +341,71 @@ describe("UsersRepository phone identity transactions (real PGlite)", () => {
       phone_number: phoneNumber,
       phone_verified: true,
     });
+  });
+
+  test("converges simultaneous first links for one mature account without duplicating ownership", async () => {
+    const phoneNumber = "+14155550217";
+    const mature = await createMatureUser();
+    const barrier = createStartBarrier(2);
+    const linkFromBarrier = async () => {
+      await barrier.arrive();
+      return usersRepository.linkVerifiedPhone(mature.user.id, phoneNumber);
+    };
+
+    const first = linkFromBarrier();
+    const second = linkFromBarrier();
+    await barrier.releaseWhenReady();
+    const linked = await Promise.all([first, second]);
+
+    expect(linked.map((user) => user?.id)).toEqual([mature.user.id, mature.user.id]);
+    expect(await dbWrite.select().from(users)).toHaveLength(1);
+    expect(await dbWrite.select().from(userIdentities)).toHaveLength(1);
+    const [organization] = await dbWrite.select().from(organizations);
+    expect(organization?.id).toBe(mature.organization.id);
+    expect(await usersRepository.findByPhoneNumberWithOrganization(phoneNumber)).toMatchObject({
+      id: mature.user.id,
+      organization_id: mature.organization.id,
+      phone_number: phoneNumber,
+      phone_verified: true,
+      organization: { id: mature.organization.id },
+    });
+  });
+
+  test("allows exactly one simultaneous claimant and rolls the loser back completely", async () => {
+    const phoneNumber = "+14155550218";
+    const firstClaimant = await createMatureUser();
+    const secondClaimant = await createMatureUser();
+    const barrier = createStartBarrier(2);
+    const linkFromBarrier = async (userId: string) => {
+      await barrier.arrive();
+      return usersRepository.linkVerifiedPhone(userId, phoneNumber);
+    };
+
+    const first = linkFromBarrier(firstClaimant.user.id);
+    const second = linkFromBarrier(secondClaimant.user.id);
+    await barrier.releaseWhenReady();
+    const results = await Promise.allSettled([first, second]);
+
+    expect(results.filter((result) => result.status === "fulfilled")).toHaveLength(1);
+    expect(results.filter((result) => result.status === "rejected")).toHaveLength(1);
+    const owner = await usersRepository.findByPhoneNumberWithOrganization(phoneNumber);
+    expect([firstClaimant.user.id, secondClaimant.user.id]).toContain(owner?.id);
+    const loser = owner?.id === firstClaimant.user.id ? secondClaimant : firstClaimant;
+    const [loserCanonical] = await dbWrite.select().from(users).where(eq(users.id, loser.user.id));
+    const [loserProjection] = await dbWrite
+      .select()
+      .from(userIdentities)
+      .where(eq(userIdentities.user_id, loser.user.id));
+    expect(loserCanonical).toMatchObject({ phone_number: null, phone_verified: false });
+    expect(loserProjection).toMatchObject({ phone_number: null, phone_verified: false });
+    expect(await dbWrite.select().from(users)).toHaveLength(2);
+    expect(await dbWrite.select().from(userIdentities)).toHaveLength(2);
+    expect(await dbWrite.select().from(organizations)).toHaveLength(2);
+    expect(owner?.organization?.id).toBe(
+      owner?.id === firstClaimant.user.id
+        ? firstClaimant.organization.id
+        : secondClaimant.organization.id,
+    );
   });
 
   test("repairs a missing mature-account projection while linking its verified phone", async () => {
