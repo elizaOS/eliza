@@ -163,9 +163,16 @@ export function useProviderEntries({
   const getProviderStatus = useCallback(
     (entryId: ProviderPanelId): ProviderStatus => {
       if (entryId === "__cloud__") {
-        return elizaCloudConnected
-          ? { tone: "ok", label: "Connected" }
-          : { tone: "muted", label: "Available" };
+        if (elizaCloudConnected) {
+          return { tone: "ok", label: "Connected" };
+        }
+        // Configured (cloud-proxy) but not signed in — surface a clear
+        // warning instead of the ambiguous "Available" so the user can see
+        // why Cloud is not actually serving requests (#20045).
+        if (isCloudSelected) {
+          return { tone: "warn", label: "Not signed in" };
+        }
+        return { tone: "muted", label: "Available" };
       }
       if (entryId === "__local__") {
         return cloudCallsDisabled
@@ -222,6 +229,7 @@ export function useProviderEntries({
       apiProviderChoices,
       cloudCallsDisabled,
       elizaCloudConnected,
+      isCloudSelected,
       subscriptionStatus,
     ],
   );
@@ -247,7 +255,11 @@ export function useProviderEntries({
       label: "Eliza Cloud",
       category: "cloud",
       status: getProviderStatus("__cloud__"),
-      current: !cloudCallsDisabled && isCloudSelected,
+      // Only mark Cloud as current when it is actually connected. When
+      // cloud-proxy is configured but the user is not signed in, the runtime
+      // silently falls back to local inference; marking Cloud "current" in
+      // that state is dishonest (#20045).
+      current: !cloudCallsDisabled && isCloudSelected && elizaCloudConnected,
     });
     if (localProviderFirst) {
       entries.push(localEntry);
@@ -279,6 +291,7 @@ export function useProviderEntries({
   }, [
     apiProviderChoices,
     cloudCallsDisabled,
+    elizaCloudConnected,
     getProviderStatus,
     isCloudSelected,
     resolvedSelectedId,
