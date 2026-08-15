@@ -22,6 +22,7 @@
  */
 
 import { ElizaError } from "@elizaos/core";
+import { DrizzleError, DrizzleQueryError } from "drizzle-orm";
 
 export type LimitItemState = "available" | "at-limit" | "over-limit" | "unavailable";
 
@@ -35,22 +36,27 @@ export interface CountedLimitItem {
   reason?: string;
 }
 
+export interface SandboxCreateLimitItem {
+  state: LimitItemState;
+  limit?: number;
+  reason?: string;
+}
+
 export interface SandboxLimitItem {
   source: string;
-  state: LimitItemState;
   /** Quota-holding (non-pool, counted-status) sandboxes right now. */
   used?: number;
-  /**
-   * Ceiling applied to non-eager (plain/shared) user-facing creates. Derived
-   * from the canonical balance-tier helper the create routes call.
-   */
+  /** Fixed ceiling applied when the create path has no funded-balance input. */
+  nonEagerCreate: SandboxCreateLimitItem;
+  /** Balance-tiered ceiling applied by eager managed-create paths. */
+  eagerManagedCreate: SandboxCreateLimitItem;
+  /** @deprecated Use `eagerManagedCreate.state`; retained for v1 compatibility. */
+  state: LimitItemState;
+  /** @deprecated Use `nonEagerCreate.limit`; retained for v1 compatibility. */
   nonEagerCreateLimit?: number;
-  /**
-   * Ceiling applied to the eager managed-create path (provisioning worker),
-   * derived from the same balance-tier helper — reported separately because
-   * the enforcing routes gate it behind their own credit checks.
-   */
+  /** @deprecated Use `eagerManagedCreate.limit`; retained for v1 compatibility. */
   eagerManagedCreateLimit?: number;
+  /** @deprecated Use the reason on the corresponding create path. */
   reason?: string;
 }
 
@@ -94,14 +100,18 @@ export interface AccountLimitsSources {
   /** Org billing row: credit balance and settings (for ceiling overrides). */
   orgBilling(): Promise<{
     creditBalance: number;
-    settings?: Record<string, unknown>;
+    settings?: unknown;
   }>;
   /** Count of Cloud characters (`user_characters` with source=cloud). */
   cloudCharacterCount(): Promise<number>;
   /** Count of quota-holding (counted-status, non-pool) agent sandboxes. */
   sandboxQuotaCount(): Promise<number>;
   /** Container quota check — the same repository call the create path uses. */
-  containerQuota(): Promise<{ current: number; max: number }>;
+  containerQuota(): Promise<{
+    current: number;
+    max: number;
+    sourceUnavailable?: boolean;
+  }>;
   /** Count of apps for the org. */
   appCount(): Promise<number>;
   /** Configured per-org app ceiling. */
@@ -114,7 +124,7 @@ export interface AccountLimitsSources {
     embeddingsRpm: number;
   }>;
   /** Canonical Cloud-character ceiling helper (create-time enforcement). */
-  maxCloudCharacters(creditBalance: number, settings?: Record<string, unknown>): number;
+  maxCloudCharacters(creditBalance: number, settings?: unknown): number;
   /** Canonical sandbox ceiling helper (create-time enforcement). */
   maxNonTerminalAgents(creditBalance: number | undefined): number;
   /** Schema default applied when the org has no storage-quota row. */
@@ -131,7 +141,28 @@ function isUsableCount(value: unknown): value is number {
   return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
 }
 
+function isUsableLimit(value: unknown): value is number {
+  return isUsableCount(value) && value > 0;
+}
+
+const EXPECTED_SOURCE_ERROR_CODES = new Set([
+  "ACCOUNT_LIMIT_SOURCE_UNAVAILABLE",
+  "INVALID_ACCOUNT_LIMIT_SOURCE",
+  "INVALID_AGENT_SANDBOX_QUOTA_SOURCE",
+  "INVALID_CLOUD_CHARACTER_QUOTA_SOURCE",
+  "INVALID_CONTAINER_QUOTA_SOURCE",
+  "INVALID_MAX_APPS_PER_ORG",
+  "MISSING_CONTAINER_QUOTA_SOURCE",
+  "ORG_RATE_LIMIT_SOURCE_INVALID",
+]);
+
 function unavailableReason(error: unknown): string {
+  const expected =
+    error instanceof DrizzleError ||
+    error instanceof DrizzleQueryError ||
+    (error instanceof ElizaError && EXPECTED_SOURCE_ERROR_CODES.has(error.code));
+  if (!expected) throw error;
+
   return error instanceof ElizaError && error.code === "INVALID_ACCOUNT_LIMIT_SOURCE"
     ? error.message
     : "source read failed";
@@ -154,16 +185,17 @@ export async function buildAccountLimitsSnapshot(
 ): Promise<AccountLimitsSnapshot> {
   const observedAt = new Date().toISOString();
 
-  let billing: { creditBalance: number; settings?: Record<string, unknown> } | { error: unknown };
+  let billing: { creditBalance: number; settings?: unknown } | { error: unknown };
   try {
     const row = await sources.orgBilling();
     if (!Number.isFinite(Number(row.creditBalance))) {
-      throw new Error("organization credit balance is not a number");
+      throw invalidSourceData("organization credit balance is not a finite number");
     }
     billing = row;
   } catch (error) {
     // error-policy:J4 — the org row failing must surface as unavailable
-    // ceilings, never as a free-tier default.
+    // ceilings, never as a free-tier default; unexpected defects escape here.
+    unavailableReason(error);
     billing = { error };
   }
 
@@ -182,8 +214,8 @@ export async function buildAccountLimitsSnapshot(
         };
       }
       const limit = sources.maxCloudCharacters(billing.creditBalance, billing.settings);
-      if (!isUsableCount(limit)) {
-        throw invalidSourceData("cloud character limit is not a usable non-negative integer");
+      if (!isUsableLimit(limit)) {
+        throw invalidSourceData("cloud character limit is not a usable positive integer");
       }
       return { source, state: classify(used, limit), used, limit };
     } catch (error) {
@@ -198,44 +230,80 @@ export async function buildAccountLimitsSnapshot(
 
   const agentSandboxes: SandboxLimitItem = await (async () => {
     const source = "agent-sandbox-quota";
+    let used: number;
     try {
-      const used = await sources.sandboxQuotaCount();
+      used = await sources.sandboxQuotaCount();
       if (!isUsableCount(used)) {
         throw invalidSourceData("sandbox quota count is not a usable non-negative integer");
       }
-      if ("error" in billing) {
-        return {
-          source,
-          state: "unavailable" as const,
-          reason: unavailableReason(billing.error),
-        };
-      }
-      const ceiling = sources.maxNonTerminalAgents(billing.creditBalance);
-      if (!isUsableCount(ceiling)) {
-        throw invalidSourceData("sandbox limit is not a usable non-negative integer");
-      }
-      return {
-        source,
-        state: classify(used, ceiling),
-        used,
-        nonEagerCreateLimit: ceiling,
-        eagerManagedCreateLimit: ceiling,
-      };
     } catch (error) {
-      // error-policy:J4 — see above.
+      // error-policy:J4 — an expected count-source failure makes both create
+      // views explicitly unavailable; programming defects still escape.
+      const reason = unavailableReason(error);
       return {
         source,
-        state: "unavailable" as const,
-        reason: unavailableReason(error),
+        state: "unavailable",
+        reason,
+        nonEagerCreate: { state: "unavailable", reason },
+        eagerManagedCreate: { state: "unavailable", reason },
       };
     }
+
+    const nonEagerCreate: SandboxCreateLimitItem = (() => {
+      try {
+        const limit = sources.maxNonTerminalAgents(undefined);
+        if (!isUsableLimit(limit)) {
+          throw invalidSourceData("non-eager sandbox limit is not a usable positive integer");
+        }
+        return { state: classify(used, limit), limit };
+      } catch (error) {
+        // error-policy:J4 — only a typed invalid fixed-cap source degrades this
+        // path; an unrelated implementation defect is rethrown.
+        return { state: "unavailable", reason: unavailableReason(error) };
+      }
+    })();
+
+    const eagerManagedCreate: SandboxCreateLimitItem = (() => {
+      if ("error" in billing) {
+        return { state: "unavailable", reason: unavailableReason(billing.error) };
+      }
+      try {
+        const limit = sources.maxNonTerminalAgents(billing.creditBalance);
+        if (!isUsableLimit(limit)) {
+          throw invalidSourceData("eager sandbox limit is not a usable positive integer");
+        }
+        return { state: classify(used, limit), limit };
+      } catch (error) {
+        // error-policy:J4 — a typed balance/cap source failure degrades only the
+        // eager path; the fixed non-eager result remains truthful.
+        return { state: "unavailable", reason: unavailableReason(error) };
+      }
+    })();
+
+    return {
+      source,
+      used,
+      nonEagerCreate,
+      eagerManagedCreate,
+      // Compatibility aliases preserve #19949's eager-state semantics while
+      // new consumers migrate to the two unambiguous per-path results above.
+      state: eagerManagedCreate.state,
+      ...(nonEagerCreate.limit === undefined ? {} : { nonEagerCreateLimit: nonEagerCreate.limit }),
+      ...(eagerManagedCreate.limit === undefined
+        ? {}
+        : { eagerManagedCreateLimit: eagerManagedCreate.limit }),
+      ...(eagerManagedCreate.reason === undefined ? {} : { reason: eagerManagedCreate.reason }),
+    };
   })();
 
   const containers: CountedLimitItem = await (async () => {
     const source = "container-quota";
     try {
       const quota = await sources.containerQuota();
-      if (!isUsableCount(quota.current) || !isUsableCount(quota.max)) {
+      if (quota.sourceUnavailable) {
+        throw invalidSourceData("container quota source is unavailable");
+      }
+      if (!isUsableCount(quota.current) || !isUsableLimit(quota.max)) {
         throw invalidSourceData("container quota returned invalid counts");
       }
       return {
@@ -245,7 +313,8 @@ export async function buildAccountLimitsSnapshot(
         limit: quota.max,
       };
     } catch (error) {
-      // error-policy:J4 — see above.
+      // error-policy:J4 — expected container source/read failures are an
+      // explicit unavailable item; programming defects still escape.
       return {
         source,
         state: "unavailable" as const,
@@ -258,12 +327,13 @@ export async function buildAccountLimitsSnapshot(
     const source = "apps-service";
     try {
       const [used, limit] = await Promise.all([sources.appCount(), sources.appLimit()]);
-      if (!isUsableCount(used) || !isUsableCount(limit)) {
-        throw invalidSourceData("app count or limit is not a usable non-negative integer");
+      if (!isUsableCount(used) || !isUsableLimit(limit)) {
+        throw invalidSourceData("app count or limit is not a usable positive integer");
       }
       return { source, state: classify(used, limit), used, limit };
     } catch (error) {
-      // error-policy:J4 — see above.
+      // error-policy:J4 — expected app count/config failures are an explicit
+      // unavailable item; programming defects still escape.
       return {
         source,
         state: "unavailable" as const,
@@ -309,7 +379,8 @@ export async function buildAccountLimitsSnapshot(
         bytesLimit: row.bytesLimit.toString(),
       };
     } catch (error) {
-      // error-policy:J4 — see above.
+      // error-policy:J4 — expected storage read/validation failures are an
+      // explicit unavailable item; programming defects still escape.
       return {
         source,
         state: "unavailable" as const,
@@ -322,7 +393,7 @@ export async function buildAccountLimitsSnapshot(
     const source = "org-rate-limits";
     try {
       const tier = await sources.inferenceRateTier();
-      if (!isUsableCount(tier.completionsRpm) || !isUsableCount(tier.embeddingsRpm)) {
+      if (!isUsableLimit(tier.completionsRpm) || !isUsableLimit(tier.embeddingsRpm)) {
         throw invalidSourceData("org rate tier returned invalid caps");
       }
       // Configured caps only: no current usage, remaining requests, or
@@ -335,7 +406,8 @@ export async function buildAccountLimitsSnapshot(
         embeddingsRpm: tier.embeddingsRpm,
       };
     } catch (error) {
-      // error-policy:J4 — see above.
+      // error-policy:J4 — expected tier source/validation failures are an
+      // explicit unavailable item; programming defects still escape.
       return {
         source,
         state: "unavailable" as const,
