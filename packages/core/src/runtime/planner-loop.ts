@@ -4644,6 +4644,13 @@ function plannerResultValues(
 	return isPlainObject(values) ? values : undefined;
 }
 
+/** Returns active and compacted planner steps in execution order. */
+function allTrajectorySteps(
+	trajectory: PlannerTrajectory,
+): PlannerTrajectory["steps"] {
+	return [...(trajectory.archivedSteps ?? []), ...trajectory.steps];
+}
+
 /**
  * Returns the canonical user-facing text from a trajectory whose
  * `verifiedUserFacing` opt-in is unambiguous: exactly one completed tool step
@@ -4666,7 +4673,7 @@ function plannerResultValues(
 export function singleVerifiedUserFacingToolResultText(
 	trajectory: PlannerTrajectory,
 ): string | undefined {
-	for (const step of [...(trajectory.archivedSteps ?? []), ...trajectory.steps].reverse()) {
+	for (const step of allTrajectorySteps(trajectory).reverse()) {
 		const result = step.result;
 		if (
 			result?.verifiedUserFacing === true &&
@@ -4681,7 +4688,7 @@ export function singleVerifiedUserFacingToolResultText(
 		}
 	}
 
-	const successfulToolSteps = [...(trajectory.archivedSteps ?? []), ...trajectory.steps].filter(
+	const successfulToolSteps = allTrajectorySteps(trajectory).filter(
 		(step) => step.toolCall && step.result?.success === true,
 	);
 	if (successfulToolSteps.length !== 1) return undefined;
@@ -4707,11 +4714,11 @@ export function singleVerifiedUserFacingToolResultText(
  * applied perfectly but relayed nothing). Returns undefined when no action
  * declared a successful result summary (so chat turns are unaffected).
  */
-function codingActionSummary(
+export function codingActionSummary(
 	trajectory: PlannerTrajectory,
 ): string | undefined {
 	const parts: string[] = [];
-	for (const step of [...(trajectory.archivedSteps ?? []), ...trajectory.steps]) {
+	for (const step of allTrajectorySteps(trajectory)) {
 		if (step.result?.success === false) continue;
 		const summary = step.result?.summary?.trim();
 		if (summary) {
