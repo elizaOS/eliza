@@ -47,7 +47,7 @@ export function computeForecast(input: ForecastInput): ForecastOutput {
   if (input.minPoolSize > input.maxPoolSize) {
     throw new Error("warm-pool: minPoolSize cannot exceed maxPoolSize");
   }
-  if (input.emaAlpha <= 0 || input.emaAlpha > 1) {
+  if (!Number.isFinite(input.emaAlpha) || input.emaAlpha <= 0 || input.emaAlpha > 1) {
     throw new Error("warm-pool: emaAlpha must satisfy 0 < α ≤ 1");
   }
   if (input.leadTimeBuckets < 0) {
