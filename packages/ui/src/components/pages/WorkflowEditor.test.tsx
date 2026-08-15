@@ -113,6 +113,13 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe("WorkflowEditor", () => {
+  it("uses the darker orange hover token for the primary Run control", async () => {
+    render(<WorkflowEditor initial={workflow()} />);
+
+    const runButton = await screen.findByRole("button", { name: "Run" });
+    expect(runButton.className).toContain("hover:bg-accent-muted");
+  });
+
   it("renders native source, visual triggers, and typed widgets", async () => {
     render(<WorkflowEditor initial={workflow()} />);
     expect(screen.getByText("Build digest")).toBeTruthy();

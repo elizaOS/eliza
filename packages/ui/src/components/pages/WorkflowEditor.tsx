@@ -569,6 +569,7 @@ export function WorkflowEditor({
           )}
         </Button>
         <Button
+          className="hover:bg-accent-muted"
           size="icon-sm"
           onClick={requestRun}
           disabled={running}

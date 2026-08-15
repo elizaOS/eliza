@@ -126,7 +126,11 @@ export const VIEW_OCR_POLICIES = {
   "builtin-automations": expected({
     requireAll: ["Automations"],
     requireAny: [
-      "Nothing scheduled yet",
+      "No automations yet",
+      "No prompts yet",
+      "No workflows yet",
+      "No active automations",
+      "No inactive automations",
       "Active",
       "Prompts",
       "Tasks",

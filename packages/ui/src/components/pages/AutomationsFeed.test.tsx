@@ -337,7 +337,7 @@ describe("AutomationsFeed", () => {
     expect(within(header).getByRole("button", { name: /back/i })).toBeTruthy();
   });
 
-  it("shows a designed-empty state with NO create CTA when nothing is scheduled", async () => {
+  it("shows a visual-first, filter-specific empty state with no create CTA", async () => {
     clientMock.listAutomations.mockResolvedValue({
       automations: [],
       summary: {
@@ -354,7 +354,14 @@ describe("AutomationsFeed", () => {
 
     render(<AutomationsFeed />);
 
-    expect(await screen.findByText("Nothing scheduled yet")).toBeTruthy();
+    expect(await screen.findByText("No automations yet")).toBeTruthy();
+    expect(
+      screen.getByTestId("automations-empty-state").querySelector("svg"),
+    ).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Workflows" }));
+    expect(await screen.findByText("No workflows yet")).toBeTruthy();
+    expect(screen.queryByText("No automations yet")).toBeNull();
     // The empty state is unreachable in practice (a default is seeded on first
     // run); when it does render for the deleted-everything edge it must carry
     // NO create CTA — the agent offers re-creation from chat instead.

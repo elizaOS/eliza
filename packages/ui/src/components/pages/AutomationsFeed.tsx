@@ -103,6 +103,30 @@ const FILTER_ICONS: Record<FeedFilter, ReactNode> = {
   active: <Play className="h-3.5 w-3.5" aria-hidden />,
   inactive: <CircleSlash className="h-3.5 w-3.5" aria-hidden />,
 };
+
+const EMPTY_LABELS: Record<FeedFilter, { key: string; defaultLabel: string }> =
+  {
+    all: {
+      key: "automationsfeed.emptyAll",
+      defaultLabel: "No automations yet",
+    },
+    prompts: {
+      key: "automationsfeed.emptyPrompts",
+      defaultLabel: "No prompts yet",
+    },
+    workflows: {
+      key: "automationsfeed.emptyWorkflows",
+      defaultLabel: "No workflows yet",
+    },
+    active: {
+      key: "automationsfeed.emptyActive",
+      defaultLabel: "No active automations",
+    },
+    inactive: {
+      key: "automationsfeed.emptyInactive",
+      defaultLabel: "No inactive automations",
+    },
+  };
 const NEW_AUTOMATION_LINK_ID = "__new__";
 
 /** Namespaces cached rows by the currently selected local or Cloud agent. */
@@ -792,8 +816,8 @@ export function AutomationsFeed({
                 >
                   <AutomationEmptyIllustration />
                   <p className="text-sm font-medium text-txt">
-                    {t("automationsfeed.emptyHeadline", {
-                      defaultValue: "Nothing scheduled yet",
+                    {t(EMPTY_LABELS[filter].key, {
+                      defaultValue: EMPTY_LABELS[filter].defaultLabel,
                     })}
                   </p>
                 </div>

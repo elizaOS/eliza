@@ -649,7 +649,12 @@ test("automations overview empty state encourages creating tasks and workflows",
   ).toBeVisible();
   await expect(page.getByRole("button", { name: "Prompts" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Workflows" })).toBeVisible();
-  await expect(page.getByText("Nothing scheduled yet")).toBeVisible();
+  await expect(page.getByText("No automations yet")).toBeVisible();
+  await page.getByRole("button", { name: "Workflows" }).click();
+  await expect(page.getByText("No workflows yet")).toBeVisible();
+  await expect(
+    page.getByTestId("automations-empty-state").locator("svg"),
+  ).toBeVisible();
 
   await expect(
     page.getByRole("button", { name: "New automation" }),
@@ -666,7 +671,7 @@ test("automations empty state remains reachable beside chat in short landscape",
   await openAppPath(page, "/automations");
 
   const scrollRegion = page.getByTestId("automations-scroll-region");
-  const headline = page.getByText("Nothing scheduled yet");
+  const headline = page.getByText("No automations yet");
   await expect(scrollRegion).toBeVisible();
   await expect(headline).toBeAttached();
   await page.waitForFunction(
@@ -688,7 +693,7 @@ test("automations empty state remains reachable beside chat in short landscape",
       '[data-testid="automations-scroll-region"]',
     );
     const title = Array.from(document.querySelectorAll<HTMLElement>("p")).find(
-      (element) => element.textContent?.trim() === "Nothing scheduled yet",
+      (element) => element.textContent?.trim() === "No automations yet",
     );
     const empty = document.querySelector<HTMLElement>(
       '[data-testid="automations-empty-state"]',

@@ -82,7 +82,7 @@ describe("positiveExpectationMatches", () => {
       true,
     ],
     ["builtin-tasks", "Tasks No coding tasks yet.", true],
-    ["builtin-automations", "Automations Nothing scheduled yet", true],
+    ["builtin-automations", "Automations No workflows yet", true],
   ])("matches %s semantic readiness for %j", (slug, text, expected) => {
     expect(
       positiveExpectationMatches(normalize(text), expectationFor(slug)),
