@@ -3,7 +3,7 @@
  * cold database work overlaps call setup, the greeting, and caller speech.
  */
 
-import type { AgentSandbox } from "@/db/repositories/agent-sandboxes";
+import type { SharedRuntimeAgent } from "@/lib/services/shared-runtime/shared-runtime-agent";
 import { logger } from "@/lib/utils/logger";
 import type { Bindings } from "@/types/cloud-worker-env";
 import type { InternalElizaConversationFetchClaims } from "../../../voice/session/lib/internal-eliza-conversation-fetch";
@@ -15,11 +15,11 @@ interface VoicePrewarmExecutionContext {
 type HydrateVoiceScope = (
   env: Bindings,
   claims: InternalElizaConversationFetchClaims,
-  preloadedAgent?: AgentSandbox,
+  preloadedAgent?: SharedRuntimeAgent,
 ) => Promise<void>;
 
 interface ScheduleVoiceScopePrewarmOptions {
-  agent?: AgentSandbox;
+  agent?: SharedRuntimeAgent;
   claims: InternalElizaConversationFetchClaims;
   env: Bindings;
   executionCtx: VoicePrewarmExecutionContext;

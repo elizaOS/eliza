@@ -978,14 +978,18 @@ export class VoiceManager extends EventEmitter {
 			autoDestroy: true,
 			emitClose: true,
 		});
-		if (!receiveStream || receiveStream.readableLength === 0) {
+		// A newly subscribed Discord receive stream normally has no buffered
+		// frames yet. `readableLength === 0` means "waiting for speech", not that
+		// the subscription failed; rejecting it here made every fresh listener
+		// silently miss its first utterance.
+		if (!receiveStream) {
 			this.runtime.logger.warn(
 				{
 					src: "plugin:discord:service:voice",
 					agentId: this.runtime.agentId,
 					entityId,
 				},
-				"No receiveStream or empty stream",
+				"Discord voice receiver did not create a stream",
 			);
 			return;
 		}

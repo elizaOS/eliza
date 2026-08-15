@@ -140,6 +140,8 @@ export interface SharedRuntimeChatOptions {
   turnClaims?: SharedTurnClaimStore;
   /** Personal Shared keeps abuse limits but never debits account credits. */
   funding?: "organization-credits" | "platform";
+  /** Server-authenticated lifecycle prompt; never derived from bridge params. */
+  trustedMessageRole?: "system";
 }
 
 export {
@@ -227,15 +229,22 @@ function turnMessageIds(
   };
 }
 
+export function sharedRuntimeChannelId(agentId: string, roomId: string): string {
+  const room = roomId.trim() || "default";
+  return stableUuid(`cloud-bridge-channel:${agentId}:${room}`);
+}
+
 function channelId(agentId: string, params: Record<string, unknown>): string {
   const room = stringValue(params.roomId) ?? stringValue(params.userId) ?? "default";
-  return stableUuid(`cloud-bridge-channel:${agentId}:${room}`);
+  return sharedRuntimeChannelId(agentId, room);
 }
 
 function isTurn(value: unknown): value is SharedTurnMessage {
   const candidate = record(value);
   return (
-    (candidate?.role === "user" || candidate?.role === "assistant") &&
+    (candidate?.role === "system" ||
+      candidate?.role === "user" ||
+      candidate?.role === "assistant") &&
     typeof candidate.content === "string" &&
     candidate.content.trim().length > 0
   );
@@ -660,6 +669,15 @@ function sseError(message: string): Response {
 }
 
 export class SharedRuntimeChatService {
+  async recordLifecycleEvent(
+    agentId: string,
+    roomId: string,
+    event: SharedTurnMessage,
+    store: SharedRuntimeHistoryStore,
+  ): Promise<void> {
+    await mergeHistory(agentId, channelId(agentId, { roomId }), [event], store);
+  }
+
   async getHistory(
     agentId: string,
     roomId = agentId,
@@ -710,6 +728,7 @@ export class SharedRuntimeChatService {
       };
     }
     const roomId = channelId(agent.id, params);
+    const messageRole = options.trustedMessageRole ?? "user";
     const claimKey = options.turnClaims ? sharedTurnClientMessageId(params) : undefined;
     if (claimKey && options.turnClaims) {
       const replay = await claimSharedTurn(options.turnClaims, claimKey, text);
@@ -762,6 +781,7 @@ export class SharedRuntimeChatService {
         character,
         history,
         message: text,
+        messageRole,
         messageIds,
         onProviderDispatch: billing?.markProviderDispatched,
       });
@@ -851,6 +871,7 @@ export class SharedRuntimeChatService {
     const text = stringValue(params.text);
     if (!text) return sseError("message.send requires params.text");
     const roomId = channelId(agent.id, params);
+    const messageRole = options.trustedMessageRole ?? "user";
     const claimKey = options.turnClaims ? sharedTurnClientMessageId(params) : undefined;
     if (claimKey && options.turnClaims) {
       const replay = await claimSharedTurn(options.turnClaims, claimKey, text);
@@ -924,6 +945,7 @@ export class SharedRuntimeChatService {
         character,
         history,
         message: text,
+        messageRole,
         messageIds,
         onProviderDispatch: billing?.markProviderDispatched,
       });
@@ -978,7 +1000,7 @@ export class SharedRuntimeChatService {
     const makeTurnMessages = (reply: string, interrupted: boolean): SharedTurnMessage[] => {
       const sentAt = Date.now();
       const messages: SharedTurnMessage[] = [
-        { id: messageIds.user, role: "user", content: text, createdAt: sentAt },
+        { id: messageIds.user, role: messageRole, content: text, createdAt: sentAt },
       ];
       const assistantText = reply.trim();
       if (assistantText) {
