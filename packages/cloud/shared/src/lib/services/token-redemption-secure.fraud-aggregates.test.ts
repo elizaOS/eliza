@@ -1,27 +1,12 @@
-// Fail-closed fraud-heuristic aggregates for the secure token-redemption path.
-//
-// Regression coverage for #13415: `checkFraudPatterns` read its SQL aggregates
-// (COUNT/SUM over the `app_earnings_transactions.amount` and
-// `token_redemptions.usd_value` NUMERIC columns) via bare `Number(... || 0)`.
-// The Postgres driver returns NUMERIC as strings and `'NaN'::numeric` is a
-// valid stored value, so `SUM(...)` over a corrupt row reads back as the
-// string "NaN": `"NaN" || 0` keeps the truthy string, `Number("NaN")` is NaN,
-// and every NaN comparison is `false` — silently disabling ALL THREE fraud
-// heuristics (fast earn-to-redeem, high redemption ratio, shared payout
-// address). The fix parses each aggregate through a fail-closed boundary and
-// FLAGS the redemption for manual review on corrupt data instead of skipping
-// the checks.
-//
-// Harness: bun:test with a mocked db client (the only DB touch points in
-// checkFraudPatterns are dbRead.execute calls, controlled per-test).
+/**
+ * Exercises fail-closed fraud aggregates in the secure token-redemption path.
+ * The deterministic harness controls each database aggregate returned to the
+ * private fraud check and verifies corrupt values require manual review.
+ */
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 
-// ---------------------------------------------------------------------------
-// db/client mock — checkFraudPatterns performs up to three dbRead.execute
-// calls in order: recent earnings, total earned, total redeemed, plus one for
-// the shared-address check. Queue rows per call.
-// ---------------------------------------------------------------------------
+// Results are consumed in the same order as the fraud check's aggregate queries.
 let executeResults: Array<{ rows: Array<Record<string, unknown>> }> = [];
 
 mock.module("../../db/client", () => ({
@@ -131,6 +116,16 @@ describe("checkFraudPatterns fail-closed aggregates", () => {
     expect(result.flagged).toBe(true);
     expect(result.requiresReview).toBe(true);
   });
+
+  test.each([[""], ["   "], ["Infinity"], ["-1"], [null], [undefined]])(
+    "invalid recent-earnings COUNT %p flags for review",
+    async (count) => {
+      executeResults = [{ rows: [{ count, total: "0" }] }];
+      const result = await callCheckFraudPatterns("app-1", 500);
+      expect(result).toMatchObject({ flagged: true, requiresReview: true });
+      expect(result.warning).toContain("corrupt");
+    },
+  );
 
   test("high redemption ratio on healthy data still flags", async () => {
     executeResults = [

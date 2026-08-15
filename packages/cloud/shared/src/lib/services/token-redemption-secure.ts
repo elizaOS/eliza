@@ -1284,15 +1284,7 @@ export class SecureTokenRedemptionService {
   // FRAUD DETECTION
   // ========================================
 
-  /**
-   * Fail-closed read of a fraud-heuristic SQL aggregate (COUNT/SUM over
-   * NUMERIC columns). The driver returns NUMERIC as strings and
-   * `'NaN'::numeric` is a valid stored value, so `SUM(...)` over a corrupt row
-   * reads back as the string "NaN". `Number("NaN")` is `NaN` and every `NaN`
-   * comparison is `false`, which silently disabled ALL fraud heuristics below
-   * (#13415 fallback census). Returns `null` on a corrupt/non-finite/negative
-   * aggregate so the caller can flag for review instead of skipping the check.
-   */
+  /** Parses a non-negative SQL aggregate without allowing corrupt values to disable checks. */
   private parseFraudAggregate(value: unknown): number | null {
     if (value === null || value === undefined) return null;
     const raw = typeof value === "number" ? value : Number(String(value).trim() || "NaN");
