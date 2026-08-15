@@ -1040,6 +1040,10 @@ test("packaged desktop shortcut bridge summons the main window", async ({
     expect(initialState.shell.shortcuts ?? []).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
+          id: "command-palette",
+          accelerator: "CommandOrControl+K",
+        }),
+        expect.objectContaining({
           id: "chat-overlay",
           accelerator: PACKAGED_CHAT_OVERLAY_ACCELERATOR,
         }),
@@ -1048,8 +1052,12 @@ test("packaged desktop shortcut bridge summons the main window", async ({
 
     await harness.closeMainWindow();
     await harness.waitForState(
-      (state) => !state.mainWindow.present && state.shell.trayPresent,
-      "Expected closing the main window to leave the tray active before shortcut summon.",
+      (state) =>
+        state.mainWindow.present &&
+        state.shell.trayPresent &&
+        !state.shell.windowVisible &&
+        !state.shell.windowFocused,
+      "Expected closing the main window to hide it to the tray before shortcut summon.",
       30_000,
     );
 
