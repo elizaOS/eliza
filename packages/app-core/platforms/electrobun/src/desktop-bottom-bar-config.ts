@@ -106,29 +106,39 @@ export function resolveDesktopShellWindowPresentation(
   };
 }
 
-/** Default bar height — tall enough for the glass composer + a few message lines. */
-export const DEFAULT_BOTTOM_BAR_HEIGHT = 140;
+/** Resting native hit area around the 64×32 visible pill. */
+export const DEFAULT_BOTTOM_BAR_WIDTH = 96;
+export const DEFAULT_BOTTOM_BAR_HEIGHT = 56;
 
-/** Expanded chat window height; remains bottom-anchored above the Dock. */
-export const EXPANDED_BOTTOM_BAR_HEIGHT = 680;
+/** Expanded native hit area around the 560×640 glass panel and bottom pill. */
+export const EXPANDED_BOTTOM_BAR_WIDTH = 600;
+export const EXPANDED_BOTTOM_BAR_HEIGHT = 820;
 
 /**
- * Compute the bottom-bar window frame for a display's usable work area: full
- * usable width, a fixed bar height, pinned to the bottom edge (above the
- * taskbar/dock, which `workArea` already excludes). An optional side margin
- * insets the bar horizontally.
+ * Compute a bottom-centered window frame that is no larger than the visible
+ * pill or expanded chat surface. Keeping the transparent native window narrow
+ * prevents its invisible pixels from stealing pointer and keyboard input from
+ * other applications.
  */
 export function computeBottomBarFrame(
   workArea: ScreenWorkArea,
-  options?: { height?: number; margin?: number },
+  options?: { width?: number; height?: number; margin?: number },
 ): BottomBarFrame {
-  const height = Math.max(
+  const margin = Math.max(0, Math.round(options?.margin ?? 0));
+  const availableHeight = Math.max(1, Math.round(workArea.height) - margin);
+  const requestedHeight = Math.max(
     48,
     Math.round(options?.height ?? DEFAULT_BOTTOM_BAR_HEIGHT),
   );
-  const margin = Math.max(0, Math.round(options?.margin ?? 0));
-  const width = Math.max(1, Math.round(workArea.width) - margin * 2);
-  const x = Math.round(workArea.x) + margin;
+  const height = Math.min(requestedHeight, availableHeight);
+  const availableWidth = Math.max(1, Math.round(workArea.width) - margin * 2);
+  const requestedWidth = Math.max(
+    1,
+    Math.round(options?.width ?? DEFAULT_BOTTOM_BAR_WIDTH),
+  );
+  const width = Math.min(requestedWidth, availableWidth);
+  const x =
+    Math.round(workArea.x) + margin + Math.round((availableWidth - width) / 2);
   const y =
     Math.round(workArea.y) + Math.round(workArea.height) - height - margin;
   return { x, y, width, height };

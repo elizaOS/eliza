@@ -47,6 +47,7 @@ import type { DatabaseSnapshot } from "../database";
 import {
   computeBottomBarFrame,
   EXPANDED_BOTTOM_BAR_HEIGHT,
+  EXPANDED_BOTTOM_BAR_WIDTH,
   type ScreenWorkArea,
   shouldReanchorBottomBar,
 } from "../desktop-bottom-bar-config";
@@ -1456,9 +1457,8 @@ X-GNOME-Autostart-enabled=true
     const workArea = this.readPrimaryWorkArea();
     if (!win || !workArea) return;
     const frame = computeBottomBarFrame(workArea, {
-      height: options.expanded
-        ? Math.min(EXPANDED_BOTTOM_BAR_HEIGHT, workArea.height - 40)
-        : undefined,
+      width: options.expanded ? EXPANDED_BOTTOM_BAR_WIDTH : undefined,
+      height: options.expanded ? EXPANDED_BOTTOM_BAR_HEIGHT : undefined,
     });
     win.setFrame(frame.x, frame.y, frame.width, frame.height);
     this.bottomBarWorkArea = workArea;

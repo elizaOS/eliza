@@ -30,31 +30,31 @@ describe("computeChatOverlayWindowBounds", () => {
   it("clamps an opened overlay to a short primary-display work area", () => {
     expect(
       computeChatOverlayWindowBounds(
-        { x: -80, y: 628, width: 1_512, height: 140 },
+        { x: 635, y: 712, width: 96, height: 56 },
         { x: 0, y: 24, width: 1_366, height: 744 },
         true,
       ),
-    ).toEqual({ x: 0, y: 24, width: 1_366, height: 744 });
+    ).toEqual({ x: 383, y: 24, width: 600, height: 744 });
   });
 
   it("restores the closed bar at the same in-work-area bottom edge", () => {
     expect(
       computeChatOverlayWindowBounds(
-        { x: 0, y: 24, width: 1_366, height: 744 },
+        { x: 383, y: 24, width: 600, height: 744 },
         { x: 0, y: 24, width: 1_366, height: 744 },
         false,
       ),
-    ).toEqual({ x: 0, y: 628, width: 1_366, height: 140 });
+    ).toEqual({ x: 635, y: 712, width: 96, height: 56 });
   });
 });
 
 describe("createChatOverlayWindowBoundsCoordinator", () => {
   it("serializes close behind an in-flight open and leaves the final frame closed", async () => {
     let current: ChatOverlayWindowBounds = {
-      x: 0,
-      y: 760,
-      width: 1_440,
-      height: 140,
+      x: 672,
+      y: 844,
+      width: 96,
+      height: 56,
     };
     const firstSet = deferred<void>();
     const applied: ChatOverlayWindowBounds[] = [];
@@ -84,8 +84,8 @@ describe("createChatOverlayWindowBoundsCoordinator", () => {
 
     firstSet.resolve();
     await coordinator.whenIdle();
-    expect(applied.map((bounds) => bounds.height)).toEqual([820, 140]);
-    expect(current).toEqual({ x: 0, y: 760, width: 1_440, height: 140 });
+    expect(applied.map((bounds) => bounds.height)).toEqual([820, 56]);
+    expect(current).toEqual({ x: 672, y: 844, width: 96, height: 56 });
     expect(onFailure).not.toHaveBeenCalled();
   });
 
@@ -94,7 +94,7 @@ describe("createChatOverlayWindowBoundsCoordinator", () => {
     const firstDisplay = deferred<{
       workArea: ChatOverlayWindowBounds;
     } | null>();
-    const current = { x: 0, y: 760, width: 1_440, height: 140 };
+    const current = { x: 672, y: 844, width: 96, height: 56 };
     const setWindowBounds = vi.fn(async () => {});
     let readCount = 0;
     const coordinator = createChatOverlayWindowBoundsCoordinator({
@@ -128,10 +128,10 @@ describe("createChatOverlayWindowBoundsCoordinator", () => {
     const onFailure = vi.fn();
     const coordinator = createChatOverlayWindowBoundsCoordinator({
       getWindowBounds: async () => ({
-        x: 0,
-        y: 760,
-        width: 1_440,
-        height: 140,
+        x: 672,
+        y: 844,
+        width: 96,
+        height: 56,
       }),
       getPrimaryDisplay: async () => ({
         workArea: { x: 0, y: 0, width: 1_440, height: 900 },

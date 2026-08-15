@@ -32,7 +32,9 @@ export interface ChatOverlayWindowBoundsCoordinator {
   whenIdle: () => Promise<void>;
 }
 
-export const CHAT_OVERLAY_RESTING_WINDOW_HEIGHT = 140;
+export const CHAT_OVERLAY_RESTING_WINDOW_WIDTH = 96;
+export const CHAT_OVERLAY_RESTING_WINDOW_HEIGHT = 56;
+export const CHAT_OVERLAY_EXPANDED_WINDOW_WIDTH = 600;
 export const CHAT_OVERLAY_EXPANDED_WINDOW_HEIGHT = 820;
 
 function assertValidBounds(
@@ -67,9 +69,12 @@ export function computeChatOverlayWindowBounds(
   const requestedHeight = overlayOpen
     ? CHAT_OVERLAY_EXPANDED_WINDOW_HEIGHT
     : CHAT_OVERLAY_RESTING_WINDOW_HEIGHT;
+  const requestedWidth = overlayOpen
+    ? CHAT_OVERLAY_EXPANDED_WINDOW_WIDTH
+    : CHAT_OVERLAY_RESTING_WINDOW_WIDTH;
   const height = Math.min(requestedHeight, workArea.height);
-  const width = Math.min(current.width, workArea.width);
-  const x = clamp(current.x, workArea.x, workArea.x + workArea.width - width);
+  const width = Math.min(requestedWidth, workArea.width);
+  const x = workArea.x + Math.round((workArea.width - width) / 2);
   const bottom = clamp(
     current.y + current.height,
     workArea.y + height,
