@@ -30,7 +30,7 @@
       "@elizaos/cloud-sdk/*": ["../sdk/src/*"],
       "@elizaos/plugin-sql": ["../../../plugins/plugin-sql/src/index.ts"],
       "@elizaos/plugin-sql/*": ["../../../plugins/plugin-sql/src/*"],
-      "@elizaos/core/edge": ["../../../packages/core/dist/edge/index.edge"],
+      "@elizaos/core/edge": ["../../../packages/core/src/index.edge.ts"],
       "@elizaos/core": ["../../../packages/core/src/index.node.ts"],
       "@elizaos/core/*": ["../../../packages/core/src/*"],
       "@elizaos/logger": ["../../logger/src/index.ts"],
@@ -41,6 +41,7 @@
       "@elizaos/plugin-cloud-apps/*": ["../../../plugins/plugin-cloud-apps/src/*"],
       "@elizaos/plugin-elizacloud": ["../../../plugins/plugin-elizacloud/src/index.ts"],
       "@elizaos/plugin-elizacloud/*": ["../../../plugins/plugin-elizacloud/src/*"],
+      "@elizaos/plugin-scheduling/edge": ["../../../plugins/plugin-scheduling/src/edge.ts"],
       "@elizaos/plugin-web-search/edge": ["../../../plugins/plugin-web-search/src/edge.ts"],
       "drizzle-orm": ["../../../node_modules/drizzle-orm"],
       "drizzle-orm/*": ["../../../node_modules/drizzle-orm/*"]
