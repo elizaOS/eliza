@@ -70,7 +70,7 @@ export class AppBackupService {
         inference_markup_percentage: parseAppMonetizationNumber(
           "inference_markup_percentage",
           app.inference_markup_percentage ?? 0,
-          { min: 0, max: 100 },
+          { min: 0, max: 1000 },
         ),
         purchase_share_percentage: parseAppMonetizationNumber(
           "purchase_share_percentage",
