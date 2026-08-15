@@ -10,7 +10,7 @@
  * singleton + the background model download).
  */
 
-import { renderHook, waitFor } from "@testing-library/react";
+import { cleanup, renderHook, waitFor } from "@testing-library/react";
 import * as React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { FIRST_RUN_SIGN_IN_PROMPT } from "./first-run-greeting";
@@ -300,6 +300,12 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  // Unmount every conductor rendered by the test FIRST (globals: false in
+  // vitest.config.ts means @testing-library/react never auto-registers this).
+  // Otherwise a still-mounted conductor re-reads the store when the next line
+  // clears it, and the unseeded test fallback answers `firstRunName` with a
+  // function — masking real failures as a `normalizeFirstRunName` TypeError.
+  cleanup();
   __setAppValueForTests(null);
   resetTutorialState();
   ensureLocalStorage().clear();
