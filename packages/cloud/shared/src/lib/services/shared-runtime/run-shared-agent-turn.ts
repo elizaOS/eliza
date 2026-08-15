@@ -70,6 +70,8 @@ export interface RunSharedAgentTurnInput {
     user: string;
     assistant: string;
   };
+  /** Raw transport turn identity shared with Dedicated action idempotency. */
+  originClientMessageId?: string;
   /** Durable accounting transition invoked at the final provider handoff. */
   onProviderDispatch?: () => Promise<void>;
   /** Cancels provider generation when the response consumer disconnects. */

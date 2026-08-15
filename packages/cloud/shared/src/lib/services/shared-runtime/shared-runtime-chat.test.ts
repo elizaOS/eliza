@@ -1102,6 +1102,7 @@ describe("SharedRuntimeChatService", () => {
     await Promise.all(h.background);
 
     expect(turnCalls).toBe(1);
+    expect(lastTurnInput?.originClientMessageId).toBe("client-key-1");
     expect(admitOrganizationInference).toHaveBeenCalledTimes(1);
     expect(billCalls).toHaveLength(1);
     expect(settleCalls).toEqual([0.004]);
@@ -1173,6 +1174,7 @@ describe("SharedRuntimeChatService", () => {
     const secondBody = await second.text();
 
     expect(streamTurnCalls).toBe(1);
+    expect(lastStreamTurnInput?.originClientMessageId).toBe("client-key-1");
     expect(admitOrganizationInference).toHaveBeenCalledTimes(1);
     const doneFrame = (body: string) => {
       const match = body.match(/event: done\ndata: (.*)\n/);

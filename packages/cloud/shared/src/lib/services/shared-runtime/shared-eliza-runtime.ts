@@ -421,6 +421,14 @@ async function executeSharedElizaRuntimeTurn(
           text: input.message.trim(),
           source: "shared-runtime",
           channelType: ChannelType.DM,
+          ...(input.originClientMessageId
+            ? {
+                chatIdempotency: {
+                  version: 1,
+                  clientMessageId: input.originClientMessageId,
+                },
+              }
+            : {}),
         },
       }),
       async (content) => {

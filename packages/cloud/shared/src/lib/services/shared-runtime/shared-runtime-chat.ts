@@ -840,6 +840,7 @@ export class SharedRuntimeChatService {
         message: text,
         messageRole,
         messageIds,
+        ...(claimKey ? { originClientMessageId: claimKey } : {}),
         onProviderDispatch: billing?.markProviderDispatched,
         ...(options.executionEngine === "eliza-runtime"
           ? {
@@ -1009,6 +1010,7 @@ export class SharedRuntimeChatService {
         message: text,
         messageRole,
         messageIds,
+        ...(claimKey ? { originClientMessageId: claimKey } : {}),
         onProviderDispatch: billing?.markProviderDispatched,
         ...(options.executionEngine === "eliza-runtime"
           ? {
