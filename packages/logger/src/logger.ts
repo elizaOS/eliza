@@ -870,7 +870,7 @@ const customLevelConfig: Record<string, LevelConfiguration> = {
   },
 };
 
-const adzeStore = setup({
+setup({
   activeLevel: adzeActiveLevel,
   format: raw ? "json" : "pretty",
   timestampFormatter: showTimestamps ? undefined : () => "",
@@ -878,11 +878,8 @@ const adzeStore = setup({
   levels: customLevelConfig,
 });
 
-// In-memory dispatch is handled exclusively by createLogger().invoke()
-// via globalInMemoryDestination.write(entry) with the correct Pino level.
-// No global Adze store listener is needed — a previous "*" listener caused
-// duplicate writes and level distortion (Adze internal level 1 mapped to
-// "info" instead of the intended Pino level).
+// Adze owns formatted output; createLogger().invoke owns the single in-memory
+// dispatch so listeners receive one entry with Pino-compatible levels.
 
 // ============================================================================
 // Logger Factory
