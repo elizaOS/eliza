@@ -315,9 +315,10 @@ app.get("/", async (c) => {
     clearAudio() {
       if (!streamSid) return;
       sendEvent({ event: "clear", streamSid });
-      logger.info("[twilio-media] caller turn-start flushed buffered audio", {
-        streamSid,
-      });
+      logger.info(
+        "[twilio-media] confirmed caller speech flushed buffered audio",
+        { streamSid },
+      );
     },
     close(code, reason) {
       releaseBootstrap();
