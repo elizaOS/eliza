@@ -232,6 +232,17 @@ export class SurfaceWindowManager {
       (entry) => entry.surface === "settings",
     );
     if (existing) {
+      // A tab hint on an already-open Settings window must navigate the
+      // window to the requested section — the menu items ("Voice Controls",
+      // "Permissions", "Cloud Settings", …) all route through here, and
+      // merely re-focusing left the stale section on screen (#19996).
+      const normalizedTab = normalizeSettingsTabHint(tabHint);
+      if (normalizedTab && existing.window.webview.loadURL) {
+        const rendererUrl = await this.resolveRendererUrlFn();
+        existing.window.webview.loadURL(
+          buildSurfaceWindowRendererUrl(rendererUrl, "settings", normalizedTab),
+        );
+      }
       existing.window.focus();
       return this.toSnapshot(existing);
     }

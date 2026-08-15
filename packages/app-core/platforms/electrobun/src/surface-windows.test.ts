@@ -139,6 +139,29 @@ describe("SurfaceWindowManager app windows", () => {
     expect(fixture.manager.listWindows("settings")).toEqual([first]);
   });
 
+  it("navigates an already-open settings window to the requested tab instead of just focusing it (#19996)", async () => {
+    const fixture = createFixture();
+
+    await fixture.manager.openSettingsWindow("open-settings-voice");
+    const window = fixture.created[0];
+    expect(window).toBeDefined();
+    expect(window?.webview.loadURL).not.toHaveBeenCalled();
+
+    // Menu action while the window is already open: the section must change.
+    await fixture.manager.openSettingsWindow("open-settings-permissions");
+
+    expect(fixture.created).toHaveLength(1);
+    expect(window?.webview.loadURL).toHaveBeenCalledWith(
+      "http://127.0.0.1:5173/?shell=settings&tab=permissions",
+    );
+    expect(window?.focus).toHaveBeenCalled();
+
+    // No tab hint (plain "Settings Window" menu item): focus only, no reload.
+    window?.webview.loadURL.mockClear();
+    await fixture.manager.openSettingsWindow();
+    expect(window?.webview.loadURL).not.toHaveBeenCalled();
+  });
+
   it("opens browser surfaces with browse query encoding and ignores browse for non-browser surfaces", async () => {
     const fixture = createFixture();
 
