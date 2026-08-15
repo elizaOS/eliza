@@ -109,7 +109,7 @@ describe("default Eliza voice", () => {
   test("no emoji", () => {
     for (const line of spoken) {
       expect(line).not.toMatch(
-        /[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE0F}\u{1F1E6}-\u{1F1FF}]/u,
+        /(?:[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{1F1E6}-\u{1F1FF}]|\u{FE0F})/u,
       );
     }
   });
