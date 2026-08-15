@@ -172,7 +172,7 @@ function enforceContentLengthLimit(
 	maxBytes?: number,
 ): void {
 	const contentLength = res.headers.get("content-length");
-	if (!maxBytes || !contentLength) {
+	if (maxBytes === undefined || !contentLength) {
 		return;
 	}
 
@@ -250,9 +250,10 @@ export async function fetchRemoteMedia(
 		await throwIfHttpError(res, options.url, finalUrl);
 		enforceContentLengthLimit(res, options.url, options.maxBytes);
 
-		const buffer = options.maxBytes
-			? await readResponseWithLimit(res, options.maxBytes)
-			: Buffer.from(await res.arrayBuffer());
+		const buffer =
+			options.maxBytes !== undefined
+				? await readResponseWithLimit(res, options.maxBytes)
+				: Buffer.from(await res.arrayBuffer());
 		const metadata = await resolveMediaMetadata({
 			res,
 			buffer,

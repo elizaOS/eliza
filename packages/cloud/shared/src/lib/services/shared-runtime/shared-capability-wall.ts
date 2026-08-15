@@ -53,7 +53,7 @@ const RULES: ReadonlyArray<SharedCapabilityWall & { pattern: RegExp }> = [
     pattern:
       /\b(?:(?:can|could|would|will)\s+you\s+)?(?:(?:email|call|text|message|dm)\b(?!\s+(?:this|the|a|an)\s+(?:\w+\s+){0,2}(?:function|method|api|endpoint|class|variable|command)\b)|send\b[\s\S]{0,32}\b(?:email|text|message|dm)\b)/i,
     reply:
-      "Calling or messaging people needs Dedicated. I can draft it here, but Shared can't send email, texts, DMs, or place calls.",
+      "I can talk with you and reply through Eliza's connected voice and messaging channels. I can't initiate a separate call, email, text, or DM to another person from this session.",
   },
   {
     capability: "purchases",

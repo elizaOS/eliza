@@ -45,4 +45,22 @@ describe("Shared capability wall", () => {
     ).toBeNull();
     expect(resolveSharedCapabilityWall("remind me in two minutes")?.capability).toBe("reminders");
   });
+
+  test("does not falsely claim voice and messaging require Dedicated", () => {
+    const wall = resolveSharedCapabilityWall("call Mom");
+    expect(wall?.reply).toContain("connected voice and messaging channels");
+    expect(wall?.reply).not.toContain("Dedicated");
+  });
+
+  test.each(["channel", "voice"])(
+    "does not treat trusted public Discord %s context as a communication request",
+    (transport) => {
+      const wrappedTurn = [
+        `[Public Discord guild ${transport}; speaker: shaw.`,
+        "Use only this public guild channel's context. Never reveal or summarize context from any private transport.]",
+        "reply with exactly PONG",
+      ].join("\n");
+      expect(resolveSharedCapabilityWall(wrappedTurn)).toBeNull();
+    },
+  );
 });

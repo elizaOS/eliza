@@ -164,7 +164,11 @@ async function linkWorkflowDependency(
 }
 
 export function validateSmithersSource(source: string): void {
-  const trimmed = source.trim();
+  // A stored workflow record can reach dispatch without a source (stale
+  // trigger pointing at a legacy or partially-saved definition, live repro:
+  // system-device-health-check). That must fail as the typed
+  // SMTHRS_SOURCE_REQUIRED error, not a TypeError on `.trim()`.
+  const trimmed = typeof source === 'string' ? source.trim() : '';
   if (!trimmed)
     throw new ElizaError('Workflow source is required', { code: 'SMTHRS_SOURCE_REQUIRED' });
   if (!/\bfrom\s+['"]smthrs(?:\/[^'"]+)?['"]/.test(trimmed)) {

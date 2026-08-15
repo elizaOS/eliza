@@ -191,13 +191,17 @@ describe("clearStaleStewardSession", () => {
       ],
     });
     const storageFailure = new Error("legacy refresh storage unavailable");
-    // Spy on the localStorage instance, not Storage.prototype: the setup file
-    // may substitute an in-memory Storage (Node ≥25 ships a broken global that
-    // shadows jsdom's), and the instance spy intercepts on both paths.
     const storage = window.localStorage;
     const originalRemoveItem = storage.removeItem.bind(storage);
+    // jsdom implements Storage methods on the prototype, while the Node ≥25
+    // fallback in vitest.setup owns them directly. Spy on the actual method
+    // owner so this regression injects the same failure on every supported
+    // test host instead of passing only with one storage implementation.
+    const removeItemOwner = Object.hasOwn(storage, "removeItem")
+      ? storage
+      : (Object.getPrototypeOf(storage) as Storage);
     const removeItem = vi
-      .spyOn(storage, "removeItem")
+      .spyOn(removeItemOwner, "removeItem")
       .mockImplementation((key: string) => {
         if (key === STEWARD_REFRESH_TOKEN_KEY) throw storageFailure;
         return originalRemoveItem(key);
