@@ -9377,7 +9377,13 @@ async function recordFactsAndRelationshipsStage(args: {
 		const candidates = extractCandidatesForRecording(result);
 		const kept = result?.parsed
 			? {
-					facts: result.parsed.facts,
+					// The trajectory contract records facts as strings; the speaker
+					// attribution is rendered inline so replays can audit it.
+					facts: result.parsed.facts.map((fact) =>
+						fact.subject && fact.subject !== "user"
+							? `[${fact.subject}] ${fact.fact}`
+							: fact.fact,
+					),
 					relationships: result.parsed.relationships,
 				}
 			: { facts: [], relationships: [] };
