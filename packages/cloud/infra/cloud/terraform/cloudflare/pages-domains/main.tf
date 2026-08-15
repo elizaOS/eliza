@@ -280,6 +280,11 @@ resource "cloudflare_dns_record" "legacy_redirect_wildcard" {
 # This imported paid pack remains modeled separately from all new packs. Its
 # host inventory must be copied exactly from Cloudflare; prevent_destroy turns
 # accidental replacement into a failed plan rather than a TLS outage.
+#
+# Leave cloudflare_branding unset on every immutable pack. Cloudflare treats an
+# omitted value as unbranded, but its read API can omit the resulting false
+# value. Provider v5 otherwise treats an explicit false after import as a
+# replacement-only change.
 resource "cloudflare_certificate_pack" "staging_agent" {
   count = var.environment == "staging" ? 1 : 0
 
@@ -289,7 +294,6 @@ resource "cloudflare_certificate_pack" "staging_agent" {
   type                  = "advanced"
   validation_method     = "txt"
   validity_days         = 90
-  cloudflare_branding   = false
 
   lifecycle {
     prevent_destroy = true
@@ -308,7 +312,6 @@ resource "cloudflare_certificate_pack" "canonical_edge" {
   type                  = "advanced"
   validation_method     = "txt"
   validity_days         = 90
-  cloudflare_branding   = false
 
   lifecycle {
     prevent_destroy = true
@@ -324,7 +327,6 @@ resource "cloudflare_certificate_pack" "legacy_redirect" {
   type                  = "advanced"
   validation_method     = "txt"
   validity_days         = 90
-  cloudflare_branding   = false
 
   lifecycle {
     prevent_destroy = true
