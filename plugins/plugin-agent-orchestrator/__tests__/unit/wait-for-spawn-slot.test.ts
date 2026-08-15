@@ -380,4 +380,41 @@ describe("waitForSpawnSlot", () => {
       expect(resolved).toBe(true);
     });
   });
+
+  describe("turn cancellation", () => {
+    it("does not inspect or wait when the owning turn was already aborted", async () => {
+      const { runtime } = makeRuntime("0");
+      const { service, listSpy } = makeService();
+      const controller = new AbortController();
+      const reason = new Error("voice turn superseded before spawn admission");
+      controller.abort(reason);
+
+      await expect(
+        waitForSpawnSlot(runtime, service, { signal: controller.signal }),
+      ).rejects.toBe(reason);
+      expect(listSpy).not.toHaveBeenCalled();
+    });
+
+    it("releases a blocked spawn immediately instead of waiting for the next poll", async () => {
+      const { runtime } = makeRuntime("1");
+      const { service, listSpy } = makeService([
+        makeSession("running", "occupied"),
+      ]);
+      const controller = new AbortController();
+      const reason = new Error("confirmed speech interrupted the turn");
+      const pending = waitForSpawnSlot(runtime, service, {
+        pollMs: 60_000,
+        maxWaitMs: 120_000,
+        signal: controller.signal,
+      });
+
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(listSpy).toHaveBeenCalledTimes(1);
+      controller.abort(reason);
+
+      await expect(pending).rejects.toBe(reason);
+      expect(vi.getTimerCount()).toBe(0);
+    });
+  });
 });

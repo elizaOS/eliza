@@ -73,6 +73,7 @@ import type {
 } from "../services/workspace-service.js";
 import { getCodingWorkspaceService } from "../services/workspace-service.js";
 import {
+  awaitReadOnlyWithAbort,
   callbackText,
   contentRecord,
   emitSessionEvent,
@@ -1749,7 +1750,9 @@ async function runSpawnAgent(
   params: Record<string, unknown>,
   content: Record<string, unknown>,
   callback: HandlerCallback | undefined,
+  abortSignal?: AbortSignal,
 ): Promise<ActionResult> {
+  abortSignal?.throwIfAborted();
   const service = getAcpService(runtime);
   if (!service) {
     const text = "ACP service is not available. Cannot spawn a task agent.";
@@ -1757,6 +1760,7 @@ async function runSpawnAgent(
     return errorResult("SERVICE_UNAVAILABLE");
   }
 
+  let commitStarted = false;
   try {
     const text = requestText(message);
     const task = pickString(params, content, "task") ?? text;
@@ -1766,10 +1770,9 @@ async function runSpawnAgent(
     // planner but falls back to the default ACP workspace under a terser one.
     // `state` carries the runtime-composed conversation window, which holds
     // the real request synchronously even when content.text is empty.
-    const routingRequest = await resolveOriginatingRequestText(
-      runtime,
-      message,
-      state,
+    const routingRequest = await awaitReadOnlyWithAbort(
+      () => resolveOriginatingRequestText(runtime, message, state),
+      abortSignal,
     );
     // Fail fast on empty/derived-only tasks BEFORE resolving backends or
     // creating any ACP session (see guardSpawnTaskIntent).
@@ -1792,10 +1795,14 @@ async function runSpawnAgent(
       plannerGuess: pickString(params, content, "agentType"),
     });
     const agentType = (routed?.agentType ??
-      (await service.resolveAgentType?.({
-        task,
-        workdir: pickString(params, content, "workdir"),
-      })) ??
+      (await awaitReadOnlyWithAbort(
+        () =>
+          service.resolveAgentType?.({
+            task,
+            workdir: pickString(params, content, "workdir"),
+          }),
+        abortSignal,
+      )) ??
       "codex") as AgentType;
     // Resolve the spawn workdir. A matching `TASK_AGENT_WORKDIR_ROUTES`
     // route outranks the planner-supplied workdir — the planner just
@@ -1815,10 +1822,14 @@ async function runSpawnAgent(
     // operator input (#14108): project localPath > explicit caller workdir >
     // bound pin. When an explicit workdir loses to a project binding the shared
     // resolver logs loudly instead of silently substituting.
-    const boundProjectId = await resolveTaskProjectBinding(
-      runtime,
-      pickString(params, content, "taskId") ??
-        pickString(params, content, "threadId"),
+    const boundProjectId = await awaitReadOnlyWithAbort(
+      () =>
+        resolveTaskProjectBinding(
+          runtime,
+          pickString(params, content, "taskId") ??
+            pickString(params, content, "threadId"),
+        ),
+      abortSignal,
     );
     const explicitWorkdir = pickString(params, content, "workdir");
     const resolvedTaskWorkdir = resolveTaskSpawnWorkdir({
@@ -1868,23 +1879,6 @@ async function runSpawnAgent(
       message,
       content,
     );
-    // Nested/child sub-agents JOIN the parent's task room when an explicit
-    // taskRoomId is supplied (swarm collaboration on the same task); only a
-    // brand-new task with no explicit room mints its own distinct room. The
-    // opt-out env keeps origin == task room.
-    const resolvedTaskRoomId = await ensureDistinctTaskRoom(
-      runtime,
-      message,
-      pickRoutingString(params, content, extraMetadata, "taskRoomId"),
-      label,
-    );
-    const swarmRoomMetadata = buildSwarmRoomMetadata(
-      message,
-      params,
-      content,
-      extraMetadata,
-      resolvedTaskRoomId,
-    );
     const inheritedRoute =
       content.source === MESSAGE_SOURCE_SUB_AGENT &&
       extraMetadata.subAgent === true
@@ -1895,12 +1889,6 @@ async function runSpawnAgent(
     // Only isolate per-session when we fell back to a shared scratch root (no
     // route). A route resolves to a specific project dir that must be used as-is.
     const isolateWorkdir = effectiveRoute ? false : resolvedIsolate === true;
-    const taskWithRouteHints = taskWithResolvedRoute(
-      task,
-      effectiveRoute,
-      effectiveWorkdir,
-      swarmRoomMetadata,
-    );
 
     // Resolve the connector source for routing the sub-agent's eventual
     // reply back to the user. For messages that originated on a platform
@@ -1969,10 +1957,37 @@ async function runSpawnAgent(
       }
     }
 
-    // Concurrency gate: serialise spawns past a small ceiling so parallel
-    // coding sub-agents don't stampede the model provider into rate-limited,
-    // tool-call-skipping degradation. See waitForSpawnSlot.
-    await waitForSpawnSlot(runtime, service);
+    // Everything above this point is read-only preflight. The capacity wait is
+    // also pre-commit and must release immediately when the owning turn is
+    // interrupted. Once room/session creation begins below, the operation owns
+    // its settlement and returns the authoritative receipt even if that turn's
+    // signal aborts in the meantime.
+    await waitForSpawnSlot(runtime, service, { signal: abortSignal });
+    abortSignal?.throwIfAborted();
+    commitStarted = true;
+    // Nested/child sub-agents JOIN the parent's task room when an explicit
+    // taskRoomId is supplied (swarm collaboration on the same task); only a
+    // brand-new task with no explicit room mints its own distinct room. The
+    // opt-out env keeps origin == task room.
+    const resolvedTaskRoomId = await ensureDistinctTaskRoom(
+      runtime,
+      message,
+      pickRoutingString(params, content, extraMetadata, "taskRoomId"),
+      label,
+    );
+    const swarmRoomMetadata = buildSwarmRoomMetadata(
+      message,
+      params,
+      content,
+      extraMetadata,
+      resolvedTaskRoomId,
+    );
+    const taskWithRouteHints = taskWithResolvedRoute(
+      task,
+      effectiveRoute,
+      effectiveWorkdir,
+      swarmRoomMetadata,
+    );
 
     const session = await service.spawnSession({
       agentType,
@@ -2057,6 +2072,9 @@ async function runSpawnAgent(
       },
     };
   } catch (error) {
+    if (!commitStarted && abortSignal?.aborted) {
+      throw abortSignal.reason ?? error;
+    }
     // error-policy:J1 spawn action boundary → structured failure to the
     // planner; no visible callback (see runSend's catch) — the evaluator
     // reports the failure in voice instead of a raw canned bubble. The
@@ -4626,26 +4644,44 @@ async function dispatchTasksOperation(
   params: Record<string, unknown>,
   content: Record<string, unknown>,
   callback: HandlerCallback | undefined,
+  abortSignal?: AbortSignal,
 ): Promise<ActionResult> {
   switch (action) {
     case "create":
       return runCreate(runtime, message, state, params, content, callback);
     case "spawn_agent":
-      return runSpawnAgent(runtime, message, state, params, content, callback);
+      return runSpawnAgent(
+        runtime,
+        message,
+        state,
+        params,
+        content,
+        callback,
+        abortSignal,
+      );
     case "send":
       return runSend(runtime, message, state, params, content, callback);
     case "stop_agent":
       return runStopAgent(runtime, message, state, params, content, callback);
     case "list_agents":
-      return runListAgents(runtime, message, state, params, content, callback);
+      return awaitReadOnlyWithAbort(
+        () => runListAgents(runtime, message, state, params, content, callback),
+        abortSignal,
+      );
     case "cancel":
       return runCancel(runtime, message, state, params, content, callback);
     case "history":
-      return runHistory(runtime, message, state, params, content, callback);
+      return awaitReadOnlyWithAbort(
+        () => runHistory(runtime, message, state, params, content, callback),
+        abortSignal,
+      );
     case "control":
       return runControl(runtime, message, state, params, content, callback);
     case "share":
-      return runShare(runtime, message, state, params, content, callback);
+      return awaitReadOnlyWithAbort(
+        () => runShare(runtime, message, state, params, content, callback),
+        abortSignal,
+      );
     case "provision_workspace":
       return runProvisionWorkspace(
         runtime,
@@ -4665,6 +4701,13 @@ async function dispatchTasksOperation(
         callback,
       );
     case "manage_issues":
+      if (isIssueReadOperation(action, params, content)) {
+        return awaitReadOnlyWithAbort(
+          () =>
+            runManageIssues(runtime, message, state, params, content, callback),
+          abortSignal,
+        );
+      }
       return runManageIssues(
         runtime,
         message,
@@ -5312,6 +5355,7 @@ export const tasksAction: Action & {
     callback?: HandlerCallback,
   ): Promise<ActionResult | undefined> => {
     const params = paramsRecord(options as HandlerOptionsLike | undefined);
+    const abortSignal = options?.abortSignal;
     const content = contentRecord(message);
     const action = readOp(params) ?? "create";
     const capturedCallbacks: CapturedCallback[] = [];
@@ -5329,6 +5373,7 @@ export const tasksAction: Action & {
       params,
       content,
       captureCallback,
+      abortSignal,
     );
     return settleTasksOperation({
       operation: action,

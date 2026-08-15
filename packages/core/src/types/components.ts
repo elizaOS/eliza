@@ -1053,6 +1053,17 @@ export interface HandlerOptions {
 	onStreamChunk?: StreamChunkCallback;
 
 	/**
+	 * Turn-owned cancellation signal for interruptible action work.
+	 *
+	 * Read-only handlers should stop waiting promptly when this signal aborts.
+	 * Mutating handlers must check it before their external commit boundary. Once
+	 * a commit has begun, they must settle that operation and return its truthful
+	 * result/effect receipt rather than converting a completed effect into an
+	 * abort failure that a caller could retry.
+	 */
+	abortSignal?: AbortSignal;
+
+	/**
 	 * Validated input parameters extracted from the conversation.
 	 * Only present when the action defines parameters and they were successfully extracted.
 	 *

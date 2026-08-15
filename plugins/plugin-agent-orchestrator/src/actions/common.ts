@@ -360,8 +360,54 @@ export function newestSession(
 
 export async function listSessionsWithin(
   service: AcpActionService,
+  signal?: AbortSignal,
 ): Promise<SessionInfo[]> {
-  return Promise.resolve(service.listSessions());
+  return awaitReadOnlyWithAbort(() => service.listSessions(), signal);
+}
+
+/**
+ * Release a cancelled read caller without leaving a rejected detached promise
+ * unobserved. The underlying read is intentionally not force-cancelled: service
+ * implementations that can cancel I/O should also observe the same signal.
+ */
+export async function awaitReadOnlyWithAbort<T>(
+  read: () => T | PromiseLike<T>,
+  signal?: AbortSignal,
+): Promise<T> {
+  signal?.throwIfAborted();
+  const work = Promise.resolve().then(() => {
+    signal?.throwIfAborted();
+    return read();
+  });
+  if (!signal) return work;
+
+  let onAbort: (() => void) | undefined;
+  const aborted = new Promise<never>((_resolve, reject) => {
+    onAbort = () => {
+      reject(signal.reason ?? new Error("Action execution aborted"));
+    };
+    signal.addEventListener("abort", onAbort, { once: true });
+  });
+  return Promise.race([work, aborted]).finally(() => {
+    if (onAbort) signal.removeEventListener("abort", onAbort);
+  });
+}
+
+function waitForDelay(ms: number, signal?: AbortSignal): Promise<void> {
+  signal?.throwIfAborted();
+  return new Promise<void>((resolve, reject) => {
+    let onAbort: (() => void) | undefined;
+    const timer = setTimeout(() => {
+      if (onAbort && signal) signal.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+    if (!signal) return;
+    onAbort = () => {
+      clearTimeout(timer);
+      reject(signal.reason ?? new Error("Action execution aborted"));
+    };
+    signal.addEventListener("abort", onAbort, { once: true });
+  });
 }
 
 /**
@@ -387,8 +433,9 @@ export async function listSessionsWithin(
 export async function waitForSpawnSlot(
   runtime: IAgentRuntime,
   service: AcpActionService,
-  opts: { maxWaitMs?: number; pollMs?: number } = {},
+  opts: { maxWaitMs?: number; pollMs?: number; signal?: AbortSignal } = {},
 ): Promise<void> {
+  opts.signal?.throwIfAborted();
   const limitRaw =
     (typeof runtime.getSetting === "function"
       ? (runtime.getSetting("ELIZA_MAX_CONCURRENT_SPAWNS") as
@@ -403,11 +450,14 @@ export async function waitForSpawnSlot(
   while (Date.now() - startedAt < maxWaitMs) {
     let active = 0;
     try {
-      const sessions = await listSessionsWithin(service);
+      const sessions = await listSessionsWithin(service, opts.signal);
       active = sessions.filter(
         (s) => !TERMINAL_SESSION_STATUSES.has(String(s.status)),
       ).length;
-    } catch {
+    } catch (error) {
+      if (opts.signal?.aborted) {
+        throw opts.signal.reason ?? error;
+      }
       // error-policy:J4 session-state read failed → fail-open (don't block the spawn); no data fabricated
       // If we can't read session state, don't block the spawn.
       return;
@@ -416,7 +466,7 @@ export async function waitForSpawnSlot(
     logger(runtime).debug(
       `[spawn-gate] ${active} sub-agent session(s) active (limit=${limit}); waiting for a slot`,
     );
-    await new Promise((resolve) => setTimeout(resolve, pollMs));
+    await waitForDelay(pollMs, opts.signal);
   }
   logger(runtime).warn(
     `[spawn-gate] still over the concurrency limit after ${Math.round(maxWaitMs / 1000)}s; proceeding anyway`,
