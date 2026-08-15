@@ -33,7 +33,11 @@ const DELIVERY_RECEIPT_TTL_SECONDS = 14 * 24 * 60 * 60;
 
 type DeliveryReceipt =
   | { state: "indeterminate" }
-  | { state: "complete"; providerMessageIds: string[] };
+  | {
+      state: "complete";
+      acceptedAt?: string;
+      providerMessageIds: string[];
+    };
 
 function parseReceipt(value: string | null): DeliveryReceipt | undefined {
   if (value === "complete")
@@ -54,11 +58,16 @@ function parseReceipt(value: string | null): DeliveryReceipt | undefined {
     ) {
       return {
         state: "complete",
+        ...(typeof parsed.acceptedAt === "string" &&
+        Number.isFinite(Date.parse(parsed.acceptedAt))
+          ? { acceptedAt: parsed.acceptedAt }
+          : {}),
         providerMessageIds: parsed.providerMessageIds as string[],
       };
     }
   } catch {
     // error-policy:J3 malformed Redis state is not accepted as a delivery receipt.
+    return undefined;
   }
   return undefined;
 }
@@ -132,10 +141,12 @@ export async function deliverInternalMessage(
   const existingValue = await dependencies.redis.get<string>(dedupeKey);
   const existing = parseReceipt(existingValue);
   if (existing?.state === "complete") {
+    const acceptedAt = existing.acceptedAt ?? new Date().toISOString();
     return Response.json({
       success: true,
       replayed: true,
       idempotencyKey: delivery.idempotencyKey,
+      acceptedAt,
       providerMessageIds: existing.providerMessageIds,
     });
   }
@@ -219,15 +230,19 @@ export async function deliverInternalMessage(
       event,
       delivery.text,
     );
+    if (receipt.providerMessageIds.length === 0) {
+      throw new Error("Connector accepted delivery without a provider receipt");
+    }
+    const acceptedAt = new Date().toISOString();
     await dependencies.redis.set(
       dedupeKey,
       JSON.stringify({
         state: "complete",
+        acceptedAt,
         providerMessageIds: receipt.providerMessageIds,
       } satisfies DeliveryReceipt),
       { ex: DELIVERY_RECEIPT_TTL_SECONDS },
     );
-    const acceptedAt = new Date().toISOString();
     logger.info("Shared reminder delivered", {
       project: delivery.project,
       platform: delivery.platform,

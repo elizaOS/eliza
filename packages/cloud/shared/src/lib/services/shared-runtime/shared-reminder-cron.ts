@@ -33,6 +33,28 @@ function discordGatewayBaseUrl(env: Bindings): string {
   return value.replace(/\/+$/, "");
 }
 
+type GatewayDeliveryResponse = {
+  success?: unknown;
+  acceptedAt?: unknown;
+  acceptance?: unknown;
+  acceptanceUnknown?: unknown;
+  idempotencyKey?: unknown;
+  providerMessageIds?: unknown;
+  retryable?: unknown;
+};
+
+async function readGatewayDeliveryResponse(
+  response: Response,
+): Promise<GatewayDeliveryResponse | undefined> {
+  try {
+    const value = await response.json();
+    return value && typeof value === "object" ? (value as GatewayDeliveryResponse) : undefined;
+  } catch {
+    // error-policy:J3 an unreadable connector response is never accepted.
+    return undefined;
+  }
+}
+
 export function sharedReminderDispatcher(env: Bindings): ScheduledTaskDispatcher {
   const secret = env.GATEWAY_INTERNAL_SECRET;
   if (!secret) {
@@ -69,6 +91,7 @@ export function sharedReminderDispatcher(env: Bindings): ScheduledTaskDispatcher
           message: error instanceof Error ? error.message : String(error),
         };
       }
+      const result = await readGatewayDeliveryResponse(response);
       if (response.status === 409 || response.status === 429) {
         return {
           ok: false,
@@ -87,28 +110,60 @@ export function sharedReminderDispatcher(env: Bindings): ScheduledTaskDispatcher
         };
       }
       if (!response.ok) {
+        if (result?.acceptance === "not_accepted" && result.retryable === true) {
+          const retryAfterSeconds = Number(response.headers.get("Retry-After") ?? "60");
+          return {
+            ok: false,
+            reason: "rate_limited",
+            retryAfterMinutes:
+              Number.isFinite(retryAfterSeconds) && retryAfterSeconds > 0
+                ? Math.max(1, Math.ceil(retryAfterSeconds / 60))
+                : 1,
+            userActionable: false,
+            acceptance: "not_accepted",
+          };
+        }
         return {
           ok: false,
           reason: "transport_error",
           userActionable: false,
-          acceptance: response.status >= 500 ? "unknown" : "not_accepted",
+          acceptance: result?.acceptance === "not_accepted" ? "not_accepted" : "unknown",
         };
       }
-      const result = (await response.json()) as {
-        acceptedAt?: unknown;
-        acceptanceUnknown?: unknown;
-        idempotencyKey?: unknown;
-        providerMessageIds?: unknown;
-      };
-      const acceptedAt =
-        typeof result.acceptedAt === "string" ? result.acceptedAt : new Date().toISOString();
-      if (result.acceptanceUnknown === true) {
+      if (
+        response.status === 202 ||
+        result?.acceptanceUnknown === true ||
+        result?.acceptance === "unknown"
+      ) {
         return {
           ok: false,
           reason: "transport_error",
           userActionable: true,
           acceptance: "unknown",
           message: "Reminder delivery could not be confirmed; it was not recorded as fired.",
+        };
+      }
+      const acceptedAt =
+        typeof result?.acceptedAt === "string" && Number.isFinite(Date.parse(result.acceptedAt))
+          ? result.acceptedAt
+          : undefined;
+      const providerMessageIds = Array.isArray(result?.providerMessageIds)
+        ? result.providerMessageIds.filter(
+            (id): id is string => typeof id === "string" && id.length > 0,
+          )
+        : [];
+      if (
+        result?.success !== true ||
+        result.idempotencyKey !== idempotencyKey ||
+        !acceptedAt ||
+        providerMessageIds.length === 0
+      ) {
+        return {
+          ok: false,
+          reason: "transport_error",
+          userActionable: true,
+          acceptance: "unknown",
+          message: "Reminder delivery returned no verifiable provider receipt.",
         };
       }
       return {
@@ -123,10 +178,8 @@ export function sharedReminderDispatcher(env: Bindings): ScheduledTaskDispatcher
         metadata: {
           idempotencyKey,
           acceptedAt,
-          acceptanceUnknown: result.acceptanceUnknown === true,
-          providerMessageIds: Array.isArray(result.providerMessageIds)
-            ? result.providerMessageIds.filter((id): id is string => typeof id === "string")
-            : [],
+          acceptanceUnknown: false,
+          providerMessageIds,
         },
       };
     },
