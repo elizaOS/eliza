@@ -86,6 +86,11 @@ export const LEGACY_DASHBOARD_REDIRECTS: ReadonlyArray<{
   { from: "dashboard/containers", to: "/cloud/agents" },
   { from: "dashboard/containers/:id", to: "/cloud/agents/:id" },
   { from: "dashboard/containers/agents/:id", to: "/cloud/agents/:id" },
+  // Agent list + detail moved with the consolidation; the edge middleware
+  // covers production domains, these cover in-app and self-hosted navigations
+  // (the same dual coverage containers/:id already has).
+  { from: "dashboard/agents", to: "/cloud/agents" },
+  { from: "dashboard/agents/:id", to: "/cloud/agents/:id" },
   // Real chat lives in the app, not the dashboard; old chat deep links
   // redirect back to the agent detail page.
   { from: "dashboard/agents/:id/chat", to: "/cloud/agents/:id" },
