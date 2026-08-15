@@ -338,7 +338,7 @@ EXECUTE FUNCTION advance_agent_sandbox_lifecycle_revision()`,
 )`,
   `CREATE SCHEMA IF NOT EXISTS "app_scheduling"`,
   `CREATE TABLE IF NOT EXISTS "app_scheduling"."life_scheduled_tasks" (
-  "id" text PRIMARY KEY NOT NULL,
+  "id" text NOT NULL,
   "agent_id" text NOT NULL,
   "kind" text NOT NULL,
   "prompt_instructions" text NOT NULL,
@@ -368,6 +368,8 @@ EXECUTE FUNCTION advance_agent_sandbox_lifecycle_revision()`,
   "next_fire_at" timestamptz,
   "created_at" text NOT NULL,
   "updated_at" text NOT NULL
+,
+  PRIMARY KEY ("agent_id", "id")
 )`,
 ];
 

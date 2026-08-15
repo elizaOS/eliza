@@ -11,6 +11,7 @@ import {
   index,
   integer,
   pgSchema,
+  primaryKey,
   text,
   timestamp,
   unique,
@@ -21,7 +22,10 @@ export const appSchedulingPgSchema = pgSchema("app_scheduling");
 export const lifeScheduledTasks = appSchedulingPgSchema.table(
   "life_scheduled_tasks",
   {
-    id: text("id").primaryKey(),
+    // Composite primary authority with agent_id (below): task ids are
+    // caller-controlled (imports), so a global PK would let one tenant's
+    // imported id collide with and overwrite another tenant's row.
+    id: text("id").notNull(),
     agentId: text("agent_id").notNull(),
     kind: text("kind").notNull(),
     promptInstructions: text("prompt_instructions").notNull(),
@@ -55,6 +59,7 @@ export const lifeScheduledTasks = appSchedulingPgSchema.table(
     updatedAt: text("updated_at").notNull(),
   },
   (t) => [
+    primaryKey({ columns: [t.agentId, t.id] }),
     unique().on(t.agentId, t.idempotencyKey),
     index("idx_scheduling_tasks_agent_kind").on(t.agentId, t.kind),
     index("idx_scheduling_tasks_subject").on(

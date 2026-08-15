@@ -24,6 +24,7 @@ import {
   createSchedulingSqlScheduledTaskStore,
   listDueScheduledTaskRefs,
 } from "./store.js";
+import type { ScheduledTask } from "./types.js";
 
 type RawSqlQuery = {
   queryChunks: Array<{ value?: unknown }>;
@@ -293,6 +294,103 @@ describe("scheduling SQL persistence", () => {
           prompt_instructions: "target reminder",
         },
       ]);
+    },
+    SQL_PERSISTENCE_TEST_TIMEOUT_MS,
+  );
+
+  it(
+    "refuses cross-tenant overwrite when an imported id collides with another agent's task",
+    async () => {
+      // Tenant-integrity authority (#19811 review): task ids are
+      // caller-controlled through the shared-cutover import path, and the
+      // store's upsert used to resolve conflicts on the GLOBAL id, so an
+      // attacker importing a victim's task id overwrote the victim's row
+      // while keeping the victim's agent identity - injected work that would
+      // execute and deliver as the victim. With (agent_id, id) as primary
+      // authority both tenants keep independent rows.
+      const harness = await createRuntimeHarness();
+      harnesses.push(harness);
+      const executeSql = async (sql: string) =>
+        (await harness.pg.query<Record<string, unknown>>(sql)).rows;
+      const victimStore = createSchedulingSqlScheduledTaskStore({
+        agentId: "personal:victim",
+        executeSql,
+      });
+      const attackerStore = createSchedulingSqlScheduledTaskStore({
+        agentId: "personal:attacker",
+        executeSql,
+      });
+      const baseTask = {
+        taskId: "shared-task-id",
+        kind: "reminder",
+        promptInstructions: "victim's reminder",
+        trigger: { type: "once", atIso: "2026-07-17T09:00:00.000Z" },
+        priority: "medium",
+        respectsGlobalPause: true,
+        state: { status: "scheduled", firedAt: null },
+        source: "user_chat",
+        createdBy: "victim-user",
+        ownerVisible: true,
+        metadata: {},
+      } as unknown as ScheduledTask;
+      await victimStore.upsert(baseTask, {
+        nextFireAtIso: "2026-07-17T09:00:00.000Z",
+      });
+
+      // The attacker's agent-scoped lookup cannot see the victim's row - the
+      // exact precondition of the import path - and then writes the same id.
+      await expect(attackerStore.get("shared-task-id")).resolves.toBeNull();
+      const attackerTask = {
+        ...baseTask,
+        promptInstructions: "attacker payload",
+        createdBy: "attacker-user",
+      } as unknown as ScheduledTask;
+      await attackerStore.upsert(attackerTask, {
+        nextFireAtIso: "2026-07-17T09:00:00.000Z",
+      });
+
+      // Neither overwrite...
+      const rows = await harness.pg.query<{
+        agent_id: string;
+        prompt_instructions: string;
+        created_by: string;
+      }>(
+        `SELECT agent_id, prompt_instructions, created_by
+           FROM app_scheduling.life_scheduled_tasks
+          WHERE id = 'shared-task-id'
+          ORDER BY agent_id`,
+      );
+      expect(rows.rows).toEqual([
+        {
+          agent_id: "personal:attacker",
+          prompt_instructions: "attacker payload",
+          created_by: "attacker-user",
+        },
+        {
+          agent_id: "personal:victim",
+          prompt_instructions: "victim's reminder",
+          created_by: "victim-user",
+        },
+      ]);
+
+      // ...nor cross-agent execution: each agent's store claims only its own
+      // row, and the due scan yields one ref per tenant.
+      const due = await listDueScheduledTaskRefs(executeSql, {
+        dueAtIso: "2026-07-17T09:00:00.000Z",
+      });
+      expect(due).toEqual([
+        { agentId: "personal:attacker", taskId: "shared-task-id" },
+        { agentId: "personal:victim", taskId: "shared-task-id" },
+      ]);
+      const victimClaim = await victimStore.claimForFire({
+        taskId: "shared-task-id",
+        firedAtIso: "2026-07-17T09:00:00.000Z",
+      });
+      expect(victimClaim.kind).toBe("fired");
+      const victimRow = await victimStore.get("shared-task-id");
+      expect(victimRow?.promptInstructions).toBe("victim's reminder");
+      const attackerRow = await attackerStore.get("shared-task-id");
+      expect(attackerRow?.state.status).toBe("scheduled");
     },
     SQL_PERSISTENCE_TEST_TIMEOUT_MS,
   );
