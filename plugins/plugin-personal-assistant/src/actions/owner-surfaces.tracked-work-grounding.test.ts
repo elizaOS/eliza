@@ -1,14 +1,4 @@
-/**
- * Contract test pinning the owner-surface umbrellas as grounded tracked-work
- * readers. The core planned-reply egress guard only lets an "empty tracked
- * state" reply through when the authoring action carries both
- * `resource:tracked-work` and `capability:read`; without the pair a verified
- * OWNER_TODOS "nothing on the list." review is replaced with a canned
- * inability message. Every owner record umbrella in owner-surfaces.ts takes
- * its tags from OWNER_OPERATION_TAGS (by reference or spread), so the shared
- * array is the single contract surface. Deterministic — asserts exported
- * metadata only.
- */
+/** Pins mixed owner surfaces to the tracked-work egress contract. */
 import { describe, expect, it, vi } from "vitest";
 import { OWNER_OPERATION_TAGS } from "./life.js";
 
@@ -22,8 +12,11 @@ vi.mock("../lifeops/service.js", () => {
 });
 
 describe("owner-surface tracked-work grounding tags", () => {
-  it("declares the shared owner-operation tag set as a grounded tracked-work reader", () => {
+  it("declares both tracked-work read and mutation capabilities", () => {
     expect(OWNER_OPERATION_TAGS).toContain("resource:tracked-work");
     expect(OWNER_OPERATION_TAGS).toContain("capability:read");
+    expect(OWNER_OPERATION_TAGS).toContain("capability:write");
+    expect(OWNER_OPERATION_TAGS).toContain("capability:update");
+    expect(OWNER_OPERATION_TAGS).toContain("capability:delete");
   });
 });

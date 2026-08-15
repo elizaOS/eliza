@@ -3186,6 +3186,18 @@ export const OWNER_OPERATION_TAGS: string[] = [
   "surface:internal",
 ];
 
+const EMPTY_TRACKED_STATE_CLAIM_GROUNDING = ["empty_tracked_state"] as const;
+
+function ownerOverviewIsEmpty(overview: {
+  owner: { goals: unknown[]; occurrences: unknown[]; reminders: unknown[] };
+}): boolean {
+  return (
+    overview.owner.goals.length === 0 &&
+    overview.owner.occurrences.length === 0 &&
+    overview.owner.reminders.length === 0
+  );
+}
+
 // "productivity" is deliberate: Stage-1 routinely tags habit/reminder-shaped
 // asks with the productivity context (a child of tasks). Retrieval uses
 // selected contexts as a +0.3 weight, and the tier narrow only keeps parents
@@ -4110,7 +4122,13 @@ async function runLifeOperationHandlerInner(
             .map((goal) => goal.title),
         },
       }),
-      data: toActionData(overview),
+      data: toActionData({
+        ...overview,
+        actionName: ownerSurfaceActionName,
+        ...(ownerOverviewIsEmpty(overview)
+          ? { claimGrounding: EMPTY_TRACKED_STATE_CLAIM_GROUNDING }
+          : {}),
+      }),
     };
   }
   // Internal handler dispatch key (definition vs goal split lives here).
@@ -5683,6 +5701,7 @@ async function runLifeOperationHandlerInner(
           }),
           data: toActionData({
             actionName: ownerSurfaceActionName,
+            claimGrounding: EMPTY_TRACKED_STATE_CLAIM_GROUNDING,
             definitions: [],
           }),
         };
@@ -5746,7 +5765,11 @@ async function runLifeOperationHandlerInner(
                   .map((goal) => goal.title),
               },
             }),
-            data: toActionData(overview),
+            data: toActionData({
+              ...overview,
+              actionName: ownerSurfaceActionName,
+              claimGrounding: EMPTY_TRACKED_STATE_CLAIM_GROUNDING,
+            }),
           };
         }
         const fallback = formatWeeklyGoalReview(weeklyReview);

@@ -3710,7 +3710,21 @@ export function plannedReplyHasClaimGroundingReceipt(args: {
 			(action.tags ?? []).map((tag) => tag.trim().toLowerCase()),
 		);
 		if (args.kind === "empty_tracked_state") {
-			return tags.has("resource:tracked-work") && tags.has("capability:read");
+			if (!tags.has("resource:tracked-work") || !tags.has("capability:read")) {
+				return false;
+			}
+			const isMixedMutationSurface = [
+				"capability:write",
+				"capability:update",
+				"capability:delete",
+				"capability:schedule",
+			].some((tag) => tags.has(tag));
+			if (!isMixedMutationSurface) return true;
+			const claimGrounding = result.data?.claimGrounding;
+			return (
+				Array.isArray(claimGrounding) &&
+				claimGrounding.includes("empty_tracked_state")
+			);
 		}
 		return false;
 	});
