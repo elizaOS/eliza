@@ -375,3 +375,95 @@ describe("personalityAction — audit trail", () => {
 		expect(meta.personalityScope).toBe("user");
 	});
 });
+
+describe("personalityAction — authorization floors (blast radius, not op name)", () => {
+	test("a plain user personalises their own slot but cannot reconfigure the agent-wide one", async () => {
+		const fake = makeFakeRuntime();
+		await initStore(fake);
+
+		const own = await run(fake, "be terse with me", "set_trait", {
+			scope: "user",
+			trait: "verbosity",
+			value: "terse",
+		});
+		expect(own.result.success).toBe(true);
+
+		const global = await run(fake, "be terse with everyone", "set_trait", {
+			scope: "global",
+			trait: "verbosity",
+			value: "terse",
+		});
+		expect(global.result.success).toBe(false);
+		expect(global.result.values?.error).toBe("PERMISSION_DENIED");
+		expect(global.result.data).toMatchObject({
+			reach: "agent_wide",
+			requiredRole: "OWNER",
+		});
+		// The refusal changed nothing: the agent-wide slot is untouched.
+		expect(fake.store.getSlot(GLOBAL_PERSONALITY_SCOPE).verbosity).toBeNull();
+	});
+
+	test("a plain user cannot even inspect the agent-wide state", async () => {
+		const fake = makeFakeRuntime();
+		await initStore(fake);
+		const { result } = await run(fake, "show global settings", "show_state", {
+			scope: "global",
+		});
+		expect(result.success).toBe(false);
+		expect(result.data).toMatchObject({
+			reach: "agent_wide",
+			requiredRole: "ADMIN",
+		});
+	});
+
+	test("an admin may inspect agent-wide state but not reconfigure it", async () => {
+		const fake = makeFakeRuntime({ admins: [TEST_SENDER] });
+		await initStore(fake);
+
+		const inspect = await run(fake, "show global settings", "show_state", {
+			scope: "global",
+		});
+		expect(inspect.result.success).toBe(true);
+
+		const mutate = await run(fake, "everyone gets emojis", "set_trait", {
+			scope: "global",
+			trait: "tone",
+			value: "playful",
+		});
+		expect(mutate.result.success).toBe(false);
+		expect(mutate.result.data).toMatchObject({
+			reach: "agent_wide",
+			requiredRole: "OWNER",
+		});
+		expect(fake.store.getSlot(GLOBAL_PERSONALITY_SCOPE).tone).toBeNull();
+	});
+
+	test("load_profile is an agent-wide reconfiguration whatever its spelling", async () => {
+		// load_profile takes no scope parameter, yet it rewrites the agent-wide
+		// slot — the case an op-name allowlist misses and the shape table catches.
+		const fake = makeFakeRuntime({ admins: [TEST_SENDER] });
+		await initStore(fake);
+		const { result } = await run(fake, "load the weekend vibe", "load_profile", {
+			name: "weekend",
+		});
+		expect(result.success).toBe(false);
+		expect(result.data).toMatchObject({
+			reach: "agent_wide",
+			requiredRole: "OWNER",
+		});
+	});
+
+	test("the owner clears the agent-wide floor", async () => {
+		const fake = makeFakeRuntime({ owner: TEST_SENDER });
+		await initStore(fake);
+		const { result } = await run(fake, "be terse with everyone", "set_trait", {
+			scope: "global",
+			trait: "verbosity",
+			value: "terse",
+		});
+		expect(result.success).toBe(true);
+		expect(fake.store.getSlot(GLOBAL_PERSONALITY_SCOPE).verbosity).toBe(
+			"terse",
+		);
+	});
+});

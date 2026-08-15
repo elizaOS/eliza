@@ -9,13 +9,20 @@
  * Every trait/gate/directive op requires an explicit scope — "user" (the
  * requesting entity's slot) or "global" (the agent-wide slot) — with no
  * auto-inference: an ambiguous request returns a clarification rather than
- * guessing. Global mutations and profile load/save are admin/owner-gated via
- * hasRoleAccess. The slots written here are injected back into prompts by the
- * user-personality provider and enforced by the reply-gate and verbosity
- * helpers of the same capability.
+ * guessing, because the only default wide enough to satisfy every phrasing is
+ * the agent-wide one and defaulting a blast radius upward is itself a defect.
+ *
+ * Authorization is layered the way CHARACTER's is. The declared `roleGate` is
+ * the coarse USER floor `canActionRun` applies before the handler runs, keeping
+ * an unresolved stranger out while leaving ordinary per-user personalisation
+ * open. PERSONALITY_ACCESS_FLOOR then holds the finer requirement the handler
+ * enforces, derived from what an operation reaches and whether it reconfigures
+ * behaviour rather than from the operation's name. The slots written here are
+ * injected back into prompts by the user-personality provider and enforced by
+ * the reply-gate and verbosity helpers of the same capability.
  */
 import { logger } from "../../../../logger.ts";
-import { hasRoleAccess } from "../../../../roles.ts";
+import { hasRoleAccess, type RoleName } from "../../../../roles.ts";
 import type {
 	Action,
 	ActionExample,
@@ -65,15 +72,68 @@ const PERSONALITY_OPS = [
 ] as const;
 type PersonalityOp = (typeof PERSONALITY_OPS)[number];
 
-const ADMIN_REQUIRED_GLOBAL_OPS = new Set<PersonalityOp>([
-	"set_trait",
-	"clear_trait",
-	"set_reply_gate",
-	"lift_reply_gate",
-	"clear_directives",
-]);
+/** Whose experience an operation governs. */
+type PersonalityReach = "requester" | "agent_wide";
 
-const ADMIN_ONLY_OPS = new Set<PersonalityOp>(["load_profile", "save_profile"]);
+/** Whether an operation changes how the agent behaves or only inspects it. */
+type PersonalityEffect = "inspect" | "reconfigure";
+
+/**
+ * The authorization shape of every operation. `reach: "scoped"` means the reach
+ * is whatever scope the request resolves to; the rest carry no scope parameter
+ * and so have a fixed reach. `load_profile` is the case that shape catches and
+ * an op-name list does not: it takes no scope yet writes the agent-wide slot, so
+ * it is an agent-wide reconfiguration however it is spelled. `save_profile`
+ * files a copy of that slot without changing behaviour, so it sits with the
+ * agent-wide inspections.
+ */
+const PERSONALITY_OP_SHAPE: Record<
+	PersonalityOp,
+	{ effect: PersonalityEffect; reach: PersonalityReach | "scoped" }
+> = {
+	set_trait: { effect: "reconfigure", reach: "scoped" },
+	clear_trait: { effect: "reconfigure", reach: "scoped" },
+	set_reply_gate: { effect: "reconfigure", reach: "scoped" },
+	lift_reply_gate: { effect: "reconfigure", reach: "scoped" },
+	add_directive: { effect: "reconfigure", reach: "scoped" },
+	clear_directives: { effect: "reconfigure", reach: "scoped" },
+	show_state: { effect: "inspect", reach: "scoped" },
+	load_profile: { effect: "reconfigure", reach: "agent_wide" },
+	save_profile: { effect: "inspect", reach: "agent_wide" },
+	list_profiles: { effect: "inspect", reach: "requester" },
+};
+
+/**
+ * Minimum role per (effect, reach) — the authority a personality operation
+ * requires, decided by its blast radius so a new operation inherits a floor
+ * instead of needing another entry in a hand-maintained privileged-op list.
+ *
+ * Reconfiguring the agent-wide slot rewrites the persona every user inherits and
+ * outlives the turn, so it sits at the OWNER floor this codebase already uses
+ * for persistent self-configuration (CHARACTER's `update_identity`, SETTINGS,
+ * MODEL_SWITCH, AGENT_SWITCH, APP). Inspecting agent-wide state also exposes the
+ * cross-user audit tail, so it stays above the ordinary floor. Anything reaching
+ * only the requester's own slot is ordinary personalisation and stays at the
+ * action's declared USER floor.
+ */
+const PERSONALITY_ACCESS_FLOOR: Record<
+	PersonalityEffect,
+	Record<PersonalityReach, RoleName>
+> = {
+	inspect: { requester: "USER", agent_wide: "ADMIN" },
+	reconfigure: { requester: "USER", agent_wide: "OWNER" },
+};
+
+/**
+ * Refusal wording keyed by the same shape as the floor, so an operation cannot
+ * ship with a missing or stale per-op message.
+ */
+const PERSONALITY_DENY_MESSAGE: Record<PersonalityEffect, string> = {
+	inspect:
+		"The personality settings that apply to everyone are admin-only — ask an admin or the owner.",
+	reconfigure:
+		"Changing how I behave for everyone is owner-only. I can change it just for you instead.",
+};
 
 interface PersonalityParameters {
 	op?: string;
@@ -101,6 +161,22 @@ function isPersonalityOp(value: unknown): value is PersonalityOp {
 
 function isPersonalityScope(value: unknown): value is PersonalityScope {
 	return value === "user" || value === "global";
+}
+
+/**
+ * The reach an operation actually has on this turn. Scoped operations take it
+ * from the resolved scope, so the authority required tracks what will really be
+ * written rather than which operation name was chosen.
+ */
+function resolveReach(
+	op: PersonalityOp,
+	scope: PersonalityScope | null,
+): PersonalityReach {
+	const { reach } = PERSONALITY_OP_SHAPE[op];
+	if (reach !== "scoped") {
+		return reach;
+	}
+	return scope === "global" ? "agent_wide" : "requester";
 }
 
 function getStoreOrError(
@@ -163,12 +239,23 @@ async function recordAuditMemory(
 	}
 }
 
-function denyResult(op: PersonalityOp, message: string): ActionResult {
+function denyResult(
+	op: PersonalityOp,
+	message: string,
+	requirement: { reach: PersonalityReach; requiredRole: RoleName },
+): ActionResult {
 	return {
 		text: message,
 		success: false,
 		values: { error: "PERMISSION_DENIED" },
-		data: { action: "PERSONALITY", op },
+		// The refused blast radius and the floor it missed are machine detail for
+		// the planner and the audit reader; the spoken line stays human (#17923).
+		data: {
+			action: "PERSONALITY",
+			op,
+			reach: requirement.reach,
+			requiredRole: requirement.requiredRole,
+		},
 	};
 }
 
@@ -225,6 +312,10 @@ function summarizeSlot(slot: PersonalitySlot): string {
 export const personalityAction: Action = {
 	name: "PERSONALITY",
 	contexts: ["settings", "agent_internal", "media", "admin", "general"],
+	// Coarse floor: personalising the agent for yourself is ordinary user
+	// territory, but an unresolved sender (GUEST) has no personality to set.
+	// The per-reach requirements live in PERSONALITY_ACCESS_FLOOR.
+	roleGate: { minRole: "USER" },
 	similes: [
 		"SET_PERSONALITY",
 		"CHANGE_TONE",
@@ -239,7 +330,7 @@ export const personalityAction: Action = {
 		"BE_COLDER",
 	],
 	description:
-		"Manage personality preferences. Subactions: set_trait | clear_trait | set_reply_gate | lift_reply_gate | add_directive | clear_directives | load_profile | save_profile | list_profiles | show_state. Scope is REQUIRED for trait/gate/directive changes — 'user' affects only the requesting user, 'global' affects all users (admin only).",
+		"Manage personality preferences. Subactions: set_trait | clear_trait | set_reply_gate | lift_reply_gate | add_directive | clear_directives | load_profile | save_profile | list_profiles | show_state. Scope is REQUIRED for trait/gate/directive changes — 'user' affects only the requesting user, 'global' permanently changes the agent for everyone and is owner-only. Never guess 'global': when the request does not say which one, omit scope and the action will ask.",
 	suppressPostActionContinuation: true,
 	parameters: [
 		{
@@ -257,7 +348,7 @@ export const personalityAction: Action = {
 		{
 			name: "scope",
 			description:
-				"Required for set_trait/clear_trait/set_reply_gate/lift_reply_gate/add_directive/clear_directives/show_state. Use 'user' for the requesting user's slot, or 'global' for the agent-wide slot (admin only).",
+				"Required for set_trait/clear_trait/set_reply_gate/lift_reply_gate/add_directive/clear_directives/show_state. Use 'user' for the requesting user's slot. Use 'global' ONLY when the request explicitly says it applies to everyone — it rewrites the agent-wide slot for all users and requires the owner. Omit it when the request is ambiguous.",
 			required: false,
 			schema: { type: "string", enum: [...SCOPE_VALUES] },
 		},
@@ -352,42 +443,31 @@ export const personalityAction: Action = {
 		}
 		const store = storeOrError;
 
-		const isAdmin = await hasRoleAccess(runtime, message, "ADMIN");
-
-		// Admin-only ops gate first
-		if (ADMIN_ONLY_OPS.has(op) && !isAdmin) {
-			return denyResult(
-				op,
-				"Only admins or the owner can manage saved personality profiles.",
-			);
-		}
-
 		const scope: PersonalityScope | null = isPersonalityScope(params.scope)
 			? params.scope
 			: null;
 
-		// Ops that need scope: enforce explicit scope (NO auto-inference) — an
-		// ambiguous request is clarified, never silently resolved to a default.
-		const needsScope: ReadonlySet<PersonalityOp> = new Set<PersonalityOp>([
-			"set_trait",
-			"clear_trait",
-			"set_reply_gate",
-			"lift_reply_gate",
-			"add_directive",
-			"clear_directives",
-			"show_state",
-		]);
-		if (needsScope.has(op) && !scope) {
+		// Scoped ops require an explicit, recognized scope (NO auto-inference) — an
+		// ambiguous or unrecognized scope is clarified, never resolved to a default.
+		if (PERSONALITY_OP_SHAPE[op].reach === "scoped" && !scope) {
 			const result = clarifyScopeResult(op);
 			await callback?.({ text: result.text, thought: "Ambiguous scope" });
 			return result;
 		}
 
-		if (scope === "global" && ADMIN_REQUIRED_GLOBAL_OPS.has(op) && !isAdmin) {
-			return denyResult(
-				op,
-				`Permission denied: only admins or the owner may change the global personality.`,
-			);
+		// One gate for every op, keyed on what this turn actually reaches. The
+		// scope is chosen by the planner from prose, so it may not exceed the
+		// sender's own authority: an under-privileged agent-wide request is
+		// refused here rather than downgraded, so no persistent agent-wide change
+		// is ever acknowledged that did not clear the floor.
+		const effect = PERSONALITY_OP_SHAPE[op].effect;
+		const reach = resolveReach(op, scope);
+		const requiredRole = PERSONALITY_ACCESS_FLOOR[effect][reach];
+		if (!(await hasRoleAccess(runtime, message, requiredRole))) {
+			return denyResult(op, PERSONALITY_DENY_MESSAGE[effect], {
+				reach,
+				requiredRole,
+			});
 		}
 
 		const userId = message.entityId as UUID;

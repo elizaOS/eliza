@@ -59,6 +59,7 @@ export function makeFakeRuntime(options: FakeRuntimeOptions = {}): FakeRuntime {
 	const agentId = options.agentId ?? nextUuid();
 	const owner = options.owner ?? null;
 	const admins = new Set<UUID>(options.admins ?? []);
+	const worldId = nextUuid();
 
 	const character: Character = {
 		name: "TestAgent",
@@ -147,16 +148,39 @@ export function makeFakeRuntime(options: FakeRuntimeOptions = {}): FakeRuntime {
 				);
 			}
 		},
-		async getRoom(): Promise<null> {
-			return null;
+		// A world exists only when `admins` seeds explicit grants. With no world,
+		// resolveWorldForMessage returns null and hasRoleAccess falls back to its
+		// unresolved-sender floor (USER for these sourceless messages) — the
+		// ordinary-user case most tests want.
+		async getRoom(roomId: UUID): Promise<{ id: UUID; worldId: UUID } | null> {
+			return admins.size > 0 ? { id: roomId, worldId } : null;
+		},
+		async getWorld(
+			id: UUID,
+		): Promise<{ id: UUID; metadata: Record<string, unknown> } | null> {
+			if (admins.size === 0) return null;
+			return {
+				id,
+				metadata: {
+					roles: Object.fromEntries(
+						[...admins].map((entityId) => [entityId, "ADMIN"]),
+					),
+					// Only a "manual" grant is honored as a real role by
+					// resolveEntityRole; a sourceless one folds back to GUEST.
+					roleSources: Object.fromEntries(
+						[...admins].map((entityId) => [entityId, "manual"]),
+					),
+				},
+			};
 		},
 		async getParticipantUserState(): Promise<null> {
 			return null;
 		},
 		// hasRoleAccess reads the canonical-owner config here: when `owner` is set
 		// it is exposed as ELIZA_ADMIN_ENTITY_ID so a message from that entity
-		// resolves to OWNER (>= ADMIN). hasRoleAccess fails CLOSED on an
-		// unresolved role, so this is how these tests grant admin.
+		// resolves to OWNER. `admins` grants ADMIN and nothing more, which is how a
+		// test separates the ADMIN floor from the OWNER floor. hasRoleAccess fails
+		// CLOSED on an unresolved role.
 		getSetting: (key: string) =>
 			key === "ELIZA_ADMIN_ENTITY_ID" && owner ? owner : undefined,
 		_test_owner: owner,
