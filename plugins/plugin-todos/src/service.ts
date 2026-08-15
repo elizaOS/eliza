@@ -58,7 +58,9 @@ export class TodosService extends Service implements TodoStore {
 export { createTodosSqlStore } from "./sql-store.js";
 export {
   type CreateTodoInput,
+  findDuplicateTodoId,
   isValidTodoListLimit,
+  TODO_DUPLICATE_ID_ERROR_CODE,
   TODO_INVALID_PARENT_ERROR_CODE,
   TODO_LIST_LIMIT_ERROR_CODE,
   TODO_PARENT_CYCLE_ERROR_CODE,

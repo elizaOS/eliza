@@ -14,9 +14,11 @@ import type {
   Memory,
   State,
 } from "@elizaos/core/edge";
+import { validateUuid } from "@elizaos/core/edge";
 
 import {
   type CreateTodoInput,
+  findDuplicateTodoId,
   isTodoStore,
   isValidTodoListLimit,
   type TodoStore,
@@ -160,6 +162,13 @@ function parseTodoList(
     }
     items.push(item);
   }
+  const duplicateId = findDuplicateTodoId(items);
+  if (duplicateId !== null) {
+    return {
+      ok: false,
+      message: `todos contains duplicate id ${duplicateId}`,
+    };
+  }
   return { ok: true, items };
 }
 
@@ -256,7 +265,13 @@ async function appliedMutationResult({
 }
 
 function sameTodoListState(before: Todo[], after: Todo[]): boolean {
-  if (before.length !== after.length) return false;
+  if (
+    before.length !== after.length ||
+    findDuplicateTodoId(before) !== null ||
+    findDuplicateTodoId(after) !== null
+  ) {
+    return false;
+  }
   const beforeById = new Map(before.map((todo) => [todo.id, todo]));
   return after.every((todo) => {
     const previous = beforeById.get(todo.id);
@@ -734,6 +749,15 @@ export function createTodoAction(options: TodoActionOptions = {}): Action {
       const scope = readScope(runtime, message);
       if ("error" in scope) {
         return failure("missing_param", scope.error);
+      }
+      if (
+        (action === "write" || action === "clear") &&
+        validateUuid(scope.roomId) === null
+      ) {
+        return failure(
+          "invalid_scope",
+          `a valid roomId is required for action=${action}`,
+        );
       }
       try {
         const service = resolveStore(runtime);

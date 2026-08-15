@@ -10,7 +10,9 @@ import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import { type TodoRow, todosTable } from "./db/schema.js";
 import {
   type CreateTodoInput,
+  findDuplicateTodoId,
   isValidTodoListLimit,
+  TODO_DUPLICATE_ID_ERROR_CODE,
   TODO_INVALID_PARENT_ERROR_CODE,
   TODO_LIST_LIMIT_ERROR_CODE,
   TODO_PARENT_CYCLE_ERROR_CODE,
@@ -297,6 +299,16 @@ class SqlTodoStore<TSchema extends Record<string, unknown>>
   async writeList(
     args: WriteTodoListInput,
   ): Promise<{ before: Todo[]; after: Todo[] }> {
+    const duplicateId = findDuplicateTodoId(args.todos);
+    if (duplicateId !== null) {
+      throw new ElizaError(
+        `${TODOS_LOG_PREFIX} todo list contains duplicate id`,
+        {
+          code: TODO_DUPLICATE_ID_ERROR_CODE,
+          context: { todoId: duplicateId },
+        },
+      );
+    }
     return this.db.transaction(async (tx) => {
       const scope = { agentId: args.agentId, entityId: args.entityId };
       await tx.execute(
@@ -522,7 +534,9 @@ export function createTodosSqlStore<TSchema extends Record<string, unknown>>(
 
 export {
   type CreateTodoInput,
+  findDuplicateTodoId,
   isValidTodoListLimit,
+  TODO_DUPLICATE_ID_ERROR_CODE,
   TODO_INVALID_PARENT_ERROR_CODE,
   TODO_LIST_LIMIT_ERROR_CODE,
   TODO_PARENT_CYCLE_ERROR_CODE,

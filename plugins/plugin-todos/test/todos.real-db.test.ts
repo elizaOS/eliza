@@ -15,15 +15,23 @@
  * Hermetic: no network, no credentials, no LLM (todo CRUD is pure drizzle).
  */
 
-import type { AgentRuntime, Memory, UUID } from "@elizaos/core";
+import type {
+  ActionResult,
+  AgentRuntime,
+  HandlerOptions,
+  Memory,
+  UUID,
+} from "@elizaos/core";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   createRealTestRuntime,
   type RealTestRuntimeResult,
 } from "../../../packages/app-core/test/helpers/real-runtime.ts";
+import { todoAction } from "../src/actions/todo.ts";
 import todosPlugin from "../src/index.ts";
 import { currentTodosProvider } from "../src/providers/current-todos.ts";
 import {
+  TODO_DUPLICATE_ID_ERROR_CODE,
   TODO_INVALID_PARENT_ERROR_CODE,
   TODO_PARENT_CYCLE_ERROR_CODE,
   TodosService,
@@ -56,6 +64,17 @@ describe("TodosService + currentTodosProvider — real PGLite", () => {
 
   function scope(entityId: UUID) {
     return { agentId: runtime.agentId, entityId };
+  }
+
+  async function invokeTodoAction(
+    message: Memory,
+    parameters: Record<string, unknown>,
+  ): Promise<ActionResult> {
+    const result = await todoAction.handler?.(runtime, message, undefined, {
+      parameters,
+    } as HandlerOptions);
+    if (!result) throw new Error("TODO action returned no result");
+    return result;
   }
 
   it("creates a todo and reads it back from the live DB via get / list", async () => {
@@ -194,6 +213,112 @@ describe("TodosService + currentTodosProvider — real PGLite", () => {
     expect(remaining.find((t) => t.content === "Keep me")?.status).toBe(
       "completed",
     );
+  });
+
+  it("rejects duplicate write ids without deleting rows or issuing a receipt", async () => {
+    const entityId = "12345678-1234-4234-8234-123456789abc" as UUID;
+    const roomId = "abcdefab-cdef-4def-8def-abcdefabcdef" as UUID;
+    const first = await service.create({
+      entityId,
+      agentId: runtime.agentId,
+      roomId,
+      content: "First",
+      status: "pending",
+    });
+    const second = await service.create({
+      entityId,
+      agentId: runtime.agentId,
+      roomId,
+      content: "Second",
+      status: "pending",
+    });
+    const duplicateList = [
+      { id: first.id, content: "First", status: "pending" as const },
+      { id: first.id, content: "First again", status: "pending" as const },
+    ];
+    const expectedIds = [first.id, second.id].sort();
+
+    const actionResult = await invokeTodoAction(
+      {
+        entityId,
+        roomId,
+        content: { text: "replace my todos" },
+      } as Memory,
+      { action: "write", todos: duplicateList },
+    );
+    expect(actionResult.success).toBe(false);
+    expect(actionResult.text).toContain("duplicate id");
+    expect(actionResult.effectReceipts).toBeUndefined();
+    expect(actionResult.userFacingEffectReceiptIds).toBeUndefined();
+    expect(actionResult.verifiedUserFacing).toBeUndefined();
+    expect(
+      (await service.list({ entityId, agentId: runtime.agentId, roomId }))
+        .map((todo) => todo.id)
+        .sort(),
+    ).toEqual(expectedIds);
+
+    await expect(
+      service.writeList({
+        entityId,
+        agentId: runtime.agentId,
+        roomId,
+        worldId: null,
+        parentTrajectoryStepId: null,
+        todos: duplicateList,
+      }),
+    ).rejects.toMatchObject({ code: TODO_DUPLICATE_ID_ERROR_CODE });
+    expect(
+      (await service.list({ entityId, agentId: runtime.agentId, roomId }))
+        .map((todo) => todo.id)
+        .sort(),
+    ).toEqual(expectedIds);
+  });
+
+  it("rejects unscoped destructive actions without touching either room", async () => {
+    const entityId = "23456789-2345-4345-8345-23456789abcd" as UUID;
+    const roomA = "11111111-aaaa-4aaa-8aaa-111111111111" as UUID;
+    const roomB = "22222222-bbbb-4bbb-8bbb-222222222222" as UUID;
+    const first = await service.create({
+      entityId,
+      agentId: runtime.agentId,
+      roomId: roomA,
+      content: "Room A",
+    });
+    const second = await service.create({
+      entityId,
+      agentId: runtime.agentId,
+      roomId: roomB,
+      content: "Room B",
+    });
+    const expectedIds = [first.id, second.id].sort();
+    const invalidMessages: Memory[] = [
+      { entityId, content: { text: "missing room" } } as Memory,
+      { entityId, roomId: "", content: { text: "blank room" } } as Memory,
+      {
+        entityId,
+        roomId: "not-a-uuid",
+        content: { text: "invalid room" },
+      } as Memory,
+    ];
+
+    for (const message of invalidMessages) {
+      for (const parameters of [
+        { action: "write", todos: [] },
+        { action: "clear" },
+      ]) {
+        const result = await invokeTodoAction(message, parameters);
+        expect(result.success).toBe(false);
+        expect(result.text).toContain("invalid_scope");
+        expect(result.effectReceipts).toBeUndefined();
+        expect(result.userFacingEffectReceiptIds).toBeUndefined();
+        expect(result.verifiedUserFacing).toBeUndefined();
+      }
+      expect(
+        (await service.list({ entityId, agentId: runtime.agentId }))
+          .map((todo) => todo.id)
+          .sort(),
+      ).toEqual(expectedIds);
+    }
   });
 
   it("deletes a todo and clear() removes the remaining rows for a scope", async () => {

@@ -83,8 +83,22 @@ export function isTodoStore(value: unknown): value is TodoStore {
 }
 
 export const TODO_LIST_LIMIT_ERROR_CODE = "TODO_INVALID_LIST_LIMIT";
+export const TODO_DUPLICATE_ID_ERROR_CODE = "TODO_DUPLICATE_ID";
 export const TODO_INVALID_PARENT_ERROR_CODE = "TODO_INVALID_PARENT";
 export const TODO_PARENT_CYCLE_ERROR_CODE = "TODO_PARENT_CYCLE";
+
+/** Return the first repeated persisted id in a desired todo list. */
+export function findDuplicateTodoId(
+  todos: ReadonlyArray<{ id?: string }>,
+): string | null {
+  const seen = new Set<string>();
+  for (const todo of todos) {
+    if (todo.id === undefined) continue;
+    if (seen.has(todo.id)) return todo.id;
+    seen.add(todo.id);
+  }
+  return null;
+}
 
 export function isValidTodoListLimit(value: unknown): value is number {
   return typeof value === "number" && Number.isSafeInteger(value) && value > 0;
