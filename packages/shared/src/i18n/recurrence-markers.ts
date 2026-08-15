@@ -15,10 +15,7 @@
 const ASCII_RECURRENCE_PATTERNS: readonly RegExp[] = [
   // en: every/each anchored to a schedule noun within the phrase
   /\b(?:every|each)\s+(?:(?:other|\d+)\s+)?(?:second|minute|hour|day|week|month|year|morning|afternoon|evening|night|weekday|weekend|mon(?:day)?|tues?(?:day)?|wed(?:nesday)?|thur?s?(?:day)?|fri(?:day)?|sat(?:urday)?|sun(?:day)?)s?\b/i,
-  // "daily"/es "diario" match lowercase only: title-cased uses are names
-  // ("Daily Planet interview", "comprar el Diario") — the review's observed
-  // false-positive class.
-  /\bdaily\b/,
+  /\bdaily\b/i,
   /\b(?:weekly|monthly|nightly|hourly|yearly|annually|quarterly|biweekly|fortnightly)\b/i,
   /\brepeat(?:s|ing)\b|\brecurring\b|\brecurs?\b/i,
   /\b(?:once|twice|thrice|\d+\s*times)\s+(?:a|per|each|every)\s+(?:day|week|month|year)\b/i,
@@ -27,7 +24,7 @@ const ASCII_RECURRENCE_PATTERNS: readonly RegExp[] = [
   /\b(?:weekdays|weekends)\b/i,
   // es: cada / todos los / todas las + schedule noun; adjective forms
   /\b(?:cada|todos\s+los|todas\s+las)\s+(?:d[ií]as?|semanas?|mes(?:es)?|años?|mañanas?|noches?|tardes?|lunes|martes|mi[eé]rcoles|jueves|viernes|s[aá]bados?|domingos?)\b/i,
-  /\bdiario\b/,
+  /\bdiario\b/i,
   /\b(?:diaria(?:mente)?|semanal(?:mente)?|mensual(?:mente)?|anual(?:mente)?)\b/i,
   /\blos\s+(?:lunes|martes|mi[eé]rcoles|jueves|viernes|s[aá]bados|domingos)\b/i,
   /\buna\s+vez\s+(?:a\s+la|por)\s+semana\b/i,
@@ -77,17 +74,82 @@ const JAPANESE_RECURRENCE_PATTERNS: readonly RegExp[] = [
   /(?:一|1|二|2|三|3)(?:日|週|か月|ヶ月|年)ごと/,
 ];
 
-// A current-turn one-shot correction outranks cadence words in that same
-// user-authored text. This is intentionally safety-biased: retaining a
-// one-shot cap or dropping an RRULE is reversible; silently creating an
-// unbounded recurrence is not.
-const ONE_SHOT_PRECEDENCE_PATTERNS: readonly RegExp[] = [
+const NAME_LIKE_RECURRENCE_PATTERNS: readonly RegExp[] = [
+  /\bDaily\s+Planet\b/g,
+  /\b(?:el|un|este)\s+Diario\b/g,
+];
+
+// Negative/one-shot directives participate in the same ordered intent stream
+// as positive cadence markers. The last explicit directive wins, while a
+// positive marker nested inside "not every ..." is ignored. "Only once a
+// week" remains recurring because the one-shot expression is followed by a
+// cadence unit.
+const ONE_SHOT_DIRECTIVE_PATTERNS: readonly RegExp[] = [
   /\b(?:not|no|never)\s+(?:a\s+)?(?:recurr(?:ing|ence)|repeat(?:ed|ing)?|every|each)\b/i,
   /\b(?:do\s+not|don't)\s+repeat\b/i,
-  /\b(?:just|only)\s+(?:once|one\s+time)\b/i,
+  /\b(?:just|only)\s+(?:once|one\s+time)\b(?!\s+(?:a|per|each|every)\s+(?:day|week|month|year))/i,
   /\b(?:once|one\s+time)\s+only\b/i,
   /(?:一度だけ|1回だけ|繰り返さない|毎日ではない)/,
 ];
+
+type IntentMarker = {
+  end: number;
+  kind: "one-shot" | "recurrence";
+  start: number;
+};
+
+function patternMatches(text: string, pattern: RegExp): IntentMarker[] {
+  const flags = pattern.flags.includes("g")
+    ? pattern.flags
+    : `${pattern.flags}g`;
+  const matcher = new RegExp(pattern.source, flags);
+  return Array.from(text.matchAll(matcher), (match) => ({
+    end: (match.index ?? 0) + match[0].length,
+    kind: "recurrence" as const,
+    start: match.index ?? 0,
+  }));
+}
+
+function orderedIntentMarkers(text: string): IntentMarker[] {
+  const sanitized = NAME_LIKE_RECURRENCE_PATTERNS.reduce(
+    (value, pattern) =>
+      value.replace(pattern, (match) => " ".repeat(match.length)),
+    text,
+  );
+  const oneShot = ONE_SHOT_DIRECTIVE_PATTERNS.flatMap((pattern) =>
+    patternMatches(sanitized, pattern).map((match) => ({
+      ...match,
+      kind: "one-shot" as const,
+    })),
+  );
+  const recurrence = ASCII_RECURRENCE_PATTERNS.flatMap((pattern) =>
+    patternMatches(sanitized, pattern),
+  );
+  for (const marker of CJK_RECURRENCE_MARKERS) {
+    let start = sanitized.indexOf(marker);
+    while (start >= 0) {
+      recurrence.push({
+        end: start + marker.length,
+        kind: "recurrence",
+        start,
+      });
+      start = sanitized.indexOf(marker, start + marker.length);
+    }
+  }
+  for (const pattern of JAPANESE_RECURRENCE_PATTERNS) {
+    recurrence.push(...patternMatches(sanitized, pattern));
+  }
+  const nonNegatedRecurrence = recurrence.filter(
+    (positive) =>
+      !oneShot.some(
+        (negative) =>
+          positive.start >= negative.start && positive.start < negative.end,
+      ),
+  );
+  return [...oneShot, ...nonNegatedRecurrence].sort(
+    (left, right) => left.start - right.start || left.end - right.end,
+  );
+}
 
 function authoritativeSegments(text: string): string[] {
   return text
@@ -115,26 +177,8 @@ export function textStatesExplicitRecurrence(
   const segments = texts.flatMap((text) =>
     typeof text === "string" ? authoritativeSegments(text) : [],
   );
-  if (
-    segments.some((text) =>
-      ONE_SHOT_PRECEDENCE_PATTERNS.some((pattern) => pattern.test(text)),
-    )
-  ) {
-    return false;
-  }
-
-  for (const text of segments) {
-    if (ASCII_RECURRENCE_PATTERNS.some((pattern) => pattern.test(text))) {
-      return true;
-    }
-    if (CJK_RECURRENCE_MARKERS.some((marker) => text.includes(marker))) {
-      return true;
-    }
-    if (JAPANESE_RECURRENCE_PATTERNS.some((pattern) => pattern.test(text))) {
-      return true;
-    }
-  }
-  return false;
+  const markers = segments.flatMap(orderedIntentMarkers);
+  return markers.at(-1)?.kind === "recurrence";
 }
 
 /**

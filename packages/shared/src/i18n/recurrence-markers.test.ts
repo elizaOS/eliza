@@ -21,6 +21,24 @@ describe("textStatesExplicitRecurrence", () => {
     expect(textStatesExplicitRecurrence("check every 15 minutes")).toBe(true);
   });
 
+  it("accepts title-case cadence and bounded weekly counts", () => {
+    expect(textStatesExplicitRecurrence("Daily standup at 9am")).toBe(true);
+    expect(textStatesExplicitRecurrence("only once a week")).toBe(true);
+    expect(textStatesExplicitRecurrence("just once every week")).toBe(true);
+  });
+
+  it("uses the user's last explicit cadence correction", () => {
+    expect(
+      textStatesExplicitRecurrence("not every day, every week instead"),
+    ).toBe(true);
+    expect(
+      textStatesExplicitRecurrence("not recurring, make it weekly instead"),
+    ).toBe(true);
+    expect(textStatesExplicitRecurrence("weekly, actually just once")).toBe(
+      false,
+    );
+  });
+
   it("lets current one-shot corrections outrank recurrence words", () => {
     expect(
       textStatesExplicitRecurrence("remind me tomorrow, not every day"),
