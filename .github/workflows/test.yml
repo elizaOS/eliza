@@ -105,44 +105,20 @@ jobs:
             database_url="${database_url/sslmode=no-verify/sslmode=require}"
             test -n "$database_url"
             psql "$database_url" -v ON_ERROR_STOP=1 <<'SQL'
-            WITH eligible AS (
-              SELECT sandbox.id
-              FROM agent_sandboxes AS sandbox
-              WHERE sandbox.id = '4602b3be-2c01-4e7e-9cdc-849604e1bef7'
-                AND sandbox.status = 'running'
-                AND sandbox.node_id = 'eliza-core-prod-6'
-                AND sandbox.container_name = 'agent-4602b3be-2c01-4e7e-9cdc-849604e1bef7'
-                AND sandbox.replacement_cleanup_sandbox_id IS NULL
-                AND EXISTS (
-                  SELECT 1 FROM agent_sandbox_backups AS backup
-                  WHERE backup.sandbox_record_id = sandbox.id
-                )
-                AND NOT EXISTS (
-                  SELECT 1 FROM jobs
-                  WHERE jobs.agent_id = sandbox.id::text
-                    AND jobs.status IN ('pending', 'in_progress')
-                )
-              FOR UPDATE
-            )
-            UPDATE agent_sandboxes AS sandbox
-            SET status = 'stopped',
-                sandbox_id = NULL,
-                bridge_url = NULL,
-                health_url = NULL,
-                node_id = NULL,
-                container_name = NULL,
-                bridge_port = NULL,
-                web_ui_port = NULL,
-                headscale_ip = NULL,
-                docker_image = 'ghcr.io/elizaos/eliza-demo@sha256:a4d6156aef4c79fc01709a85025fd1a9f010a99279493e9545ed14f7137bd8cd',
-                image_digest = 'sha256:a4d6156aef4c79fc01709a85025fd1a9f010a99279493e9545ed14f7137bd8cd',
-                previous_docker_image = NULL,
-                previous_image_digest = NULL,
-                error_message = NULL,
-                updated_at = NOW()
-            FROM eligible
-            WHERE sandbox.id = eligible.id
-            RETURNING sandbox.id, sandbox.status, sandbox.docker_image;
+            SELECT id, status, node_id, container_name, docker_image,
+                   replacement_cleanup_sandbox_id, replacement_cleanup_node_id,
+                   replacement_cleanup_container_name
+            FROM agent_sandboxes
+            WHERE id = '4602b3be-2c01-4e7e-9cdc-849604e1bef7';
+            SELECT id, type, status, attempts, execution_generation,
+                   execution_quiesced_at, created_at
+            FROM jobs
+            WHERE agent_id = '4602b3be-2c01-4e7e-9cdc-849604e1bef7'
+              AND status IN ('pending', 'in_progress')
+            ORDER BY created_at;
+            SELECT count(*) AS backup_count, max(created_at) AS latest_backup_at
+            FROM agent_sandbox_backups
+            WHERE sandbox_record_id = '4602b3be-2c01-4e7e-9cdc-849604e1bef7';
             SQL
 
   changes:
