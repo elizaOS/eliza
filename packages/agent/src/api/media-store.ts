@@ -878,9 +878,21 @@ export function serveMediaFile(
       "Content-Range": `bytes ${range.start}-${range.end}/${size}`,
       "Content-Length": range.end - range.start + 1,
     });
-    fs.createReadStream(filePath, { start: range.start, end: range.end }).pipe(
-      res,
-    );
+    const stream = fs.createReadStream(filePath, {
+      start: range.start,
+      end: range.end,
+    });
+    stream.on("error", (err) => {
+      logger.error({ err, filePath }, "[media-store] stream error");
+      if (!res.headersSent) {
+        res.writeHead(500, { "Content-Type": "text/plain; charset=utf-8" });
+        res.end("Internal Server Error");
+      } else {
+        res.destroy();
+      }
+    });
+    stream.pipe(res);
+    res.once("close", () => stream.destroy());
     return true;
   }
 
@@ -889,7 +901,20 @@ export function serveMediaFile(
     res.end();
     return true;
   }
-  fs.createReadStream(filePath).pipe(res);
+  {
+    const stream = fs.createReadStream(filePath);
+    stream.on("error", (err) => {
+      logger.error({ err, filePath }, "[media-store] stream error");
+      if (!res.headersSent) {
+        res.writeHead(500, { "Content-Type": "text/plain; charset=utf-8" });
+        res.end("Internal Server Error");
+      } else {
+        res.destroy();
+      }
+    });
+    stream.pipe(res);
+    res.once("close", () => stream.destroy());
+  }
   return true;
 }
 
