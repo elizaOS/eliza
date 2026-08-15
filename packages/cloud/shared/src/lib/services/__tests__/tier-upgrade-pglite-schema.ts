@@ -184,6 +184,8 @@ export const PROVISIONING_JOB_TEST_TABLES: readonly string[] = [
   "database_error" text,
   "snapshot_id" text,
   "last_backup_at" timestamptz,
+  "last_backup_attempt_at" timestamptz,
+  "backup_unsupported_reason" text,
   "last_heartbeat_at" timestamptz,
   "error_message" text,
   "error_count" integer NOT NULL DEFAULT 0,
