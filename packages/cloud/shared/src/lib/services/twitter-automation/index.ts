@@ -7,7 +7,12 @@
  */
 
 import { type TOAuth2Scope, TwitterApi } from "twitter-api-v2";
-import { cache } from "../../cache/client";
+import {
+  buildRedisClient,
+  type CompatibleRedis,
+  isCloudflareWorkerRuntime,
+  supportsRedisEval,
+} from "../../cache/redis-factory";
 import { logger } from "../../utils/logger";
 import type { OAuthConnectionRole } from "../oauth/types";
 import { secretsService } from "../secrets";
@@ -92,14 +97,48 @@ const OAUTH2_BROKER_REFRESH_MARGIN_SECONDS = 5 * 60;
  * Cross-isolate mutual exclusion for OAuth2 refresh (#19873 P1): the
  * refresh token is SINGLE-USE, and the per-instance `refreshRequests` map
  * cannot stop two Worker isolates from burning the same one (the second
- * gets invalid_grant and X may revoke the whole grant family). The lease is
- * held only for the token round-trip + store write.
+ * gets invalid_grant and X may revoke the whole grant family). The TTL sits
+ * far above the worst observed token round-trip + secret writes; hard
+ * serialization beyond TTL expiry (a Durable Object per org+role) remains an
+ * open architecture option with the #20016 reviewer.
  */
-const OAUTH2_REFRESH_LEASE_MS = 30_000;
+const OAUTH2_REFRESH_LEASE_MS = 120_000;
 const OAUTH2_REFRESH_WAIT_POLL_MS = 1_500;
+
+/** Release-only-what-you-own: delete iff the stored owner token is ours. */
+const OAUTH2_REFRESH_LEASE_RELEASE_SCRIPT =
+  'if redis.call("get", KEYS[1]) == ARGV[1] then return redis.call("del", KEYS[1]) else return 0 end';
 
 function refreshLeaseKey(organizationId: string, role: OAuthConnectionRole): string {
   return `x-oauth2-refresh:${organizationId}:${role}`;
+}
+
+let cachedLeaseRedis: CompatibleRedis | null = null;
+
+/**
+ * Runtime-aware Redis for the refresh lease, used DIRECTLY instead of the
+ * cache client: the cache's Worker path prefers CACHE_KV, whose `set nx`
+ * emulation is documented non-atomic and eventually consistent (#20016
+ * review P1) — useless for mutual exclusion. Redis SET NX PX is atomic on
+ * both supported transports. Selection mirrors jwt-internal-denylist:
+ * Workers build a per-call REST-only client (cached TCP sockets belong to
+ * the request that opened them, and inherited TCP REDIS_URLs are
+ * unreachable from workerd); Node caches the normal client.
+ */
+function getRefreshLeaseRedis(): CompatibleRedis | null {
+  if (!isCloudflareWorkerRuntime()) {
+    if (cachedLeaseRedis) return cachedLeaseRedis;
+    const client = buildRedisClient(process.env);
+    if (client) cachedLeaseRedis = client;
+    return client;
+  }
+  return buildRedisClient({
+    MOCK_REDIS: process.env.MOCK_REDIS,
+    KV_REST_API_URL: process.env.KV_REST_API_URL,
+    KV_REST_API_TOKEN: process.env.KV_REST_API_TOKEN,
+    UPSTASH_REDIS_REST_URL: process.env.UPSTASH_REDIS_REST_URL,
+    UPSTASH_REDIS_REST_TOKEN: process.env.UPSTASH_REDIS_REST_TOKEN,
+  });
 }
 
 function freshStoredOAuth2Broker(stored: Awaited<ReturnType<typeof getRoleCredentials>>): {
@@ -991,12 +1030,24 @@ class TwitterAutomationService {
     twitterUserId: string | null;
   }> {
     const leaseKey = refreshLeaseKey(organizationId, role);
-    let acquired: boolean;
+    const redis = getRefreshLeaseRedis();
+    if (!redis) {
+      // No Redis backend — cross-isolate exclusion is genuinely unsupported;
+      // per-isolate dedupe is the honest ceiling (denylist-documented class).
+      return this.refreshOAuth2BrokerToken(organizationId, userId, role, refreshToken);
+    }
+
+    const owner = crypto.randomUUID();
+    let acquired = false;
     try {
-      acquired = await cache.setIfNotExists(leaseKey, "1", OAUTH2_REFRESH_LEASE_MS);
+      const result = await redis.set(leaseKey, owner, {
+        nx: true,
+        px: OAUTH2_REFRESH_LEASE_MS,
+      });
+      acquired = result === "OK";
     } catch {
-      // No shared cache backend — cross-isolate exclusion is unsupported;
-      // keep the per-isolate behavior instead of failing the refresh.
+      // Lease infrastructure failure must not fail the auth path closed;
+      // degrade to per-isolate dedupe.
       return this.refreshOAuth2BrokerToken(organizationId, userId, role, refreshToken);
     }
 
@@ -1011,8 +1062,15 @@ class TwitterAutomationService {
         if (alreadyFresh) return alreadyFresh;
         return await this.refreshOAuth2BrokerToken(organizationId, userId, role, refreshToken);
       } finally {
-        // Best-effort release; an expired lease self-heals via the TTL.
-        await cache.del(leaseKey).catch(() => undefined);
+        // Owner-fenced release: delete ONLY when the stored value is our own
+        // owner token — a lease that expired mid-work and was reacquired by
+        // another isolate must never be deleted by us (#20016 review P1).
+        // Without eval support the TTL is the release.
+        if (supportsRedisEval(redis)) {
+          await redis
+            .eval(OAUTH2_REFRESH_LEASE_RELEASE_SCRIPT, [leaseKey], [owner])
+            .catch(() => undefined);
+        }
       }
     }
 

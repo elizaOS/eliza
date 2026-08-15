@@ -65,19 +65,33 @@ mock.module("../secrets", () => ({
 
 mock.module("./app-automation", () => ({ twitterAppAutomationService: {} }));
 
-// In-memory shared-cache stub with real NX semantics so the lease contends.
+// In-memory stand-in implementing the SAME primitive contract the redesign
+// relies on from the real backend (post-review): atomic SET NX PX returning
+// "OK", plus Lua eval for the owner-fenced compare-and-delete. The prior
+// version stubbed cache.setIfNotExists, which hid the production KV
+// non-atomicity the #20016 review flagged — this stub exercises the direct
+// Redis primitives the shipped code now calls.
 const leaseStore = new Map<string, string>();
-mock.module("../../cache/client", () => ({
-  cache: {
-    setIfNotExists: async (key: string, value: string, _ttlMs: number) => {
-      if (leaseStore.has(key)) return false;
-      leaseStore.set(key, value);
-      return true;
-    },
-    del: async (key: string) => {
-      leaseStore.delete(key);
-    },
+const fakeRedis = {
+  set: async (key: string, value: string, options?: { nx?: boolean; px?: number }) => {
+    if (options?.nx && leaseStore.has(key)) return null;
+    leaseStore.set(key, value);
+    return "OK";
   },
+  eval: async (_script: string, keys: string[], args: Array<string | number>) => {
+    const [key] = keys;
+    const [owner] = args;
+    if (key !== undefined && leaseStore.get(key) === owner) {
+      leaseStore.delete(key);
+      return 1;
+    }
+    return 0;
+  },
+};
+mock.module("../../cache/redis-factory", () => ({
+  buildRedisClient: () => fakeRedis,
+  isCloudflareWorkerRuntime: () => false,
+  supportsRedisEval: (client: { eval?: unknown }) => typeof client.eval === "function",
 }));
 
 function seedExpiredOauth2(role: "owner" | "agent", refreshToken: string): void {
@@ -128,6 +142,28 @@ describe("OAuth2 refresh rotation integrity (#19873)", () => {
     // The loser never called X's token endpoint — the single-use token survives.
     expect(tokenRequests).toBe(0);
   }, 20_000);
+
+  test("release is owner-fenced: an expired-and-reacquired lease is never deleted", async () => {
+    seedExpiredOauth2("agent", "single-use-refresh");
+    refreshResponse = async () => {
+      // While the winner is mid-refresh, simulate its lease TTL expiring and
+      // another isolate (B) reacquiring the key. The winner's release must
+      // compare-and-delete on its own owner token and leave B's lease alone.
+      leaseStore.set("x-oauth2-refresh:org-1:agent", "B-owner");
+      return {
+        access_token: "new-access",
+        refresh_token: "new-refresh",
+        scope: "tweet.read",
+        expires_in: 7200,
+      };
+    };
+
+    const service = await loadService();
+    const result = await service.getBrokerCredentials("org-1", "user-1", "agent");
+    expect(result && "accessToken" in result ? result.accessToken : null).toBe("new-access");
+    // B's lease survived the winner's fenced release.
+    expect(leaseStore.get("x-oauth2-refresh:org-1:agent")).toBe("B-owner");
+  });
 
   test("rotation persists the new refresh token even when a sibling write fails", async () => {
     seedExpiredOauth2("agent", "single-use-refresh");
