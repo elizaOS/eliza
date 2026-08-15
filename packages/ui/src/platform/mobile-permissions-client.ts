@@ -326,6 +326,24 @@ function stateFromScreenTime(
     "android_usage_access",
   ]);
   const authorizationStatus = screenTime.authorization.status;
+  const hasUsableCapability =
+    screenTime.reportAvailable ||
+    screenTime.coarseSummaryAvailable ||
+    screenTime.thresholdEventsAvailable;
+
+  if (!screenTime.android && !hasUsableCapability) {
+    return defaultMobileState(
+      "screentime",
+      screenTime.supported ? "restricted" : "not-applicable",
+      {
+        canRequest: false,
+        restrictedReason: screenTime.supported
+          ? "os_policy"
+          : "platform_unsupported",
+        reason: screenTime.reason ?? action?.reason ?? undefined,
+      },
+    );
+  }
 
   if (authorizationStatus === "approved") {
     return defaultMobileState("screentime", "granted", {
@@ -860,8 +878,14 @@ export function createMobileSignalsPermissionsRegistry(
           typeof plugin.requestPermissions === "function"
         ) {
           await plugin.requestPermissions({ target: "screenTime" });
-        } else {
+        } else if (
+          current.status === "denied" ||
+          current.status === "not-determined" ||
+          current.status === "limited"
+        ) {
           await openMobilePermissionSettings(id, plugin);
+        } else {
+          requestedState = current;
         }
       } else if (
         id === "usage-access" ||
