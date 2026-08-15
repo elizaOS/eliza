@@ -239,7 +239,7 @@ function isPdfTextService(service: unknown): service is PdfTextService {
 type TelegramMediaSender = (
   chatId: number | string,
   media: string | { source: fs.ReadStream },
-  extra?: { caption?: string },
+  extra?: { caption?: string; message_thread_id?: number },
 ) => Promise<unknown>;
 
 const getChannelType = (chat: Chat): ChannelType => {
@@ -1200,7 +1200,7 @@ export class MessageManager {
     mediaPath: string,
     type: MediaType,
     caption?: string,
-    messageThreadId?: number | string,
+    messageThreadId?: number,
   ): Promise<void> {
     try {
       const isUrl = /^(http|https):\/\//.test(mediaPath);
@@ -1226,12 +1226,16 @@ export class MessageManager {
         throw new Error("sendMedia: ctx.chat is undefined");
       }
 
+      const sendOptions = {
+        caption,
+        ...(messageThreadId !== undefined
+          ? { message_thread_id: messageThreadId }
+          : {}),
+      };
+
       if (isUrl) {
         // Handle HTTP URLs
-        await sendFunction(ctx.chat.id, mediaPath, {
-          caption,
-          message_thread_id: messageThreadId,
-        });
+        await sendFunction(ctx.chat.id, mediaPath, sendOptions);
       } else {
         // Handle local file paths
         if (!fs.existsSync(mediaPath)) {
@@ -1247,7 +1251,7 @@ export class MessageManager {
           await sendFunction(
             ctx.chat.id,
             { source: fileStream },
-            { caption, message_thread_id: messageThreadId },
+            sendOptions,
           );
         } finally {
           fileStream.destroy();

@@ -4,8 +4,9 @@
  * coarse content type, unknown types degrade to a document, and accompanying
  * prose is sent alongside. Telegraf send calls are mocked.
  */
+import fs from "node:fs";
 import type { IAgentRuntime } from "@elizaos/core";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { MessageManager } from "./messageManager";
 
 // Outbound media coverage for the Telegram connector (#8876): when the agent
@@ -47,6 +48,9 @@ function setup() {
 }
 
 describe("Telegram connector outbound media", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
   it("dispatches an image attachment via sendPhoto with the caption", async () => {
     const { manager, ctx, senders } = setup();
     await manager.sendMessageInChunks(ctx, {
@@ -67,7 +71,9 @@ describe("Telegram connector outbound media", () => {
       "https://cdn.example.com/cat.png",
       { caption: "a cat" },
     );
-    // Attachment-only reply: no trailing empty text message.
+    expect(senders.sendPhoto.mock.calls[0]?.[2]).toStrictEqual({
+      caption: "a cat",
+    });    // Attachment-only reply: no trailing empty text message.
     expect(senders.sendMessage).not.toHaveBeenCalled();
   });
 
@@ -140,4 +146,61 @@ describe("Telegram connector outbound media", () => {
     expect(senders.sendPhoto).toHaveBeenCalledTimes(1);
     expect(senders.sendMessage).toHaveBeenCalledTimes(1);
   });
-});
+
+  it("forwards the forum topic id to URL media sends", async () => {
+    const { manager, ctx, senders } = setup();
+    await manager.sendMessageInChunks(
+      ctx,
+      {
+        text: "",
+        attachments: [
+          {
+            id: "img",
+            url: "https://cdn.example.com/cat.png",
+            contentType: "image",
+            description: "a cat",
+          },
+        ],
+      } as never,
+      undefined,
+      77,
+    );
+
+    expect(senders.sendPhoto.mock.calls[0]?.[2]).toStrictEqual({
+      caption: "a cat",
+      message_thread_id: 77,
+    });
+  });
+
+  it("forwards the forum topic id to local-file media sends", async () => {
+    const { manager, ctx, senders } = setup();
+    const fileStream = { destroy: vi.fn() };
+    vi.spyOn(fs, "existsSync").mockReturnValue(true);
+    vi.spyOn(fs, "createReadStream").mockReturnValue(fileStream as never);
+
+    await manager.sendMessageInChunks(
+      ctx,
+      {
+        text: "",
+        attachments: [
+          {
+            id: "doc",
+            url: "C:\\tmp\\report.pdf",
+            contentType: "document",
+            description: "report",
+          },
+        ],
+      } as never,
+      undefined,
+      88,
+    );
+
+    expect(senders.sendDocument.mock.calls[0]?.[1]).toStrictEqual({
+      source: fileStream,
+    });
+    expect(senders.sendDocument.mock.calls[0]?.[2]).toStrictEqual({
+      caption: "report",
+      message_thread_id: 88,
+    });
+    expect(fileStream.destroy).toHaveBeenCalledTimes(1);
+  });});
