@@ -1,7 +1,7 @@
 /**
- * Exercises Telegram-plus-phone identity linking against the real Drizzle
- * schema on isolated PGlite, including fresh projection lookups and rollback
- * when a stale projection owns an otherwise-free canonical identity.
+ * Exercises Telegram account creation and phone linking against the real
+ * Drizzle schema on isolated PGlite, including $0 first contact, exact identity
+ * convergence, fresh projection lookups, and transactional rollback.
  */
 
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
@@ -166,6 +166,51 @@ describe("UsersRepository.linkTelegramAndPhoneIdentity", () => {
     });
     expect((await usersRepository.findByTelegramId("555555555"))?.id).toBe(USER_C);
     expect((await usersRepository.findByPhoneNumber("+14155550555"))?.id).toBe(USER_C);
+  });
+});
+
+describe("UsersRepository.findOrCreateTelegramPersonalAccount", () => {
+  test("creates one $0 rowless account and reuses it on replay", async () => {
+    const input = {
+      telegramId: "714700001",
+      telegramUsername: "elizaisnotabot_user",
+      telegramFirstName: "Nubs",
+      displayName: "Nubs",
+      organizationName: "Nubs's Workspace",
+      organizationSlug: "tg-714700001",
+    };
+
+    const created = await usersRepository.findOrCreateTelegramPersonalAccount(input);
+    const replayed = await usersRepository.findOrCreateTelegramPersonalAccount({
+      ...input,
+      displayName: "Nubs Updated",
+    });
+
+    expect(created.isNew).toBe(true);
+    expect(replayed.isNew).toBe(false);
+    expect(replayed.user.id).toBe(created.user.id);
+    expect(replayed.organization.id).toBe(created.organization.id);
+    expect(Number(created.organization.credit_balance)).toBe(0);
+    expect(created.user).toMatchObject({
+      steward_user_id: "telegram:714700001",
+      telegram_id: "714700001",
+      organization_id: created.organization.id,
+      role: "owner",
+      is_active: true,
+    });
+
+    const canonicalOwners = await dbWrite
+      .select({ id: users.id })
+      .from(users)
+      .where(eq(users.telegram_id, input.telegramId));
+    const projectedOwners = await dbWrite
+      .select({ userId: userIdentities.user_id })
+      .from(userIdentities)
+      .where(eq(userIdentities.telegram_id, input.telegramId));
+    const accountOrganizations = await dbWrite.select({ id: organizations.id }).from(organizations);
+    expect(canonicalOwners).toEqual([{ id: created.user.id }]);
+    expect(projectedOwners).toEqual([{ userId: created.user.id }]);
+    expect(accountOrganizations).toEqual([{ id: created.organization.id }]);
   });
 });
 

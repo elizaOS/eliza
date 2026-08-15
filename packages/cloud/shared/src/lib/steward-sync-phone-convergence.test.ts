@@ -22,12 +22,16 @@ const promotePhonePersonalAccountToSteward = mock(async () => ({
   user: provisionalUser,
   organization: provisionalOrganization,
 }));
+const findPendingPhoneTelegramPersonalAccountConvergence = mock(async () => ({
+  status: "not_found" as const,
+}));
 const provisionDefaultApiKey = mock(async () => undefined);
 const characterExists = mock(async () => true);
 const ensureStewardTenant = mock(async () => undefined);
 
 mock.module("../db/repositories/users", () => ({
   usersRepository: {
+    findPendingPhoneTelegramPersonalAccountConvergence,
     promotePhonePersonalAccountToSteward,
   },
 }));
@@ -65,6 +69,8 @@ mock.module("./utils/logger", () => ({
 const { StewardPhoneAccountConflictError, syncUserFromSteward } = await import("./steward-sync");
 
 beforeEach(() => {
+  findPendingPhoneTelegramPersonalAccountConvergence.mockReset();
+  findPendingPhoneTelegramPersonalAccountConvergence.mockResolvedValue({ status: "not_found" });
   promotePhonePersonalAccountToSteward.mockReset();
   promotePhonePersonalAccountToSteward.mockResolvedValue({
     status: "promoted",

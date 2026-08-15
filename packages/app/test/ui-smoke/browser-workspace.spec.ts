@@ -190,8 +190,18 @@ test("browser workspace can create, navigate, switch, and close tabs", async ({
   await goButton.click();
   await expect(addressInput).toHaveValue("https://docs.elizaos.ai/");
 
-  // Header nav (back/forward) preserves the folded browser state.
-  await openAppPath(page, "/chat");
+  // Shell navigation plus browser back/forward preserves the folded browser
+  // state. Drive the app's real imperative navigation channel so this creates
+  // a same-document history entry, matching product navigation. A second
+  // `page.goto()` made this a cross-document WebKit history test instead and
+  // intermittently lost the forward entry before the assertion ran.
+  await page.evaluate(() => {
+    window.dispatchEvent(
+      new CustomEvent("eliza:navigate:view", {
+        detail: { viewPath: "/chat" },
+      }),
+    );
+  });
   await expect(page).toHaveURL(/\/chat$/, { timeout: 20_000 });
   await page.goBack({ waitUntil: "domcontentloaded" });
   await expect(page).toHaveURL(/\/browser$/, { timeout: 20_000 });

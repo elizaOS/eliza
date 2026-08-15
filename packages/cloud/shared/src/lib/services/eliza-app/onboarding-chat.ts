@@ -112,6 +112,12 @@ export interface OnboardingContinuationPreview {
   returnUrl: string | null;
 }
 
+export interface TelegramPersonalAccountContinuation {
+  telegramId: string;
+  userId: string;
+  organizationId: string;
+}
+
 export interface OnboardingChatCta {
   label: string;
   url: string;
@@ -436,6 +442,35 @@ export async function inspectOnboardingContinuation(
     platformUserId: session.platformUserId,
     platformDisplayName: session.platformDisplayName?.trim() || session.platformUserId,
     returnUrl: buildMessagingReturnUrl(session),
+  };
+}
+
+/**
+ * Resolves the opaque continuation delivered inside a Telegram DM to the
+ * already-created rowless account it is allowed to claim. Unlike the generic
+ * browser preview, this authority is consumed before Steward can create a
+ * second account, so both canonical account ids are required on the session.
+ */
+export async function inspectTelegramPersonalAccountContinuation(
+  continuationToken: string,
+): Promise<TelegramPersonalAccountContinuation> {
+  const sessionId = await resolveContinuationToken(continuationToken);
+  const session = sessionId ? await loadOnboardingSessionForValidation(sessionId) : null;
+  if (
+    !session ||
+    session.platform !== "telegram" ||
+    session.platformIdentityTrusted !== true ||
+    !session.platformUserId ||
+    !session.userId ||
+    !session.organizationId ||
+    !isFreshOnboardingSession(session)
+  ) {
+    throw trustedBrowserContinuationError(session);
+  }
+  return {
+    telegramId: session.platformUserId,
+    userId: session.userId,
+    organizationId: session.organizationId,
   };
 }
 
@@ -1101,18 +1136,18 @@ function fallbackReply(args: {
     // login URL could not become a valid button - see buildLoginCta).
     if (args.preferredNameProvidedThisTurn !== false) {
       if (args.cta) {
-        return `nice to meet you, ${name}. tap below to connect your account and I'll spin up your agent. ${ELIZA_APP_SHARED_OFFER}.`;
+        return `nice to meet you, ${name}. tap below to connect this chat to your account. ${ELIZA_APP_SHARED_OFFER}.`;
       }
-      return `nice to meet you, ${name}. connect your account here and I'll spin up your agent. ${ELIZA_APP_SHARED_OFFER}: ${args.loginUrl}`;
+      return `nice to meet you, ${name}. connect this chat to your account here. ${ELIZA_APP_SHARED_OFFER}: ${args.loginUrl}`;
     }
     // The user kept chatting instead of connecting. Respond to what they
     // said, then steer back to the connect handoff - every turn ends on the
     // CTA so the next step is never ambiguous.
     if (intent === "question") {
       if (args.cta) {
-        return `good question, ${name}. connecting takes about ten seconds - it links this chat to your own agent so it remembers everything we've talked about. tap below and I'll spin it up. ${ELIZA_APP_SHARED_OFFER}.`;
+        return `good question, ${name}. connecting takes about ten seconds - it links this chat to your account so Eliza remembers everything we've talked about. tap below to connect. ${ELIZA_APP_SHARED_OFFER}.`;
       }
-      return `good question, ${name}. connecting takes about ten seconds - it links this chat to your own agent so it remembers everything we've talked about. ${ELIZA_APP_SHARED_OFFER}: ${args.loginUrl}`;
+      return `good question, ${name}. connecting takes about ten seconds - it links this chat to your account so Eliza remembers everything we've talked about. ${ELIZA_APP_SHARED_OFFER}: ${args.loginUrl}`;
     }
     if (intent === "hesitation") {
       if (args.cta) {
@@ -1121,12 +1156,12 @@ function fallbackReply(args: {
       return `no pressure, ${name}. nothing happens until you connect, and ${ELIZA_APP_SHARED_OFFER}. whenever you're ready: ${args.loginUrl}`;
     }
     if (args.cta) {
-      return `still here, ${name}! one step left: tap below to connect and I'll spin up your agent. ${ELIZA_APP_SHARED_OFFER}.`;
+      return `still here, ${name}! one step left: tap below to connect this chat to your account. ${ELIZA_APP_SHARED_OFFER}.`;
     }
-    return `still here, ${name}! one step left: connect your account and I'll spin up your agent. ${ELIZA_APP_SHARED_OFFER}: ${args.loginUrl}`;
+    return `still here, ${name}! one step left: connect this chat to your account. ${ELIZA_APP_SHARED_OFFER}: ${args.loginUrl}`;
   }
   if (args.handoffComplete) {
-    return `you're in, ${name}. your agent is live and already knows everything from this chat. just keep talking here.`;
+    return `you're in, ${name}. your shared Eliza is connected and already knows everything from this chat. just keep talking here.`;
   }
   if (args.provisioning.status === "running") {
     return `almost there, ${name}. finishing setup now.`;

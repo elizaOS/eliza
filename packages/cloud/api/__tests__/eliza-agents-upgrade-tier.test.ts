@@ -939,6 +939,9 @@ describe("POST /api/v1/eliza/agents/:agentId/upgrade-tier", () => {
     expect(pgliteReady).toBe(true);
     const { dbWrite } = await import("@/db/client");
     const { organizations } = await import("@/db/schemas/organizations");
+    const { personalAccountConvergences } = await import(
+      "@/db/schemas/personal-account-convergences"
+    );
     const { users } = await import("@/db/schemas/users");
     const { agentSandboxes } = await import("@/db/schemas/agent-sandboxes");
     await dbWrite.insert(organizations).values({
@@ -980,6 +983,7 @@ describe("POST /api/v1/eliza/agents/:agentId/upgrade-tier", () => {
       name: "Cutover Org",
       is_active: true,
     };
+    const convergenceToken = `phone-telegram:source:${USER_C}`;
 
     try {
       cutoverCoordinatorOperations.length = 0;
@@ -989,6 +993,28 @@ describe("POST /api/v1/eliza/agents/:agentId/upgrade-tier", () => {
       cutoverCommitFailuresRemaining = 0;
       observeMarkerAtCommit = false;
       markerObservedAtCommit = undefined;
+      await dbWrite.insert(personalAccountConvergences).values({
+        token: convergenceToken,
+        source_user_id: "aaaaaaaa-5555-4555-8555-555555555555",
+        source_organization_id: "44444444-5555-4555-8555-555555555555",
+        source_agent_id: "personal:source-phone-room",
+        target_user_id: USER_C,
+        target_organization_id: ORG_C,
+        target_agent_id: PERSONAL_C,
+        phone_number: "+14155550199",
+        telegram_id: "919191",
+        steward_user_id: `steward-${USER_C}`,
+      });
+      const linking = await cutover(PERSONAL_C, CUTOVER_TARGET);
+      expect(linking.status).toBe(409);
+      expect(await linking.json()).toMatchObject({
+        code: "personal_identity_convergence_in_progress",
+      });
+      expect(cutoverCoordinatorOperations).toEqual([]);
+      await dbWrite
+        .delete(personalAccountConvergences)
+        .where(eq(personalAccountConvergences.token, convergenceToken));
+
       const refused = await cutover(PERSONAL_C, CUTOVER_TARGET);
       expect(refused.status).toBe(503);
       expect(await refused.json()).toMatchObject({
@@ -1016,6 +1042,8 @@ describe("POST /api/v1/eliza/agents/:agentId/upgrade-tier", () => {
         }),
       );
       cutoverCommitFailuresRemaining = 1;
+      observeMarkerAtCommit = true;
+      markerObservedAtCommit = undefined;
       cutoverCoordinatorOperations.length = 0;
       const commitRefused = await cutover(PERSONAL_C, CUTOVER_TARGET);
       expect(commitRefused.status).toBeGreaterThanOrEqual(500);
@@ -1026,14 +1054,21 @@ describe("POST /api/v1/eliza/agents/:agentId/upgrade-tier", () => {
       expect(
         (afterCommitFailure?.agent_config as Record<string, unknown> | null)
           ?.__agentPersonalCutover,
-      ).toBeUndefined();
+      ).toMatchObject({
+        sourceAgentId: PERSONAL_C,
+        cutoverToken: `personal-cutover:${PERSONAL_C}:${CUTOVER_TARGET}`,
+        sharedMessageCount: 2,
+      });
       expect(cutoverCoordinatorOperations).toEqual([
         "cutover-seal",
         "cutover-commit",
-        "cutover-release",
       ]);
+      expect(markerObservedAtCommit).toMatchObject({
+        sourceAgentId: PERSONAL_C,
+        cutoverToken: `personal-cutover:${PERSONAL_C}:${CUTOVER_TARGET}`,
+        sharedMessageCount: 2,
+      });
 
-      observeMarkerAtCommit = true;
       markerObservedAtCommit = undefined;
       cutoverCoordinatorOperations.length = 0;
       const activated = await cutover(PERSONAL_C, CUTOVER_TARGET);
@@ -1071,11 +1106,12 @@ describe("POST /api/v1/eliza/agents/:agentId/upgrade-tier", () => {
           },
         ],
       });
-      expect(cutoverCoordinatorOperations).toEqual([
-        "cutover-seal",
-        "cutover-commit",
-      ]);
-      expect(markerObservedAtCommit).toBeUndefined();
+      expect(cutoverCoordinatorOperations).toEqual(["cutover-commit"]);
+      expect(markerObservedAtCommit).toMatchObject({
+        sourceAgentId: PERSONAL_C,
+        cutoverToken: `personal-cutover:${PERSONAL_C}:${CUTOVER_TARGET}`,
+        sharedMessageCount: 2,
+      });
       expect(new Set(cutoverCoordinatorTokens).size).toBe(1);
 
       const [after] = await dbWrite
@@ -1102,7 +1138,7 @@ describe("POST /api/v1/eliza/agents/:agentId/upgrade-tier", () => {
       const retried = await cutover(PERSONAL_C, CUTOVER_TARGET);
       expect(retried.status).toBe(200);
       expect(cutoverCoordinatorOperations).toEqual(["cutover-commit"]);
-      expect(importFetch).toHaveBeenCalledTimes(3);
+      expect(importFetch).toHaveBeenCalledTimes(2);
       const [afterRetry] = await dbWrite
         .select()
         .from(agentSandboxes)
@@ -1166,6 +1202,9 @@ describe("POST /api/v1/eliza/agents/:agentId/upgrade-tier", () => {
         ),
       ).toBe(false);
     } finally {
+      await dbWrite
+        .delete(personalAccountConvergences)
+        .where(eq(personalAccountConvergences.token, convergenceToken));
       globalThis.fetch = originalFetch;
       currentUser.id = USER_A;
       currentUser.email = "owner-a@test.test";

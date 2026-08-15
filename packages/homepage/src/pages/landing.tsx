@@ -1,18 +1,18 @@
 /**
  * eliza.app landing page: a single-viewport, personal-feeling lander.
  *
- * The first action opens a real iMessage thread; account and app setup stay out
- * of the way until someone wants the richer companion experience. The phone
- * demo stays within the immediately available product: conversation memory and
- * current web search. It is decorative and intentionally English-only.
- * Reduced motion shows its settled intro, which keeps screenshots deterministic.
+ * The first action opens a native message handler where supported and copies
+ * the number elsewhere; account and app setup stay out of the way until someone
+ * wants the richer companion experience. The phone demo stays within the
+ * immediately available product: bounded conversation memory.
+ * It is decorative and intentionally English-only. Reduced motion shows its
+ * settled intro, which keeps screenshots deterministic.
  */
 
 import {
   DiscordIcon,
   IMessageIcon,
   TelegramIcon,
-  WhatsAppIcon,
 } from "@elizaos/ui/cloud-ui/components/icons";
 import {
   lazy,
@@ -22,18 +22,18 @@ import {
   useRef,
   useState,
 } from "react";
-// Imported through the bundler (not referenced from public/) so the wordmark
-// ships with whichever build consumes this source; a public/ path depends on
-// the host app's asset-sync allowlist and 404s when it drifts.
-import elizaLogotextUrl from "@/assets/eliza-logotext.svg";
 import {
   buildElizaDiscordHref,
-  buildElizaSmsHref,
   buildElizaTelegramHref,
-  buildElizaWhatsAppHref,
-  ELIZA_PHONE_FORMATTED,
   ELIZA_PHONE_NUMBER,
+  openOrCopyElizaMessage,
 } from "@/lib/contact";
+import {
+  LANDING_DEMO_INTRO,
+  LANDING_DEMO_LOOP,
+  type LandingDemoCard,
+  type LandingDemoStep,
+} from "@/lib/landing-demo";
 import { resolveHomepageProductNavigation } from "@/lib/product-navigation";
 import { useT } from "@/providers/I18nProvider";
 
@@ -43,17 +43,8 @@ const ShaderBackground = lazy(
   () => import("@/components/ShaderBackground/ShaderBackground"),
 );
 
-interface DemoCard {
-  label: string;
-  title: string;
-  rows: string[];
-  status?: string;
-}
-
-type DemoStep =
-  | { kind: "eliza"; text: string }
-  | { kind: "user"; text: string }
-  | { kind: "card"; card: DemoCard };
+type DemoCard = LandingDemoCard;
+type DemoStep = LandingDemoStep;
 
 type DemoItemInput =
   | { from: "eliza" | "user"; kind: "text"; text: string }
@@ -61,130 +52,16 @@ type DemoItemInput =
 
 type DemoItem = DemoItemInput & { id: number };
 
-const DEMO_INTRO: DemoStep[] = [
-  { kind: "eliza", text: "Hey, it's Eliza — your new assistant." },
-  { kind: "user", text: "what can you do?" },
-  {
-    kind: "eliza",
-    text: "I'm here to save you time and take things off your plate. Should we start with your email?",
-  },
-  { kind: "user", text: "sure" },
-  {
-    kind: "eliza",
-    text: "Looks like you've got 2 important emails you haven't followed up on — one looks like an important work thing. Should I draft a reply?",
-  },
-  { kind: "user", text: "sounds great" },
-  {
-    kind: "eliza",
-    text: "Okay, I've drafted the reply and saved it in your inbox. Want to look it over before I send it?",
-  },
-  {
-    kind: "card",
-    card: {
-      label: "Mail",
-      title: "Re: Q3 partnership",
-      rows: ["Draft saved to your inbox"],
-    },
-  },
-  { kind: "user", text: "yes please" },
-  {
-    kind: "eliza",
-    text: "Sent to your inbox. Also — you've got a call in an hour with an investor. Want me to give you a ring a few minutes before so you don't forget?",
-  },
-  { kind: "user", text: "yes please!" },
-  {
-    kind: "eliza",
-    text: "Will do. I've also prepared a dossier for the call — they've made some similar investments, I think you'll be a good fit.",
-  },
-  {
-    kind: "card",
-    card: {
-      label: "Notes",
-      title: "Investor brief — Arc Capital",
-      rows: ["Recent: 3 similar investments", "2 pages"],
-    },
-  },
-  {
-    kind: "card",
-    card: {
-      label: "Calendar",
-      title: "Call with Arc Capital",
-      rows: ["Today, 2:00 PM"],
-      status: "I'll call you at 1:55",
-    },
-  },
-];
-
-const DEMO_LOOP: DemoStep[] = [
-  {
-    kind: "eliza",
-    text: "How did the call go? Anything else I can take off your plate today?",
-  },
-  {
-    kind: "user",
-    text: "can you book dinner for 4 on thursday? somewhere italian",
-  },
-  {
-    kind: "eliza",
-    text: "Via Carota has one table for 4 left at 7:30 on Thursday. Should I book it?",
-  },
-  { kind: "user", text: "book it" },
-  {
-    kind: "card",
-    card: {
-      label: "Reservation",
-      title: "Via Carota",
-      rows: ["Thursday, 7:30 PM", "Party of 4"],
-      status: "Booked",
-    },
-  },
-  { kind: "eliza", text: "Done. Want me to send the details to the group?" },
-  { kind: "user", text: "oh and I fly to SF on friday" },
-  {
-    kind: "eliza",
-    text: "I see it — UA 512 out of JFK, 9:15 AM. Want me to check you in when it opens and grab your usual aisle seat?",
-  },
-  { kind: "user", text: "yes" },
-  {
-    kind: "card",
-    card: {
-      label: "Flight",
-      title: "UA 512 — JFK to SFO",
-      rows: ["Friday, 9:15 AM", "Seat 14C"],
-      status: "Check-in scheduled",
-    },
-  },
-  {
-    kind: "eliza",
-    text: "Set. One thing — your 9 AM standup overlaps with boarding. Should I move it?",
-  },
-  { kind: "user", text: "good catch, yeah" },
-  { kind: "user", text: "what was that wine we had at dinner last month?" },
-  {
-    kind: "eliza",
-    text: "The 2019 Barolo from Cascina Fontana. You mentioned wanting it for your dad's birthday — that's in 12 days. Should I order a bottle?",
-  },
-  { kind: "user", text: "you're the best. add a card too" },
-  {
-    kind: "card",
-    card: {
-      label: "Reminders",
-      title: "Dad's birthday",
-      rows: ["Barolo, Cascina Fontana '19", "Birthday card"],
-      status: "Reminder set",
-    },
-  },
-  {
-    kind: "eliza",
-    text: "Morning. Quick brief: 3 meetings today, rain at 4 so take a jacket. Inbox is triaged — nothing urgent.",
-  },
-  { kind: "user", text: "what would I do without you" },
-  { kind: "eliza", text: "Happy to help. What's next on your plate?" },
-];
+const DEMO_INTRO: readonly DemoStep[] = LANDING_DEMO_INTRO;
+const DEMO_LOOP: readonly DemoStep[] = LANDING_DEMO_LOOP;
 
 // Keep only the most recent messages in the DOM; the thread stays pinned to
 // the bottom so pruning older rows is invisible.
 const MAX_RENDERED_ITEMS = 14;
+// The phone should read as an ongoing relationship on first paint, especially
+// in a tall mobile viewport. Playback continues from this truthful context
+// instead of leaving either end of the thread visibly empty.
+const INITIAL_RENDERED_ITEMS = 10;
 const USER_KEYSTROKE_MS = 62;
 const ELIZA_TYPING_MS = 2275;
 const BEAT_PAUSE_MS = 1465;
@@ -248,7 +125,9 @@ function DemoCardBubble({ card }: { card: DemoCard }) {
 function PhoneMockup() {
   const t = useT();
   const [clock, setClock] = useState(() => new Date());
-  const [items, setItems] = useState<DemoItem[]>([]);
+  const [items, setItems] = useState<DemoItem[]>(() =>
+    settledIntroItems().slice(0, INITIAL_RENDERED_ITEMS),
+  );
   const [phase, setPhase] = useState<"intro" | "looping" | "settled">("intro");
   const [elizaTyping, setElizaTyping] = useState(false);
   const [composerText, setComposerText] = useState("");
@@ -279,8 +158,8 @@ function PhoneMockup() {
       ]);
     };
 
-    const play = async (steps: DemoStep[]) => {
-      for (const step of steps) {
+    const play = async (steps: readonly DemoStep[]) => {
+      for (const [index, step] of steps.entries()) {
         if (cancelled) return;
         if (step.kind === "user") {
           await sleep(PRE_USER_MS);
@@ -294,24 +173,31 @@ function PhoneMockup() {
           setComposerText("");
           append({ from: "user", kind: "text", text: step.text });
         } else if (step.kind === "eliza") {
-          await sleep(PRE_ELIZA_MS);
-          if (cancelled) return;
-          setElizaTyping(true);
-          await sleep(ELIZA_TYPING_MS);
-          if (cancelled) return;
-          setElizaTyping(false);
+          await sleep(step.continuation ? 360 : PRE_ELIZA_MS);
+          if (!step.continuation) {
+            if (cancelled) return;
+            setElizaTyping(true);
+            await sleep(ELIZA_TYPING_MS);
+            if (cancelled) return;
+            setElizaTyping(false);
+          }
           append({ from: "eliza", kind: "text", text: step.text });
         } else {
           await sleep(PRE_CARD_MS);
           if (cancelled) return;
           append({ from: "eliza", kind: "card", card: step.card });
         }
-        await sleep(BEAT_PAUSE_MS);
+        const nextStep = steps[index + 1];
+        await sleep(
+          nextStep?.kind === "eliza" && nextStep.continuation
+            ? 280
+            : BEAT_PAUSE_MS,
+        );
       }
     };
 
     (async () => {
-      await play(DEMO_INTRO);
+      await play(DEMO_INTRO.slice(INITIAL_RENDERED_ITEMS));
       if (cancelled) return;
       setPhase("looping");
       while (!cancelled) {
@@ -337,8 +223,6 @@ function PhoneMockup() {
   return (
     <div
       className="landing-iphone"
-      aria-hidden="true"
-      onContextMenu={(event) => event.preventDefault()}
       data-demo-phase={phase}
       data-demo-messages={items.length}
     >
@@ -496,7 +380,7 @@ function PhoneMockup() {
           </div>
         </div>
         <DemoKeyboard composerText={composerText} />
-        <div className="landing-iphone-homebar" />
+        <div className="landing-iphone-homebar" aria-hidden="true" />
       </div>
     </div>
   );
@@ -542,7 +426,7 @@ function DemoKeyboard({ composerText }: { composerText: string }) {
   const lastChar = composerText.slice(-1).toLowerCase();
   const lastWord = composerText.split(/\s+/).pop() ?? "";
   return (
-    <div className="landing-keyboard" data-open={open}>
+    <div className="landing-keyboard" data-open={open} aria-hidden="true">
       <div className="landing-keyboard-clip">
         <div className="landing-keyboard-inner">
           <div className="landing-kb-suggestions">
@@ -613,14 +497,136 @@ function DemoKeyboard({ composerText }: { composerText: string }) {
   );
 }
 
+function ContactSheet({
+  open,
+  onClose,
+  onText,
+  accountHref,
+  accountLabel,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onText: () => void;
+  accountHref: string;
+  accountLabel: string;
+}) {
+  const t = useT();
+  const dialogRef = useRef<HTMLDialogElement>(null);
+
+  useEffect(() => {
+    const dialog = dialogRef.current;
+    if (!dialog) return;
+    if (open && !dialog.open) dialog.showModal();
+    if (!open && dialog.open) dialog.close();
+  }, [open]);
+
+  useEffect(() => {
+    const dialog = dialogRef.current;
+    if (!dialog) return;
+    const dismissOnBackdrop = (event: MouseEvent) => {
+      if (event.target === dialog) onClose();
+    };
+    dialog.addEventListener("click", dismissOnBackdrop);
+    return () => dialog.removeEventListener("click", dismissOnBackdrop);
+  }, [onClose]);
+
+  return (
+    <dialog ref={dialogRef} className="landing-sheet" onClose={onClose}>
+      <div className="landing-sheet-body">
+        <header className="landing-sheet-head">
+          <img
+            className="landing-sheet-avatar"
+            src="/brand/logos/logo_white_orangebg.svg"
+            alt=""
+            width={423}
+            height={423}
+          />
+          <strong>Eliza</strong>
+          <span>
+            {t("homepage_eliza.landing.contactSheetSubtitle", {
+              defaultValue: "Reach me wherever you already message.",
+            })}
+          </span>
+        </header>
+        <div className="landing-sheet-options">
+          <button type="button" className="landing-sheet-row" onClick={onText}>
+            <IMessageIcon className="size-6" style={{ color: "#34C759" }} />
+            {t("homepage_eliza.landing.channelImessage", {
+              defaultValue: "Text Eliza on iMessage",
+            })}
+          </button>
+          <a className="landing-sheet-row" href={`tel:${ELIZA_PHONE_NUMBER}`}>
+            <svg
+              viewBox="0 0 24 24"
+              fill="currentColor"
+              className="size-6"
+              aria-hidden="true"
+            >
+              <path d="M6.62 10.79a15.05 15.05 0 0 0 6.59 6.59l2.2-2.2a1 1 0 0 1 1.02-.24 11.36 11.36 0 0 0 3.57.57 1 1 0 0 1 1 1V20a1 1 0 0 1-1 1A17 17 0 0 1 3 4a1 1 0 0 1 1-1h3.5a1 1 0 0 1 1 1 11.36 11.36 0 0 0 .57 3.57 1 1 0 0 1-.25 1.02Z" />
+            </svg>
+            {t("homepage_eliza.landing.channelPhone", {
+              defaultValue: "Call Eliza",
+            })}
+          </a>
+          <a
+            className="landing-sheet-row"
+            href={buildElizaTelegramHref()}
+            target="_blank"
+            rel="noreferrer"
+          >
+            <TelegramIcon className="size-6" style={{ color: "#2AABEE" }} />
+            {t("homepage_eliza.landing.channelTelegram", {
+              defaultValue: "Message Eliza on Telegram",
+            })}
+          </a>
+          <a
+            className="landing-sheet-row"
+            href={buildElizaDiscordHref()}
+            target="_blank"
+            rel="noreferrer"
+          >
+            <DiscordIcon className="size-6" style={{ color: "#5865F2" }} />
+            {t("homepage_eliza.landing.channelDiscord", {
+              defaultValue: "Message Eliza on Discord",
+            })}
+          </a>
+          <a
+            className="landing-sheet-row landing-sheet-row--account"
+            href={accountHref}
+          >
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.7"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className="size-6"
+              aria-hidden="true"
+            >
+              <path d="M17.5 19a4.5 4.5 0 0 0 .4-8.98 6 6 0 0 0-11.63-1.4A4.25 4.25 0 0 0 6.5 19h11Z" />
+            </svg>
+            {accountLabel}
+          </a>
+        </div>
+        <button type="button" className="landing-sheet-close" onClick={onClose}>
+          {t("homepage_eliza.landing.contactSheetClose", {
+            defaultValue: "Close",
+          })}
+        </button>
+      </div>
+    </dialog>
+  );
+}
+
 const SESSION_STORAGE_KEY = "eliza_app_session";
 
 export default function LandingPage() {
   const t = useT();
   const [phoneCopyState, setPhoneCopyState] = useState<
-    "idle" | "copied" | "error"
+    "idle" | "handoff" | "copied" | "error"
   >("idle");
-  const phoneCopyResetRef = useRef<number | null>(null);
+  const phoneCopyOperation = useRef(0);
   const browserWindow = typeof window === "undefined" ? null : window;
   const signedIn =
     browserWindow !== null &&
@@ -628,6 +634,7 @@ export default function LandingPage() {
   const productNavigation = resolveHomepageProductNavigation(
     browserWindow?.location.hostname ?? "",
   );
+  const [contactSheetOpen, setContactSheetOpen] = useState(false);
   const channels = [
     {
       key: "telegram",
@@ -636,14 +643,6 @@ export default function LandingPage() {
         defaultValue: "Message Eliza on Telegram",
       }),
       icon: <TelegramIcon className="size-6" style={{ color: "#2AABEE" }} />,
-    },
-    {
-      key: "whatsapp",
-      href: buildElizaWhatsAppHref(),
-      label: t("homepage_eliza.landing.channelWhatsapp", {
-        defaultValue: "Message Eliza on WhatsApp",
-      }),
-      icon: <WhatsAppIcon className="size-6" style={{ color: "#25D366" }} />,
     },
     {
       key: "discord",
@@ -655,29 +654,26 @@ export default function LandingPage() {
     },
   ];
 
-  useEffect(
-    () => () => {
-      if (phoneCopyResetRef.current !== null) {
-        window.clearTimeout(phoneCopyResetRef.current);
-      }
-    },
-    [],
-  );
+  const handleMessageEliza = async () => {
+    const operation = ++phoneCopyOperation.current;
+    try {
+      const outcome = await openOrCopyElizaMessage(window);
+      if (operation === phoneCopyOperation.current) setPhoneCopyState(outcome);
+    } catch {
+      // error-policy:J4 Clipboard rejection stays visible as a distinct UI error.
+      if (operation === phoneCopyOperation.current) setPhoneCopyState("error");
+    }
+  };
 
-  const copyPhoneNumber = async () => {
+  const handleCopyPhone = async () => {
+    const operation = ++phoneCopyOperation.current;
     try {
       await navigator.clipboard.writeText(ELIZA_PHONE_NUMBER);
-      setPhoneCopyState("copied");
+      if (operation === phoneCopyOperation.current) setPhoneCopyState("copied");
     } catch {
-      setPhoneCopyState("error");
+      // error-policy:J4 Clipboard rejection stays visible as a distinct UI error.
+      if (operation === phoneCopyOperation.current) setPhoneCopyState("error");
     }
-    if (phoneCopyResetRef.current !== null) {
-      window.clearTimeout(phoneCopyResetRef.current);
-    }
-    phoneCopyResetRef.current = window.setTimeout(
-      () => setPhoneCopyState("idle"),
-      2_000,
-    );
   };
 
   const phoneCopyLabel =
@@ -685,11 +681,14 @@ export default function LandingPage() {
       ? t("homepage_eliza.landing.phoneCopied", {
           defaultValue: "Copied!",
         })
-      : phoneCopyState === "error"
-        ? t("homepage_eliza.landing.phoneCopyFailed", {
-            defaultValue: "Couldn't copy",
+      : phoneCopyState === "handoff"
+        ? t("homepage_eliza.common.messageHandoff", {
+            defaultValue:
+              "Opening Messages. If nothing happens, copy the number.",
           })
-        : ELIZA_PHONE_FORMATTED;
+        : t("homepage_eliza.landing.phoneCopyFailed", {
+            defaultValue: "Couldn't copy",
+          });
   return (
     <div className="landing-page theme-app">
       <Suspense fallback={null}>
@@ -704,7 +703,16 @@ export default function LandingPage() {
             defaultValue: "Eliza",
           })}
         >
-          <img src={elizaLogotextUrl} alt="Eliza" />
+          <img
+            className="landing-brand-mark"
+            src="/brand/logos/logo_white_orangebg.svg"
+            alt=""
+          />
+          <img
+            className="landing-brand-wordmark"
+            src="/brand/logos/eliza_text_black.svg"
+            alt=""
+          />
         </a>
         <a
           className="landing-cta landing-cta--white landing-header-cta"
@@ -729,15 +737,16 @@ export default function LandingPage() {
             })}
           </h1>
           <div className="landing-hero-actions">
-            <a
+            <button
+              type="button"
               className="landing-cta landing-cta--black"
-              href={buildElizaSmsHref()}
+              onClick={() => void handleMessageEliza()}
             >
               <IMessageIcon className="size-5" />
               {t("homepage_eliza.landing.ctaText", {
                 defaultValue: "Text Eliza",
               })}
-            </a>
+            </button>
             <a
               className="landing-cta landing-cta--white"
               href={`tel:${ELIZA_PHONE_NUMBER}`}
@@ -770,19 +779,62 @@ export default function LandingPage() {
               </a>
             ))}
           </div>
-          <button
-            type="button"
-            className="landing-phone-number"
-            onClick={() => void copyPhoneNumber()}
-            aria-label={t("homepage_eliza.landing.copyPhone", {
-              defaultValue: "Copy Eliza's phone number",
-            })}
-          >
-            <span aria-live="polite">{phoneCopyLabel}</span>
-          </button>
+          {phoneCopyState !== "idle" && (
+            <div
+              className={`landing-copy-notice landing-copy-notice--${phoneCopyState}`}
+            >
+              <span
+                role={phoneCopyState === "error" ? "alert" : "status"}
+                aria-live="polite"
+              >
+                {phoneCopyLabel}
+              </span>
+              {phoneCopyState === "handoff" && (
+                <button
+                  type="button"
+                  className="landing-copy-notice-action"
+                  onClick={() => void handleCopyPhone()}
+                >
+                  {t("homepage_eliza.connected.copyPhoneAria", {
+                    defaultValue: "Copy phone number",
+                  })}
+                </button>
+              )}
+            </div>
+          )}
         </div>
         <ResponsivePhoneMockup />
+        <button
+          type="button"
+          className="landing-tap-target"
+          onClick={() => setContactSheetOpen(true)}
+          aria-label={t("homepage_eliza.landing.contactSheetOpen", {
+            defaultValue: "All the ways to reach Eliza",
+          })}
+        />
       </main>
+      <ContactSheet
+        open={contactSheetOpen}
+        onClose={() => setContactSheetOpen(false)}
+        onText={() => {
+          setContactSheetOpen(false);
+          void handleMessageEliza();
+        }}
+        accountHref={
+          signedIn
+            ? productNavigation.dashboardUrl
+            : productNavigation.signInUrl
+        }
+        accountLabel={
+          signedIn
+            ? t("homepage_eliza.landing.dashboard", {
+                defaultValue: "Open your dashboard",
+              })
+            : t("homepage_eliza.landing.signInCloud", {
+                defaultValue: "Sign in to Eliza Cloud",
+              })
+        }
+      />
     </div>
   );
 }

@@ -1,9 +1,4 @@
-/**
- * Regression for Cloud first-run resolution. The normal path binds the one
- * account-native rowless personal Eliza directly after client authentication;
- * it never lists, selects, wakes, or provisions a paid agent. Legacy explicit
- * agent binding remains covered separately for existing advanced flows.
- */
+/** Verifies Cloud first-run binds the rowless account identity without provisioning compute. */
 // @vitest-environment jsdom
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -137,7 +132,9 @@ beforeEach(() => {
   clientStub.listConversations = vi.fn(async () => ({ conversations: [] }));
   clientStub.getCloudStatus.mockResolvedValue({ connected: false });
   clientStub.getPersonalSharedEliza.mockResolvedValue({
+    personalElizaId: SHARED_AGENT_ID,
     agentId: SHARED_AGENT_ID,
+    activeAgentId: SHARED_AGENT_ID,
     agentName: "Eliza",
     apiBase: SHARED_AGENT_BASE,
     runtime: "shared",

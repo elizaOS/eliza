@@ -56,6 +56,7 @@ export {
 } from "./constants";
 export { isElizaCloudServiceSelectedInConfig } from "./contracts/cloud-topology";
 export {
+	type CharacterFailureTemplates,
 	getDirectAccountProviderForFirstRunProvider,
 	getFirstRunProviderOption,
 	getStoredFirstRunProviderId,

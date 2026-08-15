@@ -86,6 +86,13 @@
         "required": false,
         "sensitive": false
       },
+      "PTY_IDLE_TIMEOUT_MS": {
+        "type": "number",
+        "description": "Idle live-session timeout in milliseconds. Use 0 to disable the fallback reaper; values must be integers no greater than 2147483647.",
+        "required": false,
+        "default": 900000,
+        "sensitive": false
+      },
       "ELIZA_CODE_BIN": {
         "type": "string",
         "description": "Absolute path to an installed interactive eliza-code binary (dist/index.js).",

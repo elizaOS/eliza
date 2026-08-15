@@ -1,4 +1,4 @@
-/** Verifies the rowless personal Eliza identity and default runtime projection. */
+/** Verifies stable rowless identity and its canonical Eliza projection. */
 
 import { describe, expect, test } from "bun:test";
 import {
@@ -31,20 +31,15 @@ describe("personalSharedAgent", () => {
     expect(otherUser).not.toBe(first);
   });
 
-  test("projects the canonical Eliza character onto the shared runtime", () => {
-    const agent = personalSharedAgent(account);
-
-    expect(agent).toMatchObject({
+  test("projects Eliza without a sandbox record", () => {
+    expect(personalSharedAgent(account)).toMatchObject({
       id: personalSharedAgentId(account),
       organization_id: account.organizationId,
       user_id: account.userId,
       character_id: null,
       agent_name: "Eliza",
       execution_tier: "shared",
-    });
-    expect(agent.agent_config?.character).toMatchObject({
-      name: "Eliza",
-      source: "cloud",
+      agent_config: { character: { name: "Eliza", source: "cloud" } },
     });
   });
 

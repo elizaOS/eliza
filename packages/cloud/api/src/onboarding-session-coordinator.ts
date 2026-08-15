@@ -721,8 +721,14 @@ export class OnboardingSessionCoordinator {
       assertTrustedTelegramContinuation(nextSession, request.input);
     }
 
-    const replayKey = request.input.idempotencyKey
-      ? replayStorageKey(scope, request.input.idempotencyKey, request.input)
+    // Status polls are read-only current-state reads. They may start with an
+    // empty transcript (which has no replay marker), and replaying an earlier
+    // result would hide a later provisioning-state transition.
+    const replayIdempotencyKey = request.input.statusOnly
+      ? undefined
+      : request.input.idempotencyKey;
+    const replayKey = replayIdempotencyKey
+      ? replayStorageKey(scope, replayIdempotencyKey, request.input)
       : undefined;
     if (replayKey) {
       const replay = await this.state.storage.get<ReplayEntry>(replayKey);
@@ -754,8 +760,8 @@ export class OnboardingSessionCoordinator {
     // The replay ledger stores the COMMITTED shape of the result: the
     // greeting handoff is stripped below before this turn returns, and a
     // replayed turn must never re-enqueue a greeting.
-    const replay = request.input.idempotencyKey
-      ? storedReplay(request.input.idempotencyKey, {
+    const replay = replayIdempotencyKey
+      ? storedReplay(replayIdempotencyKey, {
           ...result,
           proactiveGreeting: undefined,
         })

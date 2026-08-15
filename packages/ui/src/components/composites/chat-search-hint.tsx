@@ -35,7 +35,7 @@ export function ChatSearchHint({
   return (
     <p
       data-testid="chat-search-hint"
-      className={cn("text-[13px] leading-relaxed text-txt/60", className)}
+      className={cn("text-[13px] leading-relaxed text-muted-strong", className)}
     >
       {q
         ? t("common.chatSearchActive", {

@@ -19,6 +19,7 @@ import {
 } from "../cloud/handoff/cloud-handoff-supervisor";
 import { isRetryableHandoffHttpStatus } from "../cloud/handoff/conversation-handoff";
 import { getBootConfig } from "../config/boot-config";
+import { isTrustedCloudApiBaseUrl } from "../state/runtime-url-trust";
 import {
   buildCloudSharedAgentApiBase,
   buildDedicatedCloudAgentApiBase,
@@ -145,7 +146,25 @@ type DirectCloudAgentCreateData = {
   agentName: string;
   status: string;
   jobId: string | null;
+  createdAt: string | null;
+  executionTier: CloudAgentExecutionTier | null;
 };
+
+type CloudAgentExecutionTier =
+  | "shared"
+  | "dedicated-lazy"
+  | "dedicated-always"
+  | "custom";
+
+interface CloudAgentDeleteCondition {
+  expectedAgentName: string;
+  expectedCreatedAt: string;
+  expectedExecutionTier: CloudAgentExecutionTier;
+}
+
+interface CloudAgentCleanupReceipt {
+  deleteCondition: CloudAgentDeleteCondition;
+}
 
 function requireConfirmedFreshCloudAgentCreate(
   forceCreate: boolean | undefined,
@@ -1001,7 +1020,25 @@ function parseDirectCloudAgentCreateData(
     jobId:
       firstString(data.jobId, data.job_id, job?.jobId, job?.job_id, job?.id) ??
       null,
+    createdAt: firstString(data.createdAt, data.created_at),
+    executionTier: parseCloudAgentExecutionTier(
+      firstString(data.executionTier, data.execution_tier),
+    ),
   };
+}
+
+function parseCloudAgentExecutionTier(
+  value: string | null,
+): CloudAgentExecutionTier | null {
+  switch (value) {
+    case "shared":
+    case "dedicated-lazy":
+    case "dedicated-always":
+    case "custom":
+      return value;
+    default:
+      return null;
+  }
 }
 
 function toCloudCompatAgent(input: DirectCloudAgent): CloudCompatAgent {
@@ -1370,6 +1407,9 @@ declare module "./client-base" {
         status: string;
         nodeId: string | null;
         message: string;
+        /** Authoritative create identity used only for conditional compensation. */
+        createdAt: string | null;
+        executionTier: CloudAgentExecutionTier | null;
       };
     }>;
     ensureCloudCompatManagedDiscordAgent(): Promise<{
@@ -1477,7 +1517,10 @@ declare module "./client-base" {
         githubUsername: string;
       };
     }>;
-    deleteCloudCompatAgent(agentId: string): Promise<{
+    deleteCloudCompatAgent(
+      agentId: string,
+      condition?: CloudAgentDeleteCondition,
+    ): Promise<{
       success: boolean;
       error?: string;
       data: { jobId: string; status: string; message: string };
@@ -1601,8 +1644,14 @@ declare module "./client-base" {
     getPersonalSharedEliza(options: {
       cloudApiBase: string;
       authToken: string;
+      signal?: AbortSignal;
     }): Promise<{
+      /** Stable account-native identity; never changes when hosting tier changes. */
+      personalElizaId: string;
+      /** Backward-compatible logical identity alias used by join callers. */
       agentId: string;
+      /** Runtime currently serving the logical identity. */
+      activeAgentId: string;
       agentName: string;
       apiBase: string;
       runtime: "shared" | "dedicated";
@@ -1650,6 +1699,8 @@ declare module "./client-base" {
        */
       wakePollIntervalMs?: number;
       wakeTimeoutMs?: number;
+      /** Cancel selection/wake polling while preserving an accepted create receipt for compensation. */
+      signal?: AbortSignal;
     }): Promise<{
       agentId: string;
       agentName: string;
@@ -1663,6 +1714,8 @@ declare module "./client-base" {
        */
       requiresAgentPairing?: boolean;
       executionTier?: string | null;
+      /** Exact fresh-create identity; absent for reused or legacy responses. */
+      cleanupReceipt?: CloudAgentCleanupReceipt;
     }>;
     /**
      * Background shared→personal handoff for a freshly provisioned cloud agent:
@@ -2185,6 +2238,8 @@ ElizaClient.prototype.createCloudCompatAgent = async function (
         status: data.status,
         nodeId: null,
         message: direct.success ? "Agent created" : (direct.error ?? ""),
+        createdAt: data.createdAt,
+        executionTier: data.executionTier,
       },
     };
   }
@@ -2199,6 +2254,8 @@ ElizaClient.prototype.createCloudCompatAgent = async function (
         status: "error",
         nodeId: null,
         message: directCloudAuthMissingMessage(),
+        createdAt: null,
+        executionTier: null,
       },
     };
   }
@@ -2243,6 +2300,8 @@ ElizaClient.prototype.createCloudCompatAgent = async function (
         status: data.status,
         nodeId: null,
         message: response.success ? "Agent created" : (response.error ?? ""),
+        createdAt: data.createdAt,
+        executionTier: data.executionTier,
       },
     };
   }
@@ -2560,6 +2619,7 @@ ElizaClient.prototype.getCloudCompatAgentGithubToken = async function (
 ElizaClient.prototype.deleteCloudCompatAgent = async function (
   this: ElizaClient,
   agentId,
+  condition,
 ) {
   const normalizeDelete = (response: {
     success?: boolean;
@@ -2569,9 +2629,10 @@ ElizaClient.prototype.deleteCloudCompatAgent = async function (
     success: response.success === true,
     ...(response.error ? { error: response.error } : {}),
     data: {
-      // A 202 async delete carries a jobId the caller can poll
-      // (`/api/v1/jobs/<id>`) to learn whether the teardown actually
-      // completed. A synchronous delete returns no jobId.
+      // A 202 async delete carries the durable jobId. Management surfaces may
+      // poll it for eventual teardown state; join cancellation only needs the
+      // accepted receipt because the server already owns recovery and billing.
+      // A synchronous delete returns no jobId.
       jobId: response.data?.jobId ?? "",
       status:
         response.data?.status ??
@@ -2590,6 +2651,7 @@ ElizaClient.prototype.deleteCloudCompatAgent = async function (
     error?: string;
   }>(this, `/api/v1/eliza/agents/${encodeURIComponent(agentId)}`, {
     method: "DELETE",
+    ...(condition ? { body: JSON.stringify(condition) } : {}),
   });
   if (direct) return normalizeDelete(direct);
 
@@ -2612,7 +2674,10 @@ ElizaClient.prototype.deleteCloudCompatAgent = async function (
       error?: string;
     }>(
       `/api/v1/eliza/agents/${encodeURIComponent(agentId)}`,
-      { method: "DELETE" },
+      {
+        method: "DELETE",
+        ...(condition ? { body: JSON.stringify(condition) } : {}),
+      },
       { allowNonOk: true },
     );
     return normalizeDelete(response);
@@ -2620,6 +2685,7 @@ ElizaClient.prototype.deleteCloudCompatAgent = async function (
 
   return this.fetch(`/api/cloud/compat/agents/${encodeURIComponent(agentId)}`, {
     method: "DELETE",
+    ...(condition ? { body: JSON.stringify(condition) } : {}),
   });
 };
 
@@ -3708,15 +3774,17 @@ export async function waitForCloudAgentRunning(
     pollIntervalMs?: number;
     timeoutMs?: number;
     onProgress?: (status: string, detail?: string) => void;
+    signal?: AbortSignal;
   },
 ): Promise<CloudCompatAgent> {
   const { agentId, onProgress } = options;
+  options.signal?.throwIfAborted();
   const pollIntervalMs = Math.max(
     50,
     options.pollIntervalMs ?? CLOUD_AGENT_WAKE_POLL_INTERVAL_MS,
   );
   const timeoutMs = Math.max(
-    pollIntervalMs,
+    1,
     options.timeoutMs ?? CLOUD_AGENT_WAKE_TIMEOUT_MS,
   );
   const startedAt = Date.now();
@@ -3764,6 +3832,7 @@ export async function waitForCloudAgentRunning(
   let lastStatus = "unknown";
   let backoffMs: number | null = null;
   for (;;) {
+    options.signal?.throwIfAborted();
     backoffMs = null;
     const detail = await client
       .getCloudCompatAgent(agentId)
@@ -3830,16 +3899,27 @@ export async function waitForCloudAgentRunning(
       });
     }
     onProgress?.("starting", describeAgentWakeWait(elapsedMs));
-    await new Promise((r) =>
-      setTimeout(
-        r,
-        Math.min(
-          Math.max(pollIntervalMs, backoffMs ?? 0),
-          timeoutMs - elapsedMs,
-        ),
-      ),
+    await abortableDelay(
+      Math.min(Math.max(pollIntervalMs, backoffMs ?? 0), timeoutMs - elapsedMs),
+      options.signal,
     );
   }
+}
+
+function abortableDelay(delayMs: number, signal?: AbortSignal): Promise<void> {
+  if (!signal) return new Promise((resolve) => setTimeout(resolve, delayMs));
+  signal.throwIfAborted();
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      signal.removeEventListener("abort", onAbort);
+      resolve();
+    }, delayMs);
+    const onAbort = () => {
+      clearTimeout(timeout);
+      reject(signal.reason);
+    };
+    signal.addEventListener("abort", onAbort, { once: true });
+  });
 }
 
 /**
@@ -3875,21 +3955,24 @@ export async function waitForCloudProvisionJob(
     pollIntervalMs?: number;
     timeoutMs?: number;
     onProgress?: (status: string, detail?: string) => void;
+    signal?: AbortSignal;
   },
 ): Promise<void> {
   const { agentId, jobId, onProgress } = options;
+  options.signal?.throwIfAborted();
   const pollIntervalMs = Math.max(
     50,
     options.pollIntervalMs ?? CLOUD_AGENT_WAKE_POLL_INTERVAL_MS,
   );
   const timeoutMs = Math.max(
-    pollIntervalMs,
+    1,
     options.timeoutMs ?? CLOUD_AGENT_WAKE_TIMEOUT_MS,
   );
   const startedAt = Date.now();
   let lastStatus = "queued";
   let backoffMs: number | null = null;
   for (;;) {
+    options.signal?.throwIfAborted();
     backoffMs = null;
     const res = await client
       .getCloudCompatJobStatus(jobId)
@@ -3963,14 +4046,9 @@ export async function waitForCloudProvisionJob(
       "provisioning",
       describeProvisioningWait(lastStatus, elapsedMs),
     );
-    await new Promise((r) =>
-      setTimeout(
-        r,
-        Math.min(
-          Math.max(pollIntervalMs, backoffMs ?? 0),
-          timeoutMs - elapsedMs,
-        ),
-      ),
+    await abortableDelay(
+      Math.min(Math.max(pollIntervalMs, backoffMs ?? 0), timeoutMs - elapsedMs),
+      options.signal,
     );
   }
 }
@@ -4016,12 +4094,13 @@ function pickPreferredCloudAgent(
 
 ElizaClient.prototype.getPersonalSharedEliza = async (options) => {
   const cloudApiBase = resolveDirectCloudAuthApiBase(options.cloudApiBase);
-  const url = `${cloudApiBase}/api/v1/eliza/shared/messages`;
+  const url = `${cloudApiBase}/api/v1/eliza/personal`;
   const response = await directCloudJsonResponse<unknown>(url, {
     headers: {
       Accept: "application/json",
       Authorization: `Bearer ${options.authToken}`,
     },
+    ...(options.signal ? { signal: options.signal } : {}),
   });
   if (!response.ok) {
     throw Object.assign(
@@ -4057,14 +4136,17 @@ ElizaClient.prototype.getPersonalSharedEliza = async (options) => {
       !activeAgentId ||
       !apiBase ||
       !parsedBase ||
-      (parsedBase.protocol !== "https:" && parsedBase.protocol !== "http:")
+      (parsedBase.protocol !== "https:" && parsedBase.protocol !== "http:") ||
+      !isTrustedCloudApiBaseUrl(apiBase, activeAgentId)
     ) {
       throw new Error(
         "Eliza Cloud returned an invalid Dedicated connection for this personal Eliza.",
       );
     }
     return {
-      agentId: activeAgentId,
+      personalElizaId,
+      agentId: personalElizaId,
+      activeAgentId,
       agentName,
       apiBase,
       runtime: "dedicated",
@@ -4074,7 +4156,9 @@ ElizaClient.prototype.getPersonalSharedEliza = async (options) => {
     throw new Error("Eliza Cloud returned an unknown personal Eliza runtime.");
   }
   return {
+    personalElizaId,
     agentId: personalElizaId,
+    activeAgentId: personalElizaId,
     agentName,
     apiBase: buildCloudSharedAgentApiBase(cloudApiBase, personalElizaId),
     runtime: "shared",
@@ -4085,6 +4169,7 @@ ElizaClient.prototype.selectOrProvisionCloudAgent = async function (
   this: ElizaClient,
   options,
 ) {
+  options.signal?.throwIfAborted();
   const {
     cloudApiBase,
     authToken,
@@ -4182,6 +4267,7 @@ ElizaClient.prototype.selectOrProvisionCloudAgent = async function (
             ? { timeoutMs: options.wakeTimeoutMs }
             : {}),
           ...(onProgress ? { onProgress } : {}),
+          ...(options.signal ? { signal: options.signal } : {}),
         });
       }
       const hasDedicatedBase = Boolean(
@@ -4239,6 +4325,29 @@ ElizaClient.prototype.selectOrProvisionCloudAgent = async function (
   }
   requireConfirmedFreshCloudAgentCreate(mustForceCreate, created.created);
   const agentId = created.data.agentId;
+  const cleanupReceipt =
+    created.data.createdAt && created.data.executionTier
+      ? {
+          deleteCondition: {
+            expectedAgentName: created.data.agentName || name,
+            expectedCreatedAt: created.data.createdAt,
+            expectedExecutionTier: created.data.executionTier,
+          },
+        }
+      : undefined;
+  const cancellationReceipt = () => ({
+    agentId,
+    agentName: created.data.agentName || name,
+    apiBase: buildCloudSharedAgentApiBase(resolvedCloudApiBase, agentId),
+    bridgeUrl: null,
+    created: created.created !== false,
+    requiresAgentPairing: false,
+    executionTier: preferSharedTier ? ("shared" as const) : null,
+    ...(cleanupReceipt ? { cleanupReceipt } : {}),
+  });
+  // Once create is accepted, callers need the authoritative id even if the
+  // remaining wait is cancelled so they can compensate the external mutation.
+  if (options.signal?.aborted) return cancellationReceipt();
   // The provisioning-job wait and the running wait below are two halves of ONE
   // join, so they share ONE budget. Giving each the full wake timeout let a job
   // that finished at 5:59 hand a fresh six minutes to the status poll — the
@@ -4253,15 +4362,23 @@ ElizaClient.prototype.selectOrProvisionCloudAgent = async function (
   // to terminal — its row carries the real failure reason long before the
   // agent-detail poll below would time out — instead of discarding the id.
   if (created.data.jobId) {
-    await waitForCloudProvisionJob(this, {
-      agentId,
-      jobId: created.data.jobId,
-      ...(typeof options.wakePollIntervalMs === "number"
-        ? { pollIntervalMs: options.wakePollIntervalMs }
-        : {}),
-      timeoutMs: remainingWakeMs(),
-      ...(onProgress ? { onProgress } : {}),
-    });
+    try {
+      await waitForCloudProvisionJob(this, {
+        agentId,
+        jobId: created.data.jobId,
+        ...(typeof options.wakePollIntervalMs === "number"
+          ? { pollIntervalMs: options.wakePollIntervalMs }
+          : {}),
+        timeoutMs: remainingWakeMs(),
+        ...(onProgress ? { onProgress } : {}),
+        ...(options.signal ? { signal: options.signal } : {}),
+      });
+    } catch (error) {
+      if (options.signal?.aborted && error === options.signal.reason) {
+        return cancellationReceipt();
+      }
+      throw error;
+    }
   }
   // error-policy:J4 detail is an optimization probe (warm-pool fast path);
   // on failure the standard dedicated subdomain is still the desired default.
@@ -4291,14 +4408,22 @@ ElizaClient.prototype.selectOrProvisionCloudAgent = async function (
     detailAgent.status !== "running" &&
     isDedicatedCloudAgentBase(initialDedicatedApiBase)
   ) {
-    detailAgent = await waitForCloudAgentRunning(this, {
-      agentId,
-      ...(typeof options.wakePollIntervalMs === "number"
-        ? { pollIntervalMs: options.wakePollIntervalMs }
-        : {}),
-      timeoutMs: remainingWakeMs(),
-      ...(onProgress ? { onProgress } : {}),
-    });
+    try {
+      detailAgent = await waitForCloudAgentRunning(this, {
+        agentId,
+        ...(typeof options.wakePollIntervalMs === "number"
+          ? { pollIntervalMs: options.wakePollIntervalMs }
+          : {}),
+        timeoutMs: remainingWakeMs(),
+        ...(onProgress ? { onProgress } : {}),
+        ...(options.signal ? { signal: options.signal } : {}),
+      });
+    } catch (error) {
+      if (options.signal?.aborted && error === options.signal.reason) {
+        return cancellationReceipt();
+      }
+      throw error;
+    }
   }
   const apiBase = useSharedAdapter
     ? buildCloudSharedAgentApiBase(resolvedCloudApiBase, agentId)
@@ -4320,6 +4445,7 @@ ElizaClient.prototype.selectOrProvisionCloudAgent = async function (
     created: created.created !== false,
     requiresAgentPairing: false,
     executionTier: detailAgent?.execution_tier ?? null,
+    ...(cleanupReceipt ? { cleanupReceipt } : {}),
   };
 };
 

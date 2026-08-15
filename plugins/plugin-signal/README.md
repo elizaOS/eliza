@@ -9,7 +9,6 @@ Signal messaging integration for elizaOS. Enables Eliza agents to send and recei
 - **Contact and group discovery** — the plugin exposes Signal contacts and groups as connector targets so agents can resolve conversation destinations by name, phone number, or group.
 - **QR device linking** — HTTP endpoints drive a pairing flow (QR code → signal-cli device link) without requiring a separate phone.
 - **Multi-account** — configure multiple Signal accounts via `character.settings.signal.accounts`.
-- **Workflow integration** — supplies credentials to the workflow plugin for Signal-backed automations.
 
 ## Capabilities registered
 
@@ -17,7 +16,6 @@ This plugin registers no actions. Messaging is handled through the `MessageConne
 
 **Services:**
 - `SignalService` — core connector; manages daemon lifecycle, inbound/outbound messages, contacts, and groups.
-- `SignalWorkflowCredentialProvider` — bridges Signal credentials to the workflow plugin.
 
 **Setup routes (no auth required, mounted at raw paths):**
 - `GET  /api/setup/signal/status` — pairing and connection state

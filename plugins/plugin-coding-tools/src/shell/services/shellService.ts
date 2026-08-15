@@ -16,6 +16,7 @@ import {
   shouldUseSandboxExecution,
 } from "@elizaos/shared";
 import spawn from "cross-spawn";
+import { redactShellText, redactShellValue } from "../redaction";
 import type {
   CommandHistoryEntry,
   CommandResult,
@@ -73,9 +74,44 @@ import {
   listRunningSessions,
   markBackgrounded,
   markExited,
+  setJobTtlMs,
 } from "./processRegistry";
 
 const DEFAULT_TIMEOUT_SEC = 1800; // 30 minutes
+
+function redactProcessSession(
+  runtime: IAgentRuntime,
+  session: ProcessSession,
+): ProcessSession {
+  return {
+    ...session,
+    command: redactShellText(runtime, session.command),
+    cwd: session.cwd ? redactShellText(runtime, session.cwd) : undefined,
+    pendingStdout: session.pendingStdout.map((text) =>
+      redactShellText(runtime, text),
+    ),
+    pendingStderr: session.pendingStderr.map((text) =>
+      redactShellText(runtime, text),
+    ),
+    aggregated: redactShellText(runtime, session.aggregated),
+    tail: redactShellText(runtime, session.tail),
+    child: undefined,
+    stdin: undefined,
+  };
+}
+
+function redactFinishedSession(
+  runtime: IAgentRuntime,
+  session: FinishedSession,
+): FinishedSession {
+  return {
+    ...session,
+    command: redactShellText(runtime, session.command),
+    cwd: session.cwd ? redactShellText(runtime, session.cwd) : undefined,
+    aggregated: redactShellText(runtime, session.aggregated),
+    tail: redactShellText(runtime, session.tail),
+  };
+}
 
 interface RuntimeSandboxManager {
   getState?: () => string;
@@ -107,6 +143,7 @@ export class ShellService extends Service {
   constructor(runtime?: IAgentRuntime) {
     super(runtime);
     this.shellConfig = loadShellConfig();
+    setJobTtlMs(this.shellConfig.jobTtlMs);
     this.currentDirectory = this.shellConfig.allowedDirectory;
     this.commandHistory = new Map();
   }
@@ -198,7 +235,7 @@ export class ShellService extends Service {
     }
 
     logger.info(
-      `[shell:sandbox] routing exec via SandboxManager: ${command.substring(0, 100)}`,
+      `[shell:sandbox] routing exec via SandboxManager: ${redactShellText(this.runtime, command.substring(0, 100))}`,
     );
     const result = await sandboxManager.exec({
       command,
@@ -236,6 +273,16 @@ export class ShellService extends Service {
    * Simple command execution (original API for backward compatibility)
    */
   async executeCommand(
+    command: string,
+    conversationId?: string,
+  ): Promise<CommandResult> {
+    return redactShellValue(
+      this.runtime,
+      await this.executeCommandUnredacted(command, conversationId),
+    );
+  }
+
+  private async executeCommandUnredacted(
     command: string,
     conversationId?: string,
   ): Promise<CommandResult> {
@@ -287,7 +334,7 @@ export class ShellService extends Service {
         "http://localhost:2138";
       const runtimeFetch = this.runtime.fetch ?? globalThis.fetch;
       logger.info(
-        `[shell:sandbox] routing exec to ${hostApiUrl}: ${command.substring(0, 100)}`,
+        `[shell:sandbox] routing exec to ${hostApiUrl}: ${redactShellText(this.runtime, command.substring(0, 100))}`,
       );
       try {
         const response = await runtimeFetch(`${hostApiUrl}/api/sandbox/exec`, {
@@ -320,7 +367,10 @@ export class ShellService extends Service {
         // error-policy:J1 execution boundary; a sandbox exec failure is
         // translated into a structured `success:false` ExecResult carrying the
         // real message, which the SHELL action forwards to the model.
-        const errMsg = err instanceof Error ? err.message : String(err);
+        const errMsg = redactShellText(
+          this.runtime,
+          err instanceof Error ? err.message : String(err),
+        );
         logger.error(`[shell:sandbox] exec failed: ${errMsg}`);
         return {
           success: false,
@@ -408,6 +458,24 @@ export class ShellService extends Service {
    * This is the main execution method that supports all advanced features
    */
   async exec(
+    command: string,
+    options: ExecuteOptions = {},
+  ): Promise<ExecResult> {
+    const onUpdate = options.onUpdate;
+    const safeOptions = onUpdate
+      ? {
+          ...options,
+          onUpdate: (session: ProcessSession) =>
+            onUpdate(redactProcessSession(this.runtime, session)),
+        }
+      : options;
+    return redactShellValue(
+      this.runtime,
+      await this.execUnredacted(command, safeOptions),
+    );
+  }
+
+  private async execUnredacted(
     command: string,
     options: ExecuteOptions = {},
   ): Promise<ExecResult> {
@@ -679,6 +747,17 @@ export class ShellService extends Service {
    * Supports: list, poll, log, write, send-keys, submit, paste, kill, clear, remove
    */
   async processAction(params: ProcessActionParams): Promise<{
+    success: boolean;
+    message: string;
+    data?: Record<string, unknown>;
+  }> {
+    return redactShellValue(
+      this.runtime,
+      await this.processActionUnredacted(params),
+    );
+  }
+
+  private async processActionUnredacted(params: ProcessActionParams): Promise<{
     success: boolean;
     message: string;
     data?: Record<string, unknown>;
@@ -1124,9 +1203,9 @@ export class ShellService extends Service {
    */
   listRunningSessions(): ProcessSession[] {
     const scopeKey = this.scopeKey;
-    return listRunningSessions().filter(
-      (s) => !scopeKey || s.scopeKey === scopeKey,
-    );
+    return listRunningSessions()
+      .filter((s) => !scopeKey || s.scopeKey === scopeKey)
+      .map((session) => redactProcessSession(this.runtime, session));
   }
 
   /**
@@ -1134,9 +1213,9 @@ export class ShellService extends Service {
    */
   listFinishedSessions(): FinishedSession[] {
     const scopeKey = this.scopeKey;
-    return listFinishedSessions().filter(
-      (s) => !scopeKey || s.scopeKey === scopeKey,
-    );
+    return listFinishedSessions()
+      .filter((s) => !scopeKey || s.scopeKey === scopeKey)
+      .map((session) => redactFinishedSession(this.runtime, session));
   }
 
   /**
@@ -1146,7 +1225,7 @@ export class ShellService extends Service {
     const session = getSession(id);
     if (!session) return undefined;
     if (this.scopeKey && session.scopeKey !== this.scopeKey) return undefined;
-    return session;
+    return redactProcessSession(this.runtime, session);
   }
 
   /**
@@ -1156,15 +1235,16 @@ export class ShellService extends Service {
     const session = getFinishedSession(id);
     if (!session) return undefined;
     if (this.scopeKey && session.scopeKey !== this.scopeKey) return undefined;
-    return session;
+    return redactFinishedSession(this.runtime, session);
   }
 
   /**
    * Kill a session by ID
    */
   killSessionById(id: string): boolean {
-    const session = this.getSession(id);
+    const session = getSession(id);
     if (!session) return false;
+    if (this.scopeKey && session.scopeKey !== this.scopeKey) return false;
     killSession(session);
     markExited(session, null, "SIGKILL", "killed");
     return true;
@@ -1285,14 +1365,14 @@ export class ShellService extends Service {
         cmd = shell.shell;
         args = [...shell.args, command];
         logger.info(
-          `Executing shell command: ${cmd} ${shell.args.join(" ")} "${command}" in ${this.currentDirectory}`,
+          `Executing shell command: ${cmd} ${shell.args.join(" ")} "${redactShellText(this.runtime, command)}" in ${redactShellText(this.runtime, this.currentDirectory)}`,
         );
       } else {
         const parts = command.split(/\s+/);
         cmd = parts[0];
         args = parts.slice(1);
         logger.info(
-          `Executing command: ${cmd} ${args.join(" ")} in ${this.currentDirectory}`,
+          `Executing command: ${redactShellText(this.runtime, `${cmd} ${args.join(" ")}`)} in ${redactShellText(this.runtime, this.currentDirectory)}`,
         );
       }
 
@@ -1721,13 +1801,19 @@ export class ShellService extends Service {
     if (!conversationId) return;
 
     const historyEntry: CommandHistoryEntry = {
-      command,
-      stdout: result.stdout,
-      stderr: result.stderr,
+      command: redactShellText(this.runtime, command),
+      stdout: redactShellText(this.runtime, result.stdout),
+      stderr: redactShellText(this.runtime, result.stderr),
       exitCode: result.exitCode,
       timestamp: Date.now(),
-      workingDirectory: result.executedIn,
-      fileOperations,
+      workingDirectory: redactShellText(this.runtime, result.executedIn),
+      fileOperations: fileOperations?.map((operation) => ({
+        ...operation,
+        target: redactShellText(this.runtime, operation.target),
+        secondaryTarget: operation.secondaryTarget
+          ? redactShellText(this.runtime, operation.secondaryTarget)
+          : undefined,
+      })),
     };
 
     if (!this.commandHistory.has(conversationId)) {

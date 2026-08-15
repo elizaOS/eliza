@@ -16,7 +16,6 @@ process.env.MOCK_REDIS = "1";
 
 import { pushSchema } from "drizzle-kit/api";
 import { eq } from "drizzle-orm";
-import { personalSharedAgentId } from "../../../lib/services/shared-runtime/personal-shared-agent";
 import { closeDatabaseConnectionsForTests, dbWrite } from "../../client";
 import { organizationBalanceRevisionSequence, organizations } from "../../schemas/organizations";
 import { userIdentities } from "../../schemas/user-identities";
@@ -109,10 +108,6 @@ describe("UsersRepository phone identity transactions (real PGlite)", () => {
   test("promotes the exact provisional account without replacing its user, org, or balance", async () => {
     const phoneNumber = "+14155550201";
     const provisional = await createPhoneAccount(phoneNumber);
-    const phoneElizaId = personalSharedAgentId({
-      userId: provisional.user.id,
-      organizationId: provisional.organization.id,
-    });
 
     const result = await usersRepository.promotePhonePersonalAccountToSteward({
       phoneNumber,
@@ -125,12 +120,6 @@ describe("UsersRepository phone identity transactions (real PGlite)", () => {
     expect(result.user.organization_id).toBe(provisional.organization.id);
     expect(result.organization.id).toBe(provisional.organization.id);
     expect(result.organization.credit_balance).toBe("0.000000");
-    expect(
-      personalSharedAgentId({
-        userId: result.user.id,
-        organizationId: result.organization.id,
-      }),
-    ).toBe(phoneElizaId);
 
     const [projection] = await dbWrite
       .select()

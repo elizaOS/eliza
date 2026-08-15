@@ -89,6 +89,28 @@ export interface StewardSessionRequest {
   refreshToken?: string | null;
   /** Phone independently re-verified by the Cloud API against this bearer. */
   verifiedPhone?: string;
+  /** Opaque Telegram DM continuation that names an existing rowless account. */
+  telegramContinuation?: string;
+}
+
+const TELEGRAM_ACCOUNT_CLAIM_PATTERN = /^[a-zA-Z0-9:+_-]{8,180}$/;
+
+/**
+ * Accepts only opaque browser credentials. Platform-scoped ids are derived
+ * from guessable messaging ids and must remain inside trusted gateways.
+ */
+export function sanitizeTelegramAccountClaimContinuation(
+  value: unknown,
+): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  if (
+    !TELEGRAM_ACCOUNT_CLAIM_PATTERN.test(trimmed) ||
+    trimmed.startsWith("platform:")
+  ) {
+    return null;
+  }
+  return trimmed;
 }
 
 export interface StewardSessionResponse {
@@ -127,6 +149,7 @@ export type StewardSessionErrorCode =
   | "verified_phone_invalid"
   | "verified_phone_mismatch"
   | "verified_phone_conflict"
+  | "telegram_claim_conflict"
   | "internal_error"
   // Nonce-exchange (response_type=code) outcomes. Surfaced both by the
   // cloud-api route and proxied through from Steward's /oauth/exchange.
@@ -319,6 +342,8 @@ export interface StewardNonceExchangeRequest {
   tenantId?: string;
   /** PKCE verifier paired with the `code_challenge` sent to Steward. */
   codeVerifier?: string;
+  /** Opaque Telegram DM continuation that names an existing rowless account. */
+  telegramContinuation?: string;
 }
 
 export interface StewardNonceExchangeResponse extends StewardSessionResponse {

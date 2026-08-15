@@ -13,6 +13,7 @@ import { ElizaClient } from "./client-base";
 // Side-effect import: patches startCloudAgentHandoff onto the prototype.
 import "./client-cloud";
 import type { CloudCompatAgent } from "./client-types-cloud";
+import { DEFAULT_DIRECT_CLOUD_API_BASE_URL } from "./direct-cloud-endpoints";
 
 /**
  * Phase 1 (create-both): the shared agent the user chats on is container-free
@@ -112,7 +113,7 @@ describe("startCloudAgentHandoff — dedicated migration target", () => {
     expect(getCloudCompatAgent).not.toHaveBeenCalled();
     expect(getCloudCompatAgent).not.toHaveBeenCalledWith("shared-1");
     expect(fetch).toHaveBeenCalledWith(
-      "https://api.elizacloud.ai/api/v1/eliza/agents/dedicated-1",
+      `${DEFAULT_DIRECT_CLOUD_API_BASE_URL}/api/v1/eliza/agents/dedicated-1`,
       expect.objectContaining({
         headers: expect.objectContaining({ Authorization: "Bearer tok" }),
       }),

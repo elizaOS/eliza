@@ -55,6 +55,11 @@ import {
 } from "@elizaos/shared/steward-session-client";
 import { shellLocalStorage } from "../../surface-realm-channel";
 import { appModeNavigation } from "../app-mode/app-mode";
+import {
+  clearPendingOnboardingSession,
+  peekPendingOnboardingSession,
+  TELEGRAM_ACCOUNT_CLAIM_PURPOSE,
+} from "../join/lib/onboarding-continuation";
 import { decodeJwtPayload } from "../lib/jwt";
 import {
   clearStaleStewardSession,
@@ -537,22 +542,42 @@ export async function performSsoExchange(
       return { ok: false, error: "Exchange returned no usable session" };
     }
 
-    writeStoredStewardToken(token);
+    const telegramContinuation = peekPendingOnboardingSession(
+      TELEGRAM_ACCOUNT_CLAIM_PURPOSE,
+    );
+    if (!telegramContinuation) writeStoredStewardToken(token);
 
     // Same call the login flow makes: sets the HttpOnly steward cookies + the
-    // authed marker for this environment. Best-effort — the domain cookies
-    // normally already exist (they are what the bridge bridged from), and
-    // AuthTokenSync retries this sync for as long as the session lives.
+    // authed marker for this environment. It stays best-effort for an ordinary
+    // bridge because AuthTokenSync retries, but a Telegram account claim must
+    // win before storage hydration or an unhinted background sync could create
+    // a second account.
     try {
-      await fetchFn(configuredSessionEndpoint(), {
+      const sessionResponse = await fetchFn(configuredSessionEndpoint(), {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token }),
+        body: JSON.stringify({
+          token,
+          ...(telegramContinuation ? { telegramContinuation } : {}),
+        }),
       });
+      if (telegramContinuation && !sessionResponse.ok) {
+        return {
+          ok: false,
+          error: `Telegram account claim failed (HTTP ${sessionResponse.status})`,
+        };
+      }
     } catch {
+      if (telegramContinuation) {
+        return { ok: false, error: "Telegram account claim unavailable" };
+      }
       // error-policy:J6 best-effort cookie sync; the localStorage session is
       // established and AuthTokenSync re-syncs on its own cadence.
+    }
+    if (telegramContinuation) {
+      clearPendingOnboardingSession();
+      writeStoredStewardToken(token);
     }
 
     clearSsoBridgeAttempt();
