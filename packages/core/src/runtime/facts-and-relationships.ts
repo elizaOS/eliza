@@ -512,12 +512,27 @@ async function fetchExistingRelationships(
 export function parseFactsAndRelationshipsOutput(
 	raw: unknown,
 ): FactsAndRelationshipsResult {
-	const text = extractText(raw);
-	if (!text) {
+	const candidates = extractCandidateTexts(raw);
+	if (candidates.length === 0) {
 		throw new ElizaError("Facts model returned no output", {
 			code: "FACTS_MODEL_OUTPUT_MISSING",
 		});
 	}
+
+	let firstError: unknown;
+	for (const candidate of candidates) {
+		try {
+			return parseFactsAndRelationshipsCandidate(candidate);
+		} catch (error) {
+			firstError ??= error;
+		}
+	}
+	throw firstError;
+}
+
+function parseFactsAndRelationshipsCandidate(
+	text: string,
+): FactsAndRelationshipsResult {
 	const parsed = parseJsonObject<Record<string, unknown>>(text);
 	if (!parsed) {
 		throw new ElizaError("Facts model returned invalid JSON", {
@@ -562,36 +577,34 @@ export function parseFactsAndRelationshipsOutput(
 	return { facts, relationships, thought };
 }
 
-function extractText(raw: unknown): string {
-	if (typeof raw === "string") return raw;
-	if (raw && typeof raw === "object") {
-		const r = raw as {
-			text?: unknown;
-			toolCalls?: Array<{
-				arguments?: unknown;
-				args?: unknown;
-				input?: unknown;
-				params?: unknown;
-			}>;
-		};
-		if (typeof r.text === "string" && r.text.trim()) return r.text;
-		const tool = r.toolCalls?.[0];
-		// Tool-call args land under different keys across model providers /
-		// SDK versions: AI SDK v5 + Cerebras gpt-oss-120b use `input`, older
-		// shapes use `arguments`/`args`/`params`. Read all of them or the
-		// extracted facts get silently dropped (the validate model returns a
-		// proper tool call but `arguments` is undefined -> empty parse ->
-		// nothing persisted). Mirrors the accessor in services/message.ts.
-		const toolArgs =
-			tool?.arguments ?? tool?.args ?? tool?.input ?? tool?.params;
-		if (typeof toolArgs === "object" && toolArgs !== null) {
-			return JSON.stringify(toolArgs);
-		}
+function extractCandidateTexts(raw: unknown): string[] {
+	if (typeof raw === "string") return raw.trim() ? [raw] : [];
+	if (!raw || typeof raw !== "object") return [];
+	const r = raw as { text?: unknown; toolCalls?: unknown[] };
+	const candidates: string[] = [];
+	for (const entry of Array.isArray(r.toolCalls) ? r.toolCalls : []) {
+		if (!entry || typeof entry !== "object" || Array.isArray(entry)) continue;
+		const tool = entry as Record<string, unknown>;
+		const name = String(
+			tool.name ?? tool.toolName ?? tool.tool ?? tool.action ?? "",
+		).trim();
+		if (name && name !== FACTS_AND_RELATIONSHIPS_TOOL_NAME) continue;
+		const toolArgs = tool.arguments ?? tool.args ?? tool.input ?? tool.params;
 		if (typeof toolArgs === "string") {
-			return toolArgs;
+			if (toolArgs.trim()) candidates.push(toolArgs);
+			continue;
+		}
+		if (typeof toolArgs === "object" && toolArgs !== null) {
+			try {
+				candidates.push(JSON.stringify(toolArgs));
+			} catch {
+				// error-policy:J3 malformed provider arguments are skipped so another
+				// tool call or the text fallback can still satisfy the strict schema.
+			}
 		}
 	}
-	return "";
+	if (typeof r.text === "string" && r.text.trim()) candidates.push(r.text);
+	return candidates;
 }
 
 interface PersistArgs {
