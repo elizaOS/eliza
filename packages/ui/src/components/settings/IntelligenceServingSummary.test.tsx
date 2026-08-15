@@ -15,14 +15,32 @@ import {
   type ServingAxesInput,
 } from "./resolveServingAxes";
 
-const t = (key: string, vars?: Record<string, unknown>) =>
-  typeof vars?.defaultValue === "string" ? vars.defaultValue : key;
+/** Mirrors i18next: return the default copy with `{{var}}` interpolated. */
+const t = (key: string, vars?: Record<string, unknown>) => {
+  if (typeof vars?.defaultValue !== "string") return key;
+  return vars.defaultValue.replace(/\{\{(\w+)\}\}/g, (whole, name: string) =>
+    vars[name] === undefined ? whole : String(vars[name]),
+  );
+};
+
+const CLOUD = {
+  provider: "elizacloud",
+  family: "ELIZAOS_CLOUD",
+  endpoint: "api.eliza.app",
+} as const;
+const CEREBRAS = {
+  provider: "cerebras",
+  family: "OPENAI",
+  endpoint: "api.cerebras.ai",
+} as const;
 
 const base: ServingAxesInput = {
   deploymentRuntime: null,
   startupTarget: null,
   firstRunRuntimeTarget: null,
   mobileRuntimeMode: null,
+  activeChat: null,
+  activeChatResolved: true,
   elizaCloudConnected: false,
   isCloudSelected: false,
   cloudCallsDisabled: false,
@@ -61,6 +79,7 @@ describe("IntelligenceServingSummary", () => {
       deploymentRuntime: "local",
       isCloudSelected: true,
       elizaCloudConnected: true,
+      activeChat: CLOUD,
     });
 
     // The row that used to be indistinguishable from hosted Cloud.
@@ -85,6 +104,7 @@ describe("IntelligenceServingSummary", () => {
       deploymentRuntime: "cloud",
       isCloudSelected: true,
       elizaCloudConnected: true,
+      activeChat: CLOUD,
     });
 
     expect(runtimeValue()).toBe("Eliza Cloud");
@@ -92,7 +112,11 @@ describe("IntelligenceServingSummary", () => {
   });
 
   it("reports local inference with the sign-in reason when cloud-proxy is unsigned", () => {
-    renderAxes({ deploymentRuntime: "local", isCloudSelected: true });
+    renderAxes({
+      deploymentRuntime: "local",
+      isCloudSelected: true,
+      activeChat: CLOUD,
+    });
 
     expect(inferenceValue()).toBe("This device");
     expect(
@@ -100,6 +124,26 @@ describe("IntelligenceServingSummary", () => {
         "Eliza Cloud is selected but not signed in, so chat replies are computed locally until you sign in.",
       ),
     ).toBeTruthy();
+  });
+
+  it("names a direct external provider rather than claiming this device", () => {
+    renderAxes({ deploymentRuntime: "local", activeChat: CEREBRAS });
+
+    expect(runtimeValue()).toBe("This device");
+    // The review's P1: this row previously read "This device" for a direct
+    // Cerebras/OpenAI/Anthropic route.
+    expect(inferenceValue()).toBe("cerebras");
+    expect(inferenceValue()).not.toBe("This device");
+    expect(
+      screen.getByText(/external provider at api\.cerebras\.ai/),
+    ).toBeTruthy();
+  });
+
+  it("says it is still checking before the server names a provider", () => {
+    renderAxes({ deploymentRuntime: "local", activeChatResolved: false });
+
+    expect(inferenceValue()).toBe("Checking…");
+    expect(inferenceValue()).not.toBe("This device");
   });
 
   it("keeps a remote host distinct from Eliza Cloud", () => {

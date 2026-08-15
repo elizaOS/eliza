@@ -11,11 +11,24 @@ import {
   servingAxesHeadline,
 } from "./resolveServingAxes";
 
+const CLOUD = {
+  provider: "elizacloud",
+  family: "ELIZAOS_CLOUD",
+  endpoint: "api.eliza.app",
+} as const;
+const CEREBRAS = {
+  provider: "cerebras",
+  family: "OPENAI",
+  endpoint: "api.cerebras.ai",
+} as const;
+
 const base: ServingAxesInput = {
   deploymentRuntime: null,
   startupTarget: null,
   firstRunRuntimeTarget: null,
   mobileRuntimeMode: null,
+  activeChat: null,
+  activeChatResolved: true,
   elizaCloudConnected: false,
   isCloudSelected: false,
   cloudCallsDisabled: false,
@@ -42,6 +55,7 @@ describe("resolveServingAxes", () => {
       startupTarget: "embedded-local",
       isCloudSelected: true,
       elizaCloudConnected: false,
+      activeChat: CLOUD,
     });
     expect(axes).toMatchObject({
       runtime: "local",
@@ -58,6 +72,7 @@ describe("resolveServingAxes", () => {
       startupTarget: "embedded-local",
       isCloudSelected: true,
       elizaCloudConnected: true,
+      activeChat: CLOUD,
     });
     expect(axes).toMatchObject({
       runtime: "local",
@@ -75,6 +90,7 @@ describe("resolveServingAxes", () => {
       firstRunRuntimeTarget: "elizacloud-hybrid",
       isCloudSelected: true,
       elizaCloudConnected: true,
+      activeChat: CLOUD,
     });
     expect(axes).toMatchObject({
       runtime: "local",
@@ -103,6 +119,7 @@ describe("resolveServingAxes", () => {
       startupTarget: "cloud-managed",
       isCloudSelected: true,
       elizaCloudConnected: true,
+      activeChat: CLOUD,
     });
     expect(axes).toMatchObject({
       runtime: "cloud",
@@ -119,6 +136,7 @@ describe("resolveServingAxes", () => {
       firstRunRuntimeTarget: "elizacloud",
       isCloudSelected: true,
       elizaCloudConnected: true,
+      activeChat: CLOUD,
     });
     expect(axes.runtime).toBe("local");
     expect(axes.combination).toBe("cloud-inference");
@@ -140,6 +158,7 @@ describe("resolveServingAxes", () => {
       startupTarget: "embedded-local",
       isCloudSelected: true,
       elizaCloudConnected: true,
+      activeChat: CLOUD,
     });
     expect(axes.runtime).toBe("cloud");
     expect(axes.combination).toBe("both");
@@ -155,9 +174,86 @@ describe("resolveServingAxes", () => {
       firstRunRuntimeTarget: "elizacloud-hybrid",
       isCloudSelected: true,
       elizaCloudConnected: true,
+      activeChat: CLOUD,
     });
     expect(axes.runtime).toBe("local");
     expect(axes.combination).toBe("cloud-inference");
+  });
+
+  // Regression cluster for the review on #20124: the first version of this
+  // resolver read only account/config booleans, so every non-Eliza-Cloud route
+  // reported "This device". Inference must come from the server's activeChat.
+
+  it("names a direct external provider instead of claiming this device", () => {
+    const axes = resolveServingAxes({
+      ...base,
+      deploymentRuntime: "local",
+      activeChat: CEREBRAS,
+    });
+    expect(axes.inference).toBe("external");
+    expect(axes.combination).toBe("external-inference");
+    expect(axes.activeChatProvider).toBe("cerebras");
+    expect(servingAxesHeadline(axes)).toBe("Inference on cerebras");
+    expect(servingAxesDescription(axes)).toContain("cerebras");
+    // The exact falsehood the review caught.
+    expect(axes.inference).not.toBe("local");
+    expect(axes.inferenceFallback).toBe(false);
+  });
+
+  it("does not label a direct external provider a Cloud fallback", () => {
+    const axes = resolveServingAxes({
+      ...base,
+      deploymentRuntime: "local",
+      activeChat: CEREBRAS,
+      isCloudSelected: true,
+      elizaCloudConnected: false,
+    });
+    expect(axes.inferenceFallback).toBe(false);
+    expect(axes.inference).toBe("external");
+  });
+
+  it("reports unknown, not local, before the server has answered", () => {
+    const axes = resolveServingAxes({
+      ...base,
+      deploymentRuntime: "local",
+      activeChatResolved: false,
+    });
+    expect(axes.inference).toBe("unknown");
+    expect(axes.combination).toBe("inference-unknown");
+    expect(servingAxesHeadline(axes)).toBe("Checking what answers chat");
+  });
+
+  it("treats a Cloud-named route with no live account as local fallback", () => {
+    const axes = resolveServingAxes({
+      ...base,
+      deploymentRuntime: "local",
+      activeChat: CLOUD,
+      elizaCloudConnected: false,
+    });
+    expect(axes.inference).toBe("local");
+    expect(axes.inferenceFallback).toBe(true);
+  });
+
+  it("keeps local-only routing local even when a Cloud route is configured", () => {
+    const axes = resolveServingAxes({
+      ...base,
+      deploymentRuntime: "local",
+      activeChat: CLOUD,
+      elizaCloudConnected: true,
+      cloudCallsDisabled: true,
+    });
+    expect(axes.inference).toBe("local");
+    expect(axes.inferenceFallback).toBe(false);
+  });
+
+  it("keeps the runtime axis independent of an external inference route", () => {
+    const axes = resolveServingAxes({
+      ...base,
+      deploymentRuntime: "cloud",
+      activeChat: CEREBRAS,
+    });
+    expect(axes.runtime).toBe("cloud");
+    expect(axes.inference).toBe("external");
   });
 
   it("falls back to client pins while the snapshot is unresolved", () => {

@@ -1,12 +1,17 @@
 /**
  * Gathers the live runtime and inference inputs Settings needs to state both
- * serving axes, so `ProviderSwitcher` stays composition-only. Prefers the
- * authoritative `GET /api/runtime/mode` snapshot for the runtime axis and
- * falls back to the startup-coordinator target and persisted first-run /
- * mobile pins while it is loading or unreachable.
+ * serving axes, so `ProviderSwitcher` stays composition-only.
+ *
+ * Runtime comes from `GET /api/runtime/mode`, falling back to the
+ * startup-coordinator target and persisted first-run / mobile pins while that
+ * snapshot loads. Inference comes from `activeChat` on
+ * `GET /api/models/config` — the server's answer to who is actually serving.
+ * Neither axis is recomputed from account/config booleans here; doing so is
+ * what previously made a direct external provider read as "This device".
  */
 
 import { useEffect, useState } from "react";
+import { client } from "../../api";
 import { MOBILE_RUNTIME_MODE_CHANGED_EVENT } from "../../events";
 import {
   type MobileRuntimeMode,
@@ -14,7 +19,11 @@ import {
 } from "../../first-run/mobile-runtime-mode";
 import { useRuntimeMode } from "../../hooks/useRuntimeMode";
 import { useAppSelectorShallow } from "../../state";
-import { resolveServingAxes, type ServingAxes } from "./resolveServingAxes";
+import {
+  type ActiveChatSource,
+  resolveServingAxes,
+  type ServingAxes,
+} from "./resolveServingAxes";
 
 /**
  * The persisted mobile runtime mode, resubscribed to its change event so a
@@ -39,6 +48,46 @@ function usePersistedMobileRuntimeMode(): MobileRuntimeMode | null {
   return mode;
 }
 
+/**
+ * `activeChat` from `GET /api/models/config`. Held as an explicit
+ * resolved/unresolved pair so the summary can say "checking" instead of
+ * defaulting to "This device" before the server has answered.
+ */
+function useActiveChatSource(): {
+  activeChat: ActiveChatSource | null;
+  activeChatResolved: boolean;
+} {
+  const [state, setState] = useState<{
+    activeChat: ActiveChatSource | null;
+    activeChatResolved: boolean;
+  }>({ activeChat: null, activeChatResolved: false });
+
+  useEffect(() => {
+    let disposed = false;
+    client
+      .getModelsConfig()
+      .then((response) => {
+        if (disposed) return;
+        setState({
+          activeChat: response.activeChat ?? null,
+          activeChatResolved: true,
+        });
+      })
+      .catch(() => {
+        // error-policy:J4 the serving source is unavailable; stay unresolved
+        // so the summary shows "checking" rather than inventing "This device".
+        if (!disposed) {
+          setState({ activeChat: null, activeChatResolved: false });
+        }
+      });
+    return () => {
+      disposed = true;
+    };
+  }, []);
+
+  return state;
+}
+
 export function useServingAxes(args: {
   elizaCloudConnected: boolean;
   isCloudSelected: boolean;
@@ -52,6 +101,7 @@ export function useServingAxes(args: {
   );
   const { state: runtimeModeState } = useRuntimeMode();
   const mobileRuntimeMode = usePersistedMobileRuntimeMode();
+  const { activeChat, activeChatResolved } = useActiveChatSource();
 
   return resolveServingAxes({
     deploymentRuntime:
@@ -61,6 +111,8 @@ export function useServingAxes(args: {
     startupTarget: startupTarget ?? null,
     firstRunRuntimeTarget: firstRunRuntimeTarget ?? null,
     mobileRuntimeMode,
+    activeChat,
+    activeChatResolved,
     elizaCloudConnected: args.elizaCloudConnected,
     isCloudSelected: args.isCloudSelected,
     cloudCallsDisabled: args.cloudCallsDisabled,

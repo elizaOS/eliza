@@ -63,14 +63,29 @@ function runtimeDescription(runtime: ServingRuntime, t: Translate): string {
   }
 }
 
-function inferenceValue(inference: ServingInference, t: Translate): string {
-  return inference === "cloud"
-    ? t("providerswitcher.servingInferenceCloud", {
+function inferenceValue(axes: ServingAxes, t: Translate): string {
+  switch (axes.inference) {
+    case "cloud":
+      return t("providerswitcher.servingInferenceCloud", {
         defaultValue: "Eliza Cloud",
-      })
-    : t("providerswitcher.servingInferenceLocal", {
+      });
+    case "external":
+      // Name the provider the server reported; never claim "This device".
+      return (
+        axes.activeChatProvider ??
+        t("providerswitcher.servingInferenceExternal", {
+          defaultValue: "External provider",
+        })
+      );
+    case "unknown":
+      return t("providerswitcher.servingInferenceUnknown", {
+        defaultValue: "Checking…",
+      });
+    case "local":
+      return t("providerswitcher.servingInferenceLocal", {
         defaultValue: "This device",
       });
+  }
 }
 
 function inferenceDescription(axes: ServingAxes, t: Translate): string {
@@ -80,13 +95,32 @@ function inferenceDescription(axes: ServingAxes, t: Translate): string {
         "Eliza Cloud is selected but not signed in, so chat replies are computed locally until you sign in.",
     });
   }
-  return axes.inference === "cloud"
-    ? t("providerswitcher.servingInferenceCloudDescription", {
+  switch (axes.inference) {
+    case "cloud":
+      return t("providerswitcher.servingInferenceCloudDescription", {
         defaultValue: "Chat replies are computed by Eliza Cloud models.",
-      })
-    : t("providerswitcher.servingInferenceLocalDescription", {
+      });
+    case "external":
+      return axes.activeChatEndpoint
+        ? t("providerswitcher.servingInferenceExternalDescription", {
+            defaultValue:
+              "Chat replies are computed by an external provider at {{endpoint}}, not on this device.",
+            endpoint: axes.activeChatEndpoint,
+          })
+        : t("providerswitcher.servingInferenceExternalDescriptionNoHost", {
+            defaultValue:
+              "Chat replies are computed by an external provider, not on this device.",
+          });
+    case "unknown":
+      return t("providerswitcher.servingInferenceUnknownDescription", {
+        defaultValue:
+          "Waiting for the agent to report which provider is answering chat.",
+      });
+    case "local":
+      return t("providerswitcher.servingInferenceLocalDescription", {
         defaultValue: "Chat replies are computed by the on-device model.",
       });
+  }
 }
 
 /**
@@ -102,7 +136,12 @@ export function IntelligenceServingSummary({
   t: Translate;
 }) {
   const RuntimeIcon = RUNTIME_ICON[axes.runtime];
-  const InferenceIcon = axes.inference === "cloud" ? Cloud : Cpu;
+  const InferenceIcon =
+    axes.inference === "cloud"
+      ? Cloud
+      : axes.inference === "external"
+        ? Server
+        : Cpu;
 
   return (
     <>
@@ -132,7 +171,7 @@ export function IntelligenceServingSummary({
             className="text-xs text-txt-strong"
             data-testid="serving-inference-value"
           >
-            {inferenceValue(axes.inference, t)}
+            {inferenceValue(axes, t)}
           </span>
         }
       />

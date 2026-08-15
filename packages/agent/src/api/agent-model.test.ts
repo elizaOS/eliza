@@ -18,6 +18,8 @@ type RuntimeOpts = {
   localTextHandlerRegistered?: boolean;
   plugins?: Array<{ name: string }>;
   characterModel?: string;
+  /** Provider core recorded as having served the last chat call. */
+  lastServingProvider?: string;
 };
 
 function makeRuntime(opts: RuntimeOpts = {}): AgentRuntime {
@@ -41,6 +43,7 @@ function makeRuntime(opts: RuntimeOpts = {}): AgentRuntime {
   const runtime = {
     plugins: opts.plugins ?? [],
     getModelRegistrations: () => registrations,
+    getLastResolvedModelProvider: () => opts.lastServingProvider,
     character: opts.characterModel ? { model: opts.characterModel } : {},
   } as unknown as AgentRuntime;
   return runtime;
@@ -100,13 +103,48 @@ describe("detectRuntimeModel — non-cloud branches unaffected", () => {
     expect(detectRuntimeModel(null, cloudProxyConfig)).toBeUndefined();
   });
 
-  it("returns the character model when set, regardless of cloud-proxy config", () => {
+  it("falls back to the character model when nothing has served yet", () => {
     const runtime = makeRuntime({
       cloudTextHandlerRegistered: false,
       characterModel: "my-custom-model",
     });
     expect(detectRuntimeModel(runtime, cloudProxyConfig)).toBe(
       "my-custom-model",
+    );
+  });
+
+  // Regression cluster for the #20124 review: a character `model` pin is a
+  // request, not a receipt. Preferring it made /api/status report "elizacloud"
+  // while local inference actually answered every turn.
+  it("prefers the provider that actually served over a character pin", () => {
+    const runtime = makeRuntime({
+      characterModel: "elizacloud",
+      lastServingProvider: "eliza-local-inference",
+    });
+    expect(detectRuntimeModel(runtime, cloudProxyConfig)).toBe(
+      "eliza-local-inference",
+    );
+  });
+
+  it("prefers the serving provider over a registered-but-losing cloud handler", () => {
+    // Cloud has a handler registered, but another provider answered — the
+    // registration is availability, not evidence.
+    const runtime = makeRuntime({
+      cloudTextHandlerRegistered: true,
+      lastServingProvider: "eliza-local-inference",
+    });
+    expect(detectRuntimeModel(runtime, cloudProxyConfig)).toBe(
+      "eliza-local-inference",
+    );
+  });
+
+  it("reports elizacloud once a Cloud handler has actually served", () => {
+    const runtime = makeRuntime({
+      cloudTextHandlerRegistered: true,
+      lastServingProvider: ELIZA_CLOUD_PROVIDER_NAME,
+    });
+    expect(detectRuntimeModel(runtime, cloudProxyConfig)).toBe(
+      ELIZA_CLOUD_PROVIDER_NAME,
     );
   });
 

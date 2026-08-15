@@ -11,14 +11,38 @@ import type { FirstRunRuntimeTarget } from "../../first-run/runtime-target";
 import type { RuntimeTarget } from "../../state/startup-coordinator";
 
 export type ServingRuntime = "local" | "cloud" | "remote";
-export type ServingInference = "local" | "cloud";
+
+/**
+ * Where chat tokens are computed. `external` covers every non-Eliza-Cloud
+ * hosted route (a direct Cerebras/OpenAI/Anthropic key, a coding-plan
+ * subscription that drives runtime inference); `unknown` is the honest state
+ * before the server has told us who is serving. Collapsing either into
+ * `local` is what made the first version of this resolver claim "This device"
+ * for a direct external provider.
+ */
+export type ServingInference = "local" | "cloud" | "external" | "unknown";
 
 export type ServingCombination =
   | "all-local"
   | "cloud-inference"
   | "cloud-runtime"
   | "both"
-  | "remote";
+  | "remote"
+  | "external-inference"
+  | "inference-unknown";
+
+/**
+ * `activeChat` from `GET /api/models/config` — the server's answer to "who is
+ * actually serving chat?", resolved from the serviceRouting topology and the
+ * live handler registrations. `null` while the request is in flight or when
+ * no routing is configured; the resolver reports `unknown` rather than
+ * guessing `local` in that window.
+ */
+export interface ActiveChatSource {
+  provider: string;
+  family: "OPENAI" | "ANTHROPIC" | "ELIZAOS_CLOUD";
+  endpoint: string;
+}
 
 export interface ServingAxesInput {
   /**
@@ -33,6 +57,15 @@ export interface ServingAxesInput {
   startupTarget: RuntimeTarget | null;
   firstRunRuntimeTarget: FirstRunRuntimeTarget | "" | null;
   mobileRuntimeMode: MobileRuntimeMode | null;
+  /**
+   * The authoritative serving source. Account/config booleans below only
+   * qualify it (an unsigned Cloud route falls back to local); they never
+   * substitute for it, because "Cloud is selected" is configuration and
+   * "Cloud answered" is fact.
+   */
+  activeChat: ActiveChatSource | null;
+  /** False while `GET /api/models/config` is still in flight. */
+  activeChatResolved: boolean;
   elizaCloudConnected: boolean;
   isCloudSelected: boolean;
   cloudCallsDisabled: boolean;
@@ -44,6 +77,9 @@ export interface ServingAxes {
   combination: ServingCombination;
   /** Cloud-proxy is the configured route but the account is unsigned-in. */
   inferenceFallback: boolean;
+  /** Provider name the server reported as serving, for `external` display. */
+  activeChatProvider: string | null;
+  activeChatEndpoint: string | null;
 }
 
 function isHybridRuntime(
@@ -89,27 +125,43 @@ export function resolveServingRuntime({
 }
 
 /**
- * Where chat tokens are computed. Unsigned cloud-proxy is local inference,
- * not Cloud — the handler is not live.
+ * Where chat tokens are computed, taken from the server's `activeChat` rather
+ * than recomputed from account/config state. The only local qualification is
+ * the unsigned cloud-proxy case: the server names Eliza Cloud while the
+ * account cannot actually serve, so replies fall back on-device.
+ *
+ * Absent `activeChat` is `unknown`, never `local` — a direct Cerebras/OpenAI/
+ * Anthropic route would otherwise be reported as running on this device.
  */
 export function resolveServingInference({
+  activeChat,
+  activeChatResolved,
   elizaCloudConnected,
-  isCloudSelected,
   cloudCallsDisabled,
 }: Pick<
   ServingAxesInput,
-  "elizaCloudConnected" | "isCloudSelected" | "cloudCallsDisabled"
+  | "activeChat"
+  | "activeChatResolved"
+  | "elizaCloudConnected"
+  | "cloudCallsDisabled"
 >): ServingInference {
+  if (!activeChatResolved) return "unknown";
   if (cloudCallsDisabled) return "local";
-  if (isCloudSelected && elizaCloudConnected) return "cloud";
-  return "local";
+  if (!activeChat) return "local";
+  if (activeChat.family === "ELIZAOS_CLOUD") {
+    // Configured for Cloud but the account cannot serve — replies are local.
+    return elizaCloudConnected ? "cloud" : "local";
+  }
+  return "external";
 }
 
 export function resolveServingCombination(
   runtime: ServingRuntime,
   inference: ServingInference,
 ): ServingCombination {
+  if (inference === "unknown") return "inference-unknown";
   if (runtime === "remote") return "remote";
+  if (inference === "external") return "external-inference";
   if (runtime === "cloud" && inference === "cloud") return "both";
   if (runtime === "cloud") return "cloud-runtime";
   if (inference === "cloud") return "cloud-inference";
@@ -123,10 +175,15 @@ export function resolveServingAxes(input: ServingAxesInput): ServingAxes {
     runtime,
     inference,
     combination: resolveServingCombination(runtime, inference),
+    // Only a Cloud-named route that cannot serve is a fallback; a direct
+    // external provider is serving normally and must not be labelled one.
     inferenceFallback:
-      input.isCloudSelected &&
+      input.activeChatResolved &&
+      input.activeChat?.family === "ELIZAOS_CLOUD" &&
       !input.elizaCloudConnected &&
       !input.cloudCallsDisabled,
+    activeChatProvider: input.activeChat?.provider ?? null,
+    activeChatEndpoint: input.activeChat?.endpoint ?? null,
   };
 }
 
@@ -142,6 +199,12 @@ export function servingAxesHeadline(axes: ServingAxes): string {
       return "Cloud runtime and inference";
     case "remote":
       return "Remote runtime";
+    case "external-inference":
+      return axes.activeChatProvider
+        ? `Inference on ${axes.activeChatProvider}`
+        : "External inference";
+    case "inference-unknown":
+      return "Checking what answers chat";
   }
 }
 
@@ -162,5 +225,11 @@ export function servingAxesDescription(axes: ServingAxes): string {
       return axes.inference === "cloud"
         ? "The agent runs on a remote host. Models use Eliza Cloud."
         : `The agent runs on a remote host. Models run with that host.${fallback}`;
+    case "external-inference":
+      return axes.activeChatProvider
+        ? `The agent runs on this device. Chat replies are computed by ${axes.activeChatProvider}.`
+        : "The agent runs on this device. Chat replies are computed by an external provider.";
+    case "inference-unknown":
+      return "Waiting for the agent to report which provider is answering chat.";
   }
 }

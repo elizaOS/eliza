@@ -33,6 +33,30 @@ import type { ElizaConfig } from "../config/config.ts";
 const ELIZA_CLOUD_PROVIDER_NAME = "elizaOSCloud";
 
 /**
+ * The provider that served the most recent successful chat `useModel` call, or
+ * undefined before any call has completed. This is evidence rather than
+ * availability: a registered handler can still lose to an override or fail
+ * over to another provider, so when core knows who actually answered, that
+ * wins over every config- and registration-derived guess below.
+ *
+ * Fails closed to undefined — callers fall through to the configured route
+ * rather than fabricating a provider.
+ */
+export function lastServingTextProvider(
+  runtime: AgentRuntime,
+): string | undefined {
+  try {
+    return (
+      runtime.getLastResolvedModelProvider?.(ModelType.TEXT_LARGE) ??
+      runtime.getLastResolvedModelProvider?.(ModelType.TEXT_SMALL)
+    );
+  } catch {
+    // error-policy:J7 diagnostics must not kill the model-label resolver
+    return undefined;
+  }
+}
+
+/**
  * True when a chat-brain text handler is registered under the elizacloud
  * provider name. `detectRuntimeModel` uses this to decide whether the
  * `cloud-proxy` config branch should report `elizacloud` or fall through to
@@ -153,6 +177,14 @@ export function detectRuntimeModel(
   config?: Pick<ElizaConfig, "deploymentTarget" | "serviceRouting" | "agents">,
 ): string | undefined {
   if (!runtime) return undefined;
+
+  // Who actually answered beats who was configured to. A character `model`
+  // pin is a request, not a receipt: with a cloud-proxy route and no live
+  // Cloud account the runtime falls through to another provider, and
+  // reporting the pin made /api/status claim "elizacloud" while local
+  // inference served every turn (elizaOS/eliza#20045 review).
+  const serving = lastServingTextProvider(runtime);
+  if (serving) return serving;
 
   const configured = readCharacterModel(runtime);
   if (configured) return configured;

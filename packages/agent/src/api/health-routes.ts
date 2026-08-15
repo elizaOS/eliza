@@ -508,10 +508,15 @@ export async function handleHealthRoutes(
     } catch {
       activeLocalModel = undefined;
     }
+    // `state.model` is a boot-time snapshot: it is written once when the
+    // runtime starts and never recomputed, so preferring it made /api/status
+    // report the provider the agent was configured with at boot rather than
+    // the one serving now. Resolve live first and keep the cache only as the
+    // fallback for a runtime we can no longer inspect (#20045 review).
     const model =
-      state.model ??
+      detectRuntimeModel(state.runtime ?? null, state.config) ??
       activeLocalModel ??
-      detectRuntimeModel(state.runtime ?? null, state.config);
+      state.model;
     // Managed hosting detection is a pure env check from @elizaos/shared and
     // must not depend on loading plugin-elizacloud. Optional hasApiKey still
     // comes from the plugin and degrades to false if the plugin is unloadable
