@@ -878,32 +878,11 @@ const adzeStore = setup({
   levels: customLevelConfig,
 });
 
-// Mirror Adze output to in-memory storage
-adzeStore.addListener(
-  "*",
-  (log: { data?: { message?: string | unknown[]; level?: number } }) => {
-    try {
-      const d = log.data;
-      const dMessage = d?.message;
-      const msg = Array.isArray(dMessage)
-        ? dMessage
-            .map((m: unknown) => (typeof m === "string" ? m : safeStringify(m)))
-            .join(" ")
-        : typeof dMessage === "string"
-          ? dMessage
-          : "";
-
-      const entry: LogEntry = {
-        time: Date.now(),
-        level: d && typeof d.level === "number" ? d.level : undefined,
-        msg,
-      };
-      globalInMemoryDestination.write(entry);
-    } catch {
-      // Silent fail - don't break logging
-    }
-  },
-);
+// In-memory dispatch is handled exclusively by createLogger().invoke()
+// via globalInMemoryDestination.write(entry) with the correct Pino level.
+// No global Adze store listener is needed — a previous "*" listener caused
+// duplicate writes and level distortion (Adze internal level 1 mapped to
+// "info" instead of the intended Pino level).
 
 // ============================================================================
 // Logger Factory
