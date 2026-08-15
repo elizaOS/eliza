@@ -234,6 +234,17 @@ describe("canonical cloud deployment environment contract", () => {
     expect(validate.run).toContain('if [ "$SOURCE_REF" != "$expected_ref" ]');
   });
 
+  test("selects the dedicated Pages credential without changing other Terraform roots", () => {
+    const token = infra.jobs?.terraform?.env?.CLOUDFLARE_API_TOKEN;
+    expect(token).toContain("inputs.component == 'pages-domains'");
+    expect(token).toContain("secrets.CLOUDFLARE_PAGES_API_TOKEN");
+    expect(token).toContain("|| secrets.CLOUDFLARE_API_TOKEN");
+    expect(token?.match(/secrets\.CLOUDFLARE_PAGES_API_TOKEN/g)).toHaveLength(
+      1,
+    );
+    expect(token?.match(/secrets\.CLOUDFLARE_API_TOKEN/g)).toHaveLength(1);
+  });
+
   test("applies only an encrypted, service-bound artifact from a successful plan attempt", () => {
     const plan = step(infra, "terraform", "Plan");
     expect(plan.run).toContain("terraform plan");
