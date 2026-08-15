@@ -8,10 +8,12 @@
  * `onStreamChunk` (services/message.ts). Deterministic; no live model.
  */
 import type http from "node:http";
+import type { AgentRuntime } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 
 import {
   chatEventsFromStructuredStreamPayload,
+  enrichChatToolEventWithVoiceTask,
   writeChatToolSse,
 } from "./chat-routes.ts";
 
@@ -133,6 +135,81 @@ describe("chatEventsFromStructuredStreamPayload (#13535)", () => {
     expect(
       chatEventsFromStructuredStreamPayload({ type: "tool_call" }),
     ).toBeNull();
+  });
+});
+
+describe("realtime voice tool lifecycle policy", () => {
+  it("classifies reads as abortable and async handoffs as durable", () => {
+    const runtime = {
+      actions: [
+        { name: "WEB_SEARCH", tags: [] },
+        { name: "SPAWN", tags: ["capability:delegate"], asyncHandoff: true },
+      ],
+    } as unknown as AgentRuntime;
+    expect(
+      enrichChatToolEventWithVoiceTask(runtime, {
+        phase: "call",
+        callId: "read-1",
+        toolName: "WEB_SEARCH",
+      }).voiceTask,
+    ).toEqual({
+      lifetime: "response",
+      effect: "read_only",
+      restartable: true,
+    });
+    expect(
+      enrichChatToolEventWithVoiceTask(runtime, {
+        phase: "call",
+        callId: "spawn-1",
+        toolName: "SPAWN",
+      }).voiceTask,
+    ).toEqual({
+      lifetime: "durable",
+      effect: "mutating",
+      restartable: false,
+    });
+  });
+
+  it("crosses mutation commit only from an applied receipt and honors idempotent tags", () => {
+    const runtime = {
+      actions: [
+        {
+          name: "SAVE",
+          tags: ["capability:write", "effect:idempotent"],
+        },
+      ],
+    } as unknown as AgentRuntime;
+    const committed = enrichChatToolEventWithVoiceTask(runtime, {
+      phase: "result",
+      callId: "save-1",
+      toolName: "SAVE",
+      result: {
+        effectReceipts: [
+          {
+            outcome: "applied",
+            commit: { kind: "durable", id: "row-1" },
+          },
+        ],
+      },
+    });
+    expect(committed.voiceTask).toEqual({
+      lifetime: "response",
+      effect: "mutating",
+      restartable: true,
+      commitCrossed: true,
+    });
+    expect(
+      enrichChatToolEventWithVoiceTask(runtime, {
+        phase: "result",
+        callId: "save-2",
+        toolName: "SAVE",
+        result: { success: true },
+      }).voiceTask,
+    ).toEqual({
+      lifetime: "response",
+      effect: "mutating",
+      restartable: true,
+    });
   });
 });
 

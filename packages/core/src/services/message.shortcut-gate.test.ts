@@ -176,6 +176,7 @@ describe("runShortcutGate (#8791 pre-LLM gate)", () => {
 					expect.objectContaining({ receiptId: receipt.receiptId }),
 				],
 			}),
+			"ECHO_COMMAND",
 		);
 	});
 

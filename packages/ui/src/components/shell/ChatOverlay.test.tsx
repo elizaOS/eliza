@@ -620,7 +620,7 @@ describe("ChatOverlay", () => {
       );
 
       expect(screen.getByLabelText("message").getAttribute("placeholder")).toBe(
-        "Ask",
+        "Message",
       );
 
       expect(
@@ -637,7 +637,7 @@ describe("ChatOverlay", () => {
       fireEvent.focus(screen.getByLabelText("message"));
 
       expect(screen.getByLabelText("message").getAttribute("placeholder")).toBe(
-        "Ask Playwright Smoke",
+        "Message Playwright Smoke",
       );
 
       expect(

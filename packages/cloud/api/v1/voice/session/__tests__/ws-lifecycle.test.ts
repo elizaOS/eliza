@@ -427,6 +427,7 @@ function makeLocalTokenFetch(
 
 function makeControlledCanonicalChunkFetch(): {
   fetchImpl: typeof fetch;
+  enqueueControl: (frame: Record<string, unknown>) => void;
   enqueueStatus: (status: Record<string, unknown>) => void;
   enqueueChunk: (chunk: string) => void;
   enqueueSpeechSegment: (segment: Record<string, unknown>) => void;
@@ -453,6 +454,9 @@ function makeControlledCanonicalChunkFetch(): {
         headers: { "Content-Type": "text/event-stream" },
       });
     }) as unknown as typeof fetch,
+    enqueueControl(frame: Record<string, unknown>) {
+      controller?.enqueue(encoder.encode(`data: ${JSON.stringify(frame)}\n\n`));
+    },
     enqueueChunk(chunk: string) {
       controller?.enqueue(
         encoder.encode(`event: chunk\ndata: ${JSON.stringify({ chunk })}\n\n`),
@@ -549,14 +553,15 @@ async function connectSession(opts: {
     firstAudioTimeoutMs?: number;
     socketFactory?: () => FakeFishAudioSocket;
   };
-}): Promise<{ sessionId: string }> {
+}): Promise<{ sessionId: string; session: VoiceSession }> {
   const minted = await mintVoiceSessionToken(CLAIMS);
   const usageStore = opts.usageStore ?? new InMemoryVoiceUsageStore();
+  let builtSession: VoiceSession | null = null;
 
   attachVoiceWsHandler(opts.client, {
     requestedSessionId: CLAIMS.sessionId,
-    buildSession: ({ claims, jti, tokenExpSeconds, downlink }) =>
-      new VoiceSession({
+    buildSession: ({ claims, jti, tokenExpSeconds, downlink }) => {
+      builtSession = new VoiceSession({
         sessionId: claims.sessionId,
         jti,
         organizationId: claims.organizationId,
@@ -621,7 +626,9 @@ async function connectSession(opts: {
         downlink: opts.onClearAudio
           ? { ...downlink, clearAudio: opts.onClearAudio }
           : downlink,
-      }),
+      });
+      return builtSession;
+    },
   });
 
   // Send the hello frame; verification is async.
@@ -636,7 +643,9 @@ async function connectSession(opts: {
     }),
   );
   await flush();
-  return { sessionId: CLAIMS.sessionId };
+  if (!builtSession)
+    throw new Error("voice session fixture was not constructed");
+  return { sessionId: CLAIMS.sessionId, session: builtSession };
 }
 
 // The fake Ink/Cartesia sockets and the SSE mock advance the session pipeline
@@ -2027,7 +2036,19 @@ describe("voice-session WS lifecycle", () => {
       fetchImpl: makeLocalTokenFetch([{ text: canonical }], {
         fullText: canonical,
         messageId: "assistant-voice-1",
-        voiceOutput: { policy: "both", spoken },
+        voiceOutput: {
+          policy: "both",
+          spoken,
+          artifacts: [
+            {
+              id: "image-1",
+              kind: "image",
+              label: "Preview",
+              mimeType: "image/png",
+              href: "/api/media/image-1.png",
+            },
+          ],
+        },
       }),
     });
     const ink = FakeInkSocket.instances.at(-1)!;
@@ -2052,6 +2073,15 @@ describe("voice-session WS lifecycle", () => {
       displayMarkdown: canonical,
       speechText: spoken,
       displayTruncated: false,
+      artifacts: [
+        {
+          id: "image-1",
+          kind: "image",
+          label: "Preview",
+          mimeType: "image/png",
+          href: "/api/media/image-1.png",
+        },
+      ],
       messageId: "assistant-voice-1",
       traceId: expect.any(String),
     });
@@ -2767,6 +2797,63 @@ describe("voice-session WS lifecycle", () => {
     await flush();
     expect(client.audioFrames.length).toBe(framesAfterInterrupt);
     expect(client.controlFrames).toHaveLength(controlsAfterInterrupt);
+  });
+
+  test("barge-in detaches a receipt-committed tool instead of aborting its actual state", async () => {
+    const controlled = makeControlledCanonicalChunkFetch();
+    const client = new FakeClientSocket();
+    const { session } = await connectSession({
+      client,
+      fetchImpl: controlled.fetchImpl,
+    });
+    const ink = FakeInkSocket.instances.at(-1)!;
+    ink.emitTurn("turn.start");
+    ink.emitTurn("turn.end", "save this");
+    await controlled.ready;
+    await flush();
+
+    controlled.enqueueControl({
+      type: "tool",
+      phase: "call",
+      callId: "save-call-1",
+      toolName: "SAVE",
+      args: { private: "never-crosses-authority" },
+      voiceTask: {
+        lifetime: "response",
+        effect: "mutating",
+        restartable: false,
+      },
+    });
+    controlled.enqueueControl({
+      type: "voice_task_commit",
+      callId: "save-call-1",
+      toolName: "SAVE",
+      private: "never-crosses-authority",
+    });
+    await flush();
+
+    const authority = (
+      session as unknown as {
+        turnAuthority: {
+          state: {
+            tasks: Record<string, { status: string; effect: string }>;
+          };
+        };
+      }
+    ).turnAuthority;
+    expect(Object.values(authority.state.tasks)).toEqual([
+      expect.objectContaining({ effect: "mutating", status: "commit_crossed" }),
+    ]);
+
+    client.clientSend(JSON.stringify({ t: "barge_in" }));
+    await flush();
+    expect(Object.values(authority.state.tasks)).toEqual([
+      expect.objectContaining({ effect: "mutating", status: "detached" }),
+    ]);
+    expect(client.controlTypes()).toContain("interrupted");
+    expect(JSON.stringify(client.controlFrames)).not.toContain(
+      "never-crosses-authority",
+    );
   });
 
   test("semantic-start policy interrupts immediately and the caller gets the next response", async () => {

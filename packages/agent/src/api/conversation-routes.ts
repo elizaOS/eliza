@@ -65,10 +65,13 @@ import {
   PostConversationTruncateRequestSchema,
   PostSeedMessagesRequestSchema,
   parsePositiveInteger,
+  projectVoiceOutput,
   REALTIME_VOICE_CLIENT_MESSAGE_ID_PREFIX,
   REALTIME_VOICE_CLIENT_TRANSPORT,
   REALTIME_VOICE_INGRESS_COMMITTED_V1,
   REALTIME_VOICE_INGRESS_HEADER,
+  type VoiceArtifactKind,
+  type VoiceArtifactReference,
 } from "@elizaos/shared";
 import {
   parseSharedTodoCutoverSnapshot,
@@ -2064,6 +2067,69 @@ function writeConversationDoneSse(
   });
 }
 
+const MAX_TERMINAL_VOICE_ARTIFACTS = 16;
+const VOICE_ARTIFACT_ID_RE = /^[A-Za-z0-9._:-]{1,128}$/;
+const VOICE_ARTIFACT_HREF_RE = /^(?:https?:\/\/|\/(?![\\/]))/i;
+
+function voiceArtifactKindForAttachment(
+  attachment: NonNullable<Content["attachments"]>[number],
+): VoiceArtifactKind {
+  const contentType = String(attachment.contentType ?? "").toLowerCase();
+  const mimeType = attachment.mimeType?.toLowerCase() ?? "";
+  if (contentType === "image" || mimeType.startsWith("image/")) return "image";
+  if (contentType === "audio" || mimeType.startsWith("audio/")) return "audio";
+  if (contentType === "link") return "link";
+  if (
+    mimeType === "application/json" ||
+    mimeType === "text/csv" ||
+    mimeType === "text/tab-separated-values"
+  ) {
+    return "data";
+  }
+  if (mimeType.startsWith("text/")) return "code";
+  return "file";
+}
+
+/**
+ * Project response attachments into the terminal voice envelope. Inline
+ * data/blob URLs are deliberately omitted: the realtime control channel carries
+ * references only, never attachment bytes. The shared projector performs the
+ * final label/id/MIME/URL validation and returns immutable copies.
+ */
+export function buildTerminalVoiceOutput(
+  responseContent: Content | null | undefined,
+): ChatMessageIdOutcome["voiceOutput"] | undefined {
+  const attachments = responseContent?.attachments;
+  if (!Array.isArray(attachments) || attachments.length === 0) return undefined;
+  const candidates: VoiceArtifactReference[] = [];
+  for (const [index, attachment] of attachments.entries()) {
+    if (candidates.length >= MAX_TERMINAL_VOICE_ARTIFACTS) break;
+    const href =
+      typeof attachment.url === "string" ? attachment.url.trim() : "";
+    if (!VOICE_ARTIFACT_HREF_RE.test(href)) continue;
+    const rawId = typeof attachment.id === "string" ? attachment.id.trim() : "";
+    const label =
+      (typeof attachment.title === "string" && attachment.title.trim()) ||
+      `Artifact ${index + 1}`;
+    candidates.push({
+      id: VOICE_ARTIFACT_ID_RE.test(rawId) ? rawId : `artifact-${index + 1}`,
+      kind: voiceArtifactKindForAttachment(attachment),
+      label,
+      href,
+      ...(typeof attachment.mimeType === "string" && attachment.mimeType.trim()
+        ? { mimeType: attachment.mimeType.trim() }
+        : {}),
+    });
+  }
+  if (candidates.length === 0) return undefined;
+  const artifacts = projectVoiceOutput({
+    policy: "show",
+    display: { markdown: "" },
+    artifacts: candidates,
+  }).artifacts;
+  return artifacts.length > 0 ? { policy: "both", artifacts } : undefined;
+}
+
 function buildGenerationMessageIdOutcome(
   result: ChatGenerationResult,
   text: string,
@@ -2073,6 +2139,7 @@ function buildGenerationMessageIdOutcome(
     "userMessageId" | "assistantEphemeral" | "historyRefreshRequired"
   >,
 ): ChatMessageIdOutcome {
+  const voiceOutput = buildTerminalVoiceOutput(result.responseContent);
   return {
     text,
     agentName: result.agentName,
@@ -2096,6 +2163,7 @@ function buildGenerationMessageIdOutcome(
     ...(result.noResponseReason
       ? { noResponseReason: result.noResponseReason }
       : {}),
+    ...(voiceOutput ? { voiceOutput } : {}),
   };
 }
 
@@ -4947,6 +5015,16 @@ export async function handleConversationRoutes(
                   return;
                 }
                 writeChatToolSse(res, event);
+              },
+              onVoiceTaskCommit: (event) => {
+                if (
+                  !exactVoiceClientMessageId ||
+                  disconnectTracker.isAborted() ||
+                  disconnectTracker.checkConnectionClosed()
+                ) {
+                  return;
+                }
+                writeSse(res, { type: "voice_task_commit", ...event });
               },
               onChunk: (chunk, origin, metadata) => {
                 if (!chunk) return;

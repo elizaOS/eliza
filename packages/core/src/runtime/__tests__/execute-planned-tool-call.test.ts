@@ -1342,11 +1342,14 @@ describe("executePlannedToolCall", () => {
 		expect(JSON.stringify(onToolResult.mock.calls)).not.toContain(
 			"secret-token",
 		);
-		expect(onSettledResult).toHaveBeenCalledWith({
-			success: true,
-			text: "declared",
-			data: { actionName: "DECLARE_SUB_AGENT_CREDENTIAL_SCOPE" },
-		});
+		expect(onSettledResult).toHaveBeenCalledWith(
+			{
+				success: true,
+				text: "declared",
+				data: { actionName: "DECLARE_SUB_AGENT_CREDENTIAL_SCOPE" },
+			},
+			"DECLARE_SUB_AGENT_CREDENTIAL_SCOPE",
+		);
 		expect(JSON.stringify(onSettledResult.mock.calls)).not.toContain(
 			"secret-token",
 		);
@@ -1504,10 +1507,13 @@ describe("executePlannedToolCall", () => {
 			result,
 		});
 		expect(observable).not.toContain("OWNER_PRIVATE_CANARY");
-		expect(onSettledResult).toHaveBeenCalledWith({
-			success: true,
-			data: { actionName: "OWNER_PRIVATE" },
-		});
+		expect(onSettledResult).toHaveBeenCalledWith(
+			{
+				success: true,
+				data: { actionName: "OWNER_PRIVATE" },
+			},
+			"OWNER_PRIVATE",
+		);
 	});
 
 	it("emits failed ACTION_COMPLETED events with string errors for thrown handlers", async () => {

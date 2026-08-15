@@ -23,8 +23,10 @@
 import { ChannelType } from "@elizaos/core";
 import {
   type ChatTurnStatus,
+  projectVoiceOutput,
   REALTIME_VOICE_CLIENT_MESSAGE_ID_PREFIX,
   REALTIME_VOICE_CLIENT_TRANSPORT,
+  type VoiceArtifactReference,
   type VoiceOutputPolicy,
 } from "@elizaos/shared";
 import {
@@ -106,6 +108,8 @@ export interface ElizaSseBridgeRequest {
   traceId: string;
   /** Content-free canonical phase updates used by bounded voice progress. */
   onStatus?: (status: ChatTurnStatus) => void;
+  /** Content-free tool lifecycle projected into the shared turn coordinator. */
+  onTaskEvent?: (event: ElizaVoiceTaskEvent) => void;
   /** Explicit opt-in for irrevocable, safely projected model-prefix speech. */
   voiceSpeechProtocol?: typeof COMMITTED_SPEECH_PROTOCOL;
   /** Invoked only for validated segments when the exact protocol was requested. */
@@ -115,6 +119,23 @@ export interface ElizaSseBridgeRequest {
   /** Injectable fetch for tests; defaults to global fetch. */
   fetchImpl?: typeof fetch;
 }
+
+export type ElizaVoiceTaskEvent =
+  | {
+      phase: "call" | "result" | "error";
+      callId: string;
+      toolName: string;
+      lifetime: "response" | "durable";
+      effect: "read_only" | "mutating";
+      restartable: boolean;
+      commitCrossed: boolean;
+    }
+  | {
+      phase: "commit";
+      callId: string;
+      toolName: string;
+      commitCrossed: true;
+    };
 
 export interface ElizaSseBridgeResult {
   /** True only after an explicit `[DONE]` or structured terminal frame. */
@@ -136,6 +157,8 @@ export interface ElizaVoiceOutputDirective {
   policy: VoiceOutputPolicy;
   /** Explicit concise speech; omitted means conservatively project fullText. */
   spoken?: string;
+  /** Validated references only; attachment bytes never cross the voice stream. */
+  artifacts?: readonly VoiceArtifactReference[];
 }
 
 export interface ElizaVoiceViewHandoff {
@@ -393,6 +416,16 @@ export async function streamElizaConversation(
           if (status) request.onStatus?.(status);
           continue;
         }
+        if (payloadType === "tool") {
+          const taskEvent = extractVoiceTaskEvent(payload);
+          if (taskEvent) request.onTaskEvent?.(taskEvent);
+          continue;
+        }
+        if (payloadType === "voice_task_commit") {
+          const taskEvent = extractVoiceTaskCommitEvent(payload);
+          if (taskEvent) request.onTaskEvent?.(taskEvent);
+          continue;
+        }
         if (payloadType === "voice_speech_segment") {
           if (request.voiceSpeechProtocol !== COMMITTED_SPEECH_PROTOCOL) {
             throw new ElizaSseBridgeError(
@@ -506,6 +539,61 @@ function extractChatTurnStatus(payload: string): ChatTurnStatus | null {
     ...(label ? { label } : {}),
     ...(actionName ? { actionName } : {}),
     ...(toolName ? { toolName } : {}),
+  };
+}
+
+/** Parse only task identity/policy; args, result bodies, and errors are dropped. */
+function extractVoiceTaskEvent(payload: string): ElizaVoiceTaskEvent | null {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(payload);
+  } catch {
+    return null;
+  }
+  if (!isRecord(parsed) || parsed.type !== "tool") return null;
+  const phase = parsed.phase;
+  const callId = readBoundedString(parsed.callId);
+  const toolName = readBoundedString(parsed.toolName);
+  const task = isRecord(parsed.voiceTask) ? parsed.voiceTask : null;
+  if (
+    (phase !== "call" && phase !== "result" && phase !== "error") ||
+    !callId ||
+    !toolName ||
+    !task ||
+    (task.lifetime !== "response" && task.lifetime !== "durable") ||
+    (task.effect !== "read_only" && task.effect !== "mutating") ||
+    typeof task.restartable !== "boolean" ||
+    (task.commitCrossed !== undefined && typeof task.commitCrossed !== "boolean")
+  ) {
+    return null;
+  }
+  return {
+    phase,
+    callId,
+    toolName,
+    lifetime: task.lifetime,
+    effect: task.effect,
+    restartable: task.restartable,
+    commitCrossed: task.commitCrossed === true,
+  };
+}
+
+function extractVoiceTaskCommitEvent(payload: string): ElizaVoiceTaskEvent | null {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(payload);
+  } catch {
+    return null;
+  }
+  if (!isRecord(parsed) || parsed.type !== "voice_task_commit") return null;
+  const callId = readBoundedString(parsed.callId);
+  const toolName = readBoundedString(parsed.toolName);
+  if (!callId || !toolName) return null;
+  return {
+    phase: "commit",
+    callId,
+    toolName,
+    commitCrossed: true,
   };
 }
 
@@ -778,6 +866,7 @@ function extractViewHandoff(payload: string): ElizaVoiceViewHandoff | null {
 
 const VOICE_OUTPUT_POLICIES = new Set<VoiceOutputPolicy>(["say", "show", "both", "never_speak"]);
 const MAX_EXPLICIT_SPOKEN_TEXT_CHARS = 2_000;
+const MAX_VOICE_ARTIFACT_REFERENCES = 16;
 
 /**
  * Read the additive terminal `voiceOutput` directive. The canonical route does
@@ -808,11 +897,14 @@ function extractVoiceOutputDirective(payload: string): ElizaVoiceOutputDirective
   }
   const policy = directive.policy;
   const spoken = directive.spoken;
+  const rawArtifacts = directive.artifacts;
   if (
     typeof policy !== "string" ||
     !VOICE_OUTPUT_POLICIES.has(policy as VoiceOutputPolicy) ||
     (spoken !== undefined &&
-      (typeof spoken !== "string" || spoken.length > MAX_EXPLICIT_SPOKEN_TEXT_CHARS))
+      (typeof spoken !== "string" || spoken.length > MAX_EXPLICIT_SPOKEN_TEXT_CHARS)) ||
+    (rawArtifacts !== undefined &&
+      (!Array.isArray(rawArtifacts) || rawArtifacts.length > MAX_VOICE_ARTIFACT_REFERENCES))
   ) {
     throw new ElizaSseBridgeError(
       "Eliza agent terminal voiceOutput directive is invalid",
@@ -822,9 +914,27 @@ function extractVoiceOutputDirective(payload: string): ElizaVoiceOutputDirective
       false,
     );
   }
+  const artifacts =
+    rawArtifacts === undefined
+      ? undefined
+      : projectVoiceOutput({
+          policy: "show",
+          display: { markdown: "" },
+          artifacts: rawArtifacts as VoiceArtifactReference[],
+        }).artifacts;
+  if (rawArtifacts !== undefined && artifacts?.length !== rawArtifacts.length) {
+    throw new ElizaSseBridgeError(
+      "Eliza agent terminal voiceOutput artifacts are invalid",
+      "protocol_error",
+      undefined,
+      undefined,
+      false,
+    );
+  }
   return {
     policy: policy as VoiceOutputPolicy,
     ...(typeof spoken === "string" ? { spoken } : {}),
+    ...(artifacts && artifacts.length > 0 ? { artifacts } : {}),
   };
 }
 

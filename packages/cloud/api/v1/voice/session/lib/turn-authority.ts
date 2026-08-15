@@ -4,6 +4,7 @@ import {
   type ResponseId,
   reduceTurnCoordinator,
   type SpeechAttemptId,
+  type TaskId,
   type TurnCoordinatorEffect,
   type TurnCoordinatorEvent,
   type TurnCoordinatorState,
@@ -36,6 +37,11 @@ export interface VoiceSessionTurnAuthorityOptions {
   readonly sessionId: string;
   readonly now?: () => number;
   /**
+   * Seal a semantic turn immediately after commit when the upstream adapter has
+   * already completed its own false-EOT repair window.
+   */
+  readonly sealCommittedTurns?: boolean;
+  /**
    * Observability/effect seam. The adapter publishes `state` before invoking
    * this callback, so delayed providers can never regain authority while an
    * effect is being interpreted.
@@ -56,14 +62,18 @@ export interface VoiceSessionTurnAuthorityOptions {
 export class VoiceSessionTurnAuthority {
   private coordinatorState: TurnCoordinatorState;
   private readonly now: () => number;
+  private readonly sealCommittedTurns: boolean;
   private readonly onEffect?: VoiceSessionTurnAuthorityOptions["onEffect"];
   private readonly leasesByResponseId = new Map<
     ResponseId,
     VoiceResponseLease
   >();
+  /** Stable bridge call ids to exact coordinator task capabilities. */
+  private readonly taskIdsByCallId = new Map<string, TaskId>();
 
   constructor(options: VoiceSessionTurnAuthorityOptions) {
     this.now = options.now ?? Date.now;
+    this.sealCommittedTurns = options.sealCommittedTurns === true;
     this.onEffect = options.onEffect;
     this.coordinatorState = createTurnCoordinatorState({
       sessionId: options.sessionId,
@@ -182,6 +192,53 @@ export class VoiceSessionTurnAuthority {
     }).accepted;
   }
 
+  requestTask(
+    lease: VoiceResponseLease,
+    callId: string,
+    policy: {
+      lifetime: "response" | "durable";
+      effect: "read_only" | "mutating";
+      restartable: boolean;
+    },
+  ): boolean {
+    if (!this.isCurrent(lease)) return false;
+    const existingTaskId = this.taskIdsByCallId.get(callId);
+    if (existingTaskId) {
+      return Boolean(this.coordinatorState.tasks[existingTaskId]);
+    }
+    const previousTaskIds = new Set(Object.keys(this.coordinatorState.tasks));
+    const transition = this.dispatch({
+      type: "task/requested",
+      responseId: lease.responseId,
+      ...policy,
+      // The exact canonical tool call id is the coordinator operation key.
+      // `restartable` independently reflects whether the action declares safe
+      // provider/store replay; non-idempotent mutations are never restarted.
+      ...(policy.effect === "mutating" ? { idempotencyKey: callId } : {}),
+    });
+    if (!transition.accepted) return false;
+    const task = Object.values(transition.state.tasks).find(
+      (candidate) =>
+        candidate.responseId === lease.responseId &&
+        !previousTaskIds.has(candidate.id),
+    );
+    if (!task) return false;
+    this.taskIdsByCallId.set(callId, task.id);
+    return true;
+  }
+
+  markTaskCommitCrossed(callId: string): boolean {
+    const taskId = this.taskIdsByCallId.get(callId);
+    if (!taskId || !this.coordinatorState.tasks[taskId]) return false;
+    return this.dispatch({ type: "task/commit_crossed", taskId }).accepted;
+  }
+
+  settleTask(callId: string): boolean {
+    const taskId = this.taskIdsByCallId.get(callId);
+    if (!taskId || !this.coordinatorState.tasks[taskId]) return false;
+    return this.dispatch({ type: "task/settled", taskId }).accepted;
+  }
+
   settle(
     lease: VoiceResponseLease,
     outcome: "spoken" | "displayed" | "no_response" | "error" | "stopped",
@@ -234,12 +291,29 @@ export class VoiceSessionTurnAuthority {
       transcriptRevision,
     });
     if (!revised.accepted) return revised;
-    return this.dispatch({
+    const committed = this.dispatch({
       type: "turn/commit",
       turnId: turn.id,
       transcriptRevision,
       disposition,
     });
+    const committedTurn = this.coordinatorState.turn;
+    if (
+      committed.accepted &&
+      this.sealCommittedTurns &&
+      committedTurn?.stage === "semantic" &&
+      committedTurn.mergeDeadlineMs !== null
+    ) {
+      return this.dispatchAt(
+        {
+          type: "timer/merge_elapsed",
+          turnId: committedTurn.id,
+          turnRevision: committedTurn.revision,
+        },
+        committedTurn.mergeDeadlineMs,
+      );
+    }
+    return committed;
   }
 
   private ensureTranscribingTurn(): void {
@@ -259,10 +333,17 @@ export class VoiceSessionTurnAuthority {
   private dispatch(
     event: LocalTurnCoordinatorEvent,
   ): TurnCoordinatorTransition {
+    return this.dispatchAt(event, this.now());
+  }
+
+  private dispatchAt(
+    event: LocalTurnCoordinatorEvent,
+    atMs: number,
+  ): TurnCoordinatorTransition {
     const transition = reduceTurnCoordinator(this.coordinatorState, {
       ...event,
       sessionId: this.coordinatorState.sessionId,
-      atMs: this.now(),
+      atMs,
     } as TurnCoordinatorEvent);
     if (!transition.accepted) return transition;
 

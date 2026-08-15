@@ -7,6 +7,8 @@
  * and rejects every late delta/terminal replacement for that response.
  */
 
+import type { VoiceArtifactReference } from "@elizaos/shared";
+import type { MessageAttachment } from "../../api";
 import type { ShellMessage } from "./shell-state";
 
 const INITIAL_REVEAL_CODE_POINTS = 48;
@@ -37,6 +39,7 @@ export interface RealtimeVoiceDisplayTurn {
   displayMarkdown: string;
   speechText: string | null;
   displayTruncated: boolean;
+  artifacts?: readonly VoiceArtifactReference[];
   createdAtMs: number;
   visibleText: string;
   phase: RealtimeVoiceDisplayPhase;
@@ -66,6 +69,7 @@ export type RealtimeVoiceDisplayEvent =
       displayMarkdown: string;
       speechText: string | null;
       displayTruncated: boolean;
+      artifacts?: readonly VoiceArtifactReference[];
       atMs: number;
     }
   | { type: "speaking_start"; traceId: string; atMs: number }
@@ -279,6 +283,7 @@ export function reduceRealtimeVoiceDisplay(
             displayMarkdown: event.displayMarkdown,
             speechText: event.speechText,
             displayTruncated: event.displayTruncated,
+            artifacts: event.artifacts ?? [],
             visibleText,
             phase: needsReveal
               ? "revealing"
@@ -294,6 +299,7 @@ export function reduceRealtimeVoiceDisplay(
             displayMarkdown: event.displayMarkdown,
             speechText: event.speechText,
             displayTruncated: event.displayTruncated,
+            ...(event.artifacts?.length ? { artifacts: event.artifacts } : {}),
             createdAtMs: event.atMs,
             visibleText,
             phase: needsReveal ? "revealing" : "pending",
@@ -416,6 +422,33 @@ export function realtimeVoiceDisplayIsAnimating(
   return state.turns.some((turn) => turn.phase === "revealing");
 }
 
+function voiceArtifactAttachments(
+  artifacts: readonly VoiceArtifactReference[] | undefined,
+): MessageAttachment[] | undefined {
+  const attachments = (artifacts ?? []).flatMap((artifact) => {
+    if (!artifact.href) return [];
+    const contentType: MessageAttachment["contentType"] =
+      artifact.kind === "image"
+        ? "image"
+        : artifact.kind === "audio"
+          ? "audio"
+          : artifact.kind === "link"
+            ? "link"
+            : "document";
+    return [
+      {
+        id: artifact.id,
+        url: artifact.href,
+        contentType,
+        title: artifact.label,
+        ...(artifact.mimeType ? { mimeType: artifact.mimeType } : {}),
+        source: "realtime-voice",
+      } satisfies MessageAttachment,
+    ];
+  });
+  return attachments.length > 0 ? attachments : undefined;
+}
+
 /** Replace exact canonical rows while a voice caption is active or interrupted. */
 export function projectRealtimeVoiceDisplayMessages(
   messages: readonly ShellMessage[],
@@ -463,17 +496,28 @@ export function projectRealtimeVoiceDisplayMessages(
     );
     if (!turn) return [message];
     unmatched.delete(turn.traceId);
-    if (!turn.visibleText) return [];
+    const voiceAttachments = voiceArtifactAttachments(turn.artifacts);
+    if (
+      !turn.visibleText &&
+      !message.attachments?.length &&
+      !voiceAttachments
+    ) {
+      return [];
+    }
     return [
       {
         ...message,
         content: turn.visibleText,
         interrupted: turn.phase === "interrupted",
+        ...(!message.attachments?.length && voiceAttachments
+          ? { attachments: voiceAttachments }
+          : {}),
       },
     ];
   });
   for (const turn of unmatched.values()) {
-    if (!turn.visibleText) continue;
+    const voiceAttachments = voiceArtifactAttachments(turn.artifacts);
+    if (!turn.visibleText && !voiceAttachments) continue;
     projected.push({
       id: `voice-display:${turn.traceId}`,
       role: "assistant",
@@ -481,6 +525,7 @@ export function projectRealtimeVoiceDisplayMessages(
       createdAt: turn.createdAtMs,
       source: "realtime-voice",
       interrupted: turn.phase === "interrupted",
+      ...(voiceAttachments ? { attachments: voiceAttachments } : {}),
     });
   }
   return projected;

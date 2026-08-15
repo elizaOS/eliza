@@ -1286,6 +1286,7 @@ export {
   redactSensitiveText,
 } from "../../../../core/src/security/redact";
 export type { PiiScrubResult } from "../../../../core/src/types/model";
+export { isAbbreviationPeriod } from "../../../../core/src/utils/text-splitting";
 
 export const ModelType = {
   TEXT_SMALL: "TEXT_SMALL",

@@ -261,6 +261,13 @@ export default defineConfig({
         replacement: path.join(coreSrc, "index.node.ts"),
       },
       {
+        // plugin-scheduling (source-aliased below) imports @elizaos/core/edge;
+        // keep this exact subpath before the generic core matcher so Vite does
+        // not rewrite it to the nonexistent src/edge path.
+        find: /^@elizaos\/core\/edge$/,
+        replacement: path.join(monorepoRoot, "packages/core/src/index.edge.ts"),
+      },
+      {
         find: /^@elizaos\/core\/atomic-json$/,
         replacement: path.join(coreSrc, "utils/atomic-json.ts"),
       },
@@ -363,13 +370,6 @@ export default defineConfig({
       {
         find: /^@elizaos\/plugin-task-coordinator\/(.+)$/,
         replacement: `${toVitePath(appTaskCoordinatorSrc)}/$1`,
-      },
-      {
-        // plugin-scheduling (source-aliased below) imports @elizaos/core/edge;
-        // vite's test-mode resolver misses linked-package subpath exports, so
-        // pin it to the edge source entry (mirrors plugin-calendar, #19815).
-        find: /^@elizaos\/core\/edge$/,
-        replacement: path.join(monorepoRoot, "packages/core/src/index.edge.ts"),
       },
       {
         find: /^@elizaos\/plugin-scheduling$/,

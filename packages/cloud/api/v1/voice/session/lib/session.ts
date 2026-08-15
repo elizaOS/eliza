@@ -423,6 +423,9 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
     this.turnAuthority = new VoiceSessionTurnAuthority({
       sessionId: config.sessionId,
       now: this.now,
+      // Ink semantic-EOT repair is complete before this adapter commits the
+      // response, so do not stack the coordinator's generic merge hold on top.
+      sealCommittedTurns: true,
     });
     this.usageIdentity = {
       organizationId: config.organizationId,
@@ -1427,6 +1430,39 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
         signal: abort.signal,
         fetchImpl: this.config.fetchImpl,
         onStatus: updateProgressStatus,
+        onTaskEvent: (event: {
+          phase: "call" | "commit" | "result" | "error";
+          callId: string;
+          lifetime?: "response" | "durable";
+          effect?: "read_only" | "mutating";
+          restartable?: boolean;
+          commitCrossed: boolean;
+        }) => {
+          if (abort.signal.aborted || !this.turnAuthority.isCurrent(lease)) {
+            return;
+          }
+          if (
+            event.phase === "call" &&
+            event.lifetime &&
+            event.effect &&
+            typeof event.restartable === "boolean"
+          ) {
+            this.turnAuthority.requestTask(lease, event.callId, {
+              lifetime: event.lifetime,
+              effect: event.effect,
+              restartable: event.restartable,
+            });
+            return;
+          }
+          if (event.phase === "commit") {
+            this.turnAuthority.markTaskCommitCrossed(event.callId);
+            return;
+          }
+          if (event.commitCrossed) {
+            this.turnAuthority.markTaskCommitCrossed(event.callId);
+          }
+          this.turnAuthority.settleTask(event.callId);
+        },
         voiceSpeechProtocol: COMMITTED_SPEECH_PROTOCOL,
         onSpeechSegment: (segment: CommittedSpeechSegment) => {
           if (
@@ -1584,6 +1620,13 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
       );
       const terminalProjectionSkippedForBudget =
         remainingTtsChars < VOICE_TTS_MIN_PROJECTABLE_SPEECH_CHARS;
+      const terminalArtifacts = projectVoiceOutput({
+        policy: "show",
+        display: { markdown: "" },
+        ...(result.outputDirective?.artifacts
+          ? { artifacts: result.outputDirective.artifacts }
+          : {}),
+      }).artifacts;
       const projection = terminalProjectionSkippedForBudget
         ? null
         : projectVoiceOutput(
@@ -1593,6 +1636,9 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
               ...(result.outputDirective?.spoken === undefined
                 ? {}
                 : { spoken: result.outputDirective.spoken }),
+              ...(result.outputDirective?.artifacts
+                ? { artifacts: result.outputDirective.artifacts }
+                : {}),
             },
             { maxSpeechChars: remainingTtsChars },
           );
@@ -1618,6 +1664,9 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
         speechText: safeSpeechText,
         displayTruncated:
           displayMarkdown.length !== canonicalDisplayText.length,
+        ...((projection?.artifacts.length ?? terminalArtifacts.length) > 0
+          ? { artifacts: projection?.artifacts ?? terminalArtifacts }
+          : {}),
         ...(result.messageId ? { messageId: result.messageId } : {}),
         traceId,
       });

@@ -18,6 +18,11 @@
  *   - Every server state event carries a `traceId`.
  */
 
+import {
+  projectVoiceOutput,
+  type VoiceArtifactReference,
+} from "@elizaos/shared";
+
 /** Wire protocol version. Bumped only on breaking control-frame changes. */
 export const VOICE_SESSION_PROTOCOL_VERSION = 1 as const;
 
@@ -129,6 +134,7 @@ export interface ServerAssistantOutputEvent {
   displayMarkdown: string;
   speechText: string | null;
   displayTruncated: boolean;
+  artifacts?: readonly VoiceArtifactReference[];
   messageId?: string;
   traceId: string;
 }
@@ -305,12 +311,30 @@ export function parseServerControl(raw: string): ServerControlFrame | null {
       const rawMessageId = frame.messageId;
       const messageId =
         rawMessageId === undefined ? null : readBoundedString(rawMessageId);
+      const rawArtifacts = frame.artifacts;
+      const rawArtifactCount = Array.isArray(rawArtifacts)
+        ? rawArtifacts.length
+        : null;
+      const artifacts =
+        rawArtifacts === undefined ||
+        rawArtifactCount === null ||
+        rawArtifactCount > 16
+          ? rawArtifacts === undefined
+            ? undefined
+            : null
+          : projectVoiceOutput({
+              policy: "show",
+              display: { markdown: "" },
+              artifacts: rawArtifacts as VoiceArtifactReference[],
+            }).artifacts;
       if (
         displayMarkdown === null ||
         (speechText === null && frame.speechText !== null) ||
         typeof displayTruncated !== "boolean" ||
         !traceId ||
-        (rawMessageId !== undefined && !messageId)
+        (rawMessageId !== undefined && !messageId) ||
+        artifacts === null ||
+        (rawArtifacts !== undefined && artifacts?.length !== rawArtifactCount)
       ) {
         return null;
       }
@@ -319,6 +343,7 @@ export function parseServerControl(raw: string): ServerControlFrame | null {
         displayMarkdown,
         speechText,
         displayTruncated,
+        ...(artifacts && artifacts.length > 0 ? { artifacts } : {}),
         ...(messageId ? { messageId } : {}),
         traceId,
       };

@@ -28,6 +28,8 @@
 import { EventEmitter } from "node:events";
 import http from "node:http";
 import {
+  type Action,
+  type ActionResult,
   type AgentRuntime,
   ChannelType,
   logger,
@@ -379,6 +381,79 @@ function createChunkPlanMessageService(
       shouldRespond: true,
       skipEvaluation: true,
       reason: "stream-contract-snapshot-test",
+    }),
+    deleteMessage: async () => undefined,
+    clearChannel: async () => undefined,
+  } satisfies NonNullable<AgentRuntime["messageService"]>;
+}
+
+function createCommittedVoiceTaskMessageService(): NonNullable<
+  AgentRuntime["messageService"]
+> {
+  const observedAt = "2026-08-15T20:00:00.000Z";
+  const settledResult: ActionResult = {
+    success: true,
+    text: "Saved.",
+    effectReceipts: [
+      {
+        receiptId: "receipt-save-1",
+        operation: "test.save",
+        resource: { kind: "test.item", id: "item-1" },
+        artifacts: [],
+        idempotency: { key: "save-call-1", replayed: false },
+        observedAt,
+        outcome: "applied",
+        commit: {
+          kind: "durable",
+          id: "row-1",
+          committedAt: observedAt,
+        },
+      },
+    ],
+  };
+  return {
+    async handleMessage(
+      _runtime,
+      _message,
+      _callback,
+      options?: {
+        onStreamChunk?: (chunk: string) => Promise<void> | void;
+        onSettledActionResult?: (
+          result: ActionResult,
+          actionName: string,
+        ) => void;
+      },
+    ) {
+      await options?.onStreamChunk?.(
+        JSON.stringify({
+          type: "tool_call",
+          toolCall: {
+            id: "save-call-1",
+            name: "SAVE",
+            arguments: { private: "not-for-voice-authority" },
+          },
+        }),
+      );
+      options?.onSettledActionResult?.(settledResult, "SAVE");
+      await options?.onStreamChunk?.(
+        JSON.stringify({
+          type: "tool_result",
+          toolCallId: "save-call-1",
+          toolCall: { id: "save-call-1", name: "SAVE", status: "completed" },
+          result: settledResult,
+          status: "completed",
+        }),
+      );
+      return {
+        didRespond: true,
+        responseContent: { text: "Saved." },
+        responseMessages: [],
+      };
+    },
+    shouldRespond: () => ({
+      shouldRespond: true,
+      skipEvaluation: true,
+      reason: "committed-voice-task-test",
     }),
     deleteMessage: async () => undefined,
     clearChannel: async () => undefined,
@@ -2245,6 +2320,45 @@ describe("conversation stream SSE contract (#10712)", () => {
     expect(payloads).toContainEqual(
       expect.objectContaining({ type: "done", fullText: "Opened Notes." }),
     );
+  });
+
+  it("emits an exact voice task commit before the ordinary tool result", async () => {
+    requestStreamProtocol = "delta-v2";
+    useExactRealtimeVoiceRequest("voice:task-commit-contract");
+    const { ctx, record, state } = createCtx(
+      createCommittedVoiceTaskMessageService(),
+    );
+    const runtime = state.runtime;
+    if (!runtime) throw new Error("runtime fixture missing");
+    runtime.actions.push({
+      name: "SAVE",
+      description: "Persist a test item.",
+      tags: ["capability:write", "effect:receipt-required"],
+      validate: async () => true,
+      handler: async () => ({ success: true }),
+    } satisfies Action);
+
+    await handleConversationRoutes(ctx);
+
+    const payloads = parseSsePayloads(record.writes);
+    const callIndex = payloads.findIndex(
+      (payload) => payload.type === "tool" && payload.phase === "call",
+    );
+    const commitIndex = payloads.findIndex(
+      (payload) => payload.type === "voice_task_commit",
+    );
+    const resultIndex = payloads.findIndex(
+      (payload) => payload.type === "tool" && payload.phase === "result",
+    );
+    expect(callIndex).toBeGreaterThanOrEqual(0);
+    expect(commitIndex).toBeGreaterThan(callIndex);
+    expect(resultIndex).toBeGreaterThan(commitIndex);
+    expect(payloads[commitIndex]).toEqual({
+      type: "voice_task_commit",
+      callId: "save-call-1",
+      toolName: "SAVE",
+    });
+    expect(JSON.stringify(payloads[commitIndex])).not.toContain("private");
   });
 
   it("keeps a failed action callback authoritative through done and persistence", async () => {

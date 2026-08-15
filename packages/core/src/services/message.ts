@@ -1559,7 +1559,7 @@ type ResolvedMessageOptions = {
 	/** Exact-request-only assistant precommit gate; never gates user ingress. */
 	assistantCommitAbortSignal?: AbortSignal;
 	roomHandlerLease?: RoomHandlerLease;
-	onSettledActionResult?: (result: ActionResult) => void;
+	onSettledActionResult?: (result: ActionResult, actionName: string) => void;
 	onTrajectoryTerminalOwner?: (owner: "run") => void;
 	runTerminalOwner?: MessageRunTerminalOwner;
 };
@@ -7561,7 +7561,7 @@ export async function runShortcutGate(args: {
 	state: State;
 	responseId: UUID;
 	senderRole: RoleGateRole;
-	onSettledActionResult?: (result: ActionResult) => void;
+	onSettledActionResult?: (result: ActionResult, actionName: string) => void;
 	runTerminalOwner?: MessageRunTerminalOwner;
 }): Promise<V5MessageRuntimeStage1Result | null> {
 	if (process.env.ELIZA_SHORTCUTS_DISABLED === "1") return null;
@@ -7797,7 +7797,7 @@ export async function runV5MessageRuntimeStage1(args: {
 	callback?: HandlerCallback;
 	deliveredVisibleTexts?: Set<string>;
 	plannerLoopConfig?: PlannerLoopParams["config"];
-	onSettledActionResult?: (result: ActionResult) => void;
+	onSettledActionResult?: (result: ActionResult, actionName: string) => void;
 	roomHandlerLease?: RoomHandlerLease;
 	runTerminalOwner?: MessageRunTerminalOwner;
 	/**

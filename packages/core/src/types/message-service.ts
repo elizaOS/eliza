@@ -56,7 +56,7 @@ export interface MessageProcessingOptions {
 	 * Receives each action result as soon as its handler boundary settles. Hosts
 	 * use this to retain committed-effect knowledge if later turn work aborts.
 	 */
-	onSettledActionResult?: (result: ActionResult) => void;
+	onSettledActionResult?: (result: ActionResult, actionName: string) => void;
 	/**
 	 * Receives the run-terminal capability as soon as the message service owns it.
 	 * Hosts retain this across a later thrown turn so recovery delivery cannot be

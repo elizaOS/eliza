@@ -11,6 +11,8 @@
  * consumes these typed events.
  */
 
+import type { VoiceArtifactReference } from "@elizaos/shared";
+
 export const VOICE_SESSION_PROTOCOL_VERSION = 1;
 
 /** Reject any control frame larger than this (defense against JSON bombs). */
@@ -105,6 +107,7 @@ export type ServerControlFrame =
       displayMarkdown: string;
       speechText: string | null;
       displayTruncated: boolean;
+      artifacts?: readonly VoiceArtifactReference[];
       messageId?: string;
       traceId: string;
     }

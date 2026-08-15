@@ -80,7 +80,7 @@ export type ExecutePlannedToolCallOptions = HandlerOptions & {
 	 * payloads are projected before observation. The observer is isolated from
 	 * action execution and is never forwarded into HandlerOptions.
 	 */
-	onSettledResult?: (result: ActionResult) => void;
+	onSettledResult?: (result: ActionResult, actionName: string) => void;
 };
 
 function isContentRecord(value: unknown): value is Record<string, unknown> {
@@ -250,11 +250,11 @@ function publishSettledResult(
 	runtime: IAgentRuntime,
 	action: Action,
 	result: ActionResult,
-	observer: ((result: ActionResult) => void) | undefined,
+	observer: ((result: ActionResult, actionName: string) => void) | undefined,
 ): void {
 	if (!observer) return;
 	try {
-		observer(projectSettledResultForObserver(action, result));
+		observer(projectSettledResultForObserver(action, result), action.name);
 	} catch (error) {
 		// error-policy:J7 completion observers provide durability bookkeeping;
 		// they must remain observable without changing the settled action result.

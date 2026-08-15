@@ -26,6 +26,45 @@ function stream(text: string) {
 }
 
 describe("realtime voice display", () => {
+  it("renders terminal artifact references immediately without carrying bytes", () => {
+    const state = reduceRealtimeVoiceDisplay(
+      EMPTY_REALTIME_VOICE_DISPLAY_STATE,
+      {
+        type: "output",
+        traceId: "trace-artifact",
+        displayMarkdown: "",
+        speechText: null,
+        displayTruncated: false,
+        artifacts: [
+          {
+            id: "image-1",
+            kind: "image",
+            label: "Preview",
+            mimeType: "image/png",
+            href: "/api/media/image-1.png",
+          },
+          { id: "metadata-only", kind: "data", label: "No href" },
+        ],
+        atMs: 1_000,
+      },
+    );
+    expect(projectRealtimeVoiceDisplayMessages([], state)).toEqual([
+      expect.objectContaining({
+        content: "",
+        attachments: [
+          {
+            id: "image-1",
+            url: "/api/media/image-1.png",
+            contentType: "image",
+            title: "Preview",
+            mimeType: "image/png",
+            source: "realtime-voice",
+          },
+        ],
+      }),
+    ]);
+  });
+
   it("shows cumulative model text immediately before terminal output", () => {
     let state = stream("The answer");
     expect(projectRealtimeVoiceDisplayMessages([], state)[0]?.content).toBe(

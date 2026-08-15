@@ -198,7 +198,7 @@ describe("runSharedAgentTurn — internal failure propagates vs designed-empty d
     });
 
     expect(system).toContain("Shared runtime boundaries");
-    expect(system).toContain("no external tools");
+    expect(system).toContain("no connected accounts");
     expect(system).toContain("Never claim that you performed");
     expect(system).toContain("needs Dedicated");
   });

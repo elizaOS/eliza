@@ -65,6 +65,7 @@ import type {
   LinkedAccountProviderId,
   LogEntry,
   ReadJsonBodyOptions,
+  VoiceArtifactReference,
 } from "@elizaos/shared";
 import {
   asRecord,
@@ -309,6 +310,14 @@ export interface ChatMessageIdOutcome {
   noResponseReason?: "ignored";
   /** Durable presentation was intentionally stopped after this visible text. */
   interrupted?: boolean;
+  /**
+   * Terminal-only semantic voice metadata. Artifact bytes never travel here;
+   * only projector-validated references to the already-authorized response do.
+   */
+  voiceOutput?: {
+    policy: "both";
+    artifacts: readonly VoiceArtifactReference[];
+  };
 }
 
 const chatIdempotency = createChatIdempotencyStore<ChatMessageIdOutcome>();
@@ -1029,6 +1038,12 @@ export interface ChatGenerateOptions {
    * `error`. Additive; a caller that omits it loses only the inline tool surface.
    */
   onToolEvent?: (event: ChatToolCallEvent) => void;
+  /**
+   * Receipt-proven mutation crossed its external commit point. Emitted before
+   * ordinary tool-result diagnostics so realtime interruption cannot mistake a
+   * committed effect for abortable in-flight work.
+   */
+  onVoiceTaskCommit?: (event: { callId: string; toolName: string }) => void;
   abortSignal?: AbortSignal;
   /**
    * Exact-request-only gate for assistant persistence/delivery. Kept separate
@@ -1329,6 +1344,80 @@ export function chatEventsFromStructuredStreamPayload(
   }
 
   return null;
+}
+
+function runtimeActionForToolName(
+  runtime: AgentRuntime,
+  toolName: string,
+): AgentRuntime["actions"][number] | undefined {
+  const normalized = normalizeActionName(toolName);
+  return runtime.actions.find(
+    (action) =>
+      normalizeActionName(action.name) === normalized ||
+      action.similes?.some(
+        (simile) => normalizeActionName(simile) === normalized,
+      ),
+  );
+}
+
+function voiceTaskCorrelationKey(
+  runtime: AgentRuntime,
+  toolName: string,
+): string {
+  return normalizeActionName(
+    runtimeActionForToolName(runtime, toolName)?.name ?? toolName,
+  );
+}
+
+function toolResultHasCommittedEffectProof(result: unknown): boolean {
+  const resultRecord = asRecord(result);
+  const receipts = resultRecord?.effectReceipts;
+  if (!Array.isArray(receipts)) return false;
+  return receipts.some((receipt) => {
+    const record = asRecord(receipt);
+    if (record?.outcome === "applied") {
+      const commit = asRecord(record.commit);
+      return (
+        (commit?.kind === "durable" || commit?.kind === "provider_accepted") &&
+        typeof commit.id === "string" &&
+        commit.id.trim().length > 0
+      );
+    }
+    if (record?.outcome !== "noop") return false;
+    const idempotency = asRecord(record.idempotency);
+    return (
+      idempotency?.replayed === true &&
+      typeof idempotency.key === "string" &&
+      idempotency.key.trim().length > 0
+    );
+  });
+}
+
+/** Add only bounded lifecycle policy; never copy args/results into voice authority. */
+export function enrichChatToolEventWithVoiceTask(
+  runtime: AgentRuntime,
+  event: ChatToolCallEvent,
+): ChatToolCallEvent {
+  const action = runtimeActionForToolName(runtime, event.toolName);
+  const mutating = tagsMayProduceEffects(action?.tags);
+  const restartable =
+    !mutating ||
+    action?.tags?.some(
+      (tag) => tag.trim().toLowerCase() === "effect:idempotent",
+    ) === true;
+  return {
+    ...event,
+    voiceTask: {
+      lifetime: action?.asyncHandoff === true ? "durable" : "response",
+      effect: mutating ? "mutating" : "read_only",
+      restartable,
+      ...(event.phase === "result" &&
+      mutating &&
+      toolResultHasCommittedEffectProof(event.result)
+        ? { commitCrossed: true }
+        : {}),
+    },
+  };
 }
 
 /** Text-level companion to {@link chatEventsFromStructuredStreamPayload}: parse a
@@ -3533,6 +3622,10 @@ async function generateChatResponseWithTiming(
       | undefined;
     let trajectoryTerminalOwner: "run" | undefined;
     const settledActionResults: ActionResult[] = [];
+    const pendingVoiceToolCalls = new Map<
+      string,
+      Array<{ callId: string; toolName: string }>
+    >();
     let capturedUsage: CapturedModelUsage | null = null;
     const recordActionCallback = (
       actionTag: string,
@@ -3833,8 +3926,16 @@ async function generateChatResponseWithTiming(
                       : {}),
                     roomHandlerLease: opts?.roomHandlerLease,
                     keepExistingResponses: true,
-                    onSettledActionResult: (actionResult) => {
+                    onSettledActionResult: (actionResult, actionName) => {
                       settledActionResults.push(actionResult);
+                      if (!toolResultHasCommittedEffectProof(actionResult)) {
+                        return;
+                      }
+                      const pending = pendingVoiceToolCalls.get(
+                        voiceTaskCorrelationKey(runtime, actionName),
+                      );
+                      const call = pending?.[0];
+                      if (call) opts?.onVoiceTaskCommit?.(call);
                     },
                     onTrajectoryTerminalOwner: (owner) => {
                       trajectoryTerminalOwner = owner;
@@ -3860,7 +3961,32 @@ async function generateChatResponseWithTiming(
                               chatEventsFromStructuredStreamText(chunk);
                             if (events?.status) emitStatus(events.status);
                             if (events?.toolEvent) {
-                              opts?.onToolEvent?.(events.toolEvent);
+                              const toolEvent =
+                                enrichChatToolEventWithVoiceTask(
+                                  runtime,
+                                  events.toolEvent,
+                                );
+                              const actionKey = voiceTaskCorrelationKey(
+                                runtime,
+                                toolEvent.toolName,
+                              );
+                              if (toolEvent.phase === "call") {
+                                const pending =
+                                  pendingVoiceToolCalls.get(actionKey) ?? [];
+                                pending.push({
+                                  callId: toolEvent.callId,
+                                  toolName: toolEvent.toolName,
+                                });
+                                pendingVoiceToolCalls.set(actionKey, pending);
+                              } else {
+                                const pending =
+                                  pendingVoiceToolCalls.get(actionKey);
+                                if (pending?.length) pending.shift();
+                                if (pending?.length === 0) {
+                                  pendingVoiceToolCalls.delete(actionKey);
+                                }
+                              }
+                              opts?.onToolEvent?.(toolEvent);
                             }
                             return;
                           }
@@ -4279,11 +4405,7 @@ async function generateChatResponseWithTiming(
       if (remainingText) {
         markFirstVisibleReply();
         if (authoritativeStreamMetadata) {
-          opts.onChunk(
-            remainingText,
-            "model",
-            authoritativeStreamMetadata,
-          );
+          opts.onChunk(remainingText, "model", authoritativeStreamMetadata);
         } else {
           // Historical append-only terminal completion is a one-argument
           // callback. Add provenance only when there is actual metadata.

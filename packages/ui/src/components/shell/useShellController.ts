@@ -585,6 +585,7 @@ export function useShellController(): ShellController {
           displayMarkdown: event.displayMarkdown,
           speechText: event.speechText,
           displayTruncated: event.displayTruncated,
+          ...(event.artifacts?.length ? { artifacts: event.artifacts } : {}),
           // Every reveal event shares the monotonic performance clock. Mixing
           // epoch time here with performance.now() ticks made elapsed time
           // negative, reducing a paced reveal to one character per tick.

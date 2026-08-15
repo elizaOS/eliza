@@ -129,6 +129,15 @@ describe("voice session server protocol", () => {
           displayMarkdown: "Full persisted display.",
           speechText: "Concise spoken display.",
           displayTruncated: false,
+          artifacts: [
+            {
+              id: "image-1",
+              kind: "image",
+              label: "Preview",
+              mimeType: "image/png",
+              href: "/api/media/image-1.png",
+            },
+          ],
           messageId: " assistant-1 ",
           traceId: " trace-1 ",
         }),
@@ -138,6 +147,15 @@ describe("voice session server protocol", () => {
       displayMarkdown: "Full persisted display.",
       speechText: "Concise spoken display.",
       displayTruncated: false,
+      artifacts: [
+        {
+          id: "image-1",
+          kind: "image",
+          label: "Preview",
+          mimeType: "image/png",
+          href: "/api/media/image-1.png",
+        },
+      ],
       messageId: "assistant-1",
       traceId: "trace-1",
     });
@@ -165,6 +183,13 @@ describe("voice session server protocol", () => {
     { displayMarkdown: "safe", speechText: "x".repeat(601) },
     { displayMarkdown: "safe", speechText: 42 },
     { displayMarkdown: "safe", speechText: null, messageId: "" },
+    {
+      displayMarkdown: "safe",
+      speechText: null,
+      artifacts: [
+        { id: "bad", kind: "link", label: "Bad", href: "javascript:x" },
+      ],
+    },
   ])("rejects malformed terminal display projection %#", (fields) => {
     expect(
       parseServerControl(

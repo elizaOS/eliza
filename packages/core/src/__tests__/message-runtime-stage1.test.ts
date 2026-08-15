@@ -4340,6 +4340,7 @@ describe("runV5MessageRuntimeStage1", () => {
 					expect.objectContaining({ receiptId: "receipt-reminder-1" }),
 				],
 			}),
+			"CREATE_REMINDER",
 		);
 		if (result.kind === "planned_reply") {
 			expect(result.result.responseContent?.text).toBe(canonicalText);

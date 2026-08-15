@@ -12,6 +12,14 @@ const fakeLogger = {
 };
 mock.module("@/lib/utils/logger", () => fakeLogger);
 mock.module("@elizaos/core", () => ({
+  ElizaError: class ElizaError extends Error {
+    readonly code: string;
+    constructor(message: string, options: { code: string }) {
+      super(message);
+      this.name = "ElizaError";
+      this.code = options.code;
+    }
+  },
   isSensitiveKeyName: () => false,
   redactLogArgs: (a: unknown) => a,
 }));

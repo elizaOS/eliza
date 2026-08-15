@@ -112,4 +112,78 @@ describe("VoiceSessionTurnAuthority", () => {
     expect(authority.explicitInterrupt()).toBe(lease);
     expect(authority.explicitInterrupt()).toBeNull();
   });
+
+  test("aborts response-scoped reads but detaches committed mutations", () => {
+    const effects: TurnCoordinatorEffect[] = [];
+    let now = 1_000;
+    const authority = new VoiceSessionTurnAuthority({
+      sessionId: "voice-task-test",
+      now: () => now,
+      sealCommittedTurns: true,
+      onEffect: (effect) => effects.push(effect),
+    });
+    const readLease = authority.commitResponse("trace-read");
+    now += 2;
+    expect(
+      authority.requestTask(readLease, "read-call", {
+        lifetime: "response",
+        effect: "read_only",
+        restartable: true,
+      }),
+    ).toBe(true);
+    const readTaskId = Object.values(authority.state.tasks)[0]?.id;
+    authority.explicitInterrupt();
+    expect(effects).toContainEqual({ type: "task/abort", taskId: readTaskId });
+
+    effects.length = 0;
+    const mutationLease = authority.commitResponse("trace-mutation");
+    now += 2;
+    expect(
+      authority.requestTask(mutationLease, "mutation-call", {
+        lifetime: "response",
+        effect: "mutating",
+        restartable: false,
+      }),
+    ).toBe(true);
+    const mutationTaskId = Object.values(authority.state.tasks)[0]?.id;
+    expect(authority.markTaskCommitCrossed("mutation-call")).toBe(true);
+    authority.explicitInterrupt();
+    expect(effects).toContainEqual({
+      type: "task/detach",
+      taskId: mutationTaskId,
+    });
+    expect(effects).toContainEqual({
+      type: "task/report_actual_state",
+      taskId: mutationTaskId,
+    });
+  });
+
+  test("settles one exact tool call once and routes its result to the response", () => {
+    const effects: TurnCoordinatorEffect[] = [];
+    let now = 1_000;
+    const authority = new VoiceSessionTurnAuthority({
+      sessionId: "voice-task-settle",
+      now: () => now,
+      sealCommittedTurns: true,
+      onEffect: (effect) => effects.push(effect),
+    });
+    const lease = authority.commitResponse("trace-task");
+    now += 2;
+    expect(
+      authority.requestTask(lease, "call-1", {
+        lifetime: "response",
+        effect: "read_only",
+        restartable: true,
+      }),
+    ).toBe(true);
+    const taskId = Object.values(authority.state.tasks)[0]?.id;
+    expect(authority.settleTask("call-1")).toBe(true);
+    expect(authority.settleTask("call-1")).toBe(false);
+    expect(effects).toContainEqual({
+      type: "task/result_available",
+      taskId,
+      responseId: lease.responseId,
+      delivery: "response_router",
+    });
+  });
 });

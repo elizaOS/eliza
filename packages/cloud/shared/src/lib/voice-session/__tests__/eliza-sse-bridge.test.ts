@@ -261,6 +261,89 @@ describe("eliza sse bridge", () => {
     ]);
   });
 
+  test("forwards only bounded content-free task lifecycle policy", async () => {
+    const tasks: unknown[] = [];
+    const fetchImpl = (async () =>
+      sseResponse([
+        `data: ${JSON.stringify({
+          type: "tool",
+          phase: "call",
+          callId: "call-1",
+          toolName: "SAVE",
+          args: { secret: "must-not-cross" },
+          voiceTask: {
+            lifetime: "response",
+            effect: "mutating",
+            restartable: false,
+          },
+        })}\n\n`,
+        `data: ${JSON.stringify({
+          type: "voice_task_commit",
+          callId: "call-1",
+          toolName: "SAVE",
+          result: { private: "must-not-cross" },
+        })}\n\n`,
+        `data: ${JSON.stringify({
+          type: "tool",
+          phase: "result",
+          callId: "call-1",
+          toolName: "SAVE",
+          result: { private: "must-not-cross" },
+          voiceTask: {
+            lifetime: "response",
+            effect: "mutating",
+            restartable: false,
+            commitCrossed: true,
+          },
+        })}\n\n`,
+        `data: ${JSON.stringify({ type: "done", fullText: "Saved." })}\n\n`,
+      ])) as unknown as typeof fetch;
+
+    await streamElizaConversation(
+      {
+        endpoint: "http://x",
+        authorization: "Bearer s",
+        model: "m",
+        transcript: "save",
+        agentId: "agent-1",
+        conversationId: "conv-1",
+        traceId: "trace-task",
+        signal: new AbortController().signal,
+        fetchImpl,
+        onTaskEvent: (event) => tasks.push(event),
+      },
+      () => {},
+    );
+
+    expect(tasks).toEqual([
+      {
+        phase: "call",
+        callId: "call-1",
+        toolName: "SAVE",
+        lifetime: "response",
+        effect: "mutating",
+        restartable: false,
+        commitCrossed: false,
+      },
+      {
+        phase: "commit",
+        callId: "call-1",
+        toolName: "SAVE",
+        commitCrossed: true,
+      },
+      {
+        phase: "result",
+        callId: "call-1",
+        toolName: "SAVE",
+        lifetime: "response",
+        effect: "mutating",
+        restartable: false,
+        commitCrossed: true,
+      },
+    ]);
+    expect(JSON.stringify(tasks)).not.toContain("must-not-cross");
+  });
+
   test("returns a valid terminal voice-output directive without replacing canonical text", async () => {
     const deltas: string[] = [];
     const fetchImpl = (async () =>
@@ -270,7 +353,19 @@ describe("eliza sse bridge", () => {
           type: "done",
           fullText: "Exact display text.",
           messageId: "assistant-1",
-          voiceOutput: { policy: "both", spoken: "Concise speech." },
+          voiceOutput: {
+            policy: "both",
+            spoken: "Concise speech.",
+            artifacts: [
+              {
+                id: "image-1",
+                kind: "image",
+                label: "Preview",
+                mimeType: "image/png",
+                href: "/api/media/image-1.png",
+              },
+            ],
+          },
         })}\n\n`,
       ])) as unknown as typeof fetch;
 
@@ -294,7 +389,19 @@ describe("eliza sse bridge", () => {
       completed: true,
       aborted: false,
       messageId: "assistant-1",
-      outputDirective: { policy: "both", spoken: "Concise speech." },
+      outputDirective: {
+        policy: "both",
+        spoken: "Concise speech.",
+        artifacts: [
+          {
+            id: "image-1",
+            kind: "image",
+            label: "Preview",
+            mimeType: "image/png",
+            href: "/api/media/image-1.png",
+          },
+        ],
+      },
     });
   });
 

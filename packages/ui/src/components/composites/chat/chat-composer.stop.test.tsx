@@ -290,6 +290,8 @@ describe("useChatSend.handleChatStop", () => {
       (m) => m.role === "assistant",
     );
     expect(assistantBefore?.text).toBe("partial reply so far");
+    const clientMessageId = mocks.client.sendConversationMessageStream.mock
+      .calls[0]?.[9] as string;
 
     // Stop: abort fires, the stream resolves as interrupted, the partial is
     // marked + reattached after the reload that dropped it.
@@ -304,6 +306,7 @@ describe("useChatSend.handleChatStop", () => {
     expect(mocks.client.abortConversationTurn).toHaveBeenCalledWith(
       "room-1",
       "ui-chat-stop",
+      clientMessageId,
     );
     // STOP-keeps-the-partial (reattachInterruptedPartial): after the stop, the
     // partial assistant bubble the user watched stream in MUST still exist,

@@ -187,6 +187,48 @@ describe("Shared Eliza Workerd runtime", () => {
     const requests: Array<Record<string, unknown>> = [];
     globalThis.fetch = (async (_url: RequestInfo | URL, init?: RequestInit) => {
       requests.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
+      if (requests.length === 2) {
+        const body =
+          `data: ${JSON.stringify({
+            id: "chatcmpl-shared-runtime-reply",
+            object: "chat.completion.chunk",
+            created: 0,
+            model: "gemma-4-31b",
+            choices: [
+              {
+                index: 0,
+                delta: { role: "assistant", content: "hello from " },
+                finish_reason: null,
+              },
+            ],
+          })}\n\n` +
+          `data: ${JSON.stringify({
+            id: "chatcmpl-shared-runtime-reply",
+            object: "chat.completion.chunk",
+            created: 0,
+            model: "gemma-4-31b",
+            choices: [
+              {
+                index: 0,
+                delta: { content: "streaming Eliza" },
+                finish_reason: null,
+              },
+            ],
+          })}\n\n` +
+          `data: ${JSON.stringify({
+            id: "chatcmpl-shared-runtime-reply",
+            object: "chat.completion.chunk",
+            created: 0,
+            model: "gemma-4-31b",
+            choices: [{ index: 0, delta: {}, finish_reason: "stop" }],
+            usage: { prompt_tokens: 21, completion_tokens: 4, total_tokens: 25 },
+          })}\n\n` +
+          "data: [DONE]\n\n";
+        return new Response(body, {
+          status: 200,
+          headers: { "Content-Type": "text/event-stream" },
+        });
+      }
       const argumentsText = JSON.stringify({
         shouldRespond: "RESPOND",
         thought: "The genuine runtime streamed this turn.",
@@ -297,8 +339,9 @@ describe("Shared Eliza Workerd runtime", () => {
       text: "hello from streaming Eliza",
     });
     expect(dispatches).toBe(1);
-    expect(requests).toHaveLength(1);
+    expect(requests).toHaveLength(2);
     expect(requests[0]).toMatchObject({ stream: true });
+    expect(requests[1]).toMatchObject({ stream: true });
   });
 
   test("aborts the genuine runtime provider stream before barge-in can emit text", async () => {

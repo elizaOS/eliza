@@ -67,6 +67,20 @@ export interface ChatToolCallEvent {
   result?: unknown;
   /** Failure message; present on `error`. */
   error?: string;
+  /**
+   * Content-free lifecycle policy for realtime voice turn coordination. Tool
+   * arguments and results remain on the ordinary chat event; the voice bridge
+   * copies only this bounded policy plus `callId`/`phase` into its authority
+   * state so interruption can distinguish abortable reads from durable or
+   * already-committed effects.
+   */
+  voiceTask?: {
+    lifetime: "response" | "durable";
+    effect: "read_only" | "mutating";
+    restartable: boolean;
+    /** True only when a result carries validated durable/provider commit proof. */
+    commitCrossed?: boolean;
+  };
 }
 
 /**

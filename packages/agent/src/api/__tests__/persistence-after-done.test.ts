@@ -13,6 +13,7 @@ import {
   type Memory,
   RoomHandlerQueue,
   stringToUuid,
+  TurnControllerRegistry,
   type UUID,
 } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -382,6 +383,7 @@ function createState(): ConversationRouteState {
       return [];
     }),
     updateMemory: vi.fn(async () => undefined),
+    turnControllers: new TurnControllerRegistry(),
     roomHandlerQueue: new RoomHandlerQueue(),
     adapter: {},
   };
