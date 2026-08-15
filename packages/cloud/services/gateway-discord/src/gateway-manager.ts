@@ -24,6 +24,10 @@ import {
   type DiscordInstallWelcomeJob,
   DiscordInstallWelcomeQueue,
 } from "./discord-install-welcome-queue";
+import {
+  type DiscordConnectionDmMetadata,
+  isDmSenderAllowed,
+} from "./dm-policy";
 import { pollTrackedDiscordDms, type TrackedDiscordDm } from "./dm-polling";
 import { logger } from "./logger";
 import {
@@ -303,6 +307,14 @@ interface BotConnection {
   error?: string;
   /** Store listener references for cleanup */
   listeners: Map<string, unknown>;
+  /**
+   * Validated DM-policy/owner metadata from the assignment contract. Applied
+   * at the gateway boundary BEFORE the in-worker vs dedicated route choice
+   * (#19912 P1) and refreshed from every assignment poll so policy edits
+   * reach already-connected bots without a reconnect. Null = policy-unknown
+   * (historical open behavior).
+   */
+  connectionMetadata: DiscordConnectionDmMetadata | null;
 }
 
 interface HealthStatus {
@@ -833,12 +845,17 @@ export class GatewayManager {
           botToken: string;
           intents: number;
           characterId: string | null;
+          connectionMetadata?: DiscordConnectionDmMetadata | null;
         }>;
       };
 
       for (const assignment of data.assignments) {
-        // Skip if already connected
-        if (this.connections.has(assignment.connectionId)) {
+        // Already connected: refresh policy metadata in place (no reconnect)
+        // so DM-policy edits propagate within one poll interval instead of
+        // staying frozen at connect time (#19912 P1 repair contract step 2).
+        const existing = this.connections.get(assignment.connectionId);
+        if (existing) {
+          existing.connectionMetadata = assignment.connectionMetadata ?? null;
           continue;
         }
 
@@ -872,6 +889,7 @@ export class GatewayManager {
           consecutiveFailures: 0,
           lastHeartbeat: new Date(),
           listeners: new Map(),
+          connectionMetadata: assignment.connectionMetadata ?? null,
         };
         this.connections.set(assignment.connectionId, reservation);
 
@@ -923,6 +941,7 @@ export class GatewayManager {
     botToken: string;
     intents: number;
     characterId: string | null;
+    connectionMetadata?: DiscordConnectionDmMetadata | null;
   }): Promise<void> {
     logger.info("Connecting bot", {
       connectionId: assignment.connectionId,
@@ -950,6 +969,7 @@ export class GatewayManager {
       consecutiveFailures: 0,
       lastHeartbeat: new Date(),
       listeners: new Map(),
+      connectionMetadata: assignment.connectionMetadata ?? null,
     };
 
     this.connections.set(assignment.connectionId, conn);
@@ -1433,6 +1453,23 @@ export class GatewayManager {
         connectionId,
       });
       return;
+    }
+
+    // ONE DM-policy gate for BOTH routes (#19912 P1): the Cloud shared
+    // event-router's gate only runs on the in-worker path, so a dedicated
+    // (self-registered) agent server would receive DMs the policy forbids.
+    // Gating here, before the route choice, makes `disabled`/`allowlist`/
+    // owner-only policies hold regardless of topology; the event-router gate
+    // stays as in-worker defense-in-depth. Null metadata = policy-unknown =
+    // historical open behavior.
+    if (!message.guildId && conn.connectionMetadata) {
+      if (!isDmSenderAllowed(conn.connectionMetadata, message.author.id)) {
+        logger.debug("DM dropped by connection policy at the gateway", {
+          connectionId,
+          dmPolicy: conn.connectionMetadata.dmPolicy ?? "open",
+        });
+        return;
+      }
     }
 
     // Path A routing: prefer a self-registered container when its registry

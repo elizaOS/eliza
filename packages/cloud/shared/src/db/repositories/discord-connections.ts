@@ -7,8 +7,22 @@ import { sqlRows } from "../execute-helpers";
 import {
   DISCORD_DEFAULT_INTENTS,
   type DiscordConnection,
+  type DiscordConnectionMetadata,
+  DiscordConnectionMetadataSchema,
   discordConnections,
 } from "../schemas/discord-connections";
+
+/**
+ * Validate stored JSONB metadata before it leaves the repository in the
+ * gateway assignment contract. Rows predating the schema (or hand-edited)
+ * must degrade to null (policy-unknown), never ship a malformed shape the
+ * gateway would misread as a policy.
+ */
+function validatedConnectionMetadata(value: unknown): DiscordConnectionMetadata | null {
+  if (value == null) return null;
+  const parsed = DiscordConnectionMetadataSchema.safeParse(value);
+  return parsed.success ? parsed.data : null;
+}
 
 interface CreateConnectionInput {
   organizationId: string;
@@ -26,6 +40,16 @@ interface DecryptedAssignment {
   botToken: string;
   intents: number;
   characterId: string | null;
+  /**
+   * Validated bot-behavior metadata (DM policy, owners, allowlists). Carried
+   * in the assignment contract so the gateway can enforce DM policy BEFORE
+   * choosing the in-worker vs dedicated route (#19912 P1: the Cloud shared
+   * event-router gate never runs for self-registered agent servers) and can
+   * refresh policy for already-connected bots on every poll. Null when the
+   * stored JSONB is absent or fails validation — the gateway treats null as
+   * policy-unknown and applies the historical open behavior.
+   */
+  connectionMetadata: DiscordConnectionMetadata | null;
 }
 
 /** Valid connection status values (matches migration CHECK constraint) */
@@ -381,6 +405,7 @@ export const discordConnectionsRepository = {
             botToken,
             intents: conn.intents ?? DISCORD_DEFAULT_INTENTS,
             characterId: conn.character_id ?? null,
+            connectionMetadata: validatedConnectionMetadata(conn.metadata),
           };
         } catch (error) {
           const errorMessage = error instanceof Error ? error.message : String(error);

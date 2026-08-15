@@ -8,6 +8,10 @@
  * keeps the gateway's historical open-DM behavior; "disabled" admits nobody;
  * "allowlist" admits owners plus dmAllowFrom; "pairing" admits owners only,
  * because the gateway has no pairing flow.
+ *
+ * LOCKSTEP: the standalone gateway service mirrors this gate in
+ * `packages/cloud/services/gateway-discord/src/dm-policy.ts` (it cannot
+ * import cloud-shared) — change both together.
  */
 import type { DiscordConnectionMetadata } from "../../../db/schemas/discord-connections";
 
