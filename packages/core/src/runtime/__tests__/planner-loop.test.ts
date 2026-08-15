@@ -2582,7 +2582,18 @@ describe("v5 planner loop skeleton", () => {
 		);
 	});
 
-	it("never ships an in-flight action claim as the failure-synthesis reply (matrix F40)", async () => {
+	it.each([
+		{
+			name: "rejects an in-flight action claim (matrix F40)",
+			report: "calling web search now.",
+			expected: FAILED_TOOL_FALLBACK_MESSAGE,
+		},
+		{
+			name: "preserves a substantive diagnosis beginning with calling",
+			report: "Calling the endpoint failed with HTTP 401.",
+			expected: "Calling the endpoint failed with HTTP 401.",
+		},
+	])("$name", async ({ report, expected }) => {
 		// Live shape: the forced failure-aware synthesis pass answered with an
 		// imminent-action promise instead of a diagnosis. The synthesis is the
 		// turn's last model call, so "calling web search now." is a false claim
@@ -2611,7 +2622,7 @@ describe("v5 planner loop skeleton", () => {
 					],
 				})
 				.mockResolvedValueOnce({
-					text: "calling web search now.",
+					text: report,
 					toolCalls: [],
 				}),
 		};
@@ -2647,8 +2658,7 @@ describe("v5 planner loop skeleton", () => {
 			evaluate,
 		});
 
-		expect(result.finalMessage).toBe(FAILED_TOOL_FALLBACK_MESSAGE);
-		expect(result.finalMessage).not.toContain("calling web search");
+		expect(result.finalMessage).toBe(expected);
 	});
 
 	it("does not finish with terminal planner text after tool work when the evaluator asks to continue", async () => {
@@ -4284,6 +4294,17 @@ describe("progress-only reply vocabulary single-sourcing", () => {
 			PROGRESS_ONLY_REPLY_OPENERS_PATTERN,
 		);
 	});
+
+	it.each([
+		"Calling conventions differ by ABI.",
+		"Calling the endpoint failed with HTTP 401.",
+	])(
+		"does not globally classify substantive calling text as progress: %s",
+		(sample) => {
+			expect(sharedBase.test(sample), sample).toBe(false);
+			expect(PROGRESS_ONLY_ANSWER_REJECT.test(sample), sample).toBe(false);
+		},
+	);
 });
 
 describe("routing hints — promoted-family fallback", () => {
