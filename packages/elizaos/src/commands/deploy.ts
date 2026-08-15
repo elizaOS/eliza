@@ -228,7 +228,7 @@ function pollIntervalMs(): number {
   const value = Number(trimmed);
   if (!Number.isSafeInteger(value) || value < 0 || value > MAX_TIMER_DELAY_MS) {
     throw new Error(
-      "ELIZAOS_DEPLOY_POLL_INTERVAL_MS must be a base-10 integer between 0 and 2147483647.",
+      "ELIZAOS_DEPLOY_POLL_INTERVAL_MS must be an integer from 0 through 2147483647 (any Number()-compatible spelling, e.g. decimal, 0x hex, 0b binary, 0o octal).",
     );
   }
   return value;
@@ -357,13 +357,21 @@ async function pollDeploymentStatus(
     if (status.status === "READY" || status.status === "ERROR") {
       return status;
     }
-    if (Date.now() - startedAt >= timeoutMs) {
+    const elapsedMs = Date.now() - startedAt;
+    if (elapsedMs >= timeoutMs) {
       throw new Error(
         `Deploy did not reach READY or ERROR within ${timeoutMs}ms; latest status: ${status.status ?? "unknown"}`,
       );
     }
     console.log(pc.dim(`Deploy status: ${status.status ?? "unknown"}...`));
-    if (intervalMs > 0) await sleep(intervalMs);
+    // Bound the wait by the remaining timeout budget, not just intervalMs: an
+    // operator-configured interval can be far larger than the deploy timeout
+    // (the accepted range runs up to node's ~24.8-day max timer delay), and
+    // the deadline above is only rechecked after a sleep completes. Without
+    // this bound, a large interval could stall well past the documented
+    // ELIZAOS_DEPLOY_TIMEOUT_MS cap instead of failing at it.
+    const boundedIntervalMs = Math.min(intervalMs, timeoutMs - elapsedMs);
+    if (boundedIntervalMs > 0) await sleep(boundedIntervalMs);
   }
 }
 
