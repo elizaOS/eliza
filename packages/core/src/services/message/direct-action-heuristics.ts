@@ -354,14 +354,16 @@ export function isShellDirectActionName(
  * - "shell" / "coding" / "settings-write" / "web": explicit intent phrasing
  *   in the message.
  * - "owner-goals": concrete owner goal create/save/confirm phrasing.
+ * - "owner-routines": habit/routine commitment phrasing, including recurring
+ *   cadences ("3 times a day") — an owner mutation, never navigation.
  * - "view-surface": an operation verb PLUS an explicit UI-surface noun
  *   (view/window/panel/app/screen/ui) — strong navigation evidence.
  * - "view-navigation": the message is nothing but a bare registered surface
  *   name ("settings") — the voice-transcription navigation contract (#9950).
- * - "view-capability": only an incidental token overlap between the message
- *   and a views action's tag/simile vocabulary (e.g. "whats 17 TIMES 23"
- *   matching the "screen-time" tag via TIME). Weak evidence — observed live
- *   hijacking already-answered trivial chat turns into a required-tool
+ * - "view-capability": a navigation-shaped message whose tokens cover a views
+ *   action's tag/simile phrase ("get my screen time" covering screen-time).
+ *   Still the weakest evidence — an earlier variant that matched partial
+ *   phrases hijacked already-answered trivial chat turns into a required-tool
  *   planner deadlock (trajectories tj-501e594bfb23a7, tj-5d1c9601f33e8d).
  */
 export type DirectCurrentRequestCandidateKind =
@@ -369,6 +371,7 @@ export type DirectCurrentRequestCandidateKind =
 	| "coding"
 	| "settings-write"
 	| "owner-goals"
+	| "owner-routines"
 	| "view-surface"
 	| "view-navigation"
 	| "view-capability"
@@ -381,6 +384,23 @@ export interface DirectCurrentRequestCandidateInference {
 
 const EMPTY_DIRECT_CANDIDATE_INFERENCE: DirectCurrentRequestCandidateInference =
 	{ names: [], kind: null };
+
+// Owner routine/habit surface, in preference order. Matches the personal
+// assistant's OWNER_ROUTINES action by name or by its declared similes
+// (findAvailableActionName matches either), so runtimes exposing only a
+// legacy habit action still resolve.
+const OWNER_ROUTINES_ACTION_NAMES = [
+	"OWNER_ROUTINES",
+	"ROUTINES",
+	"ROUTINE",
+	"TRACK_HABIT",
+	"CREATE_ROUTINE",
+	"CREATE_HABIT",
+	"DAILY_HABIT",
+	"HABITS",
+	"HABIT",
+	"RECURRING_TASK",
+] as const;
 
 const OWNER_GOALS_ACTION_NAMES = [
 	"OWNER_GOALS",
@@ -548,6 +568,62 @@ function findOwnerGoalsActionName(
 	return findAvailableActionName(actions, OWNER_GOALS_ACTION_NAMES);
 }
 
+/**
+ * Detects an owner commitment to a recurring habit/routine — the phrasing that
+ * live hijacked into a VIEWS catalog dump ("25 pushups, 3 times a day …",
+ * #17028). Three legs: an explicit recurring cadence ("N times a day/week"),
+ * a habit/routine noun coupled with a write verb, or a recurring reminder ask.
+ * Advice questions ("how many times a day should I …") are excluded so the
+ * detector never converts an information ask into a mutation candidate.
+ */
+function looksLikeOwnerRoutineWriteRequest(text: string): boolean {
+	const normalized = text.toLowerCase().replace(/\s+/gu, " ").trim();
+	if (!normalized) return false;
+	// A leading question word marks an advice/lookup ask, not a commitment.
+	// "can/could you …" polite imperatives are deliberately NOT excluded.
+	if (
+		/^\s*(?:what|whats|what's|how|why|when|where|is|are|does|should)\b/iu.test(
+			normalized,
+		)
+	) {
+		return false;
+	}
+	const hasRecurringCadence =
+		/\b\d+\s+times?\s+(?:a|per|each|every)\s+(?:day|week|month)\b/iu.test(
+			normalized,
+		) ||
+		/\b(?:every|each)\s+(?:day|morning|evening|night|week(?:day)?)\b/iu.test(
+			normalized,
+		) ||
+		/\b(?:daily|weekly)\b/iu.test(normalized);
+	if (
+		/\b\d+\s+times?\s+(?:a|per|each|every)\s+(?:day|week|month)\b/iu.test(
+			normalized,
+		)
+	) {
+		return true;
+	}
+	const hasRoutineNoun = /\b(?:habit|routine)s?\b/iu.test(normalized);
+	const hasWriteVerb =
+		/\b(?:track|start|create|add|set\s+up|save|log|schedule|build|make)\b/iu.test(
+			normalized,
+		);
+	if (hasRoutineNoun && hasWriteVerb) return true;
+	if (
+		/\bremind\s+me\b/iu.test(normalized) &&
+		(hasRecurringCadence || hasRoutineNoun)
+	) {
+		return true;
+	}
+	return hasRecurringCadence && /\bschedule\b/iu.test(normalized);
+}
+
+function findOwnerRoutinesActionName(
+	actions: ReadonlyArray<Pick<Action, "name" | "similes">>,
+): string | undefined {
+	return findAvailableActionName(actions, OWNER_ROUTINES_ACTION_NAMES);
+}
+
 export function inferDirectCurrentRequestCandidateActions(
 	actions: ReadonlyArray<Pick<Action, "name" | "similes" | "tags">>,
 	messageText: string,
@@ -624,6 +700,27 @@ export function inferDirectCurrentRequestCandidateInference(
 	if (bareViewNavigationAction) {
 		return { names: [bareViewNavigationAction], kind: "view-navigation" };
 	}
+	// Owner mutations outrank navigation: a commitment to create/track/schedule
+	// something must never degrade into a view-catalog dump because a domain
+	// word incidentally overlaps a views tag (#17028). When the phrasing is an
+	// owner mutation but no owner surface is registered, the turn deliberately
+	// yields NO deterministic candidate — the model handles it and the
+	// unresolvable-capability path declines explicitly — instead of falling
+	// through to the weak view-capability overlap below.
+	if (looksLikeOwnerRoutineWriteRequest(messageText)) {
+		const ownerRoutinesAction = findOwnerRoutinesActionName(actions);
+		if (ownerRoutinesAction) {
+			return { names: [ownerRoutinesAction], kind: "owner-routines" };
+		}
+		return EMPTY_DIRECT_CANDIDATE_INFERENCE;
+	}
+	if (looksLikeOwnerGoalWriteRequest(messageText)) {
+		const ownerGoalsAction = findOwnerGoalsActionName(actions);
+		if (ownerGoalsAction) {
+			return { names: [ownerGoalsAction], kind: "owner-goals" };
+		}
+		return EMPTY_DIRECT_CANDIDATE_INFERENCE;
+	}
 	const viewCapabilityAction = findViewCapabilityActionName(
 		actions,
 		messageText,
@@ -634,12 +731,6 @@ export function inferDirectCurrentRequestCandidateInference(
 	if (looksLikeWebSearchRequest(messageText)) {
 		const lookupActions = findWebLookupActionNames(actions);
 		if (lookupActions.length > 0) return { names: lookupActions, kind: "web" };
-	}
-	if (looksLikeOwnerGoalWriteRequest(messageText)) {
-		const ownerGoalsAction = findOwnerGoalsActionName(actions);
-		if (ownerGoalsAction) {
-			return { names: [ownerGoalsAction], kind: "owner-goals" };
-		}
 	}
 	return EMPTY_DIRECT_CANDIDATE_INFERENCE;
 }
@@ -737,6 +828,17 @@ function hasLayoutDirectionToken(tokens: readonly string[]): boolean {
 const VIEW_REQUEST_OPERATION_TOKENS: ReadonlySet<string> = new Set<string>(
 	Object.values(VIEW_REQUEST_OPERATION_GROUPS).flat(),
 );
+
+// Operation groups that read as navigation over the view surface. The
+// mutation groups (create/update/delete) are deliberately absent: VIEWS can
+// only navigate, so a mutation verb is owner-domain evidence (#17028).
+const VIEW_NAVIGATION_OPERATION_GROUP_NAMES = [
+	"read",
+	"open",
+	"close",
+	"layout",
+	"pin",
+] as const;
 
 const VIEW_REQUEST_GENERIC_TOKENS: ReadonlySet<string> = new Set<string>([
 	"ACTION",
@@ -1001,6 +1103,23 @@ function findViewCapabilityActionName(
 	) {
 		return undefined;
 	}
+	// VIEWS can only NAVIGATE. Mutation verbs alone (create/update/delete) are
+	// owner-domain evidence, not view evidence — "add a savings goal" must not
+	// select the view catalog just because a "goals" tag exists (#17028). The
+	// capability leg needs navigation-shaped intent: a read/open/close/layout/
+	// pin operation, a directional qualifier, or an explicit UI-surface noun.
+	const hasNavigationOperation = VIEW_NAVIGATION_OPERATION_GROUP_NAMES.some(
+		(group) => messageOperationGroups.has(group),
+	);
+	if (
+		!hasNavigationOperation &&
+		!hasLayoutDirectionToken(messageTokens) &&
+		![...VIEW_REQUEST_SURFACE_TOKENS].some((token) =>
+			messageTokenSet.has(token),
+		)
+	) {
+		return undefined;
+	}
 
 	for (const viewAction of viewActions) {
 		for (const alias of [
@@ -1017,15 +1136,22 @@ function findViewCapabilityActionName(
 			) {
 				continue;
 			}
-			const targetTokens = aliasTokens
-				.map(normalizeSingularToken)
-				.filter(
-					(token) =>
-						!VIEW_REQUEST_OPERATION_TOKENS.has(token) &&
-						!VIEW_REQUEST_GENERIC_TOKENS.has(token),
-				);
-			if (targetTokens.length === 0) continue;
-			if (targetTokens.every((token) => messageTokenSet.has(token))) {
+			// Multiword capability tags are PHRASES: every non-operation token —
+			// generic ones like SCREEN included — must appear in the message.
+			// Filtering generics out let "screen-time" collapse to the bare TIME
+			// token, so "whats 17 times 23" and "3 times a day" matched a
+			// screen-time capability (#17028, tj-501e594bfb23a7). At least one
+			// concrete (non-generic) token is still required so purely generic
+			// aliases ("view-capability") never match on their own vocabulary.
+			const singularAliasTokens = aliasTokens.map(normalizeSingularToken);
+			const requiredTokens = singularAliasTokens.filter(
+				(token) => !VIEW_REQUEST_OPERATION_TOKENS.has(token),
+			);
+			const concreteTokens = requiredTokens.filter(
+				(token) => !VIEW_REQUEST_GENERIC_TOKENS.has(token),
+			);
+			if (concreteTokens.length === 0) continue;
+			if (requiredTokens.every((token) => messageTokenSet.has(token))) {
 				return viewActionName;
 			}
 		}

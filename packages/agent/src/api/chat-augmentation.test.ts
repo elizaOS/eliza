@@ -212,6 +212,11 @@ describe("maybeAugmentChatMessageWithDocuments", () => {
 
   it("injects context on a real keyword match", async () => {
     const message = makeMessage();
+    // A query that genuinely shares meaningful terms with the fragment — the
+    // absolute coverage gate (#17028) requires literal query-term overlap,
+    // not just a relative BM25 rank.
+    (message.content as { text: string }).text =
+      "how do i set the inference markup for monetization?";
     const documents = {
       countMemories: vi.fn().mockResolvedValue(14),
       searchDocuments: vi.fn().mockResolvedValue([
@@ -231,6 +236,79 @@ describe("maybeAugmentChatMessageWithDocuments", () => {
     expect(result.content.text).toContain("set inference markup");
     const [, , searchMode] = documents.searchDocuments.mock.calls[0];
     expect(searchMode).toBe("keyword");
+  });
+
+  it("does not inject an unrelated help FAQ on a workout query (#17028)", async () => {
+    // Keyword search max-normalizes BM25 within each result set, so the best
+    // positive match reports similarity 1.0 even when the only shared words
+    // are stopwords. Live this injected the navigation FAQ's "Do not ...
+    // invoke tools/actions" envelope into a routine-creation turn. The
+    // absolute query-term coverage gate must reject it.
+    const message = makeMessage();
+    (message.content as { text: string }).text =
+      "can you help me schedule a workout every day";
+    const documents = {
+      countMemories: vi.fn().mockResolvedValue(14),
+      searchDocuments: vi.fn().mockResolvedValue([
+        {
+          content: {
+            text: "How do I switch screens or views? Say the view name or ask me to open it.",
+          },
+          similarity: 1,
+          metadata: { filename: "help-navigation.txt" },
+        },
+      ]),
+    };
+    const useModel = vi.fn();
+    const runtime = makeRuntime(documents, useModel);
+
+    const result = await maybeAugmentChatMessageWithDocuments(runtime, message);
+
+    expect(result).toBe(message);
+    expect(useModel).not.toHaveBeenCalled();
+  });
+
+  it("still injects a genuinely-answering help FAQ on a navigation ask (#17028)", async () => {
+    const message = makeMessage();
+    (message.content as { text: string }).text = "how do i switch views?";
+    const documents = {
+      countMemories: vi.fn().mockResolvedValue(14),
+      searchDocuments: vi.fn().mockResolvedValue([
+        {
+          content: {
+            text: "How do I switch screens or views? Say the view name or ask me to open it.",
+          },
+          similarity: 1,
+          metadata: { filename: "help-navigation.txt" },
+        },
+      ]),
+    };
+    const runtime = makeRuntime(documents);
+
+    const result = await maybeAugmentChatMessageWithDocuments(runtime, message);
+
+    expect(result).not.toBe(message);
+    expect(result.content.text).toContain("<contextual_documents>");
+  });
+
+  it("never injects for a query made only of stopwords", async () => {
+    const message = makeMessage();
+    (message.content as { text: string }).text = "what are you up to?";
+    const documents = {
+      countMemories: vi.fn().mockResolvedValue(14),
+      searchDocuments: vi.fn().mockResolvedValue([
+        {
+          content: { text: "Anything at all scores 1.0 relative to itself." },
+          similarity: 1,
+          metadata: { filename: "noise.txt" },
+        },
+      ]),
+    };
+    const runtime = makeRuntime(documents);
+
+    const result = await maybeAugmentChatMessageWithDocuments(runtime, message);
+
+    expect(result).toBe(message);
   });
 
   it("keeps uploaded corpora on the lexical pre-model path", async () => {
@@ -269,6 +347,9 @@ describe("maybeAugmentChatMessageWithDocuments", () => {
 
   it("aliases the augmentation envelope onto the clean prompt's recall embed — in-run recall of the rewritten text issues zero new embeds", async () => {
     const message = makeMessage();
+    // Meaningful-term overlap with the fragment so the absolute coverage
+    // gate (#17028) admits the injection this test depends on.
+    (message.content as { text: string }).text = "tell me the qa codeword";
     const documents = {
       countMemories: vi.fn().mockResolvedValue(3),
       getMemories: vi
@@ -300,7 +381,7 @@ describe("maybeAugmentChatMessageWithDocuments", () => {
 
     // The rewrite warmed ONE embed of the clean prompt (the mocked service
     // never embedded, so the warm is the turn's only round-trip)…
-    expect(embedCalls).toEqual(["what are you up to?"]);
+    expect(embedCalls).toEqual(["tell me the qa codeword"]);
 
     // …and the in-run recall callers presenting the ENVELOPE text (as the
     // message-service prefetch and relevant-conversations provider do) resolve
@@ -310,7 +391,7 @@ describe("maybeAugmentChatMessageWithDocuments", () => {
       messageId: message.id as string,
     });
     expect(vec).toEqual([0.1, 0.2, 0.3]);
-    expect(embedCalls).toEqual(["what are you up to?"]);
+    expect(embedCalls).toEqual(["tell me the qa codeword"]);
   });
 
   it("passes the original message id as turnMessageId so the in-run recall embed adopts this pre-run embed (#15253)", async () => {
