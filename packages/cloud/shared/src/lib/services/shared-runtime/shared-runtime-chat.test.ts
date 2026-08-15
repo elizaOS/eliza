@@ -29,6 +29,7 @@ let settleUnknownCalls = 0;
 const billCalls: unknown[] = [];
 let characterReads = 0;
 const loggerWarn = mock(() => undefined);
+const loggerInfo = mock(() => undefined);
 
 class ApiInsufficientCreditsError extends Error {}
 
@@ -55,6 +56,7 @@ mock.module("../../utils/logger", () => ({
   logger: {
     warn: loggerWarn,
     error: mock(() => undefined),
+    info: loggerInfo,
   },
 }));
 
@@ -375,6 +377,7 @@ beforeEach(() => {
   streamTurnCalls = 0;
   characterReads = 0;
   loggerWarn.mockClear();
+  loggerInfo.mockClear();
   enforceOrgRateLimit.mockClear();
   getInferenceAdmissionSnapshotCacheOnly.mockClear();
   admitOrganizationInference.mockClear();
@@ -1111,6 +1114,15 @@ describe("SharedRuntimeChatService", () => {
     const h = harness();
     const { store } = memoryTurnClaims();
     const options = { ...h, turnClaims: store };
+    turn.timing = {
+      engine: "eliza-runtime",
+      engineMs: 12,
+      modelMs: 8,
+      modelCallCount: 1,
+      fallbackCount: 0,
+      modelCalls: [{ durationMs: 8, streaming: false, provider: "cerebras", fallback: false }],
+      truncatedModelCallCount: 0,
+    };
 
     const first = await service.bridge(agent, keyedRpc, options);
     await Promise.all(h.background);
@@ -1123,9 +1135,12 @@ describe("SharedRuntimeChatService", () => {
     expect(admitOrganizationInference).toHaveBeenCalledTimes(1);
     expect(billCalls).toHaveLength(1);
     expect(settleCalls).toEqual([0.004]);
-    expect(second.result).toEqual(first.result);
+    expect(first.result).not.toHaveProperty("replayed");
+    expect(first.result?.timing).toEqual(turn.timing);
+    expect(second.result).toEqual({ ...first.result, replayed: true });
     expect(second.id).toBe("client-key-1");
     expect(h.history()).toHaveLength(historyAfterFirst);
+    expect(loggerInfo).toHaveBeenCalledTimes(1);
   });
 
   test("a reused clientMessageId with different text is rejected before admission", async () => {

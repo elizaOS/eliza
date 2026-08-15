@@ -22,7 +22,11 @@ import type { BridgeRequest } from "../eliza-sandbox-bridge";
 import { coordinateSharedBridge, coordinateSharedHistory } from "./conversation-coordinator";
 import type { SharedAgentCharacter } from "./run-shared-agent-turn";
 import type { SharedRuntimeAgent } from "./shared-runtime-agent";
-import { type BridgeExecutionContext, sharedRuntimeChatService } from "./shared-runtime-chat";
+import {
+  type BridgeExecutionContext,
+  type SharedTurnTerminalResult,
+  sharedRuntimeChatService,
+} from "./shared-runtime-chat";
 
 const BRIDGE_INSUFFICIENT_CREDITS_CODE = -32002;
 
@@ -48,6 +52,13 @@ export interface SharedRestMessage {
   text: string;
   timestamp: number;
   interrupted?: boolean;
+}
+
+export interface SharedRestMessageSendResult {
+  text: string;
+  agentName: string;
+  timing?: SharedTurnTerminalResult["timing"];
+  replayed: boolean;
 }
 
 /** The canonical (single) conversation id for a shared agent === its agent id. */
@@ -528,7 +539,7 @@ export async function sharedRestMessageSend(
     project: string;
     chatId: string;
   },
-): Promise<{ text: string; agentName: string }> {
+): Promise<SharedRestMessageSendResult> {
   const rpc: BridgeRequest = {
     jsonrpc: "2.0",
     id: clientMessageId ?? crypto.randomUUID(),
@@ -558,7 +569,12 @@ export async function sharedRestMessageSend(
     }
     throw new Error(response.error.message || "shared message.send failed");
   }
-  const result = (response.result ?? {}) as { text?: unknown };
+  const result = (response.result ?? {}) as Partial<SharedTurnTerminalResult>;
   const replyText = typeof result.text === "string" ? result.text : "";
-  return { text: replyText, agentName: agentName || "Eliza" };
+  return {
+    text: replyText,
+    agentName: agentName || "Eliza",
+    ...(result.timing ? { timing: result.timing } : {}),
+    replayed: result.replayed === true,
+  };
 }

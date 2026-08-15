@@ -33,7 +33,10 @@ import {
   streamText,
   type ToolSet,
 } from "ai";
-import { getInteractiveCerebrasLanguageModel } from "../../providers/language-model";
+import {
+  getInteractiveCerebrasLanguageModel,
+  type InteractiveModelProviderSelection,
+} from "../../providers/language-model";
 import { logger } from "../../utils/logger";
 import type {
   RunSharedAgentTurnInput,
@@ -43,7 +46,12 @@ import type {
   SharedAgentTurnUsage,
   SharedTurnMessage,
 } from "./run-shared-agent-turn";
-import { appendSharedTurn } from "./run-shared-agent-turn";
+import {
+  appendSharedTurn,
+  createSharedAgentTurnTiming,
+  recordSharedModelCall,
+  sharedElapsedMs,
+} from "./run-shared-agent-turn";
 import {
   sharedRuntimeConversationRoomId,
   sharedRuntimeWorldId,
@@ -255,11 +263,12 @@ async function executeSharedElizaRuntimeTurn(
   input: RunSharedAgentTurnInput & { agentKey: string; model: string },
   onStreamChunk?: (chunk: string) => void | Promise<void>,
 ): Promise<RunSharedAgentTurnResult> {
+  const engineStartedAt = performance.now();
+  const timing = createSharedAgentTurnTiming("eliza-runtime");
   await ensureEdgeStreamingContext();
   const adapter = new InMemoryDatabaseAdapter();
   let providerDispatched = false;
   let usage: SharedAgentTurnUsage | undefined;
-  const model = getInteractiveCerebrasLanguageModel(input.model);
 
   const modelHandler = async (
     _runtime: IAgentRuntime,
@@ -269,6 +278,11 @@ async function executeSharedElizaRuntimeTurn(
       providerDispatched = true;
       await input.onProviderDispatch?.();
     }
+    let providerSelection: InteractiveModelProviderSelection | undefined;
+    const model = getInteractiveCerebrasLanguageModel(input.model, (selection) => {
+      providerSelection = selection;
+    });
+    const modelStartedAt = performance.now();
     const generation = {
       model,
       maxRetries: 0,
@@ -306,6 +320,12 @@ async function executeSharedElizaRuntimeTurn(
       const streamUsage = Promise.resolve(result.totalUsage).then((value) => {
         const normalized = normalizeUsage(value);
         usage = addUsage(usage, normalized);
+        recordSharedModelCall(timing, {
+          startedAt: modelStartedAt,
+          streaming: true,
+          ...(providerSelection ? { provider: providerSelection.provider } : {}),
+          fallback: providerSelection?.fallback === true,
+        });
         return normalized;
       });
       return {
@@ -326,6 +346,12 @@ async function executeSharedElizaRuntimeTurn(
     const result = await generateText({
       ...generation,
     });
+    recordSharedModelCall(timing, {
+      startedAt: modelStartedAt,
+      streaming: false,
+      ...(providerSelection ? { provider: providerSelection.provider } : {}),
+      fallback: providerSelection?.fallback === true,
+    });
     usage = addUsage(usage, normalizeUsage(result.usage));
     if (result.toolCalls.length === 0) {
       return result.text;
@@ -339,7 +365,10 @@ async function executeSharedElizaRuntimeTurn(
       })),
       finishReason: result.finishReason,
       usage,
-      providerMetadata: { modelName: input.model },
+      providerMetadata: {
+        modelName: input.model,
+        ...(providerSelection ? { provider: providerSelection.provider } : {}),
+      },
     } as NativeTextModelResult;
   };
 
@@ -408,12 +437,14 @@ async function executeSharedElizaRuntimeTurn(
         })),
       );
     }
+    timing.runtimeSetupMs = sharedElapsedMs(engineStartedAt);
 
     const delivered: string[] = [];
     const messageService = runtime.messageService;
     if (!messageService) {
       throw new Error("Eliza Shared runtime initialized without a message service");
     }
+    const messagePipelineStartedAt = performance.now();
     const result = await messageService.handleMessage(
       runtime,
       createMessageMemory({
@@ -446,6 +477,7 @@ async function executeSharedElizaRuntimeTurn(
           }
         : undefined,
     );
+    timing.messagePipelineMs = sharedElapsedMs(messagePipelineStartedAt);
     const reply = result?.responseContent?.text?.trim() || delivered.at(-1)?.trim() || "";
     // A verified action may own the response and deliver it through the
     // callback with `agentVoiced`; core then correctly reports no second model
@@ -465,11 +497,15 @@ async function executeSharedElizaRuntimeTurn(
       model: input.model,
       degraded: false,
       usage,
+      timing,
       ...(result.actionResults?.length ? { actionResults: result.actionResults } : {}),
     };
   } finally {
+    const teardownStartedAt = performance.now();
     await runtime.stop();
     await runtime.close();
+    timing.teardownMs = sharedElapsedMs(teardownStartedAt);
+    timing.engineMs = sharedElapsedMs(engineStartedAt);
   }
 }
 
@@ -539,6 +575,7 @@ export async function runSharedElizaRuntimeTurnStream(
         type: "finish",
         text: result.reply,
         usage: result.usage,
+        timing: result.timing,
         ...(result.actionResults?.length ? { actionResults: result.actionResults } : {}),
       });
       terminal = true;

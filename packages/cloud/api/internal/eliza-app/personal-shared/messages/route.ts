@@ -13,7 +13,10 @@ import { preparePersonalDedicatedDelivery } from "@/lib/services/personal-dedica
 import { coordinateSharedHistory } from "@/lib/services/shared-runtime/conversation-coordinator";
 import { personalSharedAgent } from "@/lib/services/shared-runtime/personal-shared-agent";
 import { resolveSharedRuntimeWorkerRequestContext } from "@/lib/services/shared-runtime/resolve-shared-agent";
-import { sharedRestMessageSend } from "@/lib/services/shared-runtime/shared-rest-adapter";
+import {
+  type SharedRestMessageSendResult,
+  sharedRestMessageSend,
+} from "@/lib/services/shared-runtime/shared-rest-adapter";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 import { requireInternalAuth } from "../../../_auth";
@@ -25,6 +28,49 @@ const MAX_TELEGRAM_VOICE_BYTES = 8 * 1024 * 1024;
 const MAX_TELEGRAM_VOICE_BASE64_LENGTH =
   Math.ceil(MAX_TELEGRAM_VOICE_BYTES / 3) * 4;
 const DEFAULT_WHISPER_MODEL = "Systran/faster-whisper-small";
+
+function finiteTiming(value: number | undefined): string | undefined {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0
+    ? value.toFixed(1)
+    : undefined;
+}
+
+function sharedTurnTimingMetrics(
+  result: SharedRestMessageSendResult,
+): string[] {
+  if (result.replayed) return ["shared_replay;dur=0"];
+  const timing = result.timing;
+  if (!timing) return [];
+  const providers = [
+    ...new Set(
+      timing.modelCalls.flatMap((call) =>
+        call.provider === "cerebras" || call.provider === "openrouter"
+          ? [call.provider]
+          : [],
+      ),
+    ),
+  ];
+  const provider =
+    providers.length === 1
+      ? providers[0]
+      : providers.length > 1
+        ? "mixed"
+        : "unknown";
+  const runtimeMs = finiteTiming(Math.max(0, timing.engineMs - timing.modelMs));
+  const modelMs = finiteTiming(timing.modelMs);
+  const initMs = finiteTiming(timing.runtimeSetupMs);
+  const teardownMs = finiteTiming(timing.teardownMs);
+  return [
+    ...(runtimeMs ? [`shared_runtime;dur=${runtimeMs}`] : []),
+    ...(modelMs
+      ? [
+          `shared_model;dur=${modelMs};desc="${provider} calls=${timing.modelCallCount} fallback=${timing.fallbackCount}"`,
+        ]
+      : []),
+    ...(initMs ? [`shared_init;dur=${initMs}`] : []),
+    ...(teardownMs ? [`shared_teardown;dur=${teardownMs}`] : []),
+  ];
+}
 
 const telegramVoiceNoteSchema = z.object({
   bytesBase64: z.string().min(1).max(MAX_TELEGRAM_VOICE_BASE64_LENGTH),
@@ -539,9 +585,11 @@ app.post("/", async (c) => {
     );
     c.header(
       "Server-Timing",
-      `account;dur=${accountMs.toFixed(1)}, shared;dur=${(
-        performance.now() - sharedStartedAt
-      ).toFixed(1)}`,
+      [
+        `account;dur=${accountMs.toFixed(1)}`,
+        `shared;dur=${(performance.now() - sharedStartedAt).toFixed(1)}`,
+        ...sharedTurnTimingMetrics(result),
+      ].join(", "),
     );
 
     return c.json({

@@ -254,6 +254,79 @@ describe("personal Shared messaging deliveries", () => {
     );
   });
 
+  test("emits privacy-bounded provider/runtime timing for fresh Shared work", async () => {
+    sharedRestMessageSend.mockImplementationOnce(async () => ({
+      text: "timed reply",
+      replayed: false,
+      timing: {
+        engine: "eliza-runtime" as const,
+        engineMs: 12.5,
+        runtimeSetupMs: 2.5,
+        messagePipelineMs: 9.5,
+        teardownMs: 0.5,
+        modelMs: 8,
+        modelCallCount: 2,
+        fallbackCount: 1,
+        modelCalls: [
+          {
+            durationMs: 3,
+            streaming: false,
+            provider: "cerebras" as const,
+            fallback: false,
+          },
+          {
+            durationMs: 5,
+            streaming: false,
+            provider: "openrouter" as const,
+            fallback: true,
+          },
+        ],
+        truncatedModelCallCount: 0,
+      },
+    }));
+
+    const response = await request(valid);
+    const timing = response.headers.get("server-timing") ?? "";
+    expect(response.status).toBe(200);
+    expect(timing).toContain("shared_runtime;dur=4.5");
+    expect(timing).toContain(
+      'shared_model;dur=8.0;desc="mixed calls=2 fallback=1"',
+    );
+    expect(timing).toContain("shared_init;dur=2.5");
+    expect(timing).toContain("shared_teardown;dur=0.5");
+    expect(timing).not.toContain("timed reply");
+  });
+
+  test("marks a durable replay without reporting the original provider work as current", async () => {
+    sharedRestMessageSend.mockImplementationOnce(async () => ({
+      text: "replayed reply",
+      replayed: true,
+      timing: {
+        engine: "eliza-runtime" as const,
+        engineMs: 12.5,
+        modelMs: 8,
+        modelCallCount: 1,
+        fallbackCount: 0,
+        modelCalls: [
+          {
+            durationMs: 8,
+            streaming: false,
+            provider: "cerebras" as const,
+            fallback: false,
+          },
+        ],
+        truncatedModelCallCount: 0,
+      },
+    }));
+
+    const response = await request(valid);
+    const timing = response.headers.get("server-timing") ?? "";
+    expect(response.status).toBe(200);
+    expect(timing).toContain("shared_replay;dur=0");
+    expect(timing).not.toContain("shared_model");
+    expect(timing).not.toContain("cerebras");
+  });
+
   test("transcribes a Telegram voice note before the Shared turn", async () => {
     const originalFetch = globalThis.fetch;
     globalThis.fetch = mock(async (input, init) => {

@@ -276,7 +276,7 @@ describe("shared-rest-adapter — messages", () => {
       EXECUTION_CTX,
       NAMESPACE,
     );
-    expect(out).toEqual({ text: "four", agentName: "Eliza" });
+    expect(out).toEqual({ text: "four", agentName: "Eliza", replayed: false });
     const call = coordinateSharedBridge.mock.calls[0];
     expect(call[0]).toBe(SHARED_AGENT);
     expect(call[1].method).toBe("message.send");
@@ -285,6 +285,37 @@ describe("shared-rest-adapter — messages", () => {
       executionCtx: EXECUTION_CTX,
       namespace: NAMESPACE,
     });
+  });
+
+  test("POST preserves fresh timing and marks a durable replay without treating it as fresh", async () => {
+    const timing = {
+      engine: "eliza-runtime" as const,
+      engineMs: 12,
+      modelMs: 8,
+      modelCallCount: 1,
+      fallbackCount: 0,
+      modelCalls: [
+        { durationMs: 8, streaming: false, provider: "cerebras" as const, fallback: false },
+      ],
+      truncatedModelCallCount: 0,
+    };
+    coordinateSharedBridge.mockResolvedValueOnce({
+      jsonrpc: "2.0",
+      id: "fresh",
+      result: { text: "fresh", timing },
+    });
+    coordinateSharedBridge.mockResolvedValueOnce({
+      jsonrpc: "2.0",
+      id: "replay",
+      result: { text: "fresh", timing, replayed: true },
+    });
+
+    expect(
+      await sharedRestMessageSend(SHARED_AGENT, AGENT, "hi", "Eliza", EXECUTION_CTX, NAMESPACE),
+    ).toEqual({ text: "fresh", agentName: "Eliza", timing, replayed: false });
+    expect(
+      await sharedRestMessageSend(SHARED_AGENT, AGENT, "hi", "Eliza", EXECUTION_CTX, NAMESPACE),
+    ).toEqual({ text: "fresh", agentName: "Eliza", timing, replayed: true });
   });
 
   test("POST rides a caller-supplied clientMessageId as the bridge RPC id (retry idempotency, #18045)", async () => {

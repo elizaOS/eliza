@@ -295,6 +295,19 @@ describe("Shared Eliza Workerd runtime", () => {
     expect(parts.at(-1)).toMatchObject({
       type: "finish",
       text: "hello from streaming Eliza",
+      timing: {
+        engine: "eliza-runtime",
+        modelCallCount: 1,
+        fallbackCount: 0,
+        truncatedModelCallCount: 0,
+        modelCalls: [
+          {
+            streaming: true,
+            provider: "cerebras",
+            fallback: false,
+          },
+        ],
+      },
     });
     expect(dispatches).toBe(1);
     expect(requests).toHaveLength(1);
@@ -430,6 +443,23 @@ describe("Shared Eliza Workerd runtime", () => {
       inputTokens: 41,
       outputTokens: 17,
     });
+    expect(result.timing).toMatchObject({
+      engine: "eliza-runtime",
+      modelCallCount: 1,
+      fallbackCount: 0,
+      truncatedModelCallCount: 0,
+    });
+    expect(result.timing?.modelCalls).toHaveLength(1);
+    expect(result.timing?.modelCalls[0]).toMatchObject({
+      streaming: false,
+      provider: "cerebras",
+      fallback: false,
+    });
+    expect(Number.isFinite(result.timing?.engineMs)).toBe(true);
+    expect(Number.isFinite(result.timing?.modelMs)).toBe(true);
+    expect(Number.isFinite(result.timing?.runtimeSetupMs)).toBe(true);
+    expect(Number.isFinite(result.timing?.messagePipelineMs)).toBe(true);
+    expect(Number.isFinite(result.timing?.teardownMs)).toBe(true);
     expect(result.history.map((message) => message.content)).toEqual([
       "say hello",
       "hello from the genuine Shared runtime",
@@ -600,6 +630,18 @@ describe("Shared Eliza Workerd runtime", () => {
       completionTokens: 36,
       totalTokens: 156,
     });
+    expect(result.timing).toMatchObject({
+      engine: "eliza-runtime",
+      modelCallCount: 3,
+      fallbackCount: 0,
+      truncatedModelCallCount: 0,
+    });
+    expect(result.timing?.modelCalls).toHaveLength(3);
+    expect(
+      result.timing?.modelCalls.every(
+        (call) => call.provider === "cerebras" && call.fallback === false,
+      ),
+    ).toBe(true);
   });
 
   test("plans REMINDERS through the genuine plugin and pins the current private chat", async () => {

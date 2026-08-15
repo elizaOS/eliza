@@ -1,4 +1,4 @@
-// Defines cloud shared language model behavior for backend service consumers.
+/** Resolves Cloud language models and owns native-provider fallback policy. */
 import { createAnthropic } from "@ai-sdk/anthropic";
 import { createOpenAI } from "@ai-sdk/openai";
 import { APICallError, type LanguageModelMiddleware, RetryError, wrapLanguageModel } from "ai";
@@ -381,6 +381,17 @@ function isRetryableAiSdkError(error: unknown): boolean {
   return status !== null && RETRYABLE_UPSTREAM_STATUSES.has(status);
 }
 
+export type InteractiveModelProvider = "cerebras" | "openrouter";
+
+export interface InteractiveModelProviderSelection {
+  provider: InteractiveModelProvider;
+  fallback: boolean;
+}
+
+export type InteractiveModelProviderObserver = (
+  selection: InteractiveModelProviderSelection,
+) => void;
+
 /**
  * Wraps a native primary language model so that, on a retryable upstream error
  * (402/429/5xx), the request fails over to OpenRouter (BYOK) for the same model.
@@ -511,37 +522,45 @@ function withRateLimitFailFast(primaryModel: Parameters<typeof wrapLanguageModel
 function withCerebrasInteractiveFailover(
   primaryModel: Parameters<typeof wrapLanguageModel>[0]["model"],
   model: string,
+  onProviderSelected?: InteractiveModelProviderObserver,
 ) {
-  if (!getOpenRouterApiKey()) {
-    return primaryModel;
-  }
-  const fallbackModel = getOpenRouterLanguageModel(resolveCerebrasOpenRouterFallbackModel(model));
+  const fallbackModel = getOpenRouterApiKey()
+    ? getOpenRouterLanguageModel(resolveCerebrasOpenRouterFallbackModel(model))
+    : null;
   const middleware: LanguageModelMiddleware = {
     specificationVersion: "v3",
     wrapGenerate: async ({ doGenerate, params }) => {
       try {
-        return await doGenerate();
+        const result = await doGenerate();
+        onProviderSelected?.({ provider: "cerebras", fallback: false });
+        return result;
       } catch (error) {
-        if (!isRetryableAiSdkError(error)) throw error;
+        if (!isRetryableAiSdkError(error) || !fallbackModel) throw error;
         logger.warn(
           "[Cerebras] Interactive turn failed for %s (%d); failing over to OpenRouter (no backoff)",
           model,
           aiSdkErrorStatus(error),
         );
-        return await fallbackModel.doGenerate(params);
+        const result = await fallbackModel.doGenerate(params);
+        onProviderSelected?.({ provider: "openrouter", fallback: true });
+        return result;
       }
     },
     wrapStream: async ({ doStream, params }) => {
       try {
-        return await doStream();
+        const result = await doStream();
+        onProviderSelected?.({ provider: "cerebras", fallback: false });
+        return result;
       } catch (error) {
-        if (!isRetryableAiSdkError(error)) throw error;
+        if (!isRetryableAiSdkError(error) || !fallbackModel) throw error;
         logger.warn(
           "[Cerebras] Interactive stream failed for %s (%d); failing over to OpenRouter (no backoff)",
           model,
           aiSdkErrorStatus(error),
         );
-        return await fallbackModel.doStream(params);
+        const result = await fallbackModel.doStream(params);
+        onProviderSelected?.({ provider: "openrouter", fallback: true });
+        return result;
       }
     },
   };
@@ -556,11 +575,15 @@ function withCerebrasInteractiveFailover(
  * normal router. Interactive callers (shared-runtime chat/voice turn) pair this
  * with `maxRetries: 0` so the only retry is the instant cross-provider failover.
  */
-export function getInteractiveCerebrasLanguageModel(model: string) {
+export function getInteractiveCerebrasLanguageModel(
+  model: string,
+  onProviderSelected?: InteractiveModelProviderObserver,
+) {
   if (isCerebrasNativeModel(model) && getProviderKey("CEREBRAS_API_KEY")) {
     return withCerebrasInteractiveFailover(
       withRateLimitFailFast(getCerebrasClient().chat(normalizeCerebrasModelId(model))),
       model,
+      onProviderSelected,
     );
   }
   return getLanguageModel(model);

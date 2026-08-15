@@ -51,6 +51,7 @@ import {
   runSharedAgentTurn,
   runSharedAgentTurnStream,
   type SharedAgentCharacter,
+  type SharedAgentTurnTiming,
   type SharedAgentTurnUsage,
   type SharedTurnMessage,
 } from "./run-shared-agent-turn";
@@ -110,6 +111,9 @@ export interface SharedTurnTerminalResult {
   runtime: "shared";
   transport: "shared-runtime";
   actionResults?: unknown[];
+  /** Fresh provider/runtime evidence; replay callers must not count it as current work. */
+  timing?: SharedAgentTurnTiming;
+  replayed?: true;
 }
 
 export type SharedTurnClaimDecision =
@@ -261,7 +265,23 @@ async function claimSharedTurn(
 ): Promise<SharedTurnTerminalResult | undefined> {
   const decision = await claims.claim(claimKey, sharedTurnPayloadHash(text));
   if (decision.state === "conflict") throw new SharedTurnConflictError();
-  return decision.state === "replay" ? decision.result : undefined;
+  return decision.state === "replay" ? { ...decision.result, replayed: true } : undefined;
+}
+
+function logSharedTurnTiming(model: string, timing: SharedAgentTurnTiming): void {
+  logger.info("[shared-runtime] turn timing", {
+    model,
+    engine: timing.engine,
+    engineMs: timing.engineMs,
+    runtimeSetupMs: timing.runtimeSetupMs,
+    messagePipelineMs: timing.messagePipelineMs,
+    teardownMs: timing.teardownMs,
+    modelMs: timing.modelMs,
+    modelCallCount: timing.modelCallCount,
+    fallbackCount: timing.fallbackCount,
+    modelCalls: timing.modelCalls,
+    truncatedModelCallCount: timing.truncatedModelCallCount,
+  });
 }
 
 function turnMessageIds(
@@ -873,7 +893,9 @@ export class SharedRuntimeChatService {
         runtime: "shared",
         transport: "shared-runtime",
         ...(actionResults ? { actionResults } : {}),
+        ...(turn.timing ? { timing: turn.timing } : {}),
       };
+      if (turn.timing) logSharedTurnTiming(turn.model, turn.timing);
       if (turn.degraded) {
         await billing?.settle(0);
       } else {
@@ -1180,8 +1202,10 @@ export class SharedRuntimeChatService {
                   runtime: "shared",
                   transport: "shared-runtime",
                   ...(actionResults ? { actionResults } : {}),
+                  ...(part.timing ? { timing: part.timing } : {}),
                 });
               }
+              if (part.timing) logSharedTurnTiming(turn.model, part.timing);
               if (isDeterministicFreeTurn(turn)) {
                 terminalSettlementStarted = true;
                 await billing?.settle(0);

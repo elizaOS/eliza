@@ -65,7 +65,13 @@ mock.module("../../providers/language-model", () => ({
   getLanguageModel: () => ({ __sentinel: "model" }),
   // COLDPATH-FIX-2026-07-21: the shared turn now resolves its model through the
   // interactive-Cerebras failover wrapper; stub it the same opaque way.
-  getInteractiveCerebrasLanguageModel: () => ({ __sentinel: "interactive-model" }),
+  getInteractiveCerebrasLanguageModel: (
+    _model: string,
+    onProviderSelected?: (selection: { provider: "cerebras"; fallback: false }) => void,
+  ) => {
+    onProviderSelected?.({ provider: "cerebras", fallback: false });
+    return { __sentinel: "interactive-model" };
+  },
   hasLanguageModelProviderConfigured: () => providerConfigured,
 }));
 
@@ -80,7 +86,12 @@ mock.module("ai", () => ({
   },
 }));
 
-const { runSharedAgentTurn, runSharedAgentTurnStream } = await import("./run-shared-agent-turn");
+const {
+  createSharedAgentTurnTiming,
+  recordSharedModelCall,
+  runSharedAgentTurn,
+  runSharedAgentTurnStream,
+} = await import("./run-shared-agent-turn");
 
 const originalFetch = globalThis.fetch;
 
@@ -109,6 +120,23 @@ afterEach(() => {
 });
 
 describe("runSharedAgentTurn — internal failure propagates vs designed-empty degrades", () => {
+  test("bounds model-call detail while preserving aggregate counts", () => {
+    const timing = createSharedAgentTurnTiming("eliza-runtime");
+    for (let index = 0; index < 19; index += 1) {
+      recordSharedModelCall(timing, {
+        startedAt: performance.now(),
+        streaming: index % 2 === 0,
+        provider: index % 3 === 0 ? "openrouter" : "cerebras",
+        fallback: index % 3 === 0,
+      });
+    }
+
+    expect(timing.modelCallCount).toBe(19);
+    expect(timing.modelCalls).toHaveLength(16);
+    expect(timing.truncatedModelCallCount).toBe(3);
+    expect(timing.fallbackCount).toBe(7);
+  });
+
   test("marks dispatch only at the final model handoff", async () => {
     let dispatches = 0;
     generateTextImpl = async () => {
@@ -198,7 +226,7 @@ describe("runSharedAgentTurn — internal failure propagates vs designed-empty d
     });
 
     expect(system).toContain("Shared runtime boundaries");
-    expect(system).toContain("no external tools");
+    expect(system).toContain("no connected accounts");
     expect(system).toContain("Never claim that you performed");
     expect(system).toContain("needs Dedicated");
   });
@@ -275,6 +303,19 @@ describe("runSharedAgentTurn — internal failure propagates vs designed-empty d
     expect(result.reply).toBe("hi from Nova");
     expect(result.model).toBe("gpt-oss-120b");
     expect(result.usage).toEqual({ totalTokens: 7 });
+    expect(result.timing).toMatchObject({
+      engine: "direct-model",
+      modelCallCount: 1,
+      fallbackCount: 0,
+      truncatedModelCallCount: 0,
+      modelCalls: [
+        {
+          streaming: false,
+          provider: "cerebras",
+          fallback: false,
+        },
+      ],
+    });
     // history + new user message + assistant reply.
     expect(result.history).toHaveLength(4);
     expect(result.history[2]).toMatchObject({ role: "user", content: "hi" });
@@ -322,11 +363,27 @@ describe("runSharedAgentTurnStream — incremental provider policy", () => {
     if (!("parts" in result)) throw new Error("expected streaming result");
     const parts = [];
     for await (const part of result.parts) parts.push(part);
-    expect(parts).toEqual([
+    expect(parts.slice(0, 2)).toEqual([
       { type: "text-delta", text: "ok " },
       { type: "text-delta", text: "reply" },
-      { type: "finish", text: "ok reply", usage: { totalTokens: 3 } },
     ]);
+    expect(parts.at(-1)).toMatchObject({
+      type: "finish",
+      text: "ok reply",
+      usage: { totalTokens: 3 },
+      timing: {
+        engine: "direct-model",
+        modelCallCount: 1,
+        fallbackCount: 0,
+        modelCalls: [
+          {
+            streaming: true,
+            provider: "cerebras",
+            fallback: false,
+          },
+        ],
+      },
+    });
   });
 
   test("synthesizes finish from the SDK result when a provider closes cleanly after text", async () => {
@@ -350,11 +407,20 @@ describe("runSharedAgentTurnStream — incremental provider policy", () => {
 
     const parts = [];
     for await (const part of result.parts) parts.push(part);
-    expect(parts).toEqual([
+    expect(parts.slice(0, 2)).toEqual([
       { type: "text-delta", text: "clean " },
       { type: "text-delta", text: "eof" },
-      { type: "finish", text: "clean eof", usage: { totalTokens: 2 } },
     ]);
+    expect(parts.at(-1)).toMatchObject({
+      type: "finish",
+      text: "clean eof",
+      usage: { totalTokens: 2 },
+      timing: {
+        engine: "direct-model",
+        modelCallCount: 1,
+        fallbackCount: 0,
+      },
+    });
   });
 
   test("keeps no-model turns degraded without starting a provider stream", async () => {

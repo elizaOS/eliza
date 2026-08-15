@@ -28,6 +28,7 @@ import { CEREBRAS_DEFAULT_TEXT_SMALL_MODEL } from "../../models/catalog";
 import {
   getInteractiveCerebrasLanguageModel,
   hasLanguageModelProviderConfigured,
+  type InteractiveModelProviderSelection,
 } from "../../providers/language-model";
 import { resolveSharedCapabilityWall, type SharedCapabilityWall } from "./shared-capability-wall";
 import { resolveSharedNavIntent, type SharedNavIntent } from "./shared-nav-intent";
@@ -108,6 +109,8 @@ export interface RunSharedAgentTurnResult {
    */
   degraded: boolean;
   usage?: SharedAgentTurnUsage;
+  /** Privacy-bounded runtime/provider timing; never includes prompt or response content. */
+  timing?: SharedAgentTurnTiming;
   /** Genuine plugin results, including applied effect receipts, for clients and replay. */
   actionResults?: ActionResult[];
   /**
@@ -126,6 +129,8 @@ export type SharedAgentTurnStreamPart =
       type: "finish";
       text: string;
       usage?: SharedAgentTurnUsage;
+      /** Present only after fresh model work reaches a terminal result. */
+      timing?: SharedAgentTurnTiming;
       /** Applied plugin effects that must land with the terminal turn. */
       actionResults?: ActionResult[];
     };
@@ -202,6 +207,66 @@ export interface SharedAgentTurnUsage {
   totalTokens?: number;
   inputTokens?: number;
   outputTokens?: number;
+}
+
+export interface SharedModelCallTiming {
+  durationMs: number;
+  streaming: boolean;
+  provider?: InteractiveModelProviderSelection["provider"];
+  fallback: boolean;
+}
+
+export interface SharedAgentTurnTiming {
+  engine: "direct-model" | "eliza-runtime";
+  engineMs: number;
+  runtimeSetupMs?: number;
+  messagePipelineMs?: number;
+  teardownMs?: number;
+  modelMs: number;
+  modelCallCount: number;
+  fallbackCount: number;
+  modelCalls: SharedModelCallTiming[];
+  truncatedModelCallCount: number;
+}
+
+const MAX_SHARED_MODEL_CALL_TIMINGS = 16;
+
+export function sharedElapsedMs(startedAt: number): number {
+  return Math.round(Math.max(0, performance.now() - startedAt) * 10) / 10;
+}
+
+export function createSharedAgentTurnTiming(
+  engine: SharedAgentTurnTiming["engine"],
+): SharedAgentTurnTiming {
+  return {
+    engine,
+    engineMs: 0,
+    modelMs: 0,
+    modelCallCount: 0,
+    fallbackCount: 0,
+    modelCalls: [],
+    truncatedModelCallCount: 0,
+  };
+}
+
+export function recordSharedModelCall(
+  timing: SharedAgentTurnTiming,
+  call: Omit<SharedModelCallTiming, "durationMs"> & { startedAt: number },
+): void {
+  const durationMs = sharedElapsedMs(call.startedAt);
+  timing.modelMs = Math.round((timing.modelMs + durationMs) * 10) / 10;
+  timing.modelCallCount += 1;
+  if (call.fallback) timing.fallbackCount += 1;
+  if (timing.modelCalls.length < MAX_SHARED_MODEL_CALL_TIMINGS) {
+    timing.modelCalls.push({
+      durationMs,
+      streaming: call.streaming,
+      ...(call.provider ? { provider: call.provider } : {}),
+      fallback: call.fallback,
+    });
+    return;
+  }
+  timing.truncatedModelCallCount += 1;
 }
 
 /**
@@ -373,8 +438,13 @@ export async function runSharedAgentTurn(
     });
   }
 
+  const engineStartedAt = performance.now();
+  const timing = createSharedAgentTurnTiming("direct-model");
+  let providerSelection: InteractiveModelProviderSelection | undefined;
   try {
-    const model = getInteractiveCerebrasLanguageModel(modelId);
+    const model = getInteractiveCerebrasLanguageModel(modelId, (selection) => {
+      providerSelection = selection;
+    });
     const system = buildSystemPrompt(input.character, {
       reminders: remindersEnabled,
       todos: todosEnabled,
@@ -384,6 +454,7 @@ export async function runSharedAgentTurn(
       { role: input.messageRole ?? ("user" as const), content: message },
     ];
     await input.onProviderDispatch?.();
+    const modelStartedAt = performance.now();
     const { text, usage } = await generateText({
       model,
       // Zero SDK backoff on the interactive turn (see SHARED_TURN_MAX_RETRIES):
@@ -394,6 +465,13 @@ export async function runSharedAgentTurn(
       messages,
       ...(input.abortSignal ? { abortSignal: input.abortSignal } : {}),
     });
+    recordSharedModelCall(timing, {
+      startedAt: modelStartedAt,
+      streaming: false,
+      ...(providerSelection ? { provider: providerSelection.provider } : {}),
+      fallback: providerSelection?.fallback === true,
+    });
+    timing.engineMs = sharedElapsedMs(engineStartedAt);
     const reply = text.trim() || "…";
     return {
       reply,
@@ -401,6 +479,7 @@ export async function runSharedAgentTurn(
       model: modelId,
       degraded: false,
       usage,
+      timing,
     };
   } catch (error) {
     // error-policy:J2 context-adding rethrow. An inference/provider failure is an
@@ -504,8 +583,13 @@ export async function runSharedAgentTurnStream(
     });
   }
 
+  const engineStartedAt = performance.now();
+  const timing = createSharedAgentTurnTiming("direct-model");
+  let providerSelection: InteractiveModelProviderSelection | undefined;
   try {
-    const model = getInteractiveCerebrasLanguageModel(modelId);
+    const model = getInteractiveCerebrasLanguageModel(modelId, (selection) => {
+      providerSelection = selection;
+    });
     const system = buildSystemPrompt(input.character, {
       reminders: remindersEnabled,
       todos: todosEnabled,
@@ -515,6 +599,7 @@ export async function runSharedAgentTurnStream(
       { role: input.messageRole ?? ("user" as const), content: message },
     ];
     await input.onProviderDispatch?.();
+    const modelStartedAt = performance.now();
     const result = streamText({
       model,
       // Zero SDK backoff on the interactive turn (see SHARED_TURN_MAX_RETRIES):
@@ -530,6 +615,20 @@ export async function runSharedAgentTurnStream(
     let providerStreamDone = false;
     let providerStreamCancelled = false;
     let providerCancelPromise: Promise<void> | null = null;
+    let modelTimingRecorded = false;
+    const completedTiming = (): SharedAgentTurnTiming => {
+      if (!modelTimingRecorded) {
+        recordSharedModelCall(timing, {
+          startedAt: modelStartedAt,
+          streaming: true,
+          ...(providerSelection ? { provider: providerSelection.provider } : {}),
+          fallback: providerSelection?.fallback === true,
+        });
+        modelTimingRecorded = true;
+      }
+      timing.engineMs = sharedElapsedMs(engineStartedAt);
+      return timing;
+    };
     const cancel = async (reason?: unknown): Promise<void> => {
       if (providerStreamDone) return;
       providerStreamCancelled = true;
@@ -558,6 +657,7 @@ export async function runSharedAgentTurnStream(
                 type: "finish",
                 text: finalText,
                 usage: await result.totalUsage,
+                timing: completedTiming(),
               };
             }
             break;
@@ -578,6 +678,7 @@ export async function runSharedAgentTurnStream(
               type: "finish",
               text: reply.trim() || "…",
               usage: part.totalUsage,
+              timing: completedTiming(),
             };
           }
         }

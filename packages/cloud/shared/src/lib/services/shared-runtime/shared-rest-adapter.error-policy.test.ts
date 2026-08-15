@@ -98,6 +98,7 @@ describe("shared-rest-adapter error-policy — internal failure propagates vs de
     ).resolves.toEqual({
       text: "",
       agentName: "Eliza",
+      replayed: false,
     });
   });
 });

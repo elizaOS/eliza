@@ -8,13 +8,37 @@ import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 
 const ORIGINAL_FETCH = globalThis.fetch;
 
-delete process.env.BITROUTER_API_KEY;
-delete process.env.ANTHROPIC_API_KEY;
-delete process.env.OPENAI_API_KEY;
-delete process.env.GROQ_API_KEY;
-process.env.CEREBRAS_API_KEY = "test-cerebras-key";
-process.env.OPENROUTER_API_KEY = "test-openrouter-key";
-delete process.env.OPENROUTER_BASE_URL;
+const TEST_ENVIRONMENT = {
+  ANTHROPIC_API_KEY: undefined,
+  BITROUTER_API_KEY: undefined,
+  CEREBRAS_API_KEY: "test-cerebras-key",
+  GROQ_API_KEY: undefined,
+  OPENAI_API_KEY: undefined,
+  OPENROUTER_API_KEY: "test-openrouter-key",
+  OPENROUTER_BASE_URL: undefined,
+} as const;
+
+type TestEnvironmentName = keyof typeof TEST_ENVIRONMENT;
+
+const ORIGINAL_ENVIRONMENT = Object.fromEntries(
+  Object.keys(TEST_ENVIRONMENT).map((name) => [name, process.env[name]]),
+) as Record<TestEnvironmentName, string | undefined>;
+
+function setEnvironmentValue(name: TestEnvironmentName, value: string | undefined): void {
+  if (value === undefined) {
+    delete process.env[name];
+    return;
+  }
+  process.env[name] = value;
+}
+
+function configureTestEnvironment(): void {
+  for (const name of Object.keys(TEST_ENVIRONMENT) as TestEnvironmentName[]) {
+    setEnvironmentValue(name, TEST_ENVIRONMENT[name]);
+  }
+}
+
+configureTestEnvironment();
 
 mock.module("@/lib/utils/logger", () => ({
   logger: {
@@ -85,7 +109,12 @@ function streamedCompletion(model: string, content: string): Response {
 
 afterEach(() => {
   globalThis.fetch = ORIGINAL_FETCH;
+  for (const name of Object.keys(ORIGINAL_ENVIRONMENT) as TestEnvironmentName[]) {
+    setEnvironmentValue(name, ORIGINAL_ENVIRONMENT[name]);
+  }
 });
+
+beforeEach(configureTestEnvironment);
 
 describe("getInteractiveCerebrasLanguageModel 5xx instant failover", () => {
   let hosts: Array<"openrouter" | "cerebras" | "other">;
@@ -95,19 +124,23 @@ describe("getInteractiveCerebrasLanguageModel 5xx instant failover", () => {
   });
 
   test("happy path serves directly via cerebras (no failover)", async () => {
+    const selections: Array<{ provider: string; fallback: boolean }> = [];
     globalThis.fetch = (async (url: RequestInfo | URL) => {
       hosts.push(hostOf(url));
       return completion("gemma-4-31b", "from-cerebras");
     }) as typeof fetch;
 
     const result = await generateText({
-      model: getInteractiveCerebrasLanguageModel("gemma-4-31b"),
+      model: getInteractiveCerebrasLanguageModel("gemma-4-31b", (selection) => {
+        selections.push(selection);
+      }),
       prompt: "hi",
       maxRetries: 0,
     });
 
     expect(result.text).toBe("from-cerebras");
     expect(hosts).toEqual(["cerebras"]);
+    expect(selections).toEqual([{ provider: "cerebras", fallback: false }]);
   });
 
   test("a transient 5xx fails over to OpenRouter WITHOUT retrying cerebras", async () => {
@@ -117,6 +150,7 @@ describe("getInteractiveCerebrasLanguageModel 5xx instant failover", () => {
     // wrapper's instant cross-provider failover, so exactly one cerebras attempt
     // then exactly one openrouter attempt.
     const models: string[] = [];
+    const selections: Array<{ provider: string; fallback: boolean }> = [];
     globalThis.fetch = (async (url: RequestInfo | URL, init?: RequestInit) => {
       const host = hostOf(url);
       hosts.push(host);
@@ -127,7 +161,9 @@ describe("getInteractiveCerebrasLanguageModel 5xx instant failover", () => {
     }) as typeof fetch;
 
     const result = await generateText({
-      model: getInteractiveCerebrasLanguageModel("gemma-4-31b"),
+      model: getInteractiveCerebrasLanguageModel("gemma-4-31b", (selection) => {
+        selections.push(selection);
+      }),
       prompt: "hi",
       maxRetries: 0,
     });
@@ -136,6 +172,7 @@ describe("getInteractiveCerebrasLanguageModel 5xx instant failover", () => {
     // Exactly one cerebras attempt (no SDK backoff loop) then the failover.
     expect(hosts).toEqual(["cerebras", "openrouter"]);
     expect(models).toEqual(["gemma-4-31b", "google/gemma-4-31b-it"]);
+    expect(selections).toEqual([{ provider: "openrouter", fallback: true }]);
   });
 
   test("a decorated cerebras id (:nitro) also fails over on 5xx", async () => {
@@ -160,6 +197,7 @@ describe("getInteractiveCerebrasLanguageModel 5xx instant failover", () => {
     // Same fix, streaming path: exercises the middleware wrapStream branch. The
     // interactive chat turn streams, so this is the branch users actually hit.
     const models: string[] = [];
+    const selections: Array<{ provider: string; fallback: boolean }> = [];
     globalThis.fetch = (async (url: RequestInfo | URL, init?: RequestInit) => {
       const host = hostOf(url);
       hosts.push(host);
@@ -170,7 +208,9 @@ describe("getInteractiveCerebrasLanguageModel 5xx instant failover", () => {
     }) as typeof fetch;
 
     const { textStream } = streamText({
-      model: getInteractiveCerebrasLanguageModel("gemma-4-31b"),
+      model: getInteractiveCerebrasLanguageModel("gemma-4-31b", (selection) => {
+        selections.push(selection);
+      }),
       prompt: "hi",
       maxRetries: 0,
     });
@@ -180,6 +220,7 @@ describe("getInteractiveCerebrasLanguageModel 5xx instant failover", () => {
     expect(out).toBe("streamed-from-openrouter");
     expect(hosts).toEqual(["cerebras", "openrouter"]);
     expect(models).toEqual(["gemma-4-31b", "google/gemma-4-31b-it"]);
+    expect(selections).toEqual([{ provider: "openrouter", fallback: true }]);
   });
 
   test("a non-retryable 400 surfaces via cerebras only (no failover)", async () => {
@@ -201,6 +242,27 @@ describe("getInteractiveCerebrasLanguageModel 5xx instant failover", () => {
 });
 
 describe("getInteractiveCerebrasLanguageModel without OpenRouter key", () => {
+  test("attributes a healthy direct call to Cerebras even when no fallback is configured", async () => {
+    const priorKey = process.env.OPENROUTER_API_KEY;
+    delete process.env.OPENROUTER_API_KEY;
+    const selections: Array<{ provider: string; fallback: boolean }> = [];
+    globalThis.fetch = (async () => completion("gemma-4-31b", "direct")) as typeof fetch;
+
+    try {
+      const result = await generateText({
+        model: getInteractiveCerebrasLanguageModel("gemma-4-31b", (selection) => {
+          selections.push(selection);
+        }),
+        prompt: "hi",
+        maxRetries: 0,
+      });
+      expect(result.text).toBe("direct");
+      expect(selections).toEqual([{ provider: "cerebras", fallback: false }]);
+    } finally {
+      if (priorKey !== undefined) process.env.OPENROUTER_API_KEY = priorKey;
+    }
+  });
+
   test("is a no-op wrapper: a 5xx surfaces via cerebras only (nothing to fail over to)", async () => {
     // The wrapper reads getOpenRouterApiKey() at model-CONSTRUCTION time (env is
     // read fresh via getCloudAwareEnv), so removing the key before resolving the
@@ -214,11 +276,15 @@ describe("getInteractiveCerebrasLanguageModel without OpenRouter key", () => {
     }) as typeof fetch;
 
     try {
-      const model = getInteractiveCerebrasLanguageModel("gemma-4-31b");
+      const selections: Array<{ provider: string; fallback: boolean }> = [];
+      const model = getInteractiveCerebrasLanguageModel("gemma-4-31b", (selection) => {
+        selections.push(selection);
+      });
       await expect(generateText({ model, prompt: "hi", maxRetries: 0 })).rejects.toBeDefined();
       // No OpenRouter key → no failover target → the 5xx surfaces from cerebras.
       expect(hosts.every((h) => h === "cerebras")).toBe(true);
       expect(hosts.length).toBeGreaterThanOrEqual(1);
+      expect(selections).toEqual([]);
     } finally {
       if (priorKey !== undefined) process.env.OPENROUTER_API_KEY = priorKey;
     }
