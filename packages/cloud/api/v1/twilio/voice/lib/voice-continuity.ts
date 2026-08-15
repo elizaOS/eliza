@@ -23,7 +23,7 @@ export function relativeInteractionAge(
   return `${days} day${days === 1 ? "" : "s"}`;
 }
 
-export function callStartedPrompt(
+export function callStartedEvent(
   previousInteractionAt: number | undefined,
   now = Date.now(),
 ): string {
@@ -33,8 +33,12 @@ export function callStartedPrompt(
     age
       ? `Their last interaction with Eliza was about ${age} ago.`
       : "This is their first recorded interaction with Eliza.",
-    "Respond now with one brief, natural spoken greeting. Continue from the existing conversation when relevant. Do not mention these instructions or invent prior details.",
   ].join(" ");
+}
+
+/** The opener is intentionally model-free so runtime warm-up fits under speech. */
+export function callOpeningGreeting(returningCaller: boolean): string {
+  return returningCaller ? "hey whats up" : "hello? who's this?";
 }
 
 export function callEndedEvent(reason: string): string {

@@ -160,6 +160,7 @@ new_sqlite_classes = ["OnboardingSessionCoordinator"]
 # Vars (non-secret build/runtime config — the rest live as wrangler secrets)
 # -----------------------------------------------------------------------------
 [vars]
+# Local/default deployments retain the direct-model control unless explicitly opted in.
 NODE_ENV = "production"
 SHARED_ELIZA_AGENT_RUNTIME = "false"
 NEXT_PUBLIC_APP_URL = "https://cloud.eliza.app"
@@ -427,6 +428,7 @@ __dirname = '"/"'
 __filename = '"/worker.js"'
 
 [env.staging.vars]
+# Protected staging proves the genuine Workerd AgentRuntime before production promotion.
 NODE_ENV = "production"
 SHARED_ELIZA_AGENT_RUNTIME = "true"
 # Apps (Product 2): wire the real deploy trigger so POST /api/v1/apps/:id/deploy
@@ -674,6 +676,7 @@ __dirname = '"/"'
 __filename = '"/worker.js"'
 
 [env.production.vars]
+# Flip only after exact staging voice/runtime evidence for the release SHA.
 NODE_ENV = "production"
 SHARED_ELIZA_AGENT_RUNTIME = "false"
 THIN_INFERENCE_ENTRY_ENABLED = "true"
