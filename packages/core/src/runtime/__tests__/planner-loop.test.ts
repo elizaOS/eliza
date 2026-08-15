@@ -1705,7 +1705,7 @@ describe("v5 planner loop skeleton", () => {
 		expect(synthesisInput).toContain("SAFE_READ_OBSERVATION");
 		expect(synthesisInput).toContain("Updated the secret safely.");
 		expect(synthesisInput).toContain(
-			"receipt outcome=applied operation=vault.secret.update-5 resource=vault.secret:secret-5",
+			"receipt outcome=applied operation=vault.secret.update-5 resource_kind=vault.secret resource_id=secret-5",
 		);
 		expect(synthesisInput).not.toContain(mutationSecret);
 		expect(synthesisInput).not.toContain("planner-parameter-secret");
@@ -2991,9 +2991,13 @@ describe("v5 planner loop skeleton", () => {
 
 	it("compacts old assistant/tool suffixes when the planner input crosses the budget threshold", async () => {
 		const capturedMessages: ChatMessage[][] = [];
-		const longPayload = `generated file content: ${"x".repeat(20_000)}`;
+		const runtimeSecret = "SYNTH-COMPACTION-RUNTIME-SECRET-1111";
+		const flagCanary = "SYNTH-COMPACTION-FLAG-CANARY-2222";
+		const longPayload = `generated --token=${flagCanary} ${runtimeSecret}: ${"x".repeat(20_000)}`;
 		let plannerCallCount = 0;
 		const runtime = {
+			redactSecrets: (text: string) =>
+				text.split(runtimeSecret).join("[REDACTED:COMPACTION]"),
 			useModel: vi.fn(async (_modelType: unknown, params: unknown) => {
 				const messages =
 					(params as { messages?: ChatMessage[] }).messages ?? [];
@@ -3055,10 +3059,17 @@ describe("v5 planner loop skeleton", () => {
 		expect(secondPayload).toContain("compaction");
 		expect(secondPayload).toContain("GENERATE success");
 		expect(secondPayload).not.toContain("x".repeat(1_000));
+		expect(secondPayload).not.toContain(runtimeSecret);
+		expect(secondPayload).not.toContain(flagCanary);
 
 		const recordedKinds = recordStage.mock.calls.map((call) => call[1]?.kind);
 		expect(recordedKinds).toContain("compaction");
 		expect(recordedKinds).toContain("planner");
+		const compactionStage = recordStage.mock.calls.find(
+			(call) => call[1]?.kind === "compaction",
+		)?.[1];
+		expect(JSON.stringify(compactionStage)).not.toContain(runtimeSecret);
+		expect(JSON.stringify(compactionStage)).not.toContain(flagCanary);
 	});
 });
 

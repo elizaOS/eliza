@@ -69,6 +69,7 @@ import { type WebSocket, WebSocketServer } from "ws";
 import { installPlugin as installPluginDirect } from "../services/plugin-installer.ts";
 import { writeAgentBackupJsonResponse } from "./backup-json-response.ts";
 import { handleStandaloneCloudPairRoute } from "./cloud-pair-route.ts";
+import { resolveConnectorHealthIntervalMs } from "./connector-health.ts";
 import { handlePluginDirectoryRoutes } from "./plugin-directory-routes.ts";
 
 // `@elizaos/plugin-browser` and `@elizaos/plugin-x402` load lazily: X402 only
@@ -3147,6 +3148,12 @@ async function handleRequest(
   }
 
   // ── View routes (/api/views/*) ────────────────────────────────────────────
+  const viewsCallerAuthorization = resolveInboxRequestAuthorization(
+    req,
+    method,
+    pathname,
+    await resolveHostSessionAuthorization(),
+  );
   if (
     await handleViewsRoutes({
       req,
@@ -3159,6 +3166,7 @@ async function handleRequest(
       broadcastWs: state.broadcastWs ?? undefined,
       broadcastWsToClientId: state.broadcastWsToClientId ?? undefined,
       runtime: state.runtime,
+      callerAuthorization: viewsCallerAuthorization,
     })
   ) {
     return;
@@ -3500,6 +3508,12 @@ export async function startApiServer(opts?: {
       : resolveServerOnlyPort(process.env));
   const host = resolveApiBindHost(process.env);
   ensureApiTokenForBindHost(host);
+  // Resolve owner configuration before any HTTP server is created or bound.
+  // The monitor itself starts later, but its deferred catch must never turn a
+  // malformed interval into a healthy-looking default.
+  const connectorHealthIntervalMs = resolveConnectorHealthIntervalMs(
+    process.env.CONNECTOR_HEALTH_INTERVAL_MS,
+  );
   logger.debug(`[eliza-api] Token check done (${Date.now() - apiStartTime}ms)`);
 
   let config: ElizaConfig;
@@ -3897,6 +3911,7 @@ export async function startApiServer(opts?: {
           runtime: state.runtime,
           config: state.config,
           broadcastWs,
+          intervalMs: connectorHealthIntervalMs,
         });
         state.connectorHealthMonitor.start();
       } catch (err) {

@@ -73,9 +73,7 @@ describe("streaming text named regressions", () => {
     const expected = "foo\u1ea1\u0301 cafe\u0301";
 
     expect(mergeStreamingText(existing, incoming)).toBe(expected);
-    expect(computeStreamingDelta(existing, incoming)).toBe(
-      "\u0301 cafe\u0301",
-    );
+    expect(computeStreamingDelta(existing, incoming)).toBe("\u0301 cafe\u0301");
     expect(resolveStreamingUpdate(existing, incoming)).toEqual({
       kind: "append",
       nextText: expected,

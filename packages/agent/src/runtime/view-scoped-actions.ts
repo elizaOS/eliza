@@ -22,10 +22,12 @@
 import {
   type Action,
   type ActionResult,
+  checkSenderRole,
   ElizaError,
   type IAgentRuntime,
   logger,
   type Memory,
+  type RoleGateRole,
   type State,
   type ViewScopedAction,
   type ViewScopedActionStep,
@@ -39,6 +41,15 @@ import { getActiveViewContext } from "./view-action-affinity.ts";
 
 /** How long a single agent-surface step waits for the frontend to resolve. */
 const SCOPED_ACTION_STEP_TIMEOUT_MS = 5_000;
+
+async function resolveCallerRoles(
+  runtime: IAgentRuntime,
+  message: Memory,
+): Promise<readonly RoleGateRole[]> {
+  if (message.entityId === runtime.agentId) return ["OWNER"];
+  const resolved = await checkSenderRole(runtime, message);
+  return resolved?.role ? [resolved.role] : [];
+}
 
 /** Whole-string `{{paramName}}` token; the token must be the entire value. */
 const PARAM_TOKEN = /^\{\{\s*([A-Za-z_][A-Za-z0-9_]*)\s*\}\}$/;
@@ -223,6 +234,9 @@ export function buildViewScopedAction(
 
       const params = readActionParams(options);
       const driven: string[] = [];
+      const userRoles = entry.roleGate
+        ? await resolveCallerRoles(runtime, _message)
+        : undefined;
 
       for (const step of decl.steps) {
         const { capability, params: stepParams } = stepToCapability(
@@ -235,7 +249,11 @@ export function buildViewScopedAction(
           viewId,
           capability,
           stepParams,
-          { ...(broadcastWs ? { broadcastWs } : {}), runtime },
+          {
+            ...(broadcastWs ? { broadcastWs } : {}),
+            runtime,
+            ...(userRoles ? { userRoles } : {}),
+          },
           SCOPED_ACTION_STEP_TIMEOUT_MS,
         );
 

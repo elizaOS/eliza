@@ -47,7 +47,7 @@ describe("SEARCH_CHANNEL_TOPICS action (#8927)", () => {
 			undefined,
 			{ parameters: { query: "stripe" } },
 		);
-		expect(searchTopics).toHaveBeenCalledWith("stripe", 10);
+		expect(searchTopics).toHaveBeenCalledWith("stripe", 11);
 		expect(res.values?.success).toBe(true);
 		expect(res.values?.matchCount).toBe(1);
 		expect(res.text).toContain("room-a");
@@ -61,7 +61,7 @@ describe("SEARCH_CHANNEL_TOPICS action (#8927)", () => {
 			undefined,
 			undefined,
 		);
-		expect(searchTopics).toHaveBeenCalledWith("billing", 10);
+		expect(searchTopics).toHaveBeenCalledWith("billing", 11);
 	});
 
 	it("unwraps a hardened message and never echoes the security envelope", async () => {
@@ -82,7 +82,7 @@ describe("SEARCH_CHANNEL_TOPICS action (#8927)", () => {
 			undefined,
 		);
 		// Matching runs on the user's words, not the envelope.
-		expect(searchTopics).toHaveBeenCalledWith("billing dashboards", 10);
+		expect(searchTopics).toHaveBeenCalledWith("billing dashboards", 11);
 		expect(res.text).not.toContain("EXTERNAL_UNTRUSTED_CONTENT");
 		expect(res.text).not.toContain("SECURITY NOTICE");
 		expect(res.text).toContain('"billing dashboards"');
@@ -99,10 +99,40 @@ describe("SEARCH_CHANNEL_TOPICS action (#8927)", () => {
 			undefined,
 			{ parameters: { query: blob } },
 		);
-		expect(res.text).toBe("No channels found discussing that topic.");
+		expect(res.text).toContain("No channels in the in-memory room topic index");
+		expect(res.text).toContain("that topic");
 		const query = (res.data as { query: string }).query;
 		expect(query).not.toContain("\n");
 		expect(query.length).toBeLessThanOrEqual(121);
+	});
+
+	it("distinguishes an exact fit from measured overflow", async () => {
+		const hits = Array.from({ length: 11 }, (_, index) => ({
+			roomId: `room-${index}`,
+			matchedTopics: ["billing"],
+			topics: ["billing"],
+		}));
+		const overflow = await channelTopicSearchAction.handler(
+			runtimeWith({
+				searchTopics: () => hits,
+				getTopicsForAllRooms: () => ({ "room-0": ["billing"] }),
+			}),
+			{ content: { text: "" } } as never,
+			undefined,
+			{ parameters: { query: "billing" } },
+		);
+		expect(overflow.values?.hasMore).toBe(true);
+		expect((overflow.data as { hits: unknown[] }).hits).toHaveLength(10);
+		expect(overflow.text).toContain("More matches exist");
+
+		const exact = await channelTopicSearchAction.handler(
+			runtimeWith({ searchTopics: () => hits.slice(0, 10) }),
+			{ content: { text: "" } } as never,
+			undefined,
+			{ parameters: { query: "billing" } },
+		);
+		expect(exact.values?.hasMore).toBe(false);
+		expect(exact.text).not.toContain("More matches exist");
 	});
 });
 

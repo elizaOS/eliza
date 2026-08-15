@@ -29,7 +29,6 @@ import {
   ElizaError,
   type IAgentRuntime,
   logger,
-  SECRETS_SERVICE_TYPE,
 } from "@elizaos/core";
 import type { LifeOpsMicrosoftCapability } from "@elizaos/shared";
 import { MICROSOFT_CALENDAR_PROVIDER } from "./accounts.js";
@@ -57,6 +56,9 @@ const MICROSOFT_CALENDAR_CAPABILITIES = [
   "microsoft.calendar.freebusy",
   "microsoft.calendar.write",
 ] as const satisfies readonly LifeOpsMicrosoftCapability[];
+// Durable secret writers only. The in-memory core SECRETS service is
+// deliberately absent: tokens written there die with the process while the
+// persisted vaultRef dangles (#18080).
 const SECRET_SERVICE_TYPES = [
   "connector_credential_store",
   "CONNECTOR_CREDENTIAL_STORE",
@@ -64,7 +66,6 @@ const SECRET_SERVICE_TYPES = [
   "credential_store",
   "vault",
   "VAULT",
-  SECRETS_SERVICE_TYPE,
 ] as const;
 const FORBIDDEN_CREDENTIAL_KEYS = new Set([
   "accesstoken",
@@ -1040,25 +1041,14 @@ function getRuntimeService(
   return runtime.getService(serviceType);
 }
 
-function secretContext(runtime: IAgentRuntime): JsonRecord {
-  return {
-    level: "global",
-    agentId: runtime.agentId,
-    requesterId: runtime.agentId,
-    caller: "plugin-calendar",
-  };
-}
-
 function secretBackendForService(args: {
   runtime: IAgentRuntime;
   serviceType: string;
   service: unknown;
 }): SecretBackend | null {
   const putSecret = member(args.service, "putSecret");
-  const setGlobal = member(args.service, "setGlobal");
   const set = member(args.service, "set");
   const remove = member(args.service, "remove");
-  const deleteSecret = member(args.service, "delete");
   if (typeof putSecret === "function" && typeof remove === "function") {
     return {
       name: args.serviceType,
@@ -1078,35 +1068,6 @@ function secretBackendForService(args: {
       },
       remove: async (vaultRef) => {
         await Reflect.apply(remove, args.service, [vaultRef]);
-      },
-    };
-  }
-  if (typeof setGlobal === "function" && typeof deleteSecret === "function") {
-    return {
-      name: args.serviceType,
-      put: async ({ vaultRef, value }) => {
-        const stored: unknown = await Reflect.apply(setGlobal, args.service, [
-          vaultRef,
-          value,
-          { sensitive: true },
-        ]);
-        if (stored !== true) {
-          throw new ElizaError(
-            "Microsoft OAuth secret backend rejected the credential write.",
-            {
-              code: "MICROSOFT_SECRET_WRITE_REJECTED",
-              context: { backend: args.serviceType },
-              severity: "fatal",
-            },
-          );
-        }
-        return vaultRef;
-      },
-      remove: async (vaultRef) => {
-        await Reflect.apply(deleteSecret, args.service, [
-          vaultRef,
-          secretContext(args.runtime),
-        ]);
       },
     };
   }

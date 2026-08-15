@@ -22,7 +22,6 @@ import {
 } from "@/lib/utils/phone-normalization";
 import { twilioApiRequest } from "@/lib/utils/twilio-api";
 import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
-import { resolveTwilioVoiceTarget } from "../lib/resolve-voice-target";
 
 const app = new Hono<AppEnv>();
 const IDEMPOTENCY_TTL_MS = 10 * 60 * 1000;
@@ -139,17 +138,6 @@ app.post("/", async (c) => {
     return c.json(
       {
         error: "Eliza calling is not configured",
-        code: "voice_not_configured",
-      },
-      503,
-    );
-  }
-
-  const target = await resolveTwilioVoiceTarget(c.env, fromNumber);
-  if (!target) {
-    return c.json(
-      {
-        error: "Eliza voice agent is not configured",
         code: "voice_not_configured",
       },
       503,

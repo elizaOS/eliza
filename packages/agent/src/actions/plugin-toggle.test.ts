@@ -177,3 +177,104 @@ describe("PLUGIN action=toggle → PUT /api/plugins/:id", () => {
     });
   });
 });
+
+describe("PLUGIN action=list — an empty filtered view names its scope", () => {
+  // Live 2026-08-14: "what apps or connectors am I connected to" answered
+  // "You're not connected to anything right now" — while Discord was actively
+  // delivering that very reply and 19 plugins were loaded. The tool had said
+  // "No connectors match the requested filter", but never named the filter, so
+  // the model dropped the qualifier and reported a filtered view as a total.
+  it("states the filter and the pre-filter count", async () => {
+    // `filter` is a ListFilter object — passing the bare string "disabled"
+    // never reached applyListFilter and the empty branch was unreachable, so
+    // the assertions below could not run at all.
+    const stub = stubFetch({
+      plugins: [
+        { id: "discord", category: "connector", enabled: true, isActive: true },
+        { id: "google", category: "connector", enabled: true, isActive: false },
+      ],
+    });
+    try {
+      const result = await pluginAction.handler(
+        runtime,
+        { content: { text: "" } } as never,
+        undefined,
+        {
+          parameters: {
+            action: "list",
+            type: "connector",
+            filter: { status: "disabled" },
+          },
+        },
+        undefined,
+      );
+      const text = String(result?.text ?? "");
+      expect(text).toContain("No connectors match");
+      expect(text).toContain("status=disabled");
+      expect(text).not.toContain("[object Object]");
+      expect(text).toContain("2 connectors exist before filtering");
+      expect(text).toContain("not a statement that none exist");
+    } finally {
+      stub.restore();
+    }
+  });
+});
+
+describe("PLUGIN action=list — a populated filtered view names its scope", () => {
+  // The empty branch already disclosed its filter; the populated branch did
+  // not. "which connectors are active?" rendered "Connectors (1):" over a
+  // filtered subset while the unfiltered roster sat in `scoped`, and the model
+  // told the user they had one connector.
+  it("prints the pre-filter count and the filter in the header", async () => {
+    const stub = stubFetch({
+      plugins: [
+        { id: "discord", category: "connector", enabled: true, isActive: true },
+        { id: "google", category: "connector", enabled: true, isActive: false },
+        { id: "slack", category: "connector", enabled: false, isActive: false },
+      ],
+    });
+    try {
+      const result = await pluginAction.handler(
+        runtime,
+        { content: { text: "" } } as never,
+        undefined,
+        {
+          parameters: {
+            action: "list",
+            type: "connector",
+            filter: { status: "active" },
+          },
+        },
+        undefined,
+      );
+      const text = String(result?.text ?? "");
+      expect(text).toContain("Connectors (1 of 3");
+      expect(text).toContain("narrowed by status=active");
+      expect(text).not.toContain("[object Object]");
+      expect(result?.data).toMatchObject({ totalBeforeFilter: 3, count: 1 });
+    } finally {
+      stub.restore();
+    }
+  });
+
+  it("keeps the plain header when nothing narrowed the list", async () => {
+    const stub = stubFetch({
+      plugins: [
+        { id: "discord", category: "connector", enabled: true, isActive: true },
+        { id: "google", category: "connector", enabled: true, isActive: false },
+      ],
+    });
+    try {
+      const result = await pluginAction.handler(
+        runtime,
+        { content: { text: "" } } as never,
+        undefined,
+        { parameters: { action: "list", type: "connector" } },
+        undefined,
+      );
+      expect(String(result?.text ?? "")).toContain("Connectors (2):");
+    } finally {
+      stub.restore();
+    }
+  });
+});

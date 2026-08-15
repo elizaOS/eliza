@@ -2,8 +2,6 @@
 import { describe, expect, test } from "bun:test";
 import {
   type NewPaymentRequest,
-  type NewPaymentRequestEvent,
-  type PaymentRequestEventRow,
   type PaymentRequestRow,
   PaymentRequestsRepository,
 } from "../../db/repositories/payment-requests";
@@ -57,6 +55,7 @@ describe("toPublicPaymentRequest", () => {
       payerIdentityId: "identity-secret",
       payerUserId: "user-secret",
       payerOrganizationId: "payer-org-secret",
+      status: "delivered",
       hostedUrl: "https://checkout.example.test/session",
       callbackUrl: "https://merchant.example.test/callback",
       callbackSecret: "callback-secret",
@@ -66,16 +65,26 @@ describe("toPublicPaymentRequest", () => {
       metadata: { internal: "metadata-secret" },
     };
 
-    expect(toPublicPaymentRequest(row)).toEqual({
+    expect(toPublicPaymentRequest(row, new Date(1))).toEqual({
       id: "pr-public",
       provider: "stripe",
       amountCents: 100,
       currency: "USD",
       reason: "Premium plan",
       status: "expired",
-      hostedUrl: "https://checkout.example.test/session",
+      hostedUrl: null,
       expiresAt: new Date(0),
     });
+  });
+
+  test("preserves the hosted URL for non-expired terminal rows", () => {
+    const row = {
+      ...fakeRow("pr-settled-public", "org-secret"),
+      status: "settled" as const,
+      hostedUrl: "https://checkout.example.test/session",
+    };
+
+    expect(toPublicPaymentRequest(row, new Date(1)).hostedUrl).toBe(row.hostedUrl);
   });
 });
 
@@ -85,7 +94,6 @@ describe("toPublicPaymentRequest", () => {
  */
 class ExpireScopingRepository extends PaymentRequestsRepository {
   forOrgCalls: Array<{ organizationId: string; now: Date }> = [];
-  events: NewPaymentRequestEvent[] = [];
   private readonly orgById: Record<string, string>;
 
   constructor(orgById: Record<string, string>) {
@@ -112,13 +120,6 @@ class ExpireScopingRepository extends PaymentRequestsRepository {
   override async getPaymentRequest(id: string): Promise<PaymentRequestRow | null> {
     const org = this.orgById[id];
     return org ? fakeRow(id, org) : null;
-  }
-
-  override async recordPaymentRequestEvent(
-    input: NewPaymentRequestEvent,
-  ): Promise<PaymentRequestEventRow> {
-    this.events.push(input);
-    return { id: `evt-${this.events.length}` } as unknown as PaymentRequestEventRow;
   }
 }
 
@@ -159,12 +160,6 @@ describe("expirePastForOrg (least-privilege expire, #10117)", () => {
     // Only org-1's rows are returned; org-2's row is untouched.
     expect(expired.sort()).toEqual(["pr-mine-1", "pr-mine-2"]);
     expect(repository.forOrgCalls).toEqual([{ organizationId: "org-1", now }]);
-    // An expired event was recorded for each of the caller's rows only.
-    expect(repository.events.map((e) => e.paymentRequestId).sort()).toEqual([
-      "pr-mine-1",
-      "pr-mine-2",
-    ]);
-    expect(repository.events.every((e) => e.eventName === "payment.expired")).toBe(true);
   });
 
   test("expirePast (cron) still uses the global sweep", async () => {
@@ -177,15 +172,9 @@ describe("expirePastForOrg (least-privilege expire, #10117)", () => {
   });
 });
 
-/**
- * In-memory settlement state machine — backs the webhook-replay idempotency
- * tests. Settlement webhooks (Stripe + OxaPay) rely on these exact semantics
- * for "user is credited exactly once" under provider redelivery.
- */
-class SettlementRepository extends PaymentRequestsRepository {
-  row: PaymentRequestRow;
-  events: NewPaymentRequestEvent[] = [];
-  updateCalls = 0;
+/** Returns a stable current row after every simulated compare-and-set miss. */
+class CasMissRepository extends PaymentRequestsRepository {
+  readonly row: PaymentRequestRow;
 
   constructor(row: PaymentRequestRow) {
     super();
@@ -196,90 +185,89 @@ class SettlementRepository extends PaymentRequestsRepository {
     return this.row.id === id ? this.row : null;
   }
 
-  override async updatePaymentRequestStatus(
-    id: string,
-    status: Parameters<PaymentRequestsRepository["updatePaymentRequestStatus"]>[1],
-    patch: Parameters<PaymentRequestsRepository["updatePaymentRequestStatus"]>[2] = {},
-  ): Promise<PaymentRequestRow | null> {
-    if (this.row.id !== id) return null;
-    this.updateCalls += 1;
-    this.row = {
-      ...this.row,
-      ...(status ? { status } : {}),
-      ...(patch?.settledAt !== undefined ? { settledAt: patch.settledAt } : {}),
-      ...(patch?.settlementTxRef !== undefined ? { settlementTxRef: patch.settlementTxRef } : {}),
-      ...(patch?.settlementProof !== undefined ? { settlementProof: patch.settlementProof } : {}),
+  override async settlePaymentRequest(): Promise<PaymentRequestRow | null> {
+    return null;
+  }
+
+  override async failPaymentRequest(): Promise<PaymentRequestRow | null> {
+    return null;
+  }
+
+  override async initializePaymentRequest(): Promise<PaymentRequestRow | null> {
+    return null;
+  }
+}
+
+describe("compare-and-set replay handling", () => {
+  test("returns the existing row for an identical settlement replay", async () => {
+    const row = {
+      ...fakeRow("pr-settle", "org-1"),
+      status: "settled" as const,
+      settlementTxRef: "trk-1",
+      settledAt: new Date(),
     };
-    return this.row;
-  }
+    const service = createPaymentRequestsService({
+      repository: new CasMissRepository(row),
+      adapters: [],
+    });
 
-  override async recordPaymentRequestEvent(
-    input: NewPaymentRequestEvent,
-  ): Promise<PaymentRequestEventRow> {
-    this.events.push(input);
-    return { id: `evt-${this.events.length}` } as unknown as PaymentRequestEventRow;
-  }
-}
-
-function pendingRow(id: string): PaymentRequestRow {
-  return { ...fakeRow(id, "org-1"), status: "pending" };
-}
-
-describe("settlement idempotency under webhook replay (#10732)", () => {
-  test("markSettled replay with the same txRef is a no-op: one update, one settled event", async () => {
-    const repository = new SettlementRepository(pendingRow("pr-settle"));
-    const service = createPaymentRequestsService({ repository, adapters: [] });
-
-    const first = await service.markSettled("pr-settle", "trk-1", { provider: "oxapay" });
-    expect(first.status).toBe("settled");
-    expect(repository.updateCalls).toBe(1);
-    expect(repository.events.map((e) => e.eventName)).toEqual(["payment.settled"]);
-
-    // Provider redelivers the identical callback (same txRef): no second
-    // update, no second settled event → no double credit downstream.
-    const replay = await service.markSettled("pr-settle", "trk-1", { provider: "oxapay" });
-    expect(replay.status).toBe("settled");
-    expect(replay.settlementTxRef).toBe("trk-1");
-    expect(repository.updateCalls).toBe(1);
-    expect(repository.events.map((e) => e.eventName)).toEqual(["payment.settled"]);
+    await expect(service.markSettled(row.id, "trk-1", {})).resolves.toBe(row);
   });
 
-  test("markSettled with a DIFFERENT txRef after settlement throws (terminal CAS)", async () => {
-    const repository = new SettlementRepository(pendingRow("pr-settle-2"));
-    const service = createPaymentRequestsService({ repository, adapters: [] });
+  test("rejects a different settlement reference after the terminal CAS", async () => {
+    const row = {
+      ...fakeRow("pr-settle-conflict", "org-1"),
+      status: "settled" as const,
+      settlementTxRef: "trk-a",
+      settledAt: new Date(),
+    };
+    const service = createPaymentRequestsService({
+      repository: new CasMissRepository(row),
+      adapters: [],
+    });
 
-    await service.markSettled("pr-settle-2", "trk-a", {});
-    await expect(service.markSettled("pr-settle-2", "trk-b", {})).rejects.toThrow(
+    await expect(service.markSettled(row.id, "trk-b", {})).rejects.toThrow(
       'already in terminal status "settled"',
     );
-    expect(repository.updateCalls).toBe(1);
   });
 
-  test("a late failure callback cannot clobber a settled request", async () => {
-    const repository = new SettlementRepository(pendingRow("pr-settle-3"));
-    const service = createPaymentRequestsService({ repository, adapters: [] });
+  test("returns the existing row for an identical initialization replay", async () => {
+    const row = {
+      ...fakeRow("pr-delivered", "org-1"),
+      status: "delivered" as const,
+      hostedUrl: "https://checkout.example.test/session",
+      providerIntent: { stripe_session_id: "cs_1" },
+      expiresAt: new Date(Date.now() + 60_000),
+    };
+    const service = createPaymentRequestsService({
+      repository: new CasMissRepository(row),
+      adapters: [],
+    });
 
-    await service.markSettled("pr-settle-3", "trk-c", {});
-    await expect(service.markFailed("pr-settle-3", "late failure")).rejects.toThrow(
-      'already in terminal status "settled"',
+    await expect(service.markInitialized(row.id, row.providerIntent, row.hostedUrl)).resolves.toBe(
+      row,
     );
-    expect(repository.row.status).toBe("settled");
   });
 
-  test("markFailed replay is a no-op and a late settle after failure throws", async () => {
-    const repository = new SettlementRepository(pendingRow("pr-fail"));
-    const service = createPaymentRequestsService({ repository, adapters: [] });
+  test("rejects a changed initialization after another writer wins", async () => {
+    const row = {
+      ...fakeRow("pr-delivered-conflict", "org-1"),
+      status: "delivered" as const,
+      hostedUrl: "https://checkout.example.test/first",
+      providerIntent: { stripe_session_id: "cs_first" },
+      expiresAt: new Date(Date.now() + 60_000),
+    };
+    const service = createPaymentRequestsService({
+      repository: new CasMissRepository(row),
+      adapters: [],
+    });
 
-    await service.markFailed("pr-fail", "invoice expired");
-    expect(repository.updateCalls).toBe(1);
-
-    const replay = await service.markFailed("pr-fail", "invoice expired");
-    expect(replay.status).toBe("failed");
-    expect(repository.updateCalls).toBe(1);
-    expect(repository.events.map((e) => e.eventName)).toEqual(["payment.failed"]);
-
-    await expect(service.markSettled("pr-fail", "trk-x", {})).rejects.toThrow(
-      'already in terminal status "failed"',
-    );
+    await expect(
+      service.markInitialized(
+        row.id,
+        { stripe_session_id: "cs_second" },
+        "https://checkout.example.test/second",
+      ),
+    ).rejects.toThrow('state changed concurrently to "delivered"');
   });
 });

@@ -97,6 +97,19 @@ async function journalEntries(): Promise<JournalEntry[]> {
   return journal.entries;
 }
 
+/**
+ * Journal prefix the fixture records as already applied. Everything after this
+ * index is what the migrator must report and apply as pending, so the expected
+ * pending count tracks the live journal instead of a hardcoded literal that
+ * breaks on every new migration.
+ */
+const CHECKPOINT_PREFIX_LENGTH = 184;
+
+async function expectedPendingBanner(): Promise<string> {
+  const total = (await journalEntries()).length;
+  return `pending migrations: ${total - CHECKPOINT_PREFIX_LENGTH}`;
+}
+
 async function seedAppliedPrefix(
   client: pg.Client,
   length: number,
@@ -129,6 +142,16 @@ async function seedAppliedPrefix(
       updated_at timestamp with time zone
     );
     CREATE TABLE users (
+      id uuid PRIMARY KEY
+    );
+    CREATE TABLE organizations (
+      id uuid PRIMARY KEY
+    );
+    -- This fixture records the pre-checkpoint ledger without replaying its SQL.
+    -- It must therefore materialize every pre-checkpoint relation referenced by
+    -- pending migrations. Keep this checkpoint schema in lockstep when a new
+    -- post-checkpoint migration depends on an older table.
+    CREATE TABLE docker_nodes (
       id uuid PRIMARY KEY
     );
     CREATE SCHEMA drizzle;
@@ -250,7 +273,7 @@ describe.skipIf(!ENABLED)(
 
     test("applies the append-only fix-forward once and passes the reusable catalog preflight", async () => {
       const database = await createDatabase();
-      await seedAppliedPrefix(database.client, 184);
+      await seedAppliedPrefix(database.client, CHECKPOINT_PREFIX_LENGTH);
       await database.client.query(`
         INSERT INTO jobs (
           status,
@@ -269,7 +292,7 @@ describe.skipIf(!ENABLED)(
 
       const first = await runScript(MIGRATOR, database.url);
       expect(first.exitCode, first.output).toBe(0);
-      expect(first.output).toContain("pending migrations: 13");
+      expect(first.output).toContain(await expectedPendingBanner());
 
       const catalog = await database.client.query<{
         data_type: string;
@@ -297,6 +320,23 @@ describe.skipIf(!ENABLED)(
         terminal_backfills: "1",
       });
 
+      const placementState = await database.client.query<{
+        data_type: string;
+        is_nullable: string;
+        column_default: string;
+      }>(`
+        SELECT data_type, is_nullable, column_default
+        FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'docker_nodes'
+          AND column_name = 'placement_state'
+      `);
+      expect(placementState.rows[0]).toEqual({
+        data_type: "text",
+        is_nullable: "NO",
+        column_default: "'open'::text",
+      });
+
       const second = await runScript(MIGRATOR, database.url);
       expect(second.exitCode, second.output).toBe(0);
       expect(second.output).toContain("pending migrations: 0");
@@ -309,7 +349,7 @@ describe.skipIf(!ENABLED)(
 
     test("accepts historical production hash drift but enforces hashes from the checkpoint forward", async () => {
       const database = await createDatabase();
-      await seedAppliedPrefix(database.client, 184);
+      await seedAppliedPrefix(database.client, CHECKPOINT_PREFIX_LENGTH);
       await database.client.query(
         "UPDATE drizzle.__drizzle_migrations SET hash = 'historical-drift' WHERE created_at = $1",
         [HISTORICAL_DRIFT_CREATED_AT],
@@ -317,7 +357,7 @@ describe.skipIf(!ENABLED)(
 
       const migrated = await runScript(MIGRATOR, database.url);
       expect(migrated.exitCode, migrated.output).toBe(0);
-      expect(migrated.output).toContain("pending migrations: 13");
+      expect(migrated.output).toContain(await expectedPendingBanner());
 
       await database.client.query(
         "UPDATE drizzle.__drizzle_migrations SET hash = 'checkpoint-drift' WHERE created_at = $1",
@@ -333,7 +373,11 @@ describe.skipIf(!ENABLED)(
 
     test("accepts production timestamp order when legacy journal indexes invert", async () => {
       const database = await createDatabase();
-      await seedAppliedPrefix(database.client, 184, "timestamp");
+      await seedAppliedPrefix(
+        database.client,
+        CHECKPOINT_PREFIX_LENGTH,
+        "timestamp",
+      );
       const entries = await journalEntries();
       const earlierTimestamp = entries[44];
       const laterTimestamp = entries[43];
@@ -363,23 +407,31 @@ describe.skipIf(!ENABLED)(
 
       const migrated = await runScript(MIGRATOR, database.url);
       expect(migrated.exitCode, migrated.output).toBe(0);
-      expect(migrated.output).toContain("pending migrations: 13");
+      expect(migrated.output).toContain(await expectedPendingBanner());
       await database.client.end();
     }, 120_000);
 
     test("accepts historical journal order when legacy timestamps invert", async () => {
       const database = await createDatabase();
-      await seedAppliedPrefix(database.client, 184, "journal");
+      await seedAppliedPrefix(
+        database.client,
+        CHECKPOINT_PREFIX_LENGTH,
+        "journal",
+      );
 
       const migrated = await runScript(MIGRATOR, database.url);
       expect(migrated.exitCode, migrated.output).toBe(0);
-      expect(migrated.output).toContain("pending migrations: 13");
+      expect(migrated.output).toContain(await expectedPendingBanner());
       await database.client.end();
     }, 120_000);
 
     test("accepts the production hybrid order with late historical backfills", async () => {
       const database = await createDatabase();
-      await seedAppliedPrefix(database.client, 184, "production-hybrid");
+      await seedAppliedPrefix(
+        database.client,
+        CHECKPOINT_PREFIX_LENGTH,
+        "production-hybrid",
+      );
       const entries = await journalEntries();
       const encryptionKeys = entries[17];
       const databaseOptimization = entries[81];
@@ -405,13 +457,17 @@ describe.skipIf(!ENABLED)(
 
       const migrated = await runScript(MIGRATOR, database.url);
       expect(migrated.exitCode, migrated.output).toBe(0);
-      expect(migrated.output).toContain("pending migrations: 13");
+      expect(migrated.output).toContain(await expectedPendingBanner());
       await database.client.end();
     }, 120_000);
 
     test("accepts production schema history missing ledger rows before the checkpoint", async () => {
       const database = await createDatabase();
-      await seedAppliedPrefix(database.client, 184, "production-hybrid");
+      await seedAppliedPrefix(
+        database.client,
+        CHECKPOINT_PREFIX_LENGTH,
+        "production-hybrid",
+      );
       const entries = await journalEntries();
       const missingEntries = PRODUCTION_UNRECORDED_TAGS.map((tag) => {
         const entry = entries.find((candidate) => candidate.tag === tag);
@@ -425,7 +481,7 @@ describe.skipIf(!ENABLED)(
 
       const migrated = await runScript(MIGRATOR, database.url);
       expect(migrated.exitCode, migrated.output).toBe(0);
-      expect(migrated.output).toContain("pending migrations: 13");
+      expect(migrated.output).toContain(await expectedPendingBanner());
 
       const remaining = await database.client.query<{ count: string }>(
         "SELECT count(*)::text AS count FROM drizzle.__drizzle_migrations WHERE created_at = ANY($1::bigint[])",
@@ -437,7 +493,7 @@ describe.skipIf(!ENABLED)(
 
     test("rejects historical rows appended after the immutable checkpoint", async () => {
       const database = await createDatabase();
-      await seedAppliedPrefix(database.client, 184);
+      await seedAppliedPrefix(database.client, CHECKPOINT_PREFIX_LENGTH);
       const entries = await journalEntries();
       for (const journalIndex of [193, 184, 185]) {
         const entry = entries[journalIndex];
@@ -462,7 +518,7 @@ describe.skipIf(!ENABLED)(
 
     test("rejects incompatible catalog drift and malformed ledger prefixes", async () => {
       const drift = await createDatabase();
-      await seedAppliedPrefix(drift.client, 184);
+      await seedAppliedPrefix(drift.client, CHECKPOINT_PREFIX_LENGTH);
       await drift.client.query(
         "ALTER TABLE jobs ADD COLUMN execution_interruptions text DEFAULT 'wrong'",
       );
@@ -488,7 +544,7 @@ describe.skipIf(!ENABLED)(
       await drift.client.end();
 
       const generated = await createDatabase();
-      await seedAppliedPrefix(generated.client, 184);
+      await seedAppliedPrefix(generated.client, CHECKPOINT_PREFIX_LENGTH);
       await generated.client.query(
         "ALTER TABLE jobs ADD COLUMN execution_interruptions integer GENERATED ALWAYS AS (0) STORED NOT NULL",
       );
@@ -500,7 +556,7 @@ describe.skipIf(!ENABLED)(
       await generated.client.end();
 
       const duplicate = await createDatabase();
-      await seedAppliedPrefix(duplicate.client, 184);
+      await seedAppliedPrefix(duplicate.client, CHECKPOINT_PREFIX_LENGTH);
       const last = (
         await duplicate.client.query<{ hash: string; created_at: string }>(
           "SELECT hash, created_at::text FROM drizzle.__drizzle_migrations ORDER BY id DESC LIMIT 1",
@@ -516,7 +572,7 @@ describe.skipIf(!ENABLED)(
       await duplicate.client.end();
 
       const unknownRow = await createDatabase();
-      await seedAppliedPrefix(unknownRow.client, 184);
+      await seedAppliedPrefix(unknownRow.client, CHECKPOINT_PREFIX_LENGTH);
       await unknownRow.client.query(
         "INSERT INTO drizzle.__drizzle_migrations (hash, created_at) VALUES ('unknown', 9999999999999)",
       );
@@ -528,7 +584,7 @@ describe.skipIf(!ENABLED)(
 
     test("serializes concurrent migrators and recovers from table-lock contention", async () => {
       const database = await createDatabase();
-      await seedAppliedPrefix(database.client, 184);
+      await seedAppliedPrefix(database.client, CHECKPOINT_PREFIX_LENGTH);
       const holder = new Client({ connectionString: database.url });
       await holder.connect();
       await holder.query("BEGIN");
@@ -563,7 +619,7 @@ describe.skipIf(!ENABLED)(
 
     test("fails observably after bounded table-lock retries without partial state", async () => {
       const database = await createDatabase();
-      await seedAppliedPrefix(database.client, 184);
+      await seedAppliedPrefix(database.client, CHECKPOINT_PREFIX_LENGTH);
       const holder = new Client({ connectionString: database.url });
       await holder.connect();
       await holder.query("BEGIN");

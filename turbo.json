@@ -243,6 +243,7 @@
       "outputs": []
     },
     "@elizaos/cloud-api#typecheck": {
+      "dependsOn": ["@elizaos/cloud-shared#typecheck"],
       "outputs": []
     },
     "@elizaos/cloud-shared#typecheck": {
@@ -254,7 +255,7 @@
       "outputs": []
     },
     "@elizaos/plugin-calendar#typecheck": {
-      "dependsOn": [],
+      "dependsOn": ["@elizaos/plugin-scheduling#build"],
       "outputs": []
     },
     "@elizaos/plugin-personal-assistant#typecheck": {

@@ -8,7 +8,7 @@
 
 import type { BrandingConfig } from "./branding.js";
 
-export { resolveAliasedEnvValue } from "@elizaos/core";
+export { resolveAliasedEnvValue } from "@elizaos/core/client-public";
 
 export interface BundledVrmAsset {
   title: string;

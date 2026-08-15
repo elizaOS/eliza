@@ -113,9 +113,10 @@ describe("DOCUMENT search/list echo clamping", () => {
 		);
 		// Matching still runs on the raw query.
 		expect(service.searchDocuments).toHaveBeenCalledTimes(1);
-		expect(res.text).toBe(
-			"I couldn't find any documents matching that search.",
+		expect(res.text).toContain(
+			"No document fragments matching that search were returned",
 		);
+		expect(res.text).toContain("completeness beyond that window is unknown");
 		const query = (res.data as { query: string }).query;
 		expect(query).not.toContain("\n");
 		expect(query.length).toBeLessThanOrEqual(121);
@@ -137,8 +138,8 @@ describe("DOCUMENT search/list echo clamping", () => {
 		);
 		expect(res.text).not.toContain("EXTERNAL_UNTRUSTED_CONTENT");
 		expect(res.text).not.toContain("SECURITY NOTICE");
-		expect(res.text).toBe(
-			"I couldn't find any documents matching that search.",
+		expect(res.text).toContain(
+			"No document fragments matching that search were returned",
 		);
 	});
 
@@ -166,9 +167,44 @@ describe("DOCUMENT search/list echo clamping", () => {
 			undefined,
 			options({ action: "search", query: "launch notes" }),
 		);
-		expect(res.text).toBe(
-			'I couldn\'t find any documents matching "launch notes".',
+		expect(res.text).toContain(
+			'No document fragments matching "launch notes" were returned',
 		);
+		expect(res.text).not.toContain("whole store");
+	});
+
+	it("reports overflow only within the bounded retrieved window", async () => {
+		const service = makeService();
+		service.searchDocuments.mockResolvedValueOnce(
+			Array.from({ length: 3 }, (_, index) => ({
+				id: `00000000-0000-0000-0000-0000000000f${index}` as UUID,
+				content: { text: `fragment ${index}` },
+				metadata: { tags: ["launch"] },
+			})),
+		);
+		const res = await documentAction.handler(
+			makeRuntime(service),
+			makeMessage(""),
+			undefined,
+			options({
+				action: "search",
+				query: "launch",
+				tags: ["launch"],
+				limit: 2,
+			}),
+		);
+		const scope = (res.data as { scope: Record<string, unknown> }).scope;
+		expect(scope).toMatchObject({
+			retrieved: 3,
+			matchedInWindow: 3,
+			shown: 2,
+			limit: 2,
+			hasMoreInWindow: true,
+			retrievalCompleteness: "unknown_beyond_ranked_window",
+			filtersApplied: ["tags"],
+		});
+		expect(res.text).toContain("More filtered matches exist within");
+		expect(res.text).toContain("completeness beyond that window is unknown");
 	});
 
 	it("projects transcript audio anchors into planner-facing search results", async () => {

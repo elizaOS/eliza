@@ -109,6 +109,21 @@ export const agentSandboxes = pgTable(
     lifecycle_execution_generation: uuid("lifecycle_execution_generation"),
     deletion_attempt_id: uuid("deletion_attempt_id"),
     deletion_started_at: timestamp("deletion_started_at", { withTimezone: true }),
+    /** Lifecycle state captured when a reversible deletion generation begins. */
+    deletion_previous_status: text("deletion_previous_status").$type<AgentSandboxStatus>(),
+    /** Billing state captured with `deletion_previous_status`; restored atomically on cancel. */
+    deletion_previous_billing_status: text(
+      "deletion_previous_billing_status",
+    ).$type<AgentBillingStatus>(),
+    /** Billing-warning receipt paired with the prior billing state. */
+    deletion_previous_shutdown_warning_sent_at: timestamp(
+      "deletion_previous_shutdown_warning_sent_at",
+      { withTimezone: true },
+    ),
+    /** Scheduled billing shutdown receipt paired with the prior billing state. */
+    deletion_previous_scheduled_shutdown_at: timestamp("deletion_previous_scheduled_shutdown_at", {
+      withTimezone: true,
+    }),
     /**
      * Whether THIS deletion generation still owns one counted slot in
      * `docker_nodes.allocated_count`, so the slot is released exactly once no
@@ -152,6 +167,23 @@ export const agentSandboxes = pgTable(
     database_error: text("database_error"),
     snapshot_id: text("snapshot_id"),
     last_backup_at: timestamp("last_backup_at", { withTimezone: true }),
+    /**
+     * When a scheduled snapshot last ATTEMPTED to capture this agent —
+     * success, failure, or capability skip. `last_backup_at` stays
+     * success-only so staleness detection remains honest; this column exists
+     * so the sweep can distinguish "never tried" from "tried and cannot"
+     * (#15783 Phase 1).
+     */
+    last_backup_attempt_at: timestamp("last_backup_attempt_at", { withTimezone: true }),
+    /**
+     * Set when the last auto snapshot attempt was skipped because the agent
+     * image does not serve `POST /api/snapshot` (the
+     * SNAPSHOT_ENDPOINT_UNSUPPORTED sentinel). Cleared on any successful
+     * snapshot. While set, the scheduled sweep only re-probes the row at a
+     * slow cadence instead of letting it permanently occupy the capped
+     * due-set window and starve backup-capable agents (#15783).
+     */
+    backup_unsupported_reason: text("backup_unsupported_reason"),
     last_heartbeat_at: timestamp("last_heartbeat_at", { withTimezone: true }),
     error_message: text("error_message"),
     error_count: integer("error_count").notNull().default(0),
