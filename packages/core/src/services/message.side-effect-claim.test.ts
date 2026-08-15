@@ -389,6 +389,121 @@ describe("setup-completion claims (#16941)", () => {
 	});
 });
 
+describe("multilingual completed-side-effect claims (#17027 AC7)", () => {
+	it("matches fabricated confirmations in the shipped keyword locales", () => {
+		// es
+		expect(
+			replyClaimsCompletedSideEffect(
+				"¡Listo! He creado dos recordatorios para el 27 y el 28 a las 9am.",
+			),
+		).toBe(true);
+		expect(
+			replyClaimsCompletedSideEffect(
+				"Tus recordatorios ya están guardados para mañana.",
+			),
+		).toBe(true);
+		// pt
+		expect(
+			replyClaimsCompletedSideEffect(
+				"Pronto — criei os lembretes para segunda e terça às 9h.",
+			),
+		).toBe(true);
+		expect(
+			replyClaimsCompletedSideEffect("Seus lembretes ficaram agendados."),
+		).toBe(true);
+		// ko
+		expect(
+			replyClaimsCompletedSideEffect("알림 설정했어요. 매일 9시예요."),
+		).toBe(true);
+		expect(replyClaimsCompletedSideEffect("일정을 저장해 뒀습니다.")).toBe(
+			true,
+		);
+		// vi
+		expect(
+			replyClaimsCompletedSideEffect(
+				"Đã tạo lời nhắc cho ngày 27 lúc 9 giờ sáng.",
+			),
+		).toBe(true);
+		expect(
+			replyClaimsCompletedSideEffect("Mình đã đặt lịch hẹn cho bạn rồi."),
+		).toBe(true);
+		// tl (Taglish: English noun gate admits it, English claims do not)
+		expect(
+			replyClaimsCompletedSideEffect(
+				"Na-set ko na ang reminder mo para bukas.",
+			),
+		).toBe(true);
+		expect(
+			replyClaimsCompletedSideEffect("Naka-schedule na ang paalala mo."),
+		).toBe(true);
+		// zh-CN
+		expect(
+			replyClaimsCompletedSideEffect("已经为你创建了提醒，每天早上9点。"),
+		).toBe(true);
+		expect(replyClaimsCompletedSideEffect("提醒设置好了！")).toBe(true);
+	});
+
+	it("passes multilingual denials and not-yet states through", () => {
+		expect(
+			replyClaimsCompletedSideEffect(
+				"No he creado ningún recordatorio todavía.",
+			),
+		).toBe(false);
+		expect(
+			replyClaimsCompletedSideEffect("Ainda não criei os lembretes."),
+		).toBe(false);
+		expect(replyClaimsCompletedSideEffect("알림 설정 안 했어요.")).toBe(false);
+		expect(
+			replyClaimsCompletedSideEffect("Chưa đặt lịch — bạn muốn giờ nào?"),
+		).toBe(false);
+		expect(
+			replyClaimsCompletedSideEffect("Hindi ko pa na-set ang reminder mo."),
+		).toBe(false);
+		expect(replyClaimsCompletedSideEffect("还没设置提醒。要现在设置吗？")).toBe(
+			false,
+		);
+	});
+
+	it("passes multilingual offers and questions through", () => {
+		expect(
+			replyClaimsCompletedSideEffect(
+				"¿Quieres que cree un recordatorio para mañana?",
+			),
+		).toBe(false);
+		expect(
+			replyClaimsCompletedSideEffect(
+				"Quer que eu crie um lembrete para amanhã?",
+			),
+		).toBe(false);
+		expect(replyClaimsCompletedSideEffect("알림 설정할까요?")).toBe(false);
+		expect(
+			replyClaimsCompletedSideEffect("Bạn có muốn mình tạo lời nhắc không?"),
+		).toBe(false);
+		expect(replyClaimsCompletedSideEffect("要我帮你设置提醒吗？")).toBe(false);
+		// A completion shape inside a question sentence is an offer/confirm ask,
+		// not a report — full-width "？" must gate it like ASCII "?".
+		expect(replyClaimsCompletedSideEffect("提醒设置好了吗？")).toBe(false);
+	});
+
+	it("passes multilingual descriptions of existing state and ordinary language through", () => {
+		// Existing-state descriptions (the "is scheduled for Tuesday" twins).
+		expect(
+			replyClaimsCompletedSideEffect(
+				"Tu cita está agendada para el martes a las 3pm.",
+			),
+		).toBe(false);
+		expect(
+			replyClaimsCompletedSideEffect(
+				"Sua consulta está agendada para terça às 15h.",
+			),
+		).toBe(false);
+		// Ordinary language without a schedulable noun never fires.
+		expect(replyClaimsCompletedSideEffect("La capital es París.")).toBe(false);
+		expect(replyClaimsCompletedSideEffect("좋은 아침이에요!")).toBe(false);
+		expect(replyClaimsCompletedSideEffect("今天天气很好。")).toBe(false);
+	});
+});
+
 describe("replyClaimsEmptyTrackedWorkState", () => {
 	it("matches the live #17058 fabricated empty-day reply", () => {
 		expect(replyClaimsEmptyTrackedWorkState(FABRICATED_EMPTY_DAY_REPLY)).toBe(

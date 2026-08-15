@@ -54,14 +54,146 @@ const SIDE_EFFECT_SUBJECT_NOUN_PATTERN =
 // True when the sentence containing the match (scanning forward from the
 // match) terminates in "?" — the shape of a consent-seeking offer or a
 // clarifying question ("I set reminders in the morning usually — should I?").
+// Full-width CJK punctuation ("？" / "。" / "！") participates so the
+// multilingual tier gates offers like "设置好了吗？" the same way.
 function sideEffectClaimSentenceIsQuestion(
 	text: string,
 	fromIndex: number,
 ): boolean {
 	for (let i = fromIndex; i < text.length; i += 1) {
 		const ch = text[i];
-		if (ch === "?") return true;
-		if (ch === "." || ch === "!" || ch === "\n") return false;
+		if (ch === "?" || ch === "？") return true;
+		if (ch === "." || ch === "!" || ch === "。" || ch === "！" || ch === "\n")
+			return false;
+	}
+	return false;
+}
+
+/**
+ * Multilingual completed-claim shapes for the locales the product ships
+ * keyword translations for (packages/shared/src/i18n/keywords: es, ko, pt,
+ * tl, vi, zh-CN). The send-boundary gates are receipt-based and therefore
+ * language-independent whenever a mutation-capable action ran; this tier only
+ * closes the zero-tool hole — a fabricated "¡Guardado!"/"已保存" with no tool
+ * call — where wording is the ONLY available signal (#17027 AC7).
+ *
+ * Each rule keeps the English tier's precision discipline: a claim fires only
+ * when (a) the text names a schedulable/saved subject noun, (b) a perfective
+ * completion shape matches, (c) the immediately preceding words are not a
+ * negation/subordination lead, and (d) the containing sentence is not a
+ * question. Romance perfective participles ("creado"/"criei") cannot follow
+ * modals or subjunctive offer forms ("¿Quieres que cree…?"), so the offer
+ * false-positive class that plagued English "set" (#16966) is structurally
+ * absent; the negation leads carry the denial cases ("no he creado…",
+ * "hindi ko pa na-set…").
+ */
+interface LocaleSideEffectClaimRule {
+	/** BCP-47-ish tag, for maintenance only. */
+	readonly locale: string;
+	/** Schedulable/saved subject nouns; gate before any claim pattern runs. */
+	readonly nouns: RegExp;
+	/** Perfective completed-side-effect shapes (global flags for matchAll). */
+	readonly claims: readonly RegExp[];
+	/** Prefix shapes that turn the match into a denial/hypothetical. */
+	readonly negationLead?: RegExp;
+}
+
+const LOCALE_SIDE_EFFECT_CLAIM_RULES: readonly LocaleSideEffectClaimRule[] = [
+	{
+		locale: "es",
+		nouns:
+			/\b(?:recordatorios?|alarmas?|tareas?|citas?|calendario|rutinas?|hábitos?|habitos?|metas?|seguimientos?|pendientes?|horarios?)\b/i,
+		claims: [
+			// "He creado…", "Ya he guardado…", "Acabo de programar…"
+			/\b(?:he|acabo\s+de)\s+(?:(?:ya|justo)\s+)?(?:cread[oa]|guardad[oa]|programad[oa]|agendad[oa]|configurad[oa]|añadid[oa]|anotad[oa]|registrad[oa]|programar|agendar|guardar|crear|configurar|añadir|anotar|registrar)\b/giu,
+			// "Ya está guardado", "Tus recordatorios quedaron programados" — the
+			// change-of-state shapes only. Plain "está agendada para el martes"
+			// describes existing state (the English "is scheduled for Tuesday"
+			// twin) and must pass through.
+			/\b(?:ya\s+(?:está|están)|queda|quedan|quedó|quedaron)\s+(?:guardad[oa]s?|programad[oa]s?|agendad[oa]s?|configurad[oa]s?|cread[oa]s?|anotad[oa]s?)\b/giu,
+		],
+		negationLead: /\b(?:no|aún\s+no|todavía\s+no|nunca)\s+$/iu,
+	},
+	{
+		locale: "pt",
+		nouns:
+			/\b(?:lembretes?|alarmes?|tarefas?|consultas?|compromissos?|calendário|calendario|rotinas?|hábitos?|habitos?|metas?|agendamentos?|pendências?|pendencias?|horários?|horarios?)\b/i,
+		claims: [
+			// "Criei…", "Já salvei…", "Acabei de agendar…"
+			/\b(?:(?:eu\s+)?(?:já\s+)?(?:criei|salvei|guardei|agendei|programei|configurei|adicionei|anotei|registrei)|acabei\s+de\s+(?:criar|salvar|guardar|agendar|programar|configurar|adicionar|anotar|registrar))\b/giu,
+			// "Já está salvo", "Seus lembretes ficaram agendados" — change-of-state
+			// shapes only; plain "está agendada para terça" describes existing
+			// state and must pass through.
+			/\b(?:já\s+(?:está|estão)|ficou|ficaram)\s+(?:salv[oa]s?|guardad[oa]s?|agendad[oa]s?|programad[oa]s?|configurad[oa]s?|criad[oa]s?)\b/giu,
+		],
+		negationLead: /\b(?:não|nao|ainda\s+não|ainda\s+nao|nunca)\s+$/iu,
+	},
+	{
+		locale: "ko",
+		nouns: /(?:알림|리마인더|일정|할\s?일|습관|목표|예약|미리\s?알림|스케줄)/,
+		claims: [
+			// "알림 설정했어요", "일정을 저장해 뒀습니다", "예약해 놨어"
+			/(?:저장|설정|예약|등록|추가|생성)(?:을|를)?\s*(?:해\s?뒀|해\s?놨|했)/g,
+			// "일정 잡았어요"
+			/일정(?:을|를)?\s*잡았/g,
+		],
+		negationLead: /(?:안|못)\s*$/,
+	},
+	{
+		locale: "vi",
+		nouns:
+			/\b(?:lời\s+nhắc|nhắc\s+nhở|lịch(?:\s+hẹn)?|công\s+việc|thói\s+quen|mục\s+tiêu|báo\s+thức|cuộc\s+hẹn)\b/iu,
+		claims: [
+			// "Đã lưu…", "Mình đã đặt lịch…", "Đã tạo nhắc nhở…" — JS \b is
+			// ASCII-only and never matches before "đ", so the left edge is
+			// anchored on start-of-text/whitespace instead.
+			/(?:^|\s)đã\s+(?:lưu|tạo|đặt(?:\s+lịch)?|lên\s+lịch|thêm|cài(?:\s+đặt)?|ghi(?:\s+lại)?|hẹn)\b/giu,
+		],
+		// "chưa"/"sẽ" shapes don't contain "đã"; guard the explicit denial "đã
+		// không lưu" and hypothetical "nếu … đã".
+		negationLead: /\b(?:không|chưa|nếu)\s*$/iu,
+	},
+	{
+		locale: "tl",
+		nouns:
+			/\b(?:paalala|reminders?|iskedyul|schedules?|gawain|alarmas?|alarms?|layunin|appointments?|tasks?)\b/i,
+		claims: [
+			// "Na-set ko na ang reminder", "Nai-save ko na", "Ginawa ko na…"
+			/\b(?:na[- ]?(?:set|save|schedule)|nai[- ]?(?:set|save|schedule)|ginawa|inilagay|idinagdag|itinakda|naitakda|nailagay)\s+ko\s+na\b/gi,
+			// "Naka-schedule na ang paalala mo"
+			/\bnaka[- ]?(?:set|save|schedule|iskedyul)\s+na\b/gi,
+		],
+		negationLead: /\b(?:hindi|di|wala)\s+[^.!?\n]{0,16}$/i,
+	},
+	{
+		locale: "zh-CN",
+		nouns: /(?:提醒|任务|日程|闹钟|习惯|目标|待办|日历|预约|打卡)/,
+		claims: [
+			// "已保存"/"已经为你创建了提醒"
+			/已(?:经)?(?:为(?:你|您))?(?:帮(?:你|您))?(?:保存|创建|设置|安排|添加|记录|预约)/g,
+			// "设置好了"/"保存好了"
+			/(?:保存|创建|设置|安排|添加|记录|预约)好了/g,
+		],
+		negationLead: /(?:还没(?:有)?|没有|尚未|如果)\s*$/,
+	},
+];
+
+/**
+ * True when the reply asserts a completed scheduling/save side effect in one
+ * of the shipped non-English locales. Same contract as the English tiers:
+ * offers, questions, denials, and ordinary chat must pass through.
+ */
+function replyClaimsCompletedSideEffectMultilingual(text: string): boolean {
+	for (const rule of LOCALE_SIDE_EFFECT_CLAIM_RULES) {
+		if (!rule.nouns.test(text)) continue;
+		for (const claim of rule.claims) {
+			for (const match of text.matchAll(claim)) {
+				const prefix = text.slice(0, match.index);
+				if (rule.negationLead?.test(prefix)) continue;
+				if (sideEffectClaimSentenceIsQuestion(text, match.index)) continue;
+				return true;
+			}
+		}
 	}
 	return false;
 }
@@ -80,7 +212,9 @@ function sideEffectClaimSentenceIsQuestion(
 export function replyClaimsCompletedSideEffect(reply: string): boolean {
 	const text = reply.trim();
 	if (!text) return false;
-	if (!SIDE_EFFECT_SUBJECT_NOUN_PATTERN.test(text)) return false;
+	if (!SIDE_EFFECT_SUBJECT_NOUN_PATTERN.test(text)) {
+		return replyClaimsCompletedSideEffectMultilingual(text);
+	}
 	if (STATE_SIDE_EFFECT_CLAIM_PATTERN.test(text)) return true;
 	for (const match of text.matchAll(PERFECTIVE_SIDE_EFFECT_CLAIM_PATTERN)) {
 		if (
@@ -95,7 +229,11 @@ export function replyClaimsCompletedSideEffect(reply: string): boolean {
 		if (sideEffectClaimSentenceIsQuestion(text, match.index)) continue;
 		return true;
 	}
-	return false;
+	// Mixed-language replies (Taglish "Na-set ko na ang reminder mo") satisfy
+	// the English noun gate without matching any English claim shape, so the
+	// multilingual tier gets the final look regardless of which gate admitted
+	// the text.
+	return replyClaimsCompletedSideEffectMultilingual(text);
 }
 
 // Read-side twin of the completed-side-effect patterns above: assertions that
