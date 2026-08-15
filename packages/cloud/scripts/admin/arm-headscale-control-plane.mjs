@@ -680,7 +680,7 @@ validate_retirable_legacy_vhost() {
     echo "legacy Headscale vhost ownership no longer matches the reviewed two-listener contract"
     return 1
   fi
-  legacy_upgrade_map_external_references=$(printf '%s\\n' "$loaded_nginx_config" \\
+  legacy_upgrade_map_external_reference_profile=$(printf '%s\\n' "$loaded_nginx_config" \\
     | awk -v target="$HS_RETIRABLE_LEGACY_VHOST" \\
         -v map_output="$legacy_upgrade_map_output_variable" '
       BEGIN {
@@ -695,12 +695,23 @@ validate_retirable_legacy_vhost() {
         next
       }
       map_output != "" && config_file != target \\
-          && ($0 ~ plain_output_pattern || $0 ~ braced_output_pattern) { count += 1 }
-      END { print count + 0 }
-    ')
+          && ($0 ~ plain_output_pattern || $0 ~ braced_output_pattern) {
+        references_by_path[config_file] += 1
+      }
+      END {
+        for (path in references_by_path) {
+          printf "%s\\t%d\\n", path, references_by_path[path]
+        }
+      }
+    ' | sort)
+  legacy_upgrade_map_external_references=$(printf '%s\\n' \\
+    "$legacy_upgrade_map_external_reference_profile" \\
+    | awk -F '\\t' '{ count += $2 } END { print count + 0 }')
   if [ "$legacy_has_upgrade_map" = "true" ] \\
       && [ "$legacy_upgrade_map_external_references" -ne 0 ]; then
-    echo "legacy Headscale upgrade-map output is referenced outside the reviewed file"
+    echo "legacy Headscale upgrade-map output is referenced outside the reviewed file (paths and counts only):"
+    printf '%s\\n' "$legacy_upgrade_map_external_reference_profile" \\
+      | awk -F '\\t' '{ printf "path=%s references=%d\\n", $1, $2 }'
     return 1
   fi
 }

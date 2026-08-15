@@ -105,7 +105,10 @@ equivalent single or double quotes. The source must be exactly `http_upgrade`;
 the output may use a different valid nginx variable name only when `nginx -T`
 proves it has no reference outside the exact reviewed file. Mismatched quotes,
 an altered source, additional tokens or entries, an intervening header line,
-and every external output reference remain fail-closed. The inspection reports file metadata,
+and every external output reference remain fail-closed. When an external
+reference blocks retirement, the diagnostic reports only its loaded nginx
+config path and reference count; it never prints the variable or directive
+value. The inspection reports file metadata,
 SHA-256, directive-name counts, and the validated server-block/name/map shape
 for review without printing directive literal values. If the map is rejected,
 only structural counts are printed so operators can distinguish formatting

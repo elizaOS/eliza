@@ -1086,6 +1086,10 @@ proxy_set_header Connection $connection_upgrade;
     expect(externallyReferenced.stdout).toContain(
       "upgrade-map output is referenced outside the reviewed file",
     );
+    expect(externallyReferenced.stdout).toContain(
+      "path=/etc/nginx/conf.d/unrelated.conf references=1",
+    );
+    expect(externallyReferenced.stdout).not.toContain("$connection_upgrade");
 
     const customExternalOutputVariable = "$headscale_connection_upgrade";
     const customOutputExternallyReferenced = runLegacyVhostValidation({
@@ -1103,10 +1107,13 @@ proxy_set_header Connection ${customExternalOutputVariable};
     expect(customOutputExternallyReferenced.stdout).toContain(
       "upgrade-map output is referenced outside the reviewed file",
     );
+    expect(customOutputExternallyReferenced.stdout).toContain(
+      "path=/etc/nginx/conf.d/unrelated-custom.conf references=1",
+    );
     expect(customOutputExternallyReferenced.stdout).not.toContain(
       customExternalOutputVariable,
     );
-  }, 10_000);
+  }, 60_000);
 
   test("profiles rejected map headers without exposing their tokens", () => {
     const otherOutputVariable = runLegacyVhostValidation({
