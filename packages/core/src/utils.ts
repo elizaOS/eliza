@@ -940,10 +940,13 @@ export function parseJSONObjectFromText(
 ): Record<string, unknown> | null {
 	try {
 		const result = extractAndParseJSONObjectFromText(text);
-		if (!result) {
-			return null;
-		}
-		if (Array.isArray(result)) {
+		// JSON5 parses bare scalars ("42", '"hi"', "true") as valid JSON, and
+		// those are truthy and non-array, so screen on the type itself.
+		if (
+			typeof result !== "object" ||
+			result === null ||
+			Array.isArray(result)
+		) {
 			return null;
 		}
 		return result;

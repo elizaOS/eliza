@@ -54,6 +54,16 @@ describe("parseJSONObjectFromText", () => {
 		expect(parseJSONObjectFromText("[1,2,3]")).toBeNull(); // arrays are not objects
 		expect(parseJSONObjectFromText("no json")).toBeNull();
 	});
+
+	it("returns null for scalars, which JSON5 parses as valid JSON", () => {
+		expect(parseJSONObjectFromText("42")).toBeNull();
+		expect(parseJSONObjectFromText("true")).toBeNull();
+		expect(parseJSONObjectFromText("null")).toBeNull();
+		// A model reply wrapped in quotes is a JSON string, not an object.
+		expect(
+			parseJSONObjectFromText('"Sure - I added milk to your shopping list."'),
+		).toBeNull();
+	});
 });
 
 describe("parseBooleanFromText", () => {
