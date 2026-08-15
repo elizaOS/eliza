@@ -408,6 +408,9 @@ export function normalizeCadence(
   };
 
   switch (cadence.kind) {
+    case "unscheduled":
+      // Explicitly undated: no due time, no windows, no visibility math.
+      return { kind: "unscheduled" };
     case "once":
       return withVisibility({
         kind: "once",

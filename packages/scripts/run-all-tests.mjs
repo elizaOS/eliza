@@ -71,7 +71,12 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-
+import {
+  appendCapturedTestOutput,
+  createCapturedTestOutput,
+  formatCapturedTestOutput,
+  retainedCapturedTestOutput,
+} from "./lib/captured-test-output.mjs";
 import { MAX_JUNIT_BYTES, parseJunitSummary } from "./lib/junit-summary.mjs";
 import {
   computeRealLiveAccounting,
@@ -419,7 +424,6 @@ const TEST_FILE_SKIP_DIRS = new Set([
   "node_modules",
   "target",
 ]);
-const MAX_CAPTURED_OUTPUT_CHARS = 16_000;
 const ADDITIONAL_PACKAGE_DIRS = [
   path.join(repoRoot, "packages", "app-core", "platforms", "electrobun"),
 ];
@@ -729,14 +733,6 @@ function collectScriptsToRun(scripts) {
   }
 
   return scriptNames;
-}
-
-function appendCapturedOutput(current, chunk) {
-  const next = `${current}${chunk}`;
-  if (next.length <= MAX_CAPTURED_OUTPUT_CHARS) {
-    return next;
-  }
-  return next.slice(-MAX_CAPTURED_OUTPUT_CHARS);
 }
 
 function outputIndicatesNoTests(output) {
@@ -1123,7 +1119,7 @@ function runScript(
         stdio: ["ignore", "pipe", "pipe"],
       },
     );
-    let capturedOutput = "";
+    const capturedOutput = createCapturedTestOutput();
     // A non-zero exit may only be reclassified as a benign "no tests" skip when
     // BOTH hold:
     //   1. the command is a single vitest/bun-test invocation, AND
@@ -1144,18 +1140,20 @@ function runScript(
       if (stream) {
         process.stdout.write(chunk);
       }
-      capturedOutput = appendCapturedOutput(
+      appendCapturedTestOutput(
         capturedOutput,
         chunk.toString("utf8"),
+        "stdout",
       );
     });
     child.stderr?.on("data", (chunk) => {
       if (stream) {
         process.stderr.write(chunk);
       }
-      capturedOutput = appendCapturedOutput(
+      appendCapturedTestOutput(
         capturedOutput,
         chunk.toString("utf8"),
+        "stderr",
       );
     });
 
@@ -1188,9 +1186,9 @@ function runScript(
           });
         } catch (error) {
           // error-policy:J2 add the package identity before rejecting invalid evidence.
-          if (!stream && capturedOutput) {
+          if (!stream && retainedCapturedTestOutput(capturedOutput)) {
             process.stdout.write(
-              `\n[eliza-test] ----- captured output: ${label} -----\n${capturedOutput}\n[eliza-test] ----- end output: ${label} -----\n`,
+              formatCapturedTestOutput(capturedOutput, label),
             );
           }
           reject(
@@ -1201,7 +1199,10 @@ function runScript(
         }
         return;
       }
-      if (canSkipNoTests && shouldSkipAsNoTests(capturedOutput)) {
+      if (
+        canSkipNoTests &&
+        shouldSkipAsNoTests(retainedCapturedTestOutput(capturedOutput))
+      ) {
         resolve({
           skipped: true,
           skipReason: "no test files found",
@@ -1209,10 +1210,8 @@ function runScript(
         });
         return;
       }
-      if (!stream && capturedOutput) {
-        process.stdout.write(
-          `\n[eliza-test] ----- captured output: ${label} -----\n${capturedOutput}\n[eliza-test] ----- end output: ${label} -----\n`,
-        );
+      if (!stream && retainedCapturedTestOutput(capturedOutput)) {
+        process.stdout.write(formatCapturedTestOutput(capturedOutput, label));
       }
       reject(
         new Error(
@@ -1242,20 +1241,11 @@ function runCloudTests() {
       stdio: ["ignore", "pipe", "pipe"],
     });
 
-    let capturedOutput = "";
     child.stdout?.on("data", (chunk) => {
       process.stdout.write(chunk);
-      capturedOutput = appendCapturedOutput(
-        capturedOutput,
-        chunk.toString("utf8"),
-      );
     });
     child.stderr?.on("data", (chunk) => {
       process.stderr.write(chunk);
-      capturedOutput = appendCapturedOutput(
-        capturedOutput,
-        chunk.toString("utf8"),
-      );
     });
 
     child.on("error", reject);

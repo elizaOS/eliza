@@ -43,7 +43,7 @@ function gatewayBaseUrl(env: Bindings): string {
   return value.replace(/\/+$/, "");
 }
 
-function sharedReminderDispatcher(env: Bindings): ScheduledTaskDispatcher {
+export function sharedReminderDispatcher(env: Bindings): ScheduledTaskDispatcher {
   const secret = env.GATEWAY_INTERNAL_SECRET;
   if (!secret) {
     throw new Error("GATEWAY_INTERNAL_SECRET is not configured");
@@ -111,6 +111,15 @@ function sharedReminderDispatcher(env: Bindings): ScheduledTaskDispatcher {
       };
       const acceptedAt =
         typeof result.acceptedAt === "string" ? result.acceptedAt : new Date().toISOString();
+      if (result.acceptanceUnknown === true) {
+        return {
+          ok: false,
+          reason: "transport_error",
+          userActionable: true,
+          acceptance: "unknown",
+          message: "Reminder delivery could not be confirmed; it was not recorded as fired.",
+        };
+      }
       return {
         ok: true,
         channelKey: "current_dm",

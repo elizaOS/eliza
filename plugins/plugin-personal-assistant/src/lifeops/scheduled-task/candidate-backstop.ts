@@ -44,6 +44,11 @@ const SCHEDULED_TASK_ACTION_NAMES: readonly string[] = [
   // recovery target (#17028).
   "OWNER_ROUTINES",
   "OWNER_REMINDERS",
+  // Owner todo reads/writes: the matcher already covers "todo" phrasing, and
+  // the recovery path needs the reader as a target so a failed VIEWS detour
+  // on "list my personal todos" can retry the tier-A owner surface instead of
+  // finishing on the failure (read-side of fead478cfa).
+  "OWNER_TODOS",
 ];
 
 /**

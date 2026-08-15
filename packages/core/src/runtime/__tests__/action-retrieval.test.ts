@@ -709,6 +709,116 @@ describe("action catalogue and retrieval", () => {
 		]);
 	});
 
+	// Todo-shaped invented names must hint both todo owners: the
+	// personal-assistant umbrella and plugin-todos' TODO parent. Deployments
+	// load one or the other; the resolver keeps whichever is registered.
+	it("hints todo candidates at OWNER_TODOS and TODO", () => {
+		for (const candidate of [
+			"ADD_TODO",
+			"CREATE_TODO",
+			"TODO_CREATE",
+			"TODOS_CREATE",
+			"TODO_ADD",
+			"NEW_TODO",
+			"SAVE_TODO",
+			"TODOS",
+			"TODO_LIST",
+			"LIST_TODOS",
+			"GET_TODOS",
+			"SHOW_TODOS",
+			"READ_TODOS",
+			"USER_TODOS_READ",
+			"COMPLETE_TODO",
+			"TODO_COMPLETE",
+			"DELETE_TODO",
+			"REMOVE_TODO",
+		]) {
+			expect(parentAliasesForCandidateAction(candidate)).toEqual([
+				"OWNER_TODOS",
+				"TODO",
+			]);
+		}
+		// Bare TODO hints only the owner umbrella: when plugin-todos is loaded
+		// its TODO action resolves directly by name before aliases apply.
+		expect(parentAliasesForCandidateAction("TODO")).toEqual(["OWNER_TODOS"]);
+	});
+
+	it("retains both registered todo owners through production retrieval", () => {
+		const catalog = buildActionCatalog([
+			{
+				name: "OWNER_TODOS",
+				description: "Manage the owner's private LifeOps todos.",
+			},
+			{
+				name: "TODO",
+				description: "Manage the current user's standalone todo list.",
+			},
+		]);
+
+		for (const candidate of ["CREATE_TODO", "TODOS_CREATE"]) {
+			const response = retrieveActions({
+				catalog,
+				messageText: "add a todo to buy milk",
+				candidateActions: [candidate],
+			});
+
+			expect(response.query.parentActionHints).toEqual(["OWNER_TODOS", "TODO"]);
+			expect(response.results.map((result) => result.name)).toEqual(
+				expect.arrayContaining(["OWNER_TODOS", "TODO"]),
+			);
+		}
+	});
+
+	it("does not route non-financial budget language to owner finances", () => {
+		const catalog = buildActionCatalog([
+			{
+				name: "OWNER_FINANCES",
+				description: "Manage the owner's private financial records.",
+			},
+			{
+				name: "REPLY",
+				description:
+					"Reply to the user within the requested response constraints.",
+			},
+		]);
+		const response = retrieveActions({
+			catalog,
+			messageText: "keep this response within the token budget",
+			candidateActions: ["BUDGET"],
+		});
+
+		expect(response.query.parentActionHints).not.toContain("OWNER_FINANCES");
+		expect(response.results[0]?.name).toBe("REPLY");
+	});
+
+	it("hints alarm candidates at OWNER_ALARMS and TRIGGER", () => {
+		for (const candidate of [
+			"ADD_ALARM",
+			"SET_ALARM",
+			"CREATE_ALARM",
+			"ALARM_CREATE",
+			"WAKE_ME_UP",
+		]) {
+			expect(parentAliasesForCandidateAction(candidate)).toEqual([
+				"OWNER_ALARMS",
+				"TRIGGER",
+			]);
+		}
+	});
+
+	it("hints finance candidates at OWNER_FINANCES", () => {
+		for (const candidate of [
+			"FINANCE",
+			"SPENDING",
+			"SPENDING_SUMMARY",
+			"EXPENSES",
+		]) {
+			expect(parentAliasesForCandidateAction(candidate)).toEqual([
+				"OWNER_FINANCES",
+			]);
+		}
+	});
+
 	it("leaves non-permission candidates off the SETTINGS parent", () => {
 		// A bare person-scoped access revoke is BLOCK, not a settings write; view /
 		// app surface candidates keep their existing VIEWS/APP hints untouched.

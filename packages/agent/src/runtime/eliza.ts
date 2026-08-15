@@ -5851,6 +5851,12 @@ export async function startEliza(
         });
       }
     }
+    if (isProvisionedCloudContainer()) {
+      const { registerSharedCutoverReminderDispatcher } = await import(
+        "./shared-cutover-reminder-dispatch.ts"
+      );
+      registerSharedCutoverReminderDispatcher(runtime);
+    }
     abortSignal.throwIfAborted();
     await installServerSideWebSearchIfAvailable();
     abortSignal.throwIfAborted();
