@@ -16,6 +16,7 @@ type HydrateVoiceScope = (
   env: Bindings,
   claims: InternalElizaConversationFetchClaims,
   preloadedAgent?: SharedRuntimeAgent,
+  options?: { freshConversation?: boolean },
 ) => Promise<void>;
 
 interface ScheduleVoiceScopePrewarmOptions {
@@ -23,6 +24,7 @@ interface ScheduleVoiceScopePrewarmOptions {
   claims: InternalElizaConversationFetchClaims;
   env: Bindings;
   executionCtx: VoicePrewarmExecutionContext;
+  freshConversation?: boolean;
   hydrateScope?: HydrateVoiceScope;
 }
 
@@ -32,6 +34,7 @@ export function scheduleTwilioVoiceScopePrewarm({
   claims,
   env,
   executionCtx,
+  freshConversation,
   hydrateScope,
 }: ScheduleVoiceScopePrewarmOptions): Promise<void> {
   const prewarm = Promise.resolve()
@@ -40,7 +43,7 @@ export function scheduleTwilioVoiceScopePrewarm({
         hydrateScope ??
         (await import("../../../voice/session/lib/voice-agent-scope-hydration"))
           .hydrateVoiceSharedAgentScope;
-      await hydrate(env, claims, agent);
+      await hydrate(env, claims, agent, { freshConversation });
     })
     .catch((error) => {
       // error-policy:J7 this is a latency hint; the media session retains its
