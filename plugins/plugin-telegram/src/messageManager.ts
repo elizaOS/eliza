@@ -1003,6 +1003,7 @@ export class MessageManager {
             attachment.url,
             mediaType,
             attachment.description,
+            messageThreadId,
           );
         }),
       );
@@ -1199,6 +1200,7 @@ export class MessageManager {
     mediaPath: string,
     type: MediaType,
     caption?: string,
+    messageThreadId?: number | string,
   ): Promise<void> {
     try {
       const isUrl = /^(http|https):\/\//.test(mediaPath);
@@ -1226,7 +1228,10 @@ export class MessageManager {
 
       if (isUrl) {
         // Handle HTTP URLs
-        await sendFunction(ctx.chat.id, mediaPath, { caption });
+        await sendFunction(ctx.chat.id, mediaPath, {
+          caption,
+          message_thread_id: messageThreadId,
+        });
       } else {
         // Handle local file paths
         if (!fs.existsSync(mediaPath)) {
@@ -1239,7 +1244,11 @@ export class MessageManager {
           if (!ctx.chat) {
             throw new Error("sendMedia (file): ctx.chat is undefined");
           }
-          await sendFunction(ctx.chat.id, { source: fileStream }, { caption });
+          await sendFunction(
+            ctx.chat.id,
+            { source: fileStream },
+            { caption, message_thread_id: messageThreadId },
+          );
         } finally {
           fileStream.destroy();
         }
