@@ -102,6 +102,30 @@ const SENSITIVE_KEY_SUBSTRINGS: readonly string[] = [
 	"authorization",
 ];
 
+// Exact telemetry/schema controls whose names contain "token" but whose
+// values are counts, budgets, or correlation identifiers rather than
+// credentials. Keep this list deliberately closed: broad suffix rules would
+// accidentally exempt credential collections such as `accessTokens`.
+const NON_SECRET_TOKEN_METADATA_KEYS = new Set([
+	"cachecreationinputtokens",
+	"cachereadinputtokens",
+	"completiontokens",
+	"compactionthresholdtokens",
+	"contextwindowtokens",
+	"estimatedinputtokens",
+	"inputtokens",
+	"maxtokens",
+	"maxtokensomitted",
+	"outputtokens",
+	"prompttokens",
+	"reasoningtokens",
+	"reservetokens",
+	"tokencount",
+	"tokencountestimated",
+	"tokenid",
+	"totaltokens",
+]);
+
 /**
  * Whether an object key names a credential and its value must be fully masked.
  * Matches the substrings in {@link SENSITIVE_KEY_SUBSTRINGS} plus `token`
@@ -110,6 +134,10 @@ const SENSITIVE_KEY_SUBSTRINGS: readonly string[] = [
  */
 export function isSensitiveKeyName(key: string): boolean {
 	const lower = key.toLowerCase();
+	const normalized = lower.replace(/[_-]/g, "");
+	if (NON_SECRET_TOKEN_METADATA_KEYS.has(normalized)) {
+		return false;
+	}
 	if (SENSITIVE_KEY_SUBSTRINGS.some((needle) => lower.includes(needle))) {
 		return true;
 	}

@@ -8,6 +8,11 @@ import { ElizaError } from "../errors";
 import { computeCallCostUsd } from "../features/trajectories/pricing";
 import { evaluatorSchema, evaluatorTemplate } from "../prompts/evaluator";
 import {
+	composeToolDiagnosticRedactor,
+	projectToolDiagnosticValue,
+	type ToolDiagnosticTextRedactor,
+} from "../security/tool-diagnostics";
+import {
 	emitStreamingHook,
 	getStreamingContext,
 	runWithStreamingContext,
@@ -94,11 +99,13 @@ export async function runEvaluator(
 	params: RunEvaluatorParams,
 ): Promise<EvaluatorOutput> {
 	const streamingContext = getStreamingContext();
+	const redactDiagnosticText = composeToolDiagnosticRedactor(params.runtime);
 	const EVALUATOR_MIN_TOOL_RESULT_CHARS = 2_000;
 	let toolResultCap = DEFAULT_MAX_KEPT_STEP_CHARS;
 	let renderedInput = renderEvaluatorModelInput({
 		context: params.context,
 		trajectory: params.trajectory,
+		redactText: redactDiagnosticText,
 	});
 	let modelInputBudget = buildModelInputBudget({
 		messages: renderedInput.messages,
@@ -123,6 +130,7 @@ export async function runEvaluator(
 			context: params.context,
 			trajectory: params.trajectory,
 			maxToolResultChars: toolResultCap,
+			redactText: redactDiagnosticText,
 		});
 		modelInputBudget = buildModelInputBudget({
 			messages: renderedInput.messages,
@@ -264,7 +272,10 @@ export async function runEvaluator(
 		),
 	);
 	await emitStreamingHook(streamingContext, "onEvaluation", {
-		evaluation: output,
+		evaluation: projectToolDiagnosticValue(
+			output,
+			redactDiagnosticText,
+		) as EvaluatorOutput,
 		messageId: streamingContext?.messageId,
 	});
 	await applyEvaluatorEffects(output, params.effects);
@@ -433,6 +444,7 @@ function renderEvaluatorModelInput(params: {
 	context: ContextObject;
 	trajectory: PlannerTrajectory;
 	template?: string;
+	redactText: ToolDiagnosticTextRedactor;
 	/**
 	 * Per-tool-result render cap (chars) applied via
 	 * `trajectoryStepsToMessages`. Defaults to `DEFAULT_MAX_KEPT_STEP_CHARS`
@@ -454,6 +466,7 @@ function renderEvaluatorModelInput(params: {
 	const stepMessages = trajectoryStepsToMessages(params.trajectory.steps, {
 		maxToolResultChars:
 			params.maxToolResultChars ?? DEFAULT_MAX_KEPT_STEP_CHARS,
+		redactText: params.redactText,
 	});
 	// Mirrors planner-loop: the evaluator stage instructions are template-derived
 	// (`evaluatorTemplate`) and structurally identical across calls. Marking

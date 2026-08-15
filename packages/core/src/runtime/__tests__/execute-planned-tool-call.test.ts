@@ -1070,8 +1070,14 @@ describe("executePlannedToolCall", () => {
 			expect(bounded.long).toMatch(/\.\.\.\[truncated\]$/);
 			expect(bounded.items).toHaveLength(251);
 			expect(bounded.items[250]).toEqual({ __truncatedItems: 50 });
-			expect(JSON.stringify(bounded.deep)).toContain("[MaxDepth]");
 		}
+		// Parameters and result cross the diagnostic projection before the JSON
+		// sanitizer, so over-deep subtrees collapse to the projection's mask at
+		// its (shallower) depth bound rather than the sanitizer's [MaxDepth].
+		expect(JSON.stringify(settlement.parameters.payload.deep)).toContain(
+			"[REDACTED]",
+		);
+		expect(JSON.stringify(settlement.result.data.deep)).toContain("[REDACTED]");
 		expect(settlement.success).toBe(true);
 	});
 

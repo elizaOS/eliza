@@ -297,10 +297,22 @@ describe("isSensitiveKeyName", () => {
 		}
 	});
 
-	it("does not flag benign keys, including tokenId", () => {
-		for (const key of ["userId", "count", "tokenId", "name", "url", "status"]) {
+	it("does not flag benign keys, including exact token telemetry fields", () => {
+		for (const key of [
+			"userId",
+			"count",
+			"tokenId",
+			"tokenCount",
+			"max_tokens",
+			"promptTokens",
+			"cacheReadInputTokens",
+			"name",
+			"url",
+			"status",
+		]) {
 			expect(isSensitiveKeyName(key)).toBe(false);
 		}
+		expect(isSensitiveKeyName("accessTokens")).toBe(true);
 	});
 });
 

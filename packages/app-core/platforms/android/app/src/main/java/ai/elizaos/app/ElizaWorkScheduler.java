@@ -24,6 +24,8 @@ final class ElizaWorkScheduler {
     static final String BACKGROUND_ENABLED_KEY = "eliza:background-enabled";
     static final String RUNTIME_MODE_KEY = "eliza:mobile-runtime-mode";
     static final String UNIQUE_WORK_NAME = "eliza.tasks.refresh";
+    private static final String OWNERSHIP_PREFS = "eliza-work-scheduler";
+    private static final String RUNTIME_STOPPED_KEY = "runtime-stopped";
 
     // Android caps periodic WorkManager intervals at a minimum of 15 minutes.
     private static final long PERIOD_MINUTES = 15L;
@@ -55,14 +57,37 @@ final class ElizaWorkScheduler {
      * Makes the desired state authoritative: exactly one periodic job for a
      * provisioned on-device runtime, and no job for every other state.
      */
-    static void reconcile(@NonNull Context context) {
+    static synchronized void reconcile(@NonNull Context context) {
         Decision decision = readDecision(context);
-        reconcileDecision(decision, new WorkManagerBackend(context.getApplicationContext()));
-        Log.i(
-            TAG,
-            "periodic wake " + (decision.shouldSchedule ? "scheduled" : "cancelled")
-                + " reason=" + decision.reason
-        );
+        applyDecision(context, decision);
+    }
+
+    /** Clears the stop tombstone only after the replacement credential is durable. */
+    static synchronized void credentialProvisioned(@NonNull Context context) {
+        boolean persisted = ownershipPrefs(context)
+            .edit()
+            .putBoolean(RUNTIME_STOPPED_KEY, false)
+            .commit();
+        if (!persisted) {
+            applyDecision(context, new Decision(false, "ownership-state-unavailable", null));
+            return;
+        }
+        applyDecision(context, readDecision(context));
+    }
+
+    /**
+     * Tombstones native ownership and cancels without consulting the removable
+     * token file, so failed token deletion cannot resurrect periodic work.
+     */
+    static synchronized void runtimeStopped(@NonNull Context context) {
+        boolean persisted = ownershipPrefs(context)
+            .edit()
+            .putBoolean(RUNTIME_STOPPED_KEY, true)
+            .commit();
+        if (!persisted) {
+            Log.w(TAG, "unable to persist stopped runtime ownership; cancelling in-process");
+        }
+        applyDecision(context, new Decision(false, "runtime-stopped", null));
     }
 
     static Decision readDecision(@NonNull Context context) {
@@ -73,11 +98,24 @@ final class ElizaWorkScheduler {
         return decide(
             isBackgroundEnabled(prefs),
             readString(prefs, RUNTIME_MODE_KEY),
-            ElizaAgentService.localAgentToken(context)
+            ElizaAgentService.localAgentToken(context),
+            ownershipPrefs(context).getBoolean(RUNTIME_STOPPED_KEY, false)
         );
     }
 
     static Decision decide(boolean backgroundEnabled, String runtimeMode, String deviceSecret) {
+        return decide(backgroundEnabled, runtimeMode, deviceSecret, false);
+    }
+
+    static Decision decide(
+        boolean backgroundEnabled,
+        String runtimeMode,
+        String deviceSecret,
+        boolean runtimeStopped
+    ) {
+        if (runtimeStopped) {
+            return new Decision(false, "runtime-stopped", null);
+        }
         if (!backgroundEnabled) {
             return new Decision(false, "background-disabled", null);
         }
@@ -98,6 +136,22 @@ final class ElizaWorkScheduler {
         } else {
             backend.cancel();
         }
+    }
+
+    private static SharedPreferences ownershipPrefs(Context context) {
+        return context.getApplicationContext().getSharedPreferences(
+            OWNERSHIP_PREFS,
+            Context.MODE_PRIVATE
+        );
+    }
+
+    private static void applyDecision(Context context, Decision decision) {
+        reconcileDecision(decision, new WorkManagerBackend(context.getApplicationContext()));
+        Log.i(
+            TAG,
+            "periodic wake " + (decision.shouldSchedule ? "scheduled" : "cancelled")
+                + " reason=" + decision.reason
+        );
     }
 
     static boolean isBackgroundEnabled(SharedPreferences prefs) {
