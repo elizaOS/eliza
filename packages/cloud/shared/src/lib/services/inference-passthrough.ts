@@ -74,7 +74,7 @@ export interface PassthroughUsage {
  * first) — absence is reported as absence, never as zero.
  */
 export interface PassthroughStreamMilestones {
-  /** First non-empty `data:` frame of any kind (the first SSE event). */
+  /** First successfully parsed JSON `data:` frame (malformed frames and `[DONE]` do not count). */
   firstEventMs: number | null;
   /** First delta carrying reasoning (`reasoning`, `reasoning_content`, or `thinking`). */
   firstReasoningMs: number | null;
