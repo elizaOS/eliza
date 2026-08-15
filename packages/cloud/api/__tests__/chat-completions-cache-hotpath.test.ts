@@ -365,12 +365,32 @@ test("cold dependency returns 503 before held hydration completes", async () => 
     throw new Error("chat route joined authoritative cache hydration");
   }
   expect(outcome.response.status).toBe(503);
+  expect(outcome.response.headers.get("Retry-After")).toBe("1");
   expect(background).toContain(hydration.promise);
   expect(generateText).not.toHaveBeenCalled();
   expect(admitAppInferenceCacheOnly).not.toHaveBeenCalled();
   expect(authoritativeAppLookup).not.toHaveBeenCalled();
   hydration.resolve();
   await Promise.all(background);
+});
+
+test("cold rate-limit policy returns a bounded retry contract", async () => {
+  enforceOrgRateLimit.mockRejectedValueOnce(
+    new rateLimitActual.OrgRateLimitCacheNotReadyError("warming", "miss"),
+  );
+  const background: Promise<unknown>[] = [];
+
+  const response = await handleChatCompletionsPOST(request(), {
+    executionCtx: executionCtx(background),
+  });
+
+  expect(response.status).toBe(503);
+  expect(response.headers.get("Retry-After")).toBe("1");
+  expect(await response.json()).toMatchObject({
+    error: { code: "rate_limit_cache_warming" },
+  });
+  expect(cacheOnlyAppLookup).not.toHaveBeenCalled();
+  expect(generateText).not.toHaveBeenCalled();
 });
 
 test("cold optional pool and model catalog hydrate off-path while platform inference dispatches", async () => {
@@ -419,6 +439,7 @@ test("cold pool remains retryable when no platform credential can dispatch", asy
   });
 
   expect(response.status).toBe(503);
+  expect(response.headers.get("Retry-After")).toBe("1");
   expect(await response.json()).toMatchObject({
     error: { code: "inference_dependency_cache_warming" },
   });

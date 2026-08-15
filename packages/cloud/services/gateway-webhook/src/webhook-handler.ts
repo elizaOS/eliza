@@ -688,6 +688,8 @@ async function sendPersonalSharedReply(
           retryAfterSeconds: null,
           retryDelayMs: 0,
           cloudServerTiming: response.headers.get("Server-Timing"),
+          cloudFailureStage: response.headers.get("X-Eliza-Failure-Stage"),
+          cloudFailureName: response.headers.get("X-Eliza-Failure-Name"),
         });
         authHeader = await reauth();
         continue;
@@ -727,6 +729,8 @@ async function sendPersonalSharedReply(
           : null,
         retryDelayMs,
         cloudServerTiming: response.headers.get("Server-Timing"),
+        cloudFailureStage: response.headers.get("X-Eliza-Failure-Stage"),
+        cloudFailureName: response.headers.get("X-Eliza-Failure-Name"),
       };
       if (response.ok) {
         logger.info("Personal Shared Cloud attempt completed", attemptContext);

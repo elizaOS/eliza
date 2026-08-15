@@ -154,6 +154,7 @@ function retryableWarmingResponse(c: AppContext, area: string): Response {
   return c.json(
     { error: `${area} authorization is warming. Retry shortly.` },
     503,
+    { "Retry-After": "1" },
   );
 }
 

@@ -4,6 +4,7 @@
 
 import Decimal from "decimal.js";
 import { appEarningsRepository } from "../../db/repositories/app-earnings";
+import * as appsRepositoryModule from "../../db/repositories/apps";
 import { type App, appsRepository } from "../../db/repositories/apps";
 import { organizationsRepository } from "../../db/repositories/organizations";
 import { usersRepository } from "../../db/repositories/users";
@@ -27,6 +28,11 @@ import {
   InsufficientCreditsError,
   MIN_RESERVATION,
 } from "./credits";
+import {
+  getAppByIdHydrationGeneration,
+  invalidateInferenceAppByIdState,
+  setInferenceAppById,
+} from "./inference-app-memory-cache";
 import { redeemableEarningsService } from "./redeemable-earnings";
 
 /**
@@ -67,20 +73,45 @@ interface NoneMarker {
 }
 
 /**
- * Invalidate the cached app row + markup config after a mutation that touches
- * fields read on the LLM hot path (monetization toggle, markup %, earnings
- * counters, etc.). Direct cache.del to avoid a circular dependency on
- * appsService — both modules sit in the same layer.
+ * Publish the authoritative app row after a mutation that touches fields read
+ * on the LLM hot path (monetization toggle, markup %). A bare eviction here
+ * manufactured a cold cache-only miss: the Worker's next inference for the app
+ * returned a warming 503 even though the mutation had authoritative state in
+ * hand (#17007). The mutation therefore writes the fresh post-commit row
+ * through under the hydration generation fence; derived keys (costMarkup,
+ * bySlug) are still evicted and rehydrate lazily off the hot path. Direct
+ * cache access avoids a circular dependency on appsService — both modules sit
+ * in the same layer and share the fence via inference-app-memory-cache.
  */
-async function invalidateAppCacheKeys(appId: string, slug?: string): Promise<void> {
-  const promises: Promise<void>[] = [
-    cache.del(CacheKeys.app.byId(appId)),
-    cache.del(CacheKeys.app.costMarkup(appId)),
-  ];
-  if (slug) {
-    promises.push(cache.del(CacheKeys.app.bySlug(slug)));
-  }
-  await Promise.all(promises);
+async function publishAppCacheAfterMutation(
+  appId: string,
+  updated: App | undefined,
+): Promise<void> {
+  invalidateInferenceAppByIdState(appId);
+  const generation = getAppByIdHydrationGeneration(appId);
+  await appsRepositoryModule.withAppCacheFence(appId, async () => {
+    const derivedEvictions: Promise<void>[] = [cache.del(CacheKeys.app.costMarkup(appId))];
+    if (updated?.slug) {
+      derivedEvictions.push(cache.del(CacheKeys.app.bySlug(updated.slug)));
+    }
+    await Promise.all(derivedEvictions);
+    if (getAppByIdHydrationGeneration(appId) !== generation) {
+      // A concurrent mutation superseded this publication; its own
+      // write-through or eviction owns the cached state now.
+      return;
+    }
+    if (!updated) {
+      await cache.del(CacheKeys.app.byId(appId));
+      return;
+    }
+
+    await cache.set(CacheKeys.app.byId(appId), updated, CacheTTL.app.byId);
+    // The shared-cache write yielded. Recheck before restoring the process LRU
+    // so an invalidation that landed during that await cannot be undone.
+    if (getAppByIdHydrationGeneration(appId) === generation) {
+      setInferenceAppById(appId, updated);
+    }
+  });
 }
 
 function parseOrgCreditBalance(value: string | number | null | undefined): number {
@@ -1849,10 +1880,7 @@ export class AppCreditsService {
       throw new Error("Purchase share must be between 0% and 100%");
     }
 
-    // Read existing slug before update so we can evict the bySlug cache entry too.
-    const existing = await appsRepository.findById(appId);
-
-    await appsRepository.update(appId, {
+    const updated = await appsRepository.update(appId, {
       ...(settings.monetizationEnabled !== undefined && {
         monetization_enabled: settings.monetizationEnabled,
       }),
@@ -1865,9 +1893,10 @@ export class AppCreditsService {
     });
 
     // Critical: monetization config is read by /v1/messages and /v1/chat/* on
-    // every inference via calculateCostWithMarkup(). Evict the cached app row
-    // and the markup-config cache so the toggle takes effect immediately.
-    await invalidateAppCacheKeys(appId, existing?.slug ?? undefined);
+    // every inference via calculateCostWithMarkup(). Write the updated row
+    // through (fenced) so the toggle takes effect immediately without
+    // manufacturing a cold cache-only miss on the very next inference.
+    await publishAppCacheAfterMutation(appId, updated);
 
     // When enabling monetization, ensure earnings record exists
     // This prevents null state when viewing earnings dashboard

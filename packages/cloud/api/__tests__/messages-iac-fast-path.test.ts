@@ -550,6 +550,7 @@ describe("/v1/messages IAC fast path", () => {
     });
 
     expect(response.status).toBe(503);
+    expect(response.headers.get("Retry-After")).toBe("1");
     expect(admitAppInferenceCacheOnly).not.toHaveBeenCalled();
     expect(reserveInferenceCredits).not.toHaveBeenCalled();
     expect(generateText).not.toHaveBeenCalled();
