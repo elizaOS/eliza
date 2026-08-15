@@ -1,6 +1,7 @@
 /**
  * Tests for `fetchRemoteMedia`, the SSRF-guarded remote-media fetch: timeout
- * signal propagation and RFC 5987 `Content-Disposition` filename decoding.
+ * signal propagation, byte limits, and RFC 5987 `Content-Disposition`
+ * filename decoding.
  * Deterministic — DNS resolution and transport are injected through the
  * `lookupFn` + `pinnedFetchImpl` pair (the production pinned shape), no network.
  */
@@ -8,6 +9,17 @@ import { describe, expect, it } from "vitest";
 import { fetchRemoteMedia } from "./fetch.ts";
 
 describe("fetchRemoteMedia", () => {
+	it("enforces a zero-byte response limit", async () => {
+		const request = fetchRemoteMedia({
+			url: "https://example.com/image.png",
+			maxBytes: 0,
+			lookupFn: async () => [{ address: "93.184.216.34", family: 4 }],
+			pinnedFetchImpl: async () => new Response(Buffer.from("x")),
+		});
+
+		await expect(request).rejects.toMatchObject({ code: "max_bytes" });
+	});
+
 	it("applies timeout signals to guarded fetches", async () => {
 		let sawAbortSignal = false;
 		const result = await fetchRemoteMedia({
