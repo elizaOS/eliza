@@ -13,6 +13,7 @@ import type {
 import type { AgentContext } from "../types/contexts";
 import { normalizeTopics } from "./builtin-field-evaluators";
 import { parseJsonObject, stripJsonStructuralJunkReply } from "./json-output";
+
 /** Simple-path promotion trigger for progress-shaped acks. A deliberate
  * SUBSET of planner-loop's PROGRESS_ONLY_REPLY_OPENERS_PATTERN: action-verb
  * openers only — bare "I'll"/"I will" shapes are routinely legitimate final
@@ -21,11 +22,10 @@ import { parseJsonObject, stripJsonStructuralJunkReply } from "./json-output";
  * length cap because an in-flight ack is by nature brief while a substantive
  * answer that merely OPENS with a gerund runs long ("Checking accounts are
  * bank accounts designed for …" must stay a final reply). */
-const SIMPLE_PATH_PROGRESS_ACK_RE = new RegExp(
-	"^(?:checking|fetching|gathering|looking (?:up|into)|running|using|spawning|starting|working on|one moment|on it\\b|let me (?!know\\b))",
-	"i",
-);
+const SIMPLE_PATH_PROGRESS_ACK_RE =
+	/^(?:checking|fetching|gathering|looking (?:up|into)|running|using|spawning|starting|working on|one moment|on it\b|let me (?!know\b))/i;
 const SIMPLE_PATH_PROGRESS_ACK_MAX_LENGTH = 64;
+
 import {
 	looksLikeRawFieldTranscript,
 	parseFieldTranscript,
