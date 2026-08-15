@@ -141,6 +141,85 @@ describe("createChoiceShortcutEvaluator", () => {
 		);
 	});
 
+	it("routes an ambiguous model-switch request before a planner can narrate", async () => {
+		const tasks: Task[] = [];
+		const switchModel = vi.fn(async () => ({
+			ok: true,
+			target: "cloud" as const,
+		}));
+		const action = createModelSwitchAction({ switchModel });
+		const runtime = {
+			agentId: "agent-1" as UUID,
+			actions: [action],
+			getTasks: vi.fn(async ({ roomId, tags, agentIds }) =>
+				tasks.filter(
+					(task) =>
+						(!roomId || task.roomId === roomId) &&
+						task.agentId !== undefined &&
+						agentIds.includes(task.agentId) &&
+						(!tags || tags.every((tag) => task.tags?.includes(tag))),
+				),
+			),
+			createTask: vi.fn(async (task: Task) => {
+				const id = "model-switch-task" as UUID;
+				tasks.push({ ...task, id });
+				return id;
+			}),
+			deleteTask: vi.fn(async () => undefined),
+		} as unknown as IAgentRuntime;
+		const ctx = context("switch to the faster model", [], [action]);
+		ctx.runtime = runtime;
+
+		expect(await createChoiceShortcutEvaluator.shouldRun(ctx)).toBe(true);
+		const shortcut = await createChoiceShortcutEvaluator.evaluate(ctx);
+		expect(shortcut?.deterministicToolCall).toEqual({
+			name: "MODEL_SWITCH",
+			params: {},
+		});
+
+		const result = await action.handler(
+			runtime,
+			ctx.message,
+			ctx.state,
+			shortcut?.deterministicToolCall?.params,
+		);
+		expect(result?.values).toMatchObject({ awaitingTarget: true });
+		expect(switchModel).not.toHaveBeenCalled();
+		expect(tasks).toHaveLength(1);
+	});
+
+	it("routes an explicit model-switch request with the user-authored target", async () => {
+		const ctx = context("use the local model", []);
+
+		expect(await createChoiceShortcutEvaluator.shouldRun(ctx)).toBe(true);
+		expect(
+			(await createChoiceShortcutEvaluator.evaluate(ctx))
+				?.deterministicToolCall,
+		).toEqual({ name: "MODEL_SWITCH", params: { target: "local" } });
+	});
+
+	it("does not claim model questions, unrelated settings, or stopped turns", async () => {
+		for (const text of [
+			"what model are you using?",
+			"change notification-sound-volume",
+		]) {
+			const ctx = context(text, []);
+			expect(await createChoiceShortcutEvaluator.shouldRun(ctx)).toBe(false);
+		}
+		const stopped = context("switch to the local model", []);
+		stopped.messageHandler.processMessage = "STOP";
+		expect(await createChoiceShortcutEvaluator.shouldRun(stopped)).toBe(false);
+
+		const unregistered = context(
+			"switch to the local model",
+			[],
+			[{ name: "APP" }],
+		);
+		expect(await createChoiceShortcutEvaluator.shouldRun(unregistered)).toBe(
+			false,
+		);
+	});
+
 	it("routes a persisted MODEL_SWITCH clarification through the real two-turn action flow", async () => {
 		const tasks: Task[] = [];
 		const switchModel = vi.fn(async () => ({
