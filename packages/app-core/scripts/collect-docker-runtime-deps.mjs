@@ -92,6 +92,7 @@ const LINKED_WORKSPACE_PACKAGES = [
   "plugins/plugin-native-activity-tracker",
   "plugins/plugin-sql",
   "plugins/plugin-telegram",
+  "plugins/plugin-x",
   "plugins/plugin-video",
   "plugins/plugin-wallet",
   "plugins/plugin-whatsapp",
