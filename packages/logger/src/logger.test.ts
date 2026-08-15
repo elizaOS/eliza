@@ -14,9 +14,9 @@ import {
   logChatOut,
   logPrompt,
   logResponse,
-  logger as sharedLogger,
   recentLogs,
   removeLogListener,
+  logger as sharedLogger,
 } from "./logger";
 
 describe("logger", () => {
