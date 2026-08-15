@@ -189,7 +189,15 @@ function buildCreateInput(
 	if (typeof params.reason === "string" && params.reason.trim().length > 0) {
 		input.reason = params.reason.trim();
 	}
-	if (typeof params.expiresInMs === "number" && params.expiresInMs > 0) {
+	if (params.expiresInMs !== undefined) {
+		if (
+			typeof params.expiresInMs !== "number" ||
+			!Number.isFinite(params.expiresInMs) ||
+			params.expiresInMs <= 0 ||
+			!Number.isFinite(new Date(Date.now() + params.expiresInMs).getTime())
+		) {
+			return { error: "expiresInMs must produce a valid future expiration" };
+		}
 		input.expiresInMs = params.expiresInMs;
 	}
 	if (typeof params.callbackUrl === "string" && params.callbackUrl.length > 0) {
