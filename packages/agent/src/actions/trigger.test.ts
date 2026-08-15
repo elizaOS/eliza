@@ -1693,4 +1693,34 @@ describe("one-shot cron reminder confirmation", () => {
     expect(result?.text).not.toContain("every day");
     expect(result?.text).toMatch(/9(:00)?\s?(a\.?m\.?)/i);
   });
+
+  it("describes the persisted occurrence when persistence crosses the cron boundary", async () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date("2026-08-15T08:59:59.000Z"));
+      const { runtime, createdTasks } = makeRuntime({
+        enableAutonomy: false,
+        timeZone: "UTC",
+      });
+      vi.mocked(runtime.createTask).mockImplementation(async (task) => {
+        createdTasks.push(task as CreatedTask);
+        vi.setSystemTime(new Date("2026-08-15T09:00:01.000Z"));
+        return stringToUuid("created-across-cron-boundary");
+      });
+
+      const result = await create(runtime, {
+        instructions: "call the bank",
+        cronExpression: "0 9 * * *",
+        maxRuns: 1,
+      });
+
+      expect(createdTasks[0]?.metadata.trigger?.nextRunAtMs).toBe(
+        Date.parse("2026-08-15T09:00:00.000Z"),
+      );
+      expect(result?.text).toContain("today at 9am");
+      expect(result?.text).not.toContain("tomorrow");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
