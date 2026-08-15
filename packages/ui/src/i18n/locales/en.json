@@ -1851,6 +1851,7 @@
   "cloud.login.heading": "Sign in",
   "cloud.login.loadingOptions": "Loading sign-in options...",
   "cloud.login.loadingOptionsAria": "Loading sign-in options",
+  "cloud.login.moreOptions": "Continue with a wallet",
   "cloud.login.logoAlt": "Eliza Cloud",
   "cloud.login.magicLinkSent": "Magic link sent to {{email}}",
   "cloud.login.meta.description": "Sign in to run your {{appName}} in Cloud.",
