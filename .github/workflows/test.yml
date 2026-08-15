@@ -508,7 +508,7 @@ jobs:
               "https://api.eliza.app/api/v1/agents/$agent_id/restart" \
               > /tmp/eliza-x-restart-http-code
             echo "restart-request-complete"
-            IFS= read -r http_code < /tmp/eliza-x-restart-http-code
+            IFS= read -r http_code < /tmp/eliza-x-restart-http-code || true
             echo "restart-http-code=$http_code"
             jq '{success,error,code}' "$response_file"
             test "$http_code" = 200
