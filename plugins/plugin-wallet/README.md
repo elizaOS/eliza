@@ -16,7 +16,7 @@ Replaces the former fan-out across `plugin-evm`, `plugin-solana`, `plugin-raydiu
 | `gov` | On-chain governance: propose, vote, queue, execute via OpenZeppelin Governor. |
 | `pump_fun_buy` | Buy a pump.fun token on Solana through PumpPortal trade-local, local signing, and Solana RPC submission. |
 
-All write operations default to `mode=prepare` (stages the transaction but does not sign or send). The agent asks the user to confirm before submitting. `dryRun=true` returns metadata without signing.
+All write operations default to `mode=prepare` (stages the transaction but does not sign or send). The agent asks the user to confirm before submitting. `dryRun=true` returns metadata without signing. `mode=simulate` builds the real transaction (real Jupiter quote/route or real PumpPortal trade-local build) and runs it through `connection.simulateTransaction` instead of signing and sending — it needs only the wallet's public key, never a private key, so it cannot authorize or lead to a live submission and it skips the confirmation gate entirely. Supported today for Solana `swap` and `pump_fun_buy`; other subactions/chains return a typed `SIMULATION_UNSUPPORTED` failure.
 
 ### Analytics subactions (no wallet required)
 

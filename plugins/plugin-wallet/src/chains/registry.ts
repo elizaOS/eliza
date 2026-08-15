@@ -9,6 +9,17 @@
  * resolved wallet backend or local keypair, and submits it directly to
  * Solana RPC. All execute paths assume the caller has already passed the
  * financial-confirmation gate upstream.
+ *
+ * The Solana swap and pump.fun handlers also implement `simulate` (GH
+ * #16613): `fetchJupiterSwapTransaction`/`fetchPumpFunTransaction` build the
+ * exact same real, unsigned transaction the execute path signs and sends,
+ * shared by both paths so simulate can never silently drift from what
+ * execute actually submits. `simulate` runs that unsigned transaction
+ * through `connection.simulateTransaction({ sigVerify: false,
+ * replaceRecentBlockhash: true })` via `simulateVersionedTransaction` and
+ * returns the typed result — it never resolves a signing keypair, never
+ * calls a `WalletBackend` signer, and never calls `sendTransaction`/
+ * `sendRawTransaction`/`confirmTransaction`.
  */
 import {
   ElizaError,
@@ -43,6 +54,7 @@ import type {
   WalletRouterContext,
   WalletRouterExecution,
   WalletRouterParams,
+  WalletRouterSimulation,
 } from "../types/wallet-router.js";
 import type { SolanaSigner } from "../wallet/backend.js";
 import { buildSendTxParams } from "./evm/actions/helpers";
@@ -58,7 +70,10 @@ import {
   fetchJupiterJson,
   resolveJupiterApiBaseUrl,
 } from "./solana/jupiter-api";
-import { getWalletKey } from "./solana/keypairUtils";
+import {
+  getExistingSolanaPublicKey,
+  getWalletKey,
+} from "./solana/keypairUtils";
 import type { SolanaService } from "./solana/service";
 
 const SOL_MINT = "So11111111111111111111111111111111111111112";
@@ -66,6 +81,10 @@ const SOLANA_DEFAULT_RPC = "https://api.mainnet-beta.solana.com";
 const PUMPFUN_TRADE_LOCAL_URL = "https://pumpportal.fun/api/trade-local";
 const PUMPFUN_DEFAULT_PRIORITY_FEE_SOL = 0.00005;
 const PUMPFUN_DEFAULT_SLIPPAGE_BPS = 1_000;
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
 
 function getRuntimeSetting(runtime: IAgentRuntime, key: string): string | null {
   const value = runtime.getSetting(key);
@@ -411,6 +430,38 @@ function getSolanaConnection(runtime: IAgentRuntime): Connection {
   return new Connection(rpcUrl);
 }
 
+/**
+ * Runs a real, unsigned transaction through `connection.simulateTransaction`
+ * with `sigVerify: false` (no signature required) and
+ * `replaceRecentBlockhash: true` (the blockhash baked into the transaction
+ * need not still be valid). An RPC-reported revert is a *successful*
+ * simulation with `success: false` and populated `err`/`logs` — this
+ * function never throws for that case, only for a transport failure calling
+ * the RPC itself, matching the execute paths' error style.
+ */
+async function simulateVersionedTransaction(
+  connection: Connection,
+  transaction: VersionedTransaction,
+): Promise<
+  Omit<
+    WalletRouterSimulation,
+    "summary" | "route" | "requestedSlippageBps" | "effectiveSlippageBps"
+  >
+> {
+  const { value } = await connection.simulateTransaction(transaction, {
+    sigVerify: false,
+    replaceRecentBlockhash: true,
+  });
+  const err = value.err ?? null;
+  return {
+    success: err === null,
+    err:
+      err === null ? null : typeof err === "string" ? err : JSON.stringify(err),
+    logs: value.logs ?? [],
+    unitsConsumed: value.unitsConsumed ?? null,
+  };
+}
+
 type BrowserAutomationService = {
   execute: (
     command: Record<string, unknown>,
@@ -524,10 +575,35 @@ async function resolvePumpFunSigner(context: WalletRouterContext): Promise<{
   };
 }
 
-async function executePumpFunBuy(
-  params: WalletRouterParams,
-  context: WalletRouterContext,
-): Promise<WalletRouterExecution> {
+/**
+ * Public-key-only resolution for `simulate` (GH #16613): building an
+ * unsigned transaction needs only `publicKey`, so this never requires
+ * private key material and never touches a `WalletBackend` signer.
+ * `getAddresses().solana` (unlike `getSolanaSigner()`) is populated for
+ * backends that can hold a Solana address without being able to sign for it
+ * yet (e.g. Steward today), so simulate can work even where execute cannot.
+ * Unlike the execute paths' `getWalletKey`, a missing wallet is a typed
+ * failure here — a read-only simulation must never generate and persist a
+ * keypair as a side effect of a lookup (#19243 review, P2).
+ */
+function resolveSimulationPublicKey(context: WalletRouterContext): PublicKey {
+  const backendPublicKey = context.walletBackend?.getAddresses().solana;
+  if (backendPublicKey) {
+    return backendPublicKey;
+  }
+  const existing = getExistingSolanaPublicKey(context.runtime);
+  if (!existing) {
+    throw new Error(
+      "No Solana wallet key is configured; simulation requires an existing public key and will not create one.",
+    );
+  }
+  return existing;
+}
+
+function validatePumpFunBuyParams(params: WalletRouterParams): {
+  readonly mint: string;
+  readonly amountSol: number;
+} {
   const mint = params.toToken?.trim();
   if (!mint || !isSolanaMintAddress(mint)) {
     throw new Error("toToken must be a valid pump.fun token mint address.");
@@ -536,33 +612,57 @@ async function executePumpFunBuy(
   if (!Number.isFinite(amountSol) || amountSol <= 0) {
     throw new Error("amount must be a positive SOL amount.");
   }
+  return { mint, amountSol };
+}
 
-  const signer = await resolvePumpFunSigner(context);
+interface PumpFunTradeLocalSettings {
+  readonly tradeLocalUrl: string;
+  readonly priorityFee: number;
+  readonly pool: string;
+  readonly slippage: number;
+}
 
-  const browser = await openPumpFunCoinPage(context.runtime, mint);
-  const tradeLocalUrl =
-    getRuntimeSetting(context.runtime, "PUMPFUN_TRADE_LOCAL_URL") ??
-    PUMPFUN_TRADE_LOCAL_URL;
-  const priorityFee = getNumberSetting(
-    context.runtime,
-    "PUMPFUN_PRIORITY_FEE_SOL",
-    PUMPFUN_DEFAULT_PRIORITY_FEE_SOL,
-  );
-  const pool = getRuntimeSetting(context.runtime, "PUMPFUN_POOL") ?? "auto";
-  const slippage = (params.slippageBps ?? PUMPFUN_DEFAULT_SLIPPAGE_BPS) / 100;
+function resolvePumpFunTradeLocalSettings(
+  runtime: IAgentRuntime,
+  params: WalletRouterParams,
+): PumpFunTradeLocalSettings {
+  return {
+    tradeLocalUrl:
+      getRuntimeSetting(runtime, "PUMPFUN_TRADE_LOCAL_URL") ??
+      PUMPFUN_TRADE_LOCAL_URL,
+    priorityFee: getNumberSetting(
+      runtime,
+      "PUMPFUN_PRIORITY_FEE_SOL",
+      PUMPFUN_DEFAULT_PRIORITY_FEE_SOL,
+    ),
+    pool: getRuntimeSetting(runtime, "PUMPFUN_POOL") ?? "auto",
+    slippage: (params.slippageBps ?? PUMPFUN_DEFAULT_SLIPPAGE_BPS) / 100,
+  };
+}
 
-  const response = await fetch(tradeLocalUrl, {
+/**
+ * Requests the PumpPortal trade-local transaction. Shared by `execute` and
+ * `simulate` so both build the exact same unsigned transaction from the same
+ * inputs — simulate never sees a different route than execute would submit.
+ */
+async function fetchPumpFunTransaction(
+  publicKey: PublicKey,
+  mint: string,
+  amountSol: number,
+  settings: PumpFunTradeLocalSettings,
+): Promise<VersionedTransaction> {
+  const response = await fetch(settings.tradeLocalUrl, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      publicKey: signer.publicKey.toBase58(),
+      publicKey: publicKey.toBase58(),
       action: "buy",
       mint,
       amount: amountSol,
       denominatedInSol: "true",
-      slippage,
-      priorityFee,
-      pool,
+      slippage: settings.slippage,
+      priorityFee: settings.priorityFee,
+      pool: settings.pool,
     }),
   });
 
@@ -573,8 +673,25 @@ async function executePumpFunBuy(
     );
   }
 
-  const transaction = VersionedTransaction.deserialize(
+  return VersionedTransaction.deserialize(
     await pumpPortalResponseBytes(response),
+  );
+}
+
+async function executePumpFunBuy(
+  params: WalletRouterParams,
+  context: WalletRouterContext,
+): Promise<WalletRouterExecution> {
+  const { mint, amountSol } = validatePumpFunBuyParams(params);
+  const signer = await resolvePumpFunSigner(context);
+  const browser = await openPumpFunCoinPage(context.runtime, mint);
+  const settings = resolvePumpFunTradeLocalSettings(context.runtime, params);
+
+  const transaction = await fetchPumpFunTransaction(
+    signer.publicKey,
+    mint,
+    amountSol,
+    settings,
   );
   const signedTransaction = await signer.signTransaction(transaction);
 
@@ -615,11 +732,65 @@ async function executePumpFunBuy(
     metadata: {
       pumpFunUrl: `https://pump.fun/coin/${mint}`,
       browser,
-      tradeLocalUrl,
+      tradeLocalUrl: settings.tradeLocalUrl,
       denominatedInSol: true,
-      slippage,
-      priorityFee,
-      pool,
+      slippage: settings.slippage,
+      priorityFee: settings.priorityFee,
+      pool: settings.pool,
+    },
+  };
+}
+
+/**
+ * Non-broadcasting pump.fun buy simulation (GH #16613). Builds the same
+ * unsigned PumpPortal transaction `executePumpFunBuy` would sign and send,
+ * then runs it through `connection.simulateTransaction`. Never opens the
+ * browser coin page (a UX side effect with no bearing on whether the trade
+ * would succeed) and never resolves a signing keypair or `WalletBackend`
+ * signer — only the public key.
+ */
+export async function simulatePumpFunBuy(
+  params: WalletRouterParams,
+  context: WalletRouterContext,
+): Promise<WalletRouterExecution> {
+  const { mint, amountSol } = validatePumpFunBuyParams(params);
+  const publicKey = resolveSimulationPublicKey(context);
+  const settings = resolvePumpFunTradeLocalSettings(context.runtime, params);
+
+  const transaction = await fetchPumpFunTransaction(
+    publicKey,
+    mint,
+    amountSol,
+    settings,
+  );
+  const connection = getSolanaConnection(context.runtime);
+  const simulation = await simulateVersionedTransaction(
+    connection,
+    transaction,
+  );
+
+  return {
+    status: "simulated",
+    chain: "pumpfun",
+    chainId: "pump.fun-solana",
+    subaction: "pump_fun_buy",
+    dryRun: params.dryRun,
+    mode: params.mode,
+    from: publicKey.toBase58(),
+    amount: params.amount,
+    fromToken: "SOL",
+    toToken: mint,
+    simulation: {
+      ...simulation,
+      // pump.fun's bonding curve is a single fixed venue — no route legs.
+      route: [],
+      requestedSlippageBps: params.slippageBps ?? PUMPFUN_DEFAULT_SLIPPAGE_BPS,
+      // trade-local applies exactly the slippage we send it.
+      effectiveSlippageBps: params.slippageBps ?? PUMPFUN_DEFAULT_SLIPPAGE_BPS,
+      summary: {
+        mint,
+        solAmount: amountSol,
+      },
     },
   };
 }
@@ -737,11 +908,27 @@ async function executeSolanaTransfer(
   };
 }
 
-async function executeSolanaSwap(
+interface JupiterSwapBuild {
+  readonly transaction: VersionedTransaction;
+  readonly inputMint: string;
+  readonly outputMint: string;
+  readonly route: WalletRouterSimulation["route"];
+  readonly effectiveSlippageBps: number | null;
+  readonly quoteSummary: Readonly<Record<string, string | number | null>>;
+}
+
+/**
+ * Requests the Jupiter quote and the built swap transaction for it. Shared
+ * by `execute` and `simulate` so both build the exact same unsigned
+ * transaction from the exact same quote — simulate never sees a different
+ * route than execute would submit.
+ */
+async function fetchJupiterSwapTransaction(
   params: WalletRouterParams,
   context: WalletRouterContext,
-): Promise<WalletRouterExecution> {
-  const connection = getSolanaConnection(context.runtime);
+  connection: Connection,
+  userPublicKey: PublicKey,
+): Promise<JupiterSwapBuild> {
   const inputMint = resolveSolanaMint(params.fromToken);
   const outputMint = resolveSolanaMint(params.toToken);
   const decimals = await getSolanaTokenDecimals(connection, inputMint);
@@ -777,14 +964,6 @@ async function executeSolanaSwap(
     });
   }
 
-  const { publicKey: walletPublicKey } = await getWalletKey(
-    context.runtime,
-    false,
-  );
-  if (!walletPublicKey) {
-    throw new Error("Solana public key is not available.");
-  }
-
   const swapData = await fetchJupiterJson(
     fetchFn,
     `${jupiterApiBaseUrl}/swap`,
@@ -794,7 +973,7 @@ async function executeSolanaSwap(
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         quoteResponse: quoteData,
-        userPublicKey: walletPublicKey.toBase58(),
+        userPublicKey: userPublicKey.toBase58(),
         dynamicComputeUnitLimit: true,
         dynamicSlippage: params.slippageBps === undefined,
         priorityLevelWithMaxLamports: {
@@ -817,6 +996,94 @@ async function executeSolanaSwap(
   const transaction = VersionedTransaction.deserialize(
     Buffer.from(swapData.swapTransaction, "base64"),
   );
+  const dynamicSlippage = params.slippageBps === undefined;
+  const dynamicSlippageReport = swapData.dynamicSlippageReport;
+  const reportedSlippageBps = isRecord(dynamicSlippageReport)
+    ? dynamicSlippageReport.slippageBps
+    : undefined;
+  const effectiveSlippageBps = dynamicSlippage
+    ? reportedSlippageBps
+    : quoteData.slippageBps;
+  if (
+    dynamicSlippage &&
+    (typeof effectiveSlippageBps !== "number" ||
+      !Number.isInteger(effectiveSlippageBps) ||
+      effectiveSlippageBps < 0 ||
+      effectiveSlippageBps > 10_000)
+  ) {
+    throw new Error(
+      "Jupiter dynamic slippage report is missing a valid slippageBps value",
+    );
+  }
+  const route = Array.isArray(quoteData.routePlan)
+    ? quoteData.routePlan.flatMap((rawLeg) => {
+        if (!isRecord(rawLeg)) {
+          return [];
+        }
+        const swapInfo = isRecord(rawLeg.swapInfo) ? rawLeg.swapInfo : {};
+        return [
+          {
+            label: typeof swapInfo.label === "string" ? swapInfo.label : null,
+            inputMint:
+              typeof swapInfo.inputMint === "string"
+                ? swapInfo.inputMint
+                : inputMint,
+            outputMint:
+              typeof swapInfo.outputMint === "string"
+                ? swapInfo.outputMint
+                : outputMint,
+            percent: typeof rawLeg.percent === "number" ? rawLeg.percent : null,
+          },
+        ];
+      })
+    : [];
+
+  return {
+    transaction,
+    inputMint,
+    outputMint,
+    route,
+    effectiveSlippageBps:
+      typeof effectiveSlippageBps === "number" ? effectiveSlippageBps : null,
+    quoteSummary: {
+      inToken: inputMint,
+      outToken: outputMint,
+      inAmount:
+        typeof quoteData.inAmount === "string"
+          ? quoteData.inAmount
+          : adjustedAmount,
+      outAmount:
+        typeof quoteData.outAmount === "string" ? quoteData.outAmount : null,
+      priceImpactPct:
+        typeof quoteData.priceImpactPct === "string"
+          ? quoteData.priceImpactPct
+          : null,
+    },
+  };
+}
+
+async function executeSolanaSwap(
+  params: WalletRouterParams,
+  context: WalletRouterContext,
+): Promise<WalletRouterExecution> {
+  const connection = getSolanaConnection(context.runtime);
+  // Execute keeps getWalletKey's auto-provisioning lookup (pre-existing
+  // behavior); only the read-only simulate path forbids key creation.
+  const { publicKey: walletPublicKey } = await getWalletKey(
+    context.runtime,
+    false,
+  );
+  if (!walletPublicKey) {
+    throw new Error("Solana public key is not available.");
+  }
+  const { transaction, inputMint, outputMint } =
+    await fetchJupiterSwapTransaction(
+      params,
+      context,
+      connection,
+      walletPublicKey,
+    );
+
   const { keypair } = await getWalletKey(context.runtime, true);
   if (!keypair) {
     throw new Error("Solana keypair is not available.");
@@ -859,6 +1126,59 @@ async function executeSolanaSwap(
   };
 }
 
+/**
+ * Non-broadcasting Solana swap simulation (GH #16613). Builds the exact same
+ * unsigned Jupiter swap transaction `executeSolanaSwap` would sign and send
+ * (same quote, same userPublicKey, same swap-tx build) and runs it through
+ * `connection.simulateTransaction` instead of signing it. Never resolves a
+ * signing keypair — only the public key `fetchJupiterSwapTransaction` needs
+ * for `userPublicKey`.
+ */
+export async function simulateSolanaSwap(
+  params: WalletRouterParams,
+  context: WalletRouterContext,
+): Promise<WalletRouterExecution> {
+  const connection = getSolanaConnection(context.runtime);
+  const userPublicKey = resolveSimulationPublicKey(context);
+  const {
+    transaction,
+    inputMint,
+    outputMint,
+    route,
+    effectiveSlippageBps,
+    quoteSummary,
+  } = await fetchJupiterSwapTransaction(
+    params,
+    context,
+    connection,
+    userPublicKey,
+  );
+
+  const simulation = await simulateVersionedTransaction(
+    connection,
+    transaction,
+  );
+
+  return {
+    status: "simulated",
+    chain: "solana",
+    chainId: "solana-mainnet",
+    subaction: "swap",
+    dryRun: params.dryRun,
+    mode: params.mode,
+    amount: params.amount,
+    fromToken: inputMint,
+    toToken: outputMint,
+    simulation: {
+      ...simulation,
+      route,
+      requestedSlippageBps: params.slippageBps ?? null,
+      effectiveSlippageBps,
+      summary: quoteSummary,
+    },
+  };
+}
+
 function createSolanaHandler(): WalletChainHandler {
   return {
     chainId: "solana-mainnet",
@@ -886,6 +1206,12 @@ function createSolanaHandler(): WalletChainHandler {
       description:
         "Prepare mode and dry-run return route metadata without signing.",
     },
+    simulation: {
+      supported: true,
+      supportedActions: ["swap"],
+      description:
+        "Builds the real unsigned Jupiter swap transaction and runs connection.simulateTransaction against it — no signing, no broadcast.",
+    },
     async execute(params, context) {
       if (params.subaction === "transfer") {
         return executeSolanaTransfer(params, context);
@@ -894,6 +1220,14 @@ function createSolanaHandler(): WalletChainHandler {
         return executeSolanaSwap(params, context);
       }
       throw new Error(`Solana does not support ${params.subaction}.`);
+    },
+    async simulate(params, context) {
+      if (params.subaction === "swap") {
+        return simulateSolanaSwap(params, context);
+      }
+      throw new Error(
+        `Solana does not support simulate for ${params.subaction}.`,
+      );
     },
   };
 }
@@ -926,11 +1260,25 @@ function createPumpFunHandler(): WalletChainHandler {
       description:
         "Dry-run/prepare returns pump.fun handler metadata without signing.",
     },
+    simulation: {
+      supported: true,
+      supportedActions: ["pump_fun_buy"],
+      description:
+        "Builds the real unsigned PumpPortal trade-local transaction and runs connection.simulateTransaction against it — no signing, no broadcast.",
+    },
     async execute(params, context) {
       if (params.subaction === "pump_fun_buy") {
         return executePumpFunBuy(params, context);
       }
       throw new Error(`pump.fun does not support ${params.subaction}.`);
+    },
+    async simulate(params, context) {
+      if (params.subaction === "pump_fun_buy") {
+        return simulatePumpFunBuy(params, context);
+      }
+      throw new Error(
+        `pump.fun does not support simulate for ${params.subaction}.`,
+      );
     },
   };
 }
