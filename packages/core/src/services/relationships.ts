@@ -502,6 +502,10 @@ function toMessageTimestamp(
 		if (Number.isFinite(parsed)) {
 			return parsed;
 		}
+		const dateParsed = Date.parse(value);
+		if (Number.isFinite(dateParsed)) {
+			return dateParsed;
+		}
 	}
 	return null;
 }
