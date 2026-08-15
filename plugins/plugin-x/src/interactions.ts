@@ -908,6 +908,8 @@ ${tweet.text}`;
         logger.log(`Room: ${roomId}`);
         logger.log("----");
 
+        const entityId = createUniqueUuid(this.runtime, userId);
+
         // 1. Ensure world exists for the user
         const worldId = createUniqueUuid(this.runtime, userId);
         await this.runtime.ensureWorldExists({
@@ -915,7 +917,7 @@ ${tweet.text}`;
           name: `${username}'s Twitter`,
           agentId: this.runtime.agentId,
           metadata: {
-            ownership: { ownerId: userId },
+            ownership: { ownerId: entityId },
             accountId: this.client.accountId,
             twitter: {
               accountId: this.client.accountId,
@@ -926,7 +928,6 @@ ${tweet.text}`;
         });
 
         // 2. Ensure entity connection
-        const entityId = createUniqueUuid(this.runtime, userId);
         await this.runtime.ensureConnection({
           entityId,
           roomId,

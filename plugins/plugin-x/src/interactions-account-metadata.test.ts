@@ -120,6 +120,10 @@ describe("Twitter interaction processing", () => {
 
     expect(runtime.createMemory).toHaveBeenCalledTimes(1);
     expect(handleTweet).toHaveBeenCalledTimes(1);
+    const world = runtime.ensureWorldExists.mock.calls[0]?.[0];
+    const connection = runtime.ensureConnection.mock.calls[0]?.[0];
+    expect(world?.metadata?.ownership?.ownerId).toBe(connection?.entityId);
+    expect(world?.metadata?.ownership?.ownerId).not.toBe("user-1");
     expect(clientBase.lastCheckedTweetId).toBe(300n);
   });
 });
