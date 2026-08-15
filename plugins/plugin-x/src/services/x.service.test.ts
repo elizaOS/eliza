@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { ClientBase } from "../base";
 import type { AuthenticatedTwitterSession } from "../client/auth";
 import type { TwitterClientState } from "../types";
+import { TwitterPostService } from "./PostService";
 import { TwitterClientInstance, XService } from "./x.service";
 
 function asRuntime<T extends object>(runtime: T): IAgentRuntime & T {
@@ -319,6 +320,47 @@ describe("XService trusted account routing", () => {
     expect(sendDmToParticipant).toHaveBeenCalledWith("123456", {
       text: "hello",
     });
+  });
+
+  it("ignores spoofed content account metadata in the post handler", async () => {
+    const runtime = runtimeWithSettings({});
+    const service = new XService(runtime);
+    const base = { profile: null } as unknown as ClientBase;
+    const getClient = vi
+      .spyOn(
+        service as unknown as {
+          getTwitterClientForAccount: (accountId: unknown) => Promise<{
+            client: ClientBase;
+          }>;
+        },
+        "getTwitterClientForAccount",
+      )
+      .mockResolvedValue({ client: base });
+    vi.spyOn(TwitterPostService.prototype, "createPost").mockResolvedValue({
+      id: "post-1",
+      agentId: runtime.agentId,
+      roomId: "room-1" as never,
+      userId: "account-owner",
+      username: "account-owner",
+      text: "hello",
+      timestamp: 1,
+    });
+
+    await service.handleSendPost(
+      runtime,
+      {
+        text: "hello",
+        accountId: "attacker",
+        metadata: { accountId: "attacker" },
+      } as Content,
+      {
+        runtime,
+        source: "x",
+        accountId: "trusted",
+      },
+    );
+
+    expect(getClient).toHaveBeenCalledWith("trusted");
   });
 
   it("keeps DM recipient lookup and send inside one authenticated session", async () => {

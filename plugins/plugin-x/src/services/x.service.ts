@@ -782,7 +782,6 @@ export class XService extends Service {
       context?.accountId,
       context?.target,
       context?.metadata,
-      content,
     );
     const base = (await this.getTwitterClientForAccount(accountId)).client;
 
