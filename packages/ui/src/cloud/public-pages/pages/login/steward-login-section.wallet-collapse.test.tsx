@@ -104,6 +104,20 @@ vi.mock("../../lib/login-return-to", () => ({
   storePendingOAuthReturnTo: () => undefined,
 }));
 
+// Lazy wallet stack is heavy; for disclosure/intent tests stub both pieces so
+// clicking a chain button can exercise the post-intent lock without RainbowKit.
+vi.mock("../../../billing/wallet/steward-wallet-providers", () => ({
+  StewardWalletProviders: ({ children }: { children: React.ReactNode }) => (
+    <>{children}</>
+  ),
+}));
+
+vi.mock("./wallet-buttons", () => ({
+  WalletButtons: () => (
+    <div data-testid="mounted-wallet-buttons">Mounted wallet stack</div>
+  ),
+}));
+
 import StewardLoginSection from "./steward-login-section";
 
 function renderSection() {
@@ -204,5 +218,40 @@ describe("StewardLoginSection wallet collapse (#19217)", () => {
     expect(region?.hasAttribute("hidden")).toBe(true);
     expect(screen.queryByText("EVM wallet")).toBeNull();
     expect(screen.queryByText("Solana wallet")).toBeNull();
+  });
+
+  it("locks the disclosure only after wallet intent and moves focus into the live region", async () => {
+    renderSection();
+
+    const walletToggle = await screen.findByRole("button", {
+      name: /Continue with a wallet/i,
+    });
+    fireEvent.click(walletToggle);
+
+    const evmButton = await screen.findByRole("button", {
+      name: /EVM wallet/i,
+    });
+    // Simulate keyboard activation of a peer intent button so focus would
+    // otherwise be stranded when that button unmounts.
+    evmButton.focus();
+    expect(document.activeElement).toBe(evmButton);
+    fireEvent.click(evmButton);
+
+    // Distinct post-intent state: toggle stays expanded but is now disabled
+    // because collapse is no longer meaningful once the lazy stack is mounted.
+    const lockedToggle = screen.getByRole("button", {
+      name: /Continue with a wallet/i,
+    });
+    expect(lockedToggle.getAttribute("aria-expanded")).toBe("true");
+    expect(lockedToggle.hasAttribute("disabled")).toBe(true);
+    expect(screen.queryByRole("button", { name: /EVM wallet/i })).toBeNull();
+    expect(await screen.findByTestId("mounted-wallet-buttons")).toBeTruthy();
+
+    const liveRegion = document.getElementById("steward-wallet-options");
+    expect(liveRegion).toBeTruthy();
+    expect(liveRegion?.hasAttribute("hidden")).toBe(false);
+    // Focus must land in the controlled region (not body / not the disabled
+    // toggle) after the peer button unmounts and the disclosure locks.
+    expect(document.activeElement).toBe(liveRegion);
   });
 });
