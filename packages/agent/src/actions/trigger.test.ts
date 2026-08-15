@@ -1677,3 +1677,20 @@ describe("TRIGGER list — dropped rows are counted, not hidden", () => {
     expect(result.data).toMatchObject({ count: 1, unreadable: 0 });
   });
 });
+
+describe("one-shot cron reminder confirmation", () => {
+  it("describes a maxRuns=1 cron by its next occurrence, never as recurring", async () => {
+    const { runtime } = makeRuntime({ enableAutonomy: false });
+    const result = await create(runtime, {
+      instructions: "call the bank",
+      cronExpression: "0 9 * * *",
+      maxRuns: 1,
+    });
+    expect(result?.success).toBe(true);
+    // The trigger fires once at the next 9am and stops; the confirmation must
+    // read as a one-shot, not a recurrence the trigger cannot have.
+    expect(result?.text).not.toContain("every morning");
+    expect(result?.text).not.toContain("every day");
+    expect(result?.text).toMatch(/9(:00)?\s?(a\.?m\.?)/i);
+  });
+});

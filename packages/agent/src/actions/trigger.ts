@@ -52,6 +52,7 @@ import {
 } from "../triggers/runtime.ts";
 import {
   buildTriggerMetadata,
+  computeNextCronRunAtMs,
   DISABLED_TRIGGER_INTERVAL_MS,
   normalizeTriggerIntervalMs,
   parseCronExpression,
@@ -331,6 +332,26 @@ function describeSchedule(
       ? describeOnceAt(t.scheduledAtIso, nowMs, messageTimeZone)
       : null;
     return friendly ?? "soon";
+  }
+  // A cron trigger capped at one run IS a one-shot: it fires at the next
+  // occurrence and never again. Describing it by its cron shape ("every
+  // morning at 9am") reports a recurrence the trigger cannot have — the live
+  // shape: "remind me tomorrow at 9am" confirmed back as "every morning".
+  if (t.maxRuns === 1 && t.cronExpression) {
+    const nextMs = computeNextCronRunAtMs(
+      t.cronExpression,
+      nowMs,
+      t.timezone ?? messageTimeZone,
+    );
+    const friendly =
+      nextMs !== null
+        ? describeOnceAt(
+            new Date(nextMs).toISOString(),
+            nowMs,
+            messageTimeZone,
+          )
+        : null;
+    if (friendly) return friendly;
   }
   if (!t.timezone || t.timezone !== messageTimeZone) {
     return "on its saved recurring schedule";
