@@ -7,6 +7,7 @@
  * developer explicitly enables live voice.
  */
 
+import { readFile } from "node:fs/promises";
 import { expect, test } from "@playwright/test";
 import { openAppPath, seedAppStorage } from "./helpers";
 
@@ -224,6 +225,29 @@ test.describe("normal-chat realtime acoustic barge-in", () => {
         `replacement voice turn failed before playout: ${replacementError ?? "unknown"}`,
       ).toBeUndefined();
       await expect(replacementTraceLine).toContainText("evidence:complete");
+      await expect
+        .poll(
+          () =>
+            consoleMessages.filter((message) =>
+              message.includes(
+                "[eliza][voice-capture] realtime:trace-persisted",
+              ),
+            ).length,
+          {
+            message:
+              "both completed live turns should reach content-free browser persistence",
+            timeout: 15_000,
+          },
+        )
+        .toBeGreaterThanOrEqual(2);
+      expect(
+        consoleMessages.some(
+          (message) =>
+            message.includes(
+              "[eliza][voice-capture] realtime:trace-persisted",
+            ) && message.includes("saved: false"),
+        ),
+      ).toBe(false);
       await expect(userMessageRows).toHaveCount(3);
       await expect
         .poll(() => assistantMessageRows.count())
@@ -235,6 +259,30 @@ test.describe("normal-chat realtime acoustic barge-in", () => {
             "an interrupted voice row must stay frozen while its replacement finishes",
         })
         .toBe(frozenInterruptedText);
+      const downloadPromise = page.waitForEvent("download");
+      await page.getByTestId("voice-capture-hud-download").click();
+      const download = await downloadPromise;
+      expect(download.suggestedFilename()).toBe("eliza-voice-traces.json");
+      const downloadPath = await download.path();
+      expect(downloadPath).toBeTruthy();
+      if (!downloadPath) throw new Error("voice trace download has no path");
+      const traceArtifact = JSON.parse(
+        await readFile(downloadPath, "utf8"),
+      ) as {
+        traceCount?: number;
+        traces?: unknown[];
+      };
+      expect(traceArtifact.traceCount).toBeGreaterThanOrEqual(2);
+      expect(traceArtifact.traces).toHaveLength(traceArtifact.traceCount ?? 0);
+      const traceKeys = new Set<string>();
+      JSON.stringify(traceArtifact, (key, value) => {
+        if (key) traceKeys.add(key);
+        return value;
+      });
+      expect(traceKeys).not.toContain("text");
+      expect(traceKeys).not.toContain("transcriptText");
+      expect(traceKeys).not.toContain("audioBytes");
+      expect(traceKeys).not.toContain("apiKey");
       expect(
         consoleMessages.some((message) =>
           message.includes("Cannot update a component"),

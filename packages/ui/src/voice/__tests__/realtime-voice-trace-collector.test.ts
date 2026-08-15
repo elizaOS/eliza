@@ -112,4 +112,35 @@ describe("normal realtime voice trace collector", () => {
       expect.objectContaining({ complete: true, missingMarks: [] }),
     );
   });
+
+  it("settles a server-complete response when its buffered tail is cut locally", () => {
+    const completed = vi.fn();
+    const collector = createNormalVoiceTraceCollector(completed);
+    collector.accept({
+      name: "first_audio_playout",
+      traceId: "response-tail",
+      atMs: 100,
+    });
+    expect(
+      collector.accept({
+        name: "turn_end(spoken)",
+        traceId: "response-tail",
+        atMs: 120,
+      }),
+    ).toBeNull();
+
+    const result = collector.accept({
+      name: "playback_interrupted",
+      traceId: "response-tail",
+      atMs: 140,
+    });
+
+    expect(result?.trace).toEqual(
+      expect.objectContaining({
+        outcome: "interrupted",
+        marks: expect.objectContaining({ last_audio_playout: 140 }),
+      }),
+    );
+    expect(completed).toHaveBeenCalledTimes(1);
+  });
 });

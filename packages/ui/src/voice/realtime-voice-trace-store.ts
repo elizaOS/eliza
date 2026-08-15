@@ -11,11 +11,32 @@ import {
   parseRealtimeVoiceTrace,
   type RealtimeVoiceTrace,
 } from "@elizaos/shared";
+import { shellLocalStorage } from "../surface-realm-channel";
 import type { CompletedNormalVoiceTrace } from "./realtime-voice-trace-collector";
 
 export const NORMAL_VOICE_TRACE_STORAGE_KEY =
   "eliza:voice:completed-realtime-traces:v1";
 export const NORMAL_VOICE_TRACE_STORAGE_LIMIT = 50;
+export const NORMAL_VOICE_TRACE_EXPORT_FILENAME = "eliza-voice-traces.json";
+
+export interface NormalVoiceTraceExport {
+  readonly schemaVersion: 1;
+  readonly source: "normal-chat-realtime-voice";
+  readonly traceCount: number;
+  readonly traces: readonly RealtimeVoiceTrace[];
+}
+
+export type NormalVoiceTracePersistenceFailure =
+  | "storage_unavailable"
+  | "invalid_trace"
+  | "storage_write_failed";
+
+export type NormalVoiceTracePersistenceResult =
+  | { readonly saved: true; readonly failure: null }
+  | {
+      readonly saved: false;
+      readonly failure: NormalVoiceTracePersistenceFailure;
+    };
 
 interface VoiceTraceStorage {
   getItem(key: string): string | null;
@@ -25,7 +46,12 @@ interface VoiceTraceStorage {
 
 function browserStorage(): VoiceTraceStorage | null {
   try {
-    return typeof window !== "undefined" ? window.localStorage : null;
+    if (typeof window === "undefined") return null;
+    return {
+      getItem: (key) => window.localStorage.getItem(key),
+      setItem: (key, value) => shellLocalStorage.setItem(key, value),
+      removeItem: (key) => shellLocalStorage.removeItem(key),
+    };
   } catch {
     return null;
   }
@@ -61,9 +87,16 @@ export function persistCompletedNormalVoiceTrace(
   completed: CompletedNormalVoiceTrace,
   storage: VoiceTraceStorage | null = browserStorage(),
 ): boolean {
-  if (!storage) return false;
+  return persistCompletedNormalVoiceTraceDetailed(completed, storage).saved;
+}
+
+export function persistCompletedNormalVoiceTraceDetailed(
+  completed: CompletedNormalVoiceTrace,
+  storage: VoiceTraceStorage | null = browserStorage(),
+): NormalVoiceTracePersistenceResult {
+  if (!storage) return { saved: false, failure: "storage_unavailable" };
   const trace = parseRealtimeVoiceTrace(completed.trace);
-  if (!trace) return false;
+  if (!trace) return { saved: false, failure: "invalid_trace" };
   try {
     const traces = readValidatedTraces(storage).filter(
       (candidate) =>
@@ -75,9 +108,9 @@ export function persistCompletedNormalVoiceTrace(
       NORMAL_VOICE_TRACE_STORAGE_KEY,
       JSON.stringify(traces.slice(-NORMAL_VOICE_TRACE_STORAGE_LIMIT)),
     );
-    return true;
+    return { saved: true, failure: null };
   } catch {
-    return false;
+    return { saved: false, failure: "storage_write_failed" };
   }
 }
 
@@ -89,4 +122,23 @@ export function clearPersistedNormalVoiceTraces(
   } catch {
     // Persistence is diagnostics-only and must never affect the voice loop.
   }
+}
+
+/**
+ * Serialize only runtime-validated, content-free traces for local QA export.
+ *
+ * No wall-clock export timestamp is added: the artifact stays deterministic,
+ * and the strict trace schema remains the sole data boundary.
+ */
+export function serializePersistedNormalVoiceTraces(
+  storage: VoiceTraceStorage | null = browserStorage(),
+): string {
+  const traces = storage ? readValidatedTraces(storage) : [];
+  const artifact: NormalVoiceTraceExport = {
+    schemaVersion: 1,
+    source: "normal-chat-realtime-voice",
+    traceCount: traces.length,
+    traces,
+  };
+  return JSON.stringify(artifact, null, 2);
 }

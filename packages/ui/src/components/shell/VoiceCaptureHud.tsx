@@ -32,13 +32,17 @@
  * use, matching BuildBadge's dismissal contract.
  */
 
-import { X } from "lucide-react";
+import { Download, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Z_BUILD_BADGE } from "../../lib/floating-layers";
 import {
   subscribeVoiceCaptureBreadcrumbs,
   type VoiceCaptureBreadcrumb,
 } from "../../utils/voice-capture-debug";
+import {
+  NORMAL_VOICE_TRACE_EXPORT_FILENAME,
+  serializePersistedNormalVoiceTraces,
+} from "../../voice/realtime-voice-trace-store";
 
 const BUILD_INFO_URL = "/build-info.json";
 const DISMISS_KEY = "eliza.voiceHud.dismissed";
@@ -334,6 +338,22 @@ export function VoiceCaptureHud({
     setDismissed(true);
   }, []);
 
+  const downloadTraces = useCallback(() => {
+    try {
+      const blob = new Blob([serializePersistedNormalVoiceTraces()], {
+        type: "application/json",
+      });
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = NORMAL_VOICE_TRACE_EXPORT_FILENAME;
+      anchor.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      // Diagnostics export is best-effort and must never disturb voice.
+    }
+  }, []);
+
   if (dismissed || !stamped || lines.length === 0) return null;
 
   return (
@@ -373,6 +393,16 @@ export function VoiceCaptureHud({
             </div>
           ))}
         </div>
+        <button
+          type="button"
+          data-testid="voice-capture-hud-download"
+          title="Download completed content-free voice traces"
+          aria-label="Download completed content-free voice traces"
+          onClick={downloadTraces}
+          className="shrink-0 self-start text-white/50 hover:text-white"
+        >
+          <Download aria-hidden="true" className="h-2.5 w-2.5" />
+        </button>
         <button
           type="button"
           data-testid="voice-capture-hud-dismiss"

@@ -55,7 +55,9 @@ const DIRECT_MARKS = new Set<RealtimeVoiceTraceMark>([
 ]);
 
 function terminalOutcome(name: string): string | null {
-  if (name === "interrupted") return "interrupted";
+  if (name === "interrupted" || name === "playback_interrupted") {
+    return "interrupted";
+  }
   const match =
     /^turn_end\((spoken|displayed|no_response|error|stopped)\)$/.exec(name);
   return match?.[1] ?? null;
@@ -126,6 +128,14 @@ export function createNormalVoiceTraceCollector(
         ) {
           entry.marks.set(canonical, mark.atMs);
         }
+      }
+      // The server can finish sending a spoken response before the browser has
+      // consumed its buffered tail. A local cut-in then owns the audible
+      // terminal boundary even though no server `interrupted` frame exists.
+      // Record that boundary as the last playout observation so the old trace
+      // settles truthfully instead of remaining pending forever.
+      if (mark.name === "playback_interrupted") {
+        entry.marks.set("last_audio_playout", mark.atMs);
       }
       if (outcome) entry.terminal = { outcome, atMs: mark.atMs };
       const terminal = entry.terminal;

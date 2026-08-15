@@ -68,7 +68,7 @@ import {
   createNormalVoiceTraceCollector,
   type NormalVoiceTraceCollector,
 } from "../../voice/realtime-voice-trace-collector";
-import { persistCompletedNormalVoiceTrace } from "../../voice/realtime-voice-trace-store";
+import { persistCompletedNormalVoiceTraceDetailed } from "../../voice/realtime-voice-trace-store";
 import { shouldRespondToVoiceTurn } from "../../voice/should-respond";
 import { TranscriptSessionAccumulator } from "../../voice/transcript-session";
 import {
@@ -516,7 +516,15 @@ export function useShellController(): ShellController {
     realtimeVoiceDisplayIsAnimating(realtimeVoiceDisplay);
   if (!realtimeTraceCollectorRef.current) {
     realtimeTraceCollectorRef.current = createNormalVoiceTraceCollector(
-      persistCompletedNormalVoiceTrace,
+      (completed) => {
+        const persistence = persistCompletedNormalVoiceTraceDetailed(completed);
+        voiceCaptureDebug("realtime:trace-persisted", {
+          saved: persistence.saved,
+          failure: persistence.failure,
+          outcome: completed.trace.outcome,
+          evidenceComplete: completed.coverage.complete,
+        });
+      },
     );
   }
   React.useEffect(() => {

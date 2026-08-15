@@ -6,6 +6,12 @@
 // renders the breadcrumb ring bottom-anchored above the composer; dismissible
 // for the session.
 
+import {
+  createRealtimeVoiceTrace,
+  finalizeRealtimeVoiceTrace,
+  inspectRealtimeVoiceTraceCoverage,
+  markRealtimeVoiceTrace,
+} from "@elizaos/shared";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -13,6 +19,7 @@ import {
   resetVoiceCaptureBreadcrumbs,
   voiceCaptureDebug,
 } from "../../utils/voice-capture-debug";
+import { persistCompletedNormalVoiceTrace } from "../../voice/realtime-voice-trace-store";
 import { VoiceCaptureHud } from "./VoiceCaptureHud";
 
 const BUILD_INFO = {
@@ -44,6 +51,7 @@ function mockFetchMissing() {
 describe("VoiceCaptureHud", () => {
   beforeEach(() => {
     window.sessionStorage.clear();
+    window.localStorage.clear();
     resetVoiceCaptureBreadcrumbs();
   });
 
@@ -203,5 +211,49 @@ describe("VoiceCaptureHud", () => {
     render(<VoiceCaptureHud localDev={false} />);
     await new Promise((r) => setTimeout(r, 0));
     expect(screen.queryByTestId("voice-capture-hud")).toBeNull();
+  });
+
+  it("downloads the validated content-free completed trace artifact", async () => {
+    let trace = createRealtimeVoiceTrace({
+      sessionId: "hud-session",
+      turnId: "hud-turn",
+      responseId: "hud-turn",
+      atMs: 0,
+      profiles: ["transcription"],
+    });
+    trace = markRealtimeVoiceTrace(trace, "acoustic_speech_ended", 5);
+    trace = markRealtimeVoiceTrace(trace, "stt_final", 10);
+    trace = finalizeRealtimeVoiceTrace(trace, "no_response", 20);
+    persistCompletedNormalVoiceTrace({
+      trace,
+      coverage: inspectRealtimeVoiceTraceCoverage(trace),
+    });
+    voiceCaptureDebug("realtime:trace-complete", {
+      outcome: "no_response",
+      evidenceComplete: true,
+      missingMarks: [],
+    });
+    const createObjectURL = vi.fn(() => "blob:voice-traces");
+    const revokeObjectURL = vi.fn();
+    Object.defineProperty(URL, "createObjectURL", {
+      configurable: true,
+      value: createObjectURL,
+    });
+    Object.defineProperty(URL, "revokeObjectURL", {
+      configurable: true,
+      value: revokeObjectURL,
+    });
+    const click = vi
+      .spyOn(HTMLAnchorElement.prototype, "click")
+      .mockImplementation(() => undefined);
+
+    render(<VoiceCaptureHud localDev />);
+    await userEvent.click(
+      await screen.findByTestId("voice-capture-hud-download"),
+    );
+
+    expect(createObjectURL).toHaveBeenCalledWith(expect.any(Blob));
+    expect(click).toHaveBeenCalledTimes(1);
+    expect(revokeObjectURL).toHaveBeenCalledWith("blob:voice-traces");
   });
 });
