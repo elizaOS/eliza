@@ -1831,6 +1831,88 @@ function deliveredTextsCoverReply(
 	return false;
 }
 
+export type ZeroDeliveryRecoverySource =
+	| "actionUserFacingText"
+	| "failedToolFallback"
+	| "partialToolFallback"
+	| "successfulToolFallback"
+	| "indeterminateToolFallback";
+
+export interface ZeroDeliveryRecovery {
+	text: string;
+	source: ZeroDeliveryRecoverySource;
+	hadEarlyReply: boolean;
+	successfulActionCount: number;
+	failedActionCount: number;
+}
+
+/**
+ * Selects a truthful terminal reply only when the normal reply gate and every
+ * action-owned delivery both produced nothing. An early progress ack is not a
+ * terminal answer and therefore never suppresses this recovery.
+ */
+export function resolveZeroDeliveryRecovery(args: {
+	shouldSendPlannedText: boolean;
+	earlyReplySent: boolean;
+	deliveredVisibleTextCount: number;
+	actionResults: ReadonlyArray<
+		Pick<ActionResult, "success" | "userFacingText">
+	>;
+}): ZeroDeliveryRecovery | null {
+	if (
+		args.shouldSendPlannedText ||
+		args.deliveredVisibleTextCount > 0 ||
+		args.actionResults.length === 0
+	) {
+		return null;
+	}
+
+	const successfulActionCount = args.actionResults.filter(
+		(result) => result.success === true,
+	).length;
+	const failedActionCount = args.actionResults.filter(
+		(result) => result.success === false,
+	).length;
+	const actionUserFacingText = args.actionResults
+		.map((result) =>
+			typeof result.userFacingText === "string"
+				? result.userFacingText.trim()
+				: "",
+		)
+		.filter((text) => text.length > 0)
+		.at(-1);
+
+	let text: string;
+	let source: ZeroDeliveryRecoverySource;
+	if (actionUserFacingText) {
+		text = actionUserFacingText;
+		source = "actionUserFacingText";
+	} else if (failedActionCount > 0 && successfulActionCount > 0) {
+		text =
+			"I completed part of that, but another step failed before I could compose a clean final reply.";
+		source = "partialToolFallback";
+	} else if (failedActionCount > 0) {
+		text = FAILED_TOOL_FALLBACK_MESSAGE;
+		source = "failedToolFallback";
+	} else if (successfulActionCount > 0) {
+		text =
+			"I completed the available step, but I could not compose a clean final reply. Ask again and I will retry.";
+		source = "successfulToolFallback";
+	} else {
+		text =
+			"I worked on that, but the available step did not report whether it completed. Ask again and I will retry.";
+		source = "indeterminateToolFallback";
+	}
+
+	return {
+		text,
+		source,
+		hadEarlyReply: args.earlyReplySent,
+		successfulActionCount,
+		failedActionCount,
+	};
+}
+
 /**
  * Records a settled planner tool result on the turn-scoped list the
  * planner-loop failure catch reads, returning the result unchanged so the
@@ -9122,52 +9204,34 @@ export async function runV5MessageRuntimeStage1(args: {
 			!plannedTextRepeatsActionReply &&
 			!plannedTextIsRedundantFailureFallback &&
 			!plannedTextRepeatsVerifiedActionDelivery;
-		// NEVER-SILENT INVARIANT (matrix F24/F12, tj-bfe764bf544bed /
-		// tj-fda9d65e8d04b9): a RESPOND turn that executed tools must not end
-		// with zero deliveries. Every suppression above presupposes the user
-		// already received the content through some earlier delivery — when
-		// NOTHING was delivered this turn (no early ack, empty delivered-set)
-		// that premise is false by construction, and an empty
-		// `effectiveReplyText` (a FINISH whose message evaporated in the
-		// safety chain) otherwise ships `responseContent: null`: the runtime
-		// produced a correct answer and the user got silence. Recover with the
-		// best grounded text available and name the failure in the log so the
-		// upstream emptying path is diagnosable instead of invisible.
-		if (
-			!shouldSendPlannedText &&
-			!earlyReplySent &&
-			deliveredVisibleTexts.size === 0 &&
-			actionResults.length > 0
-		) {
-			const recoveredText =
-				effectiveDeliveredReplyText ||
-				stageOneAck ||
-				actionResults
-					.map((result) =>
-						typeof result.userFacingText === "string"
-							? result.userFacingText.trim()
-							: "",
-					)
-					.filter((ownedText) => ownedText.length > 0)
-					.at(-1) ||
-				"I finished working on that but could not compose a clean reply — ask again and I will retry.";
+		// NEVER-SILENT INVARIANT (matrix F24/F12): an early progress ack is
+		// not a terminal answer. Recover only when neither the reply gate nor an
+		// action callback delivered final text, and classify the actual tool
+		// outcomes before choosing fallback wording.
+		const zeroDeliveryRecovery = resolveZeroDeliveryRecovery({
+			shouldSendPlannedText,
+			earlyReplySent,
+			deliveredVisibleTextCount: deliveredVisibleTexts.size,
+			actionResults,
+		});
+		if (zeroDeliveryRecovery) {
 			args.runtime.logger.warn(
 				{
 					src: "service:message",
 					emptyFinal: !effectiveReplyText,
 					suppressedByEarlyReply: plannedTextRepeatsEarlyReply,
 					suppressedByActionReply: plannedTextRepeatsActionReply,
-					recoveredFrom: effectiveDeliveredReplyText
-						? "plannedText"
-						: stageOneAck
-							? "stageOneAck"
-							: "actionUserFacingText",
+					recoveredFrom: zeroDeliveryRecovery.source,
+					hadEarlyReply: zeroDeliveryRecovery.hadEarlyReply,
+					successfulActionCount:
+						zeroDeliveryRecovery.successfulActionCount,
+					failedActionCount: zeroDeliveryRecovery.failedActionCount,
 				},
-				"RESPOND turn reached the reply gate with zero deliveries; recovering instead of ending silent",
+				"RESPOND turn reached the reply gate without a terminal delivery; recovering from tool outcomes",
 			);
-			effectiveReplyText = recoveredText;
-			strippedPlannedReplyText = recoveredText;
-			effectiveDeliveredReplyText = recoveredText;
+			effectiveReplyText = zeroDeliveryRecovery.text;
+			strippedPlannedReplyText = zeroDeliveryRecovery.text;
+			effectiveDeliveredReplyText = zeroDeliveryRecovery.text;
 			shouldSendPlannedText = true;
 		}
 		// Voice-gate provenance (#14873): the Stage-1 ack has unambiguous model
