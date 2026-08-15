@@ -7,11 +7,11 @@
  * I/O errors (induced on the real fs, not mocked).
  */
 import { Buffer } from "node:buffer";
+import { EventEmitter } from "node:events";
 import fs from "node:fs";
 import type { ServerResponse } from "node:http";
 import os from "node:os";
 import path from "node:path";
-import { EventEmitter } from "node:events";
 import { ElizaError } from "@elizaos/core";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
@@ -95,20 +95,25 @@ function makeRes(): {
     },
     destroy: vi.fn(),
     on(event: string, handler: () => void) {
-      (closeHandlers[event] ??= []).push(handler);
+      const handlers = closeHandlers[event] ?? [];
+      handlers.push(handler);
+      closeHandlers[event] = handlers;
       return this;
     },
     once(event: string, handler: () => void) {
-      (closeHandlers[event] ??= []).push(handler);
+      const handlers = closeHandlers[event] ?? [];
+      handlers.push(handler);
+      closeHandlers[event] = handlers;
       return this;
     },
     emit(event: string, ...args: unknown[]) {
-      for (const h of closeHandlers[event] ?? []) (h as (...a: unknown[]) => void)(...args);
+      for (const h of closeHandlers[event] ?? [])
+        (h as (...a: unknown[]) => void)(...args);
       return true;
     },
     // test helper to trigger close
     __triggerClose() {
-      for (const h of closeHandlers["close"] ?? []) h();
+      for (const h of closeHandlers.close ?? []) h();
     },
   } as unknown as ServerResponse & { __triggerClose: () => void };
   return {
@@ -585,11 +590,15 @@ describe("serveMediaFile stream fault handling (#20164)", () => {
     const { url } = persistMediaBytes(Buffer.from("fault-bytes"), "image/png");
     const { res, get } = makeRes();
     const fake = makeFakeStream();
-    const spy = vi.spyOn(fs, "createReadStream").mockReturnValue(fake as unknown as fs.ReadStream);
+    const spy = vi
+      .spyOn(fs, "createReadStream")
+      .mockReturnValue(fake as unknown as fs.ReadStream);
     try {
       serveMediaFile({ method: "GET", headers: {} } as never, res, url);
       // Handlers installed before headers; error before open => 500
-      expect((res as unknown as { headersSent: boolean }).headersSent).toBe(false);
+      expect((res as unknown as { headersSent: boolean }).headersSent).toBe(
+        false,
+      );
       fake.emit("error", new Error("open fail"));
       const out = get();
       expect(out.status).toBe(500);
@@ -604,10 +613,18 @@ describe("serveMediaFile stream fault handling (#20164)", () => {
     const { url } = persistMediaBytes(Buffer.from("0123456789"), "audio/mpeg");
     const { res, get } = makeRes();
     const fake = makeFakeStream();
-    const spy = vi.spyOn(fs, "createReadStream").mockReturnValue(fake as unknown as fs.ReadStream);
+    const spy = vi
+      .spyOn(fs, "createReadStream")
+      .mockReturnValue(fake as unknown as fs.ReadStream);
     try {
-      serveMediaFile({ method: "GET", headers: { range: "bytes=2-5" } } as never, res, url);
-      expect((res as unknown as { headersSent: boolean }).headersSent).toBe(false);
+      serveMediaFile(
+        { method: "GET", headers: { range: "bytes=2-5" } } as never,
+        res,
+        url,
+      );
+      expect((res as unknown as { headersSent: boolean }).headersSent).toBe(
+        false,
+      );
       fake.emit("error", new Error("range open fail"));
       expect(get().status).toBe(500);
       expect(fake.pipe).not.toHaveBeenCalled();
@@ -620,14 +637,20 @@ describe("serveMediaFile stream fault handling (#20164)", () => {
     const { url } = persistMediaBytes(Buffer.from("post-header"), "image/png");
     const { res } = makeRes();
     const fake = makeFakeStream();
-    const spy = vi.spyOn(fs, "createReadStream").mockReturnValue(fake as unknown as fs.ReadStream);
+    const spy = vi
+      .spyOn(fs, "createReadStream")
+      .mockReturnValue(fake as unknown as fs.ReadStream);
     try {
       serveMediaFile({ method: "GET", headers: {} } as never, res, url);
       fake.emit("open");
-      expect((res as unknown as { headersSent: boolean }).headersSent).toBe(true);
+      expect((res as unknown as { headersSent: boolean }).headersSent).toBe(
+        true,
+      );
       expect(fake.pipe).toHaveBeenCalledTimes(1);
       fake.emit("error", new Error("read fail mid-stream"));
-      expect((res as unknown as { destroy: ReturnType<typeof vi.fn> }).destroy).toHaveBeenCalled();
+      expect(
+        (res as unknown as { destroy: ReturnType<typeof vi.fn> }).destroy,
+      ).toHaveBeenCalled();
     } finally {
       spy.mockRestore();
     }
@@ -637,7 +660,9 @@ describe("serveMediaFile stream fault handling (#20164)", () => {
     const { url } = persistMediaBytes(Buffer.from("abort-bytes"), "image/png");
     const { res } = makeRes();
     const fake = makeFakeStream();
-    const spy = vi.spyOn(fs, "createReadStream").mockReturnValue(fake as unknown as fs.ReadStream);
+    const spy = vi
+      .spyOn(fs, "createReadStream")
+      .mockReturnValue(fake as unknown as fs.ReadStream);
     try {
       serveMediaFile({ method: "GET", headers: {} } as never, res, url);
       fake.emit("open");
@@ -653,9 +678,15 @@ describe("serveMediaFile stream fault handling (#20164)", () => {
     const { url } = persistMediaBytes(Buffer.from("0123456789"), "audio/mpeg");
     const { res } = makeRes();
     const fake = makeFakeStream();
-    const spy = vi.spyOn(fs, "createReadStream").mockReturnValue(fake as unknown as fs.ReadStream);
+    const spy = vi
+      .spyOn(fs, "createReadStream")
+      .mockReturnValue(fake as unknown as fs.ReadStream);
     try {
-      serveMediaFile({ method: "GET", headers: { range: "bytes=0-3" } } as never, res, url);
+      serveMediaFile(
+        { method: "GET", headers: { range: "bytes=0-3" } } as never,
+        res,
+        url,
+      );
       fake.emit("open");
       (res as unknown as { __triggerClose: () => void }).__triggerClose();
       expect(fake.destroy).toHaveBeenCalled();
@@ -668,12 +699,18 @@ describe("serveMediaFile stream fault handling (#20164)", () => {
     const { url } = persistMediaBytes(Buffer.from("ok-bytes"), "image/png");
     const { res, get } = makeRes();
     const fake = makeFakeStream();
-    const spy = vi.spyOn(fs, "createReadStream").mockReturnValue(fake as unknown as fs.ReadStream);
+    const spy = vi
+      .spyOn(fs, "createReadStream")
+      .mockReturnValue(fake as unknown as fs.ReadStream);
     try {
       serveMediaFile({ method: "GET", headers: {} } as never, res, url);
-      expect((res as unknown as { headersSent: boolean }).headersSent).toBe(false);
+      expect((res as unknown as { headersSent: boolean }).headersSent).toBe(
+        false,
+      );
       fake.emit("open");
-      expect((res as unknown as { headersSent: boolean }).headersSent).toBe(true);
+      expect((res as unknown as { headersSent: boolean }).headersSent).toBe(
+        true,
+      );
       expect(get().status).toBe(200);
       expect(fake.pipe).toHaveBeenCalledTimes(1);
     } finally {
