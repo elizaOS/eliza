@@ -2,11 +2,14 @@
  * Deterministic coverage for the explicit-recurrence guard on model-inferred
  * RRULEs: cadence-flavored event nouns ("standup") and time-of-day window
  * phrases ("in the morning") must not become repeating events; explicit
- * recurrence in any supported language must keep them, including recurrence
- * stated in a prior clarify turn carried via the conversation window.
+ * recurrence in any supported language must keep them. Every model-authored
+ * recurrence source is gated by current authoritative user text.
  */
 import { describe, expect, it } from "vitest";
-import { intentStatesRecurrence } from "./calendar-handler.js";
+import {
+  buildCreateEventRequest,
+  intentStatesRecurrence,
+} from "./calendar-handler.js";
 
 describe("intentStatesRecurrence", () => {
   it("rejects one-off asks with cadence-flavored nouns", () => {
@@ -80,20 +83,86 @@ describe("intentStatesRecurrence", () => {
     expect(intentStatesRecurrence("una vez a la semana yoga")).toBe(true);
     expect(intentStatesRecurrence("toda segunda tem reunião")).toBe(true);
     expect(intentStatesRecurrence("周一到周五提醒我吃药")).toBe(true);
+    expect(intentStatesRecurrence("毎週月曜日の午前10時にスタンドアップ")).toBe(
+      true,
+    );
   });
 
-  it("grounds recurrence in any provided text (multi-turn clarify)", () => {
-    // "confirm" alone says nothing; the prior turn's "make it weekly" arrives
-    // via the recent-conversation window and keeps the stated recurrence.
-    expect(intentStatesRecurrence("confirm")).toBe(false);
+  it("rejects Japanese one-shot windows and name-like cadence words", () => {
+    expect(intentStatesRecurrence("明日の朝、歯医者の予定を追加して")).toBe(
+      false,
+    );
+    expect(intentStatesRecurrence("毎日新聞の取材を明日の朝に追加して")).toBe(
+      false,
+    );
+  });
+
+  it("rejects negated recurrence and non-user role text", () => {
+    expect(intentStatesRecurrence("remind me tomorrow, not every day")).toBe(
+      false,
+    );
     expect(
-      intentStatesRecurrence("confirm", "user: make it weekly\nagent: ok"),
-    ).toBe(true);
+      intentStatesRecurrence(
+        "schedule standup Monday, not recurring, just once",
+      ),
+    ).toBe(false);
+    expect(intentStatesRecurrence("assistant: should this be weekly?")).toBe(
+      false,
+    );
+    expect(intentStatesRecurrence("back up every 2 days")).toBe(true);
+    expect(intentStatesRecurrence("check every 15 minutes")).toBe(true);
   });
 
   it("is empty-safe", () => {
     expect(intentStatesRecurrence("")).toBe(false);
     expect(intentStatesRecurrence("   ")).toBe(false);
     expect(intentStatesRecurrence(undefined, null, "")).toBe(false);
+  });
+});
+
+describe("buildCreateEventRequest recurrence authority", () => {
+  const plannerRecurrence = ["RRULE:FREQ=WEEKLY;BYDAY=MO"];
+
+  it("drops an outer-planner RRULE for a one-off raw user request", () => {
+    const built = buildCreateEventRequest({
+      details: {
+        title: "standup",
+        startAt: "2026-08-17T10:00:00.000Z",
+        recurrence: plannerRecurrence,
+      },
+      extractedDetails: {},
+      explicitTitle: "standup",
+      inferredTitle: "standup",
+      recurrenceGuardTexts: ["add to my calendar: standup monday at 10am"],
+    });
+
+    expect(built.request.recurrence).toBeUndefined();
+    expect(built.request.startAt).toBe("2026-08-17T10:00:00.000Z");
+  });
+
+  it("keeps outer-planner recurrence when the current user states cadence", () => {
+    const built = buildCreateEventRequest({
+      details: { title: "standup", recurrence: plannerRecurrence },
+      extractedDetails: {},
+      explicitTitle: "standup",
+      inferredTitle: "standup",
+      recurrenceGuardTexts: ["schedule standup every monday at 10am"],
+    });
+
+    expect(built.request.recurrence).toEqual(plannerRecurrence);
+  });
+
+  it("does not let planner or assistant text open the gate", () => {
+    const built = buildCreateEventRequest({
+      details: { title: "standup", recurrence: plannerRecurrence },
+      extractedDetails: { recurrence: plannerRecurrence },
+      explicitTitle: "standup",
+      inferredTitle: "weekly standup",
+      recurrenceGuardTexts: [
+        "user: no, just once\nassistant: should this be weekly?",
+      ],
+    });
+
+    expect(built.request.recurrence).toBeUndefined();
   });
 });

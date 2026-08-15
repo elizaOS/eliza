@@ -38,7 +38,10 @@ import type {
   LifeOpsCalendarRecurrenceScope,
   LifeOpsNextCalendarEventContext,
 } from "@elizaos/shared";
-import { textStatesExplicitRecurrence } from "@elizaos/shared";
+import {
+  selectUserAuthorizedRecurrence,
+  textStatesExplicitRecurrence,
+} from "@elizaos/shared";
 import { isAppleCalendarGrant } from "../apple-calendar.js";
 import { CALENDAR_DETAILS_PARAMETER_SCHEMA } from "../calendar-action-schema.js";
 import {
@@ -2838,10 +2841,10 @@ function resolveCreateEventDurationMinutes(args: {
 }
 
 /**
- * True when any of the turn's texts states a repeating cadence in the user's
- * own words. Delegates to the shared explicit-recurrence markers — repetition
- * words only, never time-of-day window phrases, which appear in one-shot asks
- * ("dentist tomorrow in the morning") and must not open the recurrence gate.
+ * True when authoritative user-authored text states a repeating cadence.
+ * Delegates to the shared explicit-recurrence markers — repetition words only,
+ * never planner/assistant prose or time-of-day window phrases, which appear in
+ * one-shot asks ("dentist tomorrow in the morning") and must not open the gate.
  */
 export function intentStatesRecurrence(
   ...texts: ReadonlyArray<string | null | undefined>
@@ -2854,14 +2857,12 @@ type CreateEventRequestBuildArgs = {
   extractedDetails: Record<string, unknown>;
   explicitTitle: string | undefined;
   inferredTitle: string | undefined;
-  intent: string;
   fallbackRequest?: CreateLifeOpsCalendarEventRequest;
   preferExtractedDetails?: boolean;
   /**
-   * Texts the recurrence guard grounds in: the raw user message (the planner
-   * intent can be a paraphrase) and the recent-conversation window, so a
-   * clarify round-trip ("make it weekly" answered a turn earlier) keeps its
-   * stated recurrence. The intent itself is always checked too.
+   * Authoritative user-authored text for the recurrence guard. Planner intent,
+   * structured details, and assistant/system history must never authorize an
+   * RRULE the current user did not request.
    */
   recurrenceGuardTexts?: ReadonlyArray<string | null | undefined>;
 };
@@ -2909,7 +2910,7 @@ function pickCreateEventStringField(
     : (explicit ?? extracted ?? fallback);
 }
 
-function buildCreateEventRequest(
+export function buildCreateEventRequest(
   args: CreateEventRequestBuildArgs,
 ): CreateEventRequestBuildResult {
   const extractedTitle = detailString(args.extractedDetails, "title");
@@ -3004,21 +3005,25 @@ function buildCreateEventRequest(
   // RRULE:FREQ=WEEKLY;BYDAY=MO) even though the user asked for one event; on
   // the built-in calendar that hard-400s (ELIZA_CALENDAR_RECURRENCE_UNSUPPORTED)
   // and the turn lectures about providers instead of creating the event.
-  // Model-inferred recurrence therefore requires an explicit recurrence term
-  // in the user's own words; planner-structured recurrence stays trusted.
-  const extractedRecurrence = intentStatesRecurrence(
-    args.intent,
-    ...(args.recurrenceGuardTexts ?? []),
-  )
-    ? detailRecurrenceLines(args.extractedDetails)
-    : undefined;
-  const recurrence = args.preferExtractedDetails
-    ? (extractedRecurrence ??
-      explicitRecurrence ??
-      args.fallbackRequest?.recurrence)
-    : (explicitRecurrence ??
-      extractedRecurrence ??
-      args.fallbackRequest?.recurrence);
+  // Every recurrence source here is model-authored: `details` comes from the
+  // outer planner, `extractedDetails` from the domain extractor, and fallback
+  // requests from an earlier model-built attempt. Gate all of them on current
+  // authoritative user text so planner disagreement cannot create recurrence.
+  const extractedRecurrence = detailRecurrenceLines(args.extractedDetails);
+  const recurrence = selectUserAuthorizedRecurrence(
+    args.recurrenceGuardTexts ?? [],
+    args.preferExtractedDetails
+      ? [
+          extractedRecurrence,
+          explicitRecurrence,
+          args.fallbackRequest?.recurrence,
+        ]
+      : [
+          explicitRecurrence,
+          extractedRecurrence,
+          args.fallbackRequest?.recurrence,
+        ],
+  );
 
   return {
     title,
@@ -4304,11 +4309,7 @@ const calendarAction: CalendarHandlerAction = {
           extractedDetails,
           explicitTitle,
           inferredTitle,
-          intent,
-          recurrenceGuardTexts: [
-            messageText(message),
-            formatCreateEventRecentConversation(state),
-          ],
+          recurrenceGuardTexts: [messageText(message)],
           // The outer planner identifies CALENDAR and supplies hints; this
           // domain-specific extraction has the authoritative calendar context,
           // timezone, and local-date anchors needed to normalize wall time.
