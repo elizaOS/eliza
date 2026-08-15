@@ -199,6 +199,7 @@ describe("gateway webhook handler e2e routing", () => {
     expect(sharedBody).toEqual({
       message: "My name is Ada",
       platform: "twilio",
+      project: "eliza-app",
       phoneNumber: "+15551234567",
       messageId: `twilio:eliza-app:${event.messageId}`,
     });
@@ -273,6 +274,7 @@ describe("gateway webhook handler e2e routing", () => {
     await waitFor(() => replies.length === 1, "Blooio personal Shared reply");
     expect(sharedBody).toEqual({
       platform: "blooio",
+      project: "eliza-app",
       phoneNumber: "+15551234567",
       messageId: "blooio:eliza-app:blooio-message-1",
       message: "hello from iMessage",
@@ -824,6 +826,7 @@ describe("gateway webhook handler e2e routing", () => {
     expect(adapter.replies).toEqual(["agent reply: container is running"]);
     expect(personalBody).toEqual({
       platform: "twilio",
+      project: "eliza-app",
       phoneNumber: "+15551234567",
       messageId: "twilio:eliza-app:SM_linked_1",
       message: "Are you running?",
@@ -947,6 +950,7 @@ describe("gateway webhook handler e2e routing", () => {
     ]);
     expect(sharedBody).toMatchObject({
       platform: "twilio",
+      project: "eliza-app",
       phoneNumber: "+15551234567",
       messageId: "twilio:eliza-app:SM_provisioning_1",
     });

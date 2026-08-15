@@ -16,6 +16,7 @@
  * item, so no conversation index is needed.
  */
 
+import type { SharedReminderDelivery } from "@elizaos/plugin-scheduling/edge";
 import type { RuntimeDurableObjectNamespace } from "../../../types/cloud-worker-env";
 import { InsufficientCreditsError } from "../../api/errors";
 import type { BridgeRequest } from "../eliza-sandbox-bridge";
@@ -523,11 +524,7 @@ export async function sharedRestMessageSend(
   namespace: RuntimeDurableObjectNamespace,
   clientMessageId?: string,
   funding: "organization-credits" | "platform" = "organization-credits",
-  trustedDelivery?: {
-    platform: "telegram";
-    project: string;
-    chatId: string;
-  },
+  trustedDelivery?: SharedReminderDelivery,
 ): Promise<{ text: string; agentName: string }> {
   const rpc: BridgeRequest = {
     jsonrpc: "2.0",

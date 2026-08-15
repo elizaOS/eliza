@@ -13,6 +13,7 @@ import {
   createDiscordPublicKeyResolver,
 } from "./discord-event-webhook";
 import { GatewayManager } from "./gateway-manager";
+import { deliverInternalDiscordMessage } from "./internal-delivery";
 import { logger } from "./logger";
 
 const app = new Hono();
@@ -85,6 +86,14 @@ app.route(
       }),
     enqueue: (job) => gatewayManager.enqueueDiscordInstallWelcome(job),
     logError: (message, context) => logger.error(message, context),
+  }),
+);
+
+app.post("/internal/deliver", (c) =>
+  deliverInternalDiscordMessage(c.req.raw, {
+    getInternalSecret: () => process.env.GATEWAY_INTERNAL_SECRET,
+    sendDirectMessage: (input) =>
+      gatewayManager.deliverElizaAppDirectMessage(input),
   }),
 );
 

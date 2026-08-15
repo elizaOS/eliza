@@ -654,6 +654,7 @@ async function sendPersonalSharedReply(
             }
           : {
               platform: adapter.platform,
+              project,
               phoneNumber: event.senderId,
               messageId: `${adapter.platform}:${project}:${event.messageId}`,
               message: event.text,

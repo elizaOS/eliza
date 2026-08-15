@@ -338,6 +338,21 @@ describe("blooio sendReply", () => {
     });
   });
 
+  test("returns the provider message receipt for proactive delivery", async () => {
+    globalThis.fetch = (async () =>
+      new Response(JSON.stringify({ id: "out_receipt_1" }), {
+        status: 200,
+      })) as typeof fetch;
+
+    await expect(
+      blooioAdapter.sendReplyWithReceipt?.(
+        makeConfig(),
+        chatEvent,
+        "remember this",
+      ),
+    ).resolves.toEqual({ providerMessageIds: ["out_receipt_1"] });
+  });
+
   test("pins a v4 reply to the exact inbound WhatsApp channel", async () => {
     let body: Record<string, unknown> = {};
     globalThis.fetch = (async (
