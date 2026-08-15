@@ -432,7 +432,8 @@ validate_retirable_legacy_vhost() {
       if (in_upgrade_map) {
         if (normalized == "default upgrade;") {
           defaults += 1
-        } else if (normalized == "\\047\\047 close;") {
+        } else if (normalized == "\\047\\047 close;" \
+            || normalized == "\\042\\042 close;") {
           closes += 1
         } else if (normalized == "}") {
           endings += 1
@@ -473,7 +474,7 @@ validate_retirable_legacy_vhost() {
         || [ "$legacy_upgrade_map_closes" -ne 1 ] \\
         || [ "$legacy_upgrade_map_endings" -ne 1 ] \\
         || [ "$legacy_upgrade_map_unexpected" -ne 0 ]; then
-      echo "legacy Headscale vhost has an unexpected upgrade map shape"
+      echo "legacy Headscale vhost has an unexpected upgrade map shape: blocks=$legacy_upgrade_map_blocks defaults=$legacy_upgrade_map_defaults empty-close=$legacy_upgrade_map_closes endings=$legacy_upgrade_map_endings unexpected=$legacy_upgrade_map_unexpected"
       return 1
     fi
     legacy_has_upgrade_map=true

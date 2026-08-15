@@ -965,6 +965,17 @@ server {
     });
     expect(valid.status).toBe(0);
 
+    const doubleQuotedEmptyKey = expectedLegacySource.replace(
+      "''      close;",
+      '""      close;',
+    );
+    const doubleQuotedValid = runLegacyVhostValidation({
+      source: doubleQuotedEmptyKey,
+      loadedConfig: expectedLoadedConfig.replace("'' close;", '"" close;'),
+      enforceDirectiveAllowlist: true,
+    });
+    expect(doubleQuotedValid.status).toBe(0);
+
     for (const source of [
       expectedLegacySource.replace("$http_upgrade", "$http_connection"),
       expectedLegacySource.replace("$connection_upgrade", "$shared_upgrade"),
@@ -975,6 +986,10 @@ server {
         "  ''      close;",
         "  ''      close;\n  ''      close;",
       ),
+      expectedLegacySource.replace(
+        "  ''      close;",
+        "  ''      close;\n  \"\"      close;",
+      ),
     ]) {
       const invalid = runLegacyVhostValidation({
         source,
@@ -983,6 +998,10 @@ server {
       });
       expect(invalid.status).not.toBe(0);
       expect(invalid.stdout).toContain("unexpected upgrade map shape");
+      expect(invalid.stdout).toMatch(
+        /blocks=\d+ defaults=\d+ empty-close=\d+ endings=\d+ unexpected=\d+/u,
+      );
+      expect(invalid.stdout).not.toContain("$connection_upgrade");
     }
 
     const externallyReferenced = runLegacyVhostValidation({
