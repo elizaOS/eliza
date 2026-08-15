@@ -63,6 +63,12 @@ const fakeAudioWav = path.join(
   ".voice",
   "known-phrase.wav",
 );
+const fakeBargeAudioWav = path.join(
+  appDir,
+  "test-results",
+  ".voice",
+  "known-phrase-barge.wav",
+);
 mkdirSync(path.dirname(fakeAudioWav), { recursive: true });
 const knownPhraseWav = Buffer.from(
   KNOWN_PHRASE_WAV_DATA_URL.split(",")[1] ?? "",
@@ -88,18 +94,45 @@ if (dataChunkOffset + 8 > knownPhraseWav.length) {
 }
 const dataLength = knownPhraseWav.readUInt32LE(dataChunkOffset + 4);
 const dataEnd = dataChunkOffset + 8 + dataLength;
-const fakeAudioWithEotSilence = Buffer.concat([
-  knownPhraseWav.subarray(0, dataEnd),
-  Buffer.alloc(silenceBytes),
-  knownPhraseWav.subarray(dataEnd),
-]);
-fakeAudioWithEotSilence.writeUInt32LE(fakeAudioWithEotSilence.length - 8, 4);
-fakeAudioWithEotSilence.writeUInt32LE(
-  dataLength + silenceBytes,
-  dataChunkOffset + 4,
+const dataStart = dataChunkOffset + 8;
+const knownPhrasePcm = knownPhraseWav.subarray(dataStart, dataEnd);
+function writeFakeCaptureWav(outputPath: string, pcm: Buffer): void {
+  const wav = Buffer.concat([
+    knownPhraseWav.subarray(0, dataStart),
+    pcm,
+    knownPhraseWav.subarray(dataEnd),
+  ]);
+  wav.writeUInt32LE(wav.length - 8, 4);
+  wav.writeUInt32LE(pcm.length, dataChunkOffset + 4);
+  writeFileSync(outputPath, wav);
+}
+writeFakeCaptureWav(
+  fakeAudioWav,
+  Buffer.concat([knownPhrasePcm, Buffer.alloc(silenceBytes)]),
 );
-writeFileSync(fakeAudioWav, fakeAudioWithEotSilence);
+// Tuneable only for the opt-in live barge proof: bracket the real provider's
+// semantic-EOT/playout boundary without changing application behavior.
+const bargeGapMs = Number.parseInt(
+  process.env.ELIZA_REALTIME_VOICE_BARGE_GAP_MS ?? "1300",
+  10,
+);
+if (!Number.isFinite(bargeGapMs) || bargeGapMs < 1_000 || bargeGapMs > 5_000) {
+  throw new Error(
+    "ELIZA_REALTIME_VOICE_BARGE_GAP_MS must be an integer from 1000 to 5000",
+  );
+}
+const bargeGapBytes = Math.round(16_000 * 2 * (bargeGapMs / 1_000));
+writeFakeCaptureWav(
+  fakeBargeAudioWav,
+  Buffer.concat([
+    knownPhrasePcm,
+    Buffer.alloc(bargeGapBytes),
+    knownPhrasePcm,
+    Buffer.alloc(silenceBytes),
+  ]),
+);
 const VOICE_MIC_SPEC = /(voice-realaudio|transcript-realaudio)\.spec\.ts/;
+const VOICE_BARGE_MIC_SPEC = /realtime-voice-bargein-realaudio\.spec\.ts/;
 // WebKit (Safari engine) pointer/focus/text-input lane. iOS/iPadOS ship Safari's
 // WebKit, but every default lane above is Chromium-only, so pointer, focus, and
 // text-input regressions specific to WebKit go uncaught. This lane re-runs the
@@ -282,6 +315,26 @@ export default defineConfig({
             "--use-fake-ui-for-media-stream",
             "--use-fake-device-for-media-stream",
             `--use-file-for-fake-audio-capture=${fakeAudioWav}`,
+            "--autoplay-policy=no-user-gesture-required",
+          ],
+          ...(chromiumExecutablePath
+            ? { executablePath: chromiumExecutablePath }
+            : {}),
+        },
+      },
+    },
+    {
+      name: "chromium-voice-barge-mic",
+      testMatch: VOICE_BARGE_MIC_SPEC,
+      use: {
+        ...devices["Desktop Chrome"],
+        permissions: ["microphone"],
+        launchOptions: {
+          ...slowMoLaunchOptions,
+          args: [
+            "--use-fake-ui-for-media-stream",
+            "--use-fake-device-for-media-stream",
+            `--use-file-for-fake-audio-capture=${fakeBargeAudioWav}`,
             "--autoplay-policy=no-user-gesture-required",
           ],
           ...(chromiumExecutablePath
