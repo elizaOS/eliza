@@ -495,8 +495,36 @@ export class XService extends Service {
     const loadedClient =
       this.accountClients.get(accountId) ??
       (this.twitterClient?.accountId === accountId ? this.twitterClient : null);
-    const profile = loadedClient?.client.profile;
     const { capabilities, scopes } = capabilitiesForXAuthState(state);
+    let profile: TwitterProfile | null = null;
+    if (loadedClient) {
+      try {
+        profile = await loadedClient.client.getAuthenticatedProfile();
+      } catch (error) {
+        // error-policy:J4 account status translates an authentication refresh
+        // failure into the explicit needs-reauth state rather than stale identity.
+        if (
+          !(error instanceof ElizaError) ||
+          !["X_AUTH_REJECTED", "X_AUTH_NOT_INITIALIZED"].includes(error.code)
+        ) {
+          throw error;
+        }
+        logger.warn(
+          { accountId },
+          "[XService] Authenticated profile refresh failed",
+        );
+        return {
+          accountId,
+          configured: true,
+          connected: false,
+          reason: "needs_reauth",
+          identity: null,
+          grantedCapabilities: [],
+          grantedScopes: [],
+          authMode,
+        };
+      }
+    }
     return {
       accountId,
       configured: true,
@@ -529,6 +557,16 @@ export class XService extends Service {
       this.accountClients.get(accountId) ??
       (this.twitterClient?.accountId === accountId ? this.twitterClient : null);
     return loadedClient?.client.profile ?? null;
+  }
+
+  async refreshActiveProfile(
+    accountIdInput: string = this.defaultAccountId,
+  ): Promise<TwitterProfile | null> {
+    const accountId = this.resolveAccountId(accountIdInput);
+    const loadedClient =
+      this.accountClients.get(accountId) ??
+      (this.twitterClient?.accountId === accountId ? this.twitterClient : null);
+    return loadedClient ? loadedClient.client.getAuthenticatedProfile() : null;
   }
 
   private async startAutonomousClients(
@@ -784,34 +822,39 @@ export class XService extends Service {
       context?.metadata,
     );
     const base = (await this.getTwitterClientForAccount(accountId)).client;
+    return base.withAuthenticatedSession(async ({ profile }) => {
+      const replyToTweetId = readContentString(content, [
+        "replyToTweetId",
+        "replyTo",
+        "inReplyToTweetId",
+      ]);
+      const postService = new TwitterPostService(base);
+      const post = await postService.createPost(
+        {
+          agentId: runtime.agentId,
+          roomId: createUniqueUuid(
+            runtime,
+            `x:${accountId}:feed:${profile.id}`,
+          ),
+          text,
+          ...(replyToTweetId ? { inReplyTo: replyToTweetId } : {}),
+        },
+        profile,
+      );
 
-    const replyToTweetId = readContentString(content, [
-      "replyToTweetId",
-      "replyTo",
-      "inReplyToTweetId",
-    ]);
-    const postService = new TwitterPostService(base);
-    const post = await postService.createPost({
-      agentId: runtime.agentId,
-      roomId: createUniqueUuid(
-        runtime,
-        `x:${accountId}:feed:${base.profile?.id ?? runtime.agentId}`,
-      ),
-      text,
-      ...(replyToTweetId ? { inReplyTo: replyToTweetId } : {}),
-    });
-
-    return this.buildXPostMemory(runtime, {
-      id: post.id,
-      userId: post.userId || runtime.agentId,
-      username: post.username || base.profile?.username || "agent",
-      text: post.text,
-      createdAt: post.timestamp,
-      inReplyTo: post.inReplyTo,
-      roomId: post.roomId,
-      metadata: post.metadata,
-      metrics: post.metrics,
-      accountId,
+      return this.buildXPostMemory(runtime, {
+        id: post.id,
+        userId: post.userId,
+        username: post.username,
+        text: post.text,
+        createdAt: post.timestamp,
+        inReplyTo: post.inReplyTo,
+        roomId: post.roomId,
+        metadata: post.metadata,
+        metrics: post.metrics,
+        accountId,
+        ownUserId: profile.id,
+      });
     });
   }
 
@@ -948,33 +991,40 @@ export class XService extends Service {
         ? context.target.entityId
         : undefined);
 
-    const posts =
-      params.feed === "mentions"
-        ? await postService.getMentions(runtime.agentId, {
-            limit,
-            before: params.cursor,
-          })
-        : await postService.getPosts({
-            agentId: runtime.agentId,
-            ...(targetUserId ? { userId: targetUserId } : {}),
-            limit,
-            before: params.cursor,
-          });
+    return base.withAuthenticatedSession(async ({ profile }) => {
+      const posts =
+        params.feed === "mentions"
+          ? await postService.getMentions(runtime.agentId, {
+              limit,
+              before: params.cursor,
+            })
+          : await postService.getPosts({
+              agentId: runtime.agentId,
+              ...(targetUserId ? { userId: targetUserId } : {}),
+              limit,
+              before: params.cursor,
+            });
 
-    return posts.map((post) =>
-      this.buildXPostMemory(runtime, {
-        id: post.id,
-        userId: post.userId,
-        username: post.username,
-        text: post.text,
-        createdAt: post.timestamp,
-        inReplyTo: post.inReplyTo,
-        roomId: post.roomId,
-        metadata: post.metadata,
-        metrics: post.metrics,
-        accountId,
-      }),
-    );
+      return posts.map((post) =>
+        this.buildXPostMemory(runtime, {
+          id: post.id,
+          userId: post.userId,
+          username: post.username,
+          text: post.text,
+          createdAt: post.timestamp,
+          inReplyTo: post.inReplyTo,
+          roomId: post.roomId,
+          metadata: post.metadata,
+          metrics: post.metrics,
+          accountId,
+          ownUserId: profile.id,
+          conversationId:
+            typeof post.metadata?.conversationId === "string"
+              ? post.metadata.conversationId
+              : post.id,
+        }),
+      );
+    });
   }
 
   async searchConnectorPosts(
@@ -993,40 +1043,44 @@ export class XService extends Service {
       context.metadata,
     );
     const base = (await this.getTwitterClientForAccount(accountId)).client;
-    const result = await base.fetchSearchTweets(
-      query,
-      clampLimit(params.limit, 20, 100),
-      SearchMode.Latest,
-      params.cursor,
-    );
-    return result.tweets.flatMap((tweet) => {
-      // Normalize once per row: a present-but-unusable timestamp fails the
-      // row closed instead of surfacing a healthy-looking memory with an
-      // undefined or "now" creation time (#18965).
-      const createdAt = getEpochMs(tweet.timestamp);
-      if (createdAt === undefined) {
-        logger.debug(
-          `X searchPosts: skipping tweet ${tweet.id ?? "unknown"} with unusable timestamp`,
-        );
-        return [];
-      }
-      return [
-        this.buildXPostMemory(runtime, {
-          id: tweet.id ?? "unknown",
-          userId: tweet.userId ?? "unknown",
-          username: tweet.username ?? undefined,
-          text: tweet.text ?? "",
-          createdAt,
-          inReplyTo: tweet.inReplyToStatusId,
-          metrics: {
-            likes: tweet.likes,
-            reposts: tweet.retweets,
-            replies: tweet.replies,
-            quotes: tweet.quotes,
-          },
-          accountId,
-        }),
-      ];
+    return base.withAuthenticatedSession(async ({ profile }) => {
+      const result = await base.fetchSearchTweets(
+        query,
+        clampLimit(params.limit, 20, 100),
+        SearchMode.Latest,
+        params.cursor,
+      );
+      return result.tweets.flatMap((tweet) => {
+        // Normalize once per row: a present-but-unusable timestamp fails the
+        // row closed instead of surfacing a healthy-looking memory with an
+        // undefined or "now" creation time (#18965).
+        const createdAt = getEpochMs(tweet.timestamp);
+        if (createdAt === undefined) {
+          logger.debug(
+            `X searchPosts: skipping tweet ${tweet.id ?? "unknown"} with unusable timestamp`,
+          );
+          return [];
+        }
+        return [
+          this.buildXPostMemory(runtime, {
+            id: tweet.id ?? "unknown",
+            userId: tweet.userId ?? "unknown",
+            username: tweet.username ?? undefined,
+            text: tweet.text ?? "",
+            createdAt,
+            inReplyTo: tweet.inReplyToStatusId,
+            conversationId: tweet.conversationId ?? tweet.id,
+            metrics: {
+              likes: tweet.likes,
+              reposts: tweet.retweets,
+              replies: tweet.replies,
+              quotes: tweet.quotes,
+            },
+            accountId,
+            ownUserId: profile.id,
+          }),
+        ];
+      });
     });
   }
 
@@ -1366,6 +1420,8 @@ export class XService extends Service {
       metrics?: unknown;
       metadata?: Record<string, unknown>;
       accountId?: string;
+      ownUserId?: string;
+      conversationId?: string;
     },
   ): Memory {
     const accountId = normalizeXAccountId(
@@ -1373,13 +1429,16 @@ export class XService extends Service {
     );
     const authorId = post.userId || "unknown";
     const createdAt = post.createdAt;
-    const entityId =
-      authorId === runtime.agentId
-        ? runtime.agentId
-        : createUniqueUuid(runtime, `x:user:${authorId}`);
+    const isOwn = Boolean(post.ownUserId && authorId === post.ownUserId);
+    const entityId = isOwn
+      ? runtime.agentId
+      : createUniqueUuid(runtime, `x:user:${authorId}`);
     const roomId =
       post.roomId ??
-      createUniqueUuid(runtime, `x:${accountId}:feed:${authorId}`);
+      createUniqueUuid(
+        runtime,
+        `x:${accountId}:feed:${post.conversationId ?? authorId}`,
+      );
     const url = post.username
       ? `https://x.com/${post.username}/status/${post.id}`
       : `https://x.com/i/web/status/${post.id}`;
@@ -1405,7 +1464,7 @@ export class XService extends Service {
         accountId,
         provider: "x",
         timestamp: createdAt,
-        fromBot: entityId === runtime.agentId,
+        fromBot: isOwn,
         messageIdFull: post.id,
         chatType: ChannelType.FEED,
         sender: {

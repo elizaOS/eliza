@@ -16,7 +16,7 @@ Auto-enabled when `config.connectors.x` (or legacy `config.connectors.twitter`) 
 
 **Providers** (registered in `XPlugin.providers`):
 
-- `xIdentityProvider` (`name = "TWITTER_IDENTITY"`) — Makes the agent aware of its own X account: `@username`, screen name (display name), bio, and any configured nicknames. Reads the already-loaded `client.profile` via `XService.getActiveProfile()`; never issues a network call and returns empty context until the X client has authenticated. Nicknames are sourced from the `TWITTER_NICKNAMES` setting plus the character `name`.
+- `xIdentityProvider` (`name = "TWITTER_IDENTITY"`) — Makes the agent aware of its own X account: `@username`, screen name (display name), bio, and any configured nicknames. Reads through credential-aware `XService.refreshActiveProfile()` so broker rotation invalidates stale identity before prompt use; an account that is not loaded returns empty context, while refresh failures surface. Nicknames are sourced from the `TWITTER_NICKNAMES` setting plus the character `name`.
 
 **No actions or evaluators** are registered.
 

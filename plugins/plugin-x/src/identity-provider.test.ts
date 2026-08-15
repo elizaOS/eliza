@@ -1,11 +1,11 @@
-/** Unit tests for `xIdentityProvider`, asserting the identity context rendered from a supplied `TwitterProfile`; no network. */
+/** Verifies prompt identity uses the service's current authenticated profile and propagates refresh failures. */
 import type { IAgentRuntime, Memory, State } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import type { TwitterProfile } from "./base";
 import { xIdentityProvider } from "./identity-provider";
 
 function makeRuntime(profile: TwitterProfile | null): IAgentRuntime {
-  const service = { getActiveProfile: () => profile };
+  const service = { refreshActiveProfile: async () => profile };
   return {
     getService: (serviceType: string) => (serviceType === "x" ? service : null),
   } as unknown as IAgentRuntime;
@@ -90,5 +90,19 @@ describe("TWITTER_IDENTITY provider", () => {
 
     expect(result.text).toBe("");
     expect(result.data?.twitterProfile).toBeNull();
+  });
+
+  it("does not fall back to stale prompt identity when refresh fails", async () => {
+    const runtime = {
+      getService: () => ({
+        refreshActiveProfile: async () => {
+          throw new Error("broker identity unavailable");
+        },
+      }),
+    } as unknown as IAgentRuntime;
+
+    await expect(
+      xIdentityProvider.get(runtime, EMPTY_MESSAGE, EMPTY_STATE),
+    ).rejects.toThrow("broker identity unavailable");
   });
 });

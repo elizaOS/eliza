@@ -209,6 +209,20 @@ describe("XService trusted account routing", () => {
     const runtime = runtimeWithSettings({});
     const service = new XService(runtime);
     const fetchHomeTimeline = vi.fn(async () => []);
+    const profile = {
+      id: "secondary-user",
+      username: "secondary-user",
+      screenName: "Secondary User",
+      bio: "",
+      nicknames: [],
+    };
+    const withAuthenticatedSession = async <T>(
+      operation: (session: {
+        client: never;
+        profile: typeof profile;
+        revision: number;
+      }) => Promise<T>,
+    ) => operation({ client: {} as never, profile, revision: 1 });
     const getClient = vi
       .spyOn(
         service as unknown as {
@@ -216,13 +230,14 @@ describe("XService trusted account routing", () => {
             client: {
               fetchHomeTimeline: typeof fetchHomeTimeline;
               runtime: IAgentRuntime;
+              withAuthenticatedSession: typeof withAuthenticatedSession;
             };
           }>;
         },
         "getTwitterClientForAccount",
       )
       .mockResolvedValue({
-        client: { fetchHomeTimeline, runtime },
+        client: { fetchHomeTimeline, runtime, withAuthenticatedSession },
       });
 
     await service.fetchConnectorFeed(
@@ -246,18 +261,35 @@ describe("XService trusted account routing", () => {
     const runtime = runtimeWithSettings({});
     const service = new XService(runtime);
     const fetchSearchTweets = vi.fn(async () => ({ tweets: [] }));
+    const profile = {
+      id: "secondary-user",
+      username: "secondary-user",
+      screenName: "Secondary User",
+      bio: "",
+      nicknames: [],
+    };
+    const withAuthenticatedSession = async <T>(
+      operation: (session: {
+        client: never;
+        profile: typeof profile;
+        revision: number;
+      }) => Promise<T>,
+    ) => operation({ client: {} as never, profile, revision: 1 });
     const getClient = vi
       .spyOn(
         service as unknown as {
           getTwitterClientForAccount: (accountId: unknown) => Promise<{
             client: {
               fetchSearchTweets: typeof fetchSearchTweets;
+              withAuthenticatedSession: typeof withAuthenticatedSession;
             };
           }>;
         },
         "getTwitterClientForAccount",
       )
-      .mockResolvedValue({ client: { fetchSearchTweets } });
+      .mockResolvedValue({
+        client: { fetchSearchTweets, withAuthenticatedSession },
+      });
 
     await service.searchConnectorPosts(
       {
@@ -325,7 +357,23 @@ describe("XService trusted account routing", () => {
   it("ignores spoofed content account metadata in the post handler", async () => {
     const runtime = runtimeWithSettings({});
     const service = new XService(runtime);
-    const base = { profile: null } as unknown as ClientBase;
+    const profile = {
+      id: "account-owner",
+      username: "account-owner",
+      screenName: "Account Owner",
+      bio: "",
+      nicknames: [],
+    };
+    const base = {
+      profile,
+      withAuthenticatedSession: async <T>(
+        operation: (session: {
+          client: never;
+          profile: typeof profile;
+          revision: number;
+        }) => Promise<T>,
+      ) => operation({ client: {} as never, profile, revision: 1 }),
+    } as unknown as ClientBase;
     const getClient = vi
       .spyOn(
         service as unknown as {
