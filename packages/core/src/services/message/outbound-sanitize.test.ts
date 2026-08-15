@@ -321,3 +321,37 @@ describe("sanitizeOutboundText — pass-through and idempotence", () => {
 		}
 	});
 });
+
+describe("model-invented [LINK:] pseudo-markers", () => {
+	it("degrades a labeled pseudo-link to a real markdown link", () => {
+		expect(
+			sanitizeOutboundText(
+				"news here. [LINK:https://example.com/a-story](IBM x OpenAI) more.",
+			),
+		).toBe("news here. [IBM x OpenAI](https://example.com/a-story) more.");
+	});
+
+	it("degrades a bare pseudo-link to its URL", () => {
+		expect(
+			sanitizeOutboundText("see [LINK:https://example.com/x] for details"),
+		).toBe("see https://example.com/x for details");
+	});
+
+	it("degrades an empty-label pseudo-link to its URL", () => {
+		expect(sanitizeOutboundText("go [LINK:https://example.com/y]()")).toBe(
+			"go https://example.com/y",
+		);
+	});
+
+	it("leaves real markdown links and bracketed prose untouched", () => {
+		const text = "[a real link](https://example.com) and [LINKAGE:notes] stay";
+		expect(sanitizeOutboundText(text)).toBe(text);
+	});
+
+	it("is idempotent over pseudo-link degrades", () => {
+		const once = sanitizeOutboundText(
+			"[LINK:https://example.com/a](A) and [LINK:https://example.com/b]",
+		);
+		expect(sanitizeOutboundText(once)).toBe(once);
+	});
+});
