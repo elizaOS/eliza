@@ -312,6 +312,23 @@ async function processMessage(
   const reauth = deps.reacquireAuthHeader ?? reacquireAuthHeader;
   const authHeader = getAuthHeader();
 
+  // Link challenges are proof-bearing control messages, including when the
+  // handle currently resolves to a provisional onboarding account. Inspect
+  // them before every personal or agent route so no existing row can swallow
+  // the challenge as ordinary agent text.
+  const linkAttempt = await tryConfirmIdentityLink(
+    { redis, cloudBaseUrl, getAuthHeader },
+    adapter.platform,
+    event.senderId,
+    event.senderName,
+    event.text,
+  );
+  if (linkAttempt.handled && linkAttempt.reply) {
+    await beforeEgress?.();
+    await adapter.sendReply(config, event, linkAttempt.reply);
+    return;
+  }
+
   // The public eliza.app phone/Telegram endpoints are account transports, not
   // arbitrary agent webhooks. Always converge them through the same internal
   // personal route, including after Dedicated cutover. Direct agent-server
@@ -363,22 +380,6 @@ async function processMessage(
   stageStartedAt = Date.now();
 
   if (!identity) {
-    // A LINK-XXXXXXXX code from an unlinked sender is an identity-link
-    // confirmation (#17344), not onboarding chatter: confirm it against the
-    // cloud, drop this handle's negative-cache entry on success, and answer
-    // with the link outcome instead of the onboarding flow.
-    const linkAttempt = await tryConfirmIdentityLink(
-      { redis, cloudBaseUrl, getAuthHeader },
-      adapter.platform,
-      event.senderId,
-      event.senderName,
-      event.text,
-    );
-    if (linkAttempt.handled && linkAttempt.reply) {
-      await beforeEgress?.();
-      await adapter.sendReply(config, event, linkAttempt.reply);
-      return;
-    }
     logger.info(
       "Identity not linked; routing message to the account entry service",
       {

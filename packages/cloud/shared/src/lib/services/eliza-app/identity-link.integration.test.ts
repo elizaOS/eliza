@@ -106,6 +106,33 @@ describe("startIdentityLink", () => {
     expect(byCode.get(first.code)).toBe("expired");
     expect(byCode.get(second.code)).toBe("pending");
   });
+
+  test("serializes concurrent starts so exactly one code remains pending", async () => {
+    await seedAccount(USER_A, ORG_A, "steward-a");
+
+    const results = await Promise.all([
+      startIdentityLink({ userId: USER_A, organizationId: ORG_A, platform: "discord" }),
+      startIdentityLink({ userId: USER_A, organizationId: ORG_A, platform: "discord" }),
+    ]);
+
+    expect(results[0].code).not.toBe(results[1].code);
+    const rows = await dbWrite
+      .select()
+      .from(identityLinkCodes)
+      .where(eq(identityLinkCodes.platform, "discord"));
+    expect(rows.filter((row) => row.status === "pending")).toHaveLength(1);
+    expect(rows.filter((row) => row.status === "expired")).toHaveLength(1);
+  });
+
+  test("rejects a user and organization from different accounts", async () => {
+    await seedAccount(USER_A, ORG_A, "steward-a");
+    await seedAccount(USER_B, ORG_B, "steward-b");
+
+    await expect(
+      startIdentityLink({ userId: USER_A, organizationId: ORG_B, platform: "telegram" }),
+    ).rejects.toMatchObject({ code: "IDENTITY_LINK_ACCOUNT_MISMATCH" });
+    expect(await dbWrite.select().from(identityLinkCodes)).toHaveLength(0);
+  });
 });
 
 describe("confirmIdentityLink", () => {
@@ -243,6 +270,57 @@ describe("confirmIdentityLink", () => {
     // legitimate flow.
     const [ownerB] = await dbWrite.select().from(users).where(eq(users.id, USER_B));
     expect(ownerB.whatsapp_id).toBe("15551230005");
+    const [pending] = await dbWrite
+      .select({ status: identityLinkCodes.status })
+      .from(identityLinkCodes)
+      .where(eq(identityLinkCodes.code, code.slice("LINK-".length)));
+    expect(pending.status).toBe("pending");
+  });
+
+  test("atomically allows only one account to claim a previously free handle", async () => {
+    await seedAccount(USER_A, ORG_A, "steward-a");
+    await seedAccount(USER_B, ORG_B, "steward-b");
+    const first = await startIdentityLink({
+      userId: USER_A,
+      organizationId: ORG_A,
+      platform: "discord",
+    });
+    const second = await startIdentityLink({
+      userId: USER_B,
+      organizationId: ORG_B,
+      platform: "discord",
+    });
+
+    const results = await Promise.all([
+      confirmIdentityLink({
+        code: first.code,
+        platform: "discord",
+        platformId: "shared-discord-handle",
+      }),
+      confirmIdentityLink({
+        code: second.code,
+        platform: "discord",
+        platformId: "shared-discord-handle",
+      }),
+    ]);
+    expect(results.filter((result) => result.status === "linked")).toHaveLength(1);
+    expect(results.filter((result) => result.status === "handle_conflict")).toHaveLength(1);
+
+    const codeRows = await dbWrite
+      .select({ status: identityLinkCodes.status })
+      .from(identityLinkCodes);
+    expect(codeRows.filter((row) => row.status === "linked")).toHaveLength(1);
+    expect(codeRows.filter((row) => row.status === "pending")).toHaveLength(1);
+    const canonicalOwners = await dbWrite
+      .select({ id: users.id })
+      .from(users)
+      .where(eq(users.discord_id, "shared-discord-handle"));
+    const projectionOwners = await dbWrite
+      .select({ userId: userIdentities.user_id })
+      .from(userIdentities)
+      .where(eq(userIdentities.discord_id, "shared-discord-handle"));
+    expect(canonicalOwners).toHaveLength(1);
+    expect(projectionOwners).toEqual([{ userId: canonicalOwners[0].id }]);
   });
 
   test("normalizes and binds a phone handle end to end", async () => {

@@ -5,8 +5,8 @@
  * confirmation is single-use — the consuming update flips `status` from
  * `pending` exactly once, which is the replay guard the gateway relies on.
  */
-import type { InferInsertModel, InferSelectModel } from "drizzle-orm";
-import { index, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { type InferInsertModel, type InferSelectModel, sql } from "drizzle-orm";
+import { check, index, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { organizations } from "./organizations";
 import { users } from "./users";
 
@@ -36,6 +36,19 @@ export const identityLinkCodes = pgTable(
     updated_at: timestamp("updated_at").notNull().defaultNow(),
   },
   (table) => ({
+    platform_check: check(
+      "identity_link_codes_platform_check",
+      sql`${table.platform} IN ('telegram', 'discord', 'whatsapp', 'phone')`,
+    ),
+    status_check: check(
+      "identity_link_codes_status_check",
+      sql`${table.status} IN ('pending', 'linked', 'expired')`,
+    ),
+    one_pending_per_user_platform_idx: uniqueIndex(
+      "identity_link_codes_one_pending_per_user_platform_idx",
+    )
+      .on(table.user_id, table.platform)
+      .where(sql`${table.status} = 'pending'`),
     user_platform_status_idx: index("identity_link_codes_user_platform_status_idx").on(
       table.user_id,
       table.platform,

@@ -6,21 +6,22 @@
  * `start` runs under the caller's own session; `confirm` runs under gateway
  * internal auth with a platform identity the gateway itself attests — the code
  * is the proof the two sides belong to the same person. Consumption is
- * single-use via a conditional UPDATE on `status='pending'`, so a replayed
- * confirm reports `already_used` instead of re-binding. Cross-account
- * takeovers are rejected before consumption: a handle already resolving to a
- * different cloud user never re-binds through a link code.
+ * single-use via a row lock and one transaction containing the identity bind
+ * plus code consumption, so a failed bind leaves the code pending and replay
+ * reports `already_used`. Cross-account takeovers fail closed at both the
+ * owner check and the database uniqueness constraints.
  */
 import { randomBytes } from "node:crypto";
 import { ElizaError } from "@elizaos/core";
-import { and, eq, lt, sql } from "drizzle-orm";
-import { dbRead, dbWrite } from "../../../db/client";
+import { and, eq, lt } from "drizzle-orm";
+import { dbWrite } from "../../../db/client";
 import { usersRepository } from "../../../db/repositories/users";
 import {
-  type IdentityLinkCode,
   type IdentityLinkCodePlatform,
   identityLinkCodes,
 } from "../../../db/schemas/identity-link-codes";
+import { users } from "../../../db/schemas/users";
+import { isUniqueConstraintError } from "../../utils/db-errors";
 import { logger } from "../../utils/logger";
 import { isValidE164, normalizePhoneNumber } from "../../utils/phone-normalization";
 
@@ -86,36 +87,50 @@ function normalizeCode(raw: string): string | null {
 export async function startIdentityLink(
   input: StartIdentityLinkInput,
 ): Promise<StartIdentityLinkResult> {
-  const expiresAt = new Date(Date.now() + CODE_TTL_MS);
-
-  await dbWrite
-    .update(identityLinkCodes)
-    .set({ status: "expired", updated_at: new Date() })
-    .where(
-      and(
-        eq(identityLinkCodes.user_id, input.userId),
-        eq(identityLinkCodes.platform, input.platform),
-        eq(identityLinkCodes.status, "pending"),
-      ),
-    );
-
   for (let attempt = 1; attempt <= MINT_ATTEMPTS; attempt++) {
     const code = mintCode();
     try {
-      const [row] = await dbWrite
-        .insert(identityLinkCodes)
-        .values({
-          code,
-          user_id: input.userId,
-          organization_id: input.organizationId,
-          platform: input.platform,
-          expires_at: expiresAt,
-        })
-        .returning();
-      return { code: `LINK-${row.code}`, platform: input.platform, expiresAt: row.expires_at };
+      return await dbWrite.transaction(async (tx) => {
+        const [account] = await tx
+          .select({ id: users.id })
+          .from(users)
+          .where(and(eq(users.id, input.userId), eq(users.organization_id, input.organizationId)))
+          .for("update")
+          .limit(1);
+        if (!account) {
+          throw new ElizaError("IdentityLink: session account does not match its organization", {
+            code: "IDENTITY_LINK_ACCOUNT_MISMATCH",
+            context: { userId: input.userId, organizationId: input.organizationId },
+          });
+        }
+        const now = new Date();
+        const expiresAt = new Date(now.getTime() + CODE_TTL_MS);
+        await tx
+          .update(identityLinkCodes)
+          .set({ status: "expired", updated_at: now })
+          .where(
+            and(
+              eq(identityLinkCodes.user_id, input.userId),
+              eq(identityLinkCodes.platform, input.platform),
+              eq(identityLinkCodes.status, "pending"),
+            ),
+          );
+        const [row] = await tx
+          .insert(identityLinkCodes)
+          .values({
+            code,
+            user_id: input.userId,
+            organization_id: input.organizationId,
+            platform: input.platform,
+            expires_at: expiresAt,
+          })
+          .returning();
+        return { code: `LINK-${row.code}`, platform: input.platform, expiresAt: row.expires_at };
+      });
     } catch (error) {
       // error-policy:J2 A unique-code collision is retried with a fresh code;
       // the final attempt rethrows with context so the boundary reports it.
+      if (!isUniqueConstraintError(error)) throw error;
       if (attempt === MINT_ATTEMPTS) {
         throw new ElizaError("IdentityLink: failed to mint a unique link code", {
           code: "IDENTITY_LINK_CODE_MINT_FAILED",
@@ -132,29 +147,14 @@ export async function startIdentityLink(
 
 /**
  * Confirms a code from the channel side and binds the attested handle to the
- * minting account. The conditional consume (status='pending' AND unexpired) is
- * the single-use gate; classification of the losing paths is read afterwards
- * so replay, expiry, and unknown codes each surface as their own status.
+ * minting account. Locking the code serializes replay attempts; identity writes
+ * and consumption share the transaction so neither can commit alone.
  */
 export async function confirmIdentityLink(
   input: ConfirmIdentityLinkInput,
 ): Promise<ConfirmIdentityLinkResult> {
   const code = normalizeCode(input.code);
   if (!code) return { status: "code_not_found" };
-
-  const [row] = await dbRead
-    .select()
-    .from(identityLinkCodes)
-    .where(eq(identityLinkCodes.code, code))
-    .limit(1);
-  if (!row) return { status: "code_not_found" };
-  if (row.status === "linked") return { status: "already_used" };
-  if (row.status === "expired" || row.expires_at.getTime() <= Date.now()) {
-    return { status: "expired" };
-  }
-  if (row.platform !== input.platform) {
-    return { status: "platform_mismatch", expectedPlatform: row.platform };
-  }
 
   const platformId =
     input.platform === "phone" ? normalizePhoneNumber(input.platformId) : input.platformId.trim();
@@ -165,84 +165,66 @@ export async function confirmIdentityLink(
     });
   }
 
-  // Never silently merge identities across users: a handle that already
-  // resolves to a different cloud account keeps its owner.
-  const existing = await usersRepository.resolveIdentity(platformId, input.platform);
-  if (existing && existing.user.id !== row.user_id) {
-    return { status: "handle_conflict" };
-  }
+  let result: ConfirmIdentityLinkResult;
+  try {
+    result = await dbWrite.transaction(async (tx) => {
+      const [row] = await tx
+        .select()
+        .from(identityLinkCodes)
+        .where(eq(identityLinkCodes.code, code))
+        .for("update")
+        .limit(1);
+      if (!row) return { status: "code_not_found" };
+      if (row.status === "linked") return { status: "already_used" };
+      if (row.status === "expired" || row.expires_at.getTime() <= Date.now()) {
+        return { status: "expired" };
+      }
+      if (row.platform !== input.platform) {
+        return { status: "platform_mismatch", expectedPlatform: row.platform };
+      }
 
-  const now = new Date();
-  const consumed = await dbWrite
-    .update(identityLinkCodes)
-    .set({ status: "linked", consumed_at: now, platform_id: platformId, updated_at: now })
-    .where(
-      and(
-        eq(identityLinkCodes.id, row.id),
-        eq(identityLinkCodes.status, "pending"),
-        sql`${identityLinkCodes.expires_at} > now()`,
-      ),
-    )
-    .returning();
-  if (consumed.length === 0) {
-    // A concurrent confirm won the conditional update (or expiry crossed the
-    // boundary between read and write); report the closest terminal state.
-    return row.expires_at.getTime() <= Date.now()
-      ? { status: "expired" }
-      : { status: "already_used" };
-  }
+      const bound = await usersRepository.linkMessagingIdentityInTransaction(
+        tx,
+        row.user_id,
+        row.platform,
+        platformId,
+        input.platformName,
+      );
+      if (bound.status === "handle_conflict") return { status: "handle_conflict" };
+      if (bound.status === "user_not_found") {
+        throw new ElizaError("IdentityLink: minting user disappeared before binding", {
+          code: "IDENTITY_LINK_USER_MISSING",
+          context: { userId: row.user_id, platform: input.platform },
+        });
+      }
 
-  const bound = await bindHandle(row, platformId, input.platformName);
-  if (!bound) {
-    throw new ElizaError("IdentityLink: minting user disappeared before binding", {
-      code: "IDENTITY_LINK_USER_MISSING",
-      context: { userId: row.user_id, platform: input.platform },
+      const now = new Date();
+      await tx
+        .update(identityLinkCodes)
+        .set({ status: "linked", consumed_at: now, platform_id: platformId, updated_at: now })
+        .where(eq(identityLinkCodes.id, row.id));
+      return {
+        status: "linked",
+        userId: row.user_id,
+        organizationId: row.organization_id,
+        platform: row.platform,
+      };
     });
+  } catch (error) {
+    // error-policy:J1 A uniqueness race means another account retained the
+    // handle. The transaction rollback also restores this code to pending.
+    if (isUniqueConstraintError(error)) return { status: "handle_conflict" };
+    throw error;
   }
+
+  if (result.status !== "linked") return result;
 
   logger.info("IdentityLink: platform handle bound to account", {
-    userId: row.user_id,
-    organizationId: row.organization_id,
+    userId: result.userId,
+    organizationId: result.organizationId,
     platform: input.platform,
   });
-  return {
-    status: "linked",
-    userId: row.user_id,
-    organizationId: row.organization_id,
-    platform: row.platform,
-  };
-}
-
-async function bindHandle(
-  row: IdentityLinkCode,
-  platformId: string,
-  platformName: string | undefined,
-): Promise<boolean> {
-  switch (row.platform) {
-    case "telegram":
-      return Boolean(
-        await usersRepository.linkTelegramIdentity(row.user_id, {
-          telegram_id: platformId,
-          telegram_username: platformName ?? null,
-        }),
-      );
-    case "discord":
-      return Boolean(
-        await usersRepository.linkDiscordIdentity(row.user_id, {
-          discord_id: platformId,
-          discord_username: platformName ?? platformId,
-        }),
-      );
-    case "whatsapp":
-      return Boolean(
-        await usersRepository.linkWhatsAppIdentity(row.user_id, {
-          whatsapp_id: platformId,
-          whatsapp_name: platformName ?? null,
-        }),
-      );
-    case "phone":
-      return Boolean(await usersRepository.linkVerifiedPhone(row.user_id, platformId));
-  }
+  return result;
 }
 
 /** Housekeeping: flips pending rows past their TTL to expired. */

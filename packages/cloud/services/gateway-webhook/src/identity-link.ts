@@ -73,7 +73,6 @@ export async function tryConfirmIdentityLink(
     await deps.redis.del(`identity:${platform}:${platformId}`);
     logger.info("Identity link confirmed; negative cache invalidated", {
       platform,
-      platformId,
     });
     return {
       handled: true,

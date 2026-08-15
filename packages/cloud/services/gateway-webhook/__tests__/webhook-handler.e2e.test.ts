@@ -147,6 +147,49 @@ describe("gateway webhook handler e2e routing", () => {
     mock.restore();
   });
 
+  test("handles a link code before an existing provisional identity can route it as chat", async () => {
+    configureEnv();
+    const redis = new MemoryRedis();
+    const event = createTwilioEvent({ text: "LINK-ABCDEFGH" });
+    const adapter = createAdapter(event);
+    const negativeCacheKey = `identity:twilio:${event.senderId}`;
+    await redis.set(negativeCacheKey, JSON.stringify({ notFound: true }));
+    let confirmBody: Record<string, unknown> | null = null;
+
+    globalThis.fetch = mock(async (input, init) => {
+      const request = new Request(input, init);
+      if (request.url.endsWith("/api/eliza-app/identity-link/confirm")) {
+        confirmBody = (await request.json()) as Record<string, unknown>;
+        return Response.json({ success: true, data: { status: "linked" } });
+      }
+      throw new Error(
+        `Link challenge incorrectly entered normal routing: ${request.url}`,
+      );
+    }) as typeof fetch;
+
+    const response = await handleWebhook(
+      requestFor(event),
+      adapter,
+      {
+        redis,
+        cloudBaseUrl: "https://api.elizacloud.ai",
+        getAuthHeader: () => ({ Authorization: "Bearer internal-secret" }),
+      },
+      "eliza-app",
+    );
+
+    expect(response.status).toBe(200);
+    await waitFor(() => adapter.replies.length === 1, "identity-link reply");
+    expect(confirmBody).toEqual({
+      code: "LINK-ABCDEFGH",
+      platform: "twilio",
+      platformId: event.senderId,
+      platformName: event.senderName,
+    });
+    expect(adapter.replies[0]).toContain("linked");
+    expect(await redis.get(negativeCacheKey)).toBeNull();
+  });
+
   test("acks before an unresolved phone message enters personal Shared", async () => {
     configureEnv();
     const redis = new MemoryRedis();
