@@ -480,6 +480,28 @@ export class GatewayManager {
     await this.installWelcomeQueue.enqueue(job);
   }
 
+  /** Sends through the one leader-owned system bot and records the DM cursor. */
+  async deliverElizaAppDirectMessage(input: {
+    discordUserId: string;
+    text: string;
+    nonce: string;
+  }): Promise<
+    { accepted: false } | { accepted: true; providerMessageId: string }
+  > {
+    const client = this.elizaAppClient;
+    if (!this.isElizaAppLeader || !client?.isReady()) {
+      return { accepted: false };
+    }
+    const sent = await client.users.send(input.discordUserId, {
+      content: input.text,
+      nonce: input.nonce,
+      enforceNonce: true,
+      allowedMentions: { parse: [] },
+    });
+    await this.trackElizaAppDm(sent.channelId, input.discordUserId, sent.id);
+    return { accepted: true, providerMessageId: sent.id };
+  }
+
   /**
    * Acquire a JWT token from the token endpoint using the bootstrap secret.
    * This must be called before any API operations.
@@ -2212,12 +2234,14 @@ export class GatewayManager {
           },
         ),
       sendDirectMessage: async (userId, content, deliveryNonce) => {
-        const sent = await client.users.send(userId, {
-          content,
+        const result = await this.deliverElizaAppDirectMessage({
+          discordUserId: userId,
+          text: content,
           nonce: deliveryNonce,
-          enforceNonce: true,
         });
-        await this.trackElizaAppDm(sent.channelId, userId, sent.id);
+        if (!result.accepted) {
+          throw new Error("Eliza App Discord bot is not the active leader");
+        }
       },
       isTerminalError: isTerminalDiscordDirectMessageError,
       refreshAuth: () => this.refreshToken(),

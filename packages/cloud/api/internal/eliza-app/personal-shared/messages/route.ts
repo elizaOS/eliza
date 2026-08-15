@@ -112,6 +112,10 @@ const sharedMessageSchema = z.discriminatedUnion("platform", [
   }),
   z.object({
     platform: z.enum(["twilio", "blooio"]),
+    project: z
+      .string()
+      .trim()
+      .regex(/^[a-z0-9][a-z0-9_-]{0,63}$/i),
     phoneNumber: z
       .string()
       .trim()
@@ -563,6 +567,25 @@ app.post("/", async (c) => {
     }
     stage = "shared_runtime";
     const sharedStartedAt = performance.now();
+    const trustedDelivery =
+      parsed.data.platform === "telegram"
+        ? {
+            platform: "telegram" as const,
+            project: parsed.data.project,
+            chatId: parsed.data.chatId,
+          }
+        : parsed.data.platform === "blooio"
+          ? {
+              platform: "blooio" as const,
+              project: parsed.data.project,
+              phoneNumber: parsed.data.phoneNumber,
+            }
+          : parsed.data.platform === "discord"
+            ? {
+                platform: "discord" as const,
+                discordUserId: parsed.data.discordUserId,
+              }
+            : undefined;
     const result = await sharedRestMessageSend(
       agent,
       agent.id,
@@ -572,13 +595,7 @@ app.post("/", async (c) => {
       worker.namespace,
       parsed.data.messageId,
       "platform",
-      parsed.data.platform === "telegram"
-        ? {
-            platform: "telegram",
-            project: parsed.data.project,
-            chatId: parsed.data.chatId,
-          }
-        : undefined,
+      trustedDelivery,
     );
     c.header(
       "Server-Timing",
