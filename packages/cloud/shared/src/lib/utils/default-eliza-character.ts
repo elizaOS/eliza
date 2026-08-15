@@ -54,6 +54,7 @@ export function getDefaultElizaCharacterData() {
     bio: [...persona.bio] as string[],
     system: persona.system,
     message_examples: toRowExamples(persona.messageExamples, persona.name),
+    post_examples: [...persona.postExamples],
     avatar_url: ELIZA_AVATAR_URL,
     // Deliberately empty. Baked-in knowledge is retrieval-gated to the
     // "documents" context, which Stage-1 does not select for ordinary identity

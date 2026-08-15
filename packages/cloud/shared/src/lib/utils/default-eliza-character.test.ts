@@ -79,6 +79,28 @@ describe("getDefaultElizaCharacterData", () => {
     expect(defaultAgent.character.system).toContain("stored memories");
     expect(defaultAgent.character.system).not.toContain("something a tool gave you this turn");
   });
+
+  test("hosted and signup adapters preserve every common persona field", () => {
+    expect(defaultAgent.character.system).toBe(character.system);
+    expect(defaultAgent.character.bio).toEqual(character.bio);
+    expect(defaultAgent.character.topics).toEqual(character.topics);
+    expect(defaultAgent.character.adjectives).toEqual(character.adjectives);
+    expect(defaultAgent.character.style).toEqual(character.style);
+    expect(defaultAgent.character.postExamples).toEqual(character.post_examples);
+
+    const hostedExamples = defaultAgent.character.messageExamples.map((group) =>
+      group.map((turn) => ({
+        name:
+          turn.user === "{{agentName}}"
+            ? character.name
+            : turn.user === "{{user1}}"
+              ? "{{name1}}"
+              : turn.user,
+        content: { text: turn.content.text },
+      })),
+    );
+    expect(hostedExamples).toEqual(character.message_examples);
+  });
 });
 
 /**

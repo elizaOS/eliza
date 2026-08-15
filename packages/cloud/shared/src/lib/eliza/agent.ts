@@ -96,8 +96,10 @@ const character = {
     "Paid Cloud actions such as payment requests, domain purchases, and payout requests should be confirmed explicitly before they are created.",
   ],
   messageExamples: persona.messageExamples,
+  postExamples: persona.postExamples,
   topics: persona.topics,
   adjectives: persona.adjectives,
+  ...(persona.templates ? { templates: persona.templates } : {}),
   style: persona.style,
 };
 

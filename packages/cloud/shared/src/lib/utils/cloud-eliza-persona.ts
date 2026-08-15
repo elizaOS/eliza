@@ -56,11 +56,22 @@ export function buildCloudElizaPersona() {
     system: `${preset.system}${CLOUD_MEMORY_SYSTEM}`,
     bio: [CLOUD_MEMORY_BIO, ...preset.bio],
     messageExamples: [
-      CLOUD_RECALL_EXAMPLE,
-      ...((preset.messageExamples ?? []) as { user: string; content: { text: string } }[][]),
+      CLOUD_RECALL_EXAMPLE.map((turn) => ({
+        ...turn,
+        content: { ...turn.content },
+      })),
+      ...((preset.messageExamples ?? []) as { user: string; content: { text: string } }[][]).map(
+        (group) =>
+          group.map((turn) => ({
+            ...turn,
+            content: { ...turn.content },
+          })),
+      ),
     ],
+    postExamples: [...(preset.postExamples ?? [])],
     topics: [...(preset.topics ?? [])],
     adjectives: [...(preset.adjectives ?? [])],
+    ...(preset.templates ? { templates: { ...preset.templates } } : {}),
     style: {
       all: [...(preset.style?.all ?? [])],
       chat: [...(preset.style?.chat ?? [])],
