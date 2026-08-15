@@ -234,6 +234,7 @@ test.describe("launcher: one apps tile — cloud-apps never tiles", () => {
       const page = await context.newPage();
       const state: CloudStatusState = { connected: false };
       await bootLauncher(page, { width: 1280, height: 800 }, state);
+      await expect(myAppsTile(page)).toBeVisible({ timeout: 30_000 });
       await expect(cloudTile(page)).toHaveCount(0);
       await screenshot(page, testInfo, "walkthrough-1-launcher-disconnected");
 
@@ -243,6 +244,15 @@ test.describe("launcher: one apps tile — cloud-apps never tiles", () => {
       await expect(page.getByTestId("settings-shell")).toBeVisible({
         timeout: 60_000,
       });
+      await expect(
+        page.getByTestId("desktop-settings-navigation"),
+      ).toBeVisible();
+      await expect(
+        page.getByTestId("desktop-settings-group-agent"),
+      ).toBeVisible();
+      await expect(
+        page.getByTestId("desktop-settings-item-identity"),
+      ).toBeVisible();
       await expect(
         page.getByTestId("desktop-settings-group-cloud"),
       ).toHaveCount(0);
