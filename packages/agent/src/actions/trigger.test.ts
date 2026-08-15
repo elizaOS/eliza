@@ -1836,6 +1836,54 @@ describe("sprayed one-shot cap on an explicit recurrence", () => {
     expect(trigger?.maxRuns).toBeUndefined();
   });
 
+  it("drops maxRuns=1 for explicit Japanese recurrence", async () => {
+    const { runtime, createdTasks } = makeRuntime({ enableAutonomy: false });
+    const result = await create(
+      runtime,
+      {
+        instructions: "水を飲む",
+        cronExpression: "0 9 * * *",
+        maxRuns: 1,
+      },
+      "毎日午前9時に水を飲むようにリマインドして",
+    );
+    expect(result?.success).toBe(true);
+    const trigger = (
+      createdTasks[0]?.metadata as { trigger?: { maxRuns?: number } }
+    )?.trigger;
+    expect(trigger?.maxRuns).toBeUndefined();
+  });
+
+  it("drops maxRuns=1 for explicit numeric cadence", async () => {
+    const { runtime, createdTasks } = makeRuntime({ enableAutonomy: false });
+    const result = await create(
+      runtime,
+      {
+        instructions: "check the queue",
+        cronExpression: "*/15 * * * *",
+        maxRuns: 1,
+      },
+      "check the queue every 15 minutes",
+    );
+    expect(result?.success).toBe(true);
+    expect(createdTasks[0]?.metadata.trigger?.maxRuns).toBeUndefined();
+  });
+
+  it("keeps maxRuns=1 when the current user negates recurrence", async () => {
+    const { runtime, createdTasks } = makeRuntime({ enableAutonomy: false });
+    const result = await create(
+      runtime,
+      {
+        instructions: "call the bank",
+        cronExpression: "0 9 * * *",
+        maxRuns: 1,
+      },
+      "remind me tomorrow, not every day",
+    );
+    expect(result?.success).toBe(true);
+    expect(createdTasks[0]?.metadata.trigger?.maxRuns).toBe(1);
+  });
+
   it("keeps maxRuns=1 when the text has only a time-of-day window phrase", async () => {
     // "in the morning" is a WINDOW, not a recurrence — a one-shot reminder
     // must not become an unbounded daily cron because of it.
@@ -1882,7 +1930,10 @@ describe("one-shot cron reminder confirmation", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-08-15T03:00:00.000Z"));
     try {
-      const { runtime } = makeRuntime({ enableAutonomy: false });
+      const { runtime } = makeRuntime({
+        enableAutonomy: false,
+        timeZone: "UTC",
+      });
       const result = await create(runtime, {
         instructions: "call the bank",
         cronExpression: "0 9 * * *",
