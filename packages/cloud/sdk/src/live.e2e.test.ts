@@ -179,13 +179,17 @@ liveDescribe("ElizaCloudClient real API e2e: pairing token exchange", () => {
 });
 
 authedDescribe("ElizaCloudClient real API e2e: API-key read paths", () => {
-  it("sets credentials after construction and gets the authenticated profile", async () => {
-    const client = new ElizaCloudClient({ baseUrl, apiBaseUrl });
-    client.setApiKey(apiKey);
-    client.setBearerToken(undefined);
+  it(
+    "sets credentials after construction and gets the authenticated profile",
+    async () => {
+      const client = new ElizaCloudClient({ baseUrl, apiBaseUrl });
+      client.setApiKey(apiKey);
+      client.setBearerToken(undefined);
 
-    await expect(client.getUser()).resolves.toMatchObject({ success: true });
-  });
+      await expect(client.getUser()).resolves.toMatchObject({ success: true });
+    },
+    LIVE_PUBLIC_ENDPOINT_TIMEOUT_MS,
+  );
 
   it(
     "gets credit balance and summary",
