@@ -676,9 +676,9 @@ __dirname = '"/"'
 __filename = '"/worker.js"'
 
 [env.production.vars]
-# Flip only after exact staging voice/runtime evidence for the release SHA.
+# Production uses the genuine Shared Workerd runtime for personal voice.
 NODE_ENV = "production"
-SHARED_ELIZA_AGENT_RUNTIME = "false"
+SHARED_ELIZA_AGENT_RUNTIME = "true"
 THIN_INFERENCE_ENTRY_ENABLED = "true"
 # Apps deploy (Product 2): arms the Worker-side deploy trigger (configureAppsDeployTrigger,
 # bootstrap-app.ts) so POST /api/v1/apps/:id/deploy enqueues a real APP_DEPLOY job instead of
