@@ -347,7 +347,10 @@ export interface ConversationMessage {
   replyToSenderUserName?: string;
   /** Aggregated reactions attached to this message. */
   reactions?: ConversationMessageReaction[];
-  /** True when the SSE stream was interrupted before receiving a "done" event. */
+  /**
+   * True when generation ended early or the user stopped presentation after a
+   * terminal response. Durable stopped prefixes preserve this through reloads.
+   */
   interrupted?: boolean;
   /**
    * True while this in-flight assistant turn's visible text is an action-

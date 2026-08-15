@@ -1192,8 +1192,8 @@ export const ChatMessage = memo(function ChatMessage({
               className="mt-1.5 self-start"
               data-testid="chat-message-interrupted"
             >
-              <span className="inline-flex rounded-sm border border-danger/30 bg-danger/10 px-2 py-0.5 text-xs font-medium text-danger">
-                {labels.responseInterrupted ?? "Response interrupted"}
+              <span className="inline-flex rounded-full border border-white/10 bg-white/[0.04] px-2 py-0.5 text-xs font-medium text-white/50">
+                {labels.responseInterrupted ?? "Stopped"}
               </span>
             </div>
           ) : null}
@@ -1451,9 +1451,12 @@ export const ChatMessage = memo(function ChatMessage({
               message.text)}
 
           {!isUser && message.interrupted ? (
-            <div className="mt-2 border-t border-danger/30 pt-2">
-              <span className="inline-flex rounded-sm border border-danger/30 bg-danger/10 px-2 py-0.5 text-xs font-medium text-danger">
-                {labels.responseInterrupted ?? "Response interrupted"}
+            <div
+              className="mt-2 border-t border-border/35 pt-2"
+              data-testid="chat-message-interrupted"
+            >
+              <span className="inline-flex rounded-full border border-border/40 bg-card/40 px-2 py-0.5 text-xs font-medium text-muted">
+                {labels.responseInterrupted ?? "Stopped"}
               </span>
             </div>
           ) : null}

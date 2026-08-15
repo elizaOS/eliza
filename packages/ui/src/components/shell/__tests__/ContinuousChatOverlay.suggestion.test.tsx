@@ -70,9 +70,9 @@ describe("ChatOverlay ThreadLine proactive suggestion (#8792)", () => {
         }),
       ),
     );
-    expect(screen.getByTestId("chat-message-interrupted").textContent).toBe(
-      "Response interrupted",
-    );
+    const stopped = screen.getByTestId("chat-message-interrupted");
+    expect(stopped.textContent).toBe("Stopped");
+    expect(stopped.innerHTML).not.toContain("danger");
   });
 
   it("renders the Suggestion affordance for source proactive-interaction", () => {

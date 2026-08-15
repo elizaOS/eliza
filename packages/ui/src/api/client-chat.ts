@@ -471,6 +471,25 @@ declare module "./client-base" {
       id: string,
       messageId: string,
     ): Promise<{ ok: boolean; deletedCount: number }>;
+    /**
+     * Persist the exact assistant prefix visible when presentation was stopped.
+     * The server compare-and-sets against `expectedText`, so a stale client can
+     * never truncate a message that changed after its terminal response.
+     */
+    stopConversationMessagePresentation(
+      id: string,
+      messageId: string,
+      visibleText: string,
+      expectedText: string,
+    ): Promise<{
+      ok: true;
+      messageId: string;
+      state: "stopped";
+      text: string;
+      interrupted: true;
+      stoppedAt: number;
+      alreadyApplied: boolean;
+    }>;
     sendConversationMessage(
       id: string,
       text: string,
@@ -536,6 +555,8 @@ declare module "./client-base" {
       assistantEphemeral?: boolean;
       /** True only when action callbacks may have added extra transcript rows. */
       historyRefreshRequired?: boolean;
+      /** Durable result was stopped at the returned visible prefix. */
+      interrupted?: boolean;
       noResponseReason?: "ignored";
       usage?: ChatTokenUsage;
       /** See sendConversationMessage above. */
@@ -1276,6 +1297,28 @@ ElizaClient.prototype.deleteConversationMessage = async function (
       messageId,
     )}`,
     { method: "DELETE" },
+  );
+};
+
+ElizaClient.prototype.stopConversationMessagePresentation = async function (
+  this: ElizaClient,
+  id,
+  messageId,
+  visibleText,
+  expectedText,
+) {
+  return this.fetch(
+    `/api/conversations/${encodeURIComponent(id)}/messages/${encodeURIComponent(
+      messageId,
+    )}`,
+    {
+      method: "PATCH",
+      body: JSON.stringify({
+        state: "stopped",
+        visibleText,
+        expectedText,
+      }),
+    },
   );
 };
 

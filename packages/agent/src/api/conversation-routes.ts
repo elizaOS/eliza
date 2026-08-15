@@ -53,6 +53,7 @@ import {
   COMMITTED_SPEECH_PROTOCOL,
   CommittedSpeechProtocolError,
   CommittedSpeechSegmenter,
+  PatchConversationMessagePresentationRequestSchema,
   PatchConversationRequestSchema,
   PostConversationCleanupEmptyRequestSchema,
   PostConversationRequestSchema,
@@ -106,6 +107,7 @@ import {
   persistExactConversationMemoryResult,
   readChatRequestPayload,
   releaseChatMessageId,
+  replaceSettledChatMessageIdOutcome,
   resolveNoResponseFallback,
   resolveTrustedApiPrincipal,
   setChatMessageIdOutcome,
@@ -1329,6 +1331,7 @@ const DURABLE_CHAT_OUTCOME_KEYS = new Set([
   "accountConnect",
   "localInference",
   "noResponseReason",
+  "interrupted",
 ]);
 
 function isChannelType(value: unknown): value is ChannelType {
@@ -1444,7 +1447,9 @@ function parseDurableConversationChatOutcome(
     (outcome.localInference !== undefined &&
       !isRecord(outcome.localInference)) ||
     (outcome.noResponseReason !== undefined &&
-      outcome.noResponseReason !== "ignored")
+      outcome.noResponseReason !== "ignored") ||
+    (outcome.interrupted !== undefined &&
+      typeof outcome.interrupted !== "boolean")
   ) {
     return null;
   }
@@ -1497,6 +1502,7 @@ function parseDurableConversationChatOutcome(
     ...(outcome.noResponseReason === "ignored"
       ? { noResponseReason: "ignored" as const }
       : {}),
+    ...(outcome.interrupted === true ? { interrupted: true } : {}),
   };
 }
 
@@ -1527,6 +1533,45 @@ function readDurableConversationChatMarker(
       ? { outcomeJson: record.outcomeJson }
       : {}),
   };
+}
+
+async function reconcileStoppedPresentationOutcome(
+  runtime: AgentRuntime,
+  roomId: UUID,
+  assistantMemory: Memory & { id: UUID },
+  visibleText: string,
+): Promise<void> {
+  const replyToId = validateUuid(assistantMemory.content.inReplyTo);
+  if (!replyToId) return;
+  const [userMemory] = await runtime.getMemoriesByIds([replyToId], "messages");
+  if (!userMemory || userMemory.roomId !== roomId) return;
+  const marker = readDurableConversationChatMarker(
+    userMemory.content.chatIdempotency,
+  );
+  if (!marker?.outcomeJson) return;
+  const outcome = parseDurableConversationChatOutcome(marker.outcomeJson);
+  if (!outcome || outcome.messageId !== assistantMemory.id) return;
+
+  const stoppedOutcome: ChatMessageIdOutcome = {
+    ...outcome,
+    text: visibleText,
+    interrupted: true,
+  };
+  await runtime.updateMemory({
+    id: replyToId,
+    content: {
+      ...userMemory.content,
+      chatIdempotency: {
+        ...marker,
+        outcomeJson: JSON.stringify(stoppedOutcome),
+      } satisfies DurableConversationChatMarker,
+    },
+  });
+  replaceSettledChatMessageIdOutcome(
+    marker.scope,
+    marker.clientMessageId,
+    stoppedOutcome,
+  );
 }
 
 function buildRecoveredConversationChatOutcome(
@@ -1568,6 +1613,7 @@ function buildRecoveredConversationChatOutcome(
     ...(content.noResponseReason === "ignored"
       ? { noResponseReason: "ignored" as const }
       : {}),
+    ...(content.interrupted === true ? { interrupted: true } : {}),
   };
 }
 
@@ -2029,6 +2075,7 @@ function buildConversationJsonOutcome(
     ...(outcome.noResponseReason
       ? { noResponseReason: outcome.noResponseReason }
       : {}),
+    ...(outcome.interrupted ? { interrupted: true } : {}),
   };
 }
 
@@ -2352,6 +2399,8 @@ type ConversationRouteMessageRecord = {
    * the renderer's inline AddAccountDialog entry point survives a reload.
    */
   accountConnect?: AccountConnectRequest;
+  /** The user stopped this assistant presentation at the persisted prefix. */
+  interrupted?: boolean;
 };
 
 // Greeting lookup and persistence share the room's history-writer boundary.
@@ -3040,6 +3089,7 @@ export async function handleConversationRoutes(
           const accountConnect = normalizeAccountConnectRequest(
             content.accountConnect,
           );
+          const interrupted = content.interrupted === true;
           const role = m.entityId === agentId ? "assistant" : "user";
           const rawText = formatConversationMessageText(
             (m.content as { text?: string })?.text ?? "",
@@ -3130,6 +3180,7 @@ export async function handleConversationRoutes(
               typeof m.entityId === "string" ? m.entityId : undefined,
             ...(failureKind ? { failureKind } : {}),
             ...(accountConnect ? { accountConnect } : {}),
+            ...(interrupted ? { interrupted: true } : {}),
           } satisfies ConversationRouteMessageRecord;
         })
         // Drop action-log memories that have no visible text (e.g.
@@ -3587,6 +3638,180 @@ export async function handleConversationRoutes(
           ? (err as { status: number }).status
           : 500;
       error(res, getErrorMessage(err), status);
+    } finally {
+      await historyLease.release();
+    }
+    return true;
+  }
+
+  // ── PATCH /api/conversations/:id/messages/:messageId ───────────────
+  // Persist the exact prefix a user saw when a completed server response was
+  // stopped while client-side reveal/audio was still draining. This is an
+  // exact compare-and-set mutation: a stale tab cannot truncate a message that
+  // changed after it received the terminal response.
+  if (
+    method === "PATCH" &&
+    /^\/api\/conversations\/[^/]+\/messages\/[^/]+$/.test(pathname)
+  ) {
+    const segments = pathname.split("/");
+    const convId = decodeURIComponent(segments[3]);
+    const messageId = validateUuid(decodeURIComponent(segments[5]));
+    const conv = await getConversationWithRestore(state, convId);
+    if (!conv) {
+      error(res, "Conversation not found", 404);
+      return true;
+    }
+    if (rejectWaifuConversationAccessIfNeeded(req, conv, error, res)) {
+      return true;
+    }
+    if (rejectWaifuNonAdminMutationIfNeeded(req, error, res)) return true;
+    if (!messageId) {
+      error(res, "Message not found", 404);
+      return true;
+    }
+
+    const rawPatch = await readJsonBody<Record<string, unknown>>(req, res);
+    if (rawPatch === null) return true;
+    const parsedPatch =
+      PatchConversationMessagePresentationRequestSchema.safeParse(rawPatch);
+    if (!parsedPatch.success) {
+      error(
+        res,
+        parsedPatch.error.issues[0]?.message ?? "Invalid request body",
+        400,
+      );
+      return true;
+    }
+
+    const runtime = state.runtime;
+    if (!runtime) {
+      error(res, "Agent is not running", 503);
+      return true;
+    }
+
+    const presentationAbortTracker = createRequestDisconnectAbortTracker({
+      req,
+      res,
+      operation: "Conversation presentation update admission",
+    });
+    let historyLease: RoomHandlerLease;
+    try {
+      historyLease = await runtime.roomHandlerQueue.acquire(
+        conv.roomId,
+        presentationAbortTracker.signal,
+      );
+    } catch (err) {
+      presentationAbortTracker.dispose();
+      if (presentationAbortTracker.isAborted()) return true;
+      error(
+        res,
+        isRoomQueueBackpressureError(err)
+          ? "Conversation is busy; retry after the pending turns finish"
+          : `Failed to serialize conversation history: ${getErrorMessage(err)}`,
+        roomQueueAdmissionStatus(err),
+      );
+      return true;
+    }
+    presentationAbortTracker.markCompleted();
+    presentationAbortTracker.dispose();
+
+    try {
+      if (
+        state.conversations.get(conv.id) !== conv ||
+        state.deletedConversationIds.has(conv.id)
+      ) {
+        error(res, "Conversation was deleted", 404);
+        return true;
+      }
+      const result = await runtime.roomHandlerQueue.runInLease(
+        conv.roomId,
+        historyLease,
+        async () => {
+          const [candidate] = await runtime.getMemoriesByIds(
+            [messageId],
+            "messages",
+          );
+          if (
+            !candidate ||
+            candidate.id !== messageId ||
+            candidate.roomId !== conv.roomId ||
+            candidate.entityId !== runtime.agentId
+          ) {
+            return { kind: "not_found" as const };
+          }
+
+          const content = candidate.content;
+          const currentText =
+            typeof content.text === "string" ? content.text : "";
+          const { expectedText, visibleText } = parsedPatch.data;
+          const alreadyApplied =
+            content.interrupted === true && currentText === visibleText;
+          if (!alreadyApplied && currentText !== expectedText) {
+            return { kind: "conflict" as const };
+          }
+
+          const stoppedAt =
+            typeof content.interruptedAt === "number"
+              ? content.interruptedAt
+              : Date.now();
+          const stoppedMemory = {
+            ...candidate,
+            id: messageId,
+            content: {
+              ...content,
+              text: visibleText,
+              interrupted: true,
+              interruptedAt: stoppedAt,
+              interruptionReason: "user_stop",
+            },
+          } satisfies Memory & { id: UUID };
+          if (!alreadyApplied) {
+            await runtime.updateMemory(stoppedMemory);
+          }
+          await reconcileStoppedPresentationOutcome(
+            runtime,
+            conv.roomId,
+            stoppedMemory,
+            visibleText,
+          );
+          return {
+            kind: "updated" as const,
+            alreadyApplied,
+            stoppedAt,
+          };
+        },
+      );
+
+      if (result.kind === "not_found") {
+        error(res, "Message not found", 404);
+        return true;
+      }
+      if (result.kind === "conflict") {
+        error(
+          res,
+          "Assistant message changed; stopped prefix was not saved",
+          409,
+        );
+        return true;
+      }
+
+      conv.updatedAt = new Date().toISOString();
+      state.broadcastWs?.({ type: "conversation-updated", conversation: conv });
+      json(res, {
+        ok: true,
+        messageId,
+        state: "stopped",
+        text: parsedPatch.data.visibleText,
+        interrupted: true,
+        stoppedAt: result.stoppedAt,
+        alreadyApplied: result.alreadyApplied,
+      });
+    } catch (err) {
+      error(
+        res,
+        `Failed to save stopped response: ${getErrorMessage(err)}`,
+        500,
+      );
     } finally {
       await historyLease.release();
     }

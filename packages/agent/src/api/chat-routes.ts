@@ -302,6 +302,8 @@ export interface ChatMessageIdOutcome {
   accountConnect?: AccountConnectRequest;
   localInference?: LocalInferenceChatMetadata;
   noResponseReason?: "ignored";
+  /** Durable presentation was intentionally stopped after this visible text. */
+  interrupted?: boolean;
 }
 
 const chatIdempotency = createChatIdempotencyStore<ChatMessageIdOutcome>();
@@ -401,6 +403,19 @@ export function getChatMessageIdOutcome(
   clientMessageId: string | null,
 ): ChatMessageIdOutcome | null {
   return chatIdempotency.outcome(scope, clientMessageId);
+}
+
+/**
+ * Amend a settled replay after the corresponding durable assistant memory was
+ * compare-and-set to a stopped visible prefix. Active/unknown reservations are
+ * never overwritten.
+ */
+export function replaceSettledChatMessageIdOutcome(
+  scope: string,
+  clientMessageId: string | null,
+  outcome: ChatMessageIdOutcome,
+): boolean {
+  return chatIdempotency.replaceSettled(scope, clientMessageId, outcome);
 }
 
 /** Test-only: clear the HTTP chat idempotency cache between cases. */

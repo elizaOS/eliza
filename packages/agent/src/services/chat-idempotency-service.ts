@@ -61,6 +61,12 @@ export interface ChatIdempotencyStore<Outcome> {
     outcome: Outcome,
     reservation?: ChatIdempotencyReservation | null,
   ): void;
+  /** Replace an already-settled replay after its durable outcome is amended. */
+  replaceSettled(
+    scope: string,
+    clientMessageId: string | null,
+    outcome: Outcome,
+  ): boolean;
   outcome(scope: string, clientMessageId: string | null): Outcome | null;
   reset(): void;
   readonly retentionMs: number;
@@ -289,6 +295,14 @@ export function createChatIdempotencyStore<Outcome>(options?: {
       entry.settledAt = Date.now();
       entry.status = "settled";
       notifyWaiters(entry, { kind: "settled", outcome });
+    },
+    replaceSettled(scope, clientMessageId, outcome) {
+      if (!clientMessageId) return false;
+      const entry = entries.get(keyFor(scope, clientMessageId));
+      if (entry?.status !== "settled") return false;
+      entry.outcome = cloneOutcome(outcome);
+      entry.settledAt = Date.now();
+      return true;
     },
     outcome(scope, clientMessageId) {
       if (!clientMessageId) return null;

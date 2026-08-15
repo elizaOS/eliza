@@ -190,7 +190,7 @@ test.describe("normal-chat realtime acoustic barge-in", () => {
       await muteAfterSecondTurn;
 
       const interruptedAssistantRow = assistantMessageRows
-        .filter({ hasText: "Response interrupted" })
+        .filter({ hasText: "Stopped" })
         .first();
       await expect(interruptedAssistantRow).toBeVisible({ timeout: 30_000 });
       const frozenInterruptedText = await interruptedAssistantRow.textContent();

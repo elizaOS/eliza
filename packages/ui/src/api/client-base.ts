@@ -113,6 +113,7 @@ type StreamChatEvent = {
   userMessageId?: string;
   assistantEphemeral?: boolean;
   historyRefreshRequired?: boolean;
+  interrupted?: boolean;
   message?: string;
   thought?: string;
   noResponseReason?: string;
@@ -243,6 +244,7 @@ type StreamChatState = {
   doneUserMessageId: string | null;
   doneAssistantEphemeral: boolean;
   doneHistoryRefreshRequired: boolean;
+  doneInterrupted: boolean;
   doneThought: string | null;
   doneNoResponseReason: "ignored" | null;
   doneUsage: ChatTokenUsage | undefined;
@@ -410,6 +412,9 @@ function applyStreamChatDoneEvent(
   }
   if (parsed.historyRefreshRequired === true) {
     state.doneHistoryRefreshRequired = true;
+  }
+  if (parsed.interrupted === true) {
+    state.doneInterrupted = true;
   }
   if (typeof parsed.thought === "string" && parsed.thought.trim()) {
     state.doneThought = parsed.thought;
@@ -2390,6 +2395,7 @@ export class ElizaClient {
     userMessageId?: string;
     assistantEphemeral?: boolean;
     historyRefreshRequired?: boolean;
+    interrupted?: boolean;
   }> {
     // Idempotency key for the chat send. The HTTP chat path (POST
     // /api/chat[/:conversationId]/stream) lives in
@@ -2444,6 +2450,7 @@ export class ElizaClient {
       doneUserMessageId: null,
       doneAssistantEphemeral: false,
       doneHistoryRefreshRequired: false,
+      doneInterrupted: false,
       doneThought: null,
       doneNoResponseReason: null,
       doneUsage: undefined,
@@ -2588,6 +2595,7 @@ export class ElizaClient {
       ...(streamState.doneHistoryRefreshRequired
         ? { historyRefreshRequired: true }
         : {}),
+      ...(streamState.doneInterrupted ? { interrupted: true } : {}),
       ...(streamState.doneNoResponseReason
         ? { noResponseReason: streamState.doneNoResponseReason }
         : {}),

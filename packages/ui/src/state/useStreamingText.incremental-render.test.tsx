@@ -37,8 +37,14 @@ const apiMocks = vi.hoisted(() => ({
     createConversation: vi.fn(),
     sendConversationMessage: vi.fn(),
     sendConversationMessageStream: vi.fn(),
+    stopConversationMessagePresentation: vi.fn(async () => ({
+      ok: true,
+      state: "stopped",
+      interrupted: true,
+    })),
     sendWsMessage: vi.fn(),
     stopCodingAgent: vi.fn(),
+    renameConversation: vi.fn(async () => undefined),
     getBaseUrl: vi.fn(() => ""),
   },
 }));
@@ -454,5 +460,437 @@ describe("streaming → useChatSend paint coalescing", () => {
     });
     expect(setConversationMessages).toHaveBeenCalledTimes(commitsAfterTerminal);
     vi.useRealTimers();
+  });
+
+  it("paces one large atomic provider snapshot through terminal completion", async () => {
+    vi.useFakeTimers();
+    const finalText =
+      "The declaration arrives as one provider snapshot, but the interface " +
+      "must still reveal it as readable progressive text. ".repeat(8);
+    let onToken!: (token: string, accumulatedText?: string) => void;
+    let resolveStream!: (data: {
+      text: string;
+      completed: boolean;
+      messageId: string;
+      userMessageId: string;
+    }) => void;
+    apiMocks.client.sendConversationMessageStream.mockImplementation(
+      (
+        _id: string,
+        _text: string,
+        token: (t: string, acc?: string) => void,
+      ) => {
+        onToken = token;
+        return new Promise((resolve) => {
+          resolveStream = resolve;
+        });
+      },
+    );
+
+    const { deps, conversationMessagesRef, setConversationMessages } =
+      makeChatSendDeps();
+    const { result } = renderHook(() => useChatSend(deps));
+    let sendPromise: Promise<void> | undefined;
+    await act(async () => {
+      sendPromise = result.current.sendChatText("give me the long answer", {
+        conversationId: "conv-1",
+      });
+      await Promise.resolve();
+      onToken("", finalText);
+      await Promise.resolve();
+    });
+
+    const assistant = () =>
+      conversationMessagesRef.current.find((m) => m.role === "assistant");
+    const firstPaint = assistant()?.text ?? "";
+    expect(firstPaint.length).toBeGreaterThan(0);
+    expect(firstPaint.length).toBeLessThan(finalText.length);
+    expect(finalText.startsWith(firstPaint)).toBe(true);
+
+    // The network may settle before the presentation queue drains. Terminal
+    // reconciliation keeps the same prefix instead of dumping the hidden tail.
+    await act(async () => {
+      resolveStream({
+        text: finalText,
+        completed: true,
+        messageId: "persisted-assistant-1",
+        userMessageId: "persisted-user-1",
+      });
+      await sendPromise;
+    });
+    expect(assistant()?.text).toBe(firstPaint);
+    expect(assistant()?.id).toBe("persisted-assistant-1");
+    expect(vi.getTimerCount()).toBeGreaterThan(0);
+    const commitsBeforeRevealTick = setConversationMessages.mock.calls.length;
+
+    await act(async () => {
+      await vi.runOnlyPendingTimersAsync();
+    });
+    expect(setConversationMessages.mock.calls.length).toBeGreaterThan(
+      commitsBeforeRevealTick,
+    );
+    const secondPaint = assistant()?.text ?? "";
+    expect(secondPaint.length).toBeGreaterThan(firstPaint.length);
+    expect(finalText.startsWith(secondPaint)).toBe(true);
+
+    await act(async () => {
+      await vi.runAllTimersAsync();
+    });
+    expect(assistant()?.text).toBe(finalText);
+    expect(assistant()?.interrupted).not.toBe(true);
+  });
+
+  it("paces a large terminal-only answer when the provider emitted no token callback", async () => {
+    vi.useFakeTimers();
+    const finalText = "Terminal-only answer with exact text. ".repeat(20);
+    let resolveStream!: (data: { text: string; completed: boolean }) => void;
+    apiMocks.client.sendConversationMessageStream.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveStream = resolve;
+        }),
+    );
+
+    const { deps, conversationMessagesRef } = makeChatSendDeps();
+    const { result } = renderHook(() => useChatSend(deps));
+    let sendPromise: Promise<void> | undefined;
+    await act(async () => {
+      sendPromise = result.current.sendChatText("terminal only", {
+        conversationId: "conv-1",
+      });
+      await Promise.resolve();
+      resolveStream({ text: finalText, completed: true });
+      await sendPromise;
+    });
+
+    const assistantText = () =>
+      conversationMessagesRef.current.find((m) => m.role === "assistant")
+        ?.text ?? "";
+    expect(assistantText().length).toBeGreaterThan(0);
+    expect(assistantText().length).toBeLessThan(finalText.length);
+    expect(finalText.startsWith(assistantText())).toBe(true);
+
+    await act(async () => {
+      await vi.runAllTimersAsync();
+    });
+    expect(assistantText()).toBe(finalText);
+  });
+
+  it("reapplies the paced prefix after an authoritative history reload", async () => {
+    vi.useFakeTimers();
+    const finalText = "Action-backed history must not bypass pacing. ".repeat(
+      20,
+    );
+    apiMocks.client.sendConversationMessageStream.mockResolvedValue({
+      text: finalText,
+      completed: true,
+      historyRefreshRequired: true,
+      messageId: "persisted-action-assistant",
+      userMessageId: "persisted-action-user",
+    });
+
+    const { deps, conversationMessagesRef, setConversationMessages } =
+      makeChatSendDeps();
+    deps.loadConversationMessages.mockImplementation(async () => {
+      setConversationMessages([
+        {
+          id: "persisted-action-user",
+          role: "user",
+          text: "run the action",
+          timestamp: 1,
+        },
+        {
+          id: "persisted-action-assistant",
+          role: "assistant",
+          text: finalText,
+          timestamp: 2,
+        },
+      ]);
+      return { ok: true };
+    });
+
+    const { result } = renderHook(() => useChatSend(deps));
+    await act(async () => {
+      await result.current.sendChatText("run the action", {
+        conversationId: "conv-1",
+      });
+    });
+
+    const assistantText = () =>
+      conversationMessagesRef.current.find((m) => m.role === "assistant")
+        ?.text ?? "";
+    expect(deps.loadConversationMessages).toHaveBeenCalled();
+    expect(assistantText().length).toBeGreaterThan(0);
+    expect(assistantText().length).toBeLessThan(finalText.length);
+    expect(finalText.startsWith(assistantText())).toBe(true);
+
+    await act(async () => {
+      await vi.runAllTimersAsync();
+    });
+    expect(assistantText()).toBe(finalText);
+  });
+
+  it("Stop freezes the painted prefix and rejects parked, timed, and late old-turn text", async () => {
+    vi.useFakeTimers();
+    apiMocks.client.abortConversationTurn.mockResolvedValue(undefined);
+    const fullText = "Hidden suffixes must never appear after Stop. ".repeat(
+      20,
+    );
+    let onToken!: (token: string, accumulatedText?: string) => void;
+    apiMocks.client.sendConversationMessageStream.mockImplementation(
+      (
+        _id: string,
+        _text: string,
+        token: (t: string, acc?: string) => void,
+        _channel: unknown,
+        signal: AbortSignal,
+      ) => {
+        onToken = token;
+        return new Promise((_resolve, reject) => {
+          signal.addEventListener(
+            "abort",
+            () => reject(new DOMException("Aborted", "AbortError")),
+            { once: true },
+          );
+        });
+      },
+    );
+
+    const { deps, conversationMessagesRef } = makeChatSendDeps();
+    const { result } = renderHook(() => useChatSend(deps));
+    let sendPromise: Promise<void> | undefined;
+    await act(async () => {
+      sendPromise = result.current.sendChatText("start long answer", {
+        conversationId: "conv-1",
+      });
+      await Promise.resolve();
+      onToken("", fullText);
+      await Promise.resolve();
+    });
+    const assistant = () =>
+      conversationMessagesRef.current.find((m) => m.role === "assistant");
+    const visibleAtStop = assistant()?.text ?? "";
+    expect(visibleAtStop.length).toBeGreaterThan(0);
+    expect(visibleAtStop.length).toBeLessThan(fullText.length);
+
+    await act(async () => {
+      result.current.interruptActiveChatPipeline();
+      await sendPromise;
+    });
+    expect(assistant()?.text).toBe(visibleAtStop);
+    expect(assistant()?.interrupted).toBe(true);
+
+    await act(async () => {
+      onToken("", `${fullText} LATE OLD TURN`);
+      await vi.runAllTimersAsync();
+    });
+    expect(assistant()?.text).toBe(visibleAtStop);
+    expect(assistant()?.text).not.toContain("LATE OLD TURN");
+  });
+
+  it("a replacement user turn freezes a terminal answer that is still visually draining", async () => {
+    vi.useFakeTimers();
+    const firstFinal = "The old answer still has an unseen suffix. ".repeat(20);
+    let firstOnToken!: (token: string, accumulatedText?: string) => void;
+    const durableAssistantId = "00000000-0000-4000-8000-0000000000a1";
+    const durableUserId = "00000000-0000-4000-8000-0000000000b1";
+    let resolveFirst!: (data: {
+      text: string;
+      completed: boolean;
+      messageId: string;
+      userMessageId: string;
+    }) => void;
+    let callCount = 0;
+    apiMocks.client.sendConversationMessageStream.mockImplementation(
+      (
+        _id: string,
+        _text: string,
+        token: (t: string, acc?: string) => void,
+      ) => {
+        callCount += 1;
+        if (callCount === 1) {
+          firstOnToken = token;
+          return new Promise((resolve) => {
+            resolveFirst = resolve;
+          });
+        }
+        return Promise.resolve({ text: "New answer.", completed: true });
+      },
+    );
+
+    const { deps, conversationMessagesRef } = makeChatSendDeps();
+    const { result } = renderHook(() => useChatSend(deps));
+    let firstSend: Promise<void> | undefined;
+    await act(async () => {
+      firstSend = result.current.sendChatText("first question", {
+        conversationId: "conv-1",
+      });
+      await Promise.resolve();
+      firstOnToken("", firstFinal);
+      await Promise.resolve();
+      resolveFirst({
+        text: firstFinal,
+        completed: true,
+        messageId: durableAssistantId,
+        userMessageId: durableUserId,
+      });
+      await firstSend;
+    });
+
+    const assistants = () =>
+      conversationMessagesRef.current.filter((m) => m.role === "assistant");
+    const frozenPrefix = assistants()[0]?.text ?? "";
+    expect(frozenPrefix.length).toBeGreaterThan(0);
+    expect(frozenPrefix.length).toBeLessThan(firstFinal.length);
+
+    await act(async () => {
+      await result.current.sendChatText("replacement question", {
+        conversationId: "conv-1",
+      });
+    });
+    expect(assistants()[0]?.text).toBe(frozenPrefix);
+    expect(assistants()[0]?.interrupted).toBe(true);
+    expect(assistants().at(-1)?.text).toBe("New answer.");
+    expect(
+      apiMocks.client.stopConversationMessagePresentation,
+    ).toHaveBeenCalledWith(
+      "conv-1",
+      durableAssistantId,
+      frozenPrefix,
+      firstFinal,
+    );
+    expect(
+      apiMocks.client.stopConversationMessagePresentation.mock
+        .invocationCallOrder[0],
+    ).toBeLessThan(
+      apiMocks.client.sendConversationMessageStream.mock.invocationCallOrder[1],
+    );
+
+    await act(async () => {
+      await vi.runAllTimersAsync();
+    });
+    expect(assistants()[0]?.text).toBe(frozenPrefix);
+    expect(firstFinal.startsWith(assistants()[0]?.text ?? "")).toBe(true);
+  });
+
+  it("retries a transient stopped-prefix save before dispatching the replacement", async () => {
+    vi.useFakeTimers();
+    const firstFinal =
+      "The saved prefix must win over this hidden tail. ".repeat(20);
+    const durableAssistantId = "00000000-0000-4000-8000-0000000000a2";
+    const durableUserId = "00000000-0000-4000-8000-0000000000b2";
+    let firstToken!: (token: string, accumulatedText?: string) => void;
+    let callCount = 0;
+    apiMocks.client.sendConversationMessageStream.mockImplementation(
+      (
+        _id: string,
+        _text: string,
+        token: (value: string, accumulated?: string) => void,
+      ) => {
+        callCount += 1;
+        if (callCount === 1) {
+          firstToken = token;
+          return Promise.resolve({
+            text: firstFinal,
+            completed: true,
+            messageId: durableAssistantId,
+            userMessageId: durableUserId,
+          });
+        }
+        return Promise.resolve({ text: "Replacement safe.", completed: true });
+      },
+    );
+    apiMocks.client.stopConversationMessagePresentation
+      .mockRejectedValueOnce(new Error("temporary disconnect"))
+      .mockResolvedValueOnce({
+        ok: true,
+        state: "stopped",
+        interrupted: true,
+      });
+
+    const { deps } = makeChatSendDeps();
+    const { result } = renderHook(() => useChatSend(deps));
+    await act(async () => {
+      const first = result.current.sendChatText("first", {
+        conversationId: "conv-1",
+      });
+      await Promise.resolve();
+      firstToken("", firstFinal);
+      await first;
+    });
+
+    await act(async () => {
+      await result.current.sendChatText("replacement", {
+        conversationId: "conv-1",
+      });
+    });
+
+    expect(
+      apiMocks.client.stopConversationMessagePresentation,
+    ).toHaveBeenCalledTimes(2);
+    expect(apiMocks.client.sendConversationMessageStream).toHaveBeenCalledTimes(
+      2,
+    );
+    expect(
+      apiMocks.client.stopConversationMessagePresentation.mock
+        .invocationCallOrder[1],
+    ).toBeLessThan(
+      apiMocks.client.sendConversationMessageStream.mock.invocationCallOrder[1],
+    );
+  });
+
+  it("fails closed instead of sending a replacement past an unsaved stopped prefix", async () => {
+    vi.useFakeTimers();
+    const firstFinal = "This hidden suffix must never outrun history. ".repeat(
+      20,
+    );
+    let firstToken!: (token: string, accumulatedText?: string) => void;
+    apiMocks.client.sendConversationMessageStream.mockImplementation(
+      (
+        _id: string,
+        _text: string,
+        token: (value: string, accumulated?: string) => void,
+      ) => {
+        firstToken = token;
+        return Promise.resolve({
+          text: firstFinal,
+          completed: true,
+          messageId: "00000000-0000-4000-8000-0000000000a3",
+          userMessageId: "00000000-0000-4000-8000-0000000000b3",
+        });
+      },
+    );
+    apiMocks.client.stopConversationMessagePresentation.mockRejectedValue(
+      new Error("history unavailable"),
+    );
+
+    const { deps } = makeChatSendDeps();
+    const { result } = renderHook(() => useChatSend(deps));
+    await act(async () => {
+      const first = result.current.sendChatText("first", {
+        conversationId: "conv-1",
+      });
+      await Promise.resolve();
+      firstToken("", firstFinal);
+      await first;
+    });
+
+    await act(async () => {
+      await result.current.sendChatText("replacement", {
+        conversationId: "conv-1",
+      });
+    });
+
+    expect(
+      apiMocks.client.stopConversationMessagePresentation,
+    ).toHaveBeenCalledTimes(2);
+    expect(apiMocks.client.sendConversationMessageStream).toHaveBeenCalledTimes(
+      1,
+    );
+    expect(deps.setActionNotice).toHaveBeenCalledWith(
+      expect.stringContaining("next message was held"),
+      "error",
+      10_000,
+    );
   });
 });

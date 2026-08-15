@@ -59,6 +59,9 @@ const mocks = vi.hoisted(() => ({
     deleteConversationMessage: vi.fn(() =>
       Promise.resolve({ ok: true, deletedCount: 1 }),
     ),
+    stopConversationMessagePresentation: vi.fn(() =>
+      Promise.resolve({ ok: true, state: "stopped", interrupted: true }),
+    ),
     getBaseUrl: vi.fn(() => ""),
   },
 }));

@@ -634,7 +634,7 @@
   "chatview.ImageReadFailed": "Couldn't read image: {{message}}",
   "chatwidget.Collapse": "Collapse",
   "chatwidget.Expand": "Expand",
-  "chatmessage.ResponseInterrupte": "(Response interrupted)",
+  "chatmessage.ResponseInterrupte": "Stopped",
   "chatmessage.SaveAndResend": "Save and resend",
   "chatmessage.suggestion": "Suggestion",
   "chatmessage.dismissSuggestion": "Dismiss suggestion",

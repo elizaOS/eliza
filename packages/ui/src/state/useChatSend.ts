@@ -70,6 +70,16 @@ import {
   persistPendingChatTurn,
 } from "./pending-chat-turns";
 import { streamingRenderDelayMs } from "./streaming-render-cadence";
+import {
+  advanceStreamingReveal,
+  createStreamingRevealState,
+  freezeStreamingReveal,
+  hasPendingStreamingReveal,
+  ingestStreamingReveal,
+  STREAMING_REVEAL_INTERVAL_MS,
+  type StreamingRevealState,
+  settleStreamingReveal,
+} from "./streaming-reveal-policy";
 
 // ── Types ────────────────────────────────────────────────────────────
 
@@ -493,6 +503,16 @@ export function useChatSend(deps: UseChatSendDeps) {
 
   const chatSendQueueRef = useRef<QueuedChatSend[]>([]);
   const activeChatTurnRef = useRef<ActiveChatTurn | null>(null);
+  const stoppedPresentationBarrierRef = useRef<{
+    conversationId: string;
+    snapshot: {
+      conversationId: string;
+      messageId: string;
+      visibleText: string;
+      expectedText: string;
+    };
+    promise: Promise<boolean>;
+  } | null>(null);
   // ElizaClient owns a mutable base outside React state. Snapshot it each render
   // so selecting another agent retriggers the prewarm effect.
   const chatScopePrewarmBase = client.getBaseUrl();
@@ -558,6 +578,9 @@ export function useChatSend(deps: UseChatSendDeps) {
     flushGeneration: number;
     flushTimer: ReturnType<typeof setTimeout> | null;
     lastFlushAtMs: number | null;
+    reveal: StreamingRevealState;
+    revealGeneration: number;
+    revealTimer: ReturnType<typeof setTimeout> | null;
   }>({
     conversationId: null,
     messageId: "",
@@ -569,6 +592,9 @@ export function useChatSend(deps: UseChatSendDeps) {
     flushGeneration: 0,
     flushTimer: null,
     lastFlushAtMs: null,
+    reveal: createStreamingRevealState(),
+    revealGeneration: 0,
+    revealTimer: null,
   });
 
   const isConversationCommitActive = useCallback(
@@ -601,6 +627,290 @@ export function useChatSend(deps: UseChatSendDeps) {
     [isConversationCommitActive, setConversationMessages],
   );
 
+  // Atomic providers can hand the UI a complete answer in one callback. Keep
+  // an exact presentation lease for that answer so it drains at a readable
+  // cadence without pretending the provider emitted token deltas. The timer is
+  // generation-guarded: Stop, a new turn, conversation switch, or unmount
+  // invalidates every queued old-turn paint before it can touch React state.
+  const streamingRevealTickRef = useRef<() => void>(() => undefined);
+
+  const persistStoppedStreamingPresentation = useCallback(
+    async (snapshot: {
+      conversationId: string;
+      messageId: string;
+      visibleText: string;
+      expectedText: string;
+    }): Promise<boolean> => {
+      if (
+        snapshot.messageId.startsWith("temp-") ||
+        snapshot.messageId.startsWith("local-")
+      ) {
+        logger.error(
+          {
+            conversationId: snapshot.conversationId,
+            messageId: snapshot.messageId,
+          },
+          "[chat] stopped presentation has no durable message id",
+        );
+        setActionNotice(
+          "The response stopped, but its history marker could not be saved yet.",
+          "error",
+          8_000,
+        );
+        return false;
+      }
+      try {
+        await client.stopConversationMessagePresentation(
+          snapshot.conversationId,
+          snapshot.messageId,
+          snapshot.visibleText,
+          snapshot.expectedText,
+        );
+        return true;
+      } catch (error) {
+        logger.error(
+          {
+            conversationId: snapshot.conversationId,
+            messageId: snapshot.messageId,
+            visibleLength: Array.from(snapshot.visibleText).length,
+            expectedLength: Array.from(snapshot.expectedText).length,
+            error: error instanceof Error ? error.message : String(error),
+          },
+          "[chat] failed to persist stopped presentation",
+        );
+        setActionNotice(
+          "The response stopped, but its history marker could not be saved. Your next message was held to protect the conversation context.",
+          "error",
+          10_000,
+        );
+        return false;
+      }
+    },
+    [setActionNotice],
+  );
+
+  const beginStoppedPresentationPersistence = useCallback(
+    (snapshot: {
+      conversationId: string;
+      messageId: string;
+      visibleText: string;
+      expectedText: string;
+    }) => {
+      const promise = persistStoppedStreamingPresentation(snapshot);
+      const barrier = {
+        conversationId: snapshot.conversationId,
+        snapshot,
+        promise,
+      };
+      stoppedPresentationBarrierRef.current = barrier;
+      void promise.then((saved) => {
+        if (saved && stoppedPresentationBarrierRef.current === barrier) {
+          stoppedPresentationBarrierRef.current = null;
+        }
+      });
+    },
+    [persistStoppedStreamingPresentation],
+  );
+
+  const awaitStoppedPresentationBarrier = useCallback(
+    async (conversationId: string): Promise<boolean> => {
+      const barrier = stoppedPresentationBarrierRef.current;
+      if (!barrier || barrier.conversationId !== conversationId) return true;
+      if (await barrier.promise) return true;
+
+      // A transient disconnect after Stop must not either poison the room or
+      // let the replacement outrun durable context. Retry the same idempotent
+      // compare-and-set once when the next user turn is ready to drain.
+      const retryPromise = persistStoppedStreamingPresentation(
+        barrier.snapshot,
+      );
+      const retryBarrier = { ...barrier, promise: retryPromise };
+      stoppedPresentationBarrierRef.current = retryBarrier;
+      const saved = await retryPromise;
+      if (saved && stoppedPresentationBarrierRef.current === retryBarrier) {
+        stoppedPresentationBarrierRef.current = null;
+      }
+      return saved;
+    },
+    [persistStoppedStreamingPresentation],
+  );
+
+  const stopStreamingRevealTimer = useCallback(() => {
+    const buffer = streamingFlushRef.current;
+    buffer.revealGeneration += 1;
+    if (buffer.revealTimer !== null) {
+      clearTimeout(buffer.revealTimer);
+      buffer.revealTimer = null;
+    }
+  }, []);
+
+  const ensureStreamingRevealTick = useCallback(() => {
+    const buffer = streamingFlushRef.current;
+    if (
+      buffer.revealTimer !== null ||
+      !hasPendingStreamingReveal(buffer.reveal)
+    ) {
+      return;
+    }
+    const generation = buffer.revealGeneration;
+    buffer.revealTimer = setTimeout(() => {
+      if (buffer.revealGeneration !== generation) return;
+      buffer.revealTimer = null;
+      streamingRevealTickRef.current();
+    }, STREAMING_REVEAL_INTERVAL_MS);
+  }, []);
+
+  const runStreamingRevealTick = useCallback(() => {
+    const buffer = streamingFlushRef.current;
+    if (!isConversationCommitActive(buffer.conversationId)) {
+      stopStreamingRevealTimer();
+      buffer.reveal = freezeStreamingReveal(buffer.reveal);
+      return;
+    }
+    const next = advanceStreamingReveal(buffer.reveal);
+    if (next.visibleText !== buffer.reveal.visibleText) {
+      applyStreamingModificationForConversation(buffer.conversationId, {
+        messageId: buffer.messageId,
+        mode: "replace",
+        fullText: next.visibleText,
+        provisional: next.provisional,
+      });
+    }
+    buffer.reveal = next;
+    ensureStreamingRevealTick();
+  }, [
+    applyStreamingModificationForConversation,
+    ensureStreamingRevealTick,
+    isConversationCommitActive,
+    stopStreamingRevealTimer,
+  ]);
+  streamingRevealTickRef.current = runStreamingRevealTick;
+
+  const freezeActiveStreamingReveal = useCallback(
+    (markInterrupted: boolean): void => {
+      const buffer = streamingFlushRef.current;
+      const wasPending = hasPendingStreamingReveal(buffer.reveal);
+      // Capture the durable compare-and-set target before freeze collapses the
+      // reveal state to the visible prefix. The server owns the complete text;
+      // persisting a stop must prove that exact hidden value is still current.
+      const expectedText = buffer.reveal.authoritativeText;
+      // A transport callback parked after the last paint is not visible yet;
+      // cancellation revokes it instead of flushing it into the bubble.
+      buffer.pendingText = null;
+      buffer.pendingTextProvisional = false;
+      stopStreamingRevealTimer();
+      buffer.reveal = freezeStreamingReveal(buffer.reveal);
+      if (markInterrupted && wasPending && buffer.reveal.visibleText.trim()) {
+        applyStreamingModificationForConversation(buffer.conversationId, {
+          messageId: buffer.messageId,
+          mode: "interrupt",
+        });
+      }
+      if (
+        !markInterrupted ||
+        !wasPending ||
+        !buffer.conversationId ||
+        !expectedText ||
+        buffer.messageId.startsWith("temp-") ||
+        buffer.messageId.startsWith("local-")
+      ) {
+        return;
+      }
+      beginStoppedPresentationPersistence({
+        conversationId: buffer.conversationId,
+        messageId: buffer.messageId,
+        visibleText: buffer.reveal.visibleText,
+        expectedText,
+      });
+    },
+    [
+      applyStreamingModificationForConversation,
+      beginStoppedPresentationPersistence,
+      stopStreamingRevealTimer,
+    ],
+  );
+
+  const settleStreamingPresentation = useCallback(
+    (options: {
+      conversationId: string;
+      messageId: string;
+      finalText: string;
+      completed: boolean;
+      pace: boolean;
+      persistedMessageId?: string;
+    }): string | null => {
+      const buffer = streamingFlushRef.current;
+      if (
+        buffer.conversationId !== options.conversationId ||
+        buffer.messageId !== options.messageId
+      ) {
+        return null;
+      }
+      stopStreamingRevealTimer();
+      if (options.completed) {
+        const settled = settleStreamingReveal(
+          buffer.reveal,
+          options.finalText,
+          { pace: options.pace },
+        );
+        buffer.reveal = settled;
+      } else {
+        buffer.reveal = freezeStreamingReveal(buffer.reveal);
+      }
+      if (options.persistedMessageId) {
+        buffer.messageId = options.persistedMessageId;
+      }
+      ensureStreamingRevealTick();
+      return buffer.reveal.visibleText;
+    },
+    [ensureStreamingRevealTick, stopStreamingRevealTimer],
+  );
+
+  const restoreStreamingPresentationAfterHistoryReload = useCallback(
+    (conversationId: string) => {
+      const buffer = streamingFlushRef.current;
+      if (
+        buffer.conversationId !== conversationId ||
+        !hasPendingStreamingReveal(buffer.reveal)
+      ) {
+        return;
+      }
+      setConversationMessagesForConversation(conversationId, (prev) => {
+        let targetIndex = prev.findIndex(
+          (message) => message.id === buffer.messageId,
+        );
+        if (targetIndex < 0) {
+          // Older/compatibility runtimes can omit messageId on `done` and make
+          // the subsequent history reload the first durable-id authority. Bind
+          // only an exact authoritative assistant match, searching newest-first;
+          // never guess from a prefix that could belong to an older turn.
+          for (let index = prev.length - 1; index >= 0; index -= 1) {
+            const message = prev[index];
+            if (
+              message?.role === "assistant" &&
+              message.text === buffer.reveal.authoritativeText
+            ) {
+              targetIndex = index;
+              break;
+            }
+          }
+        }
+        if (targetIndex < 0) return prev;
+        const target = prev[targetIndex];
+        if (!target) return prev;
+        buffer.messageId = target.id;
+        if (target.text === buffer.reveal.visibleText) return prev;
+        const next = [...prev];
+        next[targetIndex] = {
+          ...target,
+          text: buffer.reveal.visibleText,
+        };
+        return next;
+      });
+    },
+    [setConversationMessagesForConversation],
+  );
+
   const reconcileTerminalStream = useCallback(
     (
       conversationId: string,
@@ -610,6 +920,7 @@ export function useChatSend(deps: UseChatSendDeps) {
       options: {
         includeReasoning: boolean;
         includeAccountConnect: boolean;
+        presentationText?: string;
         origin: Omit<AssistantTurnOrigin, "persistedUserMessageId">;
       },
     ): string | null => {
@@ -668,7 +979,7 @@ export function useChatSend(deps: UseChatSendDeps) {
         applyStreamingModificationForConversation(conversationId, {
           messageId: assistantMessageId,
           mode: "complete",
-          fullText: data.text,
+          fullText: options.presentationText ?? data.text,
           ...(data.failureKind ? { failureKind: data.failureKind } : {}),
           ...(options.includeAccountConnect && data.accountConnect
             ? { accountConnect: data.accountConnect }
@@ -689,7 +1000,7 @@ export function useChatSend(deps: UseChatSendDeps) {
         applyStreamingModificationForConversation(conversationId, {
           messageId: assistantMessageId,
           mode: "complete",
-          fullText: data.text,
+          fullText: options.presentationText ?? data.text,
           accountConnect: data.accountConnect,
           ...(data.assistantEphemeral ? { assistantEphemeral: true } : {}),
           ...(data.messageId ? { persistedMessageId: data.messageId } : {}),
@@ -697,8 +1008,11 @@ export function useChatSend(deps: UseChatSendDeps) {
       }
 
       const interruptedPartial =
-        !data.completed && streamedAssistantText.trim()
-          ? data.text.trim() || streamedAssistantText
+        (!data.completed || data.interrupted === true) &&
+        streamedAssistantText.trim()
+          ? options.presentationText?.trim() ||
+            data.text.trim() ||
+            streamedAssistantText
           : null;
       if (interruptedPartial) {
         applyStreamingModificationForConversation(conversationId, {
@@ -742,13 +1056,21 @@ export function useChatSend(deps: UseChatSendDeps) {
       const provisional = buffer.pendingTextProvisional;
       buffer.pendingText = null;
       buffer.pendingTextProvisional = false;
-      applyStreamingTextModification(setConversationMessages, {
-        messageId: buffer.messageId,
-        mode: "replace",
+      const previousVisibleText = buffer.reveal.visibleText;
+      buffer.reveal = ingestStreamingReveal(
+        buffer.reveal,
         fullText,
         provisional,
-      });
-      committed = true;
+      );
+      if (buffer.reveal.visibleText !== previousVisibleText) {
+        applyStreamingTextModification(setConversationMessages, {
+          messageId: buffer.messageId,
+          mode: "replace",
+          fullText: buffer.reveal.visibleText,
+          provisional: buffer.reveal.provisional,
+        });
+        committed = true;
+      }
     }
     if (buffer.pendingToolEvents.length > 0) {
       const toolEvents = buffer.pendingToolEvents;
@@ -769,7 +1091,9 @@ export function useChatSend(deps: UseChatSendDeps) {
       committed = true;
     }
     if (committed) buffer.lastFlushAtMs = performance.now();
+    ensureStreamingRevealTick();
   }, [
+    ensureStreamingRevealTick,
     isConversationCommitActive,
     setConversationMessages,
     setServerTurnStatus,
@@ -802,6 +1126,9 @@ export function useChatSend(deps: UseChatSendDeps) {
         buffer.messageId === messageId
       )
         return;
+      if (hasPendingStreamingReveal(buffer.reveal)) {
+        void freezeActiveStreamingReveal(true);
+      }
       if (buffer.flushScheduled) buffer.flushGeneration += 1;
       if (buffer.flushTimer !== null) {
         clearTimeout(buffer.flushTimer);
@@ -815,8 +1142,10 @@ export function useChatSend(deps: UseChatSendDeps) {
       buffer.pendingToolEvents = [];
       buffer.flushScheduled = false;
       buffer.lastFlushAtMs = null;
+      buffer.reveal = createStreamingRevealState();
+      stopStreamingRevealTimer();
     },
-    [],
+    [freezeActiveStreamingReveal, stopStreamingRevealTimer],
   );
 
   // The first snapshot paints in a microtask; later snapshots within the
@@ -899,13 +1228,15 @@ export function useChatSend(deps: UseChatSendDeps) {
         clearTimeout(buffer.flushTimer);
         buffer.flushTimer = null;
       }
+      stopStreamingRevealTimer();
       buffer.pendingText = null;
       buffer.pendingTextProvisional = false;
       buffer.conversationId = null;
       buffer.pendingStatus = NO_PENDING_STATUS;
       buffer.pendingToolEvents = [];
+      buffer.reveal = createStreamingRevealState();
     };
-  }, []);
+  }, [stopStreamingRevealTimer]);
 
   useEffect(() => {
     return () => {
@@ -1005,8 +1336,10 @@ export function useChatSend(deps: UseChatSendDeps) {
       }
       activeTurn?.controller.abort();
       chatAbortRef.current?.abort();
-      // Commit any parked partial text (so a stopped turn keeps what the user saw)
-      // and invalidate the pending scheduled flush so it can't fire after stop.
+      // Revoke the hidden suffix BEFORE flushing sibling status/tool events.
+      // Stop preserves exactly the prefix already painted; a parked atomic
+      // snapshot or late timer is not user-visible and must never appear now.
+      void freezeActiveStreamingReveal(true);
       flushStreamingText();
       activeChatTurnRef.current = null;
       chatAbortRef.current = null;
@@ -1017,6 +1350,7 @@ export function useChatSend(deps: UseChatSendDeps) {
     }, [
       chatAbortRef,
       activeConversationIdRef,
+      freezeActiveStreamingReveal,
       flushStreamingText,
       resolveQueuedChatSends,
       setChatFirstTokenReceived,
@@ -1414,6 +1748,10 @@ export function useChatSend(deps: UseChatSendDeps) {
 
       const optimisticTurn = turn.optimisticTurn;
       const { userMsgId, assistantMsgId, timestamp: now } = optimisticTurn;
+      // A prior transport may already be terminal while its large atomic answer
+      // is still visually draining. A replacement user turn owns the screen
+      // immediately: freeze that old prefix before inserting this new row.
+      freezeActiveStreamingReveal(true);
       const optimisticUserMessage = createOptimisticUserMessage({
         ...turn,
         rawInput: text,
@@ -1566,9 +1904,16 @@ export function useChatSend(deps: UseChatSendDeps) {
         roomId: convRoomId,
         abortServerTurn,
       };
+      startStreamingTurn(convId, assistantMsgId);
       let streamedAssistantText = "";
 
       try {
+        if (
+          stoppedPresentationBarrierRef.current?.conversationId === convId &&
+          !(await awaitStoppedPresentationBarrier(convId))
+        ) {
+          throw new Error("Stopped response history could not be saved safely");
+        }
         const data = await client.sendConversationMessageStream(
           convId,
           text,
@@ -1615,6 +1960,19 @@ export function useChatSend(deps: UseChatSendDeps) {
         // drop/complete/fail/interrupt — no streamed tokens may be lost.
         flushStreamingText();
 
+        const presentationText = settleStreamingPresentation({
+          conversationId: convId,
+          messageId: assistantMsgId,
+          finalText: data.text,
+          completed: data.completed === true && data.interrupted !== true,
+          pace:
+            data.completed === true &&
+            data.interrupted !== true &&
+            !data.failureKind &&
+            !data.accountConnect,
+          ...(data.messageId ? { persistedMessageId: data.messageId } : {}),
+        });
+
         if (data.userMessageId) {
           applyStreamingModificationForConversation(convId, {
             messageId: userMsgId,
@@ -1630,6 +1988,7 @@ export function useChatSend(deps: UseChatSendDeps) {
           {
             includeReasoning: true,
             includeAccountConnect: true,
+            ...(presentationText !== null ? { presentationText } : {}),
             origin: {
               optimisticUserMessageId: userMsgId,
               text,
@@ -1675,10 +2034,12 @@ export function useChatSend(deps: UseChatSendDeps) {
           activeConversationIdRef.current === convId &&
           (data.historyRefreshRequired ||
             !data.completed ||
+            data.interrupted === true ||
             (!data.messageId && !data.assistantEphemeral) ||
             !data.userMessageId)
         ) {
           await loadConversationMessages(convId);
+          restoreStreamingPresentationAfterHistoryReload(convId);
           // The reload above full-replaces the thread; a stopped reply is often
           // NOT persisted server-side, so re-attach the partial the user watched
           // stream in (no-op / no duplicate when the server kept it).
@@ -1739,14 +2100,17 @@ export function useChatSend(deps: UseChatSendDeps) {
         }
         clearPendingChatTurn(convId, clientMessageId);
       } catch (err) {
-        // Commit any throttled-but-uncommitted token first so an abort/error
-        // never drops a placeholder the user already saw fill with partial text.
-        flushStreamingText();
         const abortError = err as Error;
         if (abortError.name === "AbortError" || controller?.signal.aborted) {
+          void freezeActiveStreamingReveal(true);
+          flushStreamingText();
           dropEmptyAssistantPlaceholder(convId, assistantMsgId);
           return;
         }
+        // A non-abort failure may retain the already-painted prefix, but it may
+        // not reveal any parked/queued suffix after the failure boundary.
+        void freezeActiveStreamingReveal(true);
+        flushStreamingText();
 
         // A terminal SSE `error` event that carried a structured gate must
         // surface that gate on the assistant turn — the same UI the completed
@@ -1849,6 +2213,7 @@ export function useChatSend(deps: UseChatSendDeps) {
               },
             ]);
 
+            startStreamingTurn(conversation.id, replayAssistantId);
             let replayStreamedText = "";
             const retryData = await client.sendConversationMessageStream(
               conversation.id,
@@ -1894,6 +2259,20 @@ export function useChatSend(deps: UseChatSendDeps) {
             // Commit any throttle-parked token before the terminal modification.
             flushStreamingText();
 
+            const replayPresentationText = settleStreamingPresentation({
+              conversationId: conversation.id,
+              messageId: replayAssistantId,
+              finalText: retryData.text,
+              completed: retryData.completed === true,
+              pace:
+                retryData.completed === true &&
+                !retryData.failureKind &&
+                !retryData.accountConnect,
+              ...(retryData.messageId
+                ? { persistedMessageId: retryData.messageId }
+                : {}),
+            });
+
             reconcileTerminalStream(
               conversation.id,
               replayAssistantId,
@@ -1902,6 +2281,9 @@ export function useChatSend(deps: UseChatSendDeps) {
               {
                 includeReasoning: true,
                 includeAccountConnect: true,
+                ...(replayPresentationText !== null
+                  ? { presentationText: replayPresentationText }
+                  : {}),
                 origin: {
                   optimisticUserMessageId: replayUserId,
                   text,
@@ -1915,6 +2297,7 @@ export function useChatSend(deps: UseChatSendDeps) {
             // replay's empty bubble stuck forever and the failure invisible.
             // Clean up the replay placeholder and surface the failure exactly
             // like the primary send path (aborts stay silent by design).
+            void freezeActiveStreamingReveal(true);
             flushStreamingText();
             dropEmptyAssistantPlaceholder(conversation.id, replayAssistantId);
             if (
@@ -2053,6 +2436,11 @@ export function useChatSend(deps: UseChatSendDeps) {
       scheduleStreamingText,
       scheduleServerTurnStatus,
       scheduleToolEvent,
+      startStreamingTurn,
+      settleStreamingPresentation,
+      restoreStreamingPresentationAfterHistoryReload,
+      freezeActiveStreamingReveal,
+      awaitStoppedPresentationBarrier,
       flushStreamingText,
     ],
   );
@@ -2374,6 +2762,7 @@ export function useChatSend(deps: UseChatSendDeps) {
         const userMsgId = `temp-action-${now}`;
         const assistantMsgId = `temp-action-resp-${now}`;
 
+        freezeActiveStreamingReveal(true);
         setCompanionMessageCutoffTs(now);
         setConversationMessagesForConversation(
           convId,
@@ -2402,9 +2791,18 @@ export function useChatSend(deps: UseChatSendDeps) {
           roomId: convRoomId,
           abortServerTurn,
         };
+        startStreamingTurn(convId, assistantMsgId);
         let streamedAssistantText = "";
 
         try {
+          if (
+            stoppedPresentationBarrierRef.current?.conversationId === convId &&
+            !(await awaitStoppedPresentationBarrier(convId))
+          ) {
+            throw new Error(
+              "Stopped response history could not be saved safely",
+            );
+          }
           const data = await client.sendConversationMessageStream(
             convId,
             trimmed,
@@ -2441,6 +2839,18 @@ export function useChatSend(deps: UseChatSendDeps) {
           // Commit any token parked by the throttle before the terminal
           // drop/complete/fail/interrupt — no streamed tokens may be lost.
           flushStreamingText();
+          const presentationText = settleStreamingPresentation({
+            conversationId: convId,
+            messageId: assistantMsgId,
+            finalText: data.text,
+            completed: data.completed === true && data.interrupted !== true,
+            pace:
+              data.completed === true &&
+              data.interrupted !== true &&
+              !data.failureKind &&
+              !data.accountConnect,
+            ...(data.messageId ? { persistedMessageId: data.messageId } : {}),
+          });
           await handoffCompletedAction(data.actionResults, (message) => {
             setActionNotice(message, "error", 8_000);
           });
@@ -2453,6 +2863,7 @@ export function useChatSend(deps: UseChatSendDeps) {
             {
               includeReasoning: false,
               includeAccountConnect: false,
+              ...(presentationText !== null ? { presentationText } : {}),
               origin: {
                 optimisticUserMessageId: userMsgId,
                 text: trimmed,
@@ -2465,6 +2876,7 @@ export function useChatSend(deps: UseChatSendDeps) {
           // additional action-generated messages during a successful send.
           if (activeConversationIdRef.current === convId) {
             await loadConversationMessages(convId);
+            restoreStreamingPresentationAfterHistoryReload(convId);
             if (interruptedPartial) {
               reattachInterruptedPartial(
                 convId,
@@ -2488,14 +2900,15 @@ export function useChatSend(deps: UseChatSendDeps) {
             void pollCloudCredits();
           }
         } catch (err) {
-          // Commit any throttled-but-uncommitted token first so an abort/error
-          // never drops a placeholder the user already saw fill with text.
-          flushStreamingText();
           const abortError = err as Error;
           if (abortError.name === "AbortError" || controller?.signal.aborted) {
+            void freezeActiveStreamingReveal(true);
+            flushStreamingText();
             dropEmptyAssistantPlaceholder(convId, assistantMsgId);
             return;
           }
+          void freezeActiveStreamingReveal(true);
+          flushStreamingText();
           // Surface a status-specific notice so an inbox/connector send that
           // 5xxs, times out, or auth-fails is never silent dead air — the
           // main-chat send path already does this; this one did not (#10231).
@@ -2566,6 +2979,11 @@ export function useChatSend(deps: UseChatSendDeps) {
       uiLanguage,
       scheduleStreamingText,
       scheduleToolEvent,
+      startStreamingTurn,
+      settleStreamingPresentation,
+      restoreStreamingPresentationAfterHistoryReload,
+      freezeActiveStreamingReveal,
+      awaitStoppedPresentationBarrier,
       flushStreamingText,
     ],
   );

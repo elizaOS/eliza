@@ -12,6 +12,8 @@
  *     { title?, includeGreeting?, lang?, metadata? }
  *   POST  /api/conversations/:id/messages/truncate
  *     { messageId, inclusive? }
+ *   PATCH /api/conversations/:id/messages/:messageId
+ *     { state: "stopped", visibleText, expectedText }
  *   PATCH /api/conversations/:id
  *     { title?, generate?, metadata? | null }
  *   POST  /api/conversations/cleanup-empty
@@ -96,6 +98,27 @@ export const PostConversationTruncateRequestSchema = z
     ...(value.inclusive !== undefined ? { inclusive: value.inclusive } : {}),
   }));
 
+const MAX_CONVERSATION_PRESENTATION_TEXT_LENGTH = 256 * 1024;
+
+/**
+ * Compare-and-set contract for a response that finished server-side but was
+ * stopped while its client-side presentation was still draining. `expectedText`
+ * is the exact durable assistant text the client received; `visibleText` is the
+ * prefix actually shown. Keeping both values makes a stale tab fail closed
+ * instead of truncating a message that has since changed.
+ */
+export const PatchConversationMessagePresentationRequestSchema = z
+  .object({
+    state: z.literal("stopped"),
+    visibleText: z.string().max(MAX_CONVERSATION_PRESENTATION_TEXT_LENGTH),
+    expectedText: z.string().max(MAX_CONVERSATION_PRESENTATION_TEXT_LENGTH),
+  })
+  .strict()
+  .refine((value) => value.expectedText.startsWith(value.visibleText), {
+    message: "visibleText must be an exact prefix of expectedText",
+    path: ["visibleText"],
+  });
+
 export const PatchConversationRequestSchema = z
   .object({
     title: z.string().optional(),
@@ -147,6 +170,9 @@ export type PostConversationRequest = z.infer<
 >;
 export type PostConversationTruncateRequest = z.infer<
   typeof PostConversationTruncateRequestSchema
+>;
+export type PatchConversationMessagePresentationRequest = z.infer<
+  typeof PatchConversationMessagePresentationRequestSchema
 >;
 export type PatchConversationRequest = z.infer<
   typeof PatchConversationRequestSchema

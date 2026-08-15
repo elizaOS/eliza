@@ -8,11 +8,63 @@
  */
 import { describe, expect, it } from "vitest";
 import {
+  PatchConversationMessagePresentationRequestSchema,
   PatchConversationRequestSchema,
   PostConversationCleanupEmptyRequestSchema,
   PostConversationRequestSchema,
   PostConversationTruncateRequestSchema,
 } from "./conversation-routes.js";
+
+describe("PatchConversationMessagePresentationRequestSchema", () => {
+  it("accepts an exact stopped prefix without normalizing whitespace", () => {
+    expect(
+      PatchConversationMessagePresentationRequestSchema.parse({
+        state: "stopped",
+        visibleText: "Visible prefix ",
+        expectedText: "Visible prefix hidden suffix",
+      }),
+    ).toEqual({
+      state: "stopped",
+      visibleText: "Visible prefix ",
+      expectedText: "Visible prefix hidden suffix",
+    });
+  });
+
+  it("accepts a fully visible response that was stopped during audio playout", () => {
+    expect(
+      PatchConversationMessagePresentationRequestSchema.parse({
+        state: "stopped",
+        visibleText: "Everything visible",
+        expectedText: "Everything visible",
+      }),
+    ).toMatchObject({ state: "stopped" });
+  });
+
+  it("rejects a non-prefix, an unknown state, and extra fields", () => {
+    expect(() =>
+      PatchConversationMessagePresentationRequestSchema.parse({
+        state: "stopped",
+        visibleText: "different",
+        expectedText: "authoritative",
+      }),
+    ).toThrow(/exact prefix/);
+    expect(() =>
+      PatchConversationMessagePresentationRequestSchema.parse({
+        state: "failed",
+        visibleText: "",
+        expectedText: "authoritative",
+      }),
+    ).toThrow();
+    expect(() =>
+      PatchConversationMessagePresentationRequestSchema.parse({
+        state: "stopped",
+        visibleText: "prefix",
+        expectedText: "prefix suffix",
+        messageId: "wrong-boundary",
+      }),
+    ).toThrow();
+  });
+});
 
 describe("PostConversationRequestSchema", () => {
   it("accepts an empty body", () => {

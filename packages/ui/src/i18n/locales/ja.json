@@ -526,7 +526,7 @@
   "chat.voiceInput": "音声入力",
   "chatwidget.Collapse": "折りたたむ",
   "chatwidget.Expand": "展開",
-  "chatmessage.ResponseInterrupte": "(応答が中断されました)",
+  "chatmessage.ResponseInterrupte": "停止しました",
   "chatmessage.SaveAndResend": "保存して再送信",
   "chatsidebar.launchApp": "{{name}}を起動",
   "chatsidebar.OpenView": "ビューを開く",

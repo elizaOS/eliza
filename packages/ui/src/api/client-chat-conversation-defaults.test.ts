@@ -138,4 +138,43 @@ describe("conversation updatedAt boundary normalization", () => {
     expect(res.conversations[0]?.id).toBe("cloud");
     expect(res.conversations[0]?.updatedAt).toBe(CREATED);
   });
+
+  it("sends the stopped presentation as an exact PATCH compare-and-set", async () => {
+    const request = vi.fn(
+      async (_url: string, _init?: RequestInit) =>
+        new Response(
+          JSON.stringify({
+            ok: true,
+            messageId: "message/id",
+            state: "stopped",
+            text: "Visible prefix",
+            interrupted: true,
+            stoppedAt: 123,
+            alreadyApplied: false,
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        ),
+    );
+    const client = new ElizaClient("https://agent.example.com");
+    client.setRequestTransport({ request });
+
+    const result = await client.stopConversationMessagePresentation(
+      "conversation/id",
+      "message/id",
+      "Visible prefix",
+      "Visible prefix hidden suffix",
+    );
+
+    expect(result).toMatchObject({ text: "Visible prefix", interrupted: true });
+    const [url, init] = request.mock.calls[0] ?? [];
+    expect(new URL(String(url)).pathname).toBe(
+      "/api/conversations/conversation%2Fid/messages/message%2Fid",
+    );
+    expect(init).toMatchObject({ method: "PATCH" });
+    expect(JSON.parse(String(init?.body))).toEqual({
+      state: "stopped",
+      visibleText: "Visible prefix",
+      expectedText: "Visible prefix hidden suffix",
+    });
+  });
 });

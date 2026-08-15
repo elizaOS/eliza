@@ -526,7 +526,7 @@
   "chat.voiceInput": "语音输入",
   "chatwidget.Collapse": "折叠",
   "chatwidget.Expand": "展开",
-  "chatmessage.ResponseInterrupte": "（反应中断）",
+  "chatmessage.ResponseInterrupte": "已停止",
   "chatmessage.SaveAndResend": "保存并重新发送",
   "chatsidebar.launchApp": "启动 {{name}}",
   "chatsidebar.OpenView": "打开视图",

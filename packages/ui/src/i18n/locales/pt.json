@@ -526,7 +526,7 @@
   "chat.voiceInput": "Entrada de voz",
   "chatwidget.Collapse": "Recolher",
   "chatwidget.Expand": "Expandir",
-  "chatmessage.ResponseInterrupte": "(Resposta interrompida)",
+  "chatmessage.ResponseInterrupte": "Interrompida",
   "chatmessage.SaveAndResend": "Salvar e reenviar",
   "chatsidebar.launchApp": "Abrir {{name}}",
   "chatsidebar.OpenView": "Abrir visualização",

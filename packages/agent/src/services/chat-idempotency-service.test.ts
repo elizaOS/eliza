@@ -28,6 +28,23 @@ describe("chat idempotency store", () => {
     expect(store.reserve("first", "id", 2)).toBe(false);
   });
 
+  it("replaces only an already-settled replay with a cloned amended outcome", () => {
+    const store = createChatIdempotencyStore<{ value: string }>();
+    expect(store.replaceSettled("room", "id", { value: "too early" })).toBe(
+      false,
+    );
+    store.reserve("room", "id", 1);
+    expect(store.replaceSettled("room", "id", { value: "still active" })).toBe(
+      false,
+    );
+    store.settle("room", "id", { value: "full" });
+
+    const amended = { value: "visible prefix" };
+    expect(store.replaceSettled("room", "id", amended)).toBe(true);
+    amended.value = "mutated caller";
+    expect(store.outcome("room", "id")).toEqual({ value: "visible prefix" });
+  });
+
   it("joins an active owner and receives a cloned settled outcome", async () => {
     const store = createChatIdempotencyStore<{ value: string }>();
     const owner = store.admit("room", "id", { now: 1 });

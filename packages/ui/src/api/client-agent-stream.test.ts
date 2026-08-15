@@ -86,6 +86,43 @@ describe("ElizaClient agent streaming transport", () => {
     expect(result).not.toHaveProperty("messageId");
   });
 
+  it("round-trips a durable stopped-prefix terminal without treating it as hidden full text", async () => {
+    const encoder = new TextEncoder();
+    const read = vi.fn().mockResolvedValueOnce({
+      done: false,
+      value: encoder.encode(
+        'data: {"type":"done","fullText":"Visible prefix","agentName":"Eliza","messageId":"assistant-db-id","userMessageId":"user-db-id","interrupted":true}\n\n',
+      ),
+    });
+    const client = new ElizaClient("http://agent.example:31337", "token");
+    client.setRequestTransport({
+      request: vi.fn(
+        async () =>
+          ({
+            ok: true,
+            status: 200,
+            body: {
+              getReader: () => ({ read, cancel: vi.fn(async () => {}) }),
+            },
+          }) as unknown as Response,
+      ),
+    });
+
+    const result = await client.streamChatEndpoint(
+      "/api/conversations/conversation-id/messages/stream",
+      "hello",
+      vi.fn(),
+    );
+
+    expect(result).toMatchObject({
+      text: "Visible prefix",
+      completed: true,
+      interrupted: true,
+      messageId: "assistant-db-id",
+      userMessageId: "user-db-id",
+    });
+  });
+
   it("surfaces the done event's thought as reasoning", async () => {
     const encoder = new TextEncoder();
     const read = vi
