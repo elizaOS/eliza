@@ -228,7 +228,6 @@ export async function readPassthroughStreamTail(
       usage?: SseUsageRecord | null;
       error?: unknown;
     };
-
     if (record.error !== undefined && record.error !== null) {
       tail.sawErrorFrame = true;
       // An error frame parsed AFTER [DONE] revokes that completion (#16079):

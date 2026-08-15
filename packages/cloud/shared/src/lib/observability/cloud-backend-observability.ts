@@ -60,8 +60,8 @@ export interface CloudStreamMilestoneTelemetry {
   completionMs: number | null;
   /**
    * Stream ended via client abort, read failure, in-stream provider error, or
-   * clean EOF without `[DONE]`. NOT mutually
-   * exclusive with `completionMs`: a provider that emitted `[DONE]` before a
+   * clean EOF without `[DONE]`. This is not mutually exclusive with
+   * `completionMs`: a provider that emitted `[DONE]` before a
    * client disconnect completed, and both facts are recorded (#16079).
    */
   aborted: boolean;
