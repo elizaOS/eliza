@@ -1411,7 +1411,7 @@ function normalizeSingularToken(token: string): string {
 	if (token.length > 3 && token.endsWith("IES")) {
 		return `${token.slice(0, -3)}Y`;
 	}
-	if (token.length > 3 && token.endsWith("S")) {
+	if (token.length > 3 && token.endsWith("S") && !token.endsWith("SS")) {
 		return token.slice(0, -1);
 	}
 	return token;
