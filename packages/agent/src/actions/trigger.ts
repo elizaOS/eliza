@@ -401,7 +401,40 @@ async function resolveTriggerRef(
   const taskId = readUuid(params.taskId);
   if (taskId) {
     const loaded = await loadTriggerTask(runtime, taskId);
-    if (loaded) return loaded;
+    if (loaded) {
+      // For ops where displayName is a REFERENCE (not a payload — update
+      // renames through it), a planner-supplied id must agree with the
+      // planner-supplied name. Context id/name mis-pairing is real: a live
+      // turn deleted the "pushups every morning" trigger while naming
+      // "water the orchid" because the id short-circuited unchecked.
+      const referenceName =
+        op === "delete" || op === "run" || op === "toggle"
+          ? readString(params.displayName)
+          : undefined;
+      if (referenceName) {
+        const normalize = (value: string) =>
+          value
+            .toLowerCase()
+            .replace(/^trigger:\s*/, "")
+            .trim();
+        const actual = normalize(loaded.trigger.displayName);
+        const stated = normalize(referenceName);
+        if (
+          stated &&
+          actual &&
+          !actual.includes(stated) &&
+          !stated.includes(actual)
+        ) {
+          return failed(
+            op,
+            `taskId resolves to "${displayLabel(loaded.trigger.displayName)}", not "${referenceName}". Not ${op === "delete" ? "deleting" : op === "run" ? "running" : "toggling"} — re-check the id or refer to the trigger by name only.`,
+            "TRIGGER_REF_MISMATCH",
+            { taskId: String(loaded.task.id) },
+          );
+        }
+      }
+      return loaded;
+    }
   }
   const rawId = readString(params.taskId);
   const querySource =

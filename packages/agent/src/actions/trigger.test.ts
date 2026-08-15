@@ -1723,6 +1723,80 @@ describe("TRIGGER list — dropped rows are counted, not hidden", () => {
   });
 });
 
+describe("trigger reference id/name mismatch guard", () => {
+  it("refuses to delete when taskId resolves to a different trigger than named", async () => {
+    const { runtime, createdTasks } = makeRuntime({ enableAutonomy: false });
+    const created = await create(
+      runtime,
+      {
+        instructions: "do 20 pushups",
+        cronExpression: "0 8 * * *",
+      },
+      "do 20 pushups every morning at 8am",
+    );
+    expect(created?.success).toBe(true);
+    // The default harness's createTask does not attach ids; materialize the
+    // stored task with one so the id-based reference path is exercised.
+    (runtime as unknown as { deleteTask: unknown }).deleteTask = vi.fn(
+      async () => undefined,
+    );
+    const storedTask = { ...createdTasks[0], id: stringToUuid("pushups-task") };
+    const taskId = String(storedTask.id);
+    (
+      runtime.getTask as unknown as { mockResolvedValue: (v: unknown) => void }
+    ).mockResolvedValue(storedTask);
+    // Live repro shape: the planner paired the pushups task id with the
+    // orchid's name; the delete must fail structurally, not fire.
+    const result = await triggerAction.handler(
+      runtime,
+      makeMessage("no, just once tomorrow morning"),
+      undefined,
+      {
+        parameters: {
+          action: "delete",
+          taskId,
+          displayName: "water the orchid",
+        },
+      },
+    );
+    expect(result?.success).toBe(false);
+    expect(result?.data).toMatchObject({ error: "TRIGGER_REF_MISMATCH" });
+    expect(runtime.deleteTask).not.toHaveBeenCalled();
+  });
+
+  it("deletes when the stated name matches the resolved trigger", async () => {
+    const { runtime, createdTasks } = makeRuntime({ enableAutonomy: false });
+    const created = await create(
+      runtime,
+      { instructions: "do 20 pushups", cronExpression: "0 8 * * *" },
+      "do 20 pushups every morning at 8am",
+    );
+    expect(created?.success).toBe(true);
+    (runtime as unknown as { deleteTask: unknown }).deleteTask = vi.fn(
+      async () => undefined,
+    );
+    const storedTask = { ...createdTasks[0], id: stringToUuid("pushups-task") };
+    const taskId = String(storedTask.id);
+    (
+      runtime.getTask as unknown as { mockResolvedValue: (v: unknown) => void }
+    ).mockResolvedValue(storedTask);
+    const result = await triggerAction.handler(
+      runtime,
+      makeMessage("delete the pushups trigger"),
+      undefined,
+      {
+        parameters: {
+          action: "delete",
+          taskId,
+          displayName: "pushups",
+        },
+      },
+    );
+    expect(result?.success).toBe(true);
+    expect(runtime.deleteTask).toHaveBeenCalled();
+  });
+});
+
 describe("sprayed one-shot cap on an explicit recurrence", () => {
   it("drops maxRuns=1 when the user's own words state a repeating cadence", async () => {
     const { runtime, createdTasks } = makeRuntime({ enableAutonomy: false });
