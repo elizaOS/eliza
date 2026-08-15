@@ -28,6 +28,7 @@ import type {
   LifeOpsCadence,
 } from "../../contracts/index.js";
 import { asCacheRuntime } from "../../lifeops/runtime-cache.js";
+import { textStatesExplicitUndatedTodo } from "./undated-todo-intent.js";
 
 /** Maximum age (ms) for a deferred draft before it expires. */
 export const DRAFT_EXPIRY_MS = 5 * 60 * 1000;
@@ -63,23 +64,16 @@ export function isExplicitLifeCreateConfirmation(text: string): boolean {
 }
 
 /**
- * Explicit date-decline vocabulary for a pending schedule question, aligned
- * with the extract-task-plan ruling: `unscheduled` applies ONLY when the owner
- * explicitly declines a date ("no due date", "just a plain todo", "someday").
- * This routes the answer turn back to the owning action; the LLM plan
- * extraction still owns mapping the words to the `unscheduled` cadence.
+ * Explicit date-decline for a pending schedule question. Delegates to the
+ * canonical multilingual undated-Todo authority (one vocabulary — the same
+ * directive parser the write path trusts), so routing and acceptance can
+ * never disagree about what counts as an explicit decline. Live residual
+ * that motivated the consolidation: the routing cue accepted "no deadline,
+ * it's just a general todo" while the write path's authority did not, so the
+ * routed turn wiped its own cadence and stranded the draft.
  */
-const SCHEDULE_DECLINE_CUE_RE =
-  /\b(?:no\s+(?:deadline|due\s*date|date|time(?:\s+needed)?)|without\s+a\s+(?:deadline|date)|just\s+a\s+(?:plain|general|simple|regular)\s+(?:todo|task|item)|someday|whenever|no\s+particular\s+(?:time|date))\b/iu;
-const SCHEDULE_DECLINE_VETO_RE =
-  /\b(?:not\s+(?:a\s+)?(?:plain|general|simple)|never\s*mind|cancel|forget\s+it|don'?t\s+(?:save|add|create))\b/iu;
-
 export function isExplicitScheduleDecline(text: string): boolean {
-  const normalized = text.toLowerCase().replace(/\s+/gu, " ").trim();
-  if (!normalized || SCHEDULE_DECLINE_VETO_RE.test(normalized)) {
-    return false;
-  }
-  return SCHEDULE_DECLINE_CUE_RE.test(normalized);
+  return textStatesExplicitUndatedTodo(text);
 }
 
 export type DeferredLifeDefinitionDraft = {
