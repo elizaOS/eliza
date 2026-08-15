@@ -763,6 +763,7 @@ export async function buildNode(
 			entrypoints: [
 				`${TS_SRC}/index.node.ts`,
 				`${TS_SRC}/roles.ts`,
+				`${TS_SRC}/client-public.ts`,
 				`${TS_SRC}/security/kms/index.ts`,
 				`${TS_SRC}/security/mcp-server-config.ts`,
 				`${TS_SRC}/utils/atomic-json.ts`,
@@ -797,7 +798,11 @@ export async function buildBrowser(
 	const runBrowser = runnerFactory({
 		...sharedConfig,
 		buildOptions: {
-			entrypoints: [`${TS_SRC}/index.browser.ts`, `${TS_SRC}/roles.ts`],
+			entrypoints: [
+				`${TS_SRC}/index.browser.ts`,
+				`${TS_SRC}/roles.ts`,
+				`${TS_SRC}/client-public.ts`,
+			],
 			outdir: "dist/browser",
 			// Use the Node target so `node:*` imports bundle without broken browser polyfills.
 			// The dashboard/Vite shell still aliases `node:*` where the bundle runs in the browser.
@@ -1152,7 +1157,6 @@ export async function generateTypeScriptDeclarations() {
 		"dist/roles.js",
 		`// Roles subpath entry point (explicit)\nexport * from './node/roles.js';\n`,
 	);
-
 	// Create main index.d.ts to re-export all types from node build
 	// This ensures TypeScript resolves all exports when using moduleResolution: bundler
 	// Note: Use .js extension for NodeNext module resolution compatibility
