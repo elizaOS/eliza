@@ -120,6 +120,9 @@ describe("TwitterDirectMessageClient", () => {
     const connection = vi.mocked(runtime.ensureConnection).mock.calls[0]?.[0];
     expect(connection?.entityId).toBe(connection?.userId);
     expect(connection?.userId).not.toBe("person-1");
+    const world = vi.mocked(runtime.ensureWorldExists).mock.calls[0]?.[0];
+    expect(world?.metadata?.ownership?.ownerId).toBe(connection?.entityId);
+    expect(world?.metadata?.ownership?.ownerId).not.toBe("person-1");
     expect(sendDmToParticipant).toHaveBeenCalledWith("person-1", {
       text: "Hi Alice",
     });

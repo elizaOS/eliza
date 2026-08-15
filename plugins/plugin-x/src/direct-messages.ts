@@ -206,7 +206,7 @@ export class TwitterDirectMessageClient {
       name: `${displayName}'s X messages`,
       agentId: this.runtime.agentId,
       metadata: {
-        ownership: { ownerId: senderId },
+        ownership: { ownerId: entityId },
         accountId: this.client.accountId,
         twitter: { accountId: this.client.accountId, id: senderId, username },
       },

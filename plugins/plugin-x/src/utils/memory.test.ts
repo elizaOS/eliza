@@ -1,7 +1,12 @@
 /** Unit tests for the Twitter memory utilities: idempotent/retried memory writes, processed-tweet lookup fallback, and near-duplicate tweet detection; mocked runtime storage. */
 import type { IAgentRuntime, Memory } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createMemorySafe, isDuplicateTweet, isTweetProcessed } from "./memory";
+import {
+  createMemorySafe,
+  ensureTwitterContext,
+  isDuplicateTweet,
+  isTweetProcessed,
+} from "./memory";
 
 function runtimeWithStorage(overrides: Partial<IAgentRuntime>): IAgentRuntime {
   return {
@@ -59,6 +64,32 @@ describe("Twitter memory utilities", () => {
     });
 
     await expect(isTweetProcessed(runtime, "tweet-1")).resolves.toBe(false);
+  });
+
+  it("stores the canonical entity UUID as the Twitter world owner", async () => {
+    const ensureWorldExists = vi.fn(async () => undefined);
+    const ensureRoomExists = vi.fn(async () => undefined);
+    const ensureConnection = vi.fn(async () => undefined);
+    const runtime = runtimeWithStorage({
+      ensureWorldExists,
+      ensureRoomExists,
+      ensureConnection,
+    });
+
+    const context = await ensureTwitterContext(runtime, {
+      userId: "1830340867737178112",
+      username: "shaw",
+      conversationId: "2088482819127574885",
+    });
+
+    expect(ensureWorldExists).toHaveBeenCalledWith(
+      expect.objectContaining({
+        metadata: expect.objectContaining({
+          ownership: { ownerId: context.entityId },
+        }),
+      }),
+    );
+    expect(context.entityId).not.toBe("1830340867737178112");
   });
 
   it("detects duplicate tweets after trimming case and punctuation-like spacing", async () => {

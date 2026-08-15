@@ -117,7 +117,7 @@ export async function ensureTwitterContext(
       name: `${username}'s Twitter`,
       agentId: runtime.agentId,
       metadata: {
-        ownership: { ownerId: userId },
+        ownership: { ownerId: entityId },
         ...(accountId ? { accountId } : {}),
         twitter: {
           ...(accountId ? { accountId } : {}),
