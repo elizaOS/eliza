@@ -268,7 +268,10 @@ export async function createBlueBubblesGatewayRegistration(input: {
 
   const registerAtomically = async () =>
     await dbWrite.transaction(async (tx) => {
-      const lockKey = `${input.organizationId}:${phoneNumber}:${input.userId}`;
+      // A phone identity represents one physical relay for an organization.
+      // Rotation must therefore serialize across administrators, not only the
+      // user who happened to issue the previous credential.
+      const lockKey = `${input.organizationId}:${phoneNumber}`;
       await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${lockKey}))`);
       await tx
         .update(phoneGatewayDevices)
@@ -280,7 +283,6 @@ export async function createBlueBubblesGatewayRegistration(input: {
             eq(phoneGatewayDevices.phone_number, phoneNumber),
             eq(phoneGatewayDevices.is_active, true),
             sql`${phoneGatewayDevices.metadata}::jsonb ->> 'gatewayKind' = 'bluebubbles'`,
-            sql`${phoneGatewayDevices.metadata}::jsonb ->> 'ownerUserId' = ${input.userId}`,
           ),
         );
       return await upsertPhoneGatewayDevice(registrationInput, tx);

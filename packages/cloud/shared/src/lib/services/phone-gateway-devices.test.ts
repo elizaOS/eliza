@@ -1,5 +1,6 @@
 /** Exercises phone-gateway persistence and authentication with deterministic Cloud fixtures. */
 import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
+import { PgDialect } from "drizzle-orm/pg-core";
 
 import * as realDbClient from "../../db/client";
 import * as realDbSchemas from "../../db/schemas";
@@ -254,6 +255,35 @@ describe("registerPhoneGatewayDevice", () => {
     expect(execute).toHaveBeenCalledWith(expect.anything());
     expect(updateSet).toHaveBeenCalledWith(expect.objectContaining({ is_active: false }));
     expect(updateWhere).toHaveBeenCalled();
+  });
+
+  test("rotates a phone credential across trusted administrators", async () => {
+    await createBlueBubblesGatewayRegistration({
+      organizationId: "org-1",
+      userId: "first-admin",
+      routingMode: "sender-owned",
+      phoneNumber: "+1 (415) 555-0123",
+    });
+    await createBlueBubblesGatewayRegistration({
+      organizationId: "org-1",
+      userId: "second-admin",
+      routingMode: "sender-owned",
+      phoneNumber: "+1 (415) 555-0123",
+    });
+
+    const dialect = new PgDialect();
+    const lockParameters = execute.mock.calls.map(
+      ([statement]) => dialect.sqlToQuery(statement).params,
+    );
+    expect(lockParameters).toEqual([["org-1:+14155550123"], ["org-1:+14155550123"]]);
+
+    for (const [predicate] of updateWhere.mock.calls) {
+      const parameters = dialect.sqlToQuery(predicate).params;
+      expect(parameters).toContain("org-1");
+      expect(parameters).toContain("+14155550123");
+      expect(parameters).not.toContain("first-admin");
+      expect(parameters).not.toContain("second-admin");
+    }
   });
 
   test("authenticates only the token issued for a sender-owned registered bridge", async () => {
