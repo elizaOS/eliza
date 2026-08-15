@@ -6,6 +6,7 @@
  * All costs include 20% platform markup.
  */
 
+import { ElizaError } from "@elizaos/core";
 import { PLATFORM_MARKUP_MULTIPLIER } from "../pricing-constants";
 
 // Base provider costs (before 20% markup)
@@ -110,6 +111,103 @@ export const CONTAINER_LIMITS = {
   MAX_ENV_VAR_SIZE: 32 * 1024, // 32KB
 } as const;
 
+export type ContainerLimitSource =
+  | "organization_config.settings.max_containers"
+  | "organizations.credit_balance";
+
+export interface ContainerLimitResolution {
+  limit: number;
+  source: ContainerLimitSource;
+}
+
+function containerQuotaSourceError(
+  kind: "missing" | "invalid",
+  source: string,
+  message: string,
+): ElizaError {
+  return new ElizaError(message, {
+    code: kind === "missing" ? "MISSING_CONTAINER_QUOTA_SOURCE" : "INVALID_CONTAINER_QUOTA_SOURCE",
+    context: { source },
+    severity: "fatal",
+  });
+}
+
+function readMaxContainersOverride(orgSettings: unknown): number | undefined {
+  if (orgSettings === undefined) return undefined;
+  if (orgSettings === null || typeof orgSettings !== "object" || Array.isArray(orgSettings)) {
+    throw containerQuotaSourceError(
+      "invalid",
+      "organization_config.settings",
+      "Container quota settings must be a JSON object",
+    );
+  }
+
+  const settings = orgSettings as Record<string, unknown>;
+  if (!Object.hasOwn(settings, "max_containers")) return undefined;
+
+  const value = settings.max_containers;
+  if (typeof value !== "number" || !Number.isSafeInteger(value) || value <= 0) {
+    throw containerQuotaSourceError(
+      "invalid",
+      "organization_config.settings.max_containers",
+      "Container quota override must be a positive safe integer",
+    );
+  }
+  return value;
+}
+
+/** Resolve the container ceiling together with the authoritative source used. */
+export function resolveMaxContainersForOrg(
+  creditBalance: unknown,
+  orgSettings?: unknown,
+): ContainerLimitResolution {
+  if (creditBalance === undefined || creditBalance === null) {
+    throw containerQuotaSourceError(
+      "missing",
+      "organizations.credit_balance",
+      "Container quota credit balance is missing",
+    );
+  }
+  if (typeof creditBalance !== "number" || !Number.isFinite(creditBalance)) {
+    throw containerQuotaSourceError(
+      "invalid",
+      "organizations.credit_balance",
+      "Container quota credit balance must be a finite number",
+    );
+  }
+
+  const customLimit = readMaxContainersOverride(orgSettings);
+  if (customLimit !== undefined) {
+    return {
+      limit: customLimit,
+      source: "organization_config.settings.max_containers",
+    };
+  }
+
+  if (creditBalance >= 100.0) {
+    return {
+      limit: CONTAINER_LIMITS.ENTERPRISE_MAX_CONTAINERS,
+      source: "organizations.credit_balance",
+    };
+  }
+  if (creditBalance >= 10.0) {
+    return {
+      limit: CONTAINER_LIMITS.PRO_MAX_CONTAINERS,
+      source: "organizations.credit_balance",
+    };
+  }
+  if (creditBalance >= 1.0) {
+    return {
+      limit: CONTAINER_LIMITS.STARTER_MAX_CONTAINERS,
+      source: "organizations.credit_balance",
+    };
+  }
+  return {
+    limit: CONTAINER_LIMITS.FREE_TIER_CONTAINERS,
+    source: "organizations.credit_balance",
+  };
+}
+
 /**
  * Gets the maximum number of containers allowed for an organization.
  *
@@ -117,29 +215,8 @@ export const CONTAINER_LIMITS = {
  * @param orgSettings - Optional organization settings with custom limit.
  * @returns Maximum number of containers allowed.
  */
-export function getMaxContainersForOrg(
-  creditBalance: number,
-  orgSettings?: Record<string, unknown>,
-): number {
-  // Check if org has custom limit in settings
-  const customLimit = orgSettings?.max_containers as number | undefined;
-  if (customLimit && customLimit > 0) {
-    return customLimit;
-  }
-
-  // Default tiering based on credit balance (USD)
-  const balance = Number(creditBalance);
-  if (balance >= 100.0) {
-    return CONTAINER_LIMITS.ENTERPRISE_MAX_CONTAINERS; // $100+
-  }
-  if (balance >= 10.0) {
-    return CONTAINER_LIMITS.PRO_MAX_CONTAINERS; // $10+
-  }
-  if (balance >= 1.0) {
-    return CONTAINER_LIMITS.STARTER_MAX_CONTAINERS; // $1+
-  }
-
-  return CONTAINER_LIMITS.FREE_TIER_CONTAINERS; // Below $1
+export function getMaxContainersForOrg(creditBalance: unknown, orgSettings?: unknown): number {
+  return resolveMaxContainersForOrg(creditBalance, orgSettings).limit;
 }
 
 /**

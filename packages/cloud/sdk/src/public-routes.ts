@@ -1078,6 +1078,15 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     catchAllPathParams: [],
     file: "packages/cloud/api/v1/billing/ledger/route.ts",
   },
+  "GET /api/v1/billing/limits": {
+    method: "GET",
+    path: "/api/v1/billing/limits",
+    methodName: "getApiV1BillingLimits",
+    responseMode: "json",
+    pathParams: [],
+    catchAllPathParams: [],
+    file: "packages/cloud/api/v1/billing/limits/route.ts",
+  },
   "GET /api/v1/billing/settings": {
     method: "GET",
     path: "/api/v1/billing/settings",
@@ -1602,6 +1611,15 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     catchAllPathParams: [],
     file: "packages/cloud/api/v1/eliza/paypal/status/route.ts",
   },
+  "GET /api/v1/eliza/personal": {
+    method: "GET",
+    path: "/api/v1/eliza/personal",
+    methodName: "getApiV1ElizaPersonal",
+    responseMode: "json",
+    pathParams: [],
+    catchAllPathParams: [],
+    file: "packages/cloud/api/v1/eliza/personal/route.ts",
+  },
   "GET /api/v1/eliza/plaid/status": {
     method: "GET",
     path: "/api/v1/eliza/plaid/status",
@@ -1610,15 +1628,6 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     pathParams: [],
     catchAllPathParams: [],
     file: "packages/cloud/api/v1/eliza/plaid/status/route.ts",
-  },
-  "GET /api/v1/eliza/shared/messages": {
-    method: "GET",
-    path: "/api/v1/eliza/shared/messages",
-    methodName: "getApiV1ElizaSharedMessages",
-    responseMode: "json",
-    pathParams: [],
-    catchAllPathParams: [],
-    file: "packages/cloud/api/v1/eliza/shared/messages/route.ts",
   },
   "GET /api/v1/files": {
     method: "GET",
@@ -2249,6 +2258,15 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     pathParams: [],
     catchAllPathParams: [],
     file: "packages/cloud/api/v1/twilio/status/route.ts",
+  },
+  "GET /api/v1/twilio/voice/media": {
+    method: "GET",
+    path: "/api/v1/twilio/voice/media",
+    methodName: "getApiV1TwilioVoiceMedia",
+    responseMode: "json",
+    pathParams: [],
+    catchAllPathParams: [],
+    file: "packages/cloud/api/v1/twilio/voice/media/route.ts",
   },
   "GET /api/v1/twitter/callback": {
     method: "GET",
@@ -3668,6 +3686,15 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     catchAllPathParams: [],
     file: "packages/cloud/api/v1/eliza/agents/[agentId]/resume/route.ts",
   },
+  "POST /api/v1/eliza/agents/{agentId}/shared-reminders/{taskId}/deliver": {
+    method: "POST",
+    path: "/api/v1/eliza/agents/{agentId}/shared-reminders/{taskId}/deliver",
+    methodName: "postApiV1ElizaAgentsByAgentIdSharedRemindersByTaskIdDeliver",
+    responseMode: "json",
+    pathParams: ["agentId", "taskId"],
+    catchAllPathParams: [],
+    file: "packages/cloud/api/v1/eliza/agents/[agentId]/shared-reminders/[taskId]/deliver/route.ts",
+  },
   "POST /api/v1/eliza/agents/{agentId}/sleep": {
     method: "POST",
     path: "/api/v1/eliza/agents/{agentId}/sleep",
@@ -3874,15 +3901,6 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     pathParams: [],
     catchAllPathParams: [],
     file: "packages/cloud/api/v1/eliza/plaid/sync/route.ts",
-  },
-  "POST /api/v1/eliza/shared/messages": {
-    method: "POST",
-    path: "/api/v1/eliza/shared/messages",
-    methodName: "postApiV1ElizaSharedMessages",
-    responseMode: "json",
-    pathParams: [],
-    catchAllPathParams: [],
-    file: "packages/cloud/api/v1/eliza/shared/messages/route.ts",
   },
   "POST /api/v1/embeddings": {
     method: "POST",
@@ -4442,6 +4460,15 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     catchAllPathParams: [],
     file: "packages/cloud/api/v1/twilio/disconnect/route.ts",
   },
+  "POST /api/v1/twilio/voice/calls": {
+    method: "POST",
+    path: "/api/v1/twilio/voice/calls",
+    methodName: "postApiV1TwilioVoiceCalls",
+    responseMode: "json",
+    pathParams: [],
+    catchAllPathParams: [],
+    file: "packages/cloud/api/v1/twilio/voice/calls/route.ts",
+  },
   "POST /api/v1/twilio/voice/inbound": {
     method: "POST",
     path: "/api/v1/twilio/voice/inbound",
@@ -4459,6 +4486,15 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     pathParams: [],
     catchAllPathParams: [],
     file: "packages/cloud/api/v1/twitter/connect/route.ts",
+  },
+  "POST /api/v1/twitter/personal-message": {
+    method: "POST",
+    path: "/api/v1/twitter/personal-message",
+    methodName: "postApiV1TwitterPersonalMessage",
+    responseMode: "json",
+    pathParams: [],
+    catchAllPathParams: [],
+    file: "packages/cloud/api/v1/twitter/personal-message/route.ts",
   },
   "POST /api/v1/user/avatar": {
     method: "POST",
@@ -4991,6 +5027,7 @@ export interface PublicRoutePathParams {
   "GET /api/v1/ballots/{id}": { id: string | number };
   "GET /api/v1/billing/active": Record<never, never>;
   "GET /api/v1/billing/ledger": Record<never, never>;
+  "GET /api/v1/billing/limits": Record<never, never>;
   "GET /api/v1/billing/settings": Record<never, never>;
   "GET /api/v1/blooio/status": Record<never, never>;
   "GET /api/v1/browser/sessions": Record<never, never>;
@@ -5085,8 +5122,8 @@ export interface PublicRoutePathParams {
   "GET /api/v1/eliza/lifeops/github-complete": Record<never, never>;
   "GET /api/v1/eliza/paypal/popup-callback": Record<never, never>;
   "GET /api/v1/eliza/paypal/status": Record<never, never>;
+  "GET /api/v1/eliza/personal": Record<never, never>;
   "GET /api/v1/eliza/plaid/status": Record<never, never>;
-  "GET /api/v1/eliza/shared/messages": Record<never, never>;
   "GET /api/v1/files": Record<never, never>;
   "GET /api/v1/files/{id}": { id: string | number };
   "GET /api/v1/gallery": Record<never, never>;
@@ -5193,6 +5230,7 @@ export interface PublicRoutePathParams {
   "GET /api/v1/telegram/scan-chats": Record<never, never>;
   "GET /api/v1/telegram/status": Record<never, never>;
   "GET /api/v1/twilio/status": Record<never, never>;
+  "GET /api/v1/twilio/voice/media": Record<never, never>;
   "GET /api/v1/twitter/callback": Record<never, never>;
   "GET /api/v1/twitter/status": Record<never, never>;
   "GET /api/v1/twitter/token": Record<never, never>;
@@ -5411,6 +5449,10 @@ export interface PublicRoutePathParams {
   "POST /api/v1/eliza/agents/{agentId}/provision": { agentId: string | number };
   "POST /api/v1/eliza/agents/{agentId}/restore": { agentId: string | number };
   "POST /api/v1/eliza/agents/{agentId}/resume": { agentId: string | number };
+  "POST /api/v1/eliza/agents/{agentId}/shared-reminders/{taskId}/deliver": {
+    agentId: string | number;
+    taskId: string | number;
+  };
   "POST /api/v1/eliza/agents/{agentId}/sleep": { agentId: string | number };
   "POST /api/v1/eliza/agents/{agentId}/snapshot": { agentId: string | number };
   "POST /api/v1/eliza/agents/{agentId}/stream": { agentId: string | number };
@@ -5440,7 +5482,6 @@ export interface PublicRoutePathParams {
   "POST /api/v1/eliza/plaid/exchange": Record<never, never>;
   "POST /api/v1/eliza/plaid/link-token": Record<never, never>;
   "POST /api/v1/eliza/plaid/sync": Record<never, never>;
-  "POST /api/v1/eliza/shared/messages": Record<never, never>;
   "POST /api/v1/embeddings": Record<never, never>;
   "POST /api/v1/extract": Record<never, never>;
   "POST /api/v1/files": Record<never, never>;
@@ -5519,8 +5560,10 @@ export interface PublicRoutePathParams {
   "POST /api/v1/track/pageview": Record<never, never>;
   "POST /api/v1/twilio/connect": Record<never, never>;
   "POST /api/v1/twilio/disconnect": Record<never, never>;
+  "POST /api/v1/twilio/voice/calls": Record<never, never>;
   "POST /api/v1/twilio/voice/inbound": Record<never, never>;
   "POST /api/v1/twitter/connect": Record<never, never>;
+  "POST /api/v1/twitter/personal-message": Record<never, never>;
   "POST /api/v1/user/avatar": Record<never, never>;
   "POST /api/v1/user/wallets/provision": Record<never, never>;
   "POST /api/v1/user/wallets/rpc": Record<never, never>;
@@ -6793,6 +6836,15 @@ export class ElizaCloudPublicRoutesClient {
     );
   }
 
+  getApiV1BillingLimits<TResponse = unknown>(
+    options: PublicRouteCallOptions<"GET /api/v1/billing/limits"> = {},
+  ): Promise<TResponse> {
+    return this.call<"GET /api/v1/billing/limits", TResponse>(
+      "GET /api/v1/billing/limits",
+      options,
+    );
+  }
+
   getApiV1BillingSettings<TResponse = unknown>(
     options: PublicRouteCallOptions<"GET /api/v1/billing/settings"> = {},
   ): Promise<TResponse> {
@@ -7320,20 +7372,20 @@ export class ElizaCloudPublicRoutesClient {
     );
   }
 
+  getApiV1ElizaPersonal<TResponse = unknown>(
+    options: PublicRouteCallOptions<"GET /api/v1/eliza/personal"> = {},
+  ): Promise<TResponse> {
+    return this.call<"GET /api/v1/eliza/personal", TResponse>(
+      "GET /api/v1/eliza/personal",
+      options,
+    );
+  }
+
   getApiV1ElizaPlaidStatus<TResponse = unknown>(
     options: PublicRouteCallOptions<"GET /api/v1/eliza/plaid/status"> = {},
   ): Promise<TResponse> {
     return this.call<"GET /api/v1/eliza/plaid/status", TResponse>(
       "GET /api/v1/eliza/plaid/status",
-      options,
-    );
-  }
-
-  getApiV1ElizaSharedMessages<TResponse = unknown>(
-    options: PublicRouteCallOptions<"GET /api/v1/eliza/shared/messages"> = {},
-  ): Promise<TResponse> {
-    return this.call<"GET /api/v1/eliza/shared/messages", TResponse>(
-      "GET /api/v1/eliza/shared/messages",
       options,
     );
   }
@@ -7964,6 +8016,15 @@ export class ElizaCloudPublicRoutesClient {
   ): Promise<TResponse> {
     return this.call<"GET /api/v1/twilio/status", TResponse>(
       "GET /api/v1/twilio/status",
+      options,
+    );
+  }
+
+  getApiV1TwilioVoiceMedia<TResponse = unknown>(
+    options: PublicRouteCallOptions<"GET /api/v1/twilio/voice/media"> = {},
+  ): Promise<TResponse> {
+    return this.call<"GET /api/v1/twilio/voice/media", TResponse>(
+      "GET /api/v1/twilio/voice/media",
       options,
     );
   }
@@ -9391,6 +9452,20 @@ export class ElizaCloudPublicRoutesClient {
     );
   }
 
+  postApiV1ElizaAgentsByAgentIdSharedRemindersByTaskIdDeliver<
+    TResponse = unknown,
+  >(
+    options: PublicRouteCallOptions<"POST /api/v1/eliza/agents/{agentId}/shared-reminders/{taskId}/deliver">,
+  ): Promise<TResponse> {
+    return this.call<
+      "POST /api/v1/eliza/agents/{agentId}/shared-reminders/{taskId}/deliver",
+      TResponse
+    >(
+      "POST /api/v1/eliza/agents/{agentId}/shared-reminders/{taskId}/deliver",
+      options,
+    );
+  }
+
   postApiV1ElizaAgentsByAgentIdSleep<TResponse = unknown>(
     options: PublicRouteCallOptions<"POST /api/v1/eliza/agents/{agentId}/sleep">,
   ): Promise<TResponse> {
@@ -9594,15 +9669,6 @@ export class ElizaCloudPublicRoutesClient {
   ): Promise<TResponse> {
     return this.call<"POST /api/v1/eliza/plaid/sync", TResponse>(
       "POST /api/v1/eliza/plaid/sync",
-      options,
-    );
-  }
-
-  postApiV1ElizaSharedMessages<TResponse = unknown>(
-    options: PublicRouteCallOptions<"POST /api/v1/eliza/shared/messages"> = {},
-  ): Promise<TResponse> {
-    return this.call<"POST /api/v1/eliza/shared/messages", TResponse>(
-      "POST /api/v1/eliza/shared/messages",
       options,
     );
   }
@@ -10180,6 +10246,15 @@ export class ElizaCloudPublicRoutesClient {
     );
   }
 
+  postApiV1TwilioVoiceCalls<TResponse = unknown>(
+    options: PublicRouteCallOptions<"POST /api/v1/twilio/voice/calls"> = {},
+  ): Promise<TResponse> {
+    return this.call<"POST /api/v1/twilio/voice/calls", TResponse>(
+      "POST /api/v1/twilio/voice/calls",
+      options,
+    );
+  }
+
   postApiV1TwilioVoiceInbound<TResponse = unknown>(
     options: PublicRouteCallOptions<"POST /api/v1/twilio/voice/inbound"> = {},
   ): Promise<TResponse> {
@@ -10194,6 +10269,15 @@ export class ElizaCloudPublicRoutesClient {
   ): Promise<TResponse> {
     return this.call<"POST /api/v1/twitter/connect", TResponse>(
       "POST /api/v1/twitter/connect",
+      options,
+    );
+  }
+
+  postApiV1TwitterPersonalMessage<TResponse = unknown>(
+    options: PublicRouteCallOptions<"POST /api/v1/twitter/personal-message"> = {},
+  ): Promise<TResponse> {
+    return this.call<"POST /api/v1/twitter/personal-message", TResponse>(
+      "POST /api/v1/twitter/personal-message",
       options,
     );
   }
@@ -11314,6 +11398,12 @@ export class ElizaCloudPublicRoutesClient {
     return this.callRaw("GET /api/v1/billing/ledger", options);
   }
 
+  getApiV1BillingLimitsRaw(
+    options: PublicRouteCallOptions<"GET /api/v1/billing/limits"> = {},
+  ): Promise<Response> {
+    return this.callRaw("GET /api/v1/billing/limits", options);
+  }
+
   getApiV1BillingSettingsRaw(
     options: PublicRouteCallOptions<"GET /api/v1/billing/settings"> = {},
   ): Promise<Response> {
@@ -11707,16 +11797,16 @@ export class ElizaCloudPublicRoutesClient {
     return this.callRaw("GET /api/v1/eliza/paypal/status", options);
   }
 
+  getApiV1ElizaPersonalRaw(
+    options: PublicRouteCallOptions<"GET /api/v1/eliza/personal"> = {},
+  ): Promise<Response> {
+    return this.callRaw("GET /api/v1/eliza/personal", options);
+  }
+
   getApiV1ElizaPlaidStatusRaw(
     options: PublicRouteCallOptions<"GET /api/v1/eliza/plaid/status"> = {},
   ): Promise<Response> {
     return this.callRaw("GET /api/v1/eliza/plaid/status", options);
-  }
-
-  getApiV1ElizaSharedMessagesRaw(
-    options: PublicRouteCallOptions<"GET /api/v1/eliza/shared/messages"> = {},
-  ): Promise<Response> {
-    return this.callRaw("GET /api/v1/eliza/shared/messages", options);
   }
 
   getApiV1FilesRaw(
@@ -12161,6 +12251,12 @@ export class ElizaCloudPublicRoutesClient {
     options: PublicRouteCallOptions<"GET /api/v1/twilio/status"> = {},
   ): Promise<Response> {
     return this.callRaw("GET /api/v1/twilio/status", options);
+  }
+
+  getApiV1TwilioVoiceMediaRaw(
+    options: PublicRouteCallOptions<"GET /api/v1/twilio/voice/media"> = {},
+  ): Promise<Response> {
+    return this.callRaw("GET /api/v1/twilio/voice/media", options);
   }
 
   getApiV1TwitterCallbackRaw(
@@ -13216,6 +13312,15 @@ export class ElizaCloudPublicRoutesClient {
     return this.callRaw("POST /api/v1/eliza/agents/{agentId}/resume", options);
   }
 
+  postApiV1ElizaAgentsByAgentIdSharedRemindersByTaskIdDeliverRaw(
+    options: PublicRouteCallOptions<"POST /api/v1/eliza/agents/{agentId}/shared-reminders/{taskId}/deliver">,
+  ): Promise<Response> {
+    return this.callRaw(
+      "POST /api/v1/eliza/agents/{agentId}/shared-reminders/{taskId}/deliver",
+      options,
+    );
+  }
+
   postApiV1ElizaAgentsByAgentIdSleepRaw(
     options: PublicRouteCallOptions<"POST /api/v1/eliza/agents/{agentId}/sleep">,
   ): Promise<Response> {
@@ -13367,12 +13472,6 @@ export class ElizaCloudPublicRoutesClient {
     options: PublicRouteCallOptions<"POST /api/v1/eliza/plaid/sync"> = {},
   ): Promise<Response> {
     return this.callRaw("POST /api/v1/eliza/plaid/sync", options);
-  }
-
-  postApiV1ElizaSharedMessagesRaw(
-    options: PublicRouteCallOptions<"POST /api/v1/eliza/shared/messages"> = {},
-  ): Promise<Response> {
-    return this.callRaw("POST /api/v1/eliza/shared/messages", options);
   }
 
   postApiV1EmbeddingsRaw(
@@ -13768,6 +13867,12 @@ export class ElizaCloudPublicRoutesClient {
     return this.callRaw("POST /api/v1/twilio/disconnect", options);
   }
 
+  postApiV1TwilioVoiceCallsRaw(
+    options: PublicRouteCallOptions<"POST /api/v1/twilio/voice/calls"> = {},
+  ): Promise<Response> {
+    return this.callRaw("POST /api/v1/twilio/voice/calls", options);
+  }
+
   postApiV1TwilioVoiceInboundRaw(
     options: PublicRouteCallOptions<"POST /api/v1/twilio/voice/inbound"> = {},
   ): Promise<Response> {
@@ -13778,6 +13883,12 @@ export class ElizaCloudPublicRoutesClient {
     options: PublicRouteCallOptions<"POST /api/v1/twitter/connect"> = {},
   ): Promise<Response> {
     return this.callRaw("POST /api/v1/twitter/connect", options);
+  }
+
+  postApiV1TwitterPersonalMessageRaw(
+    options: PublicRouteCallOptions<"POST /api/v1/twitter/personal-message"> = {},
+  ): Promise<Response> {
+    return this.callRaw("POST /api/v1/twitter/personal-message", options);
   }
 
   postApiV1UserAvatarRaw(

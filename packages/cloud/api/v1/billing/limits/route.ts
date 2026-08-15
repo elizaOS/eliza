@@ -1,7 +1,5 @@
 /**
- * GET /api/v1/billing/limits
- *
- * Read-only, organization-scoped snapshot of the account limits the backend
+ * Serves a read-only, organization-scoped snapshot of the account limits the backend
  * actually enforces (#19777). The organization comes exclusively from the
  * authenticated user / API-key membership — no client-supplied org id — and
  * viewers may read it (nothing here mutates or reveals secrets). Assembly and
@@ -9,6 +7,7 @@
  * wires the canonical enforcement sources.
  */
 
+import { ElizaError } from "@elizaos/core";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { dbRead } from "@/db/client";
@@ -30,7 +29,7 @@ import { buildAccountLimitsSnapshot } from "@/lib/services/account-limits-snapsh
 import { appsService, getMaxAppsPerOrg } from "@/lib/services/apps";
 import { containerQuotaService } from "@/lib/services/container-quota";
 import { QUOTA_COUNTED_STATUSES } from "@/lib/services/eliza-sandbox";
-import { getOrgTier } from "@/lib/services/org-rate-limits";
+import { readOrgTierFromSources } from "@/lib/services/org-rate-limits";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -49,10 +48,19 @@ app.get("/", async (c) => {
           where: (table, { eq: whereEq }) => whereEq(table.id, organizationId),
           columns: { credit_balance: true, settings: true },
         });
-        if (!org) throw new Error("Organization not found");
+        if (!org) {
+          throw new ElizaError(
+            "Organization account-limit source is unavailable",
+            {
+              code: "ACCOUNT_LIMIT_SOURCE_UNAVAILABLE",
+              context: { organizationId, source: "organizations" },
+              severity: "fatal",
+            },
+          );
+        }
         return {
           creditBalance: Number(org.credit_balance),
-          settings: org.settings as Record<string, unknown> | undefined,
+          settings: org.settings,
         };
       },
       cloudCharacterCount: async () => {
@@ -84,7 +92,11 @@ app.get("/", async (c) => {
       },
       containerQuota: async () => {
         const quota = await containerQuotaService.checkQuota(organizationId);
-        return { current: quota.current, max: quota.max };
+        return {
+          current: quota.current,
+          max: quota.max,
+          sourceUnavailable: quota.availability === "unavailable",
+        };
       },
       appCount: () => appsService.countByOrganization(organizationId),
       appLimit: async () => getMaxAppsPerOrg(),
@@ -95,7 +107,9 @@ app.get("/", async (c) => {
         return { bytesUsed: row.bytes_used, bytesLimit: row.bytes_limit };
       },
       inferenceRateTier: async () => {
-        const tier = await getOrgTier(organizationId);
+        // This is an observation-only GET. Read the authoritative DB sources
+        // without hydrating or mutating the inference admission cache.
+        const tier = await readOrgTierFromSources(organizationId);
         return {
           completionsRpm: tier.completionsRpm,
           embeddingsRpm: tier.embeddingsRpm,
@@ -108,6 +122,8 @@ app.get("/", async (c) => {
 
     return c.json({ success: true, data: snapshot });
   } catch (error) {
+    // error-policy:J1 — the HTTP boundary records the internal failure and
+    // delegates its client-safe status/envelope translation.
     logger.error("[Billing Limits API] Error building limits snapshot", error);
     return failureResponse(c, error);
   }
