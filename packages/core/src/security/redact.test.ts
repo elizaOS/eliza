@@ -182,6 +182,109 @@ describe("redactSensitiveText (pattern detection)", () => {
 		}
 	});
 
+	it("accepts the complete RFC token grammar for schemes and auth-param names", () => {
+		const secret = ["private", "-user"].join("");
+		const tokenInitials = [
+			"0",
+			"!",
+			"#",
+			"$",
+			"%",
+			"&",
+			"'",
+			"*",
+			"+",
+			"-",
+			".",
+			"^",
+			"_",
+			"`",
+			"|",
+			"~",
+		];
+		for (const initial of tokenInitials) {
+			const input = `Authorization: ${initial}Custom ${initial}user=${secret}, realm=restricted`;
+			const output = redactSensitiveText(input);
+			expect(output).not.toContain(secret);
+			expect(output).not.toContain("restricted");
+		}
+		const proxy = redactSensitiveText(
+			`Proxy-Authorization: _Custom 1user=${secret}, realm=restricted`,
+		);
+		expect(proxy).not.toContain(secret);
+		expect(proxy).not.toContain("restricted");
+	});
+
+	it("masks token and quoted auth-param values for every BWS permutation", () => {
+		const secret = ["private", "-user"].join("");
+		const assignments = [
+			`username=${secret}`,
+			`username =${secret}`,
+			`username= ${secret}`,
+			`username = ${secret}`,
+			`username="${secret}"`,
+			`username ="${secret}"`,
+			`username= "${secret}"`,
+			`username = "${secret}"`,
+		];
+		for (const assignment of assignments) {
+			const output = redactSensitiveText(
+				`Authorization: Digest ${assignment}, realm=restricted`,
+			);
+			expect(output).not.toContain(secret);
+			expect(output).not.toContain("restricted");
+		}
+		const tokenValue = "!#$%&'*+-.^_`|~09AZaz";
+		const tokenOutput = redactSensitiveText(
+			`Authorization: Digest username=${tokenValue}, realm=restricted`,
+		);
+		expect(tokenOutput).not.toContain(tokenValue);
+		expect(tokenOutput).not.toContain("restricted");
+	});
+
+	it("parses quoted commas and escaped quotes inside auth-param values", () => {
+		const secret = ["private", ",zone", '\\"two'].join("");
+		const output = redactSensitiveText(
+			`Authorization: Digest username="${secret}", realm="restricted,west"`,
+		);
+		expect(output).not.toContain(secret);
+		expect(output).not.toContain("restricted,west");
+	});
+
+	it("tolerates empty list elements without exposing auth-param values", () => {
+		const secret = ["private", "-user"].join("");
+		const output = redactSensitiveText(
+			`Authorization: Digest , , username=${secret},, realm=restricted,`,
+		);
+		expect(output).not.toContain(secret);
+		expect(output).not.toContain("restricted");
+	});
+
+	it("fails toward masking for a malformed auth-param assignment", () => {
+		const secret = ["private", "-user"].join("");
+		const output = redactSensitiveText(
+			`Authorization: Digest username="${secret}, realm=restricted`,
+		);
+		expect(output).not.toContain(secret);
+		expect(output).not.toContain("restricted");
+	});
+
+	it("masks only a Basic token68 value when diagnostic prose follows", () => {
+		const tokens = [
+			["dXNlcjpwYXNzd2", "9yZDEyMw="].join(""),
+			["dXNlcjpwYXNz", "d29yZDEyMw=="].join(""),
+		];
+		for (const token of tokens) {
+			for (const prose of ["trailing", "trailing diagnostic prose"]) {
+				const output = redactSensitiveText(
+					`Authorization: Basic ${token} ${prose}`,
+				);
+				expect(output).not.toContain(token);
+				expect(output.endsWith(` ${prose}`)).toBe(true);
+			}
+		}
+	});
+
 	it("keeps token68 padding out of the auth-param branch for both padding widths", () => {
 		// One- and two-"=" padded token68 credentials followed by prose: the
 		// auth-param branch must not consume the prose to end-of-line (that
