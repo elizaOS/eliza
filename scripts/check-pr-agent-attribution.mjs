@@ -9,8 +9,15 @@
 import { readFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 
+// Two markers satisfy the PR gate: the bare template marker and the signed
+// v2 run-receipt footer the published contribute-to-eliza skill appends. A
+// filled template plus an appended skill footer legitimately carries one of
+// each, so each spelling is limited to one occurrence rather than the pair.
 const ATTRIBUTION_MARKER = "contribution-attribution:v1";
 const ATTRIBUTION_MARKER_RE = /<!--\s*contribution-attribution:v1\s*-->/gi;
+const RECEIPT_MARKER = "elizaos-contribution-attribution:v2";
+const RECEIPT_MARKER_RE =
+  /<!--\s*elizaos-contribution-attribution:v2\b[^\r\n]*?-->/gi;
 const ROW_RE = /<!--\s*attribution-row:([a-z0-9-]+)\s*-->/gi;
 const NO_AI_ASSISTANCE_RE = /^no\s*[-:\u2013\u2014]\s*(\S[\s\S]*?)$/i;
 const NO_AI_DETAIL_RE = /^none\s*[-:\u2013\u2014]\s*(\S[\s\S]*?)$/i;
@@ -175,15 +182,28 @@ export function evaluatePrAttribution(body) {
   );
   const findings = [];
 
-  const markerCount = [...source.matchAll(ATTRIBUTION_MARKER_RE)].length;
-  if (markerCount !== 1) {
+  const templateMarkerCount = [...source.matchAll(ATTRIBUTION_MARKER_RE)]
+    .length;
+  const receiptMarkerCount = [...source.matchAll(RECEIPT_MARKER_RE)].length;
+  if (templateMarkerCount === 0 && receiptMarkerCount === 0) {
     findings.push({
       id: "marker",
-      status: markerCount === 0 ? "missing" : "duplicate",
-      message:
-        markerCount === 0
-          ? `Missing <!-- ${ATTRIBUTION_MARKER} -->.`
-          : `Expected exactly one <!-- ${ATTRIBUTION_MARKER} -->; found ${markerCount}.`,
+      status: "missing",
+      message: `Missing <!-- ${ATTRIBUTION_MARKER} --> or <!-- ${RECEIPT_MARKER} … -->.`,
+    });
+  }
+  if (templateMarkerCount > 1) {
+    findings.push({
+      id: "marker",
+      status: "duplicate",
+      message: `Expected at most one <!-- ${ATTRIBUTION_MARKER} -->; found ${templateMarkerCount}.`,
+    });
+  }
+  if (receiptMarkerCount > 1) {
+    findings.push({
+      id: "marker",
+      status: "duplicate",
+      message: `Expected at most one <!-- ${RECEIPT_MARKER} … -->; found ${receiptMarkerCount}.`,
     });
   }
 
