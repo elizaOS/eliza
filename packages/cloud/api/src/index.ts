@@ -42,6 +42,8 @@ let appPromise: Promise<Hono<AppEnv>> | undefined;
 const inferenceAppPromises = new Map<string, Promise<Hono<AppEnv>>>();
 /** Lazy thin shell for login-critical Steward GETs (#18049). */
 let stewardThinAppPromise: Promise<Hono<AppEnv>> | undefined;
+/** Lazy provider-webhook shell that avoids the generated application router. */
+let webhookAppPromise: Promise<Hono<AppEnv>> | undefined;
 
 const STAGING_SESSION_UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -242,6 +244,70 @@ async function getStewardThinApp(): Promise<Hono<AppEnv>> {
     m.createStewardThinApp(),
   );
   return stewardThinAppPromise;
+}
+
+const ELIZA_APP_WEBHOOK_PATH =
+  /^\/api\/eliza-app\/webhook\/(?:blooio|discord|telegram|twilio|whatsapp)(?:\/|$)/;
+
+export function isElizaAppWebhookPath(pathname: string): boolean {
+  return ELIZA_APP_WEBHOOK_PATH.test(pathname);
+}
+
+async function getWebhookApp(): Promise<Hono<AppEnv>> {
+  webhookAppPromise ??= import("./webhook-app").then((module) =>
+    module.createWebhookApp(),
+  );
+  return webhookAppPromise;
+}
+
+async function dispatchWebhook(
+  request: Request,
+  env: AppEnv["Bindings"],
+  ctx: ExecutionContext,
+): Promise<Response | null> {
+  const pathname = new URL(request.url).pathname;
+  if (!isElizaAppWebhookPath(pathname)) return null;
+
+  const startedAt = performance.now();
+  const moduleWasInitialized = webhookAppPromise !== undefined;
+  const traceId = resolveElizaTraceId(request.headers);
+  const headers = new Headers(request.headers);
+  headers.set(ELIZA_TRACE_ID_HEADER, traceId);
+  const app = await getWebhookApp();
+  const moduleInitMs = performance.now() - startedAt;
+  const response = await app.fetch(new Request(request, { headers }), env, ctx);
+  const dispatchMs = performance.now() - startedAt;
+  const responseHeaders = new Headers(response.headers);
+  setHttpTelemetryHeaders(responseHeaders, traceId, [
+    { name: "webhook_entry_dispatch", durationMs: dispatchMs },
+    ...(!moduleWasInitialized
+      ? [{ name: "webhook_module_init", durationMs: moduleInitMs }]
+      : []),
+  ]);
+  responseHeaders.set("X-Eliza-Webhook-Path", "thin");
+
+  const logContext = {
+    traceId,
+    path: pathname,
+    status: response.status,
+    moduleWasInitialized,
+    moduleInitMs: Math.round(moduleInitMs * 100) / 100,
+    durationMs: Math.round(dispatchMs * 100) / 100,
+  };
+  if (response.status >= 500 || dispatchMs >= 1_000 || moduleInitMs >= 250) {
+    logger.warn(
+      "[CloudEntrypoint] webhook dispatch slow or failed",
+      logContext,
+    );
+  } else {
+    logger.info("[CloudEntrypoint] webhook dispatch completed", logContext);
+  }
+
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers: responseHeaders,
+  });
 }
 
 async function dispatchThinSteward(
@@ -718,6 +784,8 @@ export default {
         frontendAliasApiTarget.toString(),
         createFrontendAliasProxyInit(request, url),
       );
+      const webhookResponse = await dispatchWebhook(apiRequest, env, ctx);
+      if (webhookResponse) return webhookResponse;
       const stewardThinResponse = await dispatchThinSteward(
         apiRequest,
         env,
@@ -754,6 +822,9 @@ export default {
     if (url.pathname === "/api/health") {
       return healthResponse(env);
     }
+
+    const webhookResponse = await dispatchWebhook(request, env, ctx);
+    if (webhookResponse) return webhookResponse;
 
     // Login-critical Steward GETs before full-app bootstrap (#18049).
     const stewardThinResponse = await dispatchThinSteward(request, env, ctx);
