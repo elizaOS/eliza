@@ -50,9 +50,49 @@ export function isRetryableRouteStatus(status: number): boolean {
 
 const DEFAULT_MAX_ATTEMPTS = 4;
 const DEFAULT_BASE_DELAY_MS = 250;
+const DEFAULT_TYPING_REFRESH_MS = 8_000;
 
 function defaultSleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/** Keep Discord's transient typing state alive while a managed turn runs. */
+export async function withManagedTypingHeartbeat<T>(
+  options: {
+    sendTyping: () => Promise<unknown>;
+    onFailure?: (error: string) => void;
+    intervalMs?: number;
+  },
+  run: () => Promise<T>,
+): Promise<T> {
+  let stopped = false;
+  let pulseInFlight = false;
+  const pulse = async (): Promise<void> => {
+    if (stopped || pulseInFlight) return;
+    pulseInFlight = true;
+    try {
+      await options.sendTyping();
+    } catch (error) {
+      // error-policy:J4 Typing is a user-facing progress hint; its transport
+      // failure must remain visible in diagnostics without consuming the turn.
+      options.onFailure?.(
+        error instanceof Error ? error.message : String(error),
+      );
+    } finally {
+      pulseInFlight = false;
+    }
+  };
+
+  await pulse();
+  const timer = setInterval(() => {
+    void pulse();
+  }, options.intervalMs ?? DEFAULT_TYPING_REFRESH_MS);
+  try {
+    return await run();
+  } finally {
+    stopped = true;
+    clearInterval(timer);
+  }
 }
 
 /**
