@@ -1,0 +1,24 @@
+# Railway upload exclusions for the repo-root `railway up` deploys
+# (deploy-gateway-webhook.yml / deploy-tunnel-proxy.yml write a root
+# railway.toml and upload the working tree from the repo root).
+#
+# The tracked tree grew from ~435MB to ~1GB when hardware/OS lanes landed
+# their build artifacts (xcframework binaries, live-build chroot bundles,
+# KiCad STEP exports, robot meshes, benchmark corpora). `railway up` began
+# failing before Railway even created a deployment — the archive upload
+# itself died (live: staging gateway deploy run 31877865041, 2026-08-15).
+#
+# Every Railway-deployed service's Dockerfile COPYs only from
+# packages/cloud/**, packages/core, packages/logger, packages/prompts and
+# workspace manifests — none of the trees below are ever part of a Railway
+# build context, so excluding them cannot change any image. This file is
+# about UPLOAD size only; repo-level artifact policy (LFS/releases) is a
+# separate decision.
+packages/native/bun-runtime/artifacts/
+packages/os/
+packages/chip/
+packages/robot/
+packages/benchmarks/
+# Test/e2e media and local tooling caches — likewise never in a Railway build.
+**/node_modules/.cache/
+.turbo/
