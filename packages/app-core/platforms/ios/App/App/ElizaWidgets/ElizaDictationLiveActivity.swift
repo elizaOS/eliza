@@ -1,3 +1,7 @@
+/**
+ The widget extension renders the localized Lock Screen and Dynamic Island
+ presentation for the app-owned voice and dictation Live Activity.
+ */
 import ActivityKit
 import AppIntents
 import SwiftUI
@@ -46,7 +50,7 @@ struct SaveElizaDictationIntent: AppIntent {
 
 @available(iOS 16.1, *)
 extension ElizaDictationAttributes.ContentState.Phase {
-    var label: String {
+    var label: LocalizedStringResource {
         switch self {
         case .recording: return "Recording"
         case .transcribing: return "Transcribing"

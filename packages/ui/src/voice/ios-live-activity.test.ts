@@ -80,6 +80,24 @@ describe("DictationLiveActivityController", () => {
     });
   });
 
+  it("delegates the default session title to native localization", async () => {
+    const plugin = fakePlugin();
+    const controller = new DictationLiveActivityController({
+      isIos: true,
+      plugin,
+    });
+    await controller.sync({
+      active: true,
+      phase: "recording",
+      transcript: "hello",
+    });
+    expect(plugin.start).toHaveBeenCalledWith({
+      sessionTitle: "",
+      phase: "recording",
+      transcript: "hello",
+    });
+  });
+
   it("does not start when Live Activities are disabled", async () => {
     const plugin = fakePlugin({
       isSupported: vi

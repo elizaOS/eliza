@@ -95,7 +95,9 @@ export class DictationLiveActivityController {
     this.now = deps.now ?? (() => Date.now());
     this.minUpdateIntervalMs =
       deps.minUpdateIntervalMs ?? DICTATION_MIN_UPDATE_INTERVAL_MS;
-    this.sessionTitle = deps.sessionTitle ?? "Voice session";
+    // The native bridge owns the localized default. An empty value keeps
+    // custom titles verbatim while avoiding a second English-only authority.
+    this.sessionTitle = deps.sessionTitle ?? "";
   }
 
   /** Reconcile the activity toward the desired session state. */
