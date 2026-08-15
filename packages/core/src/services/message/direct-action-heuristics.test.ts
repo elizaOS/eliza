@@ -634,6 +634,112 @@ describe("inferDirectCurrentRequestCandidateInference kinds", () => {
 		).toEqual({ names: [], kind: null });
 	});
 
+	it("routes possessive owner-data reads to the owner reader, never VIEWS (read-side of fead478cfa)", () => {
+		const todosAction: Pick<Action, "name" | "similes" | "tags"> = {
+			name: "OWNER_TODOS",
+			similes: ["TODOS", "TODO_LIST"],
+			tags: [],
+		};
+		const todosTaggedViews: Pick<Action, "name" | "similes" | "tags"> = {
+			...viewsAction,
+			tags: [...(viewsAction.tags ?? []), "todos"],
+		};
+		// The live hijack shape: a possessive read must select the reader.
+		for (const message of [
+			"list my personal todos",
+			"what are my todos",
+			"show my todo list",
+		]) {
+			expect(
+				inferDirectCurrentRequestCandidateInference(
+					[todosTaggedViews, todosAction],
+					message,
+				),
+			).toEqual({ names: ["OWNER_TODOS"], kind: "owner-reads" });
+		}
+		// Lean stacks resolve the standalone todo owner (one owner per deployment).
+		const pluginTodosAction: Pick<Action, "name" | "similes" | "tags"> = {
+			name: "TODO",
+			similes: ["TODOS"],
+			tags: [],
+		};
+		expect(
+			inferDirectCurrentRequestCandidateInference(
+				[todosTaggedViews, pluginTodosAction],
+				"list my personal todos",
+			),
+		).toEqual({ names: ["TODO"], kind: "owner-reads" });
+		// Without any reader the read yields NO candidate — never the view
+		// catalog (that fallthrough was the live "Cannot invoke get-todos" turn).
+		expect(
+			inferDirectCurrentRequestCandidateInference(
+				[todosTaggedViews],
+				"list my personal todos",
+			),
+		).toEqual({ names: [], kind: null });
+		// Surface-noun asks stay with the navigation legs.
+		expect(
+			inferDirectCurrentRequestCandidateInference(
+				[todosTaggedViews, todosAction],
+				"open my todos page",
+			).kind,
+		).not.toBe("owner-reads");
+		// Mutations and completions are not reads.
+		for (const message of [
+			"add a todo: buy milk",
+			"check off my todo buy milk",
+			"mark my first todo done",
+			"how should i organize my todos",
+		]) {
+			expect(
+				inferDirectCurrentRequestCandidateInference(
+					[todosTaggedViews, todosAction],
+					message,
+				).kind,
+			).not.toBe("owner-reads");
+		}
+	});
+
+	it("covers the other owner-read domains and leaves non-possessive asks alone", () => {
+		const readers: Array<Pick<Action, "name" | "similes" | "tags">> = [
+			{ name: "OWNER_REMINDERS", similes: [], tags: [] },
+			{ name: "OWNER_ROUTINES", similes: [], tags: [] },
+			{ name: "OWNER_FINANCES", similes: [], tags: [] },
+		];
+		expect(
+			inferDirectCurrentRequestCandidateInference(
+				[viewsAction, ...readers],
+				"what are my reminders for today",
+			),
+		).toEqual({ names: ["OWNER_REMINDERS"], kind: "owner-reads" });
+		expect(
+			inferDirectCurrentRequestCandidateInference(
+				[viewsAction, ...readers],
+				"show my habits",
+			),
+		).toEqual({ names: ["OWNER_ROUTINES"], kind: "owner-reads" });
+		expect(
+			inferDirectCurrentRequestCandidateInference(
+				[viewsAction, ...readers],
+				"go over my expenses this week",
+			),
+		).toEqual({ names: ["OWNER_FINANCES"], kind: "owner-reads" });
+		// No possessive anchor → not an owner read (precision over recall).
+		expect(
+			inferDirectCurrentRequestCandidateInference(
+				[viewsAction, ...readers],
+				"list the reminders",
+			).kind,
+		).not.toBe("owner-reads");
+		// The existing settings capability contract is untouched.
+		expect(
+			inferDirectCurrentRequestCandidateInference(
+				[viewsAction],
+				"show my settings",
+			),
+		).toEqual({ names: ["VIEWS"], kind: "view-capability" });
+	});
+
 	it("gives owner goal mutations precedence over the views goals tag (#17028)", () => {
 		const goalsAction: Pick<Action, "name" | "similes" | "tags"> = {
 			name: "OWNER_GOALS",
