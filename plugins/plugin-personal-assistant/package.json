@@ -49,7 +49,6 @@
     "verify": "bun run lint:default-packs && bun run build:types && bun run test",
     "pretest": "node scripts/lint-default-packs.mjs",
     "test": "vitest run --config vitest.config.ts",
-    "test:app-state": "vitest run --config vitest.config.ts eliza/plugins/plugin-personal-assistant/test/lifeops-app-state.test.ts",
     "test:background-real": "vitest run --config vitest.background-real.config.ts test/scheduled-task-end-to-end.e2e.test.ts test/reminder-review-job.real.e2e.test.ts test/lifeops-scheduling.real.test.ts test/schedule-merged-state.real.test.ts",
     "test:integration": "vitest run --config vitest.src-integration.config.ts && cd \"$(git rev-parse --show-toplevel)\" && vitest run --config packages/scripts/vitest/integration.config.ts plugins/plugin-personal-assistant/test/integration-lane.smoke.integration.test.ts plugins/plugin-personal-assistant/test/life-smoke.integration.test.ts plugins/plugin-personal-assistant/test/owner-agent-permission-matrix.integration.test.ts",
     "test:scenarios": "cd ../.. && SCENARIO_USE_DETERMINISTIC_MODEL=1 bun packages/scenario-runner/src/cli.ts run packages/test/scenarios/reminders --lane pr-deterministic && cd plugins/plugin-personal-assistant && bun run test:scenarios:lifeops-spine",
