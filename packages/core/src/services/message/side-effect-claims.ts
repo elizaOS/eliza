@@ -87,7 +87,7 @@ function sideEffectClaimSentenceIsQuestion(
  * proof whenever a mutation-capable action ran.
  */
 interface LocaleSideEffectClaimRule {
-	/** BCP-47-ish tag, used by locale-specific question boundaries. */
+	/** BCP-47-ish tag, for maintenance and test diagnostics. */
 	readonly locale: string;
 	/** Schedulable/saved subject nouns; gate before any claim pattern runs. */
 	readonly nouns: RegExp;
@@ -192,10 +192,10 @@ const LOCALE_SIDE_EFFECT_CLAIM_RULES: readonly LocaleSideEffectClaimRule[] = [
 
 function multilingualClaimIsQuestion(
 	text: string,
-	match: RegExpMatchArray,
+	matchIndex: number,
+	matchLength: number,
 	rule: LocaleSideEffectClaimRule,
 ): boolean {
-	const matchIndex = match.index;
 	const prefix = text.slice(0, matchIndex);
 	const sentenceStart = Math.max(
 		prefix.lastIndexOf("."),
@@ -209,7 +209,7 @@ function multilingualClaimIsQuestion(
 	const clausePrefix = prefix.slice(sentenceStart + 1);
 	if (clausePrefix.includes("¿")) return true;
 
-	const suffix = text.slice(matchIndex + match[0].length);
+	const suffix = text.slice(matchIndex + matchLength);
 	if (rule.questionSuffix?.test(suffix.trimStart())) return true;
 	const questionIndex = suffix.search(/[?？]/u);
 	if (questionIndex < 0) return false;
@@ -232,11 +232,20 @@ function replyClaimsCompletedSideEffectMultilingual(text: string): boolean {
 		for (const claim of rule.claims) {
 			for (const match of text.matchAll(claim)) {
 				const matchIndex = match.index;
+				if (matchIndex === undefined) continue;
 				const prefix = text.slice(0, matchIndex);
 				const suffix = text.slice(matchIndex + match[0].length);
 				if (rule.nonAssertiveLead?.test(prefix)) continue;
 				if (rule.nonAssertiveSuffix?.test(suffix)) continue;
-				if (multilingualClaimIsQuestion(text, match, rule)) continue;
+				if (
+					multilingualClaimIsQuestion(
+						text,
+						matchIndex,
+						match[0].length,
+						rule,
+					)
+				)
+					continue;
 				return true;
 			}
 		}
