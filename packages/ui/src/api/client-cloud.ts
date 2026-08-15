@@ -634,6 +634,8 @@ export function cloudTokenSecsRemaining(token: string): number | null {
  */
 export async function refreshCloudStewardSession(opts?: {
   endpoint?: string;
+  /** Surface throttling/outage responses instead of treating them as logout. */
+  throwOnTransientHttpFailure?: boolean;
 }): Promise<{ token?: string; expiresAt?: number; expiresIn?: number } | null> {
   const endpoint = opts?.endpoint ?? STEWARD_REFRESH_ENDPOINT;
   if (shouldUseNativeStewardRefreshHttp(endpoint)) {
@@ -653,12 +655,39 @@ export async function refreshCloudStewardSession(opts?: {
       }),
       { method: "POST", url: endpoint },
     );
-    if (response.status < 200 || response.status >= 300) return null;
-    return parseDirectCloudJsonSafe(response.data) as {
+    if (response.status < 200 || response.status >= 300) {
+      if (
+        opts?.throwOnTransientHttpFailure &&
+        (response.status === 429 || response.status >= 500)
+      ) {
+        throw new ElizaError(
+          "Steward session refresh is temporarily unavailable",
+          {
+            code: "STEWARD_SESSION_REFRESH_TRANSIENT",
+            context: { endpoint, status: response.status },
+          },
+        );
+      }
+      return null;
+    }
+    const parsed = parseDirectCloudJsonSafe(response.data) as {
       token?: string;
       expiresAt?: number;
       expiresIn?: number;
     } | null;
+    if (opts?.throwOnTransientHttpFailure && !parsed?.token?.trim()) {
+      // A 2xx whose body carries no usable token is out of the endpoint's
+      // success contract (authoritative logout is a 401, never an empty 200):
+      // treat it as an outage artifact, not a signed-out state.
+      throw new ElizaError(
+        "Steward session refresh returned a success response without a token",
+        {
+          code: "STEWARD_SESSION_REFRESH_TRANSIENT",
+          context: { endpoint, status: response.status },
+        },
+      );
+    }
+    return parsed;
   }
 
   if (typeof fetch === "undefined") return null;
@@ -666,14 +695,42 @@ export async function refreshCloudStewardSession(opts?: {
     method: "POST",
     credentials: "include",
   });
-  if (!response.ok) return null;
+  if (!response.ok) {
+    if (
+      opts?.throwOnTransientHttpFailure &&
+      (response.status === 429 || response.status >= 500)
+    ) {
+      throw new ElizaError(
+        "Steward session refresh is temporarily unavailable",
+        {
+          code: "STEWARD_SESSION_REFRESH_TRANSIENT",
+          context: { endpoint, status: response.status },
+        },
+      );
+    }
+    return null;
+  }
   // error-policy:J3 an unparseable refresh body reads as "no refreshed
   // session" (null) — callers keep/drop the stored token by its own expiry.
-  return (await response.json().catch(() => null)) as {
+  const parsed = (await response.json().catch(() => null)) as {
     token?: string;
     expiresAt?: number;
     expiresIn?: number;
   } | null;
+  if (opts?.throwOnTransientHttpFailure && !parsed?.token?.trim()) {
+    // A 2xx whose body carries no usable token is out of the endpoint's
+    // success contract (authoritative logout is a 401, never an empty 200):
+    // treat it as an outage artifact so cookie-only recovery preserves the
+    // shared-agent binding instead of tearing it down.
+    throw new ElizaError(
+      "Steward session refresh returned a success response without a token",
+      {
+        code: "STEWARD_SESSION_REFRESH_TRANSIENT",
+        context: { endpoint, status: response.status },
+      },
+    );
+  }
+  return parsed;
 }
 
 function isDirectCloudAuthMissing(client: ElizaClient): boolean {
