@@ -2,7 +2,13 @@
 
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { Cloud, Cpu, KeyRound } from "lucide-react";
 import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -24,6 +30,28 @@ const selection = vi.hoisted(() => ({
 vi.mock("../../hooks/useDefaultProviderPresets", () => ({
   useDefaultProviderPresets: vi.fn(),
 }));
+// The serving summary reads the runtime axis from GET /api/runtime/mode and
+// the inference axis from activeChat on GET /api/models/config.
+vi.mock("../../hooks/useRuntimeMode", () => ({
+  useRuntimeMode: () => ({
+    state: {
+      phase: "ready",
+      snapshot: { mode: "local", deploymentRuntime: "local" },
+    },
+  }),
+}));
+vi.mock("../../api", () => ({
+  client: {
+    getModelsConfig: vi.fn(async () => ({
+      targets: { small: {}, large: {}, coding: {} },
+      activeChat: {
+        provider: "elizacloud",
+        family: "ELIZAOS_CLOUD",
+        endpoint: "api.eliza.app",
+      },
+    })),
+  },
+}));
 vi.mock("../../state", () => ({
   useAppSelectorShallow: (
     selector: (state: Record<string, unknown>) => unknown,
@@ -33,6 +61,10 @@ vi.mock("../../state", () => ({
         String(vars?.defaultValue ?? key),
       plugins: [],
       setActionNotice: vi.fn(),
+      // The serving-axes summary reads the runtime axis from these; the real
+      // store always supplies startupCoordinator, so the stub must too.
+      firstRunRuntimeTarget: "",
+      startupCoordinator: { target: "embedded-local" },
     }),
 }));
 vi.mock("./useProviderSelection", () => ({
@@ -161,8 +193,33 @@ describe("ProviderSwitcher", () => {
     selection.visibleProviderPanelId = "__local__";
   });
 
-  it("renders the grouped surface and activates local selection", () => {
+  it("states both serving axes above the intelligence tiles", async () => {
     render(<ProviderSwitcher />);
+    // Tiles alone cannot distinguish a hosted agent from Cloud models, so the
+    // runtime axis must be wired in, not just available (#20045 follow-up).
+    expect(screen.getByTestId("serving-runtime-value").textContent).toBe(
+      "This device",
+    );
+    // Inference resolves from the server's activeChat, so it reads "Checking…"
+    // until that lands — never a fabricated "This device".
+    expect(screen.getByTestId("serving-inference-value").textContent).toBe(
+      "Checking…",
+    );
+    await waitFor(() => {
+      expect(screen.getByTestId("serving-inference-value").textContent).toBe(
+        "This device",
+      );
+    });
+  });
+
+  it("renders the grouped surface and activates local selection", async () => {
+    render(<ProviderSwitcher />);
+    // Let the activeChat fetch settle so its state update stays inside act().
+    await waitFor(() => {
+      expect(screen.getByTestId("serving-inference-value").textContent).toBe(
+        "This device",
+      );
+    });
     expect(screen.getByText("Active for coding agents")).toBeTruthy();
     expect(screen.getByText("accounts panel")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "local panel" }));
@@ -173,9 +230,14 @@ describe("ProviderSwitcher", () => {
     );
   });
 
-  it("renders the cloud panel and activates cloud routing", () => {
+  it("renders the cloud panel and activates cloud routing", async () => {
     selection.visibleProviderPanelId = "__cloud__";
     render(<ProviderSwitcher />);
+    await waitFor(() => {
+      expect(screen.getByTestId("serving-inference-value").textContent).toBe(
+        "This device",
+      );
+    });
     fireEvent.click(screen.getByRole("button", { name: "cloud panel" }));
     expect(selection.handleSelectCloud).toHaveBeenCalled();
   });

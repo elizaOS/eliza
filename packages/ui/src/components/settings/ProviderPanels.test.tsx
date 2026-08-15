@@ -41,10 +41,12 @@ vi.mock("./settings-agent-rows", () => ({
   SettingsActionButton: ({
     agentId: _agentId,
     agentStatus: _agentStatus,
+    agentLabel: _agentLabel,
     ...props
   }: ButtonHTMLAttributes<HTMLButtonElement> & {
     agentId?: string;
     agentStatus?: string;
+    agentLabel?: string;
   }) => <button {...props} />,
 }));
 
@@ -69,6 +71,7 @@ describe("ProviderPanels", () => {
         isCloudSelected={false}
         routingModeSaving={false}
         onSelectCloud={cloud}
+        onSignIn={vi.fn()}
         elizaCloudConnected
         largeModelOptions={[]}
         cloudModelSchema={null}
@@ -82,6 +85,68 @@ describe("ProviderPanels", () => {
     fireEvent.click(screen.getByRole("button", { name: "Use Eliza Cloud" }));
     expect(cloud).toHaveBeenCalled();
     expect(screen.getByText("cloud controls:false")).toBeTruthy();
+  });
+
+  it("does not mark Cloud active when selected but not signed in (#20045)", () => {
+    const signIn = vi.fn();
+    render(
+      <CloudPanel
+        cloudCallsDisabled={false}
+        isCloudSelected
+        routingModeSaving={false}
+        onSelectCloud={vi.fn()}
+        onSignIn={signIn}
+        elizaCloudConnected={false}
+        largeModelOptions={[]}
+        cloudModelSchema={null}
+        modelValues={{ values: {}, setKeys: new Set() }}
+        currentLargeModel=""
+        modelSaving={false}
+        modelSaveSuccess={false}
+        onModelFieldChange={vi.fn()}
+      />,
+    );
+    // Unsigned-in Cloud is inspect-only: the action must sign the user in,
+    // not pretend the cloud route is live or no-op on switchProvider.
+    expect(
+      screen.getByRole("button", { name: "Sign in to Eliza Cloud" }),
+    ).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Cloud active" })).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: "Use Eliza Cloud" }),
+    ).toBeNull();
+    expect(screen.queryByText(/cloud controls/)).toBeNull();
+    expect(
+      screen.getByText(
+        "Eliza Cloud isn't signed in. Chat replies are using Local.",
+      ),
+    ).toBeTruthy();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Sign in to Eliza Cloud" }),
+    );
+    expect(signIn).toHaveBeenCalled();
+  });
+
+  it("marks Cloud active when selected AND signed in", () => {
+    render(
+      <CloudPanel
+        cloudCallsDisabled={false}
+        isCloudSelected
+        routingModeSaving={false}
+        onSelectCloud={vi.fn()}
+        onSignIn={vi.fn()}
+        elizaCloudConnected
+        largeModelOptions={[]}
+        cloudModelSchema={null}
+        modelValues={{ values: {}, setKeys: new Set() }}
+        currentLargeModel=""
+        modelSaving={false}
+        modelSaveSuccess={false}
+        onModelFieldChange={vi.fn()}
+      />,
+    );
+    expect(screen.getByRole("button", { name: "Cloud active" })).toBeTruthy();
+    expect(screen.getByText("cloud controls:true")).toBeTruthy();
   });
 
   it("shows and activates a paused subscription", () => {
@@ -127,5 +192,19 @@ describe("ProviderPanels", () => {
     fireEvent.click(screen.getByRole("button", { name: "Use provider" }));
     expect(select).toHaveBeenCalledWith("plugin-openai");
     expect(screen.getByText("api key config")).toBeTruthy();
+  });
+
+  it("explains Local fallback when Cloud is unsigned-in", () => {
+    render(
+      <LocalProviderPanel
+        cloudCallsDisabled={false}
+        routingModeSaving={false}
+        onSelectLocalOnly={vi.fn()}
+        servingFallback
+      />,
+    );
+    expect(
+      screen.getByText("Answering chat because Eliza Cloud isn't signed in."),
+    ).toBeTruthy();
   });
 });

@@ -156,26 +156,31 @@ export function CloudOverviewSection() {
           </Button>
         }
       >
+        {/* Account state only. This row used to read "Cloud is connected" /
+            "Local mode is active", which conflated three separate facts — the
+            account session, where the agent process runs, and which models
+            answer chat. Runtime and inference live in Models & Providers,
+            where `resolveServingAxes` states both axes (#20045 follow-up). */}
         <SettingsRow
           icon={Rocket}
           label={
             elizaCloudConnected
-              ? t("settings.cloudOverview.cloudConnectedLabel", {
-                  defaultValue: "Cloud is connected",
+              ? t("settings.cloudOverview.accountConnectedLabel", {
+                  defaultValue: "Cloud account is connected",
                 })
-              : t("settings.cloudOverview.localModeActiveLabel", {
-                  defaultValue: "Local mode is active",
+              : t("settings.cloudOverview.accountDisconnectedLabel", {
+                  defaultValue: "No Cloud account connected",
                 })
           }
           description={
             elizaCloudConnected
-              ? t("settings.cloudOverview.cloudConnectedDescription", {
+              ? t("settings.cloudOverview.accountConnectedDescription", {
                   defaultValue:
-                    "Eliza can use Cloud account features while keeping this local runtime available.",
+                    "Cloud account features are available. Where the agent runs and which models answer chat are set in Models & Providers.",
                 })
-              : t("settings.cloudOverview.localModeActiveDescription", {
+              : t("settings.cloudOverview.accountDisconnectedDescription", {
                   defaultValue:
-                    "This build keeps agent runtime and local connectors on your machine unless you choose to connect Cloud.",
+                    "Cloud account features are unavailable until you connect. Where the agent runs and which models answer chat are set in Models & Providers.",
                 })
           }
         />
