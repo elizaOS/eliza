@@ -31,6 +31,7 @@ import { pipeline } from "node:stream/promises";
 import {
 	type AgentRuntime,
 	applyBackgroundInferenceBudget,
+	ElizaError,
 	type GenerateTextParams,
 	getInferencePriorityGate,
 	type IAgentRuntime,
@@ -375,6 +376,14 @@ class MobileDeviceBridge {
 		process.env.ELIZA_DEVICE_PAIRING_TOKEN?.trim() ||
 		process.env.ELIZA_DEVICE_BRIDGE_TOKEN?.trim() ||
 		null;
+	// Safe pre-activation defaults. `attachToHttpServer` overwrites these with
+	// validated values before any transport or device state exists, so a
+	// malformed setting fails at activation, not on the first live RPC. If
+	// the bridge is never attached, these defaults are never exercised (every
+	// RPC method rejects with DEVICE_DISCONNECTED before reaching a timeout).
+	private loadTimeoutMs: number = DEFAULT_LOAD_TIMEOUT_MS;
+	private generateTimeoutMs: number = DEFAULT_CALL_TIMEOUT_MS;
+	private embedTimeoutMs: number = DEFAULT_CALL_TIMEOUT_MS;
 
 	status(): MobileDeviceBridgeStatus {
 		const devices = [...this.devices.values()].map((device) => ({
@@ -406,6 +415,23 @@ class MobileDeviceBridge {
 			);
 			return;
 		}
+		// Resolve and validate every device-bridge timeout once, here at the
+		// real activation boundary, before any transport or device state is
+		// created. A malformed setting now fails loudly at attach instead of
+		// on the first live RPC (previously read per-call inside generate/
+		// embed/loadModel/unloadModel/formatChat).
+		this.loadTimeoutMs = resolveTimeoutMs(
+			"ELIZA_DEVICE_LOAD_TIMEOUT_MS",
+			DEFAULT_LOAD_TIMEOUT_MS,
+		);
+		this.generateTimeoutMs = resolveTimeoutMs(
+			"ELIZA_DEVICE_GENERATE_TIMEOUT_MS",
+			DEFAULT_CALL_TIMEOUT_MS,
+		);
+		this.embedTimeoutMs = resolveTimeoutMs(
+			"ELIZA_DEVICE_EMBED_TIMEOUT_MS",
+			DEFAULT_CALL_TIMEOUT_MS,
+		);
 		const serverCloseHandler = () => {
 			// error-policy:J6 the server close is already committed; transport
 			// teardown failures are logged after every release path has been attempted.
@@ -790,7 +816,7 @@ class MobileDeviceBridge {
 				correlationId,
 				...args,
 			}),
-			readTimeoutMs("ELIZA_DEVICE_LOAD_TIMEOUT_MS", DEFAULT_LOAD_TIMEOUT_MS),
+			this.loadTimeoutMs,
 			"DEVICE_TIMEOUT: model load exceeded deadline",
 		);
 	}
@@ -801,10 +827,7 @@ class MobileDeviceBridge {
 		return this.sendToPrimary<void>(
 			this.pendingUnloads,
 			(correlationId) => ({ type: "unload", correlationId }),
-			readTimeoutMs(
-				"ELIZA_DEVICE_GENERATE_TIMEOUT_MS",
-				DEFAULT_CALL_TIMEOUT_MS,
-			),
+			this.generateTimeoutMs,
 			"DEVICE_TIMEOUT: unload exceeded deadline",
 		);
 	}
@@ -825,10 +848,7 @@ class MobileDeviceBridge {
 				maxTokens: args.maxTokens,
 				temperature: args.temperature,
 			}),
-			readTimeoutMs(
-				"ELIZA_DEVICE_GENERATE_TIMEOUT_MS",
-				DEFAULT_CALL_TIMEOUT_MS,
-			),
+			this.generateTimeoutMs,
 			"DEVICE_TIMEOUT: no device responded within deadline",
 		);
 	}
@@ -841,7 +861,7 @@ class MobileDeviceBridge {
 				correlationId,
 				input: args.input,
 			}),
-			readTimeoutMs("ELIZA_DEVICE_EMBED_TIMEOUT_MS", DEFAULT_CALL_TIMEOUT_MS),
+			this.embedTimeoutMs,
 			"DEVICE_TIMEOUT: no device returned embeddings within deadline",
 		);
 	}
@@ -865,7 +885,7 @@ class MobileDeviceBridge {
 				correlationId,
 				messages,
 			}),
-			readTimeoutMs("ELIZA_DEVICE_LOAD_TIMEOUT_MS", DEFAULT_LOAD_TIMEOUT_MS),
+			this.loadTimeoutMs,
 			"DEVICE_TIMEOUT: chat template format exceeded deadline",
 		);
 	}
@@ -873,9 +893,43 @@ class MobileDeviceBridge {
 
 export const mobileDeviceBridge = new MobileDeviceBridge();
 
-function readTimeoutMs(envKey: string, fallback: number): number {
-	const parsed = Number.parseInt(process.env[envKey]?.trim() ?? "", 10);
-	return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+const MAX_TIMER_DELAY_MS = 2_147_483_647;
+
+/**
+ * Not exported: this parser is an internal implementation detail of the
+ * device-bridge and bionic-host timeout contracts, resolved once at each
+ * subsystem's own activation boundary (see `attachToHttpServer` and the
+ * lazy `getBionic*TimeoutMs` accessors below), not a supported public API.
+ */
+function resolveTimeoutMs(envKey: string, fallback: number): number {
+	const raw = process.env[envKey]?.trim();
+	if (!raw) return fallback;
+	if (!/^(?:0|[1-9]\d*)$/.test(raw)) {
+		throw new ElizaError(
+			`${envKey} must be a canonical decimal integer from 1 through ${MAX_TIMER_DELAY_MS}`,
+			{
+				code: "INVALID_DEVICE_BRIDGE_TIMEOUT",
+				context: { envKey, configured: raw },
+				severity: "fatal",
+			},
+		);
+	}
+	const parsed = Number(raw);
+	if (
+		!Number.isSafeInteger(parsed) ||
+		parsed < 1 ||
+		parsed > MAX_TIMER_DELAY_MS
+	) {
+		throw new ElizaError(
+			`${envKey} must be a canonical decimal integer from 1 through ${MAX_TIMER_DELAY_MS}`,
+			{
+				code: "INVALID_DEVICE_BRIDGE_TIMEOUT",
+				context: { envKey, configured: raw },
+				severity: "fatal",
+			},
+		);
+	}
+	return parsed;
 }
 
 function localInferenceRoot(): string {
@@ -1358,10 +1412,20 @@ function flattenChatParamsForPrompt(params: GenerateTextParams): string {
 // timeout with an empty/failed turn. Default to 300s (the other native
 // device-bridge ops already use 600s) and let it be tuned via env for slower
 // devices.
-const BIONIC_REQUEST_TIMEOUT_MS = readTimeoutMs(
-	"ELIZA_BIONIC_REQUEST_TIMEOUT_MS",
-	300_000,
-);
+// Resolved lazily (not at module evaluation) and memoized on first real use,
+// so a malformed ELIZA_BIONIC_REQUEST_TIMEOUT_MS only fails when the bionic
+// generate path actually runs, not on every import of this module regardless
+// of whether the bionic host is even enabled.
+let cachedBionicRequestTimeoutMs: number | undefined;
+function getBionicRequestTimeoutMs(): number {
+	if (cachedBionicRequestTimeoutMs === undefined) {
+		cachedBionicRequestTimeoutMs = resolveTimeoutMs(
+			"ELIZA_BIONIC_REQUEST_TIMEOUT_MS",
+			300_000,
+		);
+	}
+	return cachedBionicRequestTimeoutMs;
+}
 const BIONIC_MAX_FRAME_BYTES = 64 * 1024 * 1024;
 
 interface BionicGenerateResponse {
@@ -1543,7 +1607,7 @@ function bionicHostGenerate(
 		};
 		const timer = setTimeout(
 			() => finish(new Error("[mobile-device-bridge] bionic host timed out")),
-			BIONIC_REQUEST_TIMEOUT_MS,
+			getBionicRequestTimeoutMs(),
 		);
 		sock.on("connect", () => sock.write(frame));
 		sock.on("data", (d: Buffer) => {
@@ -1617,7 +1681,7 @@ function bionicHostGenerateStream(
 		};
 		const timer = setTimeout(
 			() => finish(new Error("[mobile-device-bridge] bionic host timed out")),
-			BIONIC_REQUEST_TIMEOUT_MS,
+			getBionicRequestTimeoutMs(),
 		);
 		sock.on("connect", () => sock.write(frame));
 		sock.on("data", (d: Buffer) => {
@@ -1977,10 +2041,17 @@ export interface MobileDeviceBridgeServingStatus {
 	bionicHostServing: boolean;
 }
 
-const BIONIC_PROBE_TIMEOUT_MS = readTimeoutMs(
-	"ELIZA_BIONIC_PROBE_TIMEOUT_MS",
-	2_000,
-);
+// Same lazy/memoized pattern as getBionicRequestTimeoutMs above.
+let cachedBionicProbeTimeoutMs: number | undefined;
+function getBionicProbeTimeoutMs(): number {
+	if (cachedBionicProbeTimeoutMs === undefined) {
+		cachedBionicProbeTimeoutMs = resolveTimeoutMs(
+			"ELIZA_BIONIC_PROBE_TIMEOUT_MS",
+			2_000,
+		);
+	}
+	return cachedBionicProbeTimeoutMs;
+}
 
 /** True when the bionic host's abstract UDS accepts a connection right now. */
 function probeBionicHostSocket(socketName: string): Promise<boolean> {
@@ -1991,7 +2062,7 @@ function probeBionicHostSocket(socketName: string): Promise<boolean> {
 			sock.destroy();
 			resolve(ok);
 		};
-		const timer = setTimeout(() => finish(false), BIONIC_PROBE_TIMEOUT_MS);
+		const timer = setTimeout(() => finish(false), getBionicProbeTimeoutMs());
 		sock.on("connect", () => finish(true));
 		sock.on("error", () => finish(false));
 	});
