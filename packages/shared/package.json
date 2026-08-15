@@ -175,6 +175,11 @@
     },
     "./character-presets": {
       "types": "./dist/character-presets.d.ts",
+      "eliza-source": {
+        "types": "./src/character-presets.ts",
+        "import": "./src/character-presets.ts",
+        "default": "./src/character-presets.ts"
+      },
       "import": "./dist/character-presets.js",
       "default": "./dist/character-presets.js"
     },

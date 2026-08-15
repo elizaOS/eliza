@@ -15,6 +15,41 @@ export const DELTA_STREAM_PROTOCOL = "delta-v2" as const;
 
 export type DeltaStreamProtocol = typeof DELTA_STREAM_PROTOCOL;
 
+/**
+ * Remove an NFC-space overlap while preserving raw input beyond the sequence
+ * that contains the cut. Canonical ordering can make an exact raw boundary
+ * impossible, so only that ambiguous prefix is normalized.
+ */
+function sliceAfterNormalizedOverlap(
+  incoming: string,
+  incomingNorm: string,
+  overlap: number,
+): string {
+  if (overlap <= 0) return incoming;
+  const targetPrefix = incomingNorm.slice(0, overlap);
+  const codePointBoundaries: number[] = [];
+  let offset = 0;
+  for (const codePoint of incoming) {
+    offset += codePoint.length;
+    codePointBoundaries.push(offset);
+  }
+
+  for (const offset of codePointBoundaries) {
+    if (incoming.slice(0, offset).normalize("NFC") === targetPrefix) {
+      return incoming.slice(offset);
+    }
+  }
+
+  for (const offset of codePointBoundaries) {
+    const normalizedPrefix = incoming.slice(0, offset).normalize("NFC");
+    if (normalizedPrefix.startsWith(targetPrefix)) {
+      return `${normalizedPrefix.slice(overlap)}${incoming.slice(offset)}`;
+    }
+  }
+
+  return incomingNorm.slice(overlap);
+}
+
 function commonPrefixLength(left: string, right: string): number {
   const maxLength = Math.min(left.length, right.length);
   let index = 0;
@@ -127,30 +162,7 @@ export function mergeStreamingText(existing: string, incoming: string): string {
       return incoming.length === 1 ? `${existing}${incoming}` : existing;
     }
 
-    // The overlap index is measured against the NFC-normalized strings, so the
-    // matching raw boundary must be recovered before slicing: slicing the raw
-    // string at the NFC index misaligns whenever incoming carries decomposed
-    // sequences before the cut (e.g. "e" + U+0301), duplicating combining
-    // marks in the merged text. The untouched raw suffix is then appended
-    // byte-for-byte, preserving the caller's representation past the cut per
-    // this function's return-original-incoming contract. The existing-side
-    // arithmetic stays raw-safe because trailing whitespace is NFC-stable, so
-    // the trimmed-length delta counts the same characters in both forms.
-    // Scan from zero rather than from the NFC index: composition-exclusion
-    // characters (e.g. U+0958) EXPAND under NFC, so the raw boundary can sit
-    // before the normalized one.
-    const overlapNorm = incomingNorm.slice(0, overlap);
-    let rawCut = -1;
-    for (let index = 0; index <= incoming.length; index += 1) {
-      if (incoming.slice(0, index).normalize("NFC") === overlapNorm) {
-        rawCut = index;
-        break;
-      }
-    }
-    // A cut that lands inside a composed grapheme has no raw boundary; the
-    // canonically equivalent normalized suffix is the only aligned remainder.
-    const suffix =
-      rawCut === -1 ? incomingNorm.slice(overlap) : incoming.slice(rawCut);
+    const suffix = sliceAfterNormalizedOverlap(incoming, incomingNorm, overlap);
     return `${existing.slice(0, existing.length - (existingNorm.length - existingTrimmedLength))}${suffix}`;
   }
 
