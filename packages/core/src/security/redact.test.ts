@@ -156,6 +156,33 @@ describe("redactSensitiveText (pattern detection)", () => {
 		expect(output).not.toContain(response);
 	});
 
+	it("masks unquoted Digest auth params with RFC boundary whitespace", () => {
+		const username = ["private", "-user"].join("");
+		const response = ["6629fae49393", "a05397450978507c4ef1"].join("");
+		const input = `Authorization: Digest username = ${username}, realm = restricted, response = ${response}`;
+		const output = redactSensitiveText(input);
+		expect(output).toContain("Authorization: Digest ");
+		expect(output).not.toContain(username);
+		expect(output).not.toContain("restricted");
+		expect(output).not.toContain(response);
+	});
+
+	it("keeps token68 padding out of the auth-param branch for both padding widths", () => {
+		// One- and two-"=" padded token68 credentials followed by prose: the
+		// auth-param branch must not consume the prose to end-of-line (that
+		// divergence is what broke whole-buffer vs guarded-stream equivalence).
+		// Value-exact masking of the token itself is owned by the secret-swap
+		// session in the streaming path, not this pattern table.
+		const doublePad = ["dXNlcjpwYXNz", "d29yZDEyMw=="].join("");
+		const singlePad = ["dXNlcjpwYXNzd2", "9yZDEyMw="].join("");
+		for (const token of [doublePad, singlePad]) {
+			const output = redactSensitiveText(
+				`Header Authorization: Basic ${token} end of line.`,
+			);
+			expect(output).toContain(" end of line.");
+		}
+	});
+
 	it("masks quoted Digest auth params with RFC boundary whitespace", () => {
 		const username = ["private", "-user"].join("");
 		const response = ["6629fae49393", "a05397450978507c4ef1"].join("");
