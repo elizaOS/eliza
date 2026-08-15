@@ -7,6 +7,7 @@
 import { ElizaError } from "../errors";
 import { computeCallCostUsd } from "../features/trajectories/pricing";
 import { evaluatorSchema, evaluatorTemplate } from "../prompts/evaluator";
+import { sanitizeOutboundText } from "../services/message/outbound-sanitize";
 import {
 	emitStreamingHook,
 	getStreamingContext,
@@ -655,7 +656,9 @@ const INTERNAL_MECHANIC_PATTERNS: ReadonlyArray<{
 ];
 
 function sanitizeMessageToUser(text: string): string {
-	let cleaned = text;
+	// `thinking: "off"` is a provider hint, not an output guarantee. Sanitize
+	// evaluator-authored user text at the parse boundary as a final safeguard.
+	let cleaned = sanitizeOutboundText(text);
 	for (const { pattern, replacement } of INTERNAL_MECHANIC_PATTERNS) {
 		cleaned = cleaned.replace(pattern, replacement);
 	}

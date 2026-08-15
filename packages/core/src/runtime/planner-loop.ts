@@ -14,6 +14,7 @@ import { computeCallCostUsd } from "../features/trajectories/pricing";
 import { logger } from "../logger";
 import { parseInteractionBlocks } from "../messaging/interactions/parse";
 import { plannerSchema, plannerTemplate } from "../prompts/planner";
+import { sanitizeOutboundText } from "../services/message/outbound-sanitize";
 import { resolveOptimizedPromptForRuntime } from "../services/optimized-prompt-resolver";
 import {
 	emitStreamingHook,
@@ -4551,16 +4552,13 @@ function isJunkCodingReply(text: unknown): boolean {
 }
 
 /**
- * Strip reasoning-model scaffolding that leaks into a final reply: a
- * `<think>…</think>` block, or a stray closing `</think>` with the chain-of-
- * thought before it (keep only the answer after the last `</think>`). Observed
- * with glm-4.7 on Cerebras: "…Let me verify.</think>I've fixed both validators…".
+ * Strip reasoning-model scaffolding that leaks into a final reply. Keep this
+ * planner-specific boundary, but delegate to the shared outbound sanitizer so
+ * every reasoning/tool-call tag family, casing/spacing variant, orphan close,
+ * and open-only drift shape follows one code-fence-safe implementation.
  */
 function stripReasoningArtifacts(text: string): string {
-	let out = text.replace(/<think>[\s\S]*?<\/think>/gi, "");
-	const lastClose = out.toLowerCase().lastIndexOf("</think>");
-	if (lastClose >= 0) out = out.slice(lastClose + "</think>".length);
-	return out.replace(/<\/?think>/gi, "").trim();
+	return sanitizeOutboundText(text);
 }
 
 /**

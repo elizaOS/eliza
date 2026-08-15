@@ -30,9 +30,8 @@
  *   4. inline single/multi-backtick code spans are protected like fences, so
  *      a coding answer such as "the `<tool_call>` tag …" is no longer
  *      truncated at the span.
- * Known pass-throughs shared with the original and left as-is: bare `<think>`
- * spans are handled upstream by `stripReasoningBlocks` at model-output parse
- * time, and `<|im_start|>` framing tokens are not stripped.
+ * Known pass-through shared with the original and left as-is: `<|im_start|>`
+ * framing tokens are not stripped.
  *
  * This is a delivery-boundary catch-all, distinct from the model-output parse
  * helpers (`stripReasoningBlocks` in `./fallback-reply.ts`,
@@ -42,6 +41,7 @@
  * sanitizing delivered prose cannot delete a valid machine action.
  */
 const MACHINE_SYNTAX_TAGS = [
+	"think",
 	"thinking",
 	"reasoning",
 	"reflection",
@@ -61,7 +61,7 @@ const SELF_CLOSING_ARTIFACTS_RE =
 // every shape SELF_CLOSING_ARTIFACTS_RE strips (delta 1: the Discord original
 // omitted `eot_id` here, so a lone sentinel slipped through to the wire).
 const QUICK_TAG_RE =
-	/<\/?(?:thinking|reasoning|reflection|thought|antthinking|tool_call|function_call|final|STOP|END|end_turn|eot_id)\b|<\|(?:end|stop|im_end|eot_id)/i;
+	/<\s*\/?\s*(?:think|thinking|reasoning|reflection|thought|antthinking|tool_call|function_call|final|STOP|END|end_turn|eot_id)\b|<\|(?:end|stop|im_end|eot_id)/i;
 const CODE_BLOCK_RE = /```[\s\S]*?```/g;
 // An inline code span: a backtick run, non-backtick single-line content, and a
 // closing run of exactly the same length (CommonMark's matched-run rule; the
@@ -101,14 +101,43 @@ export function sanitizeOutboundText(text: string): string {
 	processed = processed.replace(SELF_CLOSING_ARTIFACTS_RE, "");
 
 	for (const tag of MACHINE_SYNTAX_TAGS) {
-		const paired = new RegExp(`<${tag}\\b[^>]*>([\\s\\S]*?)<\\/${tag}>`, "gi");
+		const paired = new RegExp(
+			`<\\s*${tag}\\b[^>]*>([\\s\\S]*?)<\\s*\\/\\s*${tag}\\s*>`,
+			"gi",
+		);
 		processed = processed.replace(paired, "");
+	}
 
-		const unclosed = new RegExp(`<${tag}\\b[^>]*>[\\s\\S]*$`, "gi");
+	// Some reasoning providers emit a close tag without its opening tag. The
+	// text before the last such close is the hidden chain of thought; preserve
+	// only the answer after it. This generalizes the planner's former
+	// `</think>`-only recovery to every machine-syntax family.
+	const machineTagAlternation = MACHINE_SYNTAX_TAGS.join("|");
+	const orphanClose = new RegExp(
+		`<\\s*\\/\\s*(?:${machineTagAlternation})\\s*>`,
+		"gi",
+	);
+	let orphanMatch: RegExpExecArray | null;
+	let lastOrphanEnd = -1;
+	while ((orphanMatch = orphanClose.exec(processed)) !== null) {
+		lastOrphanEnd = orphanMatch.index + orphanMatch[0].length;
+	}
+	if (lastOrphanEnd >= 0) {
+		processed = processed.slice(lastOrphanEnd);
+	}
+
+	for (const tag of MACHINE_SYNTAX_TAGS) {
+		const unclosed = new RegExp(
+			`<\\s*${tag}\\b[^>]*>[\\s\\S]*$`,
+			"gi",
+		);
 		processed = processed.replace(unclosed, "");
 	}
 
-	processed = processed.replace(/<final\b[^>]*>([\s\S]*?)<\/final>/gi, "$1");
+	processed = processed.replace(
+		/<\s*final\b[^>]*>([\s\S]*?)<\s*\/\s*final\s*>/gi,
+		"$1",
+	);
 
 	// Collapse the whitespace stripped blocks leave behind BEFORE restoring
 	// code (delta 3): running it after restoration reformatted intentional

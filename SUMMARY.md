@@ -1,24 +1,29 @@
-# Zero-delivery recovery fix
+# Reasoning-tag residue fix
 
-## Finding
+## Findings
 
-The recovery gate treated any non-empty `actionResults` array as evidence that real work occurred. Failed actions therefore enabled the acknowledgement fallback and could produce the misleading text `on it, working on that now.`
+The planner's local `stripReasoningArtifacts` recognized only `think`, while the shared outbound sanitizer already defined the full machine-syntax family list. The shared implementation still did not accept whitespace after `<` or around `/`, and did not recover close-only output. The evaluator's `thinking: "off"` provider option was only a hint; its parsed `messageToUser` had no reasoning-tag cleanup of its own.
 
-`ActionResult` uses its boolean `success` field as the authoritative execution outcome throughout `message.ts` (for example, media delivery already ignores results where `success` is false). Error detail is carried in result data in relevant execution paths, so absence of an error value is not as reliable as an explicit successful outcome.
+## Changes
 
-## Change
+- Made `stripReasoningArtifacts` delegate to `sanitizeOutboundText`, eliminating a second, incomplete tag list while retaining the planner-specific cleanup boundary.
+- Extended the shared sanitizer to recognize mixed-case and whitespace variants for `think`, `thinking`, `reasoning`, `reflection`, `thought`, `antthinking`, `tool_call`, and `function_call`.
+- Preserved existing open-only removal and code-fence/inline-code protection.
+- Added close-only recovery for all machine-syntax families, keeping only content after the last orphan close.
+- Sanitized evaluator `messageToUser` output even when the model call requests `thinking: "off"`.
+- Added a parameterized `bun:test` suite and a dependency-free Node verification harness.
 
-Replaced the non-empty-array check with:
+## Verification
 
-```typescript
-actionResults.some((result) => result.success === true)
+Run:
+
+```sh
+node verify-reasoning-tags.mjs
+bun test reasoning-tag-residue.test.ts
 ```
 
-The existing `suppressesPlannerReply` condition remains unchanged and continues to take precedence.
+The Node harness exercises all requested cases without repository dependencies. The Bun test requires Bun to be present in the full repository environment.
 
-## Tests and verification
+## Local result
 
-- Added `zero-delivery-recovery.test.ts` with the four requested `bun:test` cases: all failed, successful, empty, and mixed results.
-- Added `verify-zero-delivery.mjs`, a dependency-free Node harness covering those cases and planner-reply suppression.
-- `node repo/verify-zero-delivery.mjs` passes.
-- Bun is not installed in the cleanroom, so the `bun:test` suite could not be executed here.
+`node verify-reasoning-tags.mjs` passed all eight tag families and both planner/evaluator integration assertions. Bun and TypeScript CLI tooling are not installed in the cleanroom, so the `bun:test` suite could not be executed here; it remains ready for the full repository environment.
