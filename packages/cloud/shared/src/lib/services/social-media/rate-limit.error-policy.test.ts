@@ -63,6 +63,13 @@ describe("withRetry — internal failure propagates vs designed-empty passes thr
     expect(err).toMatchObject({ rateLimited: true, platform: "twitter", retryAfter: 7 });
   });
 
+  it("preserves a valid Retry-After value of zero after 429 exhaustion", async () => {
+    const fn = async () => new Response("", { status: 429, headers: { "retry-after": "0" } });
+    const parser = async (r: Response) => r.json();
+    const err = await withRetry(fn, parser, NO_WAIT).catch((e) => e);
+    expect(err).toMatchObject({ rateLimited: true, platform: "twitter", retryAfter: 0 });
+  });
+
   it("PROPAGATES a thrown fn (network/parse) as the final error, not a default", async () => {
     const fn = async () => {
       throw new Error("ECONNRESET");
