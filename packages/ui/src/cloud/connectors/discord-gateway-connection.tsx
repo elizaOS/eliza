@@ -49,7 +49,7 @@ import {
 import { ApiError, api, apiFetch } from "../lib/api-client";
 import { useCloudT } from "../shell/CloudI18nProvider";
 import {
-  buildDiscordConnectionMetadataUpdate,
+  buildDiscordConnectionPatch,
   type DiscordConnectionMetadata,
   type DiscordDmPolicy,
 } from "./discord-connection-metadata";
@@ -106,13 +106,6 @@ function parseSnowflakeList(raw: string): string[] | null {
   return ids;
 }
 
-interface DiscordConnectionPatch {
-  characterId: string | null;
-  isActive: boolean;
-  metadata: DiscordConnectionMetadata;
-  botToken?: string;
-}
-
 interface DiscordGatewayConnection {
   id: string;
   applicationId: string;
@@ -128,6 +121,19 @@ interface DiscordGatewayConnection {
   connectedAt: string | null;
   lastHeartbeat: string | null;
   createdAt: string;
+  editVersion: string;
+}
+
+interface DiscordGatewayConnectionEditState {
+  characterId: string;
+  responseMode: "always" | "mention" | "keyword";
+  ownerDiscordUserId: string;
+  dmPolicy: DiscordDmPolicy;
+  dmAllowFrom: string;
+  storedMetadata: DiscordConnectionMetadata | null;
+  expectedEditVersion: string;
+  botToken: string;
+  isActive: boolean;
 }
 
 function apiErrorMessage(error: unknown, fallback: string): string {
@@ -198,6 +204,7 @@ export function DiscordGatewayConnection() {
   const [showForm, setShowForm] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [savingId, setSavingId] = useState<string | null>(null);
+  const [loadingEditId, setLoadingEditId] = useState<string | null>(null);
 
   // Form state for new connection
   const [applicationId, setApplicationId] = useState("");
@@ -212,19 +219,7 @@ export function DiscordGatewayConnection() {
 
   // Edit state for existing connections
   const [editState, setEditState] = useState<
-    Record<
-      string,
-      {
-        characterId: string;
-        responseMode: "always" | "mention" | "keyword";
-        ownerDiscordUserId: string;
-        dmPolicy: DiscordDmPolicy;
-        dmAllowFrom: string;
-        storedMetadata: DiscordConnectionMetadata | null;
-        botToken: string;
-        isActive: boolean;
-      }
-    >
+    Record<string, DiscordGatewayConnectionEditState>
   >({});
 
   const fetchConnections = useCallback(
@@ -248,6 +243,47 @@ export function DiscordGatewayConnection() {
       }
     },
     [t],
+  );
+
+  const refreshConnectionForEdit = useCallback(
+    async (connectionId: string, preserveDraft: boolean) => {
+      const data = await api<{ connection: DiscordGatewayConnection }>(
+        `/api/v1/discord/connections/${connectionId}`,
+      );
+      const connection = data.connection;
+
+      setConnections((current) =>
+        current.map((entry) =>
+          entry.id === connectionId ? connection : entry,
+        ),
+      );
+      setEditState((current) => {
+        const existing = current[connectionId];
+        const refreshed =
+          preserveDraft && existing
+            ? {
+                ...existing,
+                storedMetadata: connection.metadata,
+                expectedEditVersion: connection.editVersion,
+              }
+            : {
+                characterId: connection.characterId || "",
+                responseMode: connection.metadata?.responseMode || "always",
+                ownerDiscordUserId:
+                  connection.metadata?.ownerDiscordUserId || "",
+                dmPolicy: connection.metadata?.dmPolicy || "open",
+                dmAllowFrom: (connection.metadata?.dmAllowFrom || []).join(
+                  ", ",
+                ),
+                storedMetadata: connection.metadata,
+                expectedEditVersion: connection.editVersion,
+                botToken: "",
+                isActive: connection.isActive,
+              };
+        return { ...current, [connectionId]: refreshed };
+      });
+    },
+    [],
   );
 
   const fetchCharacters = useCallback(
@@ -453,21 +489,19 @@ export function DiscordGatewayConnection() {
     setSavingId(connId);
 
     try {
-      const payload: DiscordConnectionPatch = {
-        characterId: edit.characterId || null,
-        isActive: edit.isActive,
-        metadata: buildDiscordConnectionMetadataUpdate(edit.storedMetadata, {
+      const payload = buildDiscordConnectionPatch(
+        edit.storedMetadata,
+        edit.expectedEditVersion,
+        {
+          characterId: edit.characterId || null,
+          isActive: edit.isActive,
           responseMode: edit.responseMode,
           ownerDiscordUserId: edit.ownerDiscordUserId,
           dmPolicy: edit.dmPolicy,
           dmAllowFrom: parsedDmAllowFrom,
-        }),
-      };
-
-      // Only include botToken if it was changed (not empty)
-      if (edit.botToken) {
-        payload.botToken = edit.botToken;
-      }
+          botToken: edit.botToken,
+        },
+      );
 
       const data = await api<{ success?: boolean; error?: string }>(
         `/api/v1/discord/connections/${connId}`,
@@ -486,6 +520,7 @@ export function DiscordGatewayConnection() {
           delete newState[connId];
           return newState;
         });
+        setExpandedId(null);
         void fetchConnections();
       } else {
         toast.error(
@@ -496,21 +531,40 @@ export function DiscordGatewayConnection() {
         );
       }
     } catch (error) {
-      toast.error(
-        error instanceof ApiError
-          ? apiErrorMessage(
-              error,
-              t("cloud.discord.updateFailed", {
-                defaultValue: "Failed to update connection",
-              }),
-            )
-          : t("cloud.discord.networkError", {
-              defaultValue: "Network error. Please check your connection.",
+      if (error instanceof ApiError && error.status === 409) {
+        try {
+          await refreshConnectionForEdit(connId, true);
+          toast.error(
+            t("cloud.discord.connectionChanged", {
+              defaultValue:
+                "Connection settings changed elsewhere. The latest settings were loaded and your edits were preserved; review and save again.",
             }),
-      );
+          );
+        } catch {
+          toast.error(
+            t("cloud.discord.connectionChangedRefreshFailed", {
+              defaultValue:
+                "Connection settings changed elsewhere, but the latest version could not be loaded. Close and reopen the editor before retrying.",
+            }),
+          );
+        }
+      } else {
+        toast.error(
+          error instanceof ApiError
+            ? apiErrorMessage(
+                error,
+                t("cloud.discord.updateFailed", {
+                  defaultValue: "Failed to update connection",
+                }),
+              )
+            : t("cloud.discord.networkError", {
+                defaultValue: "Network error. Please check your connection.",
+              }),
+        );
+      }
+    } finally {
+      setSavingId(null);
     }
-
-    setSavingId(null);
   };
 
   const handleDelete = async (id: string) => {
@@ -539,21 +593,20 @@ export function DiscordGatewayConnection() {
     setDeletingId(null);
   };
 
-  const initEditState = (conn: DiscordGatewayConnection) => {
-    if (!editState[conn.id]) {
-      setEditState((prev) => ({
-        ...prev,
-        [conn.id]: {
-          characterId: conn.characterId || "",
-          responseMode: conn.metadata?.responseMode || "always",
-          ownerDiscordUserId: conn.metadata?.ownerDiscordUserId || "",
-          dmPolicy: conn.metadata?.dmPolicy || "open",
-          dmAllowFrom: (conn.metadata?.dmAllowFrom || []).join(", "),
-          storedMetadata: conn.metadata,
-          botToken: "",
-          isActive: conn.isActive,
-        },
-      }));
+  const initEditState = async (connectionId: string) => {
+    setLoadingEditId(connectionId);
+    try {
+      await refreshConnectionForEdit(connectionId, false);
+    } catch {
+      toast.error(
+        t("cloud.discord.fetchConnectionFailed", {
+          defaultValue: "Failed to load the latest connection settings",
+        }),
+      );
+    } finally {
+      setLoadingEditId((current) =>
+        current === connectionId ? null : current,
+      );
     }
   };
 
@@ -633,7 +686,7 @@ export function DiscordGatewayConnection() {
                   open={isExpanded}
                   onOpenChange={(open) => {
                     setExpandedId(open ? conn.id : null);
-                    if (open) initEditState(conn);
+                    if (open) void initEditState(conn.id);
                   }}
                 >
                   <div className="border rounded-sm">
@@ -729,7 +782,15 @@ export function DiscordGatewayConnection() {
 
                     <CollapsibleContent>
                       <div className="border-t p-4 space-y-4 bg-muted/30">
-                        {edit && (
+                        {loadingEditId === conn.id && (
+                          <div className="flex items-center justify-center py-8 text-muted-foreground">
+                            <Loader2 className="h-5 w-5 animate-spin mr-2" />
+                            {t("cloud.discord.loadingConnectionSettings", {
+                              defaultValue: "Loading latest settings...",
+                            })}
+                          </div>
+                        )}
+                        {loadingEditId !== conn.id && edit && (
                           <>
                             {/* Character Selection */}
                             <div className="grid gap-4 sm:grid-cols-2">

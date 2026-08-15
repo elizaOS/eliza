@@ -69,6 +69,7 @@ app.get("/", async (c) => {
         lastHeartbeat: conn.last_heartbeat,
         createdAt: conn.created_at,
         updatedAt: conn.updated_at,
+        editVersion: conn.edit_version,
       })),
     });
   } catch (error) {

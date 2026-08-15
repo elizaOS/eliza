@@ -23,6 +23,20 @@ interface DiscordConnectionMetadataEdit {
   dmAllowFrom: string[];
 }
 
+interface DiscordConnectionPatchEdit extends DiscordConnectionMetadataEdit {
+  characterId: string | null;
+  isActive: boolean;
+  botToken: string;
+}
+
+export interface DiscordConnectionPatch {
+  characterId: string | null;
+  isActive: boolean;
+  metadata: DiscordConnectionMetadata;
+  expectedEditVersion: string;
+  botToken?: string;
+}
+
 /**
  * Composes editable DM controls over the complete stored metadata. The API
  * replaces this JSON object, so preserving fields outside the form here is the
@@ -57,4 +71,27 @@ export function buildDiscordConnectionMetadataUpdate(
   }
 
   return metadata;
+}
+
+/**
+ * Serializes a complete editor submission with the row version it was based
+ * on. The server uses that version to reject stale whole-metadata replacement.
+ */
+export function buildDiscordConnectionPatch(
+  stored: DiscordConnectionMetadata | null,
+  expectedEditVersion: string,
+  edit: DiscordConnectionPatchEdit,
+): DiscordConnectionPatch {
+  const patch: DiscordConnectionPatch = {
+    characterId: edit.characterId,
+    isActive: edit.isActive,
+    metadata: buildDiscordConnectionMetadataUpdate(stored, edit),
+    expectedEditVersion,
+  };
+
+  if (edit.botToken) {
+    patch.botToken = edit.botToken;
+  }
+
+  return patch;
 }

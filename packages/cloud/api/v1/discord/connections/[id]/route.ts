@@ -19,19 +19,35 @@ import { DiscordConnectionMetadataSchema } from "@/db/schemas/discord-connection
 import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
 import { logger } from "@/lib/utils/logger";
 
-const UpdateConnectionSchema = z.object({
-  // Character to use for responses
-  characterId: z.string().uuid().nullable().optional(),
+const UpdateConnectionSchema = z
+  .object({
+    // Character to use for responses
+    characterId: z.string().uuid().nullable().optional(),
 
-  // Bot token (re-encrypt if changed)
-  botToken: z.string().min(1).optional(),
+    // Bot token (re-encrypt if changed)
+    botToken: z.string().min(1).optional(),
 
-  // Whether the connection is active
-  isActive: z.boolean().optional(),
+    // Whether the connection is active
+    isActive: z.boolean().optional(),
 
-  // Response behavior configuration
-  metadata: DiscordConnectionMetadataSchema,
-});
+    // Response behavior configuration
+    metadata: DiscordConnectionMetadataSchema,
+
+    // Every configuration mutation is fenced by the revision the editor read.
+    expectedEditVersion: z
+      .string()
+      .regex(/^\d+$/)
+      .transform(Number)
+      .pipe(z.number().int().nonnegative().max(2_147_483_647)),
+  })
+  .refine(
+    (data) =>
+      data.characterId !== undefined ||
+      data.botToken !== undefined ||
+      data.isActive !== undefined ||
+      data.metadata !== undefined,
+    { message: "At least one connection setting must be updated" },
+  );
 
 /**
  * GET /api/v1/discord/connections/[id]
@@ -79,6 +95,7 @@ async function __hono_GET(
       lastHeartbeat: connection.last_heartbeat,
       createdAt: connection.created_at,
       updatedAt: connection.updated_at,
+      editVersion: connection.edit_version,
     },
   });
 }
@@ -154,21 +171,14 @@ async function __hono_PATCH(
     }
   }
 
-  // Handle bot token update separately (requires re-encryption)
-  if (data.botToken) {
-    await discordConnectionsRepository.updateBotToken(id, data.botToken);
-    // Force reconnection by clearing pod assignment
-    await discordConnectionsRepository.update(id, {
-      assigned_pod: null,
-      status: "pending",
-      updated_at: new Date(),
-    });
-  }
+  const updates: Parameters<
+    typeof discordConnectionsRepository.updateIfUnchanged
+  >[1] = {};
 
-  // Build update object for other fields
-  const updates: Record<string, unknown> = {
-    updated_at: new Date(),
-  };
+  if (data.botToken) {
+    updates.assigned_pod = null;
+    updates.status = "pending";
+  }
 
   if (data.characterId !== undefined) {
     updates.character_id = data.characterId;
@@ -187,13 +197,20 @@ async function __hono_PATCH(
     updates.metadata = data.metadata;
   }
 
-  // Only call update if there are non-token fields to update
-  let updated = connection;
-  if (Object.keys(updates).length > 1) {
-    updated = await discordConnectionsRepository.update(id, updates);
-  } else if (data.botToken) {
-    // Re-fetch if only token was updated
-    updated = (await discordConnectionsRepository.findById(id))!;
+  const updated = await discordConnectionsRepository.updateIfUnchanged(
+    id,
+    updates,
+    data.expectedEditVersion,
+    data.botToken,
+  );
+  if (!updated) {
+    return Response.json(
+      {
+        success: false,
+        error: "Connection changed since editing began. Refresh and try again.",
+      },
+      { status: 409 },
+    );
   }
 
   logger.info("[Discord Connections] Updated connection", {
@@ -213,6 +230,7 @@ async function __hono_PATCH(
       isActive: updated.is_active,
       metadata: updated.metadata,
       updatedAt: updated.updated_at,
+      editVersion: updated.edit_version,
     },
   });
 }

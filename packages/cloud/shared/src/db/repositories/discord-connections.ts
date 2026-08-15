@@ -1,5 +1,5 @@
 // Persists discord connections records for cloud services through the shared DB boundary.
-import { and, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, eq, getTableColumns, inArray, isNull, sql } from "drizzle-orm";
 import { getEncryptionService } from "../../lib/services/secrets/encryption";
 import { logger } from "../../lib/utils/logger";
 import { db } from "../client";
@@ -27,6 +27,17 @@ interface DecryptedAssignment {
   intents: number;
   characterId: string | null;
 }
+
+export type DiscordConnectionWithVersion = DiscordConnection & {
+  edit_version: string;
+};
+
+const discordConnectionVersionedColumns = {
+  ...getTableColumns(discordConnections),
+  edit_version: sql<string>`CAST(${discordConnections.configuration_revision} AS text)`.as(
+    "edit_version",
+  ),
+};
 
 /** Valid connection status values (matches migration CHECK constraint) */
 type ConnectionStatus = "pending" | "connecting" | "connected" | "disconnected" | "error";
@@ -56,18 +67,18 @@ export const discordConnectionsRepository = {
     return connection;
   },
 
-  async findById(id: string): Promise<DiscordConnection | null> {
+  async findById(id: string): Promise<DiscordConnectionWithVersion | null> {
     const [connection] = await db
-      .select()
+      .select(discordConnectionVersionedColumns)
       .from(discordConnections)
       .where(eq(discordConnections.id, id))
       .limit(1);
     return connection ?? null;
   },
 
-  async findByOrganizationId(organizationId: string): Promise<DiscordConnection[]> {
+  async findByOrganizationId(organizationId: string): Promise<DiscordConnectionWithVersion[]> {
     return db
-      .select()
+      .select(discordConnectionVersionedColumns)
       .from(discordConnections)
       .where(eq(discordConnections.organization_id, organizationId));
   },
@@ -305,21 +316,47 @@ export const discordConnectionsRepository = {
   },
 
   /**
-   * Update a connection's fields.
+   * Publishes an editor snapshot only while the configuration revision still
+   * matches. Telemetry and gateway liveness writes deliberately do not advance
+   * this counter, so an active connection remains editable between heartbeats.
    */
-  async update(
+  async updateIfUnchanged(
     id: string,
     updates: Partial<typeof discordConnections.$inferInsert>,
-  ): Promise<DiscordConnection> {
+    expectedConfigurationRevision: number,
+    newBotToken?: string,
+  ): Promise<DiscordConnectionWithVersion | null> {
+    let tokenUpdates: Partial<typeof discordConnections.$inferInsert> = {};
+    if (newBotToken !== undefined) {
+      const encryption = getEncryptionService();
+      const { encryptedValue, encryptedDek, nonce, authTag, keyId } =
+        await encryption.encrypt(newBotToken);
+      tokenUpdates = {
+        bot_token_encrypted: encryptedValue,
+        encrypted_dek: encryptedDek,
+        token_nonce: nonce,
+        token_auth_tag: authTag,
+        encryption_key_id: keyId,
+      };
+    }
+
     const [connection] = await db
       .update(discordConnections)
       .set({
         ...updates,
+        ...tokenUpdates,
+        configuration_revision: sql`${discordConnections.configuration_revision} + 1`,
         updated_at: new Date(),
       })
-      .where(eq(discordConnections.id, id))
-      .returning();
-    return connection;
+      .where(
+        and(
+          eq(discordConnections.id, id),
+          eq(discordConnections.configuration_revision, expectedConfigurationRevision),
+        ),
+      )
+      .returning(discordConnectionVersionedColumns);
+
+    return connection ?? null;
   },
 
   async delete(id: string): Promise<boolean> {
@@ -337,6 +374,7 @@ export const discordConnectionsRepository = {
         is_active: false,
         assigned_pod: null,
         status: "disconnected",
+        configuration_revision: sql`${discordConnections.configuration_revision} + 1`,
         updated_at: new Date(),
       })
       .where(eq(discordConnections.id, id))
@@ -436,6 +474,7 @@ export const discordConnectionsRepository = {
         token_nonce: nonce,
         token_auth_tag: authTag,
         encryption_key_id: keyId,
+        configuration_revision: sql`${discordConnections.configuration_revision} + 1`,
         updated_at: new Date(),
       })
       .where(eq(discordConnections.id, connectionId))
