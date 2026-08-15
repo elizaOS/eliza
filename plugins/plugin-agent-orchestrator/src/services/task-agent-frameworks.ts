@@ -13,6 +13,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import {
+  ElizaError,
   getElizaNamespace,
   type IAgentRuntime,
   resolveStateDir,
@@ -219,14 +220,30 @@ const STANDARD_FRAMEWORKS: SupportedTaskAgentAdapter[] = [
 ];
 
 const DEFAULT_FRAMEWORK_PREFLIGHT_TIMEOUT_MS = 5_000;
+const MAX_FRAMEWORK_PREFLIGHT_TIMEOUT_MS = 2_147_483_647;
 
 function resolveFrameworkPreflightTimeoutMs(): number {
   const raw = process.env.ELIZA_FRAMEWORK_PREFLIGHT_TIMEOUT_MS?.trim();
   if (!raw) return DEFAULT_FRAMEWORK_PREFLIGHT_TIMEOUT_MS;
-  const parsed = Number.parseInt(raw, 10);
-  return Number.isFinite(parsed) && parsed >= 250
-    ? parsed
-    : DEFAULT_FRAMEWORK_PREFLIGHT_TIMEOUT_MS;
+  const parsed = /^[1-9]\d*$/u.test(raw) ? Number(raw) : Number.NaN;
+  if (
+    !Number.isSafeInteger(parsed) ||
+    parsed < 250 ||
+    parsed > MAX_FRAMEWORK_PREFLIGHT_TIMEOUT_MS
+  ) {
+    throw new ElizaError(
+      `ELIZA_FRAMEWORK_PREFLIGHT_TIMEOUT_MS must be a decimal integer between 250 and ${MAX_FRAMEWORK_PREFLIGHT_TIMEOUT_MS}`,
+      {
+        code: "FRAMEWORK_PREFLIGHT_TIMEOUT_INVALID",
+        context: {
+          configured: raw,
+          minimum: 250,
+          maximum: MAX_FRAMEWORK_PREFLIGHT_TIMEOUT_MS,
+        },
+      },
+    );
+  }
+  return parsed;
 }
 
 async function withTimeout<T>(
@@ -685,10 +702,11 @@ async function computeTaskAgentFrameworkState(
   >();
 
   if (probe?.checkAvailableAgents) {
+    const preflightTimeoutMs = resolveFrameworkPreflightTimeoutMs();
     try {
       const results = await withTimeout(
         probe.checkAvailableAgents(STANDARD_FRAMEWORKS),
-        resolveFrameworkPreflightTimeoutMs(),
+        preflightTimeoutMs,
         "task-agent framework preflight",
       );
       // checkAdapters returns `adapter` as the human-readable display name
