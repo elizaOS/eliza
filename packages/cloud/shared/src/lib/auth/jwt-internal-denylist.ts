@@ -32,7 +32,8 @@
  * case {@link isDenylistConfigured} returns `false`; the verifier documents and
  * enforces this by skipping the (impossible) denylist read instead of failing
  * every request. Deployments that require same-hour single-token revocation
- * MUST configure Redis (`REDIS_URL` or `KV_REST_API_*`).
+ * MUST configure a runtime-compatible Redis backend: `REDIS_URL` on Node, or
+ * `KV_REST_API_*` / `UPSTASH_REDIS_REST_*` in Cloudflare Workers.
  */
 
 import {
@@ -40,6 +41,7 @@ import {
   type CompatibleRedis,
   hasRedisConfig,
   isCloudflareWorkerRuntime,
+  type RedisFactoryEnvSource,
 } from "../cache/redis-factory";
 import { logger } from "../utils/logger";
 
@@ -63,13 +65,33 @@ function denylistKey(jti: string): string {
 let cachedRedis: CompatibleRedis | null = null;
 
 /**
+ * Select only Redis transports that the current runtime can actually use.
+ * Production Workers may inherit Railway's TCP `REDIS_URL`, but workerd cannot
+ * reliably reach that external socket. Treating it as a usable revocation
+ * store rejects every otherwise-valid internal token. REST Redis remains
+ * available and fail-closed in Workers; Node keeps the normal TCP-first
+ * factory resolution.
+ */
+function getDenylistRedisEnv(): RedisFactoryEnvSource {
+  if (!isCloudflareWorkerRuntime()) return process.env;
+
+  return {
+    MOCK_REDIS: process.env.MOCK_REDIS,
+    KV_REST_API_URL: process.env.KV_REST_API_URL,
+    KV_REST_API_TOKEN: process.env.KV_REST_API_TOKEN,
+    UPSTASH_REDIS_REST_URL: process.env.UPSTASH_REDIS_REST_URL,
+    UPSTASH_REDIS_REST_TOKEN: process.env.UPSTASH_REDIS_REST_TOKEN,
+  };
+}
+
+/**
  * Resolve the Redis client. On Workers a client is built per call (a cached TCP
  * socket belongs to the request that opened it); on Node the client is cached.
  * Mirrors the pattern in `middleware/rate-limit-redis`.
  */
 function getRedis(): CompatibleRedis | null {
   if (!isCloudflareWorkerRuntime() && cachedRedis) return cachedRedis;
-  const client = buildRedisClient();
+  const client = buildRedisClient(getDenylistRedisEnv());
   if (client && !isCloudflareWorkerRuntime()) cachedRedis = client;
   return client;
 }
@@ -79,7 +101,7 @@ function getRedis(): CompatibleRedis | null {
  * supported. When `false`, revocation falls back to key-rotation + TTL only.
  */
 export function isDenylistConfigured(): boolean {
-  return hasRedisConfig();
+  return hasRedisConfig(getDenylistRedisEnv());
 }
 
 /**
