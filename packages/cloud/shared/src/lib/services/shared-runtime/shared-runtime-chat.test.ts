@@ -417,6 +417,28 @@ describe("SharedRuntimeChatService", () => {
     expect(settleCalls).toEqual([0.004]);
   });
 
+  test("platform-funded personal Shared rate-limits without touching account credits", async () => {
+    const service = new SharedRuntimeChatService();
+    const h = harness();
+
+    const response = await service.bridge(agent, rpc, {
+      ...h,
+      funding: "platform",
+    });
+
+    expect(response.result?.text).toBe("hello back");
+    expect(enforceOrgRateLimit).toHaveBeenCalledWith(agent.organization_id, "completions", {
+      cacheOnly: true,
+      executionCtx: h.executionCtx,
+      config: { windowMs: 60_000, maxRequests: 60 },
+    });
+    expect(getInferenceAdmissionSnapshotCacheOnly).not.toHaveBeenCalled();
+    expect(admitOrganizationInference).not.toHaveBeenCalled();
+    expect(billCalls).toHaveLength(0);
+    expect(settleCalls).toHaveLength(0);
+    expect(h.history()).toHaveLength(3);
+  });
+
   test("rate denial and policy warming stop before billing admission or provider dispatch", async () => {
     const service = new SharedRuntimeChatService();
     const h = harness();

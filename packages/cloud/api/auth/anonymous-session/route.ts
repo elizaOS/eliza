@@ -14,6 +14,11 @@ import { eq } from "drizzle-orm";
 import { Hono } from "hono";
 import { getCookie, setCookie } from "hono/cookie";
 import { nanoid } from "nanoid";
+import {
+  MAX_ANONYMOUS_EXPIRY_DAYS,
+  MAX_ANONYMOUS_MESSAGE_LIMIT,
+  parseAnonymousPositiveIntEnv,
+} from "@/auth/anonymous-session-config";
 import { dbRead } from "@/db/helpers";
 import { userIdentities } from "@/db/schemas/user-identities";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
@@ -29,21 +34,6 @@ import type { AppEnv } from "@/types/cloud-worker-env";
 
 const ANON_SESSION_COOKIE = "eliza-anon-session";
 
-function parsePositiveIntEnv(
-  value: string | undefined,
-  defaultValue: number,
-  name: string,
-): number {
-  const n = Number.parseInt(value || String(defaultValue), 10);
-  if (Number.isNaN(n) || n <= 0) {
-    logger.warn(
-      `[anonymous-session] Invalid ${name}, using default: ${defaultValue}`,
-    );
-    return defaultValue;
-  }
-  return n;
-}
-
 const app = new Hono<AppEnv>();
 
 app.use("*", rateLimit(RateLimitPresets.AGGRESSIVE));
@@ -55,15 +45,19 @@ app.post("/", async (c) => {
       PUBLIC_CHAT_MESSAGE_LIMIT?: string;
       NODE_ENV?: string;
     };
-    const expiryDays = parsePositiveIntEnv(
+    const expiryDays = parseAnonymousPositiveIntEnv(
       env.ANON_SESSION_EXPIRY_DAYS,
       7,
       "ANON_SESSION_EXPIRY_DAYS",
+      MAX_ANONYMOUS_EXPIRY_DAYS,
+      "anonymous-session",
     );
-    const messagesLimit = parsePositiveIntEnv(
+    const messagesLimit = parseAnonymousPositiveIntEnv(
       env.PUBLIC_CHAT_MESSAGE_LIMIT,
       3,
       "PUBLIC_CHAT_MESSAGE_LIMIT",
+      MAX_ANONYMOUS_MESSAGE_LIMIT,
+      "anonymous-session",
     );
 
     const cookieToken = getCookie(c, ANON_SESSION_COOKIE);

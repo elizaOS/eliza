@@ -7,7 +7,8 @@
  * Covers the cold-start wins added for the installed iOS PWA:
  *  - navigation preload is enabled on activate (feature-detected)
  *  - first install claims but never navigates an in-flight auth bridge
- *  - replacement workers navigate existing windows to the fresh renderer
+ *  - replacement workers are the single owner that navigates each ordinary
+ *    window once while preserving auth routes
  *  - a navigation consumes event.preloadResponse instead of a second fetch
  *  - immutable /assets/<hash>.{js,css,...} are served cache-first and cached
  *  - the immutable asset cache is bounded (oldest entries evicted past the cap)

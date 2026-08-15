@@ -102,6 +102,12 @@ const STT_PARTIAL_EMIT_INTERVAL_MS = 40;
 const CACHE_WARMING_RETRY_DELAYS_MS = [250, 500, 1_000, 2_000, 4_000] as const;
 /** Replace a failed realtime recognizer without dropping the live phone call. */
 const STT_RECONNECT_DELAYS_MS = [0, 250, 1_000] as const;
+/**
+ * Bound each outbound Ink upgrade so reconnect exhaustion can always advance.
+ * Four connection windows (initial + three retries) and the retry delays total
+ * 11.25s, below the 12.8s provider-audio buffer retained during replacement.
+ */
+const STT_CONNECT_TIMEOUT_MS = 2_500;
 const CACHE_WARMING_CODES = new Set([
   "agent_cache_warming",
   "shared_runtime_cache_warming",
@@ -153,6 +159,8 @@ export interface VoiceSessionConfig {
   cacheWarmingRetryDelaysMs?: readonly number[];
   /** Deterministic test override for the bounded Ink reconnect schedule. */
   sttReconnectDelaysMs?: readonly number[];
+  /** Deterministic test override for the Ink connection-establishment bound. */
+  sttConnectTimeoutMs?: number;
 
   // Metering (SEC-15). Server-derived only.
   usageStore: VoiceUsageStore;
@@ -201,6 +209,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
   private sttGeneration = 0;
   private sttReconnectAttempts = 0;
   private sttReconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private sttConnectTimer: ReturnType<typeof setTimeout> | null = null;
   private readonly providerPendingFrames: ArrayBuffer[] = [];
   private readonly cartesiaAdapter: CartesiaSonicTtsAdapter;
   private readonly fishAudioAdapter: FishAudioTtsAdapter | null = null;
@@ -492,6 +501,22 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
       webSocketFactory: this.config.cartesiaInkWebSocketFactory,
       onEvent: (event) => this.onSttEvent(event, generation),
     });
+    const timeoutMs = this.config.sttConnectTimeoutMs ?? STT_CONNECT_TIMEOUT_MS;
+    const timer = setTimeout(() => {
+      if (this.sttConnectTimer !== timer) return;
+      this.sttConnectTimer = null;
+      if (this.closed || generation !== this.sttGeneration || this.sttReady) {
+        return;
+      }
+      logger.warn("[voice-session] Ink connection timed out", {
+        sessionId: this.sessionId,
+        attempt: this.sttReconnectAttempts,
+        timeoutMs,
+      });
+      this.send({ t: "error", code: "stt_reconnecting", retryable: true });
+      this.recoverSttTransport("connect_timeout", generation);
+    }, timeoutMs);
+    this.sttConnectTimer = timer;
   }
 
   private onSttEvent(
@@ -505,6 +530,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
         // has already emitted its own authenticated `ready` frame.
         this.sttReconnectAttempts = 0;
         this.sttReady = true;
+        this.clearSttConnectTimeout();
         const buffered = this.providerPendingFrames.splice(0);
         for (const frame of buffered) if (!this.forwardSttFrame(frame)) break;
         break;
@@ -586,6 +612,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
    */
   private recoverSttTransport(reason: string, generation: number): void {
     if (this.closed || generation !== this.sttGeneration) return;
+    this.clearSttConnectTimeout();
     const failed = this.stt;
     this.stt = null;
     this.sttReady = false;
@@ -601,6 +628,12 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
       }
     }
     this.scheduleSttReconnect(reason);
+  }
+
+  private clearSttConnectTimeout(): void {
+    if (this.sttConnectTimer === null) return;
+    clearTimeout(this.sttConnectTimer);
+    this.sttConnectTimer = null;
   }
 
   private scheduleSttReconnect(reason: string): void {
@@ -1169,6 +1202,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
       clearTimeout(this.sttReconnectTimer);
       this.sttReconnectTimer = null;
     }
+    this.clearSttConnectTimeout();
 
     if (this.ttsStream) {
       try {

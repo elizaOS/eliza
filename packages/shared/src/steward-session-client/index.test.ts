@@ -10,9 +10,25 @@ import {
   STEWARD_SESSION_CHANGE_EVENT,
   STEWARD_TOKEN_KEY,
   type StewardSessionChangeDetail,
+  sanitizeTelegramAccountClaimContinuation,
   stewardAuthedCookieName,
   writeStoredStewardToken,
 } from "./index";
+
+describe("Telegram account-claim credential", () => {
+  it("accepts opaque tokens and rejects guessable platform ids", () => {
+    expect(
+      sanitizeTelegramAccountClaimContinuation(
+        "  opaque-telegram-claim-token  ",
+      ),
+    ).toBe("opaque-telegram-claim-token");
+    expect(
+      sanitizeTelegramAccountClaimContinuation("platform:telegram:123456789"),
+    ).toBeNull();
+    expect(sanitizeTelegramAccountClaimContinuation("short")).toBeNull();
+    expect(sanitizeTelegramAccountClaimContinuation(null)).toBeNull();
+  });
+});
 
 function stubDocumentCookie(cookie: string): void {
   vi.stubGlobal("document", { cookie });

@@ -1255,8 +1255,16 @@ export const shellAction: Action = {
     },
   ],
   validate: async () => true,
-  summarize: (result, params) =>
-    result?.success === true ? summarizeShellCommand(params) : undefined,
+  summarize: (result) => {
+    if (result?.success !== true) return undefined;
+    const data =
+      result.data &&
+      typeof result.data === "object" &&
+      !Array.isArray(result.data)
+        ? (result.data as Record<string, unknown>)
+        : undefined;
+    return summarizeShellCommand(data?.command);
+  },
   handler: async (
     runtime: IAgentRuntime,
     message: Memory,
@@ -1527,7 +1535,7 @@ export const shellAction: Action = {
       if (v.ok === false) {
         return failureToActionResult({
           reason: v.reason === "blocked" ? "path_blocked" : "invalid_param",
-          message: v.message,
+          message: redactShellText(runtime, v.message),
         });
       }
       try {
@@ -1552,11 +1560,19 @@ export const shellAction: Action = {
         const fallback = await session.getExistingCwd(conversationId);
         cwd = fallback.cwd;
         coreLogger.warn(
-          `${CODING_TOOLS_LOG_PREFIX} SHELL cwd not found; using session cwd (requested=${cwdParam}, fallback=${cwd})`,
+          {
+            requestedCwd: redactShellText(runtime, cwdParam),
+            fallbackCwd: redactShellText(runtime, cwd),
+          },
+          `${CODING_TOOLS_LOG_PREFIX} SHELL cwd not found; using session cwd`,
         );
         if (fallback.reset && fallback.previousCwd) {
           coreLogger.warn(
-            `${CODING_TOOLS_LOG_PREFIX} SHELL reset missing session cwd (previous=${fallback.previousCwd}, fallback=${cwd})`,
+            {
+              previousCwd: redactShellText(runtime, fallback.previousCwd),
+              fallbackCwd: redactShellText(runtime, cwd),
+            },
+            `${CODING_TOOLS_LOG_PREFIX} SHELL reset missing session cwd`,
           );
         }
       }
@@ -1570,11 +1586,19 @@ export const shellAction: Action = {
       ) {
         cwd = sessionCwd.cwd;
         coreLogger.warn(
-          `${CODING_TOOLS_LOG_PREFIX} SHELL ignored ungrounded runtime cwd; using session cwd (requested=${v.resolved}, fallback=${cwd})`,
+          {
+            requestedCwd: redactShellText(runtime, v.resolved),
+            fallbackCwd: redactShellText(runtime, cwd),
+          },
+          `${CODING_TOOLS_LOG_PREFIX} SHELL ignored ungrounded runtime cwd; using session cwd`,
         );
         if (sessionCwd.reset && sessionCwd.previousCwd) {
           coreLogger.warn(
-            `${CODING_TOOLS_LOG_PREFIX} SHELL reset missing session cwd (previous=${sessionCwd.previousCwd}, fallback=${cwd})`,
+            {
+              previousCwd: redactShellText(runtime, sessionCwd.previousCwd),
+              fallbackCwd: redactShellText(runtime, cwd),
+            },
+            `${CODING_TOOLS_LOG_PREFIX} SHELL reset missing session cwd`,
           );
         }
       }
@@ -1584,7 +1608,11 @@ export const shellAction: Action = {
       cwd = sessionCwd.cwd;
       if (sessionCwd.reset && sessionCwd.previousCwd) {
         coreLogger.warn(
-          `${CODING_TOOLS_LOG_PREFIX} SHELL reset missing session cwd (previous=${sessionCwd.previousCwd}, fallback=${cwd})`,
+          {
+            previousCwd: redactShellText(runtime, sessionCwd.previousCwd),
+            fallbackCwd: redactShellText(runtime, cwd),
+          },
+          `${CODING_TOOLS_LOG_PREFIX} SHELL reset missing session cwd`,
         );
       }
     }
@@ -1597,7 +1625,8 @@ export const shellAction: Action = {
     if (groundedCommand !== command) {
       command = groundedCommand;
       coreLogger.warn(
-        `${CODING_TOOLS_LOG_PREFIX} SHELL removed ungrounded runtime directory override; using cwd=${cwd}`,
+        { cwd: redactShellText(runtime, cwd) },
+        `${CODING_TOOLS_LOG_PREFIX} SHELL removed ungrounded runtime directory override`,
       );
     }
     // The disk / memory / source-search / crypto command rewrites below are
@@ -1630,21 +1659,25 @@ export const shellAction: Action = {
       const verdict = classifyDestructiveCommand(command);
       const confirmed = readBoolParam(options, "confirm") === true;
       if (verdict.destructive && !confirmed) {
+        const redactedReason = verdict.reason
+          ? redactShellText(runtime, verdict.reason)
+          : undefined;
+        const redactedTargets = verdict.targets.map((target) =>
+          redactShellText(runtime, target),
+        );
         const targetList =
-          verdict.targets.filter(Boolean).join(", ") || "its targets";
+          redactedTargets.filter(Boolean).join(", ") || "its targets";
         return failureToActionResult(
           {
             reason: "needs_confirmation",
             message:
-              `this ${verdict.reason ?? "destructive operation"} would permanently affect: ${targetList}. ` +
+              `this ${redactedReason ?? "destructive operation"} would permanently affect: ${targetList}. ` +
               "ask the user to confirm the exact operation, then re-run with confirm=true.",
           },
           {
             command: redactShellText(runtime, command),
-            destructive_reason: verdict.reason,
-            targets: verdict.targets.map((target) =>
-              redactShellText(runtime, target),
-            ),
+            destructive_reason: redactedReason,
+            targets: redactedTargets,
           },
         );
       }
@@ -1768,12 +1801,16 @@ export const shellAction: Action = {
     );
 
     coreLogger.debug(
-      `${CODING_TOOLS_LOG_PREFIX} SHELL cwd=${cwd} timeout=${timeout}ms`,
+      { cwd: redactedCwd, timeoutMs: timeout },
+      `${CODING_TOOLS_LOG_PREFIX} SHELL dispatch configuration`,
     );
 
     const startedAt = Date.now();
     const mode = resolveRuntimeExecutionMode(runtime);
-    coreLogger.info(`${CODING_TOOLS_LOG_PREFIX} SHELL mode=${mode} cwd=${cwd}`);
+    coreLogger.info(
+      { mode, cwd: redactedCwd },
+      `${CODING_TOOLS_LOG_PREFIX} SHELL dispatch`,
+    );
 
     let result: ShellResult;
     try {

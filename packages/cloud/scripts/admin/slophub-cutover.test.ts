@@ -25,6 +25,7 @@ interface HarnessOptions {
   dnsRecords?: Record<string, unknown>[];
   firewallActionStatus?: "error" | "running" | "success";
   firewallPollStatus?: "error" | "success";
+  firewallSetRuleActions?: unknown[];
   firewalls?: Record<string, unknown>[];
   reverseFirewallRulesAfterSet?: boolean;
   servers?: Record<string, unknown>[];
@@ -157,7 +158,9 @@ function harness(options: HarnessOptions = {}) {
           : retainedRules,
       };
       return Response.json({
-        action: { id: 100, status: options.firewallActionStatus ?? "success" },
+        actions: options.firewallSetRuleActions ?? [
+          { id: 100, status: options.firewallActionStatus ?? "success" },
+        ],
       });
     }
     if (
@@ -478,6 +481,31 @@ describe("SlopHub cutover apply", () => {
       ),
     ).toBe(true);
     expect(droppedRule.state.dnsRecords).toEqual([]);
+  });
+
+  test("rejects missing or ambiguous Hetzner action lists before DNS", async () => {
+    for (const firewallSetRuleActions of [
+      [],
+      [
+        { id: 100, status: "success" },
+        { id: 101, status: "success" },
+      ],
+    ]) {
+      const provider = harness({ firewallSetRuleActions });
+      const reviewed = await buildSlopHubCutoverPlan(
+        environment,
+        provider.request,
+      );
+      await expect(
+        applySlopHubCutoverPlan(reviewed, environment, provider.request),
+      ).rejects.toThrow(/exactly one action/);
+      expect(
+        provider.mutations.every(
+          ({ url }) => !url.includes("api.cloudflare.com"),
+        ),
+      ).toBe(true);
+      expect(provider.state.dnsRecords).toEqual([]);
+    }
   });
 
   test("waits for an asynchronous Hetzner action and ignores provider rule ordering", async () => {

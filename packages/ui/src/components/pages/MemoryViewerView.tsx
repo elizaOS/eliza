@@ -414,6 +414,7 @@ function MemoryFeedPanel({ typeFilter }: { typeFilter: readonly string[] }) {
         <Button
           type="button"
           className={MEMORY_FOCUS_CLASS}
+          data-chat-open="true"
           onClick={dispatchChatOpen}
         >
           {t("memoryviewer.empty.askEliza", { defaultValue: "Ask Eliza" })}
@@ -626,6 +627,7 @@ function MemoryBrowserPanel({
             <Button
               type="button"
               className={`${MEMORY_FOCUS_CLASS} mt-4`}
+              data-chat-open="true"
               onClick={dispatchChatOpen}
             >
               {t("memoryviewer.empty.askEliza", { defaultValue: "Ask Eliza" })}
