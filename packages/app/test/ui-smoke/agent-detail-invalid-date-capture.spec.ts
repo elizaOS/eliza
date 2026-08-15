@@ -11,6 +11,7 @@ import {
   installCloudApiStubs,
   seedStewardToken,
 } from "./helpers/cloud-audit-fixtures";
+import { installDefaultAppRoutes, seedAppStorage } from "./helpers";
 
 test.use({ video: "on" });
 
@@ -18,6 +19,29 @@ test("agent detail page renders explicit fallbacks for a malformed agent timesta
   page,
 }) => {
   await seedStewardToken(page);
+  // The dashboard surface was consolidated behind the booted app shell
+  // (0468c1850a): /cloud/* renders only after startup resolves, so seed a
+  // completed first-run and a managed-cloud active server or the page sits at
+  // "Booting up..." forever.
+  await seedAppStorage(page);
+  await page.addInitScript(() => {
+    try {
+      localStorage.setItem(
+        "elizaos:active-server",
+        JSON.stringify({
+          id: "cloud:personal:11111111-1111-5111-8111-111111111111",
+          kind: "cloud",
+          label: "Eliza Cloud",
+          apiBase: location.origin,
+          cloudRuntimeAgentId: "22222222-2222-4222-8222-222222222222",
+          cloudRuntime: "dedicated",
+        }),
+      );
+    } catch {
+      // Sandboxed frames can deny storage; the shell frame is what matters.
+    }
+  });
+  await installDefaultAppRoutes(page);
   await installCloudApiStubs(page);
   await page.route("**/api/v1/eliza/agents/agent-smoke-1", async (route) => {
     await route.fulfill({
@@ -45,7 +69,9 @@ test("agent detail page renders explicit fallbacks for a malformed agent timesta
     });
   });
 
-  await page.goto("/dashboard/agents/agent-smoke-1", {
+  // The dashboard/* surface was consolidated into /cloud/* (0468c1850a);
+  // agent detail now lives at /cloud/agents/:id.
+  await page.goto("/cloud/agents/agent-smoke-1", {
     waitUntil: "domcontentloaded",
   });
   await page.waitForSelector("text=Smoke Agent", { timeout: 15_000 });
