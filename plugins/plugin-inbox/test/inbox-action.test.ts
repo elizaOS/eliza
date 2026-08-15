@@ -193,6 +193,39 @@ describe("INBOX umbrella action — cross-channel inbox", () => {
   });
 
   describe("list", () => {
+    it.each([0.5, Number.NaN, Number.POSITIVE_INFINITY, 101, 2 ** 53])(
+      "rejects invalid limit %s before calling a platform fetcher",
+      async (limit) => {
+        const gmailFetcher = vi.fn(async () => []);
+        setInboxFetchers({ gmail: gmailFetcher });
+
+        const result = await callInbox(makeRuntime(), makeMessage(), {
+          subaction: "list",
+          platforms: ["gmail"],
+          limit,
+        });
+
+        expect(result.success).toBe(false);
+        expect(result.data).toMatchObject({ error: "INVALID_LIMIT" });
+        expect(gmailFetcher).not.toHaveBeenCalled();
+      },
+    );
+
+    it("rejects an invalid since boundary before calling a platform fetcher", async () => {
+      const gmailFetcher = vi.fn(async () => []);
+      setInboxFetchers({ gmail: gmailFetcher });
+
+      const result = await callInbox(makeRuntime(), makeMessage(), {
+        subaction: "list",
+        platforms: ["gmail"],
+        since: "not-a-date",
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.data).toMatchObject({ error: "INVALID_SINCE" });
+      expect(gmailFetcher).not.toHaveBeenCalled();
+    });
+
     it("fans out to all configured platforms and orders by recency", async () => {
       setInboxFetchers({
         gmail: async () => [
@@ -299,18 +332,24 @@ describe("INBOX umbrella action — cross-channel inbox", () => {
       expect(result.text).not.toContain("sample, not a total");
     });
 
-    it("names the since window on the non-empty pull", async () => {
+    it("canonicalizes and names the since window on the non-empty pull", async () => {
+      const gmailFetcher = vi.fn(async () => [
+        makeItem({ id: "g-1", platform: "gmail" }),
+      ]);
       setInboxFetchers({
-        gmail: async () => [makeItem({ id: "g-1", platform: "gmail" })],
+        gmail: gmailFetcher,
       });
       const result = await callInbox(makeRuntime(), makeMessage(), {
         subaction: "list",
         platforms: ["gmail"],
-        since: "2026-05-01T00:00:00.000Z",
+        since: "2026-05-01",
       });
       expect(result.text).toContain("Pulled 1 messages");
       expect(result.text).toContain("since 2026-05-01T00:00:00.000Z");
       expect(result.text).toContain("up to 50 per platform");
+      expect(gmailFetcher).toHaveBeenCalledWith(
+        expect.objectContaining({ since: "2026-05-01T00:00:00.000Z" }),
+      );
     });
   });
 
@@ -502,6 +541,96 @@ describe("INBOX umbrella action — cross-channel inbox", () => {
   });
 
   describe("triage queue operations", () => {
+    it.each([0.5, Number.NaN, Number.POSITIVE_INFINITY, 101, 2 ** 53])(
+      "rejects invalid triage limit %s before fetching or reading the queue",
+      async (limit) => {
+        const gmailFetcher = vi.fn(async () => []);
+        setInboxFetchers({ gmail: gmailFetcher });
+        const { runtime, calls } = makeDbRuntime(() => []);
+
+        const result = await callInbox(runtime, makeMessage(), {
+          subaction: "triage",
+          platforms: ["gmail"],
+          limit,
+        });
+
+        expect(result.success).toBe(false);
+        expect(result.data).toMatchObject({ error: "INVALID_LIMIT" });
+        expect(gmailFetcher).not.toHaveBeenCalled();
+        expect(calls).toHaveLength(0);
+      },
+    );
+
+    it("rejects an invalid triage since boundary before fetching or reading the queue", async () => {
+      const gmailFetcher = vi.fn(async () => []);
+      setInboxFetchers({ gmail: gmailFetcher });
+      const { runtime, calls } = makeDbRuntime(() => []);
+
+      const result = await callInbox(runtime, makeMessage(), {
+        subaction: "triage",
+        platforms: ["gmail"],
+        since: "not-a-date",
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.data).toMatchObject({ error: "INVALID_SINCE" });
+      expect(gmailFetcher).not.toHaveBeenCalled();
+      expect(calls).toHaveLength(0);
+    });
+
+    it("reports source overflow on triage as a capped sample", async () => {
+      const gmailFetcher = vi.fn(async ({ limit }: { limit: number }) =>
+        Array.from({ length: limit }, (_, index) =>
+          makeItem({ id: `g-${index}`, platform: "gmail" }),
+        ),
+      );
+      setInboxFetchers({ gmail: gmailFetcher });
+      const { runtime } = makeDbRuntime((sql) =>
+        sql.includes("SELECT source_message_id")
+          ? [{ source_message_id: "g-0" }, { source_message_id: "g-1" }]
+          : [],
+      );
+
+      const result = await callInbox(runtime, makeMessage(), {
+        subaction: "triage",
+        platforms: ["gmail"],
+        limit: 2,
+      });
+
+      expect(result.success).toBe(true);
+      expect(gmailFetcher).toHaveBeenCalledWith(
+        expect.objectContaining({ limit: 3 }),
+      );
+      expect(result.text).toContain("gmail hit that cap");
+      expect(result.text).toContain("sample, not a total");
+      expect(result.data).toMatchObject({ capped: ["gmail"] });
+    });
+
+    it("does not report an exact-fit triage source as capped", async () => {
+      const gmailFetcher = vi.fn(async () =>
+        Array.from({ length: 2 }, (_, index) =>
+          makeItem({ id: `g-${index}`, platform: "gmail" }),
+        ),
+      );
+      setInboxFetchers({ gmail: gmailFetcher });
+      const { runtime } = makeDbRuntime((sql) =>
+        sql.includes("SELECT source_message_id")
+          ? [{ source_message_id: "g-0" }, { source_message_id: "g-1" }]
+          : [],
+      );
+
+      const result = await callInbox(runtime, makeMessage(), {
+        subaction: "triage",
+        platforms: ["gmail"],
+        limit: 2,
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.text).not.toContain("hit that cap");
+      expect(result.text).not.toContain("sample, not a total");
+      expect(result.data).toMatchObject({ capped: [] });
+    });
+
     it("lists persisted unresolved triage entries and hides snoozed rows by default", async () => {
       const { runtime, calls } = makeDbRuntime((sql) =>
         sql.includes("life_inbox_triage_entries")

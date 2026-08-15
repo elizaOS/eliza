@@ -213,6 +213,17 @@ describe("KNOWLEDGE_GRAPH action", () => {
     );
   });
 
+  it.each([0.5, Number.NaN, Number.POSITIVE_INFINITY, 101, 2 ** 53])(
+    "rejects invalid list limit %s before reading the entity store",
+    async (limit) => {
+      const result = await call({ op: "list", limit });
+
+      expect(result?.success).toBe(false);
+      expect(result?.data).toMatchObject({ error: "INVALID_LIMIT" });
+      expect(stores.entityStore.list).not.toHaveBeenCalled();
+    },
+  );
+
   it("names the kind filter and the unfiltered graph on a kind-scoped miss", async () => {
     stores.entityStore.list = vi.fn(
       async (filter: { type?: string; limit: number }) =>

@@ -162,6 +162,31 @@ export interface InboxQueueOperationResult {
   readonly data: ProviderDataRecord;
 }
 
+const DEFAULT_RESULT_LIMIT = 50;
+const MAX_RESULT_LIMIT = 100;
+
+function parseResultLimit(value: unknown): number | null {
+  if (value === undefined) return DEFAULT_RESULT_LIMIT;
+  return typeof value === "number" &&
+    Number.isSafeInteger(value) &&
+    value >= 1 &&
+    value <= MAX_RESULT_LIMIT
+    ? value
+    : null;
+}
+
+function parseSince(value: unknown): string | undefined | null {
+  if (
+    value === undefined ||
+    (typeof value === "string" && value.trim() === "")
+  ) {
+    return undefined;
+  }
+  if (typeof value !== "string") return null;
+  const parsed = Date.parse(value.trim());
+  return Number.isFinite(parsed) ? new Date(parsed).toISOString() : null;
+}
+
 /**
  * Per-platform fetcher hook. Defaults read through the shared MESSAGE triage
  * service; tests can still inject deterministic scenario data.
@@ -787,24 +812,32 @@ export async function executeInboxQueueOperation(args: {
   const repo = new InboxRepository(args.runtime);
   switch (args.subaction) {
     case "triage": {
-      const limit =
-        typeof args.params.limit === "number" && args.params.limit > 0
-          ? Math.floor(args.params.limit)
-          : 50;
+      const limit = parseResultLimit(args.params.limit);
+      if (limit === null) {
+        return {
+          success: false,
+          text: `Limit must be an integer from 1 through ${MAX_RESULT_LIMIT}.`,
+          data: { subaction: "triage", error: "INVALID_LIMIT" },
+        };
+      }
       const classification = parseClassification(args.params.classification);
       let classifiedCount = 0;
       // 1. Pull fresh cross-channel messages through the same fan-out `list`
       //    uses, then classify only the ones without a persisted entry yet.
       //    `classification` narrows the queue returned below; it must not skip
       //    the LLM classifier for a fresh triage request.
-      const since =
-        typeof args.params.since === "string" &&
-        args.params.since.trim().length > 0
-          ? args.params.since.trim()
-          : undefined;
-      const { merged, degraded } = await fetchInboxItems({
+      const since = parseSince(args.params.since);
+      if (since === null) {
+        return {
+          success: false,
+          text: "Since must be a valid ISO-8601 timestamp.",
+          data: { subaction: "triage", error: "INVALID_SINCE" },
+        };
+      }
+      const platforms = resolvePlatforms(args.params.platforms);
+      const { merged, degraded, capped } = await fetchInboxItems({
         runtime: args.runtime,
-        platforms: resolvePlatforms(args.params.platforms),
+        platforms,
         ...(since ? { since } : {}),
         limit,
       });
@@ -865,7 +898,7 @@ export async function executeInboxQueueOperation(args: {
       return {
         success: true,
         text: appendInboxTriageChoiceMarkers(
-          `${baseText}${degradedSuffix(degraded)}`,
+          `${baseText}${fetchScopeSuffix({ limit, ...(since ? { since } : {}), capped })}${degradedSuffix(degraded)}`,
           entries,
         ),
         data: {
@@ -873,6 +906,7 @@ export async function executeInboxQueueOperation(args: {
           classified: classifiedCount,
           entries,
           degraded,
+          capped,
         },
       };
     }
@@ -1031,7 +1065,11 @@ export const inboxAction: Action & {
     {
       name: "limit",
       description: "Limit per platform. Default 50.",
-      schema: { type: "number" as const },
+      schema: {
+        type: "integer" as const,
+        minimum: 1,
+        maximum: MAX_RESULT_LIMIT,
+      },
     },
     {
       name: "query",
@@ -1143,10 +1181,14 @@ export const inboxAction: Action & {
       };
     }
 
-    const limit =
-      typeof params.limit === "number" && params.limit > 0
-        ? Math.floor(params.limit)
-        : 50;
+    const limit = parseResultLimit(params.limit);
+    if (limit === null) {
+      return {
+        success: false,
+        text: `Limit must be an integer from 1 through ${MAX_RESULT_LIMIT}.`,
+        data: { subaction, error: "INVALID_LIMIT" },
+      };
+    }
 
     let query: string | undefined;
     if (subaction === "search") {
@@ -1162,10 +1204,14 @@ export const inboxAction: Action & {
       query = trimmed;
     }
 
-    const since =
-      typeof params.since === "string" && params.since.trim().length > 0
-        ? params.since.trim()
-        : undefined;
+    const since = parseSince(params.since);
+    if (since === null) {
+      return {
+        success: false,
+        text: "Since must be a valid ISO-8601 timestamp.",
+        data: { subaction, error: "INVALID_SINCE" },
+      };
+    }
 
     const { merged, totalBeforeDedupe, degraded, capped } =
       await fetchInboxItems({

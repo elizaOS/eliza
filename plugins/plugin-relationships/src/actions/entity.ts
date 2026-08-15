@@ -130,6 +130,18 @@ function entitySummary(entity: Entity): {
 }
 
 const ENTITY_KINDS_DEFAULT = "person";
+const DEFAULT_RESULT_LIMIT = 50;
+const MAX_RESULT_LIMIT = 100;
+
+function parseResultLimit(value: unknown): number | null {
+  if (value === undefined) return DEFAULT_RESULT_LIMIT;
+  return typeof value === "number" &&
+    Number.isSafeInteger(value) &&
+    value >= 1 &&
+    value <= MAX_RESULT_LIMIT
+    ? value
+    : null;
+}
 
 function entityCount(n: number, capped: boolean): string {
   return `${n}${capped ? "+" : ""} entit${n === 1 && !capped ? "y" : "ies"}`;
@@ -345,10 +357,14 @@ export const entityAction: Action = {
 
       case "list": {
         const kind = trimmed(params.kind);
-        const limit =
-          typeof params.limit === "number" && params.limit > 0
-            ? Math.floor(params.limit)
-            : 50;
+        const limit = parseResultLimit(params.limit);
+        if (limit === null) {
+          return reply({
+            success: false,
+            text: `Limit must be an integer from 1 through ${MAX_RESULT_LIMIT}.`,
+            data: { op, error: "INVALID_LIMIT" },
+          });
+        }
         // Read one past the cap so overflow is MEASURED, not guessed. A page
         // that merely fills the limit is indistinguishable from a source that
         // holds exactly `limit` rows, and telling that reader to "raise limit
