@@ -19,6 +19,7 @@ function runEntries(
     elizaCloudConnected: boolean;
     cloudCallsDisabled: boolean;
     isCloudSelected: boolean;
+    isCloudConfigured: boolean;
     resolvedSelectedId: string | null;
   }>,
 ) {
@@ -28,6 +29,7 @@ function runEntries(
       elizaCloudConnected: false,
       cloudCallsDisabled: false,
       isCloudSelected: true,
+      isCloudConfigured: true,
       resolvedSelectedId: null,
       subscriptionStatus: [],
       anthropicCliDetected: false,
@@ -52,6 +54,7 @@ function runEntry(
     elizaCloudConnected: boolean;
     cloudCallsDisabled: boolean;
     isCloudSelected: boolean;
+    isCloudConfigured: boolean;
   }>,
 ) {
   return runEntries(overrides).cloud;
@@ -66,6 +69,7 @@ describe("useProviderEntries — cloud configured but not signed in (#20045)", (
     const cloud = runEntry({
       elizaCloudConnected: true,
       isCloudSelected: true,
+      isCloudConfigured: true,
       cloudCallsDisabled: false,
     });
     expect(cloud.current).toBe(true);
@@ -75,7 +79,10 @@ describe("useProviderEntries — cloud configured but not signed in (#20045)", (
   it("does NOT mark Cloud current when configured but not signed in", () => {
     const cloud = runEntry({
       elizaCloudConnected: false,
-      isCloudSelected: true,
+      // Reconciled by useProviderSelection: Cloud cannot serve while
+      // signed out, so only the *configured* flag stays true.
+      isCloudSelected: false,
+      isCloudConfigured: true,
       cloudCallsDisabled: false,
     });
     expect(cloud.current).toBe(false);
@@ -84,7 +91,10 @@ describe("useProviderEntries — cloud configured but not signed in (#20045)", (
   it("shows 'Not signed in' warning when configured but disconnected", () => {
     const cloud = runEntry({
       elizaCloudConnected: false,
-      isCloudSelected: true,
+      // Reconciled by useProviderSelection: Cloud cannot serve while
+      // signed out, so only the *configured* flag stays true.
+      isCloudSelected: false,
+      isCloudConfigured: true,
       cloudCallsDisabled: false,
     });
     expect(cloud.status).toEqual({ tone: "warn", label: "Not signed in" });
@@ -94,6 +104,7 @@ describe("useProviderEntries — cloud configured but not signed in (#20045)", (
     const cloud = runEntry({
       elizaCloudConnected: false,
       isCloudSelected: false,
+      isCloudConfigured: false,
       cloudCallsDisabled: true,
     });
     expect(cloud.status).toEqual({ tone: "muted", label: "Available" });
@@ -103,7 +114,10 @@ describe("useProviderEntries — cloud configured but not signed in (#20045)", (
   it("marks Local current and Active when cloud is selected but not signed in", () => {
     const { cloud, local } = runEntries({
       elizaCloudConnected: false,
-      isCloudSelected: true,
+      // Reconciled by useProviderSelection: Cloud cannot serve while
+      // signed out, so only the *configured* flag stays true.
+      isCloudSelected: false,
+      isCloudConfigured: true,
       cloudCallsDisabled: false,
     });
     expect(cloud.current).toBe(false);
@@ -115,6 +129,7 @@ describe("useProviderEntries — cloud configured but not signed in (#20045)", (
     const { local } = runEntries({
       elizaCloudConnected: true,
       isCloudSelected: true,
+      isCloudConfigured: true,
       cloudCallsDisabled: false,
     });
     expect(local.current).toBe(false);

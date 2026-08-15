@@ -18,6 +18,11 @@ import type {
 	Memory,
 } from "../types";
 import {
+	type ActionFailureProvenance,
+	normalizeActionFailureProvenance,
+	readActionFailureProvenance,
+} from "../types/action-failure";
+import {
 	normalizeEffectReceipts,
 	normalizeUserFacingEffectReceiptIds,
 	resolveAppliedUserFacingEffectReceipts,
@@ -122,6 +127,15 @@ export function normalizeActionResult(
 			: normalizeUserFacingEffectReceiptIds(
 					rawResult.userFacingEffectReceiptIds,
 				);
+	const failureProvenance =
+		rawResult.failureProvenance === undefined
+			? undefined
+			: normalizeActionFailureProvenance(rawResult.failureProvenance);
+	if (rawResult.success !== false && failureProvenance !== undefined) {
+		return invalidActionResult(
+			"Successful ActionResult values cannot carry failureProvenance.",
+		);
+	}
 
 	return {
 		...rawResult,
@@ -130,6 +144,7 @@ export function normalizeActionResult(
 		...(userFacingEffectReceiptIds !== undefined
 			? { userFacingEffectReceiptIds }
 			: {}),
+		...(failureProvenance !== undefined ? { failureProvenance } : {}),
 		data: {
 			...resultData,
 			// The executor, not an action-owned payload, is authoritative about
@@ -144,11 +159,13 @@ export function actionFailureResult(
 	actionName: string,
 	message: string,
 	extraData: Record<string, unknown> = {},
+	failureProvenance?: ActionFailureProvenance,
 ): ActionResult {
 	return {
 		success: false,
 		text: message,
 		error: message,
+		...(failureProvenance ? { failureProvenance } : {}),
 		data: {
 			...extraData,
 			actionName,
@@ -345,10 +362,19 @@ export async function settleActionHandler(
 		if (options.handlerError === "rethrow") {
 			throw error;
 		}
+		const failureProvenance =
+			readActionFailureProvenance(error) ??
+			({
+				kind: "handler_error",
+				boundary: "handler",
+				code: "ACTION_HANDLER_FAILED",
+				retryable: true,
+			} satisfies ActionFailureProvenance);
 		return actionFailureResult(
 			options.action.name,
 			stringifyActionError(error),
 			{ error },
+			failureProvenance,
 		);
 	}
 	if (isObjectRecord(rawResult)) {
@@ -395,12 +421,22 @@ export async function settleActionHandler(
 		if (options.handlerError === "rethrow") {
 			throw error;
 		}
-		return actionFailureResult(options.action.name, error.message, {
-			error,
-			outcomeUnknown: true,
-			retryable: false,
-			reconciliationRequired: true,
-		});
+		return actionFailureResult(
+			options.action.name,
+			error.message,
+			{
+				error,
+				outcomeUnknown: true,
+				retryable: false,
+				reconciliationRequired: true,
+			},
+			{
+				kind: "handler_error",
+				boundary: "handler",
+				code: "ACTION_RESULT_INVALID_AFTER_HANDLER",
+				retryable: false,
+			},
+		);
 	}
 
 	for (const buffered of bufferedCallbacks) {

@@ -4,6 +4,7 @@ import { Hono } from "hono";
 import { z } from "zod";
 import type { AgentSandbox } from "@/db/schemas/agent-sandboxes";
 import { failureResponse, jsonError } from "@/lib/api/cloud-worker-errors";
+import { resolveElizaTraceId } from "@/lib/observability/http-telemetry";
 import { sha256Hex } from "@/lib/oidc/crypto";
 import { findActivePersonalDedicatedTarget } from "@/lib/services/agent-tier-upgrade-target";
 import { elizaAppUserService } from "@/lib/services/eliza-app";
@@ -25,6 +26,37 @@ const MAX_TELEGRAM_VOICE_BYTES = 8 * 1024 * 1024;
 const MAX_TELEGRAM_VOICE_BASE64_LENGTH =
   Math.ceil(MAX_TELEGRAM_VOICE_BYTES / 3) * 4;
 const DEFAULT_WHISPER_MODEL = "Systran/faster-whisper-small";
+const FAILURE_STAGE_HEADER = "X-Eliza-Failure-Stage";
+const FAILURE_NAME_HEADER = "X-Eliza-Failure-Name";
+
+type DeliveryStage =
+  | "authentication"
+  | "validation"
+  | "worker_context"
+  | "account_resolution"
+  | "voice_transcription"
+  | "account_claim"
+  | "dedicated_runtime"
+  | "shared_runtime";
+
+const SAFE_ERROR_NAMES = new Set([
+  "AbortError",
+  "ApiError",
+  "Error",
+  "HTTPException",
+  "InsufficientCreditsError",
+  "RangeError",
+  "RateLimitError",
+  "SharedRuntimeCacheWarmingError",
+  "SharedTurnConflictError",
+  "TimeoutError",
+  "TypeError",
+]);
+
+function safeErrorName(error: unknown): string {
+  const name = error instanceof Error ? error.name : "";
+  return SAFE_ERROR_NAMES.has(name) ? name : "OtherError";
+}
 
 const telegramVoiceNoteSchema = z.object({
   bytesBase64: z.string().min(1).max(MAX_TELEGRAM_VOICE_BASE64_LENGTH),
@@ -68,7 +100,10 @@ const sharedMessageSchema = z.discriminatedUnion("platform", [
     ),
   z.object({
     platform: z.literal("discord"),
-    discordUserId: z.string().trim().min(1).max(32),
+    discordUserId: z
+      .string()
+      .trim()
+      .regex(/^\d{1,32}$/),
     discordUsername: z.string().trim().min(1).max(80),
     displayName: z.string().trim().min(1).max(128).optional(),
     avatarUrl: z.string().url().nullable().optional(),
@@ -157,6 +192,7 @@ async function transcribeTelegramVoiceNote(
 const app = new Hono<AppEnv>();
 
 app.post("/", async (c) => {
+  let stage: DeliveryStage = "authentication";
   try {
     const auth = await requireInternalAuth(c);
     if (auth instanceof Response) return auth;
@@ -168,6 +204,7 @@ app.post("/", async (c) => {
       return jsonError(c, 403, "Forbidden", "access_denied");
     }
 
+    stage = "validation";
     let raw: unknown;
     try {
       raw = await c.req.json();
@@ -204,6 +241,7 @@ app.post("/", async (c) => {
       }
     }
 
+    stage = "worker_context";
     const worker = resolveSharedRuntimeWorkerRequestContext(c);
     if ("error" in worker) {
       return c.json(
@@ -218,6 +256,7 @@ app.post("/", async (c) => {
       );
     }
 
+    stage = "account_resolution";
     const accountStartedAt = performance.now();
     let account: { userId: string; organizationId: string };
     let dedicated:
@@ -225,30 +264,30 @@ app.post("/", async (c) => {
       | null
       | undefined;
     if (parsed.data.platform === "telegram") {
-      const delivery =
-        await elizaAppUserService.resolvePersonalDeliveryByTelegram({
-          telegramId: parsed.data.telegramUserId,
-          username: parsed.data.telegramUsername,
-          displayName: parsed.data.displayName,
-        });
+      const delivery = await elizaAppUserService.resolvePersonalDelivery({
+        platform: "telegram",
+        telegramId: parsed.data.telegramUserId,
+        username: parsed.data.telegramUsername,
+        displayName: parsed.data.displayName,
+      });
       account = {
         userId: delivery.userId,
         organizationId: delivery.organizationId,
       };
       dedicated = delivery.dedicatedTarget;
     } else if (parsed.data.platform === "discord") {
-      const discordAccount = await elizaAppUserService.findOrCreateByDiscordId(
-        parsed.data.discordUserId,
-        {
-          username: parsed.data.discordUsername,
-          globalName: parsed.data.displayName,
-          avatarUrl: parsed.data.avatarUrl,
-        },
-      );
+      const delivery = await elizaAppUserService.resolvePersonalDelivery({
+        platform: "discord",
+        discordId: parsed.data.discordUserId,
+        username: parsed.data.discordUsername,
+        globalName: parsed.data.displayName,
+        avatarUrl: parsed.data.avatarUrl,
+      });
       account = {
-        userId: discordAccount.user.id,
-        organizationId: discordAccount.organization.id,
+        userId: delivery.userId,
+        organizationId: delivery.organizationId,
       };
+      dedicated = delivery.dedicatedTarget;
     } else {
       const phoneAccount = await elizaAppUserService.findOrCreateByPhone(
         parsed.data.phoneNumber,
@@ -270,6 +309,7 @@ app.post("/", async (c) => {
       parsed.data.voiceNote &&
       telegramVoiceBytes
     ) {
+      stage = "voice_transcription";
       // Shared has no authenticated writer into the agent-owned canonical
       // `/api/media/<sha>.<ext>` store. Keep only the transcript in durable
       // conversation history; do not create a parallel R2 media namespace.
@@ -302,6 +342,7 @@ app.post("/", async (c) => {
       parsed.data.platform === "telegram" &&
       /^\/connect(?:@[a-z0-9_]{5,32})?$/i.test(deliveryMessage)
     ) {
+      stage = "account_claim";
       // A new command gets independent expiry while a webhook retry reaches
       // the same session. Reusing the sender's permanent session would make
       // refreshing one claim link revive every expired link for that sender.
@@ -346,6 +387,7 @@ app.post("/", async (c) => {
       );
     }
     if (dedicated) {
+      stage = "dedicated_runtime";
       const dedicatedStartedAt = performance.now();
       const preparation = await preparePersonalDedicatedDelivery(
         dedicated,
@@ -519,6 +561,7 @@ app.post("/", async (c) => {
         },
       });
     }
+    stage = "shared_runtime";
     const sharedStartedAt = performance.now();
     const result = await sharedRestMessageSend(
       agent,
@@ -557,6 +600,18 @@ app.post("/", async (c) => {
     });
   } catch (error) {
     // error-policy:J1 the internal HTTP boundary emits one structured failure.
+    const errorName = safeErrorName(error);
+    const traceId = c.get("traceId") ?? resolveElizaTraceId(c.req.raw.headers);
+    logger.error("[personal-shared-messaging] delivery failed", {
+      traceId,
+      stage,
+      errorName,
+    });
+    // This route is internal-authenticated. Safe classification headers let
+    // the connector correlate a retry without exposing exception messages or
+    // provider/SQL payloads in its logs.
+    c.header(FAILURE_STAGE_HEADER, stage);
+    c.header(FAILURE_NAME_HEADER, errorName);
     return failureResponse(c, error);
   }
 });

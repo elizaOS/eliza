@@ -4,20 +4,15 @@
  * text and serialized tool detail as display payload only.
  */
 
+import { isRetryableChatFailureKind } from "@elizaos/shared/contracts";
 import type { ChatFailureKind, ChatToolCallEvent } from "../api";
 import { publishNativeTranscriptEvent } from "./transport";
-
-const RETRYABLE_CHAT_FAILURES: ReadonlySet<ChatFailureKind> = new Set([
-  "provider_issue",
-  "rate_limited",
-  "local_inference",
-]);
 
 /** Whether retry can plausibly resolve a structured chat failure as-is. */
 export function isNativeChatFailureRetryable(
   failureKind: ChatFailureKind,
 ): boolean {
-  return RETRYABLE_CHAT_FAILURES.has(failureKind);
+  return isRetryableChatFailureKind(failureKind);
 }
 
 function toolDetail(event: ChatToolCallEvent): string | undefined {

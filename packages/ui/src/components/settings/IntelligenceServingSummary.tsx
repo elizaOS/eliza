@@ -8,11 +8,7 @@
 
 import { Cloud, Cpu, Server } from "lucide-react";
 import type { ComponentType } from "react";
-import type {
-  ServingAxes,
-  ServingInference,
-  ServingRuntime,
-} from "./resolveServingAxes";
+import type { ServingAxes, ServingRuntime } from "./resolveServingAxes";
 import { SettingsRow } from "./settings-layout";
 
 type Translate = (key: string, vars?: Record<string, unknown>) => string;

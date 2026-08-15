@@ -2356,7 +2356,9 @@ function getRequiredRuntimeEntryPaths(pkgJsonPath: string): string[] {
   return [...entries].sort();
 }
 
-function workspacePackageNeedsRuntimeBuild(packageJsonPath: string): boolean {
+export function workspacePackageNeedsRuntimeBuild(
+  packageJsonPath: string,
+): boolean {
   for (const entryPath of getRequiredRuntimeEntryPaths(packageJsonPath)) {
     if (!runtimeManifestEntryExists(path.dirname(packageJsonPath), entryPath)) {
       return true;
@@ -2614,6 +2616,14 @@ function main(): void {
         copiedNames.add(name);
         continue;
       }
+
+      // The initial scan only sees packages imported by the built entry tree.
+      // Hard dependencies discovered later while walking package manifests can
+      // also be workspace packages with no publishable dist yet. Build those
+      // before copying them; otherwise a clean desktop checkout can package
+      // source-only exports (for example plugin-wallet/diagnostic) and crash
+      // the embedded agent at boot.
+      ensureWorkspaceRuntimeEntriesBuilt([name]);
 
       if (
         !copyPackageDir(

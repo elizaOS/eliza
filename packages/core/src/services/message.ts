@@ -367,10 +367,12 @@ import {
 } from "./message/direct-action-heuristics";
 import {
 	buildFailureReplyPrompt,
+	classifyStructuredFailureCause,
 	INSUFFICIENT_CREDITS_REPLY,
 	isAuthError,
 	isInsufficientCreditsError,
 	isRateLimitError,
+	type StructuredFailureCause,
 	stripReasoningBlocks,
 } from "./message/fallback-reply";
 import {
@@ -1663,12 +1665,14 @@ export function shouldSkipResponseMemoryPersistence(memory: Memory): boolean {
 
 export {
 	buildFailureReplyPrompt,
+	classifyStructuredFailureCause,
 	INSUFFICIENT_CREDITS_REPLY,
 	isAuthError,
 	isInsufficientCreditsError,
 	isInsufficientCreditsMessage,
 	isModelProviderFallbackError,
 	isRateLimitError,
+	type StructuredFailureCause,
 	stripReasoningBlocks,
 } from "./message/fallback-reply";
 export {
@@ -13756,12 +13760,26 @@ export class DefaultMessageService implements IMessageService {
 				if (failureGate.addressed || stage1DecidedRespond) {
 					shouldRespondToMessage = true;
 					terminalDecision = null;
+					// Distinguish WHY the runtime died so the failure reply names
+					// the real condition: a capability that was never invocable is
+					// not a transient blip and must not read like one (#17027 AC6).
+					const failureCause = classifyStructuredFailureCause(error);
+					runtime.logger.info(
+						{
+							src: "service:message",
+							agentId: runtime.agentId,
+							roomId: message.roomId,
+							failureCause,
+						},
+						"MessageService: structured failure reply cause classified",
+					);
 					strategyResult = await this.buildStructuredFailureReply(
 						runtime,
 						message,
 						state,
 						responseId,
 						"running the native tool message runtime",
+						failureCause,
 					);
 					_usedV5Runtime = true;
 					state = strategyResult.state;
@@ -13906,6 +13924,9 @@ export class DefaultMessageService implements IMessageService {
 				result = strategyResult;
 			} else {
 				_usedV5Runtime = true;
+				// No thrown trajectory error reaches this fallback-only branch, so
+				// there is no structural capability/exhaustion cause to preserve.
+				// Keep the default generic transient classification.
 				result = await this.buildStructuredFailureReply(
 					runtime,
 					message,
@@ -15339,6 +15360,7 @@ export class DefaultMessageService implements IMessageService {
 		state: State,
 		responseId: UUID,
 		stage: string,
+		cause: StructuredFailureCause = "transient",
 	): Promise<StrategyResult> {
 		// Short-circuit when no LLM provider is configured at all. The fallback
 		// model loop below would just throw `NoModelProviderConfiguredError` for
@@ -15358,7 +15380,7 @@ export class DefaultMessageService implements IMessageService {
 			state,
 			message,
 		);
-		const failurePrompt = buildFailureReplyPrompt(recentMessages);
+		const failurePrompt = buildFailureReplyPrompt(recentMessages, cause);
 
 		const attempt = await this.generateFailureReplyText(
 			runtime,
@@ -15398,6 +15420,28 @@ export class DefaultMessageService implements IMessageService {
 				replyText =
 					(typeof tmpl === "function" ? tmpl({ state }) : tmpl) ||
 					"My Eliza Cloud key isn't authorized for inference right now — check that your cloud key is valid and your account has credits, then try again.";
+			} else if (cause === "missing_capability") {
+				// Permanent gap: never fall through to transientFailureReply
+				// ("try again in a moment") — that copy invites a retry that
+				// cannot succeed until the capability is enabled (#17027 AC6).
+				// Dedicated template when present; otherwise the built-in
+				// capability-unavailable default.
+				const tmpl = runtime.character.templates?.missingCapabilityFailureReply;
+				replyText =
+					(typeof tmpl === "function" ? tmpl({ state }) : tmpl) ||
+					"I can't do that here right now - it needs a capability that isn't available in this setup.";
+			} else if (cause === "planner_exhaustion") {
+				// Retryable budget exhaustion. Dedicated template first; the
+				// legacy transientFailureReply remains a voice-compatible
+				// fallback only for this recoverable class.
+				const tmpl = runtime.character.templates?.plannerExhaustionFailureReply;
+				const fallbackTmpl = runtime.character.templates?.transientFailureReply;
+				replyText =
+					(typeof tmpl === "function" ? tmpl({ state }) : tmpl) ||
+					(typeof fallbackTmpl === "function"
+						? fallbackTmpl({ state })
+						: fallbackTmpl) ||
+					"I ran out of attempts before I could finish that. Nothing was completed - please try again.";
 			} else {
 				const tmpl = runtime.character.templates?.transientFailureReply;
 				replyText =
@@ -15408,19 +15452,29 @@ export class DefaultMessageService implements IMessageService {
 
 		replyText = truncateToCompleteSentence(replyText.trim(), 2000);
 
-		// Credit exhaustion is not transient — it persists until the user tops
-		// up — so the synthetic reply carries the structural kind downstream
-		// consumers already key on (chat DTO failureKind gate, recent-messages
-		// synthetic-failure filter) instead of masquerading as a blip.
+		// Preserve the terminal cause at the delivery boundary. Provider failures
+		// encountered while generating the apology take precedence because the
+		// canned reply describes that condition. Capability, action, persistence,
+		// auth, and credit failures remain stable until their cause changes;
+		// throttling, planner exhaustion, and generic infrastructure failures can
+		// be retried without presenting a durable success record.
+		const failureKind =
+			attempt.kind === "creditsExhausted"
+				? "insufficient_credits"
+				: attempt.kind === "rateLimited"
+					? "rate_limited"
+					: attempt.kind === "authFailed"
+						? "provider_issue"
+						: cause === "transient"
+							? "transient_failure"
+							: cause;
 		const responseContent: Content = {
-			thought: `Handle a temporary reply failure during ${stage}.`,
+			thought: `Handle a ${cause} reply failure during ${stage}.`,
 			actions: ["REPLY"],
-			failureKind:
-				attempt.kind === "creditsExhausted"
-					? "insufficient_credits"
-					: "transient_failure",
+			failureKind,
 			elizaSyntheticFailure: true,
-			transient: true,
+			transient:
+				failureKind === "transient_failure" || failureKind === "rate_limited",
 			doNotPersist: true,
 			text: replyText,
 			responseId,

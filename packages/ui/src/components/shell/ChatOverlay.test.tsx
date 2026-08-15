@@ -619,6 +619,9 @@ describe("ChatOverlay", () => {
         />,
       );
 
+      // #20024 renamed the compact-landing placeholder "Ask" → "Message" in
+      // ChatOverlay.tsx without updating this assertion, leaving the suite red
+      // on develop. The source is the intent; this follows it.
       expect(screen.getByLabelText("message").getAttribute("placeholder")).toBe(
         "Message",
       );
@@ -5053,7 +5056,7 @@ describe("ChatOverlay — routed OS-intent composer prefill (#9148, #16441)", ()
     expect(toggleHandsFree).not.toHaveBeenCalled();
   });
 
-  it("shows Retry on a recoverable failed assistant turn and re-sends the preceding user turn", () => {
+  it("shows Retry on planner exhaustion and re-sends the preceding user turn", () => {
     const controller = makeController({
       messages: [
         {
@@ -5067,7 +5070,7 @@ describe("ChatOverlay — routed OS-intent composer prefill (#9148, #16441)", ()
           role: "assistant",
           content: "",
           createdAt: 2,
-          failureKind: "rate_limited",
+          failureKind: "planner_exhaustion",
         },
       ],
     } as unknown as Partial<ShellController>);

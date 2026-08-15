@@ -123,7 +123,60 @@ describe("executePlannedToolCall", () => {
 
 		expect(result.success).toBe(false);
 		expect(result.error).toBe("Action not found: search_documents");
+		expect(result.failureProvenance).toEqual({
+			kind: "missing_capability",
+			boundary: "capability",
+			code: "ACTION_NOT_FOUND",
+			retryable: false,
+		});
 		expect(handler).not.toHaveBeenCalled();
+	});
+
+	it("carries handler and persistence provenance from their boundaries", async () => {
+		const thrown = await executePlannedToolCall(
+			makeRuntime([
+				makeAction({
+					name: "THROWING_ACTION",
+					handler: async () => {
+						throw new Error("handler exploded");
+					},
+				}),
+			]),
+			{ message: makeMessage() },
+			{ name: "THROWING_ACTION", params: {} },
+		);
+		expect(thrown.failureProvenance).toEqual({
+			kind: "handler_error",
+			boundary: "handler",
+			code: "ACTION_HANDLER_FAILED",
+			retryable: true,
+		});
+
+		const persistence = await executePlannedToolCall(
+			makeRuntime([
+				makeAction({
+					name: "PERSIST_ACTION",
+					handler: async () => ({
+						success: false,
+						error: "database rejected the write",
+						failureProvenance: {
+							kind: "persistence_error" as const,
+							boundary: "persistence" as const,
+							code: "TEST_WRITE_FAILED",
+							retryable: true,
+						},
+					}),
+				}),
+			]),
+			{ message: makeMessage() },
+			{ name: "PERSIST_ACTION", params: {} },
+		);
+		expect(persistence.failureProvenance).toEqual({
+			kind: "persistence_error",
+			boundary: "persistence",
+			code: "TEST_WRITE_FAILED",
+			retryable: true,
+		});
 	});
 
 	it("rejects invalid native tool arguments before invoking the handler", async () => {

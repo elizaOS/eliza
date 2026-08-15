@@ -4438,10 +4438,10 @@ async function runLifeOperationHandlerInner(
       }
       const confirmsValidatedUndatedDraft =
         deferredDraftReuseMode === "confirm" &&
-        deferredDefinitionDraft?.request.cadence.kind === "unscheduled";
+        deferredDefinitionDraft?.request.cadence?.kind === "unscheduled";
       if (
         (editingDeferredDefinitionDraft &&
-          deferredDefinitionDraft.request.cadence.kind === "unscheduled" &&
+          deferredDefinitionDraft.request.cadence?.kind === "unscheduled" &&
           textContradictsExplicitUndatedTodo(currentText)) ||
         (cadence?.kind === "unscheduled" &&
           (ownerSurfaceActionName !== "OWNER_TODOS" ||
@@ -4529,6 +4529,41 @@ async function runLifeOperationHandlerInner(
             operation: "create_definition",
           },
         });
+        // Park the answered-so-far request so the owner's next turn (a date,
+        // or an explicit date-decline) can resume THIS create instead of
+        // starting over. Without the parked draft the decline answer had
+        // nothing to resume and persisted nothing (live matrix F32). Scoped
+        // to OWNER_TODOS: only the todos surface accepts the unscheduled
+        // cadence, so only its clarify is answerable by a decline. Never park
+        // on the contradicted-edit path — that branch just INVALIDATED the
+        // prior draft, and writing a fresh one here would clobber the
+        // invalidation and let a later bare confirmation resurrect the
+        // create the contradiction rejected.
+        const scheduleAwaitingDraft: DeferredLifeDraft | null =
+          !editingDeferredDefinitionDraft &&
+          ownerSurfaceActionName === "OWNER_TODOS" &&
+          title
+            ? {
+                awaitingField: "schedule",
+                createdAt: Date.now(),
+                intent,
+                operation: "create_definition",
+                sourceMessageId:
+                  typeof message.id === "string" ? message.id : undefined,
+                request: {
+                  kind: "task",
+                  metadata: definitionMetadata,
+                  title,
+                },
+              }
+            : null;
+        if (scheduleAwaitingDraft) {
+          await writeDeferredLifeDraftCache(
+            runtime,
+            message,
+            scheduleAwaitingDraft,
+          );
+        }
         return {
           success: false as const,
           text,
@@ -4544,6 +4579,9 @@ async function runLifeOperationHandlerInner(
             actionName: ownerSurfaceActionName,
             ...(editingDeferredDefinitionDraft
               ? { lifeDraftInvalidated: true }
+              : {}),
+            ...(scheduleAwaitingDraft
+              ? { lifeDraft: scheduleAwaitingDraft }
               : {}),
             missingField: "schedule",
             requiresConfirmation: true,
@@ -4581,7 +4619,7 @@ async function runLifeOperationHandlerInner(
                 multiStep: llmPlan?.multiStep === true,
               }),
             });
-      const definitionDraft: DeferredLifeDefinitionDraft = {
+      const definitionDraft = {
         intent,
         operation: "create_definition",
         createdAt: editingDeferredDefinitionDraft
@@ -4633,7 +4671,7 @@ async function runLifeOperationHandlerInner(
               | CreateLifeOpsDefinitionRequest["websiteAccess"]
               | undefined) ?? deferredDefinitionDraft?.request.websiteAccess,
         },
-      };
+      } satisfies DeferredLifeDefinitionDraft;
       if (
         shouldRequireLifeCreateConfirmation({
           confirmed: createConfirmed,
@@ -4652,7 +4690,7 @@ async function runLifeOperationHandlerInner(
           .map((step) => ({
             label: step.label,
             minutesBeforeDue: reminderStepMinutesBeforeDue(
-              definitionDraft.request.cadence,
+              leadShaped.cadence,
               step.offsetMinutes,
             ),
           }))
@@ -4666,7 +4704,7 @@ async function runLifeOperationHandlerInner(
                 )
                 .join(", ")}.`
             : "";
-        const fallback = `I can save this as a ${definitionDraft.request.kind} named "${definitionDraft.request.title}" that happens ${summarizeCadence(definitionDraft.request.cadence)}.${draftLeadPhrase} Confirm and I'll save it, or tell me what to change.`;
+        const fallback = `I can save this as a ${definitionDraft.request.kind} named "${definitionDraft.request.title}" that happens ${summarizeCadence(leadShaped.cadence)}.${draftLeadPhrase} Confirm and I'll save it, or tell me what to change.`;
         const previewText = await renderLifeActionReply({
           runtime,
           message,
@@ -4748,7 +4786,7 @@ async function runLifeOperationHandlerInner(
         title: definitionDraft.request.title,
         description: definitionDraft.request.description,
         originalIntent: definitionDraft.intent || definitionDraft.request.title,
-        cadence: definitionDraft.request.cadence,
+        cadence: leadShaped.cadence,
         timezone:
           normalizeLifeTimeZoneToken(definitionDraft.request.timezone) ??
           definitionDraft.request.timezone,

@@ -395,19 +395,12 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
           set -euo pipefail
-          for attempt in 1 2 3; do
-            if output=$(bunx wrangler secret delete STAGING_SESSION_EXCHANGE_ENABLED --env staging 2>&1); then
-              echo "Staging session exchange is off before config validation or deploy."
-              exit 0
-            fi
-            if printf '%s' "$output" | grep -qi "not found"; then
-              echo "Staging session exchange was already off before cutover."
-              exit 0
-            fi
-            [ "$attempt" -lt 3 ] && sleep 10
-          done
-          echo "::error::Could not confirm staging session exchange is off before cutover"
-          exit 1
+          if ! result=$(node "$CHECKOUT_DIR/packages/cloud/scripts/ensure-worker-secret-absent.mjs" \
+            STAGING_SESSION_EXCHANGE_ENABLED --env staging); then
+            echo "::error::Could not confirm staging session exchange is off before cutover"
+            exit 1
+          fi
+          echo "Staging session exchange is off before config validation or deploy ($result)."
 
       - name: Publish Worker AI secrets
         if: steps.cf.outputs.configured == 'true' && steps.freshness.outputs.should_deploy == 'true'
@@ -545,9 +538,9 @@ jobs:
             export VOICE_REALTIME_ELIZA_AUTHORIZATION
           fi
 
-          # Production provider and bridge values are managed Worker secrets,
-          # not GitHub secret material. keep_vars preserves them, and their
-          # binding names are verified against the live Worker before deploy.
+          # Production provider and bridge values remain managed Worker
+          # secrets. A protected-environment value may create or rotate one;
+          # a blank source preserves it, and names are verified before deploy.
 
           # Staging advertises realtime only when the repository variable
           # VOICE_REALTIME_WS_ENABLED is explicitly truthy. Refuse that opt-in
@@ -625,33 +618,6 @@ jobs:
             exit 1
           fi
 
-          if [ "$DEPLOY_ENVIRONMENT" = "production" ] && \
-             is_truthy "$VOICE_REALTIME_WS_ENABLED"; then
-            secret_inventory="$(bunx wrangler@4.100.0 secret list ${{ steps.env.outputs.wrangler_args }} --format json)"
-            printf '%s' "$secret_inventory" | node -e '
-              const fs = require("node:fs");
-              const parsed = JSON.parse(fs.readFileSync(0, "utf8"));
-              const entries = Array.isArray(parsed)
-                ? parsed
-                : Array.isArray(parsed?.result)
-                  ? parsed.result
-                  : [];
-              const present = new Set(entries.map((entry) => entry?.name).filter(Boolean));
-              const required = [
-                "CARTESIA_API_KEY",
-                "VOICE_REALTIME_CARTESIA_VOICE_ID",
-                "VOICE_REALTIME_ELIZA_AUTHORIZATION",
-                "VOICE_REALTIME_ELIZA_ENDPOINT",
-              ];
-              const missing = required.filter((name) => !present.has(name));
-              if (missing.length > 0) {
-                console.error(`::error::Production realtime voice is missing managed Worker secret binding name(s): ${missing.join(" ")}`);
-                process.exit(1);
-              }
-              console.log(`Verified ${required.length} managed production voice secret binding names; values were not read.`);
-            '
-          fi
-
           publish_secret() {
             local name="$1"
             local value="${!name:-}"
@@ -701,6 +667,37 @@ jobs:
             return 1
           }
 
+          verify_production_voice_secret_bindings() {
+            if [ "$DEPLOY_ENVIRONMENT" != "production" ] || \
+               ! is_truthy "$VOICE_REALTIME_WS_ENABLED"; then
+              return 0
+            fi
+            local secret_inventory
+            secret_inventory="$(bunx wrangler@4.100.0 secret list ${{ steps.env.outputs.wrangler_args }} --format json)"
+            printf '%s' "$secret_inventory" | node -e '
+              const fs = require("node:fs");
+              const parsed = JSON.parse(fs.readFileSync(0, "utf8"));
+              const entries = Array.isArray(parsed)
+                ? parsed
+                : Array.isArray(parsed?.result)
+                  ? parsed.result
+                  : [];
+              const present = new Set(entries.map((entry) => entry?.name).filter(Boolean));
+              const required = [
+                "CARTESIA_API_KEY",
+                "VOICE_REALTIME_CARTESIA_VOICE_ID",
+                "VOICE_REALTIME_ELIZA_AUTHORIZATION",
+                "VOICE_REALTIME_ELIZA_ENDPOINT",
+              ];
+              const missing = required.filter((name) => !present.has(name));
+              if (missing.length > 0) {
+                console.error(`::error::Production realtime voice is missing managed Worker secret binding name(s): ${missing.join(" ")}`);
+                process.exit(1);
+              }
+              console.log(`Verified ${required.length} managed production voice secret binding names; values were not read.`);
+            '
+          }
+
           # Like publish_secret, but for values that act as ROUTING TOGGLES
           # (code branches on presence, e.g. `env.WHISPER_STT_URL`). An unset
           # source must DELETE any previously published secret. A plain
@@ -713,28 +710,16 @@ jobs:
               publish_secret "$name"
               return $?
             fi
-            # Unset: delete so the Worker falls back to its default path.
-            # Wrangler auto-confirms the prompt in non-interactive CI.
-            # "Binding not found" is success (nothing was published). Any
-            # other failure must FAIL after retries: deploying with a stale
-            # routing toggle is exactly the outage this function prevents.
-            local out
-            for attempt in 1 2 3; do
-              if out=$(bunx wrangler secret delete "$name" ${{ steps.env.outputs.wrangler_args }} 2>&1); then
-                echo "::notice::$name is not configured; deleted any previously published value"
-                return 0
-              fi
-              if printf '%s' "$out" | grep -qi "not found"; then
-                echo "::notice::$name is not configured and not present on the Worker; nothing to do"
-                return 0
-              fi
-              if [ "$attempt" -lt 3 ]; then
-                echo "::warning::wrangler secret delete $name failed on attempt $attempt; retrying in 10s"
-                sleep 10
-              fi
-            done
-            echo "::error::$name is unset but deleting the stale Worker secret failed after 3 attempts: $out"
-            return 1
+            # Unset: use a names-only inventory before and after deletion so
+            # absence is success without depending on Wrangler error prose.
+            local result
+            if ! result=$(node "$CHECKOUT_DIR/packages/cloud/scripts/ensure-worker-secret-absent.mjs" \
+              "$name" ${{ steps.env.outputs.wrangler_args }}); then
+              echo "::error::$name is unset but its absence could not be confirmed"
+              return 1
+            fi
+            echo "::notice::$name is not configured; Worker binding state: $result"
+            return 0
           }
 
           # QA cutover is OFF-FIRST. Secret mutations update the currently
@@ -829,6 +814,11 @@ jobs:
             publish_toggle_secret "$name" || exit 1
           done
 
+          # GitHub and Cloudflare are separate write-only authorities. Verify
+          # the live names only after configured values have had a chance to
+          # create their bindings, but still before any Worker code deploys.
+          verify_production_voice_secret_bindings || exit 1
+
       - name: Deploy to Cloudflare Workers
         if: steps.cf.outputs.configured == 'true' && steps.freshness.outputs.should_deploy == 'true'
         working-directory: ${{ env.CHECKOUT_DIR }}/packages/cloud/api
@@ -860,22 +850,19 @@ jobs:
 
           delete_legacy_onboarding_secret() {
             local name="$1"
-            local output=""
-            for attempt in 1 2 3; do
-              if output=$(bunx wrangler secret delete "$name" --env staging 2>&1); then
-                legacy_onboarding_secret_removed=true
-                echo "Retired legacy staging secret binding $name."
-                return 0
-              fi
-              if printf '%s' "$output" | grep -qi "not found"; then
-                echo "Legacy staging secret binding $name is already absent."
-                return 0
-              fi
-              [ "$attempt" -lt 3 ] && sleep 10
-            done
-            printf '%s\n' "$output" >&2
-            echo "::error::Could not retire legacy staging secret binding $name."
-            return 1
+            local result
+            if ! result=$(node "$CHECKOUT_DIR/packages/cloud/scripts/ensure-worker-secret-absent.mjs" \
+              "$name" --env staging); then
+              echo "::error::Could not retire legacy staging secret binding $name."
+              return 1
+            fi
+            if [ "$result" = "removed" ]; then
+              legacy_onboarding_secret_removed=true
+              echo "Retired legacy staging secret binding $name."
+            else
+              echo "Legacy staging secret binding $name is already absent."
+            fi
+            return 0
           }
 
           args=(${{ steps.env.outputs.wrangler_args }} --var ELIZA_DEPLOY_COMMIT:"$GITHUB_SHA" --var VOICE_REALTIME_WS_ENABLED:"$VOICE_REALTIME_WS_ENABLED" --var ELIZA_TTS_FISH_ENABLED:"$ELIZA_TTS_FISH_ENABLED" --var FISH_AUDIO_DATA_GOVERNANCE_APPROVED:"$FISH_AUDIO_DATA_GOVERNANCE_APPROVED" --var FISH_AUDIO_MODEL:"$FISH_AUDIO_MODEL" --var FISH_AUDIO_SAMPLE_RATE:"$FISH_AUDIO_SAMPLE_RATE" --var FISH_AUDIO_FIRST_AUDIO_TIMEOUT_MS:"$FISH_AUDIO_FIRST_AUDIO_TIMEOUT_MS")
@@ -1067,18 +1054,11 @@ jobs:
           expected_enabled="$STAGING_SESSION_EXCHANGE_DESIRED_ENABLED"
 
           rollback_gate() {
-            local output
-            for attempt in 1 2 3; do
-              if output=$(bunx wrangler secret delete STAGING_SESSION_EXCHANGE_ENABLED --env staging 2>&1); then
-                echo "Staging session exchange activation is off."
-                return 0
-              fi
-              if printf '%s' "$output" | grep -qi "not found"; then
-                echo "Staging session exchange activation was already off."
-                return 0
-              fi
-              [ "$attempt" -lt 3 ] && sleep 10
-            done
+            if node "$CHECKOUT_DIR/packages/cloud/scripts/ensure-worker-secret-absent.mjs" \
+              STAGING_SESSION_EXCHANGE_ENABLED --env staging >/dev/null; then
+              echo "Staging session exchange activation is off."
+              return 0
+            fi
             return 1
           }
 

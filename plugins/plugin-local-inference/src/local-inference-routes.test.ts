@@ -327,6 +327,59 @@ describe("local inference chat status", () => {
 		}
 	});
 
+	// #20045 R5: `status` answers "is a model loaded?"; `routed` answers "is
+	// local the path requests take?". With cloud-proxy configured but no Cloud
+	// credential, local is the only provider that can serve while the model
+	// loads lazily — so the snapshot read `idle` and nothing recorded that
+	// local was in fact the active path.
+	function writeElizaConfig(config: Record<string, unknown>): void {
+		writeFileSync(
+			path.join(tempStateDir as string, "eliza.json"),
+			JSON.stringify(config),
+		);
+	}
+
+	it("reports routed while idle when cloud-proxy has no linked account", async () => {
+		writeElizaConfig({
+			serviceRouting: {
+				llmText: { backend: "elizacloud", transport: "cloud-proxy" },
+			},
+		});
+		await expect(getLocalInferenceActiveSnapshot()).resolves.toMatchObject({
+			status: "idle",
+			routed: true,
+		});
+	});
+
+	it("is not routed when a linked Cloud account can serve inference", async () => {
+		writeElizaConfig({
+			serviceRouting: {
+				llmText: { backend: "elizacloud", transport: "cloud-proxy" },
+			},
+			linkedAccounts: { elizacloud: { status: "linked" } },
+		});
+		await expect(getLocalInferenceActiveSnapshot()).resolves.toMatchObject({
+			routed: false,
+		});
+	});
+
+	it("is routed when nothing routes text to Cloud at all", async () => {
+		writeElizaConfig({
+			serviceRouting: {
+				llmText: { backend: "ollama", transport: "direct" },
+			},
+		});
+		await expect(getLocalInferenceActiveSnapshot()).resolves.toMatchObject({
+			routed: true,
+		});
+	});
+
+	it("omits routed rather than guessing when no config is readable", async () => {
+		await expect(getLocalInferenceActiveSnapshot()).resolves.not.toHaveProperty(
+			"routed",
+		);
+	});
+
 	it("uses the desktop active-model service state for chat status", async () => {
 		serviceMock.setActiveState({
 			modelId: "eliza-1-2b",

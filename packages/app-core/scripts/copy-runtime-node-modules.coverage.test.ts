@@ -48,6 +48,7 @@ import {
   shouldSkipPackagedAppCoreEntry,
   shouldSkipPackagedDependency,
   visitFiles,
+  workspacePackageNeedsRuntimeBuild,
 } from "./copy-runtime-node-modules";
 
 let tmpDir: string;
@@ -104,6 +105,26 @@ describe("matchesRuntimeVariant", () => {
     expect(matchesRuntimeVariant("linux-glibc-x64", "darwin", "x64")).toBe(
       false,
     );
+  });
+});
+
+describe("workspacePackageNeedsRuntimeBuild", () => {
+  it("requires a build when a workspace package's runtime export is missing", () => {
+    const packageJsonPath = writeManifest("@elizaos/plugin-wallet", {
+      exports: {
+        ".": {
+          import: "./dist/index.mjs",
+          default: "./dist/index.mjs",
+        },
+        "./*": {
+          import: "./dist/*.js",
+          default: "./dist/*.js",
+        },
+      },
+      scripts: { build: "bun run build.ts" },
+    });
+
+    expect(workspacePackageNeedsRuntimeBuild(packageJsonPath)).toBe(true);
   });
 });
 

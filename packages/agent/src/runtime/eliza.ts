@@ -2265,8 +2265,19 @@ export function applyCloudConfigToEnv(config: ElizaConfig): void {
   // Cloud inference is selected from the canonical first-run connection, not
   // just from raw cloud flags. This keeps linked cloud auth from re-enabling
   // Eliza Cloud after the user has switched to a local or remote provider.
-  const effectivelyEnabled = topology.services.inference || isCloudContainer;
+  const inferenceConfigured = topology.services.inference || isCloudContainer;
   const shouldLoadCloudPlugin = topology.shouldLoadPlugin || isCloudContainer;
+  const configuredCloudApiKey = trimCloudCredential(cloud?.apiKey);
+  const effectiveCloudApiKey =
+    configuredCloudApiKey ??
+    readEffectiveCloudCredential(config, "ELIZAOS_CLOUD_API_KEY");
+  // Declared routing is intent, not proof that the selected handler can serve.
+  // A provisioned Cloud container owns its runtime route; every other host must
+  // have the actual credential that plugin-elizacloud will use before Cloud can
+  // register the high-priority chat-brain handlers.
+  const inferenceAvailable =
+    isCloudContainer ||
+    (topology.services.inference && Boolean(effectiveCloudApiKey));
 
   const setCloudUsageEnv = (key: string, enabled: boolean): void => {
     if (enabled) {
@@ -2279,7 +2290,7 @@ export function applyCloudConfigToEnv(config: ElizaConfig): void {
   if (isElizaSettingsDebugEnabled()) {
     const c = (cloud ?? {}) as Record<string, unknown>;
     logger.debug(
-      `[eliza][settings][runtime] applyCloudConfigToEnv inference=${effectivelyEnabled} shouldLoadPlugin=${shouldLoadCloudPlugin} isCloudContainer=${isCloudContainer} cloud=${JSON.stringify(settingsDebugCloudSummary(c))}`,
+      `[eliza][settings][runtime] applyCloudConfigToEnv inferenceConfigured=${inferenceConfigured} inferenceAvailable=${inferenceAvailable} shouldLoadPlugin=${shouldLoadCloudPlugin} isCloudContainer=${isCloudContainer} cloud=${JSON.stringify(settingsDebugCloudSummary(c))}`,
     );
   }
 
@@ -2292,12 +2303,22 @@ export function applyCloudConfigToEnv(config: ElizaConfig): void {
   // when inference is off (the old behavior) was indistinguishable from "no
   // policy", so the plugin could never load capability-only — the host nuked
   // the API key instead and lost image generation as collateral (#10819).
-  if (effectivelyEnabled) {
+  if (inferenceAvailable) {
     process.env.ELIZAOS_CLOUD_USE_INFERENCE = "true";
   } else if (shouldLoadCloudPlugin) {
     process.env.ELIZAOS_CLOUD_USE_INFERENCE = "false";
   } else {
     delete process.env.ELIZAOS_CLOUD_USE_INFERENCE;
+  }
+  // Config declares "route this to Cloud"; handler registration silently
+  // requires a credential. When they disagree the runtime falls through to
+  // another provider and, before this, left no trace — the user saw Cloud
+  // selected in config while local answered every turn (#20045 R3/R4).
+  if (topology.servicesUnreconciled.length > 0) {
+    logger.warn(
+      { services: topology.servicesUnreconciled },
+      `[eliza][cloud] Config routes ${topology.servicesUnreconciled.join(", ")} to Eliza Cloud, but no Cloud credential is linked. Those capabilities fall back to their local/other providers until you sign in.`,
+    );
   }
   setCloudUsageEnv(
     "ELIZAOS_CLOUD_USE_TTS",
@@ -2352,17 +2373,13 @@ export function applyCloudConfigToEnv(config: ElizaConfig): void {
   }
   setCloudUsageEnv("ELIZAOS_CLOUD_USE_RPC", topology.services.rpc);
 
-  if (effectivelyEnabled) {
+  if (inferenceConfigured) {
     process.env.ELIZAOS_CLOUD_ENABLED = "true";
   } else {
     delete process.env.ELIZAOS_CLOUD_ENABLED;
   }
 
   if (shouldLoadCloudPlugin) {
-    const configuredCloudApiKey = trimCloudCredential(cloud?.apiKey);
-    const effectiveCloudApiKey =
-      configuredCloudApiKey ??
-      readEffectiveCloudCredential(config, "ELIZAOS_CLOUD_API_KEY");
     const configuredCloudBaseUrl = trimEnvString(cloud?.baseUrl);
     const effectiveCloudBaseUrl =
       configuredCloudBaseUrl ??
@@ -2442,7 +2459,7 @@ export function applyCloudConfigToEnv(config: ElizaConfig): void {
         mega?: string;
       }
     | undefined;
-  if (effectivelyEnabled) {
+  if (inferenceAvailable) {
     const nano =
       llmText?.nanoModel ||
       models?.nano ||

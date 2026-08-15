@@ -763,16 +763,22 @@ function createMixedPersistedTransientMessageService(
   } satisfies NonNullable<AgentRuntime["messageService"]>;
 }
 
-function createEphemeralReplyMessageService(): NonNullable<
-  AgentRuntime["messageService"]
-> {
+function createEphemeralReplyMessageService(
+  failureKind:
+    | "rate_limited"
+    | "handler_error"
+    | "missing_capability"
+    | "persistence_error"
+    | "planner_exhaustion"
+    | "generation_timeout" = "rate_limited",
+): NonNullable<AgentRuntime["messageService"]> {
   return {
     async handleMessage() {
       const content = {
         text: "Temporary provider failure.",
-        transient: true,
+        transient: failureKind === "rate_limited",
         doNotPersist: true,
-        failureKind: "rate_limited" as const,
+        failureKind,
       };
       return {
         didRespond: true,
@@ -3013,6 +3019,38 @@ describe("conversation stream SSE contract (#10712)", () => {
     expect(persistedContent).not.toHaveProperty("doNotPersist");
     expect(persistedContent).not.toHaveProperty("skipMemory");
   });
+
+  it.each([
+    "handler_error",
+    "missing_capability",
+    "persistence_error",
+    "planner_exhaustion",
+    "generation_timeout",
+  ] as const)(
+    "preserves the %s discriminator in the direct chat DTO",
+    async (failureKind:
+      | "handler_error"
+      | "missing_capability"
+      | "persistence_error"
+      | "planner_exhaustion"
+      | "generation_timeout") => {
+      const { ctx, record } = createCtx(
+        createEphemeralReplyMessageService(failureKind),
+      );
+
+      await handleConversationRoutes(ctx);
+
+      const done = parseSsePayloads(record.writes).find(
+        (payload) => payload.type === "done",
+      );
+      expect(done).toMatchObject({
+        type: "done",
+        assistantEphemeral: true,
+        failureKind,
+      });
+      expect(persistAssistantConversationMemory).not.toHaveBeenCalled();
+    },
+  );
 
   it("delivers a post-SSE-init failure as a structured SSE error frame, not an HTTP error", async () => {
     const { ctx, record, useModel } = createCtx();

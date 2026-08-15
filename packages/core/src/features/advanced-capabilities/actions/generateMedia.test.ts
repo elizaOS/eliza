@@ -67,6 +67,49 @@ describe("generateMediaAction availability", () => {
 		).resolves.toBe(false);
 	});
 
+	it("allows an explicit image ask with an IMAGE model even with no media context (F35)", async () => {
+		// The live regression: no options (validate is called without them from
+		// the message service), no pre-selected media/files context — only the
+		// natural-language ask. With an IMAGE model present it must validate, or
+		// the action is dropped from the catalog and the model denies a
+		// capability it has (tj-ec2962758e6a13).
+		const runtime = {
+			getService: () => undefined,
+			getModel: (modelType: string) =>
+				modelType === ModelType.IMAGE ? vi.fn() : undefined,
+		} as never;
+		const imageAsk = {
+			id: "msg",
+			roomId: "room",
+			content: {
+				text: "make me a pixel-art castle image, 64x64 retro game vibe",
+			},
+		} as never;
+
+		await expect(
+			generateMediaAction.validate?.(runtime, imageAsk, undefined),
+		).resolves.toBe(true);
+	});
+
+	it("stays hidden without options, media context, OR an explicit ask", async () => {
+		// A message that merely mentions an image but is not a generation ask,
+		// with no media context and no options, must NOT expose the action.
+		const runtime = {
+			getService: () => undefined,
+			getModel: (modelType: string) =>
+				modelType === ModelType.IMAGE ? vi.fn() : undefined,
+		} as never;
+		const incidental = {
+			id: "msg",
+			roomId: "room",
+			content: { text: "did you see the image i sent earlier?" },
+		} as never;
+
+		await expect(
+			generateMediaAction.validate?.(runtime, incidental, undefined),
+		).resolves.toBe(false);
+	});
+
 	it("allows video when the media service can generate video", async () => {
 		await expect(
 			generateMediaAction.validate?.(

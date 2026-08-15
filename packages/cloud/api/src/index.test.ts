@@ -1,12 +1,14 @@
 /** Verifies Cloud Worker routing and thin-inference dispatch with deterministic fixtures. */
-import { beforeEach, describe, expect, test } from "bun:test";
+import { beforeEach, describe, expect, mock, test } from "bun:test";
 import type { AppEnv } from "@/types/cloud-worker-env";
 import cloudApiWorker, {
+  decorateFullAppDispatchResponse,
   getFrontendAliasApiProxyTarget,
   getFrontendAliasProxyTarget,
   getGeneratedAgentId,
   getHostedFrontendServeRewrite,
   isCanonicalInferencePath,
+  isElizaAppWebhookPath,
   isThinInferenceEnabled,
   isThinStewardPublicPath,
   isUnsupportedLegacyWildcardHostname,
@@ -22,6 +24,188 @@ test("exports the shared-runtime conversation Durable Object", () => {
 
 test("exports the X OAuth refresh Durable Object", () => {
   expect(typeof TwitterOAuthRefreshCoordinator).toBe("function");
+});
+
+test("preserves Workerd WebSocket upgrade responses without rewrapping", () => {
+  const upgrade = {
+    status: 101,
+    webSocket: { accepted: true },
+  } as unknown as Response;
+
+  expect(
+    decorateFullAppDispatchResponse(
+      upgrade,
+      "11111111-1111-4111-8111-111111111111",
+      12,
+      8,
+    ),
+  ).toBe(upgrade);
+});
+
+test("dispatches provider webhooks without full-app bootstrap", async () => {
+  const traceId = "11111111-1111-4111-8111-111111111111";
+  const env = {
+    ENVIRONMENT: "test",
+    NODE_ENV: "test",
+    REDIS_RATE_LIMITING: "false",
+    CACHE_ENABLED: "false",
+    THIN_INFERENCE_ENTRY_ENABLED: "false",
+    BLOB: {},
+  } as unknown as AppEnv["Bindings"];
+  const executionCtx = {
+    waitUntil: () => undefined,
+    passThroughOnException: () => undefined,
+  } as unknown as ExecutionContext;
+  const makeRequest = () =>
+    new Request("https://api.eliza.app/api/eliza-app/webhook/telegram", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-eliza-trace-id": traceId,
+      },
+      body: "{}",
+    });
+
+  const response = await cloudApiWorker.fetch(makeRequest(), env, executionCtx);
+
+  expect(response.status).toBe(503);
+  expect(response.headers.get("x-eliza-trace-id")).toBe(traceId);
+  expect(response.headers.get("x-eliza-webhook-path")).toBe("thin");
+  expect(response.headers.get("server-timing")).toMatch(
+    /webhook_entry_dispatch;dur=\d+(?:\.\d+)?/,
+  );
+  expect(response.headers.get("server-timing")).toMatch(
+    /webhook_module_init;dur=\d+(?:\.\d+)?/,
+  );
+  expect(response.headers.get("server-timing")).not.toContain(
+    "full_app_dispatch",
+  );
+
+  const warmResponse = await cloudApiWorker.fetch(
+    makeRequest(),
+    env,
+    executionCtx,
+  );
+  expect(warmResponse.headers.get("server-timing")).toContain(
+    "webhook_entry_dispatch",
+  );
+  expect(warmResponse.headers.get("server-timing")).not.toContain(
+    "webhook_module_init",
+  );
+});
+
+test("matches only supported provider webhook routes", () => {
+  expect(isElizaAppWebhookPath("/api/eliza-app/webhook/telegram")).toBe(true);
+  expect(isElizaAppWebhookPath("/api/eliza-app/webhook/telegram/agent-1")).toBe(
+    true,
+  );
+  expect(isElizaAppWebhookPath("/api/eliza-app/webhook/whatsapp/")).toBe(true);
+  expect(isElizaAppWebhookPath("/api/eliza-app/webhook/telegram-admin")).toBe(
+    false,
+  );
+  expect(isElizaAppWebhookPath("/api/eliza-app/webhook/unknown")).toBe(false);
+  expect(isElizaAppWebhookPath("/api/eliza-app/webhook")).toBe(false);
+});
+
+test("preserves provider authentication on the thin webhook path", async () => {
+  const originalFetch = globalThis.fetch;
+  const upstreamFetch = mock(
+    async (_input: RequestInfo | URL, _init?: RequestInit) =>
+      Response.json({ ok: true }),
+  );
+  globalThis.fetch = upstreamFetch as unknown as typeof fetch;
+  const env = {
+    ENVIRONMENT: "test",
+    NODE_ENV: "test",
+    REDIS_RATE_LIMITING: "false",
+    CACHE_ENABLED: "false",
+    ELIZA_APP_WEBHOOK_GATEWAY_URL: "https://gateway.example.test",
+    ELIZA_APP_TELEGRAM_WEBHOOK_SECRET: "telegram-secret",
+    ELIZA_APP_WEBHOOK_GATEWAY_SECRET: "gateway-secret",
+    BLOB: {},
+  } as unknown as AppEnv["Bindings"];
+  const executionCtx = {
+    waitUntil: () => undefined,
+    passThroughOnException: () => undefined,
+  } as unknown as ExecutionContext;
+  const request = (secret: string) =>
+    new Request("https://api.eliza.app/api/eliza-app/webhook/telegram", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-telegram-bot-api-secret-token": secret,
+      },
+      body: "{}",
+    });
+
+  try {
+    const accepted = await cloudApiWorker.fetch(
+      request("telegram-secret"),
+      env,
+      executionCtx,
+    );
+    const rejected = await cloudApiWorker.fetch(
+      request("wrong-secret"),
+      env,
+      executionCtx,
+    );
+
+    expect(accepted.status).toBe(200);
+    expect(accepted.headers.get("x-eliza-webhook-path")).toBe("thin");
+    expect(rejected.status).toBe(401);
+    expect(upstreamFetch).toHaveBeenCalledTimes(1);
+    const forwardedHeaders = new Headers(
+      upstreamFetch.mock.calls[0]?.[1]?.headers,
+    );
+    expect(forwardedHeaders.get("x-eliza-webhook-forwarder-secret")).toBe(
+      "gateway-secret",
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("correlates and times dispatch outside full-app middleware", async () => {
+  const traceId = "22222222-2222-4222-8222-222222222222";
+  const env = {
+    ENVIRONMENT: "test",
+    NODE_ENV: "test",
+    REDIS_RATE_LIMITING: "false",
+    CACHE_ENABLED: "false",
+    THIN_INFERENCE_ENTRY_ENABLED: "false",
+    BLOB: {},
+  } as unknown as AppEnv["Bindings"];
+  const executionCtx = {
+    waitUntil: () => undefined,
+    passThroughOnException: () => undefined,
+  } as unknown as ExecutionContext;
+  const makeRequest = () =>
+    new Request("https://api.eliza.app/api/full-app-telemetry-fixture", {
+      headers: { "x-eliza-trace-id": traceId },
+    });
+
+  const response = await cloudApiWorker.fetch(makeRequest(), env, executionCtx);
+
+  expect(response.status).toBe(401);
+  expect(response.headers.get("x-eliza-trace-id")).toBe(traceId);
+  expect(response.headers.get("server-timing")).toMatch(
+    /full_app_dispatch;dur=\d+(?:\.\d+)?/,
+  );
+  expect(response.headers.get("server-timing")).toMatch(
+    /full_app_module_init;dur=\d+(?:\.\d+)?/,
+  );
+
+  const warmResponse = await cloudApiWorker.fetch(
+    makeRequest(),
+    env,
+    executionCtx,
+  );
+  expect(warmResponse.headers.get("server-timing")).toContain(
+    "full_app_dispatch",
+  );
+  expect(warmResponse.headers.get("server-timing")).not.toContain(
+    "full_app_module_init",
+  );
 });
 
 describe("thin inference entry dispatch", () => {

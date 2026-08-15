@@ -4,6 +4,9 @@ import {
   appendChatOverlayShellModeParam,
   computeBottomBarFrame,
   DEFAULT_BOTTOM_BAR_HEIGHT,
+  DEFAULT_BOTTOM_BAR_WIDTH,
+  EXPANDED_BOTTOM_BAR_HEIGHT,
+  EXPANDED_BOTTOM_BAR_WIDTH,
   resolveDesktopShellWindowPresentation,
   shouldReanchorBottomBar,
   shouldStartBottomBar,
@@ -57,16 +60,16 @@ describe("desktop bottom-bar config", () => {
   });
 
   describe("computeBottomBarFrame", () => {
-    it("pins a full-width bar to the bottom of the work area", () => {
+    it("pins a pill-sized hit area to the bottom center of the work area", () => {
       const frame = computeBottomBarFrame({
         x: 0,
         y: 0,
         width: 1920,
         height: 1080,
       });
-      expect(frame.width).toBe(1920);
+      expect(frame.width).toBe(DEFAULT_BOTTOM_BAR_WIDTH);
       expect(frame.height).toBe(DEFAULT_BOTTOM_BAR_HEIGHT);
-      expect(frame.x).toBe(0);
+      expect(frame.x).toBe((1920 - DEFAULT_BOTTOM_BAR_WIDTH) / 2);
       expect(frame.y).toBe(1080 - DEFAULT_BOTTOM_BAR_HEIGHT);
     });
 
@@ -77,18 +80,18 @@ describe("desktop bottom-bar config", () => {
         width: 1440,
         height: 900,
       });
-      expect(frame.x).toBe(1920);
-      expect(frame.width).toBe(1440);
+      expect(frame.x).toBe(1920 + (1440 - DEFAULT_BOTTOM_BAR_WIDTH) / 2);
+      expect(frame.width).toBe(DEFAULT_BOTTOM_BAR_WIDTH);
       expect(frame.y).toBe(24 + 900 - DEFAULT_BOTTOM_BAR_HEIGHT);
     });
 
-    it("applies an optional side margin and custom height", () => {
+    it("centers custom dimensions inside an optional margin", () => {
       const frame = computeBottomBarFrame(
         { x: 0, y: 0, width: 1000, height: 800 },
-        { height: 100, margin: 20 },
+        { width: 600, height: 100, margin: 20 },
       );
-      expect(frame.x).toBe(20);
-      expect(frame.width).toBe(960);
+      expect(frame.x).toBe(200);
+      expect(frame.width).toBe(600);
       expect(frame.height).toBe(100);
       expect(frame.y).toBe(800 - 100 - 20);
     });
@@ -99,6 +102,18 @@ describe("desktop bottom-bar config", () => {
         { height: 1 },
       );
       expect(frame.height).toBe(48);
+    });
+
+    it("constrains the expanded chat hit area instead of spanning the display", () => {
+      expect(
+        computeBottomBarFrame(
+          { x: 0, y: 24, width: 1_440, height: 900 },
+          {
+            width: EXPANDED_BOTTOM_BAR_WIDTH,
+            height: EXPANDED_BOTTOM_BAR_HEIGHT,
+          },
+        ),
+      ).toEqual({ x: 420, y: 104, width: 600, height: 820 });
     });
   });
 

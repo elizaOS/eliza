@@ -154,7 +154,18 @@ export function estimateTwilioSmsSegments(body: string): number {
 }
 
 /**
+ * Decimal-only cost grammar. Excludes the non-decimal literals bare `Number()`
+ * would coerce (`"0x10"` → 16, binary/octal, `"Infinity"`) so malformed config
+ * falls back to the safe default instead of billing an absurd per-segment cost.
+ */
+const TWILIO_SMS_COST_PATTERN = /^\+?(\d+\.?\d*|\.\d+)(e[+-]?\d+)?$/i;
+
+/**
  * Resolve the Twilio SMS segment unit cost from configuration.
+ *
+ * A whitespace-only value trims to empty and falls back silently; partially
+ * numeric (`"0.01USD"`), multi-dot, and non-decimal (`"0x10"`) strings fall
+ * back to the default rather than being truncated or coerced.
  */
 export function resolveTwilioSmsCostPerSegment(
   rawCostPerSegment: string | number | null | undefined,
@@ -162,12 +173,20 @@ export function resolveTwilioSmsCostPerSegment(
 ): number {
   assertValidCost(fallbackCostPerSegment, "fallbackCostPerSegment");
 
-  if (rawCostPerSegment === null || rawCostPerSegment === undefined || rawCostPerSegment === "") {
+  if (rawCostPerSegment === null || rawCostPerSegment === undefined) {
     return fallbackCostPerSegment;
   }
 
-  const parsed =
-    typeof rawCostPerSegment === "number" ? rawCostPerSegment : Number(rawCostPerSegment.trim());
+  let parsed: number;
+  if (typeof rawCostPerSegment === "number") {
+    parsed = rawCostPerSegment;
+  } else {
+    const trimmed = rawCostPerSegment.trim();
+    if (trimmed === "" || !TWILIO_SMS_COST_PATTERN.test(trimmed)) {
+      return fallbackCostPerSegment;
+    }
+    parsed = Number(trimmed);
+  }
 
   if (!Number.isFinite(parsed) || parsed < 0) {
     return fallbackCostPerSegment;

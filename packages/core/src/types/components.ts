@@ -5,6 +5,7 @@
  * action modes, message-handler plan/extract results). The heart of the
  * action/provider surface that the message loop dispatches against.
  */
+import type { ActionFailureProvenance } from "./action-failure";
 import type { ConnectorAccountPolicy } from "./connector-account-policy";
 import type {
 	AgentContext,
@@ -945,6 +946,13 @@ export interface ActionResult {
 	 * receipt from this turn.
 	 */
 	userFacingEffectReceiptIds?: readonly string[];
+
+	/**
+	 * Structural origin of a failed action. Persistence code sets this at its
+	 * commit boundary; the runtime sets it when capability lookup or a handler
+	 * throws. It must be absent on successful results.
+	 */
+	failureProvenance?: ActionFailureProvenance;
 
 	/** Values to merge into the state */
 	values?: Record<string, ProviderValue>;

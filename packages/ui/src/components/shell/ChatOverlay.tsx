@@ -116,6 +116,7 @@ import type {
   ChatMessageData,
   ChatMessageRenderContext,
 } from "../composites/chat/chat-types";
+import { ServingProviderChip } from "../composites/chat/ServingProviderChip";
 import { Button } from "../ui/button";
 import {
   DropdownMenu,
@@ -6366,6 +6367,12 @@ export function ChatOverlay({
                   error={isSlashDraft && slash.error}
                   onPick={pickSlashItem}
                 />
+              ) : null}
+              {/* Who is answering this chat. The overlay is the primary chat
+                  surface, so without it the serving source was only visible in
+                  Settings (#20045 U6). */}
+              {!transcriptionComposerActive ? (
+                <ServingProviderChip className="pointer-events-none order-last shrink-0 self-center pr-1" />
               ) : null}
               {/* The "+" opens shell navigation plus surface-local Search and
                   Upload actions for this in-app conversation, never connector actions on a
