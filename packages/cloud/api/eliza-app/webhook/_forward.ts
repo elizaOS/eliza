@@ -419,6 +419,7 @@ async function proxyRequest(
       statusText: upstream.statusText,
     });
   } catch (error) {
+    // error-policy:J1 Translate an upstream transport failure at the HTTP boundary.
     const durationMs = Math.round((performance.now() - startedAt) * 100) / 100;
     logger.error("[ElizaAppWebhook] Upstream request failed", {
       traceId,
