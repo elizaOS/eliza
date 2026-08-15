@@ -58,6 +58,7 @@ import {
 import {
   buildNativeAppleReminderMetadata,
   type NativeAppleReminderLikeKind,
+  readNativeAppleReminderMetadata,
 } from "../lifeops/apple-reminders.js";
 import {
   resolveDefaultTimeZone,
@@ -928,15 +929,11 @@ type DefinitionResult = {
   ambiguousCandidates: string[];
 };
 
-async function resolveDefinition(
-  service: LifeOpsService,
+function resolveDefinitionInRecords(
+  defs: LifeOpsDefinitionRecord[],
   target: string | undefined,
-  domain?: LifeOpsDomain,
-): Promise<DefinitionResult> {
+): DefinitionResult {
   if (!target) return { match: null, ambiguousCandidates: [] };
-  const defs = (await service.listDefinitions()).filter((e) =>
-    domain ? e.definition.domain === domain : true,
-  );
   const byId = defs.find((entry) => entry.definition.id === target);
   if (byId) {
     return { match: byId, ambiguousCandidates: [] };
@@ -1000,6 +997,18 @@ async function resolveDefinition(
     };
   }
   return { match: null, ambiguousCandidates: [] };
+}
+
+async function resolveDefinition(
+  service: LifeOpsService,
+  target: string | undefined,
+  domain?: LifeOpsDomain,
+): Promise<DefinitionResult> {
+  if (!target) return { match: null, ambiguousCandidates: [] };
+  const defs = (await service.listDefinitions()).filter((e) =>
+    domain ? e.definition.domain === domain : true,
+  );
+  return resolveDefinitionInRecords(defs, target);
 }
 
 async function resolveDefinitionForMutation(
@@ -3212,6 +3221,58 @@ function ownerSurfaceActionNameFromOptions(
     : "OWNER_TODOS";
 }
 
+const OWNER_DEFINITION_SURFACES = [
+  "OWNER_TODOS",
+  "OWNER_REMINDERS",
+  "OWNER_ALARMS",
+  "OWNER_ROUTINES",
+] as const;
+
+type OwnerDefinitionSurface = (typeof OWNER_DEFINITION_SURFACES)[number];
+
+function ownerDefinitionSurface(value: unknown): OwnerDefinitionSurface | null {
+  return typeof value === "string" &&
+    OWNER_DEFINITION_SURFACES.includes(value as OwnerDefinitionSurface)
+    ? (value as OwnerDefinitionSurface)
+    : null;
+}
+
+function definitionReviewSurface(
+  record: LifeOpsDefinitionRecord,
+): OwnerDefinitionSurface | null {
+  const persisted = ownerDefinitionSurface(
+    record.definition.metadata.ownerSurface,
+  );
+  if (persisted) return persisted;
+
+  const nativeReminder = readNativeAppleReminderMetadata(
+    record.definition.metadata,
+  );
+  if (nativeReminder?.kind === "alarm") return "OWNER_ALARMS";
+  if (nativeReminder?.kind === "reminder") return "OWNER_REMINDERS";
+  if (record.definition.kind === "task") return "OWNER_TODOS";
+  if (
+    record.definition.kind === "habit" ||
+    record.definition.kind === "routine"
+  ) {
+    return "OWNER_ROUTINES";
+  }
+  return null;
+}
+
+function definitionReviewSurfaceLabel(surface: OwnerDefinitionSurface): string {
+  switch (surface) {
+    case "OWNER_TODOS":
+      return "todos";
+    case "OWNER_REMINDERS":
+      return "reminders";
+    case "OWNER_ALARMS":
+      return "alarms";
+    case "OWNER_ROUTINES":
+      return "habits or routines";
+  }
+}
+
 function lifeEffectRequestId(message: Memory): string {
   return message.id ?? `room:${message.roomId}`;
 }
@@ -4298,13 +4359,22 @@ async function runLifeOperationHandlerInner(
               source: "llm",
             })
           : undefined;
+      const surfaceMetadata = ownerDefinitionSurface(ownerSurfaceActionName)
+        ? { ownerSurface: ownerSurfaceActionName }
+        : undefined;
       const definitionMetadata = editingDeferredDefinitionDraft
         ? mergeMetadataRecords(
             deferredDefinitionDraft.request.metadata,
-            mergeMetadataRecords(explicitMetadata, nativeAppleMetadata),
+            explicitMetadata,
+            nativeAppleMetadata,
+            surfaceMetadata,
           )
-        : (deferredDefinitionDraft?.request.metadata ??
-          mergeMetadataRecords(explicitMetadata, nativeAppleMetadata));
+        : mergeMetadataRecords(
+            deferredDefinitionDraft?.request.metadata,
+            explicitMetadata,
+            nativeAppleMetadata,
+            surfaceMetadata,
+          );
 
       if (!title) {
         const fallback = "What should I call it?";
@@ -5543,11 +5613,57 @@ async function runLifeOperationHandlerInner(
     }
 
     if (internalOp === "review_definitions") {
-      const records = await service.listDefinitions();
-      const active = records.filter(
-        (record) => record.definition.status === "active",
+      const surface = ownerDefinitionSurface(ownerSurfaceActionName);
+      if (!surface) {
+        return {
+          success: false,
+          text: "That owner surface cannot review LifeOps definitions.",
+          data: toActionData({
+            actionName: ownerSurfaceActionName,
+            definitions: [],
+            error: "LIFEOPS_DEFINITION_SURFACE_UNSUPPORTED",
+          }),
+        };
+      }
+      const reviewDomain = domain ?? "user_lifeops";
+      const active = (await service.listDefinitions()).filter(
+        (record) =>
+          record.definition.status === "active" &&
+          record.definition.domain === reviewDomain &&
+          definitionReviewSurface(record) === surface,
       );
-      if (active.length === 0) {
+      let selected = active;
+      if (targetName) {
+        const resolved = resolveDefinitionInRecords(active, targetName);
+        if (resolved.ambiguousCandidates.length > 0) {
+          const fallback = `Multiple ${definitionReviewSurfaceLabel(surface)} match "${targetName}": ${resolved.ambiguousCandidates.join(", ")}. Which one did you mean?`;
+          return {
+            success: false,
+            text: fallback,
+            data: toActionData({
+              actionName: ownerSurfaceActionName,
+              ambiguousCandidates: resolved.ambiguousCandidates,
+              definitions: [],
+              error: "LIFEOPS_DEFINITION_AMBIGUOUS",
+            }),
+          };
+        }
+        if (!resolved.match) {
+          const fallback = `I couldn't find an active ${definitionReviewSurfaceLabel(surface)} item matching "${targetName}".`;
+          return {
+            success: false,
+            text: fallback,
+            data: toActionData({
+              actionName: ownerSurfaceActionName,
+              definitions: [],
+              error: "LIFEOPS_DEFINITION_NOT_FOUND",
+            }),
+          };
+        }
+        selected = [resolved.match];
+      }
+      if (selected.length === 0) {
+        const label = definitionReviewSurfaceLabel(surface);
         return {
           success: true,
           text: await renderLifeActionReply({
@@ -5556,22 +5672,25 @@ async function runLifeOperationHandlerInner(
             state,
             intent,
             scenario: "definitions_review",
-            fallback: "You aren't tracking any todos or routines right now.",
+            fallback: `You aren't tracking any active ${label} right now.`,
             context: { definitions: [] },
           }),
-          data: toActionData({ definitions: [] }),
+          data: toActionData({
+            actionName: ownerSurfaceActionName,
+            definitions: [],
+          }),
         };
       }
-      const listed = active.slice(0, 12).map((record) => ({
+      const listed = selected.slice(0, 12).map((record) => ({
         title: record.definition.title,
         cadence: summarizeCadence(record.definition.cadence),
         kind: record.definition.kind,
       }));
       const fallback = [
-        `You're tracking ${active.length} item${active.length === 1 ? "" : "s"}:`,
+        `You're tracking ${selected.length} ${definitionReviewSurfaceLabel(surface)} item${selected.length === 1 ? "" : "s"}:`,
         ...listed.map((item) => `- ${item.title} (${item.cadence})`),
-        ...(active.length > listed.length
-          ? [`…and ${active.length - listed.length} more.`]
+        ...(selected.length > listed.length
+          ? [`…and ${selected.length - listed.length} more.`]
           : []),
       ].join("\n");
       return {
@@ -5583,10 +5702,11 @@ async function runLifeOperationHandlerInner(
           intent,
           scenario: "definitions_review",
           fallback,
-          context: { definitions: listed, total: active.length },
+          context: { definitions: listed, total: selected.length },
         }),
         data: toActionData({
-          definitions: active.map((record) => record.definition),
+          actionName: ownerSurfaceActionName,
+          definitions: selected.map((record) => record.definition),
         }),
       };
     }
