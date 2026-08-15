@@ -26,11 +26,14 @@
  */
 
 import { mkdir, writeFile } from "node:fs/promises";
-import { builtinModules } from "node:module";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
 import { chromium, webkit } from "playwright";
+import {
+  stubElizaCore,
+  stubNodeBuiltins,
+} from "../../../testing/e2e-runner/esbuild-stubs.ts";
 import { touchDragHold } from "../../../testing/real-touch-gestures.ts";
 
 const ENGINE = process.env.ENGINE === "webkit" ? webkit : chromium;
@@ -47,76 +50,6 @@ function assert(cond, msg) {
   return cond;
 }
 
-// --- same bundle stubs as run-chat-scroll-web-e2e.mjs --------------------
-const stubElizaCore = {
-  name: "stub-eliza-core",
-  setup(b) {
-    b.onResolve({ filter: /^@elizaos\/core$/ }, (args) => ({
-      path: args.path,
-      namespace: "eliza-core-stub",
-    }));
-    b.onLoad({ filter: /.*/, namespace: "eliza-core-stub" }, () => ({
-      contents: `
-        const noop = new Proxy(() => noop, { get: () => noop });
-        // The wake/provision path (client-cloud.ts) subclasses the real
-        // ElizaError; esbuild's ESM interop copies only this object's own keys,
-        // so a Proxy fallback would surface undefined here and break the
-        // subclass at evaluation time. Export a real class with core's shape so
-        // the fixture bundle exercises the same error type production does.
-        class ElizaError extends Error {
-          constructor(message, options = {}) {
-            super(
-              message,
-              options.cause !== undefined ? { cause: options.cause } : undefined,
-            );
-            this.name = "ElizaError";
-            this.code = options.code;
-            this.context = options.context;
-            this.severity = options.severity;
-            Object.setPrototypeOf(this, new.target.prototype);
-          }
-        }
-        module.exports = new Proxy(
-          {
-            ElizaError,
-            isElizaError: (v) => v instanceof ElizaError,
-            isViewVisible: () => true,
-            dedupeModalities: (m) => Array.from(new Set(Array.isArray(m) ? m : [])),
-            findInteractionRegions: () => [],
-          },
-          { get: (t, p) => (p in t ? t[p] : noop) },
-        );
-      `,
-      loader: "js",
-    }));
-  },
-};
-const nodeBuiltins = new Set([
-  ...builtinModules,
-  ...builtinModules.map((m) => `node:${m}`),
-]);
-const stubNodeBuiltins = {
-  name: "stub-node-builtins",
-  setup(b) {
-    b.onResolve({ filter: /.*/ }, (args) => {
-      const bare = args.path.replace(/^node:/, "").split("/")[0];
-      if (
-        args.path.startsWith("node:") ||
-        nodeBuiltins.has(args.path) ||
-        builtinModules.includes(bare)
-      ) {
-        return { path: args.path, namespace: "node-stub" };
-      }
-      return null;
-    });
-    b.onLoad({ filter: /.*/, namespace: "node-stub" }, () => ({
-      contents:
-        "const n=()=>noop;const noop=new Proxy(n,{get:()=>noop});module.exports=noop;",
-      loader: "js",
-    }));
-  },
-};
-
 const result = await build({
   entryPoints: [join(here, "chat-sheet-fixture.tsx")],
   bundle: true,
@@ -125,7 +58,7 @@ const result = await build({
   jsx: "automatic",
   loader: { ".tsx": "tsx", ".ts": "ts" },
   define: { "process.env.NODE_ENV": '"production"' },
-  plugins: [stubElizaCore, stubNodeBuiltins],
+  plugins: [stubElizaCore(), stubNodeBuiltins()],
   write: false,
 });
 const js = result.outputFiles[0].text;

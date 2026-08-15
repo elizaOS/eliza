@@ -198,6 +198,7 @@ const stubElizaCore = {
             isViewVisible: (d, enabled) =>
               isViewKindEnabled(resolveViewKind(d), enabled),
             dedupeModalities: (m) => Array.from(new Set(Array.isArray(m) ? m : [])),
+            stripUnclaimedInteractionMarkup: (text) => text,
             // The attention-mode home notification center (NotificationsHomeCenter)
             // triages each seeded notification by tier, so it needs the REAL
             // priority→tier mapping — a noop reads back "undefined" through
