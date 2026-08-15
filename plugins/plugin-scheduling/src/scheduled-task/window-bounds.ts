@@ -1,6 +1,6 @@
 /**
- * Resolves owner-configured daily scheduling windows into validated minute bounds.
- * Missing values use the scheduling defaults; present empty or malformed values
+ * Resolves owner-configured daily scheduling windows into validated minute
+ * bounds. Missing values use the scheduling defaults; present empty or malformed values
  * are rejected by the canonical local-time parser so due checks and indexing
  * cannot disagree about a window.
  */

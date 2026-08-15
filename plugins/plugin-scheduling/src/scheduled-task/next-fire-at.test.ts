@@ -192,6 +192,7 @@ describe("computeNextFireAt owner_local cron tz resolution", () => {
     expect(next).toBe("2026-05-11T15:00:00.000Z");
   });
 });
+
 describe("computeNextFireAt during_window bounds", () => {
   function duringWindow(windowKey: string) {
     return taskWith({
@@ -258,15 +259,26 @@ describe("computeNextFireAt during_window bounds", () => {
   });
 
   it.each([
-    ["spring-forward", "2026-03-08T08:00:00.000Z", "2026-03-08T13:00:00.000Z"],
-    ["fall-back", "2026-11-01T07:00:00.000Z", "2026-11-01T14:00:00.000Z"],
-  ])("indexes the default morning window across %s", async (_label, now, expected) => {
-    await expect(
-      computeNextFireAt(duringWindow("morning"), {
-        now: new Date(now),
-        ownerFacts: { timezone: "America/Los_Angeles" },
-        anchors: null,
-      }),
-    ).resolves.toBe(expected);
-  });
+    [
+      "spring-forward",
+      "2026-03-08T08:00:00.000Z",
+      "2026-03-08T13:00:00.000Z",
+    ],
+    [
+      "fall-back",
+      "2026-11-01T07:00:00.000Z",
+      "2026-11-01T14:00:00.000Z",
+    ],
+  ])(
+    "indexes the default morning window across %s",
+    async (_label, now, expected) => {
+      await expect(
+        computeNextFireAt(duringWindow("morning"), {
+          now: new Date(now),
+          ownerFacts: { timezone: "America/Los_Angeles" },
+          anchors: null,
+        }),
+      ).resolves.toBe(expected);
+    },
+  );
 });
