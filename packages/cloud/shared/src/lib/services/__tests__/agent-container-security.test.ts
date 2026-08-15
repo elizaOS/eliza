@@ -6,6 +6,7 @@
 import { describe, expect, test } from "bun:test";
 
 import {
+  agentCpuUnitsToDockerCpus,
   buildAgentContainerCpuFlags,
   buildAgentContainerMemoryFlags,
   buildAgentContainerSecurityFlags,
@@ -100,5 +101,19 @@ describe("buildAgentContainerCpuFlags — per-agent CPU containment for robot de
     expect(buildAgentContainerCpuFlags(undefined)).toEqual([]);
     expect(buildAgentContainerCpuFlags(-1)).toEqual([]);
     expect(buildAgentContainerCpuFlags(Number.NaN)).toEqual([]);
+  });
+});
+
+describe("agentCpuUnitsToDockerCpus", () => {
+  test("converts the persisted ECS-style unit contract before building Docker flags", () => {
+    expect(agentCpuUnitsToDockerCpus(512)).toBe(0.5);
+    expect(agentCpuUnitsToDockerCpus(1024)).toBe(1);
+    expect(buildAgentContainerCpuFlags(agentCpuUnitsToDockerCpus(2048))).toEqual(["--cpus '2'"]);
+  });
+
+  test("rejects invalid unit values", () => {
+    expect(agentCpuUnitsToDockerCpus(undefined)).toBeUndefined();
+    expect(agentCpuUnitsToDockerCpus(0)).toBeUndefined();
+    expect(agentCpuUnitsToDockerCpus(Number.NaN)).toBeUndefined();
   });
 });

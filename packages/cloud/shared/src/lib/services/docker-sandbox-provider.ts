@@ -23,6 +23,7 @@ import { resolveServerStewardApiUrlFromEnv } from "../steward-url";
 import { logger } from "../utils/logger";
 import { withTimeout } from "../utils/with-timeout";
 import {
+  agentCpuUnitsToDockerCpus,
   buildAgentContainerCpuFlags,
   buildAgentContainerMemoryFlags,
   buildAgentContainerSecurityFlags,
@@ -1505,7 +1506,9 @@ export class DockerSandboxProvider implements SandboxProvider {
         // safe — a busy-looping agent is throttled inside its own cgroup
         // instead of starving every co-tenant on a shared robot box.
         ...buildAgentContainerCpuFlags(
-          config.container?.cpu ?? containersEnv.agentContainerCpuLimit(),
+          config.container?.cpu !== undefined
+            ? agentCpuUnitsToDockerCpus(config.container.cpu)
+            : containersEnv.agentContainerCpuLimit(),
         ),
         // Escape-hardening (#12230/#12302): drop ALL kernel capabilities, forbid
         // privilege escalation, and bound the process count — then, under

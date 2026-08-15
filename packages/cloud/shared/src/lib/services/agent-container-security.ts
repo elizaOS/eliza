@@ -78,3 +78,9 @@ export function buildAgentContainerCpuFlags(cpus: number | undefined): string[] 
   const value = Math.round(cpus * 100) / 100;
   return [`--cpus ${shellQuote(String(value))}`];
 }
+
+/** Converts the persisted ECS-style CPU unit contract to Docker vCPUs. */
+export function agentCpuUnitsToDockerCpus(cpuUnits: number | undefined): number | undefined {
+  if (!cpuUnits || !Number.isFinite(cpuUnits) || cpuUnits <= 0) return undefined;
+  return cpuUnits / 1024;
+}

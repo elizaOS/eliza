@@ -133,6 +133,7 @@ export interface SandboxHandle {
 export interface SandboxContainerLaunchConfig {
   projectName?: string;
   port?: number;
+  /** ECS-style CPU units; 1024 units equal one vCPU. */
   cpu?: number;
   memoryMb?: number;
   desiredCount?: number;
