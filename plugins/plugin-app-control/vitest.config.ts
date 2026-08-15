@@ -154,6 +154,13 @@ export default defineConfig({
 				replacement: path.join(coreSrc, "$1.ts"),
 			},
 			{
+				// Extensionless subpath export; must precede the bare entry below,
+				// which would otherwise prefix-rewrite it into a path inside
+				// index.node.ts.
+				find: "@elizaos/core/client-public",
+				replacement: path.join(coreSrc, "client-public.ts"),
+			},
+			{
 				find: "@elizaos/core",
 				replacement: path.join(coreSrc, "index.node.ts"),
 			},

@@ -3161,10 +3161,16 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 							}
 						}
 						if (!viewId || !capability) {
+							// Planner-facing guidance (tool-call syntax a user never types).
+							// Kept on `text` for the replan; never delivered as a chat bubble —
+							// the evaluator owns the user-facing outcome of a failed step.
 							const reply =
 								"Specify view and capability, e.g. action=interact view=wallet capability=get-state, or ask for the current view after navigating.";
-							await callback?.({ text: reply });
-							return { success: false, text: reply };
+							return {
+								success: false,
+								text: reply,
+								transcriptVisibility: "internal",
+							};
 						}
 						const resolvedView =
 							resolvedCapability?.view ?? resolveViewTarget(viewId, views);
@@ -3254,9 +3260,18 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 									}
 								);
 							}
+							// Catalog diagnostics are planner-facing (`text` contract in
+							// planner-types.ts): the planner replans or retries an owner
+							// reader; delivering this as a bubble leaked developer prose
+							// into chat (live tj-1a1dd4704d0293). `internal` also keeps
+							// withViewsUserFacingText from promoting it to userFacingText,
+							// which core's grounded-failure path would otherwise surface.
 							const reply = `Cannot invoke capability "${capability}" on view "${viewId}": the view catalog does not declare that capability.`;
-							await callback?.({ text: reply });
-							return { success: false, text: reply };
+							return {
+								success: false,
+								text: reply,
+								transcriptVisibility: "internal",
+							};
 						}
 						if (!resolvedCapability && standardCapability)
 							capability = standardCapability;
@@ -3306,9 +3321,13 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 							text,
 						);
 						if (!paramsResolution.ok) {
+							// Same contract as the catalog-miss above: planner-facing only.
 							const reply = `Cannot invoke capability "${capability}" on view "${viewId}": ${paramsResolution.error}.`;
-							await callback?.({ text: reply });
-							return { success: false, text: reply };
+							return {
+								success: false,
+								text: reply,
+								transcriptVisibility: "internal",
+							};
 						}
 						const params = paramsResolution.params;
 						const timeoutMs =
@@ -3331,7 +3350,15 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 						const effectContract = interaction.success
 							? readViewInteractionEffectContract(interaction.result)
 							: undefined;
-						await callback?.({ text: resultText });
+						// Deliver only verified successes. A failed interaction's text is
+						// the loopback diagnostic — planner-facing by contract — and
+						// delivering it produced the two-bubble leak (diagnostic bubble,
+						// then the evaluator's recovery reply). On failure the result
+						// carries no userFacingText, so the evaluator/grounded-failure
+						// path owns the single honest user reply.
+						if (interaction.success) {
+							await callback?.({ text: resultText });
+						}
 						return {
 							success: interaction.success,
 							text: resultText,
@@ -3341,7 +3368,7 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 										verifiedUserFacing: true,
 										turnComplete: true,
 									}
-								: {}),
+								: { transcriptVisibility: "internal" as const }),
 							...(effectContract ?? {}),
 							values: {
 								mode: "interact",

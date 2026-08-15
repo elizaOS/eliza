@@ -533,6 +533,107 @@ describe("view management actions", () => {
 		);
 	});
 
+	it("keeps failed interact diagnostics out of the user channel and delivers only verified successes", async () => {
+		const { runtime } = createRuntime();
+		const notesClient = {
+			listViews: vi.fn(async () => [
+				view({
+					id: "notes",
+					label: "Notes",
+					path: "/notes",
+					capabilities: [
+						{
+							id: "create-note",
+							description: "Create a sticky note.",
+							params: {
+								content: {
+									type: "string",
+									description: "Complete note content.",
+									required: true,
+								},
+							},
+						},
+					],
+				}),
+			]),
+			getCurrentView: vi.fn(async () => null),
+		};
+		const action = createViewsAction({
+			client: notesClient,
+			hasOwnerAccess: vi.fn(async () => true),
+		});
+
+		// Catalog miss: the diagnostic stays planner-facing on `text` — no bubble.
+		const catalogMissCallback = vi.fn();
+		const catalogMiss = await action.handler(
+			runtime as never,
+			message("get my todos") as never,
+			undefined,
+			{ action: "interact", view: "notes", capability: "get-todos" },
+			catalogMissCallback,
+		);
+		expect(catalogMiss?.success).toBe(false);
+		expect(catalogMiss?.text).toContain("Cannot invoke capability");
+		expect(catalogMiss?.userFacingText).toBeUndefined();
+		expect(catalogMissCallback).not.toHaveBeenCalled();
+
+		// Loopback failure: the interaction's diagnostic text is likewise never
+		// delivered — the evaluator/grounded-failure path owns the user reply.
+		vi.mocked(globalThis.fetch).mockResolvedValueOnce({
+			ok: false,
+			status: 500,
+			json: async () => ({
+				requestId: "notes-create",
+				success: false,
+				error: "view worker crashed",
+			}),
+		} as Response);
+		const failedCallback = vi.fn();
+		const failed = await action.handler(
+			runtime as never,
+			message("make a note") as never,
+			undefined,
+			{
+				action: "interact",
+				view: "notes",
+				capability: "create-note",
+				params: { content: "hello" },
+			},
+			failedCallback,
+		);
+		expect(failed?.success).toBe(false);
+		expect(failed?.userFacingText).toBeUndefined();
+		expect(failed?.transcriptVisibility).toBe("internal");
+		expect(failedCallback).not.toHaveBeenCalled();
+
+		// Verified success still delivers exactly one bubble.
+		vi.mocked(globalThis.fetch).mockResolvedValueOnce({
+			ok: true,
+			status: 200,
+			json: async () => ({
+				requestId: "notes-create",
+				success: true,
+				result: { success: true, text: "Created note “hello”." },
+			}),
+		} as Response);
+		const successCallback = vi.fn();
+		const succeeded = await action.handler(
+			runtime as never,
+			message("make a note saying hello") as never,
+			undefined,
+			{
+				action: "interact",
+				view: "notes",
+				capability: "create-note",
+				params: { content: "hello" },
+			},
+			successCallback,
+		);
+		expect(succeeded?.success).toBe(true);
+		expect(succeeded?.verifiedUserFacing).toBe(true);
+		expect(successCallback).toHaveBeenCalledTimes(1);
+	});
+
 	it("routes Browser view browse aliases through the canonical BROWSER action", async () => {
 		const { runtime } = createRuntime();
 		const browserHandler = vi.fn(async () => ({
