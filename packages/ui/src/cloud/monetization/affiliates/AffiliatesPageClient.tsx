@@ -3,8 +3,10 @@
  *
  * Data: GET `/api/v1/affiliates` (auto-create on first load via POST), POST/PUT
  * `/api/v1/affiliates` (markup), GET `/api/v1/referrals` (via
- * {@link useDashboardReferralMe}). Markup is a SettingsInputRow; the surrounding
- * BrandCard chrome and save button stay.
+ * {@link useDashboardReferralMe}). Copyable links preserve the dashboard-card
+ * layout while exposing wrapping URLs, precise copy controls, and live status.
+ * Markup is a SettingsInputRow; the surrounding BrandCard chrome and save
+ * button stay.
  */
 
 "use client";
@@ -62,6 +64,10 @@ function getAppUrl(): string {
   return base.replace(/\/$/, "");
 }
 
+function buildAffiliateLoginUrl(origin: string, code: string): string {
+  return `${origin.replace(/\/$/, "")}/login?affiliate=${code}`;
+}
+
 export function AffiliatesPageClient() {
   const t = useCloudT();
   const [affiliateData, setAffiliateData] = useState<AffiliateData | null>(
@@ -81,6 +87,14 @@ export function AffiliatesPageClient() {
     referralFetchFailed,
     refetch: refetchReferral,
   } = useDashboardReferralMe();
+  const pageOrigin =
+    typeof window !== "undefined" ? window.location.origin : getAppUrl();
+  const inviteUrl = referralMe
+    ? buildReferralInviteLoginUrl(pageOrigin, referralMe.code)
+    : "";
+  const affiliateUrl = affiliateData
+    ? buildAffiliateLoginUrl(pageOrigin, affiliateData.code)
+    : "";
 
   const createAffiliateCode = useCallback(async (initialMarkup = 20) => {
     const data = await api<AffiliateResponse>("/api/v1/affiliates", {
@@ -118,15 +132,33 @@ export function AffiliatesPageClient() {
     fetchAffiliateData();
   }, [fetchAffiliateData]);
 
+  const handleCopyInvite = async () => {
+    if (!referralMe) return;
+    const ok = await copyTextToClipboard(inviteUrl);
+    if (ok) {
+      markReferralCopied();
+      toast.success(
+        t("cloud.affiliates.inviteCopied", {
+          defaultValue: "Invite link copied",
+        }),
+      );
+    } else {
+      toast.error(
+        t("cloud.affiliates.couldNotCopy", {
+          defaultValue: "Could not copy to clipboard",
+        }),
+      );
+    }
+  };
+
   const handleCopyLink = async () => {
     if (!affiliateData) return;
-    const url = `${window.location.origin}/login?affiliate=${affiliateData.code}`;
-    const ok = await copyTextToClipboard(url);
+    const ok = await copyTextToClipboard(affiliateUrl);
     if (ok) {
       markAffiliateCopied();
       toast.success(
         t("cloud.affiliates.linkCopied", {
-          defaultValue: "Link copied to clipboard!",
+          defaultValue: "Affiliate link copied",
         }),
       );
     } else {
@@ -189,11 +221,40 @@ export function AffiliatesPageClient() {
     );
   }
 
-  const pageOrigin =
-    typeof window !== "undefined" ? window.location.origin : getAppUrl();
+  const copyStatus =
+    referralCopied && copied
+      ? t("cloud.affiliates.bothLinksCopied", {
+          defaultValue: "Invite link copied. Affiliate link copied",
+        })
+      : referralCopied
+        ? t("cloud.affiliates.inviteCopied", {
+            defaultValue: "Invite link copied",
+          })
+        : copied
+          ? t("cloud.affiliates.linkCopied", {
+              defaultValue: "Affiliate link copied",
+            })
+          : "";
+  const inviteCopyLabel = referralCopied
+    ? t("cloud.affiliates.copiedInviteLinkAria", {
+        defaultValue: "Copied invite link",
+      })
+    : t("cloud.affiliates.copyInviteLinkAria", {
+        defaultValue: "Copy link (invite)",
+      });
+  const affiliateCopyLabel = copied
+    ? t("cloud.affiliates.copiedAffiliateLinkAria", {
+        defaultValue: "Copied affiliate link",
+      })
+    : t("cloud.affiliates.copyAffiliateLinkAria", {
+        defaultValue: "Copy link (affiliate)",
+      });
 
   return (
     <div className="flex flex-col gap-6 max-w-4xl mx-auto">
+      <p role="status" aria-live="polite" className="sr-only">
+        {copyStatus}
+      </p>
       {/* Introduction Banner */}
       <BrandCard className="relative" corners={false}>
         <div className="flex items-start gap-3">
@@ -318,54 +379,34 @@ export function AffiliatesPageClient() {
                         "{{count}} friends have joined with your link.",
                     })}
             </p>
-            <div className="flex items-center gap-3 bg-bg-hover border border-accent/20 rounded-sm p-3">
+            <div className="flex flex-col items-stretch gap-3 rounded-sm border border-accent/20 bg-bg-hover p-3 sm:flex-row sm:items-center">
               <LinkIcon className="h-5 w-5 text-accent/60 shrink-0" />
-              <div className="flex-1 font-mono text-txt overflow-hidden text-ellipsis whitespace-nowrap text-sm">
-                {buildReferralInviteLoginUrl(pageOrigin, referralMe.code)}
+              <div className="min-w-0 flex-1 break-all font-mono text-sm text-txt">
+                {inviteUrl}
               </div>
               <Button
                 variant="secondary"
-                className="shrink-0"
+                size="sm"
+                className="shrink-0 self-end sm:self-auto"
+                aria-label={inviteCopyLabel}
+                data-testid="cloud-affiliates-copy-invite"
                 onClick={() => {
-                  void (async () => {
-                    if (!pageOrigin) {
-                      toast.error(
-                        t("cloud.affiliates.couldNotBuildInvite", {
-                          defaultValue: "Could not build invite link",
-                        }),
-                      );
-                      return;
-                    }
-                    const url = buildReferralInviteLoginUrl(
-                      pageOrigin,
-                      referralMe.code,
-                    );
-                    const ok = await copyTextToClipboard(url);
-                    if (ok) {
-                      markReferralCopied();
-                      toast.success(
-                        t("cloud.affiliates.inviteCopied", {
-                          defaultValue: "Invite link copied!",
-                        }),
-                      );
-                    } else {
-                      toast.error(
-                        t("cloud.affiliates.couldNotCopy", {
-                          defaultValue: "Could not copy to clipboard",
-                        }),
-                      );
-                    }
-                  })();
+                  void handleCopyInvite();
                 }}
               >
                 {referralCopied ? (
-                  <CheckCircle2 className="h-4 w-4 mr-2 text-status-success" />
+                  <CheckCircle2
+                    className="h-4 w-4 mr-2 text-status-success"
+                    aria-hidden
+                  />
                 ) : (
-                  <Copy className="h-4 w-4 mr-2" />
+                  <Copy className="h-4 w-4 mr-2" aria-hidden />
                 )}
                 {referralCopied
                   ? t("cloud.affiliates.copied", { defaultValue: "Copied" })
-                  : t("cloud.affiliates.copy", { defaultValue: "Copy" })}
+                  : t("cloud.affiliates.copyLink", {
+                      defaultValue: "Copy link",
+                    })}
               </Button>
             </div>
           </>
@@ -386,26 +427,34 @@ export function AffiliatesPageClient() {
           })}
         </p>
 
-        <div className="flex items-center gap-3 bg-bg-hover border border-border rounded-sm p-3">
+        <div className="flex flex-col items-stretch gap-3 rounded-sm border border-border bg-bg-hover p-3 sm:flex-row sm:items-center">
           <LinkIcon className="h-5 w-5 text-muted shrink-0" />
-          <div className="flex-1 font-mono text-txt overflow-hidden text-ellipsis whitespace-nowrap text-sm">
-            {typeof window !== "undefined"
-              ? `${window.location.origin}/login?affiliate=${affiliateData?.code}`
-              : `${getAppUrl()}/login?affiliate=${affiliateData?.code}`}
+          <div className="min-w-0 flex-1 break-all font-mono text-sm text-txt">
+            {affiliateUrl}
           </div>
           <Button
             variant="secondary"
-            className="shrink-0"
-            onClick={handleCopyLink}
+            size="sm"
+            className="shrink-0 self-end sm:self-auto"
+            aria-label={affiliateCopyLabel}
+            data-testid="cloud-affiliates-copy-affiliate"
+            onClick={() => {
+              void handleCopyLink();
+            }}
           >
             {copied ? (
-              <CheckCircle2 className="h-4 w-4 mr-2 text-status-success" />
+              <CheckCircle2
+                className="h-4 w-4 mr-2 text-status-success"
+                aria-hidden
+              />
             ) : (
-              <Copy className="h-4 w-4 mr-2" />
+              <Copy className="h-4 w-4 mr-2" aria-hidden />
             )}
             {copied
               ? t("cloud.affiliates.copied", { defaultValue: "Copied" })
-              : t("cloud.affiliates.copy", { defaultValue: "Copy" })}
+              : t("cloud.affiliates.copyLink", {
+                  defaultValue: "Copy link",
+                })}
           </Button>
         </div>
       </BrandCard>
