@@ -316,6 +316,7 @@ jobs:
             WHERE id = '4602b3be-2c01-4e7e-9cdc-849604e1bef7';
             SQL
       - name: Replace the exact closed runtime with the corrected image
+        if: false
         uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2
         with:
           host: ${{ env.DEPLOY_HOST }}
@@ -473,6 +474,30 @@ jobs:
             FROM agent_sandboxes
             WHERE id = '$agent_id';
             SQL
+      - name: Enqueue the corrected runtime start
+        uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2
+        with:
+          host: ${{ env.DEPLOY_HOST }}
+          username: deploy
+          key: ${{ env.DEPLOY_SSH_KEY }}
+          command_timeout: 2m
+          script: |
+            set -euo pipefail
+            agent_id=4602b3be-2c01-4e7e-9cdc-849604e1bef7
+            expected_image=ghcr.io/elizaos/eliza-demo@sha256:ae4d87e30f85f7a8c662751ba16c71522f309ed163b16da519cb931aa305965a
+            database_url="$(sed -n 's/^DATABASE_URL=//p' /opt/eliza/cloud/.env.local | tail -1)"
+            database_url="${database_url/sslmode=no-verify/sslmode=require}"
+            state="$(psql "$database_url" -v ON_ERROR_STOP=1 -Atc "SELECT status || '|' || docker_image FROM agent_sandboxes WHERE id = '$agent_id')"
+            test "$state" = "stopped|$expected_image"
+            service_key="$(sed -n 's/^WAIFU_SERVICE_KEY=//p' /opt/eliza/cloud/.env.local | tail -1)"
+            test -n "${service_key//[[:space:]]/}"
+            response="$(curl --silent --show-error --fail-with-body --max-time 30 \
+              --request POST \
+              --header "X-Service-Key: $service_key" \
+              "https://api.eliza.app/api/v1/agents/$agent_id/restart")"
+            test "$(jq -r '.success' <<<"$response")" = true
+            psql "$database_url" -v ON_ERROR_STOP=1 -c \
+              "SELECT id, type, status, created_at FROM jobs WHERE agent_id = '$agent_id' ORDER BY created_at DESC LIMIT 3"
 
   changes:
     name: Classify changed paths
