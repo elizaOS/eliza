@@ -117,7 +117,8 @@ export type AuthMeResult =
       reason?:
         | "remote_auth_required"
         | "remote_password_not_configured"
-        | "server_error";
+        | "server_error"
+        | "cloud_unavailable";
       access?: AuthAccessInfo;
     };
 
@@ -338,7 +339,10 @@ export async function authMe(): Promise<AuthMeResult> {
       } catch {
         // error-policy:J1 a transport, throttle, or server outage is not
         // authoritative logout; preserve the binding and expose unavailability.
-        return { ok: false, status: 503, reason: "server_error" };
+        // "cloud_unavailable" (not "server_error") keeps this outcome out of
+        // the local-agent boot 503 retry budget so one transient refresh never
+        // becomes an amplified POST storm against a throttling endpoint.
+        return { ok: false, status: 503, reason: "cloud_unavailable" };
       }
     }
     const secondsRemaining = token ? cloudTokenSecsRemaining(token) : null;

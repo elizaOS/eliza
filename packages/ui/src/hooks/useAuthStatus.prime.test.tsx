@@ -197,7 +197,69 @@ describe("primeAuthStatusProbe + activation reuse", () => {
     await expect(authMe()).resolves.toEqual({
       ok: false,
       status: 503,
-      reason: "server_error",
+      reason: "cloud_unavailable",
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(loadPersistedActiveServer()).toMatchObject({
+      id: "cloud:shared-agent",
+      apiBase,
+      accessToken: "shared-agent-token",
+    });
+    expect(getBootConfig().apiBase).toBe(apiBase);
+  });
+
+  // Regression for the review-found retry storm: the hook's 10×1s 503 retry
+  // budget exists for the local-agent boot race, and must not re-POST a
+  // throttling Steward refresh endpoint. Exactly one refresh request may
+  // leave the client before the hook settles on server_unavailable.
+  it.each([429, 503])(
+    "surfaces a persistent %d refresh as server_unavailable after exactly one POST",
+    async (status) => {
+      const apiBase = "https://api.eliza.app/api/v1/eliza/agents/shared-agent";
+      setBootConfig({ branding: {}, apiBase });
+      savePersistedActiveServer({
+        id: "cloud:shared-agent",
+        kind: "cloud",
+        label: "Eliza Cloud",
+        apiBase,
+        accessToken: "shared-agent-token",
+      });
+      clearStoredStewardToken();
+      setStewardAuthedCookie(true);
+      fetchMock.mockResolvedValue(jsonResponse(status, {}));
+
+      const { result } = renderHook(() => useAuthStatus({ pollIntervalMs: 0 }));
+
+      await waitFor(() =>
+        expect(result.current.state.phase).toBe("server_unavailable"),
+      );
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(loadPersistedActiveServer()).toMatchObject({
+        id: "cloud:shared-agent",
+        apiBase,
+        accessToken: "shared-agent-token",
+      });
+    },
+  );
+
+  it("preserves a cookie-only shared binding when refresh answers a malformed 200", async () => {
+    const apiBase = "https://api.eliza.app/api/v1/eliza/agents/shared-agent";
+    setBootConfig({ branding: {}, apiBase });
+    savePersistedActiveServer({
+      id: "cloud:shared-agent",
+      kind: "cloud",
+      label: "Eliza Cloud",
+      apiBase,
+      accessToken: "shared-agent-token",
+    });
+    clearStoredStewardToken();
+    setStewardAuthedCookie(true);
+    fetchMock.mockResolvedValue(jsonResponse(200, {}));
+
+    await expect(authMe()).resolves.toEqual({
+      ok: false,
+      status: 503,
+      reason: "cloud_unavailable",
     });
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(loadPersistedActiveServer()).toMatchObject({
