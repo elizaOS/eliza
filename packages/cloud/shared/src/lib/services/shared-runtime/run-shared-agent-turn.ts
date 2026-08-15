@@ -298,13 +298,7 @@ export async function runSharedAgentTurn(
     const reply = `${input.character.name} is temporarily unavailable (no shared model configured).`;
     return {
       reply,
-      history: appendTurn(
-        input.history,
-        message,
-        reply,
-        input.messageIds,
-        input.messageRole,
-      ),
+      history: appendTurn(input.history, message, reply, input.messageIds, input.messageRole),
       model: "none",
       degraded: true,
     };
@@ -331,13 +325,7 @@ export async function runSharedAgentTurn(
     const reply = text.trim() || "…";
     return {
       reply,
-      history: appendTurn(
-        input.history,
-        message,
-        reply,
-        input.messageIds,
-        input.messageRole,
-      ),
+      history: appendTurn(input.history, message, reply, input.messageIds, input.messageRole),
       model: modelId,
       degraded: false,
       usage,
@@ -379,13 +367,7 @@ export async function runSharedAgentTurnStream(
       model: "capability-wall",
       degraded: false,
       reply,
-      history: appendTurn(
-        input.history,
-        message,
-        reply,
-        input.messageIds,
-        input.messageRole,
-      ),
+      history: appendTurn(input.history, message, reply, input.messageIds, input.messageRole),
       parts,
       capabilityWall,
     };
@@ -406,13 +388,7 @@ export async function runSharedAgentTurnStream(
       model: "nav-intent",
       degraded: false,
       reply,
-      history: appendTurn(
-        input.history,
-        message,
-        reply,
-        input.messageIds,
-        input.messageRole,
-      ),
+      history: appendTurn(input.history, message, reply, input.messageIds, input.messageRole),
       parts,
       navIntent,
     };
@@ -424,13 +400,7 @@ export async function runSharedAgentTurnStream(
     const reply = `${input.character.name} is temporarily unavailable (no shared model configured).`;
     return {
       reply,
-      history: appendTurn(
-        input.history,
-        message,
-        reply,
-        input.messageIds,
-        input.messageRole,
-      ),
+      history: appendTurn(input.history, message, reply, input.messageIds, input.messageRole),
       model: "none",
       degraded: true,
     };

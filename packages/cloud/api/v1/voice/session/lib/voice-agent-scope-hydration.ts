@@ -6,9 +6,7 @@
  */
 
 import { runWithDbCacheAsync } from "@/db/client";
-import {
-  agentSandboxesRepository,
-} from "@/db/repositories/agent-sandboxes";
+import { agentSandboxesRepository } from "@/db/repositories/agent-sandboxes";
 import { userCharactersRepository } from "@/db/repositories/characters";
 import { cache } from "@/lib/cache/client";
 import { CacheKeys, CacheTTL } from "@/lib/cache/keys";
