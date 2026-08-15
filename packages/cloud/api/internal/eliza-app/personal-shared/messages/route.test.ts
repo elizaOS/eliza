@@ -14,6 +14,11 @@ const findOrCreateByPhone = mock(async () => ({
   organization: { id: "00000000-0000-4000-8000-000000000011" },
   isNew: true,
 }));
+const findOrCreateByDiscordId = mock(async () => ({
+  user: { id: "00000000-0000-4000-8000-000000000002" },
+  organization: { id: "00000000-0000-4000-8000-000000000001" },
+  isNew: false,
+}));
 const sharedRestMessageSend = mock(async () => ({ text: "hello from Eliza" }));
 const runOnboardingChat = mock(async (_input: OnboardingChatInput) => ({
   loginUrl:
@@ -106,7 +111,11 @@ const namespace = {
 const runtimeExecutionCtx = { waitUntil() {} };
 
 mock.module("@/lib/services/eliza-app", () => ({
-  elizaAppUserService: { findOrCreateByPhone, findOrCreateByTelegram },
+  elizaAppUserService: {
+    findOrCreateByDiscordId,
+    findOrCreateByPhone,
+    findOrCreateByTelegram,
+  },
 }));
 mock.module("@/lib/services/shared-runtime/shared-rest-adapter", () => ({
   sharedRestMessageSend,
@@ -181,6 +190,7 @@ const validPhone = {
 describe("personal Shared messaging deliveries", () => {
   beforeEach(() => {
     findOrCreateByPhone.mockClear();
+    findOrCreateByDiscordId.mockClear();
     activeTarget = null;
     findOrCreateByTelegram.mockClear();
     findActivePersonalDedicatedTarget.mockClear();
@@ -327,6 +337,38 @@ describe("personal Shared messaging deliveries", () => {
       runtimeExecutionCtx,
       namespace,
       "blooio:eliza:message-42",
+      "platform",
+    );
+  });
+
+  test("routes a linked Discord DM through the same personal room", async () => {
+    const response = await request({
+      platform: "discord",
+      discordUserId: "123456789012345678",
+      discordUsername: "shaw",
+      displayName: "Shaw",
+      avatarUrl: "https://cdn.discordapp.com/avatar.png",
+      messageId: "discord:message-42",
+      message: "continue our conversation",
+    });
+
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as {
+      data: { identity: { id: string } };
+    };
+    expect(findOrCreateByDiscordId).toHaveBeenCalledWith("123456789012345678", {
+      username: "shaw",
+      globalName: "Shaw",
+      avatarUrl: "https://cdn.discordapp.com/avatar.png",
+    });
+    expect(sharedRestMessageSend).toHaveBeenCalledWith(
+      expect.objectContaining({ id: body.data.identity.id }),
+      body.data.identity.id,
+      "continue our conversation",
+      "Eliza",
+      runtimeExecutionCtx,
+      namespace,
+      "discord:message-42",
       "platform",
     );
   });

@@ -29,6 +29,15 @@ const sharedMessageSchema = z.discriminatedUnion("platform", [
     message: z.string().trim().min(1).max(4000),
   }),
   z.object({
+    platform: z.literal("discord"),
+    discordUserId: z.string().trim().min(1).max(32),
+    discordUsername: z.string().trim().min(1).max(80),
+    displayName: z.string().trim().min(1).max(128).optional(),
+    avatarUrl: z.string().url().nullable().optional(),
+    messageId: z.string().trim().min(1).max(160),
+    message: z.string().trim().min(1).max(4000),
+  }),
+  z.object({
     platform: z.enum(["twilio", "blooio"]),
     phoneNumber: z
       .string()
@@ -47,6 +56,7 @@ app.post("/", async (c) => {
     if (auth instanceof Response) return auth;
     if (
       auth.service !== "webhook-gateway" &&
+      auth.service !== "discord-gateway" &&
       auth.service !== "shared-secret"
     ) {
       return jsonError(c, 403, "Forbidden", "access_denied");
@@ -95,9 +105,18 @@ app.post("/", async (c) => {
             username: parsed.data.telegramUsername,
             displayName: parsed.data.displayName,
           })
-        : await elizaAppUserService.findOrCreateByPhone(
-            parsed.data.phoneNumber,
-          );
+        : parsed.data.platform === "discord"
+          ? await elizaAppUserService.findOrCreateByDiscordId(
+              parsed.data.discordUserId,
+              {
+                username: parsed.data.discordUsername,
+                globalName: parsed.data.displayName,
+                avatarUrl: parsed.data.avatarUrl,
+              },
+            )
+          : await elizaAppUserService.findOrCreateByPhone(
+              parsed.data.phoneNumber,
+            );
     const agent = personalSharedAgent({
       userId: account.user.id,
       organizationId: account.organization.id,
@@ -214,10 +233,14 @@ app.post("/", async (c) => {
           clientMessageId: parsed.data.messageId,
           platformName: parsed.data.platform,
           source: parsed.data.platform,
-          ...(parsed.data.platform === "telegram"
+          ...(parsed.data.platform === "telegram" ||
+          parsed.data.platform === "discord"
             ? {
                 senderName:
-                  parsed.data.displayName ?? parsed.data.telegramUsername,
+                  parsed.data.displayName ??
+                  (parsed.data.platform === "telegram"
+                    ? parsed.data.telegramUsername
+                    : parsed.data.discordUsername),
               }
             : {}),
         },
@@ -231,7 +254,14 @@ app.post("/", async (c) => {
         const history = await coordinateSharedHistory(agent.id, agent.id, {
           namespace: worker.namespace,
         });
-        const importMessages = history.flatMap((message) =>
+        const importableHistory = history.filter(
+          (
+            message,
+          ): message is typeof message & {
+            role: "user" | "assistant";
+          } => message.role === "user" || message.role === "assistant",
+        );
+        const importMessages = importableHistory.flatMap((message) =>
           message.id
             ? [
                 {
@@ -246,7 +276,7 @@ app.post("/", async (c) => {
             : [],
         );
         let receipt =
-          importMessages.length === history.length
+          importMessages.length === importableHistory.length
             ? await elizaSandboxService.importCanonicalConversation(
                 dedicated.id,
                 account.organization.id,

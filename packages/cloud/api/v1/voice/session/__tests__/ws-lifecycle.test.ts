@@ -459,6 +459,8 @@ async function connectSession(opts: {
   sttConnectTimeoutMs?: number;
   prewarmElizaContext?: () => Promise<void>;
   openingGreeting?: string;
+  openingPrompt?: string;
+  openingClientMessageId?: string;
   cacheWarmingRetryDelaysMs?: readonly number[];
   onClearAudio?: () => void;
   fish?: {
@@ -502,6 +504,10 @@ async function connectSession(opts: {
           : {}),
         ...(opts.openingGreeting
           ? { openingGreeting: opts.openingGreeting }
+          : {}),
+        ...(opts.openingPrompt ? { openingPrompt: opts.openingPrompt } : {}),
+        ...(opts.openingClientMessageId
+          ? { openingClientMessageId: opts.openingClientMessageId }
           : {}),
         ...(opts.cacheWarmingRetryDelaysMs
           ? {
@@ -581,6 +587,37 @@ describe("voice-session WS lifecycle", () => {
     cartesia.emitDone();
     await flush();
     expect(client.controlTypes()).toContain("speaking_end");
+  });
+
+  test("generates the call opener as a stable canonical system turn", async () => {
+    const requests: Array<Record<string, unknown>> = [];
+    const client = new FakeClientSocket();
+    await connectSession({
+      client,
+      openingPrompt: "The user called. Greet them using existing history.",
+      openingClientMessageId: "twilio-call:CA123:started",
+      fetchImpl: (async (_url: string, init?: RequestInit) => {
+        requests.push(
+          JSON.parse(String(init?.body)) as Record<string, unknown>,
+        );
+        return makeCanonicalChunkFetch(["Good to hear from you again."])(
+          "",
+          {},
+        );
+      }) as unknown as typeof fetch,
+    });
+    await flush();
+
+    expect(requests).toEqual([
+      expect.objectContaining({
+        text: "The user called. Greet them using existing history.",
+        messageRole: "system",
+        clientMessageId: "twilio-call:CA123:started",
+      }),
+    ]);
+    expect(FakeCartesiaSocket.instances.at(-1)?.sentText()).toBe(
+      "Good to hear from you again.",
+    );
   });
 
   test("stt_final posts the transcript to the canonical agent conversation stream with scoped identity", async () => {
