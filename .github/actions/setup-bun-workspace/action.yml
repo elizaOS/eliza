@@ -347,28 +347,36 @@ runs:
         set -euo pipefail
         out="${RUNNER_TEMP}/eliza-bun-release"
         url_file="${RUNNER_TEMP}/eliza-bun-download-url"
+        server_log="${RUNNER_TEMP}/eliza-bun-server.log"
         mkdir -p "$out"
-        rm -f "$url_file" "$out/download-url"
+        rm -f "$url_file" "$out/download-url" "$server_log"
         node packages/scripts/ci-fetch-bun-release.mjs --out-dir "$out"
         # Cache restores only bun.zip. A previous job's download-url (dead
         # localhost port) must not be published as bun-download-url. Detach
         # the server so bash exiting this step does not SIGHUP it.
         nohup node packages/scripts/ci-fetch-bun-release.mjs \
           --out-dir "$out" --serve-only --url-file "$url_file" \
-          >/dev/null 2>&1 &
+          >"$server_log" 2>&1 &
+        server_pid=$!
         disown || true
         i=0
-        while [ "$i" -lt 50 ]; do
+        while [ "$i" -lt 600 ]; do
           if [ -s "$url_file" ]; then
             url="$(tr -d '[:space:]' < "$url_file")"
             echo "serving Bun zip at $url"
             echo "url=$url" >> "$GITHUB_OUTPUT"
             exit 0
           fi
+          if ! kill -0 "$server_pid" 2>/dev/null; then
+            echo "::error::Bun zip local server exited before becoming ready"
+            sed 's/^/bun-server: /' "$server_log" || true
+            exit 1
+          fi
           i=$((i + 1))
           sleep 0.1
         done
-        echo "::error::Bun zip local server did not become ready"
+        echo "::error::Bun zip local server did not become ready within 60 seconds"
+        sed 's/^/bun-server: /' "$server_log" || true
         exit 1
 
     - name: Setup Bun
