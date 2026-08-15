@@ -470,6 +470,24 @@ const RECURRENCE_SCOPE_SERIES_PATTERN =
   /\b(?:whole|entire|full)\s+series\b|\bthe\s+series\b|\ball\s+(?:occurrences|instances|of\s+them)\b|\bevery\s+(?:occurrence|instance|single\s+one)\b|\bstop\s+(?:it\s+)?(?:from\s+)?(?:repeating|recurring)\b|\bcancel\s+the\s+recurring\b/i;
 
 /**
+ * Model-authored recurrence scope at the action boundary. Strict recurrence
+ * normalization remains the service/API contract; an unrecognized model value
+ * carries no mutation authority and degrades to unspecified so explicit user
+ * phrasing or the recurring-event clarification gate decides the scope.
+ */
+function normalizePlannerRecurrenceScope(
+  value: unknown,
+): LifeOpsCalendarRecurrenceScope | null {
+  try {
+    return normalizeRecurrenceScope(value) ?? null;
+  } catch {
+    // error-policy:J3 planner debris is invalid input, not an API request; the
+    // caller falls back to user phrasing and ultimately asks before mutation.
+    return null;
+  }
+}
+
+/**
  * Structural resolution of one, following, or whole-series intent: explicit
  * `recurrenceScope` detail first, then unambiguous message phrasing. Returns
  * null when the intent stays ambiguous — the caller must ask instead of
@@ -479,7 +497,7 @@ function resolveRecurrenceScopeIntent(args: {
   details: Record<string, unknown> | undefined;
   text: string;
 }): LifeOpsCalendarRecurrenceScope | null {
-  const explicit = normalizeRecurrenceScope(
+  const explicit = normalizePlannerRecurrenceScope(
     detailString(args.details, "recurrenceScope"),
   );
   if (explicit) {
@@ -4364,12 +4382,9 @@ const calendarAction: CalendarHandlerAction = {
           text: `${messageText(message)} ${intent}`,
         });
         if (!recurrenceScopeForUpdate) {
-          recurrenceScopeForUpdate =
-            normalizeRecurrenceScope(
-              typeof extractedForUpdate.recurrenceScope === "string"
-                ? extractedForUpdate.recurrenceScope
-                : undefined,
-            ) ?? null;
+          recurrenceScopeForUpdate = normalizePlannerRecurrenceScope(
+            extractedForUpdate.recurrenceScope,
+          );
         }
         // A recurrence-rule change is inherently a series edit.
         if (recurrenceUpdate && !recurrenceScopeForUpdate) {
