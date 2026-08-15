@@ -3330,7 +3330,16 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 								transcriptVisibility: "internal",
 							};
 						}
-						const params = paramsResolution.params;
+						let params = paramsResolution.params;
+						// Destructive capabilities get the user's original words so the
+						// owning surface can fence name-translated targets (matrix F4:
+						// the planner translated "wifi credentials" into the stored
+						// title "wifi password" and delete-note removed a note the user
+						// never named). Injected only for delete-shaped capabilities so
+						// read/update param schemas stay untouched.
+						if (/^delete-/.test(normalizeCapabilityKey(capability)) && text) {
+							params = { ...params, ownerText: text };
+						}
 						const timeoutMs =
 							typeof actionOptions?.timeoutMs === "number" &&
 							actionOptions.timeoutMs > 0
