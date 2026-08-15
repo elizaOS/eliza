@@ -3,11 +3,11 @@
  * a "tapped the mic, then crickets" report is diagnosable from a phone
  * screenshot instead of a devtools console the installed PWA doesn't have.
  *
- * It is the voice-capture sibling of {@link ../shell/BuildBadge}: same
- * stamped-builds-only gate (reads `/build-info.json`; renders nothing when the
- * file is absent, i.e. production bundles without the build-time stamp cost
- * nothing), and the same "screenshot is ground truth" philosophy that ended the
- * bottom-bar blind-fix loop.
+ * It is the voice-capture sibling of {@link ../shell/BuildBadge}: local Vite
+ * development shows it immediately, stamped device builds read
+ * `/build-info.json`, and unstamped production bundles render nothing. That
+ * keeps the "screenshot is ground truth" loop available on laptops and phones
+ * without exposing a diagnostic overlay in production.
  *
  * The HUD subscribes to the unconditional breadcrumb ring in
  * {@link ../../utils/voice-capture-debug} and renders the last ~8 steps with
@@ -79,6 +79,69 @@ function detailToken(step: string, detail?: Record<string, unknown>): string {
     if (v == null) return undefined;
     return typeof v === "string" ? v : String(v);
   };
+  if (step === "realtime:turn-latency") {
+    const outcome = pick("outcome");
+    const latency = (
+      key: "sttToModelMs" | "sttToAudioMs" | "modelToAudioMs",
+      label: string,
+    ): string | null => {
+      const value = pick(key);
+      return value && value !== "not_measured" ? `${label} ${value}ms` : null;
+    };
+    return [
+      outcome,
+      latency("sttToModelMs", "S→M"),
+      latency("sttToAudioMs", "S→A"),
+      latency("modelToAudioMs", "M→A"),
+    ]
+      .filter((value): value is string => Boolean(value))
+      .join(" · ");
+  }
+  if (step === "realtime:capture-ready") {
+    const backend = pick("backend");
+    const frameMs = pick("frameMs");
+    const contextHz = pick("contextHz");
+    const grantedHz = pick("grantedHz");
+    const channels = pick("channels");
+    const enabled = (key: string, label: string): string | null => {
+      const value = pick(key);
+      return value === "true" || value === "false"
+        ? `${label}:${value === "true" ? "on" : "off"}`
+        : null;
+    };
+    return [
+      backend,
+      frameMs ? `${frameMs}ms` : null,
+      contextHz ? `ctx${contextHz}Hz` : null,
+      grantedHz ? `mic${grantedHz}Hz` : null,
+      channels ? `${channels}ch` : null,
+      enabled("echoCancellation", "AEC"),
+      enabled("noiseSuppression", "NS"),
+      enabled("autoGainControl", "AGC"),
+    ]
+      .filter((value): value is string => Boolean(value))
+      .join(" · ");
+  }
+  if (step === "realtime:playback-ready") {
+    const backend = pick("backend");
+    const requestedHz = pick("requestedHz");
+    const actualHz = pick("actualHz");
+    const conversion = pick("conversion");
+    return [
+      backend,
+      requestedHz && actualHz ? `${requestedHz}→${actualHz}Hz` : null,
+      conversion,
+    ]
+      .filter((value): value is string => Boolean(value))
+      .join(" · ");
+  }
+  if (
+    step === "realtime:playback-started" ||
+    step === "realtime:playback-drained"
+  ) {
+    const sequence = pick("sequence");
+    return sequence ? `seq ${sequence}` : "";
+  }
   // Error-ish steps: surface the error name/message.
   const err = pick("name") ?? pick("error") ?? pick("reason");
   if (err && (step.includes("err") || step.includes("fail"))) return err;
@@ -177,8 +240,15 @@ function toLines(ring: readonly VoiceCaptureBreadcrumb[]): HudLine[] {
   });
 }
 
-export function VoiceCaptureHud() {
-  const [stamped, setStamped] = useState<boolean>(false);
+interface VoiceCaptureHudProps {
+  /** Test seam; production callers use Vite's compile-time development flag. */
+  localDev?: boolean;
+}
+
+export function VoiceCaptureHud({
+  localDev = import.meta.env.DEV,
+}: VoiceCaptureHudProps = {}) {
+  const [stamped, setStamped] = useState<boolean>(localDev);
   const [dismissed, setDismissed] = useState<boolean>(() =>
     readSessionDismissed(),
   );
@@ -189,7 +259,7 @@ export function VoiceCaptureHud() {
   // `/build-info.json` means this is a sol-dev / CI build (the debug surface),
   // so the HUD renders; production bundles without the stamp render nothing.
   useEffect(() => {
-    if (dismissed) return;
+    if (dismissed || localDev) return;
     let cancelled = false;
     (async () => {
       try {
@@ -209,7 +279,7 @@ export function VoiceCaptureHud() {
     return () => {
       cancelled = true;
     };
-  }, [dismissed]);
+  }, [dismissed, localDev]);
 
   // Subscribe to the breadcrumb ring once the HUD is going to render. The
   // subscription fires immediately with the current ring so a late mount still

@@ -61,7 +61,7 @@ describe("VoiceCaptureHud", () => {
     voiceCaptureDebug("gum:ok", { ms: 120 });
     voiceCaptureDebug("provider:cloud");
 
-    render(<VoiceCaptureHud />);
+    render(<VoiceCaptureHud localDev={false} />);
 
     const hud = await screen.findByTestId("voice-capture-hud");
     expect(hud).toBeTruthy();
@@ -80,7 +80,7 @@ describe("VoiceCaptureHud", () => {
     voiceCaptureDebug("gum:req");
     voiceCaptureDebug("gum:err", { name: "NotAllowedError" });
 
-    render(<VoiceCaptureHud />);
+    render(<VoiceCaptureHud localDev={false} />);
     await screen.findByTestId("voice-capture-hud");
     const text = screen
       .getAllByTestId("voice-capture-hud-line")
@@ -90,10 +90,60 @@ describe("VoiceCaptureHud", () => {
     expect(text).toContain("NotAllowedError");
   });
 
+  it("renders content-free realtime device and turn latency evidence", async () => {
+    mockFetchOk(BUILD_INFO);
+    voiceCaptureDebug("realtime:capture-ready", {
+      backend: "audioworklet",
+      frameMs: 20,
+      contextHz: 48_000,
+      grantedHz: 48_000,
+      channels: 1,
+      echoCancellation: true,
+      noiseSuppression: true,
+      autoGainControl: false,
+    });
+    voiceCaptureDebug("realtime:playback-ready", {
+      backend: "audioworklet",
+      requestedHz: 16_000,
+      actualHz: 48_000,
+      conversion: "streaming_linear",
+    });
+    voiceCaptureDebug("realtime:playback-started", { sequence: 7 });
+    voiceCaptureDebug("realtime:turn-latency", {
+      outcome: "spoken",
+      sttToModelMs: 960,
+      sttToAudioMs: 1083,
+      modelToAudioMs: 123,
+    });
+
+    render(<VoiceCaptureHud localDev={false} />);
+    await screen.findByTestId("voice-capture-hud");
+    const text = screen
+      .getAllByTestId("voice-capture-hud-line")
+      .map((line) => line.textContent)
+      .join("|");
+    expect(text).toContain("audioworklet · 20ms · ctx48000Hz");
+    expect(text).toContain("AEC:on · NS:on · AGC:off");
+    expect(text).toContain("16000→48000Hz · streaming_linear");
+    expect(text).toContain("seq 7");
+    expect(text).toContain("spoken · S→M 960ms · S→A 1083ms · M→A 123ms");
+  });
+
+  it("renders immediately in local development without a build stamp", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    voiceCaptureDebug("mic:tap", { surface: "composer" });
+
+    render(<VoiceCaptureHud localDev />);
+
+    await screen.findByTestId("voice-capture-hud");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it("renders NOTHING when the build stamp is absent (production)", async () => {
     mockFetchMissing();
     voiceCaptureDebug("mic:tap");
-    render(<VoiceCaptureHud />);
+    render(<VoiceCaptureHud localDev={false} />);
     // Give the async gate a tick; it must stay hidden.
     await new Promise((r) => setTimeout(r, 0));
     expect(screen.queryByTestId("voice-capture-hud")).toBeNull();
@@ -101,7 +151,7 @@ describe("VoiceCaptureHud", () => {
 
   it("renders nothing when the ring is empty even on a stamped build", async () => {
     mockFetchOk(BUILD_INFO);
-    render(<VoiceCaptureHud />);
+    render(<VoiceCaptureHud localDev={false} />);
     await waitFor(() =>
       expect(fetch).toHaveBeenCalledWith(
         "/build-info.json",
@@ -114,7 +164,7 @@ describe("VoiceCaptureHud", () => {
   it("hides for the session when dismissed", async () => {
     mockFetchOk(BUILD_INFO);
     voiceCaptureDebug("mic:tap");
-    const { unmount } = render(<VoiceCaptureHud />);
+    const { unmount } = render(<VoiceCaptureHud localDev={false} />);
     await screen.findByTestId("voice-capture-hud");
 
     await userEvent.click(screen.getByTestId("voice-capture-hud-dismiss"));
@@ -123,7 +173,7 @@ describe("VoiceCaptureHud", () => {
     // Remount within the same session — stays hidden.
     unmount();
     voiceCaptureDebug("mic:tap");
-    render(<VoiceCaptureHud />);
+    render(<VoiceCaptureHud localDev={false} />);
     await new Promise((r) => setTimeout(r, 0));
     expect(screen.queryByTestId("voice-capture-hud")).toBeNull();
   });
