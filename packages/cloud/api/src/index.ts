@@ -30,6 +30,7 @@ export { InferenceAdmissionGate } from "./inference-admission-gate";
 export { OnboardingSessionCoordinator } from "./onboarding-session-coordinator";
 export { SharedRuntimeConversation } from "./shared-runtime-conversation";
 export { isThinStewardPublicPath } from "./steward/public-paths";
+export { TwitterOAuthRefreshCoordinator } from "./twitter-oauth-refresh-coordinator";
 
 let appPromise: Promise<Hono<AppEnv>> | undefined;
 const inferenceAppPromises = new Map<string, Promise<Hono<AppEnv>>>();

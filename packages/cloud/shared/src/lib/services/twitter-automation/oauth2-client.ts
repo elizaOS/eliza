@@ -2,6 +2,7 @@
 import { parseJsonErrorBody, parseJsonResponse } from "../../utils/json-parsing";
 
 const TWITTER_OAUTH2_TOKEN_URL = "https://api.x.com/2/oauth2/token";
+export const TWITTER_OAUTH2_TOKEN_TIMEOUT_MS = 20_000;
 
 export interface TwitterOAuth2TokenResponse {
   access_token?: string;
@@ -92,6 +93,7 @@ export async function requestTwitterOAuth2Token(
     method: "POST",
     headers,
     body,
+    signal: AbortSignal.timeout(TWITTER_OAUTH2_TOKEN_TIMEOUT_MS),
   });
 
   if (!response.ok) {

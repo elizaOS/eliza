@@ -87,6 +87,17 @@ function oauth2ExpiryFromLifetime(expiresInSeconds: number | undefined): number 
 /** Refresh this many seconds ahead of the stored expiry so vended tokens outlive transit. */
 const OAUTH2_BROKER_REFRESH_MARGIN_SECONDS = 5 * 60;
 
+export type TwitterBrokerCredentials =
+  | { authMode: "oauth1a"; credentials: Record<string, string> }
+  | {
+      authMode: "oauth2";
+      accessToken: string;
+      expiresAt: number | null;
+      scope: string | null;
+      twitterUserId: string | null;
+    }
+  | null;
+
 function roleSecretName(
   role: OAuthConnectionRole,
   field: keyof typeof TWITTER_SECRET_FIELDS,
@@ -538,6 +549,23 @@ class TwitterAutomationService {
       throw new Error("OAuth 1.0a credentials require a screen name and user ID");
     }
 
+    // A rotated refresh token is single-use authority: once X accepts the
+    // exchange, the previous value cannot recover the account. Persist the new
+    // non-empty refresh token before starting any sibling write so a later
+    // failure cannot retain a new access token while losing its only usable
+    // refresh token. Explicit deletion remains part of the sibling set; it is
+    // not a recoverability improvement and must not run before the new access
+    // tuple is ready.
+    if (authMode === "oauth2" && credentials.refreshToken) {
+      await upsertRoleSecret({
+        organizationId,
+        userId,
+        name: roleSecretName(role, "oauth2RefreshToken"),
+        value: credentials.refreshToken,
+        audit,
+      });
+    }
+
     const writes: Promise<void>[] = [
       screenName
         ? upsertRoleSecret({
@@ -618,17 +646,7 @@ class TwitterAutomationService {
             })
           : deleteRoleSecret(organizationId, role, "oauth2ExpiresAt", audit),
       );
-      if (credentials.refreshToken) {
-        writes.push(
-          upsertRoleSecret({
-            organizationId,
-            userId,
-            name: roleSecretName(role, "oauth2RefreshToken"),
-            value: credentials.refreshToken,
-            audit,
-          }),
-        );
-      } else if (credentials.refreshToken === null) {
+      if (credentials.refreshToken === null) {
         writes.push(deleteRoleSecret(organizationId, role, "oauth2RefreshToken", audit));
       }
     }
@@ -866,17 +884,7 @@ class TwitterAutomationService {
     organizationId: string,
     userId: string,
     connectionRole: OAuthConnectionRole = "agent",
-  ): Promise<
-    | { authMode: "oauth1a"; credentials: Record<string, string> }
-    | {
-        authMode: "oauth2";
-        accessToken: string;
-        expiresAt: number | null;
-        scope: string | null;
-        twitterUserId: string | null;
-      }
-    | null
-  > {
+  ): Promise<TwitterBrokerCredentials> {
     const role = normalizeConnectionRole(connectionRole);
     const stored = await getRoleCredentials(organizationId, role);
 
