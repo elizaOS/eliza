@@ -47,10 +47,12 @@ export function createTodosEdgePlugin(options: TodosEdgePluginOptions): Plugin {
 
 export type {
   CreateTodoInput,
+  TodoCutoverState,
   TodoFilter,
   TodoMutation,
   TodoMutationExecution,
   TodoMutationImportInput,
+  TodoMutationImportResult,
   TodoMutationInput,
   TodoMutationRecord,
   TodoMutationRecordWire,

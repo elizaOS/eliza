@@ -110,18 +110,31 @@ export interface TodoMutationRecordWire {
   committedAt: string;
 }
 
+export interface TodoCutoverState {
+  todos: Todo[];
+  mutations: TodoMutationRecord[];
+}
+
 export interface TodoMutationImportInput {
   targetScope: TodoScope;
   records: TodoMutationRecord[];
   todoIdMap?: Readonly<Record<string, string>>;
-  roomIdMap?: Readonly<Record<string, string>>;
-  worldIdMap?: Readonly<Record<string, string>>;
+  roomIdMap?: Readonly<Record<string, string | null>>;
+  worldIdMap?: Readonly<Record<string, string | null>>;
+}
+
+export interface TodoMutationImportResult {
+  imported: number;
+  skipped: number;
 }
 
 export interface TodoStore {
   applyMutation(input: TodoMutationInput): Promise<TodoMutationExecution>;
+  readCutoverState(scope: TodoScope): Promise<TodoCutoverState>;
   listMutationRecords(scope: TodoScope): Promise<TodoMutationRecord[]>;
-  importMutationRecords(input: TodoMutationImportInput): Promise<void>;
+  importMutationRecords(
+    input: TodoMutationImportInput,
+  ): Promise<TodoMutationImportResult>;
   create(input: CreateTodoInput): Promise<Todo>;
   get(scope: TodoScope, id: string): Promise<Todo | null>;
   list(filter: TodoFilter): Promise<Todo[]>;
@@ -142,6 +155,7 @@ export function isTodoStore(value: unknown): value is TodoStore {
   const candidate = value as Record<string, unknown>;
   return [
     "applyMutation",
+    "readCutoverState",
     "listMutationRecords",
     "importMutationRecords",
     "create",

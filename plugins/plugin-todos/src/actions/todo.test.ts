@@ -13,8 +13,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { validateToolArgs } from "../../../../packages/core/src/actions/validate-tool-args.js";
 import { currentTodosProvider } from "../providers/current-todos.js";
 import { TODO_LIST_LIMIT_ERROR_CODE, TodosService } from "../service.js";
-import type { TodoScope } from "../store.js";
-import { TODOS_SERVICE_TYPE } from "../types.js";
+import type {
+  TodoMutationExecution,
+  TodoMutationInput,
+  TodoScope,
+} from "../store.js";
+import { TODOS_SERVICE_TYPE, type TodoStatus } from "../types.js";
 import { todoAction } from "./todo.js";
 
 const ENTITY = "00000000-0000-0000-0000-0000000000aa";
@@ -30,7 +34,7 @@ interface StoredTodo {
   worldId: string | null;
   content: string;
   activeForm: string;
-  status: string;
+  status: TodoStatus;
   parentTodoId: string | null;
   parentTrajectoryStepId: string | null;
   metadata: Record<string, unknown>;
@@ -41,6 +45,10 @@ interface StoredTodo {
 
 class FakeTodosService {
   private nextId = 0;
+  private mutationLedger = new Map<
+    string,
+    { request: string; execution: TodoMutationExecution }
+  >();
   rows: StoredTodo[] = [];
   failOn: string | null = null;
   listCallCount = 0;
@@ -67,7 +75,7 @@ class FakeTodosService {
       worldId: (input.worldId as string | null) ?? null,
       content: String(input.content),
       activeForm: String(input.activeForm ?? input.content),
-      status: String(input.status ?? "pending"),
+      status: (input.status ?? "pending") as TodoStatus,
       parentTodoId: (input.parentTodoId as string | null) ?? null,
       parentTrajectoryStepId:
         (input.parentTrajectoryStepId as string | null) ?? null,
@@ -136,7 +144,7 @@ class FakeTodosService {
     if (patch.activeForm !== undefined)
       row.activeForm = String(patch.activeForm);
     if (patch.status !== undefined) {
-      row.status = String(patch.status);
+      row.status = String(patch.status) as TodoStatus;
       row.completedAt = row.status === "completed" ? new Date() : null;
     }
     if (patch.parentTodoId !== undefined) {
@@ -167,7 +175,7 @@ class FakeTodosService {
     todos: Array<{
       id?: string;
       content: string;
-      status: string;
+      status: TodoStatus;
       activeForm?: string;
     }>;
   }): Promise<{ before: StoredTodo[]; after: StoredTodo[] }> {
@@ -231,6 +239,119 @@ class FakeTodosService {
     });
     return before - this.rows.length;
   }
+
+  async applyMutation(
+    input: TodoMutationInput,
+  ): Promise<TodoMutationExecution> {
+    const ledgerKey = `${input.scope.agentId}:${input.scope.entityId}:${input.idempotencyKey}`;
+    const request = JSON.stringify(input.mutation);
+    const existing = this.mutationLedger.get(ledgerKey);
+    if (existing) {
+      if (existing.request !== request) throw new Error("idempotency conflict");
+      return structuredClone({ ...existing.execution, replayed: true });
+    }
+
+    let result: TodoMutationExecution["result"];
+    switch (input.mutation.action) {
+      case "create":
+        result = {
+          action: input.mutation.action,
+          todo: await this.create({
+            ...input.mutation.input,
+            ...input.scope,
+          }),
+        };
+        break;
+      case "update":
+        result = {
+          action: input.mutation.action,
+          todo: await this.update(
+            input.scope,
+            input.mutation.id,
+            input.mutation.patch,
+          ),
+        };
+        break;
+      case "complete":
+      case "cancel":
+        result = {
+          action: input.mutation.action,
+          todo: await this.update(input.scope, input.mutation.id, {
+            status:
+              input.mutation.action === "complete" ? "completed" : "cancelled",
+          }),
+        };
+        break;
+      case "delete": {
+        const deleted = await this.get(input.scope, input.mutation.id);
+        if (deleted) await this.delete(input.scope, input.mutation.id);
+        result = { action: input.mutation.action, deleted };
+        break;
+      }
+      case "write": {
+        const list = await this.writeList({
+          ...input.mutation.input,
+          ...input.scope,
+        });
+        result = { action: input.mutation.action, ...list };
+        break;
+      }
+      case "clear":
+        result = {
+          action: input.mutation.action,
+          count: await this.clear({
+            ...input.scope,
+            ...(input.mutation.roomId !== undefined
+              ? { roomId: input.mutation.roomId }
+              : {}),
+          }),
+        };
+        break;
+    }
+    const applied =
+      result.action === "create" ||
+      ((result.action === "update" ||
+        result.action === "complete" ||
+        result.action === "cancel") &&
+        result.todo !== null) ||
+      (result.action === "delete" && result.deleted !== null) ||
+      (result.action === "write" &&
+        JSON.stringify(
+          result.before.map(({ updatedAt: _updatedAt, ...todo }) => todo),
+        ) !==
+          JSON.stringify(
+            result.after.map(({ updatedAt: _updatedAt, ...todo }) => todo),
+          )) ||
+      (result.action === "clear" && result.count > 0);
+    const execution: TodoMutationExecution = {
+      mutationId: crypto.randomUUID(),
+      idempotencyKey: input.idempotencyKey,
+      replayed: false,
+      committedAt: new Date(),
+      applied,
+      result,
+    };
+    this.mutationLedger.set(ledgerKey, {
+      request,
+      execution: structuredClone(execution),
+    });
+    return execution;
+  }
+
+  async listMutationRecords(): Promise<[]> {
+    return [];
+  }
+
+  async readCutoverState(): Promise<{ todos: StoredTodo[]; mutations: [] }> {
+    return { todos: structuredClone(this.rows), mutations: [] };
+  }
+
+  async importMutationRecords(): Promise<{
+    imported: number;
+    skipped: number;
+  }> {
+    return { imported: 0, skipped: 0 };
+  }
 }
 
 function mockRuntime(service: FakeTodosService): IAgentRuntime {
@@ -246,8 +367,12 @@ function mockRuntime(service: FakeTodosService): IAgentRuntime {
   return stub as never as IAgentRuntime;
 }
 
+let messageSequence = 0;
+
 function makeMessage(overrides: Partial<Memory> = {}): Memory {
+  messageSequence++;
   return {
+    id: `message-${messageSequence}`,
     entityId: ENTITY,
     roomId: ROOM,
     worldId: WORLD,
@@ -260,8 +385,9 @@ async function invoke(
   runtime: IAgentRuntime,
   parameters: Record<string, unknown>,
   message: Memory = makeMessage(),
+  options: Partial<HandlerOptions> = {},
 ): Promise<ActionResult> {
-  const opts = { parameters } as HandlerOptions;
+  const opts = { ...options, parameters } as HandlerOptions;
   const result = await todoAction.handler?.(runtime, message, undefined, opts);
   if (result === undefined) {
     throw new Error("todoAction.handler returned undefined");
@@ -278,6 +404,7 @@ function expectAppliedMutation(
   expect(result.verifiedUserFacing).toBe(true);
   expect(result.userFacingText).toBe(result.text);
   expect(result.turnComplete).toBe(true);
+  expect(result.continueChain).toBe(false);
   expect(result.data).toMatchObject({ actionName: "TODO", action, op: action });
   expect(result.effectReceipts).toHaveLength(1);
   const receipt = result.effectReceipts?.[0];
@@ -285,7 +412,10 @@ function expectAppliedMutation(
     operation: `todos.${action}`,
     outcome: "applied",
     artifacts: [],
-    idempotency: { key: null, replayed: false },
+    idempotency: {
+      key: expect.stringMatching(/^todos:v1:/),
+      replayed: false,
+    },
     ...(resourceId ? { resource: { id: resourceId } } : {}),
   });
   if (receipt?.outcome !== "applied") {
@@ -371,6 +501,87 @@ describe("TODO action", () => {
       });
       expect(clear.effectReceipts).toBeUndefined();
       expect(clear.verifiedUserFacing).toBeUndefined();
+      expect(clear.turnComplete).toBe(true);
+      expect(clear.continueChain).toBe(false);
+    });
+
+    it("replays one committed mutation with a stable noop receipt", async () => {
+      const message = makeMessage({
+        content: {
+          text: "add it",
+          chatIdempotency: { clientMessageId: "connector-message-1" },
+        },
+      });
+      const first = await invoke(
+        runtime,
+        { action: "create", content: "only once" },
+        message,
+      );
+      const replay = await invoke(
+        runtime,
+        { action: "create", content: "only once" },
+        message,
+      );
+
+      expect(service.rows).toHaveLength(1);
+      expect(replay.text).toBe(first.text);
+      expect(replay.data).toEqual(first.data);
+      expect(replay.continueChain).toBe(false);
+      expect(replay.effectReceipts?.[0]).toMatchObject({
+        receiptId: first.effectReceipts?.[0]?.receiptId,
+        outcome: "noop",
+        reason: "Reused the previously committed Todo mutation",
+        idempotency: {
+          key: "todos:v1:connector-message-1:0",
+          replayed: true,
+        },
+      });
+      expect(replay.effectReceipts?.[0]).not.toHaveProperty("commit");
+    });
+
+    it("conflicts instead of applying a changed retry plan", async () => {
+      const message = makeMessage({ id: "same-memory-id" });
+      await invoke(runtime, { action: "create", content: "original" }, message);
+      const changed = await invoke(
+        runtime,
+        { action: "create", content: "changed" },
+        message,
+      );
+
+      expect(changed.success).toBe(false);
+      expect(changed.text).toContain("idempotency conflict");
+      expect(changed.continueChain).toBe(false);
+      expect(service.rows.map((todo) => todo.content)).toEqual(["original"]);
+    });
+
+    it("counts prior Todo mutations but ignores reads and unrelated tools", async () => {
+      const previousResults: ActionResult[] = [
+        { success: true, data: { actionName: "SEARCH", action: "search" } },
+        {
+          success: true,
+          data: { actionName: "TODO", action: "list", op: "list" },
+        },
+        {
+          success: true,
+          data: { actionName: "TODO", action: "create", op: "create" },
+        },
+      ];
+      const result = await invoke(
+        runtime,
+        { action: "create", content: "second mutation" },
+        makeMessage({
+          content: {
+            text: "add another",
+            chatIdempotency: { clientMessageId: "connector-message-2" },
+          },
+        }),
+        { actionContext: { previousResults } },
+      );
+
+      expect(result.effectReceipts?.[0]?.idempotency.key).toBe(
+        "todos:v1:connector-message-2:1",
+      );
+      expect(result.continueChain).toBe(false);
     });
   });
 

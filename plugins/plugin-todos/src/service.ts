@@ -17,6 +17,7 @@ export class TodosService extends Service implements TodoStore {
     "User-scoped todo CRUD. Persistent (drizzle/postgres), keyed by (agentId, entityId).";
 
   readonly applyMutation: TodoStore["applyMutation"];
+  readonly readCutoverState: TodoStore["readCutoverState"];
   readonly listMutationRecords: TodoStore["listMutationRecords"];
   readonly importMutationRecords: TodoStore["importMutationRecords"];
   readonly create: TodoStore["create"];
@@ -40,6 +41,7 @@ export class TodosService extends Service implements TodoStore {
     }
     const store = createTodosSqlStore(db);
     this.applyMutation = store.applyMutation.bind(store);
+    this.readCutoverState = store.readCutoverState.bind(store);
     this.listMutationRecords = store.listMutationRecords.bind(store);
     this.importMutationRecords = store.importMutationRecords.bind(store);
     this.create = store.create.bind(store);
@@ -76,10 +78,12 @@ export {
   TODO_INVALID_PARENT_ERROR_CODE,
   TODO_LIST_LIMIT_ERROR_CODE,
   TODO_PARENT_CYCLE_ERROR_CODE,
+  type TodoCutoverState,
   type TodoFilter,
   type TodoMutation,
   type TodoMutationExecution,
   type TodoMutationImportInput,
+  type TodoMutationImportResult,
   type TodoMutationInput,
   type TodoMutationRecord,
   type TodoMutationRecordWire,

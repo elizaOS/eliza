@@ -22,10 +22,12 @@ import {
   TODO_INVALID_PARENT_ERROR_CODE,
   TODO_LIST_LIMIT_ERROR_CODE,
   TODO_PARENT_CYCLE_ERROR_CODE,
+  type TodoCutoverState,
   type TodoFilter,
   type TodoMutation,
   type TodoMutationExecution,
   type TodoMutationImportInput,
+  type TodoMutationImportResult,
   type TodoMutationInput,
   type TodoMutationRecord,
   type TodoMutationRecordWire,
@@ -320,9 +322,40 @@ async function sha256(value: string): Promise<string> {
     .join("");
 }
 
+function semanticMutationRequest(mutation: TodoMutation): unknown {
+  switch (mutation.action) {
+    case "create":
+      return {
+        action: mutation.action,
+        input: {
+          content: mutation.input.content,
+          activeForm: mutation.input.activeForm ?? mutation.input.content,
+          status: mutation.input.status ?? "pending",
+          parentTodoId: mutation.input.parentTodoId ?? null,
+          metadata: mutation.input.metadata ?? {},
+        },
+      };
+    case "write":
+      return {
+        action: mutation.action,
+        todos: mutation.input.todos.map((todo) => ({
+          ...todo,
+          activeForm: todo.activeForm ?? todo.content,
+        })),
+      };
+    case "clear":
+      return { action: mutation.action };
+    default:
+      return mutation;
+  }
+}
+
 async function mutationRequestDigest(mutation: TodoMutation): Promise<string> {
   return sha256(
-    JSON.stringify({ version: 1, mutation: canonicalize(mutation) }),
+    JSON.stringify({
+      version: 1,
+      mutation: canonicalize(semanticMutationRequest(mutation)),
+    }),
   );
 }
 
@@ -455,6 +488,14 @@ function rowToMutationRecord(row: TodoMutationRow): TodoMutationRecord {
 
 function remapNullableId(
   id: string | null,
+  idMap: Readonly<Record<string, string | null>> | undefined,
+): string | null {
+  if (id === null || !idMap || !Object.hasOwn(idMap, id)) return id;
+  return idMap[id] ?? null;
+}
+
+function remapNullableTodoId(
+  id: string | null,
   idMap: Readonly<Record<string, string>> | undefined,
 ): string | null {
   return id === null ? null : (idMap?.[id] ?? id);
@@ -468,7 +509,7 @@ function remapTodo(todo: Todo, input: TodoMutationImportInput): Todo {
     entityId: input.targetScope.entityId,
     roomId: remapNullableId(todo.roomId, input.roomIdMap),
     worldId: remapNullableId(todo.worldId, input.worldIdMap),
-    parentTodoId: remapNullableId(todo.parentTodoId, input.todoIdMap),
+    parentTodoId: remapNullableTodoId(todo.parentTodoId, input.todoIdMap),
   };
 }
 
@@ -536,8 +577,13 @@ async function lockTodoScope<TSchema extends Record<string, unknown>>(
 /** Import mutation replay authority inside the caller's existing SQL transaction. */
 export async function importTodoMutationRecordsInTransaction<
   TSchema extends Record<string, unknown>,
->(tx: TodoTransaction<TSchema>, input: TodoMutationImportInput): Promise<void> {
+>(
+  tx: TodoTransaction<TSchema>,
+  input: TodoMutationImportInput,
+): Promise<TodoMutationImportResult> {
   await lockTodoScope(tx, input.targetScope);
+  let imported = 0;
+  let skipped = 0;
   for (const source of input.records) {
     assertValidIdempotencyKey(source.idempotencyKey);
     if (source.result.action !== source.operation) {
@@ -573,6 +619,7 @@ export async function importTodoMutationRecordsInTransaction<
       ) {
         throw idempotencyConflict(input.targetScope, source.idempotencyKey);
       }
+      skipped += 1;
       continue;
     }
     await tx.insert(todoMutationsTable).values({
@@ -586,7 +633,9 @@ export async function importTodoMutationRecordsInTransaction<
       applied: source.applied,
       committedAt: source.committedAt,
     });
+    imported += 1;
   }
+  return { imported, skipped };
 }
 
 function assertTodoHierarchy(rows: TodoHierarchyRow[]): void {
@@ -1280,9 +1329,44 @@ class SqlTodoStore<TSchema extends Record<string, unknown>>
     return rows.map(rowToMutationRecord);
   }
 
-  async importMutationRecords(input: TodoMutationImportInput): Promise<void> {
+  async readCutoverState(scope: TodoScope): Promise<TodoCutoverState> {
     return this.db.transaction(async (tx) => {
-      await importTodoMutationRecordsInTransaction(tx, input);
+      await this.lockScope(tx, scope);
+      const todoRows = await tx
+        .select()
+        .from(todosTable)
+        .where(
+          and(
+            eq(todosTable.agentId, scope.agentId as UUID),
+            eq(todosTable.entityId, scope.entityId as UUID),
+          ),
+        )
+        .orderBy(asc(todosTable.createdAt), asc(todosTable.id));
+      const mutationRows = await tx
+        .select()
+        .from(todoMutationsTable)
+        .where(
+          and(
+            eq(todoMutationsTable.agentId, scope.agentId as UUID),
+            eq(todoMutationsTable.entityId, scope.entityId as UUID),
+          ),
+        )
+        .orderBy(
+          asc(todoMutationsTable.committedAt),
+          asc(todoMutationsTable.mutationId),
+        );
+      return {
+        todos: todoRows.map(rowToTodo),
+        mutations: mutationRows.map(rowToMutationRecord),
+      };
+    });
+  }
+
+  async importMutationRecords(
+    input: TodoMutationImportInput,
+  ): Promise<TodoMutationImportResult> {
+    return this.db.transaction(async (tx) => {
+      return importTodoMutationRecordsInTransaction(tx, input);
     });
   }
 }
@@ -1303,10 +1387,12 @@ export {
   TODO_INVALID_PARENT_ERROR_CODE,
   TODO_LIST_LIMIT_ERROR_CODE,
   TODO_PARENT_CYCLE_ERROR_CODE,
+  type TodoCutoverState,
   type TodoFilter,
   type TodoMutation,
   type TodoMutationExecution,
   type TodoMutationImportInput,
+  type TodoMutationImportResult,
   type TodoMutationInput,
   type TodoMutationRecord,
   type TodoMutationResult,
