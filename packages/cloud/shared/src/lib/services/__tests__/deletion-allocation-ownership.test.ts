@@ -27,7 +27,7 @@ process.env.NODE_ENV ||= "test";
 process.env.MOCK_REDIS = "1";
 
 import { pushSchema } from "drizzle-kit/api";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { agentSandboxes } from "../../../db/schemas/agent-sandboxes";
 import { apiKeys } from "../../../db/schemas/api-keys";
 import { containers } from "../../../db/schemas/containers";
@@ -197,6 +197,15 @@ async function ownership(agentId: string): Promise<boolean | null> {
   return row.owned;
 }
 
+async function lifecycleRevision(agentId: string): Promise<number> {
+  const [row] = await dbWrite
+    .select({ revision: agentSandboxes.lifecycle_revision })
+    .from(agentSandboxes)
+    .where(eq(agentSandboxes.id, agentId));
+  if (!row) throw new Error("expected seeded sandbox row");
+  return row.revision;
+}
+
 describe("tryReleaseDeletionAllocation — releases exactly once", () => {
   test(
     "retry after a post-stop failure does not free the live sibling's slot",
@@ -332,6 +341,54 @@ describe("tryReleaseDeletionAllocation — releases exactly once", () => {
       ).toBe("not-owned");
       expect(await allocatedCount(nodeId)).toBe(2);
       expect(await ownership(agentId)).toBe(true);
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
+    "the prepared revision fences release and the returned revision fences row deletion",
+    async () => {
+      if (!pgliteReady) return;
+      const { agentId, orgId, nodeId, deletionAttemptId } = await seedNodeWithTargetAndSibling({
+        allocationCounted: true,
+      });
+      const preparedRevision = await lifecycleRevision(agentId);
+
+      await expect(
+        agentSandboxesRepository.tryReleaseDeletionAllocationForCommit(
+          agentId,
+          orgId,
+          deletionAttemptId,
+          nodeId,
+          preparedRevision - 1,
+        ),
+      ).resolves.toEqual({ outcome: "not-owned", lifecycleRevision: null });
+      expect(await allocatedCount(nodeId)).toBe(2);
+      expect(await ownership(agentId)).toBe(true);
+
+      const release = await agentSandboxesRepository.tryReleaseDeletionAllocationForCommit(
+        agentId,
+        orgId,
+        deletionAttemptId,
+        nodeId,
+        preparedRevision,
+      );
+      expect(release).toEqual({ outcome: "released", lifecycleRevision: preparedRevision + 1 });
+      expect(await lifecycleRevision(agentId)).toBe(release.lifecycleRevision);
+      expect(await allocatedCount(nodeId)).toBe(1);
+
+      const deleted = await dbWrite
+        .delete(agentSandboxes)
+        .where(
+          and(
+            eq(agentSandboxes.id, agentId),
+            eq(agentSandboxes.organization_id, orgId),
+            eq(agentSandboxes.deletion_attempt_id, deletionAttemptId),
+            eq(agentSandboxes.lifecycle_revision, release.lifecycleRevision as number),
+          ),
+        )
+        .returning({ id: agentSandboxes.id });
+      expect(deleted).toEqual([{ id: agentId }]);
     },
     PGLITE_TIMEOUT,
   );
