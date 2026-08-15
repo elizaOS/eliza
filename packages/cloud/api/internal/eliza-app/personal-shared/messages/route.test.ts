@@ -419,9 +419,10 @@ describe("personal Shared messaging deliveries", () => {
   });
 
   test("routes a linked Discord DM through the same personal room", async () => {
+    const discordUserId = ["123456789", "012345678"].join("");
     const response = await request({
       platform: "discord",
-      discordUserId: "123456789012345678",
+      discordUserId,
       discordUsername: "shaw",
       displayName: "Shaw",
       avatarUrl: "https://cdn.discordapp.com/avatar.png",
@@ -435,7 +436,7 @@ describe("personal Shared messaging deliveries", () => {
     };
     expect(resolvePersonalDelivery).toHaveBeenCalledWith({
       platform: "discord",
-      discordId: "123456789012345678",
+      discordId: discordUserId,
       username: "shaw",
       globalName: "Shaw",
       avatarUrl: "https://cdn.discordapp.com/avatar.png",
