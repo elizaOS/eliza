@@ -790,6 +790,12 @@ describe("explicit unscheduled owner authority", () => {
     "no due date, but in two weeks",
     "no schedule, after the meeting",
     "plain todo a week from friday",
+    "not an undated task",
+    "don't make it a plain todo",
+    "sin fecha, pero mañana",
+    "sem prazo, mas amanhã",
+    "không có ngày đến hạn, nhưng ngày mai",
+    "walang takdang petsa, pero bukas",
   ])("rejects omitted or contradicted no-date authority in %p", (text) => {
     expect(textStatesExplicitUnscheduled(text)).toBe(false);
   });

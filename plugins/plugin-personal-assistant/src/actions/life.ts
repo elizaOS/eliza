@@ -2369,7 +2369,16 @@ const EXPLICIT_SCHEDULED_TODO_PATTERNS = [
   /\b(?:a|one|two|three|four|five|six|seven|eight|nine|ten|\d+)\s+(?:days?|weeks?|months?|years?)\s+from\s+(?:today|tomorrow|monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b/i,
   /\b(?:every|each|daily|weekly|monthly|yearly)\b/i,
   /\b\d{4}-\d{2}-\d{2}\b/,
+  /\b(?:hoy|mañana|esta noche|cada (?:día|semana|mes|año))\b/i,
+  /\b(?:hoje|amanh[ãa]|esta noite|todos os dias|toda semana|todo mês|todo ano)/i,
+  /(?:hôm nay|ngày mai|tối nay|hàng ngày|hàng tuần|hàng tháng|hàng năm)/i,
+  /\b(?:ngayon|bukas|mamayang gabi|araw-araw|lingguhan|buwanan|taunan)\b/i,
   /(?:今天|明天|今晚|每天|每周|每週|每月|每年|今日|明日|今夜|毎日|毎週|毎月|毎年|오늘|내일|오늘 밤|매일|매주|매월|매년)/,
+] as const;
+
+const NEGATED_UNSCHEDULED_PATTERNS = [
+  /\b(?:not|never)\s+(?:an?\s+)?(?:plain|undated|unscheduled)\s+(?:todo|task|item)\b/i,
+  /\b(?:do not|don't|dont)\s+(?:make|save|add|create)(?:\s+it)?\s+(?:as\s+)?(?:an?\s+)?(?:plain|undated|unscheduled)\s+(?:todo|task|item)\b/i,
 ] as const;
 
 const EXPLICIT_UNSCHEDULED_PATTERNS = [
@@ -2391,7 +2400,10 @@ const EXPLICIT_UNSCHEDULED_PATTERNS = [
 export function textStatesExplicitUnscheduled(text: string): boolean {
   const normalized = normalizeLifeInputText(text);
   if (
-    EXPLICIT_SCHEDULED_TODO_PATTERNS.some((pattern) => pattern.test(normalized))
+    EXPLICIT_SCHEDULED_TODO_PATTERNS.some((pattern) =>
+      pattern.test(normalized),
+    ) ||
+    NEGATED_UNSCHEDULED_PATTERNS.some((pattern) => pattern.test(normalized))
   ) {
     return false;
   }
