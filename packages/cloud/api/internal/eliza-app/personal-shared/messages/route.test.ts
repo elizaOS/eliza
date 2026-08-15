@@ -166,6 +166,7 @@ function request(body: unknown, authorization = "Bearer test-secret") {
     {
       INTERNAL_SECRET: "test-secret",
       SHARED_RUNTIME_CONVERSATIONS: namespace,
+      WHISPER_STT_URL: "https://whisper.test",
     } as never,
     executionCtx as never,
   );
@@ -238,6 +239,68 @@ describe("personal Shared messaging deliveries", () => {
       "telegram:eliza:42",
       "platform",
     );
+  });
+
+  test("transcribes a Telegram voice note before the Shared turn", async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = mock(async (input, init) => {
+      const outbound = new Request(input, init);
+      expect(outbound.url).toBe("https://whisper.test/v1/audio/transcriptions");
+      const form = await outbound.formData();
+      const file = form.get("file");
+      expect(file).toBeInstanceOf(File);
+      expect((file as File).type).toBe("audio/ogg");
+      return Response.json({ text: "remember the red bicycle" });
+    }) as unknown as typeof fetch;
+    const bytes = Buffer.from("OggSvoice-note");
+    try {
+      const response = await request({
+        ...valid,
+        message: undefined,
+        voiceNote: {
+          bytesBase64: bytes.toString("base64"),
+          mimeType: "audio/ogg",
+          filename: "telegram-42.ogg",
+          sizeBytes: bytes.length,
+          durationSeconds: 4,
+        },
+      });
+
+      expect(response.status).toBe(200);
+      expect(sharedRestMessageSend).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.stringMatching(/^personal:/),
+        "remember the red bicycle",
+        "Eliza",
+        runtimeExecutionCtx,
+        namespace,
+        "telegram:eliza:42",
+        "platform",
+      );
+      await expect(response.json()).resolves.toMatchObject({
+        data: { reply: "hello from Eliza" },
+      });
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  test("rejects a forged voice payload before identity, storage, or inference", async () => {
+    const response = await request({
+      ...valid,
+      message: undefined,
+      voiceNote: {
+        bytesBase64: Buffer.from("not ogg").toString("base64"),
+        mimeType: "audio/ogg",
+        filename: "telegram-42.ogg",
+        sizeBytes: 7,
+        durationSeconds: 4,
+      },
+    });
+
+    expect(response.status).toBe(400);
+    expect(findOrCreateByTelegram).not.toHaveBeenCalled();
+    expect(sharedRestMessageSend).not.toHaveBeenCalled();
   });
 
   test("issues an account-bound Telegram claim without entering runtime or provisioning", async () => {
