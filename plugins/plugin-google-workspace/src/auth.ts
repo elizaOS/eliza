@@ -56,7 +56,7 @@ export function getGoogleOAuthProviderConfig(
     authorizationParams: {
       access_type: "offline",
       prompt: "consent",
-      include_granted_scopes: "true",
+      include_granted_scopes: "false",
     },
   };
 }

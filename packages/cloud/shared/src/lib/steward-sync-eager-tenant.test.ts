@@ -145,9 +145,12 @@ mock.module("./db/repositories/organization-invites", () => ({
   },
 }));
 
-mock.module("./db/repositories/users", () => ({
+mock.module("../db/repositories/users", () => ({
   usersRepository: {
     delete: async () => undefined,
+    findPendingPhoneTelegramPersonalAccountConvergence: async () => ({
+      status: "not_found" as const,
+    }),
   },
 }));
 

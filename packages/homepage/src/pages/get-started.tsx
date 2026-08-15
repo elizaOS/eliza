@@ -43,6 +43,7 @@ const ShaderBackground = lazy(
 import { elizacloudAuthFetch } from "@/lib/api/client";
 import {
   buildElizaTelegramHref,
+  ELIZA_PHONE_NUMBER,
   getDiscordBotApplicationId,
   getTelegramBotId,
   getTelegramBotUsername,
@@ -706,24 +707,15 @@ export default function GetStartedPage() {
 
   const [suppressRedirect, setSuppressRedirect] = useState(false);
   const [messageNotice, setMessageNotice] = useState<
-    "idle" | "copied" | "error"
+    "idle" | "handoff" | "copied" | "error"
   >("idle");
-  const messageNoticeResetRef = useRef<number | null>(null);
+  const messageNoticeOperation = useRef(0);
   const [showContent, setShowContent] = useState(false);
 
   useEffect(() => {
     const timer = setTimeout(() => setShowContent(true), 100);
     return () => clearTimeout(timer);
   }, []);
-
-  useEffect(
-    () => () => {
-      if (messageNoticeResetRef.current !== null) {
-        window.clearTimeout(messageNoticeResetRef.current);
-      }
-    },
-    [],
-  );
 
   const headerStyle: CSSProperties = {
     opacity: showContent ? 1 : 0,
@@ -1299,19 +1291,29 @@ export default function GetStartedPage() {
   }, [handleDiscordAuthSubmit]);
 
   const handleOpenMessages = async () => {
+    const operation = ++messageNoticeOperation.current;
     try {
       const outcome = await openOrCopyElizaMessage(window);
-      setMessageNotice(outcome === "copied" ? "copied" : "idle");
+      if (operation === messageNoticeOperation.current)
+        setMessageNotice(outcome);
     } catch {
-      setMessageNotice("error");
+      // error-policy:J4 Clipboard rejection stays visible as a distinct UI error.
+      if (operation === messageNoticeOperation.current)
+        setMessageNotice("error");
     }
-    if (messageNoticeResetRef.current !== null) {
-      window.clearTimeout(messageNoticeResetRef.current);
+  };
+
+  const handleCopyMessageNumber = async () => {
+    const operation = ++messageNoticeOperation.current;
+    try {
+      await navigator.clipboard.writeText(ELIZA_PHONE_NUMBER);
+      if (operation === messageNoticeOperation.current)
+        setMessageNotice("copied");
+    } catch {
+      // error-policy:J4 Clipboard rejection stays visible as a distinct UI error.
+      if (operation === messageNoticeOperation.current)
+        setMessageNotice("error");
     }
-    messageNoticeResetRef.current = window.setTimeout(
-      () => setMessageNotice("idle"),
-      2_000,
-    );
   };
 
   const handleContinueToConnected = () => {
@@ -1820,22 +1822,42 @@ export default function GetStartedPage() {
 
               {messageNotice !== "idle" && (
                 <p
-                  role="status"
+                  role={messageNotice === "error" ? "alert" : "status"}
                   aria-live="polite"
                   className={`mt-3 text-center text-sm font-medium ${
                     messageNotice === "copied"
                       ? "text-green-700"
-                      : "text-red-700"
+                      : messageNotice === "error"
+                        ? "text-red-700"
+                        : "text-neutral-700"
                   }`}
                 >
                   {messageNotice === "copied"
                     ? t("homepage_eliza.getStarted.phoneCopied", {
                         defaultValue: "Phone number copied",
                       })
-                    : t("homepage_eliza.getStarted.phoneCopyFailed", {
-                        defaultValue: "Couldn't copy the phone number",
-                      })}
+                    : messageNotice === "handoff"
+                      ? t("homepage_eliza.common.messageHandoff", {
+                          defaultValue:
+                            "Opening Messages. If nothing happens, copy the number.",
+                        })
+                      : t("homepage_eliza.getStarted.phoneCopyFailed", {
+                          defaultValue: "Couldn't copy the phone number",
+                        })}
                 </p>
+              )}
+
+              {messageNotice === "handoff" && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => void handleCopyMessageNumber()}
+                  className="mt-3 h-11 w-full rounded-full"
+                >
+                  {t("homepage_eliza.connected.copyPhoneAria", {
+                    defaultValue: "Copy phone number",
+                  })}
+                </Button>
               )}
 
               <button
@@ -2101,7 +2123,7 @@ export default function GetStartedPage() {
                     <div className="flex-1">
                       <p className="text-sm font-medium text-neutral-900">
                         {t("homepage_eliza.getStarted.guideStep1", {
-                          defaultValue: "Add Eliza to your server",
+                          defaultValue: "Install Eliza for your account",
                         })}
                       </p>
                       <Button
@@ -2109,8 +2131,13 @@ export default function GetStartedPage() {
                         size="sm"
                         onClick={() => {
                           const clientId = getDiscordClientId();
+                          const params = new URLSearchParams({
+                            client_id: clientId,
+                            integration_type: "1",
+                            scope: "applications.commands",
+                          });
                           window.open(
-                            `https://discord.com/oauth2/authorize?client_id=${clientId}&permissions=2048&scope=bot`,
+                            `https://discord.com/oauth2/authorize?${params.toString()}`,
                             "_blank",
                           );
                         }}
@@ -2118,7 +2145,7 @@ export default function GetStartedPage() {
                       >
                         <ExternalLink className="size-3.5" />
                         {t("homepage_eliza.getStarted.guideInviteToServer", {
-                          defaultValue: "Invite to Server",
+                          defaultValue: "Install for DMs",
                         })}
                       </Button>
                     </div>

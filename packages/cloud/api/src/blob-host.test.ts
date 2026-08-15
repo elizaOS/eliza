@@ -96,11 +96,11 @@ describe("serveBlobHostRequest", () => {
   test("respects R2_PUBLIC_HOST for the per-env host (staging)", async () => {
     const { env } = makeEnv(
       { "avatars/eliza.png": { body: "AVATAR" } },
-      "blob-staging.elizacloud.ai",
+      "blob-staging.eliza.app",
     );
 
     const [hitReq, hitUrl] = req(
-      "https://blob-staging.elizacloud.ai/avatars/eliza.png",
+      "https://blob-staging.eliza.app/avatars/eliza.png",
     );
     const hit = await serveBlobHostRequest(hitReq, hitUrl, env);
     expect(hit?.status).toBe(200);

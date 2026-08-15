@@ -161,6 +161,10 @@ import {
   titleForTab,
 } from "./navigation";
 import { applyLaunchConnection } from "./platform";
+import {
+  type AppShellMode,
+  resolveAppShellMode,
+} from "./platform/app-shell-mode";
 import { isIOS, isNative } from "./platform/init";
 import { RetainedLazyComponent } from "./retained-lazy";
 import {
@@ -228,10 +232,7 @@ import {
   resolveBuiltinRoutedViewManifest,
   resolveBuiltinTabId,
 } from "./builtin-tab-registry";
-import {
-  isManagedCloudRuntime,
-  managedCloudPageOwnsStartupFailure,
-} from "./cloud/managed-cloud-runtime";
+import { isManagedCloudRuntime } from "./cloud/managed-cloud-runtime";
 // DesktopTabBar stays static: it is already pulled
 // eagerly elsewhere in the app graph (plugin-loader / boot-config), so a
 // lazy() boundary here would only fold back into main. The remaining page
@@ -280,41 +281,22 @@ function useIsPopout(): boolean {
  * read from the URL (`?shellMode=` / `?shell-mode=`) or the
  * `ELIZAOS_SHELL_MODE` global the native shell may inject. Unset = full app.
  */
-type ShellMode =
-  | "chat-overlay"
-  | "tray-popover"
-  | "voice-selftest"
-  | "voice-workbench"
-  | "launcher"
-  | "kiosk"
-  | "full";
-
 declare global {
   interface Window {
     ELIZAOS_SHELL_MODE?: string;
   }
 }
 
-function readShellMode(): ShellMode {
+function readShellMode(): AppShellMode {
   if (typeof window === "undefined") return "full";
-  const params = new URLSearchParams(
-    window.location.search || window.location.hash.split("?")[1] || "",
+  return resolveAppShellMode(
+    window.location.search,
+    window.location.hash,
+    window.ELIZAOS_SHELL_MODE,
   );
-  const raw =
-    params.get("shellMode") ??
-    params.get("shell-mode") ??
-    window.ELIZAOS_SHELL_MODE ??
-    "";
-  if (raw === "chat-overlay") return "chat-overlay";
-  if (raw === "tray-popover") return "tray-popover";
-  if (raw === "voice-selftest") return "voice-selftest";
-  if (raw === "voice-workbench") return "voice-workbench";
-  if (raw === "launcher") return "launcher";
-  if (raw === "kiosk") return "kiosk";
-  return "full";
 }
 
-function useShellMode(): ShellMode {
+function useShellMode(): AppShellMode {
   const [mode] = useState(readShellMode);
   return mode;
 }
@@ -2272,10 +2254,6 @@ function AppContent() {
   const { views: availableViewsForDesktopTabs } = useRoutableViews();
   const [viewLayout, setViewLayout] = useState<ActiveViewLayout | null>(null);
   const navigationPath = useCurrentNavigationPath();
-  const cloudManagementOwnsStartupFailure = managedCloudPageOwnsStartupFailure(
-    navigationPath,
-    startupCoordinator.target,
-  );
   const screenBackgroundPolicy = useActiveScreenBackgroundPolicy({
     tab,
     navigationPath,
@@ -2668,10 +2646,7 @@ function AppContent() {
     );
   }
 
-  if (
-    (!isShellPaintableNow || bootstrapGateHolds) &&
-    !cloudManagementOwnsStartupFailure
-  ) {
+  if (!isShellPaintableNow || bootstrapGateHolds) {
     return (
       <BugReportProvider value={bugReport}>
         <StartupScreen />

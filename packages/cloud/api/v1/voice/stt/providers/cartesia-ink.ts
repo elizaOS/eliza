@@ -13,9 +13,11 @@ export const CARTESIA_INK_SAMPLE_RATE = 16_000;
 export const CARTESIA_INK_AUDIO_ENCODING = "pcm_s16le";
 export const CARTESIA_INK_CHUNK_MILLISECONDS = 100;
 export const CARTESIA_INK_CHUNK_BYTES = 3_200;
-export const CARTESIA_INK_TURN_START_THRESHOLD = 0.8;
-export const CARTESIA_INK_TURN_EAGER_END_THRESHOLD = 0.5;
-export const CARTESIA_INK_TURN_END_THRESHOLD = 0.4;
+// Lowest supported semantic start threshold: phone callers must get the floor
+// before buffered TTS can talk over the beginning of their interruption.
+export const CARTESIA_INK_TURN_START_THRESHOLD = 0.5;
+export const CARTESIA_INK_TURN_EAGER_END_THRESHOLD = 0.4;
+export const CARTESIA_INK_TURN_END_THRESHOLD = 0.3;
 export const CARTESIA_INK_TURN_END_TIMEOUT_MILLISECONDS = 1_200;
 
 const DEFAULT_CLOSE_CODE = 1000;

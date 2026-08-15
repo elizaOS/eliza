@@ -49,9 +49,14 @@ describe("Eliza contact links", () => {
     expect(buildElizaTelegramHref()).toBe(
       `https://t.me/${ELIZA_TELEGRAM_BOT_USERNAME}`,
     );
-    expect(buildElizaDiscordHref()).toBe(
-      `discord://-/users/${ELIZA_DISCORD_APPLICATION_ID}`,
+    const discordUrl = new URL(buildElizaDiscordHref());
+    expect(discordUrl.origin).toBe("https://discord.com");
+    expect(discordUrl.pathname).toBe("/oauth2/authorize");
+    expect(discordUrl.searchParams.get("client_id")).toBe(
+      ELIZA_DISCORD_APPLICATION_ID,
     );
+    expect(discordUrl.searchParams.get("integration_type")).toBe("1");
+    expect(discordUrl.searchParams.get("scope")).toBe("applications.commands");
     expect(getTelegramBotId()).toBe(ELIZA_TELEGRAM_BOT_ID);
     expect(getDiscordBotApplicationId()).toBe(ELIZA_DISCORD_APPLICATION_ID);
   });
@@ -77,7 +82,7 @@ describe("Eliza contact links", () => {
           },
         },
       }),
-    ).resolves.toBe("opened");
+    ).resolves.toBe("handoff");
     expect(location.href).toBe(buildElizaSmsHref());
     expect(clipboardWrites).toEqual([]);
   });

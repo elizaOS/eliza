@@ -116,7 +116,7 @@ describe("builtin view action ratchet (#14369)", () => {
         }),
         expect.objectContaining({
           viewId: "my-apps",
-          observedMutationSites: 27,
+          observedMutationSites: 24,
           semanticActions: ["APP", "VIEWS"],
         }),
         expect.objectContaining({
@@ -285,7 +285,7 @@ describe("builtin view action ratchet (#14369)", () => {
 
     expect(Object.fromEntries(claimedByFile)).toEqual({
       "packages/ui/src/components/pages/MyAppsView.tsx": 1,
-      "packages/ui/src/components/settings/AppsManagementSection.tsx": 26,
+      "packages/ui/src/components/settings/AppsManagementSection.tsx": 23,
     });
     expect(
       myApps.mutationAuthorities?.map((authority) => ({

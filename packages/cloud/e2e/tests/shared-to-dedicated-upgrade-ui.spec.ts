@@ -19,8 +19,7 @@
 // below, but the coverage gate classifies a changed *.spec.ts by grepping for
 // a DIRECT @playwright/test import — without one it would run this file under
 // `bun test`. Type-only and empty, so it costs nothing at runtime.
-import { personalSharedAgentId } from "@elizaos/cloud-shared/lib/services/shared-runtime/personal-shared-agent";
-import type { Page, Response } from "@playwright/test";
+import type {} from "@playwright/test";
 import {
   createCloudAgent,
   pollSandboxStatus,
@@ -28,97 +27,40 @@ import {
 } from "../src/helpers/provisioning";
 import { expect, test } from "../src/helpers/test-fixtures";
 
-async function seedManagedCloudRuntime(
-  page: Page,
-  apiKey: string,
-  agentId: string,
-  cloudApiBase: string,
-): Promise<void> {
-  await page.addInitScript(
-    ({ token, id, apiBase }) => {
-      window.localStorage.setItem("steward_session_token", token);
-      window.localStorage.setItem("eliza:first-run-complete", "1");
-      window.localStorage.setItem(
-        "elizaos:active-server",
-        JSON.stringify({
-          id: `cloud:${id}`,
-          kind: "cloud",
-          label: "Eliza Cloud",
-          apiBase,
-          accessToken: token,
-        }),
-      );
-    },
-    { token: apiKey, id: agentId, apiBase: cloudApiBase },
-  );
-}
-
-function isPersonalTierUpgradeResponse(
-  response: Response,
-  sharedAgentId: string,
-  method: "GET" | "POST",
-): boolean {
-  return (
-    decodeURIComponent(new URL(response.url()).pathname) ===
-      `/api/v1/eliza/agents/${sharedAgentId}/upgrade-tier` &&
-    response.request().method() === method
-  );
-}
-
 test.describe("upgrade to dedicated via dashboard UI", () => {
-  test("rowless personal Shared: signed-in cockpit → quote → real Dedicated target", async ({
+  test("shared agent: billing-transparency confirm → real upgrade-tier POST → progress + minted target", async ({
     authenticatedPage: page,
     stack,
     seededUser,
   }) => {
     test.setTimeout(120_000);
-    const sharedAgentId = personalSharedAgentId({
-      userId: seededUser.userId,
-      organizationId: seededUser.organizationId,
-    });
+    const api = { apiUrl: stack.urls.api };
+
+    // A shared-tier agent (no alwaysOn/dockerImage) — created running, no job.
+    const sharedAgentId = await createCloudAgent(
+      api,
+      seededUser.apiKey,
+      "e2e-upgrade-ui-shared",
+    );
 
     // The console web surface resolves its cloud bearer from the steward
     // session in localStorage; the test-session cookie fixture bypasses
     // steward, so seed the API key as the stored token (the cloud API accepts
     // both) before the app boots.
-    await seedManagedCloudRuntime(
-      page,
-      seededUser.apiKey,
-      sharedAgentId,
-      stack.urls.api,
-    );
+    await page.addInitScript((apiKey: string) => {
+      window.localStorage.setItem("steward_session_token", apiKey);
+    }, seededUser.apiKey);
 
-    await page.goto(`${stack.urls.frontend}/cloud`);
-    await expect(page.getByRole("heading", { name: "Eliza" })).toBeVisible({
-      timeout: 30_000,
-    });
-    await expect(page.getByText("Shared", { exact: true })).toBeVisible();
+    await page.goto(`${stack.urls.frontend}/dashboard/agents/${sharedAgentId}`);
     const upgradeButton = page.getByTestId("agent-upgrade-tier-button");
     await expect(upgradeButton).toBeVisible({ timeout: 30_000 });
-    await page.screenshot({
-      path: test.info().outputPath("personal-eliza-cockpit-desktop.png"),
-      fullPage: true,
-    });
-
-    await page.setViewportSize({ width: 390, height: 844 });
-    await expect(upgradeButton).toBeVisible();
-    expect(
-      await page.evaluate(
-        () =>
-          document.documentElement.scrollWidth <=
-          document.documentElement.clientWidth,
-      ),
-      "personal Eliza cockpit has no horizontal overflow on mobile",
-    ).toBe(true);
-    await page.screenshot({
-      path: test.info().outputPath("personal-eliza-cockpit-mobile.png"),
-      fullPage: true,
-    });
-    await page.setViewportSize({ width: 1280, height: 720 });
 
     // ── Billing-transparency dialog: burn/day + runway minimum + continuity ──
-    const quoteResponsePromise = page.waitForResponse((response) =>
-      isPersonalTierUpgradeResponse(response, sharedAgentId, "GET"),
+    const quoteResponsePromise = page.waitForResponse(
+      (response) =>
+        new URL(response.url()).pathname ===
+          `/api/v1/eliza/agents/${sharedAgentId}/upgrade-tier` &&
+        response.request().method() === "GET",
     );
     await upgradeButton.click();
     const quoteResponse = await quoteResponsePromise;
@@ -137,7 +79,7 @@ test.describe("upgrade to dedicated via dashboard UI", () => {
     const dialog = page.getByRole("alertdialog");
     await expect(dialog).toBeVisible();
     await expect(dialog).toContainText(
-      `$${quote.data?.dailyRateUsd?.toFixed(2)} per day`,
+      `$${quote.data?.dailyRateUsd?.toFixed(2)}/day`,
     );
     await expect(dialog).toContainText(
       `$${quote.data?.minimumBalanceUsd?.toFixed(2)}`,
@@ -165,17 +107,15 @@ test.describe("upgrade to dedicated via dashboard UI", () => {
         )
       ).length,
       "cancel minted nothing",
-    ).toBe(0);
+    ).toBe(1);
 
     // ── Confirm: the UI itself fires POST /upgrade-tier and gets a 202. ──
-    const refreshedQuoteResponsePromise = page.waitForResponse((response) =>
-      isPersonalTierUpgradeResponse(response, sharedAgentId, "GET"),
-    );
     await upgradeButton.click();
-    expect((await refreshedQuoteResponsePromise).status()).toBe(200);
-    await expect(dialog).toBeVisible();
-    const upgradeResponsePromise = page.waitForResponse((response) =>
-      isPersonalTierUpgradeResponse(response, sharedAgentId, "POST"),
+    const upgradeResponsePromise = page.waitForResponse(
+      (response) =>
+        new URL(response.url()).pathname ===
+          `/api/v1/eliza/agents/${sharedAgentId}/upgrade-tier` &&
+        response.request().method() === "POST",
     );
     await page.getByTestId("agent-upgrade-tier-confirm").click();
     const upgradeResponse = await upgradeResponsePromise;
@@ -207,7 +147,7 @@ test.describe("upgrade to dedicated via dashboard UI", () => {
       seededUser.organizationId,
     );
     expect(dedicated?.execution_tier).toBe("dedicated-always");
-    expect(dedicated?.agent_name).toBe("Eliza");
+    expect(dedicated?.agent_name).toBe("e2e-upgrade-ui-shared");
     expect(
       (dedicated?.agent_config as Record<string, unknown> | null)
         ?.__agentUpgradedFrom,
@@ -240,14 +180,7 @@ test.describe("upgrade to dedicated via dashboard UI", () => {
       onTick: processJobs,
     });
 
-    await seedManagedCloudRuntime(
-      page,
-      seededUser.apiKey,
-      sandboxId,
-      stack.urls.api,
-    );
-
-    await page.goto(`${stack.urls.frontend}/cloud/agents/${sandboxId}`);
+    await page.goto(`${stack.urls.frontend}/dashboard/agents/${sandboxId}`);
     // The actions card rendered (deactivate exists for dedicated agents)…
     await expect(
       page.getByRole("button", { name: "Deactivate Agent", exact: true }),

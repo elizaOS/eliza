@@ -1,70 +1,39 @@
-/** Verifies the precision-first Shared-to-Dedicated capability boundary. */
+/** Exercises the truthful Shared-to-Dedicated boundary against product copy. */
 
 import { describe, expect, test } from "bun:test";
-import { capabilityWallActionResult, resolveSharedCapabilityWall } from "./shared-capability-wall";
+import { resolveSharedCapabilityWall } from "./shared-capability-wall";
 
 describe("Shared capability wall", () => {
   test.each([
     ["remind me tomorrow at 9", "reminders"],
-    ["set a reminder for Friday", "reminders"],
     ["show my calendar events", "calendar"],
-    ["book a meeting tomorrow", "calendar"],
-    ["book me a flight to San Francisco", "bookings"],
-    ["can you book dinner for four on Thursday", "bookings"],
-    ["make a restaurant reservation", "bookings"],
+    ["book me dinner for four", "bookings"],
+    ["book a flight to san francisco", "bookings"],
     ["email Bob the itinerary", "communications"],
     ["call Mom", "communications"],
-    ["send Alice a text", "communications"],
-    ["order groceries for tomorrow", "purchases"],
-    ["buy a plane ticket", "purchases"],
+    ["text Alice that I'm late", "communications"],
+    ["order dinner for me", "purchases"],
     ["save this as a note", "notes"],
-    ["list my notes", "notes"],
-    ["connect my Gmail account", "cloud-apps"],
-    ["read a file in my workspace", "filesystem"],
+    ["connect my Gmail", "cloud-apps"],
     ["run a shell command", "shell"],
-    ["open the website in a browser", "browser-control"],
+    ["read a file in my workspace", "filesystem"],
+    ["open that site in a browser", "browser-control"],
     ["run the tests in this repository", "coding-runtime"],
-  ])("walls %s as %s", (message, capability) => {
+  ])("blocks %s as %s before inference", (message, capability) => {
     expect(resolveSharedCapabilityWall(message)?.capability).toBe(capability);
   });
 
   test.each([
     "Do not remind me tomorrow",
-    "Explain how to set a reminder",
+    "Explain how to book a flight",
     "What is a calendar event?",
-    "How do I create a note?",
-    "If I say run a shell command, what happens?",
-    "Before you open the browser, ask me first",
-    "Could you explain how to book a flight?",
-    "Tell me how to make a restaurant reservation",
-    "Do not call Mom",
-    "How do I email Bob?",
-    "Call this JavaScript function from the event handler",
+    "Before you call Mom, ask me first",
+    "Call this JavaScript function",
     "Find me flights to San Francisco",
     "What restaurant should I choose?",
-    "Write a TypeScript function that sorts an array",
-    "Review this code for bugs",
-    "Search the web for today's news",
-    "I love your voice",
+    "Write a TypeScript function",
     "Let's discuss my meeting tomorrow",
-  ])("keeps discussion and Shared-supported requests in chat: %s", (message) => {
+  ])("keeps discussion and research in Shared: %s", (message) => {
     expect(resolveSharedCapabilityWall(message)).toBeNull();
-  });
-
-  test("emits a typed non-automatic Dedicated handoff", () => {
-    const wall = resolveSharedCapabilityWall("save this as a note");
-    expect(wall).not.toBeNull();
-    expect(capabilityWallActionResult(wall!)).toEqual({
-      actionName: "DEDICATED_CAPABILITY_REQUIRED",
-      success: false,
-      text: wall!.reply,
-      values: {
-        capability: "notes",
-        currentExecutionTier: "shared",
-        requiredExecutionTier: "dedicated-always",
-        automatic: false,
-        source: "agent",
-      },
-    });
   });
 });

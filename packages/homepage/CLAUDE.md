@@ -121,11 +121,11 @@ isolated visual harness.
 | Variable | Default | Purpose |
 |---|---|---|
 | `VITE_ELIZACLOUD_API_URL` | `https://api.eliza.app` | Eliza Cloud backend base URL |
-| `VITE_TELEGRAM_BOT_USERNAME` | `Elizav2_Bot` | Optional Telegram bot username override |
-| `VITE_TELEGRAM_BOT_ID` | `7684336618` | Optional numeric Telegram bot ID override |
-| `VITE_DISCORD_CLIENT_ID` | `1468649258654630063` | Optional Discord Application ID override |
+| `VITE_TELEGRAM_BOT_USERNAME` | `ElizaIsNotABot` | Optional Telegram bot username override |
+| `VITE_TELEGRAM_BOT_ID` | `8931353359` | Optional numeric Telegram bot ID override |
+| `VITE_DISCORD_CLIENT_ID` | `1474591626759376967` | Optional Discord Application ID override |
 | `WHATSAPP_PUBLIC_ENABLED` | disabled | Deployment-only switch that admits the public WhatsApp CTA |
-| `VITE_WHATSAPP_PHONE_NUMBER` | — | Production WhatsApp Business sender (E.164); local/test code retains a fixture |
+| `VITE_WHATSAPP_PHONE_NUMBER` | — | Admitted Blooio WhatsApp sender (E.164); production uses the shared `+18087881821` number only after its WhatsApp channel passes live proof |
 
 Auth token is stored in `localStorage` under key `eliza_app_session`. The test signer hook is `window.__siwsTestSigner` (used by Playwright e2e to skip wallet interaction).
 

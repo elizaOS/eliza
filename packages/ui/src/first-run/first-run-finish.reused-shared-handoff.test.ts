@@ -162,10 +162,12 @@ beforeEach(() => {
   clientMock.getCloudStatus.mockResolvedValue(null);
   clientMock.getRestAuthToken.mockReturnValue(null);
   clientMock.getPersonalSharedEliza.mockResolvedValue({
-    agentId: "personal:org-1",
+    personalElizaId: "personal:00000000-0000-5000-8000-000000000001",
+    agentId: "personal:00000000-0000-5000-8000-000000000001",
+    activeAgentId: "personal:00000000-0000-5000-8000-000000000001",
     agentName: "Eliza",
     apiBase:
-      "https://staging.elizacloud.ai/api/v1/eliza/agents/personal%3Aorg-1",
+      "https://staging.elizacloud.ai/api/v1/eliza/agents/personal%3A00000000-0000-5000-8000-000000000001",
     runtime: "shared",
   });
   // Default boot config: shared-first with NO auto-upgrade (#18204).

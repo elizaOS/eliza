@@ -4,7 +4,7 @@
  */
 
 import { randomUUID } from "node:crypto";
-import { and, eq } from "drizzle-orm";
+import { and, eq, or } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
 import { dbRead, dbWrite } from "@/db/helpers";
@@ -16,7 +16,9 @@ import { normalizePhoneNumber } from "@/lib/utils/phone-normalization";
 import { verifyTwilioSignature } from "@/lib/utils/twilio-api";
 import { recordVoiceSessionJti } from "@/lib/voice-session/jwt";
 import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
+import { scheduleTwilioVoiceScopePrewarm } from "../lib/prewarm-voice-scope";
 import { resolveTwilioVoiceTarget } from "../lib/resolve-voice-target";
+import { resolveTwilioCallParticipants } from "../lib/twilio-call-direction";
 import { mintTwilioStreamToken } from "../lib/twilio-stream-token";
 import {
   buildRealtimeVoiceTwiML,
@@ -32,6 +34,7 @@ const TwilioVoicePayloadSchema = z
     From: z.string().min(1),
     To: z.string().min(1),
     CallStatus: z.string().min(1),
+    Direction: z.string().optional(),
   })
   .passthrough();
 
@@ -67,6 +70,11 @@ app.post("/", async (c) => {
   const event = parsed.data;
   const normalizedFrom = normalizePhoneNumber(event.From);
   const normalizedTo = normalizePhoneNumber(event.To);
+  const { publicLineNumber, callerNumber } = resolveTwilioCallParticipants({
+    direction: event.Direction,
+    from: normalizedFrom,
+    to: normalizedTo,
+  });
   const telephonyEnv = c.env as unknown as {
     TWILIO_ACCOUNT_SID?: string;
     TWILIO_AUTH_TOKEN?: string;
@@ -106,7 +114,7 @@ app.post("/", async (c) => {
     return new Response("Invalid signature", { status: 403 });
   }
 
-  const phoneNumber = await resolveTwilioVoiceTarget(c.env, normalizedTo);
+  const phoneNumber = await resolveTwilioVoiceTarget(c.env, publicLineNumber);
   if (!phoneNumber) {
     return new Response(buildTerminalVoiceTwiML(NOT_CONFIGURED_PROMPT), {
       headers: { "Content-Type": "text/xml" },
@@ -114,13 +122,42 @@ app.post("/", async (c) => {
   }
 
   const id = randomUUID();
+  const conversationId = randomUUID();
+  try {
+    scheduleTwilioVoiceScopePrewarm({
+      agent: phoneNumber.agent,
+      env: c.env,
+      executionCtx: c.executionCtx,
+      claims: {
+        agentId: phoneNumber.agentId,
+        conversationId,
+        organizationId: phoneNumber.organizationId,
+        userId: phoneNumber.userId,
+      },
+    });
+  } catch (error) {
+    // error-policy:J7 local/test contexts can omit a Worker execution context;
+    // the media session remains the authoritative cold-hydration boundary.
+    logger.warn("[twilio-voice-inbound] early scope prewarm unavailable", {
+      agentId: phoneNumber.agentId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
   const [priorCall] = await dbRead
     .select({ id: twilioInboundCalls.id })
     .from(twilioInboundCalls)
     .where(
       and(
-        eq(twilioInboundCalls.from_number, normalizedFrom),
-        eq(twilioInboundCalls.to_number, normalizedTo),
+        or(
+          and(
+            eq(twilioInboundCalls.from_number, callerNumber),
+            eq(twilioInboundCalls.to_number, publicLineNumber),
+          ),
+          and(
+            eq(twilioInboundCalls.from_number, publicLineNumber),
+            eq(twilioInboundCalls.to_number, callerNumber),
+          ),
+        ),
         eq(twilioInboundCalls.agent_id, phoneNumber.agentId),
       ),
     )
@@ -157,7 +194,6 @@ app.post("/", async (c) => {
     agentId: phoneNumber?.agentId,
   });
 
-  const conversationId = randomUUID();
   const minted = await mintTwilioStreamToken(
     {
       accountSid: event.AccountSid,
@@ -166,7 +202,7 @@ app.post("/", async (c) => {
       userId: phoneNumber.userId,
       agentId: phoneNumber.agentId,
       conversationId,
-      calledNumber: normalizedTo,
+      calledNumber: publicLineNumber,
       returningCaller: Boolean(priorCall),
     },
     authToken,

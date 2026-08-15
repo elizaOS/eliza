@@ -404,6 +404,25 @@ describe("ConnectorsSection", () => {
     expect(screen.getByText("Acme Chat")).toBeTruthy();
   });
 
+  it("toggles a connector from the detail SettingsSwitchRow", async () => {
+    appMock.value.plugins = [plugin({ id: "signal", name: "Signal" })];
+    render(<ConnectorsSection />);
+    openDetail("Signal");
+    const enable = document.getElementById("connector-signal-enable");
+    expect(enable).toBeTruthy();
+    expect(enable?.getAttribute("role")).toBe("switch");
+    expect(enable?.getAttribute("data-agent-id")).toBe(
+      "connector-signal-enable",
+    );
+    fireEvent.click(enable as HTMLElement);
+    await waitFor(() =>
+      expect(appMock.value.handlePluginToggle).toHaveBeenCalledWith(
+        "signal",
+        false,
+      ),
+    );
+  });
+
   it("returns to the index from detail back control", async () => {
     appMock.value.plugins = [plugin({ id: "signal", name: "Signal" })];
     render(<ConnectorsSection />);

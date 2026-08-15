@@ -488,9 +488,75 @@ export function retrieveActions(
 		};
 	});
 
+	const saturatedResults = results.filter((result) => result.score === 1);
+	const needsMessageOnlyTieBreak =
+		saturatedResults.length > 1 &&
+		saturatedResults.some((result) => (result.stageScores.exact ?? 0) > 0);
+	const messageEvidenceByParent = new Map<string, number>();
+	if (needsMessageOnlyTieBreak) {
+		// Candidate names intentionally participate in the main fuzzy retrieval
+		// so invented child/simile hints can still resolve to a catalog parent.
+		// Re-score without candidate text only for a saturated exact-hint tie;
+		// otherwise the hint gives itself the BM25/keyword evidence that should
+		// distinguish a wrong Stage-1 guess from the user's actual request.
+		const messageOnlyQueryTexts = [
+			input.messageText ?? "",
+			...recentConversationText,
+		].filter((text) => text.trim().length > 0);
+		const messageOnlyKeywordScores = scoreKeywordMatches(
+			input.catalog.parents,
+			messageOnlyQueryTexts,
+		);
+		const messageOnlyBm25Scores = scoreBm25(
+			input.catalog.parents,
+			tokenizeActionSearchText(messageOnlyQueryTexts.join("\n")),
+		);
+		const maxMessageOnlyKeyword = Math.max(
+			0,
+			...messageOnlyKeywordScores.values(),
+		);
+		const maxMessageOnlyBm25 = Math.max(0, ...messageOnlyBm25Scores.values());
+		for (const parent of input.catalog.parents) {
+			const keywordRaw =
+				messageOnlyKeywordScores.get(parent.normalizedName) ?? 0;
+			const bm25Raw = messageOnlyBm25Scores.get(parent.normalizedName) ?? 0;
+			const embeddingRaw = embeddingScores.get(parent.normalizedName) ?? 0;
+			const keyword =
+				maxMessageOnlyKeyword > 0 ? keywordRaw / maxMessageOnlyKeyword : 0;
+			const bm25 = maxMessageOnlyBm25 > 0 ? bm25Raw / maxMessageOnlyBm25 : 0;
+			const embedding = maxEmbedding > 0 ? embeddingRaw / maxEmbedding : 0;
+			const hasMessageEvidence = keyword > 0 || bm25 > 0 || embedding > 0;
+			const parentContexts: readonly unknown[] = Array.isArray(parent.contexts)
+				? parent.contexts
+				: [];
+			const contextMatch =
+				hasMessageEvidence &&
+				selectedContextSet.size > 0 &&
+				parentContexts.some((context) =>
+					selectedContextSet.has(String(context).toLowerCase()),
+				)
+					? 0.3
+					: 0;
+			messageEvidenceByParent.set(
+				parent.normalizedName,
+				roundScore(keyword + bm25 + embedding + contextMatch),
+			);
+		}
+	}
+
 	results.sort((left, right) => {
+		// Use one key for the whole saturated cohort once an exact hint contests
+		// it. A pair-specific "one side is exact" key can make a three-result
+		// comparator non-transitive; runs without a saturated exact hint still
+		// fall through to their unchanged RRF ordering.
+		const saturatedHintCohortTie =
+			needsMessageOnlyTieBreak && left.score === 1 && right.score === 1;
 		return (
 			right.score - left.score ||
+			(saturatedHintCohortTie
+				? (messageEvidenceByParent.get(right.normalizedName) ?? 0) -
+					(messageEvidenceByParent.get(left.normalizedName) ?? 0)
+				: 0) ||
 			right.rrfScore - left.rrfScore ||
 			left.normalizedName.localeCompare(right.normalizedName)
 		);
