@@ -166,6 +166,14 @@ class FakeCartesiaSocket implements CartesiaWebSocketLike {
       data: JSON.stringify({ type: "done", done: true }),
     });
   }
+  emitAudio(bytes = new Uint8Array([5, 6, 7, 8])) {
+    this.fire("message", {
+      data: JSON.stringify({
+        type: "chunk",
+        data: Buffer.from(bytes).toString("base64"),
+      }),
+    });
+  }
   emitProviderError(code = "provider_failed") {
     this.fire("message", {
       data: JSON.stringify({
@@ -2267,11 +2275,17 @@ describe("voice-session WS lifecycle", () => {
 
     // Any late chunk from a cancelled Cartesia context must NOT reach the client.
     const framesAfterInterrupt = client.audioFrames.length;
-    // A stale provider chunk arriving post-cancel is dropped two ways: the
-    // adapter drops it, and even if it didn't the session's turn-id guard does.
-    // Flushing here proves no late frame leaks through after the barge-in.
+    const controlsAfterInterrupt = client.controlFrames.length;
+    // Drive every stale provider callback after the coordinator has revoked
+    // the exact response lease. Even a transport that violates cancellation
+    // cannot append audio, a terminal, or a provider error to the replacement
+    // authority.
+    cartesia.emitAudio();
+    cartesia.emitDone();
+    cartesia.emitProviderError("late_provider_error");
     await flush();
     expect(client.audioFrames.length).toBe(framesAfterInterrupt);
+    expect(client.controlFrames).toHaveLength(controlsAfterInterrupt);
   });
 
   test("semantic-start policy interrupts immediately and the caller gets the next response", async () => {
@@ -2748,6 +2762,50 @@ describe("voice-session WS lifecycle", () => {
     await flush();
     expect(aborted).toBe(true);
     expect(client.controlTypes()).toContain("interrupted");
+  });
+
+  test("a revoked lease rejects stale SSE display deltas from a non-cooperative fetch", async () => {
+    let resolveFetch: ((response: Response) => void) | undefined;
+    let fetchStarted: (() => void) | undefined;
+    const started = new Promise<void>((resolve) => {
+      fetchStarted = resolve;
+    });
+    const fetchImpl = (async () => {
+      fetchStarted?.();
+      return new Promise<Response>((resolve) => {
+        resolveFetch = resolve;
+      });
+    }) as unknown as typeof fetch;
+    const client = new FakeClientSocket();
+    await connectSession({ client, fetchImpl });
+    const ink = FakeInkSocket.instances.at(-1)!;
+    ink.emitTurn("turn.start");
+    ink.emitTurn("turn.end", "start a long response");
+    await started;
+
+    client.clientSend(JSON.stringify({ t: "barge_in" }));
+    await flush();
+    resolveFetch?.(
+      new Response(
+        [
+          'event: chunk\ndata: {"chunk":"STALE AFTER REVOCATION"}\n\n',
+          "event: done\ndata: {}\n\n",
+        ].join(""),
+        { headers: { "Content-Type": "text/event-stream" } },
+      ),
+    );
+    await flush();
+
+    const displays = client.controlFrames.filter(
+      (frame) => frame.t === "assistant_display",
+    );
+    expect(displays).toHaveLength(0);
+    expect(
+      displays.some(
+        (frame) =>
+          frame.t === "assistant_display" && frame.text.includes("STALE"),
+      ),
+    ).toBe(false);
   });
 
   test("abrupt mid-turn disconnect synchronously reaps the registry before replacement hello", async () => {

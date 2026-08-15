@@ -77,6 +77,10 @@ import {
   type CartesiaInkWebSocketFactory,
   createCartesiaInkRealtimeSession,
 } from "../../stt/providers/cartesia-ink";
+import {
+  type VoiceResponseLease,
+  VoiceSessionTurnAuthority,
+} from "./turn-authority";
 import { UplinkReframer } from "./uplink-reframer";
 
 const PCM16_BYTES_PER_SECOND = 16_000 * 2; // 16kHz mono linear16.
@@ -337,6 +341,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
   private readonly config: VoiceSessionConfig;
   private readonly registry: VoiceSessionRegistry;
   private readonly now: () => number;
+  private readonly turnAuthority: VoiceSessionTurnAuthority;
   private readonly reframer = new UplinkReframer();
   private readonly usageIdentity: VoiceUsageIdentity;
 
@@ -358,7 +363,6 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
   /** Monotonic turn counter; the current turn's trace id derives from it. */
   private turnCounter = 0;
   private currentTraceId: string | null = null;
-  private currentVoiceTurnId: string | null = null;
   private activeSttTurn = false;
   /** Active response protected from a browser/local false acoustic start. */
   private protectedResponseTraceId: string | null = null;
@@ -401,6 +405,10 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
     this.registry = config.registry ?? getVoiceSessionRegistry();
     this.isRevoked = config.isRevoked ?? null;
     this.now = config.now ?? Date.now;
+    this.turnAuthority = new VoiceSessionTurnAuthority({
+      sessionId: config.sessionId,
+      now: this.now,
+    });
     this.usageIdentity = {
       organizationId: config.organizationId,
       userId: config.userId,
@@ -689,7 +697,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
         if (this.config.acousticInterruptPolicy === "semantic_start") {
           // Telephony has no local provisional playback gate, so Ink's semantic
           // start remains the earliest signal that can clear buffered audio.
-          const responseActive = Boolean(this.currentVoiceTurnId);
+          const responseActive = Boolean(this.turnAuthority.currentLease);
           this.interrupt("acoustic");
           if (!responseActive) this.config.downlink.clearAudio?.();
           this.state = "transcribing";
@@ -697,7 +705,9 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
           // Browser/local playback is paused provisionally on-device. Retain
           // the authoritative response until Ink confirms actual caller words,
           // allowing noise-only starts to resume without losing callbacks.
-          this.protectedResponseTraceId = this.currentVoiceTurnId;
+          const protectedLease = this.turnAuthority.currentLease;
+          this.protectedResponseTraceId = protectedLease?.traceId ?? null;
+          if (protectedLease) this.turnAuthority.provisionalSpeechStarted();
           if (!this.protectedResponseTraceId) {
             this.state = "transcribing";
           }
@@ -814,6 +824,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
     this.stt = null;
     this.sttReady = false;
     this.activeSttTurn = false;
+    this.turnAuthority.rejectProvisionalSpeech();
     this.clearPendingSemanticEot();
     this.resetSttPartialDelivery();
     this.sttGeneration += 1;
@@ -876,7 +887,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
       return;
     }
     const confirmedUplinkBytes = this.detachProtectedSpeechAccounting();
-    if (this.currentVoiceTurnId) this.interrupt("acoustic");
+    this.interrupt("acoustic");
     this.accrueTurnTelemetry(confirmedUplinkBytes);
     this.state = "transcribing";
   }
@@ -885,6 +896,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
     // Provisional bytes never entered per-turn telemetry, so discarding a
     // noise-only start cannot mutate either the live response's accounting or
     // a response that completed while Ink was still evaluating the start.
+    this.turnAuthority.rejectProvisionalSpeech();
     this.clearProtectedResponseAccounting();
   }
 
@@ -1052,7 +1064,6 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
   private commitTurn(transcript: string): void {
     const traceId = this.mintTraceId("turn");
     this.currentTraceId = traceId;
-    this.currentVoiceTurnId = traceId;
     // turnSttMs already holds the STT duration metered while this utterance's
     // audio was flowing (admission + ongoing windows); do NOT reset it or the
     // usage frame would under-report the duration the quota store was charged.
@@ -1065,54 +1076,58 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
     if (isSpokenStopCommand(transcript)) {
       // Spoken stop is a control command, not a semantic chat turn. It never
       // enters the conversation bridge or opens a synthesis context.
-      this.finishTurn(traceId, "stopped");
+      this.turnAuthority.commitWithoutResponse(traceId, "control_stop");
+      this.finishTurnWithoutResponse(traceId, "stopped");
       return;
     }
 
     if (!SPOKEN_TRANSCRIPT_RE.test(transcript)) {
       // Silence/noise/punctuation has no response leg. Report settlement and a
       // terminal outcome so clients cannot remain parked in Thinking.
-      this.finishTurn(traceId, "no_response");
+      this.turnAuthority.commitWithoutResponse(traceId, "no_response");
+      this.finishTurnWithoutResponse(traceId, "no_response");
       return;
     }
 
+    const lease = this.turnAuthority.commitResponse(traceId);
     this.state = "thinking";
-    void this.runResponseTurn(transcript, traceId);
+    void this.runResponseTurn(transcript, lease);
   }
 
   /** Speak a fixed live opener while the first agent context is warming. */
   private speakOpeningGreeting(text: string): void {
-    if (this.closed || this.currentVoiceTurnId) return;
+    if (this.closed || this.turnAuthority.currentLease) return;
     const traceId = this.mintTraceId("turn");
     this.currentTraceId = traceId;
-    this.currentVoiceTurnId = traceId;
+    const lease = this.turnAuthority.commitResponse(traceId);
     this.turnTtsChars = text.length;
     this.firstLlmTextEmitted = false;
 
     const stream = this.createTtsStream(traceId, {
       onFirstAudio: () => {
-        if (this.currentVoiceTurnId !== traceId) return;
+        if (!this.turnAuthority.markSpeakingStarted(lease)) return;
         this.send({ t: "trace_mark", name: "tts_first_byte", traceId });
         this.state = "speaking";
         this.send({ t: "speaking_start", traceId });
       },
       onAudioFrame: (frame) => {
-        if (this.currentVoiceTurnId !== traceId) return;
+        if (!this.turnAuthority.isCurrent(lease)) return;
+        this.turnAuthority.markAudioEnqueued(lease);
         this.config.downlink.sendAudio(frame.bytes);
       },
       onComplete: () => {
-        if (this.currentVoiceTurnId !== traceId) return;
+        if (!this.turnAuthority.isCurrent(lease)) return;
         this.send({ t: "speaking_end", traceId });
-        this.finishTurn(traceId, "spoken");
+        this.finishTurn(lease, "spoken");
       },
       onProviderError: (error) => {
-        if (this.currentVoiceTurnId !== traceId) return;
+        if (!this.turnAuthority.isCurrent(lease)) return;
         this.send({
           t: "error",
           code: error.code ?? "tts_error",
           retryable: true,
         });
-        this.finishTurn(traceId, "error");
+        this.finishTurn(lease, "error");
       },
     });
     this.ttsStream = stream;
@@ -1140,16 +1155,18 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
 
   private async runResponseTurn(
     transcript: string,
-    traceId: string,
+    lease: VoiceResponseLease,
   ): Promise<void> {
+    const { traceId } = lease;
     const abort = new AbortController();
     this.llmAbort = abort;
+    this.turnAuthority.markModelStarted(lease);
 
     let tts: RealtimeTtsStream | null = null;
     let canonicalDisplayText = "";
     let lastDisplaySnapshot = "";
     const sendDisplaySnapshot = (force = false): void => {
-      if (this.currentVoiceTurnId !== traceId || abort.signal.aborted) return;
+      if (!this.turnAuthority.isCurrent(lease) || abort.signal.aborted) return;
       const boundedCanonicalText = canonicalDisplayText.slice(
         0,
         VOICE_DISPLAY_MAX_CHARS,
@@ -1190,23 +1207,24 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
       if (tts) return tts;
       const callbacks: RealtimeTtsStreamCallbacks = {
         onFirstAudio: () => {
-          if (this.currentVoiceTurnId !== traceId) return;
+          if (!this.turnAuthority.markSpeakingStarted(lease)) return;
           this.send({ t: "trace_mark", name: "tts_first_byte", traceId });
           this.state = "speaking";
           this.send({ t: "speaking_start", traceId });
         },
         onAudioFrame: (frame) => {
           // Guard: no post-cancel / stale-turn frames ever reach the client.
-          if (this.currentVoiceTurnId !== traceId) return;
+          if (!this.turnAuthority.isCurrent(lease)) return;
+          this.turnAuthority.markAudioEnqueued(lease);
           this.config.downlink.sendAudio(frame.bytes);
         },
         onComplete: () => {
-          if (this.currentVoiceTurnId !== traceId) return;
+          if (!this.turnAuthority.isCurrent(lease)) return;
           this.send({ t: "speaking_end", traceId });
-          this.finishTurn(traceId, "spoken");
+          this.finishTurn(lease, "spoken");
         },
         onProviderError: (err) => {
-          if (this.currentVoiceTurnId !== traceId) return;
+          if (!this.turnAuthority.isCurrent(lease)) return;
           this.send({
             t: "error",
             code: err.code ?? "tts_error",
@@ -1218,7 +1236,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
           abort.abort();
           // Close out the failed turn so the client gets usage + returns to
           // listening, instead of the session being stuck on a dead turn.
-          this.finishTurn(traceId, "error");
+          this.finishTurn(lease, "error");
         },
       };
       tts = this.createTtsStream(traceId, callbacks);
@@ -1262,7 +1280,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
       if (
         abort.signal.aborted ||
         this.closed ||
-        this.currentVoiceTurnId !== traceId
+        !this.turnAuthority.isCurrent(lease)
       ) {
         return;
       }
@@ -1288,7 +1306,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
         !start ||
         !isVoiceProgressSpeechAuthorized(progressState, start.speechId) ||
         abort.signal.aborted ||
-        this.currentVoiceTurnId !== traceId
+        !this.turnAuthority.isCurrent(lease)
       ) {
         return;
       }
@@ -1348,7 +1366,8 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
       if (elizaPrewarm) {
         await elizaPrewarm;
         if (this.elizaPrewarm === elizaPrewarm) this.elizaPrewarm = null;
-        if (abort.signal.aborted || this.currentVoiceTurnId !== traceId) return;
+        if (abort.signal.aborted || !this.turnAuthority.isCurrent(lease))
+          return;
       }
 
       const request = {
@@ -1368,7 +1387,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
       this.send({ t: "trace_mark", name: "router_decided", traceId });
       this.send({ t: "trace_mark", name: "llm_requested", traceId });
       const onDelta = (delta: string) => {
-        if (this.currentVoiceTurnId !== traceId) return;
+        if (!this.turnAuthority.isCurrent(lease)) return;
         if (!this.firstLlmTextEmitted) {
           this.firstLlmTextEmitted = true;
           this.send({ t: "llm_first_text", traceId });
@@ -1397,7 +1416,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
             !bridgeError.upstreamCode ||
             !CACHE_WARMING_CODES.has(bridgeError.upstreamCode) ||
             abort.signal.aborted ||
-            this.currentVoiceTurnId !== traceId
+            !this.turnAuthority.isCurrent(lease)
           ) {
             throw error;
           }
@@ -1412,13 +1431,13 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
               { once: true },
             );
           });
-          if (abort.signal.aborted || this.currentVoiceTurnId !== traceId) {
+          if (abort.signal.aborted || !this.turnAuthority.isCurrent(lease)) {
             return;
           }
         }
       }
 
-      if (this.currentVoiceTurnId !== traceId) return; // interrupted mid-stream.
+      if (!this.turnAuthority.isCurrent(lease)) return; // interrupted mid-stream.
 
       if (result.aborted) {
         // Interruption already handled the teardown of this turn's TTS.
@@ -1458,7 +1477,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
         },
         { maxSpeechChars: VOICE_TTS_MAX_SPEECH_CHARS },
       );
-      if (abort.signal.aborted || this.currentVoiceTurnId !== traceId) return;
+      if (abort.signal.aborted || !this.turnAuthority.isCurrent(lease)) return;
 
       // Captions are the speech contract, not a separately normalized view.
       // A future projector regression must fail closed instead of sending bytes
@@ -1488,7 +1507,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
           canonicalDisplayText ? "display_only_reply" : "empty_llm_reply",
         );
         this.finishTurn(
-          traceId,
+          lease,
           canonicalDisplayText ? "displayed" : "no_response",
         );
         return;
@@ -1505,7 +1524,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
       finishProgress("cancel");
       // error-policy:J1 boundary translation — the LLM/TTS turn is the async
       // boundary; provider failures become a structured client `error` frame.
-      if (this.currentVoiceTurnId !== traceId) return;
+      if (!this.turnAuthority.isCurrent(lease)) return;
       const bridgeError =
         error instanceof ElizaSseBridgeError ? error : undefined;
       logger.warn("[voice-session] Eliza response turn failed", {
@@ -1537,12 +1556,23 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
       // stream fails before a projected TTS input is sent. finishTurn has not
       // run yet, so ttsStream still belongs to this turn.
       this.ttsStream?.cancel("llm_error");
-      this.finishTurn(traceId, "error");
+      this.finishTurn(lease, "error");
     }
   }
 
-  private finishTurn(traceId: string, outcome: VoiceTurnEndOutcome): void {
-    if (this.currentVoiceTurnId !== traceId || this.closed) return;
+  private finishTurn(
+    lease: VoiceResponseLease,
+    outcome: VoiceTurnEndOutcome,
+  ): void {
+    if (this.closed || !this.turnAuthority.settle(lease, outcome)) return;
+    this.finishTurnWithoutResponse(lease.traceId, outcome);
+  }
+
+  private finishTurnWithoutResponse(
+    traceId: string,
+    outcome: VoiceTurnEndOutcome,
+  ): void {
+    if (this.closed) return;
     if (outcome !== "spoken") {
       // Protocol-v1 clients do not know `turn_end`; this legacy terminal keeps
       // stop/no-response/error turns from remaining in Thinking. New clients
@@ -1556,7 +1586,6 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
       traceId,
     });
     this.send({ t: "turn_end", outcome, traceId });
-    this.currentVoiceTurnId = null;
     this.llmAbort = null;
     this.ttsStream = null;
     // Reset per-utterance accumulators now that this turn's usage is reported;
@@ -1569,16 +1598,20 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
 
   /**
    * Interruption coordinator (§7.5). Everything below happens under the single
-   * current voiceTurnId and is synchronous up to the point of emitting
+   * current response lease and is synchronous up to the point of emitting
    * `interrupted`, so no post-cancel audio can leak to the client.
    */
   private interrupt(reason: "acoustic" | "explicit"): void {
-    const traceId = this.currentVoiceTurnId;
-    if (!traceId) return; // nothing speaking/thinking to interrupt.
+    const lease = this.turnAuthority.currentLease;
+    const revoked =
+      reason === "acoustic"
+        ? this.turnAuthority.confirmSpeech(lease ? "auto" : "new_turn")
+        : this.turnAuthority.explicitInterrupt();
+    if (!lease || revoked !== lease) return; // no response work to cancel.
+    const { traceId } = lease;
 
-    // 1. Invalidate the turn id FIRST so any in-flight adapter callback that
-    //    races this path is dropped by the `currentVoiceTurnId` guard.
-    this.currentVoiceTurnId = null;
+    // 1. The reducer published the revoked response FIRST, so every racing
+    //    callback fails its exact lease check before provider cancellation.
 
     // 2. Cancel Cartesia — merged adapter guarantees no post-cancel frames.
     if (this.ttsStream) {
@@ -1690,8 +1723,8 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
         });
     }
 
-    // Invalidate any live turn so racing callbacks are dropped.
-    this.currentVoiceTurnId = null;
+    // Invalidate any live response so racing callbacks are dropped.
+    this.turnAuthority.close();
     this.clearProtectedResponseAccounting();
     this.clearPendingSemanticEot();
     this.resetSttPartialDelivery();

@@ -270,6 +270,11 @@ describe("local runtime conversation fetch", () => {
     const abortCall = calls.find(
       (call) => new URL(call.url).pathname === `/api/turns/${ROOM_ID}/abort`,
     );
+    expect(
+      calls.filter(
+        (call) => new URL(call.url).pathname === `/api/turns/${ROOM_ID}/abort`,
+      ),
+    ).toHaveLength(1);
     expect(JSON.parse(String(abortCall?.init?.body))).toEqual({
       reason: "voice-session-interrupt",
       clientMessageId: "voice:turn-1",
