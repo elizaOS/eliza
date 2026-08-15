@@ -73,6 +73,7 @@ describe("filterByContextGate — full explicit context predicate", () => {
 		).toEqual([]);
 	});
 });
+
 describe("filterProvidersByContextGate — full declared contextGate honored (#13203)", () => {
 	// A world-style, gate-only provider: contextGate with anyOf and NO contexts.
 	// filterByContextGate's {contexts, roleGate} reduction drops the anyOf terms,
