@@ -18,7 +18,7 @@
  * by the registry-to-worker end-to-end test.
  */
 
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import http from "node:http";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -490,6 +490,146 @@ describe("AppWorkerHostService worker bridge", () => {
 			expect(reply.ok).toBe(false);
 			if (reply.ok) return;
 			expect(reply.reason).toContain("escapes the sandbox statePath");
+		});
+	});
+
+	// `trust: "external"` promotes EVERY registered app to isolation:"worker",
+	// including static frontend apps that ship no agent-side module. Those apps
+	// declare `main: "./dist/index.js"` for their bundler; the file is not a
+	// plugin and often is not built. Resolving through to some source file the
+	// package never pointed at made every one of them boot, import a React
+	// entry, and report "no plugin export found in module" — 20 warnings per
+	// boot on a real install, burying the spawns that actually broke.
+	describe("apps with no worker surface are classified, not failed", () => {
+		function makeRegistryRuntime(entry: Record<string, unknown>) {
+			return {
+				agentId: "00000000-0000-0000-0000-000000000001",
+				getService: (type: string) =>
+					type === "app-registry"
+						? {
+								list: async () => [entry],
+								getPermissionsView: async () => null,
+							}
+						: null,
+			} as unknown as IAgentRuntime;
+		}
+
+		function validPluginSource(name: string): string {
+			return `export default {
+	name: "${name}",
+	actions: [{
+		name: "SOURCE_PING",
+		description: "fixture",
+		similes: [],
+		validate: async () => true,
+		handler: async () => ({ success: true }),
+	}],
+};\n`;
+		}
+
+		it("classifies a source module with no plugin export as static", async () => {
+			// Local app loading deliberately falls back to source when the declared
+			// build is absent. Capability is decided from the loaded module, not file
+			// absence, so valid source plugins are not silently disabled.
+			const dir = mkdtempSync(path.join(tmpdir(), "app-static-"));
+			writeFileSync(
+				path.join(dir, "package.json"),
+				JSON.stringify({ name: "static-app", main: "./dist/index.js" }),
+			);
+			mkdirSync(path.join(dir, "src"), { recursive: true });
+			writeFileSync(
+				path.join(dir, "src", "index.ts"),
+				"export const ui = 1;\n",
+			);
+
+			const svc = new AppWorkerHostService(
+				makeRegistryRuntime({
+					slug: "static-app",
+					directory: dir,
+					isolation: "worker",
+				}),
+			);
+			const result = await svc.startForRegisteredApp("static-app");
+			rmSync(dir, { recursive: true, force: true });
+
+			expect(result.ok).toBe(false);
+			if (result.ok) return;
+			// Classified as "no surface", so the caller logs it at debug.
+			expect(result.kind).toBe("no-worker-surface");
+			expect(result.reason).toContain("No worker plugin entry found");
+		});
+
+		it("boots a valid source plugin when its declared build is absent", async () => {
+			const dir = mkdtempSync(path.join(tmpdir(), "app-undeclared-"));
+			writeFileSync(
+				path.join(dir, "package.json"),
+				JSON.stringify({ name: "source-plugin", main: "./dist/index.js" }),
+			);
+			mkdirSync(path.join(dir, "src"), { recursive: true });
+			writeFileSync(
+				path.join(dir, "src", "index.ts"),
+				validPluginSource("source-plugin"),
+			);
+
+			const svc = new AppWorkerHostService(
+				makeRegistryRuntime({
+					slug: "source-plugin",
+					directory: dir,
+					isolation: "worker",
+				}),
+			);
+			const outcome = await svc.startForRegisteredApp("source-plugin");
+			await svc.stop();
+			rmSync(dir, { recursive: true, force: true });
+
+			expect(outcome.ok).toBe(true);
+		});
+
+		it("reports a missing declared worker artifact when no source fallback exists", async () => {
+			const dir = mkdtempSync(path.join(tmpdir(), "app-missing-worker-"));
+			writeFileSync(
+				path.join(dir, "package.json"),
+				JSON.stringify({ name: "missing-worker", main: "./dist/index.js" }),
+			);
+			const svc = new AppWorkerHostService(
+				makeRegistryRuntime({
+					slug: "missing-worker",
+					directory: dir,
+					isolation: "worker",
+				}),
+			);
+			const outcome = await svc.startForRegisteredApp("missing-worker");
+			rmSync(dir, { recursive: true, force: true });
+
+			expect(outcome.ok).toBe(false);
+			if (outcome.ok) return;
+			expect(outcome.kind).toBe("error");
+			expect(outcome.reason).toContain("No worker plugin entry found");
+		});
+
+		it("keeps the conventional source fallback for legacy packages with no entry", async () => {
+			const dir = mkdtempSync(path.join(tmpdir(), "app-legacy-worker-"));
+			writeFileSync(
+				path.join(dir, "package.json"),
+				JSON.stringify({ name: "legacy-worker" }),
+			);
+			mkdirSync(path.join(dir, "src"), { recursive: true });
+			writeFileSync(
+				path.join(dir, "src", "index.ts"),
+				validPluginSource("legacy-worker"),
+			);
+			const svc = new AppWorkerHostService(
+				makeRegistryRuntime({
+					slug: "legacy-worker",
+					directory: dir,
+					isolation: "worker",
+				}),
+			);
+			const outcome = await svc.startForRegisteredApp("legacy-worker");
+			await svc.stop();
+			rmSync(dir, { recursive: true, force: true });
+
+			expect(outcome.ok).toBe(true);
 		});
 	});
 });

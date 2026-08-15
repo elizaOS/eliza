@@ -125,9 +125,17 @@ export type SetGrantedNamespacesResult =
 	| SetGrantedNamespacesError;
 
 interface AppWorkerHostServiceLike {
-	startForRegisteredApp?: (
-		slug: string,
-	) => Promise<{ ok: boolean; reason?: string }>;
+	startForRegisteredApp?: (slug: string) => Promise<{
+		ok: boolean;
+		/**
+		 * `"no-worker-surface"` when the app simply has no agent-side module to
+		 * spawn — routine, since external trust promotes every app to
+		 * isolation:"worker" including static frontends. Anything else is a real
+		 * spawn failure. Optional so older host builds still satisfy the shape.
+		 */
+		kind?: "no-worker-surface" | "error";
+		reason?: string;
+	}>;
 	stopWorker?: (slug: string) => Promise<void>;
 }
 
@@ -597,9 +605,18 @@ export class AppRegistryService extends Service {
 		try {
 			const result = await hostService.startForRegisteredApp(slug);
 			if (!result.ok) {
-				logger.warn(
-					`[plugin-app-control] auto-spawn failed for slug=${slug}: ${result.reason ?? "unknown"}`,
-				);
+				// A static app has nothing to spawn; that is the expected outcome
+				// of promoting every external app to isolation:"worker", not a
+				// failure worth a warning on every registration.
+				if (result.kind === "no-worker-surface") {
+					logger.debug(
+						`[plugin-app-control] no worker surface for slug=${slug}: ${result.reason ?? "unknown"}`,
+					);
+				} else {
+					logger.warn(
+						`[plugin-app-control] auto-spawn failed for slug=${slug}: ${result.reason ?? "unknown"}`,
+					);
+				}
 			}
 		} catch (error) {
 			logger.warn(
