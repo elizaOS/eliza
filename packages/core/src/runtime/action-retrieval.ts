@@ -1231,10 +1231,11 @@ function resolveSimileParentHints(
 		parentBySimile.delete(normalized);
 	}
 	return candidateActions.flatMap((actionName) => {
-		if (parentNames.has(actionName)) {
+		const normalized = normalizeActionName(actionName);
+		if (!normalized || parentNames.has(normalized)) {
 			return [];
 		}
-		const parent = parentBySimile.get(actionName);
+		const parent = parentBySimile.get(normalized);
 		return parent ? [parent] : [];
 	});
 }
