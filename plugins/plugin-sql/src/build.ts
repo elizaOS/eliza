@@ -122,6 +122,7 @@ export async function buildPluginSql(
   mkdirSync(DIST, { recursive: true });
   mkdirSync(join(DIST, "node"), { recursive: true });
   mkdirSync(join(DIST, "browser"), { recursive: true });
+  mkdirSync(join(DIST, "worker"), { recursive: true });
   mkdirSync(join(DIST, "cjs"), { recursive: true });
   mkdirSync(join(DIST, "drizzle"), { recursive: true });
 
@@ -160,6 +161,24 @@ export async function buildPluginSql(
     ],
     naming: {
       entry: "index.browser.js",
+    },
+  });
+
+  console.log("Building Workers ESM bundle...");
+  await runBuild({
+    entrypoints: [join(ROOT, "index.worker.ts")],
+    outdir: join(DIST, "worker"),
+    // target "node" keeps the pg driver's node: imports intact; workerd
+    // provides them under the nodejs_compat flag, and wrangler bundles the
+    // rest. PGlite never enters this graph, so no WASM assets ship.
+    target: "node",
+    format: "esm",
+    splitting: false,
+    sourcemap: "linked",
+    minify: false,
+    external: nodeExternals,
+    naming: {
+      entry: "index.worker.js",
     },
   });
 
