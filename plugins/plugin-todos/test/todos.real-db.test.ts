@@ -1066,6 +1066,31 @@ describe("TodosService + currentTodosProvider — real PGLite", () => {
         roomId: targetRoomId,
         worldId: null,
       });
+      const importedMutation = targetSnapshot.mutations[0];
+      if (!importedMutation) throw new Error("Expected imported mutation");
+      const todoIdsBeforeRetry = targetSnapshot.todos.map((todo) => todo.id);
+      const replayedAfterCutover = await targetService.applyMutation({
+        scope: targetScope,
+        idempotencyKey: importedMutation.idempotencyKey,
+        mutation: {
+          action: "create",
+          input: {
+            roomId: targetRoomId,
+            worldId: null,
+            parentTrajectoryStepId: "dedicated-retry",
+            content: sourceTodo.content,
+          },
+        },
+      });
+      expect(replayedAfterCutover).toMatchObject({
+        mutationId: importedMutation.mutationId,
+        replayed: true,
+        committedAt: importedMutation.committedAt,
+        result: importedMutation.result,
+      });
+      expect(
+        (await targetService.list({ ...targetScope })).map((todo) => todo.id),
+      ).toEqual(todoIdsBeforeRetry);
     } finally {
       await targetResult.cleanup();
     }
