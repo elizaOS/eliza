@@ -603,6 +603,18 @@ describe("inferDirectCurrentRequestCandidateInference kinds", () => {
 		).toEqual({ names: ["VIEWS"], kind: "view-capability" });
 	});
 
+	it.each([
+		["dismiss the active view", "view-surface"],
+		["dismiss my settings", "view-capability"],
+	] as const)(
+		"preserves SS operation tokens for %s",
+		(message: string, kind: "view-surface" | "view-capability") => {
+			expect(
+				inferDirectCurrentRequestCandidateInference([viewsAction], message),
+			).toEqual({ names: ["VIEWS"], kind });
+		},
+	);
+
 	it("routes recurring-habit commitments to the owner routine surface, never VIEWS (#17028)", () => {
 		const routinesAction: Pick<Action, "name" | "similes" | "tags"> = {
 			name: "OWNER_ROUTINES",
