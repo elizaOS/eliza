@@ -82,7 +82,7 @@ jobs:
           test -n "${ELIZACLOUD_API_KEY//[[:space:]]/}"
           test -n "${DEPLOY_HOST//[[:space:]]/}"
           test -n "${DEPLOY_SSH_KEY//[[:space:]]/}"
-      - name: Inspect the stuck agent restart lifecycle
+      - name: Restart the exact container to restore backup readiness
         uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2
         with:
           host: ${{ env.DEPLOY_HOST }}
@@ -92,15 +92,24 @@ jobs:
           envs: ELIZACLOUD_API_KEY
           script: |
             set -euo pipefail
+            work="$(mktemp -d)"
+            trap 'rm -rf "$work"' EXIT
+            containers_key="$(sed -n 's/^CONTAINERS_SSH_KEY=//p' /opt/eliza/cloud/.env.local | tail -1)"
+            test -n "$containers_key"
+            printf '%s' "$containers_key" | base64 -d > "$work/key"
+            chmod 600 "$work/key"
             curl --silent --show-error --fail --max-time 30 \
               --header "Authorization: Bearer $ELIZACLOUD_API_KEY" \
-              'https://api.eliza.app/api/v1/admin/docker-containers?limit=500' \
-              | jq -c '.data.containers[] | select(.id == "4602b3be-2c01-4e7e-9cdc-849604e1bef7") | {status,nodeId,containerName,dockerImage,imageDigest,lastHeartbeatAt,errorMessage}'
-            systemctl list-units --type=service --all --no-legend \
-              | awk 'tolower($0) ~ /provision/ {print $1, $3, $4}'
-            journalctl --since '25 minutes ago' --no-pager \
-              | grep -F 'f1ba0b6a-3866-405b-8ec9-efd96858625a' \
-              | tail -80
+              --output "$work/node.json" \
+              https://api.eliza.app/api/v1/admin/docker-nodes/eliza-core-prod-6
+            host="$(jq -er '.data.hostname' "$work/node.json")"
+            user="$(jq -er '.data.sshUser' "$work/node.json")"
+            port="$(jq -er '.data.sshPort' "$work/node.json")"
+            ssh -i "$work/key" -p "$port" \
+              -o BatchMode=yes -o StrictHostKeyChecking=accept-new \
+              -o UserKnownHostsFile="$work/known_hosts" \
+              "$user@$host" \
+              'set -euo pipefail; target=agent-4602b3be-2c01-4e7e-9cdc-849604e1bef7; docker inspect "$target" >/dev/null; docker restart "$target" >/dev/null; sleep 15; test "$(docker inspect --format "{{.State.Status}}" "$target")" = running; printf "container restarted and running\n"'
 
   changes:
     name: Classify changed paths
