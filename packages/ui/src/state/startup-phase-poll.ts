@@ -1242,8 +1242,12 @@ export async function runPollingBackend(
         // whole `backendTimeoutMs` and then report a generic timeout. Bound
         // the connection-level failure streak and surface the unreachable
         // host explicitly instead.
+        const isConnectionLevelFailure =
+          err instanceof ApiHangTimeoutError ||
+          ae?.kind === "network" ||
+          ae?.kind === "timeout";
         if (
-          ae?.status === undefined &&
+          isConnectionLevelFailure &&
           isDedicatedCloudAgentBase(client.getBaseUrl())
         ) {
           agentUnreachableStreakStartedAt ??= Date.now();
@@ -1272,7 +1276,9 @@ export async function runPollingBackend(
             return;
           }
         } else {
-          // An HTTP status means the host answered — not a transport wedge.
+          // Only explicit transport failures count. Parse/protocol failures —
+          // including malformed HTTP-200 payloads — prove the host answered
+          // and must break the TLS/network streak even when they lack status.
           agentUnreachableStreakStartedAt = null;
         }
       }

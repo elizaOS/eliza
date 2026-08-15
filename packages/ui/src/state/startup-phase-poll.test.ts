@@ -2615,6 +2615,7 @@ describe("runPollingBackend hosted-web unreachable dedicated agent (#19627)", ()
     clientMock.getAuthStatus.mockReset();
     clientMock.getAuthStatus.mockRejectedValue(
       Object.assign(new TypeError("Failed to fetch"), {
+        kind: "network",
         path: "/api/auth/status",
       }),
     );
@@ -2653,6 +2654,7 @@ describe("runPollingBackend hosted-web unreachable dedicated agent (#19627)", ()
     clientMock.getBaseUrl.mockReturnValue(dedicatedBase);
     const networkError = () =>
       Object.assign(new TypeError("Failed to fetch"), {
+        kind: "network",
         path: "/api/auth/status",
       });
     clientMock.getAuthStatus.mockReset();
@@ -2701,6 +2703,7 @@ describe("runPollingBackend hosted-web unreachable dedicated agent (#19627)", ()
     clientMock.getAuthStatus.mockReset();
     clientMock.getAuthStatus.mockRejectedValue(
       Object.assign(new TypeError("Failed to fetch"), {
+        kind: "network",
         path: "/api/auth/status",
       }),
     );
@@ -2723,6 +2726,45 @@ describe("runPollingBackend hosted-web unreachable dedicated agent (#19627)", ()
     expect(dispatch).toHaveBeenCalledWith({ type: "BACKEND_TIMEOUT" });
     expect(deps.setStartupError).toHaveBeenCalledWith(
       expect.objectContaining({ reason: "backend-timeout" }),
+    );
+  });
+
+  it("does not label a malformed HTTP-200 auth payload as a TLS or network failure", async () => {
+    // ElizaClient's successful-response parser can return null for an HTTP-200
+    // `null` body. The poll then throws while reading `auth.required`; that
+    // plain TypeError has no status, but the response was not a transport
+    // failure. This negative case makes the kind gate mutation-sensitive: a
+    // regression to `status === undefined` trips the short unreachable budget.
+    const deps = createDeps();
+    const dispatch = vi.fn();
+    installWebWindow();
+    clientMock.getBaseUrl.mockReturnValue(dedicatedBase);
+    clientMock.getAuthStatus.mockReset();
+    clientMock.getAuthStatus.mockResolvedValue(null);
+
+    await runPollingBackend(
+      deps,
+      dispatch,
+      {
+        ...webPolicy,
+        backendTimeoutMs: 700,
+        agentUnreachableFailureBudgetMs: 0,
+      },
+      dedicatedCtx(),
+      1,
+      { current: 1 },
+      { current: false },
+      { current: null },
+    );
+
+    expect(dispatch).toHaveBeenCalledWith({ type: "BACKEND_TIMEOUT" });
+    expect(deps.setStartupError).toHaveBeenCalledWith(
+      expect.objectContaining({ reason: "backend-timeout" }),
+    );
+    expect(deps.setStartupError).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        message: expect.stringContaining("TLS or network failure"),
+      }),
     );
   });
 });
