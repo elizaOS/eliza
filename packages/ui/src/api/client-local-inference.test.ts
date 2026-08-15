@@ -2,9 +2,10 @@
  * Unit coverage for device-tier classification from a hardware probe. Pure
  * function, no harness.
  */
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import type { HardwareProbe } from "../services/local-inference/types";
+import { ElizaClient } from "./client-base";
 import { classifyDeviceTierFromProbe } from "./client-local-inference";
 
 function probe(overrides: Partial<HardwareProbe>): HardwareProbe {
@@ -96,5 +97,24 @@ describe("classifyDeviceTierFromProbe", () => {
     );
     expect(result.tier).toBe("POOR");
     expect(result.mobile).toBe(true);
+  });
+});
+
+describe("ElizaClient.setLocalInferenceTextRouting", () => {
+  it("publishes both text slots through the canonical atomic route", async () => {
+    const client = new ElizaClient("http://agent.example:31337", "token");
+    const fetchMock = vi.fn(async () => ({ preferences: {} }));
+    client.fetch = fetchMock as unknown as typeof client.fetch;
+
+    await client.setLocalInferenceTextRouting("elizacloud", "manual");
+
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/local-inference/routing/text",
+      {
+        method: "POST",
+        body: JSON.stringify({ provider: "elizacloud", policy: "manual" }),
+      },
+    );
   });
 });

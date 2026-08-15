@@ -37,6 +37,14 @@ const ROUTING_STATUS_ERROR: HomeModelStatus = {
   errors: ["Could not verify the active text model provider."],
 };
 
+// The shell can become ready before deferred provider plugins finish
+// registering their model handlers. Re-probe for a bounded startup window so
+// that truthful `activeChat: null` snapshots do not become a permanent local
+// inference decision. The cumulative window is 15.75 seconds.
+const ROUTE_RECHECK_DELAYS_MS = [250, 500, 1_000, 2_000, 4_000, 8_000];
+
+type RouteProbeResult = "active" | "local" | "unavailable";
+
 function appendTokenParam(url: string): string {
   const token = getElizaApiToken()?.trim();
   if (!token) return url;
@@ -80,37 +88,73 @@ export function useHomeModelStatus(): HomeModelStatus {
 
     let cancelled = false;
     let eventSource: ReturnType<typeof openEventSource> = null;
+    let routeRecheckTimer: ReturnType<typeof setTimeout> | null = null;
+    let routeRecheckIndex = 0;
+    let routeSettledActive = false;
 
-    const refresh = async () => {
-      if (!supportsLocalInferenceStatus()) {
-        if (!cancelled) setStatus(NOT_REQUIRED);
-        return;
-      }
-      try {
-        const hub = await client.getLocalInferenceHub();
-        if (!cancelled) setStatus(deriveHomeModelStatus(hub.textReadiness));
-      } catch {
-        // Keep the last good status; the stream will trigger another refresh.
-      }
+    const stopLocalTracking = () => {
+      if (routeRecheckTimer) clearTimeout(routeRecheckTimer);
+      routeRecheckTimer = null;
+      if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
+      refreshTimerRef.current = null;
+      eventSource?.close();
+      eventSource = null;
     };
 
-    const start = async () => {
+    const refresh = async (): Promise<RouteProbeResult> => {
+      if (routeSettledActive) return "active";
+      if (!supportsLocalInferenceStatus()) {
+        if (!cancelled) {
+          routeSettledActive = true;
+          stopLocalTracking();
+          setStatus(NOT_REQUIRED);
+        }
+        return "active";
+      }
+
       try {
         const modelConfig = await client.getModelsConfig();
-        if (cancelled) return;
+        if (cancelled) return "unavailable";
         if (modelConfig.activeChat) {
+          routeSettledActive = true;
+          stopLocalTracking();
           setStatus(NOT_REQUIRED);
-          return;
+          return "active";
         }
       } catch {
         // error-policy:J4 The composer distinguishes an unavailable routing
         // probe from both a healthy external route and local-model readiness.
-        if (!cancelled) setStatus(ROUTING_STATUS_ERROR);
-        return;
+        if (!cancelled && !routeSettledActive) setStatus(ROUTING_STATUS_ERROR);
+        return "unavailable";
       }
 
-      await refresh();
-      if (cancelled || !supportsLocalInferenceStatus()) return;
+      try {
+        const hub = await client.getLocalInferenceHub();
+        if (!cancelled && !routeSettledActive)
+          setStatus(deriveHomeModelStatus(hub.textReadiness));
+      } catch {
+        // error-policy:J4 Keep the last good visible status; the stream or
+        // bounded route probe will trigger another authoritative refresh.
+      }
+      return routeSettledActive ? "active" : "local";
+    };
+
+    const scheduleRouteRecheck = () => {
+      if (cancelled || routeRecheckIndex >= ROUTE_RECHECK_DELAYS_MS.length)
+        return;
+      const delay = ROUTE_RECHECK_DELAYS_MS[routeRecheckIndex++];
+      routeRecheckTimer = setTimeout(() => {
+        routeRecheckTimer = null;
+        void refresh().then((result) => {
+          if (result !== "active") scheduleRouteRecheck();
+        });
+      }, delay);
+    };
+
+    const start = async () => {
+      const route = await refresh();
+      if (cancelled || route !== "local" || !supportsLocalInferenceStatus())
+        return;
 
       const url = appendTokenParam(
         resolveApiUrl("/api/local-inference/downloads/stream"),
@@ -127,13 +171,13 @@ export function useHomeModelStatus(): HomeModelStatus {
           refreshTimerRef.current = setTimeout(() => void refresh(), 400);
         };
       }
+      scheduleRouteRecheck();
     };
     void start();
 
     return () => {
       cancelled = true;
-      if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
-      eventSource?.close();
+      stopLocalTracking();
     };
   }, [
     authenticated,

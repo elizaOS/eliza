@@ -32,9 +32,13 @@ const clientMock = vi.hoisted(() => ({
   getLocalInferenceHub: vi.fn(),
 }));
 
-const eventSourceMock = vi.hoisted(() => ({
-  openEventSource: vi.fn(() => ({ close: vi.fn() })),
-}));
+const eventSourceMock = vi.hoisted(() => {
+  const source = { close: vi.fn(), onmessage: null as (() => void) | null };
+  return {
+    source,
+    openEventSource: vi.fn(() => source),
+  };
+});
 
 // Auth gate (#11084): the hook must stay dormant until the shared auth
 // snapshot reports an authenticated session. Mutable so tests can flip it.
@@ -72,6 +76,40 @@ const emptyHub = {
   },
 };
 
+const missingLocalModelHub = {
+  textReadiness: {
+    updatedAt: "2026-08-16T00:00:00.000Z",
+    slots: {
+      TEXT_LARGE: {
+        slot: "TEXT_LARGE",
+        assigned: true,
+        assignedModelId: "eliza-1-2b",
+        displayName: "Eliza 1 2B",
+        primaryDownloaded: false,
+        downloaded: false,
+        active: false,
+        ready: false,
+        state: "missing",
+        requiredModelIds: ["eliza-1-2b"],
+        missingModelIds: ["eliza-1-2b"],
+        installedBytes: 0,
+        expectedBytes: 1,
+        download: {
+          state: "missing",
+          receivedBytes: 0,
+          totalBytes: 0,
+          percent: null,
+          bytesPerSec: 0,
+          etaMs: null,
+          updatedAt: null,
+          errors: [],
+        },
+        errors: [],
+      },
+    },
+  },
+};
+
 function setRuntimeMode(mode: "loading" | "local" | "cloud" | "remote") {
   runtimeModeMock.value =
     mode === "loading"
@@ -106,6 +144,8 @@ beforeEach(() => {
   clientMock.getModelsConfig.mockResolvedValue({});
   clientMock.getLocalInferenceHub.mockResolvedValue(emptyHub);
   eventSourceMock.openEventSource.mockClear();
+  eventSourceMock.source.close.mockClear();
+  eventSourceMock.source.onmessage = null;
   authMock.authenticated = true;
   setRuntimeMode("local");
 });
@@ -160,6 +200,33 @@ describe("useHomeModelStatus", () => {
     expect(clientMock.getModelsConfig).toHaveBeenCalledTimes(1);
     expect(clientMock.getLocalInferenceHub).not.toHaveBeenCalled();
     expect(eventSourceMock.openEventSource).not.toHaveBeenCalled();
+  });
+
+  it("clears a stale local-model gate when a deferred Cloud route becomes active", async () => {
+    clientMock.getModelsConfig.mockResolvedValueOnce({}).mockResolvedValue({
+      activeChat: {
+        provider: "elizacloud",
+        family: "ELIZAOS_CLOUD",
+        endpoint: "api.eliza.app",
+      },
+    });
+    clientMock.getLocalInferenceHub.mockResolvedValue(missingLocalModelHub);
+
+    const { result } = renderHook(() => useHomeModelStatus());
+
+    await waitFor(() => {
+      expect(result.current.kind).toBe("missing");
+      expect(result.current.blocksSend).toBe(true);
+    });
+    await waitFor(
+      () => {
+        expect(clientMock.getModelsConfig).toHaveBeenCalledTimes(2);
+        expect(result.current.kind).toBe("not-required");
+        expect(result.current.blocksSend).toBe(false);
+      },
+      { timeout: 2_000 },
+    );
+    expect(eventSourceMock.source.close).toHaveBeenCalledTimes(1);
   });
 
   it("surfaces a routing probe failure instead of inventing local readiness", async () => {
