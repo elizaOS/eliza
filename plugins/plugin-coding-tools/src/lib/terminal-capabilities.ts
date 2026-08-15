@@ -8,6 +8,7 @@
 import { accessSync, constants } from "node:fs";
 import path from "node:path";
 import { readAliasedEnv } from "@elizaos/shared";
+import { resolveHostExecutable } from "@elizaos/shared/host-execution-env";
 
 export const CODING_TOOL_NAMES = [
   "sh",
@@ -48,8 +49,6 @@ export interface TerminalSupport {
   message?: string;
 }
 
-const ANDROID_PATH_ENTRIES = ["/system/bin", "/system/xbin", "/vendor/bin"];
-
 export function isAndroidRuntime(): boolean {
   return (
     readAliasedEnv("ELIZA_PLATFORM")?.toLowerCase() === "android" ||
@@ -86,19 +85,6 @@ export function isAospTerminalRuntime(): boolean {
   return isAndroidRuntime() && isTruthyEnv(process.env.ELIZA_AOSP_BUILD);
 }
 
-function pathEntries(): string[] {
-  const entries = (process.env.PATH ?? "")
-    .split(path.delimiter)
-    .map((entry) => entry.trim())
-    .filter(Boolean);
-  if (isAndroidRuntime()) {
-    for (const entry of ANDROID_PATH_ENTRIES) {
-      if (!entries.includes(entry)) entries.push(entry);
-    }
-  }
-  return entries;
-}
-
 function canExecute(filePath: string): boolean {
   try {
     accessSync(filePath, constants.X_OK);
@@ -113,14 +99,10 @@ function canExecute(filePath: string): boolean {
 export function resolveExecutable(nameOrPath: string): string | undefined {
   const trimmed = nameOrPath.trim();
   if (!trimmed) return undefined;
-  if (trimmed.includes("/") || path.isAbsolute(trimmed)) {
+  if (path.isAbsolute(trimmed)) {
     return canExecute(trimmed) ? trimmed : undefined;
   }
-  for (const entry of pathEntries()) {
-    const candidate = path.join(entry, trimmed);
-    if (canExecute(candidate)) return candidate;
-  }
-  return undefined;
+  return resolveHostExecutable(trimmed);
 }
 
 function firstExecutable(candidates: readonly string[]): string | undefined {
@@ -132,25 +114,6 @@ function firstExecutable(candidates: readonly string[]): string | undefined {
 }
 
 export function resolveHostShell(): ResolvedShell {
-  const explicitEntries = [
-    ["CODING_TOOLS_SHELL", process.env.CODING_TOOLS_SHELL] as const,
-    ["SHELL", process.env.SHELL] as const,
-  ];
-  for (const [key, raw] of explicitEntries) {
-    const value = raw?.trim();
-    if (!value) continue;
-    const resolved = resolveExecutable(value);
-    if (resolved) {
-      return {
-        command: resolved,
-        args: ["-c"],
-        available: true,
-        source:
-          key === "CODING_TOOLS_SHELL" ? "env:CODING_TOOLS_SHELL" : "env:SHELL",
-      };
-    }
-  }
-
   if (process.platform === "win32") {
     return {
       command: "powershell.exe",
