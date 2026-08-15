@@ -8,7 +8,8 @@
  * cursor only advances past an event once its reply was delivered, deliberately
  * skipped, or reached an indeterminate provider-egress state. X does not expose
  * an idempotency key for DM sends, so an ambiguous failure after egress starts is
- * retained as an at-most-once tombstone instead of risking a duplicate reply.
+ * retained as an at-most-once tombstone instead of risking a duplicate reply, and
+ * only a turn's first reply-callback invocation may attempt egress at all.
  */
 import {
   ChannelType,
@@ -338,10 +339,25 @@ export class TwitterDirectMessageClient {
     // callback rejection, so settlement below can distinguish "delivered or
     // deliberately silent" from "send failed, retry next poll".
     let deliveryError: unknown = null;
+    let egressAttempted = false;
     const callback: HandlerCallback = async (response: Content) => {
       const text =
         typeof response.text === "string" ? response.text.trim() : "";
       if (!text) return [];
+      // The message pipeline may invoke this callback more than once per turn
+      // (multiple replying actions, evaluator delivery), including
+      // concurrently. The durable settled marker only guards across polls, so
+      // the turn's first egress attempt claims the event synchronously — no
+      // await sits between check and set — and every later invocation is
+      // suppressed. Explicit-rejection recovery stays at the poll level.
+      if (egressAttempted) {
+        logger.warn(
+          { src: "plugin:x", senderId, conversationId, dmEventId: event.id },
+          "Suppressed duplicate X DM reply attempt for one inbound event",
+        );
+        return [];
+      }
+      egressAttempted = true;
       if (this.isDryRun) {
         logger.info(
           { src: "plugin:x", senderId, text },
