@@ -95,6 +95,10 @@ export {
 } from "./actions/views.js";
 export type { ViewSummary } from "./actions/views-client.js";
 export { INTENT_VIEW_IDS, resolveIntentView } from "./actions/views-show.js";
+export {
+	type AppWorkerCapability,
+	parseAppWorkerCapability,
+} from "./app-worker-manifest.js";
 export type { AppControlClient } from "./client/api.js";
 export { createAppControlClient } from "./client/api.js";
 export { createChoiceShortcutEvaluator } from "./evaluators/create-choice-shortcut.js";

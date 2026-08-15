@@ -142,20 +142,66 @@ function readGetMemoriesParams(params: unknown): RuntimeGetMemoriesParams {
 	return record as RuntimeGetMemoriesParams;
 }
 
-async function resolvePluginEntryPath(
+type WorkerSurfaceResolution =
+	| { kind: "static" }
+	| { kind: "entry"; path: string }
+	| { kind: "legacy-missing" }
+	| { kind: "error"; reason: string };
+
+function pathInsideDirectory(directory: string, candidate: string): boolean {
+	const relative = path.relative(directory, candidate);
+	return (
+		relative !== "" &&
+		!relative.startsWith(`..${path.sep}`) &&
+		relative !== ".."
+	);
+}
+
+async function resolveWorkerSurface(
 	entry: AppRegistryEntry,
-): Promise<string | null> {
+): Promise<WorkerSurfaceResolution> {
+	if (entry.worker === false) return { kind: "static" };
+	if (entry.worker) {
+		const resolved = path.resolve(entry.directory, entry.worker.entry);
+		if (!pathInsideDirectory(entry.directory, resolved)) {
+			return {
+				kind: "error",
+				reason: `Declared worker entry for app ${entry.slug} escapes its package directory`,
+			};
+		}
+		return existsSync(resolved)
+			? { kind: "entry", path: resolved }
+			: {
+					kind: "error",
+					reason: `Declared worker entry is missing for app ${entry.slug}; build or repair the package before launch`,
+				};
+	}
+
+	// Compatibility only: entries persisted before `elizaos.app.worker` existed
+	// may still expose their plugin through package exports/main or conventional
+	// source paths. New manifests must declare the worker capability explicitly.
 	const pkgPath = path.join(entry.directory, "package.json");
 	const raw = await readFile(pkgPath, "utf8").catch(() => null);
-	if (raw === null) return null;
+	if (raw === null) {
+		return {
+			kind: "error",
+			reason: `Cannot read package.json for legacy app ${entry.slug}`,
+		};
+	}
 	let parsed: unknown;
 	try {
 		parsed = JSON.parse(raw);
 	} catch {
-		return null;
+		return {
+			kind: "error",
+			reason: `Cannot parse package.json for legacy app ${entry.slug}`,
+		};
 	}
 	if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-		return null;
+		return {
+			kind: "error",
+			reason: `Invalid package.json for legacy app ${entry.slug}`,
+		};
 	}
 	const pkg = parsed as Record<string, unknown>;
 	const exportsEntry =
@@ -180,9 +226,9 @@ async function resolvePluginEntryPath(
 		const resolved = path.isAbsolute(candidate)
 			? candidate
 			: path.resolve(entry.directory, candidate);
-		if (existsSync(resolved)) return resolved;
+		if (existsSync(resolved)) return { kind: "entry", path: resolved };
 	}
-	return null;
+	return { kind: "legacy-missing" };
 }
 
 /**
@@ -247,7 +293,7 @@ export class AppWorkerHostService extends Service {
 		slug: string,
 	): Promise<
 		| { ok: true; snapshot: SpawnedWorkerSnapshot }
-		| { ok: false; reason: string }
+		| { ok: false; kind: "no-worker-surface" | "error"; reason: string }
 	> {
 		const registry = this.runtime.getService(APP_REGISTRY_SERVICE_TYPE) as
 			| AppRegistryService
@@ -256,27 +302,44 @@ export class AppWorkerHostService extends Service {
 		if (!registry) {
 			return {
 				ok: false,
+				kind: "error",
 				reason: "AppRegistryService is not registered on the runtime",
 			};
 		}
 		const entries = await registry.list();
 		const entry = entries.find((e: AppRegistryEntry) => e.slug === slug);
 		if (!entry) {
-			return { ok: false, reason: `No app registered under slug=${slug}` };
+			return {
+				ok: false,
+				kind: "error",
+				reason: `No app registered under slug=${slug}`,
+			};
 		}
 		if (entry.isolation !== "worker") {
 			return {
 				ok: false,
+				kind: "no-worker-surface",
 				reason: `App ${slug} declared isolation:'${entry.isolation ?? "none"}'; nothing to spawn`,
 			};
 		}
 		const view = await registry.getPermissionsView(slug);
-		const pluginEntryPath = await resolvePluginEntryPath(entry);
-		if (!pluginEntryPath) {
+		const workerSurface = await resolveWorkerSurface(entry);
+		if (workerSurface.kind === "static") {
 			return {
 				ok: false,
-				reason: `No worker plugin entry found for app ${slug} under ${entry.directory}`,
+				kind: "no-worker-surface",
+				reason: `App ${slug} explicitly declares no worker surface`,
 			};
+		}
+		if (workerSurface.kind === "legacy-missing") {
+			return {
+				ok: false,
+				kind: "no-worker-surface",
+				reason: `Legacy app ${slug} has no discoverable worker plugin entry`,
+			};
+		}
+		if (workerSurface.kind === "error") {
+			return { ok: false, kind: "error", reason: workerSurface.reason };
 		}
 		const snapshot = await this.spawn({
 			slug,
@@ -287,7 +350,7 @@ export class AppWorkerHostService extends Service {
 			statePath: path.join(this.stateDir, "app-state", path.basename(slug)),
 			requestedPermissions: entry.requestedPermissions ?? null,
 			grantedNamespaces: view?.grantedNamespaces ?? [],
-			pluginEntryPath,
+			pluginEntryPath: workerSurface.path,
 		});
 		return { ok: true, snapshot };
 	}
@@ -539,13 +602,20 @@ export class AppWorkerHostService extends Service {
 			const result = await this.startForRegisteredApp(entry.slug).catch(
 				(error: unknown) => ({
 					ok: false as const,
+					kind: "error" as const,
 					reason: error instanceof Error ? error.message : String(error),
 				}),
 			);
 			if (!result.ok) {
-				logger.warn(
-					`[app-worker-host] bootstrap spawn failed for slug=${entry.slug}: ${result.reason}`,
-				);
+				if (result.kind === "no-worker-surface") {
+					logger.debug(
+						`[app-worker-host] no worker surface for slug=${entry.slug}: ${result.reason}`,
+					);
+				} else {
+					logger.warn(
+						`[app-worker-host] bootstrap spawn failed for slug=${entry.slug}: ${result.reason}`,
+					);
+				}
 			}
 		}
 	}
