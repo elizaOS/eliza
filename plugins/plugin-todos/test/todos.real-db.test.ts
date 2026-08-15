@@ -22,16 +22,22 @@ import type {
   Memory,
   UUID,
 } from "@elizaos/core";
+import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   createRealTestRuntime,
   type RealTestRuntimeResult,
 } from "../../../packages/app-core/test/helpers/real-runtime.ts";
 import { todoAction } from "../src/actions/todo.ts";
+import { todosTable } from "../src/db/schema.ts";
 import todosPlugin from "../src/index.ts";
 import { currentTodosProvider } from "../src/providers/current-todos.ts";
 import {
+  deserializeTodoMutationRecord,
+  importTodoMutationRecordsInTransaction,
+  serializeTodoMutationRecord,
   TODO_DUPLICATE_ID_ERROR_CODE,
+  TODO_IDEMPOTENCY_CONFLICT_ERROR_CODE,
   TODO_INVALID_PARENT_ERROR_CODE,
   TODO_PARENT_CYCLE_ERROR_CODE,
   TodosService,
@@ -240,6 +246,7 @@ describe("TodosService + currentTodosProvider — real PGLite", () => {
 
     const actionResult = await invokeTodoAction(
       {
+        id: crypto.randomUUID() as UUID,
         entityId,
         roomId,
         content: { text: "replace my todos" },
@@ -648,5 +655,410 @@ describe("TodosService + currentTodosProvider — real PGLite", () => {
       service.clear({ agentId: runtime.agentId, entityId, roomId: "" }),
     ).rejects.toThrow();
     expect(await service.get(scope(entityId), todo.id)).not.toBeNull();
+  });
+
+  it("replays semantic mutations across host routing changes", async () => {
+    const entityId = crypto.randomUUID() as UUID;
+    const roomA = crypto.randomUUID() as UUID;
+    const roomB = crypto.randomUUID() as UUID;
+    const worldA = crypto.randomUUID() as UUID;
+    const worldB = crypto.randomUUID() as UUID;
+    const targetScope = scope(entityId);
+
+    const firstCreate = await service.applyMutation({
+      scope: targetScope,
+      idempotencyKey: "semantic-create",
+      mutation: {
+        action: "create",
+        input: {
+          roomId: roomA,
+          worldId: worldA,
+          parentTrajectoryStepId: "shared-step",
+          content: "Route-independent create",
+        },
+      },
+    });
+    const replayedCreate = await service.applyMutation({
+      scope: targetScope,
+      idempotencyKey: "semantic-create",
+      mutation: {
+        action: "create",
+        input: {
+          roomId: roomB,
+          worldId: worldB,
+          parentTrajectoryStepId: "dedicated-step",
+          content: "Route-independent create",
+        },
+      },
+    });
+    expect(replayedCreate).toMatchObject({
+      mutationId: firstCreate.mutationId,
+      replayed: true,
+      result: firstCreate.result,
+    });
+    await expect(
+      service.applyMutation({
+        scope: targetScope,
+        idempotencyKey: "semantic-create",
+        mutation: {
+          action: "create",
+          input: { roomId: roomB, worldId: worldB, content: "Changed payload" },
+        },
+      }),
+    ).rejects.toMatchObject({ code: TODO_IDEMPOTENCY_CONFLICT_ERROR_CODE });
+
+    const firstWrite = await service.applyMutation({
+      scope: targetScope,
+      idempotencyKey: "semantic-write",
+      mutation: {
+        action: "write",
+        input: {
+          roomId: roomA,
+          worldId: worldA,
+          parentTrajectoryStepId: "shared-write",
+          todos: [{ content: "Written once", status: "pending" }],
+        },
+      },
+    });
+    const replayedWrite = await service.applyMutation({
+      scope: targetScope,
+      idempotencyKey: "semantic-write",
+      mutation: {
+        action: "write",
+        input: {
+          roomId: roomB,
+          worldId: worldB,
+          parentTrajectoryStepId: "dedicated-write",
+          todos: [{ content: "Written once", status: "pending" }],
+        },
+      },
+    });
+    expect(replayedWrite).toMatchObject({
+      mutationId: firstWrite.mutationId,
+      replayed: true,
+      result: firstWrite.result,
+    });
+    await expect(
+      service.applyMutation({
+        scope: targetScope,
+        idempotencyKey: "semantic-write",
+        mutation: {
+          action: "write",
+          input: {
+            roomId: roomB,
+            worldId: worldB,
+            parentTrajectoryStepId: null,
+            todos: [{ content: "Changed written payload", status: "pending" }],
+          },
+        },
+      }),
+    ).rejects.toMatchObject({ code: TODO_IDEMPOTENCY_CONFLICT_ERROR_CODE });
+
+    const clearRoomA = await service.create({
+      ...targetScope,
+      roomId: roomA,
+      content: "Clear only once",
+    });
+    const preserveRoomB = await service.create({
+      ...targetScope,
+      roomId: roomB,
+      content: "Preserve on replay",
+    });
+    const firstClear = await service.applyMutation({
+      scope: targetScope,
+      idempotencyKey: "semantic-clear",
+      mutation: { action: "clear", roomId: roomA },
+    });
+    const replayedClear = await service.applyMutation({
+      scope: targetScope,
+      idempotencyKey: "semantic-clear",
+      mutation: { action: "clear", roomId: roomB },
+    });
+    expect(replayedClear).toMatchObject({
+      mutationId: firstClear.mutationId,
+      replayed: true,
+      result: firstClear.result,
+    });
+    expect(await service.get(targetScope, clearRoomA.id)).toBeNull();
+    expect(await service.get(targetScope, preserveRoomB.id)).not.toBeNull();
+  });
+
+  it("applies every mutator once under retries and concurrency", async () => {
+    const entityId = crypto.randomUUID() as UUID;
+    const targetScope = scope(entityId);
+    const createInput = {
+      scope: targetScope,
+      idempotencyKey: "concurrent-create",
+      mutation: {
+        action: "create" as const,
+        input: { content: "Concurrent once" },
+      },
+    };
+    const concurrent = await Promise.all([
+      service.applyMutation(createInput),
+      service.applyMutation(createInput),
+    ]);
+    expect(concurrent.map((entry) => entry.replayed).sort()).toEqual([
+      false,
+      true,
+    ]);
+    expect(concurrent[0]?.mutationId).toBe(concurrent[1]?.mutationId);
+    expect(
+      (await service.list({ ...targetScope })).filter(
+        (todo) => todo.content === "Concurrent once",
+      ),
+    ).toHaveLength(1);
+    const created = concurrent[0]?.result;
+    if (created?.action !== "create") throw new Error("Expected create result");
+
+    for (const input of [
+      {
+        scope: targetScope,
+        idempotencyKey: "update-once",
+        mutation: {
+          action: "update" as const,
+          id: created.todo.id,
+          patch: { content: "Updated once" },
+        },
+      },
+      {
+        scope: targetScope,
+        idempotencyKey: "complete-once",
+        mutation: { action: "complete" as const, id: created.todo.id },
+      },
+      {
+        scope: targetScope,
+        idempotencyKey: "cancel-once",
+        mutation: { action: "cancel" as const, id: created.todo.id },
+      },
+    ]) {
+      const first = await service.applyMutation(input);
+      const replayed = await service.applyMutation(input);
+      expect(replayed).toMatchObject({
+        mutationId: first.mutationId,
+        replayed: true,
+        result: first.result,
+      });
+    }
+
+    const deleteTarget = await service.create({
+      ...targetScope,
+      content: "Delete once",
+    });
+    const deleteInput = {
+      scope: targetScope,
+      idempotencyKey: "delete-once",
+      mutation: { action: "delete" as const, id: deleteTarget.id },
+    };
+    const deleted = await service.applyMutation(deleteInput);
+    const intervening = await service.create({
+      ...targetScope,
+      content: "Created after delete",
+    });
+    const replayedDelete = await service.applyMutation(deleteInput);
+    expect(replayedDelete).toMatchObject({
+      mutationId: deleted.mutationId,
+      replayed: true,
+      result: deleted.result,
+    });
+    expect(await service.get(targetScope, intervening.id)).not.toBeNull();
+
+    const otherEntityId = crypto.randomUUID() as UUID;
+    const tenantKey = "same-key-different-tenant";
+    const [tenantA, tenantB] = await Promise.all([
+      service.applyMutation({
+        scope: targetScope,
+        idempotencyKey: tenantKey,
+        mutation: { action: "create", input: { content: "Tenant A" } },
+      }),
+      service.applyMutation({
+        scope: scope(otherEntityId),
+        idempotencyKey: tenantKey,
+        mutation: { action: "create", input: { content: "Tenant B" } },
+      }),
+    ]);
+    expect(tenantA.replayed).toBe(false);
+    expect(tenantB.replayed).toBe(false);
+    expect(tenantA.mutationId).not.toBe(tenantB.mutationId);
+  });
+
+  it("ledgers zero-effect write and clear retries before later state appears", async () => {
+    const entityId = crypto.randomUUID() as UUID;
+    const roomId = crypto.randomUUID() as UUID;
+    const targetScope = scope(entityId);
+    const emptyWrite = {
+      scope: targetScope,
+      idempotencyKey: "empty-write",
+      mutation: {
+        action: "write" as const,
+        input: {
+          roomId,
+          worldId: null,
+          parentTrajectoryStepId: null,
+          todos: [],
+        },
+      },
+    };
+    expect((await service.applyMutation(emptyWrite)).applied).toBe(false);
+    const afterWrite = await service.create({
+      ...targetScope,
+      roomId,
+      content: "Appeared after empty write",
+    });
+    expect((await service.applyMutation(emptyWrite)).replayed).toBe(true);
+    expect(await service.get(targetScope, afterWrite.id)).not.toBeNull();
+
+    const emptyClear = {
+      scope: targetScope,
+      idempotencyKey: "empty-clear",
+      mutation: { action: "clear" as const, roomId: crypto.randomUUID() },
+    };
+    expect((await service.applyMutation(emptyClear)).applied).toBe(false);
+    const afterClear = await service.create({
+      ...targetScope,
+      roomId: emptyClear.mutation.roomId,
+      content: "Appeared after empty clear",
+    });
+    expect((await service.applyMutation(emptyClear)).replayed).toBe(true);
+    expect(await service.get(targetScope, afterClear.id)).not.toBeNull();
+  });
+
+  it("imports Todo rows and replay authority atomically with stable ids", async () => {
+    const sourceEntityId = crypto.randomUUID() as UUID;
+    const sourceRoomId = crypto.randomUUID() as UUID;
+    const sourceWorldId = crypto.randomUUID() as UUID;
+    const sourceScope = scope(sourceEntityId);
+    await service.applyMutation({
+      scope: sourceScope,
+      idempotencyKey: "cutover-create",
+      mutation: {
+        action: "create",
+        input: {
+          roomId: sourceRoomId,
+          worldId: sourceWorldId,
+          content: "Cut over atomically",
+        },
+      },
+    });
+    const sourceSnapshot = await service.readCutoverState(sourceScope);
+    expect(sourceSnapshot.todos).toHaveLength(1);
+    expect(sourceSnapshot.mutations).toHaveLength(1);
+    const sourceTodo = sourceSnapshot.todos[0];
+    if (!sourceTodo) throw new Error("Expected source Todo");
+    const records = sourceSnapshot.mutations.map((entry) =>
+      deserializeTodoMutationRecord(
+        serializeTodoMutationRecord(entry),
+        entry.scope,
+      ),
+    );
+
+    const targetResult = await createRealTestRuntime({
+      characterName: "todos-cutover-target",
+      plugins: [todosPlugin],
+    });
+    try {
+      const targetRuntime = targetResult.runtime;
+      const targetService = new TodosService(targetRuntime);
+      const targetScope = {
+        agentId: targetRuntime.agentId,
+        entityId: crypto.randomUUID() as UUID,
+      };
+      const targetRoomId = crypto.randomUUID() as UUID;
+      const targetDb = targetRuntime.db as NodePgDatabase;
+      const insertTodo = async (
+        tx: Parameters<Parameters<NodePgDatabase["transaction"]>[0]>[0],
+      ) => {
+        await tx.insert(todosTable).values({
+          id: sourceTodo.id as UUID,
+          agentId: targetScope.agentId,
+          entityId: targetScope.entityId,
+          roomId: targetRoomId,
+          worldId: null,
+          content: sourceTodo.content,
+          activeForm: sourceTodo.activeForm,
+          status: sourceTodo.status,
+          parentTodoId: sourceTodo.parentTodoId as UUID | null,
+          parentTrajectoryStepId: sourceTodo.parentTrajectoryStepId,
+          metadata: sourceTodo.metadata,
+          createdAt: sourceTodo.createdAt,
+          updatedAt: sourceTodo.updatedAt,
+          completedAt: sourceTodo.completedAt,
+        });
+      };
+      const importInput = {
+        targetScope,
+        records,
+        roomIdMap: { [sourceRoomId]: targetRoomId },
+        worldIdMap: { [sourceWorldId]: null },
+      };
+
+      await expect(
+        targetDb.transaction(async (tx) => {
+          await insertTodo(tx);
+          expect(
+            await importTodoMutationRecordsInTransaction(tx, importInput),
+          ).toEqual({ imported: 1, skipped: 0 });
+          throw new Error("force combined rollback");
+        }),
+      ).rejects.toThrow("force combined rollback");
+      expect(await targetService.list({ ...targetScope })).toHaveLength(0);
+      expect(await targetService.listMutationRecords(targetScope)).toHaveLength(
+        0,
+      );
+
+      const imported = await targetDb.transaction(async (tx) => {
+        await insertTodo(tx);
+        return importTodoMutationRecordsInTransaction(tx, importInput);
+      });
+      expect(imported).toEqual({ imported: 1, skipped: 0 });
+      expect(await targetService.importMutationRecords(importInput)).toEqual({
+        imported: 0,
+        skipped: 1,
+      });
+      const targetSnapshot = await targetService.readCutoverState(targetScope);
+      expect(targetSnapshot.todos[0]).toMatchObject({
+        id: sourceTodo.id,
+        worldId: null,
+      });
+      expect(targetSnapshot.mutations[0]).toMatchObject({
+        mutationId: sourceSnapshot.mutations[0]?.mutationId,
+        scope: targetScope,
+      });
+      const result = targetSnapshot.mutations[0]?.result;
+      if (result?.action !== "create") {
+        throw new Error("Expected imported create result");
+      }
+      expect(result.todo).toMatchObject({
+        id: sourceTodo.id,
+        agentId: targetScope.agentId,
+        entityId: targetScope.entityId,
+        roomId: targetRoomId,
+        worldId: null,
+      });
+    } finally {
+      await targetResult.cleanup();
+    }
+  }, 180_000);
+
+  it("snapshots Todo rows and mutation records at one scope boundary", async () => {
+    const entityId = crypto.randomUUID() as UUID;
+    const targetScope = scope(entityId);
+    for (let index = 0; index < 8; index += 1) {
+      const content = `Atomic snapshot ${index}`;
+      const idempotencyKey = `atomic-snapshot-${index}`;
+      const [, snapshot] = await Promise.all([
+        service.applyMutation({
+          scope: targetScope,
+          idempotencyKey,
+          mutation: { action: "create", input: { content } },
+        }),
+        service.readCutoverState(targetScope),
+      ]);
+      expect(snapshot.todos.some((todo) => todo.content === content)).toBe(
+        snapshot.mutations.some(
+          (mutation) => mutation.idempotencyKey === idempotencyKey,
+        ),
+      );
+    }
   });
 });

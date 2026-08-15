@@ -1,5 +1,7 @@
 /** Storage-neutral todo contract shared by Node and edge runtime hosts. */
 
+import type { SharedTodoMutationCutoverRecord } from "@elizaos/shared/todo-cutover";
+
 import type { Todo, TodoStatus } from "./types.js";
 
 export interface TodoFilter {
@@ -99,16 +101,7 @@ export interface TodoMutationRecord {
   committedAt: Date;
 }
 
-export interface TodoMutationRecordWire {
-  version: 1;
-  mutationId: string;
-  idempotencyKey: string;
-  requestDigest: string;
-  operation: TodoMutation["action"];
-  applied: boolean;
-  resultJson: unknown;
-  committedAt: string;
-}
+export type TodoMutationRecordWire = SharedTodoMutationCutoverRecord;
 
 export interface TodoCutoverState {
   todos: Todo[];
