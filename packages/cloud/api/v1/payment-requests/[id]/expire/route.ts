@@ -3,9 +3,10 @@
  *
  * POST /api/v1/payment-requests/:id/expire
  *
- * Forces the request into `expired` status if it has passed its expiry. The
- * underlying service decides whether the row is actually past expiry; the
- * route only authorizes the call.
+ * Expires a past-due request only when no provider intent was delivered. A
+ * provider-backed request remains settlement-eligible until reconciliation
+ * owns its terminal state. The service decides whether the row is actually
+ * past expiry; the route only authorizes the call.
  */
 
 import { Hono } from "hono";
