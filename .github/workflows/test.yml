@@ -485,13 +485,16 @@ jobs:
             set -euo pipefail
             agent_id=4602b3be-2c01-4e7e-9cdc-849604e1bef7
             expected_image=ghcr.io/elizaos/eliza-demo@sha256:ae4d87e30f85f7a8c662751ba16c71522f309ed163b16da519cb931aa305965a
-            database_url="$(sed -n 's/^DATABASE_URL=//p' /opt/eliza/cloud/.env.local | tail -1)"
+            sed -n 's/^DATABASE_URL=//p' /opt/eliza/cloud/.env.local | tail -1 > /tmp/eliza-x-database-url
+            IFS= read -r database_url < /tmp/eliza-x-database-url
             database_url="${database_url/sslmode=no-verify/sslmode=require}"
-            state="$(psql "$database_url" -v ON_ERROR_STOP=1 -Atc "SELECT status || '|' || docker_image FROM agent_sandboxes WHERE id = '$agent_id')"
+            psql "$database_url" -v ON_ERROR_STOP=1 -Atc "SELECT status || '|' || docker_image FROM agent_sandboxes WHERE id = '$agent_id'" > /tmp/eliza-x-state
+            IFS= read -r state < /tmp/eliza-x-state
             test "$state" = "stopped|$expected_image"
-            service_key="$(sed -n 's/^WAIFU_SERVICE_KEY=//p' /opt/eliza/cloud/.env.local | tail -1)"
+            sed -n 's/^WAIFU_SERVICE_KEY=//p' /opt/eliza/cloud/.env.local | tail -1 > /tmp/eliza-x-service-key
+            IFS= read -r service_key < /tmp/eliza-x-service-key
             test -n "${service_key//[[:space:]]/}"
-            response_file="$(mktemp)"
+            response_file=/tmp/eliza-x-restart-response.json
             curl --silent --show-error --fail-with-body --max-time 30 \
               --request POST \
               --header "X-Service-Key: $service_key" \
