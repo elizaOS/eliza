@@ -14,7 +14,7 @@ const DEFAULT_REDACT_KEEP_END = 4;
 
 // Minimum length for a secret to be considered for redaction
 // Shorter values could cause false positives
-const MIN_SECRET_LENGTH = 8;
+export const MIN_SECRET_LENGTH = 8;
 
 /**
  * Default patterns for detecting sensitive data.

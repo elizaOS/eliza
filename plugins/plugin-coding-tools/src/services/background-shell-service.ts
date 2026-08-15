@@ -620,9 +620,7 @@ function projectRingText(
   raw: string,
 ): string {
   if (!raw) return "";
-  if (session.redaction.incomplete) {
-    return redactShellText(runtime, "[REDACTED:fragment-scan-incomplete]");
-  }
+  if (session.redaction.incomplete) return "";
   const endOffset = startOffset + raw.length;
   const ranges = session.redaction.ranges.filter(
     (range) =>
@@ -633,9 +631,12 @@ function projectRingText(
   if (ranges.length === 0) {
     const redactedFull = redactShellText(runtime, ring.text);
     const redactedPrefix = redactShellText(runtime, ring.text.slice(0, index));
-    return redactedFull.startsWith(redactedPrefix)
-      ? redactedFull.slice(redactedPrefix.length)
-      : "[REDACTED:chunk-boundary]";
+    return verifyProjectedText(
+      runtime,
+      redactedFull.startsWith(redactedPrefix)
+        ? redactedFull.slice(redactedPrefix.length)
+        : "",
+    );
   }
 
   const pieces: string[] = [];
@@ -646,11 +647,23 @@ function projectRingText(
     if (taintStart > cursor) {
       pieces.push(raw.slice(cursor - startOffset, taintStart - startOffset));
     }
-    pieces.push("[REDACTED:configured-secret-fragment]");
     cursor = Math.max(cursor, taintEnd);
   }
   if (cursor < endOffset) pieces.push(raw.slice(cursor - startOffset));
-  return redactShellText(runtime, pieces.join(""));
+  return verifyProjectedText(
+    runtime,
+    redactShellText(runtime, pieces.join("")),
+  );
+}
+
+function verifyProjectedText(runtime: IAgentRuntime, text: string): string {
+  if (!text) return "";
+  const verification = runtime.locateConfiguredSecretFragmentTaint([
+    { source: "projected", startOffset: 0, text },
+  ]);
+  return verification.status === "complete" && verification.ranges.length === 0
+    ? text
+    : "";
 }
 
 function snapshot(

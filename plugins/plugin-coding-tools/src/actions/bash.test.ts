@@ -2052,7 +2052,36 @@ describeIfPosix("shellAction", () => {
         >
       ).startOffset,
     ).toBe(3);
-    expect(partialPoll.text).toContain("[REDACTED:configured-secret-fragment]");
+  });
+
+  it("omits tainted output when the former fragment marker is itself a secret", async () => {
+    const secret = "[REDACTED:configured-secret-fragment]";
+    const { runtime } = await makeRuntime();
+    runtime.character.settings = {
+      secrets: { "configured-secret-fragment": secret },
+    };
+    const actor = makeMessage();
+    const start = requireActionResult(
+      await shellAction.handler?.(runtime, actor, undefined, {
+        action: "start_background",
+        command:
+          "printf '[REDACTED:'; sleep 0.05; printf 'configured-secret-fragment]'",
+      }),
+    );
+    const handle = (start.data as Record<string, unknown>).handle as string;
+    const poll = await pollUntil(
+      runtime,
+      actor,
+      handle,
+      (data) => data.status === "exited",
+    );
+    const stdout = (poll.data as Record<string, unknown>).stdout as Record<
+      string,
+      unknown
+    >;
+
+    expect(stdout.text).toBe("");
+    expect(JSON.stringify(poll)).not.toContain(secret);
   });
 
   it("maps a configured secret across ordered stdout and stderr fragments without breaking offsets", async () => {
@@ -2094,9 +2123,8 @@ describeIfPosix("shellAction", () => {
 
     expect(JSON.stringify({ stdout, stderr })).not.toContain("mari");
     expect(JSON.stringify({ stdout, stderr })).not.toContain("gold9");
-    expect(stdout.text).toContain("[REDACTED:configured-secret-fragment]");
-    expect(stdout.text).toContain("Xlater-safe");
-    expect(stderr.text).toContain("[REDACTED:configured-secret-fragment]");
+    expect(stdout.text).toBe("Xlater-safe");
+    expect(stderr.text).toBe("");
     expect(stdout.startOffset).toBe(0);
     expect(stdout.endOffset).toBe("mariXlater-safe".length);
     expect(stderr.startOffset).toBe(0);
@@ -2197,9 +2225,7 @@ describeIfPosix("shellAction", () => {
       startOffset: "mariXlater-safe".length - 5,
       endOffset: "mariXlater-safe".length,
     });
-    expect((data.stderr as Record<string, unknown>).text).toContain(
-      "[REDACTED:configured-secret-fragment]",
-    );
+    expect((data.stderr as Record<string, unknown>).text).toBe("");
   });
 
   it("preserves same-stream event boundaries around harmless bytes", async () => {
@@ -2268,12 +2294,8 @@ describeIfPosix("shellAction", () => {
 
     expect(exposed).not.toContain("mari");
     expect(exposed).not.toContain("gold9");
-    expect((data.stdout as Record<string, unknown>).text).toContain(
-      "[REDACTED:configured-secret-fragment]",
-    );
-    expect((data.stderr as Record<string, unknown>).text).toContain(
-      "[REDACTED:configured-secret-fragment]",
-    );
+    expect((data.stdout as Record<string, unknown>).text).toBe("X");
+    expect((data.stderr as Record<string, unknown>).text).toBe("");
   });
 
   it("fails closed when the runtime cannot complete fragment analysis", async () => {
@@ -2300,7 +2322,10 @@ describeIfPosix("shellAction", () => {
       (data) => data.status === "exited",
     );
 
-    expect(poll.text).toContain("[REDACTED:configured-secret-fragment]");
+    expect(
+      ((poll.data as Record<string, unknown>).stdout as Record<string, unknown>)
+        .text,
+    ).toBe("");
     expect(poll.text).not.toContain("safe-output");
   });
 
@@ -2343,8 +2368,7 @@ describeIfPosix("shellAction", () => {
       unknown
     >;
 
-    expect(stdout.text).toContain("[REDACTED:configured-secret-fragment]");
-    expect(stdout.text).toContain("later-safe");
+    expect(stdout.text).toBe("later-safe");
     expect(stdout.text).not.toContain("unsafe");
     expect(stdout.text).not.toContain("12345678");
   });
@@ -2420,7 +2444,7 @@ describeIfPosix("shellAction", () => {
 
     expect(injectedIncomplete).toBe(true);
     expect(firstStdout).toBe("mari");
-    expect(laterStderr).toContain("[REDACTED:configured-secret-fragment]");
+    expect(laterStderr).toBe("");
     expect(laterStderr).not.toContain("gold9");
     expect(firstStdout + laterStderr).not.toContain("marigold9");
     expect((laterData.stdout as Record<string, unknown>).text).not.toContain(
@@ -2452,7 +2476,7 @@ describeIfPosix("shellAction", () => {
       unknown
     >;
 
-    expect(stdout.text).toContain("[REDACTED:configured-secret-fragment]");
+    expect(stdout.text).toBe("z".repeat(16));
     expect(stdout.startOffset).toBe(30);
     expect(JSON.stringify(poll)).not.toContain(secret);
     expect(JSON.stringify(poll)).not.toContain(secret.slice(4));
@@ -2484,7 +2508,10 @@ describeIfPosix("shellAction", () => {
       );
     });
 
-    expect(poll.text).toContain("[REDACTED:configured-secret-fragment]");
+    expect(
+      ((poll.data as Record<string, unknown>).stdout as Record<string, unknown>)
+        .text,
+    ).toBe("z".repeat(8));
     expect(JSON.stringify(poll)).not.toContain(rotatedSecret.slice(-12));
   });
 
@@ -2535,12 +2562,8 @@ describeIfPosix("shellAction", () => {
     expect(
       JSON.stringify({ stdout: data.stdout, stderr: data.stderr }),
     ).not.toContain("gold9");
-    expect((data.stdout as Record<string, unknown>).text).toContain(
-      "[REDACTED:fragment-scan-incomplete]",
-    );
-    expect((data.stderr as Record<string, unknown>).text).toContain(
-      "[REDACTED:fragment-scan-incomplete]",
-    );
+    expect((data.stdout as Record<string, unknown>).text).toBe("");
+    expect((data.stderr as Record<string, unknown>).text).toBe("");
 
     const freshStart = requireActionResult(
       await shellAction.handler?.(runtime, actor, undefined, {
@@ -2559,7 +2582,7 @@ describeIfPosix("shellAction", () => {
     expect(freshPoll.text).toContain("later-safe");
   });
 
-  it("projects the incomplete marker when a rotated secret equals it", async () => {
+  it("omits invalidated output when a rotated secret equals the former marker", async () => {
     const marker = "[REDACTED:fragment-scan-incomplete]";
     const { runtime, backgroundShell } = await makeRuntime();
     const actor = makeMessage();
@@ -2579,11 +2602,8 @@ describeIfPosix("shellAction", () => {
     }
 
     runtime.character.settings = {
-      secrets: { ROTATED_SECRET: marker },
+      secrets: { "fragment-scan-incomplete": marker },
     };
-    vi.mocked(runtime.redactSecrets).mockImplementation((text: string) =>
-      text.replaceAll(marker, "[REDACTED:ROTATED_SECRET]"),
-    );
     const poll = requireActionResult(
       await shellAction.handler?.(runtime, actor, undefined, {
         action: "poll_background",
@@ -2593,25 +2613,25 @@ describeIfPosix("shellAction", () => {
     );
 
     expect(JSON.stringify(poll)).not.toContain(marker);
-    expect(poll.text).toContain("[REDACTED:ROTATED_SECRET]");
+    expect(
+      ((poll.data as Record<string, unknown>).stdout as Record<string, unknown>)
+        .text,
+    ).toBe("");
   });
 
-  it("projects the incomplete marker for an oversized secret profile", async () => {
+  it("omits output for an oversized profile containing the former marker", async () => {
     const marker = "[REDACTED:fragment-scan-incomplete]";
     const { runtime } = await makeRuntime();
     runtime.character.settings = {
       secrets: Object.fromEntries(
         Array.from({ length: 129 }, (_, index) => [
-          `SECRET_${index}`,
+          index === 0 ? "fragment-scan-incomplete" : `SECRET_${index}`,
           index === 0
             ? marker
             : `secret-value-${index.toString().padStart(3, "0")}`,
         ]),
       ),
     };
-    vi.mocked(runtime.redactSecrets).mockImplementation((text: string) =>
-      text.replaceAll(marker, "[REDACTED:PROFILE_SECRET]"),
-    );
     const actor = makeMessage();
     const start = requireActionResult(
       await shellAction.handler?.(runtime, actor, undefined, {
@@ -2628,7 +2648,10 @@ describeIfPosix("shellAction", () => {
     );
 
     expect(JSON.stringify(poll)).not.toContain(marker);
-    expect(poll.text).toContain("[REDACTED:PROFILE_SECRET]");
+    expect(
+      ((poll.data as Record<string, unknown>).stdout as Record<string, unknown>)
+        .text,
+    ).toBe("");
   });
 });
 

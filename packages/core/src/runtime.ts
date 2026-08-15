@@ -109,7 +109,6 @@ import {
 import { BM25 } from "./search";
 import {
 	locateConfiguredSecretFragmentTaint,
-	MIN_CONFIGURED_SECRET_LENGTH,
 	type SecretFragment,
 	type SecretFragmentTaintProfile,
 } from "./security/fragment-redaction.js";
@@ -133,7 +132,7 @@ import {
 	trustedDeliveryAudienceCacheKey,
 } from "./security/index.js";
 import { guardOutboundEnvelopeText } from "./security/outbound-envelope-guard.js";
-import { redactWithSecrets } from "./security/redact.js";
+import { MIN_SECRET_LENGTH, redactWithSecrets } from "./security/redact.js";
 import {
 	parseSecretSwapExemptValues,
 	SECRET_SWAP_ENABLED_SETTING,
@@ -11317,7 +11316,7 @@ ${section_end}`;
 					[
 						...new Set(
 							Object.values(secrets).filter(
-								(value) => value.length >= MIN_CONFIGURED_SECRET_LENGTH,
+								(value) => value.length >= MIN_SECRET_LENGTH,
 							),
 						),
 					].sort(),

@@ -4,7 +4,8 @@
  * only taint metadata so stream offsets remain usable without exposing config.
  */
 
-export const MIN_CONFIGURED_SECRET_LENGTH = 8;
+import { MIN_SECRET_LENGTH } from "./redact.js";
+
 const MAX_FRAGMENT_COUNT = 256;
 const MAX_TOTAL_FRAGMENT_CHARACTERS = 256 * 1024;
 const MAX_CONFIGURED_SECRET_COUNT = 128;
@@ -117,7 +118,7 @@ function configuredSecretValues(
 	for (const value of values) {
 		if (typeof value !== "string") return "invalid-input";
 		if (value.length > MAX_CONFIGURED_SECRET_LENGTH) return "resource-limit";
-		if (value.length >= MIN_CONFIGURED_SECRET_LENGTH) unique.add(value);
+		if (value.length >= MIN_SECRET_LENGTH) unique.add(value);
 	}
 	return [...unique].sort((left, right) => right.length - left.length);
 }
