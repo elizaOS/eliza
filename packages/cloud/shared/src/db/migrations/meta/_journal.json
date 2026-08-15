@@ -1401,6 +1401,13 @@
       "when": 1786996800000,
       "tag": "0200_agent_backup_attempt_tracking",
       "breakpoints": true
+    },
+    {
+      "idx": 200,
+      "version": "7",
+      "when": 1787083200000,
+      "tag": "0201_reversible_agent_deletion_receipts",
+      "breakpoints": true
     }
   ]
 }

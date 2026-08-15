@@ -1751,6 +1751,14 @@ export class ProvisioningJobService {
             status: "deletion_pending" as const,
             deletion_attempt_id: deletionAttemptId,
             ...(continuesEarlierDeletion ? {} : { deletion_started_at: new Date() }),
+            ...(isRecoveryReEnqueue
+              ? {}
+              : {
+                  deletion_previous_status: sandbox.status,
+                  deletion_previous_billing_status: sandbox.billing_status,
+                  deletion_previous_shutdown_warning_sent_at: sandbox.shutdown_warning_sent_at,
+                  deletion_previous_scheduled_shutdown_at: sandbox.scheduled_shutdown_at,
+                }),
             // Gated on the BROADER continuation signal than the start time is.
             // `continuesEarlierDeletion` only checks `deletion_started_at`, and
             // nothing ties that column to `status`, so a row already sitting in
