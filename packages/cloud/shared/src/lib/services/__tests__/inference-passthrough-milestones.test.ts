@@ -252,7 +252,7 @@ describe("readPassthroughStreamTail — RP review round 1 hardening (#16079)", (
     const clock = scriptedClock(0, 10);
     const tail = await readWithClock(
       [
-        `data: {"id":"c1","choices":[{"index":0,"delta":{"role":"assistant","reasoning":"","reasoning_content":""},"finish_reason":null}]}\n\n`,
+        `data: {"id":"c1","choices":[{"index":0,"delta":{"role":"assistant","reasoning":"","reasoning_content":"","thinking":""},"finish_reason":null}]}\n\n`,
         `data: {"id":"c1","choices":[{"index":0,"delta":{"content":"Hi"},"finish_reason":null}]}\n\n`,
         `data: [DONE]\n\n`,
       ],
@@ -262,5 +262,42 @@ describe("readPassthroughStreamTail — RP review round 1 hardening (#16079)", (
     expect(tail.milestones.firstEventMs).toBe(10);
     expect(tail.milestones.firstReasoningMs).toBeNull();
     expect(tail.milestones.firstContentMs).toBe(20);
+  });
+
+  test("error frame then [DONE]: [DONE] must not resurrect completion", async () => {
+    // RP round-2 finding 1, ordering A: provider reports failure, then still
+    // emits its terminal [DONE] marker. The run is failed regardless.
+    const clock = scriptedClock(0, 10);
+    const tail = await readWithClock(
+      [
+        `data: {"id":"c1","choices":[{"index":0,"delta":{"content":"Hi"},"finish_reason":null}]}\n\n`,
+        `data: {"error":{"message":"overloaded","code":503}}\n\n`,
+        `data: [DONE]\n\n`,
+      ],
+      0,
+      clock,
+    );
+    expect(tail.sawErrorFrame).toBe(true);
+    expect(tail.sawDone).toBe(true);
+    expect(tail.milestones.firstContentMs).not.toBeNull();
+    expect(tail.milestones.completionMs).toBeNull();
+  });
+
+  test("[DONE] then error frame: completion is revoked", async () => {
+    // RP round-2 finding 1, ordering B: provider emitted [DONE] and then
+    // reported failure anyway — both orderings land on "failed, no completion".
+    const clock = scriptedClock(0, 10);
+    const tail = await readWithClock(
+      [
+        `data: {"id":"c1","choices":[{"index":0,"delta":{"content":"Hi"},"finish_reason":null}]}\n\n`,
+        `data: [DONE]\n\n`,
+        `data: {"error":{"message":"late failure","code":500}}\n\n`,
+      ],
+      0,
+      clock,
+    );
+    expect(tail.sawDone).toBe(true);
+    expect(tail.sawErrorFrame).toBe(true);
+    expect(tail.milestones.completionMs).toBeNull();
   });
 });

@@ -1241,6 +1241,33 @@ describe("passthrough streaming — #16079 milestone telemetry", () => {
     expect(event.completionMs).toBeNull();
   });
 
+  test("milestone origin excludes the dispatch-marker latency", async () => {
+    // RP round-2 finding 2: the provider-leg clock must start AFTER the
+    // (potentially slow) Durable-Object dispatch acknowledgement, immediately
+    // before fetch(). A marker delayed by 60ms must not inflate
+    // upstreamHeadersMs — with the origin correctly placed, the instant mock
+    // fetch keeps it far below the marker delay.
+    const MARKER_DELAY_MS = 60;
+    fetchImpl = async () => sseResponse(UPSTREAM_SSE);
+    const res = await callStreaming(async () => null, {
+      markProviderDispatched: () =>
+        new Promise<void>((resolve) => setTimeout(resolve, MARKER_DELAY_MS)),
+    });
+    await res.text();
+
+    const snapshot = getCloudTelemetrySnapshot(10);
+    const event = snapshot.streamMilestones.find(
+      (e) => e.path === "passthrough",
+    );
+    if (!event) throw new Error("no passthrough milestone event recorded");
+    expect(event.upstreamHeadersMs).not.toBeUndefined();
+    // If the origin were captured before the marker await (the round-1 bug),
+    // upstreamHeadersMs would be >= 60. Half the delay is a safe bound that
+    // still separates the two placements by an order of magnitude.
+    expect(event.upstreamHeadersMs).toBeLessThan(MARKER_DELAY_MS / 2);
+    expect(event.completionMs).not.toBeNull();
+  });
+
   test("client-branch cancel records aborted=true with partial milestones", async () => {
     // RP round-1 finding: the existing abort test simulated an upstream read
     // error; this one cancels the CLIENT branch mid-stream, exercising the

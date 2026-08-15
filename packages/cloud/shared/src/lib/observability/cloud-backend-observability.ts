@@ -58,7 +58,12 @@ export interface CloudStreamMilestoneTelemetry {
   firstReasoningMs: number | null;
   firstContentMs: number | null;
   completionMs: number | null;
-  /** Stream ended via client abort / read failure instead of completion. */
+  /**
+   * Stream ended via client abort, read failure, or an in-stream provider
+   * error frame — observed during the stream or its teardown. NOT mutually
+   * exclusive with `completionMs`: a provider that emitted `[DONE]` before a
+   * client disconnect completed, and both facts are recorded (#16079).
+   */
   aborted: boolean;
   createdAt: string;
 }

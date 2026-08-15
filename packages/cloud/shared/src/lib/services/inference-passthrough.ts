@@ -204,8 +204,12 @@ export async function readPassthroughStreamTail(
       tail.sawDone = true;
       // [DONE] IS the provider's completion marker (#16079): record it now
       // rather than at EOF, so a provider that delays the connection close
-      // after [DONE] (or drops it) cannot skew or lose the boundary.
-      tail.milestones.completionMs ??= roundedElapsed(now, startedAt);
+      // after [DONE] (or drops it) cannot skew or lose the boundary. Gated on
+      // !sawErrorFrame: an error frame already parsed means the provider
+      // reported failure — [DONE] after it must not resurrect completion.
+      if (!tail.sawErrorFrame) {
+        tail.milestones.completionMs ??= roundedElapsed(now, startedAt);
+      }
       return;
     }
     let frame: unknown;
@@ -224,6 +228,11 @@ export async function readPassthroughStreamTail(
     tail.milestones.firstEventMs ??= roundedElapsed(now, startedAt);
     if (record.error !== undefined && record.error !== null) {
       tail.sawErrorFrame = true;
+      // An error frame parsed AFTER [DONE] revokes that completion (#16079):
+      // the provider reported failure even though it had emitted its terminal
+      // marker — both orderings (error→[DONE], [DONE]→error) must land on
+      // "failed, no completion".
+      tail.milestones.completionMs = null;
     }
     if (Array.isArray(record.choices)) {
       for (const choice of record.choices) {
