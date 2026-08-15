@@ -5,7 +5,7 @@
  * order, isolates individual evaluator failures, and reports applied patches.
  * Synthetic evaluators over a stub runtime; no model.
  */
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { MessageHandlerResult } from "../../types/components";
 import type { Memory } from "../../types/memory";
 import type { IAgentRuntime } from "../../types/runtime";
@@ -15,9 +15,12 @@ import {
 	runResponseHandlerEvaluators,
 } from "../response-handler-evaluators";
 
-function runtimeWith(evaluators: ResponseHandlerEvaluator[]): IAgentRuntime {
+function runtimeWith(
+	evaluators: ResponseHandlerEvaluator[],
+	reportError: IAgentRuntime["reportError"] = () => undefined,
+): IAgentRuntime {
 	return {
-		reportError: () => undefined,
+		reportError,
 		agentId: "00000000-0000-0000-0000-000000000001",
 		responseHandlerEvaluators: evaluators,
 		logger: { warn: () => undefined, debug: () => undefined },
@@ -50,6 +53,7 @@ describe("response-handler evaluators", () => {
 				{
 					name: "threads",
 					priority: 10,
+					deterministicActions: ["LIFEOPS_THREAD_CONTROL"],
 					shouldRun: () => true,
 					evaluate: () => ({
 						requiresTool: true,
@@ -101,6 +105,69 @@ describe("response-handler evaluators", () => {
 		expect(result.appliedPatches[0]?.changed).toContain(
 			"deterministicToolCall:set",
 		);
+	});
+
+	it("rejects a disallowed deterministic call before any patch side effects and continues", async () => {
+		const messageHandler = handler();
+		messageHandler.plan.candidateActions = ["old_action"];
+		messageHandler.plan.parentActionHints = ["OLD_ACTION"];
+		const reportError = vi.fn();
+		const result = await runResponseHandlerEvaluators({
+			runtime: runtimeWith(
+				[
+					{
+						name: "denied",
+						priority: 10,
+						deterministicActions: ["APP"],
+						shouldRun: () => true,
+						evaluate: () => ({
+							requiresTool: true,
+							setContexts: ["general"],
+							clearReply: true,
+							clearCandidateActions: true,
+							addCandidateActions: ["VIEWS"],
+							clearParentActionHints: true,
+							deterministicToolCall: { name: "VIEWS" },
+						}),
+					},
+					{
+						name: "later",
+						priority: 20,
+						shouldRun: () => true,
+						evaluate: () => ({ addCandidateActions: ["SAFE"] }),
+					},
+				],
+				reportError,
+			),
+			message,
+			state,
+			messageHandler,
+			availableContexts: [{ id: "general" }],
+		});
+
+		expect(messageHandler).toEqual({
+			processMessage: "RESPOND",
+			thought: "route",
+			plan: {
+				contexts: ["simple"],
+				reply: "ok",
+				candidateActions: ["old_action", "SAFE"],
+				parentActionHints: ["OLD_ACTION"],
+			},
+		});
+		expect(result.activeEvaluators).toEqual(["denied", "later"]);
+		expect(result.appliedPatches).toHaveLength(1);
+		expect(result.appliedPatches[0]?.evaluatorName).toBe("later");
+		expect(result.candidateActionsAddedByEvaluators).toEqual(["SAFE"]);
+		expect(result.candidateActionsClearedByEvaluators).toBe(false);
+		expect(result.errors).toEqual([
+			{
+				evaluatorName: "denied",
+				error:
+					'Response-handler evaluator "denied" is not allowed to select deterministic action "VIEWS"',
+			},
+		]);
+		expect(reportError).toHaveBeenCalledOnce();
 	});
 
 	it("orders patchers and isolates failures", async () => {
