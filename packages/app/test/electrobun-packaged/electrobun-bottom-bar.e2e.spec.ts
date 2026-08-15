@@ -69,6 +69,19 @@ test("desktop popup shell exposes the accessible pill, hotkey toggle, and tray l
       expect(bounds.y).toBeGreaterThan(bounds.height);
     }
 
+    // The native shell and tray exist before the renderer/preload RPC is ready.
+    // Shortcut registration is the first renderer-owned shell signal, so wait
+    // for it before issuing DOM eval requests that would otherwise be lost.
+    const interactiveState = await harness.waitForState(
+      (next) =>
+        next.shell.shortcuts.some((shortcut) => shortcut.id === "chat-overlay"),
+      "Expected the popup hotkey to register after the renderer mounted.",
+      30_000,
+    );
+    expect(interactiveState.shell.shortcuts).toEqual(
+      expect.arrayContaining([expect.objectContaining({ id: "chat-overlay" })]),
+    );
+
     await expect
       .poll(
         () =>
@@ -263,20 +276,58 @@ test("desktop popup shell exposes the accessible pill, hotkey toggle, and tray l
         height: 600,
       });
 
-    const expandedGeometry = await harness.eval<{
-      panelBottom: number;
-      pillTop: number;
-    }>(`(() => {
-      const panel = document.querySelector('[data-testid="shell-assistant-overlay"]');
-      const pill = document.querySelector('[data-testid="shell-home-pill"]');
-      if (!(panel instanceof HTMLElement) || !(pill instanceof HTMLElement)) {
-        throw new Error('expanded chat geometry unavailable');
-      }
-      return {
-        panelBottom: Math.round(panel.getBoundingClientRect().bottom),
-        pillTop: Math.round(pill.getBoundingClientRect().top),
-      };
-    })()`);
+    const readExpandedGeometry = () =>
+      harness.eval<{
+        panelLeft: number;
+        panelRight: number;
+        panelTop: number;
+        panelBottom: number;
+        pillTop: number;
+        viewportHeight: number;
+        viewportWidth: number;
+      }>(`(() => {
+        const panel = document.querySelector('[data-testid="shell-assistant-overlay"]');
+        const pill = document.querySelector('[data-testid="shell-home-pill"]');
+        if (!(panel instanceof HTMLElement) || !(pill instanceof HTMLElement)) {
+          throw new Error('expanded chat geometry unavailable');
+        }
+        return {
+          panelLeft: Math.round(panel.getBoundingClientRect().left),
+          panelRight: Math.round(panel.getBoundingClientRect().right),
+          panelTop: Math.round(panel.getBoundingClientRect().top),
+          panelBottom: Math.round(panel.getBoundingClientRect().bottom),
+          pillTop: Math.round(pill.getBoundingClientRect().top),
+          viewportHeight: Math.round(window.innerHeight),
+          viewportWidth: Math.round(window.innerWidth),
+        };
+      })()`);
+    await expect
+      .poll(async () => {
+        const geometry = await readExpandedGeometry();
+        const expectedTop =
+          geometry.viewportHeight -
+          56 -
+          Math.min(600, geometry.viewportHeight - 80);
+        return geometry.panelTop - expectedTop;
+      })
+      .toBe(0);
+    const expandedGeometry = await readExpandedGeometry();
+    expect(expandedGeometry.panelTop).toBeGreaterThanOrEqual(16);
+    expect(expandedGeometry.panelTop).toBe(
+      expandedGeometry.viewportHeight -
+        56 -
+        Math.min(600, expandedGeometry.viewportHeight - 80),
+    );
+    expect(expandedGeometry.panelLeft).toBeGreaterThanOrEqual(0);
+    expect(expandedGeometry.panelRight).toBeLessThanOrEqual(
+      expandedGeometry.viewportWidth,
+    );
+    expect(
+      Math.abs(
+        (expandedGeometry.panelLeft + expandedGeometry.panelRight) / 2 -
+          expandedGeometry.viewportWidth / 2,
+      ),
+    ).toBeLessThanOrEqual(1);
     expect(expandedGeometry.panelBottom).toBeLessThan(expandedGeometry.pillTop);
     expect(
       expandedGeometry.pillTop - expandedGeometry.panelBottom,
@@ -305,15 +356,6 @@ test("desktop popup shell exposes the accessible pill, hotkey toggle, and tray l
       request: "function",
     });
 
-    const interactiveState = await harness.waitForState(
-      (next) =>
-        next.shell.shortcuts.some((shortcut) => shortcut.id === "chat-overlay"),
-      "Expected the popup hotkey to register after the renderer mounted.",
-      30_000,
-    );
-    expect(interactiveState.shell.shortcuts).toEqual(
-      expect.arrayContaining([expect.objectContaining({ id: "chat-overlay" })]),
-    );
     await harness.showMainWindow();
     await harness.focusMainWindow();
     if (macSessionLocked) {
