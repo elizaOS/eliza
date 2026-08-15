@@ -29,6 +29,12 @@ import {
 	computeCallCostUsd,
 	PRICE_TABLE_ID,
 } from "../features/trajectories/pricing";
+import {
+	composeToolDiagnosticRedactor,
+	projectToolDiagnosticArgs,
+	projectToolDiagnosticValue,
+	type ToolDiagnosticTextRedactor,
+} from "../security/tool-diagnostics";
 import type { EvaluationResult } from "../types/components";
 import type { ChatMessage, ToolChoice } from "../types/model";
 import { readEnv } from "../utils/read-env";
@@ -40,6 +46,10 @@ import {
 } from "./trace-correlation";
 import { resolveTrajectoryGate } from "./trajectory-gate";
 import type { TrajectoryProviderAttribution } from "./trajectory-provider-attribution";
+import {
+	canonicalPromptForModelCall,
+	omitUnvalidatedProviderSpans,
+} from "./trajectory-provider-attribution";
 
 // ---------------------------------------------------------------------------
 // Schema (mirrors PLAN.md §18.1)
@@ -1177,6 +1187,97 @@ export function annotateStageCost(
 	}
 }
 
+/**
+ * Final-persistence projection of tool-call diagnostics for one recorded
+ * stage. Every recordStage caller (planner, sub-planner, evaluator, message
+ * handler, and any future generic caller) is protected here rather than at
+ * its own call site: tool arguments, tool result/error, captured tool I/O,
+ * and model-stage tool-call arguments are projected through the composed
+ * redaction before the stage reaches disk. Mutates the (already cloned) stage
+ * in place. Model prompt/message text is projected as well; when message bytes
+ * change, provider-attribution offsets are dropped through the canonical
+ * fallback so they never index text different from the persisted messages.
+ */
+export function projectRecordedStageToolDiagnostics(
+	stage: RecordedStage,
+	redactText: ToolDiagnosticTextRedactor,
+): void {
+	if (stage.tool) {
+		stage.tool.args =
+			projectToolDiagnosticArgs(stage.tool.args, redactText) ?? {};
+		stage.tool.result = projectToolDiagnosticValue(
+			stage.tool.result,
+			redactText,
+		);
+		if (typeof stage.tool.error === "string") {
+			stage.tool.error = redactText(stage.tool.error);
+		}
+		if (stage.tool.input !== undefined) {
+			stage.tool.input = redactText(stage.tool.input);
+		}
+		if (stage.tool.output !== undefined) {
+			stage.tool.output = redactText(stage.tool.output);
+		}
+		if (stage.tool.errorText !== undefined) {
+			stage.tool.errorText = redactText(stage.tool.errorText);
+		}
+	}
+	if (stage.model) {
+		const attributionInputBefore = canonicalPromptForModelCall({
+			messages: stage.model.messages,
+			prompt: stage.model.prompt,
+		});
+		if (stage.model.toolCalls?.length) {
+			stage.model.toolCalls = stage.model.toolCalls.map((toolCall) => ({
+				...toolCall,
+				...(toolCall.args !== undefined
+					? { args: projectToolDiagnosticArgs(toolCall.args, redactText) }
+					: {}),
+			}));
+		}
+		// Prompt/messages/response carry rendered tool-call arguments and tool
+		// output (assistant tool-call turns, tool-result turns, evaluator
+		// trajectory renderings), so the persisted copies are projected too.
+		// When the messages text changes, provider-attribution span offsets are
+		// no longer provable against the persisted prompt — drop the offsets via
+		// the canonical fallback and keep contribution identity.
+		if (typeof stage.model.prompt === "string") {
+			const projectedPrompt = redactText(stage.model.prompt);
+			if (projectedPrompt !== stage.model.prompt) {
+				stage.model.prompt = projectedPrompt;
+			}
+		}
+		stage.model.response = redactText(stage.model.response);
+		if (Array.isArray(stage.model.messages)) {
+			const projectedMessages = projectToolDiagnosticValue(
+				stage.model.messages,
+				redactText,
+			) as RecordedModelCall["messages"];
+			if (projectedMessages !== stage.model.messages) {
+				stage.model.messages = projectedMessages;
+			}
+		}
+		const attributionInputAfter = canonicalPromptForModelCall({
+			messages: stage.model.messages,
+			prompt: stage.model.prompt,
+		});
+		if (
+			attributionInputAfter !== attributionInputBefore &&
+			stage.model.providerAttributions?.length
+		) {
+			stage.model.providerAttributions = omitUnvalidatedProviderSpans(
+				stage.model.providerAttributions,
+			);
+		}
+	}
+	if (stage.evaluation) {
+		stage.evaluation = projectToolDiagnosticValue(
+			stage.evaluation,
+			redactText,
+		) as RecordedEvaluationStage;
+	}
+}
+
 // ---------------------------------------------------------------------------
 // JsonFileTrajectoryRecorder
 // ---------------------------------------------------------------------------
@@ -1190,6 +1291,15 @@ export interface CreateJsonFileRecorderOptions {
 		error: unknown,
 		context?: Record<string, unknown>,
 	) => void;
+	/**
+	 * Runtime-known-secret redaction (e.g. `runtime.redactSecrets`) composed
+	 * into the recorder's final-persistence diagnostic projection (see
+	 * {@link projectRecordedStageToolDiagnostics}). The shared tool-shape
+	 * pattern pass always runs regardless — the option only ADDS
+	 * character-configured secret masking, so a recorder constructed without a
+	 * runtime still never persists raw credential-shaped argument values.
+	 */
+	redactSecrets?: (text: string) => string;
 }
 
 interface MutableTrajectory extends RecordedTrajectory {}
@@ -1201,6 +1311,7 @@ class JsonFileTrajectoryRecorder implements TrajectoryRecorder {
 	private readonly reportError?: CreateJsonFileRecorderOptions["reportError"];
 	private readonly enabled: boolean;
 	private readonly markdownEnabled: boolean;
+	private readonly redactText: ToolDiagnosticTextRedactor;
 	private readonly active = new Map<string, MutableTrajectory>();
 	private readonly flushQueues = new Map<string, Promise<void>>();
 
@@ -1209,6 +1320,9 @@ class JsonFileTrajectoryRecorder implements TrajectoryRecorder {
 		this.markdownDir = resolveTrajectoryMarkdownDir(this.rootDir);
 		this.logger = opts.logger;
 		this.reportError = opts.reportError;
+		this.redactText = composeToolDiagnosticRedactor({
+			redactSecrets: opts.redactSecrets,
+		});
 		this.enabled =
 			opts.enabled !== undefined
 				? opts.enabled
@@ -1296,6 +1410,7 @@ class JsonFileTrajectoryRecorder implements TrajectoryRecorder {
 		}
 
 		const recordedStage = cloneForRecord(stage);
+		projectRecordedStageToolDiagnostics(recordedStage, this.redactText);
 		annotateStageCost(recordedStage, this.logger);
 		trajectory.stages.push(recordedStage);
 		applyMetricsForStage(trajectory.metrics, recordedStage);
