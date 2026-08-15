@@ -381,9 +381,21 @@ async function installMutableFirstRun(page: Page): Promise<FirstRunControl> {
 
 async function injectFullCapabilityHost(page: Page): Promise<void> {
   await page.addInitScript(() => {
-    (window as unknown as Record<string, unknown>).__ELIZA_APP_API_BASE__ =
-      window.location.origin;
-    (window as unknown as Record<string, number>).__electrobunWindowId = 1;
+    const win = window as unknown as Record<string, unknown>;
+    win.__ELIZA_APP_API_BASE__ = window.location.origin;
+    win.__electrobunWindowId = 1;
+    // The journey advertises desktop capability so local onboarding remains
+    // selectable. Mirror the minimum native host contract as well: production
+    // now validates the bridge before registering shortcuts and tray handlers.
+    win.__ELIZA_ELECTROBUN_RPC__ = {
+      request: {
+        desktopGetVersion: async () => ({ runtime: "walkthrough-test" }),
+        desktopRegisterShortcut: async () => ({ success: true }),
+        desktopSetTrayMenu: async () => undefined,
+      },
+      onMessage: () => undefined,
+      offMessage: () => undefined,
+    };
   });
 }
 
