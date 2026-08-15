@@ -54,13 +54,15 @@ jobs:
   x-agent-rollout:
     name: Eliza X exact image canary
     if: github.event_name == 'workflow_dispatch' && inputs.x_agent_rollout
-    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
+    runs-on: macos-15
     timeout-minutes: 20
     permissions:
       contents: read
     env:
       ELIZACLOUD_API_KEY: ${{ secrets.ELIZAOS_CLOUD_API_KEY != '' && secrets.ELIZAOS_CLOUD_API_KEY || secrets.ELIZACLOUD_API_KEY }}
       ELIZA_X_DIAG_AGENT_TOKEN: ${{ secrets.ELIZA_X_DIAG_AGENT_TOKEN }}
+      ELIZA_PROVISIONING_SSH_KEY: ${{ secrets.ELIZA_PROVISIONING_SSH_KEY }}
+      ELIZA_PROVISIONING_SSH_KNOWN_HOSTS: ${{ secrets.ELIZA_PROVISIONING_SSH_KNOWN_HOSTS }}
       AGENT_IMAGE_CANARY_MODE: upgrade
       AGENT_IMAGE_CANARY_REQUEST_ID: 98a0ee52-bd1b-4b9e-a044-ff2b243565f1
       AGENT_IMAGE_CANARY_EXPECTED_DEPLOY_COMMIT: 24d8f5fe92206c1e136382c649f2f7070e6a0c63
@@ -76,26 +78,33 @@ jobs:
           bun-version: "1.3.14"
       - name: Require protected diagnostic credential
         shell: bash
-        run: test -n "${ELIZA_X_DIAG_AGENT_TOKEN//[[:space:]]/}"
+        run: |
+          test -n "${ELIZACLOUD_API_KEY//[[:space:]]/}"
+          test -n "${ELIZA_PROVISIONING_SSH_KEY//[[:space:]]/}"
+          test -n "${ELIZA_PROVISIONING_SSH_KNOWN_HOSTS//[[:space:]]/}"
       - name: Inspect live X runtime
         shell: bash
         run: |
           set -euo pipefail
           work="$(mktemp -d)"
           trap 'rm -rf "$work"' EXIT
-          base="http://100.64.17.121:2138"
-          for endpoint in health status plugins connectors logs; do
-            code="$(curl --silent --show-error --max-time 30 \
-              --header "Authorization: Bearer $ELIZA_X_DIAG_AGENT_TOKEN" \
-              --output "$work/$endpoint.json" \
-              --write-out '%{http_code}' \
-              "$base/api/$endpoint")"
-            printf '%s http=%s\n' "$endpoint" "$code"
-          done
-          jq '{status, ready, runtime, database}' "$work/health.json"
-          jq '[.. | objects | select((.name? // .id? // "") | test("(^x$|plugin-x|twitter)"; "i"))] | .[:20]' "$work/plugins.json"
-          jq '{connectors: [.connectors[]? | select((.name? // .id? // "") | test("(^x$|twitter)"; "i"))]}' "$work/connectors.json"
-          jq -r '[.. | objects | select(((.message? // .msg? // "") | test("twitter|plugin-x|x broker|direct-message"; "i"))) | (.message? // .msg? // empty)] | .[-200:][]' "$work/logs.json" \
+          printf '%s\n' "$ELIZA_PROVISIONING_SSH_KEY" > "$work/key"
+          printf '%s\n' "$ELIZA_PROVISIONING_SSH_KNOWN_HOSTS" > "$work/known_hosts"
+          chmod 600 "$work/key" "$work/known_hosts"
+          curl --silent --show-error --fail --max-time 30 \
+            --header "Authorization: Bearer $ELIZACLOUD_API_KEY" \
+            --output "$work/node.json" \
+            https://api.eliza.app/api/v1/admin/docker-nodes/eliza-core-prod-5
+          host="$(jq -er '.data.hostname' "$work/node.json")"
+          user="$(jq -er '.data.sshUser' "$work/node.json")"
+          port="$(jq -er '.data.sshPort' "$work/node.json")"
+          ssh -i "$work/key" -p "$port" \
+            -o BatchMode=yes -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile="$work/known_hosts" \
+            "$user@$host" \
+            'docker logs --since 45m agent-4602b3be-2c01-4e7e-9cdc-849604e1bef7 2>&1' \
+            > "$work/logs.txt"
+          grep -Ei 'twitter|plugin-x|x broker|direct-message|elizacloud|model provider' "$work/logs.txt" \
             | sed -E 's/((bearer|token|secret|api[_ -]?key)[=: ]+)[^ ,}]+/\1[redacted]/Ig'
 
   changes:
