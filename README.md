@@ -7,7 +7,7 @@
     <a href="https://cloud.eliza.app">Eliza Cloud</a> ·
     <a href="https://os.eliza.app">elizaOS downloads</a> ·
     <a href="https://docs.elizaos.ai/">Documentation</a> ·
-    <a href="https://eliza.app">App catalog</a>
+    <a href="packages/registry">App catalog</a>
   </p>
 </div>
 
