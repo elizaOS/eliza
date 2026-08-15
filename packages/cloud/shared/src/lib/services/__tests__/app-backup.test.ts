@@ -211,7 +211,7 @@ describe("App config backup/restore", () => {
     ]);
   });
 
-  test("export rejects a non-finite monetization value", async () => {
+  test("export rejects a non-finite value from either monetization field", async () => {
     if (!pgliteReady) return;
     const { orgId, userId } = await seed();
     const { app: source } = await appsService.create({
@@ -225,11 +225,42 @@ describe("App config backup/restore", () => {
       .update(apps)
       .set({ inference_markup_percentage: Number.NaN })
       .where(eq(apps.id, source.id));
-    const corrupt = await appsService.getById(source.id);
-
+    let corrupt = await appsService.getById(source.id);
     await expect(appBackupService.exportApp(corrupt!)).rejects.toThrow(
       /inference_markup_percentage/,
     );
+
+    await dbWrite
+      .update(apps)
+      .set({ inference_markup_percentage: 0, purchase_share_percentage: Number.NaN })
+      .where(eq(apps.id, source.id));
+    corrupt = await appsService.getById(source.id);
+    await expect(appBackupService.exportApp(corrupt!)).rejects.toThrow(
+      /purchase_share_percentage/,
+    );
+  });
+
+  test("export preserves the distinct monetization range boundaries", async () => {
+    if (!pgliteReady) return;
+    const { orgId, userId } = await seed();
+    const { app: source } = await appsService.create({
+      name: "Boundary Monetization App",
+      organization_id: orgId,
+      created_by_user_id: userId,
+      app_url: "https://boundary.example.com",
+    });
+
+    await dbWrite
+      .update(apps)
+      .set({ inference_markup_percentage: 1000, purchase_share_percentage: 100 })
+      .where(eq(apps.id, source.id));
+    const boundary = await appsService.getById(source.id);
+    const backup = await appBackupService.exportApp(boundary!);
+
+    expect(backup.monetization).toMatchObject({
+      inference_markup_percentage: 1000,
+      purchase_share_percentage: 100,
+    });
   });
 
   test("restore rejects an unsupported backup version", async () => {
