@@ -89,6 +89,19 @@ describe("coding-tools WEB_SEARCH", () => {
     vi.unstubAllGlobals();
   });
 
+  it("is reachable from web turns without widening its admin role gate", () => {
+    expect(webSearchAction.contexts).toEqual([
+      "code",
+      "terminal",
+      "automation",
+      "web",
+    ]);
+    expect(webSearchAction.contextGate).toEqual({
+      anyOf: ["code", "terminal", "automation", "web"],
+    });
+    expect(webSearchAction.roleGate).toEqual({ minRole: "ADMIN" });
+  });
+
   it("keeps discovery in search while routing constructable live values to fetch", () => {
     expect(webSearchAction.routingHint).toContain("open-ended external info");
     expect(webSearchAction.routingHint).toContain("live NOW-value");

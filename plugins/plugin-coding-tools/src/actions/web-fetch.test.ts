@@ -77,6 +77,19 @@ describe("coding-tools WEB_FETCH", () => {
     __resetWebHttpTestOverrides();
   });
 
+  it("is reachable from web turns without widening its admin role gate", () => {
+    expect(webFetchAction.contexts).toEqual([
+      "code",
+      "terminal",
+      "automation",
+      "web",
+    ]);
+    expect(webFetchAction.contextGate).toEqual({
+      anyOf: ["code", "terminal", "automation", "web"],
+    });
+    expect(webFetchAction.roleGate).toEqual({ minRole: "ADMIN" });
+  });
+
   it("advertises exact live endpoints as the fresh-data path", () => {
     expect(webFetchAction.routingHint).toContain("live NOW-values");
     expect(webFetchAction.routingHint).toContain("api.coingecko.com");
