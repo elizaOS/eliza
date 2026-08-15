@@ -1569,6 +1569,9 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 			evaluate: () => ({
 				requiresTool: true,
 				clearReply: true,
+				// Evaluator routing patches may help the planner, but cannot grant the
+				// context required by their own deterministic action nomination.
+				addContexts: ["settings" as const],
 				deterministicToolCall: { name: "SETTINGS_ONLY" },
 			}),
 		} satisfies import("../runtime/response-handler-evaluators").ResponseHandlerEvaluator;
@@ -1594,6 +1597,9 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 		expect(getCalls(runtime).map((call) => call.modelType)).toEqual([
 			ModelType.RESPONSE_HANDLER,
 		]);
+		// The evaluator did add the target context to the downstream planner route;
+		// deterministic execution still used the pre-evaluator Stage-1 snapshot.
+		expect(result.messageHandler.plan.contexts).toContain("settings");
 		expect(result.kind).toBe("planned_reply");
 		if (result.kind === "planned_reply") {
 			expect(result.result.actionResults).toMatchObject([{ success: false }]);

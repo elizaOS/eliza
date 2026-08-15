@@ -8028,6 +8028,15 @@ export async function runV5MessageRuntimeStage1(args: {
 			messageHandler.plan.replyEffectStatus;
 		const prePatchStageOneReplyIsUngroundedAppliedClaim =
 			prePatchStageOneReplyEffectStatus === "applied";
+		// A response-handler evaluator may refine routing for the planner, but it
+		// must not authorize its own deterministic tool call by adding the target
+		// action's context to the plan. Preserve the role-filtered Stage-1 contexts
+		// from before any evaluator patch and use this immutable set at the
+		// deterministic execution boundary.
+		const preEvaluatorSelectedContexts = filterSelectedContextsForRole(
+			messageHandler.plan.contexts,
+			availableContexts,
+		);
 		const responseHandlerEvaluation = fieldRunResult?.preempt
 			? {
 					activeEvaluators: [],
@@ -8665,7 +8674,7 @@ export async function runV5MessageRuntimeStage1(args: {
 							executorCtx: buildV5ExecutorContext({
 								message: args.message,
 								state: plannerState,
-								selectedContexts,
+								selectedContexts: preEvaluatorSelectedContexts,
 								senderRole,
 								previousResults: [],
 								...(deterministicCallback
