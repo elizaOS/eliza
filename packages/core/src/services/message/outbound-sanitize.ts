@@ -83,8 +83,17 @@ const CODE_SENTINEL_PREFIX = "\x00CB";
  * documentation examples of the syntax survive. Idempotent — sanitizing
  * already-sanitized text is a no-op.
  */
+/** Model-invented `[LINK:<url>](label)` / `[LINK:<url>]` pseudo-markers. No
+ * surface defines or renders a LINK marker — the model conflates the
+ * dashboard marker family with markdown links (observed live: api news
+ * replies carrying `[LINK:https://…](label)` verbatim). Degrade to a real
+ * markdown link / bare URL so the link survives instead of leaking wire
+ * syntax. */
+const PSEUDO_LINK_LABELED_RE = /\[LINK:(https?:\/\/[^\]\s]+)\]\(([^)]*)\)/gi;
+const PSEUDO_LINK_BARE_RE = /\[LINK:(https?:\/\/[^\]\s]+)\]/gi;
+
 export function sanitizeOutboundText(text: string): string {
-	if (!text || !QUICK_TAG_RE.test(text)) {
+	if (!text || (!QUICK_TAG_RE.test(text) && !text.includes("[LINK:"))) {
 		return text;
 	}
 
@@ -99,6 +108,13 @@ export function sanitizeOutboundText(text: string): string {
 	processed = processed.replace(INLINE_CODE_RE, saveSpan);
 
 	processed = processed.replace(SELF_CLOSING_ARTIFACTS_RE, "");
+
+	processed = processed.replace(
+		PSEUDO_LINK_LABELED_RE,
+		(_match, url: string, label: string) =>
+			label.trim().length > 0 ? `[${label.trim()}](${url})` : url,
+	);
+	processed = processed.replace(PSEUDO_LINK_BARE_RE, "$1");
 
 	for (const tag of MACHINE_SYNTAX_TAGS) {
 		const paired = new RegExp(`<${tag}\\b[^>]*>([\\s\\S]*?)<\\/${tag}>`, "gi");
