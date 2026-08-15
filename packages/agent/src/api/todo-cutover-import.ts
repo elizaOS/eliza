@@ -8,8 +8,8 @@
 import {
   type AgentRuntime,
   ElizaError,
-  stringToUuid,
   type UUID,
+  validateUuid,
 } from "@elizaos/core";
 import type { TodoInsert, TodoRow } from "@elizaos/plugin-todos/db/schema";
 import {
@@ -105,17 +105,6 @@ function readProvenance(metadata: unknown): TodoImportProvenance | null {
     sourceWorldId: raw.sourceWorldId,
     cutoverToken: raw.cutoverToken,
   };
-}
-
-function targetTodoId(
-  targetAgentId: UUID,
-  targetEntityId: UUID,
-  sourceAgentId: string,
-  sourceTodoId: string,
-): UUID {
-  return stringToUuid(
-    `shared-todo-cutover:${targetAgentId}:${targetEntityId}:${sourceAgentId}:${sourceTodoId}`,
-  );
 }
 
 function provenanceFor(
@@ -254,18 +243,16 @@ export async function importSharedTodoCutover(input: {
   }
   const { todosTable } = await import("@elizaos/plugin-todos/db/schema");
   const targetIds = new Map(
-    input.snapshot.todos.map((todo) => [
-      todo.sourceId,
-      targetTodoId(
-        input.runtime.agentId,
-        input.entityId,
-        input.snapshot.sourceAgentId,
-        todo.sourceId,
-      ),
-    ]),
-  );
-  const sourceIdByTargetId = new Map(
-    Array.from(targetIds, ([sourceId, targetId]) => [targetId, sourceId]),
+    input.snapshot.todos.map((todo) => {
+      const sourceId = validateUuid(todo.sourceId);
+      if (!sourceId) {
+        throw new ElizaError("Shared Todo source id is not a UUID", {
+          code: "TODO_CUTOVER_SOURCE_ID_INVALID",
+          context: { sourceTodoId: todo.sourceId },
+        });
+      }
+      return [todo.sourceId, sourceId] as const;
+    }),
   );
   const desiredRows = input.snapshot.todos.map((todo): DesiredTodoRow => {
     const id = targetIds.get(todo.sourceId);
@@ -321,8 +308,17 @@ export async function importSharedTodoCutover(input: {
           eq(todosTable.entityId, input.entityId),
         ),
       );
-    const existingById = new Map(existingRows.map((row) => [row.id, row]));
     const desiredIds = new Set(desiredRows.map((row) => row.id));
+    const desiredExistingRows =
+      desiredIds.size === 0
+        ? []
+        : await tx
+            .select()
+            .from(todosTable)
+            .where(inArray(todosTable.id, Array.from(desiredIds)));
+    const existingById = new Map(
+      desiredExistingRows.map((row) => [row.id, row]),
+    );
     const staleIds: UUID[] = [];
     for (const row of existingRows) {
       const provenance = readProvenance(row.metadata);
@@ -347,9 +343,11 @@ export async function importSharedTodoCutover(input: {
       }
       const provenance = readProvenance(existing.metadata);
       if (
+        existing.agentId !== input.runtime.agentId ||
+        existing.entityId !== input.entityId ||
         !provenance ||
         provenance.sourceAgentId !== input.snapshot.sourceAgentId ||
-        provenance.sourceTodoId !== sourceIdByTargetId.get(desired.id)
+        provenance.sourceTodoId !== desired.id
       ) {
         throw new ElizaError(
           "Dedicated native Todo collides with a deterministic import id",
@@ -373,6 +371,10 @@ export async function importSharedTodoCutover(input: {
         .values(rowsToWrite)
         .onConflictDoUpdate({
           target: todosTable.id,
+          setWhere: and(
+            eq(todosTable.agentId, input.runtime.agentId),
+            eq(todosTable.entityId, input.entityId),
+          ),
           set: {
             agentId: sql`excluded.agent_id`,
             entityId: sql`excluded.entity_id`,

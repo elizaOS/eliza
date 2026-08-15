@@ -1,7 +1,7 @@
 /**
- * Real-PGlite proof for the Dedicated Todo cutover transaction: deterministic
- * identities, parent remapping, repair, stale cleanup, and native-row
- * preservation all run against the plugin's actual schema.
+ * Real-PGlite proof for the Dedicated Todo cutover transaction: stable source
+ * identities, parent preservation, repair, stale cleanup, and native-row
+ * protection all run against the plugin's actual schema.
  */
 
 import { stringToUuid, type UUID } from "@elizaos/core";
@@ -21,7 +21,11 @@ const ROOM_ID = "22222222-2222-4222-8222-222222222222" as UUID;
 const SOURCE_AGENT_ID = "personal:shared-source";
 const CUTOVER_TOKEN = "personal-cutover:shared-source:dedicated-target";
 
-function sourceTodo(sourceId: string, parentSourceId: string | null = null) {
+function sourceId(label: string): UUID {
+  return stringToUuid(`shared-todo-source:${label}`);
+}
+
+function sourceTodo(sourceId: UUID, parentSourceId: UUID | null = null) {
   return {
     sourceId,
     roomId: "33333333-3333-4333-8333-333333333333",
@@ -64,7 +68,10 @@ describe("Dedicated Shared Todo cutover import", () => {
     });
     const firstSnapshot = await createSharedTodoCutoverSnapshot({
       sourceAgentId: SOURCE_AGENT_ID,
-      todos: [sourceTodo("child", "parent"), sourceTodo("parent")],
+      todos: [
+        sourceTodo(sourceId("child"), sourceId("parent")),
+        sourceTodo(sourceId("parent")),
+      ],
     });
     const first = await importSharedTodoCutover({
       runtime,
@@ -88,12 +95,8 @@ describe("Dedicated Shared Todo cutover import", () => {
       entityId: ENTITY_ID,
     });
     expect(imported).toHaveLength(3);
-    const parentId = stringToUuid(
-      `shared-todo-cutover:${runtime.agentId}:${ENTITY_ID}:${SOURCE_AGENT_ID}:parent`,
-    );
-    const childId = stringToUuid(
-      `shared-todo-cutover:${runtime.agentId}:${ENTITY_ID}:${SOURCE_AGENT_ID}:child`,
-    );
+    const parentId = sourceId("parent");
+    const childId = sourceId("child");
     expect(imported.find((todo) => todo.id === childId)?.parentTodoId).toBe(
       parentId,
     );
@@ -119,7 +122,7 @@ describe("Dedicated Shared Todo cutover import", () => {
     const tamperedSnapshot = {
       ...firstSnapshot,
       todos: firstSnapshot.todos.map((todo) =>
-        todo.sourceId === "parent"
+        todo.sourceId === parentId
           ? { ...todo, content: "tampered after digest" }
           : todo,
       ),
@@ -141,7 +144,7 @@ describe("Dedicated Shared Todo cutover import", () => {
         )
       )?.content,
       "digest mismatch must roll back the attempted repair",
-    ).toBe("Todo parent");
+    ).toBe(`Todo ${parentId}`);
 
     await service.update(
       { agentId: runtime.agentId, entityId: ENTITY_ID },
@@ -159,7 +162,7 @@ describe("Dedicated Shared Todo cutover import", () => {
 
     const finalSnapshot = await createSharedTodoCutoverSnapshot({
       sourceAgentId: SOURCE_AGENT_ID,
-      todos: [sourceTodo("parent")],
+      todos: [sourceTodo(parentId)],
     });
     const exactSync = await importSharedTodoCutover({
       runtime,
@@ -179,26 +182,18 @@ describe("Dedicated Shared Todo cutover import", () => {
     });
     expect(finalRows.map((todo) => todo.content).sort()).toEqual([
       "Native Dedicated Todo",
-      "Todo parent",
+      `Todo ${parentId}`,
     ]);
 
-    const secondTenant = await importSharedTodoCutover({
-      runtime,
-      entityId: SECOND_ENTITY_ID,
-      targetRoomId: ROOM_ID,
-      cutoverToken: CUTOVER_TOKEN,
-      snapshot: finalSnapshot,
-    });
-    expect(secondTenant).toMatchObject({
-      importedTodos: 1,
-      targetTodoDigest: finalSnapshot.digest,
-    });
-    const secondTenantRows = await service.list({
-      agentId: runtime.agentId,
-      entityId: SECOND_ENTITY_ID,
-    });
-    expect(secondTenantRows).toHaveLength(1);
-    expect(secondTenantRows[0]?.id).not.toBe(parentId);
+    await expect(
+      importSharedTodoCutover({
+        runtime,
+        entityId: SECOND_ENTITY_ID,
+        targetRoomId: ROOM_ID,
+        cutoverToken: CUTOVER_TOKEN,
+        snapshot: finalSnapshot,
+      }),
+    ).rejects.toMatchObject({ code: "TODO_CUTOVER_NATIVE_ID_COLLISION" });
 
     await service.update(
       { agentId: runtime.agentId, entityId: ENTITY_ID },
@@ -233,7 +228,7 @@ describe("Dedicated Shared Todo cutover import", () => {
         agentId: runtime.agentId,
         entityId: SECOND_ENTITY_ID,
       }),
-      "emptying one target tenant must not delete another tenant's import",
-    ).toHaveLength(1);
+      "a source Todo identity cannot be copied into another target tenant",
+    ).toHaveLength(0);
   });
 });
