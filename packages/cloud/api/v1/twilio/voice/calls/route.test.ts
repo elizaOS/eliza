@@ -32,21 +32,13 @@ const dbWrite = {
   delete: mock(() => ({ where: deleteWhere })),
 };
 
-const dbRead = {
-  select: mock(() => ({
-    from: () => ({
-      where: () => ({ limit: async () => [] }),
-    }),
-  })),
-};
-
 mock.module("@/lib/auth/workers-hono-auth", () => ({
   requireUserOrApiKeyWithOrg: requireUser,
 }));
 mock.module("@/db/repositories/users", () => ({
   usersRepository: { findById: findUser },
 }));
-mock.module("@/db/helpers", () => ({ dbRead, dbWrite }));
+mock.module("@/db/helpers", () => ({ dbWrite }));
 mock.module("@/lib/middleware/rate-limit-hono-cloudflare", () => ({
   RateLimitPresets: { CRITICAL: { windowMs: 300_000, maxRequests: 5 } },
   rateLimit: () => async (_c: unknown, next: () => Promise<void>) => next(),
@@ -97,6 +89,7 @@ describe("POST Twilio outbound voice call", () => {
     queueCall.mockClear();
     returning.mockClear();
     returning.mockImplementation(async () => [{ key: "claimed" }]);
+    deleteWhere.mockClear();
   });
 
   test("queues the verified number through the signed realtime callback", async () => {
@@ -142,6 +135,39 @@ describe("POST Twilio outbound voice call", () => {
     await expect(response.json()).resolves.toMatchObject({
       code: "phone_verification_required",
     });
+    expect(queueCall).not.toHaveBeenCalled();
+  });
+
+  test("reclaims an expired idempotency key and queues the current call", async () => {
+    returning
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{ key: "reclaimed" }]);
+
+    const response = await callRequest(
+      { to: "+14155550100" },
+      "00000000-0000-4000-8000-000000000001",
+    );
+
+    expect(response.status).toBe(200);
+    expect(deleteWhere).toHaveBeenCalledTimes(1);
+    expect(returning).toHaveBeenCalledTimes(2);
+    expect(queueCall).toHaveBeenCalledTimes(1);
+  });
+
+  test("keeps a live duplicate claim fail-closed", async () => {
+    returning.mockResolvedValue([]);
+
+    const response = await callRequest(
+      { to: "+14155550100" },
+      "00000000-0000-4000-8000-000000000002",
+    );
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      code: "duplicate_call",
+    });
+    expect(deleteWhere).toHaveBeenCalledTimes(1);
+    expect(returning).toHaveBeenCalledTimes(2);
     expect(queueCall).not.toHaveBeenCalled();
   });
 });

@@ -57,6 +57,10 @@ describe("PstnCallButton", () => {
     });
     await user.click(trigger);
     await screen.findByDisplayValue("+14155550100");
+    expect(
+      (screen.getByLabelText("Phone number") as HTMLInputElement).readOnly,
+    ).toBe(true);
+    expect(document.body.textContent).not.toMatch(/808|788-1821/);
     await user.click(screen.getByRole("button", { name: "Call me" }));
 
     await waitFor(() => expect(mocks.api).toHaveBeenCalledTimes(2));
@@ -82,6 +86,36 @@ describe("PstnCallButton", () => {
       await screen.findByRole("button", { name: "Have Eliza call me" }),
     );
     await screen.findByText(/add and verify this phone number/i);
+    expect(
+      (screen.getByRole("button", { name: "Call me" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
+  });
+
+  it("clears a previously loaded number when a profile refresh fails", async () => {
+    mocks.api
+      .mockResolvedValueOnce({
+        phone_number: "+14155550100",
+        phone_verified: true,
+      })
+      .mockRejectedValueOnce(new Error("Profile unavailable"));
+    const user = userEvent.setup();
+    render(<PstnCallButton />);
+
+    const trigger = await screen.findByRole("button", {
+      name: "Have Eliza call me",
+    });
+    await user.click(trigger);
+    await screen.findByDisplayValue("+14155550100");
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+    await user.click(trigger);
+
+    await waitFor(() =>
+      expect(mocks.error).toHaveBeenCalledWith("Profile unavailable"),
+    );
+    expect(
+      (screen.getByLabelText("Phone number") as HTMLInputElement).value,
+    ).toBe("");
     expect(
       (screen.getByRole("button", { name: "Call me" }) as HTMLButtonElement)
         .disabled,
