@@ -469,7 +469,13 @@ describe("MODEL_SWITCH handler", () => {
 			callback,
 		);
 		expect(switchModel).not.toHaveBeenCalled();
-		expect(result?.success).toBe(false);
+		expect(result).toMatchObject({
+			success: false,
+			userFacingText: expect.stringMatching(/sanctioned on-device model/),
+			verifiedUserFacing: true,
+			turnComplete: true,
+		});
+		expect(callback).toHaveBeenCalledTimes(1);
 		expect(texts[0]).toMatch(/sanctioned on-device model/);
 	});
 
@@ -483,7 +489,13 @@ describe("MODEL_SWITCH handler", () => {
 			{ target: "cloud" },
 			callback,
 		);
-		expect(result?.success).toBe(false);
+		expect(result).toMatchObject({
+			success: false,
+			userFacingText: expect.stringMatching(/no provider/),
+			verifiedUserFacing: true,
+			turnComplete: true,
+		});
+		expect(callback).toHaveBeenCalledTimes(1);
 		expect(texts[0]).toMatch(/no provider/);
 	});
 
@@ -497,7 +509,13 @@ describe("MODEL_SWITCH handler", () => {
 			{ target: "local" },
 			callback,
 		);
-		expect(result?.success).toBe(false);
+		expect(result).toMatchObject({
+			success: false,
+			userFacingText: expect.stringMatching(/ECONNREFUSED/),
+			verifiedUserFacing: true,
+			turnComplete: true,
+		});
+		expect(callback).toHaveBeenCalledTimes(1);
 		expect(texts[0]).toMatch(/ECONNREFUSED/);
 	});
 });

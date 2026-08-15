@@ -6482,6 +6482,13 @@ interface ExecuteV5PlannedToolCallParams {
 	recorder?: TrajectoryRecorder;
 	trajectoryId?: string;
 	plannerLoopConfig?: PlannerLoopParams["config"];
+	/**
+	 * Normal planner selection may activate the selected action's routing
+	 * contexts after that action was surfaced through the context-filtered tool
+	 * set. Deterministic evaluator calls have no such planner-surface proof and
+	 * must retain the turn's original contexts for the canonical gate.
+	 */
+	activateActionContexts?: boolean;
 }
 
 interface BuildV5ExecutorContextParams {
@@ -6557,15 +6564,26 @@ async function executeV5PlannedToolCall(
 	const action = executionActions.find(
 		(candidate) => candidate.name === toolCall.name,
 	);
-	const executorCtx = action
-		? {
-				...args.executorCtx,
-				activeContexts: mergeAgentContexts(
-					args.executorCtx.activeContexts,
-					action.contexts,
-				),
-			}
-		: args.executorCtx;
+	const executorCtx =
+		action && args.activateActionContexts !== false
+			? {
+					...args.executorCtx,
+					activeContexts: mergeAgentContexts(
+						args.executorCtx.activeContexts,
+						action.contexts,
+					),
+				}
+			: args.executorCtx;
+	if (
+		action &&
+		actionHasSubActions(action) &&
+		args.activateActionContexts === false
+	) {
+		const gateFailure = actionGateFailure(action, executorCtx);
+		if (gateFailure) {
+			return { success: false, error: gateFailure, text: gateFailure };
+		}
+	}
 
 	const hasDispatcherActionParameter =
 		plannerToolCallHasActionParameter(toolCall);
@@ -8664,6 +8682,7 @@ export async function runV5MessageRuntimeStage1(args: {
 							recorder,
 							trajectoryId,
 							plannerLoopConfig: args.plannerLoopConfig,
+							activateActionContexts: false,
 						}),
 					);
 				} catch (error) {

@@ -1550,6 +1550,110 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 		}
 	});
 
+	it("fails a deterministic call outside the action context without invoking it", async () => {
+		let calls = 0;
+		const settingsAction = makeMockAction({
+			name: "SETTINGS_ONLY",
+			contexts: ["settings"],
+			contextGate: { anyOf: ["settings"] },
+			handler: async () => {
+				calls++;
+				return { success: true, text: "should not run" };
+			},
+		});
+		const evaluator = {
+			name: "test.out_of_context_deterministic_call",
+			priority: 10,
+			deterministicActions: ["SETTINGS_ONLY"],
+			shouldRun: () => true,
+			evaluate: () => ({
+				requiresTool: true,
+				clearReply: true,
+				deterministicToolCall: { name: "SETTINGS_ONLY" },
+			}),
+		} satisfies import("../runtime/response-handler-evaluators").ResponseHandlerEvaluator;
+		const runtime = makeRuntime({
+			actions: [settingsAction],
+			responseHandlerEvaluators: [evaluator],
+			responses: [
+				{
+					expectModelType: ModelType.RESPONSE_HANDLER,
+					body: stage1Response({ contexts: ["general"] }),
+				},
+			],
+		});
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage("change a setting"),
+			state: makeState(),
+			responseId: RESPONSE_ID,
+		});
+
+		expect(calls).toBe(0);
+		expect(getCalls(runtime).map((call) => call.modelType)).toEqual([
+			ModelType.RESPONSE_HANDLER,
+		]);
+		expect(result.kind).toBe("planned_reply");
+		if (result.kind === "planned_reply") {
+			expect(result.result.actionResults).toMatchObject([{ success: false }]);
+			expect(result.result.responseContent?.text).toBe(
+				NO_REPORTABLE_TOOL_OUTCOME_MESSAGE,
+			);
+		}
+	});
+
+	it("returns a verified deterministic failure without requiring a callback", async () => {
+		const refusal = "I couldn't switch the model: no provider.";
+		const action = makeMockAction({
+			name: "MODEL_SWITCH",
+			handler: async () => ({
+				success: false,
+				text: refusal,
+				userFacingText: refusal,
+				verifiedUserFacing: true,
+				turnComplete: true,
+			}),
+		});
+		const evaluator = {
+			name: "test.failed_model_switch",
+			priority: 10,
+			deterministicActions: ["MODEL_SWITCH"],
+			shouldRun: () => true,
+			evaluate: () => ({
+				requiresTool: true,
+				clearReply: true,
+				deterministicToolCall: { name: "MODEL_SWITCH" },
+			}),
+		} satisfies import("../runtime/response-handler-evaluators").ResponseHandlerEvaluator;
+		const runtime = makeRuntime({
+			actions: [action],
+			responseHandlerEvaluators: [evaluator],
+			responses: [
+				{
+					expectModelType: ModelType.RESPONSE_HANDLER,
+					body: stage1Response({ contexts: ["general"] }),
+				},
+			],
+		});
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage("switch models"),
+			state: makeState(),
+			responseId: RESPONSE_ID,
+		});
+
+		expect(getCalls(runtime).map((call) => call.modelType)).toEqual([
+			ModelType.RESPONSE_HANDLER,
+		]);
+		expect(result.kind).toBe("planned_reply");
+		if (result.kind === "planned_reply") {
+			expect(result.result.responseContent?.text).toBe(refusal);
+			expect(result.result.actionResults).toMatchObject([{ success: false }]);
+		}
+	});
+
 	it("keeps thrown deterministic action diagnostics and control envelopes out of user prose", async () => {
 		const internalDiagnostic =
 			'{"actions":["DELETE_ALL"],"thought":"operator stack trace"}';

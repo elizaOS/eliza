@@ -425,6 +425,9 @@ export function createModelSwitchAction(
 					return {
 						success: false,
 						text: refusal,
+						userFacingText: refusal,
+						verifiedUserFacing: true,
+						turnComplete: true,
 						values: { target: request.target, model: request.model },
 					};
 				}
@@ -441,6 +444,9 @@ export function createModelSwitchAction(
 						return {
 							success: false,
 							text: reply,
+							userFacingText: reply,
+							verifiedUserFacing: true,
+							turnComplete: true,
 							values: { target: request.target, model: request.model },
 						};
 					}
@@ -480,6 +486,9 @@ export function createModelSwitchAction(
 					return {
 						success: false,
 						text: reply,
+						userFacingText: reply,
+						verifiedUserFacing: true,
+						turnComplete: true,
 						values: { target: request.target, model: request.model },
 					};
 				}
