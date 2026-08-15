@@ -1918,6 +1918,107 @@ describe("runLifeOperationHandler one-off reminder scheduling", () => {
   });
 });
 
+describe("runLifeOperationHandler explicitly undated owner todos", () => {
+  beforeEach(() => {
+    serviceState.createCalls.length = 0;
+    serviceState.extraDefinitions.length = 0;
+  });
+
+  function undatedTodoRuntime(): IAgentRuntime {
+    return makeRuntime((prompt) => {
+      if (prompt.includes("create_definition request")) {
+        return taskPlanJson({
+          title: "Buy milk",
+          cadenceKind: "unscheduled",
+        });
+      }
+      return "";
+    });
+  }
+
+  it("previews and confirms an OWNER_TODOS task without inventing a date", async () => {
+    const runtime = undatedTodoRuntime();
+    const preview = await runLifeOperationHandler(
+      runtime,
+      makeMessage("add buy milk as a plain todo with no due date"),
+      undefined,
+      {
+        parameters: {
+          action: "create",
+          kind: "definition",
+          ownerSurface: "OWNER_TODOS",
+          intent: "add buy milk as a plain todo with no due date",
+        },
+      } as HandlerOptions,
+    );
+
+    expect(preview.success).toBe(false);
+    expect(serviceState.createCalls).toHaveLength(0);
+    expect(preview.data).toMatchObject({
+      actionName: "OWNER_TODOS",
+      deferred: true,
+      saved: false,
+      requiresConfirmation: true,
+      preview: {
+        cadence: { kind: "unscheduled" },
+        kind: "task",
+        title: "Buy milk",
+      },
+    });
+
+    const confirm = await runLifeOperationHandler(
+      runtime,
+      makeMessage("yes, save that todo"),
+      undefined,
+      {
+        parameters: {
+          action: "create",
+          kind: "definition",
+          ownerSurface: "OWNER_TODOS",
+          intent: "save the buy milk todo",
+        },
+      } as HandlerOptions,
+    );
+
+    expect(confirm.success).toBe(true);
+    expect(confirm.verifiedUserFacing).toBe(true);
+    expect(serviceState.createCalls).toHaveLength(1);
+    expect(serviceState.createCalls[0]).toMatchObject({
+      cadence: { kind: "unscheduled" },
+      kind: "task",
+      source: "chat",
+      title: "Buy milk",
+    });
+  });
+
+  it.each(["OWNER_REMINDERS", "OWNER_ALARMS", "OWNER_ROUTINES"])(
+    "keeps %s fail-closed when extraction returns unscheduled",
+    async (ownerSurface) => {
+      const result = await runLifeOperationHandler(
+        undatedTodoRuntime(),
+        makeMessage("save this with no date"),
+        undefined,
+        {
+          parameters: {
+            action: "create",
+            kind: "definition",
+            ownerSurface,
+            intent: "save this with no date",
+          },
+        } as HandlerOptions,
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.data).toMatchObject({
+        actionName: ownerSurface,
+        missingField: "schedule",
+        awaitingUserInput: true,
+      });
+      expect(serviceState.createCalls).toHaveLength(0);
+    },
+  );
+});
+
 describe("runLifeOperationHandler consent gate (#16941)", () => {
   const CHILD_ASK =
     "before school i always forget stuff. can you remind me every morning to brush teeth, pack my lunch, and put my math folder in my bag? just say it normal, not like a baby.";

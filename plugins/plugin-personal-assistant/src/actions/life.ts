@@ -4376,6 +4376,13 @@ async function runLifeOperationHandlerInner(
             surfaceMetadata,
           );
 
+      if (
+        cadence?.kind === "unscheduled" &&
+        ownerSurfaceActionName !== "OWNER_TODOS"
+      ) {
+        cadence = undefined;
+      }
+
       if (!title) {
         const fallback = "What should I call it?";
         const text = await renderLifeActionReply({
@@ -4447,15 +4454,18 @@ async function runLifeOperationHandlerInner(
         };
       }
       const kind =
-        (editingDeferredDefinitionDraft
-          ? (detailString(details, "kind") as
+        cadence.kind === "unscheduled" &&
+        ownerSurfaceActionName === "OWNER_TODOS"
+          ? "task"
+          : ((editingDeferredDefinitionDraft
+              ? (detailString(details, "kind") as
+                  | CreateLifeOpsDefinitionRequest["kind"]
+                  | undefined)
+              : deferredDefinitionDraft?.request.kind) ??
+            (detailString(details, "kind") as
               | CreateLifeOpsDefinitionRequest["kind"]
-              | undefined)
-          : deferredDefinitionDraft?.request.kind) ??
-        (detailString(details, "kind") as
-          | CreateLifeOpsDefinitionRequest["kind"]
-          | undefined) ??
-        "habit";
+              | undefined) ??
+            "habit");
       const leadShaped = applyLeadUpReminderShape({
         cadence,
         plan:

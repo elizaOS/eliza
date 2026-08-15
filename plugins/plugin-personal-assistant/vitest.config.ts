@@ -269,6 +269,18 @@ export default defineConfig({
         ),
       },
       {
+        // plugin-scheduling is source-aliased below and imports this subpath;
+        // Vite does not resolve linked-package subpath exports consistently.
+        find: /^@elizaos\/core\/edge$/,
+        replacement: path.join(
+          elizaRoot,
+          "packages",
+          "core",
+          "src",
+          "index.edge.ts",
+        ),
+      },
+      {
         find: /^@elizaos\/vault$/,
         replacement: path.join(
           elizaRoot,
