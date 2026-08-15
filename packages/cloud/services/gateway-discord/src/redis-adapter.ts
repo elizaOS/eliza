@@ -37,6 +37,13 @@ interface IoRedisLike {
   srem(key: string, ...members: string[]): Promise<number>;
   smembers(key: string): Promise<string[]>;
   lpush(key: string, ...values: string[]): Promise<number>;
+  lmove(
+    source: string,
+    destination: string,
+    whereFrom: "LEFT" | "RIGHT",
+    whereTo: "LEFT" | "RIGHT",
+  ): Promise<string | null>;
+  lrem(key: string, count: number, value: string): Promise<number>;
   ltrim(key: string, start: number, stop: number): Promise<string>;
   quit(): Promise<string>;
 }
@@ -131,6 +138,24 @@ export class UpstashCompatRedis {
   async lpush(key: string, ...values: string[]): Promise<number> {
     if (values.length === 0) return 0;
     return this.client.lpush(key, ...values);
+  }
+
+  async lmove(
+    source: string,
+    destination: string,
+    whereFrom: "left" | "right",
+    whereTo: "left" | "right",
+  ): Promise<string | null> {
+    return this.client.lmove(
+      source,
+      destination,
+      whereFrom.toUpperCase() as "LEFT" | "RIGHT",
+      whereTo.toUpperCase() as "LEFT" | "RIGHT",
+    );
+  }
+
+  async lrem(key: string, count: number, value: string): Promise<number> {
+    return this.client.lrem(key, count, value);
   }
 
   async ltrim(key: string, start: number, stop: number): Promise<string> {

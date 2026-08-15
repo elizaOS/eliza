@@ -48,6 +48,13 @@ describe("UpstashCompatRedis (mock client)", () => {
     await redis.srem("active_pods", "pod-a");
     expect(await redis.smembers("active_pods")).toEqual(["pod-b"]);
 
+    // Atomic list claim + acknowledgement used by install welcome delivery.
+    await redis.lpush("pending", "first", "second");
+    expect(await redis.lmove("pending", "processing", "right", "left")).toBe(
+      "first",
+    );
+    expect(await redis.lrem("processing", 1, "first")).toBe(1);
+
     await redis.quit();
   });
 });
