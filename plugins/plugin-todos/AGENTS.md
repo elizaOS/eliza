@@ -1,99 +1,159 @@
 # @elizaos/plugin-todos
 
-User-scoped persistent todos with CRUD for Eliza agents.
+Durable, tenant-scoped Todos for Node and edge-hosted Eliza agents.
 
 ## Purpose / role
 
-Adds a structured todo list capability to any Eliza agent: a single `TODO` umbrella action (op-based dispatch), a `CURRENT_TODOS` provider that injects active todos into the planner context each turn, a `TodosService` backed by a drizzle `pgSchema('todos')` table, and a `TodosView` UI component registered as a dashboard view. The plugin is opt-in — add it to the agent's plugin list. It hard-depends on `@elizaos/plugin-sql` (declared as a peer dep and in `dependencies: ["@elizaos/plugin-sql"]`); the service will throw at runtime if `runtime.db` is absent.
+The package exposes one Todo domain with two host adapters. The default plugin
+uses `@elizaos/plugin-sql` in a Node runtime and includes the dashboard view.
+`@elizaos/plugin-todos/edge` is UI-free and accepts a host-owned `TodoStore`, so
+Cloudflare Workers can load the genuine action/provider graph without importing
+Node or React code. Both adapters use the canonical `createTodosSqlStore`
+implementation and the same Postgres schema.
+
+Mutating actions are durably idempotent. The Todo row change and its
+`todo_mutations` ledger record commit in one transaction, allowing transport
+retries and Shared-to-Dedicated cutover to replay the original result instead
+of applying the effect twice.
 
 ## Plugin surface
 
 **Action**
-- `TODO` (`src/actions/todo.ts`) — single umbrella action with op-based dispatch. Accepted ops: `write`, `create`, `update`, `complete`, `cancel`, `delete`, `list`, `clear`. Contexts: `tasks`, `todos`, `automation`. Role gate: `ADMIN`. Validates that `TodosService` is available before handling.
+- `TODO` (`src/actions/todo.ts`) — umbrella action for `write`, `create`,
+  `update`, `complete`, `cancel`, `delete`, `list`, and `clear`. Every mutating
+  operation derives a stable key from `content.chatIdempotency.clientMessageId`
+  (falling back to the Memory id) plus its Todo-mutation ordinal. Applied
+  mutations return a durable effect receipt; exact replays return the same
+  domain result with a replayed no-op receipt.
 
 **Provider**
-- `CURRENT_TODOS` (`src/providers/current-todos.ts`) — injected at position `-5` on every turn in the `tasks`/`todos`/`automation` contexts. Lists the user's `pending` and `in_progress` todos as a markdown checklist. Returns empty text when there are no active todos.
+- `CURRENT_TODOS` (`src/providers/current-todos.ts`) — injects active Todos into
+  `tasks` / `todos` / `automation` planner contexts. Storage failure throws; it
+  is never reported as a healthy empty list.
 
-**Service**
-- `TodosService` (`src/service.ts`) — `serviceType = "todos"`. Wraps drizzle queries for `create`, `get`, `list`, `update`, `delete`, `writeList` (bulk-replace), and `clear`. Scoped by `(agentId, entityId)`; `roomId`/`worldId` are optional narrowing keys.
+**Storage contract**
+- `TodoStore` (`src/store.ts`) — storage-neutral, fully tenant-qualified port.
+  Every read/write carries `(agentId, entityId)` scope. `applyMutation` is the
+  planner-facing exactly-once boundary; direct CRUD methods support trusted
+  internal import/repair code.
+- `createTodosSqlStore` (`src/sql-store.ts`) — canonical Drizzle/Postgres
+  implementation shared by Node and Worker hosts. Scope advisory locks protect
+  hierarchy, bulk replacement, ledger replay, import, and identity convergence.
+- `TodosService` (`src/service.ts`) — Node `AgentRuntime` lifecycle adapter. It
+  obtains the Drizzle connection from `runtime.db` and delegates to the
+  canonical SQL store.
+
+**Host adapters**
+- `todosPlugin` (default export) — Node plugin plus the dashboard view. Requires
+  `@elizaos/plugin-sql`; `TODO` defaults to `ADMIN`, `CURRENT_TODOS` to `USER`.
+- `todosRuntimePlugin` (`./plugin`) — UI-free Node plugin for runtimes that do
+  not load dashboard bundles.
+- `createTodosEdgePlugin` (`./edge`) — Worker-safe action/provider plugin with
+  an injected `TodoStore`. Its server-owned Shared-agent boundary admits
+  `GUEST` principals; the host remains responsible for authenticating and
+  deriving storage scope.
 
 **Views**
-- `TodosView` (`src/components/todos/TodosView.tsx`) — three-lane todo board (Today / Upcoming / Someday). Registered as a dashboard view with id `"todos"`, path `/todos`, bundled to `dist/views/bundle.js`. Enabled in desktop tab and visible in manager.
+- `TodosView` (`src/components/todos/TodosView.tsx`) — three-lane dashboard view
+  registered only by the default Node entry.
 
 **Schema**
-- `todosSchema` / `todosTable` (`src/db/schema.ts`) — `pgSchema("todos")` with table `todos`. Indexes on `(entityId, status)`, `(agentId, entityId)`, `roomId`. Exported from `src/index.ts` as `schema` (the drizzle schema object the runtime registers migrations from).
+- `todos.todos` — current Todo rows, including hierarchy and room/world
+  projections.
+- `todos.todo_mutations` — immutable mutation outcomes keyed uniquely by
+  `(agentId, entityId, idempotencyKey)` for replay and cutover continuity.
 
 ## Layout
 
 ```
 src/
-  index.ts                  Plugin export; wires action + provider + service + schema + view
-  types.ts                  TODO_STATUSES, TODO_ACTIONS, Todo interface, constants
-  service.ts                TodosService class + CreateTodoInput/UpdateTodoInput/TodoFilter
-  actions/
-    todo.ts                 todoAction — op dispatch, parameter parsing, scope resolution
-    todo.test.ts            Unit tests
-  providers/
-    current-todos.ts        currentTodosProvider — per-turn context injection
-  components/
-    todos/
-      TodosView.tsx         Three-lane board UI component (Today / Upcoming / Someday)
-      todos-view-bundle.ts  Vite entry point for bundling TodosView
-      TodosView.test.tsx    Component tests
-  db/
-    schema.ts               drizzle pgSchema + todosTable + TodoRow/TodoInsert types
-    index.ts                re-exports schema.ts
+  index.ts                  Default Node plugin + dashboard view and public exports
+  plugin.ts                 UI-free Node plugin
+  edge.ts                   Worker-safe factory and edge public exports
+  store.ts                  Storage-neutral TodoStore and mutation contracts
+  sql-store.ts              Canonical tenant-safe Drizzle/Postgres implementation
+  service.ts                Node AgentRuntime adapter over the SQL store
+  types.ts                  Todo domain types and constants
+  actions/todo.ts           TODO action and durable receipt handling
+  providers/current-todos.ts CURRENT_TODOS planner provider
+  components/todos/         Dashboard view and bundle entry
+  db/schema.ts              todos + todo_mutations Drizzle schema
+test/
+  todos.real-db.test.ts     Real-PGlite CRUD, ledger, replay, and cutover proof
+  todo-scope-convergence.real-db.test.ts
+  edge-package-export.test.ts
 ```
 
 ## Commands
 
 ```bash
-bun run --cwd plugins/plugin-todos build        # bun build → dist/ (ESM) + tsc --emitDeclarationOnly
-bun run --cwd plugins/plugin-todos dev          # hot-rebuild via build.ts
-bun run --cwd plugins/plugin-todos test         # vitest run
-bun run --cwd plugins/plugin-todos typecheck    # tsc --noEmit
-bun run --cwd plugins/plugin-todos check        # typecheck + test
-bun run --cwd plugins/plugin-todos clean        # rm -rf dist .turbo
+bun run --cwd plugins/plugin-todos build
+bun run --cwd plugins/plugin-todos test
+bun run --cwd plugins/plugin-todos typecheck
+bun run --cwd plugins/plugin-todos lint:check
+bun run --cwd plugins/plugin-todos check
+bun run --cwd plugins/plugin-todos clean
 ```
 
 ## Config / env vars
 
 | Variable | Where used | Required |
 |---|---|---|
-| `ELIZA_PARENT_TRAJECTORY_STEP_ID` | `src/actions/todo.ts` — attached as `parentTrajectoryStepId` on new todos when set | No |
+| `ELIZA_PARENT_TRAJECTORY_STEP_ID` | Added to newly created Todos for trajectory provenance | No |
 
-No plugin-specific settings keys. No API keys or external service credentials needed.
+The package has no API keys or provider credentials. Edge hosts inject storage;
+the Cloud Shared host currently supplies a Hyperdrive-backed Drizzle client.
 
 ## How to extend
 
-**Add a new op to the TODO action:**
-1. Add the op name to `TODO_ACTIONS` in `src/types.ts`.
-2. Write an `async function actionMyOp(args: ActionHandlerArgs): Promise<ActionResult>` in `src/actions/todo.ts`.
-3. Add the case to the `switch (action)` block in `todoAction.handler`.
-4. Extend the `parameters` array in `todoAction` if the op needs new parameters.
+**Add a mutating operation:**
+1. Extend the discriminated contracts in `src/types.ts` and `src/store.ts`.
+2. Implement it once inside the canonical transaction in `src/sql-store.ts`.
+3. Route the action through `TodoStore.applyMutation`; do not call direct CRUD
+   from the planner path.
+4. Persist and serialize the exact replay result, then cover fresh, replay,
+   conflicting-key, concurrency, tenant-isolation, and cutover behavior in real
+   PGlite.
 
-**Add a new provider:**
-1. Create `src/providers/<name>.ts` implementing the `Provider` interface from `@elizaos/core`.
-2. Import and add it to the `providers` array in `src/index.ts`.
-
-**Add a new service method:**
-1. Add the method to `TodosService` in `src/service.ts`. Use `this.getDb()` to obtain the drizzle DB handle.
-2. Export the new input/output types from `src/service.ts` and re-export from `src/index.ts` if callers need them.
+**Add another host:**
+1. Create the host's Drizzle connection and apply the canonical schema through
+   its normal migration system.
+2. Construct `createTodosSqlStore(db)` and inject it into
+   `createTodosEdgePlugin({ store })`, or adapt it to the host lifecycle.
+3. Derive `agentId`, `entityId`, room, world, and transport idempotency from
+   server-authoritative identity; never accept those scopes from model output.
 
 ## Conventions / gotchas
 
-- **`@elizaos/plugin-sql` must be loaded first.** `TodosService.getDb()` throws `runtime.db is not available` if the SQL plugin has not initialized the DB. The plugin declares this in `dependencies: ["@elizaos/plugin-sql"]`.
-- **Scoping is `(agentId, entityId)`.** Todos are per-user (`entityId`), per-agent (`agentId`). They persist across rooms for the same user. `roomId` and `worldId` are stored but are optional narrowing keys, not primary scope.
-- **`write` is a full replacement.** `action=write` calls `service.writeList`, which reconciles the full desired list: rows absent from the payload are deleted. Treat it like `TodoWrite` in Claude Code.
-- **`activeForm`** is the present-continuous display string (e.g. "Adding tests"). Defaults to `content` when not provided.
-- **Role gate is `ADMIN`.** The `TODO` action will not fire for non-admin entities. Check the runtime's role system if todos are unexpectedly unavailable.
-- **No migrations runner in this plugin.** Schema registration (`schema: dbSchema` in the plugin object) tells the elizaOS runtime to handle migrations. Do not add a manual migration runner here.
-- **`getTodosService(runtime)`** — convenience helper in `src/service.ts` that throws a clear error if the service is missing; prefer it over raw `runtime.getService` in new code.
+- **One implementation, two adapters.** Do not duplicate Todo SQL or action
+  behavior in a host package. Node and edge both use `TodoStore` and
+  `createTodosSqlStore`.
+- **Every operation is tenant-scoped.** `agentId` and `entityId` are required in
+  all storage predicates. `roomId` / `worldId` narrow presentation and bulk
+  operations but are not ownership boundaries.
+- **Planner mutations use the ledger.** Calling direct `create` / `update` /
+  `delete` from an action bypasses exactly-once replay and is a correctness bug.
+- **`write` is a full replacement.** It reconciles the desired scoped list,
+  preserves hierarchy invariants, and rejects duplicate persisted ids.
+- **Cutover transfers rows and replay authority together.** Snapshot/import and
+  provisional-identity convergence preserve Todo, parent, mutation, and receipt
+  ids; conflicts fail closed before routing or identity authority changes.
+- **Todos are not reminders.** Time-triggered delivery belongs to the canonical
+  scheduling plugin/runner. Do not tag Todo actions as reminders or promise a
+  future notification from a Todo write.
+- **Migrations stay host-owned.** The default plugin registers its Drizzle
+  schema for Dedicated runtimes. Shared Cloud applies additive control-plane
+  migrations before constructing the injected store; the plugin must not create
+  tables at request time.
+- **Errors remain visible.** Missing storage, invalid persisted records,
+  hierarchy conflicts, and idempotency conflicts throw typed failures rather
+  than fabricating an empty or successful result.
 
 ## Verification
 
-Follow the repository-wide verification and evidence standard in the [root CLAUDE.md](../../CLAUDE.md). Run
-the package's relevant build, typecheck, lint, and test commands, then exercise
-the real integration boundary changed by the work. Inspect the produced domain
-artifacts and failure behavior; do not substitute mocked success for the system
-under test.
+Follow the repository-wide evidence standard in the root `CLAUDE.md`. At a
+minimum run the package build, typecheck, lint, full Vitest suite, real-PGlite
+tests, and packed edge-export test. Host integrations must additionally prove a
+genuine Worker/AgentRuntime action, exact transport replay, tenant isolation,
+and Shared-to-Dedicated or identity-convergence behavior when those boundaries
+change.
