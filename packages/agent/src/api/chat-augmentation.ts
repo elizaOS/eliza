@@ -78,6 +78,135 @@ const CHAT_DOCUMENTS_THRESHOLD = 0.2;
 const CHAT_DOCUMENTS_LIMIT = 4;
 const CHAT_DOCUMENTS_SNIPPET_MAX_CHARS = 700;
 
+// Keyword search max-normalizes BM25 within each result set, so the BEST
+// positive match is always similarity 1.0 even when the lexical overlap is a
+// single ubiquitous word — the similarity threshold above is a relative
+// ranking cut, not an absolute relevance gate. Injecting on that signal let an
+// unrelated navigation FAQ reach 1.0 on a workout query and its "Do not ...
+// invoke tools/actions" envelope suppress the correct mutation path (#17028).
+// This boundary therefore adds an ABSOLUTE gate: at least half of the query's
+// meaningful (non-stopword) terms must literally appear in a fragment before
+// it may be injected. Deliberately local to chat augmentation — the shared
+// normalizer also feeds hybrid search's blend and must stay relative.
+const CHAT_DOCUMENTS_MIN_QUERY_TERM_COVERAGE = 0.5;
+
+const CHAT_DOCUMENT_QUERY_STOPWORDS: ReadonlySet<string> = new Set([
+  "a",
+  "about",
+  "an",
+  "and",
+  "any",
+  "are",
+  "as",
+  "at",
+  "be",
+  "but",
+  "by",
+  "can",
+  "could",
+  "did",
+  "do",
+  "does",
+  "for",
+  "from",
+  "get",
+  "has",
+  "have",
+  "he",
+  "her",
+  "his",
+  "how",
+  "i",
+  "if",
+  "in",
+  "is",
+  "it",
+  "its",
+  "just",
+  "me",
+  "my",
+  "no",
+  "not",
+  "of",
+  "on",
+  "or",
+  "our",
+  "out",
+  "please",
+  "she",
+  "should",
+  "so",
+  "some",
+  "than",
+  "that",
+  "the",
+  "their",
+  "them",
+  "then",
+  "there",
+  "these",
+  "they",
+  "this",
+  "to",
+  "up",
+  "us",
+  "was",
+  "we",
+  "were",
+  "what",
+  "whats",
+  "when",
+  "where",
+  "which",
+  "who",
+  "why",
+  "will",
+  "with",
+  "would",
+  "you",
+  "your",
+]);
+
+/** Lowercase Unicode word tokens with conservative English plural folding. */
+function coverageTokens(text: string): string[] {
+  return (text.toLocaleLowerCase().match(/[\p{L}\p{N}]+/gu) ?? []).map(
+    (token) => {
+      // Preserve stopwords before folding: otherwise "this" became "thi" and
+      // "does" became "doe", manufacturing lexical anchors for stopword-only
+      // queries. Restrict the fold to Latin-looking plurals so non-English
+      // scripts remain exact instead of passing through English morphology.
+      if (CHAT_DOCUMENT_QUERY_STOPWORDS.has(token)) return token;
+      return /^[a-z]+$/u.test(token) &&
+        token.length > 3 &&
+        token.endsWith("s") &&
+        !token.endsWith("ss")
+        ? token.slice(0, -1)
+        : token;
+    },
+  );
+}
+
+function meaningfulQueryTerms(query: string): string[] {
+  return [
+    ...new Set(
+      coverageTokens(query).filter(
+        (token) =>
+          token.length >= 2 && !CHAT_DOCUMENT_QUERY_STOPWORDS.has(token),
+      ),
+    ),
+  ];
+}
+
+function queryTermCoverage(
+  terms: readonly string[],
+  fragmentText: string,
+): number {
+  if (terms.length === 0) return 0;
+  const fragmentTokens = new Set(coverageTokens(fragmentText));
+  const covered = terms.filter((term) => fragmentTokens.has(term)).length;
+  return covered / terms.length;
+}
+
 // Sentinel requester id for an unresolved/unauthenticated chat turn. It is the
 // nil UUID — guaranteed to be neither the agent nor any real owner — so the
 // scope-read filter resolves it to a least-privileged USER and strips every
@@ -256,13 +385,18 @@ export async function maybeAugmentChatMessageWithDocuments(
     return matches;
   };
 
+  // A query whose every token is a stopword has no lexical anchor at all —
+  // any keyword "match" for it is noise, so nothing may be injected.
+  const queryTerms = meaningfulQueryTerms(userPrompt);
   const selectRelevantMatches = (matches: DocumentMatches): DocumentMatches =>
     matches.filter((match) => {
       const text = match.content.text?.trim();
       return (
         typeof text === "string" &&
         text.length > 0 &&
-        (match.similarity ?? 0) >= CHAT_DOCUMENTS_THRESHOLD
+        (match.similarity ?? 0) >= CHAT_DOCUMENTS_THRESHOLD &&
+        queryTermCoverage(queryTerms, text) >=
+          CHAT_DOCUMENTS_MIN_QUERY_TERM_COVERAGE
       );
     });
 

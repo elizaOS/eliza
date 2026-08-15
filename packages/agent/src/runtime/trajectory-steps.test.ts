@@ -494,6 +494,30 @@ describe("trajectory_steps dedicated table", () => {
     });
   });
 
+  it("persists data-first provider records without starving required fields", async () => {
+    const trajectory = createBaseTrajectory(
+      trajectoryId,
+      1_700_000_000_000,
+      runtime.agentId,
+      "test",
+    );
+    trajectory.steps[0]?.providerAccesses.push({
+      data: { payload: "x".repeat(1_100_000) },
+      providerId: "provider-budget",
+      providerName: "KNOWLEDGE",
+      timestamp: 1_700_000_000_000,
+      purpose: "Provider KNOWLEDGE accessed for context",
+    });
+
+    await expect(saveTrajectory(runtime, trajectory)).resolves.toBe(true);
+    const loaded = await loadTrajectoryById(runtime, trajectoryId);
+    expect(loaded?.steps[0]?.providerAccesses[0]).toMatchObject({
+      providerId: "provider-budget",
+      providerName: "KNOWLEDGE",
+      purpose: "Provider KNOWLEDGE accessed for context",
+    });
+  });
+
   it("rejects malformed SQL result containers instead of reporting empty reads or deletes", async () => {
     type MalformedDb = {
       execute: () => Promise<Record<string, never>>;

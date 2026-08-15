@@ -21,6 +21,7 @@ const DOMAIN_REGEX = /^([a-z0-9]([a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,}$/;
 const DEFAULT_API_BASE_URL = "https://api.eliza.app/api/v1";
 const DEFAULT_POLL_INTERVAL_MS = 5_000;
 const DEFAULT_POLL_TIMEOUT_MS = 10 * 60_000;
+const MAX_TIMER_DELAY_MS = 2_147_483_647;
 const APP_ID_KEYS = [
   "appId",
   "cloudAppId",
@@ -220,10 +221,17 @@ function metadataNameCandidates(
 }
 
 function pollIntervalMs(): number {
-  const value = Number(process.env.ELIZAOS_DEPLOY_POLL_INTERVAL_MS);
-  return Number.isFinite(value) && value >= 0
-    ? value
-    : DEFAULT_POLL_INTERVAL_MS;
+  const raw = process.env.ELIZAOS_DEPLOY_POLL_INTERVAL_MS;
+  if (raw === undefined) return DEFAULT_POLL_INTERVAL_MS;
+  const trimmed = raw.trim();
+  if (trimmed === "") return DEFAULT_POLL_INTERVAL_MS;
+  const value = Number(trimmed);
+  if (!Number.isSafeInteger(value) || value < 0 || value > MAX_TIMER_DELAY_MS) {
+    throw new Error(
+      "ELIZAOS_DEPLOY_POLL_INTERVAL_MS must be an integer from 0 through 2147483647 (any Number()-compatible spelling, e.g. decimal, 0x hex, 0b binary, 0o octal).",
+    );
+  }
+  return value;
 }
 
 function pollTimeoutMs(): number {
@@ -335,10 +343,10 @@ async function pollDeploymentStatus(
   apiBaseUrl: string,
   apiKey: string,
   appId: string,
+  intervalMs: number,
 ): Promise<DeployStatusResponse> {
   const startedAt = Date.now();
   const timeoutMs = pollTimeoutMs();
-  const intervalMs = pollIntervalMs();
   while (true) {
     const status = await cloudRequest<DeployStatusResponse>(
       apiBaseUrl,
@@ -349,13 +357,21 @@ async function pollDeploymentStatus(
     if (status.status === "READY" || status.status === "ERROR") {
       return status;
     }
-    if (Date.now() - startedAt >= timeoutMs) {
+    const elapsedMs = Date.now() - startedAt;
+    if (elapsedMs >= timeoutMs) {
       throw new Error(
         `Deploy did not reach READY or ERROR within ${timeoutMs}ms; latest status: ${status.status ?? "unknown"}`,
       );
     }
     console.log(pc.dim(`Deploy status: ${status.status ?? "unknown"}...`));
-    if (intervalMs > 0) await sleep(intervalMs);
+    // Bound the wait by the remaining timeout budget, not just intervalMs: an
+    // operator-configured interval can be far larger than the deploy timeout
+    // (the accepted range runs up to node's ~24.8-day max timer delay), and
+    // the deadline above is only rechecked after a sleep completes. Without
+    // this bound, a large interval could stall well past the documented
+    // ELIZAOS_DEPLOY_TIMEOUT_MS cap instead of failing at it.
+    const boundedIntervalMs = Math.min(intervalMs, timeoutMs - elapsedMs);
+    if (boundedIntervalMs > 0) await sleep(boundedIntervalMs);
   }
 }
 
@@ -392,6 +408,7 @@ export async function runDeploy(options: DeployOptions): Promise<number> {
   }
 
   try {
+    const intervalMs = pollIntervalMs();
     const apiKey = resolveApiKey();
     if (!apiKey) {
       throw new Error(
@@ -418,7 +435,12 @@ export async function runDeploy(options: DeployOptions): Promise<number> {
       await attachDomain(apiBaseUrl, apiKey, appId, options.domain);
     }
 
-    const finalStatus = await pollDeploymentStatus(apiBaseUrl, apiKey, appId);
+    const finalStatus = await pollDeploymentStatus(
+      apiBaseUrl,
+      apiKey,
+      appId,
+      intervalMs,
+    );
     if (finalStatus.status === "ERROR") {
       console.error(
         pc.red(`Deploy failed: ${finalStatus.error ?? "unknown error"}`),

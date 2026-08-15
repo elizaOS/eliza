@@ -28,6 +28,7 @@ const TELEGRAM_DELIVERY_TTL_SECONDS = 30 * 24 * 60 * 60;
 const TELEGRAM_EGRESS_STARTED = "egress_started";
 const TELEGRAM_DELIVERED = "delivered";
 const TELEGRAM_TYPING_REFRESH_MS = 4_000;
+const PERSONAL_SHARED_VOICE_TIMEOUT_MS = 90_000;
 
 class TelegramEgressAlreadyClaimedError extends Error {
   override readonly name = "TelegramEgressAlreadyClaimedError";
@@ -568,6 +569,18 @@ async function sendPersonalSharedReply(
 ): Promise<void> {
   const { cloudBaseUrl, getAuthHeader } = deps;
   const reauth = deps.reacquireAuthHeader ?? reacquireAuthHeader;
+  const voiceNote = event.voiceNote
+    ? await adapter.resolveVoiceNote?.(config, event)
+    : undefined;
+  if (event.voiceNote && !voiceNote) {
+    throw new PersonalSharedPreEgressError(
+      "connector cannot resolve the supplied voice note",
+    );
+  }
+  // Voice turns can spend most of the 120-second processing lease in STT + the
+  // model. Only a stale-auth retry is safe inline; provider/transport failures
+  // reopen the webhook for Telegram's durable retry instead of overlapping it.
+  const maxAttempts = voiceNote ? 2 : PERSONAL_SHARED_ATTEMPTS;
   const postMessage = (authHeader: Record<string, string>) =>
     fetch(`${cloudBaseUrl}/api/internal/eliza-app/personal-shared/messages`, {
       method: "POST",
@@ -579,7 +592,8 @@ async function sendPersonalSharedReply(
               telegramUserId: event.senderId,
               displayName: event.senderName,
               messageId: `telegram:${project}:${event.messageId}`,
-              message: event.text,
+              ...(event.text ? { message: event.text } : {}),
+              ...(voiceNote ? { voiceNote } : {}),
             }
           : {
               platform: adapter.platform,
@@ -588,16 +602,18 @@ async function sendPersonalSharedReply(
               message: event.text,
             },
       ),
-      signal: AbortSignal.timeout(30_000),
+      signal: AbortSignal.timeout(
+        voiceNote ? PERSONAL_SHARED_VOICE_TIMEOUT_MS : 30_000,
+      ),
     });
 
   let authHeader: Record<string, string> = getAuthHeader();
   let response: Response | null = null;
   let lastTransportError: unknown;
-  for (let attempt = 1; attempt <= PERSONAL_SHARED_ATTEMPTS; attempt += 1) {
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     try {
       response = await postMessage(authHeader);
-      if (response.status === 401 && attempt < PERSONAL_SHARED_ATTEMPTS) {
+      if (response.status === 401 && attempt < maxAttempts) {
         authHeader = await reauth();
         continue;
       }
@@ -606,13 +622,14 @@ async function sendPersonalSharedReply(
         response.status === 425 ||
         response.status === 429 ||
         response.status >= 500;
-      if (response.ok || !retryable || attempt === PERSONAL_SHARED_ATTEMPTS) {
+      if (response.ok || !retryable || attempt === maxAttempts) {
         break;
       }
+      if (voiceNote) break;
     } catch (error) {
       response = null;
       lastTransportError = error;
-      if (attempt === PERSONAL_SHARED_ATTEMPTS) break;
+      if (voiceNote || attempt === maxAttempts) break;
     }
     const retryAfterSeconds = Number.parseInt(
       response?.headers.get("Retry-After") ?? "",

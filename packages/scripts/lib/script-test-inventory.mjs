@@ -1,11 +1,15 @@
 /**
- * Complete executable-test inventory for the non-workspace packages/scripts tree.
+ * Complete executable-test inventory for the manifest-less script trees:
+ * packages/scripts, packages/cloud/scripts, and root-level scripts/.
  *
  * Bun receives every discovered file explicitly, so nested tests and supported
  * extension or casing variants cannot fall outside its directory heuristics.
  * The same inventory also binds that runner to root test commands and the
  * required consolidated CI workflow; a test list without an executing lane is
- * invalid.
+ * invalid. Discovery is fail-closed in both directions: a new test file under
+ * any covered tree is included automatically, and the only way out is an
+ * exact-path entry in SCRIPT_TEST_EXCLUSIONS with a durable reason, which the
+ * validator rejects the moment it goes stale.
  */
 
 import { createHash } from "node:crypto";
@@ -38,9 +42,11 @@ export const SCRIPT_TEST_EXTENSIONS = [
 ];
 
 // Cloud ops scripts live with the cloud package (packages/cloud/scripts) but
-// have no workspace manifest either, so this runner owns their tests too.
+// have no workspace manifest either, so this runner owns their tests too —
+// as do repository-wide helper tests under root-level scripts/, which have no
+// manifest and were invisible to every required lane until #19445.
 const SCRIPT_TEST_PATTERN = new RegExp(
-  `^packages/(?:scripts|cloud/scripts)/(?:.+/)?[^/]*[._](?:test|spec)\\.(?:${SCRIPT_TEST_EXTENSIONS.join("|")})$`,
+  `^(?:packages/(?:scripts|cloud/scripts)|scripts)/(?:.+/)?[^/]*[._](?:test|spec)\\.(?:${SCRIPT_TEST_EXTENSIONS.join("|")})$`,
   "i",
 );
 
@@ -49,6 +55,10 @@ export const SCRIPT_TEST_EXCLUSIONS = new Map([
   [
     "packages/scripts/__tests__/release-verdaccio.integration.test.ts",
     "the release-candidate workflow owns this slow real-registry transport test",
+  ],
+  [
+    "scripts/lifeops/connector-paths.test.mjs",
+    "2/24 tests parse docs/testing/hitl-identity-slots.md, deleted from the tree; lifeops-owner repair tracked in #19448",
   ],
 ]);
 
@@ -67,7 +77,7 @@ export function isScriptTestPath(value) {
 }
 
 function listRepositoryFiles(repoRoot) {
-  const pathspecs = ["packages/scripts", "packages/cloud/scripts"];
+  const pathspecs = ["packages/scripts", "packages/cloud/scripts", "scripts"];
   const candidates = execFileSync(
     "git",
     [

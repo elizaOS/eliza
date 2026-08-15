@@ -9,9 +9,10 @@
  * Bun child process and reports, on stdout as a single JSON line, whether the
  * agent port ends up bound.
  *
- * Usage: `bun <this> <mode> <port>` where mode is `skip` or `bind`.
+ * Usage: `bun <this> <mode> <port>` where mode is `skip`, `bind`, or `invalid`.
  *   skip → startApiServer({ skipListen: true })  → expect port NOT bound
  *   bind → startApiServer({})                     → expect port bound
+ *   invalid → malformed connector interval        → expect rejection before bind
  */
 
 import net from "node:net";
@@ -43,9 +44,12 @@ function isPortBound(
 async function main(): Promise<void> {
   const mode = process.argv[2];
   const port = Number(process.argv[3]);
-  if ((mode !== "skip" && mode !== "bind") || !Number.isInteger(port)) {
+  if (
+    (mode !== "skip" && mode !== "bind" && mode !== "invalid") ||
+    !Number.isInteger(port)
+  ) {
     process.stdout.write(
-      `${JSON.stringify({ ok: false, error: "usage: <skip|bind> <port>" })}\n`,
+      `${JSON.stringify({ ok: false, error: "usage: <skip|bind|invalid> <port>" })}\n`,
     );
     process.exit(2);
   }
@@ -53,8 +57,33 @@ async function main(): Promise<void> {
   // Route this process's own listener to the requested port so the bind-mode
   // control lands on a free, deterministic port.
   process.env.ELIZA_API_PORT = String(port);
+  if (mode === "invalid") {
+    process.env.CONNECTOR_HEALTH_INTERVAL_MS = "10000junk";
+  }
 
   const { startApiServer } = await import("../server.ts");
+  if (mode === "invalid") {
+    try {
+      await startApiServer({ port, initialAgentState: "starting" });
+    } catch (err) {
+      const bound = await isPortBound(port);
+      process.stdout.write(
+        `${JSON.stringify({
+          ok: true,
+          mode,
+          port,
+          bound,
+          rejected: true,
+          error: err instanceof Error ? err.message : String(err),
+        })}\n`,
+      );
+      process.exit(0);
+    }
+    process.stdout.write(
+      `${JSON.stringify({ ok: false, error: "invalid interval was accepted" })}\n`,
+    );
+    process.exit(1);
+  }
   const server = await startApiServer({
     port,
     skipListen: mode === "skip",

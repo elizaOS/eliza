@@ -50,7 +50,8 @@ public class GatewayConnectionService extends Service {
     public static final String STATUS_DISCONNECTED = "disconnected";
     public static final String STATUS_RECONNECTING = "reconnecting";
 
-    private String currentStatus = STATUS_DISCONNECTED;
+    private volatile String currentStatus = STATUS_DISCONNECTED;
+    private volatile Thread notificationWorker;
 
     // ── Lifecycle ────────────────────────────────────────────────────────
 
@@ -59,7 +60,7 @@ public class GatewayConnectionService extends Service {
         super.onCreate();
         ensureNotificationChannel();
 
-        Notification notification = buildNotification("Eliza Gateway", "Starting…");
+        Notification notification = buildBootstrapNotification("Eliza Gateway", "Starting…");
 
         // API 34+ requires explicit foreground service type when calling startForeground().
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
@@ -71,6 +72,7 @@ public class GatewayConnectionService extends Service {
         } else {
             startForeground(NOTIFICATION_ID, notification);
         }
+        updateNotificationAsync();
     }
 
     @Override
@@ -165,6 +167,32 @@ public class GatewayConnectionService extends Service {
         }
 
         return builder.build();
+    }
+
+    /** Avoid PendingIntent binder calls on the service-start main-thread path. */
+    private Notification buildBootstrapNotification(String title, String text) {
+        return new NotificationCompat.Builder(this, CHANNEL_ID)
+            .setSmallIcon(R.mipmap.ic_launcher)
+            .setContentTitle(title)
+            .setContentText(text)
+            .setOngoing(true)
+            .setOnlyAlertOnce(true)
+            .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
+            .build();
+    }
+
+    private synchronized void updateNotificationAsync() {
+        if (notificationWorker != null && notificationWorker.isAlive()) {
+            return;
+        }
+        notificationWorker = new Thread(() -> {
+            try {
+                updateNotification();
+            } finally {
+                notificationWorker = null;
+            }
+        }, "ElizaGateway-notification");
+        notificationWorker.start();
     }
 
     private boolean isNotificationStop(Intent intent) {

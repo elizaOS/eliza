@@ -137,6 +137,10 @@ const elizaCoreSubpathAliases: ModuleAlias[] = elizaCoreEntryDir
         subpath: "connectors",
         candidates: ["connectors.ts", "../connectors.js"],
       },
+      {
+        subpath: "client-public",
+        candidates: ["client-public.ts", "client-public.js"],
+      },
     ].flatMap(({ subpath, candidates }) => {
       const replacement = candidates
         .map((candidate) => path.join(elizaCoreEntryDir, candidate))

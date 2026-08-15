@@ -8,6 +8,10 @@
 import { hostname } from "node:os";
 import { serve } from "@hono/node-server";
 import { Hono } from "hono";
+import {
+  createDiscordEventWebhookApp,
+  createDiscordPublicKeyResolver,
+} from "./discord-event-webhook";
 import { GatewayManager } from "./gateway-manager";
 import { logger } from "./logger";
 
@@ -57,6 +61,32 @@ const gatewayManager = new GatewayManager({
   redisToken: process.env.KV_REST_API_TOKEN,
   project,
 });
+
+const elizaAppBotToken = process.env.ELIZA_APP_DISCORD_BOT_TOKEN?.trim();
+const elizaAppBotEnabled = process.env.ELIZA_APP_DISCORD_BOT_ENABLED === "true";
+const elizaAppApplicationId =
+  process.env.ELIZA_APP_DISCORD_APPLICATION_ID?.trim() ?? "1474591626759376967";
+const resolveDiscordPublicKey = elizaAppBotToken
+  ? createDiscordPublicKeyResolver({
+      botToken: elizaAppBotToken,
+      configuredPublicKey: process.env.ELIZA_APP_DISCORD_PUBLIC_KEY,
+    })
+  : null;
+
+app.route(
+  "/",
+  createDiscordEventWebhookApp({
+    enabled: elizaAppBotEnabled && Boolean(resolveDiscordPublicKey),
+    applicationId: elizaAppApplicationId,
+    getPublicKey:
+      resolveDiscordPublicKey ??
+      (async () => {
+        throw new Error("Discord application public key is unavailable");
+      }),
+    enqueue: (job) => gatewayManager.enqueueDiscordInstallWelcome(job),
+    logError: (message, context) => logger.error(message, context),
+  }),
+);
 
 // Liveness check - is the pod alive and should NOT be restarted?
 // Returns 200 for healthy/degraded (don't restart), 503 for unhealthy (restart)

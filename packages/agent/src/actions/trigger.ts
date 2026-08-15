@@ -52,6 +52,8 @@ import {
 } from "../triggers/runtime.ts";
 import {
   buildTriggerMetadata,
+  computeNextCronRunAtMs,
+  DISABLED_TRIGGER_INTERVAL_MS,
   normalizeTriggerIntervalMs,
   parseCronExpression,
   parseScheduledAtIso,
@@ -68,7 +70,14 @@ function isAutonomyRoomService(
   return typeof service === "object" && service !== null;
 }
 
-const TRIGGER_OPS = ["create", "update", "delete", "run", "toggle"] as const;
+const TRIGGER_OPS = [
+  "create",
+  "update",
+  "delete",
+  "run",
+  "toggle",
+  "list",
+] as const;
 type TriggerOp = (typeof TRIGGER_OPS)[number];
 
 const TRIGGER_ACTION = "TRIGGER";
@@ -161,11 +170,18 @@ function failed(
   text: string,
   error?: string,
   data?: Record<string, unknown>,
+  // A sentence safe to show the user verbatim. `text` is model-facing and
+  // routinely carries operator hints ("Pass taskId or a displayName
+  // fragment") that must never reach chat; without this the turn falls back to
+  // the generic "the available runtime step failed" string and the user learns
+  // nothing (live 2026-08-14: "cancel the reminder about the oven").
+  userFacingText?: string,
 ): ActionResult {
   const code = `TRIGGER_${op.toUpperCase()}_FAILED`;
   return {
     success: false,
     text,
+    ...(userFacingText ? { userFacingText } : {}),
     error: error ?? code,
     values: { op, error: error ?? code },
     data: { actionName: TRIGGER_ACTION, op, error: error ?? code, ...data },
@@ -304,6 +320,7 @@ function describeSchedule(
   t: TriggerConfig,
   messageTimeZone: string,
   nowMs = Date.now(),
+  persistedNextRunAtMs?: number,
 ): string {
   if (t.triggerType === "interval") {
     return (
@@ -316,6 +333,24 @@ function describeSchedule(
       ? describeOnceAt(t.scheduledAtIso, nowMs, messageTimeZone)
       : null;
     return friendly ?? "soon";
+  }
+  // A cron trigger capped at one run IS a one-shot: it fires at the next
+  // occurrence and never again. Describing it by its cron shape ("every
+  // morning at 9am") reports a recurrence the trigger cannot have — the live
+  // shape: "remind me tomorrow at 9am" confirmed back as "every morning".
+  if (t.maxRuns === 1 && t.cronExpression) {
+    const nextMs =
+      persistedNextRunAtMs ??
+      computeNextCronRunAtMs(
+        t.cronExpression,
+        nowMs,
+        t.timezone ?? messageTimeZone,
+      );
+    const friendly =
+      nextMs !== null
+        ? describeOnceAt(new Date(nextMs).toISOString(), nowMs, messageTimeZone)
+        : null;
+    if (friendly) return friendly;
   }
   if (!t.timezone || t.timezone !== messageTimeZone) {
     return "on its saved recurring schedule";
@@ -403,10 +438,13 @@ async function resolveTriggerRef(
 
   const names = all.map((c) => `"${c.trigger.displayName}"`).join(", ");
   if (matches.length > 1) {
+    const shown = matches.map((c) => `"${c.trigger.displayName}"`).join(", ");
     return failed(
       op,
-      `Several triggers match: ${matches.map((c) => `"${c.trigger.displayName}"`).join(", ")}. Name one exactly.`,
+      `Several triggers match: ${shown}. Name one exactly.`,
       "TRIGGER_AMBIGUOUS",
+      undefined,
+      `More than one reminder matches that: ${shown}. Which one?`,
     );
   }
   return failed(
@@ -415,6 +453,10 @@ async function resolveTriggerRef(
       ? `No trigger matched. Active triggers: ${names}. Pass taskId or a displayName fragment.`
       : "No triggers exist.",
     "TRIGGER_NOT_FOUND",
+    undefined,
+    all.length
+      ? `I couldn't find a reminder matching that — it may have already gone off. The ones still set are: ${names}.`
+      : "You don't have any reminders set right now.",
   );
 }
 
@@ -741,7 +783,12 @@ async function opCreate(
   // A prompt trigger IS a reminder to the person who asked for it; a workflow
   // trigger is a scheduled job. Either way the schedule reads as a human
   // phrase — the machine forms live in `data` below.
-  const schedule = describeSchedule(triggerConfig, messageTimeZone);
+  const schedule = describeSchedule(
+    triggerConfig,
+    messageTimeZone,
+    Date.now(),
+    metadata.trigger?.nextRunAtMs,
+  );
   const label = displayLabel(displayName);
   return okCommitted(
     "create",
@@ -873,6 +920,8 @@ async function opUpdate(
     `Updated "${displayLabel(next.displayName)}" — ${describeSchedule(
       next,
       messageTimeZone,
+      Date.now(),
+      metadata.trigger?.nextRunAtMs,
     )}.`,
     triggerReceipt("update", String(task.id), { key: null }),
     {
@@ -931,6 +980,60 @@ async function opRun(
   });
 }
 
+async function opList(
+  runtime: IAgentRuntime,
+  message: Memory,
+): Promise<ActionResult> {
+  const tasks = await runtime.getTasks({
+    tags: [...TRIGGER_TASK_TAGS],
+    agentIds: [runtime.agentId],
+  });
+  const messageTimeZone = resolveMessageTimeZone(runtime, message);
+  const lines: string[] = [];
+  // Rows tagged as triggers whose metadata will not parse are dropped here.
+  // Silently dropping them turned "what reminders do I have" into a flat "none
+  // are set" for a user whose reminder rows failed the parse, so the count of
+  // unreadable rows travels with both branches instead of vanishing.
+  let unreadable = 0;
+  for (const task of tasks) {
+    const trigger = readTriggerConfig(task);
+    if (!trigger || !task.id) {
+      unreadable += 1;
+      continue;
+    }
+    // A toggled-off trigger still exists as a task but will not fire. Listing
+    // it unmarked answers "when does my next reminder fire" with something
+    // that never will, so the paused state travels with the line.
+    const paused = trigger.enabled === false ? " (paused)" : "";
+    lines.push(
+      `- "${displayLabel(trigger.displayName)}" — ${describeSchedule(
+        trigger,
+        messageTimeZone,
+        Date.now(),
+        trigger.nextRunAtMs,
+      )}${paused}`,
+    );
+  }
+  if (lines.length === 0) {
+    return ok(
+      "list",
+      unreadable === 0
+        ? "No reminders or scheduled triggers are set."
+        : `No readable reminders or scheduled triggers. ${unreadable} tagged trigger task${unreadable === 1 ? "" : "s"} exist but their trigger config could not be read, so this is not proof that nothing is scheduled.`,
+      { count: 0, unreadable },
+    );
+  }
+  const skippedNote =
+    unreadable === 0
+      ? ""
+      : ` (${unreadable} more tagged trigger task${unreadable === 1 ? "" : "s"} could not be read and are not listed)`;
+  return ok(
+    "list",
+    `${lines.length} scheduled item${lines.length === 1 ? "" : "s"}${skippedNote}:\n${lines.join("\n")}`,
+    { count: lines.length, unreadable },
+  );
+}
+
 async function opToggle(
   runtime: IAgentRuntime,
   params: TriggerParameters,
@@ -942,11 +1045,27 @@ async function opToggle(
   const enabled =
     params.enabled === undefined ? !trigger.enabled : readBool(params.enabled);
   const next: TriggerConfig = { ...trigger, enabled };
-  const metadata = buildTriggerMetadata({
-    trigger: next,
-    nowMs: Date.now(),
-    existingMetadata: task.metadata as TriggerTaskMetadata | undefined,
-  });
+  const nowMs = Date.now();
+  // A disabled trigger has no next fire by definition — `resolveTriggerTiming`
+  // returns null for `enabled === false`, so recomputing timing for the
+  // about-to-be-paused config ALWAYS failed and pausing was structurally
+  // impossible ("Failed to recompute trigger schedule." on every pause; live
+  // capture). Park it on the far-future disabled interval instead, the same
+  // shape event triggers already use, so the row persists as paused and a
+  // later resume recomputes a real schedule.
+  const metadata = enabled
+    ? buildTriggerMetadata({
+        trigger: next,
+        nowMs,
+        existingMetadata: task.metadata as TriggerTaskMetadata | undefined,
+      })
+    : {
+        ...((task.metadata as TriggerTaskMetadata | undefined) ?? {}),
+        blocking: true,
+        updatedAt: nowMs,
+        updateInterval: DISABLED_TRIGGER_INTERVAL_MS,
+        trigger: { ...next, nextRunAtMs: nowMs + DISABLED_TRIGGER_INTERVAL_MS },
+      };
   if (!metadata) {
     return failed(
       "toggle",
@@ -967,13 +1086,28 @@ export const triggerAction: Action = {
   name: TRIGGER_ACTION,
   contexts: ["automation", "tasks", "agent_internal"],
   roleGate: { minRole: "ADMIN" },
-  similes: ["REMIND_ME", "SET_REMINDER", "REMINDER", "SCHEDULE_REMINDER"],
+  // "toggle" is the op name, not the user's word. Without pause/resume
+  // vocabulary the planner found no lexical bridge and told the user the
+  // reminder tool was unavailable while `list` worked in the same session
+  // (live capture: "pause the stretch reminder").
+  similes: [
+    "REMIND_ME",
+    "SET_REMINDER",
+    "REMINDER",
+    "SCHEDULE_REMINDER",
+    "PAUSE_REMINDER",
+    "RESUME_REMINDER",
+    "SNOOZE_REMINDER",
+    "DISABLE_REMINDER",
+    "ENABLE_REMINDER",
+    "STOP_REMINDER",
+  ],
   routingHint:
-    "reminders, alarms, timers, and one-off or recurring scheduled prompts ('remind me in N minutes / at TIME to …', 'every morning …') -> TRIGGER_CREATE; this IS the reminder/scheduler tool whenever it is exposed. For a one-off relative delay pass delaySeconds or delayMinutes only. For a RECURRING request ('every morning/day/week at …') pass cronExpression ALONE — no delaySeconds/delayMinutes/scheduledAtIso, those express a single fire. Do NOT use TASKS_* (those spawn coding sub-agents) and do NOT declare reminders unavailable because OWNER_REMINDERS is absent.",
+    "reminders, alarms, timers, and one-off or recurring scheduled prompts ('remind me in N minutes / at TIME to …', 'every morning …') -> TRIGGER_CREATE; this IS the reminder/scheduler tool whenever it is exposed. For a one-off relative delay pass delaySeconds or delayMinutes only. For a RECURRING request ('every morning/day/week at …') pass cronExpression ALONE — no delaySeconds/delayMinutes/scheduledAtIso, those express a single fire. PAUSE/RESUME: 'pause the X reminder', 'stop reminding me about X', 'turn X back on' -> toggle (enabled:false to pause, enabled:true to resume) — pausing is NOT delete, the trigger is kept and can be resumed. Do NOT use TASKS_* (those spawn coding sub-agents) and do NOT declare reminders unavailable because OWNER_REMINDERS is absent.",
   description:
-    "Recurring/scheduled trigger lifecycle AND user reminders. Action-based dispatch (create / update / delete / run / toggle). Use create for 'remind me in N minutes/at TIME to …' and any scheduled prompt. Supports relative delay (delaySeconds — one-off), a one-off time (scheduledAtIso), interval, and cron (recurring 'every …' schedules).",
+    "Recurring/scheduled trigger lifecycle AND user reminders. Action-based dispatch (create / update / delete / run / toggle / list). Use toggle to PAUSE or RESUME a reminder ('pause the X reminder', 'resume X', 'turn X back on', 'stop reminding me about X') — pausing keeps the trigger and is not a delete. Use create for 'remind me in N minutes/at TIME to …' and any scheduled prompt. Use list for 'what reminders do I have' / 'when does my next reminder fire' — reminders are NOT calendar events and never appear in the calendar feed. Supports relative delay (delaySeconds — one-off), a one-off time (scheduledAtIso), interval, and cron (recurring 'every …' schedules).",
   descriptionCompressed:
-    "reminders + scheduled prompts: create (remind me in N / at TIME; every X -> cron) update delete run toggle (delay|once|interval|cron)",
+    "reminders + scheduled prompts: create (remind me in N / at TIME; every X -> cron) update delete run toggle (pause/resume a reminder) list ('what reminders do i have' / 'when's my next reminder' -> list)",
   suppressPostActionContinuation: true,
 
   validate: async (
@@ -1025,6 +1159,8 @@ export const triggerAction: Action = {
         return opRun(runtime, params);
       case "toggle":
         return opToggle(runtime, params);
+      case "list":
+        return opList(runtime, message);
     }
   },
 
