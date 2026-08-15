@@ -27,6 +27,8 @@
  *     order with the conversation id preserved,
  *   - the rowless Shared archive remains intact after the switch, while every
  *     new phone/app turn resolves to the Dedicated runtime instead of splitting.
+ *   - one canonical Shared reminder is imported, activated on Dedicated, and
+ *     retained on Shared only as a committed audit receipt.
  */
 
 import { personalSharedAgentId } from "@elizaos/cloud-shared/lib/services/shared-runtime/personal-shared-agent";
@@ -142,6 +144,35 @@ test.describe("shared→dedicated tier upgrade", () => {
         id: sharedAgentId,
         runtime: "shared",
       });
+
+      const { createSharedScheduledTaskRunner, executeSharedSchedulingSql } =
+        await import(
+          "@elizaos/cloud-shared/lib/services/shared-runtime/shared-scheduling"
+        );
+      const sharedTaskRunner = createSharedScheduledTaskRunner(sharedAgentId, {
+        dispatch: async () => undefined,
+      });
+      const scheduledReminder = await sharedTaskRunner.schedule({
+        kind: "reminder",
+        promptInstructions: "call mom",
+        trigger: { kind: "once", atIso: "2026-08-16T17:00:00.000Z" },
+        priority: "medium",
+        respectsGlobalPause: true,
+        source: "user_chat",
+        createdBy: seededUser.userId,
+        ownerVisible: true,
+        executionProfile: "notify-only",
+        metadata: {
+          delivery: {
+            platform: "telegram",
+            project: "eliza-app",
+            chatId: "919191",
+          },
+        },
+      });
+      expect(await sharedTaskRunner.list()).toMatchObject([
+        { taskId: scheduledReminder.taskId, promptInstructions: "call mom" },
+      ]);
 
       // ── 3. Runway credit gate: refused BELOW 3 days of hosting. ────────
       // $0.50 clears the $0.10 create minimum — the gate the create/provision
@@ -345,6 +376,29 @@ test.describe("shared→dedicated tier upgrade", () => {
       ).toEqual(["user", "assistant", "user", "assistant"]);
       expect(dedicatedTranscript[0]?.text).toBe(FIRST);
       expect(dedicatedTranscript[2]?.text).toBe(SECOND);
+      expect(
+        await executeSharedSchedulingSql(
+          `SELECT transfer_status FROM app_scheduling.life_scheduled_tasks WHERE id = '${scheduledReminder.taskId}'`,
+        ),
+        "Shared retains a committed audit receipt after Dedicated activation",
+      ).toMatchObject([{ transfer_status: "committed" }]);
+      expect(
+        stack.mocks.controlPlane.store.getScheduledTasksByAgent(
+          dedicatedAgentId,
+          sharedAgentId,
+        ),
+        "the exact Shared reminder is imported and activated only after cutover",
+      ).toMatchObject([
+        {
+          task: {
+            taskId: scheduledReminder.taskId,
+            promptInstructions: "call mom",
+          },
+          sourceAgentId: sharedAgentId,
+          cutoverToken: `personal-cutover:${sharedAgentId}:${dedicatedAgentId}`,
+          active: true,
+        },
+      ]);
 
       // ── 9. Shared stays archived; every new turn resolves Dedicated. ────
       expect(

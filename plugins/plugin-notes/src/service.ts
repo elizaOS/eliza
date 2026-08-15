@@ -59,7 +59,7 @@ function lookupError(
     code === "NOTES_NOT_FOUND"
       ? `No sticky note matches "${target}".`
       : `"${target}" matches multiple sticky notes: ${candidates
-          .map((note) => note.title)
+          .map((note) => `${note.title} (${note.color})`)
           .join(", ")}.`,
     {
       code,
@@ -76,7 +76,17 @@ function lookupError(
 
 /** Identity key for copies with exactly the same user-visible content. */
 function noteContentKey(note: StickyNote): string {
-  return `${note.title}\0${note.body}`;
+  return `${note.title}\0${note.body}\0${note.color}`;
+}
+
+function distinctNotes(notes: readonly StickyNote[]): StickyNote[] {
+  const seen = new Set<string>();
+  return notes.filter((note) => {
+    const key = noteContentKey(note);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 function resolveNoteIndex(
@@ -94,7 +104,9 @@ function resolveNoteIndex(
       : notes
           .map((note, index) => ({ index, note }))
           .filter(({ note }) =>
-            normalizedLookup(`${note.title} ${note.body}`).includes(target),
+            normalizedLookup(
+              `${note.title} ${note.body} ${note.color}`,
+            ).includes(target),
           );
   if (candidates.length === 0) {
     throw lookupError("NOTES_NOT_FOUND", selector, value, []);
@@ -199,7 +211,8 @@ export class NotesService extends Service {
   }
 
   snapshot(): NotesSnapshot {
-    return this.store.snapshot();
+    const snapshot = this.store.snapshot();
+    return { ...snapshot, notes: distinctNotes(snapshot.notes) };
   }
 
   listNotes(): StickyNote[] {
@@ -225,13 +238,27 @@ export class NotesService extends Service {
     return note;
   }
 
-  async createNoteWithCommit(
-    inputValue: unknown,
-  ): Promise<{ value: StickyNote; snapshot: NotesSnapshot }> {
+  async createNoteWithCommit(inputValue: unknown): Promise<{
+    value: StickyNote;
+    snapshot: NotesSnapshot;
+    replayed: boolean;
+  }> {
     const input = parseCreateNoteInput(inputValue);
     const now = this.now().toISOString();
     const id = parseEntityId(this.createId());
     const transaction = await this.store.transact((draft) => {
+      const requestedKey = noteContentKey({
+        id,
+        title: input.title,
+        body: input.body,
+        color: input.color,
+        createdAt: now,
+        updatedAt: now,
+      });
+      const existing = draft.notes.find(
+        (note) => noteContentKey(note) === requestedKey,
+      );
+      if (existing) return { note: existing, replayed: true };
       if (draft.notes.some((note) => note.id === id)) {
         throw new ElizaError(`Notes generated duplicate note id "${id}".`, {
           code: "NOTES_DUPLICATE_ID",
@@ -248,10 +275,19 @@ export class NotesService extends Service {
         updatedAt: now,
       };
       draft.notes.unshift(note);
-      return note;
+      return { note, replayed: false };
     });
-    await this.emitStateUpdated(transaction.snapshot, "note:created");
-    return transaction;
+    if (!transaction.value.replayed) {
+      await this.emitStateUpdated(transaction.snapshot, "note:created");
+    }
+    return {
+      value: transaction.value.note,
+      snapshot: {
+        ...transaction.snapshot,
+        notes: distinctNotes(transaction.snapshot.notes),
+      },
+      replayed: transaction.value.replayed,
+    };
   }
 
   async createNote(inputValue: unknown): Promise<StickyNote> {
@@ -261,20 +297,45 @@ export class NotesService extends Service {
   async updateNoteWithCommit(
     idValue: unknown,
     patchValue: unknown,
-  ): Promise<{ value: StickyNote; snapshot: NotesSnapshot }> {
+  ): Promise<{
+    value: StickyNote;
+    snapshot: NotesSnapshot;
+    consolidatedIds: string[];
+  }> {
     const id = parseEntityId(idValue);
     const patch = parseUpdateNoteInput(patchValue);
     const updatedAt = this.now().toISOString();
+    let consolidatedIds: string[] = [];
     const transaction = await this.store.transact((draft) => {
       const index = draft.notes.findIndex((note) => note.id === id);
       const existing = draft.notes[index];
       if (index < 0 || !existing) throw notFound(id);
       const updated = applyNotePatch(existing, patch, updatedAt);
-      draft.notes[index] = updated;
+      const oldKey = noteContentKey(existing);
+      const updatedKey = noteContentKey(updated);
+      consolidatedIds = draft.notes
+        .filter(
+          (note, candidateIndex) =>
+            candidateIndex !== index &&
+            (noteContentKey(note) === oldKey ||
+              noteContentKey(note) === updatedKey),
+        )
+        .map((note) => note.id);
+      draft.notes = draft.notes.flatMap((note, candidateIndex) => {
+        if (candidateIndex === index) return [updated];
+        return consolidatedIds.includes(note.id) ? [] : [note];
+      });
       return updated;
     });
     await this.emitStateUpdated(transaction.snapshot, "note:updated");
-    return transaction;
+    return {
+      ...transaction,
+      snapshot: {
+        ...transaction.snapshot,
+        notes: distinctNotes(transaction.snapshot.notes),
+      },
+      consolidatedIds,
+    };
   }
 
   async updateNote(idValue: unknown, patchValue: unknown): Promise<StickyNote> {
@@ -285,9 +346,15 @@ export class NotesService extends Service {
     selector: NoteLookupSelector,
     value: string,
     patchValue: unknown,
-  ): Promise<{ value: StickyNote; snapshot: NotesSnapshot }> {
+  ): Promise<{
+    value: StickyNote;
+    snapshot: NotesSnapshot;
+    consolidatedCount: number;
+    consolidatedIds: string[];
+  }> {
     const patch = parseUpdateNoteInput(patchValue);
     const updatedAt = this.now().toISOString();
+    const consolidatedIds: string[] = [];
     const transaction = await this.store.transact((draft) => {
       const index = resolveNoteIndex(draft.notes, selector, value);
       const existing = draft.notes[index];
@@ -298,26 +365,69 @@ export class NotesService extends Service {
         });
       }
       const updated = applyNotePatch(existing, patch, updatedAt);
-      draft.notes[index] = updated;
+      const oldKey = noteContentKey(existing);
+      const updatedKey = noteContentKey(updated);
+      const next: StickyNote[] = [];
+      for (
+        let candidateIndex = 0;
+        candidateIndex < draft.notes.length;
+        candidateIndex += 1
+      ) {
+        const candidate = draft.notes[candidateIndex];
+        if (!candidate) continue;
+        if (candidateIndex === index) {
+          next.push(updated);
+        } else if (
+          noteContentKey(candidate) === oldKey ||
+          noteContentKey(candidate) === updatedKey
+        ) {
+          consolidatedIds.push(candidate.id);
+        } else {
+          next.push(candidate);
+        }
+      }
+      draft.notes = next;
       return updated;
     });
     await this.emitStateUpdated(transaction.snapshot, "note:updated");
-    return transaction;
+    return {
+      ...transaction,
+      snapshot: {
+        ...transaction.snapshot,
+        notes: distinctNotes(transaction.snapshot.notes),
+      },
+      consolidatedCount: consolidatedIds.length,
+      consolidatedIds,
+    };
   }
 
-  async deleteNoteWithCommit(
-    idValue: unknown,
-  ): Promise<{ value: StickyNote; snapshot: NotesSnapshot }> {
+  async deleteNoteWithCommit(idValue: unknown): Promise<{
+    value: StickyNote;
+    snapshot: NotesSnapshot;
+    removedIds: string[];
+  }> {
     const id = parseEntityId(idValue);
+    let removedIds: string[] = [];
     const transaction = await this.store.transact((draft) => {
       const index = draft.notes.findIndex((note) => note.id === id);
       const existing = draft.notes[index];
       if (index < 0 || !existing) throw notFound(id);
-      draft.notes.splice(index, 1);
+      const key = noteContentKey(existing);
+      removedIds = draft.notes
+        .filter((note) => noteContentKey(note) === key)
+        .map((note) => note.id);
+      draft.notes = draft.notes.filter((note) => noteContentKey(note) !== key);
       return existing;
     });
     await this.emitStateUpdated(transaction.snapshot, "note:deleted");
-    return transaction;
+    return {
+      ...transaction,
+      snapshot: {
+        ...transaction.snapshot,
+        notes: distinctNotes(transaction.snapshot.notes),
+      },
+      removedIds,
+    };
   }
 
   async deleteNote(idValue: unknown): Promise<StickyNote> {
@@ -331,8 +441,9 @@ export class NotesService extends Service {
     value: StickyNote;
     snapshot: NotesSnapshot;
     removedCount: number;
+    removedIds: string[];
   }> {
-    let removedCount = 0;
+    let removedIds: string[] = [];
     const transaction = await this.store.transact((draft) => {
       const index = resolveNoteIndex(draft.notes, selector, value);
       const existing = draft.notes[index];
@@ -347,12 +458,22 @@ export class NotesService extends Service {
       // the milk note" contradicts what the deletion just confirmed.
       const key = noteContentKey(existing);
       const kept = draft.notes.filter((note) => noteContentKey(note) !== key);
-      removedCount = draft.notes.length - kept.length;
+      removedIds = draft.notes
+        .filter((note) => noteContentKey(note) === key)
+        .map((note) => note.id);
       draft.notes = kept;
       return existing;
     });
     await this.emitStateUpdated(transaction.snapshot, "note:deleted");
-    return { ...transaction, removedCount };
+    return {
+      ...transaction,
+      snapshot: {
+        ...transaction.snapshot,
+        notes: distinctNotes(transaction.snapshot.notes),
+      },
+      removedCount: removedIds.length,
+      removedIds,
+    };
   }
 
   async clearNotesWithCommit(): Promise<{

@@ -2214,9 +2214,7 @@ function applyStatedDateToCreateRequest(args: {
   if (typeof args.request.endAt === "string") {
     const endDate = new Date(args.request.endAt);
     if (!Number.isNaN(endDate.getTime())) {
-      args.request.endAt = new Date(
-        endDate.getTime() + deltaMs,
-      ).toISOString();
+      args.request.endAt = new Date(endDate.getTime() + deltaMs).toISOString();
     }
   }
   const pad = (n: number) => String(n).padStart(2, "0");
@@ -4282,7 +4280,7 @@ const calendarAction: CalendarHandlerAction = {
         });
         const { title, resolvedStartAt, resolvedWindowPreset, request } =
           createEventBuild;
-        const statedDateCorrection = applyStatedDateToCreateRequest({
+        applyStatedDateToCreateRequest({
           request,
           currentMessage: messageText(message).trim(),
           intent,

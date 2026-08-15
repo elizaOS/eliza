@@ -21,6 +21,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { notesAction } from "./action.js";
 import { NOTES_SERVICE_TYPE, NotesService } from "./service.js";
 import { NotesStore } from "./store.js";
+import { parseNoteContent } from "./validation.js";
 
 const tmpDirs: string[] = [];
 
@@ -159,11 +160,43 @@ describe("NOTES operation parsing", () => {
 });
 
 describe("identical-duplicate notes", () => {
+  async function seedLegacyCopies(
+    runtime: IAgentRuntime,
+    content: string,
+    copies: number,
+  ): Promise<NotesService> {
+    const service = runtime.getService<NotesService>(NOTES_SERVICE_TYPE);
+    if (!service) throw new Error("NotesService missing from harness");
+    const original = await service.createNote(parseNoteContent(content));
+    await service.store.transact((draft) => {
+      for (let index = 1; index < copies; index += 1) {
+        draft.notes.push({ ...original, id: `legacy-copy-${index}` });
+      }
+    });
+    return service;
+  }
+
+  it("makes concurrent identical creates one replayable logical note", async () => {
+    const runtime = await harness();
+    const results = await Promise.all(
+      Array.from({ length: 4 }, () =>
+        run(runtime, { action: "create", content: "i need to buy milk" }),
+      ),
+    );
+
+    expect(
+      results.filter((result) => result.data?.replayed === false),
+    ).toHaveLength(1);
+    expect(
+      results.filter((result) => result.data?.replayed === true),
+    ).toHaveLength(3);
+    const listed = await run(runtime, { action: "list" });
+    expect(listed.data).toMatchObject({ count: 1, total: 1 });
+  });
+
   it("deletes every byte-identical copy as one logical note", async () => {
     const runtime = await harness();
-    for (let i = 0; i < 4; i += 1) {
-      await run(runtime, { action: "create", content: "i need to buy milk" });
-    }
+    await seedLegacyCopies(runtime, "i need to buy milk", 4);
     await run(runtime, {
       action: "create",
       content: "spare key under the mat",
@@ -186,5 +219,41 @@ describe("identical-duplicate notes", () => {
     await expect(
       run(runtime, { action: "delete", content: "milk" }),
     ).rejects.toMatchObject({ code: "NOTES_AMBIGUOUS_NOTE" });
+  });
+
+  it("updates one logical note and consolidates its identical stored copies", async () => {
+    const runtime = await harness();
+    await seedLegacyCopies(runtime, "i need to buy milk", 4);
+
+    const result = await run(runtime, {
+      action: "update",
+      content: "milk",
+      body: "i already bought milk",
+    });
+
+    expect(result.text).toContain("consolidated 4 identical copies");
+    expect(result.data).toMatchObject({ consolidatedCount: 3 });
+    const after = await run(runtime, { action: "list" });
+    expect(after.data).toMatchObject({ count: 1, total: 1 });
+    expect(after.text).toContain("i already bought milk");
+  });
+
+  it("keeps same-text notes with different visible colors distinct", async () => {
+    const runtime = await harness();
+    const service = runtime.getService<NotesService>(NOTES_SERVICE_TYPE);
+    if (!service) throw new Error("NotesService missing from harness");
+    await service.createNote({ title: "buy milk", body: "", color: "yellow" });
+    await service.createNote({ title: "buy milk", body: "", color: "green" });
+
+    await expect(
+      run(runtime, { action: "delete", content: "buy milk" }),
+    ).rejects.toMatchObject({ code: "NOTES_AMBIGUOUS_NOTE" });
+
+    const deleted = await run(runtime, {
+      action: "delete",
+      content: "buy milk green",
+    });
+    expect(deleted.success).toBe(true);
+    expect(service.listNotes().map((note) => note.color)).toEqual(["yellow"]);
   });
 });

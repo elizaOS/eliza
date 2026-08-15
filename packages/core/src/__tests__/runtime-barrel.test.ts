@@ -67,4 +67,15 @@ describe("@elizaos/core runtime barrel", () => {
 		expect(edge?.types).toBe("./dist/edge/index.d.ts");
 		expect(edge).not.toHaveProperty("eliza-source");
 	});
+
+	it("binds the edge barrel and declarations to the edge capability surface", () => {
+		const barrel = readFileSync(resolve(sourceRoot, "index.edge.ts"), "utf8");
+
+		expect(barrel).toContain(
+			'export * from "./features/basic-capabilities/index.edge";',
+		);
+		expect(barrel).not.toMatch(
+			/export\s+\*\s+from\s+["']\.\/features\/basic-capabilities\/index["']/,
+		);
+	});
 });

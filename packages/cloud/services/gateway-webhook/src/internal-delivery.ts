@@ -1,6 +1,6 @@
 /** Delivers authenticated proactive messages through the gateway-owned connector. */
 
-import { telegramAdapter } from "./adapters/telegram";
+import { TelegramApiResponseError, telegramAdapter } from "./adapters/telegram";
 import type { ChatEvent } from "./adapters/types";
 import { logger } from "./logger";
 import type { GatewayRedis } from "./redis";
@@ -18,6 +18,36 @@ interface InternalTelegramDelivery {
   chatId: string;
   text: string;
   idempotencyKey: string;
+}
+
+const DELIVERY_RECEIPT_TTL_SECONDS = 14 * 24 * 60 * 60;
+
+type DeliveryReceipt =
+  | { state: "dispatching" }
+  | { state: "complete"; providerMessageIds: string[] };
+
+function parseReceipt(value: string | null): DeliveryReceipt | undefined {
+  if (value === "complete")
+    return { state: "complete", providerMessageIds: [] };
+  if (value === "dispatching") return { state: "dispatching" };
+  if (!value?.startsWith("{")) return undefined;
+  try {
+    const parsed = JSON.parse(value) as Record<string, unknown>;
+    if (parsed.state === "dispatching") return { state: "dispatching" };
+    if (
+      parsed.state === "complete" &&
+      Array.isArray(parsed.providerMessageIds) &&
+      parsed.providerMessageIds.every((id) => typeof id === "string")
+    ) {
+      return {
+        state: "complete",
+        providerMessageIds: parsed.providerMessageIds as string[],
+      };
+    }
+  } catch {
+    // error-policy:J3 malformed Redis state is not accepted as a delivery receipt.
+  }
+  return undefined;
 }
 
 function parseDelivery(value: unknown): InternalTelegramDelivery | undefined {
@@ -69,15 +99,28 @@ export async function deliverInternalMessage(
   }
 
   const dedupeKey = `internal-delivery:${delivery.platform}:${delivery.project}:${delivery.idempotencyKey}`;
-  const existing = await dependencies.redis.get<string>(dedupeKey);
-  if (existing === "complete") {
+  const existingValue = await dependencies.redis.get<string>(dedupeKey);
+  const existing = parseReceipt(existingValue);
+  if (existing?.state === "complete") {
     return Response.json({
       success: true,
       replayed: true,
       idempotencyKey: delivery.idempotencyKey,
+      providerMessageIds: existing.providerMessageIds,
     });
   }
-  if (existing) {
+  if (existing?.state === "dispatching") {
+    return Response.json(
+      {
+        success: true,
+        replayed: true,
+        acceptanceUnknown: true,
+        idempotencyKey: delivery.idempotencyKey,
+      },
+      { status: 202 },
+    );
+  }
+  if (existingValue) {
     return Response.json(
       { success: false, error: "delivery in progress", retryable: true },
       { status: 409, headers: { "Retry-After": "1" } },
@@ -94,6 +137,7 @@ export async function deliverInternalMessage(
     );
   }
 
+  let connectorAttempted = false;
   try {
     const config = await resolveWebhookConfig(
       dependencies.redis,
@@ -118,10 +162,26 @@ export async function deliverInternalMessage(
       text: delivery.text,
       rawPayload: { source: "shared-reminder" },
     };
-    await telegramAdapter.sendReply(config, event, delivery.text);
-    await dependencies.redis.set(dedupeKey, "complete", {
-      ex: 14 * 24 * 60 * 60,
+    if (!telegramAdapter.sendReplyWithReceipt) {
+      throw new Error("Telegram receipt delivery is unavailable");
+    }
+    await dependencies.redis.set(dedupeKey, "dispatching", {
+      ex: DELIVERY_RECEIPT_TTL_SECONDS,
     });
+    connectorAttempted = true;
+    const receipt = await telegramAdapter.sendReplyWithReceipt(
+      config,
+      event,
+      delivery.text,
+    );
+    await dependencies.redis.set(
+      dedupeKey,
+      JSON.stringify({
+        state: "complete",
+        providerMessageIds: receipt.providerMessageIds,
+      } satisfies DeliveryReceipt),
+      { ex: DELIVERY_RECEIPT_TTL_SECONDS },
+    );
     const acceptedAt = new Date().toISOString();
     logger.info("Shared reminder delivered", {
       project: delivery.project,
@@ -133,15 +193,60 @@ export async function deliverInternalMessage(
       replayed: false,
       idempotencyKey: delivery.idempotencyKey,
       acceptedAt,
+      providerMessageIds: receipt.providerMessageIds,
     });
   } catch (error) {
-    // error-policy:J1 the connector boundary releases ownership and returns a retryable failure.
-    await dependencies.redis.del(dedupeKey);
+    if (error instanceof TelegramApiResponseError) {
+      await dependencies.redis.del(dedupeKey);
+      const status =
+        error.errorCode === 401 ||
+        error.errorCode === 403 ||
+        error.errorCode === 429
+          ? error.errorCode
+          : 422;
+      logger.warn("Telegram explicitly rejected Shared reminder delivery", {
+        project: delivery.project,
+        idempotencyKey: delivery.idempotencyKey,
+        errorCode: error.errorCode,
+      });
+      return Response.json(
+        {
+          success: false,
+          error: "provider rejected delivery",
+          retryable: true,
+          acceptance: "not_accepted",
+          idempotencyKey: delivery.idempotencyKey,
+        },
+        {
+          status,
+          headers:
+            status === 429
+              ? {
+                  "Retry-After": String(error.retryAfterSeconds ?? 1),
+                }
+              : undefined,
+        },
+      );
+    }
+    // error-policy:J1 once connector dispatch starts, the provider may have
+    // accepted the message even if its response or our receipt write failed.
+    if (!connectorAttempted) await dependencies.redis.del(dedupeKey);
     logger.error("Shared reminder delivery failed", {
       project: delivery.project,
       idempotencyKey: delivery.idempotencyKey,
       error: error instanceof Error ? error.message : String(error),
     });
+    if (connectorAttempted) {
+      return Response.json(
+        {
+          success: true,
+          replayed: false,
+          acceptanceUnknown: true,
+          idempotencyKey: delivery.idempotencyKey,
+        },
+        { status: 202 },
+      );
+    }
     return Response.json(
       { success: false, error: "delivery failed", retryable: true },
       { status: 502, headers: { "Retry-After": "1" } },

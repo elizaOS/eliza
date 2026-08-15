@@ -28,7 +28,7 @@ const NOTES_CONTEXT: ContextDefinition = {
     "User's saved notes: write down, read back, search, update, delete",
   sensitivity: "personal",
   cacheScope: "agent",
-  roleGate: { minRole: "USER" },
+  roleGate: { minRole: "OWNER" },
 };
 
 export const notesPlugin: Plugin = {
@@ -47,6 +47,7 @@ export const notesPlugin: Plugin = {
     {
       id: "notes",
       label: "Notes",
+      roleGate: { minRole: "OWNER" },
       description:
         "Durable notes that the user and agent can create, read, update, and delete.",
       icon: "StickyNote",

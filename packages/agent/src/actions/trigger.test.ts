@@ -1676,6 +1676,50 @@ describe("TRIGGER list — dropped rows are counted, not hidden", () => {
     expect(text).not.toContain("could not be read");
     expect(result.data).toMatchObject({ count: 1, unreadable: 0 });
   });
+
+  it("describes the persisted occurrence for a one-shot cron", async () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date("2026-08-15T10:00:00.000Z"));
+      const { runtime } = makeRuntime({
+        enableAutonomy: false,
+        timeZone: "UTC",
+      });
+      const persistedNextRunAtMs = Date.parse("2026-08-15T09:00:00.000Z");
+      (
+        runtime.getTasks as unknown as {
+          mockResolvedValue: (v: Task[]) => void;
+        }
+      ).mockResolvedValue([
+        taskWith(
+          {
+            updatedAt: Date.now(),
+            trigger: {
+              schemaVersion: TRIGGER_SCHEMA_VERSION,
+              triggerId: "yearly-one-shot",
+              displayName: "yearly reminder",
+              kind: "prompt",
+              triggerType: "cron",
+              cronExpression: "0 0 1 1 *",
+              timezone: "America/Los_Angeles",
+              maxRuns: 1,
+              nextRunAtMs: persistedNextRunAtMs,
+              enabled: true,
+              instructions: "remember the persisted occurrence",
+            },
+          },
+          "yearly-one-shot",
+        ),
+      ]);
+
+      const result = await list(runtime);
+
+      expect(result.text).toContain("today at 9am");
+      expect(result.text).not.toContain("January");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
 
 describe("one-shot cron reminder confirmation", () => {

@@ -59,11 +59,75 @@ async function sourceTableExists(
   return isTruthy(scalar(rows[0], "present"));
 }
 
+function postgresTextArray(value: unknown): string[] {
+  if (Array.isArray(value)) return value.map(String);
+  if (
+    typeof value === "string" &&
+    value.startsWith("{") &&
+    value.endsWith("}")
+  ) {
+    const body = value.slice(1, -1);
+    return body ? body.split(",") : [];
+  }
+  throw new Error("Scheduling task primary-key metadata is unreadable");
+}
+
+async function ensureTenantOwnedTaskPrimaryKey(
+  exec: SqlExecutor,
+): Promise<void> {
+  const rows = await exec(`
+    SELECT constraint_row.conname,
+           array_agg(attribute_row.attname ORDER BY key_column.ordinality) AS columns
+      FROM pg_constraint AS constraint_row
+      JOIN pg_class AS table_row ON table_row.oid = constraint_row.conrelid
+      JOIN pg_namespace AS namespace_row ON namespace_row.oid = table_row.relnamespace
+      CROSS JOIN LATERAL unnest(constraint_row.conkey)
+        WITH ORDINALITY AS key_column(attnum, ordinality)
+      JOIN pg_attribute AS attribute_row
+        ON attribute_row.attrelid = table_row.oid
+       AND attribute_row.attnum = key_column.attnum
+     WHERE namespace_row.nspname = '${TARGET_SCHEMA}'
+       AND table_row.relname = 'life_scheduled_tasks'
+       AND constraint_row.contype = 'p'
+     GROUP BY constraint_row.conname
+  `);
+  const primaryKey = rows[0];
+  if (!primaryKey) {
+    await exec(
+      `ALTER TABLE ${TARGET_SCHEMA}.life_scheduled_tasks
+         ADD CONSTRAINT life_scheduled_tasks_pkey PRIMARY KEY (agent_id, id)`,
+    );
+    return;
+  }
+  const columns = postgresTextArray(primaryKey.columns);
+  if (
+    columns.length === 2 &&
+    columns[0] === "agent_id" &&
+    columns[1] === "id"
+  ) {
+    return;
+  }
+  if (columns.length !== 1 || columns[0] !== "id") {
+    throw new Error(
+      `Unexpected scheduling task primary key: ${columns.join(",")}`,
+    );
+  }
+  const constraintName = String(primaryKey.conname ?? "");
+  if (!constraintName) {
+    throw new Error("Scheduling task primary-key constraint has no name");
+  }
+  await exec(
+    `ALTER TABLE ${TARGET_SCHEMA}.life_scheduled_tasks
+       DROP CONSTRAINT ${quoteIdent(constraintName)},
+       ADD CONSTRAINT life_scheduled_tasks_pkey PRIMARY KEY (agent_id, id)`,
+  );
+}
+
 export async function ensureSchedulingTables(exec: SqlExecutor): Promise<void> {
   await exec(`CREATE SCHEMA IF NOT EXISTS ${TARGET_SCHEMA}`);
   await exec(
     `CREATE TABLE IF NOT EXISTS ${TARGET_SCHEMA}.life_scheduled_tasks (
-      id TEXT PRIMARY KEY,
+      id TEXT NOT NULL,
       agent_id TEXT NOT NULL,
       kind TEXT NOT NULL,
       prompt_instructions TEXT NOT NULL,
@@ -86,12 +150,14 @@ export async function ensureSchedulingTables(exec: SqlExecutor): Promise<void> {
       metadata_json TEXT NOT NULL DEFAULT '{}',
       execution_profile TEXT,
       transfer_token TEXT,
+      transfer_holder_token TEXT,
       transfer_target_agent_id TEXT,
       transfer_status TEXT,
       version INTEGER NOT NULL DEFAULT 1,
       next_fire_at TIMESTAMPTZ,
       created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL
+      updated_at TEXT NOT NULL,
+      PRIMARY KEY (agent_id, id)
     )`,
   );
   await exec(
@@ -101,9 +167,11 @@ export async function ensureSchedulingTables(exec: SqlExecutor): Promise<void> {
   await exec(
     `ALTER TABLE ${TARGET_SCHEMA}.life_scheduled_tasks
        ADD COLUMN IF NOT EXISTS transfer_token TEXT,
+       ADD COLUMN IF NOT EXISTS transfer_holder_token TEXT,
        ADD COLUMN IF NOT EXISTS transfer_target_agent_id TEXT,
        ADD COLUMN IF NOT EXISTS transfer_status TEXT`,
   );
+  await ensureTenantOwnedTaskPrimaryKey(exec);
   await exec(
     `CREATE UNIQUE INDEX IF NOT EXISTS idx_scheduling_tasks_agent_idempotency
       ON ${TARGET_SCHEMA}.life_scheduled_tasks (agent_id, idempotency_key)`,

@@ -11,14 +11,17 @@ import type {
 	HandlerCallback,
 	IAgentRuntime,
 	Memory,
+	RoleGateRole,
 	State,
 	ViewCapability,
 	ViewCapabilityParameter,
 	ViewType,
 } from "@elizaos/core";
 import {
+	checkSenderRole,
 	hasOwnerAccess as defaultOwnerAccessFn,
 	logger,
+	satisfiesRoleGate,
 	testSchemaPattern,
 } from "@elizaos/core";
 import {
@@ -82,6 +85,15 @@ export type ViewsMode =
 	| "window"
 	| "split"
 	| "tile";
+
+async function resolveViewCallerRoles(
+	runtime: IAgentRuntime,
+	message: Memory,
+): Promise<readonly RoleGateRole[]> {
+	if (message.entityId === runtime.agentId) return ["OWNER"];
+	const resolved = await checkSenderRole(runtime, message);
+	return resolved?.role ? [resolved.role] : [];
+}
 
 // Connectors that deliver the agent's turn over an EXTERNAL chat surface which
 // does NOT render Eliza desktop views to the person who sent the message. On
@@ -3268,6 +3280,25 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 								};
 								capability = correction.capability.id;
 							}
+						}
+						const authorizedView = resolvedCapability?.view ?? resolvedView;
+						const viewGate = authorizedView?.roleGate;
+						const ownerExclusive =
+							viewGate !== undefined &&
+							satisfiesRoleGate(["OWNER"], viewGate) &&
+							!satisfiesRoleGate(["ADMIN"], viewGate);
+						const viewAllowed = !viewGate
+							? true
+							: ownerExclusive
+								? await ownerCheck(runtime, message)
+								: satisfiesRoleGate(
+										await resolveViewCallerRoles(runtime, message),
+										viewGate,
+									);
+						if (!viewAllowed && authorizedView) {
+							const reply = `The ${authorizedView.label} view is not available to this caller.`;
+							await callback?.({ text: reply });
+							return { success: false, text: reply };
 						}
 						const paramsResolution = readCapabilityParams(
 							actionOptions,
