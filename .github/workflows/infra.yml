@@ -10,7 +10,7 @@ on:
         description: Terraform root to operate
         required: true
         type: choice
-        options: [control-plane, apps-shared, apps-data-plane, pages-domains]
+        options: [control-plane, apps-shared, apps-data-plane, pages-domains, prod-ops]
       environment:
         description: Protected environment
         required: true
@@ -84,7 +84,7 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
       TF_IN_AUTOMATION: "true"
-      HCLOUD_TOKEN: ${{ inputs.component == 'control-plane' && secrets.HCLOUD_TOKEN || secrets.HCLOUD_APPS_TOKEN }}
+      HCLOUD_TOKEN: ${{ (inputs.component == 'control-plane' || inputs.component == 'prod-ops') && secrets.HCLOUD_TOKEN || secrets.HCLOUD_APPS_TOKEN }}
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       AWS_ACCESS_KEY_ID: ${{ secrets.R2_STATE_ACCESS_KEY_ID }}
       AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_STATE_SECRET_ACCESS_KEY }}
@@ -94,7 +94,7 @@ jobs:
       TF_VAR_cloudflare_zone_id: ${{ secrets.APPS_CLOUDFLARE_ZONE_ID || vars.APPS_CLOUDFLARE_ZONE_ID }}
       TF_VAR_eliza_app_zone_id: ${{ secrets.ELIZA_APP_CLOUDFLARE_ZONE_ID || vars.ELIZA_APP_CLOUDFLARE_ZONE_ID }}
       TF_VAR_elizacloud_ai_zone_id: ${{ secrets.APPS_CLOUDFLARE_ZONE_ID || vars.APPS_CLOUDFLARE_ZONE_ID }}
-      TF_VAR_ssh_public_keys: ${{ inputs.component == 'apps-shared' && format('["{0}"]', vars.APPS_SHARED_OPERATOR_SSH_KEY) || format('["{0}"]', vars.APPS_OPERATOR_SSH_KEY) }}
+      TF_VAR_ssh_public_keys: ${{ inputs.component == 'prod-ops' && format('["{0}"]', vars.PROD_OPS_OPERATOR_SSH_KEY) || inputs.component == 'apps-shared' && format('["{0}"]', vars.APPS_SHARED_OPERATOR_SSH_KEY) || format('["{0}"]', vars.APPS_OPERATOR_SSH_KEY) }}
       TF_VAR_operator_ingress_cidrs: ${{ inputs.component == 'apps-shared' && vars.APPS_SHARED_OPERATOR_INGRESS_CIDRS || vars.OPERATOR_INGRESS_CIDRS }}
       TF_VAR_apps_base_domain: ${{ inputs.environment == 'production' && 'apps.eliza.app' || 'apps-staging.eliza.app' }}
       TF_VAR_legacy_apps_base_domain: ${{ inputs.environment == 'production' && 'apps.elizacloud.ai' || 'apps-staging.elizacloud.ai' }}
@@ -266,6 +266,7 @@ jobs:
             apps-shared) directory="packages/cloud/infra/cloud/terraform/hetzner/apps-shared" ;;
             apps-data-plane) directory="packages/cloud/infra/cloud/terraform/hetzner/apps-data-plane" ;;
             pages-domains) directory="packages/cloud/infra/cloud/terraform/cloudflare/pages-domains" ;;
+            prod-ops) directory="packages/cloud/infra/cloud/terraform/hetzner/prod-ops" ;;
             *) echo "::error::Unsupported component: $COMPONENT"; exit 1 ;;
           esac
           if [ "$COMPONENT" = "apps-shared" ]; then
@@ -286,6 +287,12 @@ jobs:
           set -euo pipefail
           [ -n "$AWS_ACCESS_KEY_ID" ] || { echo "::error::R2_STATE_ACCESS_KEY_ID is required"; exit 1; }
           [ -n "$AWS_SECRET_ACCESS_KEY" ] || { echo "::error::R2_STATE_SECRET_ACCESS_KEY is required"; exit 1; }
+          if [ "${{ inputs.component }}" = "prod-ops" ]; then
+            [ "${{ inputs.environment }}" = "production" ] || { echo "::error::prod-ops is production-only"; exit 1; }
+            [ -n "$HCLOUD_TOKEN" ] || { echo "::error::HCLOUD_TOKEN is required for prod-ops"; exit 1; }
+            [ -n "${{ vars.PROD_OPS_OPERATOR_SSH_KEY }}" ] || { echo "::error::PROD_OPS_OPERATOR_SSH_KEY is required"; exit 1; }
+            [ -n "$TF_VAR_operator_ingress_cidrs" ] || { echo "::error::OPERATOR_INGRESS_CIDRS is required"; exit 1; }
+          fi
           if [ "${{ inputs.component }}" = "pages-domains" ]; then
             [ -n "$CLOUDFLARE_API_TOKEN" ] || { echo "::error::CLOUDFLARE_API_TOKEN is required"; exit 1; }
             [ -n "$TF_VAR_cloudflare_account_id" ] || { echo "::error::CLOUDFLARE_ACCOUNT_ID is required"; exit 1; }
