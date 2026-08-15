@@ -6,10 +6,10 @@
  */
 
 import assert from "node:assert/strict";
-import { readFileSync, statSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import test from "node:test";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const packageJsonPath = resolve(__dirname, "../package.json");
@@ -195,4 +195,62 @@ test("clean builds resolve bare shared imports to language-only source", () => {
   assert.deepEqual(tsconfig.compilerOptions.paths["@elizaos/shared"], [
     "../shared/src/i18n/language.ts",
   ]);
+});
+
+// The deployable frontend is packages/app. A homepage `src="/…"` asset ships
+// only if the app allowlists it (HOMEPAGE_PUBLIC_ASSETS in
+// packages/app/scripts/sync-homepage-assets.mjs) or already owns a copy under
+// packages/app/public. A reference that ships through neither 404s in the
+// deployed app and is served the SPA index.html fallback: HTTP 200,
+// text/html, so the image silently renders blank at naturalWidth 0 with zero
+// build or CI errors. That class shipped /eliza-logotext.svg blank in
+// production (2026-08-14); the per-instance fix bundled that one wordmark.
+// This test is the standing guard for the whole class. Bundler imports
+// (`import x from "@/assets/…"`) are exempt by construction: they ship with
+// whatever build consumes the source.
+const homepageSrcRoot = resolve(__dirname, "../src");
+const appPublicRoot = resolve(__dirname, "../../app/public");
+
+function collectSourceFiles(dir) {
+  const files = [];
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const full = resolve(dir, entry.name);
+    if (entry.isDirectory()) {
+      files.push(...collectSourceFiles(full));
+    } else if (/\.(tsx?|jsx?|css|html)$/.test(entry.name)) {
+      files.push(full);
+    }
+  }
+  return files;
+}
+
+test("every url-referenced homepage public asset ships with the deployed app", async () => {
+  const { HOMEPAGE_PUBLIC_ASSETS } = await import(
+    pathToFileURL(appAssetSyncPath).href
+  );
+  const allowlisted = new Set(HOMEPAGE_PUBLIC_ASSETS);
+  const assetUrl =
+    /(?:src|href)=(?:"|')(\/[^"'?#]+\.(?:svg|png|webp|jpe?g|gif|ico|woff2?|ttf|otf))(?:"|')/g;
+
+  const offenders = [];
+  for (const file of collectSourceFiles(homepageSrcRoot)) {
+    const source = readFileSync(file, "utf8");
+    for (const match of source.matchAll(assetUrl)) {
+      const rel = match[1].replace(/^\//, "");
+      if (allowlisted.has(rel)) continue;
+      if (existsSync(resolve(appPublicRoot, rel))) continue;
+      offenders.push(`${file.slice(homepageSrcRoot.length + 1)} -> /${rel}`);
+    }
+  }
+
+  assert.deepEqual(
+    offenders.sort(),
+    [],
+    `homepage sources reference public assets the deployed app does not ship ` +
+      `(they 404 into the SPA fallback and render blank with zero errors): ` +
+      `${offenders.join(", ")}. Add each path to HOMEPAGE_PUBLIC_ASSETS in ` +
+      `packages/app/scripts/sync-homepage-assets.mjs, place a copy under ` +
+      `packages/app/public, or import it through the bundler ` +
+      `(import x from "@/assets/…").`,
+  );
 });
