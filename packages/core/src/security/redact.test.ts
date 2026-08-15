@@ -326,6 +326,16 @@ describe("redactSensitiveText (pattern detection)", () => {
 		expect(redactSensitiveText("Authorization: abcdefgh abcdefgh")).toBe(
 			"Authorization: abcdefgh ***",
 		);
+		for (const whitespace of [" ", "\t"]) {
+			expect(
+				redactSensitiveText(`Authorization: abcdefgh abcdefgh${whitespace}`),
+			).toBe(`Authorization: abcdefgh ***${whitespace}`);
+			expect(
+				redactSensitiveText(
+					`Proxy-Authorization: abcdefgh abcdefgh${whitespace}`,
+				),
+			).toBe(`Proxy-Authorization: abcdefgh ***${whitespace}`);
+		}
 	});
 
 	it("masks AWS credential identifiers without storing scanner fixtures", () => {

@@ -47,8 +47,8 @@ const DEFAULT_REDACT_PATTERNS: string[] = [
 	// short service values in env-style `*_AUTHORIZATION` output.
 	String.raw`(?:Proxy-)?Authorization\s*[:=]\s*Bearer\s+([A-Za-z0-9._\-+=/~]+)`,
 	String.raw`(?:Proxy-)?Authorization\s*[:=]\s*Basic[ \t]+(${HTTP_TOKEN68_PATTERN})(?=[ \t]|[\r\n]|$)`,
-	String.raw`(?:Proxy-)?Authorization\s*[:=]\s*(${HTTP_TOKEN_PATTERN})[ \t]+(${HTTP_AUTH_PARAM_LIST_PATTERN})${HTTP_BWS_PATTERN}(?=[\r\n]|$)`,
-	String.raw`(?:Proxy-)?Authorization\s*[:=]\s*(${HTTP_TOKEN_PATTERN})[ \t]+(${HTTP_TOKEN68_PATTERN})${HTTP_BWS_PATTERN}(?=[\r\n]|$)`,
+	String.raw`(?:Proxy-)?Authorization\s*[:=]\s*(${HTTP_TOKEN_PATTERN})[ \t]+(${HTTP_AUTH_PARAM_LIST_PATTERN})(?=${HTTP_BWS_PATTERN}(?:[\r\n]|$))`,
+	String.raw`(?:Proxy-)?Authorization\s*[:=]\s*(${HTTP_TOKEN_PATTERN})[ \t]+(${HTTP_TOKEN68_PATTERN})(?=${HTTP_BWS_PATTERN}(?:[\r\n]|$))`,
 	// Once a non-Basic/Bearer credential has the unambiguous `token BWS =`
 	// assignment opener, malformed quoting or a truncated list must fail toward
 	// masking rather than leave a likely credential in diagnostics.
