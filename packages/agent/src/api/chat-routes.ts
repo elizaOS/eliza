@@ -71,6 +71,7 @@ import {
   extractAssistantReplyText,
   isLinkedAccountProviderId,
   normalizeCharacterLanguage,
+  parseChatFailureKind,
   readAliasedEnv,
   resolveStreamingUpdate,
 } from "@elizaos/shared";
@@ -4196,14 +4197,7 @@ async function generateChatResponseWithTiming(
         : typeof responseMetadata?.chatFailureKind === "string"
           ? responseMetadata.chatFailureKind
           : undefined;
-    const failureKind =
-      rawFailureKind === "insufficient_credits" ||
-      rawFailureKind === "local_inference" ||
-      rawFailureKind === "no_provider" ||
-      rawFailureKind === "provider_issue" ||
-      rawFailureKind === "rate_limited"
-        ? rawFailureKind
-        : undefined;
+    const failureKind = parseChatFailureKind(rawFailureKind);
 
     const thought =
       typeof responseContent?.thought === "string" &&

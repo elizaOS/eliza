@@ -53,11 +53,13 @@ import {
 } from "@elizaos/plugin-scheduling";
 import type { ChatFailureKind } from "@elizaos/shared";
 import {
+  isChatFailureKind,
   PatchConversationRequestSchema,
   PostConversationCleanupEmptyRequestSchema,
   PostConversationRequestSchema,
   PostConversationTruncateRequestSchema,
   PostSeedMessagesRequestSchema,
+  parseChatFailureKind,
   parsePositiveInteger,
 } from "@elizaos/shared";
 import {
@@ -1407,11 +1409,7 @@ function parseDurableConversationChatOutcome(
       (!Array.isArray(outcome.actionResults) ||
         !outcome.actionResults.every(isDurableChatActionResult))) ||
     (outcome.failureKind !== undefined &&
-      outcome.failureKind !== "insufficient_credits" &&
-      outcome.failureKind !== "no_provider" &&
-      outcome.failureKind !== "provider_issue" &&
-      outcome.failureKind !== "rate_limited" &&
-      outcome.failureKind !== "local_inference") ||
+      !isChatFailureKind(outcome.failureKind)) ||
     (outcome.accountConnect !== undefined &&
       normalizeAccountConnectRequest(outcome.accountConnect) === null) ||
     (outcome.localInference !== undefined &&
@@ -1508,14 +1506,7 @@ function buildRecoveredConversationChatOutcome(
   agentName: string,
 ): ChatMessageIdOutcome {
   const content = memory.content as Content;
-  const failureKind =
-    content.failureKind === "insufficient_credits" ||
-    content.failureKind === "no_provider" ||
-    content.failureKind === "provider_issue" ||
-    content.failureKind === "rate_limited" ||
-    content.failureKind === "local_inference"
-      ? content.failureKind
-      : undefined;
+  const failureKind = parseChatFailureKind(content.failureKind);
   const accountConnect = normalizeAccountConnectRequest(content.accountConnect);
   const localInference =
     content.localInference && typeof content.localInference === "object"
@@ -2980,14 +2971,7 @@ export async function handleConversationRoutes(
               : typeof meta?.chatFailureKind === "string"
                 ? meta.chatFailureKind
                 : undefined;
-          const failureKind: ChatFailureKind | undefined =
-            rawFailureKind === "insufficient_credits" ||
-            rawFailureKind === "no_provider" ||
-            rawFailureKind === "provider_issue" ||
-            rawFailureKind === "rate_limited" ||
-            rawFailureKind === "local_inference"
-              ? rawFailureKind
-              : undefined;
+          const failureKind = parseChatFailureKind(rawFailureKind);
           // The CONNECT_ACCOUNT action stamps `content.accountConnect` on the
           // assistant memory. Validate + round-trip it so the inline
           // AddAccountDialog entry point survives the GET /messages replace.
