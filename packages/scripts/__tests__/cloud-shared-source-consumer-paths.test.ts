@@ -13,6 +13,7 @@ const repoRoot = resolve(import.meta.dir, "../../..");
 const cloudRoot = resolve(repoRoot, "packages/cloud");
 const edgeModules = [
   "@elizaos/plugin-scheduling/edge",
+  "@elizaos/plugin-todos/edge",
   "@elizaos/plugin-web-search/edge",
 ] as const;
 

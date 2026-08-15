@@ -185,6 +185,7 @@
         "@elizaos/plugin-documents": "workspace:*",
         "@elizaos/plugin-e2b-sandbox": "*",
         "@elizaos/plugin-inbox": "workspace:*",
+        "@elizaos/plugin-todos": "workspace:*",
         "@elizaos/plugin-x402": "*",
       },
       "optionalPeers": [
@@ -192,6 +193,7 @@
         "@elizaos/plugin-documents",
         "@elizaos/plugin-e2b-sandbox",
         "@elizaos/plugin-inbox",
+        "@elizaos/plugin-todos",
         "@elizaos/plugin-x402",
       ],
     },
@@ -691,6 +693,7 @@
         "@elizaos/plugin-elizacloud": "workspace:*",
         "@elizaos/plugin-scheduling": "workspace:*",
         "@elizaos/plugin-sql": "workspace:*",
+        "@elizaos/plugin-todos": "workspace:*",
         "@elizaos/plugin-web-search": "workspace:*",
         "@elizaos/shared": "workspace:*",
         "@fal-ai/client": "^1.10.1",
@@ -758,6 +761,7 @@
       },
       "dependencies": {
         "@elizaos/cloud-shared": "workspace:*",
+        "@elizaos/shared": "workspace:*",
         "hono": "4.13.1",
       },
       "devDependencies": {
@@ -3010,11 +3014,8 @@
       "name": "@elizaos/plugin-todos",
       "version": "2.0.3-beta.7",
       "dependencies": {
-        "@elizaos/agent": "workspace:*",
-        "@elizaos/app-core": "workspace:*",
         "@elizaos/core": "workspace:*",
         "@elizaos/shared": "workspace:*",
-        "@elizaos/ui": "workspace:*",
         "drizzle-orm": "0.45.2",
         "lucide-react": "^1.0.0",
       },
@@ -3032,6 +3033,7 @@
       },
       "peerDependencies": {
         "@elizaos/plugin-sql": "workspace:*",
+        "@elizaos/ui": "workspace:*",
         "react": "^19.0.0",
         "react-dom": "^19.0.0",
       },

@@ -1436,6 +1436,20 @@
       "when": 1787428800000,
       "tag": "0205_identity_links_transport_source",
       "breakpoints": true
+    },
+    {
+      "idx": 205,
+      "version": "7",
+      "when": 1787515200000,
+      "tag": "0206_shared_todos",
+      "breakpoints": true
+    },
+    {
+      "idx": 206,
+      "version": "7",
+      "when": 1787601600000,
+      "tag": "0207_todo_mutation_ledger",
+      "breakpoints": true
     }
   ]
 }

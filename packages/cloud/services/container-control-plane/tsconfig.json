@@ -27,6 +27,9 @@
       "@elizaos/plugin-scheduling/edge": [
         "../../../../plugins/plugin-scheduling/src/edge.ts"
       ],
+      "@elizaos/plugin-todos/edge": [
+        "../../../../plugins/plugin-todos/src/edge.ts"
+      ],
       "@elizaos/plugin-sql": [
         "../../../../plugins/plugin-sql/src/index.node.ts"
       ],

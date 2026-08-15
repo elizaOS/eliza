@@ -3,6 +3,7 @@
 export type SharedDedicatedCapability =
   | "calendar"
   | "reminders"
+  | "todos"
   | "bookings"
   | "communications"
   | "purchases"
@@ -30,6 +31,13 @@ const RULES: ReadonlyArray<SharedCapabilityWall & { pattern: RegExp }> = [
       /\b(?:remind\s+me|(?:set|create|add|schedule|cancel|delete|change|list|show)\b[\s\S]{0,36}\breminders?)\b/i,
     reply:
       "Reminders need Dedicated. I can still help you plan it here, but Shared can't schedule or deliver reminders.",
+  },
+  {
+    capability: "todos",
+    label: "Todos",
+    pattern:
+      /\b(?:add|create|make|write|show|list|get|update|edit|complete|finish|cancel|delete|remove|clear)\b[\s\S]{0,48}\b(?:to[ -]?dos?|task\s+list|checklist|my\s+tasks?)\b/i,
+    reply: "Todos are unavailable on this chat path right now. I didn't save or change anything.",
   },
   {
     capability: "calendar",
@@ -113,13 +121,15 @@ const RULES: ReadonlyArray<SharedCapabilityWall & { pattern: RegExp }> = [
 
 export function resolveSharedCapabilityWall(
   message: string | undefined,
-  capabilities: { reminders?: boolean } = {},
+  capabilities: { reminders?: boolean; todos?: boolean } = {},
 ): SharedCapabilityWall | null {
   const text = (message ?? "").trim();
   if (!text || NON_EXECUTION_CONTEXT.test(text)) return null;
   const match = RULES.find(
     (rule) =>
-      !(rule.capability === "reminders" && capabilities.reminders) && rule.pattern.test(text),
+      !(rule.capability === "reminders" && capabilities.reminders) &&
+      !(rule.capability === "todos" && capabilities.todos) &&
+      rule.pattern.test(text),
   );
   return match ? { capability: match.capability, label: match.label, reply: match.reply } : null;
 }

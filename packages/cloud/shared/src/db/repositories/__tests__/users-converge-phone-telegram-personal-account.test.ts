@@ -12,8 +12,22 @@ process.env.DATABASE_URL ||= "pglite://memory";
 process.env.NODE_ENV ||= "test";
 process.env.MOCK_REDIS = "1";
 
+import { createTodosSqlStore } from "@elizaos/plugin-todos/edge";
 import { pushSchema } from "drizzle-kit/api";
 import { eq, sql } from "drizzle-orm";
+import {
+  lifeScheduledTaskLog,
+  lifeScheduledTasks,
+} from "../../../../../../../plugins/plugin-scheduling/src/scheduled-task/db-schema";
+import {
+  todoMutationsTable,
+  todosTable,
+} from "../../../../../../../plugins/plugin-todos/src/db/schema";
+import {
+  sharedRuntimeConversationRoomId,
+  sharedRuntimeWorldId,
+  sharedTodoStorageScope,
+} from "../../../lib/services/shared-runtime/shared-runtime-storage-identity";
 import { closeDatabaseConnectionsForTests, dbWrite } from "../../client";
 import { sqlRows } from "../../execute-helpers";
 import { organizationBalanceRevisionSequence, organizations } from "../../schemas/organizations";
@@ -67,6 +81,8 @@ describe("UsersRepository phone + Telegram provisional convergence (real PGlite)
     }
 
     try {
+      await dbWrite.execute(sql`CREATE SCHEMA IF NOT EXISTS todos`);
+      await dbWrite.execute(sql`CREATE SCHEMA IF NOT EXISTS app_scheduling`);
       const { apply } = await pushSchema(
         {
           organizationBalanceRevisionSequence,
@@ -74,6 +90,10 @@ describe("UsersRepository phone + Telegram provisional convergence (real PGlite)
           users,
           userIdentities,
           personalAccountConvergences,
+          todosTable,
+          todoMutationsTable,
+          lifeScheduledTasks,
+          lifeScheduledTaskLog,
         } as never,
         dbWrite as never,
       );
@@ -143,6 +163,10 @@ describe("UsersRepository phone + Telegram provisional convergence (real PGlite)
 
   beforeEach(async () => {
     expect(pgliteReady).toBe(true);
+    await dbWrite.delete(lifeScheduledTaskLog);
+    await dbWrite.delete(lifeScheduledTasks);
+    await dbWrite.delete(todoMutationsTable);
+    await dbWrite.delete(todosTable);
     await dbWrite.execute(sql`DELETE FROM agent_sandboxes`);
     await dbWrite.execute(sql`DELETE FROM user_characters`);
     await dbWrite.execute(sql`DELETE FROM credit_transactions`);
@@ -260,6 +284,232 @@ describe("UsersRepository phone + Telegram provisional convergence (real PGlite)
       phone_number: pair.phoneNumber,
       phone_verified: true,
     });
+  });
+
+  test("moves source Todos and replay authority into the retained Telegram scope", async () => {
+    const pair = await createPair();
+    const proof = proofFor(pair);
+    const sourceAgentId = "personal:todo-source";
+    const targetAgentId = "personal:todo-target";
+    const sourceScope = sharedTodoStorageScope({
+      sourceAgentId,
+      ownerId: pair.phone.user.id,
+    });
+    const targetScope = sharedTodoStorageScope({
+      sourceAgentId: targetAgentId,
+      ownerId: pair.telegram.user.id,
+    });
+    const sourceRoomId = sharedRuntimeConversationRoomId(sourceAgentId);
+    const sourceWorldId = sharedRuntimeWorldId(sourceAgentId);
+    const targetRoomId = sharedRuntimeConversationRoomId(targetAgentId);
+    const targetWorldId = sharedRuntimeWorldId(targetAgentId);
+    const store = createTodosSqlStore(dbWrite);
+    const parentMutation = {
+      scope: sourceScope,
+      idempotencyKey: "todos:v1:phone-turn-parent:0",
+      mutation: {
+        action: "create" as const,
+        input: {
+          roomId: sourceRoomId,
+          worldId: sourceWorldId,
+          content: "Pack passport",
+        },
+      },
+    };
+    const parent = await store.applyMutation(parentMutation);
+    expect(parent.result.action).toBe("create");
+    if (parent.result.action !== "create") {
+      throw new Error("Source parent mutation did not create a Todo");
+    }
+    const parentTodo = parent.result.todo;
+    const child = await store.applyMutation({
+      scope: sourceScope,
+      idempotencyKey: "todos:v1:phone-turn-child:0",
+      mutation: {
+        action: "create",
+        input: {
+          roomId: sourceRoomId,
+          worldId: sourceWorldId,
+          content: "Check passport expiry",
+          parentTodoId: parentTodo.id,
+        },
+      },
+    });
+    expect(child.result.action).toBe("create");
+    if (child.result.action !== "create") {
+      throw new Error("Source child mutation did not create a Todo");
+    }
+    const childTodo = child.result.todo;
+    const targetNative = await store.create({
+      ...targetScope,
+      roomId: targetRoomId,
+      worldId: targetWorldId,
+      content: "Telegram native Todo",
+    });
+
+    const params = {
+      ...proof,
+      sourceUserId: pair.phone.user.id,
+      sourceOrganizationId: pair.phone.organization.id,
+      sourceAgentId,
+      targetUserId: pair.telegram.user.id,
+      targetOrganizationId: pair.telegram.organization.id,
+      targetAgentId,
+      token: `phone-telegram:${pair.phone.user.id}:${pair.telegram.user.id}`,
+    };
+    const result = await usersRepository.commitPhoneTelegramPersonalAccountConvergence(params);
+    expect(result.status).toBe("committed");
+
+    expect(await store.readCutoverState(sourceScope)).toEqual({ todos: [], mutations: [] });
+    const targetState = await store.readCutoverState(targetScope);
+    expect(targetState.todos).toHaveLength(3);
+    expect(targetState.mutations).toHaveLength(2);
+    expect(targetState.todos.find((todo) => todo.id === targetNative.id)).toMatchObject({
+      content: "Telegram native Todo",
+      roomId: targetRoomId,
+      worldId: targetWorldId,
+    });
+    const movedParent = targetState.todos.find((todo) => todo.id === parentTodo.id);
+    const movedChild = targetState.todos.find((todo) => todo.id === childTodo.id);
+    expect(movedParent).toMatchObject({
+      agentId: targetScope.agentId,
+      entityId: targetScope.entityId,
+      roomId: targetRoomId,
+      worldId: targetWorldId,
+    });
+    expect(movedChild).toMatchObject({
+      agentId: targetScope.agentId,
+      entityId: targetScope.entityId,
+      roomId: targetRoomId,
+      worldId: targetWorldId,
+      parentTodoId: parentTodo.id,
+    });
+
+    const replay = await store.applyMutation({
+      ...parentMutation,
+      scope: targetScope,
+      mutation: {
+        ...parentMutation.mutation,
+        input: {
+          ...parentMutation.mutation.input,
+          roomId: targetRoomId,
+          worldId: targetWorldId,
+        },
+      },
+    });
+    expect(replay).toMatchObject({
+      replayed: true,
+      mutationId: parent.mutationId,
+      idempotencyKey: parent.idempotencyKey,
+    });
+    expect(replay.result).toMatchObject({
+      action: "create",
+      todo: {
+        id: parent.result.todo.id,
+        agentId: targetScope.agentId,
+        entityId: targetScope.entityId,
+        roomId: targetRoomId,
+        worldId: targetWorldId,
+      },
+    });
+    expect((await store.list({ ...targetScope })).map((todo) => todo.id).sort()).toEqual(
+      targetState.todos.map((todo) => todo.id).sort(),
+    );
+
+    const retry = await usersRepository.commitPhoneTelegramPersonalAccountConvergence(params);
+    expect(retry.status).toBe("already_committed");
+    expect((await store.readCutoverState(targetScope)).todos).toHaveLength(3);
+  });
+
+  test("rolls back identity and Todo scopes when replay authority conflicts", async () => {
+    const pair = await createPair();
+    const proof = proofFor(pair);
+    const sourceAgentId = "personal:todo-conflict-source";
+    const targetAgentId = "personal:todo-conflict-target";
+    const sourceScope = sharedTodoStorageScope({
+      sourceAgentId,
+      ownerId: pair.phone.user.id,
+    });
+    const targetScope = sharedTodoStorageScope({
+      sourceAgentId: targetAgentId,
+      ownerId: pair.telegram.user.id,
+    });
+    const store = createTodosSqlStore(dbWrite);
+    const idempotencyKey = "todos:v1:cross-account-conflict:0";
+    await store.applyMutation({
+      scope: sourceScope,
+      idempotencyKey,
+      mutation: {
+        action: "create",
+        input: { content: "Source meaning" },
+      },
+    });
+    await store.applyMutation({
+      scope: targetScope,
+      idempotencyKey,
+      mutation: {
+        action: "create",
+        input: { content: "Different target meaning" },
+      },
+    });
+
+    const commit = usersRepository.commitPhoneTelegramPersonalAccountConvergence({
+      ...proof,
+      sourceUserId: pair.phone.user.id,
+      sourceOrganizationId: pair.phone.organization.id,
+      sourceAgentId,
+      targetUserId: pair.telegram.user.id,
+      targetOrganizationId: pair.telegram.organization.id,
+      targetAgentId,
+      token: `phone-telegram:${pair.phone.user.id}:${pair.telegram.user.id}`,
+    });
+    await expect(commit).rejects.toMatchObject({ code: "TODO_IDEMPOTENCY_CONFLICT" });
+    expect(await dbWrite.select().from(users)).toHaveLength(2);
+    expect(await dbWrite.select().from(organizations)).toHaveLength(2);
+    expect(await dbWrite.select().from(userIdentities)).toHaveLength(2);
+    expect(await dbWrite.select().from(personalAccountConvergences)).toHaveLength(0);
+    expect((await store.readCutoverState(sourceScope)).todos).toHaveLength(1);
+    expect((await store.readCutoverState(sourceScope)).mutations).toHaveLength(1);
+    expect((await store.readCutoverState(targetScope)).todos).toHaveLength(1);
+    expect((await store.readCutoverState(targetScope)).mutations).toHaveLength(1);
+  });
+
+  test("fails closed instead of orphaning impossible phone-side reminder state", async () => {
+    const pair = await createPair();
+    const proof = proofFor(pair);
+    const sourceAgentId = "personal:unexpected-phone-reminder";
+    const now = new Date().toISOString();
+    await dbWrite.insert(lifeScheduledTasks).values({
+      id: crypto.randomUUID(),
+      agentId: sourceAgentId,
+      kind: "reminder",
+      promptInstructions: "Impossible source reminder",
+      triggerJson: JSON.stringify({ kind: "once", atIso: now }),
+      stateJson: JSON.stringify({ status: "scheduled" }),
+      createdBy: sourceAgentId,
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    const result = await usersRepository.commitPhoneTelegramPersonalAccountConvergence({
+      ...proof,
+      sourceUserId: pair.phone.user.id,
+      sourceOrganizationId: pair.phone.organization.id,
+      sourceAgentId,
+      targetUserId: pair.telegram.user.id,
+      targetOrganizationId: pair.telegram.organization.id,
+      targetAgentId: "personal:retained-telegram-reminder",
+      token: `phone-telegram:${pair.phone.user.id}:${pair.telegram.user.id}`,
+    });
+    expect(result.status).toBe("phone_account_mature");
+    expect(await dbWrite.select().from(users)).toHaveLength(2);
+    expect(await dbWrite.select().from(organizations)).toHaveLength(2);
+    expect(await dbWrite.select().from(personalAccountConvergences)).toHaveLength(0);
+    const [sourceTask] = await dbWrite
+      .select()
+      .from(lifeScheduledTasks)
+      .where(eq(lifeScheduledTasks.agentId, sourceAgentId));
+    expect(sourceTask?.promptInstructions).toBe("Impossible source reminder");
   });
 
   test("serializes concurrent commit retries onto one canonical user and receipt", async () => {

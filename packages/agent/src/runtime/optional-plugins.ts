@@ -55,6 +55,7 @@ export const OPTIONAL_STATIC_PLUGIN_PACKAGES: readonly string[] = [
   "@elizaos/plugin-inbox",
   "@elizaos/plugin-app-control",
   "@elizaos/plugin-notes",
+  "@elizaos/plugin-todos",
   "@elizaos/plugin-documents",
   "@elizaos/plugin-calendar",
   "@elizaos/plugin-anthropic",
@@ -177,6 +178,11 @@ export const OPTIONAL_STATIC_PLUGIN_OVERRIDES: Readonly<
   },
   "@elizaos/plugin-notes": {
     importSubpath: "./plugin",
+  },
+  "@elizaos/plugin-todos": {
+    importSubpath: "./plugin",
+    suppressTypeResolutionReason:
+      "todos is peer-linked to avoid the todos -> agent runtime dependency cycle; the deferred import runs after agent module initialization.",
   },
   "@elizaos/plugin-documents": {
     importSubpath: "./plugin",
