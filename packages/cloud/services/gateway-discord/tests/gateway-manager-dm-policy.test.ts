@@ -39,6 +39,9 @@ interface GatewayManagerHarness {
   accessToken: string | null;
   handleMessage(connectionId: string, message: Message): Promise<void>;
   pollForBots(): Promise<void>;
+  voiceHandler: {
+    processVoiceAttachments(): Promise<unknown[]>;
+  };
 }
 
 type Topology = "in-worker" | "dedicated";
@@ -234,6 +237,36 @@ for (const topology of ["in-worker", "dedicated"] as const) {
     });
   });
 }
+
+test("rejects a denied voice DM before processing its attachment", async () => {
+  process.env.VOICE_MESSAGE_ENABLED = "true";
+  const { harness, calls } = createBoundary("dedicated");
+  let voiceProcessingCalls = 0;
+  harness.voiceHandler = {
+    processVoiceAttachments: async () => {
+      voiceProcessingCalls += 1;
+      return [];
+    },
+  };
+  seedConnection(harness, valid({ dmPolicy: "disabled" }));
+  const message = messageFrom(STRANGER);
+  (message as unknown as { attachments: unknown[] }).attachments = [
+    {
+      id: "voice-attachment",
+      name: "voice-message.ogg",
+      contentType: "audio/ogg",
+      size: 128,
+      url: "https://cdn.discord.test/voice-message.ogg",
+    },
+  ];
+
+  await harness.handleMessage(CONNECTION_ID, message);
+
+  expect(voiceProcessingCalls).toBe(0);
+  expect(calls.resolve).toBe(0);
+  expect(calls.inWorker).toBe(0);
+  expect(calls.dedicated).toBe(0);
+});
 
 test("refreshes restrictive metadata on an existing bot without reconnecting", async () => {
   const { harness, calls, setAssignments } = createBoundary("dedicated");

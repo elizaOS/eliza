@@ -82,7 +82,10 @@ describe("parseDiscordConnectionDmPolicyState", () => {
       undefined,
       null,
       {},
-      { status: "valid", metadata: { dmPolicy: "allowlist", dmAllowFrom: ["bad"] } },
+      {
+        status: "valid",
+        metadata: { dmPolicy: "allowlist", dmAllowFrom: ["bad"] },
+      },
       { status: "valid", metadata: { dmPolicy: "unknown" } },
       { status: "invalid" },
     ]) {

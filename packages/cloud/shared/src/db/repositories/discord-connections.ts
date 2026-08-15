@@ -12,7 +12,6 @@ import {
   parseDiscordConnectionDmPolicyState,
 } from "../schemas/discord-connections";
 
-
 interface CreateConnectionInput {
   organizationId: string;
   characterId?: string;

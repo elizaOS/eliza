@@ -34,13 +34,9 @@ const discordConnectionDmMetadataFields = {
  * so an unrelated invalid response-mode configuration cannot bypass a valid,
  * restrictive DM policy.
  */
-export const DiscordConnectionDmMetadataSchema = z.object(
-  discordConnectionDmMetadataFields,
-);
+export const DiscordConnectionDmMetadataSchema = z.object(discordConnectionDmMetadataFields);
 
-export type DiscordConnectionDmMetadata = z.infer<
-  typeof DiscordConnectionDmMetadataSchema
->;
+export type DiscordConnectionDmMetadata = z.infer<typeof DiscordConnectionDmMetadataSchema>;
 
 /** Validation state sent to the standalone gateway assignment boundary. */
 export type DiscordConnectionDmPolicyState =
@@ -59,9 +55,7 @@ export function parseDiscordConnectionDmPolicyState(
     return { status: "valid", metadata: {} };
   }
   const parsed = DiscordConnectionDmMetadataSchema.safeParse(value);
-  return parsed.success
-    ? { status: "valid", metadata: parsed.data }
-    : { status: "invalid" };
+  return parsed.success ? { status: "valid", metadata: parsed.data } : { status: "invalid" };
 }
 
 /**

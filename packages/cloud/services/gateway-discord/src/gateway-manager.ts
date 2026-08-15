@@ -838,9 +838,12 @@ export class GatewayManager {
       url.searchParams.set("current", currentCount.toString());
       url.searchParams.set("max", MAX_BOTS_PER_POD.toString());
 
-      const response = await this.routingAdapters.fetchAssignments(url.toString(), {
-        headers: this.getAuthHeader(),
-      });
+      const response = await this.routingAdapters.fetchAssignments(
+        url.toString(),
+        {
+          headers: this.getAuthHeader(),
+        },
+      );
 
       if (!response.ok) {
         this.consecutivePollFailures++;
@@ -1382,6 +1385,23 @@ export class GatewayManager {
     const conn = this.connections.get(connectionId);
     if (!conn) return;
 
+    // Enforce one fail-closed DM gate before attachment processing or either
+    // routing topology. The cloud-shared event router remains defense in depth
+    // for in-worker events.
+    if (
+      !message.guildId &&
+      !isDmSenderAllowed(conn.dmPolicyState, message.author.id)
+    ) {
+      logger.debug("DM dropped by connection policy at the gateway", {
+        connectionId,
+        dmPolicy:
+          conn.dmPolicyState.status === "valid"
+            ? (conn.dmPolicyState.metadata.dmPolicy ?? "open")
+            : "invalid",
+      });
+      return;
+    }
+
     const eventData: Record<string, unknown> = {
       id: message.id,
       channel_id: message.channelId,
@@ -1474,22 +1494,6 @@ export class GatewayManager {
     if (!conn.characterId) {
       logger.warn("Connection has no characterId, cannot route message", {
         connectionId,
-      });
-      return;
-    }
-
-    // Enforce one fail-closed DM gate before selecting either route. The
-    // cloud-shared event-router remains defense-in-depth for in-worker events.
-    if (
-      !message.guildId &&
-      !isDmSenderAllowed(conn.dmPolicyState, message.author.id)
-    ) {
-      logger.debug("DM dropped by connection policy at the gateway", {
-        connectionId,
-        dmPolicy:
-          conn.dmPolicyState.status === "valid"
-            ? (conn.dmPolicyState.metadata.dmPolicy ?? "open")
-            : "invalid",
       });
       return;
     }
