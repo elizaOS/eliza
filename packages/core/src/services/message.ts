@@ -119,10 +119,8 @@ import {
 import {
 	type ExecutePlannedToolCallContext,
 	type ExecutePlannedToolCallOptions,
-	executePlannedToolCall,
-	projectActionResultForClipboard,
-	shouldSuppressActionResultClipboard,
 	type ToolArgAliasCapability,
+	executePlannedToolCall,
 	projectActionResultForClipboard,
 	shouldSuppressActionResultClipboard,
 } from "../runtime/execute-planned-tool-call";
