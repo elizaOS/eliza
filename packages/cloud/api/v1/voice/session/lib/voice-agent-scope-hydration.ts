@@ -67,8 +67,20 @@ export async function hydrateVoiceSharedAgentScope(
           await cache.set(cacheKey, character, CacheTTL.agent.characterData);
         };
 
-        // The scope entry is the authorization gate: never let an optional
-        // character prefill failure prevent it from being written.
+        // Publish the authorization gate as soon as the authoritative agent
+        // lookup succeeds. Character and admission prefills are latency hints;
+        // keeping this write behind either one turns a slow optional dependency
+        // into the full 503/backoff staircase on the caller's first response.
+        await cache.set(
+          CacheKeys.sharedAgentScope.voice(
+            claims.organizationId,
+            claims.userId,
+            claims.agentId,
+          ),
+          agent,
+          CacheTTL.sharedAgentScope.resolve,
+        );
+
         // error-policy:J7 a failed character prefill leaves the next turn on
         // its existing retryable warming path rather than failing hydration.
         await Promise.all([
@@ -91,16 +103,6 @@ export async function hydrateVoiceSharedAgentScope(
             },
           ),
         ]);
-
-        await cache.set(
-          CacheKeys.sharedAgentScope.voice(
-            claims.organizationId,
-            claims.userId,
-            claims.agentId,
-          ),
-          agent,
-          CacheTTL.sharedAgentScope.resolve,
-        );
       }),
   );
 }

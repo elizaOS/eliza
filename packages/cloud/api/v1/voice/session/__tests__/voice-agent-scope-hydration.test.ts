@@ -135,6 +135,32 @@ test("publishes the authorization scope even when the character prefill fails", 
   });
 });
 
+test("publishes the authorization scope before optional admission prefill completes", async () => {
+  let resolveAdmission: () => void = () => {};
+  warmInferenceAdmissionSnapshot.mockImplementationOnce(
+    () =>
+      new Promise<undefined>((resolve) => {
+        resolveAdmission = () => resolve(undefined);
+      }),
+  );
+
+  await runWithCloudBindingsAsync(env, async () => {
+    const hydration = hydrateVoiceSharedAgentScope(
+      env as unknown as Parameters<typeof hydrateVoiceSharedAgentScope>[0],
+      claims,
+    );
+
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      if (await cache.get(SCOPE_KEY)) break;
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+    expect(await cache.get(SCOPE_KEY)).toMatchObject({ id: AGENT_ID });
+
+    resolveAdmission();
+    await hydration;
+  });
+});
+
 test("does not overwrite an already-warm character entry", async () => {
   await runWithCloudBindingsAsync(env, async () => {
     await cache.set(CHARACTER_KEY, { id: CHARACTER_ID, name: "Existing" }, 60);
