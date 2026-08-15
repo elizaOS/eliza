@@ -85,7 +85,11 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       TF_IN_AUTOMATION: "true"
       HCLOUD_TOKEN: ${{ (inputs.component == 'control-plane' || inputs.component == 'prod-ops') && secrets.HCLOUD_TOKEN || secrets.HCLOUD_APPS_TOKEN }}
-      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      # Pages-domain plans need DNS, Pages, and SSL Certificates access. Prefer
+      # the environment-scoped credential for that root while preserving the
+      # shared credential contract for every other component and as a rollout
+      # fallback where the dedicated secret has not yet been provisioned.
+      CLOUDFLARE_API_TOKEN: ${{ inputs.component == 'pages-domains' && secrets.CLOUDFLARE_PAGES_API_TOKEN || secrets.CLOUDFLARE_API_TOKEN }}
       AWS_ACCESS_KEY_ID: ${{ secrets.R2_STATE_ACCESS_KEY_ID }}
       AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_STATE_SECRET_ACCESS_KEY }}
       TERRAFORM_PLAN_ARTIFACT_PUBLIC_KEY: ${{ vars.TERRAFORM_PLAN_ARTIFACT_PUBLIC_KEY }}

@@ -32,21 +32,13 @@ const dbWrite = {
   delete: mock(() => ({ where: deleteWhere })),
 };
 
-const dbRead = {
-  select: mock(() => ({
-    from: () => ({
-      where: () => ({ limit: async () => [] }),
-    }),
-  })),
-};
-
 mock.module("@/lib/auth/workers-hono-auth", () => ({
   requireUserOrApiKeyWithOrg: requireUser,
 }));
 mock.module("@/db/repositories/users", () => ({
   usersRepository: { findById: findUser },
 }));
-mock.module("@/db/helpers", () => ({ dbRead, dbWrite }));
+mock.module("@/db/helpers", () => ({ dbWrite }));
 mock.module("@/lib/middleware/rate-limit-hono-cloudflare", () => ({
   RateLimitPresets: { CRITICAL: { windowMs: 300_000, maxRequests: 5 } },
   rateLimit: () => async (_c: unknown, next: () => Promise<void>) => next(),
@@ -63,7 +55,7 @@ const { default: app } = await import("./route");
 const env = {
   ELIZA_APP_TWILIO_ACCOUNT_SID: "AC123",
   ELIZA_APP_TWILIO_AUTH_TOKEN: "secret",
-  ELIZA_APP_TWILIO_PHONE_NUMBER: "+18087881821",
+  ELIZA_APP_TWILIO_PHONE_NUMBER: "+14484080429",
   TWILIO_PUBLIC_URL: "https://api.eliza.app",
 };
 
@@ -97,6 +89,7 @@ describe("POST Twilio outbound voice call", () => {
     queueCall.mockClear();
     returning.mockClear();
     returning.mockImplementation(async () => [{ key: "claimed" }]);
+    deleteWhere.mockClear();
   });
 
   test("queues the verified number through the signed realtime callback", async () => {
@@ -115,7 +108,7 @@ describe("POST Twilio outbound voice call", () => {
     expect(endpoint).toBe("/Calls.json");
     expect(form).toBeInstanceOf(URLSearchParams);
     expect((form as URLSearchParams).get("To")).toBe("+14155550100");
-    expect((form as URLSearchParams).get("From")).toBe("+18087881821");
+    expect((form as URLSearchParams).get("From")).toBe("+14484080429");
     expect((form as URLSearchParams).get("Url")).toBe(
       "https://api.eliza.app/api/v1/twilio/voice/inbound",
     );
@@ -142,6 +135,39 @@ describe("POST Twilio outbound voice call", () => {
     await expect(response.json()).resolves.toMatchObject({
       code: "phone_verification_required",
     });
+    expect(queueCall).not.toHaveBeenCalled();
+  });
+
+  test("reclaims an expired idempotency key and queues the current call", async () => {
+    returning
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{ key: "reclaimed" }]);
+
+    const response = await callRequest(
+      { to: "+14155550100" },
+      "00000000-0000-4000-8000-000000000001",
+    );
+
+    expect(response.status).toBe(200);
+    expect(deleteWhere).toHaveBeenCalledTimes(1);
+    expect(returning).toHaveBeenCalledTimes(2);
+    expect(queueCall).toHaveBeenCalledTimes(1);
+  });
+
+  test("keeps a live duplicate claim fail-closed", async () => {
+    returning.mockResolvedValue([]);
+
+    const response = await callRequest(
+      { to: "+14155550100" },
+      "00000000-0000-4000-8000-000000000002",
+    );
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      code: "duplicate_call",
+    });
+    expect(deleteWhere).toHaveBeenCalledTimes(1);
+    expect(returning).toHaveBeenCalledTimes(2);
     expect(queueCall).not.toHaveBeenCalled();
   });
 });

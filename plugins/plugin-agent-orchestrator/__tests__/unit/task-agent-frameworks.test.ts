@@ -27,6 +27,7 @@ const ENV_KEYS = [
   "ELIZA_CONFIG_PATH",
   "ELIZA_DEFAULT_AGENT_TYPE",
   "ELIZA_ELIZAOS_ACP_COMMAND",
+  "ELIZA_FRAMEWORK_PREFLIGHT_TIMEOUT_MS",
   "ELIZA_LLM_PROVIDER",
   "ELIZA_PI_AGENT_ACP_COMMAND",
   "ELIZA_PROVIDER",
@@ -346,6 +347,58 @@ describe("getTaskAgentFrameworkState", () => {
     ).toBe(true);
     expect(
       second.frameworks.find((item) => item.id === "codex")?.installed,
+    ).toBe(true);
+  });
+
+  it.each([
+    "249",
+    "250oops",
+    "250.5",
+    "2.5e2",
+    "0250",
+    "2147483648",
+    "9007199254740992",
+  ])("rejects malformed framework preflight timeout %s", async (value) => {
+    const probe = installedProbe();
+    setEnv({ ELIZA_FRAMEWORK_PREFLIGHT_TIMEOUT_MS: value });
+
+    await expect(
+      getTaskAgentFrameworkState(runtime(), probe),
+    ).rejects.toMatchObject({
+      name: "ElizaError",
+      code: "FRAMEWORK_PREFLIGHT_TIMEOUT_INVALID",
+      context: {
+        configured: value,
+        minimum: 250,
+        maximum: 2_147_483_647,
+      },
+    });
+    expect(probe.checkAvailableAgents).not.toHaveBeenCalled();
+  });
+
+  it("accepts the minimum framework preflight timeout", async () => {
+    setEnv({ ELIZA_FRAMEWORK_PREFLIGHT_TIMEOUT_MS: "250" });
+
+    const state = await getTaskAgentFrameworkState(runtime(), installedProbe());
+
+    expect(
+      state.frameworks.find((item) => item.id === "codex")?.installed,
+    ).toBe(true);
+  });
+
+  it("accepts Node's maximum timer delay for framework preflight", async () => {
+    setEnv({ ELIZA_FRAMEWORK_PREFLIGHT_TIMEOUT_MS: "2147483647" });
+    const setTimeoutSpy = vi.spyOn(globalThis, "setTimeout");
+
+    const state = await getTaskAgentFrameworkState(runtime(), installedProbe());
+
+    expect(setTimeoutSpy).toHaveBeenCalledWith(
+      expect.any(Function),
+      2_147_483_647,
+    );
+    setTimeoutSpy.mockRestore();
+    expect(
+      state.frameworks.find((item) => item.id === "codex")?.installed,
     ).toBe(true);
   });
 
