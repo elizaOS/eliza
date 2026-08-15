@@ -5546,12 +5546,15 @@ export class ElizaSandboxService {
   } | null> {
     const rec = await agentSandboxesRepository.findRunningSandbox(agentId, orgId);
     if (!rec) return null;
+    const serverSecret = getCloudAwareEnv().AGENT_SERVER_SHARED_SECRET?.trim();
+    if (!serverSecret) return null;
 
     const res = await this.fetchCanonicalConversationApi(
       rec,
       `/api/conversations/${encodeURIComponent(conversationId)}/import`,
       {
         method: "POST",
+        headers: { "X-Server-Token": serverSecret },
         body: JSON.stringify({ messages }),
         signal: AbortSignal.timeout(20_000),
       },

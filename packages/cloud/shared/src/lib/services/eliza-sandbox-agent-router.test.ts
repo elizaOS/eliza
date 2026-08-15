@@ -231,6 +231,7 @@ describe("ElizaSandboxService Worker agent-router fetch", () => {
         {
           ELIZA_CLOUD_AGENT_BASE_DOMAIN: "elizacloud.ai",
           AGENT_ROUTER_ORIGIN_HOST: "eliza-production-1.elizacloud.ai",
+          AGENT_SERVER_SHARED_SECRET: "server-secret",
         },
         () =>
           service().importCanonicalConversation(sandbox.id, "org-1", "personal:user-1", [
@@ -249,6 +250,7 @@ describe("ElizaSandboxService Worker agent-router fetch", () => {
         "https://eliza-production-1.elizacloud.ai/api/conversations/personal%3Auser-1/import",
       );
       expect(requests[0]?.headers.get("authorization")).toBe("Bearer agent-token");
+      expect(requests[0]?.headers.get("x-server-token")).toBe("server-secret");
       expect(requests[0]?.headers.get("x-forwarded-host")).toBe(`${sandbox.id}.elizacloud.ai`);
       expect(JSON.parse(requests[0]!.body)).toEqual({
         messages: [{ sourceId: "source-1", role: "user", text: "hello", timestamp: 123 }],
