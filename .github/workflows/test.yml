@@ -55,14 +55,14 @@ jobs:
     name: Eliza X exact image canary
     if: github.event_name == 'workflow_dispatch' && inputs.x_agent_rollout
     runs-on: macos-15
+    environment: production
     timeout-minutes: 20
     permissions:
       contents: read
     env:
       ELIZACLOUD_API_KEY: ${{ secrets.ELIZAOS_CLOUD_API_KEY != '' && secrets.ELIZAOS_CLOUD_API_KEY || secrets.ELIZACLOUD_API_KEY }}
       ELIZA_X_DIAG_AGENT_TOKEN: ${{ secrets.ELIZA_X_DIAG_AGENT_TOKEN }}
-      ELIZA_PROVISIONING_SSH_KEY: ${{ secrets.ELIZA_PROVISIONING_SSH_KEY }}
-      ELIZA_PROVISIONING_SSH_KNOWN_HOSTS: ${{ secrets.ELIZA_PROVISIONING_SSH_KNOWN_HOSTS }}
+      CONTAINERS_SSH_KEY: ${{ secrets.CONTAINERS_SSH_KEY }}
       AGENT_IMAGE_CANARY_MODE: upgrade
       AGENT_IMAGE_CANARY_REQUEST_ID: 98a0ee52-bd1b-4b9e-a044-ff2b243565f1
       AGENT_IMAGE_CANARY_EXPECTED_DEPLOY_COMMIT: 24d8f5fe92206c1e136382c649f2f7070e6a0c63
@@ -80,17 +80,15 @@ jobs:
         shell: bash
         run: |
           test -n "${ELIZACLOUD_API_KEY//[[:space:]]/}"
-          test -n "${ELIZA_PROVISIONING_SSH_KEY//[[:space:]]/}"
-          test -n "${ELIZA_PROVISIONING_SSH_KNOWN_HOSTS//[[:space:]]/}"
+          test -n "${CONTAINERS_SSH_KEY//[[:space:]]/}"
       - name: Inspect live X runtime
         shell: bash
         run: |
           set -euo pipefail
           work="$(mktemp -d)"
           trap 'rm -rf "$work"' EXIT
-          printf '%s\n' "$ELIZA_PROVISIONING_SSH_KEY" > "$work/key"
-          printf '%s\n' "$ELIZA_PROVISIONING_SSH_KNOWN_HOSTS" > "$work/known_hosts"
-          chmod 600 "$work/key" "$work/known_hosts"
+          printf '%s' "$CONTAINERS_SSH_KEY" | openssl base64 -d -A > "$work/key"
+          chmod 600 "$work/key"
           curl --silent --show-error --fail --max-time 30 \
             --header "Authorization: Bearer $ELIZACLOUD_API_KEY" \
             --output "$work/node.json" \
@@ -99,7 +97,7 @@ jobs:
           user="$(jq -er '.data.sshUser' "$work/node.json")"
           port="$(jq -er '.data.sshPort' "$work/node.json")"
           ssh -i "$work/key" -p "$port" \
-            -o BatchMode=yes -o StrictHostKeyChecking=yes \
+            -o BatchMode=yes -o StrictHostKeyChecking=accept-new \
             -o UserKnownHostsFile="$work/known_hosts" \
             "$user@$host" \
             'docker logs --since 45m agent-4602b3be-2c01-4e7e-9cdc-849604e1bef7 2>&1' \
