@@ -204,11 +204,77 @@ describe("KNOWLEDGE_GRAPH action", () => {
     expect(missing?.data).toMatchObject({ error: "NOT_FOUND" });
   });
 
-  it("list passes the kind filter + limit", async () => {
+  it("list passes the kind filter and reads one past the requested limit", async () => {
     await call({ op: "list", kind: "person", limit: 10 });
+    // The store is asked for limit + 1 so overflow can be measured instead of
+    // inferred from a page that merely filled.
     expect(stores.entityStore.list).toHaveBeenCalledWith(
-      expect.objectContaining({ type: "person", limit: 10 }),
+      expect.objectContaining({ type: "person", limit: 11 }),
     );
+  });
+
+  it.each([0.5, Number.NaN, Number.POSITIVE_INFINITY, 101, 2 ** 53])(
+    "rejects invalid list limit %s before reading the entity store",
+    async (limit) => {
+      const result = await call({ op: "list", limit });
+
+      expect(result?.success).toBe(false);
+      expect(result?.data).toMatchObject({ error: "INVALID_LIMIT" });
+      expect(stores.entityStore.list).not.toHaveBeenCalled();
+    },
+  );
+
+  it("names the kind filter and the unfiltered graph on a kind-scoped miss", async () => {
+    stores.entityStore.list = vi.fn(
+      async (filter: { type?: string; limit: number }) =>
+        filter.type === "organization"
+          ? []
+          : [makeEntity(), makeEntity({ entityId: "ent_2" })],
+    );
+    const result = await call({ op: "list", kind: "organization" });
+    expect(result?.success).toBe(true);
+    // A kind-scoped miss is not an empty graph.
+    expect(result?.text).not.toBe("No entities in the graph yet.");
+    expect(result?.text).toContain('No entities of kind "organization"');
+    expect(result?.text).toContain("2 entities of other kinds");
+  });
+
+  it("says the graph is empty only when the unfiltered read is also empty", async () => {
+    stores.entityStore.list = vi.fn(async () => []);
+    const result = await call({ op: "list", kind: "organization" });
+    expect(result?.text).toContain("no entities of any kind yet");
+  });
+
+  // Exact-fit and true-overflow must read differently. Both produce a full
+  // page, so a `length >= limit` test calls them both capped and tells the
+  // exact-fit reader to "raise limit to see more" — a statement that is false.
+  it("reports an exact-fit page as a total, not a capped sample", async () => {
+    stores.entityStore.list = vi.fn(async () =>
+      Array.from({ length: 50 }, (_, index) =>
+        makeEntity({ entityId: `ent_${index}` }),
+      ),
+    );
+    const result = await call({ op: "list" });
+    expect(result?.text).toBe("50 entities in the graph.");
+    expect(result?.text).not.toContain("capped at");
+  });
+
+  it("marks a genuinely overflowing list as capped rather than a total", async () => {
+    stores.entityStore.list = vi.fn(async (filter: { limit: number }) =>
+      Array.from({ length: filter.limit }, (_, index) =>
+        makeEntity({ entityId: `ent_${index}` }),
+      ),
+    );
+    const result = await call({ op: "list" });
+    expect(result?.text).toContain("capped at 50");
+    expect(result?.text).toContain("50+ entities");
+    expect(result?.text).not.toBe("50 entities in the graph.");
+  });
+
+  it("reports a short unfiltered list as the plain total", async () => {
+    const result = await call({ op: "list" });
+    expect(result?.text).toBe("1 entity in the graph.");
+    expect(stores.entityStore.list).toHaveBeenCalledTimes(1);
   });
 
   it("log_interaction records on the entity", async () => {
