@@ -64,10 +64,41 @@ const fakeAudioWav = path.join(
   "known-phrase.wav",
 );
 mkdirSync(path.dirname(fakeAudioWav), { recursive: true });
-writeFileSync(
-  fakeAudioWav,
-  Buffer.from(KNOWN_PHRASE_WAV_DATA_URL.split(",")[1] ?? "", "base64"),
+const knownPhraseWav = Buffer.from(
+  KNOWN_PHRASE_WAV_DATA_URL.split(",")[1] ?? "",
+  "base64",
 );
+// Chrome's fake microphone reaches EOF immediately after the spoken fixture,
+// while the live Ink path needs a stable silence tail to close semantic EOT.
+// Mirror the shipping 16 kHz PCM cadence with 5 s of explicit silence: Ink gets
+// enough EOT silence, then the test has ample time to mute before Chromium
+// loops the file. Do not rely on browser-version-specific EOF zero-fill.
+const silenceBytes = 16_000 * 2 * 5;
+let dataChunkOffset = 12;
+while (
+  dataChunkOffset + 8 <= knownPhraseWav.length &&
+  knownPhraseWav.toString("ascii", dataChunkOffset, dataChunkOffset + 4) !==
+    "data"
+) {
+  const chunkLength = knownPhraseWav.readUInt32LE(dataChunkOffset + 4);
+  dataChunkOffset += 8 + chunkLength + (chunkLength & 1);
+}
+if (dataChunkOffset + 8 > knownPhraseWav.length) {
+  throw new Error("known voice fixture is missing its WAV data chunk");
+}
+const dataLength = knownPhraseWav.readUInt32LE(dataChunkOffset + 4);
+const dataEnd = dataChunkOffset + 8 + dataLength;
+const fakeAudioWithEotSilence = Buffer.concat([
+  knownPhraseWav.subarray(0, dataEnd),
+  Buffer.alloc(silenceBytes),
+  knownPhraseWav.subarray(dataEnd),
+]);
+fakeAudioWithEotSilence.writeUInt32LE(fakeAudioWithEotSilence.length - 8, 4);
+fakeAudioWithEotSilence.writeUInt32LE(
+  dataLength + silenceBytes,
+  dataChunkOffset + 4,
+);
+writeFileSync(fakeAudioWav, fakeAudioWithEotSilence);
 const VOICE_MIC_SPEC = /(voice-realaudio|transcript-realaudio)\.spec\.ts/;
 // WebKit (Safari engine) pointer/focus/text-input lane. iOS/iPadOS ship Safari's
 // WebKit, but every default lane above is Chromium-only, so pointer, focus, and
