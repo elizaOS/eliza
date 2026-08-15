@@ -3,7 +3,8 @@
 import { describe, expect, test } from "bun:test";
 import {
   callEndedEvent,
-  callStartedPrompt,
+  callOpeningGreeting,
+  callStartedEvent,
   relativeInteractionAge,
 } from "./voice-continuity";
 
@@ -11,16 +12,21 @@ describe("voice continuity", () => {
   const now = Date.UTC(2026, 7, 15, 12);
 
   test("describes first contact without inventing history", () => {
-    expect(callStartedPrompt(undefined, now)).toContain(
+    expect(callStartedEvent(undefined, now)).toContain(
       "first recorded interaction",
     );
   });
 
   test("bounds prior interaction age into spoken units", () => {
     expect(relativeInteractionAge(now - 3 * 60 * 60_000, now)).toBe("3 hours");
-    expect(callStartedPrompt(now - 2 * 86_400_000, now)).toContain(
+    expect(callStartedEvent(now - 2 * 86_400_000, now)).toContain(
       "about 2 days ago",
     );
+  });
+
+  test("uses the exact model-free first and returning call openers", () => {
+    expect(callOpeningGreeting(false)).toBe("hello? who's this?");
+    expect(callOpeningGreeting(true)).toBe("hey whats up");
   });
 
   test("sanitizes teardown reasons", () => {

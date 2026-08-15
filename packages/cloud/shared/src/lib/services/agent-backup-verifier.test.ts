@@ -13,7 +13,7 @@
  */
 
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { desc, eq } from "drizzle-orm";
 
 const AMBIENT_DATABASE_URL = process.env.DATABASE_URL ?? "";
@@ -770,6 +770,39 @@ describe("runBackupVerificationCycle (real PGlite + real memory KMS)", () => {
     expect(second.verified).toBe(2);
     const aNewRow = await readBackupRow(aNewId);
     expect(aNewRow.verified_at?.getTime()).toBe(later.getTime());
+  });
+
+  test("retained recovery backups remain independently sampled after the parent is deleted", async () => {
+    expect(pgliteReady).toBe(true);
+    const deletedAgentId = await seedSandbox();
+    const retainedBackupId = await seedFullBackup(deletedAgentId, sampleState("retained-recovery"));
+    const [deletedAgent] = await dbWrite
+      .select({ organizationId: agentSandboxes.organization_id })
+      .from(agentSandboxes)
+      .where(eq(agentSandboxes.id, deletedAgentId));
+    if (!deletedAgent) throw new Error("deleted-agent fixture missing");
+    await dbWrite
+      .update(agentSandboxBackups)
+      .set({
+        sandbox_record_id: null,
+        snapshot_type: "pre-delete",
+        recovery_organization_id: deletedAgent.organizationId,
+        recovery_agent_id: deletedAgentId,
+        recovery_deletion_attempt_id: randomUUID(),
+        recovery_expires_at: new Date(Date.now() + 60_000),
+      })
+      .where(eq(agentSandboxBackups.id, retainedBackupId));
+    await dbWrite.delete(agentSandboxes).where(eq(agentSandboxes.id, deletedAgentId));
+
+    const liveAgentId = await seedSandbox();
+    const liveBackupId = await seedFullBackup(liveAgentId, sampleState("live-agent"));
+    const { alert } = makeAlertSpy();
+
+    const summary = await runBackupVerificationCycle({ config: CONFIG, alert });
+
+    expect(summary).toMatchObject({ sampled: 2, verified: 2, failed: 0, errored: 0 });
+    expect((await readBackupRow(retainedBackupId)).verification_status).toBe("verified");
+    expect((await readBackupRow(liveBackupId)).verification_status).toBe("verified");
   });
 
   test("batch size bounds a cycle; the next cycle picks up the remainder", async () => {

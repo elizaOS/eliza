@@ -993,6 +993,14 @@ export class SharedRuntimeChatService {
         messageRole,
         messageIds,
         onProviderDispatch: billing?.markProviderDispatched,
+        ...(options.executionEngine === "eliza-runtime"
+          ? {
+              execution: {
+                engine: "eliza-runtime" as const,
+                agentKey: agent.id,
+              },
+            }
+          : {}),
       });
     } catch (error) {
       detachRequestAbort();

@@ -51,6 +51,17 @@ export const googlePlugin: Plugin = {
   description:
     "Google Workspace integration for Gmail, Calendar, Drive, Meet, and Chat with account-scoped OAuth (Chat uses service-account auth)",
   services: [GoogleWorkspaceService, GoogleChatService],
+  // Google Chat is passive human ingress: the connector-source registry entry
+  // is the trust anchor that lets its inbound messages mint user notifications
+  // (core's agent-event-bridge fails closed for unregistered sources).
+  connectorSources: [
+    {
+      source: "google-chat",
+      aliases: ["google-chat", "googlechat"],
+      sourceKind: "passive",
+      isPassive: true,
+    },
+  ],
   actions: [],
   providers: [],
   tests: [],

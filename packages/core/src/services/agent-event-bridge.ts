@@ -4,6 +4,7 @@
  * in present observers are reported without interrupting the message loop.
  */
 
+import { isPassiveConnectorSource } from "../connectors.ts";
 import { logger } from "../logger.ts";
 import type { MessageEventData } from "../types/agentEvent.ts";
 import type {
@@ -13,9 +14,9 @@ import type {
 	RunEventPayload,
 } from "../types/events.ts";
 import type { IAgentRuntime } from "../types/index.ts";
-import { MESSAGE_SOURCE_CLIENT_CHAT } from "../types/message-source.ts";
 import type { NotificationInput } from "../types/notification.ts";
 import type { JsonValue } from "../types/primitives.ts";
+import { ChannelType } from "../types/primitives.ts";
 import { ServiceType } from "../types/service.ts";
 import type { AgentEventService } from "./agentEvent.ts";
 
@@ -295,19 +296,38 @@ function isBotMessage(metadata: Record<string, unknown>): boolean {
 	);
 }
 
+/**
+ * Channel types that are machine or self-directed surfaces rather than a human
+ * conversation. `Content.channelType` is optional and several shipped
+ * connectors never stamp it (Slack carries the type on the Room and a
+ * platform-specific `metadata.chatType`; Signal stamps none at all), so an
+ * absent channel type must not disqualify a message. A passive classification
+ * in the connector-source registry is the trust anchor; channel type only vetoes.
+ */
+const NON_USER_FACING_CHANNEL_TYPES: ReadonlySet<string> = new Set(
+	[ChannelType.API, ChannelType.AUTONOMOUS, ChannelType.SELF].map((value) =>
+		value.toLowerCase(),
+	),
+);
+
+function hasTrustedNotificationProvenance(
+	payload: MessagePayload,
+	source: string,
+): boolean {
+	// Passive is the connector registry's explicit classification for inbound
+	// human conversation. Registration alone is not notification authority:
+	// active/internal extensions can also register aliases and must fail closed.
+	if (!isPassiveConnectorSource(source)) return false;
+	const channelType = resolveMessageChannel(payload, source);
+	return !NON_USER_FACING_CHANNEL_TYPES.has(channelType.toLowerCase());
+}
+
 function shouldNotifyForInboundMessage(
 	payload: MessagePayload,
 	source: string,
 ): boolean {
 	const metadata = messageMetadata(payload);
-	const normalizedSource = source.toLowerCase();
-	if (
-		normalizedSource === MESSAGE_SOURCE_CLIENT_CHAT ||
-		normalizedSource === "api" ||
-		normalizedSource === "web" ||
-		normalizedSource === "message" ||
-		normalizedSource === "messageservice"
-	) {
+	if (!hasTrustedNotificationProvenance(payload, source)) {
 		return false;
 	}
 	if (payload.message.entityId === payload.runtime.agentId) {
@@ -365,20 +385,30 @@ interface RawConnectorMessageSummary {
 	runtime: RuntimeServiceHost;
 	source: string;
 	channel: string;
+	channelType?: string;
 	messageId?: string;
 	roomId?: string;
 	senderId?: string;
 	senderName?: string;
 	content?: string;
 	hasAttachments: boolean;
+	isBot: boolean;
+	isBackfill: boolean;
+	isSelf: boolean;
 	deliveredAt?: number;
 	accountId?: string;
+}
+
+function hasTrueFlag(...values: unknown[]): boolean {
+	return values.some((value) => readBoolean(value) === true);
 }
 
 function normalizeRawConnectorMessage(
 	eventType: string,
 	payload: unknown,
 ): RawConnectorMessageSummary | null {
+	const source = CONNECTOR_EVENT_SOURCES[eventType];
+	if (!source) return null;
 	const root = readRecord(payload);
 	const runtime = readRuntime(root.runtime);
 	if (!runtime) return null;
@@ -390,15 +420,25 @@ function normalizeRawConnectorMessage(
 	const space = readRecord(root.space ?? message.space ?? event.space);
 	const user = readRecord(root.user ?? message.user ?? message.sender);
 	const twitchUser = readRecord(message.user);
+	const metadata = readRecord(
+		message.metadata ?? root.metadata ?? event.metadata,
+	);
+	const author = readRecord(
+		message.author ?? eventMessage.author ?? root.author,
+	);
 
-	const source =
-		firstString(root.source, CONNECTOR_EVENT_SOURCES[eventType]) ?? "connector";
 	const channel = firstString(
 		message.channel,
 		lineSource.type,
 		space.type,
 		space.displayName,
 		source,
+	);
+	const channelType = firstString(
+		message.channelType,
+		root.channelType,
+		event.channelType,
+		metadata.channelType,
 	);
 	const content = firstString(
 		message.content,
@@ -431,9 +471,13 @@ function normalizeRawConnectorMessage(
 		message.senderId,
 		message.userId,
 		lineSource.userId,
-		user.name,
 		twitchUser.userId,
+		user.id,
+		author.userId,
+		author.id,
+		metadata.senderId,
 		root.from,
+		user.name,
 	);
 	const senderName = firstString(
 		message.name,
@@ -454,6 +498,7 @@ function normalizeRawConnectorMessage(
 		runtime,
 		source,
 		channel: channel ?? source,
+		...(channelType ? { channelType } : {}),
 		...(messageId ? { messageId } : {}),
 		...(roomId ? { roomId } : {}),
 		...(senderId ? { senderId } : {}),
@@ -463,11 +508,58 @@ function normalizeRawConnectorMessage(
 			readAttachments(message) ||
 			readAttachments(eventMessage) ||
 			readAttachments(root),
+		isBot: hasTrueFlag(
+			message.fromBot,
+			message.isBot,
+			user.bot,
+			twitchUser.bot,
+			author.bot,
+			metadata.fromBot,
+		),
+		isBackfill: hasTrueFlag(
+			message.historical,
+			message.backfill,
+			message.isBackfill,
+			message.replay,
+			message.imported,
+			root.historical,
+			root.backfill,
+			root.isBackfill,
+			root.replay,
+			root.imported,
+			metadata.historical,
+			metadata.backfill,
+			metadata.isBackfill,
+			metadata.replay,
+			metadata.imported,
+		),
+		isSelf: hasTrueFlag(
+			message.fromSelf,
+			message.isSelf,
+			root.fromSelf,
+			root.isSelf,
+			metadata.fromSelf,
+			metadata.isSelf,
+		),
 		...(deliveredAt !== undefined ? { deliveredAt } : {}),
 		...(readString(root.accountId)
 			? { accountId: readString(root.accountId) }
 			: {}),
 	};
+}
+
+function shouldNotifyForRawConnectorMessage(
+	message: RawConnectorMessageSummary,
+): boolean {
+	if (!isPassiveConnectorSource(message.source)) return false;
+	if (
+		message.channelType &&
+		NON_USER_FACING_CHANNEL_TYPES.has(message.channelType.toLowerCase())
+	) {
+		return false;
+	}
+	if (message.senderId === message.runtime.agentId) return false;
+	return !message.isBot && !message.isBackfill && !message.isSelf;
 }
 
 function rawConnectorNotificationData(
@@ -542,7 +634,7 @@ export async function bridgeConnectorMessageReceivedToStreams(
 	}
 
 	const notifications = resolveNotificationService(message.runtime);
-	if (!notifications) return;
+	if (!notifications || !shouldNotifyForRawConnectorMessage(message)) return;
 
 	try {
 		await notifications.notify({

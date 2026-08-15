@@ -745,6 +745,7 @@ async function opCreate(
     enabled: true,
     wakeMode,
     createdBy: creatorId,
+    notifyOnOutcome: true,
     timezone: messageTimeZone,
     runCount: 0,
     intervalMs: triggerType === "interval" ? intervalMs : undefined,
