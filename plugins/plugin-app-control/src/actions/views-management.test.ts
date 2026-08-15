@@ -2958,7 +2958,7 @@ describe("view management actions", () => {
 				method: "POST",
 				body: JSON.stringify({
 					capability: "delete-note",
-					params: { query: "nubby" },
+					params: { query: "nubby", ownerText: "delete the nubby note" },
 					timeoutMs: 5_000,
 					viewType: "gui",
 				}),
@@ -2994,7 +2994,7 @@ describe("view management actions", () => {
 				method: "POST",
 				body: JSON.stringify({
 					capability: "delete-note",
-					params: { id: "note-123" },
+					params: { id: "note-123", ownerText: "delete note" },
 					timeoutMs: 5_000,
 					viewType: "gui",
 				}),
@@ -3264,9 +3264,10 @@ describe("view management actions", () => {
 		} as Response);
 
 		const noteText = "Demo proof note: Notes now use one clean content field.";
+		const ownerText = `Delete the note "${noteText}"`;
 		const result = await action.handler(
 			runtime as never,
-			message(`Delete the note "${noteText}"`) as never,
+			message(ownerText) as never,
 			undefined,
 			{ action: "delete", view: "note-76237299" },
 			callback,
@@ -3281,7 +3282,7 @@ describe("view management actions", () => {
 				method: "POST",
 				body: JSON.stringify({
 					capability: "delete-note",
-					params: { query: noteText },
+					params: { query: noteText, ownerText },
 					timeoutMs: 5_000,
 					viewType: "gui",
 				}),
@@ -3350,13 +3351,14 @@ describe("view management actions", () => {
 		} as Response);
 
 		const label = "Shopping List";
+		const ownerText = `Delete the note named "${label}"`;
 		// Pass explicit capability + title params to exercise the
 		// interact transport with an explicit title. The derivation logic
 		// (extractReferencedTitle → title, free-form → query) is verified
 		// by the plugin-notes backend tests.
 		const result = await action.handler(
 			runtime as never,
-			message(`Delete the note named "${label}"`) as never,
+			message(ownerText) as never,
 			undefined,
 			{
 				action: "interact",
@@ -3375,7 +3377,7 @@ describe("view management actions", () => {
 				method: "POST",
 				body: JSON.stringify({
 					capability: "delete-note",
-					params: { title: label },
+					params: { title: label, ownerText },
 					timeoutMs: 5_000,
 					viewType: "gui",
 				}),
@@ -3444,9 +3446,10 @@ describe("view management actions", () => {
 		} as Response);
 
 		const label = "Shopping List";
+		const ownerText = `Delete the note named “${label}”`;
 		const result = await action.handler(
 			runtime as never,
-			message(`Delete the note named “${label}”`) as never,
+			message(ownerText) as never,
 			undefined,
 			{ action: "delete", view: "notes" },
 			callback,
@@ -3459,7 +3462,7 @@ describe("view management actions", () => {
 				method: "POST",
 				body: JSON.stringify({
 					capability: "delete-note",
-					params: { title: label },
+					params: { title: label, ownerText },
 					timeoutMs: 5_000,
 					viewType: "gui",
 				}),
@@ -3521,9 +3524,10 @@ describe("view management actions", () => {
 		} as Response);
 
 		const target = "meeting notes from last week";
+		const ownerText = `Delete ${target}`;
 		const result = await action.handler(
 			runtime as never,
-			message(`Delete ${target}`) as never,
+			message(ownerText) as never,
 			undefined,
 			{ action: "delete", view: "note-76237299" },
 			callback,
@@ -3537,7 +3541,7 @@ describe("view management actions", () => {
 				method: "POST",
 				body: JSON.stringify({
 					capability: "delete-note",
-					params: { query: target },
+					params: { query: target, ownerText },
 					timeoutMs: 5_000,
 					viewType: "gui",
 				}),
@@ -3602,9 +3606,10 @@ describe("view management actions", () => {
 		// read-family word "current", which previously caused the explicit
 		// delete-note to be rewritten to get-note. The planner declared
 		// delete-note explicitly; the incidental read word must not override it.
+		const ownerText = "Delete the current note titled GAUSS NOTES QA";
 		const result = await action.handler(
 			runtime as never,
-			message("Delete the current note titled GAUSS NOTES QA") as never,
+			message(ownerText) as never,
 			undefined,
 			{ action: "interact", view: "notes", capability: "delete-note" },
 			callback,
@@ -3617,7 +3622,7 @@ describe("view management actions", () => {
 				method: "POST",
 				body: JSON.stringify({
 					capability: "delete-note",
-					params: { title: "GAUSS NOTES QA" },
+					params: { title: "GAUSS NOTES QA", ownerText },
 					timeoutMs: 5_000,
 					viewType: "gui",
 				}),

@@ -2,11 +2,25 @@
  * Tests that name-based note deletion is bound to a complete title phrase in
  * the owner's current wording before the transactional delete commits.
  */
-import { describe, expect, it } from "vitest";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { afterEach, describe, expect, it } from "vitest";
 import { NotesService } from "./service";
 
+const temporaryDirectories: string[] = [];
+
+afterEach(() => {
+  for (const directory of temporaryDirectories.splice(0)) {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
 async function seeded(title = "wifi password"): Promise<NotesService> {
-  const service = new NotesService();
+  const stateDir = mkdtempSync(path.join(tmpdir(), "notes-delete-fence-"));
+  temporaryDirectories.push(stateDir);
+  const service = new NotesService(undefined, { stateDir });
+  await service.initialize();
   await service.createNoteWithCommit({
     title,
     body: "hunter2-not-really",
