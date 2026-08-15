@@ -2117,6 +2117,8 @@ function createV5ReplyStrategyResult(args: {
 	 * planner text so the gate can still rewrite canned strings.
 	 */
 	agentVoiced?: boolean;
+	/** Typed non-success terminal state supplied by the planner boundary. */
+	failureKind?: Content["failureKind"];
 }): StrategyResult {
 	let responseContent: Content = {
 		thought: args.thought,
@@ -2124,6 +2126,14 @@ function createV5ReplyStrategyResult(args: {
 		text: restorePiiInUserReplyText(args.text),
 		simple: args.mode !== "actions",
 		responseId: args.responseId,
+		...(args.failureKind
+			? {
+					failureKind: args.failureKind,
+					elizaSyntheticFailure: true,
+					transient: false,
+					doNotPersist: true,
+				}
+			: {}),
 		...(args.agentVoiced === true ? { agentVoiced: true } : {}),
 		...(args.attachments?.length ? { attachments: args.attachments } : {}),
 		...(args.transcriptVisibility
@@ -9511,6 +9521,9 @@ export async function runV5MessageRuntimeStage1(args: {
 								? { effectReceiptIds: effectiveReplyReceiptIds }
 								: {}),
 							...(transcriptVisibility ? { transcriptVisibility } : {}),
+							...(plannerResult.failureKind
+								? { failureKind: plannerResult.failureKind }
+								: {}),
 						}),
 						...(actionResults.length > 0 ? { actionResults } : {}),
 					}

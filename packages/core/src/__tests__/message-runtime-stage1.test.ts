@@ -638,6 +638,48 @@ describe("runV5MessageRuntimeStage1", () => {
 		}
 	});
 
+	it("delivers a terminal-only safe refusal as typed missing capability", async () => {
+		const refusal = "I can't send it: no messaging access.";
+		const runtime = makeRuntime([
+			stage1Response({
+				thought: "No matching capability is available.",
+				contexts: ["general"],
+				candidateActionNames: ["MISSING_SMS"],
+				replyText: refusal,
+			}),
+		]);
+		runtime.actions = [
+			{
+				name: "REPLY",
+				description: "Reply to the user.",
+				contexts: ["general"],
+				parameters: [],
+				examples: [],
+				validate: async () => true,
+				handler: async () => ({ success: true }),
+			},
+		];
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({ text: "Send a message for me." }),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+
+		expect(useModelCalls(runtime)).toHaveLength(1);
+		expect(result.kind).toBe("planned_reply");
+		if (result.kind === "planned_reply") {
+			expect(result.result.responseContent).toMatchObject({
+				text: refusal,
+				failureKind: "missing_capability",
+				elizaSyntheticFailure: true,
+				transient: false,
+				doNotPersist: true,
+			});
+		}
+	});
+
 	it("recovers a completed replyText when Stage 1 hits the completion cap with truncated JSON", async () => {
 		const runtime = makeRuntime([
 			{
