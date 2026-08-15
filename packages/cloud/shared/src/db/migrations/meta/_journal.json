@@ -1387,6 +1387,13 @@
       "when": 1786824000000,
       "tag": "0198_docker_nodes_placement_state",
       "breakpoints": true
+    },
+    {
+      "idx": 198,
+      "version": "7",
+      "when": 1786910400000,
+      "tag": "0199_personal_account_convergence_receipts",
+      "breakpoints": true
     }
   ]
 }

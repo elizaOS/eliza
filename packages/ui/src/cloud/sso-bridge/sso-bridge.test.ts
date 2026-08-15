@@ -4,6 +4,11 @@
 import { STEWARD_TOKEN_KEY } from "@elizaos/shared/steward-session-client";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
+  peekPendingOnboardingSession,
+  storePendingOnboardingSession,
+  TELEGRAM_ACCOUNT_CLAIM_PURPOSE,
+} from "../join/lib/onboarding-continuation";
+import {
   buildBridgeExchangeUrl,
   buildBridgeMintUrl,
   burnSsoBridgeCode,
@@ -403,6 +408,58 @@ describe("performSsoExchange", () => {
     expect(events).toEqual(["steward-token-sync"]);
     expect(shouldAttemptSsoBridge()).toBe(true);
     expect(isSsoLoggedOut()).toBe(false);
+  });
+
+  it("makes Telegram claim convergence authoritative before hydrating bridged storage", async () => {
+    storePendingOnboardingSession(
+      "opaque-telegram-claim-token",
+      TELEGRAM_ACCOUNT_CLAIM_PURPOSE,
+    );
+    const token = liveToken();
+    const { fn, calls } = fetchStub((url) =>
+      url.includes("/sso-bridge/exchange")
+        ? json(200, { ok: true, token })
+        : json(200, { ok: true }),
+    );
+
+    await expect(
+      performSsoExchange(CODE, VERIFIER, "cloud.eliza.app", fn),
+    ).resolves.toEqual({ ok: true });
+
+    expect(JSON.parse(String(calls[1]?.init?.body))).toEqual({
+      token,
+      telegramContinuation: "opaque-telegram-claim-token",
+    });
+    expect(peekPendingOnboardingSession()).toBeNull();
+    expect(localStorage.getItem(STEWARD_TOKEN_KEY)).toBe(token);
+  });
+
+  it("keeps Telegram claim authority and storage unhydrated when bridge sync rejects it", async () => {
+    storePendingOnboardingSession(
+      "opaque-telegram-claim-token",
+      TELEGRAM_ACCOUNT_CLAIM_PURPOSE,
+    );
+    const { fn } = fetchStub((url) =>
+      url.includes("/sso-bridge/exchange")
+        ? json(200, { ok: true, token: liveToken() })
+        : json(409, { code: "telegram_claim_conflict" }),
+    );
+
+    const result = await performSsoExchange(
+      CODE,
+      VERIFIER,
+      "cloud.eliza.app",
+      fn,
+    );
+
+    expect(result).toEqual({
+      ok: false,
+      error: "Telegram account claim failed (HTTP 409)",
+    });
+    expect(peekPendingOnboardingSession(TELEGRAM_ACCOUNT_CLAIM_PURPOSE)).toBe(
+      "opaque-telegram-claim-token",
+    );
+    expect(localStorage.getItem(STEWARD_TOKEN_KEY)).toBeNull();
   });
 
   it("refuses a malformed verifier without calling out", async () => {

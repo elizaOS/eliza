@@ -61,8 +61,18 @@ test("reduced motion renders the settled intro conversation", async ({
   // screenshot determinism.
   const demo = page.locator(".landing-iphone");
   await expect(demo).toHaveAttribute("data-demo-phase", "settled");
-  await expect(demo).toHaveAttribute("data-demo-messages", "14");
+  await expect(demo).toHaveAttribute("data-demo-messages", "17");
   await expect(page.locator(".landing-demo-card")).toHaveCount(3);
+
+  const assistantMessages = await page
+    .locator(".landing-bubble--eliza")
+    .allTextContents();
+  expect(assistantMessages).toContain("Got it. Thursday dinner for four.");
+  expect(assistantMessages).toContain("Noted.");
+  expect(assistantMessages).toContain(
+    "Then San Francisco Friday morning, but not too early.",
+  );
+  expect(assistantMessages.join(" ")).not.toContain("—");
 });
 
 test("landing has no horizontal overflow at mobile width", async ({ page }) => {
@@ -75,4 +85,25 @@ test("landing has no horizontal overflow at mobile width", async ({ page }) => {
     return doc.scrollWidth - doc.clientWidth;
   });
   expect(overflow).toBeLessThanOrEqual(0);
+});
+
+test("landing keeps the document scrollbar slim and translucent", async ({
+  page,
+}) => {
+  await page.goto("/");
+
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () => getComputedStyle(document.documentElement).scrollbarWidth,
+      ),
+    )
+    .toBe("thin");
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () => getComputedStyle(document.documentElement).scrollbarColor,
+      ),
+    )
+    .toContain("rgba(17, 17, 17, 0.3)");
 });

@@ -40,6 +40,7 @@ import type { VoiceSessionMode } from "../../../voice/voice-chat-types";
 import { Button } from "../../ui/button";
 import { Textarea } from "../../ui/textarea";
 import type { ChatVariant } from "./chat-types";
+import { PstnCallButton } from "./pstn-call-button";
 
 const INLINE_TEXTAREA_MIN_HEIGHT_PX = 32;
 const INLINE_TEXTAREA_MAX_HEIGHT_PX = 128;
@@ -578,36 +579,39 @@ export function ChatComposer({
       ) : null}
 
       {!isInline && showVoiceButton ? (
-        <Button
-          variant="ghost"
-          size="icon"
-          className={
-            isGameModal
-              ? `flex items-center justify-center h-[46px] w-[46px] shrink-0 ${
-                  voice.isListening
-                    ? "animate-pulse select-none rounded-sm border border-border/28 bg-card text-txt    transition-all duration-300 active:scale-95 "
-                    : "select-none rounded-sm border border-transparent bg-transparent text-muted-strong shadow-none  transition-[border-color,background-color,color,transform,box-shadow] duration-300 hover:border-border/28 hover:bg-card hover:text-txt active:scale-95"
-                } ${isComposerLocked ? "opacity-50" : ""}`
-              : `h-[38px] w-9 shrink-0 bg-transparent p-0 shadow-none border-0 text-muted hover:bg-transparent hover:text-txt pointer-coarse:min-h-touch pointer-coarse:min-w-touch ${voice.isListening ? "text-accent hover:text-accent" : ""}`
-          }
-          data-testid="chat-composer-mic"
-          onClick={handleMicClick}
-          {...micHoldHandlers}
-          aria-label={
-            isAgentStarting
-              ? t("chat.agentStarting")
-              : voice.isListening
-                ? voice.captureMode === "push-to-talk"
-                  ? t("chat.releaseToSend")
-                  : t("chat.stopListening")
-                : t("chat.voiceInput")
-          }
-          aria-pressed={isGameModal ? undefined : voice.isListening}
-          title={voiceButtonTitle}
-          disabled={isComposerLocked}
-        >
-          <Mic className="h-6 w-6" />
-        </Button>
+        <>
+          {!isGameModal ? <PstnCallButton disabled={isComposerLocked} /> : null}
+          <Button
+            variant="ghost"
+            size="icon"
+            className={
+              isGameModal
+                ? `flex items-center justify-center h-[46px] w-[46px] shrink-0 ${
+                    voice.isListening
+                      ? "animate-pulse select-none rounded-sm border border-border/28 bg-card text-txt    transition-all duration-300 active:scale-95 "
+                      : "select-none rounded-sm border border-transparent bg-transparent text-muted-strong shadow-none  transition-[border-color,background-color,color,transform,box-shadow] duration-300 hover:border-border/28 hover:bg-card hover:text-txt active:scale-95"
+                  } ${isComposerLocked ? "opacity-50" : ""}`
+                : `h-[38px] w-9 shrink-0 bg-transparent p-0 shadow-none border-0 text-muted hover:bg-transparent hover:text-txt pointer-coarse:min-h-touch pointer-coarse:min-w-touch ${voice.isListening ? "text-accent hover:text-accent" : ""}`
+            }
+            data-testid="chat-composer-mic"
+            onClick={handleMicClick}
+            {...micHoldHandlers}
+            aria-label={
+              isAgentStarting
+                ? t("chat.agentStarting")
+                : voice.isListening
+                  ? voice.captureMode === "push-to-talk"
+                    ? t("chat.releaseToSend")
+                    : t("chat.stopListening")
+                  : t("chat.voiceInput")
+            }
+            aria-pressed={isGameModal ? undefined : voice.isListening}
+            title={voiceButtonTitle}
+            disabled={isComposerLocked}
+          >
+            <Mic className="h-6 w-6" />
+          </Button>
+        </>
       ) : null}
 
       <div className="relative min-w-0 flex-1">

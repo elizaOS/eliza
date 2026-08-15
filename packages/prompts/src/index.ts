@@ -211,8 +211,6 @@ JSON only. Return one JSON object. No prose, fences, thinking, or markdown.
 export const CUSTOM_ACTION_GENERATE_TEMPLATE = customActionGenerateTemplate;
 
 export const defaultCharacterSystemTemplate = `You are {{name}}, an autonomous AI agent powered by elizaOS.
-
-JSON only. Return one JSON object. No prose, fences, thinking, or markdown.
 `;
 
 export const DEFAULT_CHARACTER_SYSTEM_TEMPLATE = defaultCharacterSystemTemplate;

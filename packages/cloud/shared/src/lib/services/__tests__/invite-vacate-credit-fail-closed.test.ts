@@ -4,16 +4,16 @@
  * `InvitesService.assertOwnerCanVacateSoloOrganization` guards the auto-delete
  * of a vacated solo org: an owner may only move into an inviting org (which
  * deletes their now-empty solo org via `cleanUpVacatedSoloOrganization ->
- * organizationsService.delete`) if that org holds NO more credits than the
- * signup grant — otherwise those credits would be silently destroyed.
+ * organizationsService.delete`) only if that org holds zero credits — otherwise
+ * purchased or promotional balance would be silently destroyed.
  *
  * `credit_balance` is a Postgres NUMERIC (string at read). The previous gate
  * read it through a bare `Number(organization.credit_balance) >
- * getInitialCredits()`, which fails OPEN on a corrupt value: `'NaN'::numeric`
+ * zero, which fails OPEN on a corrupt value: `'NaN'::numeric`
  * is a valid Postgres NUMERIC (a migration artifact or manual edit can produce
  * it, and — as this suite's own probe confirms — it even satisfies the
  * `credit_balance >= 0` CHECK because NaN sorts as greatest), and it reads back
- * as the string `"NaN"`. `Number("NaN")` is `NaN`, and `NaN > getInitialCredits()`
+ * as the string `"NaN"`. `Number("NaN")` is `NaN`, and `NaN > 0`
  * is FALSE — so the guard was BYPASSED and the org, with whatever real credits
  * it held, was vacated and DELETED, silently losing the balance.
  *
@@ -21,7 +21,7 @@
  * (bypassing the drizzle insert type-guard, mirroring how the corruption arises
  * in prod) and asserts the accept is REJECTED and the org PRESERVED. With the
  * fail-open `Number(...)` restored it fails (the org is deleted). Case 2 is the
- * no-false-block control: a healthy balance at-or-below the grant still vacates.
+ * no-false-block control: a healthy zero balance still vacates.
  *
  * Runs the REAL `InvitesService.acceptInvite` against in-process PGlite (real
  * users/organizations/invites SQL). Fails loudly via the `pgliteReady` guard if
@@ -53,7 +53,6 @@ let closeDb: typeof import("../../../db/client").closeDatabaseConnectionsForTest
 let invitesService: typeof import("../invites").invitesService;
 let generateInviteToken: typeof import("../../utils/invite-tokens").generateInviteToken;
 let hashInviteToken: typeof import("../../utils/invite-tokens").hashInviteToken;
-let getInitialCredits: typeof import("../../signup-credits").getInitialCredits;
 let schemas: {
   organizations: typeof import("../../../db/schemas/organizations").organizations;
   users: typeof import("../../../db/schemas/users").users;
@@ -67,7 +66,7 @@ let schemas: {
 };
 
 const SOLO_ORG_CREDITS_BLOCK_MESSAGE =
-  "You cannot join another organization while your current organization holds credits beyond the signup grant. Contact support to transfer them first.";
+  "You cannot join another organization while your current organization holds credits. Contact support to transfer them first.";
 
 let seq = 0;
 function uid(): string {
@@ -158,7 +157,6 @@ beforeAll(async () => {
     ({ closeDatabaseConnectionsForTests: closeDb, dbWrite } = await import("../../../db/client"));
     ({ invitesService } = await import("../invites"));
     ({ generateInviteToken, hashInviteToken } = await import("../../utils/invite-tokens"));
-    ({ getInitialCredits } = await import("../../signup-credits"));
 
     const { organizations } = await import("../../../db/schemas/organizations");
     const { users } = await import("../../../db/schemas/users");
@@ -264,12 +262,10 @@ describe("acceptInvite solo-org vacate — corrupt credit_balance fails closed (
   );
 
   test(
-    "a healthy balance at-or-below the signup grant still vacates (no false block)",
+    "a healthy zero balance still vacates (no false block)",
     async () => {
       expect(pgliteReady).toBe(true);
-      // At exactly the grant: `> getInitialCredits()` is false, vacate allowed.
-      const atGrant = getInitialCredits().toFixed(6);
-      const seeded = await seedInviteScenario({ inviteeOrgBalance: atGrant });
+      const seeded = await seedInviteScenario({ inviteeOrgBalance: "0.000000" });
 
       const accepted = await invitesService.acceptInvite(seeded.token, seeded.inviteeUserId);
       expect(accepted.status).toBe("accepted");

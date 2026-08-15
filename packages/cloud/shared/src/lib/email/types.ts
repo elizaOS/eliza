@@ -26,7 +26,6 @@ export interface WelcomeEmailData {
   email: string;
   userName: string;
   organizationName: string;
-  creditBalance: number;
   dashboardUrl: string;
   locale?: string;
 }

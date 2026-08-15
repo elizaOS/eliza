@@ -63,4 +63,15 @@ describe("PrivacyPanel", () => {
     fireEvent.click(vision);
     expect(consentMock.setVisionEnabled).toHaveBeenCalledWith(true);
   });
+
+  it("routes DSR export and delete through labelled SettingsRows", () => {
+    render(<PrivacyPanel />);
+    expect(screen.getByText("Download my data")).toBeTruthy();
+    const del = screen.getByTestId(
+      "delete-account-trigger",
+    ) as HTMLButtonElement;
+    expect(del.disabled).toBe(true);
+    expect(del.textContent).toContain("Deletion unavailable");
+    expect(screen.getByText("Export unavailable")).toBeTruthy();
+  });
 });

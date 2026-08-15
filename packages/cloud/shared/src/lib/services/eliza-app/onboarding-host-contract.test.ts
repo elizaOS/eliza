@@ -95,10 +95,10 @@ async function resolveOnboardingOrigins(
 }
 
 /**
- * `appOrigin` is the Eliza *app* host, never the console apex: production pins
- * app.elizacloud.ai while its NEXT_PUBLIC_APP_URL is the apex elizacloud.ai, and
- * staging's peer of that app host is app-staging.elizacloud.ai (the `eliza-app`
- * Pages domain, same environment-peer rule as STAGING_ELIZA_APP_ORIGIN in
+ * `appOrigin` is the Eliza *app* host, never the homepage apex: production pins
+ * cloud.eliza.app while its public homepage is eliza.app, and staging's peer
+ * of that app host is cloud-staging.eliza.app (the `eliza-app` Pages domain,
+ * following the same environment-peer rule as STAGING_ELIZA_APP_ORIGIN in
  * packages/ui/src/utils/cloud-agent-base.ts).
  *
  * `loginOrigin` is the messaging-continuation Connect CTA target. It now equals
@@ -116,22 +116,22 @@ const ONBOARDING_HOST_CONTRACT: ReadonlyArray<{
 }> = [
   {
     section: "vars",
-    loginOrigin: "https://app.elizacloud.ai",
-    appOrigin: "https://app.elizacloud.ai",
+    loginOrigin: "https://cloud.eliza.app",
+    appOrigin: "https://cloud.eliza.app",
   },
   {
     section: "env.production.vars",
-    loginOrigin: "https://app.elizacloud.ai",
-    appOrigin: "https://app.elizacloud.ai",
+    loginOrigin: "https://cloud.eliza.app",
+    appOrigin: "https://cloud.eliza.app",
   },
   {
     section: "env.staging.vars",
-    loginOrigin: "https://app-staging.elizacloud.ai",
-    appOrigin: "https://app-staging.elizacloud.ai",
+    loginOrigin: "https://cloud-staging.eliza.app",
+    appOrigin: "https://cloud-staging.eliza.app",
   },
 ];
 
-const PRODUCTION_APP_ORIGINS = ["https://app.elizacloud.ai", "https://elizacloud.ai"];
+const PRODUCTION_APP_ORIGINS = ["https://cloud.eliza.app", "https://eliza.app"];
 
 describe("onboarding host deployment contract", () => {
   test.each(ONBOARDING_HOST_CONTRACT)(
@@ -170,7 +170,7 @@ describe("onboarding host deployment contract", () => {
     // Resolution alone cannot tell a pin from a fallback: NEXT_PUBLIC_APP_URL
     // would answer for ELIZA_ONBOARDING_APP_URL and quietly hand back the
     // console apex the moment the explicit key is dropped.
-    expect(staging.ELIZA_ONBOARDING_APP_URL).toBe("https://app-staging.elizacloud.ai");
-    expect(staging.NEXT_PUBLIC_APP_URL).toBe("https://staging.elizacloud.ai");
+    expect(staging.ELIZA_ONBOARDING_APP_URL).toBe("https://cloud-staging.eliza.app");
+    expect(staging.NEXT_PUBLIC_APP_URL).toBe("https://cloud-staging.eliza.app");
   });
 });

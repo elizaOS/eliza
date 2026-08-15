@@ -181,6 +181,13 @@ GITHUB_TEMPLATE_REPO = "eliza-cloud-apps/cloud-apps-template"
 ENVIRONMENT = "production"
 DATABASE_REGION = "na"
 PAYOUT_TESTNET = "false"
+# Warm-pool claim half (#16961): the provision route only claims a pre-booted
+# sandbox when this is "true". Committed here — never a dashboard-only secret —
+# so the intended state survives every redeploy and is auditable in source.
+# Production activation is gated on the #16961 checklist (capacity, starvation,
+# identity, and health guards with staging soak evidence); flip this committed
+# value in the same PR that attaches that evidence.
+WARM_POOL_ENABLED = "false"
 X402_NETWORK = "base"
 X402_NETWORKS = "ethereum,sepolia,base-sepolia,base,bsc,bsc-testnet,solana-devnet,solana"
 X402_ETHEREUM_RPC_URL = "https://ethereum-rpc.publicnode.com"
@@ -344,9 +351,14 @@ TUNNEL_AUTH_KEY_COST_USD = "0.01"
 #                                      Generate with packages/cloud/scripts/admin/generate-oidc-keys.ts.
 #   OIDC_CLIENTS                       OIDC relying-party registry: JSON array; client
 #                                      secrets stored as sha256 hex only.
-#                                      NOTE: both are SECRETS on purpose — a wiped secret
-#                                      makes SSO fail closed (503) rather than serve an
-#                                      empty registry. OIDC_ENABLED / OIDC_ISSUER_URL are
+#                                      OIDC_SIGNING_JWKS and OIDC_CLIENTS are
+#                                      SECRETS on purpose: losing either makes
+#                                      SSO fail closed instead of serving an
+#                                      empty registry.
+#   OIDC_REDIRECT_URI_ALIASES          Public JSON object of client_id to additive
+#                                      exact HTTPS callbacks. It cannot create a
+#                                      client or change any protected registration.
+#                                      OIDC_ENABLED / OIDC_ISSUER_URL are
 #                                      committed [vars] below for the same reason inverted:
 #                                      losing them must not silently change the issuer.
 #                                      OIDC_WALLET_EMAIL_DOMAIN is a var for that same
@@ -483,6 +495,10 @@ ENVIRONMENT = "staging"
 THIN_INFERENCE_ENTRY_ENABLED = "true"
 DATABASE_REGION = "na"
 PAYOUT_TESTNET = "true"
+# Warm-pool claim half (#16961). Staging enablement is the next step of that
+# issue's dependency chain but is sequenced behind draining the residual
+# sentinel-org pool rows; flip this committed value when that drain is done.
+WARM_POOL_ENABLED = "false"
 X402_NETWORK = "base"
 X402_NETWORKS = "ethereum,sepolia,base-sepolia,base,bsc,bsc-testnet,solana-devnet,solana"
 X402_ETHEREUM_RPC_URL = "https://ethereum-rpc.publicnode.com"
@@ -685,6 +701,7 @@ ELIZA_FRONTEND_HOST_SUFFIX = "sites.eliza.app"
 # relying-party account link.
 OIDC_ENABLED = "true"
 OIDC_ISSUER_URL = "https://api.eliza.app"
+OIDC_REDIRECT_URI_ALIASES = '{"elizahub":["https://git.slop.cash/user/oauth2/elizacloud/callback"]}'
 # Pin the prod Steward tenant explicitly instead of leaning on the implicit
 # DEFAULT_STEWARD_TENANT_ID ("elizacloud") in steward-tenant-config.ts. That
 # implicit fallback is what the prod magic-link bug hinged on — make it explicit
@@ -704,6 +721,13 @@ GITHUB_TEMPLATE_REPO = "eliza-cloud-apps/cloud-apps-template"
 ENVIRONMENT = "production"
 DATABASE_REGION = "na"
 PAYOUT_TESTNET = "false"
+# Warm-pool claim half (#16961): the provision route only claims a pre-booted
+# sandbox when this is "true". Committed here — never a dashboard-only secret —
+# so the intended state survives every redeploy and is auditable in source.
+# Production activation is gated on the #16961 checklist (capacity, starvation,
+# identity, and health guards with staging soak evidence); flip this committed
+# value in the same PR that attaches that evidence.
+WARM_POOL_ENABLED = "false"
 X402_NETWORK = "base"
 X402_NETWORKS = "ethereum,sepolia,base-sepolia,base,bsc,bsc-testnet,solana-devnet,solana"
 X402_ETHEREUM_RPC_URL = "https://ethereum-rpc.publicnode.com"

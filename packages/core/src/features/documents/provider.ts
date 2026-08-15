@@ -5,7 +5,8 @@
  * of available/recent documents (via `listDocuments`), rendering snippets and
  * document IDs the agent can cite or follow up to read. Returns an
  * empty/unavailable payload when no `DocumentService` is registered. Gated to the
- * `documents` context and a minimum `USER` role, with per-turn cache scope.
+ * `documents` and `knowledge` contexts and a minimum `USER` role, with per-turn
+ * cache scope.
  */
 import {
 	type IAgentRuntime,
@@ -51,13 +52,11 @@ export const documentsProvider: Provider = {
 		"Relevant and recent documents from the agent document store, including snippets and document IDs for follow-up reads.",
 	position: -10,
 	dynamic: true,
-	contexts: ["documents"],
-	contextGate: { anyOf: ["documents"] },
+	// Context gates use exact membership rather than expanding parent contexts.
+	contexts: ["documents", "knowledge"],
+	contextGate: { anyOf: ["documents", "knowledge"] },
 	cacheStable: false,
 	cacheScope: "turn",
-	// Retrieval is supplemental context and may include an embedding round-trip.
-	timeoutMs: 10_000,
-	timeoutMode: "degrade",
 	roleGate: { minRole: "USER" },
 
 	get: async (runtime: IAgentRuntime, message: Memory) => {

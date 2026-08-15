@@ -47,6 +47,7 @@ export interface ShellConfig {
   maxOutputChars: number;
   pendingMaxOutputChars: number;
   defaultBackgroundMs: number;
+  jobTtlMs: number;
   allowBackground: boolean;
 }
 

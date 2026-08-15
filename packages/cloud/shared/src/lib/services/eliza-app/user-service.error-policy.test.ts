@@ -10,9 +10,14 @@ const findByCanonicalDiscordIdWithOrganization = mock();
 const findByPhoneNumberWithOrganization = mock();
 const update = mock();
 const linkVerifiedPhone = mock();
+const findOrCreatePhonePersonalAccount = mock();
 const linkTelegramAndPhoneIdentity = mock();
 const refreshDiscordProjectionForWrite = mock();
 const linkDiscordIdentity = mock();
+const createUser = mock();
+const createOrganization = mock();
+const createApiKey = mock();
+const addCredits = mock();
 
 mock.module("../../../db/repositories/users", () => ({
   usersRepository: {
@@ -25,17 +30,18 @@ mock.module("../../../db/repositories/users", () => ({
     findWithOrganization: mock(),
     update,
     linkVerifiedPhone,
+    findOrCreatePhonePersonalAccount,
     linkTelegramAndPhoneIdentity,
     refreshDiscordProjectionForWrite,
     linkDiscordIdentity,
-    create: mock(),
+    create: createUser,
   },
 }));
 
 mock.module("../../../db/repositories/organizations", () => ({
   organizationsRepository: {
     findBySlug: mock(async () => undefined),
-    create: mock(),
+    create: createOrganization,
   },
 }));
 
@@ -50,11 +56,12 @@ mock.module("../../utils/logger", () => ({
 
 mock.module("../../utils/phone-normalization", () => ({
   normalizePhoneNumber: mock((phone: string) => phone),
+  isValidE164: mock(() => true),
 }));
 
-mock.module("../api-keys", () => ({ apiKeysService: { create: mock() } }));
+mock.module("../api-keys", () => ({ apiKeysService: { create: createApiKey } }));
 mock.module("../credits", () => ({
-  creditsService: { addCredits: mock() },
+  creditsService: { addCredits },
   InsufficientCreditsError: class InsufficientCreditsError extends Error {},
 }));
 mock.module("../signup-code", () => ({ redeemSignupCode: mock() }));
@@ -62,6 +69,34 @@ mock.module("../signup-code", () => ({ redeemSignupCode: mock() }));
 const { elizaAppUserService } = await import(
   `./user-service.ts?test=user-service-error-policy-${Date.now()}`
 );
+
+describe("ElizaAppUserService account opening balance", () => {
+  beforeEach(() => {
+    findOrCreatePhonePersonalAccount.mockReset();
+    findByPhoneNumberWithOrganization.mockReset();
+    createOrganization.mockReset();
+    createUser.mockReset();
+    createApiKey.mockReset();
+    addCredits.mockReset();
+  });
+
+  test("creates a phone-first personal account at zero without an automatic credit transaction", async () => {
+    findOrCreatePhonePersonalAccount.mockResolvedValue({
+      user: { id: "user-new", phone_number: "+15551234567" },
+      organization: { id: "org-new", credit_balance: "0.00" },
+      isNew: true,
+    });
+
+    const result = await elizaAppUserService.findOrCreateByPhone("+15551234567");
+
+    expect(result.isNew).toBe(true);
+    expect(result.organization.credit_balance).toBe("0.00");
+    expect(findOrCreatePhonePersonalAccount).toHaveBeenCalledWith(
+      expect.objectContaining({ phoneNumber: "+15551234567" }),
+    );
+    expect(addCredits).not.toHaveBeenCalled();
+  });
+});
 
 function uniqueConstraintError(): Error {
   return Object.assign(new Error("duplicate key value violates unique constraint"), {

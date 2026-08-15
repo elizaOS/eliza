@@ -115,6 +115,8 @@ export interface ImportedMessage {
  */
 export interface ConversationImportResult {
   conversationId: string;
+  complete: true;
+  sourceMessageCount: number;
   inserted: number;
   skipped: number;
   alreadyPopulated?: boolean;
@@ -132,6 +134,7 @@ export class ControlPlaneStore {
    * PGlite memories. Keyed `${sandboxId}::${conversationId}`.
    */
   private readonly conversations = new Map<string, ImportedMessage[]>();
+  private readonly conversationTurnReplies = new Map<string, string>();
   private hotPoolTarget = 0;
   private warmPoolState: WarmPoolState = {
     enabled: true,
@@ -341,6 +344,8 @@ export class ControlPlaneStore {
     if (existing && existing.length > 0) {
       return {
         conversationId,
+        complete: true,
+        sourceMessageCount: messages.length,
         inserted: 0,
         skipped: messages.length,
         alreadyPopulated: true,
@@ -349,6 +354,8 @@ export class ControlPlaneStore {
     this.conversations.set(key, [...messages]);
     return {
       conversationId,
+      complete: true,
+      sourceMessageCount: messages.length,
       inserted: messages.length,
       skipped: 0,
     };
@@ -362,6 +369,33 @@ export class ControlPlaneStore {
     return (
       this.conversations.get(this.convKey(sandboxId, conversationId)) ?? []
     );
+  }
+
+  /**
+   * Append one deterministic turn to an imported Dedicated conversation.
+   * The real route persists `clientMessageId` outcomes; mirroring that here
+   * proves provider retries do not duplicate the canonical transcript.
+   */
+  appendConversationTurn(
+    sandboxId: string,
+    conversationId: string,
+    text: string,
+    clientMessageId?: string,
+  ): { reply: string; replayed: boolean } | null {
+    const key = this.convKey(sandboxId, conversationId);
+    const messages = this.conversations.get(key);
+    if (!messages) return null;
+
+    const outcomeKey = clientMessageId ? `${key}::${clientMessageId}` : null;
+    const priorReply = outcomeKey
+      ? this.conversationTurnReplies.get(outcomeKey)
+      : undefined;
+    if (priorReply) return { reply: priorReply, replayed: true };
+
+    const reply = `Mock dedicated reply to: ${text}`;
+    messages.push({ role: "user", text }, { role: "assistant", text: reply });
+    if (outcomeKey) this.conversationTurnReplies.set(outcomeKey, reply);
+    return { reply, replayed: false };
   }
 
   /**

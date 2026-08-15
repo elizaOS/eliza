@@ -157,7 +157,11 @@ describe("LS", () => {
       .map((e) => e.name);
     expect(fileNames).toEqual(["alpha.ts", "beta.md", "skip.log"]);
 
-    expect(result.text).toContain("Directory:");
+    expect(
+      result.text.startsWith(
+        "Scope: one directory level only (not recursive).\nDirectory:",
+      ),
+    ).toBe(true);
     expect(result.text).toContain("bar/");
     expect(result.text).toContain("foo/");
     expect(result.text).toContain("alpha.ts");
@@ -211,6 +215,11 @@ describe("LS", () => {
       { name: "foo", type: "dir" },
       { name: "routed.ts", type: "file", size: 12 },
     ]);
+    expect(
+      result.text.startsWith(
+        "Scope: one directory level only (not recursive).\nDirectory:",
+      ),
+    ).toBe(true);
     expect(result.text).toContain("foo/");
     expect(result.text).toContain("routed.ts");
     expect(result.text).not.toContain("beta.md");
@@ -230,6 +239,25 @@ describe("LS", () => {
     expect(names).toContain("alpha.ts");
     expect(names).toContain("beta.md");
   });
+
+  it.each(["pattern", "glob"] as const)(
+    "rejects unsupported %s filters without returning an unfiltered listing",
+    async (filter) => {
+      const { runtime, message } = await buildRuntime();
+      const result = await lsHandler(runtime, message, state, {
+        parameters: { [filter]: "*.ts" },
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.text).toContain("invalid_param");
+      expect(result.text).toContain(
+        "ls does not accept pattern or glob filters",
+      );
+      expect(result.text).toContain("FILE action=glob");
+      expect(result.text).not.toContain("alpha.ts");
+      expect(result.data).toBeUndefined();
+    },
+  );
 
   it("rejects a path under the blocklist", async () => {
     const { runtime, message } = await buildRuntime();

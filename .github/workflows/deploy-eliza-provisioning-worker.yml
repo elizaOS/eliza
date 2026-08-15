@@ -133,9 +133,9 @@ jobs:
       # Headscale wiring for the provisioning worker (the CONSUMER of the
       # control plane). These are reconciled into /opt/eliza/cloud/.env.local
       # on every deploy so the box can never silently drift to a stale,
-      # hand-edited headscale URL/key again. Reuse the canonical GH names
-      # already established by arm-headscale-control-plane.yml.
-      HEADSCALE_API_URL: ${{ vars.HEADSCALE_API_URL }}
+      # hand-edited headscale URL/key again. The daemon API URL is derived from
+      # the protected environment below and stays loopback-only; it is not an
+      # operator variable that can redirect the protected bearer key.
       HEADSCALE_PUBLIC_URL: ${{ vars.HEADSCALE_PUBLIC_URL }}
       HEADSCALE_API_KEY: ${{ secrets.HEADSCALE_API_KEY }}
       # Base64 private key used by the daemon to reach dedicated-agent nodes.
@@ -175,6 +175,15 @@ jobs:
       # image ref is auditable config) to roll the fleet pin via deploy;
       # leave it unset to preserve whatever is hand-set on the box.
       ELIZA_AGENT_IMAGE: ${{ vars.ELIZA_AGENT_IMAGE }}
+      # Warm-pool daemon half (#16961). The replenish phase self-gates on
+      # WARM_POOL_ENABLED, so a host that loses this key silently degrades every
+      # dedicated provision to the 30-120s cold path. Reconciling it here makes
+      # the GitHub environment VARIABLE (not secret — a boolean flag is
+      # auditable config) the source of truth so a CP re-arm can never drop it;
+      # leaving the GH var unset preserves whatever is hand-set on the box.
+      # Activation policy stays with #16961's checklist: flip the environment
+      # var, do not hand-edit the box.
+      WARM_POOL_ENABLED: ${{ vars.WARM_POOL_ENABLED }}
       # The edge Worker forwards the original per-agent host to this daemon.
       # Keep the daemon's parser on the same environment-specific suffix or a
       # staging host (`<uuid>.cloud-staging.eliza.app`) is rejected as malformed.
@@ -198,7 +207,6 @@ jobs:
           required_deploy_settings=(
             DEPLOY_HOST
             DEPLOY_SSH_KEY
-            HEADSCALE_API_URL
             HEADSCALE_PUBLIC_URL
             HEADSCALE_API_KEY
             DATABASE_URL
@@ -235,16 +243,17 @@ jobs:
 
           if [ "$TARGET_ENVIRONMENT" = "production" ]; then
             require_exact DEPLOY_BRANCH "$DEPLOY_BRANCH" "main"
-            require_exact HEADSCALE_API_URL "$HEADSCALE_API_URL" "https://headscale.eliza.app"
             require_exact HEADSCALE_PUBLIC_URL "$HEADSCALE_PUBLIC_URL" "https://headscale.eliza.app"
             require_exact ELIZA_CLOUD_AGENT_BASE_DOMAIN "$ELIZA_CLOUD_AGENT_BASE_DOMAIN" "cloud.eliza.app"
+            resolved_headscale_api_url="http://127.0.0.1:8081"
           else
             require_exact DEPLOY_BRANCH "$DEPLOY_BRANCH" "develop"
-            require_exact HEADSCALE_API_URL "$HEADSCALE_API_URL" "https://headscale-staging.eliza.app"
             require_exact HEADSCALE_PUBLIC_URL "$HEADSCALE_PUBLIC_URL" "https://headscale-staging.eliza.app"
             require_exact ELIZA_CLOUD_AGENT_BASE_DOMAIN "$ELIZA_CLOUD_AGENT_BASE_DOMAIN" "cloud-staging.eliza.app"
+            resolved_headscale_api_url="http://127.0.0.1:8080"
           fi
 
+          echo "HEADSCALE_API_URL=$resolved_headscale_api_url" >> "$GITHUB_ENV"
           echo "configured=true" >> "$GITHUB_OUTPUT"
 
       - name: Ensure host prereqs (Node 24, swap, bunx symlink)
@@ -300,7 +309,7 @@ jobs:
           # Preserve setup/build headroom without weakening the preflight's own
           # eight-minute fail-closed fence near the end of this remote script.
           command_timeout: 20m
-          envs: DEPLOY_BRANCH,DEPLOY_SHA,SYSTEMD_UNIT,HEADSCALE_API_URL,HEADSCALE_PUBLIC_URL,HEADSCALE_API_KEY,CONTAINERS_SSH_KEY,SANDBOX_REGISTRY_REDIS_URL,DATABASE_URL,SECRETS_MASTER_KEY,ELIZA_AGENT_IMAGE,ELIZA_CLOUD_AGENT_BASE_DOMAIN,AGENT_ROUTER_PUBLIC_HOST,LEGACY_AGENT_ROUTER_PUBLIC_HOST
+          envs: DEPLOY_BRANCH,DEPLOY_SHA,SYSTEMD_UNIT,HEADSCALE_API_URL,HEADSCALE_PUBLIC_URL,HEADSCALE_API_KEY,CONTAINERS_SSH_KEY,SANDBOX_REGISTRY_REDIS_URL,DATABASE_URL,SECRETS_MASTER_KEY,ELIZA_AGENT_IMAGE,WARM_POOL_ENABLED,ELIZA_CLOUD_AGENT_BASE_DOMAIN,AGENT_ROUTER_PUBLIC_HOST,LEGACY_AGENT_ROUTER_PUBLIC_HOST
           script: |
             set -euo pipefail
             echo "=== Deploying eliza-provisioning-worker (branch: $DEPLOY_BRANCH sha: $DEPLOY_SHA) ==="
@@ -479,6 +488,7 @@ jobs:
               "DATABASE_URL=$DATABASE_URL" \
               "SECRETS_MASTER_KEY=$SECRETS_MASTER_KEY" \
               "ELIZA_AGENT_IMAGE=$ELIZA_AGENT_IMAGE" \
+              "WARM_POOL_ENABLED=$WARM_POOL_ENABLED" \
               "ELIZA_CLOUD_AGENT_BASE_DOMAIN=$ELIZA_CLOUD_AGENT_BASE_DOMAIN"; do
               key="${kv%%=*}"
               val="${kv#*=}"
