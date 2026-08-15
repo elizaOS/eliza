@@ -421,8 +421,65 @@ validate_retirable_legacy_vhost() {
       if (directive ~ /^[[:alpha:]_][[:alnum:]_]*$/) print directive
     }
   ')
+  legacy_upgrade_map_shape=$(printf '%s\\n' "$legacy_vhost_source" | awk '
+    {
+      line = $0
+      sub(/^[[:space:]]+/, "", line)
+      sub(/[[:space:]]+$/, "", line)
+      if (line == "" || line ~ /^#/) next
+      normalized = line
+      gsub(/[[:space:]]+/, " ", normalized)
+      if (in_upgrade_map) {
+        if (normalized == "default upgrade;") {
+          defaults += 1
+        } else if (normalized == "\\047\\047 close;") {
+          closes += 1
+        } else if (normalized == "}") {
+          endings += 1
+          in_upgrade_map = 0
+        } else {
+          unexpected += 1
+        }
+        next
+      }
+      if (normalized ~ /^map[[:space:]]/) {
+        if (normalized == "map $http_upgrade $connection_upgrade {") {
+          blocks += 1
+          in_upgrade_map = 1
+        } else {
+          unexpected += 1
+        }
+      } else if (normalized ~ /^default[[:space:]]/) {
+        unexpected += 1
+      }
+    }
+    END {
+      if (in_upgrade_map) unexpected += 1
+      printf "%d %d %d %d %d\\n", blocks + 0, defaults + 0, closes + 0, endings + 0, unexpected + 0
+    }
+  ')
+  read -r legacy_upgrade_map_blocks legacy_upgrade_map_defaults \\
+    legacy_upgrade_map_closes legacy_upgrade_map_endings \\
+    legacy_upgrade_map_unexpected \\
+    <<<"$legacy_upgrade_map_shape"
+  legacy_has_upgrade_map=false
+  if [ "$legacy_upgrade_map_blocks" -ne 0 ] \\
+      || [ "$legacy_upgrade_map_defaults" -ne 0 ] \\
+      || [ "$legacy_upgrade_map_closes" -ne 0 ] \\
+      || [ "$legacy_upgrade_map_endings" -ne 0 ] \\
+      || [ "$legacy_upgrade_map_unexpected" -ne 0 ]; then
+    if [ "$legacy_upgrade_map_blocks" -ne 1 ] \\
+        || [ "$legacy_upgrade_map_defaults" -ne 1 ] \\
+        || [ "$legacy_upgrade_map_closes" -ne 1 ] \\
+        || [ "$legacy_upgrade_map_endings" -ne 1 ] \\
+        || [ "$legacy_upgrade_map_unexpected" -ne 0 ]; then
+      echo "legacy Headscale vhost has an unexpected upgrade map shape"
+      return 1
+    fi
+    legacy_has_upgrade_map=true
+  fi
   unexpected_legacy_directives=$(printf '%s\\n' "$legacy_vhost_directives" \\
-    | awk '$0 !~ /^(server|listen|server_name|location|root|default_type|try_files|return|ssl_certificate|ssl_certificate_key|proxy_pass|proxy_http_version|proxy_set_header|proxy_buffering|proxy_read_timeout|proxy_send_timeout)$/ { print }')
+    | awk '$0 !~ /^(map|default|server|listen|server_name|location|root|default_type|try_files|return|ssl_certificate|ssl_certificate_key|proxy_pass|proxy_http_version|proxy_set_header|proxy_buffering|proxy_read_timeout|proxy_send_timeout)$/ { print }')
   if [ "\${HS_ENFORCE_LEGACY_VHOST_DIRECTIVE_ALLOWLIST:-false}" = "true" ] \\
       && [ -n "$unexpected_legacy_directives" ]; then
     echo "legacy Headscale vhost contains directives outside the reviewed retirement allowlist:"
@@ -468,7 +525,8 @@ validate_retirable_legacy_vhost() {
     return 1
   fi
 
-  loaded_legacy_owners=$(sudo nginx -T 2>&1 | awk \\
+  loaded_nginx_config=$(sudo nginx -T 2>&1)
+  loaded_legacy_owners=$(printf '%s\\n' "$loaded_nginx_config" | awk \\
     -v target="$HS_RETIRABLE_LEGACY_VHOST" \\
     -v canonical="$HS_HOST" \\
     -v legacy="$HS_LEGACY_HOST" '
@@ -512,6 +570,23 @@ validate_retirable_legacy_vhost() {
     | awk -v host="$HS_HOST" '$0 == host { count += 1 } END { print count + 0 }')
   if [ "$loaded_legacy_count" -ne 2 ] || [ "$loaded_canonical_count" -ne 0 ]; then
     echo "legacy Headscale vhost ownership no longer matches the reviewed two-listener contract"
+    return 1
+  fi
+  legacy_upgrade_map_external_references=$(printf '%s\\n' "$loaded_nginx_config" \\
+    | awk -v target="$HS_RETIRABLE_LEGACY_VHOST" '
+      /^# configuration file / {
+        config_file = $0
+        sub(/^# configuration file /, "", config_file)
+        sub(/:$/, "", config_file)
+        next
+      }
+      config_file != target \\
+          && $0 ~ /[$]connection_upgrade([^[:alnum:]_]|$)/ { count += 1 }
+      END { print count + 0 }
+    ')
+  if [ "$legacy_has_upgrade_map" = "true" ] \\
+      && [ "$legacy_upgrade_map_external_references" -ne 0 ]; then
+    echo "legacy Headscale upgrade-map output is referenced outside the reviewed file"
     return 1
   fi
 }
@@ -970,6 +1045,11 @@ sudo stat -c 'type=%F owner=%U group=%G mode=%a bytes=%s path=%n' \\
 echo "reviewed-sha256=$legacy_vhost_sha256"
 echo "--- reviewed nginx directive-name inventory (values withheld) ---"
 printf '%s\\n' "$legacy_vhost_directives" | sort | uniq -c
+if [ "$legacy_has_upgrade_map" = "true" ]; then
+  echo "reviewed-upgrade-map=headscale-websocket-v1 external-references=0"
+else
+  echo "reviewed-upgrade-map=absent external-references=0"
+fi
 echo "reviewed-shape=server-blocks:$legacy_server_block_count server-names:$legacy_server_name_count exact-host:$HS_LEGACY_HOST"
 echo "Legacy Headscale vhost passed the read-only retirement preflight"
 `;
