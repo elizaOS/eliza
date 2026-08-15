@@ -162,3 +162,29 @@ describe("detectRuntimeModel — non-cloud branches unaffected", () => {
     expect(detectRuntimeModel(runtime, directConfig)).toBe("gpt-4o");
   });
 });
+
+// The exact packaged-app state quoted in the #20124 review: cloud-proxy
+// configured, character pinned to elizacloud, account signed out, local
+// inference actually answering. /api/status reported "elizacloud" here.
+const reproducedUnsignedCloudProxy = {
+  serviceRouting: {
+    llmText: {
+      backend: "elizacloud",
+      transport: "cloud-proxy" as const,
+      accountId: "elizacloud",
+    },
+  },
+};
+
+describe("detectRuntimeModel — the #20124 reproduced state", () => {
+  it("no longer reports elizacloud once local inference has served a turn", () => {
+    const runtime = makeRuntime({
+      characterModel: "elizacloud",
+      localTextHandlerRegistered: true,
+      lastServingProvider: LOCAL_INFERENCE_PROVIDER_NAME,
+    });
+    const model = detectRuntimeModel(runtime, reproducedUnsignedCloudProxy);
+    expect(model).toBe(LOCAL_INFERENCE_PROVIDER_NAME);
+    expect(model).not.toBe("elizacloud");
+  });
+});
