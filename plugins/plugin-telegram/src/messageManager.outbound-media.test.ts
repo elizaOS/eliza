@@ -73,7 +73,8 @@ describe("Telegram connector outbound media", () => {
     );
     expect(senders.sendPhoto.mock.calls[0]?.[2]).toStrictEqual({
       caption: "a cat",
-    });    // Attachment-only reply: no trailing empty text message.
+    });
+    // Attachment-only reply: no trailing empty text message.
     expect(senders.sendMessage).not.toHaveBeenCalled();
   });
 
@@ -203,4 +204,5 @@ describe("Telegram connector outbound media", () => {
       message_thread_id: 88,
     });
     expect(fileStream.destroy).toHaveBeenCalledTimes(1);
-  });});
+  });
+});
