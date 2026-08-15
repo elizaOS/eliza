@@ -144,7 +144,8 @@ function trustedLoopbackReq(
   return req;
 }
 
-function bearerReq(  method: string,
+function bearerReq(
+  method: string,
   pathname: string,
   token: string,
 ): http.IncomingMessage {
