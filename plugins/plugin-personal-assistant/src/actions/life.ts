@@ -4619,7 +4619,7 @@ async function runLifeOperationHandlerInner(
                 multiStep: llmPlan?.multiStep === true,
               }),
             });
-      const definitionDraft: DeferredLifeDefinitionDraft = {
+      const definitionDraft = {
         intent,
         operation: "create_definition",
         createdAt: editingDeferredDefinitionDraft
@@ -4671,7 +4671,7 @@ async function runLifeOperationHandlerInner(
               | CreateLifeOpsDefinitionRequest["websiteAccess"]
               | undefined) ?? deferredDefinitionDraft?.request.websiteAccess,
         },
-      };
+      } satisfies DeferredLifeDefinitionDraft;
       if (
         shouldRequireLifeCreateConfirmation({
           confirmed: createConfirmed,
