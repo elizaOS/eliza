@@ -125,11 +125,7 @@ class ExpireScopingRepository extends PaymentRequestsRepository {
 
 describe("createPaymentRequestsService", () => {
   test("rejects invalid expiration values before creating a row", async () => {
-    for (const expiresInMs of [
-      Number.NaN,
-      Number.POSITIVE_INFINITY,
-      Number.MAX_VALUE,
-    ]) {
+    for (const expiresInMs of [Number.NaN, Number.POSITIVE_INFINITY, Number.MAX_VALUE]) {
       const repository = new GuardedPaymentRequestsRepository();
       const service = createPaymentRequestsService({
         repository,
@@ -161,9 +157,7 @@ describe("createPaymentRequestsService", () => {
       readonly expirations: Date[] = [];
       private row: PaymentRequestRow | null = null;
 
-      override async createPaymentRequest(
-        input: NewPaymentRequest,
-      ): Promise<PaymentRequestRow> {
+      override async createPaymentRequest(input: NewPaymentRequest): Promise<PaymentRequestRow> {
         this.expirations.push(input.expiresAt);
         this.row = {
           ...fakeRow("pr-valid-expiry", input.organizationId),
@@ -197,12 +191,8 @@ describe("createPaymentRequestsService", () => {
       paymentContext: { kind: "any_payer" },
     });
     const afterDefault = Date.now();
-    expect(repository.expirations[0].getTime()).toBeGreaterThanOrEqual(
-      beforeDefault + 1_800_000,
-    );
-    expect(repository.expirations[0].getTime()).toBeLessThanOrEqual(
-      afterDefault + 1_800_000,
-    );
+    expect(repository.expirations[0].getTime()).toBeGreaterThanOrEqual(beforeDefault + 1_800_000);
+    expect(repository.expirations[0].getTime()).toBeLessThanOrEqual(afterDefault + 1_800_000);
 
     const beforeValid = Date.now();
     await service.create({
