@@ -16,7 +16,7 @@ process.env.NODE_ENV = "test";
 process.env.ELIZA_KMS_BACKEND = "memory";
 
 const MIGRATION_SQL = readFileSync(
-  join(import.meta.dir, "migrations/0199_retain_pre_delete_backup.sql"),
+  join(import.meta.dir, "migrations/0202_retain_pre_delete_backup.sql"),
   "utf8",
 );
 const ORG_A = "00000000-0000-4000-8000-0000000000a1";
@@ -309,7 +309,7 @@ describe("pre-delete recovery repository", () => {
   });
 });
 
-describe("0199 retained pre-delete backup migration", () => {
+describe("0202 retained pre-delete backup migration", () => {
   test("parent deletion keeps the detached recovery row and cascades ordinary backups", async () => {
     const client = new PGlite();
     try {
