@@ -450,10 +450,9 @@ describe("handleStandaloneCloudPairRoute", () => {
         vi.fn((_input: string | URL | Request, init?: RequestInit) => {
           const signal = init?.signal;
           if (!signal) throw new Error("Expected the relay abort signal.");
-          return Promise.resolve({
-            ok: true,
-            status: 200,
-            json: () =>
+          const response = new Response(null, { status: 200 });
+          vi.spyOn(response, "json").mockImplementation(
+            () =>
               new Promise<never>((_resolve, reject) => {
                 signal.addEventListener(
                   "abort",
@@ -466,7 +465,8 @@ describe("handleStandaloneCloudPairRoute", () => {
                   { once: true },
                 );
               }),
-          } as Response);
+          );
+          return Promise.resolve(response);
         }),
       );
 
