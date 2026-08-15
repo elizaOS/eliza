@@ -23,13 +23,16 @@ function resolveWithConditions(conditions: string[]): string {
 	const script = `
 		const { createRequire } = require("node:module");
 		const req = createRequire(${JSON.stringify(join(packageRoot, "package.json"))});
-		process.stdout.write(req.resolve("@elizaos/core/edge", { conditions: new Set(${JSON.stringify(conditions)}) }));
+		process.stdout.write(req.resolve("@elizaos/core/edge"));
 	`;
-	return execFileSync("node", ["-e", script], { encoding: "utf8" });
+	const conditionFlags = conditions.map((condition) => `--conditions=${condition}`);
+	return execFileSync("node", [...conditionFlags, "-e", script], {
+		encoding: "utf8",
+	});
 }
 
 describe("@elizaos/core/edge export conditions (#20010)", () => {
-	it("resolves the canonical edge source entry under eliza-source without dist", () => {
+	it("resolves the canonical edge source entry under eliza-source without requiring dist", () => {
 		const resolved = resolveWithConditions(["eliza-source"]).replace(/\\/g, "/");
 		expect(resolved).toContain("packages/core/src/index.edge.ts");
 		expect(resolved).not.toContain("/dist/");
