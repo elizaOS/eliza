@@ -3,12 +3,20 @@
  * boundary while moving Slack credentials into the encrypted secret map.
  * Account overrides are split recursively because their tokens are just as
  * sensitive as the top-level account credentials.
+ *
+ * `vault://` refs are stripped from both lanes rather than projected: they are
+ * pointers, not secret material, and the boot chain (`collectConnectorEnvVars`
+ * → `resolveConnectorSecretSettings` → `buildRuntimeSettingsProjection`)
+ * resolves them into env-keyed runtime settings that the Slack account
+ * resolver already consults as its fallback.
  */
 import {
   connectorAccountCredentialSettingKey,
   connectorBaseCredentialSettingKey,
   type JsonValue,
 } from "@elizaos/core";
+
+import { isVaultRef } from "./operations/vault-bridge.ts";
 
 const SLACK_CREDENTIAL_KEYS = new Set([
   "appToken",
@@ -119,7 +127,7 @@ function projectSlackCredentialSecrets(
   const secrets: Record<string, string> = {};
   for (const field of SLACK_CREDENTIAL_KEYS) {
     const value = credentials[field];
-    if (typeof value === "string" && value.trim()) {
+    if (typeof value === "string" && value.trim() && !isVaultRef(value)) {
       secrets[connectorBaseCredentialSettingKey("slack", field)] = value;
     }
   }
@@ -130,7 +138,7 @@ function projectSlackCredentialSecrets(
     if (!isJsonObject(rawAccount)) continue;
     for (const field of SLACK_CREDENTIAL_KEYS) {
       const value = rawAccount[field];
-      if (typeof value === "string" && value.trim()) {
+      if (typeof value === "string" && value.trim() && !isVaultRef(value)) {
         secrets[
           connectorAccountCredentialSettingKey("slack", accountId, field)
         ] = value;
