@@ -55,6 +55,7 @@ export class ClientBaseTestSuite implements TestSuite {
         "tweet.read tweet.write users.read dm.read dm.write offline.access",
       TWITTER_BROKER_URL: "",
       TWITTER_BROKER_TOKEN: "",
+      TWITTER_PERSONAL_DM_ROUTER_URL: "",
       TWITTER_DRY_RUN: "false",
       TWITTER_TARGET_USERS: "",
       TWITTER_ENABLE_POST: "false",

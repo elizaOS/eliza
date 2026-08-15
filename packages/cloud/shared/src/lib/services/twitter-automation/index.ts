@@ -794,6 +794,18 @@ class TwitterAutomationService {
     }
   }
 
+  /** Reads the stored account identity without contacting X or refreshing tokens. */
+  async getStoredConnectionIdentity(
+    organizationId: string,
+    connectionRole: OAuthConnectionRole = "owner",
+  ): Promise<{ username: string | null; twitterUserId: string | null }> {
+    const stored = await getRoleCredentials(
+      organizationId,
+      normalizeConnectionRole(connectionRole),
+    );
+    return { username: stored.username, twitterUserId: stored.twitterUserId };
+  }
+
   /**
    * Get credentials for injecting into character settings
    * Used by agent-loader when Twitter is enabled

@@ -157,6 +157,18 @@
         "equals": "broker"
       }
     },
+    "TWITTER_PERSONAL_DM_ROUTER_URL": {
+      "type": "url",
+      "required": false,
+      "sensitive": false,
+      "label": "Personal DM Router URL",
+      "help": "When set on a shared agent X account, route inbound DMs to each sender's personal Shared or Dedicated Eliza. Public mentions remain on this agent.",
+      "advanced": true,
+      "visible": {
+        "key": "TWITTER_AUTH_MODE",
+        "equals": "broker"
+      }
+    },
     "TWITTER_ENABLE_POST": {
       "type": "boolean",
       "required": false,

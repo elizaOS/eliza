@@ -1015,7 +1015,10 @@ waifu.fun/
 # perf-gate e2e artifacts (overlay-scroll + conversation-swipe video + screenshots)
 /packages/ui/src/components/shell/__e2e__/output-perf-gate-e2e/
 railway.json
-.railwayignore
+# .railwayignore is deliberately TRACKED: the root-context `railway up`
+# deploys (gateway-webhook / tunnel-proxy) upload the working tree, and the
+# checked-in exclusions keep 600MB+ of hardware/OS artifact trees out of the
+# archive (upload died outright at ~1GB — staging run 31877865041).
 .dockerignore
 packages/ui/src/components/shell/__e2e__/output-fused-wake-integration/
 

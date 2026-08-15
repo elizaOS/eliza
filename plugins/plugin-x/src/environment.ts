@@ -41,6 +41,7 @@ export const twitterEnvSchema = z.object({
     ),
   TWITTER_BROKER_URL: z.string().default(""),
   TWITTER_BROKER_TOKEN: z.string().default(""),
+  TWITTER_PERSONAL_DM_ROUTER_URL: z.string().default(""),
 
   // Core configuration
   TWITTER_DRY_RUN: z.string().default("false"),
@@ -200,6 +201,10 @@ export async function validateTwitterConfig(
       TWITTER_BROKER_TOKEN:
         config.TWITTER_BROKER_TOKEN ??
         getSetting(runtime, "TWITTER_BROKER_TOKEN") ??
+        "",
+      TWITTER_PERSONAL_DM_ROUTER_URL:
+        config.TWITTER_PERSONAL_DM_ROUTER_URL ??
+        getSetting(runtime, "TWITTER_PERSONAL_DM_ROUTER_URL") ??
         "",
       TWITTER_DRY_RUN: String(
         (
@@ -457,6 +462,8 @@ function getDefaultConfig(): TwitterConfig {
       "tweet.read tweet.write users.read dm.read dm.write offline.access",
     TWITTER_BROKER_URL: getConfig("TWITTER_BROKER_URL") || "",
     TWITTER_BROKER_TOKEN: getConfig("TWITTER_BROKER_TOKEN") || "",
+    TWITTER_PERSONAL_DM_ROUTER_URL:
+      getConfig("TWITTER_PERSONAL_DM_ROUTER_URL") || "",
     TWITTER_DRY_RUN: getConfig("TWITTER_DRY_RUN") || "false",
     TWITTER_TARGET_USERS: getConfig("TWITTER_TARGET_USERS") || "",
     TWITTER_ENABLE_POST: getConfig("TWITTER_ENABLE_POST") || "false",

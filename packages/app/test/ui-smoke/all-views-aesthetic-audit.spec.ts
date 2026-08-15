@@ -40,6 +40,12 @@ import {
   type ScreenshotQuality,
   screenshotQualityIssues,
 } from "./helpers/screenshot-quality";
+import {
+  normalize,
+  type OcrExpectation,
+  positiveExpectationMatches,
+} from "./ocr-content-rules";
+import { resolveViewOcrPolicy } from "./ocr-view-expectations";
 import { VIEW_ROUTES } from "./view-routes";
 
 // Strict-gate config (#9304, #10710). The audit was a pure reporter — `broken` /
@@ -270,6 +276,8 @@ interface ViewFinding {
   bundleViewId?: string;
   /** Readable text length in the view root; ~0 means the view never painted. */
   readableChars: number;
+  /** Closed OCR policy result used as the view's semantic content authority. */
+  semanticReady: boolean;
   /** documentElement.scrollWidth − innerWidth in px (≥0). >tolerance means the
    * page overflows horizontally at the document level — the WS5 transcript bug
    * (overflow-y:auto without overflow-x:hidden). An in-container scroll does not
@@ -296,18 +304,223 @@ interface ViewFinding {
 
 interface ViewPaintState {
   readableChars: number;
+  semanticReady: boolean;
   overlayPresent: boolean;
-  loadingViewPresent: boolean;
+  /** Visible terminal loading labels or explicit loading-state markers. */
+  loadingStateLabels: string[];
+}
+
+const TERMINAL_LOADING_LABEL = /^loading(?:\s+view)?(?:\s*(?:…|\.{1,3}))?$/i;
+
+const ACTIVE_VIEW_ROOT_SELECTOR =
+  '[data-view-lifecycle-slot][data-view-hidden="false"]';
+
+function semanticRootForView(page: Page, slug: string): Locator {
+  return slug === "builtin-chat"
+    ? page.getByTestId("home-screen")
+    : page.locator(ACTIVE_VIEW_ROOT_SELECTOR);
 }
 
 async function readViewPaint(
   viewRoot: Locator,
   overlay: Locator,
-  loadingView: Locator,
+  expectation: OcrExpectation,
 ): Promise<ViewPaintState> {
-  const readableChars = await viewRoot.evaluate(
-    (root) =>
-      (root as HTMLElement).innerText.trim().replace(/\s+/g, " ").length,
+  const { readableText, loadingStateLabels } = await viewRoot.evaluate(
+    (root, terminalLoadingPattern) => {
+      const rootElement = root as HTMLElement;
+      const isVisibleInViewport = (element: Element): boolean => {
+        if (!element.isConnected || element.getClientRects().length === 0) {
+          return false;
+        }
+        for (
+          let current: Element | null = element;
+          current;
+          current = current.parentElement
+        ) {
+          const style = getComputedStyle(current);
+          if (
+            (current instanceof HTMLElement && current.hidden) ||
+            style.display === "none" ||
+            style.visibility === "hidden" ||
+            style.visibility === "collapse" ||
+            style.contentVisibility === "hidden" ||
+            Number(style.opacity || "1") === 0
+          ) {
+            return false;
+          }
+        }
+
+        const rect = element.getBoundingClientRect();
+        let visibleLeft = Math.max(rect.left, 0);
+        let visibleTop = Math.max(rect.top, 0);
+        let visibleRight = Math.min(rect.right, window.innerWidth);
+        let visibleBottom = Math.min(rect.bottom, window.innerHeight);
+        if (
+          rect.width <= 0 ||
+          rect.height <= 0 ||
+          visibleRight <= visibleLeft ||
+          visibleBottom <= visibleTop
+        ) {
+          return false;
+        }
+
+        // Scroll and clipping ancestors can leave a descendant with a nonzero
+        // rect while none of its pixels reach the screenshot.
+        for (
+          let current = element.parentElement;
+          current;
+          current = current.parentElement
+        ) {
+          const style = getComputedStyle(current);
+          const clipsX = /^(auto|clip|hidden|scroll)$/.test(style.overflowX);
+          const clipsY = /^(auto|clip|hidden|scroll)$/.test(style.overflowY);
+          if (!clipsX && !clipsY) continue;
+          const clip = current.getBoundingClientRect();
+          if (clipsX) {
+            visibleLeft = Math.max(visibleLeft, clip.left);
+            visibleRight = Math.min(visibleRight, clip.right);
+          }
+          if (clipsY) {
+            visibleTop = Math.max(visibleTop, clip.top);
+            visibleBottom = Math.min(visibleBottom, clip.bottom);
+          }
+          if (visibleRight <= visibleLeft || visibleBottom <= visibleTop) {
+            return false;
+          }
+        }
+        return true;
+      };
+
+      const elements: Element[] = [
+        rootElement,
+        ...rootElement.querySelectorAll("*"),
+      ];
+      const visibleText: string[] = [];
+      const loadingLabels = new Set<string>();
+      const terminalLoadingLabel = new RegExp(terminalLoadingPattern, "i");
+      const inlineTextTags = new Set([
+        "A",
+        "ABBR",
+        "B",
+        "CODE",
+        "EM",
+        "I",
+        "LABEL",
+        "MARK",
+        "S",
+        "SMALL",
+        "SPAN",
+        "STRONG",
+        "SUB",
+        "SUP",
+      ]);
+      const laysOutInlineItems = (display: string): boolean =>
+        display === "flex" ||
+        display === "inline-flex" ||
+        display === "grid" ||
+        display === "inline-grid";
+      const visibleTextOf = (element: Element): string => {
+        const pieces: string[] = [];
+        const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+        for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+          const owner = node.parentElement;
+          const text = node.textContent?.trim();
+          if (owner && text && isVisibleInViewport(owner)) pieces.push(text);
+        }
+        return pieces.join(" ").replace(/\s+/g, " ").trim();
+      };
+      // Candidate loader labels are contiguous visible inline/text runs bounded
+      // by block-level siblings, so a bare `<span>Loading</span>` next to ready
+      // block content stays terminal while `<span>Loading</span>
+      // <span>history</span>` reads as one descriptive phrase.
+      const inlineRunLabels = (container: Element): string[] => {
+        const labels: string[] = [];
+        let run: string[] = [];
+        const containerOwnsInlineItems = laysOutInlineItems(
+          getComputedStyle(container).display,
+        );
+        const flush = () => {
+          const label = run.join(" ").replace(/\s+/g, " ").trim();
+          if (label) labels.push(label);
+          run = [];
+        };
+        for (const child of container.childNodes) {
+          if (child.nodeType === Node.TEXT_NODE) {
+            const owner = child.parentElement;
+            const text = child.textContent?.trim();
+            if (owner && text && isVisibleInViewport(owner)) run.push(text);
+            continue;
+          }
+          if (!(child instanceof Element)) continue;
+          if (!isVisibleInViewport(child)) continue;
+          const display = getComputedStyle(child).display;
+          if (
+            display === "contents" ||
+            display.startsWith("inline") ||
+            (containerOwnsInlineItems && inlineTextTags.has(child.tagName))
+          ) {
+            const text = visibleTextOf(child);
+            if (text) run.push(text);
+          } else {
+            flush();
+          }
+        }
+        flush();
+        return labels;
+      };
+      for (const element of elements) {
+        if (!isVisibleInViewport(element)) continue;
+        for (const child of element.childNodes) {
+          if (child.nodeType !== Node.TEXT_NODE) continue;
+          const text = child.textContent?.trim();
+          if (text) visibleText.push(text);
+        }
+        if (element.getAttribute("data-view-status") === "loading") {
+          loadingLabels.add(
+            visibleTextOf(element) ||
+              element.textContent?.trim().replace(/\s+/g, " ") ||
+              '[data-view-status="loading"]',
+          );
+        }
+        const display = getComputedStyle(element).display;
+        const parentDisplay = element.parentElement
+          ? getComputedStyle(element.parentElement).display
+          : "";
+        const parentOwnsThisInlineItem =
+          laysOutInlineItems(parentDisplay) &&
+          inlineTextTags.has(element.tagName);
+        if (
+          !parentOwnsThisInlineItem &&
+          display !== "contents" &&
+          !display.startsWith("inline")
+        ) {
+          for (const label of inlineRunLabels(element)) {
+            if (terminalLoadingLabel.test(label)) loadingLabels.add(label);
+          }
+        }
+        if (
+          element instanceof HTMLInputElement ||
+          element instanceof HTMLTextAreaElement
+        ) {
+          const text = (element.value || element.placeholder).trim();
+          if (text) visibleText.push(text);
+        } else if (element instanceof HTMLSelectElement) {
+          const text = element.selectedOptions[0]?.textContent?.trim();
+          if (text) visibleText.push(text);
+        }
+      }
+
+      return {
+        readableText: visibleText.join(" ").replace(/\s+/g, " ").trim(),
+        loadingStateLabels: [...loadingLabels],
+      };
+    },
+    TERMINAL_LOADING_LABEL.source,
+  );
+  const semanticReady = positiveExpectationMatches(
+    normalize(readableText),
+    expectation,
   );
   const overlayPresent = await overlay.evaluateAll((nodes) =>
     nodes.some((node) => {
@@ -323,8 +536,41 @@ async function readViewPaint(
       );
     }),
   );
-  const loadingViewPresent = await loadingView.isVisible();
-  return { readableChars, overlayPresent, loadingViewPresent };
+  return {
+    readableChars: readableText.length,
+    semanticReady,
+    overlayPresent,
+    loadingStateLabels,
+  };
+}
+
+async function waitForSettledViewPaint(
+  page: Page,
+  readPaint: () => Promise<ViewPaintState>,
+  overlayRequired: boolean,
+): Promise<ViewPaintState> {
+  let paint = await readPaint();
+  for (
+    let attempt = 0;
+    attempt < 12 &&
+    (!paint.semanticReady ||
+      (overlayRequired && !paint.overlayPresent) ||
+      paint.loadingStateLabels.length > 0);
+    attempt += 1
+  ) {
+    await page.waitForTimeout(1000);
+    paint = await readPaint();
+  }
+  return paint;
+}
+
+function loadingRenderStateIssues(paint: ViewPaintState): string[] {
+  if (paint.loadingStateLabels.length === 0) return [];
+  return [
+    `dynamic view remained in its loading state after 12 seconds: ${paint.loadingStateLabels.join(
+      ", ",
+    )}`,
+  ];
 }
 
 async function settleHomeEntrance(page: Page): Promise<void> {
@@ -1097,6 +1343,7 @@ function renderManualReviewStub(finding: ViewFinding): string {
     `- **floating chat overlay present:** ${finding.overlayPresent ? "yes" : "NO"}`,
     `- **floating chat overlay clearance:** ${finding.overlayClearanceIssues.length ? finding.overlayClearanceIssues.join("; ") : "clear"}`,
     `- **readable content chars:** ${finding.readableChars}`,
+    `- **declared semantic content:** ${finding.semanticReady ? "ready" : "MISSING"}`,
     `- **horizontal overflow:** ${finding.horizontalOverflowPx}px${finding.horizontalOverflowPx > HORIZONTAL_OVERFLOW_TOLERANCE_PX ? " ⚠ OVERFLOW" : ""}`,
     `- **border/divider density:** ${roundMetric(finding.borderDividerDensity)} (${finding.borderDividerCount} edges / 1M px)`,
     `- **text density:** ${roundMetric(finding.textDensity)} chars / 10K px`,
@@ -1256,34 +1503,217 @@ test.describe("all-views aesthetic audit (#8796)", () => {
   test("view readiness surfaces loading and measurement failures", async ({
     page,
   }) => {
+    const appsPolicy = resolveViewOcrPolicy("builtin-apps");
+    const tasksPolicy = resolveViewOcrPolicy("builtin-tasks");
+    const focusPolicy = resolveViewOcrPolicy("plugin-focus-gui");
+    if (appsPolicy.kind !== "expectation") {
+      throw new Error("builtin-apps must declare a semantic expectation");
+    }
+    if (tasksPolicy.kind !== "expectation") {
+      throw new Error("builtin-tasks must declare a semantic expectation");
+    }
+    if (focusPolicy.kind !== "expectation") {
+      throw new Error("plugin-focus-gui must declare a semantic expectation");
+    }
+
     await page.setContent(`
-      <main data-test-root>Loaded production view</main>
-      <div data-test-overlay>Composer</div>
+      <main>
+        <section data-view-lifecycle-slot="cached-apps" data-view-hidden="true">
+          <h1>My Apps</h1>
+          <p>Install, create, and run your elizaOS apps.</p>
+        </section>
+        <section data-view-lifecycle-slot="apps" data-view-hidden="false">Loading…</section>
+        <div data-test-overlay>Ask Eliza</div>
+      </main>
     `);
+    const viewRoot = semanticRootForView(page, "builtin-apps");
     const overlay = page.locator("[data-test-overlay]");
-    const loadingView = page.locator('[data-view-status="loading"]');
 
     await expect(
-      readViewPaint(page.locator("[data-test-root]"), overlay, loadingView),
+      readViewPaint(viewRoot, overlay, appsPolicy.expectation),
     ).resolves.toEqual({
-      readableChars: "Loaded production view".length,
+      readableChars: "Loading…".length,
+      semanticReady: false,
       overlayPresent: true,
-      loadingViewPresent: false,
+      loadingStateLabels: ["Loading…"],
     });
 
-    await page.locator("main").evaluate((root) => {
-      root.insertAdjacentHTML(
-        "beforeend",
-        '<div data-view-status="loading">Loading view</div>',
-      );
+    await viewRoot.evaluate((root) => {
+      root.innerHTML = "<h1>Projects</h1>";
     });
     await expect(
-      readViewPaint(page.locator("[data-test-root]"), overlay, loadingView),
-    ).resolves.toMatchObject({ loadingViewPresent: true });
+      readViewPaint(viewRoot, overlay, tasksPolicy.expectation),
+    ).resolves.toMatchObject({ semanticReady: false });
+
+    await viewRoot.evaluate((root) => {
+      root.textContent = "Idle";
+    });
+    await expect(
+      readViewPaint(viewRoot, overlay, focusPolicy.expectation),
+    ).resolves.toEqual({
+      readableChars: "Idle".length,
+      semanticReady: true,
+      overlayPresent: true,
+      loadingStateLabels: [],
+    });
+
+    await viewRoot.evaluate((root) => {
+      root.innerHTML =
+        '<div style="position: relative; overflow: hidden; width: 100px; height: 1px"><div style="position: absolute; top: 20px"><h1>My Apps</h1><p>Install, create, and run your elizaOS apps.</p></div></div>';
+    });
+    await expect(
+      readViewPaint(viewRoot, overlay, appsPolicy.expectation),
+    ).resolves.toMatchObject({ semanticReady: false });
+
+    await viewRoot.evaluate((root) => {
+      root.innerHTML =
+        '<div hidden data-view-status="loading">Loading view</div><div style="position: relative; overflow: hidden; width: 100px; height: 1px"><div data-view-status="loading" style="position: absolute; top: 20px">Loading view</div></div><h1>My Apps</h1><p>Install, create, and run your elizaOS apps.</p>';
+    });
+    await expect(
+      readViewPaint(viewRoot, overlay, appsPolicy.expectation),
+    ).resolves.toMatchObject({
+      semanticReady: true,
+      loadingStateLabels: [],
+    });
+
+    await viewRoot.evaluate((root) => {
+      root.innerHTML =
+        '<div data-view-status="loading">Loading view</div><h1>My Apps</h1><p>Install, create, and run your elizaOS apps.</p>';
+    });
+    await expect(
+      readViewPaint(viewRoot, overlay, appsPolicy.expectation),
+    ).resolves.toMatchObject({
+      semanticReady: true,
+      loadingStateLabels: ["Loading view"],
+    });
+
+    await viewRoot.evaluate((root) => {
+      root.innerHTML =
+        "<h1>Tasks</h1><div>Loading</div><div>Loading history</div>";
+    });
+    const terminalLoading = await readViewPaint(
+      viewRoot,
+      overlay,
+      tasksPolicy.expectation,
+    );
+    expect(terminalLoading).toMatchObject({
+      semanticReady: true,
+      loadingStateLabels: ["Loading"],
+    });
+    expect(loadingRenderStateIssues(terminalLoading)).toEqual([
+      "dynamic view remained in its loading state after 12 seconds: Loading",
+    ]);
+
+    await viewRoot.evaluate((root) => {
+      root.innerHTML = "<h1>Tasks</h1><span>Loading</span>";
+    });
+    await expect(
+      readViewPaint(viewRoot, overlay, tasksPolicy.expectation),
+    ).resolves.toMatchObject({
+      semanticReady: true,
+      loadingStateLabels: ["Loading"],
+    });
+
+    for (const terminalInlineLayout of [
+      '<div style="display: flex"><span>Loading</span></div>',
+      '<div style="display: grid"><span>Loading</span></div>',
+    ]) {
+      await viewRoot.evaluate((root, content) => {
+        root.innerHTML = `<h1>Tasks</h1>${content}`;
+      }, terminalInlineLayout);
+      await expect(
+        readViewPaint(viewRoot, overlay, tasksPolicy.expectation),
+      ).resolves.toMatchObject({
+        semanticReady: true,
+        loadingStateLabels: ["Loading"],
+      });
+    }
+
+    for (const descriptiveLoading of [
+      "<div>Loading <span>history</span></div>",
+      "<div><span>Loading</span> <span>history</span></div>",
+      '<div style="display: flex; gap: 4px"><span>Loading</span><span>history</span></div>',
+      '<div style="display: grid; grid-template-columns: auto auto; gap: 4px"><span>Loading</span><span>history</span></div>',
+    ]) {
+      await viewRoot.evaluate((root, content) => {
+        root.innerHTML = `<h1>Tasks</h1>${content}`;
+      }, descriptiveLoading);
+      await expect(
+        readViewPaint(viewRoot, overlay, tasksPolicy.expectation),
+      ).resolves.toMatchObject({
+        semanticReady: true,
+        loadingStateLabels: [],
+      });
+    }
+
+    await viewRoot.evaluate((root) => {
+      root.innerHTML =
+        '<h1>Tasks</h1><div hidden>Loading</div><div style="display: none">Loading...</div><div style="position: relative; overflow: hidden; width: 100px; height: 1px"><div style="position: absolute; top: 20px">Loading view</div></div><p>No coding tasks yet</p>';
+    });
+    await expect(
+      readViewPaint(viewRoot, overlay, tasksPolicy.expectation),
+    ).resolves.toMatchObject({
+      semanticReady: true,
+      loadingStateLabels: [],
+    });
+
+    await viewRoot.evaluate((root) => {
+      root.innerHTML = "<h1>Tasks</h1><div>Loading...</div>";
+      window.setTimeout(() => {
+        root.innerHTML = "<h1>Tasks</h1><p>No coding tasks yet</p>";
+      }, 20);
+    });
+    await expect(
+      waitForSettledViewPaint(
+        page,
+        () => readViewPaint(viewRoot, overlay, tasksPolicy.expectation),
+        true,
+      ),
+    ).resolves.toMatchObject({
+      semanticReady: true,
+      loadingStateLabels: [],
+    });
+
+    await page.setContent(`
+      <section data-testid="home-screen">
+        <h1>Mostly clear</h1>
+        <p>Learn conversational Spanish</p>
+      </section>
+      <div data-test-overlay>Ask Eliza</div>
+    `);
+    const chatPolicy = resolveViewOcrPolicy("builtin-chat");
+    if (chatPolicy.kind !== "expectation") {
+      throw new Error("builtin-chat must declare a semantic expectation");
+    }
+    await expect(
+      readViewPaint(
+        semanticRootForView(page, "builtin-chat"),
+        page.locator("[data-test-overlay]"),
+        chatPolicy.expectation,
+      ),
+    ).resolves.toMatchObject({ semanticReady: true });
+
+    await page.setContent(`
+      <section data-view-lifecycle-slot="camera" data-view-hidden="false">
+        <div data-testid="home-screen">Settings Wallet Projects</div>
+      </section>
+      <div data-test-overlay>Ask Eliza</div>
+    `);
+    const cameraPolicy = resolveViewOcrPolicy("builtin-camera");
+    if (cameraPolicy.kind !== "semantic-exemption") {
+      throw new Error("builtin-camera must declare a semantic exemption");
+    }
+    await expect(
+      readViewPaint(
+        semanticRootForView(page, "builtin-camera"),
+        page.locator("[data-test-overlay]"),
+        cameraPolicy.fallbackExpectation,
+      ),
+    ).resolves.toMatchObject({ semanticReady: true });
 
     await page.setContent("<main>first</main><main>second</main>");
     await expect(
-      readViewPaint(page.locator("main"), overlay, loadingView),
+      readViewPaint(page.locator("main"), overlay, appsPolicy.expectation),
     ).rejects.toThrow(/strict mode violation/);
   });
 
@@ -1337,14 +1767,17 @@ test.describe("all-views aesthetic audit (#8796)", () => {
           expect(bundleResponse.headers()["x-eliza-view-id"]).toBe(view.id);
         }
 
-        // Robust readiness under sustained sequential load: most views render
-        // <main>, but chat/phone/etc. render straight into #root with no <main>.
-        // Poll for the view to actually PAINT (readable content or the floating
-        // overlay) rather than sampling a still-blank frame — a single shared
-        // dev server slows late in the walk, so a fixed short wait yields false
-        // blanks. Non-fatal: a view that never paints is recorded as a finding.
-        const viewRoot = page.locator("main, #root").first();
+        // The shell and composer paint before lazy views settle, so readiness is
+        // measured inside the active lifecycle slot. Chat's ambient HomeScreen
+        // is the sole route outside that host. Both use the same closed semantic
+        // contract that later judges screenshot OCR.
+        const viewRoot = semanticRootForView(page, view.slug);
         await viewRoot.waitFor({ state: "visible", timeout: 15_000 });
+        const ocrPolicy = resolveViewOcrPolicy(view.slug);
+        const semanticExpectation =
+          ocrPolicy.kind === "expectation"
+            ? ocrPolicy.expectation
+            : ocrPolicy.fallbackExpectation;
         const overlayRequired =
           view.viewType !== "tui" &&
           !OVERLAY_NATIVE_OR_CANVAS_SLUGS.has(view.slug);
@@ -1359,25 +1792,21 @@ test.describe("all-views aesthetic audit (#8796)", () => {
           readViewPaint(
             viewRoot,
             page.locator(overlaySelector),
-            page.locator('[data-view-status="loading"]'),
+            semanticExpectation,
           );
-        let paint = await readPaint();
-        for (
-          let attempt = 0;
-          attempt < 12 &&
-          (paint.readableChars < 10 ||
-            (overlayRequired && !paint.overlayPresent) ||
-            paint.loadingViewPresent);
-          attempt += 1
-        ) {
-          await page.waitForTimeout(1000);
-          paint = await readPaint();
-        }
+        const paint = await waitForSettledViewPaint(
+          page,
+          readPaint,
+          overlayRequired,
+        );
         await settleHomeEntrance(page);
-        const { readableChars, overlayPresent } = paint;
+        const { readableChars, semanticReady, overlayPresent } = paint;
         const renderStateIssues = [
-          ...(paint.loadingViewPresent
-            ? ["dynamic view remained in its loading state after 12 seconds"]
+          ...loadingRenderStateIssues(paint),
+          ...(!paint.semanticReady
+            ? [
+                "view did not reach its declared semantic content after 12 seconds",
+              ]
             : []),
           ...(await collectSpatialOverlapIssues(page)),
           ...(await collectSpatialSizingIssues(page)),
@@ -1477,6 +1906,7 @@ test.describe("all-views aesthetic audit (#8796)", () => {
           overlayPresent,
           overlayClearanceIssues,
           readableChars,
+          semanticReady,
           horizontalOverflowPx,
           ...densityMetrics,
           densityProbeFailures,

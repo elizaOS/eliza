@@ -42,8 +42,27 @@ const app = new Hono<AppEnv>();
 app.get("/", async (c) => {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
-    const role =
-      c.req.query("connectionRole") === "agent" ? "agent" : ("owner" as const);
+    // The owner connection is the user's PERSONAL X account. Vending it must
+    // be an explicit, well-formed request — never the fallthrough for a
+    // missing or mistyped parameter (the prior ternary mapped every
+    // non-"agent" value, including typos and absence, to "owner"). Missing
+    // defaults to the least-privileged agent connection; garbage is a 400,
+    // not a silent privilege escalation.
+    const requestedRole = c.req.query("connectionRole");
+    if (
+      requestedRole !== undefined &&
+      requestedRole !== "agent" &&
+      requestedRole !== "owner"
+    ) {
+      return c.json(
+        {
+          error: "invalid_connection_role",
+          message: 'connectionRole must be "agent" or "owner".',
+        },
+        400,
+      );
+    }
+    const role: "agent" | "owner" = requestedRole ?? "agent";
 
     const broker = await twitterAutomationService.getBrokerCredentials(
       user.organization_id,

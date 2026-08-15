@@ -1723,20 +1723,231 @@ describe("TRIGGER list — dropped rows are counted, not hidden", () => {
   });
 });
 
+describe("trigger reference id/name mismatch guard", () => {
+  it("refuses to delete when taskId resolves to a different trigger than named", async () => {
+    const { runtime, createdTasks } = makeRuntime({ enableAutonomy: false });
+    const created = await create(
+      runtime,
+      {
+        instructions: "do 20 pushups",
+        cronExpression: "0 8 * * *",
+      },
+      "do 20 pushups every morning at 8am",
+    );
+    expect(created?.success).toBe(true);
+    // The default harness's createTask does not attach ids; materialize the
+    // stored task with one so the id-based reference path is exercised.
+    (runtime as unknown as { deleteTask: unknown }).deleteTask = vi.fn(
+      async () => undefined,
+    );
+    const storedTask = { ...createdTasks[0], id: stringToUuid("pushups-task") };
+    const taskId = String(storedTask.id);
+    (
+      runtime.getTask as unknown as { mockResolvedValue: (v: unknown) => void }
+    ).mockResolvedValue(storedTask);
+    // Live repro shape: the planner paired the pushups task id with the
+    // orchid's name; the delete must fail structurally, not fire.
+    const result = await triggerAction.handler(
+      runtime,
+      makeMessage("no, just once tomorrow morning"),
+      undefined,
+      {
+        parameters: {
+          action: "delete",
+          taskId,
+          displayName: "water the orchid",
+        },
+      },
+    );
+    expect(result?.success).toBe(false);
+    expect(result?.data).toMatchObject({ error: "TRIGGER_REF_MISMATCH" });
+    expect(runtime.deleteTask).not.toHaveBeenCalled();
+  });
+
+  it("deletes when the stated name matches the resolved trigger", async () => {
+    const { runtime, createdTasks } = makeRuntime({ enableAutonomy: false });
+    const created = await create(
+      runtime,
+      { instructions: "do 20 pushups", cronExpression: "0 8 * * *" },
+      "do 20 pushups every morning at 8am",
+    );
+    expect(created?.success).toBe(true);
+    (runtime as unknown as { deleteTask: unknown }).deleteTask = vi.fn(
+      async () => undefined,
+    );
+    const storedTask = { ...createdTasks[0], id: stringToUuid("pushups-task") };
+    const taskId = String(storedTask.id);
+    (
+      runtime.getTask as unknown as { mockResolvedValue: (v: unknown) => void }
+    ).mockResolvedValue(storedTask);
+    const result = await triggerAction.handler(
+      runtime,
+      makeMessage("delete the pushups trigger"),
+      undefined,
+      {
+        parameters: {
+          action: "delete",
+          taskId,
+          displayName: "pushups",
+        },
+      },
+    );
+    expect(result?.success).toBe(true);
+    expect(runtime.deleteTask).toHaveBeenCalled();
+  });
+});
+
+describe("sprayed one-shot cap on an explicit recurrence", () => {
+  it("drops maxRuns=1 when the user's own words state a repeating cadence", async () => {
+    const { runtime, createdTasks } = makeRuntime({ enableAutonomy: false });
+    // Field-spraying planners answering "every morning" emit the cron AND a
+    // derived one-shot maxRuns:1 echo; the user's stated cadence wins.
+    const result = await create(
+      runtime,
+      {
+        instructions: "do 20 pushups",
+        cronExpression: "0 8 * * *",
+        maxRuns: 1,
+      },
+      "do 20 pushups every morning at 8am",
+    );
+    expect(result?.success).toBe(true);
+    const trigger = (
+      createdTasks[0]?.metadata as { trigger?: { maxRuns?: number } }
+    )?.trigger;
+    expect(trigger?.maxRuns).toBeUndefined();
+  });
+
+  it("drops the cap on a bare weekday recurrence ('every tuesday')", async () => {
+    const { runtime, createdTasks } = makeRuntime({ enableAutonomy: false });
+    const result = await create(
+      runtime,
+      {
+        instructions: "take out recycling",
+        cronExpression: "0 8 * * 2",
+        maxRuns: 1,
+      },
+      "take out recycling every tuesday at 8am",
+    );
+    expect(result?.success).toBe(true);
+    const trigger = (
+      createdTasks[0]?.metadata as { trigger?: { maxRuns?: number } }
+    )?.trigger;
+    expect(trigger?.maxRuns).toBeUndefined();
+  });
+
+  it("drops maxRuns=1 for explicit Japanese recurrence", async () => {
+    const { runtime, createdTasks } = makeRuntime({ enableAutonomy: false });
+    const result = await create(
+      runtime,
+      {
+        instructions: "水を飲む",
+        cronExpression: "0 9 * * *",
+        maxRuns: 1,
+      },
+      "毎日午前9時に水を飲むようにリマインドして",
+    );
+    expect(result?.success).toBe(true);
+    const trigger = (
+      createdTasks[0]?.metadata as { trigger?: { maxRuns?: number } }
+    )?.trigger;
+    expect(trigger?.maxRuns).toBeUndefined();
+  });
+
+  it("drops maxRuns=1 for explicit numeric cadence", async () => {
+    const { runtime, createdTasks } = makeRuntime({ enableAutonomy: false });
+    const result = await create(
+      runtime,
+      {
+        instructions: "check the queue",
+        cronExpression: "*/15 * * * *",
+        maxRuns: 1,
+      },
+      "check the queue every 15 minutes",
+    );
+    expect(result?.success).toBe(true);
+    expect(createdTasks[0]?.metadata.trigger?.maxRuns).toBeUndefined();
+  });
+
+  it("keeps maxRuns=1 when the current user negates recurrence", async () => {
+    const { runtime, createdTasks } = makeRuntime({ enableAutonomy: false });
+    const result = await create(
+      runtime,
+      {
+        instructions: "call the bank",
+        cronExpression: "0 9 * * *",
+        maxRuns: 1,
+      },
+      "remind me tomorrow, not every day",
+    );
+    expect(result?.success).toBe(true);
+    expect(createdTasks[0]?.metadata.trigger?.maxRuns).toBe(1);
+  });
+
+  it("keeps maxRuns=1 when the text has only a time-of-day window phrase", async () => {
+    // "in the morning" is a WINDOW, not a recurrence — a one-shot reminder
+    // must not become an unbounded daily cron because of it.
+    const { runtime, createdTasks } = makeRuntime({ enableAutonomy: false });
+    const result = await create(
+      runtime,
+      {
+        instructions: "call mom",
+        cronExpression: "0 9 * * *",
+        maxRuns: 1,
+      },
+      "remind me to call mom in the morning",
+    );
+    expect(result?.success).toBe(true);
+    const trigger = (
+      createdTasks[0]?.metadata as { trigger?: { maxRuns?: number } }
+    )?.trigger;
+    expect(trigger?.maxRuns).toBe(1);
+  });
+
+  it("keeps maxRuns=1 when the text states no recurrence", async () => {
+    const { runtime, createdTasks } = makeRuntime({ enableAutonomy: false });
+    const result = await create(
+      runtime,
+      {
+        instructions: "call the bank",
+        cronExpression: "0 9 * * *",
+        maxRuns: 1,
+      },
+      "remind me to call the bank at 9am",
+    );
+    expect(result?.success).toBe(true);
+    const trigger = (
+      createdTasks[0]?.metadata as { trigger?: { maxRuns?: number } }
+    )?.trigger;
+    expect(trigger?.maxRuns).toBe(1);
+  });
+});
+
 describe("one-shot cron reminder confirmation", () => {
   it("describes a maxRuns=1 cron by its next occurrence, never as recurring", async () => {
-    const { runtime } = makeRuntime({ enableAutonomy: false });
-    const result = await create(runtime, {
-      instructions: "call the bank",
-      cronExpression: "0 9 * * *",
-      maxRuns: 1,
-    });
-    expect(result?.success).toBe(true);
-    // The trigger fires once at the next 9am and stops; the confirmation must
-    // read as a one-shot, not a recurrence the trigger cannot have.
-    expect(result?.text).not.toContain("every morning");
-    expect(result?.text).not.toContain("every day");
-    expect(result?.text).toMatch(/9(:00)?\s?(a\.?m\.?)/i);
+    // Pin the clock well before 9am: within an hour of the fire the
+    // humanizer legitimately says "in NN minutes" instead of naming 9am.
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-15T03:00:00.000Z"));
+    try {
+      const { runtime } = makeRuntime({
+        enableAutonomy: false,
+        timeZone: "UTC",
+      });
+      const result = await create(runtime, {
+        instructions: "call the bank",
+        cronExpression: "0 9 * * *",
+        maxRuns: 1,
+      });
+      expect(result?.success).toBe(true);
+      // The trigger fires once at the next 9am and stops; the confirmation must
+      // read as a one-shot, not a recurrence the trigger cannot have.
+      expect(result?.text).not.toContain("every morning");
+      expect(result?.text).not.toContain("every day");
+      expect(result?.text).toMatch(/9(:00)?\s?(a\.?m\.?)/i);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("describes the persisted occurrence when persistence crosses the cron boundary", async () => {

@@ -229,20 +229,25 @@ test("rejects malformed numeric limits before creating output", async () => {
       "--max-files-per-dir=100.5",
     ];
 
-    for (const [index, argument] of invalidArguments.entries()) {
-      const outDir = path.join(tmpDir, `out-${index}`);
-      const result = runGenerate([
-        `--out=${outDir}`,
-        "--source=/definitely/missing",
-        "--ocr=off",
-        "--no-open",
+    for (const argument of invalidArguments) {
+      assert.throws(
+        () => parseArgs([argument]),
+        /must be|requires a non-empty value/,
         argument,
-      ]);
-
-      assert.notEqual(result.status, 0, argument);
-      assert.match(result.stderr, /must be|requires a non-empty value/);
-      await assert.rejects(() => stat(outDir));
+      );
     }
+
+    const outDir = path.join(tmpDir, "out");
+    const result = runGenerate([
+      `--out=${outDir}`,
+      "--source=/definitely/missing",
+      "--ocr=off",
+      "--no-open",
+      "--max-artifacts=99",
+    ]);
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /must be/);
+    await assert.rejects(() => stat(outDir));
   } finally {
     await rm(tmpDir, { recursive: true, force: true });
   }
@@ -268,6 +273,15 @@ test("rejects empty path options during argument parsing", () => {
 test("preserves valid numeric boundary values", async () => {
   const tmpDir = await mkdtemp(path.join(os.tmpdir(), "evidence-review-args-"));
   try {
+    const parsed = parseArgs([
+      "--max-images=0",
+      "--max-artifacts=100",
+      "--max-files-per-dir=100",
+    ]);
+    assert.equal(parsed.maxImages, 0);
+    assert.equal(parsed.maxArtifacts, 100);
+    assert.equal(parsed.maxFilesPerDir, 100);
+
     const outDir = path.join(tmpDir, "out");
     const result = runGenerate([
       `--out=${outDir}`,

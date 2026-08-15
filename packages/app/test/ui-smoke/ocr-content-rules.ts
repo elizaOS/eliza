@@ -154,7 +154,7 @@ function containsExpectedText(haystack: string, label: string): boolean {
  * confidence is diluted by decorative glyphs; it never bypasses the word or
  * blank-pixel floors, and forbid-only policies cannot manufacture confidence.
  */
-function positiveExpectationMatches(
+export function positiveExpectationMatches(
   haystack: string,
   expectation?: OcrExpectation,
 ): boolean {

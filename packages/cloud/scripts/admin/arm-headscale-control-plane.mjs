@@ -389,6 +389,8 @@ validate_retirable_legacy_vhost() {
         printf "line %d: hash token in active syntax\\n", NR
         next
       }
+      gsub(/[$][{]http_upgrade[}]/, "$http_upgrade", line)
+      gsub(/[$][{]connection_upgrade[}]/, "$connection_upgrade", line)
       semicolons = gsub(/;/, ";", line)
       opens = gsub(/[{]/, "{", line)
       closes = gsub(/[}]/, "}", line)
@@ -422,6 +424,32 @@ validate_retirable_legacy_vhost() {
     }
   ')
   legacy_upgrade_map_shape=$(printf '%s\\n' "$legacy_vhost_source" | awk '
+    function is_exact_map_token(token, expected, quote) {
+      quote = substr(token, 1, 1)
+      if (quote == sprintf("%c", 39) || quote == sprintf("%c", 34)) {
+        if (length(token) < 2 || substr(token, length(token), 1) != quote) return 0
+        token = substr(token, 2, length(token) - 2)
+      }
+      return token == expected \
+        || token == "$" "{" substr(expected, 2) "}"
+    }
+    function inspect_map_header(normalized, body, fields, count, has_open) {
+      body = normalized
+      sub(/^map[[:space:]]+/, "", body)
+      has_open = body ~ /[{]$/
+      if (has_open) sub(/[[:space:]]*[{]$/, "", body)
+      count = split(body, fields, /[[:space:]]+/)
+      if (count != 2 \
+          || !is_exact_map_token(fields[1], "$http_upgrade") \
+          || !is_exact_map_token(fields[2], "$connection_upgrade")) return 0
+      if (has_open) {
+        blocks += 1
+        in_upgrade_map = 1
+      } else {
+        awaiting_upgrade_map_open = 1
+      }
+      return 1
+    }
     {
       line = $0
       sub(/^[[:space:]]+/, "", line)
@@ -429,6 +457,16 @@ validate_retirable_legacy_vhost() {
       if (line == "" || line ~ /^#/) next
       normalized = line
       gsub(/[[:space:]]+/, " ", normalized)
+      if (awaiting_upgrade_map_open) {
+        if (normalized == "{") {
+          blocks += 1
+          in_upgrade_map = 1
+        } else {
+          unexpected += 1
+        }
+        awaiting_upgrade_map_open = 0
+        next
+      }
       if (in_upgrade_map) {
         if (normalized == "default upgrade;") {
           defaults += 1
@@ -444,10 +482,7 @@ validate_retirable_legacy_vhost() {
         next
       }
       if (normalized ~ /^map[[:space:]]/) {
-        if (normalized == "map $http_upgrade $connection_upgrade {") {
-          blocks += 1
-          in_upgrade_map = 1
-        } else {
+        if (!inspect_map_header(normalized)) {
           unexpected += 1
         }
       } else if (normalized ~ /^default[[:space:]]/) {
@@ -456,6 +491,7 @@ validate_retirable_legacy_vhost() {
     }
     END {
       if (in_upgrade_map) unexpected += 1
+      if (awaiting_upgrade_map_open) unexpected += 1
       printf "%d %d %d %d %d\\n", blocks + 0, defaults + 0, closes + 0, endings + 0, unexpected + 0
     }
   ')
@@ -475,6 +511,64 @@ validate_retirable_legacy_vhost() {
         || [ "$legacy_upgrade_map_endings" -ne 1 ] \\
         || [ "$legacy_upgrade_map_unexpected" -ne 0 ]; then
       echo "legacy Headscale vhost has an unexpected upgrade map shape: blocks=$legacy_upgrade_map_blocks defaults=$legacy_upgrade_map_defaults empty-close=$legacy_upgrade_map_closes endings=$legacy_upgrade_map_endings unexpected=$legacy_upgrade_map_unexpected"
+      legacy_upgrade_map_header_profile=$(printf '%s\\n' "$legacy_vhost_source" | awk '
+        function token_form(token, expected, quote, prefix) {
+          quote = substr(token, 1, 1)
+          prefix = ""
+          if (quote == sprintf("%c", 39) || quote == sprintf("%c", 34)) {
+            if (length(token) < 2 || substr(token, length(token), 1) != quote) {
+              return "mismatched-quote"
+            }
+            token = substr(token, 2, length(token) - 2)
+            prefix = "quoted-"
+          }
+          if (token == expected) return prefix "exact"
+          if (token == "$" "{" substr(expected, 2) "}") return prefix "braced-exact"
+          if (token ~ /^[$][[:alpha:]_][[:alnum:]_]*$/ \
+              || token ~ /^[$][{][[:alpha:]_][[:alnum:]_]*[}]$/) {
+            return prefix "other-variable"
+          }
+          return prefix "other"
+        }
+        function inspect_header(normalized, body, fields, count, has_open) {
+          candidates += 1
+          body = normalized
+          sub(/^map[[:space:]]+/, "", body)
+          has_open = body ~ /[{]$/
+          if (has_open) sub(/[[:space:]]*[{]$/, "", body)
+          count = split(body, fields, /[[:space:]]+/)
+          if (candidates == 1) {
+            field_count = count
+            source_form = count >= 1 ? token_form(fields[1], "$http_upgrade") : "missing"
+            target_form = count >= 2 ? token_form(fields[2], "$connection_upgrade") : "missing"
+            extra_fields = count > 2 ? "yes" : "no"
+            brace_form = has_open ? "same-line" : "absent"
+            awaiting_brace_profile = !has_open
+          }
+        }
+        {
+          line = $0
+          sub(/^[[:space:]]+/, "", line)
+          sub(/[[:space:]]+$/, "", line)
+          if (line == "" || line ~ /^#/) next
+          normalized = line
+          gsub(/[[:space:]]+/, " ", normalized)
+          if (awaiting_brace_profile) {
+            brace_form = normalized == "{" ? "following-line" : "absent-or-intervening"
+            awaiting_brace_profile = 0
+          }
+          if (normalized ~ /^map[[:space:]]/) inspect_header(normalized)
+        }
+        END {
+          if (candidates == 1) {
+            printf "candidates=1 fields=%d source-form=%s target-form=%s extra-fields=%s brace=%s\\n", \
+              field_count, source_form, target_form, extra_fields, brace_form
+          } else {
+            printf "candidates=%d\\n", candidates + 0
+          }
+        }
+      ')
+      echo "legacy Headscale upgrade map header profile: $legacy_upgrade_map_header_profile"
       return 1
     fi
     legacy_has_upgrade_map=true

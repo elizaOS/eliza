@@ -13,9 +13,107 @@ import type { TwitterClientState } from "./types";
 
 afterEach(() => {
   vi.useRealTimers();
+  vi.unstubAllGlobals();
 });
 
 describe("TwitterDirectMessageClient", () => {
+  it("routes configured DMs to personal Eliza without invoking the public agent", async () => {
+    vi.useFakeTimers();
+    const listDmEvents = vi.fn(async () => ({
+      events: [
+        {
+          id: "501",
+          sender_id: "111",
+          dm_conversation_id: "conversation-1",
+          text: "what is on my calendar?",
+          event_type: "MessageCreate",
+        },
+      ],
+      includes: { users: [{ id: "111", username: "alice", name: "Alice" }] },
+    }));
+    const sendDmToParticipant = vi.fn(async () => ({
+      data: { dm_event_id: "reply-501" },
+    }));
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            success: true,
+            data: {
+              identity: { id: "personal-agent", runtime: "dedicated" },
+              reply: "Your next event is at 2 PM.",
+            },
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const cache = new Map<string, string>([
+      ["twitter/agent/222/dm_cursor", "500"],
+    ]);
+    const handleMessage = vi.fn();
+    const runtime = {
+      agentId: "00000000-0000-0000-0000-000000000001",
+      getCache: async (key: string) => cache.get(key),
+      setCache: async (key: string, value: string) => {
+        cache.set(key, value);
+      },
+      deleteCache: async (key: string) => cache.delete(key),
+      getMemoryById: async () => null,
+      createMemory: vi.fn(async () => undefined),
+      ensureWorldExists: vi.fn(async () => undefined),
+      updateWorld: vi.fn(async () => undefined),
+      ensureRoomExists: vi.fn(async () => undefined),
+      ensureConnection: vi.fn(async () => undefined),
+      messageService: { handleMessage },
+      reportError: vi.fn(),
+      getSetting: vi.fn((key: string) =>
+        key === "TWITTER_BROKER_TOKEN" ? "test-broker-token" : null,
+      ),
+    } as unknown as IAgentRuntime;
+    const client = {
+      accountId: "agent",
+      profile: { id: "222", username: "elizamakesmagic" },
+      twitterClient: {
+        getV2Client: async () => ({
+          v2: { listDmEvents, sendDmToParticipant },
+        }),
+      },
+    } as unknown as ClientBase;
+    const dmClient = new TwitterDirectMessageClient(client, runtime, {
+      TWITTER_DRY_RUN: "false",
+      TWITTER_DM_POLL_INTERVAL_SECONDS: "15",
+      TWITTER_PERSONAL_DM_ROUTER_URL:
+        "https://cloud.eliza.app/api/v1/twitter/personal-message",
+    });
+
+    await dmClient.start();
+
+    expect(handleMessage).not.toHaveBeenCalled();
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://cloud.eliza.app/api/v1/twitter/personal-message",
+      expect.objectContaining({
+        method: "POST",
+        headers: expect.objectContaining({
+          authorization: "Bearer test-broker-token",
+        }),
+        body: JSON.stringify({
+          recipientTwitterUserId: "222",
+          senderTwitterUserId: "111",
+          senderUsername: "alice",
+          displayName: "Alice",
+          dmEventId: "501",
+          message: "what is on my calendar?",
+        }),
+      }),
+    );
+    expect(sendDmToParticipant).toHaveBeenCalledWith("111", {
+      text: "Your next event is at 2 PM.",
+    });
+    expect(cache.get("twitter/agent/222/dm_cursor")).toBe("501");
+    await dmClient.stop();
+  });
+
   it("watermarks history, then handles and replies to each new DM once", async () => {
     vi.useFakeTimers();
     const pages = [
@@ -561,6 +659,229 @@ describe("TwitterDirectMessageClient", () => {
     await vi.advanceTimersByTimeAsync(15_000);
     expect(sendDmToParticipant).toHaveBeenCalledTimes(1);
     expect(cache.get("twitter/agent/agent-user-id/dm_cursor")).toBe("501");
+    await dmClient.stop();
+  });
+
+  it("sends exactly one reply when the pipeline invokes the callback repeatedly in one turn", async () => {
+    vi.useFakeTimers();
+    const event = {
+      id: "601",
+      sender_id: "person-1",
+      dm_conversation_id: "conversation-1",
+      text: "say it once",
+      event_type: "MessageCreate",
+    };
+    const cache = new Map<string, string>([
+      ["twitter/agent/agent-user-id/dm_cursor", "600"],
+    ]);
+    const sendDmToParticipant = vi.fn(async () => ({
+      data: { dm_event_id: "reply-601" },
+    }));
+    const callbackResults: Memory[][] = [];
+    // Mirrors a multi-callback turn: two replying actions plus an evaluator
+    // delivery each invoke the same HandlerCallback sequentially.
+    const handleMessage = vi.fn(
+      async (
+        _runtime: IAgentRuntime,
+        _memory: Memory,
+        callback: (response: { text: string }) => Promise<Memory[]>,
+      ) => {
+        callbackResults.push(await callback({ text: "first reply" }));
+        callbackResults.push(await callback({ text: "second reply" }));
+        callbackResults.push(await callback({ text: "evaluator delivery" }));
+      },
+    );
+    const runtime = {
+      agentId: "00000000-0000-0000-0000-000000000001",
+      getCache: async (key: string) => cache.get(key),
+      setCache: async (key: string, value: string) => {
+        cache.set(key, value);
+      },
+      deleteCache: async (key: string) => cache.delete(key),
+      getMemoryById: async () => null,
+      createMemory: vi.fn(async () => undefined),
+      ensureWorldExists: vi.fn(async () => undefined),
+      updateWorld: vi.fn(async () => undefined),
+      ensureRoomExists: vi.fn(async () => undefined),
+      ensureConnection: vi.fn(async () => undefined),
+      messageService: { handleMessage },
+      reportError: vi.fn(),
+      getSetting: vi.fn(() => null),
+    } as unknown as IAgentRuntime;
+    const client = {
+      accountId: "agent",
+      profile: { id: "agent-user-id", username: "elizamakesmagic" },
+      twitterClient: {
+        getV2Client: async () => ({
+          v2: {
+            listDmEvents: async () => ({ events: [event] }),
+            sendDmToParticipant,
+          },
+        }),
+      },
+    } as unknown as ClientBase;
+    const dmClient = new TwitterDirectMessageClient(client, runtime, {
+      TWITTER_DRY_RUN: "false",
+      TWITTER_DM_POLL_INTERVAL_SECONDS: "15",
+    } as unknown as TwitterClientState);
+
+    await dmClient.start();
+    expect(sendDmToParticipant).toHaveBeenCalledTimes(1);
+    expect(sendDmToParticipant).toHaveBeenCalledWith("person-1", {
+      text: "first reply",
+    });
+    expect(callbackResults[1]).toEqual([]);
+    expect(callbackResults[2]).toEqual([]);
+    expect(cache.get("twitter/agent/agent-user-id/dm_cursor")).toBe("601");
+    expect(cache.get("twitter/agent/agent-user-id/dm_settled/601")).toBe(
+      "delivered:reply-601",
+    );
+    await vi.advanceTimersByTimeAsync(15_000);
+    expect(sendDmToParticipant).toHaveBeenCalledTimes(1);
+    await dmClient.stop();
+  });
+
+  it("sends exactly one reply across concurrent callback invocations", async () => {
+    vi.useFakeTimers();
+    const event = {
+      id: "701",
+      sender_id: "person-1",
+      dm_conversation_id: "conversation-1",
+      text: "race me",
+      event_type: "MessageCreate",
+    };
+    const cache = new Map<string, string>([
+      ["twitter/agent/agent-user-id/dm_cursor", "700"],
+    ]);
+    const sendDmToParticipant = vi.fn(async () => ({
+      data: { dm_event_id: "reply-701" },
+    }));
+    const handleMessage = vi.fn(
+      async (
+        _runtime: IAgentRuntime,
+        _memory: Memory,
+        callback: (response: { text: string }) => Promise<Memory[]>,
+      ) => {
+        await Promise.all([
+          callback({ text: "parallel one" }),
+          callback({ text: "parallel two" }),
+        ]);
+      },
+    );
+    const runtime = {
+      agentId: "00000000-0000-0000-0000-000000000001",
+      getCache: async (key: string) => cache.get(key),
+      setCache: async (key: string, value: string) => {
+        cache.set(key, value);
+      },
+      deleteCache: async (key: string) => cache.delete(key),
+      getMemoryById: async () => null,
+      createMemory: vi.fn(async () => undefined),
+      ensureWorldExists: vi.fn(async () => undefined),
+      updateWorld: vi.fn(async () => undefined),
+      ensureRoomExists: vi.fn(async () => undefined),
+      ensureConnection: vi.fn(async () => undefined),
+      messageService: { handleMessage },
+      reportError: vi.fn(),
+      getSetting: vi.fn(() => null),
+    } as unknown as IAgentRuntime;
+    const client = {
+      accountId: "agent",
+      profile: { id: "agent-user-id", username: "elizamakesmagic" },
+      twitterClient: {
+        getV2Client: async () => ({
+          v2: {
+            listDmEvents: async () => ({ events: [event] }),
+            sendDmToParticipant,
+          },
+        }),
+      },
+    } as unknown as ClientBase;
+    const dmClient = new TwitterDirectMessageClient(client, runtime, {
+      TWITTER_DRY_RUN: "false",
+      TWITTER_DM_POLL_INTERVAL_SECONDS: "15",
+    } as unknown as TwitterClientState);
+
+    await dmClient.start();
+    expect(sendDmToParticipant).toHaveBeenCalledTimes(1);
+    expect(cache.get("twitter/agent/agent-user-id/dm_cursor")).toBe("701");
+    await dmClient.stop();
+  });
+
+  it("keeps later same-turn invocations suppressed after an explicit rejection and retries next poll", async () => {
+    vi.useFakeTimers();
+    const event = {
+      id: "801",
+      sender_id: "person-1",
+      dm_conversation_id: "conversation-1",
+      text: "reject then retry",
+      event_type: "MessageCreate",
+    };
+    const cache = new Map<string, string>([
+      ["twitter/agent/agent-user-id/dm_cursor", "800"],
+    ]);
+    const sendDmToParticipant = vi
+      .fn()
+      .mockRejectedValueOnce({ status: 403, message: "forbidden" })
+      .mockResolvedValue({ data: { dm_event_id: "reply-801" } });
+    // An explicit rejection reopens the event for the NEXT poll; a second
+    // callback invocation inside the same turn must still not send.
+    const handleMessage = vi.fn(
+      async (
+        _runtime: IAgentRuntime,
+        _memory: Memory,
+        callback: (response: { text: string }) => Promise<Memory[]>,
+      ) => {
+        await callback({ text: "rejected attempt" }).catch(() => []);
+        await callback({ text: "same-turn retry" }).catch(() => []);
+      },
+    );
+    const runtime = {
+      agentId: "00000000-0000-0000-0000-000000000001",
+      getCache: async (key: string) => cache.get(key),
+      setCache: async (key: string, value: string) => {
+        cache.set(key, value);
+      },
+      deleteCache: async (key: string) => cache.delete(key),
+      getMemoryById: async () => null,
+      createMemory: vi.fn(async () => undefined),
+      ensureWorldExists: vi.fn(async () => undefined),
+      updateWorld: vi.fn(async () => undefined),
+      ensureRoomExists: vi.fn(async () => undefined),
+      ensureConnection: vi.fn(async () => undefined),
+      messageService: { handleMessage },
+      reportError: vi.fn(),
+      getSetting: vi.fn(() => null),
+    } as unknown as IAgentRuntime;
+    const client = {
+      accountId: "agent",
+      profile: { id: "agent-user-id", username: "elizamakesmagic" },
+      twitterClient: {
+        getV2Client: async () => ({
+          v2: {
+            listDmEvents: async () => ({ events: [event] }),
+            sendDmToParticipant,
+          },
+        }),
+      },
+    } as unknown as ClientBase;
+    const dmClient = new TwitterDirectMessageClient(client, runtime, {
+      TWITTER_DRY_RUN: "false",
+      TWITTER_DM_POLL_INTERVAL_SECONDS: "15",
+    } as unknown as TwitterClientState);
+
+    await dmClient.start();
+    expect(sendDmToParticipant).toHaveBeenCalledTimes(1);
+    expect(cache.get("twitter/agent/agent-user-id/dm_cursor")).toBe("800");
+    expect(
+      cache.get("twitter/agent/agent-user-id/dm_settled/801"),
+    ).toBeUndefined();
+    await vi.advanceTimersByTimeAsync(15_000);
+    expect(sendDmToParticipant).toHaveBeenCalledTimes(2);
+    expect(cache.get("twitter/agent/agent-user-id/dm_cursor")).toBe("801");
+    expect(cache.get("twitter/agent/agent-user-id/dm_settled/801")).toBe(
+      "delivered:reply-801",
+    );
     await dmClient.stop();
   });
 });

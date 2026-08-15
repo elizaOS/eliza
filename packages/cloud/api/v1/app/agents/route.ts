@@ -13,6 +13,7 @@ import { organizations } from "@/db/schemas/organizations";
 import { userCharacters } from "@/db/schemas/user-characters";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
+import { getMaxCloudCharactersForOrg } from "@/lib/constants/cloud-character-quota";
 import {
   RateLimitPresets,
   rateLimit,
@@ -40,27 +41,6 @@ const CreateAgentSchema = z.object({
   tokenName: z.string().min(1).max(128).optional(),
   tokenTicker: z.string().min(1).max(32).optional(),
 });
-
-const AGENT_LIMITS = {
-  FREE_TIER: 5,
-  STARTER: 20,
-  PRO: 100,
-  ENTERPRISE: 500,
-} as const;
-
-function getMaxAgentsForOrg(
-  creditBalance: number,
-  orgSettings?: Record<string, unknown>,
-): number {
-  const customLimit = orgSettings?.max_agents as number | undefined;
-  if (customLimit && customLimit > 0) return customLimit;
-
-  const balance = Number(creditBalance);
-  if (balance >= 100.0) return AGENT_LIMITS.ENTERPRISE;
-  if (balance >= 10.0) return AGENT_LIMITS.PRO;
-  if (balance >= 1.0) return AGENT_LIMITS.STARTER;
-  return AGENT_LIMITS.FREE_TIER;
-}
 
 const app = new Hono<AppEnv>();
 
@@ -146,7 +126,7 @@ app.post("/", async (c) => {
       return c.json({ success: false, error: "Organization not found" }, 404);
     }
 
-    const maxAgents = getMaxAgentsForOrg(
+    const maxAgents = getMaxCloudCharactersForOrg(
       Number(org.credit_balance),
       org.settings as Record<string, unknown> | undefined,
     );

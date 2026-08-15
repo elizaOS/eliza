@@ -38,7 +38,7 @@ import {
   type UUID,
   validateUuid,
 } from "@elizaos/core";
-
+import { textStatesExplicitRecurrence } from "@elizaos/shared";
 import {
   describeCronSchedule,
   describeIntervalMs,
@@ -401,7 +401,40 @@ async function resolveTriggerRef(
   const taskId = readUuid(params.taskId);
   if (taskId) {
     const loaded = await loadTriggerTask(runtime, taskId);
-    if (loaded) return loaded;
+    if (loaded) {
+      // For ops where displayName is a REFERENCE (not a payload — update
+      // renames through it), a planner-supplied id must agree with the
+      // planner-supplied name. Context id/name mis-pairing is real: a live
+      // turn deleted the "pushups every morning" trigger while naming
+      // "water the orchid" because the id short-circuited unchecked.
+      const referenceName =
+        op === "delete" || op === "run" || op === "toggle"
+          ? readString(params.displayName)
+          : undefined;
+      if (referenceName) {
+        const normalize = (value: string) =>
+          value
+            .toLowerCase()
+            .replace(/^trigger:\s*/, "")
+            .trim();
+        const actual = normalize(loaded.trigger.displayName);
+        const stated = normalize(referenceName);
+        if (
+          stated &&
+          actual &&
+          !actual.includes(stated) &&
+          !stated.includes(actual)
+        ) {
+          return failed(
+            op,
+            `taskId resolves to "${displayLabel(loaded.trigger.displayName)}", not "${referenceName}". Not ${op === "delete" ? "deleting" : op === "run" ? "running" : "toggling"} — re-check the id or refer to the trigger by name only.`,
+            "TRIGGER_REF_MISMATCH",
+            { taskId: String(loaded.task.id) },
+          );
+        }
+      }
+      return loaded;
+    }
   }
   const rawId = readString(params.taskId);
   const querySource =
@@ -576,7 +609,16 @@ async function opCreate(
   const intervalMs = normalizeTriggerIntervalMs(
     parsedIntervalMs ?? DEFAULT_INTERVAL_MS,
   );
-  const maxRuns = parsePositiveInt(params.maxRuns);
+  let maxRuns = parsePositiveInt(params.maxRuns);
+  // A field-spraying planner answering "pushups every morning at 8am" emits
+  // the cron AND maxRuns:1 from its derived one-shot echo, silently turning a
+  // routine into a single fire. When the user's own words state a repeating
+  // cadence (explicit-recurrence markers only — time-of-day window phrases
+  // like "in the morning" appear in one-shot asks and must NOT drop the cap),
+  // the recurrence wins and the sprayed one-shot cap is dropped.
+  if (maxRuns === 1 && cronExpression && textStatesExplicitRecurrence(text)) {
+    maxRuns = undefined;
+  }
 
   if (triggerType === "once") {
     const atMs = scheduledAtIso ? parseScheduledAtIso(scheduledAtIso) : null;
