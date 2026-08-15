@@ -28,6 +28,7 @@ import { toast } from "sonner";
 import { BrandCard } from "../../../cloud-ui/components/brand/brand-card";
 import { Button, Skeleton } from "../../../cloud-ui/components/primitives";
 import { SettingsInputRow } from "../../../components/settings/settings-agent-rows";
+import { SettingsRow } from "../../../components/settings/settings-layout";
 import { ApiError, api } from "../../lib/api-client";
 import { useCloudT } from "../../shell/CloudI18nProvider";
 import {
@@ -379,36 +380,40 @@ export function AffiliatesPageClient() {
                         "{{count}} friends have joined with your link.",
                     })}
             </p>
-            <div className="flex flex-col items-stretch gap-3 rounded-sm border border-accent/20 bg-bg-hover p-3 sm:flex-row sm:items-center">
-              <LinkIcon className="h-5 w-5 text-accent/60 shrink-0" />
-              <div className="min-w-0 flex-1 break-all font-mono text-sm text-txt">
-                {inviteUrl}
-              </div>
-              <Button
-                variant="secondary"
-                size="sm"
-                className="shrink-0 self-end sm:self-auto"
-                aria-label={inviteCopyLabel}
-                data-testid="cloud-affiliates-copy-invite"
-                onClick={() => {
-                  void handleCopyInvite();
-                }}
-              >
-                {referralCopied ? (
-                  <CheckCircle2
-                    className="h-4 w-4 mr-2 text-status-success"
-                    aria-hidden
-                  />
-                ) : (
-                  <Copy className="h-4 w-4 mr-2" aria-hidden />
-                )}
-                {referralCopied
-                  ? t("cloud.affiliates.copied", { defaultValue: "Copied" })
-                  : t("cloud.affiliates.copyLink", {
-                      defaultValue: "Copy link",
-                    })}
-              </Button>
-            </div>
+            <SettingsRow
+              icon={LinkIcon}
+              iconClassName="text-accent/60"
+              label={
+                <span className="break-all font-mono font-normal text-txt">
+                  {inviteUrl}
+                </span>
+              }
+              control={
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  aria-label={inviteCopyLabel}
+                  data-testid="cloud-affiliates-copy-invite"
+                  onClick={() => {
+                    void handleCopyInvite();
+                  }}
+                >
+                  {referralCopied ? (
+                    <CheckCircle2
+                      className="h-4 w-4 mr-2 text-status-success"
+                      aria-hidden
+                    />
+                  ) : (
+                    <Copy className="h-4 w-4 mr-2" aria-hidden />
+                  )}
+                  {referralCopied
+                    ? t("cloud.affiliates.copied", { defaultValue: "Copied" })
+                    : t("cloud.affiliates.copyLink", {
+                        defaultValue: "Copy link",
+                      })}
+                </Button>
+              }
+            />
           </>
         )}
       </BrandCard>
@@ -427,36 +432,39 @@ export function AffiliatesPageClient() {
           })}
         </p>
 
-        <div className="flex flex-col items-stretch gap-3 rounded-sm border border-border bg-bg-hover p-3 sm:flex-row sm:items-center">
-          <LinkIcon className="h-5 w-5 text-muted shrink-0" />
-          <div className="min-w-0 flex-1 break-all font-mono text-sm text-txt">
-            {affiliateUrl}
-          </div>
-          <Button
-            variant="secondary"
-            size="sm"
-            className="shrink-0 self-end sm:self-auto"
-            aria-label={affiliateCopyLabel}
-            data-testid="cloud-affiliates-copy-affiliate"
-            onClick={() => {
-              void handleCopyLink();
-            }}
-          >
-            {copied ? (
-              <CheckCircle2
-                className="h-4 w-4 mr-2 text-status-success"
-                aria-hidden
-              />
-            ) : (
-              <Copy className="h-4 w-4 mr-2" aria-hidden />
-            )}
-            {copied
-              ? t("cloud.affiliates.copied", { defaultValue: "Copied" })
-              : t("cloud.affiliates.copyLink", {
-                  defaultValue: "Copy link",
-                })}
-          </Button>
-        </div>
+        <SettingsRow
+          icon={LinkIcon}
+          label={
+            <span className="break-all font-mono font-normal text-txt">
+              {affiliateUrl}
+            </span>
+          }
+          control={
+            <Button
+              variant="secondary"
+              size="sm"
+              aria-label={affiliateCopyLabel}
+              data-testid="cloud-affiliates-copy-affiliate"
+              onClick={() => {
+                void handleCopyLink();
+              }}
+            >
+              {copied ? (
+                <CheckCircle2
+                  className="h-4 w-4 mr-2 text-status-success"
+                  aria-hidden
+                />
+              ) : (
+                <Copy className="h-4 w-4 mr-2" aria-hidden />
+              )}
+              {copied
+                ? t("cloud.affiliates.copied", { defaultValue: "Copied" })
+                : t("cloud.affiliates.copyLink", {
+                    defaultValue: "Copy link",
+                  })}
+            </Button>
+          }
+        />
       </BrandCard>
 
       {/* Markup Configuration */}
