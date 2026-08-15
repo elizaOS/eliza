@@ -174,6 +174,9 @@ export class DefinitionsDomain {
       timezone,
     );
     const cadence = normalizeCadence(request.cadence, windowPolicy);
+    if (cadence.kind === "unscheduled" && kind !== "task") {
+      fail(400, "unscheduled cadence is only valid for task definitions");
+    }
     const progressionRule = normalizeProgressionRule(request.progressionRule);
     const reminderPlanDraft = normalizeReminderPlanDraft(
       request.reminderPlan,
@@ -284,6 +287,12 @@ export class DefinitionsDomain {
       request.cadence ?? current.definition.cadence,
       nextWindowPolicy,
     );
+    if (
+      nextCadence.kind === "unscheduled" &&
+      current.definition.kind !== "task"
+    ) {
+      fail(400, "unscheduled cadence is only valid for task definitions");
+    }
     const nextStatus =
       request.status === undefined
         ? current.definition.status

@@ -764,6 +764,102 @@ describe("runLifeOperationHandler definition update targeting", () => {
 });
 
 describe("runLifeOperationHandler clarification contract", () => {
+  beforeEach(() => {
+    serviceState.createCalls.length = 0;
+  });
+
+  it("accepts an explicitly undated owner todo as a task", async () => {
+    const runtime = makeRuntime((prompt) => {
+      if (prompt.includes("create_definition request")) {
+        return taskPlanJson({
+          requestKind: "todo",
+          title: "Buy milk",
+          cadenceKind: "unscheduled",
+        });
+      }
+      return "";
+    });
+
+    const preview = await runLifeOperationHandler(
+      runtime,
+      makeMessage("Add buy milk as a todo with no due date."),
+      undefined,
+      {
+        parameters: {
+          action: "create",
+          intent: "Add buy milk as a todo with no due date.",
+          ownerSurface: "OWNER_TODOS",
+        },
+      } as HandlerOptions,
+    );
+
+    expect(preview).toMatchObject({
+      success: false,
+      data: { deferred: true, saved: false, requiresConfirmation: true },
+    });
+    expect(serviceState.createCalls).toHaveLength(0);
+
+    const result = await runLifeOperationHandler(
+      runtime,
+      {
+        ...makeMessage("Yes, save that todo."),
+        id: "00000000-0000-0000-0000-000000000005",
+      } as Memory,
+      undefined,
+      {
+        parameters: {
+          action: "create",
+          confirmed: true,
+          intent: "Add buy milk as a todo with no due date.",
+          ownerSurface: "OWNER_TODOS",
+        },
+      } as HandlerOptions,
+    );
+
+    expect(result.success).toBe(true);
+    expect(serviceState.createCalls).toEqual([
+      expect.objectContaining({
+        kind: "task",
+        cadence: { kind: "unscheduled" },
+      }),
+    ]);
+  });
+
+  it("does not turn an undated reminder into a non-firing definition", async () => {
+    const runtime = makeRuntime((prompt) => {
+      if (prompt.includes("create_definition request")) {
+        return taskPlanJson({
+          requestKind: "reminder",
+          title: "Call mom",
+          cadenceKind: "unscheduled",
+        });
+      }
+      return "When should it happen?";
+    });
+
+    const result = await runLifeOperationHandler(
+      runtime,
+      makeMessage("Remind me to call mom, but with no due date."),
+      undefined,
+      {
+        parameters: {
+          action: "create",
+          intent: "Remind me to call mom, but with no due date.",
+          ownerSurface: "OWNER_REMINDERS",
+        },
+      } as HandlerOptions,
+    );
+
+    expect(result).toMatchObject({
+      success: false,
+      values: {
+        error: "MISSING_DEFINITION_FIELD",
+        missingField: "schedule",
+      },
+    });
+    expect(serviceState.createCalls).toHaveLength(0);
+  });
+
   it("marks a reminder-plan response as user-facing and awaiting owner input", async () => {
     const clarification =
       "Please tell me the report name, date, and time before I create the reminder.";
