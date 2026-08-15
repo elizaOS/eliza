@@ -170,6 +170,27 @@ describe("voice-session-state machine (§7.4)", () => {
     expect(retry.lastError?.retryable).toBe(true);
   });
 
+  it.each(["stt_reconnecting", "transport_error"])(
+    "%s releases a lost partial turn back to listening",
+    (code) => {
+      const transcribing = applyServerEvent(fresh(), {
+        t: "stt_partial",
+        text: "unfinished words",
+        traceId: "T-lost",
+      });
+
+      const recovered = applyServerEvent(transcribing, {
+        t: "error",
+        code,
+        retryable: true,
+      });
+
+      expect(recovered.phase).toBe("listening");
+      expect(recovered.interimTranscript).toBe("");
+      expect(recovered.lastError).toEqual({ code, retryable: true });
+    },
+  );
+
   it("usage defensively completes thinking but never cuts active speech short", () => {
     const speaking = applyServerEvent(fresh(), {
       t: "speaking_start",

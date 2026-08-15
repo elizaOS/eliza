@@ -1715,6 +1715,38 @@ describe("voice-session client (real framing/state/barge-in/reconnect)", () => {
     await client.stop();
   });
 
+  it("makes a discarded Ink partial recoverable instead of staying transcribing", async () => {
+    const mint = makeMintFetch();
+    const ws = makeWsFactory();
+    const { client, marks } = baseDeps(mint, ws);
+    await client.start();
+    await flush();
+    const sock = ws.last();
+    sock.emitOpen();
+    sock.emitControl({ t: "ready", sessionId: "s", traceId: "T-lost" });
+    await flush();
+    sock.emitControl({
+      t: "stt_partial",
+      text: "unfinished words",
+      traceId: "T-lost",
+    });
+    expect(client.state.phase).toBe("transcribing");
+
+    sock.emitControl({
+      t: "error",
+      code: "stt_reconnecting",
+      retryable: true,
+    });
+
+    expect(client.state.phase).toBe("listening");
+    expect(client.state.interimTranscript).toBe("");
+    expect(marks.map((mark) => mark.name)).toContain(
+      "stt_turn_lost(reconnecting)",
+    );
+    expect(mint.calls.length).toBe(1);
+    await client.stop();
+  });
+
   it("stop() sends a clean bye then closes with code 1000", async () => {
     const mint = makeMintFetch();
     const ws = makeWsFactory();

@@ -41,6 +41,7 @@ import type {
   ServerControlFrame,
   VoiceSessionMintResponse,
 } from "../voice/voice-session-protocol";
+import { isLostSttTurnError } from "../voice/voice-session-state";
 
 /** A realtime-voice error the UI can branch on for an actionable message. */
 export type RealtimeVoiceErrorKind =
@@ -151,6 +152,8 @@ export interface UseRealtimeVoiceSessionState {
   transcriptPartial: string;
   /** Committed final transcript for the current turn (server `stt_final`). */
   transcriptFinal: string;
+  /** Short recoverable voice notice, cleared by the next recognized turn. */
+  notice: string | null;
   /**
    * True while the server is speaking OR browser-buffered response audio is
    * still audible after the server has ended the turn.
@@ -306,6 +309,7 @@ export function useRealtimeVoiceSession(
   const [status, setStatus] = useState<VoiceContinuousStatus>("idle");
   const [transcriptPartial, setTranscriptPartial] = useState("");
   const [transcriptFinal, setTranscriptFinal] = useState("");
+  const [notice, setNotice] = useState<string | null>(null);
   const [agentSpeaking, setAgentSpeaking] = useState(false);
   const [needsUnlock, setNeedsUnlock] = useState(false);
   const [paused, setPaused] = useState(false);
@@ -396,16 +400,25 @@ export function useRealtimeVoiceSession(
     (event: ServerControlFrame) => {
       switch (event.t) {
         case "stt_partial":
+          setNotice(null);
           setTranscriptPartial(event.text);
           break;
         case "stt_final":
+          setNotice(null);
           setTranscriptFinal(event.text);
           setTranscriptPartial("");
           break;
         case "ready":
           // A fresh session: clear the previous turn's transcript.
+          setNotice(null);
           setTranscriptPartial("");
           setTranscriptFinal("");
+          break;
+        case "error":
+          if (isLostSttTurnError(event)) {
+            setTranscriptPartial("");
+            setNotice("Voice reconnected — please repeat that.");
+          }
           break;
         default:
           break;
@@ -447,6 +460,7 @@ export function useRealtimeVoiceSession(
       setMicrophoneMuted(false);
       setStatus("idle");
       setTranscriptPartial("");
+      setNotice(null);
     }
     await teardown;
     return stoppedGeneration;
@@ -474,6 +488,7 @@ export function useRealtimeVoiceSession(
     playbackActiveRef.current = false;
     setMicrophoneMuted(false);
     setError(null);
+    setNotice(null);
     setFallbackReason(null);
     setNeedsUnlock(false);
     const gen = ++sessionGenRef.current;
@@ -819,6 +834,7 @@ export function useRealtimeVoiceSession(
       status,
       transcriptPartial,
       transcriptFinal,
+      notice,
       agentSpeaking,
       needsUnlock,
       paused,
@@ -840,6 +856,7 @@ export function useRealtimeVoiceSession(
       status,
       transcriptPartial,
       transcriptFinal,
+      notice,
       agentSpeaking,
       needsUnlock,
       paused,

@@ -800,6 +800,7 @@ function ComposerRealtimeVoiceWaveform({
 function ComposerRealtimeVoiceActivity({
   connecting,
   error,
+  notice,
   needsAudioUnlock,
   onUnlockAudio,
   paused,
@@ -809,6 +810,7 @@ function ComposerRealtimeVoiceActivity({
 }: {
   connecting: boolean;
   error: string | null;
+  notice?: string | null;
   needsAudioUnlock: boolean;
   onUnlockAudio: () => void;
   paused: boolean;
@@ -822,7 +824,7 @@ function ComposerRealtimeVoiceActivity({
       ? "Voice paused"
       : connecting
         ? "Connecting…"
-        : REALTIME_COMPOSER_LABEL[status];
+        : notice || REALTIME_COMPOSER_LABEL[status];
   const liveTranscript =
     !error &&
     !paused &&
@@ -6430,6 +6432,7 @@ export function ChatOverlay({
                 <ComposerRealtimeVoiceActivity
                   connecting={realtimeVoice.connecting}
                   error={realtimeVoice.error}
+                  notice={realtimeVoice.notice}
                   needsAudioUnlock={needsAudioUnlock}
                   onUnlockAudio={unlockAudio}
                   paused={realtimeVoice.paused}

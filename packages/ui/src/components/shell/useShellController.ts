@@ -227,6 +227,8 @@ export interface ShellController {
     microphoneMuted: boolean;
     status: VoiceContinuousStatus;
     error: string | null;
+    /** Recoverable provider notice while the session stays live. */
+    notice?: string | null;
     /** Mute/unmute the realtime microphone without ending the conversation. */
     toggleMicrophoneMute: () => void;
   };
@@ -2533,6 +2535,7 @@ export function useShellController(): ShellController {
       microphoneMuted: realtimeVoice.microphoneMuted,
       status: realtimeVoice.status,
       error: realtimeVoiceErrorMessage,
+      notice: realtimeVoice.notice,
       toggleMicrophoneMute: realtimeVoice.toggleMicrophoneMute,
     },
     toggleHandsFree,

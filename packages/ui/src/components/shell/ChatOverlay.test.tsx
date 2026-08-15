@@ -2317,6 +2317,37 @@ describe("ChatOverlay", () => {
     ).toContain("retry talk");
   });
 
+  it("shows a recoverable lost-utterance notice while realtime stays live", () => {
+    render(
+      <ChatOverlay
+        controller={makeController({
+          handsFree: true,
+          recording: true,
+          realtimeVoice: {
+            enabled: true,
+            active: true,
+            connecting: false,
+            paused: false,
+            microphoneMuted: false,
+            status: "listening",
+            error: null,
+            notice: "Voice reconnected — please repeat that.",
+            toggleMicrophoneMute: vi.fn(),
+          },
+        })}
+      />,
+    );
+
+    expect(screen.getByTestId("chat-composer-realtime-copy").textContent).toBe(
+      "Voice reconnected — please repeat that.",
+    );
+    expect(
+      screen
+        .getByTestId("chat-composer-realtime-voice")
+        .getAttribute("data-status"),
+    ).toBe("listening");
+  });
+
   it("exposes the canonical chat composer test id on the overlay input only", () => {
     render(<ChatOverlay controller={makeController()} />);
 

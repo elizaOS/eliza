@@ -75,6 +75,7 @@ import {
   applyServerEvent,
   beginListening,
   INITIAL_VOICE_SESSION_STATE,
+  isLostSttTurnError,
   loopToListening,
   toContinuousStatus,
   type VoiceSessionMachineState,
@@ -954,6 +955,10 @@ export function createVoiceSessionClient(
         setState(loopToListening(state));
         break;
       case "error":
+        if (isLostSttTurnError(event)) {
+          rejectCurrentProvisionalSpeech();
+          mark("stt_turn_lost(reconnecting)", state.traceId);
+        }
         if (!event.retryable) {
           if (NON_RECOVERABLE_SERVER_ERROR_CODES.has(event.code)) {
             // Re-minting cannot help (quota) or would defeat the server's

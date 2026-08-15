@@ -65,6 +65,19 @@ export const INITIAL_VOICE_SESSION_STATE: VoiceSessionMachineState = {
   lastError: null,
 };
 
+/** Retryable Ink failures that discard an incomplete provider utterance. */
+export function isLostSttTurnError(
+  event: Pick<
+    Extract<ServerControlFrame, { t: "error" }>,
+    "code" | "retryable"
+  >,
+): boolean {
+  return (
+    event.retryable &&
+    (event.code === "stt_reconnecting" || event.code === "transport_error")
+  );
+}
+
 /**
  * Client-owned transitions. These NEVER come from the wire — they're driven by
  * the client's own lifecycle (open the socket, sent hello, user stopped).
@@ -191,6 +204,12 @@ export function applyServerEvent(
     case "error":
       return {
         ...state,
+        // Ink reconnect cannot resume the provider's incomplete transcript.
+        // Return the mic surface to Listening instead of stranding it on
+        // Hearing you/Transcribing for a turn that no longer exists.
+        ...(isLostSttTurnError(event)
+          ? { phase: "listening" as const, interimTranscript: "" }
+          : {}),
         lastError: { code: event.code, retryable: event.retryable },
       };
     case "usage":

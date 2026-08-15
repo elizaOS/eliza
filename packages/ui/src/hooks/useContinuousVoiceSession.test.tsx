@@ -70,6 +70,7 @@ function makeRealtime(
     status: "idle",
     transcriptPartial: "",
     transcriptFinal: "",
+    notice: null,
     agentSpeaking: false,
     needsUnlock: false,
     paused: false,

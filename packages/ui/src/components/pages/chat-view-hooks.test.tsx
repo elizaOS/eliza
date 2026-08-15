@@ -59,6 +59,7 @@ const realtimeHarness = vi.hoisted(() => {
     status: "idle" as const,
     transcriptPartial: "",
     transcriptFinal: "",
+    notice: null,
     agentSpeaking: false,
     needsUnlock: false,
     paused: false,

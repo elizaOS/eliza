@@ -296,6 +296,56 @@ describe("useRealtimeVoiceSession", () => {
     expect(result.current.status).toBe("idle");
   });
 
+  it("asks for a repeat when Ink reconnect discards the current partial", async () => {
+    const { options, ws } = makeOptions();
+    const { result } = renderHook(() => useRealtimeVoiceSession(options));
+    const startPromise = beginStart(result);
+    await act(async () => {
+      await flushAsync();
+    });
+    const sock = await driveReady(ws, "sess-lost", "T-lost");
+    await expect(startPromise).resolves.toEqual({ kind: "live" });
+
+    await act(async () => {
+      sock.emitControl({
+        t: "stt_partial",
+        text: "unfinished words",
+        traceId: "T-lost",
+      });
+      await flushAsync();
+    });
+    expect(result.current.status).toBe("transcribing");
+
+    await act(async () => {
+      sock.emitControl({
+        t: "error",
+        code: "stt_reconnecting",
+        retryable: true,
+      });
+      await flushAsync();
+    });
+
+    expect(result.current.active).toBe(true);
+    expect(result.current.status).toBe("listening");
+    expect(result.current.transcriptPartial).toBe("");
+    expect(result.current.notice).toBe(
+      "Voice reconnected — please repeat that.",
+    );
+
+    await act(async () => {
+      sock.emitControl({
+        t: "stt_partial",
+        text: "the repeated turn",
+        traceId: "T-next",
+      });
+      await flushAsync();
+    });
+    expect(result.current.notice).toBeNull();
+    await act(async () => {
+      await result.current.stop();
+    });
+  });
+
   it("keeps the real-shell speaking guard true for a buffered tail so an explicit click flushes it", async () => {
     const { options, ws } = makeOptions();
     const { result } = renderHook(() => useRealtimeVoiceSession(options));
