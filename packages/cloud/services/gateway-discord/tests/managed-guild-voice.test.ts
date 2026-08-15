@@ -36,7 +36,7 @@ function clientHarness() {
 }
 
 function interactionHarness(
-  mode: "join" | "leave",
+  subcommand: "join" | "leave",
   userId = "111111111111111",
 ) {
   const reply = mock(async () => undefined);
@@ -68,7 +68,7 @@ function interactionHarness(
         has: (permission: bigint) =>
           permission === PermissionFlagsBits.ManageGuild,
       },
-      options: { getString: () => mode },
+      options: { getSubcommand: () => subcommand },
       reply,
       deferReply,
       editReply,
@@ -95,6 +95,10 @@ describe("ManagedGuildVoiceController", () => {
     await controller.start();
     expect(harness.create).toHaveBeenCalledTimes(1);
     expect(harness.create.mock.calls[0]?.[0]).toEqual(MANAGED_VOICE_COMMAND);
+    expect(MANAGED_VOICE_COMMAND.options.map((option) => option.name)).toEqual([
+      "join",
+      "leave",
+    ]);
     await controller.stop();
   });
 
