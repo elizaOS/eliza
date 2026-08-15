@@ -214,7 +214,7 @@ export function assertMemoriesInProject<T extends WorldScopedMemory>(
 	if (!projectId) return memories;
 	const worldId = projectWorldId(opts.agentId, projectId);
 	for (const memory of memories) {
-		if (memory.worldId === undefined) continue; // legacy global memory
+		if (memory.worldId == null) continue; // legacy global memory
 		if (memory.worldId !== worldId) {
 			throw projectMemoryScopeError(
 				`assertMemoriesInProject: retrieved memory in world ${memory.worldId} does not belong to active project world ${worldId}; refusing cross-project leak`,
