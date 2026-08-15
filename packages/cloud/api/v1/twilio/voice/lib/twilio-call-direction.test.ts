@@ -9,10 +9,10 @@ describe("resolveTwilioCallParticipants", () => {
       resolveTwilioCallParticipants({
         direction: "inbound",
         from: "+14155550100",
-        to: "+18087881821",
+        to: "+14484080429",
       }),
     ).toEqual({
-      publicLineNumber: "+18087881821",
+      publicLineNumber: "+14484080429",
       callerNumber: "+14155550100",
       outbound: false,
     });
@@ -22,11 +22,11 @@ describe("resolveTwilioCallParticipants", () => {
     expect(
       resolveTwilioCallParticipants({
         direction: "outbound-api",
-        from: "+18087881821",
+        from: "+14484080429",
         to: "+14155550100",
       }),
     ).toEqual({
-      publicLineNumber: "+18087881821",
+      publicLineNumber: "+14484080429",
       callerNumber: "+14155550100",
       outbound: true,
     });

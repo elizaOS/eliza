@@ -1,20 +1,22 @@
 /**
  * Exercises Discord avatar candidate failures without a Discord client or
- * network. The deterministic filesystem stubs distinguish expected path
- * misses from present-but-unreadable candidates and verify diagnostics do not
- * disclose the configured source or resolved local paths.
+ * network. Mocked and real filesystem failures distinguish expected path
+ * misses from present-but-unreadable candidates while proving diagnostics do
+ * not disclose configured sources or resolved local paths.
  */
 
 import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import { ElizaError, type IAgentRuntime } from "@elizaos/core";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
 import { syncDiscordClientProfile } from "../profileSync.ts";
 import type { DiscordSettings } from "../types.ts";
 
-function fakeRuntime(avatar: string): IAgentRuntime {
+function fakeRuntime(avatar: string | undefined): IAgentRuntime {
 	return {
 		agentId: "00000000-0000-0000-0000-000000000001",
-		character: { settings: { avatar } },
+		character: avatar ? { settings: { avatar } } : {},
 		logger: {
 			info: () => {},
 			warn: () => {},
@@ -25,7 +27,7 @@ function fakeRuntime(avatar: string): IAgentRuntime {
 }
 
 const clientUser = {
-	username: "eliza",
+	username: "Eliza",
 	setAvatar: async () => undefined,
 	setUsername: async () => undefined,
 };
@@ -37,8 +39,18 @@ function fsError(code: string, sensitivePath: string): NodeJS.ErrnoException {
 	});
 }
 
+const tempDirectories: string[] = [];
+
 afterEach(() => {
 	vi.restoreAllMocks();
+});
+
+afterAll(async () => {
+	await Promise.all(
+		tempDirectories.map((directory) =>
+			fs.rm(directory, { recursive: true, force: true }),
+		),
+	);
 });
 
 describe("Discord profile avatar resolution diagnostics", () => {
@@ -67,14 +79,15 @@ describe("Discord profile avatar resolution diagnostics", () => {
 			expect((error as Error).cause).toMatchObject({ code });
 			expect(String(error)).not.toContain(source);
 			expect(String((error as Error).cause)).not.toContain(source);
-			// One state-cache read is best effort; the first avatar candidate then
-			// fails fast instead of being misclassified as absent.
+			expect(JSON.stringify((error as ElizaError).context)).not.toContain(
+				source,
+			);
 			expect(readFile).toHaveBeenCalledTimes(2);
 		},
 	);
 
 	it.each(["ENOENT", "ENOTDIR"])(
-		"aggregates %s misses without exposing the source or candidate paths",
+		"aggregates %s misses without exposing configured or candidate paths",
 		async (code) => {
 			const source = "/private/customer/missing-avatar.png";
 			const readFile = vi
@@ -82,9 +95,9 @@ describe("Discord profile avatar resolution diagnostics", () => {
 				.mockRejectedValue(fsError(code, source));
 
 			const error = await syncDiscordClientProfile(
-				fakeRuntime(source),
+				fakeRuntime(undefined),
 				clientUser,
-				{ syncProfile: true } as DiscordSettings,
+				{ syncProfile: true, profileAvatar: source } as DiscordSettings,
 			).then(
 				() => null,
 				(value: unknown) => value,
@@ -97,8 +110,39 @@ describe("Discord profile avatar resolution diagnostics", () => {
 			expect((error as ElizaError).context?.candidateCount).toBeGreaterThan(1);
 			expect(readFile.mock.calls.length).toBeGreaterThan(2);
 			expect(String(error)).not.toContain(source);
+			expect(JSON.stringify((error as ElizaError).context)).not.toContain(
+				source,
+			);
 		},
 	);
+
+	it("classifies a real directory candidate as unreadable without disclosing it", async () => {
+		const directory = await fs.mkdtemp(
+			path.join(os.tmpdir(), "discord-avatar-probe-"),
+		);
+		tempDirectories.push(directory);
+
+		const error = await syncDiscordClientProfile(
+			fakeRuntime(undefined),
+			clientUser,
+			{ syncProfile: true, profileAvatar: directory } as DiscordSettings,
+		).then(
+			() => null,
+			(value: unknown) => value,
+		);
+
+		expect(error).toBeInstanceOf(ElizaError);
+		expect((error as ElizaError).code).toBe(
+			"DISCORD_PROFILE_AVATAR_READ_FAILED",
+		);
+		expect((error as ElizaError).context?.fsCode).toBe("EISDIR");
+		expect((error as Error).cause).toMatchObject({ code: "EISDIR" });
+		expect(String(error)).not.toContain(directory);
+		expect(String((error as Error).cause)).not.toContain(directory);
+		expect(JSON.stringify((error as ElizaError).context)).not.toContain(
+			directory,
+		);
+	});
 
 	it("leaves the avatar untouched when profile sync is disabled", async () => {
 		const setAvatar = vi.fn(async () => undefined);

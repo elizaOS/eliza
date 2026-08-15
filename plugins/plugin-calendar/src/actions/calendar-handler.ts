@@ -470,19 +470,22 @@ const RECURRENCE_SCOPE_SERIES_PATTERN =
   /\b(?:whole|entire|full)\s+series\b|\bthe\s+series\b|\ball\s+(?:occurrences|instances|of\s+them)\b|\bevery\s+(?:occurrence|instance|single\s+one)\b|\bstop\s+(?:it\s+)?(?:from\s+)?(?:repeating|recurring)\b|\bcancel\s+the\s+recurring\b/i;
 
 /**
- * Model-authored recurrence scope at the action boundary. Strict recurrence
- * normalization remains the service/API contract; an unrecognized model value
- * carries no mutation authority and degrades to unspecified so explicit user
- * phrasing or the recurring-event clarification gate decides the scope.
+ * Planner-authored `recurrenceScope` at the action boundary: recognized values
+ * normalize, anything else means "the user did not specify". The strict
+ * normalizer's fail-closed 400 is for API callers; here the value is
+ * model-emitted, and junk in it (observed as fragments of neighboring key
+ * names) must degrade to unset — the same contract this file already applies
+ * to planner-authored calendarId, windows, mode, side, and grantId — so a
+ * mutation turn falls back to the user's own phrasing instead of dying.
  */
-function normalizePlannerRecurrenceScope(
+function lenientRecurrenceScope(
   value: unknown,
 ): LifeOpsCalendarRecurrenceScope | null {
   try {
     return normalizeRecurrenceScope(value) ?? null;
   } catch {
-    // error-policy:J3 planner debris is invalid input, not an API request; the
-    // caller falls back to user phrasing and ultimately asks before mutation.
+    // error-policy:J3 model-emitted debris is "not specified"; scope intent
+    // falls back to explicit message phrasing below.
     return null;
   }
 }
@@ -493,13 +496,16 @@ function normalizePlannerRecurrenceScope(
  * null when the intent stays ambiguous — the caller must ask instead of
  * mutating.
  */
-function resolveRecurrenceScopeIntent(args: {
+export function resolveRecurrenceScopeIntent(args: {
   details: Record<string, unknown> | undefined;
+  fallbackDetails?: Record<string, unknown>;
   text: string;
 }): LifeOpsCalendarRecurrenceScope | null {
-  const explicit = normalizePlannerRecurrenceScope(
-    detailString(args.details, "recurrenceScope"),
-  );
+  const explicit =
+    lenientRecurrenceScope(detailString(args.details, "recurrenceScope")) ??
+    lenientRecurrenceScope(
+      detailString(args.fallbackDetails, "recurrenceScope"),
+    );
   if (explicit) {
     return explicit;
   }
@@ -4379,13 +4385,9 @@ const calendarAction: CalendarHandlerAction = {
           detailRecurrenceLines(extractedForUpdate);
         let recurrenceScopeForUpdate = resolveRecurrenceScopeIntent({
           details,
+          fallbackDetails: extractedForUpdate,
           text: `${messageText(message)} ${intent}`,
         });
-        if (!recurrenceScopeForUpdate) {
-          recurrenceScopeForUpdate = normalizePlannerRecurrenceScope(
-            extractedForUpdate.recurrenceScope,
-          );
-        }
         // A recurrence-rule change is inherently a series edit.
         if (recurrenceUpdate && !recurrenceScopeForUpdate) {
           recurrenceScopeForUpdate = "series";

@@ -6,12 +6,8 @@
 import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
-import {
-	ElizaError,
-	type IAgentRuntime,
-	resolveStateDir,
-	resolveUserPath,
-} from "@elizaos/core";
+import type { IAgentRuntime } from "@elizaos/core";
+import { ElizaError, resolveStateDir, resolveUserPath } from "@elizaos/core";
 import type { ClientUser } from "discord.js";
 import type { DiscordSettings } from "./types";
 
