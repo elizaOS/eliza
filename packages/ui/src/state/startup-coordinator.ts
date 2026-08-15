@@ -45,6 +45,16 @@ export interface PlatformPolicy {
    * poll uses its 90s default.
    */
   nativeConsecutiveFailureBudgetMs?: number;
+  /**
+   * Hosted-web analogue for a DEDICATED cloud agent base (issue #19627): how
+   * long (ms) the backend poll may fail consecutively at the connection level
+   * — no HTTP response at all, e.g. a TLS handshake failure on
+   * `<id>.cloud.eliza.app` — before startup surfaces a distinct
+   * "agent unreachable" error instead of burning the whole `backendTimeoutMs`
+   * into a generic timeout. Optional; when absent the poll uses its 45s
+   * default from STARTUP_TIMING_POLICY.
+   */
+  agentUnreachableFailureBudgetMs?: number;
 }
 
 // ── State ────────────────────────────────────────────────────────────
