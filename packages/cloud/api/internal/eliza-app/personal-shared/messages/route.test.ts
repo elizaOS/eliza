@@ -189,6 +189,7 @@ const valid = {
 
 const validPhone = {
   platform: "blooio",
+  project: "eliza-app",
   phoneNumber: "+15551234567",
   messageId: "blooio:eliza:message-42",
   message: "hello from Messages",
@@ -485,7 +486,11 @@ describe("personal Shared messaging deliveries", () => {
       namespace,
       "blooio:eliza:message-42",
       "platform",
-      undefined,
+      {
+        platform: "blooio",
+        project: "eliza-app",
+        phoneNumber: "+15551234567",
+      },
     );
   });
 
@@ -522,7 +527,10 @@ describe("personal Shared messaging deliveries", () => {
       namespace,
       "discord:message-42",
       "platform",
-      undefined,
+      {
+        platform: "discord",
+        discordUserId: "123456789012345678",
+      },
     );
   });
 

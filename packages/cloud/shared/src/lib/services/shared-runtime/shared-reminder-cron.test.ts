@@ -37,13 +37,23 @@ const createSharedScheduledTaskRunner = mock(
 
 mock.module("@elizaos/plugin-scheduling/edge", () => ({
   listDueScheduledTaskRefs,
+  parseSharedReminderDelivery(value: unknown) {
+    if (!value || typeof value !== "object") return undefined;
+    const delivery = value as Record<string, unknown>;
+    if (delivery.platform === "telegram") return delivery;
+    if (delivery.platform === "blooio") return delivery;
+    if (delivery.platform === "discord") return delivery;
+    return undefined;
+  },
 }));
 mock.module("./shared-scheduling", () => ({
   createSharedScheduledTaskRunner,
   executeSharedSchedulingSql: mock(async () => []),
 }));
 
-const { processDueSharedReminders } = await import("./shared-reminder-cron");
+const { processDueSharedReminders, sharedReminderDispatcher } = await import(
+  "./shared-reminder-cron"
+);
 const originalFetch = globalThis.fetch;
 
 afterEach(() => {
@@ -56,6 +66,7 @@ afterEach(() => {
 
 const env = {
   ELIZA_APP_WEBHOOK_GATEWAY_URL: "https://gateway.example/",
+  ELIZA_APP_DISCORD_WEBHOOK_HANDLER_URL: "https://gateway-discord.example/",
   GATEWAY_INTERNAL_SECRET: "internal-secret",
 } as never;
 
@@ -112,9 +123,68 @@ describe("Shared reminder cron", () => {
     }) as typeof fetch;
 
     await expect(processDueSharedReminders(env)).rejects.toThrow(
-      "Shared reminder has no trusted delivery metadata",
+      "Shared reminder delivery metadata is invalid",
     );
     expect(globalThis.fetch).not.toHaveBeenCalled();
+  });
+
+  test("routes Discord and Blooio through their provider-owned destinations", async () => {
+    const requests: Request[] = [];
+    globalThis.fetch = mock(async (input, init) => {
+      requests.push(new Request(input, init));
+      return Response.json({
+        success: true,
+        providerMessageIds: [`provider-${requests.length}`],
+      });
+    }) as typeof fetch;
+    const dispatcher = sharedReminderDispatcher(env);
+
+    const discord = await dispatcher.dispatch({
+      taskId: "discord-reminder",
+      promptInstructions: "check Discord",
+      firedAtIso: "2026-08-15T20:00:00.000Z",
+      metadata: {
+        delivery: {
+          platform: "discord",
+          discordUserId: "123456789012345678",
+        },
+      },
+    });
+    const blooio = await dispatcher.dispatch({
+      taskId: "imessage-reminder",
+      promptInstructions: "check Messages",
+      firedAtIso: "2026-08-15T20:01:00.000Z",
+      metadata: {
+        delivery: {
+          platform: "blooio",
+          project: "eliza-app",
+          phoneNumber: "+15551234567",
+        },
+      },
+    });
+
+    expect(requests.map((request) => request.url)).toEqual([
+      "https://gateway-discord.example/internal/deliver",
+      "https://gateway.example/internal/deliver",
+    ]);
+    await expect(requests[0]?.json()).resolves.toEqual({
+      platform: "discord",
+      discordUserId: "123456789012345678",
+      text: "check Discord",
+      idempotencyKey: "discord-reminder:2026-08-15T20:00:00.000Z",
+    });
+    await expect(requests[1]?.json()).resolves.toEqual({
+      platform: "blooio",
+      project: "eliza-app",
+      phoneNumber: "+15551234567",
+      text: "check Messages",
+      idempotencyKey: "imessage-reminder:2026-08-15T20:01:00.000Z",
+    });
+    expect(discord).toMatchObject({
+      ok: true,
+      target: "123456789012345678",
+    });
+    expect(blooio).toMatchObject({ ok: true, target: "+15551234567" });
   });
 
   for (const status of [403, 429]) {

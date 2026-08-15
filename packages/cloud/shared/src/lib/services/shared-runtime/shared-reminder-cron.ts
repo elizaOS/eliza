@@ -2,38 +2,20 @@
 
 import {
   listDueScheduledTaskRefs,
+  parseSharedReminderDelivery,
   type ScheduledTaskDispatcher,
   type ScheduledTaskDispatchRecord,
+  type SharedReminderDelivery,
 } from "@elizaos/plugin-scheduling/edge";
 import type { Bindings } from "../../../types/cloud-worker-env";
 import { createSharedScheduledTaskRunner, executeSharedSchedulingSql } from "./shared-scheduling";
 
-interface ReminderDelivery {
-  platform: "telegram";
-  project: string;
-  chatId: string;
-}
-
-function reminderDelivery(record: ScheduledTaskDispatchRecord): ReminderDelivery {
-  const value = record.metadata?.delivery;
-  if (!value || typeof value !== "object") {
-    throw new Error("Shared reminder has no trusted delivery metadata");
-  }
-  const delivery = value as Record<string, unknown>;
-  if (
-    delivery.platform !== "telegram" ||
-    typeof delivery.project !== "string" ||
-    !/^[a-z0-9][a-z0-9_-]{0,63}$/i.test(delivery.project) ||
-    typeof delivery.chatId !== "string" ||
-    !/^-?\d{1,20}$/.test(delivery.chatId)
-  ) {
+function reminderDelivery(record: ScheduledTaskDispatchRecord): SharedReminderDelivery {
+  const delivery = parseSharedReminderDelivery(record.metadata?.delivery);
+  if (!delivery) {
     throw new Error("Shared reminder delivery metadata is invalid");
   }
-  return {
-    platform: "telegram",
-    project: delivery.project,
-    chatId: delivery.chatId,
-  };
+  return delivery;
 }
 
 function gatewayBaseUrl(env: Bindings): string {
@@ -43,16 +25,25 @@ function gatewayBaseUrl(env: Bindings): string {
   return value.replace(/\/+$/, "");
 }
 
+function discordGatewayBaseUrl(env: Bindings): string {
+  const value = env.ELIZA_APP_DISCORD_WEBHOOK_HANDLER_URL ?? env.DISCORD_WEBHOOK_HANDLER_URL;
+  if (!value) {
+    throw new Error("Shared Discord reminder gateway URL is not configured");
+  }
+  return value.replace(/\/+$/, "");
+}
+
 export function sharedReminderDispatcher(env: Bindings): ScheduledTaskDispatcher {
   const secret = env.GATEWAY_INTERNAL_SECRET;
   if (!secret) {
     throw new Error("GATEWAY_INTERNAL_SECRET is not configured");
   }
-  const baseUrl = gatewayBaseUrl(env);
   return {
     async dispatch(record) {
       const delivery = reminderDelivery(record);
       const idempotencyKey = `${record.taskId}:${record.firedAtIso}`;
+      const baseUrl =
+        delivery.platform === "discord" ? discordGatewayBaseUrl(env) : gatewayBaseUrl(env);
       let response: Response;
       try {
         response = await fetch(`${baseUrl}/internal/deliver`, {
@@ -123,7 +114,12 @@ export function sharedReminderDispatcher(env: Bindings): ScheduledTaskDispatcher
       return {
         ok: true,
         channelKey: "current_dm",
-        target: delivery.chatId,
+        target:
+          delivery.platform === "telegram"
+            ? delivery.chatId
+            : delivery.platform === "blooio"
+              ? delivery.phoneNumber
+              : delivery.discordUserId,
         metadata: {
           idempotencyKey,
           acceptedAt,
