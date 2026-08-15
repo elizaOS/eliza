@@ -30,7 +30,11 @@ import {
 	normalizePromptSegments,
 	renderContextObject,
 } from "./context-renderer";
-import { extractJsonObjects, parseJsonObject } from "./json-output";
+import {
+	containsToolCallShapedMarkup,
+	extractJsonObjects,
+	parseJsonObject,
+} from "./json-output";
 import { DEFAULT_MAX_KEPT_STEP_CHARS } from "./limits";
 import {
 	buildModelInputBudget,
@@ -1158,11 +1162,19 @@ function looksLikeUserFacingAnswer(text: string): boolean {
 		return false;
 	}
 	// Native model tool syntax is machine output, never a user-facing answer.
-	// Two dialects need their own screens because neither carries the JSON keys
+	// Three dialects need their own screens because none carries the JSON keys
 	// the guard above matches: XML-style tool markup (<tool_call>/<arg_key>),
-	// and a bare ALL_CAPS action name followed by a JSON args object
-	// ("GET_WEATHER\n{\"location\":\"Tokyo\"}").
-	if (/<\/?(?:tool_call|function_call|arg_key|arg_value)\b/i.test(text)) {
+	// invented `<UPPER_SNAKE>` pseudo-tags, and a bare ALL_CAPS action name
+	// followed by a JSON args object ("GET_WEATHER\n{\"location\":\"Tokyo\"}").
+	// The pseudo-tag screen must run HERE, on the raw text: downstream reply
+	// sanitizers strip the markup, so accepting markup-bearing prose ships the
+	// surviving text as a fabricated effect claim — live matrix F38
+	// (tj-9129a432454364): "temp is 35°C. saving note." delivered while the
+	// `<NOTES_CREATE>{…}</NOTES_CREATE>` beside it was never executed, and the
+	// next turn grounded on the false claim. Declining recovery keeps the turn
+	// on the protocol-failure CONTINUE path, which replans through the real
+	// tool dispatch instead.
+	if (containsToolCallShapedMarkup(text)) {
 		return false;
 	}
 	if (/^\s*[A-Z][A-Z0-9_]{2,}\s*\n\s*\{/.test(text)) {
