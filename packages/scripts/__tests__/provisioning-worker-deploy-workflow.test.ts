@@ -127,6 +127,77 @@ describe("provisioning worker deployment contract", () => {
     expect((occurrences ?? []).length).toBe(3);
   });
 
+  it("checks the canonical router only after local readiness and fails with diagnostics", () => {
+    const routerPort = "$" + "{ROUTER_PORT}";
+    const publicHost = "$" + "{AGENT_ROUTER_PUBLIC_HOST}";
+    const healthStep = workflow.indexOf("- name: Health check");
+    const localHealth = workflow.indexOf(
+      `curl -sf -m 3 "http://127.0.0.1:${routerPort}/healthz"`,
+    );
+    const canonicalHealth = workflow.indexOf(
+      `curl -fsS -m 5 "https://${publicHost}/healthz"`,
+    );
+
+    expect(healthStep).toBeGreaterThan(-1);
+    expect(localHealth).toBeGreaterThan(healthStep);
+    expect(canonicalHealth).toBeGreaterThan(localHealth);
+    expect(workflow.slice(0, healthStep)).not.toContain(
+      `"https://${publicHost}/healthz"`,
+    );
+    expect(workflow).toContain(
+      "Canonical agent-router host failed after local readiness",
+    );
+    expect(workflow).toContain(
+      "Canonical agent-router host returned an unexpected health payload",
+    );
+    expect(workflow).toContain(
+      "sudo systemctl status eliza-agent-router.service --no-pager || true",
+    );
+  });
+
+  it("settles both public-route failure branches with diagnostics then exit 1", () => {
+    // Both the transport-failure branch and the unexpected-payload branch
+    // must run diagnostics and then terminate the deployment immediately;
+    // a mutation that logs diagnostics and continues must fail here.
+    const failFast = [
+      ...workflow.matchAll(/report_public_route_failure\n\s*exit 1\b/g),
+    ];
+    expect(failFast).toHaveLength(2);
+    // The transport probe is bounded: a short retry absorbs one-off blips
+    // without reintroducing the blind 30-attempt loop this PR removed.
+    expect(workflow).toContain("for public_attempt in 1 2 3; do");
+    expect(workflow).not.toContain("for attempt in $(seq 1 30)");
+  });
+
+  it("rejects non-JSON and malformed public health payloads", () => {
+    // Execute the actual validator embedded in the workflow rather than
+    // asserting on its text, so a regression to substring matching fails.
+    const validator = workflow.match(
+      /validate_public_health_payload\(\) \{\n\s*node -e '([\s\S]*?)'\n\s*\}/,
+    );
+    expect(validator).not.toBeNull();
+    const script = (validator as RegExpMatchArray)[1];
+
+    const runValidator = (payload: string): number => {
+      const proc = Bun.spawnSync(["node", "-e", script], {
+        stdin: Buffer.from(payload),
+      });
+      return proc.exitCode;
+    };
+
+    expect(runValidator('{"ok":true}')).toBe(0);
+    expect(runValidator('{ "ok" : true, "uptime": 12 }')).toBe(0);
+    // HTTP-200 HTML error page containing the healthy substring must fail.
+    expect(
+      runValidator('<html><body>router says "ok": true</body></html>'),
+    ).not.toBe(0);
+    expect(runValidator('{"ok":false}')).not.toBe(0);
+    expect(runValidator('{"ok":"true"}')).not.toBe(0);
+    expect(runValidator('[{"ok":true}]')).not.toBe(0);
+    expect(runValidator("null")).not.toBe(0);
+    expect(runValidator("")).not.toBe(0);
+  });
+
   it("keeps replacement workload memory inside the control-plane service fence", () => {
     const oldSpaceMatches = [
       ...provisioningService.matchAll(
