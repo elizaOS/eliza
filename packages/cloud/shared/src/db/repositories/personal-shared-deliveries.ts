@@ -1,7 +1,7 @@
 /**
- * Resolves the read-only repeat-turn projection for a Telegram personal Eliza
- * delivery. Only a fully converged canonical identity, lookup projection, and
- * active organization qualifies; every repair or creation case stays on the
+ * Resolves read-only repeat-turn projections for personal Eliza messaging.
+ * Only a fully converged canonical identity, lookup projection, and active
+ * organization qualifies; every repair or creation case stays on the
  * sender-locked users repository path.
  */
 
@@ -15,7 +15,7 @@ import { organizations } from "../schemas/organizations";
 import { userIdentities } from "../schemas/user-identities";
 import { users } from "../schemas/users";
 
-export interface ReusableTelegramPersonalDelivery {
+export interface ReusablePersonalDelivery {
   userId: string;
   organizationId: string;
   dedicatedCandidate: {
@@ -26,7 +26,7 @@ export interface ReusableTelegramPersonalDelivery {
   } | null;
 }
 
-interface ReusableTelegramPersonalDeliveryRow {
+interface ReusablePersonalDeliveryRow {
   user_id: string;
   organization_id: string;
   dedicated_id: string | null;
@@ -36,17 +36,63 @@ interface ReusableTelegramPersonalDeliveryRow {
 }
 
 /**
- * One indexed primary-database statement serves an established Telegram turn.
+ * One indexed primary-database statement serves an established messaging turn.
  * The bounded target candidate avoids a second lookup for the normal one-user
  * organization; callers retain the exact source-marker lookup when another
  * personal target in the organization sorts ahead of this account's target.
  */
-export async function findReusableTelegramPersonalDelivery(params: {
-  telegramId: string;
-  telegramUsername?: string;
-  telegramFirstName?: string;
-}): Promise<ReusableTelegramPersonalDelivery | null> {
-  const [row] = await sqlRows<ReusableTelegramPersonalDeliveryRow>(
+export async function findReusablePersonalDelivery(
+  params:
+    | {
+        platform: "telegram";
+        telegramId: string;
+        telegramUsername?: string;
+        telegramFirstName?: string;
+      }
+    | {
+        platform: "discord";
+        discordId: string;
+        discordUsername: string;
+        discordGlobalName?: string | null;
+        discordAvatarUrl?: string | null;
+      },
+): Promise<ReusablePersonalDelivery | null> {
+  const canonicalIdentity =
+    params.platform === "telegram"
+      ? sql`
+          canonical.telegram_id = ${params.telegramId}
+          AND canonical.telegram_username IS NOT DISTINCT FROM projection.telegram_username
+          AND canonical.telegram_first_name IS NOT DISTINCT FROM projection.telegram_first_name
+          AND (
+            ${params.telegramUsername ?? null}::text IS NULL
+            OR canonical.telegram_username = ${params.telegramUsername ?? null}
+          )
+          AND (
+            ${params.telegramFirstName ?? null}::text IS NULL
+            OR canonical.telegram_first_name = ${params.telegramFirstName ?? null}
+          )
+        `
+      : sql`
+          canonical.discord_id = ${params.discordId}
+          AND canonical.discord_username IS NOT DISTINCT FROM projection.discord_username
+          AND canonical.discord_global_name IS NOT DISTINCT FROM projection.discord_global_name
+          AND canonical.discord_avatar_url IS NOT DISTINCT FROM projection.discord_avatar_url
+          AND canonical.discord_username = ${params.discordUsername}
+          AND (
+            ${params.discordGlobalName === undefined}
+            OR canonical.discord_global_name IS NOT DISTINCT FROM ${params.discordGlobalName ?? null}
+          )
+          AND (
+            ${params.discordAvatarUrl === undefined}
+            OR canonical.discord_avatar_url IS NOT DISTINCT FROM ${params.discordAvatarUrl ?? null}
+          )
+        `;
+  const projectedIdentity =
+    params.platform === "telegram"
+      ? sql`projection.telegram_id = ${params.telegramId}`
+      : sql`projection.discord_id = ${params.discordId}`;
+
+  const [row] = await sqlRows<ReusablePersonalDeliveryRow>(
     dbWrite,
     sql`
       SELECT
@@ -59,19 +105,9 @@ export async function findReusableTelegramPersonalDelivery(params: {
       FROM ${userIdentities} projection
       INNER JOIN ${users} canonical
         ON canonical.id = projection.user_id
-        AND canonical.telegram_id = ${params.telegramId}
+        AND ${canonicalIdentity}
         AND canonical.steward_user_id = projection.steward_user_id
         AND canonical.is_anonymous = projection.is_anonymous
-        AND canonical.telegram_username IS NOT DISTINCT FROM projection.telegram_username
-        AND canonical.telegram_first_name IS NOT DISTINCT FROM projection.telegram_first_name
-        AND (
-          ${params.telegramUsername ?? null}::text IS NULL
-          OR canonical.telegram_username = ${params.telegramUsername ?? null}
-        )
-        AND (
-          ${params.telegramFirstName ?? null}::text IS NULL
-          OR canonical.telegram_first_name = ${params.telegramFirstName ?? null}
-        )
       INNER JOIN ${organizations} organization
         ON organization.id = canonical.organization_id
         AND organization.is_active = TRUE
@@ -88,7 +124,7 @@ export async function findReusableTelegramPersonalDelivery(params: {
         ORDER BY candidate.created_at DESC
         LIMIT 1
       ) dedicated ON TRUE
-      WHERE projection.telegram_id = ${params.telegramId}
+      WHERE ${projectedIdentity}
         AND canonical.deleted_at IS NULL
         AND canonical.is_active = TRUE
         AND canonical.organization_id IS NOT NULL

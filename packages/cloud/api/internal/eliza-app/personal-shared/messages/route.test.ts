@@ -9,7 +9,7 @@ let activeTarget: {
   status: "running" | "sleeping" | "stopped";
   bridge_url?: string;
 } | null = null;
-const resolvePersonalDeliveryByTelegram = mock(async () => ({
+const resolvePersonalDelivery = mock(async () => ({
   userId: "00000000-0000-4000-8000-000000000002",
   organizationId: "00000000-0000-4000-8000-000000000001",
   dedicatedTarget: activeTarget,
@@ -20,11 +20,6 @@ const findOrCreateByPhone = mock(async () => ({
   user: { id: "00000000-0000-4000-8000-000000000012" },
   organization: { id: "00000000-0000-4000-8000-000000000011" },
   isNew: true,
-}));
-const findOrCreateByDiscordId = mock(async () => ({
-  user: { id: "00000000-0000-4000-8000-000000000002" },
-  organization: { id: "00000000-0000-4000-8000-000000000001" },
-  isNew: false,
 }));
 const sharedRestMessageSend = mock(async () => ({ text: "hello from Eliza" }));
 const runOnboardingChat = mock(async (_input: OnboardingChatInput) => ({
@@ -114,9 +109,8 @@ const runtimeExecutionCtx = { waitUntil() {} };
 
 mock.module("@/lib/services/eliza-app", () => ({
   elizaAppUserService: {
-    findOrCreateByDiscordId,
     findOrCreateByPhone,
-    resolvePersonalDeliveryByTelegram,
+    resolvePersonalDelivery,
   },
 }));
 mock.module("@/lib/services/shared-runtime/shared-rest-adapter", () => ({
@@ -195,9 +189,8 @@ const validPhone = {
 describe("personal Shared messaging deliveries", () => {
   beforeEach(() => {
     findOrCreateByPhone.mockClear();
-    findOrCreateByDiscordId.mockClear();
     activeTarget = null;
-    resolvePersonalDeliveryByTelegram.mockClear();
+    resolvePersonalDelivery.mockClear();
     findActivePersonalDedicatedTarget.mockClear();
     sharedRestMessageSend.mockClear();
     runOnboardingChat.mockClear();
@@ -213,7 +206,7 @@ describe("personal Shared messaging deliveries", () => {
 
   test("requires internal gateway authentication", async () => {
     expect((await request(valid, "")).status).toBe(401);
-    expect(resolvePersonalDeliveryByTelegram).not.toHaveBeenCalled();
+    expect(resolvePersonalDelivery).not.toHaveBeenCalled();
   });
 
   test("uses one account-native identity and platform funding", async () => {
@@ -222,7 +215,8 @@ describe("personal Shared messaging deliveries", () => {
     const body = (await response.json()) as {
       data: { identity: { id: string } };
     };
-    expect(resolvePersonalDeliveryByTelegram).toHaveBeenCalledWith({
+    expect(resolvePersonalDelivery).toHaveBeenCalledWith({
+      platform: "telegram",
       telegramId: "123456789",
       username: "nubs",
       displayName: "Nubs",
@@ -317,7 +311,7 @@ describe("personal Shared messaging deliveries", () => {
     });
 
     expect(response.status).toBe(400);
-    expect(resolvePersonalDeliveryByTelegram).not.toHaveBeenCalled();
+    expect(resolvePersonalDelivery).not.toHaveBeenCalled();
     expect(sharedRestMessageSend).not.toHaveBeenCalled();
   });
 
@@ -400,7 +394,7 @@ describe("personal Shared messaging deliveries", () => {
       data: { identity: { id: string }; account: { userId: string } };
     };
     expect(findOrCreateByPhone).toHaveBeenCalledWith("+15551234567");
-    expect(resolvePersonalDeliveryByTelegram).not.toHaveBeenCalled();
+    expect(resolvePersonalDelivery).not.toHaveBeenCalled();
     expect(findActivePersonalDedicatedTarget).toHaveBeenCalledTimes(1);
     expect(body.data.identity.id).toMatch(/^personal:/);
     expect(body.data.account.userId).toBe(
@@ -439,11 +433,14 @@ describe("personal Shared messaging deliveries", () => {
     const body = (await response.json()) as {
       data: { identity: { id: string } };
     };
-    expect(findOrCreateByDiscordId).toHaveBeenCalledWith("123456789012345678", {
+    expect(resolvePersonalDelivery).toHaveBeenCalledWith({
+      platform: "discord",
+      discordId: "123456789012345678",
       username: "shaw",
       globalName: "Shaw",
       avatarUrl: "https://cdn.discordapp.com/avatar.png",
     });
+    expect(findActivePersonalDedicatedTarget).not.toHaveBeenCalled();
     expect(sharedRestMessageSend).toHaveBeenCalledWith(
       expect.objectContaining({ id: body.data.identity.id }),
       body.data.identity.id,
@@ -690,10 +687,17 @@ describe("personal Shared messaging deliveries", () => {
   test.each([
     { ...validPhone, phoneNumber: "15551234567" },
     { ...valid, telegramUserId: "not-a-number" },
+    {
+      platform: "discord",
+      discordUserId: "not-a-snowflake",
+      discordUsername: "shaw",
+      messageId: "discord:invalid",
+      message: "hello",
+    },
     { ...valid, message: "" },
   ])("rejects malformed deliveries before account creation", async (body) => {
     expect((await request(body)).status).toBe(400);
     expect(findOrCreateByPhone).not.toHaveBeenCalled();
-    expect(resolvePersonalDeliveryByTelegram).not.toHaveBeenCalled();
+    expect(resolvePersonalDelivery).not.toHaveBeenCalled();
   });
 });
