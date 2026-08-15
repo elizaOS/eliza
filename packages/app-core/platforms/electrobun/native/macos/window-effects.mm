@@ -2466,6 +2466,10 @@ extern "C" bool makeKeyAndOrderFrontWindow(void *windowPtr) {
 		if ([window isMiniaturized]) {
 			[window deminiaturize:nil];
 		}
+		// A global shortcut can fire while another application owns focus. Ordering
+		// the window alone makes it visible without making this accessory-style app
+		// active, so the window can never become key until the user clicks it.
+		[NSApp activateIgnoringOtherApps:YES];
 		[window makeKeyAndOrderFront:nil];
 		success = YES;
 	});
