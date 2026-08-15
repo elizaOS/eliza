@@ -47,7 +47,7 @@ describe("Todo identity-scope convergence — real PGlite", () => {
     };
   }
 
-  it("moves exact rows and replay authority with a deterministic receipt", async () => {
+  it("moves exact rows and replay authority atomically", async () => {
     const sourceScope = newScope();
     const targetScope = newScope();
     const sourceRoomId = crypto.randomUUID() as UUID;

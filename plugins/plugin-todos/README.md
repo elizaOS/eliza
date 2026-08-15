@@ -7,7 +7,8 @@ edge host such as Cloudflare Workers.
 
 The plugin gives an Eliza agent one `TODO` action for create, write, update,
 complete, cancel, delete, list, and clear operations. `CURRENT_TODOS` adds the
-user's active list to planner context on every turn.
+user's active list to eligible planner turns in the `tasks`, `todos`, and
+`automation` contexts.
 
 Every mutating action is exactly-once at the storage boundary. The Todo change
 and its immutable mutation receipt commit in the same Postgres transaction.
@@ -64,7 +65,7 @@ dashboard bundle, Node filesystem API, or plugin-sql lifecycle service.
 |---|---|
 | `create` | Add one Todo; `content` is required and status defaults to `pending` |
 | `write` | Reconcile the complete scoped list in one transaction |
-| `update` | Patch content, status, active form, parent, or metadata |
+| `update` | Patch content, status, active form, or parent; it can also detach a parent |
 | `complete` | Transition one Todo to `completed` |
 | `cancel` | Transition one Todo to `cancelled` |
 | `delete` | Remove one Todo while preserving the original replay outcome |
@@ -91,12 +92,14 @@ healthy empty list.
 
 ## Cutover and identity continuity
 
-The public store contract can atomically read Todo rows plus mutation records,
-import both into another runtime, and converge two personal-agent scopes inside
-an existing transaction. Shared-to-Dedicated cutover therefore preserves Todo
-IDs, parent IDs, mutation IDs, receipt IDs, and replay authority before routing
-changes. Provisional phone-to-Telegram identity convergence uses the same store
-primitive before deleting the source identity. Target conflicts roll back the
+The public store contract can atomically read Todo rows plus mutation records.
+During cutover, the host materializes Todo rows and uses the exported
+transaction helper to import their mutation records in the same transaction.
+Another transaction helper converges two personal-agent scopes before identity
+authority changes. Shared-to-Dedicated cutover therefore preserves Todo IDs,
+parent IDs, mutation IDs, receipt IDs, and replay authority before routing
+changes. Provisional phone-to-Telegram identity convergence uses the scope
+helper before deleting the source identity. Target conflicts roll back the
 entire operation.
 
 ## Public API

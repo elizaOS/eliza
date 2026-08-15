@@ -129,8 +129,9 @@ the Cloud Shared host currently supplies a Hyperdrive-backed Drizzle client.
   behavior in a host package. Node and edge both use `TodoStore` and
   `createTodosSqlStore`.
 - **Every operation is tenant-scoped.** `agentId` and `entityId` are required in
-  all storage predicates. `roomId` / `worldId` narrow presentation and bulk
-  operations but are not ownership boundaries.
+  all storage predicates. `roomId` narrows presentation and room-scoped bulk
+  operations; `worldId` is stored and remapped as projection metadata. Neither
+  is an ownership boundary.
 - **Planner mutations use the ledger.** Calling direct `create` / `update` /
   `delete` from an action bypasses exactly-once replay and is a correctness bug.
 - **`write` is a full replacement.** It reconciles the desired scoped list,
@@ -145,9 +146,9 @@ the Cloud Shared host currently supplies a Hyperdrive-backed Drizzle client.
   schema for Dedicated runtimes. Shared Cloud applies additive control-plane
   migrations before constructing the injected store; the plugin must not create
   tables at request time.
-- **Errors remain visible.** Missing storage, invalid persisted records,
-  hierarchy conflicts, and idempotency conflicts throw typed failures rather
-  than fabricating an empty or successful result.
+- **Errors remain visible.** Missing storage and invalid persisted records
+  surface explicit failures; hierarchy and idempotency conflicts use typed
+  failures. No failure may be fabricated as an empty or successful result.
 
 ## Verification
 
