@@ -124,7 +124,7 @@ interface PaymentRequestsServiceDeps {
   adapters: PaymentProviderAdapter[];
 }
 
-function validateCreateInput(input: CreatePaymentRequestInput): void {
+export function validateCreateInput(input: CreatePaymentRequestInput): void {
   if (!input.organizationId) {
     throw new Error("organizationId is required");
   }
@@ -147,7 +147,7 @@ function validateCreateInput(input: CreatePaymentRequestInput): void {
     input.expiresInMs !== undefined &&
     (!Number.isFinite(input.expiresInMs) || input.expiresInMs <= 0)
   ) {
-    throw new Error("expiresInMs must be a finite positive number");
+    throw new Error("expiresInMs must be a finite positive integer");
   }
 }
 
