@@ -1,11 +1,12 @@
 /** Proves the published package exposes a loadable Worker-safe Todo runtime. */
 
-import { afterEach, describe, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, symlinkSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import { afterEach, describe, expect, test } from "vitest";
 
-const pluginRoot = resolve(import.meta.dir, "..");
+const pluginRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const repositoryRoot = resolve(pluginRoot, "../..");
 const temporaryDirectories: string[] = [];
 

@@ -87,8 +87,10 @@ function rowToTodo(row: TodoRow): Todo {
   };
 }
 
-class SqlTodoStore implements TodoStore {
-  constructor(private readonly db: NodePgDatabase) {}
+class SqlTodoStore<TSchema extends Record<string, unknown>>
+  implements TodoStore
+{
+  constructor(private readonly db: NodePgDatabase<TSchema>) {}
 
   async create(input: CreateTodoInput): Promise<Todo> {
     return this.db.transaction(async (tx) => {
@@ -512,7 +514,9 @@ class SqlTodoStore implements TodoStore {
 }
 
 /** Build the canonical TodoStore over a Drizzle Postgres connection. */
-export function createTodosSqlStore(db: NodePgDatabase): TodoStore {
+export function createTodosSqlStore<TSchema extends Record<string, unknown>>(
+  db: NodePgDatabase<TSchema>,
+): TodoStore {
   return new SqlTodoStore(db);
 }
 
