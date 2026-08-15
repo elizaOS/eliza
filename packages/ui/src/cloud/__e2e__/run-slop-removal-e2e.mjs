@@ -36,6 +36,7 @@ import { chromium } from "playwright";
 import postcss from "postcss";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import { createSiweMessage } from "viem/siwe";
+import { allocateFreePorts } from "../../../scripts/e2e-ports.mjs";
 import { optionalWalletPeerStubPlugin } from "./optional-wallet-peer-stub.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -45,8 +46,9 @@ const outDir = join(here, "output-slop-removal");
 await rm(outDir, { recursive: true, force: true });
 await mkdir(outDir, { recursive: true });
 
-const API_PORT = 36423;
-const PAGE_PORT = 36424;
+// Kernel-assigned per run: the fixed 364xx legs died EADDRINUSE when the
+// main-pipeline fan-out put concurrent harness jobs on one runner (#18359).
+const [API_PORT, PAGE_PORT] = await allocateFreePorts(2);
 const API_BASE = `http://127.0.0.1:${API_PORT}`;
 
 let failures = 0;

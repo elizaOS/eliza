@@ -32,6 +32,7 @@ import { chromium } from "playwright";
 import postcss from "postcss";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import { createSiweMessage } from "viem/siwe";
+import { allocateFreePorts } from "../../../../scripts/e2e-ports.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const uiSrc = resolve(here, "../../..");
@@ -40,10 +41,9 @@ const outDir = join(here, "output-credentials");
 await rm(outDir, { recursive: true, force: true });
 await mkdir(outDir, { recursive: true });
 
-// Leg-4 port range (364xx).
-const API_PORT = 36413;
-const PAGE_PORT = 36414;
-const PROVIDER_PORT = 36415;
+// Kernel-assigned per run: the fixed 364xx legs died EADDRINUSE when the
+// main-pipeline fan-out put concurrent harness jobs on one runner (#18359).
+const [API_PORT, PAGE_PORT, PROVIDER_PORT] = await allocateFreePorts(3);
 const API_BASE = `http://127.0.0.1:${API_PORT}`;
 
 const GOOD_KEY = "sk-live-good-abc123XYZlongenough";
