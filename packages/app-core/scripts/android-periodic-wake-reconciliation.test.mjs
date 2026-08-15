@@ -178,4 +178,20 @@ describe("Android periodic wake reconciliation (#17874)", () => {
       expect(bootstrapBody).not.toContain("PendingIntent");
     }
   });
+
+  it("queues every interactive notification refresh off the service main thread", () => {
+    for (const name of [
+      "ElizaAgentService.java",
+      "GatewayConnectionService.java",
+    ]) {
+      const service = source(name);
+      const updateBody = service.match(
+        /private void updateNotification\(\) \{([\s\S]*?)\n {4}\}/,
+      )?.[1];
+
+      expect(updateBody).toBeDefined();
+      expect(updateBody).toContain("notificationUpdates.request()");
+      expect(updateBody).not.toContain("pushNotification()");
+    }
+  });
 });

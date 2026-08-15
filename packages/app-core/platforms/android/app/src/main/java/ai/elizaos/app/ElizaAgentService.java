@@ -192,7 +192,6 @@ public class ElizaAgentService extends Service {
     private static final long AGENT_BOOT_GRACE_MS = 120_000L;
 
     private final Object processLock = new Object();
-    private final Object notificationLock = new Object();
     private Process agentProcess;
     private Thread stdoutPump;
     private Thread stderrPump;
@@ -200,7 +199,6 @@ public class ElizaAgentService extends Service {
     /** In-process bionic GPU inference host; non-null only when delegating. */
     private volatile ElizaBionicInferenceServer bionicInferenceServer;
     private volatile Thread startWorker;
-    private volatile Thread notificationWorker;
     private volatile boolean shuttingDown;
     private volatile boolean foregroundStartDenied;
     private volatile boolean detachedAgentMode;
@@ -208,6 +206,8 @@ public class ElizaAgentService extends Service {
     private long detachedProbeArmedForLaunchMs;
     private int restartAttempts;
     private volatile String currentStatus = "starting";
+    private final LatestNotificationUpdateWorker notificationUpdates =
+        new LatestNotificationUpdateWorker("ElizaAgent-notification", this::pushNotification);
 
     // Per-boot bearer token for the WebView↔agent loopback. Generated when
     // the service first starts the agent process and cleared on stop.
@@ -3810,21 +3810,7 @@ public class ElizaAgentService extends Service {
     }
 
     private void updateNotification() {
-        synchronized (notificationLock) {
-            if (notificationWorker != null && notificationWorker.isAlive()) {
-                return;
-            }
-            notificationWorker = new Thread(() -> {
-                try {
-                    pushNotification();
-                } finally {
-                    synchronized (notificationLock) {
-                        notificationWorker = null;
-                    }
-                }
-            }, "ElizaAgent-notification");
-            notificationWorker.start();
-        }
+        notificationUpdates.request();
     }
 
     /**

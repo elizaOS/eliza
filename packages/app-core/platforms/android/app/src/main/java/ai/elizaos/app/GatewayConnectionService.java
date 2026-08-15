@@ -51,7 +51,8 @@ public class GatewayConnectionService extends Service {
     public static final String STATUS_RECONNECTING = "reconnecting";
 
     private volatile String currentStatus = STATUS_DISCONNECTED;
-    private volatile Thread notificationWorker;
+    private final LatestNotificationUpdateWorker notificationUpdates =
+        new LatestNotificationUpdateWorker("ElizaGateway-notification", this::pushNotification);
 
     // ── Lifecycle ────────────────────────────────────────────────────────
 
@@ -72,7 +73,7 @@ public class GatewayConnectionService extends Service {
         } else {
             startForeground(NOTIFICATION_ID, notification);
         }
-        updateNotificationAsync();
+        updateNotification();
     }
 
     @Override
@@ -181,20 +182,6 @@ public class GatewayConnectionService extends Service {
             .build();
     }
 
-    private synchronized void updateNotificationAsync() {
-        if (notificationWorker != null && notificationWorker.isAlive()) {
-            return;
-        }
-        notificationWorker = new Thread(() -> {
-            try {
-                updateNotification();
-            } finally {
-                notificationWorker = null;
-            }
-        }, "ElizaGateway-notification");
-        notificationWorker.start();
-    }
-
     private boolean isNotificationStop(Intent intent) {
         return STOP_SOURCE_NOTIFICATION.equals(intent.getStringExtra(EXTRA_STOP_SOURCE));
     }
@@ -213,8 +200,13 @@ public class GatewayConnectionService extends Service {
         }
     }
 
-    /** Push an updated notification to reflect the current connection status. */
+    /** Queue an interactive notification refresh away from the service main thread. */
     private void updateNotification() {
+        notificationUpdates.request();
+    }
+
+    /** Push an updated notification to reflect the current connection status. */
+    private void pushNotification() {
         String title;
         String text;
 
