@@ -229,7 +229,6 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
   private lastSttPartialSentAtMs = Number.NEGATIVE_INFINITY;
   private sttPartialTimer: ReturnType<typeof setTimeout> | null = null;
   private llmAbort: AbortController | null = null;
-  private elizaPrewarm: Promise<void> | null = null;
   private phrase: PhraseAggregator | null = null;
   private turnSttMs = 0;
   private turnTtsChars = 0;
@@ -326,10 +325,11 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
 
     this.state = "listening";
     // Read immutable tenancy from cache while the user is beginning to speak.
-    // A miss schedules authoritative hydration under the Worker lifetime; the
-    // first turn joins that work so it does not burn time polling a cold cache.
+    // A miss schedules authoritative hydration under the Worker lifetime. This
+    // is a latency hint only: the response path has its own typed cache-warming
+    // retries and must never wait indefinitely for optional background fills.
     if (this.config.prewarmElizaContext) {
-      this.elizaPrewarm = this.config.prewarmElizaContext().catch((error) => {
+      void this.config.prewarmElizaContext().catch((error) => {
         // error-policy:J7 prewarm is latency-only; the response path retains
         // its typed cache-warming retry fallback and reports the failed hint.
         logger.warn("[voice-session] Eliza context prewarm failed", {
@@ -885,13 +885,6 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
       // turn does not await readiness because outbound phrases queue in the
       // adapter, so consume that designed rejection on fast teardown.
       void prewarmedTts.opened.catch(() => undefined);
-
-      const elizaPrewarm = this.elizaPrewarm;
-      if (elizaPrewarm) {
-        await elizaPrewarm;
-        if (this.elizaPrewarm === elizaPrewarm) this.elizaPrewarm = null;
-        if (abort.signal.aborted || this.currentVoiceTurnId !== traceId) return;
-      }
 
       const request = {
         endpoint: this.config.elizaEndpoint,
