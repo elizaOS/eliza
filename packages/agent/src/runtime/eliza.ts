@@ -2299,6 +2299,16 @@ export function applyCloudConfigToEnv(config: ElizaConfig): void {
   } else {
     delete process.env.ELIZAOS_CLOUD_USE_INFERENCE;
   }
+  // Config declares "route this to Cloud"; handler registration silently
+  // requires a credential. When they disagree the runtime falls through to
+  // another provider and, before this, left no trace — the user saw Cloud
+  // selected in config while local answered every turn (#20045 R3/R4).
+  if (topology.servicesUnreconciled.length > 0) {
+    logger.warn(
+      { services: topology.servicesUnreconciled },
+      `[eliza][cloud] Config routes ${topology.servicesUnreconciled.join(", ")} to Eliza Cloud, but no Cloud credential is linked. Those capabilities fall back to their local/other providers until you sign in.`,
+    );
+  }
   setCloudUsageEnv(
     "ELIZAOS_CLOUD_USE_TTS",
     topology.services.tts || isCloudContainer,
