@@ -321,6 +321,7 @@ jobs:
           AGENT_IMAGE_CANARY_MODE: upgrade
           AGENT_IMAGE_CANARY_TARGET_DIGEST: sha256:21759473466dcde83a610ba438649944016896472b6ef51e5450efcc382924bc
           AGENT_IMAGE_CANARY_REQUEST_ID: 1f96fbdf-bc55-4487-bd29-3199d01b8752
+          AGENT_IMAGE_CANARY_EXPECTED_DEPLOY_COMMIT: bd0e955fa00351016c06f27b01de9d1ab12ddd06
           AGENT_IMAGE_CANARY_EVIDENCE_PATH: ${{ runner.temp }}/eliza-x-final-canary.json
         run: |
           set -euo pipefail
