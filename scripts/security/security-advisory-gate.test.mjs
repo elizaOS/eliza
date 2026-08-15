@@ -31,6 +31,14 @@ describe("base-trusted workflow contract", () => {
       workflow,
       /ref: \$\{\{ github\.event\.pull_request\.base\.sha \|\| github\.sha \}\}/,
     );
+    // Without this pin, import.meta.main can silently evaluate falsy on an
+    // unsupported runner Node - removing the setup-node step left the 18/18
+    // suite green (#19372 review), so the pin needs its own assertion here.
+    assert.match(
+      workflow,
+      /uses: actions\/setup-node@820762786026740c76f36085b0efc47a31fe5020/,
+    );
+    assert.match(workflow, /node-version: "24\.15\.0"/);
   });
 });
 
