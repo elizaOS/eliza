@@ -512,6 +512,9 @@ describe("authenticated view loopback requests", () => {
 		expect(result).toMatchObject({
 			success: false,
 			text: 'Cannot invoke capability "undeclared-capability" on view "tasks": the view catalog does not declare that capability.',
+			// Marked internal so core's transcript-visibility resolver can spot
+			// an evaluator echo of the diagnostic.
+			transcriptVisibility: "internal",
 		});
 		expect(result).not.toHaveProperty("turnComplete");
 		expect(result).not.toHaveProperty("userFacingText");
