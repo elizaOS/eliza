@@ -5088,16 +5088,24 @@ export function messageHandlerFromFieldResult(
 		candidateActions,
 		runtimeContext,
 	);
-	const inferredAckCandidateActions =
+	const ackOnlyActionableIntent =
 		!subAgentCompletionRelay &&
 		!hasRunnableCandidateAction &&
-		hasAckOnlyActionableIntent(result, replyTextRaw, currentMessageText)
-			? inferAckIntentCandidateActions(
-					result,
-					runtimeContext?.actions ?? [],
-					currentMessageText,
-				)
-			: [];
+		hasAckOnlyActionableIntent(
+			result,
+			replyTextRaw,
+			currentMessageText,
+			runtimeContext?.actions ?? [],
+			runtimeContext?.candidateBackstopRules ?? [],
+		);
+	const inferredAckCandidateActions = ackOnlyActionableIntent
+		? inferAckIntentCandidateActions(
+				result,
+				runtimeContext?.actions ?? [],
+				currentMessageText,
+				runtimeContext?.candidateBackstopRules ?? [],
+			)
+		: [];
 	const hasValidProvidedCandidate =
 		runtimeContext && candidateActions.length > 0
 			? candidateActions.some((name) => {
@@ -5841,6 +5849,8 @@ function hasAckOnlyActionableIntent(
 	result: ResponseHandlerResult,
 	replyText: string,
 	fallbackText = "",
+	actions: ReadonlyArray<Pick<Action, "name" | "similes" | "tags">> = [],
+	backstopRules: readonly CandidateActionBackstopRule[] = [],
 ): boolean {
 	if (!looksLikeProgressOnlyReply(replyText)) {
 		return false;
@@ -5854,7 +5864,14 @@ function hasAckOnlyActionableIntent(
 	return (
 		looksLikeLocalShellRequest(actionText) ||
 		looksLikeWebSearchRequest(actionText) ||
-		looksLikeCodingWorkRequest(actionText)
+		looksLikeCodingWorkRequest(actionText) ||
+		backstopRules.some(
+			(rule) =>
+				rule.matches(actionText) &&
+				rule.actionNames.some((name) =>
+					exposedActionMatches(actions, normalizeActionIdentifier(name)),
+				),
+		)
 	);
 }
 
@@ -5862,6 +5879,7 @@ function inferAckIntentCandidateActions(
 	result: ResponseHandlerResult,
 	actions: ReadonlyArray<Pick<Action, "name" | "similes" | "tags">>,
 	fallbackText = "",
+	backstopRules: readonly CandidateActionBackstopRule[] = [],
 ): string[] {
 	const intentText = Array.isArray(result.intents)
 		? result.intents
@@ -5870,23 +5888,34 @@ function inferAckIntentCandidateActions(
 		: "";
 	const actionText = [intentText, fallbackText].filter(Boolean).join("\n");
 	if (!actionText.trim()) return [];
+	const inferred: string[] = [];
 	if (looksLikeLocalShellRequest(actionText)) {
 		const shellAction = findShellDirectActionName(actions);
-		if (shellAction) return [shellAction];
-	}
-	// Coding-work precedes web-search: "build an app that shows the bitcoin price"
-	// trips looksLikeWebSearchRequest (market term) yet is a coding task — route it
-	// to coding delegation, not a web lookup. Mirrors the coding-first guard in
-	// shouldPreferDirectCurrentCandidateActions.
-	if (looksLikeCodingWorkRequest(actionText)) {
+		if (shellAction) inferred.push(shellAction);
+	} else if (looksLikeCodingWorkRequest(actionText)) {
+		// Coding-work precedes web-search: "build an app that shows the bitcoin
+		// price" trips looksLikeWebSearchRequest (market term) yet is a coding
+		// task — route it to coding delegation, not a web lookup. Mirrors the
+		// coding-first guard in shouldPreferDirectCurrentCandidateActions.
 		const codingAction = findCodingDelegationActionName(actions);
-		if (codingAction) return [codingAction];
-	}
-	if (looksLikeWebSearchRequest(actionText)) {
+		if (codingAction) inferred.push(codingAction);
+	} else if (looksLikeWebSearchRequest(actionText)) {
 		const lookupActions = findWebLookupActionNames(actions);
-		if (lookupActions.length > 0) return lookupActions;
+		inferred.push(...lookupActions);
 	}
-	return [];
+	// Plugin rules are the grounded extension point for compound requests. A
+	// progress ack for "check the weather and save a note" can retain both the
+	// web action above and the plugin-owned notes action, without classifying
+	// arbitrary assistant prose as intent.
+	for (const rule of backstopRules) {
+		if (!rule.matches(actionText)) continue;
+		for (const name of rule.actionNames) {
+			if (exposedActionMatches(actions, normalizeActionIdentifier(name))) {
+				inferred.push(name);
+			}
+		}
+	}
+	return uniqueActionNames(inferred);
 }
 
 export function inferDirectCurrentRequestCandidateActions(
