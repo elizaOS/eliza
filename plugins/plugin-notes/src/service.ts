@@ -49,7 +49,10 @@ function normalizedLookup(value: string): string {
 }
 
 function lookupError(
-  code: "NOTES_NOT_FOUND" | "NOTES_AMBIGUOUS_NOTE",
+  code:
+    | "NOTES_NOT_FOUND"
+    | "NOTES_AMBIGUOUS_NOTE"
+    | "NOTES_DELETE_NAME_MISMATCH",
   selector: NoteLookupSelector,
   value: string,
   candidates: StickyNote[],
@@ -58,9 +61,11 @@ function lookupError(
   return new ElizaError(
     code === "NOTES_NOT_FOUND"
       ? `No sticky note matches "${target}".`
-      : `"${target}" matches multiple sticky notes: ${candidates
-          .map((note) => `${note.title} (${note.color})`)
-          .join(", ")}.`,
+      : code === "NOTES_DELETE_NAME_MISMATCH"
+        ? `The closest note is "${candidates[0]?.title ?? target}" — that isn't what you named, so nothing was deleted. Delete it?`
+        : `"${target}" matches multiple sticky notes: ${candidates
+            .map((note) => `${note.title} (${note.color})`)
+            .join(", ")}.`,
     {
       code,
       context: {
@@ -437,6 +442,7 @@ export class NotesService extends Service {
   async deleteNoteByLookupWithCommit(
     selector: NoteLookupSelector,
     value: string,
+    options?: { requireTitleInText?: string },
   ): Promise<{
     value: StickyNote;
     snapshot: NotesSnapshot;
@@ -452,6 +458,25 @@ export class NotesService extends Service {
           code: "NOTES_NOTE_RESOLUTION_FAILED",
           severity: "fatal",
         });
+      }
+      // Destructive-op name fence (matrix F4, tj-a6b65b4576ad86): the
+      // planner may translate the user's words into a stored title from
+      // prior-turn context ("wifi credentials" → title "wifi password"), so
+      // even an EXACT-title lookup can name a note the user never said.
+      // When the caller supplies the user's original text, the resolved
+      // title must appear in it — otherwise fail structurally so the reply
+      // ASKS with the candidate title instead of deleting a translation.
+      // Sibling of TRIGGER_REF_MISMATCH and the lifeops #20057 guard.
+      if (
+        typeof options?.requireTitleInText === "string" &&
+        options.requireTitleInText.trim().length > 0 &&
+        !normalizedLookup(options.requireTitleInText).includes(
+          normalizedLookup(existing.title),
+        )
+      ) {
+        throw lookupError("NOTES_DELETE_NAME_MISMATCH", selector, value, [
+          existing,
+        ]);
       }
       // Deleting "the note" deletes every byte-identical copy: duplicates are
       // one logical note, and leaving three identical survivors after "delete

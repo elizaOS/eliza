@@ -1181,3 +1181,63 @@ describe("cloud-apps surface request inference", () => {
 		).toEqual(["VIEWS"]);
 	});
 });
+
+describe("batch-1 matrix fixes: budget noun + scheduled-item admin (F3/F5)", () => {
+	const viewsAction = {
+		name: "VIEWS",
+		similes: ["OPEN_VIEW"],
+		tags: ["views", "ui", "finances", "app"],
+	};
+
+	it("'what is my budget?' routes to the finances reader, never VIEWS (F3, tj-a5f72b6aa95253)", () => {
+		const finances = { name: "OWNER_FINANCES", similes: [], tags: [] };
+		expect(
+			inferDirectCurrentRequestCandidateInference(
+				[viewsAction, finances],
+				"what is my budget?",
+			),
+		).toEqual({ names: ["OWNER_FINANCES"], kind: "owner-reads" });
+		// No reader registered → no candidate, never the view catalog.
+		expect(
+			inferDirectCurrentRequestCandidateInference(
+				[viewsAction],
+				"what is my budget?",
+			),
+		).toEqual({ names: [], kind: null });
+	});
+
+	it("snooze/reschedule verbs hint the scheduled surface (F5, tj-a793149be84b86)", () => {
+		const reminders = { name: "OWNER_REMINDERS", similes: [], tags: [] };
+		const appAction = {
+			name: "APP",
+			similes: ["LAUNCH_APP"],
+			tags: ["app", "apps"],
+		};
+		expect(
+			inferDirectCurrentRequestCandidateInference(
+				[viewsAction, appAction, reminders],
+				"snooze the water the ficus reminder until 6pm sunday",
+			),
+		).toEqual({ names: ["OWNER_REMINDERS"], kind: "owner-scheduled-admin" });
+		expect(
+			inferDirectCurrentRequestCandidateInference(
+				[viewsAction, appAction, reminders],
+				"reschedule my dentist reminder to friday",
+			),
+		).toEqual({ names: ["OWNER_REMINDERS"], kind: "owner-scheduled-admin" });
+		// Admin verb with no scheduled surface: yield nothing, never APP.
+		expect(
+			inferDirectCurrentRequestCandidateInference(
+				[viewsAction, appAction],
+				"snooze the water the ficus reminder until 6pm sunday",
+			),
+		).toEqual({ names: [], kind: null });
+		// "snooze" without a scheduled noun stays untouched (chat/alarm apps etc).
+		expect(
+			inferDirectCurrentRequestCandidateInference(
+				[viewsAction, appAction, reminders],
+				"i want to snooze for a bit",
+			).kind,
+		).not.toBe("owner-scheduled-admin");
+	});
+});

@@ -1174,7 +1174,7 @@ export function ChatOverlay({
   onFirstRunReleaseHandled,
 }: {
   controller: ShellController;
-  /** Name shown in the composer placeholder ("Ask {agentName}"). Defaults to Eliza. */
+  /** Name shown in the composer placeholder ("Message {agentName}"). Defaults to Eliza. */
   agentName?: string;
   /** Universal slash-command catalog + app-level nav effects. */
   slash?: SlashCommandController;
@@ -6510,7 +6510,7 @@ export function ChatOverlay({
                   // the imageError note above.)
                   placeholder={
                     compactLanding
-                      ? "Ask"
+                      ? "Message"
                       : firstRunOpen
                         ? "Sign in to start chatting"
                         : noProviderConfigured
@@ -6520,9 +6520,9 @@ export function ChatOverlay({
                               ? `Downloading ${modelStatus.modelName ?? "your model"} — you can keep typing`
                               : `Getting ${modelStatus?.modelName ?? "your model"} ready — you can keep typing`
                             : booting
-                              ? `Ask ${agentName} — waking up…`
+                              ? `Message ${agentName} — waking up…`
                               : (viewChatBinding?.placeholder ??
-                                `Ask ${agentName}`)
+                                `Message ${agentName}`)
                   }
                   aria-label="message"
                   data-testid="chat-composer-textarea"

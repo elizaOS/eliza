@@ -5416,7 +5416,9 @@ function userSafeFinalMessage(
  */
 export const HANDLED_STEP_FALLBACK_MESSAGE = "I handled the available step.";
 
-function isUnsafeUserVisibleText(value: string | undefined): boolean {
+// Exported for unit coverage of the egress rejection contract (F18):
+// the last-line guard is the deliverable, so tests pin its shapes.
+export function isUnsafeUserVisibleText(value: string | undefined): boolean {
 	if (!value) return false;
 	const text = value.trim();
 	if (!text) return false;
@@ -5425,6 +5427,20 @@ function isUnsafeUserVisibleText(value: string | undefined): boolean {
 		output.kind === "control" ||
 		output.kind === "invalid" ||
 		output.fieldPath.length > 0
+	) {
+		return true;
+	}
+	// Reasoning-token residue and evaluator protocol envelopes are internals,
+	// never replies: a `</think>` anywhere means upstream stripping failed, and
+	// a JSON body carrying the evaluator's decision/success protocol keys is
+	// the verdict envelope itself (live tj-b8809c9841cdfd delivered
+	// `None</think>\`\`\`json {"success": true, "decision": "FINISH"…}` to
+	// Discord when a think-prefixed envelope defeated the parser). Egress is
+	// the last line: reject both shapes regardless of how they got here.
+	if (text.includes("</think>")) return true;
+	if (
+		/"decision"\s*:\s*"(?:FINISH|CONTINUE|NEXT_RECOMMENDED)"/.test(text) &&
+		/"success"\s*:\s*(?:true|false)/.test(text)
 	) {
 		return true;
 	}

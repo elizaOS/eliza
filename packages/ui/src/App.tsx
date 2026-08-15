@@ -71,6 +71,7 @@ import {
 import { AppBackground } from "./backgrounds/AppBackground";
 import {
   invokeDesktopBridgeRequest,
+  invokeDesktopBridgeRequestWithTimeout,
   subscribeDesktopBridgeEvent,
 } from "./bridge/electrobun-rpc";
 import { isElectrobunRuntime } from "./bridge/electrobun-runtime";
@@ -1778,6 +1779,8 @@ function SecretsManagerModalMount(): ReactNode {
 
 function ShellFoundationMount() {
   const controller = useShellControllerContext();
+  const hasController = controller !== null;
+  const shellIsOpen = controller?.isOpen ?? false;
   const { setChatInput } = useChatComposer();
   const chatInputRef = useChatInputRef();
   // Push-to-talk dictation on the ChatSurface mic drops its transcript into
@@ -1793,6 +1796,25 @@ function ShellFoundationMount() {
     });
     return () => controller.setDictationSink(null);
   }, [controller, setChatInput, chatInputRef]);
+
+  useEffect(() => {
+    if (!hasController) return undefined;
+    let cancelled = false;
+
+    void (async () => {
+      if (cancelled) return;
+      await invokeDesktopBridgeRequestWithTimeout<undefined>({
+        rpcMethod: "desktopSetBottomBarExpanded",
+        ipcChannel: "desktop:setBottomBarExpanded",
+        params: { expanded: shellIsOpen },
+        timeoutMs: 1_000,
+      });
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [hasController, shellIsOpen]);
   if (!controller) return null;
 
   return (

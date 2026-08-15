@@ -45,10 +45,12 @@ import {
   type RoomHandlerLease,
   type RouteRequestContext,
   recordOwnerGrant,
+  renderInteractionsAsPlainText,
   revertedEffectReceiptIds,
   runWithInferenceTiming,
   runWithTrajectoryContext,
   stringToUuid,
+  stripDashboardOnlyMarkers,
   type TrustedApiPrincipal,
   tagsMayProduceEffects,
   timeInferenceSpan,
@@ -2321,6 +2323,22 @@ export function isLocalInferenceError(err: unknown): boolean {
   return /\b(?:local inference|local model|on-device|device bridge|llama|gguf|capacitor-llama|no local model|model download|enospc|no space left|disk full)\b/i.test(
     message,
   );
+}
+
+/**
+ * Final text projection for chat-shaped API consumers (the trusted-local
+ * `POST /api/agents/:id/message` mirror). These callers render plain chat —
+ * the dashboard does NOT consume this endpoint (its chat uses the
+ * session/chat routes and typed interaction payloads) — so interaction
+ * grammar degrades to its text fallbacks and dashboard-only card markers
+ * are stripped. Live leak this closes (matrix F2): [CONFIG:owner_finances]
+ * and [FOLLOWUPS] blocks delivered verbatim in api replies
+ * (tj-a5802a25580840, tj-a76213d5ae7164).
+ */
+export function renderChatSurfaceText(text: string): string {
+  if (!text) return text;
+  const { text: rendered } = renderInteractionsAsPlainText(text);
+  return stripDashboardOnlyMarkers(rendered);
 }
 
 export function normalizeChatResponseText(
@@ -5464,7 +5482,7 @@ export async function handleChatRoutes(
             );
 
       json(res, {
-        response: resolvedText,
+        response: renderChatSurfaceText(resolvedText),
         agentName: result.agentName,
         ...(result.failureKind ? { failureKind: result.failureKind } : {}),
         ...(result.localInference

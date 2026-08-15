@@ -17,10 +17,12 @@ export interface HomePillProps {
 }
 
 /**
- * Persistent home pill at the bottom-center of the viewport.
+ * Persistent Flow-style handle at the bottom-center of the viewport.
  *
- * Thin bar only — no icons, no waveform bars. The bar color shifts with phase.
- * Tapping toggles the AssistantOverlay.
+ * The visible affordance is deliberately only a short white capsule; the
+ * larger transparent button preserves a comfortable pointer target. Status is
+ * exposed through ARIA instead of permanent text so the launcher stays out of
+ * the user's way until it is invoked.
  */
 export function HomePill({
   phase,
@@ -30,7 +32,6 @@ export function HomePill({
   const { appName } = useBranding();
   const isOpen =
     phase === "summoned" || phase === "listening" || phase === "responding";
-  const isInteractive = phase !== "booting";
 
   const handleClick = React.useCallback(() => {
     if (isOpen) onClose();
@@ -40,7 +41,6 @@ export function HomePill({
   return (
     <Button
       variant="ghost"
-      disabled={!isInteractive}
       aria-label={isOpen ? `Close ${appName}` : `Open ${appName}`}
       aria-pressed={isOpen}
       data-phase={phase}
@@ -48,24 +48,21 @@ export function HomePill({
       onClick={handleClick}
       style={{ zIndex: Z_SHELL_OVERLAY }}
       className={cn(
-        "pointer-events-auto relative mb-3",
-        // Generous tap target
-        "flex h-8 w-32 items-center justify-center",
-        phase === "booting" && "cursor-not-allowed opacity-60",
+        "group pointer-events-auto relative mb-2 flex h-8 w-16 items-center justify-center rounded-full bg-transparent p-0",
+        "transition-transform duration-200 hover:bg-transparent active:scale-95",
+        "focus-visible:bg-transparent focus-visible:ring-2 focus-visible:ring-white/70 focus-visible:ring-offset-2 focus-visible:ring-offset-transparent",
       )}
     >
-      {/* The visible thin bar — adapts to phase */}
       <span
         aria-hidden="true"
         data-testid="shell-home-pill-mark"
         className={cn(
-          "block h-1.5 w-24 rounded-full transition-all duration-300",
-          // Default: theme-adaptive neutral
-          "bg-foreground/25",
-          phase === "booting" && "bg-foreground/15",
-          phase === "listening" && "animate-pulse bg-warn/70",
-          phase === "responding" && "bg-accent/70",
-          phase === "summoned" && "bg-foreground/40",
+          "block h-2.5 w-12 rounded-full border border-white/90 bg-white/95",
+          "shadow-[0_1px_7px_rgba(0,0,0,0.32),inset_0_1px_0_rgba(255,255,255,0.95)]",
+          "transition-[width,opacity,transform] duration-200 group-hover:w-14",
+          phase === "booting" && "animate-pulse opacity-65",
+          phase === "listening" && "animate-pulse",
+          phase === "responding" && "animate-pulse opacity-85",
         )}
       />
     </Button>

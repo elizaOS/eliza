@@ -13,9 +13,9 @@ import {
 
 /**
  * Pins the intended desktop experience documented in
- * `docs/desktop-window-lifecycle.md` (#10720): chat-first launch, tray on by
- * default, tray-first / popover opt-in, and kiosk overriding both. A regression
- * that flips any of these defaults fails here.
+ * `docs/desktop-window-lifecycle.md` (#10720): chat-first launch, tray,
+ * tray-first mode, and the launcher popover on by default, with kiosk
+ * overriding them. A regression that flips any of these defaults fails here.
  */
 describe("desktop experience contract — chat-first launch", () => {
   it("launches into the chromeless chat bottom bar by default", () => {
@@ -87,7 +87,7 @@ describe("desktop experience contract — tray", () => {
     expect(shouldCreateDesktopTray({ ELIZA_DESKTOP_TRAY: "0" })).toBe(false);
   });
 
-  it("defaults dockless (tray-first) ON for macOS with a =0 kill switch; popover stays opt-in", () => {
+  it("defaults dockless tray-first with the renderer popover OFF for macOS", () => {
     // #12184: dockless is now the resting macOS experience — pill + menu-bar
     // icon, no Dock icon until a full window opens.
     expect(shouldStartTrayFirst({}, "darwin", [])).toBe(true);
@@ -109,8 +109,6 @@ describe("desktop experience contract — tray", () => {
     expect(
       shouldStartTrayFirst({ ELIZA_DESKTOP_TRAY_FIRST: "1" }, "win32", []),
     ).toBe(false);
-    expect(
-      shouldEnableTrayPopover({ ELIZA_DESKTOP_TRAY_POPOVER: "1" }, "linux", []),
-    ).toBe(false);
+    expect(shouldEnableTrayPopover({}, "linux", [])).toBe(false);
   });
 });

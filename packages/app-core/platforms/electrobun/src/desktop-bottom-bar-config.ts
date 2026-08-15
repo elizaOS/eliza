@@ -109,6 +109,9 @@ export function resolveDesktopShellWindowPresentation(
 /** Default bar height — tall enough for the glass composer + a few message lines. */
 export const DEFAULT_BOTTOM_BAR_HEIGHT = 140;
 
+/** Expanded chat window height; remains bottom-anchored above the Dock. */
+export const EXPANDED_BOTTOM_BAR_HEIGHT = 680;
+
 /**
  * Compute the bottom-bar window frame for a display's usable work area: full
  * usable width, a fixed bar height, pinned to the bottom edge (above the
