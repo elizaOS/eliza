@@ -140,6 +140,18 @@ describe("buildCreateEventRequest recurrence authority", () => {
     expect(built.request.startAt).toBe("2026-08-17T10:00:00.000Z");
   });
 
+  it("drops an RRULE nested inside a negated recurrence clause", () => {
+    const built = buildCreateEventRequest({
+      details: { title: "standup", recurrence: plannerRecurrence },
+      extractedDetails: { recurrence: plannerRecurrence },
+      explicitTitle: "standup",
+      inferredTitle: "weekly standup",
+      recurrenceGuardTexts: ["do not repeat this every week"],
+    });
+
+    expect(built.request.recurrence).toBeUndefined();
+  });
+
   it("keeps outer-planner recurrence when the current user states cadence", () => {
     const built = buildCreateEventRequest({
       details: { title: "standup", recurrence: plannerRecurrence },

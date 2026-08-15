@@ -34,6 +34,12 @@ describe("textStatesExplicitRecurrence", () => {
     expect(
       textStatesExplicitRecurrence("not recurring, make it weekly instead"),
     ).toBe(true);
+    expect(
+      textStatesExplicitRecurrence(
+        "do not repeat daily; actually make it weekly",
+      ),
+    ).toBe(true);
+    expect(textStatesExplicitRecurrence("毎日ではない、毎週にして")).toBe(true);
     expect(textStatesExplicitRecurrence("weekly, actually just once")).toBe(
       false,
     );
@@ -53,6 +59,16 @@ describe("textStatesExplicitRecurrence", () => {
         "user: no, just once\nassistant: should this be weekly?",
       ),
     ).toBe(false);
+    for (const text of [
+      "do not repeat every week",
+      "don't repeat this every week",
+      "never repeat every day",
+      "not recurring every month",
+      "no recurrence every year",
+      "繰り返さない毎週",
+    ]) {
+      expect(textStatesExplicitRecurrence(text)).toBe(false);
+    }
   });
 
   it("ignores role-labelled non-user text", () => {
