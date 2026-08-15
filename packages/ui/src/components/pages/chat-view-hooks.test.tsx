@@ -584,6 +584,38 @@ describe("useChatVoiceController voice playback unlock", () => {
     expect(result.current.composerVoice.isListening).toBe(false);
   });
 
+  it("never queues batch TTS while realtime owns the assistant reply", () => {
+    const queueAssistantSpeech = vi.mocked(voiceState.queueAssistantSpeech);
+    realtimeHarness.state.available = true;
+    realtimeHarness.state.active = true;
+    realtimeHarness.state.status = "speaking";
+    realtimeHarness.state.agentSpeaking = true;
+
+    const { rerender } = renderHook(
+      (conversationMessages: ConversationMessage[]) =>
+        useChatVoiceController({
+          ...baseOptions,
+          conversationMessages,
+          realtimeAgentId: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
+          getRealtimeConsentNonce: vi.fn(async () => "nonce-1"),
+        }),
+      { initialProps: [] as ConversationMessage[] },
+    );
+
+    act(() => {
+      rerender([
+        {
+          id: "assistant-realtime-1",
+          role: "assistant",
+          text: "This audio already arrived through realtime.",
+          timestamp: 2,
+        },
+      ]);
+    });
+
+    expect(queueAssistantSpeech).not.toHaveBeenCalled();
+  });
+
   it("keeps batch passive capture disabled while realtime is armed for continuous mode", async () => {
     realtimeHarness.state.available = true;
     renderHook(() =>

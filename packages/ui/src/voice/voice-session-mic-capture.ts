@@ -51,7 +51,8 @@ export class VoiceMicCaptureError extends Error {
       | "unsupported"
       | "permission_denied"
       | "no_device"
-      | "start_failed",
+      | "start_failed"
+      | "resume_failed",
     readonly cause?: unknown,
   ) {
     super(message);
@@ -374,12 +375,21 @@ export async function startVoiceMicCapture(
       try {
         await awaitCaptureStep(acquiredContext.resume(), signal);
         throwIfCaptureCancelled(signal);
-      } catch (ignoredError) {
-        if (ignoredError instanceof VoiceMicCaptureCancelledError) {
-          throw ignoredError;
+        const resumedState = acquiredContext.state as AudioContextState;
+        if (resumedState !== "running") {
+          throw new VoiceMicCaptureError(
+            "microphone audio context did not resume",
+            "resume_failed",
+          );
         }
-        // error-policy:J5 a denied resume is observed downstream: a non-running graph delivers no frames and the suspend path reports it.
-        void ignoredError;
+      } catch (error) {
+        if (error instanceof VoiceMicCaptureCancelledError) throw error;
+        if (error instanceof VoiceMicCaptureError) throw error;
+        throw new VoiceMicCaptureError(
+          "microphone audio context failed to resume",
+          "resume_failed",
+          error,
+        );
       }
     }
     acquiredSource = acquiredContext.createMediaStreamSource(stream);
@@ -563,9 +573,82 @@ export async function startVoiceMicCapture(
         }
       : null);
 
+  let visibilityEpoch = 0;
+  let resumeTask: Promise<void> | null = null;
+
+  const reportResumeFailure = (cause: unknown): void => {
+    const error =
+      cause instanceof VoiceMicCaptureError
+        ? cause
+        : new VoiceMicCaptureError(
+            "microphone audio context failed to resume",
+            "resume_failed",
+            cause,
+          );
+    try {
+      options.onError?.(error);
+    } catch (ignoredError) {
+      // error-policy:J7 an observer failure must not become an unhandled rejection in the browser visibility callback.
+      void ignoredError;
+    }
+  };
+
+  const resumeAfterVisibility = (): void => {
+    if (resumeTask || stopped || !visibility || visibility.isHidden()) return;
+    const attemptEpoch = visibilityEpoch;
+    let task!: Promise<void>;
+    task = (async (): Promise<void> => {
+      try {
+        await ctx.resume();
+        if (
+          stopped ||
+          !visibility ||
+          visibility.isHidden() ||
+          attemptEpoch !== visibilityEpoch
+        ) {
+          if (!stopped && visibility?.isHidden()) {
+            // error-policy:J5 visibility changed while resume was pending; the suspended frame gate is authoritative and the context is best-effort re-suspended.
+            void ctx.suspend?.().catch(() => {});
+          }
+          return;
+        }
+        if (ctx.state !== "running") {
+          throw new VoiceMicCaptureError(
+            "microphone audio context did not resume",
+            "resume_failed",
+          );
+        }
+        suspended = false;
+        options.onResume?.();
+      } catch (error) {
+        if (
+          !stopped &&
+          visibility &&
+          !visibility.isHidden() &&
+          attemptEpoch === visibilityEpoch
+        ) {
+          reportResumeFailure(error);
+        }
+      } finally {
+        if (resumeTask === task) resumeTask = null;
+        if (
+          !stopped &&
+          visibility &&
+          !visibility.isHidden() &&
+          suspended &&
+          attemptEpoch !== visibilityEpoch
+        ) {
+          resumeAfterVisibility();
+        }
+      }
+    })();
+    resumeTask = task;
+  };
+
   const onVisibilityChange = (): void => {
     if (stopped || !visibility) return;
     if (visibility.isHidden()) {
+      visibilityEpoch += 1;
       if (!suspended) {
         suspended = true;
         speechStartDetector?.reset();
@@ -574,10 +657,8 @@ export async function startVoiceMicCapture(
         options.onSuspend?.();
       }
     } else if (suspended) {
-      suspended = false;
-      // error-policy:J5 a failed resume is observed downstream as absent frame delivery on a non-running graph.
-      void ctx.resume().catch(() => {});
-      options.onResume?.();
+      visibilityEpoch += 1;
+      resumeAfterVisibility();
     }
   };
   visibility?.addListener(onVisibilityChange);

@@ -274,6 +274,11 @@ export function useChatVoiceController(options: {
     null,
   );
   const pendingVoiceTurnRef = useRef<PendingVoiceTurnState | null>(null);
+  // Updated later in the same render after the realtime hook resolves. Effects
+  // run only after render completes, so the auto-speak effect below observes
+  // current ownership without moving hooks or reading a later declaration in
+  // its dependency array.
+  const realtimeOwnsOutputRef = useRef(false);
   const suppressedAssistantSpeechRef = useRef<{
     messageId: string;
     text: string;
@@ -621,7 +626,12 @@ export function useChatVoiceController(options: {
       pendingVoiceTurn = null;
     }
 
-    if (agentVoiceMuted || voice.isListening) {
+    // Realtime owns the assistant audio from the moment its session is wanted
+    // through transport teardown. The full/legacy ChatView can still be mounted
+    // by embedded surfaces; letting its batch message watcher run in parallel
+    // would synthesize the same persisted assistant reply a second time after
+    // the gateway has already streamed it.
+    if (agentVoiceMuted || voice.isListening || realtimeOwnsOutputRef.current) {
       return;
     }
     if (voiceBootstrapTick === 0) return;
@@ -909,6 +919,8 @@ export function useChatVoiceController(options: {
     realtime.available &&
     !realtime.error &&
     !realtimeFellBack;
+  realtimeOwnsOutputRef.current =
+    realtimeWanted || realtime.active || realtime.connecting;
 
   // The batch continuous-chat engine. While the realtime WS session is the
   // active mic, the batch passive capture must NOT also run (double mic / double

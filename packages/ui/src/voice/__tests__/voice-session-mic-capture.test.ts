@@ -65,6 +65,32 @@ describe("voice-session mic capture (ScriptProcessor fallback path — WebView 1
     await capture.stop();
   });
 
+  it("fails startup instead of presenting a live mic when the context cannot resume", async () => {
+    class StuckMicAudioContext extends FakeMicAudioContext {
+      override async resume(): Promise<void> {
+        this.state = "suspended";
+      }
+    }
+
+    const ctx = new StuckMicAudioContext(16_000);
+    const stopTrack = vi.fn();
+    await expect(
+      startVoiceMicCapture({
+        onFrame: () => {},
+        getUserMedia: async () =>
+          ({
+            getTracks: () => [{ stop: stopTrack }],
+          }) as unknown as MediaStream,
+        createAudioContext: () => ctx,
+      }),
+    ).rejects.toMatchObject({
+      name: "VoiceMicCaptureError",
+      code: "resume_failed",
+    });
+    expect(stopTrack).toHaveBeenCalledTimes(1);
+    expect(ctx.closed).toBe(true);
+  });
+
   it("loads the uplink AudioWorklet from its static CSP-compatible URL", async () => {
     vi.stubGlobal("AudioWorkletNode", FakeVoiceAudioWorkletNode);
     const ctx = new FakeMicWorkletAudioContext(16_000);
@@ -308,10 +334,68 @@ describe("voice-session mic capture (ScriptProcessor fallback path — WebView 1
     // Return to visible → resume fires, capture active again.
     hidden = false;
     fire();
+    await vi.waitFor(() => expect(onResume).toHaveBeenCalledTimes(1));
     expect(onResume).toHaveBeenCalledTimes(1);
     expect(capture.active).toBe(true);
     node.feed(new Float32Array(4096).fill(0.5));
     expect(frames.length).toBeGreaterThan(0);
+    await capture.stop();
+  });
+
+  it("stays paused and reports a typed failure when foreground resume is rejected", async () => {
+    class RejectForegroundResumeContext extends FakeMicAudioContext {
+      rejectNextResume = false;
+
+      override async resume(): Promise<void> {
+        if (this.rejectNextResume) {
+          this.rejectNextResume = false;
+          throw new Error("mobile WebView refused foreground resume");
+        }
+        await super.resume();
+      }
+    }
+
+    const ctx = new RejectForegroundResumeContext(16_000);
+    let hidden = false;
+    const listeners: Array<() => void> = [];
+    const fire = (): void => {
+      for (const listener of listeners) listener();
+    };
+    const onResume = vi.fn();
+    const onError = vi.fn();
+    const capture = await startVoiceMicCapture({
+      onFrame: () => {},
+      getUserMedia: fakeGetUserMedia(),
+      createAudioContext: () => ctx,
+      onResume,
+      onError,
+      visibility: {
+        addListener: (listener) => listeners.push(listener),
+        removeListener: (listener) => {
+          const index = listeners.indexOf(listener);
+          if (index >= 0) listeners.splice(index, 1);
+        },
+        isHidden: () => hidden,
+      },
+    });
+
+    hidden = true;
+    fire();
+    expect(capture.active).toBe(false);
+
+    ctx.rejectNextResume = true;
+    hidden = false;
+    fire();
+
+    await vi.waitFor(() => expect(onError).toHaveBeenCalledTimes(1));
+    expect(onError).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: "VoiceMicCaptureError",
+        code: "resume_failed",
+      }),
+    );
+    expect(onResume).not.toHaveBeenCalled();
+    expect(capture.active).toBe(false);
     await capture.stop();
   });
 

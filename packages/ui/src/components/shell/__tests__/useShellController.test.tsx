@@ -30,12 +30,18 @@ import {
   goLauncher,
   resetShellSurfaceForTests,
 } from "../../../state/shell-surface-store";
+import {
+  getVoiceCaptureBreadcrumbs,
+  resetVoiceCaptureBreadcrumbs,
+} from "../../../utils/voice-capture-debug";
 import { emitViewEvent } from "../../../views/view-event-bus";
 import {
   createVoiceCapture,
   type VoiceCaptureFactoryOptions,
 } from "../../../voice/voice-capture-factory";
 import type { VoiceContinuousStatus } from "../../../voice/voice-chat-types";
+import type { VoiceTraceMark } from "../../../voice/voice-session-client";
+import type { VoiceSessionClientDiagnosticEvent } from "../../../voice/voice-session-media-diagnostics";
 import type { ServerControlFrame } from "../../../voice/voice-session-protocol";
 import { resolveAdjacentConversationId } from "../conversation-nav";
 import { useShellController } from "../useShellController";
@@ -126,6 +132,8 @@ const realtimeVoiceMock = vi.hoisted(() => {
       conversationId?: string | null;
       clientOptions?: {
         onServerEvent?: (event: ServerControlFrame) => void;
+        onTraceMark?: (mark: VoiceTraceMark) => void;
+        onDiagnostic?: (event: VoiceSessionClientDiagnosticEvent) => void;
       };
     } | null,
     startOutcome: { kind: "live" } as RealtimeVoiceStartOutcome,
@@ -191,6 +199,8 @@ vi.mock("../../../hooks/useRealtimeVoiceSession", () => ({
     conversationId?: string | null;
     clientOptions?: {
       onServerEvent?: (event: ServerControlFrame) => void;
+      onTraceMark?: (mark: VoiceTraceMark) => void;
+      onDiagnostic?: (event: VoiceSessionClientDiagnosticEvent) => void;
     };
   }) => {
     realtimeVoiceMock.options = options;
@@ -347,6 +357,7 @@ afterEach(() => {
   realtimeVoiceMock.state.microphoneMuted = false;
   realtimeVoiceMock.state.error = null;
   resetShellSurfaceForTests();
+  resetVoiceCaptureBreadcrumbs();
   try {
     window.localStorage.clear();
   } catch {}
@@ -2456,6 +2467,82 @@ describe("useShellController — mounted Cartesia Talk ownership", () => {
     } finally {
       window.removeEventListener(RESYNC_EVENT, onResync);
     }
+  });
+
+  it("records content-free realtime media and playout evidence in the device-visible debug ring", () => {
+    renderHook(() => useShellController());
+    const clientOptions = realtimeVoiceMock.options?.clientOptions;
+
+    act(() => {
+      clientOptions?.onDiagnostic?.({
+        type: "capture_ready",
+        atMs: 10,
+        traceId: null,
+        capture: {
+          backend: "audioworklet",
+          frameDurationMs: 20,
+          audioContextSampleRateHz: 48_000,
+          requested: {
+            sampleRateHz: 16_000,
+            channelCount: 1,
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
+          },
+          granted: {
+            sampleRateHz: 48_000,
+            channelCount: 1,
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: "unknown",
+          },
+        },
+      });
+      clientOptions?.onTraceMark?.({
+        name: "first_audio_playout",
+        traceId: "must-not-be-recorded",
+        atMs: 123.8,
+      });
+      clientOptions?.onTraceMark?.({
+        name: "stt_final",
+        traceId: "must-not-be-recorded",
+        atMs: 20,
+      });
+      clientOptions?.onTraceMark?.({
+        name: "llm_first_text",
+        traceId: "must-not-be-recorded",
+        atMs: 80,
+      });
+      clientOptions?.onTraceMark?.({
+        name: "turn_end(spoken)",
+        traceId: "must-not-be-recorded",
+        atMs: 150,
+      });
+    });
+
+    expect(getVoiceCaptureBreadcrumbs().map((entry) => entry.step)).toEqual([
+      "realtime:capture-ready",
+      "realtime:first_audio_playout",
+      "realtime:stt_final",
+      "realtime:llm_first_text",
+      "realtime:turn_end(spoken)",
+      "realtime:turn-latency",
+    ]);
+    expect(getVoiceCaptureBreadcrumbs()[0]?.detail).toMatchObject({
+      backend: "audioworklet",
+      frameMs: 20,
+      contextHz: 48_000,
+      grantedHz: 48_000,
+    });
+    expect(JSON.stringify(getVoiceCaptureBreadcrumbs())).not.toContain(
+      "must-not-be-recorded",
+    );
+    expect(getVoiceCaptureBreadcrumbs().at(-1)?.detail).toEqual({
+      outcome: "spoken",
+      sttToModelMs: 60,
+      sttToAudioMs: 104,
+      modelToAudioMs: 44,
+    });
   });
 
   it("dispatches a validated realtime voice view handoff through the shell navigation event", () => {

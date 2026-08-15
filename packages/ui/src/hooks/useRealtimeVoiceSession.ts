@@ -205,6 +205,14 @@ function classifyError(error: Error): RealtimeVoiceError {
         actionable: true,
       };
     }
+    if (error.code === "resume_failed") {
+      return {
+        kind: "transport",
+        message:
+          "Voice paused after returning to the app. Tap the mic to reconnect.",
+        actionable: true,
+      };
+    }
     return {
       kind: "unknown",
       message: error.message || "Voice capture failed.",

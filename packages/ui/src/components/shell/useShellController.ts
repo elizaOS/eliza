@@ -85,6 +85,8 @@ import {
   type VoiceContinuousStatus,
 } from "../../voice/voice-chat-types";
 import { isCloudVoiceRunnable } from "../../voice/voice-provider-defaults";
+import type { VoiceTraceMark } from "../../voice/voice-session-client";
+import type { VoiceSessionClientDiagnosticEvent } from "../../voice/voice-session-media-diagnostics";
 import type { ServerControlFrame } from "../../voice/voice-session-protocol";
 import { buildVoiceTurnSignal } from "../../voice/voice-turn-signal";
 import { matchWakeName } from "../../voice/wake-name-match";
@@ -110,6 +112,20 @@ export {
 /** Upper bound (ms) the conversation-switch / clear loading spinner may show
  *  before it is force-cleared — see `runWithConversationLoading`. */
 const CONVERSATION_LOADING_MAX_MS = 12_000;
+
+interface RealtimeTurnTiming {
+  sttFinalAtMs?: number;
+  llmFirstTextAtMs?: number;
+  firstAudioAtMs?: number;
+}
+
+function roundedTimingDelta(
+  endAtMs: number | undefined,
+  startAtMs: number | undefined,
+): number | "not_measured" {
+  if (endAtMs === undefined || startAtMs === undefined) return "not_measured";
+  return Math.max(0, Math.round(endAtMs - startAtMs));
+}
 
 /**
  * Grace window (ms) after a capture starts during which an APP_PAUSE is treated
@@ -466,6 +482,9 @@ export function useShellController(): ShellController {
   const { serverTurnStatus } = useChatTurnStatus();
   const conversationsRef = React.useRef(conversations);
   const activeConversationIdRef = React.useRef(activeConversationId);
+  const realtimeTurnTimingRef = React.useRef(
+    new Map<string, RealtimeTurnTiming>(),
+  );
   conversationsRef.current = conversations;
   activeConversationIdRef.current = activeConversationId;
 
@@ -499,6 +518,81 @@ export function useShellController(): ShellController {
     },
     [],
   );
+  const handleRealtimeVoiceTraceMark = React.useCallback(
+    (mark: VoiceTraceMark) => {
+      voiceCaptureDebug(`realtime:${mark.name}`, {
+        atMs: Math.round(mark.atMs),
+        correlated: Boolean(mark.traceId),
+      });
+      if (!mark.traceId) return;
+      const timing = realtimeTurnTimingRef.current.get(mark.traceId) ?? {};
+      if (mark.name === "stt_final") timing.sttFinalAtMs = mark.atMs;
+      if (mark.name === "llm_first_text") timing.llmFirstTextAtMs = mark.atMs;
+      if (mark.name === "first_audio_playout")
+        timing.firstAudioAtMs = mark.atMs;
+      realtimeTurnTimingRef.current.set(mark.traceId, timing);
+
+      if (mark.name === "interrupted" || mark.name.startsWith("turn_end(")) {
+        voiceCaptureDebug("realtime:turn-latency", {
+          outcome:
+            mark.name === "interrupted"
+              ? "interrupted"
+              : mark.name.slice("turn_end(".length, -1),
+          sttToModelMs: roundedTimingDelta(
+            timing.llmFirstTextAtMs,
+            timing.sttFinalAtMs,
+          ),
+          sttToAudioMs: roundedTimingDelta(
+            timing.firstAudioAtMs,
+            timing.sttFinalAtMs,
+          ),
+          modelToAudioMs: roundedTimingDelta(
+            timing.firstAudioAtMs,
+            timing.llmFirstTextAtMs,
+          ),
+        });
+        realtimeTurnTimingRef.current.delete(mark.traceId);
+      } else if (realtimeTurnTimingRef.current.size > 8) {
+        const oldestTraceId = realtimeTurnTimingRef.current.keys().next().value;
+        if (oldestTraceId) realtimeTurnTimingRef.current.delete(oldestTraceId);
+      }
+    },
+    [],
+  );
+  const handleRealtimeVoiceDiagnostic = React.useCallback(
+    (event: VoiceSessionClientDiagnosticEvent) => {
+      if (event.type === "capture_ready") {
+        voiceCaptureDebug("realtime:capture-ready", {
+          backend: event.capture.backend,
+          frameMs: event.capture.frameDurationMs,
+          contextHz: event.capture.audioContextSampleRateHz,
+          grantedHz: event.capture.granted.sampleRateHz,
+          channels: event.capture.granted.channelCount,
+          echoCancellation: event.capture.granted.echoCancellation,
+          noiseSuppression: event.capture.granted.noiseSuppression,
+          autoGainControl: event.capture.granted.autoGainControl,
+        });
+        return;
+      }
+      if (event.type === "playback_ready") {
+        voiceCaptureDebug("realtime:playback-ready", {
+          backend: event.playback.backend,
+          requestedHz: event.playback.requestedSampleRateHz,
+          actualHz: event.playback.actualSampleRateHz,
+          conversion: event.playback.sampleRateConversion,
+        });
+        return;
+      }
+      voiceCaptureDebug(
+        `realtime:${event.type.replace("playback_", "playback-")}`,
+        {
+          sequence: event.sequence,
+          correlated: Boolean(event.traceId),
+        },
+      );
+    },
+    [],
+  );
 
   // The persistent shell is the mounted /chat surface, so it owns the one
   // realtime session. ChatView may still consume the same hook on legacy
@@ -512,7 +606,11 @@ export function useShellController(): ShellController {
     conversationId: activeConversationId,
     flagEnabled: realtimeVoiceEnabled,
     getConsentNonce,
-    clientOptions: { onServerEvent: handleRealtimeVoiceServerEvent },
+    clientOptions: {
+      onServerEvent: handleRealtimeVoiceServerEvent,
+      onTraceMark: handleRealtimeVoiceTraceMark,
+      onDiagnostic: handleRealtimeVoiceDiagnostic,
+    },
   });
   const realtimeVoiceRef = React.useRef(realtimeVoice);
   realtimeVoiceRef.current = realtimeVoice;

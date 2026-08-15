@@ -1021,7 +1021,13 @@ export function createVoiceSessionClient(
           }
         },
         onError: (err) => {
-          if (isLifecycleCurrent(generation) && ws === socket) emitError(err);
+          if (isLifecycleCurrent(generation) && ws === socket) {
+            emitError(err);
+            // A live capture graph that cannot resume is not a usable session.
+            // Detach it now so the next user gesture creates a fresh context,
+            // socket, and mic lease instead of presenting a silent "live" UI.
+            void stop();
+          }
         },
         onDiagnostics: (capture) => {
           if (

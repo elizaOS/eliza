@@ -81,10 +81,11 @@ function makeOptions(overrides?: {
     downlink: { codecs: Array<"pcm16" | "opus"> };
   }) => void;
   playbackContext?: FakePlaybackAudioContext;
+  micContext?: FakeMicAudioContext;
 }) {
   const ws = makeWsFactory();
   const mint = makeMintFetch({ status: overrides?.mintStatus });
-  const micCtx = new FakeMicAudioContext(16_000);
+  const micCtx = overrides?.micContext ?? new FakeMicAudioContext(16_000);
   const pbCtx =
     overrides?.playbackContext ?? new FakePlaybackAudioContext(16_000);
   let micContextCreates = 0;
@@ -752,6 +753,60 @@ describe("useRealtimeVoiceSession", () => {
     await act(async () => {
       await result.current.stop();
     });
+  });
+
+  it("tears down a silent session and offers retry when foreground mic resume fails", async () => {
+    class RejectForegroundResumeContext extends FakeMicAudioContext {
+      rejectNextResume = false;
+
+      override async resume(): Promise<void> {
+        if (this.rejectNextResume) {
+          this.rejectNextResume = false;
+          throw new Error("mobile WebView refused foreground resume");
+        }
+        await super.resume();
+      }
+    }
+
+    const micContext = new RejectForegroundResumeContext(16_000);
+    const { options, ws } = makeOptions({ micContext });
+    const { result } = renderHook(() => useRealtimeVoiceSession(options));
+    const startPromise = beginStart(result);
+    await flushAsync();
+    const socket = await driveReady(ws, "s", "T1");
+    await expect(startPromise).resolves.toEqual({ kind: "live" });
+
+    await act(async () => {
+      Object.defineProperty(document, "visibilityState", {
+        configurable: true,
+        get: () => "hidden",
+      });
+      document.dispatchEvent(new Event("visibilitychange"));
+      await flushAsync();
+    });
+    await waitFor(() => expect(result.current.paused).toBe(true));
+
+    micContext.rejectNextResume = true;
+    await act(async () => {
+      Object.defineProperty(document, "visibilityState", {
+        configurable: true,
+        get: () => "visible",
+      });
+      document.dispatchEvent(new Event("visibilitychange"));
+      await flushAsync();
+    });
+
+    await waitFor(() =>
+      expect(result.current.error).toMatchObject({
+        kind: "transport",
+        actionable: true,
+      }),
+    );
+    expect(result.current.error?.message).toMatch(/returning to the app/i);
+    expect(result.current.active).toBe(false);
+    expect(result.current.available).toBe(true);
+    await waitFor(() => expect(micContext.closed).toBe(true));
+    expect(socket.closed?.code).toBe(1000);
   });
 
   it("stops and re-mints when the active agent or conversation identity changes", async () => {
