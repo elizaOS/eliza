@@ -477,11 +477,14 @@ function lenientRecurrenceScope(
  */
 export function resolveRecurrenceScopeIntent(args: {
   details: Record<string, unknown> | undefined;
+  fallbackDetails?: Record<string, unknown>;
   text: string;
 }): LifeOpsCalendarRecurrenceScope | null {
-  const explicit = lenientRecurrenceScope(
-    detailString(args.details, "recurrenceScope"),
-  );
+  const explicit =
+    lenientRecurrenceScope(detailString(args.details, "recurrenceScope")) ??
+    lenientRecurrenceScope(
+      detailString(args.fallbackDetails, "recurrenceScope"),
+    );
   if (explicit) {
     return explicit;
   }
@@ -4353,16 +4356,9 @@ const calendarAction: CalendarHandlerAction = {
           detailRecurrenceLines(extractedForUpdate);
         let recurrenceScopeForUpdate = resolveRecurrenceScopeIntent({
           details,
+          fallbackDetails: extractedForUpdate,
           text: `${messageText(message)} ${intent}`,
         });
-        if (!recurrenceScopeForUpdate) {
-          recurrenceScopeForUpdate =
-            normalizeRecurrenceScope(
-              typeof extractedForUpdate.recurrenceScope === "string"
-                ? extractedForUpdate.recurrenceScope
-                : undefined,
-            ) ?? null;
-        }
         // A recurrence-rule change is inherently a series edit.
         if (recurrenceUpdate && !recurrenceScopeForUpdate) {
           recurrenceScopeForUpdate = "series";

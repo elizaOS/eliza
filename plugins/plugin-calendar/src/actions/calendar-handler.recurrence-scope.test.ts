@@ -44,6 +44,26 @@ describe("resolveRecurrenceScopeIntent planner boundary", () => {
     ).toBe("instance");
   });
 
+  it("treats debris from the update extraction as unspecified", () => {
+    expect(
+      resolveRecurrenceScopeIntent({
+        details: undefined,
+        fallbackDetails: { recurrenceScope: ',series:"' },
+        text: "change the standup",
+      }),
+    ).toBeNull();
+  });
+
+  it("uses explicit update extraction before falling back to phrasing", () => {
+    expect(
+      resolveRecurrenceScopeIntent({
+        details: undefined,
+        fallbackDetails: { recurrenceScope: "series" },
+        text: "change just this standup occurrence",
+      }),
+    ).toBe("series");
+  });
+
   it("stays null when both detail and phrasing are ambiguous", () => {
     expect(
       resolveRecurrenceScopeIntent({
