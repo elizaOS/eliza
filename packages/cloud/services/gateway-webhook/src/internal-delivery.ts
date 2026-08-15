@@ -1,5 +1,6 @@
 /** Delivers authenticated proactive messages through the gateway-owned connector. */
 
+import { BlooioApiResponseError, blooioAdapter } from "./adapters/blooio";
 import { TelegramApiResponseError, telegramAdapter } from "./adapters/telegram";
 import type { ChatEvent } from "./adapters/types";
 import { logger } from "./logger";
@@ -12,13 +13,21 @@ interface InternalDeliveryDependencies {
   getAuthHeader(): Record<string, string>;
 }
 
-interface InternalTelegramDelivery {
-  platform: "telegram";
-  project: string;
-  chatId: string;
-  text: string;
-  idempotencyKey: string;
-}
+type InternalWebhookDelivery =
+  | {
+      platform: "telegram";
+      project: string;
+      chatId: string;
+      text: string;
+      idempotencyKey: string;
+    }
+  | {
+      platform: "blooio";
+      project: string;
+      phoneNumber: string;
+      text: string;
+      idempotencyKey: string;
+    };
 
 const DELIVERY_RECEIPT_TTL_SECONDS = 14 * 24 * 60 * 60;
 
@@ -54,15 +63,12 @@ function parseReceipt(value: string | null): DeliveryReceipt | undefined {
   return undefined;
 }
 
-function parseDelivery(value: unknown): InternalTelegramDelivery | undefined {
+function parseDelivery(value: unknown): InternalWebhookDelivery | undefined {
   if (!value || typeof value !== "object") return undefined;
   const input = value as Record<string, unknown>;
   if (
-    input.platform !== "telegram" ||
     typeof input.project !== "string" ||
     !/^[a-z0-9][a-z0-9_-]{0,63}$/i.test(input.project) ||
-    typeof input.chatId !== "string" ||
-    !/^-?\d{1,20}$/.test(input.chatId) ||
     typeof input.text !== "string" ||
     !input.text.trim() ||
     input.text.length > 4096 ||
@@ -71,13 +77,33 @@ function parseDelivery(value: unknown): InternalTelegramDelivery | undefined {
   ) {
     return undefined;
   }
-  return {
-    platform: "telegram",
-    project: input.project,
-    chatId: input.chatId,
-    text: input.text.trim(),
-    idempotencyKey: input.idempotencyKey,
-  };
+  if (
+    input.platform === "telegram" &&
+    typeof input.chatId === "string" &&
+    /^-?\d{1,20}$/.test(input.chatId)
+  ) {
+    return {
+      platform: "telegram",
+      project: input.project,
+      chatId: input.chatId,
+      text: input.text.trim(),
+      idempotencyKey: input.idempotencyKey,
+    };
+  }
+  if (
+    input.platform === "blooio" &&
+    typeof input.phoneNumber === "string" &&
+    /^\+[1-9]\d{6,14}$/.test(input.phoneNumber)
+  ) {
+    return {
+      platform: "blooio",
+      project: input.project,
+      phoneNumber: input.phoneNumber,
+      text: input.text.trim(),
+      idempotencyKey: input.idempotencyKey,
+    };
+  }
+  return undefined;
 }
 
 export async function deliverInternalMessage(
@@ -150,7 +176,7 @@ export async function deliverInternalMessage(
       dependencies.redis,
       dependencies.cloudBaseUrl,
       dependencies.getAuthHeader(),
-      "telegram",
+      delivery.platform,
       delivery.project,
     );
     if (!config) {
@@ -161,25 +187,34 @@ export async function deliverInternalMessage(
       );
     }
     const event: ChatEvent = {
-      platform: "telegram",
+      platform: delivery.platform,
       messageId: delivery.idempotencyKey,
-      chatId: delivery.chatId,
+      chatId:
+        delivery.platform === "telegram"
+          ? delivery.chatId
+          : delivery.phoneNumber,
       chatType: "private",
-      senderId: delivery.chatId,
+      senderId:
+        delivery.platform === "telegram"
+          ? delivery.chatId
+          : delivery.phoneNumber,
       text: delivery.text,
       rawPayload: { source: "shared-reminder" },
     };
-    if (!telegramAdapter.sendReplyWithReceipt) {
-      throw new Error("Telegram receipt delivery is unavailable");
+    const adapter =
+      delivery.platform === "telegram" ? telegramAdapter : blooioAdapter;
+    if (!adapter.sendReplyWithReceipt) {
+      throw new Error(`${delivery.platform} receipt delivery is unavailable`);
     }
-    // The provider has no idempotency key. Persist an indeterminate tombstone
-    // before dispatch so a process death can never turn an unproved send into
-    // either a duplicate retry or a successful scheduling receipt.
-    await dependencies.redis.set(dedupeKey, "indeterminate", {
-      ex: DELIVERY_RECEIPT_TTL_SECONDS,
-    });
+    if (delivery.platform === "telegram") {
+      // Telegram has no provider idempotency key. Persist an indeterminate
+      // tombstone before dispatch so a process death can never duplicate it.
+      await dependencies.redis.set(dedupeKey, "indeterminate", {
+        ex: DELIVERY_RECEIPT_TTL_SECONDS,
+      });
+    }
     connectorAttempted = true;
-    const receipt = await telegramAdapter.sendReplyWithReceipt(
+    const receipt = await adapter.sendReplyWithReceipt(
       config,
       event,
       delivery.text,
@@ -206,18 +241,26 @@ export async function deliverInternalMessage(
       providerMessageIds: receipt.providerMessageIds,
     });
   } catch (error) {
-    if (error instanceof TelegramApiResponseError) {
+    if (
+      error instanceof TelegramApiResponseError ||
+      error instanceof BlooioApiResponseError
+    ) {
       await dependencies.redis.del(dedupeKey);
-      const status =
-        error.errorCode === 401 ||
-        error.errorCode === 403 ||
-        error.errorCode === 429
+      const providerStatus =
+        error instanceof TelegramApiResponseError
           ? error.errorCode
+          : error.status;
+      const status =
+        providerStatus === 401 ||
+        providerStatus === 403 ||
+        providerStatus === 429
+          ? providerStatus
           : 422;
-      logger.warn("Telegram explicitly rejected Shared reminder delivery", {
+      logger.warn("Provider explicitly rejected Shared reminder delivery", {
         project: delivery.project,
+        platform: delivery.platform,
         idempotencyKey: delivery.idempotencyKey,
-        errorCode: error.errorCode,
+        errorCode: providerStatus,
       });
       return Response.json(
         {
@@ -232,7 +275,11 @@ export async function deliverInternalMessage(
           headers:
             status === 429
               ? {
-                  "Retry-After": String(error.retryAfterSeconds ?? 1),
+                  "Retry-After": String(
+                    error instanceof TelegramApiResponseError
+                      ? (error.retryAfterSeconds ?? 1)
+                      : 1,
+                  ),
                 }
               : undefined,
         },
@@ -240,7 +287,11 @@ export async function deliverInternalMessage(
     }
     // error-policy:J1 once connector dispatch starts, the provider may have
     // accepted the message even if its response or our receipt write failed.
-    if (!connectorAttempted) await dependencies.redis.del(dedupeKey);
+    if (!connectorAttempted || delivery.platform === "blooio") {
+      // Blooio enforces the stable provider idempotency key, so clearing this
+      // process-local claim permits a safe operator retry after an unknown response.
+      await dependencies.redis.del(dedupeKey);
+    }
     logger.error("Shared reminder delivery failed", {
       project: delivery.project,
       idempotencyKey: delivery.idempotencyKey,
