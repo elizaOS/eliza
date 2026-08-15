@@ -228,10 +228,7 @@
       "outputs": []
     },
     "@elizaos/app-core#typecheck": {
-      "dependsOn": [
-        "@elizaos/core#build",
-        "^build"
-      ],
+      "dependsOn": ["@elizaos/core#build", "^build"],
       "outputs": []
     },
     "@elizaos/app#typecheck": {
