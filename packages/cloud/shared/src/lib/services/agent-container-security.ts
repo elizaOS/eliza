@@ -58,3 +58,29 @@ export function buildAgentContainerMemoryFlags(memoryMb: number | undefined): st
   const mb = Math.ceil(memoryMb);
   return [`--memory ${shellQuote(`${mb}m`)}`, `--memory-swap ${shellQuote(`${mb}m`)}`];
 }
+
+/**
+ * Ordered `docker create` CPU flags for a hosted-agent container.
+ *
+ * The `--cpus` analog of {@link buildAgentContainerMemoryFlags} (#18485): agent
+ * containers carry no CPU ceiling, so one runaway agent can monopolize every
+ * core of a shared box. That was survivable on 4-vCPU cloud nodes holding 2-3
+ * agents; robot-first placement packs many more agents per 12-vCPU robot, so a
+ * per-agent CPU ceiling is what makes that density safe. `--cpus` is a hard
+ * cgroup quota, throttling — never killing — the container.
+ *
+ * `cpus <= 0` (or non-finite) disables the ceiling and emits no flags — the
+ * historical behavior, selectable via CONTAINERS_AGENT_CPU_LIMIT=0. Fractional
+ * values are valid docker input and are kept to two decimals.
+ */
+export function buildAgentContainerCpuFlags(cpus: number | undefined): string[] {
+  if (!cpus || !Number.isFinite(cpus) || cpus <= 0) return [];
+  const value = Math.round(cpus * 100) / 100;
+  return [`--cpus ${shellQuote(String(value))}`];
+}
+
+/** Converts the persisted ECS-style CPU unit contract to Docker vCPUs. */
+export function agentCpuUnitsToDockerCpus(cpuUnits: number | undefined): number | undefined {
+  if (!cpuUnits || !Number.isFinite(cpuUnits) || cpuUnits <= 0) return undefined;
+  return cpuUnits / 1024;
+}

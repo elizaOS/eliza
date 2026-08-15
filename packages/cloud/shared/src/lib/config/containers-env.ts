@@ -430,6 +430,27 @@ export const containersEnv = {
     return 3072;
   },
 
+  /**
+   * Per-agent-container `--cpus` ceiling (fractional cores). The CPU analog of
+   * agentContainerMemoryLimitMb (#18485): robot-first placement packs far more
+   * agents per box than the old 4-vCPU cloud nodes, so one busy-looping agent
+   * must be throttled inside its own cgroup instead of starving co-tenants.
+   *
+   * Default: 2 — double the 1-vCPU/agent budget the capacity math is sized
+   * around (DEFAULT_AGENT_VCPU_BUDGET), so a healthy agent can still burst
+   * while a runaway one cannot monopolize a 12-core robot. 0 disables the
+   * ceiling. Clamped to [0, 64]; fractional values are kept.
+   */
+  agentContainerCpuLimit(): number {
+    const env = getCloudAwareEnv();
+    const raw = pick(env.CONTAINERS_AGENT_CPU_LIMIT, env.ELIZA_AGENT_CPU_LIMIT);
+    const parsed = raw ? Number(raw) : Number.NaN;
+    if (Number.isFinite(parsed) && parsed >= 0) {
+      return Math.min(64, parsed);
+    }
+    return 2;
+  },
+
   /** Explicit operator-pinned agent image, without the hardcoded fallback. */
   defaultAgentImageOverride(): string | undefined {
     const env = getCloudAwareEnv();
