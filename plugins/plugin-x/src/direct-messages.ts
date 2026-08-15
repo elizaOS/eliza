@@ -194,7 +194,10 @@ export class TwitterDirectMessageClient {
     const username = user?.username ?? senderId;
     const displayName = user?.name ?? username;
     const conversationId = event.dm_conversation_id ?? senderId;
-    const worldId = createUniqueUuid(this.runtime, `x-dm-world:${senderId}`);
+    // DMs and public interactions share the sender's canonical X world. Older
+    // connector builds already attached DM rooms to this world, so reusing it
+    // also repairs their raw platform-id ownership metadata on the next poll.
+    const worldId = createUniqueUuid(this.runtime, senderId);
     const roomId = createUniqueUuid(
       this.runtime,
       `x-dm:${this.client.accountId}:${conversationId}`,
