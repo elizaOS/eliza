@@ -5,9 +5,9 @@
 import { describe, expect, it, vi } from "vitest";
 
 import {
+  type ChatOverlayWindowBounds,
   computeChatOverlayWindowBounds,
   createChatOverlayWindowBoundsCoordinator,
-  type ChatOverlayWindowBounds,
 } from "./chat-overlay-window-bounds";
 
 function deferred<T>() {
