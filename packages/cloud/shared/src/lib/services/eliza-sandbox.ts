@@ -5562,25 +5562,31 @@ export class ElizaSandboxService {
     // error-policy:J3 an unreadable import receipt is explicitly invalid and
     // cannot authorize the connector retry.
     const body = (await res.json().catch(() => null)) as {
+      conversationId?: unknown;
       complete?: unknown;
       sourceMessageCount?: unknown;
       inserted?: unknown;
       skipped?: unknown;
     } | null;
-    if (
-      body?.complete !== true ||
-      body.sourceMessageCount !== messages.length ||
-      typeof body.inserted !== "number" ||
-      typeof body.skipped !== "number" ||
-      body.inserted + body.skipped !== messages.length
-    ) {
+    if (!body || typeof body.inserted !== "number" || typeof body.skipped !== "number") {
+      return null;
+    }
+    const inserted = body.inserted;
+    const skipped = body.skipped;
+    const countsMatch = inserted + skipped === messages.length;
+    const modernReceipt = body?.complete === true && body.sourceMessageCount === messages.length;
+    const legacyReceipt =
+      body?.complete === undefined &&
+      body.sourceMessageCount === undefined &&
+      body.conversationId === conversationId;
+    if (!countsMatch || (!modernReceipt && !legacyReceipt)) {
       return null;
     }
     return {
       complete: true,
-      sourceMessageCount: body.sourceMessageCount,
-      inserted: body.inserted,
-      skipped: body.skipped,
+      sourceMessageCount: messages.length,
+      inserted,
+      skipped,
     };
   }
 
