@@ -104,6 +104,7 @@ import {
   JOB_TYPES,
   type ProvisioningJobType,
 } from "./provisioning-job-types";
+import { sendProvisioningWorkerAlert } from "./provisioning-worker-health-monitor";
 import {
   isWaifuWebhookTargetUrl,
   resolveWaifuWebhookTarget,
@@ -114,6 +115,33 @@ import {
   type WakeRestoreIntegrityFailure,
 } from "./wake-restore-integrity";
 import { hasReadyWarmClaimCredential } from "./warm-claim-key-push";
+
+/**
+ * Phase 0 fleet measurement emitted by every scheduled-backup sweep (#15783):
+ * of the running non-pool fleet, how many rows are route-less (no bridge or
+ * the loopback sentinel), snapshot-incapable (image 404s POST /api/snapshot),
+ * never backed up, or older than the staleness threshold — split out for
+ * local-state agents, whose whole state lives on one node's disk.
+ */
+export interface ScheduledBackupFleetReport {
+  running: number;
+  routeless: number;
+  snapshotUnsupported: number;
+  neverBackedUp: number;
+  staleBackup: number;
+  localState: number;
+  localStateStale: number;
+}
+
+const EMPTY_SCHEDULED_BACKUP_FLEET_REPORT: ScheduledBackupFleetReport = {
+  running: 0,
+  routeless: 0,
+  snapshotUnsupported: 0,
+  neverBackedUp: 0,
+  staleBackup: 0,
+  localState: 0,
+  localStateStale: 0,
+};
 
 // ---------------------------------------------------------------------------
 // Job data shapes (hydrated from object storage when jobs.data is offloaded)
@@ -2650,20 +2678,84 @@ export class ProvisioningJobService {
   }
 
   /**
+   * Stamp `last_backup_attempt_at` and set/clear `backup_unsupported_reason`
+   * after a snapshot capture attempt (#15783). Best-effort bookkeeping: a
+   * marker write failure must not fail (or retry) the snapshot job itself —
+   * the markers only tune sweep fairness and staleness measurement, and the
+   * next attempt rewrites them.
+   */
+  private async recordSnapshotAttemptMarkers(
+    agentId: string,
+    outcome: "success" | "unsupported" | "other",
+  ): Promise<void> {
+    try {
+      await dbWrite
+        .update(agentSandboxes)
+        .set({
+          last_backup_attempt_at: new Date(),
+          // "other" failures (agent not running, transport blip) neither prove
+          // nor disprove snapshot capability — leave the marker as it stands.
+          ...(outcome === "unsupported"
+            ? { backup_unsupported_reason: SNAPSHOT_ENDPOINT_UNSUPPORTED }
+            : {}),
+          ...(outcome === "success" ? { backup_unsupported_reason: null } : {}),
+        })
+        .where(eq(agentSandboxes.id, agentId));
+    } catch (error) {
+      // error-policy:J7 attempt-marker bookkeeping must not kill the snapshot
+      // job; the condition it records is re-observed on the next attempt.
+      logger.warn("[provisioning-jobs] failed to record snapshot attempt markers", {
+        agentId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  /**
    * Scan running agents and enqueue an `auto` snapshot for any whose last
    * backup is older than `minIntervalMs` (or who have never been backed up).
    * Drives the scheduled-backups cron. Per-agent dedup is handled by the
    * snapshot job's in-flight idempotency, so overlapping ticks are safe.
    * Warm-pool rows (`pool_status IS NOT NULL`) are excluded — they have no
    * user state worth backing up.
+   *
+   * Fairness (#15783): the due set is ordered oldest-successful-backup-first
+   * (never-backed-up rows first), so a due population larger than `maxAgents`
+   * degrades to round-robin-by-staleness instead of planner-dependent
+   * starvation. Rows marked snapshot-incapable (`backup_unsupported_reason`,
+   * set when the agent image 404s POST /api/snapshot) are re-probed only
+   * every `unsupportedRecheckMs` instead of consuming the capped window on
+   * every tick; `last_backup_at` stays success-only throughout so staleness
+   * measurement remains honest.
+   *
+   * The returned `fleet` block is the Phase 0 measurement: how much of the
+   * running non-pool fleet is route-less, snapshot-incapable, never backed
+   * up, or stale — and how many LOCAL-STATE agents (whose entire DB lives on
+   * one node's disk) currently have no backup younger than the staleness
+   * threshold. A non-zero local-state count triggers the ops staleness alert.
    */
   async enqueueScheduledBackups(params?: {
     minIntervalMs?: number;
     maxAgents?: number;
-  }): Promise<{ scanned: number; enqueued: number }> {
+    /** How often a snapshot-incapable row is re-probed. Default 24h. */
+    unsupportedRecheckMs?: number;
+    /**
+     * Age past which a running agent's newest successful backup counts as
+     * stale for alerting. Default 4× `minIntervalMs` (24h at the 6h cadence).
+     */
+    staleAfterMs?: number;
+  }): Promise<{
+    scanned: number;
+    enqueued: number;
+    fleet: ScheduledBackupFleetReport;
+  }> {
     const minIntervalMs = params?.minIntervalMs ?? 6 * 60 * 60 * 1000; // 6h
     const maxAgents = params?.maxAgents ?? 200;
+    const unsupportedRecheckMs = params?.unsupportedRecheckMs ?? 24 * 60 * 60 * 1000;
+    const staleAfterMs = params?.staleAfterMs ?? 4 * minIntervalMs;
     const cutoff = new Date(Date.now() - minIntervalMs);
+    const unsupportedRecheckCutoff = new Date(Date.now() - unsupportedRecheckMs);
+    const staleCutoff = new Date(Date.now() - staleAfterMs);
 
     const due = await dbWrite
       .select({
@@ -2687,9 +2779,50 @@ export class ProvisioningJobService {
           // URL is the loopback sentinel, so it must never be re-enqueued.
           ne(agentSandboxes.bridge_url, UNREACHABLE_BRIDGE_SENTINEL),
           sql`(${agentSandboxes.last_backup_at} IS NULL OR ${agentSandboxes.last_backup_at} < ${cutoff})`,
+          // A row whose image proved snapshot-incapable is only re-probed at
+          // the slow recheck cadence, so it cannot permanently occupy the
+          // capped window (#15783 starvation, worst case 3). An image upgrade
+          // is still noticed within one recheck interval, and any successful
+          // snapshot clears the marker immediately.
+          sql`(${agentSandboxes.backup_unsupported_reason} IS NULL OR ${agentSandboxes.last_backup_attempt_at} IS NULL OR ${agentSandboxes.last_backup_attempt_at} < ${unsupportedRecheckCutoff})`,
         ),
       )
+      // Oldest successful backup first; rows that have NEVER been backed up
+      // lead. Attempt time tiebreaks so equally-stale rows rotate instead of
+      // repeating in planner order.
+      .orderBy(
+        sql`${agentSandboxes.last_backup_at} ASC NULLS FIRST`,
+        sql`${agentSandboxes.last_backup_attempt_at} ASC NULLS FIRST`,
+      )
       .limit(maxAgents);
+
+    const [fleet = EMPTY_SCHEDULED_BACKUP_FLEET_REPORT] = (await dbWrite
+      .select({
+        running: sql<number>`count(*)::int`,
+        routeless: sql<number>`count(*) filter (where ${agentSandboxes.bridge_url} IS NULL OR ${agentSandboxes.bridge_url} = ${UNREACHABLE_BRIDGE_SENTINEL})::int`,
+        snapshotUnsupported: sql<number>`count(*) filter (where ${agentSandboxes.backup_unsupported_reason} IS NOT NULL)::int`,
+        neverBackedUp: sql<number>`count(*) filter (where ${agentSandboxes.last_backup_at} IS NULL)::int`,
+        staleBackup: sql<number>`count(*) filter (where ${agentSandboxes.last_backup_at} IS NULL OR ${agentSandboxes.last_backup_at} < ${staleCutoff})::int`,
+        localState: sql<number>`count(*) filter (where ${agentSandboxes.environment_vars}->>'ELIZA_AGENT_LOCAL_STATE' = '1')::int`,
+        localStateStale: sql<number>`count(*) filter (where ${agentSandboxes.environment_vars}->>'ELIZA_AGENT_LOCAL_STATE' = '1' AND (${agentSandboxes.last_backup_at} IS NULL OR ${agentSandboxes.last_backup_at} < ${staleCutoff}))::int`,
+      })
+      .from(agentSandboxes)
+      .where(
+        and(eq(agentSandboxes.status, "running"), sql`${agentSandboxes.pool_status} IS NULL`),
+      )) as ScheduledBackupFleetReport[];
+
+    if (fleet.localStateStale > 0) {
+      // Local-state agents keep their ENTIRE state (PGlite DB, media, vault)
+      // on one node's local disk; a stale backup there is an unbounded-loss
+      // exposure, not a cosmetic gap. Loud by design; the fixed dedup key
+      // keeps a sustained condition to one PagerDuty incident.
+      await sendProvisioningWorkerAlert({
+        title: "Local-state agents with stale or missing off-box backups",
+        message: `${fleet.localStateStale} running local-state agent(s) have no successful backup within ${Math.round(staleAfterMs / 60_000)} minutes; node loss would exceed the backup RPO (#15783).`,
+        details: { ...fleet, staleAfterMs, minIntervalMs },
+        dedupKey: "agent-backup-staleness",
+      });
+    }
 
     let enqueued = 0;
     for (const agent of due) {
@@ -2712,8 +2845,9 @@ export class ProvisioningJobService {
     logger.info("[provisioning-jobs] Scheduled backups enqueued", {
       scanned: due.length,
       enqueued,
+      fleet,
     });
-    return { scanned: due.length, enqueued };
+    return { scanned: due.length, enqueued, fleet };
   }
 
   /**
@@ -4831,6 +4965,21 @@ export class ProvisioningJobService {
     );
 
     if (await this.completeIfAgentGone(job, result, data.agentId)) return;
+
+    // Attempt bookkeeping (#15783): record that a capture was tried regardless
+    // of outcome, and keep the snapshot-capability marker current —
+    // `last_backup_at` stays success-only so staleness stays honest, while
+    // `backup_unsupported_reason` moves incapable images out of the sweep's
+    // hot window until their slow re-probe. A successful capture always
+    // clears the marker (the image evidently serves the route now).
+    await this.recordSnapshotAttemptMarkers(
+      data.agentId,
+      result.success
+        ? "success"
+        : result.error === SNAPSHOT_ENDPOINT_UNSUPPORTED
+          ? "unsupported"
+          : "other",
+    );
 
     // Scheduled (auto) backups run across every non-pool sandbox, but an idle
     // agent (stopped/sleeping/disconnected — no bridge_url) legitimately has no
