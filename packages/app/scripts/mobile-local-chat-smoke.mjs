@@ -2,6 +2,11 @@
 /**
  * Command-line helper for the Mobile Local Chat Smoke app packaging, mobile,
  * or Playwright automation lane.
+ *
+ * Numeric env overrides (timeouts, retries, stability samples, context size)
+ * fail closed: unset/empty keep documented defaults, and any other token exits
+ * before device or API work. Timer knobs are bounded by Node's 32-bit
+ * `setTimeout` ceiling so an overflow cannot clamp to 1 ms.
  */
 import { execFileSync, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
@@ -16,7 +21,12 @@ import {
   assertMarkerSurvivedRelaunch,
   buildRelaunchMarker,
 } from "./lib/chat-history-persistence.mjs";
-import { startDeviceE2eHostAgent } from "./lib/host-agent.mjs";
+import {
+  MAX_TIMER_DELAY_MS,
+  parseNonNegativeSafeInteger,
+  parsePositiveSafeInteger,
+  startDeviceE2eHostAgent,
+} from "./lib/host-agent.mjs";
 import {
   assertIosFullBunSmokeSuccess,
   iosFullBunSmokeResultTimeMs,
@@ -81,71 +91,238 @@ const ANDROID_LOCAL_AGENT_IPC_BASE = IOS_LOCAL_AGENT_IPC_BASE;
 const IOS_FULL_BUN_SMOKE_MODEL_ID = "eliza-1-2b";
 const IOS_FULL_BUN_SMOKE_MODEL_RELATIVE_PATH =
   "models/eliza-1-2b.bundle/text/eliza-1-2b-128k.gguf";
+export const DEFAULT_IOS_FULL_BUN_SMOKE_CONTEXT_SIZE = 4096;
+export const DEFAULT_ANDROID_FULL_TURN_TIMEOUT_MS = 10 * 60_000;
+export const DEFAULT_ANDROID_HEALTH_PROBE_TIMEOUT_MS = 30_000;
+export const DEFAULT_ANDROID_TRANSIENT_RETRY_ATTEMPTS = 5;
+export const DEFAULT_ANDROID_TRANSIENT_RETRY_DELAY_MS = 2000;
+export const DEFAULT_ANDROID_STABILITY_SAMPLES = 3;
+export const DEFAULT_ANDROID_STABILITY_DELAY_MS = 2000;
+export const DEFAULT_ANDROID_STABILITY_ATTEMPTS = 60;
+export const DEFAULT_ANDROID_LOCAL_INFERENCE_READY_ATTEMPTS = 180;
+export const DEFAULT_ANDROID_LOCAL_INFERENCE_READY_DELAY_MS = 2000;
+export const DEFAULT_ANDROID_SMOKE_MODEL_CONTEXT_SIZE = 4096;
+
+/** Operational context ceiling for smoke devices. The bundled eliza-1 GGUF
+ * advertises 128k (131072), but that full width allocates a multi-GB KV cache
+ * and OOMs a phone/simulator — the format ceiling is a rejection case, not a
+ * bound. 32768 keeps the KV cache at ~1/4 of the known-OOM size while giving
+ * 8× headroom over the proven 4096 smoke width; tighten further if device
+ * measurements prove a lower safe cap. */
+export const MAX_MODEL_CONTEXT_TOKENS = 32_768;
+/** Retry/readiness/stability loops are dev-lane scale; five digits of attempts
+ * is already three orders past any documented default. */
+export const MAX_LOOP_COUNT = 10_000;
+/** No single polling loop may be configured past 24h of wall clock — a lane
+ * that needs longer is broken, not patient. Checked as attempts × delay. */
+export const MAX_LOOP_BUDGET_MS = 86_400_000;
+/** Model bundles are single-digit GiB; a size override past 1 TiB is a typo. */
+export const MAX_MODEL_SIZE_BYTES = 1_099_511_627_776;
+
+function isBlankEnv(value) {
+  return value === undefined || value === null || String(value).trim() === "";
+}
+
+function parseEnvInteger(raw, label, { min, max }) {
+  // Canonical decimal spelling only: the shared helpers accept /^\d+$/, which
+  // lets "0008" pass as 8. A leading zero is a typo, not a smaller number.
+  if (!/^(?:0|[1-9]\d*)$/.test(raw)) {
+    throw new Error(
+      `Invalid ${label}: expected a canonical decimal integer (no leading zeros); received ${JSON.stringify(raw)}`,
+    );
+  }
+  if (min === 0) {
+    return parseNonNegativeSafeInteger(raw, label, { max });
+  }
+  const parsed = parsePositiveSafeInteger(raw, label);
+  if (parsed > max) {
+    throw new Error(
+      `Invalid ${label}: expected a non-negative safe integer no greater than ${max}; received ${JSON.stringify(raw)}`,
+    );
+  }
+  return parsed;
+}
+
+function assertLoopBudget(label, attempts, perAttemptMs) {
+  if (attempts * perAttemptMs > MAX_LOOP_BUDGET_MS) {
+    throw new Error(
+      `Invalid ${label}: ${attempts} × ${perAttemptMs}ms exceeds the ${MAX_LOOP_BUDGET_MS}ms (24h) loop budget`,
+    );
+  }
+}
+
+function readEnvInteger(env, name, fallback, bounds) {
+  const raw = env[name];
+  if (isBlankEnv(raw)) return fallback;
+  return parseEnvInteger(String(raw).trim(), name, bounds);
+}
+
+/**
+ * Resolve smoke timing and count knobs from env. Unset/empty keep defaults.
+ * Any other token fails closed so `1e3` cannot become 1 ms and `abc` cannot
+ * skip the AbortController timeout gate.
+ * @param {NodeJS.ProcessEnv} [env]
+ */
+export function resolveMobileSmokeNumericEnv(env = process.env) {
+  const timer = { min: 1, max: MAX_TIMER_DELAY_MS };
+  const delay = { min: 0, max: MAX_TIMER_DELAY_MS };
+  const count = { min: 1, max: MAX_LOOP_COUNT };
+  const context = { min: 1, max: MAX_MODEL_CONTEXT_TOKENS };
+  const resolved = {
+    iosFullBunSmokeContextSize: readEnvInteger(
+      env,
+      "IOS_FULL_BUN_SMOKE_CONTEXT_SIZE",
+      DEFAULT_IOS_FULL_BUN_SMOKE_CONTEXT_SIZE,
+      context,
+    ),
+    androidFullTurnTimeoutMs: readEnvInteger(
+      env,
+      "ANDROID_FULL_TURN_TIMEOUT_MS",
+      DEFAULT_ANDROID_FULL_TURN_TIMEOUT_MS,
+      timer,
+    ),
+    androidHealthProbeTimeoutMs: readEnvInteger(
+      env,
+      "ANDROID_HEALTH_PROBE_TIMEOUT_MS",
+      DEFAULT_ANDROID_HEALTH_PROBE_TIMEOUT_MS,
+      timer,
+    ),
+    androidTransientRetryAttempts: readEnvInteger(
+      env,
+      "ANDROID_TRANSIENT_RETRY_ATTEMPTS",
+      DEFAULT_ANDROID_TRANSIENT_RETRY_ATTEMPTS,
+      count,
+    ),
+    androidTransientRetryDelayMs: readEnvInteger(
+      env,
+      "ANDROID_TRANSIENT_RETRY_DELAY_MS",
+      DEFAULT_ANDROID_TRANSIENT_RETRY_DELAY_MS,
+      delay,
+    ),
+    androidStabilitySamples: readEnvInteger(
+      env,
+      "ANDROID_STABILITY_SAMPLES",
+      DEFAULT_ANDROID_STABILITY_SAMPLES,
+      count,
+    ),
+    androidStabilityDelayMs: readEnvInteger(
+      env,
+      "ANDROID_STABILITY_DELAY_MS",
+      DEFAULT_ANDROID_STABILITY_DELAY_MS,
+      delay,
+    ),
+    androidStabilityAttempts: readEnvInteger(
+      env,
+      "ANDROID_STABILITY_ATTEMPTS",
+      DEFAULT_ANDROID_STABILITY_ATTEMPTS,
+      count,
+    ),
+    androidLocalInferenceReadyAttempts: readEnvInteger(
+      env,
+      "ANDROID_LOCAL_INFERENCE_READY_ATTEMPTS",
+      DEFAULT_ANDROID_LOCAL_INFERENCE_READY_ATTEMPTS,
+      count,
+    ),
+    androidLocalInferenceReadyDelayMs: readEnvInteger(
+      env,
+      "ANDROID_LOCAL_INFERENCE_READY_DELAY_MS",
+      DEFAULT_ANDROID_LOCAL_INFERENCE_READY_DELAY_MS,
+      delay,
+    ),
+    androidSmokeModelContextSize: readEnvInteger(
+      env,
+      "ANDROID_SMOKE_MODEL_CONTEXT_SIZE",
+      DEFAULT_ANDROID_SMOKE_MODEL_CONTEXT_SIZE,
+      context,
+    ),
+    androidSmokeModelSizeBytesOverride: isBlankEnv(
+      env.ANDROID_SMOKE_MODEL_SIZE_BYTES,
+    )
+      ? null
+      : parseEnvInteger(
+          String(env.ANDROID_SMOKE_MODEL_SIZE_BYTES).trim(),
+          "ANDROID_SMOKE_MODEL_SIZE_BYTES",
+          { min: 1, max: MAX_MODEL_SIZE_BYTES },
+        ),
+  };
+  // Per-loop execution budgets: a syntactically valid pair may still describe
+  // a lane that polls for months. Reject over-budget combinations before any
+  // device work, and keep the stability window self-consistent.
+  if (resolved.androidStabilitySamples > resolved.androidStabilityAttempts) {
+    throw new Error(
+      `Invalid ANDROID_STABILITY_SAMPLES: ${resolved.androidStabilitySamples} exceeds ANDROID_STABILITY_ATTEMPTS ${resolved.androidStabilityAttempts}`,
+    );
+  }
+  // Composite budgets count the WORK an attempt can consume (probe timeouts,
+  // nested retries), not only the inter-attempt delay: 10000 attempts at
+  // delay 0 with a max probe timeout is centuries of wall clock, not zero.
+  const retryAttemptMs =
+    resolved.androidHealthProbeTimeoutMs +
+    resolved.androidTransientRetryDelayMs;
+  const retryBudgetMs = resolved.androidTransientRetryAttempts * retryAttemptMs;
+  assertLoopBudget(
+    "ANDROID_TRANSIENT_RETRY_ATTEMPTS × (ANDROID_HEALTH_PROBE_TIMEOUT_MS + ANDROID_TRANSIENT_RETRY_DELAY_MS)",
+    resolved.androidTransientRetryAttempts,
+    retryAttemptMs,
+  );
+  assertLoopBudget(
+    "ANDROID_TRANSIENT_RETRY_ATTEMPTS × (ANDROID_FULL_TURN_TIMEOUT_MS + ANDROID_TRANSIENT_RETRY_DELAY_MS)",
+    resolved.androidTransientRetryAttempts,
+    resolved.androidFullTurnTimeoutMs + resolved.androidTransientRetryDelayMs,
+  );
+  assertLoopBudget(
+    "ANDROID_STABILITY_ATTEMPTS × (transient-retry budget + ANDROID_STABILITY_DELAY_MS)",
+    resolved.androidStabilityAttempts,
+    retryBudgetMs + resolved.androidStabilityDelayMs,
+  );
+  assertLoopBudget(
+    "ANDROID_LOCAL_INFERENCE_READY_ATTEMPTS × (3 × ANDROID_HEALTH_PROBE_TIMEOUT_MS + ANDROID_LOCAL_INFERENCE_READY_DELAY_MS)",
+    resolved.androidLocalInferenceReadyAttempts,
+    3 * resolved.androidHealthProbeTimeoutMs +
+      resolved.androidLocalInferenceReadyDelayMs,
+  );
+  return resolved;
+}
+
+const smokeNumbers = resolveMobileSmokeNumericEnv();
 // Cap the on-device context window. The bundled eliza-1 GGUF advertises a 128k
 // max context; loading it at full width allocates a multi-GB KV cache that is
 // impractically slow (and OOMs) on a phone/simulator, so the first reply never
 // lands. 4096 mirrors the Android smoke and keeps model load + generation fast.
-const IOS_FULL_BUN_SMOKE_CONTEXT_SIZE = Number.parseInt(
-  process.env.IOS_FULL_BUN_SMOKE_CONTEXT_SIZE?.trim() || "4096",
-  10,
-);
+const IOS_FULL_BUN_SMOKE_CONTEXT_SIZE = smokeNumbers.iosFullBunSmokeContextSize;
 const IOS_FULL_BUN_SMOKE_ATTEMPTS = 180;
 const IOS_FULL_BUN_SMOKE_DELAY_MS = 2000;
 // ANDROID_FULL_TURN_FAILURE_RE comes from the checked-in failure-string source
 // shared with the on-device XCUITest verifier (issue #13687).
 const ANDROID_HEALTH_ATTEMPTS = 240;
-const ANDROID_FULL_TURN_TIMEOUT_MS = Number.parseInt(
-  process.env.ANDROID_FULL_TURN_TIMEOUT_MS?.trim() || String(10 * 60_000),
-  10,
-);
+const ANDROID_FULL_TURN_TIMEOUT_MS = smokeNumbers.androidFullTurnTimeoutMs;
 // In-process CPU-only decode on a phone is slow (~0.2 tok/s generate, observed
 // ~41s end-to-end for a short reply). A single slow/blip read must not abort
 // the turn, so the per-request HTTP timeout sits well above that envelope.
-const ANDROID_HEALTH_PROBE_TIMEOUT_MS = Number.parseInt(
-  process.env.ANDROID_HEALTH_PROBE_TIMEOUT_MS?.trim() || String(30_000),
-  10,
-);
+const ANDROID_HEALTH_PROBE_TIMEOUT_MS =
+  smokeNumbers.androidHealthProbeTimeoutMs;
 // Bounded transient retry for accepted-but-empty / reset / 5xx / timeout reads
 // against the forwarded local-agent API. The boot/restart window briefly
 // accepts the socket and closes it with an empty body; retry rides that out.
-const ANDROID_TRANSIENT_RETRY_ATTEMPTS = Number.parseInt(
-  process.env.ANDROID_TRANSIENT_RETRY_ATTEMPTS?.trim() || "5",
-  10,
-);
-const ANDROID_TRANSIENT_RETRY_DELAY_MS = Number.parseInt(
-  process.env.ANDROID_TRANSIENT_RETRY_DELAY_MS?.trim() || "2000",
-  10,
-);
+const ANDROID_TRANSIENT_RETRY_ATTEMPTS =
+  smokeNumbers.androidTransientRetryAttempts;
+const ANDROID_TRANSIENT_RETRY_DELAY_MS =
+  smokeNumbers.androidTransientRetryDelayMs;
 // Process-stability gate: require monotonic uptime across N consecutive
 // /api/health samples (agentState==running, startup.attempt not climbing)
 // before exercising, so a turn is never fired mid-restart.
-const ANDROID_STABILITY_SAMPLES = Number.parseInt(
-  process.env.ANDROID_STABILITY_SAMPLES?.trim() || "3",
-  10,
-);
-const ANDROID_STABILITY_DELAY_MS = Number.parseInt(
-  process.env.ANDROID_STABILITY_DELAY_MS?.trim() || "2000",
-  10,
-);
-const ANDROID_STABILITY_ATTEMPTS = Number.parseInt(
-  process.env.ANDROID_STABILITY_ATTEMPTS?.trim() || "60",
-  10,
-);
-const ANDROID_LOCAL_INFERENCE_READY_ATTEMPTS = Number.parseInt(
-  process.env.ANDROID_LOCAL_INFERENCE_READY_ATTEMPTS?.trim() || "180",
-  10,
-);
-const ANDROID_LOCAL_INFERENCE_READY_DELAY_MS = Number.parseInt(
-  process.env.ANDROID_LOCAL_INFERENCE_READY_DELAY_MS?.trim() || "2000",
-  10,
-);
+const ANDROID_STABILITY_SAMPLES = smokeNumbers.androidStabilitySamples;
+const ANDROID_STABILITY_DELAY_MS = smokeNumbers.androidStabilityDelayMs;
+const ANDROID_STABILITY_ATTEMPTS = smokeNumbers.androidStabilityAttempts;
+const ANDROID_LOCAL_INFERENCE_READY_ATTEMPTS =
+  smokeNumbers.androidLocalInferenceReadyAttempts;
+const ANDROID_LOCAL_INFERENCE_READY_DELAY_MS =
+  smokeNumbers.androidLocalInferenceReadyDelayMs;
 const ANDROID_FULL_TURN_PROMPT =
   "Reply with exactly these four words: android smoke model works.";
 const ANDROID_FULL_TURN_EXPECTED_REPLY = "android smoke model works";
-const ANDROID_SMOKE_MODEL_CONTEXT_SIZE = Number.parseInt(
-  process.env.ANDROID_SMOKE_MODEL_CONTEXT_SIZE?.trim() || "4096",
-  10,
-);
+const ANDROID_SMOKE_MODEL_CONTEXT_SIZE =
+  smokeNumbers.androidSmokeModelContextSize;
 const ANDROID_SMOKE_MODEL_ID =
   process.env.ANDROID_SMOKE_MODEL_ID?.trim() || "eliza-1-2b";
 const DEFAULT_ANDROID_SMOKE_MODEL = {
@@ -159,15 +336,14 @@ const ANDROID_SMOKE_MODEL_RELATIVE_PATH =
 const ANDROID_SMOKE_MODEL_FILE =
   process.env.ANDROID_SMOKE_MODEL_FILE?.trim() ||
   DEFAULT_ANDROID_SMOKE_MODEL.file;
-const androidSmokeModelSizeOverride =
-  process.env.ANDROID_SMOKE_MODEL_SIZE_BYTES?.trim();
-const ANDROID_SMOKE_MODEL_SIZE_BYTES = androidSmokeModelSizeOverride
-  ? Number.parseInt(androidSmokeModelSizeOverride, 10)
-  : ANDROID_SMOKE_MODEL_RELATIVE_PATH ===
-        DEFAULT_ANDROID_SMOKE_MODEL.relativePath &&
-      ANDROID_SMOKE_MODEL_FILE === DEFAULT_ANDROID_SMOKE_MODEL.file
-    ? DEFAULT_ANDROID_SMOKE_MODEL.sizeBytes
-    : Number.NaN;
+const ANDROID_SMOKE_MODEL_SIZE_BYTES =
+  smokeNumbers.androidSmokeModelSizeBytesOverride !== null
+    ? smokeNumbers.androidSmokeModelSizeBytesOverride
+    : ANDROID_SMOKE_MODEL_RELATIVE_PATH ===
+          DEFAULT_ANDROID_SMOKE_MODEL.relativePath &&
+        ANDROID_SMOKE_MODEL_FILE === DEFAULT_ANDROID_SMOKE_MODEL.file
+      ? DEFAULT_ANDROID_SMOKE_MODEL.sizeBytes
+      : Number.NaN;
 const ANDROID_SMOKE_MODEL_SHA256 =
   process.env.ANDROID_SMOKE_MODEL_SHA256?.trim() || "";
 const ANDROID_SMOKE_MODEL_URL =
@@ -1884,12 +2060,15 @@ async function requestTextResponse(
 }
 
 async function requestOptionalJson(method, pathname, baseUrl, authToken) {
+  // Every readiness probe carries the bounded probe timeout: an un-timed
+  // fetch here could stay pending forever regardless of any loop budget.
   const { response, data, text } = await requestJsonResponse(
     method,
     pathname,
     undefined,
     baseUrl,
     authToken,
+    { timeoutMs: ANDROID_HEALTH_PROBE_TIMEOUT_MS },
   );
   if (response.status === 404) return null;
   if (!response.ok) {
@@ -2658,6 +2837,7 @@ export {
   launchAndroidEmulatorApp,
   launchIosSimulatorApp,
   localInferenceSummary,
+  MAX_TIMER_DELAY_MS,
   main,
   parseSseEvents,
   preseedAndroidLocalRuntime,

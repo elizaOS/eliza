@@ -1,9 +1,8 @@
-/** Barrel for the plugin's services: embedded execution engine, credential store, dispatch, and the WorkflowService facade. */
+/** Barrel for native embedded execution, dispatch, and the WorkflowService facade. */
 export {
   EMBEDDED_WORKFLOW_SERVICE_TYPE,
   EmbeddedWorkflowService,
 } from './embedded-workflow-service';
-export { WorkflowCredentialStore } from './workflow-credential-store';
 export {
   createWorkflowDispatchService,
   registerWorkflowDispatchService,

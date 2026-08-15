@@ -18,6 +18,10 @@ import {
   signalHostProcessGroup,
   startBackgroundShellOnHost,
 } from "../lib/run-shell.js";
+import {
+  redactShellText,
+  resolveShellRedactionOverlapChars,
+} from "../shell/redaction.js";
 import { BACKGROUND_SHELL_SERVICE, CODING_TOOLS_LOG_PREFIX } from "../types.js";
 
 const DEFAULT_BUFFER_CHARS = 64_000;
@@ -113,6 +117,13 @@ export class BackgroundShellService extends Service {
     this.sessions.clear();
   }
 
+  private getRedactionOverlapChars(): number {
+    // Character secrets can rotate while the service is running. Recompute at
+    // each stream boundary so a newly introduced longer value cannot be split
+    // by an overlap window sized from stale startup configuration.
+    return resolveShellRedactionOverlapChars(this.runtime, this.bufferChars);
+  }
+
   startSession(args: {
     conversationId: string;
     command: string;
@@ -145,10 +156,20 @@ export class BackgroundShellService extends Service {
       throw new Error("background shell process did not expose output streams");
     }
     started.process.stdout.on("data", (chunk: Buffer) => {
-      appendRing(session.stdout, chunk.toString("utf8"), this.bufferChars);
+      appendRing(
+        session.stdout,
+        chunk.toString("utf8"),
+        this.bufferChars,
+        this.getRedactionOverlapChars(),
+      );
     });
     started.process.stderr.on("data", (chunk: Buffer) => {
-      appendRing(session.stderr, chunk.toString("utf8"), this.bufferChars);
+      appendRing(
+        session.stderr,
+        chunk.toString("utf8"),
+        this.bufferChars,
+        this.getRedactionOverlapChars(),
+      );
     });
     started.process.stdin?.on?.("error", (error: Error) => {
       session.stdinError = error;
@@ -156,6 +177,7 @@ export class BackgroundShellService extends Service {
         session.stderr,
         `[stdin unavailable: ${error.message}]`,
         this.bufferChars,
+        this.getRedactionOverlapChars(),
       );
     });
     started.process.on("close", (code, signal) => {
@@ -172,10 +194,15 @@ export class BackgroundShellService extends Service {
       session.exitCode = -1;
       session.signal = null;
       session.endedAt = Date.now();
-      appendRing(session.stderr, error.message, this.bufferChars);
+      appendRing(
+        session.stderr,
+        error.message,
+        this.bufferChars,
+        this.getRedactionOverlapChars(),
+      );
     });
     this.sessions.set(handle, session);
-    return snapshot(session);
+    return snapshot(this.runtime, session);
   }
 
   poll(args: {
@@ -186,16 +213,16 @@ export class BackgroundShellService extends Service {
   }): BackgroundShellPollResult {
     const session = this.requireSession(args.conversationId, args.handle);
     return {
-      ...snapshot(session),
-      stdout: readRing(session.stdout, args.stdoutOffset),
-      stderr: readRing(session.stderr, args.stderrOffset),
+      ...snapshot(this.runtime, session),
+      stdout: readRing(this.runtime, session.stdout, args.stdoutOffset),
+      stderr: readRing(this.runtime, session.stderr, args.stderrOffset),
     };
   }
 
   list(conversationId: string): BackgroundShellSessionSnapshot[] {
     return [...this.sessions.values()]
       .filter((session) => session.conversationId === conversationId)
-      .map((session) => snapshot(session));
+      .map((session) => snapshot(this.runtime, session));
   }
 
   write(args: {
@@ -223,7 +250,7 @@ export class BackgroundShellService extends Service {
       );
     }
     session.process.stdin.write(args.stdin);
-    return snapshot(session);
+    return snapshot(this.runtime, session);
   }
 
   async kill(args: {
@@ -232,13 +259,13 @@ export class BackgroundShellService extends Service {
   }): Promise<BackgroundShellSessionSnapshot> {
     const session = this.requireSession(args.conversationId, args.handle);
     await this.killSession(session);
-    return snapshot(session);
+    return snapshot(this.runtime, session);
   }
 
   private async killSession(
     session: BackgroundShellSession,
   ): Promise<BackgroundShellSessionSnapshot> {
-    if (session.status !== "running") return snapshot(session);
+    if (session.status !== "running") return snapshot(this.runtime, session);
     session.status = "killed";
     signalHostProcessGroup(session.process, "SIGTERM");
     try {
@@ -271,7 +298,7 @@ export class BackgroundShellService extends Service {
     coreLogger.debug(
       `${CODING_TOOLS_LOG_PREFIX} background SHELL reaped handle=${session.handle} pid=${session.pid ?? "unknown"}`,
     );
-    return snapshot(session);
+    return snapshot(this.runtime, session);
   }
 
   private ensureCapacity(conversationId: string): void {
@@ -328,30 +355,50 @@ function emptyRing(): StreamRing {
   return { text: "", startOffset: 0, endOffset: 0, truncatedBefore: 0 };
 }
 
-function appendRing(ring: StreamRing, text: string, cap: number): void {
+function appendRing(
+  ring: StreamRing,
+  text: string,
+  cap: number,
+  redactionOverlapChars: number,
+): void {
   if (!text) return;
   ring.text += text;
   ring.endOffset += text.length;
-  if (ring.text.length > cap) {
-    const drop = ring.text.length - cap;
+  ring.truncatedBefore = Math.max(ring.truncatedBefore, ring.endOffset - cap);
+  const storageCap = cap + redactionOverlapChars;
+  if (ring.text.length > storageCap) {
+    const drop = ring.text.length - storageCap;
     ring.text = ring.text.slice(drop);
     ring.startOffset += drop;
-    ring.truncatedBefore = ring.startOffset;
   }
 }
 
 function readRing(
+  runtime: IAgentRuntime,
   ring: StreamRing,
   requestedOffset?: number,
 ): BackgroundShellChunk {
   const offset =
     requestedOffset === undefined || !Number.isFinite(requestedOffset)
-      ? ring.startOffset
+      ? ring.truncatedBefore
       : Math.max(0, Math.floor(requestedOffset));
-  const start = Math.max(offset, ring.startOffset);
+  const start = Math.min(
+    ring.endOffset,
+    Math.max(offset, ring.truncatedBefore),
+  );
   const index = start - ring.startOffset;
+  const redactedFull = redactShellText(runtime, ring.text);
+  const redactedPrefix = redactShellText(runtime, ring.text.slice(0, index));
+  // A credential can straddle the requested offset. The retained overlap lets
+  // full-window redaction see across both the logical cap and chunk boundaries;
+  // if replacement changes the prefix, suppress the ambiguous projection
+  // instead of returning either side of the credential.
+  const canSliceAtRequestedOffset = redactedFull.startsWith(redactedPrefix);
+  const text = canSliceAtRequestedOffset
+    ? redactedFull.slice(redactedPrefix.length)
+    : "[REDACTED:chunk-boundary]";
   return {
-    text: ring.text.slice(index),
+    text,
     startOffset: start,
     endOffset: ring.endOffset,
     truncatedBefore: ring.truncatedBefore,
@@ -359,13 +406,14 @@ function readRing(
 }
 
 function snapshot(
+  runtime: IAgentRuntime,
   session: BackgroundShellSession,
 ): BackgroundShellSessionSnapshot {
   return {
     handle: session.handle,
     conversationId: session.conversationId,
-    command: session.command,
-    cwd: session.cwd,
+    command: redactShellText(runtime, session.command),
+    cwd: redactShellText(runtime, session.cwd),
     pid: session.pid,
     status: session.status,
     exitCode: session.exitCode,

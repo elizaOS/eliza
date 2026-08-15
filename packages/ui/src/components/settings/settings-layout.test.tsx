@@ -51,6 +51,17 @@ describe("SettingsRow", () => {
     );
     expect(screen.getByTestId("wide")).toBeTruthy();
   });
+
+  it("marks a static row current when active", () => {
+    render(
+      <SettingsRow label="This device" active control={<span>Active</span>} />,
+    );
+    const row = screen
+      .getByText("This device")
+      .closest("[aria-current='true']");
+    expect(row).toBeTruthy();
+    expect(row?.className).toContain("bg-accent/10");
+  });
 });
 
 describe("SettingsGroup", () => {
@@ -162,6 +173,26 @@ describe("agent-addressable rows", () => {
     );
     fireEvent.change(input, { target: { value: "abcdefghijkl" } });
     expect(onValueChange).toHaveBeenCalledWith("abcdefghijkl");
+  });
+
+  it("SettingsInputRow renders field help below the input", () => {
+    render(
+      <SettingsInputRow
+        agentId="profile-email"
+        label="Email address"
+        type="email"
+        value="ada@example.com"
+        onValueChange={() => {}}
+        description="Email cannot be changed."
+      />,
+    );
+    const input = screen.getByLabelText("Email address");
+    const help = screen.getByText("Email cannot be changed.");
+    expect(
+      input.compareDocumentPosition(help) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(input.getAttribute("aria-describedby")).toBe("profile-email-help");
+    expect(help.getAttribute("id")).toBe("profile-email-help");
   });
 
   it("SettingsInputRow announces a validation error below the field", () => {

@@ -1,10 +1,10 @@
 /**
- * Shared readiness boundary for screenshots of the landing route. Desktop
- * renders the hero composition; under 640 px the page becomes a full-screen
- * conversation, so the heading is present for assistive tech but not painted.
- * Readiness is therefore fonts, the heading in the DOM, and the demo having
- * rendered messages. Under reduced motion the demo renders its settled intro
- * immediately (phase "settled"); otherwise playback appends within seconds.
+ * Shared readiness boundary for screenshots of the landing route. Every
+ * viewport renders the same phone-first hero; mobile compacts the controls so
+ * the framed conversation can use the remaining display height. Readiness is
+ * fonts, the visible heading, and the demo having rendered messages. Under
+ * reduced motion the demo renders its settled intro immediately (phase
+ * "settled"); otherwise playback appends within seconds.
  */
 
 import { expect, type Page } from "playwright/test";

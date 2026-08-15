@@ -3,6 +3,7 @@
  * Request/Response, no real device.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { DEFAULT_DIRECT_CLOUD_API_BASE_URL } from "./direct-cloud-endpoints";
 import { handleIosLocalAgentRequest } from "./ios-local-agent-kernel";
 
 async function getJson(pathname: string): Promise<unknown> {
@@ -178,7 +179,7 @@ describe("handleIosLocalAgentRequest", () => {
       modelId: "cloud-model",
     });
     expect(fetchMock).toHaveBeenCalledWith(
-      "https://api.elizacloud.ai/api/v1/eliza/agents/agent-1/bridge",
+      `${DEFAULT_DIRECT_CLOUD_API_BASE_URL}/api/v1/eliza/agents/agent-1/bridge`,
       expect.objectContaining({
         method: "POST",
         headers: expect.objectContaining({

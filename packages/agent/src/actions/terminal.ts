@@ -521,8 +521,6 @@ export const terminalAction: Action = {
       // text outranks and prepends to the evaluator's prose in the final-message
       // precedence, which shipped bare command output (e.g. a `git ls-remote`
       // SHA line) as a leading junk paragraph before the natural reply. Only
-      // the action-owned deterministic sentences (failure, timeout,
-      // empty-stdout success) keep the verbatim-relay promise.
       verifiedUserFacing: cleanStdout.length === 0,
       effectReceipts: [effectReceipt],
       userFacingEffectReceiptIds: [effectReceipt.receiptId],

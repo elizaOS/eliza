@@ -82,7 +82,7 @@ describe("Eliza contact links", () => {
           },
         },
       }),
-    ).resolves.toBe("opened");
+    ).resolves.toBe("handoff");
     expect(location.href).toBe(buildElizaSmsHref());
     expect(clipboardWrites).toEqual([]);
   });

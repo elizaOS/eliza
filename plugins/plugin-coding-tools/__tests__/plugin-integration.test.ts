@@ -222,6 +222,7 @@ describe("@elizaos/plugin-coding-tools — end-to-end smoke", () => {
       agentId: "00000000-0000-0000-0000-000000000000" as UUID,
       getSetting: (_key: string) => undefined,
       getService: (key: string) => services.get(key) ?? null,
+      redactSecrets: (text: string) => text,
     } as IAgentRuntime;
 
     const fileState = await FileStateService.start(runtime);

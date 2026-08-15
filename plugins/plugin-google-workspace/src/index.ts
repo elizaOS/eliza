@@ -2,9 +2,9 @@
  * Plugin entry for @elizaos/plugin-google-workspace: the barrel that re-exports every
  * public symbol and defines `googlePlugin`. The plugin registers
  * `GoogleWorkspaceService` (Gmail/Calendar/Drive/Meet over one account-scoped
- * OAuth grant) plus the Google Chat connector services (`GoogleChatService`,
- * `GoogleChatWorkflowCredentialProvider` — service-account auth, MessageConnector
- * messaging). At init it attaches both connector-account providers to the
+ * OAuth grant) plus the Google Chat connector service (`GoogleChatService` —
+ * service-account auth, MessageConnector messaging). At init it attaches both
+ * connector-account providers to the
  * runtime's `ConnectorAccountManager` so the generic connector HTTP routes can
  * manage accounts and drive OAuth; registering the Google provider also mounts
  * the Gmail send MessageConnector (`source: "gmail"`, aliases email/mail) so
@@ -17,7 +17,6 @@ import type { IAgentRuntime, Plugin } from "@elizaos/core";
 import { getConnectorAccountManager, logger } from "@elizaos/core";
 import { createGoogleChatConnectorAccountProvider } from "./chat/connector-account-provider.js";
 import { GoogleChatService } from "./chat/service.js";
-import { GoogleChatWorkflowCredentialProvider } from "./chat/workflow-credential-provider.js";
 import { createGoogleConnectorAccountProvider } from "./connector-account-provider.js";
 import { GoogleWorkspaceService } from "./service.js";
 import { GOOGLE_SERVICE_NAME } from "./types.js";
@@ -45,13 +44,13 @@ export { GoogleGmailAdapter } from "./lifeops-message-adapter.js";
 export * from "./meet.js";
 export * from "./scopes.js";
 export * from "./types.js";
-export { GoogleChatService, GoogleChatWorkflowCredentialProvider, GoogleWorkspaceService };
+export { GoogleChatService, GoogleWorkspaceService };
 
 export const googlePlugin: Plugin = {
   name: GOOGLE_SERVICE_NAME,
   description:
     "Google Workspace integration for Gmail, Calendar, Drive, Meet, and Chat with account-scoped OAuth (Chat uses service-account auth)",
-  services: [GoogleWorkspaceService, GoogleChatService, GoogleChatWorkflowCredentialProvider],
+  services: [GoogleWorkspaceService, GoogleChatService],
   actions: [],
   providers: [],
   tests: [],
@@ -66,11 +65,6 @@ export const googlePlugin: Plugin = {
 
   async dispose(runtime: IAgentRuntime) {
     await runtime.getService<GoogleChatService>(GoogleChatService.serviceType)?.stop();
-    await runtime
-      .getService<GoogleChatWorkflowCredentialProvider>(
-        GoogleChatWorkflowCredentialProvider.serviceType
-      )
-      ?.stop();
   },
 
   init: async (config: Record<string, string>, runtime: IAgentRuntime): Promise<void> => {

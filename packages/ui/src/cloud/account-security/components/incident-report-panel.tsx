@@ -1,16 +1,19 @@
 /**
- * Report a security incident: POST /api/v1/security/incident, falling back to a
- * mailto: when the endpoint isn't built yet.
+ * Security incident report form. POSTs /api/v1/security/incident and falls
+ * back to mailto:security@elizaos.ai when that route is not shipped. Mounted
+ * on the cloud-security settings section as a labelled SettingsTextareaRow.
  */
 
 import { useState } from "react";
 import { toast } from "sonner";
 import {
-  BrandButton,
-  BrandCard,
-  CornerBrackets,
-  Textarea,
-} from "../../../cloud-ui";
+  SettingsActionButton,
+  SettingsTextareaRow,
+} from "../../../components/settings/settings-agent-rows";
+import {
+  SettingsGroup,
+  SettingsStack,
+} from "../../../components/settings/settings-layout";
 import { ApiError, apiFetch } from "../../lib/api-client";
 import { useCloudT } from "../../shell/CloudI18nProvider";
 
@@ -20,6 +23,13 @@ export function IncidentReportPanel() {
   const t = useCloudT();
   const [details, setDetails] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const submitLabel = submitting
+    ? t("cloud.incidentReport.submitting", {
+        defaultValue: "Submitting…",
+      })
+    : t("cloud.incidentReport.submit", {
+        defaultValue: "Submit incident report",
+      });
 
   const submit = async () => {
     if (!details.trim()) {
@@ -44,13 +54,14 @@ export function IncidentReportPanel() {
       setDetails("");
     } catch (err) {
       if (err instanceof ApiError && err.status === 404) {
-        // Server endpoint not built yet — fall back to mailto.
+        // error-policy:J4 endpoint not shipped; open mailto instead of a fake success
         const mailto = `mailto:${SECURITY_EMAIL}?subject=${encodeURIComponent(
           "Security incident report",
         )}&body=${encodeURIComponent(details.trim())}`;
         window.location.href = mailto;
         return;
       }
+      // error-policy:J4 surface submit failure as a toast, not a fabricated success
       const message = err instanceof Error ? err.message : String(err);
       toast.error(
         t("cloud.incidentReport.failedToSubmit", {
@@ -64,16 +75,13 @@ export function IncidentReportPanel() {
   };
 
   return (
-    <BrandCard className="relative">
-      <CornerBrackets size="sm" className="opacity-50" />
-      <div className="relative z-10 space-y-3">
-        <div>
-          <h3 className="text-lg font-bold text-txt-strong">
-            {t("cloud.incidentReport.title", {
-              defaultValue: "Report a security incident",
-            })}
-          </h3>
-          <p className="text-sm text-muted">
+    <SettingsStack data-testid="cloud-incident-report">
+      <SettingsGroup
+        title={t("cloud.incidentReport.title", {
+          defaultValue: "Report a security incident",
+        })}
+        description={
+          <>
             {t("cloud.incidentReport.emailPre", { defaultValue: "Email" })}{" "}
             <a
               href={`mailto:${SECURITY_EMAIL}`}
@@ -85,33 +93,40 @@ export function IncidentReportPanel() {
               defaultValue:
                 "or submit details below. Encrypted disclosures welcomed.",
             })}
-          </p>
-        </div>
-        <Textarea
+          </>
+        }
+      >
+        <SettingsTextareaRow
+          agentId="cloud-incident-details"
+          group="cloud-incident"
+          label={t("cloud.incidentReport.detailsLabel", {
+            defaultValue: "Incident details",
+          })}
           value={details}
-          onChange={(e) => setDetails(e.target.value)}
+          onValueChange={setDetails}
           placeholder={t("cloud.incidentReport.placeholder", {
             defaultValue:
               "What happened? Include affected URLs, timestamps, and steps to reproduce.",
           })}
           rows={5}
           disabled={submitting}
+          textareaClassName="block w-full resize-y font-sans text-sm text-txt"
         />
-        <BrandButton
-          size="sm"
-          variant="primary"
-          onClick={() => void submit()}
-          disabled={submitting}
-        >
-          {submitting
-            ? t("cloud.incidentReport.submitting", {
-                defaultValue: "Submitting…",
-              })
-            : t("cloud.incidentReport.submit", {
-                defaultValue: "Submit incident report",
-              })}
-        </BrandButton>
-      </div>
-    </BrandCard>
+        <div className="pt-1">
+          <SettingsActionButton
+            agentId="cloud-incident-submit"
+            agentGroup="cloud-incident"
+            agentLabel={submitLabel}
+            type="button"
+            variant="default"
+            disabled={submitting}
+            onClick={() => void submit()}
+            className="h-11 w-full rounded-md px-4 text-sm sm:w-fit"
+          >
+            {submitLabel}
+          </SettingsActionButton>
+        </div>
+      </SettingsGroup>
+    </SettingsStack>
   );
 }

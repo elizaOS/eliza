@@ -145,9 +145,12 @@ mock.module("./db/repositories/organization-invites", () => ({
   },
 }));
 
-mock.module("./db/repositories/users", () => ({
+mock.module("../db/repositories/users", () => ({
   usersRepository: {
     delete: async () => undefined,
+    findPendingPhoneTelegramPersonalAccountConvergence: async () => ({
+      status: "not_found" as const,
+    }),
   },
 }));
 
@@ -186,7 +189,6 @@ describe("syncUserFromSteward — eager Steward tenant provisioning (#14645)", (
       ensureStewardTenantCalls.push(organizationId);
       return { tenantId: `elizacloud-${organizationId}`, apiKey: "tenant-key", isNew: true };
     };
-    process.env.INITIAL_FREE_CREDITS = "5";
     getByStewardIdImpl = async () => undefined;
   });
 
