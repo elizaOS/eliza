@@ -3148,6 +3148,12 @@ async function handleRequest(
   }
 
   // ── View routes (/api/views/*) ────────────────────────────────────────────
+  const viewsCallerAuthorization = resolveInboxRequestAuthorization(
+    req,
+    method,
+    pathname,
+    await resolveHostSessionAuthorization(),
+  );
   if (
     await handleViewsRoutes({
       req,
@@ -3160,6 +3166,7 @@ async function handleRequest(
       broadcastWs: state.broadcastWs ?? undefined,
       broadcastWsToClientId: state.broadcastWsToClientId ?? undefined,
       runtime: state.runtime,
+      callerAuthorization: viewsCallerAuthorization,
     })
   ) {
     return;
