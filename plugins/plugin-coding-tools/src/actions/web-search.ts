@@ -51,8 +51,14 @@ export function isCodingWebSearchEnabled(): boolean {
 
 export const webSearchAction: Action = {
   name: "WEB_SEARCH",
-  contexts: [...CODING_TOOLS_CONTEXTS],
-  contextGate: { anyOf: [...CODING_TOOLS_CONTEXTS] },
+  // "web" belongs alongside the coding contexts: stage-1's routing vocabulary
+  // names `web` for live-lookup turns, and an action literally named
+  // WEB_SEARCH/WEB_FETCH being unreachable from the `web` context left
+  // candidate-less web turns with no web tool on the planner surface
+  // (observed live: a weather+note composite surfaced only the CONTACT
+  // family).
+  contexts: [...CODING_TOOLS_CONTEXTS, "web"],
+  contextGate: { anyOf: [...CODING_TOOLS_CONTEXTS, "web"] },
   roleGate: { minRole: "ADMIN" },
   similes: ["SEARCH_WEB", "WEB_QUERY", "FIND_ONLINE", "SEARCH_INTERNET"],
   routingHint:
