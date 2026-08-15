@@ -619,6 +619,9 @@ jobs:
             exit 1
           fi
 
+          pending_staging_secret_names=()
+          declare -A pending_staging_secret_set=()
+
           publish_secret() {
             local name="$1"
             local value="${!name:-}"
@@ -655,16 +658,64 @@ jobs:
               echo "::notice::$name is not configured; skipping"
               return 0
             fi
+            if [ "$DEPLOY_ENVIRONMENT" = "staging" ]; then
+              if [ -z "${pending_staging_secret_set[$name]+x}" ]; then
+                pending_staging_secret_names+=("$name")
+                pending_staging_secret_set["$name"]=1
+              fi
+              return 0
+            fi
             for attempt in 1 2 3; do
-              if printf '%s' "$value" | bunx wrangler versions secret put "$name" ${{ steps.env.outputs.wrangler_args }}; then
+              if printf '%s' "$value" | bunx wrangler secret put "$name" ${{ steps.env.outputs.wrangler_args }}; then
                 return 0
               fi
               if [ "$attempt" -lt 3 ]; then
-                echo "::warning::wrangler versions secret put $name failed on attempt $attempt; retrying in 10s"
+                echo "::warning::wrangler secret put $name failed on attempt $attempt; retrying in 10s"
                 sleep 10
               fi
             done
-            echo "::error::wrangler versions secret put $name failed after 3 attempts"
+            echo "::error::wrangler secret put $name failed after 3 attempts"
+            return 1
+          }
+
+          publish_pending_staging_secrets() {
+            if [ "$DEPLOY_ENVIRONMENT" != "staging" ]; then
+              if [ "${#pending_staging_secret_names[@]}" -ne 0 ]; then
+                echo "::error::Production secrets must not enter version-aware staging preparation"
+                return 1
+              fi
+              return 0
+            fi
+            if [ "${#pending_staging_secret_names[@]}" -eq 0 ]; then
+              return 0
+            fi
+            if [ "${#pending_staging_secret_names[@]}" -gt 100 ]; then
+              echo "::error::Staging Worker secret batch exceeds Cloudflare's 100-secret request limit"
+              return 1
+            fi
+            for attempt in 1 2 3; do
+              if node -e '
+                const names = process.argv.slice(1);
+                const values = Object.fromEntries(names.map((name) => {
+                  const value = process.env[name];
+                  if (value === undefined || value.trim().length === 0) {
+                    throw new Error(`Queued staging Worker secret ${name} is unavailable`);
+                  }
+                  return [name, value];
+                }));
+                process.stdout.write(JSON.stringify(values));
+              ' "${pending_staging_secret_names[@]}" \
+                | bunx wrangler versions secret bulk ${{ steps.env.outputs.wrangler_args }}
+              then
+                echo "Prepared ${#pending_staging_secret_names[@]} staging Worker secret binding(s) in one version."
+                return 0
+              fi
+              if [ "$attempt" -lt 3 ]; then
+                echo "::warning::wrangler versions secret bulk failed on attempt $attempt; retrying in 10s"
+                sleep 10
+              fi
+            done
+            echo "::error::wrangler versions secret bulk failed after 3 attempts"
             return 1
           }
 
@@ -714,8 +765,12 @@ jobs:
             # Unset: use a names-only inventory before and after deletion so
             # absence is success without depending on Wrangler error prose.
             local result
+            local -a version_args=()
+            if [ "$DEPLOY_ENVIRONMENT" = "staging" ]; then
+              version_args=(--versions)
+            fi
             if ! result=$(node "$CHECKOUT_DIR/packages/cloud/scripts/ensure-worker-secret-absent.mjs" \
-              --versions "$name" ${{ steps.env.outputs.wrangler_args }}); then
+              "${version_args[@]}" "$name" ${{ steps.env.outputs.wrangler_args }}); then
               echo "::error::$name is unset but its absence could not be confirmed"
               return 1
             fi
@@ -815,6 +870,11 @@ jobs:
           do
             publish_toggle_secret "$name" || exit 1
           done
+
+          # Preparing every configured staging value in one version preserves
+          # Cloudflare's bounded rollback history and avoids partial put chains.
+          # Production intentionally retains immediate served-secret mutation.
+          publish_pending_staging_secrets || exit 1
 
           # Keep production voice fail-closed against its currently served
           # credential set. The post-deploy check below verifies the complete

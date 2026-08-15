@@ -593,9 +593,20 @@ describe("canonical cloud deployment environment contract", () => {
     }
     expect(publish.run).toContain("managed_worker_provisioning_secrets=(");
     expect(publish.run).toContain('publish_secret "$name" || exit 1');
-    expect(publish.run).toContain('bunx wrangler versions secret put "$name"');
-    expect(publish.run).toContain('--versions "$name"');
-    expect(publish.run).not.toContain('bunx wrangler secret put "$name"');
+    expect(publish.run).toContain("pending_staging_secret_names=()");
+    expect(publish.run).toContain('pending_staging_secret_names+=("$name")');
+    expect(publish.run).toContain("wrangler versions secret bulk");
+    expect(publish.run).toContain("publish_pending_staging_secrets || exit 1");
+    expect(publish.run).toContain('bunx wrangler secret put "$name"');
+    expect(publish.run).not.toContain(
+      'bunx wrangler versions secret put "$name"',
+    );
+    expect(publish.run).toContain("version_args=(--versions)");
+    expect(publish.run).toContain('"$' + '{version_args[@]}" "$name"');
+    expect(publish.run).toContain(
+      "Production secrets must not enter version-aware staging preparation",
+    );
+    expect(publish.run).toContain("bunx wrangler@4.100.0 secret list");
     expect(publish.run).toContain(
       'echo "::notice::$name is not configured; skipping"',
     );
