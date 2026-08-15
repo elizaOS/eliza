@@ -8,8 +8,39 @@
 import type { IAgentRuntime, Memory } from "@elizaos/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ClientBase } from "./base";
+import type { AuthenticatedTwitterSession } from "./client/auth";
 import { TwitterDirectMessageClient } from "./direct-messages";
 import type { TwitterClientState } from "./types";
+
+function authenticatedTwitterClient(
+  userId: string,
+  v2: object,
+  isCurrent: () => boolean = () => true,
+) {
+  const session = {
+    client: { v2 },
+    profile: {
+      userId,
+      username: "elizamakesmagic",
+      location: "",
+    },
+    revision: 1,
+  } as unknown as AuthenticatedTwitterSession;
+  return {
+    withAuthenticatedSession: async <T>(
+      operation: (active: AuthenticatedTwitterSession) => Promise<T>,
+    ): Promise<T> => operation(session),
+    isAuthenticatedSessionCurrent: () => isCurrent(),
+  };
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((settle) => {
+    resolve = settle;
+  });
+  return { promise, resolve };
+}
 
 afterEach(() => {
   vi.useRealTimers();
@@ -73,12 +104,11 @@ describe("TwitterDirectMessageClient", () => {
     } as unknown as IAgentRuntime;
     const client = {
       accountId: "agent",
-      profile: { id: "222", username: "elizamakesmagic" },
-      twitterClient: {
-        getV2Client: async () => ({
-          v2: { listDmEvents, sendDmToParticipant },
-        }),
-      },
+      profile: { id: "stale-profile", username: "stale-user" },
+      twitterClient: authenticatedTwitterClient("222", {
+        listDmEvents,
+        sendDmToParticipant,
+      }),
     } as unknown as ClientBase;
     const dmClient = new TwitterDirectMessageClient(client, runtime, {
       TWITTER_DRY_RUN: "false",
@@ -111,6 +141,87 @@ describe("TwitterDirectMessageClient", () => {
       text: "Your next event is at 2 PM.",
     });
     expect(cache.get("twitter/agent/222/dm_cursor")).toBe("501");
+    await dmClient.stop();
+  });
+
+  it("does not send or advance the cursor when credentials rotate during personal routing", async () => {
+    vi.useFakeTimers();
+    const route = deferred<Response>();
+    const fetchMock = vi.fn(() => route.promise);
+    vi.stubGlobal("fetch", fetchMock);
+    const event = {
+      id: "601",
+      sender_id: "111",
+      dm_conversation_id: "conversation-1",
+      text: "private question",
+      event_type: "MessageCreate",
+    };
+    const sendA = vi.fn();
+    const sendB = vi.fn();
+    const cache = new Map<string, string>([
+      ["twitter/agent/account-a/dm_cursor", "600"],
+    ]);
+    const runtime = {
+      agentId: "00000000-0000-0000-0000-000000000001",
+      getCache: async (key: string) => cache.get(key),
+      setCache: async (key: string, value: string) => {
+        cache.set(key, value);
+      },
+      deleteCache: async (key: string) => cache.delete(key),
+      getMemoryById: async () => null,
+      createMemory: vi.fn(async () => undefined),
+      ensureWorldExists: vi.fn(async () => undefined),
+      updateWorld: vi.fn(async () => undefined),
+      ensureRoomExists: vi.fn(async () => undefined),
+      ensureConnection: vi.fn(async () => undefined),
+      messageService: { handleMessage: vi.fn() },
+      reportError: vi.fn(),
+      getSetting: vi.fn((key: string) =>
+        key === "TWITTER_BROKER_TOKEN" ? "test-broker-token" : null,
+      ),
+    } as unknown as IAgentRuntime;
+    let current = true;
+    const client = {
+      accountId: "agent",
+      profile: { id: "account-b", username: "stale-account-b" },
+      twitterClient: authenticatedTwitterClient(
+        "account-a",
+        {
+          listDmEvents: async () => ({ events: [event] }),
+          sendDmToParticipant: sendA,
+        },
+        () => current,
+      ),
+    } as unknown as ClientBase;
+    const dmClient = new TwitterDirectMessageClient(client, runtime, {
+      TWITTER_DRY_RUN: "false",
+      TWITTER_DM_POLL_INTERVAL_SECONDS: "15",
+      TWITTER_PERSONAL_DM_ROUTER_URL:
+        "https://cloud.eliza.app/api/v1/twitter/personal-message",
+    });
+
+    const start = dmClient.start();
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledOnce());
+    current = false;
+    route.resolve(
+      new Response(
+        JSON.stringify({
+          success: true,
+          data: { reply: "should not cross accounts" },
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      ),
+    );
+    await start;
+
+    expect(sendA).not.toHaveBeenCalled();
+    expect(sendB).not.toHaveBeenCalled();
+    expect(cache.get("twitter/agent/account-a/dm_cursor")).toBe("600");
+    expect(runtime.reportError).toHaveBeenCalledWith(
+      "XDirectMessages.poll",
+      expect.objectContaining({ code: "X_AUTH_SESSION_ROTATED" }),
+      { accountId: "agent" },
+    );
     await dmClient.stop();
   });
 
@@ -201,11 +312,10 @@ describe("TwitterDirectMessageClient", () => {
     const client = {
       accountId: "agent",
       profile: { id: "agent-user-id", username: "elizamakesmagic" },
-      twitterClient: {
-        getV2Client: async () => ({
-          v2: { listDmEvents, sendDmToParticipant },
-        }),
-      },
+      twitterClient: authenticatedTwitterClient("agent-user-id", {
+        listDmEvents,
+        sendDmToParticipant,
+      }),
     } as unknown as ClientBase;
     const state = {
       TWITTER_DRY_RUN: "false",
@@ -326,11 +436,10 @@ describe("TwitterDirectMessageClient", () => {
     const client = {
       accountId: "agent",
       profile: { id: "agent-user-id", username: "elizamakesmagic" },
-      twitterClient: {
-        getV2Client: async () => ({
-          v2: { listDmEvents, sendDmToParticipant },
-        }),
-      },
+      twitterClient: authenticatedTwitterClient("agent-user-id", {
+        listDmEvents,
+        sendDmToParticipant,
+      }),
     } as unknown as ClientBase;
     const state = {
       TWITTER_DRY_RUN: "false",
@@ -404,11 +513,10 @@ describe("TwitterDirectMessageClient", () => {
     const client = {
       accountId: "agent",
       profile: { id: "agent-user-id", username: "elizamakesmagic" },
-      twitterClient: {
-        getV2Client: async () => ({
-          v2: { listDmEvents, sendDmToParticipant },
-        }),
-      },
+      twitterClient: authenticatedTwitterClient("agent-user-id", {
+        listDmEvents,
+        sendDmToParticipant,
+      }),
     } as unknown as ClientBase;
     const state = {
       TWITTER_DRY_RUN: "false",
@@ -498,11 +606,10 @@ describe("TwitterDirectMessageClient", () => {
     const client = {
       accountId: "agent",
       profile: { id: "agent-user-id", username: "elizamakesmagic" },
-      twitterClient: {
-        getV2Client: async () => ({
-          v2: { listDmEvents: async () => paginator, sendDmToParticipant },
-        }),
-      },
+      twitterClient: authenticatedTwitterClient("agent-user-id", {
+        listDmEvents: async () => paginator,
+        sendDmToParticipant,
+      }),
     } as unknown as ClientBase;
     const dmClient = new TwitterDirectMessageClient(client, runtime, {
       TWITTER_DRY_RUN: "false",
@@ -567,14 +674,10 @@ describe("TwitterDirectMessageClient", () => {
     const client = {
       accountId: "agent",
       profile: { id: "agent-user-id", username: "elizamakesmagic" },
-      twitterClient: {
-        getV2Client: async () => ({
-          v2: {
-            listDmEvents: async () => ({ events: [event] }),
-            sendDmToParticipant,
-          },
-        }),
-      },
+      twitterClient: authenticatedTwitterClient("agent-user-id", {
+        listDmEvents: async () => ({ events: [event] }),
+        sendDmToParticipant,
+      }),
     } as unknown as ClientBase;
     const dmClient = new TwitterDirectMessageClient(client, runtime, {
       TWITTER_DRY_RUN: "false",
@@ -639,14 +742,10 @@ describe("TwitterDirectMessageClient", () => {
     const client = {
       accountId: "agent",
       profile: { id: "agent-user-id", username: "elizamakesmagic" },
-      twitterClient: {
-        getV2Client: async () => ({
-          v2: {
-            listDmEvents: async () => ({ events: [event] }),
-            sendDmToParticipant,
-          },
-        }),
-      },
+      twitterClient: authenticatedTwitterClient("agent-user-id", {
+        listDmEvents: async () => ({ events: [event] }),
+        sendDmToParticipant,
+      }),
     } as unknown as ClientBase;
     const dmClient = new TwitterDirectMessageClient(client, runtime, {
       TWITTER_DRY_RUN: "false",
@@ -711,14 +810,10 @@ describe("TwitterDirectMessageClient", () => {
     const client = {
       accountId: "agent",
       profile: { id: "agent-user-id", username: "elizamakesmagic" },
-      twitterClient: {
-        getV2Client: async () => ({
-          v2: {
-            listDmEvents: async () => ({ events: [event] }),
-            sendDmToParticipant,
-          },
-        }),
-      },
+      twitterClient: authenticatedTwitterClient("agent-user-id", {
+        listDmEvents: async () => ({ events: [event] }),
+        sendDmToParticipant,
+      }),
     } as unknown as ClientBase;
     const dmClient = new TwitterDirectMessageClient(client, runtime, {
       TWITTER_DRY_RUN: "false",
@@ -788,14 +883,10 @@ describe("TwitterDirectMessageClient", () => {
     const client = {
       accountId: "agent",
       profile: { id: "agent-user-id", username: "elizamakesmagic" },
-      twitterClient: {
-        getV2Client: async () => ({
-          v2: {
-            listDmEvents: async () => ({ events: [event] }),
-            sendDmToParticipant,
-          },
-        }),
-      },
+      twitterClient: authenticatedTwitterClient("agent-user-id", {
+        listDmEvents: async () => ({ events: [event] }),
+        sendDmToParticipant,
+      }),
     } as unknown as ClientBase;
     const dmClient = new TwitterDirectMessageClient(client, runtime, {
       TWITTER_DRY_RUN: "false",
@@ -856,14 +947,10 @@ describe("TwitterDirectMessageClient", () => {
     const client = {
       accountId: "agent",
       profile: { id: "agent-user-id", username: "elizamakesmagic" },
-      twitterClient: {
-        getV2Client: async () => ({
-          v2: {
-            listDmEvents: async () => ({ events: [event] }),
-            sendDmToParticipant,
-          },
-        }),
-      },
+      twitterClient: authenticatedTwitterClient("agent-user-id", {
+        listDmEvents: async () => ({ events: [event] }),
+        sendDmToParticipant,
+      }),
     } as unknown as ClientBase;
     const dmClient = new TwitterDirectMessageClient(client, runtime, {
       TWITTER_DRY_RUN: "false",

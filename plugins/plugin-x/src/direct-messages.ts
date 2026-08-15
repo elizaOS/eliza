@@ -15,14 +15,17 @@ import {
   ChannelType,
   type Content,
   createUniqueUuid,
+  ElizaError,
   type HandlerCallback,
   type IAgentRuntime,
   logger,
   type Memory,
 } from "@elizaos/core";
 import type { ClientBase } from "./base";
+import type { AuthenticatedTwitterSession } from "./client/auth";
 import type { TwitterClientState } from "./types";
 import { createMemorySafe, reconcileTwitterWorld } from "./utils/memory";
+import { normalizeXReceiptId } from "./utils/provider-receipt";
 import { getSetting } from "./utils/settings";
 
 interface DirectMessageEvent {
@@ -198,17 +201,27 @@ export class TwitterDirectMessageClient {
   }
 
   private async processNewMessages(): Promise<void> {
-    const profile = this.client.profile;
-    if (!profile?.id) {
-      throw new Error("X DM polling requires an authenticated profile.");
+    await this.client.twitterClient.withAuthenticatedSession((session) =>
+      this.processNewMessagesForSession(session),
+    );
+  }
+
+  private async processNewMessagesForSession(
+    session: AuthenticatedTwitterSession,
+  ): Promise<void> {
+    const ownUserId = session.profile.userId;
+    if (!ownUserId) {
+      throw new ElizaError(
+        "X DM polling requires an authenticated profile identifier",
+        { code: "X_ME_FETCH_FAILED" },
+      );
     }
 
-    const stateKeyPrefix = `twitter/${this.client.accountId}/${profile.id}`;
+    const stateKeyPrefix = `twitter/${this.client.accountId}/${ownUserId}`;
     const cursorKey = `${stateKeyPrefix}/dm_cursor`;
     const cursor = (await this.runtime.getCache<string>(cursorKey)) ?? "";
 
-    const api = await this.client.twitterClient.getV2Client();
-    const page = (await api.v2.listDmEvents({
+    const page = (await session.client.v2.listDmEvents({
       max_results: 50,
       "dm_event.fields": [
         "id",
@@ -261,6 +274,7 @@ export class TwitterDirectMessageClient {
     const events = collectEvents().sort((left, right) =>
       compareEventIds(left.id, right.id),
     );
+    this.assertSessionCurrent(session, "while direct messages were being read");
     if (events.length === 0) return;
 
     const newestId = events[events.length - 1]?.id;
@@ -284,7 +298,7 @@ export class TwitterDirectMessageClient {
       }
       if (
         !event.sender_id ||
-        event.sender_id === profile.id ||
+        event.sender_id === ownUserId ||
         !event.text?.trim()
       ) {
         await this.runtime.setCache(cursorKey, event.id);
@@ -297,7 +311,10 @@ export class TwitterDirectMessageClient {
         event as DirectMessageEvent & { id: string; sender_id: string },
         users.get(event.sender_id),
         stateKeyPrefix,
+        session,
+        ownUserId,
       );
+      this.assertSessionCurrent(session, "before advancing the DM cursor");
       await this.runtime.setCache(cursorKey, event.id);
     }
   }
@@ -306,6 +323,8 @@ export class TwitterDirectMessageClient {
     event: DirectMessageEvent & { id: string; sender_id: string },
     user: { id: string; username?: string; name?: string } | undefined,
     stateKeyPrefix: string,
+    session: AuthenticatedTwitterSession,
+    ownUserId: string,
   ): Promise<void> {
     // Delivery settlement is tracked separately from inbound-memory existence:
     // the marker is written only after the reply round-trip finished, so a
@@ -416,6 +435,10 @@ export class TwitterDirectMessageClient {
         return [];
       }
       egressAttempted = true;
+      this.assertSessionCurrent(
+        session,
+        "before the direct-message reply was sent",
+      );
       if (this.isDryRun) {
         logger.info(
           { src: "plugin:x", senderId, text },
@@ -424,18 +447,31 @@ export class TwitterDirectMessageClient {
         return [];
       }
 
-      const api = await this.client.twitterClient.getV2Client();
       const isGroup = (event.participant_ids?.length ?? 0) > 2;
       let sent: unknown;
       // X's DM create endpoints do not accept an idempotency key. Persist a
       // no-replay barrier before the request so a crash, timeout, or receipt
       // persistence failure cannot cause a second externally visible reply.
       // An explicit provider rejection clears the barrier below and may retry.
-      await this.runtime.setCache(settledKey, "egress_started");
+      try {
+        await this.runtime.setCache(settledKey, "egress_started");
+      } catch (error) {
+        deliveryError = error;
+        throw error;
+      }
+      if (!this.isSessionCurrent(session)) {
+        await this.runtime.deleteCache(settledKey);
+        deliveryError = this.sessionRotationError(
+          "before the direct-message reply was sent",
+        );
+        throw deliveryError;
+      }
       try {
         sent = isGroup
-          ? await api.v2.sendDmInConversation(conversationId, { text })
-          : await api.v2.sendDmToParticipant(senderId, { text });
+          ? await session.client.v2.sendDmInConversation(conversationId, {
+              text,
+            })
+          : await session.client.v2.sendDmToParticipant(senderId, { text });
       } catch (error) {
         // error-policy:J2 explicit HTTP rejection proves X did not accept the
         // send, so reopen it for a later retry. Transport failures are
@@ -452,7 +488,9 @@ export class TwitterDirectMessageClient {
         data?: { dm_event_id?: string };
         dm_event_id?: string;
       };
-      const sentId = sentResult.data?.dm_event_id ?? sentResult.dm_event_id;
+      const sentId = normalizeXReceiptId(
+        sentResult.data?.dm_event_id ?? sentResult.dm_event_id,
+      );
       await this.runtime.setCache(
         settledKey,
         sentId ? `delivered:${sentId}` : "delivered",
@@ -509,9 +547,13 @@ export class TwitterDirectMessageClient {
 
     const personalRouterUrl = this.personalDmRouterUrl();
     if (personalRouterUrl) {
+      this.assertSessionCurrent(
+        session,
+        "before the direct message was routed",
+      );
       await createMemorySafe(this.runtime, inboundMemory, "messages");
       const reply = await this.routePersonalDm({
-        recipientTwitterUserId: this.client.profile?.id ?? "",
+        recipientTwitterUserId: ownUserId,
         senderTwitterUserId: senderId,
         senderUsername: username,
         displayName,
@@ -535,8 +577,28 @@ export class TwitterDirectMessageClient {
         ? deliveryError
         : new Error(String(deliveryError));
     }
+    this.assertSessionCurrent(session, "before the direct message was settled");
     if (!(await this.runtime.getCache<string>(settledKey))) {
       await this.runtime.setCache(settledKey, "settled_without_reply");
+    }
+  }
+
+  private isSessionCurrent(session: AuthenticatedTwitterSession): boolean {
+    return this.client.twitterClient.isAuthenticatedSessionCurrent(session);
+  }
+
+  private sessionRotationError(phase: string): ElizaError {
+    return new ElizaError(`X credentials rotated ${phase}`, {
+      code: "X_AUTH_SESSION_ROTATED",
+    });
+  }
+
+  private assertSessionCurrent(
+    session: AuthenticatedTwitterSession,
+    phase: string,
+  ): void {
+    if (!this.isSessionCurrent(session)) {
+      throw this.sessionRotationError(phase);
     }
   }
 }
