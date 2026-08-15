@@ -32,6 +32,21 @@ function deferred<T>() {
   return { promise, resolve, reject };
 }
 
+class FakeVisibilitySource {
+  hidden = false;
+  listener: (() => void) | null = null;
+  addListener = (listener: () => void): void => {
+    this.listener = listener;
+  };
+  removeListener = (listener: () => void): void => {
+    if (this.listener === listener) this.listener = null;
+  };
+  isHidden = (): boolean => this.hidden;
+  emit(): void {
+    this.listener?.();
+  }
+}
+
 afterEach(() => {
   vi.unstubAllGlobals();
   FakeVoiceAudioWorkletNode.reset();
@@ -423,6 +438,108 @@ describe("voice-session streaming PCM playback sink (ScriptProcessor path)", () 
     expect(pb.needsUnlock).toBe(false);
     const out = scriptNodeOf(ctx).render(4);
     for (let i = 0; i < 4; i += 1) expect(out[i]).toBeCloseTo(0.5, 2);
+    await pb.stop();
+  });
+
+  it("resumes retained playback when a mobile WebView returns to the foreground", async () => {
+    class SuspendablePlaybackContext extends FakePlaybackAudioContext {
+      async suspend(): Promise<void> {
+        this.state = "suspended";
+      }
+    }
+    const visibility = new FakeVisibilitySource();
+    const ctx = new SuspendablePlaybackContext();
+    const pb = await createVoiceSessionPlayback({
+      createAudioContext: () => ctx,
+      visibility,
+    });
+    await pb.unlock();
+    const sequence = pb.enqueue(pcmFrame(0.5, 4));
+
+    visibility.hidden = true;
+    visibility.emit();
+    await Promise.resolve();
+    expect(ctx.state).toBe("suspended");
+
+    visibility.hidden = false;
+    visibility.emit();
+    await vi.waitFor(() => expect(pb.unlocked).toBe(true));
+    expect(pb.needsUnlock).toBe(false);
+    const out = scriptNodeOf(ctx).render(8);
+    for (let i = 0; i < 4; i += 1) expect(out[i]).toBeCloseTo(0.5, 2);
+    expect(sequence).toBeTypeOf("number");
+    await pb.stop();
+    expect(visibility.listener).toBeNull();
+  });
+
+  it("retains foreground audio and requests a gesture when automatic resume fails", async () => {
+    class GestureLockedPlaybackContext extends FakePlaybackAudioContext {
+      failResume = false;
+      async suspend(): Promise<void> {
+        this.state = "suspended";
+      }
+      override async resume(): Promise<void> {
+        if (this.failResume) throw new Error("gesture required");
+        await super.resume();
+      }
+    }
+    const visibility = new FakeVisibilitySource();
+    const onUnlockChange = vi.fn();
+    const ctx = new GestureLockedPlaybackContext();
+    const pb = await createVoiceSessionPlayback({
+      createAudioContext: () => ctx,
+      onUnlockChange,
+      visibility,
+    });
+    await pb.unlock();
+    pb.enqueue(pcmFrame(0.5, 4));
+    visibility.hidden = true;
+    visibility.emit();
+    await Promise.resolve();
+    ctx.failResume = true;
+
+    visibility.hidden = false;
+    visibility.emit();
+    await vi.waitFor(() => expect(pb.needsUnlock).toBe(true));
+    expect(pb.unlocked).toBe(false);
+    expect(onUnlockChange).toHaveBeenLastCalledWith(true);
+
+    ctx.failResume = false;
+    await pb.unlock();
+    expect(pb.needsUnlock).toBe(false);
+    const out = scriptNodeOf(ctx).render(4);
+    for (const value of out) expect(value).toBeCloseTo(0.5, 2);
+    await pb.stop();
+  });
+
+  it("serializes a rapid foreground resume after a delayed background suspend", async () => {
+    const suspendGate = deferred<void>();
+    class DelayedSuspendPlaybackContext extends FakePlaybackAudioContext {
+      async suspend(): Promise<void> {
+        await suspendGate.promise;
+        this.state = "suspended";
+      }
+    }
+    const visibility = new FakeVisibilitySource();
+    const ctx = new DelayedSuspendPlaybackContext();
+    const pb = await createVoiceSessionPlayback({
+      createAudioContext: () => ctx,
+      visibility,
+    });
+    await pb.unlock();
+    pb.enqueue(pcmFrame(0.5, 4));
+
+    visibility.hidden = true;
+    visibility.emit();
+    visibility.hidden = false;
+    visibility.emit();
+    expect(ctx.state).toBe("running");
+
+    suspendGate.resolve();
+    await vi.waitFor(() => expect(ctx.state).toBe("running"));
+    expect(pb.needsUnlock).toBe(false);
+    const out = scriptNodeOf(ctx).render(4);
+    for (const value of out) expect(value).toBeCloseTo(0.5, 2);
     await pb.stop();
   });
 

@@ -45,6 +45,7 @@ export interface PlaybackAudioContextLike {
   ): PlaybackScriptNodeLike;
   destination: PlaybackNodeLike;
   resume(): Promise<void>;
+  suspend?(): Promise<void>;
   close(): Promise<void>;
 }
 
@@ -132,6 +133,16 @@ export interface VoiceSessionPlaybackOptions {
   onStarted?: (sequence: number) => void;
   /** Notified with the exact newest enqueue sequence that drained. */
   onDrained?: (sequence: number) => void;
+  /**
+   * Injectable visibility source for mobile foreground recovery. The default
+   * document source keeps queued audio retained while an iOS/Android WebView
+   * suspends its AudioContext, then attempts a best-effort foreground resume.
+   */
+  visibility?: {
+    addListener: (listener: () => void) => void;
+    removeListener: (listener: () => void) => void;
+    isHidden: () => boolean;
+  };
 }
 
 const PLAYBACK_WORKLET_NAME = "eliza-voice-session-downlink";
@@ -271,8 +282,10 @@ export async function createVoiceSessionPlayback(
   // stale notification can never clear the newer response's activity state.
   let activitySequence = 0;
   let latestActivitySequence = 0;
+  let latestEnqueueSequence = 0;
   let lastFlushSequence = 0;
   let lastStartedSequence = 0;
+  let lastDrainedSequence = 0;
   const nextActivitySequence = (): number => {
     activitySequence += 1;
     latestActivitySequence = activitySequence;
@@ -346,6 +359,7 @@ export async function createVoiceSessionPlayback(
           d.sequence > lastFlushSequence &&
           d.sequence === latestActivitySequence
         ) {
+          lastDrainedSequence = d.sequence;
           emitDrained(d.sequence);
         }
       };
@@ -376,6 +390,7 @@ export async function createVoiceSessionPlayback(
             ch[i] = 0;
             if (jsHadAudio) {
               jsHadAudio = false;
+              lastDrainedSequence = jsLatestSequence;
               emitDrained(jsLatestSequence);
             }
           } else {
@@ -428,12 +443,28 @@ export async function createVoiceSessionPlayback(
 
   let onAbort: (() => void) | null = null;
   let stopPromise: Promise<void> | null = null;
+  const visibility =
+    options.visibility ??
+    (typeof document !== "undefined"
+      ? {
+          addListener: (listener: () => void) =>
+            document.addEventListener("visibilitychange", listener),
+          removeListener: (listener: () => void) =>
+            document.removeEventListener("visibilitychange", listener),
+          isHidden: () => document.visibilityState === "hidden",
+        }
+      : null);
+  let visibilityListener: (() => void) | null = null;
+  let visibilityEpoch = 0;
+  let foregroundSuspendTask: Promise<void> | null = null;
+  let foregroundResumeTask: Promise<void> | null = null;
 
   const stop = async (): Promise<void> => {
     if (stopPromise) return stopPromise;
     stopped = true;
     paused = false;
     if (onAbort && signal) signal.removeEventListener("abort", onAbort);
+    if (visibilityListener) visibility?.removeListener(visibilityListener);
     if (workletNode) {
       workletNode.port.onmessage = null;
       workletNode.disconnect();
@@ -492,6 +523,101 @@ export async function createVoiceSessionPlayback(
     });
   }
 
+  const hasPendingAudio = (): boolean =>
+    preUnlockQueue.length > 0 ||
+    latestEnqueueSequence > Math.max(lastFlushSequence, lastDrainedSequence);
+
+  const resumeAfterVisibility = (): void => {
+    if (
+      foregroundResumeTask ||
+      stopped ||
+      !visibility ||
+      visibility.isHidden()
+    ) {
+      return;
+    }
+    const attemptEpoch = visibilityEpoch;
+    let task!: Promise<void>;
+    task = (async (): Promise<void> => {
+      try {
+        // A fast hide→show can arrive before the asynchronous suspend settles.
+        // Serialize against it so a late suspend can never win after resume.
+        await foregroundSuspendTask;
+        if (
+          stopped ||
+          !visibility ||
+          visibility.isHidden() ||
+          attemptEpoch !== visibilityEpoch
+        ) {
+          return;
+        }
+        if (ctx.state === "suspended" || ctx.state === "interrupted") {
+          await ctx.resume();
+        }
+        if (
+          stopped ||
+          !visibility ||
+          visibility.isHidden() ||
+          attemptEpoch !== visibilityEpoch
+        ) {
+          if (!stopped && visibility?.isHidden()) {
+            // error-policy:J5 visibility changed while resume was pending; the
+            // browser graph is best-effort re-suspended and its queue retained.
+            void ctx.suspend?.().catch(() => {});
+          }
+          return;
+        }
+        if (ctx.state !== "running") {
+          setNeedsUnlock(hasPendingAudio());
+          return;
+        }
+        setNeedsUnlock(false);
+        drainPreUnlock();
+      } catch (ignoredError) {
+        // A foreground resume can still require a fresh user activation on
+        // iOS. Preserve all queued audio and surface the existing unlock CTA.
+        if (
+          !stopped &&
+          visibility &&
+          !visibility.isHidden() &&
+          attemptEpoch === visibilityEpoch
+        ) {
+          setNeedsUnlock(hasPendingAudio());
+        }
+        void ignoredError;
+      } finally {
+        if (foregroundResumeTask === task) foregroundResumeTask = null;
+        if (
+          !stopped &&
+          visibility &&
+          !visibility.isHidden() &&
+          attemptEpoch !== visibilityEpoch
+        ) {
+          resumeAfterVisibility();
+        }
+      }
+    })();
+    foregroundResumeTask = task;
+  };
+
+  visibilityListener = (): void => {
+    if (stopped || !visibility) return;
+    visibilityEpoch += 1;
+    if (visibility.isHidden()) {
+      // Stop background playout without discarding a single queued sample.
+      let task!: Promise<void>;
+      task = (ctx.suspend?.() ?? Promise.resolve())
+        .catch(() => {})
+        .finally(() => {
+          if (foregroundSuspendTask === task) foregroundSuspendTask = null;
+        });
+      foregroundSuspendTask = task;
+      return;
+    }
+    resumeAfterVisibility();
+  };
+  visibility?.addListener(visibilityListener);
+
   return {
     get unlocked() {
       return isRunning();
@@ -514,6 +640,7 @@ export async function createVoiceSessionPlayback(
         sequence: nextActivitySequence(),
         started: false,
       };
+      latestEnqueueSequence = frame.sequence;
       if (!isRunning()) {
         // Buffer until unlocked; do not drop.
         setNeedsUnlock(true);
