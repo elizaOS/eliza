@@ -357,6 +357,29 @@ describe("UsersRepository phone identity transactions (real PGlite)", () => {
     });
   });
 
+  test("treats the subject's own mature account as a promotion conflict, so sync must link instead", async () => {
+    const phoneNumber = "+14155550216";
+    const mature = await createMatureUser();
+
+    // No synthetic phone account exists; the subject already owns a canonical
+    // row. Promotion cannot distinguish the caller from a hostile claimant
+    // here, so Steward sync resolves the subject first and links the unowned
+    // verified phone through linkVerifiedPhone (#19365).
+    const result = await usersRepository.promotePhonePersonalAccountToSteward({
+      phoneNumber,
+      stewardUserId: mature.user.steward_user_id,
+    });
+    expect(result).toEqual({ status: "steward_subject_owned_by_other_user" });
+
+    const linked = await usersRepository.linkVerifiedPhone(mature.user.id, phoneNumber);
+    expect(linked).toMatchObject({ phone_number: phoneNumber, phone_verified: true });
+    const [projection] = await dbWrite
+      .select()
+      .from(userIdentities)
+      .where(eq(userIdentities.user_id, mature.user.id));
+    expect(projection).toMatchObject({ phone_number: phoneNumber, phone_verified: true });
+  });
+
   test("rolls back when another mature account already owns the verified phone", async () => {
     const phoneNumber = "+14155550214";
     const owner = await createMatureUser();
