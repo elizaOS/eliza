@@ -5,6 +5,7 @@ import {
   extractBearerToken,
   verifyInternalToken,
 } from "@/lib/auth/jwt-internal";
+import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
 export interface InternalServiceAuth {
@@ -45,7 +46,17 @@ export async function requireInternalAuth(
       podName: verified.payload.sub,
       service: verified.payload.service,
     };
-  } catch {
+  } catch (error) {
+    // Rejection stays fail-closed (denylist store errors reject the token by
+    // design), but the REASON must reach the logs: a swallowed error makes a
+    // revocation-store outage indistinguishable from a bad token (live:
+    // staging's Telegram live-fire 401'd here for hours with signature-valid
+    // tokens before the Redis REST denylist read was isolated as the cause —
+    // by elimination, because nothing logged it). Message only, never the
+    // token or its claims.
+    logger.warn("[internal-auth] internal token rejected", {
+      reason: error instanceof Error ? error.message : String(error),
+    });
     return jsonError(c, 401, "Unauthorized", "authentication_required");
   }
 }
