@@ -10,6 +10,7 @@ import {
   previewPendingOnboardingContinuation,
   sanitizeOnboardingSessionToken,
   storePendingOnboardingSession,
+  TELEGRAM_ACCOUNT_CLAIM_PURPOSE,
 } from "./onboarding-continuation";
 
 // Obviously-fake, low-entropy stand-in for the opaque continuation UUID
@@ -21,6 +22,7 @@ afterEach(() => {
   window.sessionStorage.clear();
   window.localStorage.clear();
   vi.useRealTimers();
+  vi.restoreAllMocks();
 });
 
 describe("sanitizeOnboardingSessionToken", () => {
@@ -49,10 +51,33 @@ describe("sanitizeOnboardingSessionToken", () => {
 
 describe("pending-token persistence", () => {
   it("survives a login round trip (store → peek)", () => {
-    storePendingOnboardingSession(TOKEN);
+    expect(storePendingOnboardingSession(TOKEN)).toBe(true);
     expect(peekPendingOnboardingSession()).toBe(TOKEN);
     // Peek does NOT consume — a failed redemption must be retryable.
     expect(peekPendingOnboardingSession()).toBe(TOKEN);
+  });
+
+  it("reports when no browser storage can preserve claim authority", () => {
+    vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new DOMException("storage disabled");
+    });
+
+    expect(
+      storePendingOnboardingSession(TOKEN, TELEGRAM_ACCOUNT_CLAIM_PURPOSE),
+    ).toBe(false);
+    expect(peekPendingOnboardingSession()).toBeNull();
+  });
+
+  it("distinguishes pre-auth Telegram account claims from ordinary platform links", () => {
+    storePendingOnboardingSession(TOKEN);
+    expect(
+      peekPendingOnboardingSession(TELEGRAM_ACCOUNT_CLAIM_PURPOSE),
+    ).toBeNull();
+
+    storePendingOnboardingSession(TOKEN, TELEGRAM_ACCOUNT_CLAIM_PURPOSE);
+    expect(peekPendingOnboardingSession(TELEGRAM_ACCOUNT_CLAIM_PURPOSE)).toBe(
+      TOKEN,
+    );
   });
 
   it("never stores an invalid token", () => {

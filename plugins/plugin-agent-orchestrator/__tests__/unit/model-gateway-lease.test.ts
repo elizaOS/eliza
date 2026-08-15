@@ -384,11 +384,29 @@ describe("revoke on task end — all three terminal exit paths + teardown", () =
     configureModelGatewayLease({ broker: gateway.broker() });
     const { service, sessionId, env } = await spawnWith();
     const token = env.OPENAI_API_KEY ?? "";
+    const client = firstNativeClient();
+    let finishPrompt:
+      | ((result: { stopReason: "cancelled" }) => void)
+      | undefined;
+    client.prompt.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finishPrompt = resolve;
+        }),
+    );
+    client.cancel.mockImplementationOnce(async () => {
+      finishPrompt?.({ stopReason: "cancelled" });
+      return { stopReason: "cancelled" };
+    });
     expect(gateway.callModel(token)).toBe(200);
 
+    const prompt = service.sendToSession(sessionId, "cancel this turn");
+    await settle();
     await service.cancelSession(sessionId);
+    await prompt;
     await settle();
 
+    expect(client.cancel).toHaveBeenCalledWith("protocol-session");
     expect(gateway.revoked).toEqual(["lease-1"]);
     expect(gateway.callModel(token)).toBe(401);
     await service.stop();

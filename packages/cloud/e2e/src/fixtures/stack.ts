@@ -262,6 +262,13 @@ export interface StartCloudStackOptions {
    * the reply itself reflects retained history. Defaults to false (fixed reply).
    */
   mockLlmEchoContext?: boolean;
+  /**
+   * Test-only subprocess environment overrides. Values are scoped to this
+   * stack's local PGlite/Worker/frontend processes and never mutate the parent
+   * runner, so specs can exercise configuration boundaries without changing
+   * another worker's fixture contract.
+   */
+  env?: Readonly<Record<string, string>>;
 }
 
 /**
@@ -317,6 +324,7 @@ export async function startCloudStack(
       DEV_CLOUD_PGLITE_PORT: String(pglitePort),
       API_DEV_PORT: String(apiPort),
       PORT: String(frontendPort),
+      ...opts.env,
     },
   );
 

@@ -128,6 +128,27 @@ describe("isTrustedCloudApiBaseUrl", () => {
     expect(isTrustedCloudApiBaseUrl(`${base}/not-an-agent`)).toBe(false);
   });
 
+  it("binds a rowless personal identity only to its exact Shared adapter", () => {
+    const personalId = "personal:00000000-0000-5000-8000-000000000001";
+    const encoded = encodeURIComponent(personalId);
+
+    expect(
+      isTrustedCloudApiBaseUrl(
+        `https://api.eliza.app/api/v1/eliza/agents/${encoded}`,
+        personalId,
+      ),
+    ).toBe(true);
+    expect(
+      isTrustedCloudApiBaseUrl(
+        `https://api.eliza.app/api/v1/eliza/agents/${encoded}`,
+        "personal:00000000-0000-5000-8000-000000000002",
+      ),
+    ).toBe(false);
+    expect(
+      isTrustedCloudApiBaseUrl(`https://${AGENT}.elizacloud.ai`, personalId),
+    ).toBe(false);
+  });
+
   it("allows agentless control-plane roots only before an owner is selected", () => {
     expect(isTrustedCloudApiBaseUrl("https://elizacloud.ai")).toBe(true);
     expect(

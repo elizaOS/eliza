@@ -185,7 +185,7 @@ async function installDirectCloudSandboxRoutes(
   },
 ): Promise<void> {
   await page.route(
-    "https://api.elizacloud.ai/api/v1/eliza/agents",
+    "https://api.eliza.app/api/v1/eliza/agents",
     async (route) => {
       if (route.request().method() !== "POST") {
         await route.fallback();
@@ -204,7 +204,7 @@ async function installDirectCloudSandboxRoutes(
   );
 
   await page.route(
-    `https://api.elizacloud.ai/api/v1/eliza/agents/${options.agentId}/provision`,
+    `https://api.eliza.app/api/v1/eliza/agents/${options.agentId}/provision`,
     async (route) => {
       if (route.request().method() !== "POST") {
         await route.fallback();
@@ -219,7 +219,7 @@ async function installDirectCloudSandboxRoutes(
   );
 
   await page.route(
-    `https://api.elizacloud.ai/api/v1/jobs/${options.jobId}`,
+    `https://api.eliza.app/api/v1/jobs/${options.jobId}`,
     async (route) => {
       if (route.request().method() !== "GET") {
         await route.fallback();
@@ -264,7 +264,7 @@ async function installDirectCloudLoginRoutes(
     await fulfillJson(route, 200, {
       ok: true,
       sessionId: "ui-smoke-cloud-session",
-      browserUrl: "https://www.elizacloud.ai/device/ui-smoke-cloud-session",
+      browserUrl: "https://eliza.app/device/ui-smoke-cloud-session",
     });
   });
 
@@ -652,7 +652,7 @@ for (const viewport of VIEWPORTS) {
             agentId: "agent-1",
             agentName: "My Agent",
             appUrl:
-              "https://app.elizacloud.ai/?cloudLaunchSession=launch-1&cloudLaunchBase=https%3A%2F%2Fapi.elizacloud.ai",
+              "https://cloud.eliza.app/?cloudLaunchSession=launch-1&cloudLaunchBase=https%3A%2F%2Fapi.eliza.app",
             launchSessionId: "launch-1",
             issuedAt: "2026-01-01T00:00:02.000Z",
             connection: {

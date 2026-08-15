@@ -27,6 +27,7 @@ import http from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { parseTcpPort } from "../lib/cli-numbers.mjs";
 import { connectionById, connectionStatus } from "./lib/connections.mjs";
 import {
   completeGoogleFlow,
@@ -54,8 +55,16 @@ import {
 import { verifyConnection } from "./lib/verify.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const PORT = Number(process.env.ELIZA_TEST_CONSOLE_PORT || 31338);
+const DEFAULT_PORT = 31338;
 const HOST = "127.0.0.1";
+
+function resolveConsolePort(env = process.env) {
+  const raw = env.ELIZA_TEST_CONSOLE_PORT;
+  // Trim decides only present-vs-blank; the raw value reaches the canonical
+  // parser untouched so " 65431 " is rejected instead of silently accepted.
+  if (raw === undefined || raw.trim() === "") return DEFAULT_PORT;
+  return parseTcpPort(raw, "ELIZA_TEST_CONSOLE_PORT");
+}
 
 export const runManager = new RunManager();
 const sseClients = new Set();
@@ -361,8 +370,17 @@ const server = http.createServer(async (req, res) => {
 // Keep route imports side-effect free while preserving startup through
 // canonical, symlinked, and URL-escaped entrypoint paths.
 if (import.meta.main) {
-  server.listen(PORT, HOST, () => {
-    console.log(`[TestConsole] listening on http://${HOST}:${PORT}`);
-    console.log(`[TestConsole] state dir: ${consoleDir()}`);
-  });
+  try {
+    const port = resolveConsolePort();
+    server.listen(port, HOST, () => {
+      console.log(`[TestConsole] listening on http://${HOST}:${port}`);
+      console.log(`[TestConsole] state dir: ${consoleDir()}`);
+    });
+  } catch (error) {
+    // error-policy:J1 Startup configuration errors become bounded usage failures.
+    console.error(
+      `[TestConsole] ${error instanceof Error ? error.message : String(error)}`,
+    );
+    process.exitCode = 2;
+  }
 }

@@ -9,6 +9,7 @@ import { createCharacter } from "../../character.ts";
 import { InMemoryDatabaseAdapter } from "../../database/inMemoryAdapter.ts";
 import { AgentRuntime } from "../../runtime.ts";
 import type { Room, UUID } from "../../types/index";
+import type { IAgentRuntime } from "../../types/runtime";
 import {
 	CHANNEL_TOPICS_LRU_CAPACITY,
 	CHANNEL_TOPICS_METADATA_KEY,
@@ -127,6 +128,307 @@ describe("ChannelTopicsService", () => {
 			"billing",
 			"auth",
 		]);
+	});
+
+	it("serializes concurrent persistence and preserves the newest topic list", async () => {
+		let storedRoom = makeRoom(ROOM_A);
+		const updates: Room[] = [];
+		const releaseUpdates: Array<() => void> = [];
+		const controlledRuntime = {
+			getRoom: async (_roomId: UUID) => ({
+				...storedRoom,
+				metadata: storedRoom.metadata ? { ...storedRoom.metadata } : undefined,
+			}),
+			updateRoom: async (updated: Room) => {
+				updates.push(updated);
+				await new Promise<void>((resolve) => releaseUpdates.push(resolve));
+				storedRoom = {
+					...updated,
+					metadata: updated.metadata ? { ...updated.metadata } : undefined,
+				};
+				return undefined;
+			},
+			reportError: (
+				_scope: string,
+				_error: unknown,
+				_context?: Record<string, unknown>,
+			) => undefined,
+		} satisfies Pick<IAgentRuntime, "getRoom" | "updateRoom" | "reportError">;
+		const controlledService =
+			await ChannelTopicsService.start(controlledRuntime);
+
+		const waitForUpdateCount = async (count: number) => {
+			for (
+				let attempt = 0;
+				attempt < 100 && updates.length < count;
+				attempt++
+			) {
+				await Promise.resolve();
+			}
+			expect(updates).toHaveLength(count);
+		};
+		const settle = async () => {
+			for (let attempt = 0; attempt < 20; attempt++) {
+				await new Promise<void>((resolve) => setTimeout(resolve, 0));
+			}
+		};
+
+		const first = controlledService.recordTopics(ROOM_A, ["a"]);
+		await waitForUpdateCount(1);
+		const second = controlledService.recordTopics(ROOM_A, ["b"]);
+		await settle();
+		expect(updates).toHaveLength(1);
+
+		const releaseFirst = releaseUpdates.shift();
+		if (!releaseFirst) throw new Error("first update was not released");
+		releaseFirst();
+		await waitForUpdateCount(2);
+		const releaseSecond = releaseUpdates.shift();
+		if (!releaseSecond) throw new Error("second update was not released");
+		releaseSecond();
+		await Promise.all([first, second]);
+
+		expect(storedRoom.metadata?.[CHANNEL_TOPICS_METADATA_KEY]).toEqual([
+			"a",
+			"b",
+		]);
+		expect(controlledService.getTopicsForRoom(ROOM_A)).toEqual(["a", "b"]);
+	});
+
+	it("never allows an older same-room snapshot to complete last", async () => {
+		let storedRoom = makeRoom(ROOM_A);
+		const inFlight: Room[] = [];
+		let maxConcurrentWrites = 0;
+		const releaseUpdates: Array<() => void> = [];
+		const controlledRuntime = {
+			getRoom: async (_roomId: UUID) => ({
+				...storedRoom,
+				metadata: storedRoom.metadata ? { ...storedRoom.metadata } : undefined,
+			}),
+			updateRoom: async (updated: Room) => {
+				inFlight.push(updated);
+				maxConcurrentWrites = Math.max(maxConcurrentWrites, inFlight.length);
+				await new Promise<void>((resolve) => releaseUpdates.push(resolve));
+				inFlight.splice(inFlight.indexOf(updated), 1);
+				storedRoom = {
+					...updated,
+					metadata: updated.metadata ? { ...updated.metadata } : undefined,
+				};
+				return undefined;
+			},
+			reportError: (
+				_scope: string,
+				_error: unknown,
+				_context?: Record<string, unknown>,
+			) => undefined,
+		} satisfies Pick<IAgentRuntime, "getRoom" | "updateRoom" | "reportError">;
+		const controlledService =
+			await ChannelTopicsService.start(controlledRuntime);
+		const settle = async () => {
+			for (let attempt = 0; attempt < 20; attempt++) {
+				await new Promise<void>((resolve) => setTimeout(resolve, 0));
+			}
+		};
+
+		const first = controlledService.recordTopics(ROOM_A, ["a"]);
+		const second = controlledService.recordTopics(ROOM_A, ["b"]);
+		await settle();
+		expect(maxConcurrentWrites).toBe(1);
+
+		while (releaseUpdates.length > 0 || inFlight.length > 0) {
+			const release = releaseUpdates.pop();
+			if (release) release();
+			await settle();
+		}
+		await Promise.all([first, second]);
+
+		expect(maxConcurrentWrites).toBe(1);
+		expect(storedRoom.metadata?.[CHANNEL_TOPICS_METADATA_KEY]).toEqual([
+			"a",
+			"b",
+		]);
+	});
+
+	it("serializes cold hydration with writes without rolling back the cache", async () => {
+		let storedRoom = makeRoom(ROOM_A, ["seed"]);
+		const reads: Array<Promise<Room | null>> = [];
+		const resolveReads: Array<(room: Room | null) => void> = [];
+		const updates: Room[] = [];
+		const releaseUpdates: Array<() => void> = [];
+		const controlledRuntime = {
+			getRoom: async (_roomId: UUID) => {
+				const read = new Promise<Room | null>((resolve) =>
+					resolveReads.push(resolve),
+				);
+				reads.push(read);
+				return read;
+			},
+			updateRoom: async (updated: Room) => {
+				updates.push(updated);
+				await new Promise<void>((resolve) => releaseUpdates.push(resolve));
+				storedRoom = {
+					...updated,
+					metadata: updated.metadata ? { ...updated.metadata } : undefined,
+				};
+				return undefined;
+			},
+			reportError: (
+				_scope: string,
+				_error: unknown,
+				_context?: Record<string, unknown>,
+			) => undefined,
+		} satisfies Pick<IAgentRuntime, "getRoom" | "updateRoom" | "reportError">;
+		const controlledService =
+			await ChannelTopicsService.start(controlledRuntime);
+
+		const waitForUpdateCount = async (count: number) => {
+			for (
+				let attempt = 0;
+				attempt < 100 && updates.length < count;
+				attempt++
+			) {
+				await Promise.resolve();
+			}
+			expect(updates).toHaveLength(count);
+		};
+
+		const waitForReadCount = async (count: number) => {
+			for (let attempt = 0; attempt < 100 && reads.length < count; attempt++) {
+				await Promise.resolve();
+			}
+			expect(reads).toHaveLength(count);
+		};
+
+		const reader = controlledService.ensureHydrated(ROOM_A);
+		await waitForReadCount(1);
+		const writer = controlledService.recordTopics(ROOM_A, ["b"]);
+		await Promise.resolve();
+		// The writer waits for the cold reader instead of starting a competing
+		// hydration read that could restore the stale seed snapshot later.
+		expect(reads).toHaveLength(1);
+
+		const resolveInitialRead = resolveReads.shift();
+		if (!resolveInitialRead) throw new Error("initial read was not released");
+		resolveInitialRead({
+			...storedRoom,
+			metadata: storedRoom.metadata ? { ...storedRoom.metadata } : undefined,
+		});
+		await reader;
+
+		await waitForReadCount(2);
+		const resolvePersistRead = resolveReads.shift();
+		if (!resolvePersistRead) throw new Error("persist read was not released");
+		resolvePersistRead({
+			...storedRoom,
+			metadata: storedRoom.metadata ? { ...storedRoom.metadata } : undefined,
+		});
+		await waitForUpdateCount(1);
+		const releaseUpdate = releaseUpdates.shift();
+		if (!releaseUpdate) throw new Error("update was not released");
+		releaseUpdate();
+		await writer;
+
+		expect(storedRoom.metadata?.[CHANNEL_TOPICS_METADATA_KEY]).toEqual([
+			"seed",
+			"b",
+		]);
+		expect(controlledService.getTopicsForRoom(ROOM_A)).toEqual(["seed", "b"]);
+	});
+
+	it("waits for pending room operations before clearing on stop", async () => {
+		const updates: Room[] = [];
+		const releaseUpdates: Array<() => void> = [];
+		const controlledRuntime = {
+			getRoom: async (_roomId: UUID) => makeRoom(ROOM_A),
+			updateRoom: async (updated: Room) => {
+				updates.push(updated);
+				await new Promise<void>((resolve) => releaseUpdates.push(resolve));
+				return undefined;
+			},
+			reportError: (
+				_scope: string,
+				_error: unknown,
+				_context?: Record<string, unknown>,
+			) => undefined,
+		} satisfies Pick<IAgentRuntime, "getRoom" | "updateRoom" | "reportError">;
+		const controlledService =
+			await ChannelTopicsService.start(controlledRuntime);
+		const write = controlledService.recordTopics(ROOM_A, ["pending"]);
+
+		for (let attempt = 0; attempt < 100 && updates.length < 1; attempt++) {
+			await Promise.resolve();
+		}
+		expect(updates).toHaveLength(1);
+		const stopping = controlledService.stop();
+		await Promise.resolve();
+		expect(controlledService.getTopicsForRoom(ROOM_A)).toEqual(["pending"]);
+		await expect(
+			controlledService.recordTopics(ROOM_A, ["rejected-while-stopping"]),
+		).rejects.toMatchObject({ code: "CHANNEL_TOPICS_STOPPING" });
+
+		const releaseUpdate = releaseUpdates.shift();
+		if (!releaseUpdate) throw new Error("pending update was not released");
+		releaseUpdate();
+		await write;
+		await stopping;
+		expect(controlledService.getTopicsForAllRooms()).toEqual({});
+	});
+
+	it("allows different-room writes to proceed independently", async () => {
+		const inFlight = new Set<UUID>();
+		const releaseUpdates = new Map<UUID, () => void>();
+		let maxConcurrentWrites = 0;
+		const controlledRuntime = {
+			getRoom: async (roomId: UUID) => makeRoom(roomId),
+			updateRoom: async (updated: Room) => {
+				if (!updated.id) throw new Error("updated room is missing an id");
+				inFlight.add(updated.id);
+				maxConcurrentWrites = Math.max(maxConcurrentWrites, inFlight.size);
+				await new Promise<void>((resolve) =>
+					releaseUpdates.set(updated.id as UUID, resolve),
+				);
+				inFlight.delete(updated.id);
+			},
+			reportError: (
+				_scope: string,
+				_error: unknown,
+				_context?: Record<string, unknown>,
+			) => undefined,
+		} satisfies Pick<IAgentRuntime, "getRoom" | "updateRoom" | "reportError">;
+		const controlledService =
+			await ChannelTopicsService.start(controlledRuntime);
+
+		const roomAWrite = controlledService.recordTopics(ROOM_A, ["alpha"]);
+		const roomBWrite = controlledService.recordTopics(ROOM_B, ["beta"]);
+		for (let attempt = 0; attempt < 100 && releaseUpdates.size < 2; attempt++) {
+			await Promise.resolve();
+		}
+		expect(releaseUpdates.size).toBe(2);
+		expect(maxConcurrentWrites).toBe(2);
+
+		releaseUpdates.get(ROOM_A)?.();
+		releaseUpdates.get(ROOM_B)?.();
+		await Promise.all([roomAWrite, roomBWrite]);
+		expect(inFlight.size).toBe(0);
+	});
+
+	it("recovers the room queue after a failed write", async () => {
+		const adapter = new FailingRoomAdapter();
+		const failingRuntime = await makeRuntime([makeRoom(ROOM_A)], adapter);
+		const svc = await ChannelTopicsService.start(failingRuntime);
+		adapter.failWrites = true;
+
+		await expect(svc.recordTopics(ROOM_A, ["first"])).rejects.toMatchObject({
+			code: "CHANNEL_TOPICS_PERSIST_FAILED",
+		});
+
+		adapter.failWrites = false;
+		await expect(svc.recordTopics(ROOM_A, ["second"])).resolves.toBeUndefined();
+		expect(
+			(await failingRuntime.getRoom(ROOM_A))?.metadata?.[
+				CHANNEL_TOPICS_METADATA_KEY
+			],
+		).toEqual(["first", "second"]);
 	});
 
 	it("hydrates from room metadata on first access (survives restart)", async () => {

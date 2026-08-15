@@ -207,25 +207,6 @@ export interface WorkflowRunEventPayload extends EventPayload {
   event: WorkflowRunEvent;
 }
 
-export const CONNECTOR_DISCONNECTED_EVENT = 'connector_disconnected';
-export interface ConnectorDisconnectedPayload extends EventPayload {
-  userId: string;
-  credTypes: readonly string[];
-  connectorName?: string;
-}
-
-export const WORKFLOW_CREDENTIAL_STORE_TYPE = 'workflow_credential_store';
-export interface CredentialMapping {
-  credType: string;
-  workflowCredentialId: string;
-}
-export interface WorkflowCredentialStoreApi {
-  get(userId: string, credType: string): Promise<string | null>;
-  set(userId: string, credType: string, workflowCredId: string): Promise<void>;
-  listByUser(userId: string): Promise<CredentialMapping[]>;
-  delete?(userId: string, credType: string): Promise<void>;
-}
-
 export class WorkflowApiError extends Error {
   constructor(
     message: string,

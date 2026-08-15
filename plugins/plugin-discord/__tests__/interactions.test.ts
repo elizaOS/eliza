@@ -24,6 +24,22 @@ describe("renderDiscordInteractions", () => {
 		expect(out.components).toHaveLength(0);
 	});
 
+	it("does not ship an unclaimed terminal marker when no controls parse", () => {
+		const out = renderDiscordInteractions({
+			text: "Done.\r\n[ FOLLOWUPS ]\r\nreply:More=More",
+		} as Content);
+		expect(out.text).toBe("Done.");
+		expect(out.components).toEqual([]);
+	});
+
+	it("renders spaced CRLF followups as native controls", () => {
+		const out = renderDiscordInteractions({
+			text: "Done.\r\n[ FOLLOWUPS ]\r\nreply:More=More\r\n[ / FOLLOWUPS ]",
+		} as Content);
+		expect(out.text).toBe("Done.");
+		expect(out.components[0]?.components[0]?.label).toBe("More");
+	});
+
 	it("renders a choice block as a button action row and strips the marker", () => {
 		const content: Content = {
 			text: "Approve?\n[CHOICE:approve id=c1]\nyes=Yes, ship it\nno=Cancel\n[/CHOICE]",

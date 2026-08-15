@@ -41,7 +41,7 @@ from the selected environment. Operators do not provide or override that alias.
 
 ```bash
 gh workflow run arm-headscale-control-plane.yml --repo elizaOS/eliza --ref main \
-  -f environment=production
+  -f environment=production -f operation=converge
 ```
 
 > `workflow_dispatch` runs the copy of the workflow on the dispatched ref, so
@@ -84,6 +84,41 @@ files untouched, and fails the workflow. Review the explicit conflict path and
 land a separate targeted cleanup; do not add a generic config deletion rule.
 Certificate expansion can succeed before a later vhost ownership failure, but
 the prior active vhost is still restored.
+
+Staging has one separately reviewed retirement path for the legacy manual
+vhost discovered by the fail-closed ownership audit:
+`/etc/nginx/conf.d/headscale-staging.conf`. Inspect it first without changing
+the host:
+
+```bash
+gh workflow run arm-headscale-control-plane.yml --repo elizaOS/eliza \
+  --ref develop -f environment=staging -f operation=inspect-legacy-vhost
+```
+
+The inspection requires a regular, root-owned, non-group/world-writable file,
+exactly two server blocks that name only `headscale-staging.elizacloud.ai`, and
+exactly two loaded nginx owners from that path. It reports file metadata,
+SHA-256, directive-name counts, and the validated server-block/name shape for
+review without printing directive literal values. Only after that run is
+reviewed may an operator select the retirement operation and supply that exact
+lowercase digest:
+
+```bash
+gh workflow run arm-headscale-control-plane.yml --repo elizaOS/eliza \
+  --ref develop -f environment=staging \
+  -f operation=retire-legacy-vhost-and-converge \
+  -f reviewed_legacy_vhost_sha256=<LOWERCASE_SHA256_FROM_INSPECTION>
+```
+
+The digest makes the reviewed bytes the retirement authority; any intervening
+file change fails closed. The arm backs up the exact file,
+installs the canonical dual-name vhost, removes the legacy file only after the
+rollback trap is active, then validates ownership, SANs, nginx, and public
+health before converging router enrollment, environment writes, the worker
+restart, and final service liveness. Any failure before all remote convergence
+passes restores both prior files and reloads the previous valid configuration.
+Production has no registered cleanup path and rejects both legacy-file
+operations.
 
 The matching Cloudflare Worker secrets still need to be set through the normal
 Worker secret path. Keep host and Worker values identical for

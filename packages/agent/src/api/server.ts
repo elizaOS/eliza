@@ -2752,10 +2752,6 @@ async function handleRequest(
       redactConfigSecrets,
       isBlockedObjectKey,
       cloneWithoutBlockedObjectKeys,
-      // Disconnect cascade is event-driven: connector-routes
-      // emits `connector_disconnected` and WorkflowCredentialStore subscribes
-      // to invalidate its own cache. No direct service lookup needed here.
-      onConnectorDisconnect: async () => {},
     })
   ) {
     return;
