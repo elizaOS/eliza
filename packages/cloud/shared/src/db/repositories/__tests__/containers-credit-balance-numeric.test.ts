@@ -1,36 +1,8 @@
 /**
- * Fail-closed NUMERIC boundary for the container deploy/quota `credit_balance`
- * reads in `ContainersRepository` (#13415, cloud-shared DB-repository
- * fallback-slop sweep).
- *
- * `organizations.credit_balance` is a Postgres NUMERIC column, so the driver
- * hands it back as a string. Before this slice three reads in
- * `ContainersRepository` coerced it with a bare `Number(...)`, which fails OPEN
- * on a corrupt value (`'NaN'::numeric` is a valid Postgres NUMERIC and a
- * migration artifact / manual DB edit can produce a non-parseable string):
- *
- *   - `createContainerWithCreditDeduction` (money-out spend gate): the
- *     insufficient-balance guard `Number(credit_balance) < deploymentCost` is
- *     FALSE for `NaN`, so the deploy+debit is AUTHORIZED against a corrupt
- *     balance, the container is created FREE, and `String(NaN - cost)` = `"NaN"`
- *     is written back into the balance column — permanently poisoning it. A
- *     money-out gate failing open is the worst class of this bug.
- *   - `createWithQuotaCheck` and `checkQuota` (container-quota tier): a `NaN`
- *     feeds `getMaxContainersForOrg`, which silently drops the org into the
- *     FREE quota tier, mis-labelling a paying org's container allowance.
- *
- * All three now delegate to the merged, exported fail-closed boundary
- * `parseOrganizationCreditBalance` (#13416) — the same helper the two
- * `OrganizationsRepository` mutation paths already use for this exact column —
- * so a corrupt read throws a field-named error INSIDE the mutation transaction
- * (money path) / denies the pre-flight check (read-only path) instead of
- * bypassing the guard or fabricating a free-tier max.
- *
- * A real corrupt NUMERIC cannot be stored in PGlite/Postgres (they reject it),
- * so the healthy-path regression coverage lives in the PGlite-backed container
- * suites. These tests pin the reused PARSER boundary against the money-out
- * class and grep-guard that each wired read site delegates to it — the exact
- * seam a read-time driver quirk / migration artifact would hit.
+ * Pins the fail-closed NUMERIC boundary used by container quota and debit
+ * reads. Deterministic parser cases cover corrupt driver values, while source
+ * guards ensure every repository admission path delegates to the same parser;
+ * healthy persistence remains covered by the PGlite container suites.
  */
 
 import { describe, expect, test } from "bun:test";
@@ -105,10 +77,23 @@ describe("ContainersRepository wires every credit_balance read through the fail-
       'import { parseOrganizationCreditBalance } from "./organizations-credit-balance-numeric"',
     );
 
-    // Exactly three call sites delegate to the parser (checkQuota,
-    // createWithQuotaCheck, createContainerWithCreditDeduction).
+    // Quota reads share one canonical DB-source resolver; the money-out debit
+    // keeps its independent parser call inside its transaction.
     const delegations = src.match(/parseOrganizationCreditBalance\(\s*org\.credit_balance/g) ?? [];
-    expect(delegations.length).toBe(3);
+    expect(delegations.length).toBe(1);
+    expect(src).toContain(
+      'parsedBalance = parseOrganizationCreditBalance(creditBalance, "credit_balance")',
+    );
+
+    // Both checkQuota and createWithQuotaCheck use that same source resolver
+    // (plus its declaration), so their missing/corrupt behavior cannot drift.
+    const quotaResolutions = src.match(/resolveContainerLimitFromDatabaseSources\(/g) ?? [];
+    expect(quotaResolutions.length).toBe(3);
+
+    // A quota reached result stays authoritative; only source failures carry
+    // the explicit unavailable state consumed by the account-limits snapshot.
+    expect(src).toContain('availability: "ready"');
+    expect(src).toContain('availability: "unavailable"');
 
     // No bare Number(...) read of the corrupt-prone NUMERIC field survives.
     // `\bNumber\(` anchors on the global Number constructor, NOT the tail of a

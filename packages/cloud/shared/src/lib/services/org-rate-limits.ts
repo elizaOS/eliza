@@ -7,6 +7,7 @@
  * Worker inference reads that cache only and hydrates Postgres state off path.
  */
 
+import { ElizaError } from "@elizaos/core";
 import { and, eq, sql } from "drizzle-orm";
 import { dbRead } from "../../db/helpers";
 import { orgRateLimitOverridesRepository } from "../../db/repositories/org-rate-limit-overrides";
@@ -130,19 +131,34 @@ export function __clearOrgTierHydrationsForTests(): void {
   orgTierHydrations.clear();
 }
 
+function parsePaidCreditTotal(value: unknown, orgId: string): number {
+  const normalized = typeof value === "string" || typeof value === "number" ? String(value) : "";
+  if (!/^[+-]?(?:\d+|\d*\.\d+)$/.test(normalized)) {
+    throw new ElizaError("Organization paid-credit total is not a valid NUMERIC", {
+      code: "ORG_RATE_LIMIT_SOURCE_INVALID",
+      context: { orgId, field: "paid_credit_total" },
+      severity: "fatal",
+    });
+  }
+
+  const parsed = Number(normalized);
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    throw new ElizaError("Organization paid-credit total is not a valid non-negative value", {
+      code: "ORG_RATE_LIMIT_SOURCE_INVALID",
+      context: { orgId, field: "paid_credit_total" },
+      severity: "fatal",
+    });
+  }
+  return parsed;
+}
+
 // ---------------------------------------------------------------------------
 // Core functions
 // ---------------------------------------------------------------------------
 
-/**
- * Recalculates an org's rate limit tier from the DB and caches the result.
- *
- * The tier is based on cumulative **paid** credits (purchases via Stripe).
- * Free/bonus credits are excluded. An org that bought $100 of credits is tier
- * "growth" regardless of how much they consumed.
- */
-export async function recalculateOrgTier(orgId: string): Promise<OrgTierData> {
-  // 1. Sum paid credit purchases + load overrides in parallel
+async function calculateOrgTierFromSources(
+  orgId: string,
+): Promise<{ tierData: OrgTierData; totalSpend: number }> {
   const [creditResult, override] = await Promise.all([
     dbRead
       .select({
@@ -162,12 +178,9 @@ export async function recalculateOrgTier(orgId: string): Promise<OrgTierData> {
     orgRateLimitOverridesRepository.findByOrganizationId(orgId),
   ]);
 
-  const totalSpend = Number.parseFloat(creditResult[0]?.totalSpend ?? "0");
-
-  // 2. Match tier (first threshold where totalSpend >= minSpend)
+  const totalSpend = parsePaidCreditTotal(creditResult[0]?.totalSpend, orgId);
   const matchedTier = SORTED_THRESHOLDS.find((t) => totalSpend >= t.minSpend) ?? FREE_TIER;
 
-  // 3. Merge override non-null fields
   let tierData: OrgTierData = {
     tierName: matchedTier.name,
     completionsRpm: matchedTier.completionsRpm,
@@ -191,10 +204,42 @@ export async function recalculateOrgTier(orgId: string): Promise<OrgTierData> {
     };
   }
 
-  // 4. Cache (non-fatal: if Redis is down, next request will re-query DB)
+  if (!isOrgTierData(tierData)) {
+    throw new ElizaError("Organization rate-limit override is invalid", {
+      code: "ORG_RATE_LIMIT_SOURCE_INVALID",
+      context: { orgId, field: "org_rate_limit_overrides" },
+      severity: "fatal",
+    });
+  }
+
+  return { tierData, totalSpend };
+}
+
+/**
+ * Reads the authoritative configured tier without hydrating the inference
+ * cache. Observation-only surfaces use this path so a read cannot change
+ * runtime admission state.
+ */
+export async function readOrgTierFromSources(orgId: string): Promise<OrgTierData> {
+  return (await calculateOrgTierFromSources(orgId)).tierData;
+}
+
+/**
+ * Recalculates an org's rate limit tier from the DB and caches the result.
+ *
+ * The tier is based on cumulative **paid** credits (purchases via Stripe).
+ * Free/bonus credits are excluded. An org that bought $100 of credits is tier
+ * "growth" regardless of how much they consumed.
+ */
+export async function recalculateOrgTier(orgId: string): Promise<OrgTierData> {
+  const { tierData, totalSpend } = await calculateOrgTierFromSources(orgId);
+
+  // Cache is non-fatal: a later request can re-read the database.
   try {
     await cache.set(CacheKeys.org.rateLimitTier(orgId), tierData, CacheTTL.org.rateLimitTier);
   } catch (err) {
+    // error-policy:J7 cache hydration is best-effort; the authoritative tier
+    // has already been calculated and future requests can retry the write.
     logger.warn("[OrgRateLimits] Failed to cache tier, will re-query on next request", {
       orgId,
       error: err instanceof Error ? err.message : String(err),
