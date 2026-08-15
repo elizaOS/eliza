@@ -309,17 +309,21 @@ The gateway also supports a single system-wide **Eliza App Bot** (DM-only) along
      - `MESSAGE CONTENT INTENT` (required to read DM content)
 
 3. **Invite Bot to Test Server (Optional):**
-   The Eliza App bot is DM-only, but you can invite it to a server to make it easier for users to find and DM:
+   DM installation is a Discord user install. Guild text and live voice require
+   a separate guild install with the bot and application-command scopes:
    ```
-   https://discord.com/oauth2/authorize?client_id=YOUR_APP_ID&scope=bot&permissions=2048
+   https://discord.com/oauth2/authorize?client_id=YOUR_APP_ID&permissions=70645806649152&scope=bot%20applications.commands&integration_type=0
    ```
-   > Note: `permissions=2048` grants "Send Messages" only, which is sufficient for DM responses.
+   The bitfield is the repository `BASIC_VOICE` tier. Live audio is still
+   disabled unless `ELIZA_APP_DISCORD_GUILD_VOICE_ENABLED=true` and the Cloud
+   STT/TTS bindings are configured.
 
 4. **Set Environment Variables (Local Development):**
    ```bash
    ELIZA_APP_DISCORD_BOT_ENABLED=true
    ELIZA_APP_DISCORD_BOT_TOKEN=your-bot-token
    ELIZA_APP_DISCORD_APPLICATION_ID=your-app-id  # Optional, for reference
+   ELIZA_APP_DISCORD_GUILD_VOICE_ENABLED=true    # Optional, guild voice only
    ```
 
 5. **Configure via Helm (Kubernetes):**
@@ -467,6 +471,7 @@ Eliza Cloud logs show:
 | `ELIZA_APP_DISCORD_BOT_TOKEN` | No* | - | Eliza App system bot token (required if enabled) |
 | `ELIZA_APP_DISCORD_APPLICATION_ID` | No | - | Eliza App bot application ID (for reference) |
 | `ELIZA_APP_DISCORD_PUBLIC_KEY` | No | - | Discord application's Ed25519 public key; recommended so signed install webhooks never need a first-request API lookup |
+| `ELIZA_APP_DISCORD_GUILD_VOICE_ENABLED` | No | `false` | Register owner-only guild `/voice join|leave` and run live audio on the system-bot leader |
 
 **\*** Required when `ELIZA_APP_DISCORD_BOT_ENABLED=true`
 
@@ -2069,8 +2074,10 @@ The AWS infrastructure required to run the gateway is managed via **Terraform** 
 - Kubernetes namespace and secrets
 
 Infrastructure and service changes are operator-run. Terraform operations use
-the manual consolidated `.github/workflows/infra.yml`; Railway deployment uses
-the package deploy script documented above.
+the manual consolidated `.github/workflows/infra.yml`. The Railway services
+currently have no connected repository source, so a GitHub push does not deploy
+them; an authorized operator must use the package deploy script documented above
+and then verify the exact deployment plus public health endpoint.
 
 ```bash
 # Manual deployment (if needed)

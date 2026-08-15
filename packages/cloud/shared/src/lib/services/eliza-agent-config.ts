@@ -21,6 +21,7 @@ export interface PersonalElizaCutover {
   conversationId: string;
   cutoverToken: string;
   sharedMessageCount: number;
+  sharedScheduledTaskCount: number;
   activatedAt: string;
 }
 
@@ -48,6 +49,10 @@ export function readPersonalElizaCutover(
     typeof value.sharedMessageCount !== "number" ||
     !Number.isInteger(value.sharedMessageCount) ||
     value.sharedMessageCount < 0 ||
+    (value.sharedScheduledTaskCount !== undefined &&
+      (typeof value.sharedScheduledTaskCount !== "number" ||
+        !Number.isInteger(value.sharedScheduledTaskCount) ||
+        value.sharedScheduledTaskCount < 0)) ||
     typeof value.activatedAt !== "string" ||
     !value.activatedAt.trim()
   ) {
@@ -59,6 +64,7 @@ export function readPersonalElizaCutover(
     conversationId: value.conversationId,
     cutoverToken: value.cutoverToken,
     sharedMessageCount: value.sharedMessageCount,
+    sharedScheduledTaskCount: value.sharedScheduledTaskCount ?? 0,
     activatedAt: value.activatedAt,
   };
 }

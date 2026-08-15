@@ -95,6 +95,19 @@ const requiredAuthWorkerSecretNames = [
 ] as const;
 
 describe("canonical cloud deployment environment contract", () => {
+  test("runs genuine Shared Eliza on staging while production remains gated", () => {
+    const staging = cloudApiWranglerSource.slice(
+      cloudApiWranglerSource.indexOf("[env.staging.vars]"),
+      cloudApiWranglerSource.indexOf("[env.production.vars]"),
+    );
+    const production = cloudApiWranglerSource.slice(
+      cloudApiWranglerSource.indexOf("[env.production.vars]"),
+    );
+
+    expect(staging).toContain('SHARED_ELIZA_AGENT_RUNTIME = "true"');
+    expect(production).toContain('SHARED_ELIZA_AGENT_RUNTIME = "false"');
+  });
+
   test("keeps the fixed SlopHub cutover behind a reviewed production plan", () => {
     const triggerBlock = slopHubSource.slice(
       slopHubSource.indexOf("on:"),

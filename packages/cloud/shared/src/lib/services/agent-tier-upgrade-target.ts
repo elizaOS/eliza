@@ -180,6 +180,7 @@ export async function finalizePersonalTierUpgradeCutover(params: {
   dedicatedAgentId: string;
   cutoverToken: string;
   sharedMessageCount: number;
+  sharedScheduledTaskCount: number;
 }): Promise<AgentSandbox> {
   return dbWrite.transaction(async (tx) => {
     await configureElizaLifecycleTransaction(tx);
@@ -219,7 +220,11 @@ export async function finalizePersonalTierUpgradeCutover(params: {
     const sameCutover =
       existing?.sourceAgentId === params.sourceAgentId &&
       existing.cutoverToken === params.cutoverToken;
-    if (sameCutover && existing.sharedMessageCount === params.sharedMessageCount) {
+    if (
+      sameCutover &&
+      existing.sharedMessageCount === params.sharedMessageCount &&
+      existing.sharedScheduledTaskCount === params.sharedScheduledTaskCount
+    ) {
       return target;
     }
 
@@ -234,6 +239,7 @@ export async function finalizePersonalTierUpgradeCutover(params: {
             conversationId: params.sourceAgentId,
             cutoverToken: params.cutoverToken,
             sharedMessageCount: params.sharedMessageCount,
+            sharedScheduledTaskCount: params.sharedScheduledTaskCount,
             activatedAt: sameCutover ? existing.activatedAt : new Date().toISOString(),
           },
         },

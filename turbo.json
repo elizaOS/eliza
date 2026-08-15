@@ -247,11 +247,7 @@
       "outputs": []
     },
     "@elizaos/cloud-shared#typecheck": {
-      "dependsOn": [
-        "@elizaos/plugin-cloud-apps#build",
-        "@elizaos/plugin-scheduling#build",
-        "@elizaos/plugin-web-search#build"
-      ],
+      "dependsOn": ["@elizaos/plugin-cloud-apps#build"],
       "outputs": []
     },
     "@elizaos/plugin-discord#typecheck": {
