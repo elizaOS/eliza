@@ -76,7 +76,6 @@ export interface DesktopShellWindowPresentation {
   mode: DesktopShellWindowMode;
   titleBarStyle: DesktopShellTitleBarStyle;
   transparent: boolean;
-  passthrough: boolean;
 }
 
 /**
@@ -104,7 +103,6 @@ export function resolveDesktopShellWindowPresentation(
           ? "hiddenInset"
           : "default",
     transparent: bottomBar && platform === "darwin",
-    passthrough: bottomBar && platform === "darwin",
   };
 }
 
