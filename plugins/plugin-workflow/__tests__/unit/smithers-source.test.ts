@@ -16,9 +16,9 @@ describe('native Smithers workflow source', () => {
     expect(() => validateSmithersSource('')).toThrow('source is required');
     // A stored record can reach dispatch with no source at all (stale trigger
     // to a legacy definition); that is the typed error, never a TypeError.
-    expect(() =>
-      validateSmithersSource(undefined as unknown as string)
-    ).toThrow('source is required');
+    expect(() => validateSmithersSource(undefined as unknown as string)).toThrow(
+      'source is required'
+    );
     expect(() => validateSmithersSource("import { Smithers } from 'smthrs';")).toThrow(
       'default-export'
     );
