@@ -1,8 +1,7 @@
-// Exercises the auth/anonymous-session get-or-create route's spend-gate env-var
-// validation (#19716) by driving the REAL Hono handler with a mocked session
-// creator and a fall-open rate-limit middleware. No cookie is sent, so every
-// request takes the mint path and the captured `messagesLimit`/`expiresAt`
-// prove which value the strict canonical-integer parser selected.
+/**
+ * Drives the real anonymous-session mint route with deterministic service and
+ * rate-limit boundaries to verify spend-gate configuration reaches storage.
+ */
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 
 process.env.DATABASE_URL ||= "pglite://memory";

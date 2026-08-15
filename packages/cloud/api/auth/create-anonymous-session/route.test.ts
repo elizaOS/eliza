@@ -1,4 +1,4 @@
-// Exercises cloud API auth create anonymous session route.test behavior with deterministic Worker route fixtures.
+/** Exercises anonymous-session creation through deterministic Worker fixtures. */
 import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
 import * as realRedisFactory from "@/lib/cache/redis-factory";
 

@@ -14,6 +14,11 @@ import { eq } from "drizzle-orm";
 import { Hono } from "hono";
 import { getCookie, setCookie } from "hono/cookie";
 import { nanoid } from "nanoid";
+import {
+  MAX_ANONYMOUS_EXPIRY_DAYS,
+  MAX_ANONYMOUS_MESSAGE_LIMIT,
+  parseAnonymousPositiveIntEnv,
+} from "@/auth/anonymous-session-config";
 import { dbRead } from "@/db/helpers";
 import { userIdentities } from "@/db/schemas/user-identities";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
@@ -29,56 +34,6 @@ import type { AppEnv } from "@/types/cloud-worker-env";
 
 const ANON_SESSION_COOKIE = "eliza-anon-session";
 
-// Operator-sane upper bounds for the spend-gate env vars. A configured value
-// above these caps is treated as a typo and rejected in favour of the default,
-// because `messages_limit` is the per-guest anonymous spend gate and directly
-// bounds how much of the application owner's credit balance a guest can burn.
-const MAX_EXPIRY_DAYS = 365;
-const MAX_MESSAGE_LIMIT = 1000;
-
-/**
- * Parse an operator-facing positive-integer env var with a strict canonical
- * grammar. Unlike `Number.parseInt`, this rejects trailing junk (`"5oops"`),
- * exponent notation (`"1e2"`), decimals (`"7.0"`), and leading zeros (`"05"`)
- * instead of silently truncating them — a silently mutated spend gate has
- * direct billing impact on the application owner.
- *
- * Unset or blank/whitespace-only values keep the default silently (matches the
- * prior behavior and the affiliate routes' convention). Any other invalid or
- * out-of-range value warns — naming the env var and the rejected value — and
- * returns the default.
- */
-function parsePositiveIntEnv(
-  value: string | undefined,
-  defaultValue: number,
-  name: string,
-  max: number,
-): number {
-  if (value === undefined) {
-    return defaultValue;
-  }
-  const raw = value.trim();
-  if (raw === "") {
-    return defaultValue;
-  }
-  // Canonical positive decimal integer only: `[1-9][0-9]*` excludes leading
-  // zeros, signs, decimals, exponents, and any trailing junk.
-  if (!/^[1-9][0-9]*$/.test(raw)) {
-    logger.warn(
-      `[anonymous-session] Invalid ${name} (expected canonical positive integer), using default ${defaultValue} (received: ${value})`,
-    );
-    return defaultValue;
-  }
-  const n = Number.parseInt(raw, 10);
-  if (!Number.isSafeInteger(n) || n <= 0 || n > max) {
-    logger.warn(
-      `[anonymous-session] Invalid ${name} (expected 1..${max}), using default ${defaultValue} (received: ${value})`,
-    );
-    return defaultValue;
-  }
-  return n;
-}
-
 const app = new Hono<AppEnv>();
 
 app.use("*", rateLimit(RateLimitPresets.AGGRESSIVE));
@@ -90,17 +45,19 @@ app.post("/", async (c) => {
       PUBLIC_CHAT_MESSAGE_LIMIT?: string;
       NODE_ENV?: string;
     };
-    const expiryDays = parsePositiveIntEnv(
+    const expiryDays = parseAnonymousPositiveIntEnv(
       env.ANON_SESSION_EXPIRY_DAYS,
       7,
       "ANON_SESSION_EXPIRY_DAYS",
-      MAX_EXPIRY_DAYS,
+      MAX_ANONYMOUS_EXPIRY_DAYS,
+      "anonymous-session",
     );
-    const messagesLimit = parsePositiveIntEnv(
+    const messagesLimit = parseAnonymousPositiveIntEnv(
       env.PUBLIC_CHAT_MESSAGE_LIMIT,
       3,
       "PUBLIC_CHAT_MESSAGE_LIMIT",
-      MAX_MESSAGE_LIMIT,
+      MAX_ANONYMOUS_MESSAGE_LIMIT,
+      "anonymous-session",
     );
 
     const cookieToken = getCookie(c, ANON_SESSION_COOKIE);
