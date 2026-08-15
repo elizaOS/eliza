@@ -1344,6 +1344,8 @@ function summarizeCadence(cadence: LifeOpsCadence): string {
     : [];
 
   switch (cadence.kind) {
+    case "unscheduled":
+      return "no due date";
     case "once": {
       const dueAt = new Date(cadence.dueAt);
       if (Number.isNaN(dueAt.getTime())) {
@@ -2358,6 +2360,11 @@ export function buildCadenceFromLlmParams(
 } | null {
   const kind = params.cadenceKind;
   if (!kind) return null;
+  // Explicitly undated ("no due date", "just a plain todo"): a real answer,
+  // not a missing one — no windows/slots machinery applies.
+  if (kind === "unscheduled") {
+    return { cadence: { kind: "unscheduled" } };
+  }
   const effectiveTimeZone = context?.timeZone;
   const timeOfDayMinute =
     typeof params.timeOfDay === "string"
