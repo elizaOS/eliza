@@ -14,23 +14,26 @@ import type { App } from "../../db/repositories/apps";
 
 let appRows = new Map<string, App>();
 let appReads = 0;
-let onFindById: ((id: string) => void) | null = null;
+let onFence: ((id: string) => void) | null = null;
 
 mock.module("../../db/repositories/apps", () => ({
   appsRepository: {
     findById: async (id: string) => {
       appReads += 1;
-      onFindById?.(id);
       return appRows.get(id);
     },
     update: async (id: string, changes: Partial<App>) => {
       const row = appRows.get(id);
       if (!row) throw new Error(`no app row ${id}`);
-      appRows.set(id, { ...row, ...changes });
+      const updated = { ...row, ...changes };
+      appRows.set(id, updated);
+      return updated;
     },
   },
-  withAppCacheFence: async <T>(_appId: string, operation: (tx: unknown) => Promise<T>) =>
-    await operation({}),
+  withAppCacheFence: async <T>(appId: string, operation: (tx: unknown) => Promise<T>) => {
+    onFence?.(appId);
+    return await operation({});
+  },
   withAppCacheFences: async <T>(
     _identity: { appId?: string; apiKeyId?: string | null; slug?: string | null },
     operation: (tx: unknown) => Promise<T>,
@@ -96,7 +99,7 @@ function app(overrides: Partial<App> = {}): App {
 beforeEach(() => {
   appRows = new Map();
   appReads = 0;
-  onFindById = null;
+  onFence = null;
 });
 
 describe("updateMonetizationSettings cache publication", () => {
@@ -115,9 +118,10 @@ describe("updateMonetizationSettings cache publication", () => {
     expect(resolution.kind).toBe("ready");
     if (resolution.kind !== "ready") throw new Error("unreachable");
     expect(resolution.app?.monetization_enabled).toBe(true);
-    // The cache-only read consumed the mutation's publication — no warming
-    // round-trip and no additional authoritative read.
-    expect(appReads).toBe(readsAfterMutation);
+    // The primary row returned by update was published directly. Neither the
+    // mutation nor the cache-only read needed a replica/read-intent round-trip.
+    expect(readsAfterMutation).toBe(0);
+    expect(appReads).toBe(0);
 
     const monetized = await appsService.getAuthorizedMonetizedAppForUserCacheOnly(row.id, {
       id: "user-2",
@@ -149,15 +153,10 @@ describe("updateMonetizationSettings cache publication", () => {
     invalidateInferenceAppByIdState(row.id);
     await cache.del(CacheKeys.app.byId(row.id));
 
-    // The mutation reads the row twice: once before the update (slug lookup)
-    // and once inside the fenced publication. Interfere on the second read to
-    // simulate a concurrent mutation landing between the publication's
-    // authoritative read and its cache write.
-    let findByIdCalls = 0;
-    onFindById = (id) => {
-      if (id !== row.id) return;
-      findByIdCalls += 1;
-      if (findByIdCalls === 2) {
+    // Interfere after the publisher captured its generation but before it
+    // enters the durable cache fence.
+    onFence = (id) => {
+      if (id === row.id) {
         invalidateInferenceAppByIdState(row.id);
       }
     };
