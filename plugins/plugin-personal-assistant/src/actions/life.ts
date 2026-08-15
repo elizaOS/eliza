@@ -3080,6 +3080,7 @@ function shouldRequireLifeCreateConfirmation(args: {
   requestKind?: NativeAppleReminderLikeKind | null;
   cadence?: LifeOpsCadence;
   multiStep?: boolean;
+  explicitUndated?: boolean;
 }): boolean {
   if (args.messageSource === "autonomy") {
     return false;
@@ -3090,6 +3091,20 @@ function shouldRequireLifeCreateConfirmation(args: {
   // the two-phase preview even when extraction resolved a once cadence
   // (#16941 live finding: the exemption over-triggered and wrote pre-consent).
   if (args.requestKind && args.cadence?.kind === "once" && !args.multiStep) {
+    return false;
+  }
+  // #16935 symmetry for undated todos: when the owner's own words state both
+  // halves — the item AND that it has no date ("add a todo: X, no deadline") —
+  // a preview would ask them to confirm exactly what they just said. Scoped to
+  // an EXPLICIT textual no-date statement (the same canonical authority that
+  // guards the unscheduled-cadence wipe), single-step asks only, mirroring the
+  // #16941 over-trigger guard. An extraction-inferred unscheduled cadence
+  // without the explicit statement still previews.
+  if (
+    args.cadence?.kind === "unscheduled" &&
+    args.explicitUndated === true &&
+    !args.multiStep
+  ) {
     return false;
   }
   return !args.confirmed;
@@ -4682,6 +4697,7 @@ async function runLifeOperationHandlerInner(
           requestKind: timedRequestKind,
           cadence: definitionDraft.request.cadence,
           multiStep: llmPlan?.multiStep === true,
+          explicitUndated: textStatesExplicitUndatedTodo(currentText),
         })
       ) {
         const draftLeadSteps = (
