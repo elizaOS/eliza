@@ -113,16 +113,15 @@ describe("walkthrough device matrix required lanes", () => {
     );
   });
 
-  // The matrix must share the capture entrypoints' canonical seconds bound;
-  // Node clamps an overflowing millisecond timer to 1ms instead of failing.
+  // The matrix shares the capture entrypoints' canonical seconds bound so
+  // every accepted duration remains representable as a Node timer delay.
   it("bounds --duration in seconds, not milliseconds", () => {
     assert.equal(
       parseArgs(["--duration", String(MAX_CAPTURE_DURATION_SECONDS)], {})
         .duration,
       MAX_CAPTURE_DURATION_SECONDS,
     );
-    // Regression: every one of these was ACCEPTED before the unit fix, and each
-    // overflows Node's timer once multiplied to milliseconds.
+    // Each rejected value overflows Node's timer once converted to milliseconds.
     for (const overflowing of [
       String(MAX_CAPTURE_DURATION_SECONDS + 1),
       "3000000",
@@ -133,10 +132,7 @@ describe("walkthrough device matrix required lanes", () => {
         /--duration/,
         `expected --duration ${overflowing} to be rejected`,
       );
-      // The paired half of the acceptance criterion: each regression value must
-      // independently exceed the Node timer ceiling once converted to
-      // milliseconds — otherwise a later edit to this list could keep the
-      // rejection green while no longer proving the overflow relationship.
+      // Bind each fixture to the overflow relationship as well as rejection.
       assert.ok(
         Number(overflowing) * 1000 > 2_147_483_647,
         `${overflowing}s must exceed the timer ceiling once converted to ms`,
