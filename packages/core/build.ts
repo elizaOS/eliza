@@ -883,6 +883,104 @@ export async function buildEdge(
 
 	await runEdge();
 
+	// Bun's CJS-interop preamble is `createRequire(import.meta.url)` at module
+	// scope. workerd rejects it at import time because its module URLs are not
+	// file URLs, which makes the whole edge distribution fail before any user
+	// code runs. Every remaining `__require(...)` target in this bundle is a
+	// node builtin, so route them through `process.getBuiltinModule` (present
+	// in workerd nodejs_compat v2 and Node >= 20.16) and keep createRequire as
+	// the fallback for plain Node consumers of the edge build.
+	// workerd resolves imports at module load, so a single static import of a
+	// Node builtin it does not ship (node:fs, node:child_process, ...) makes
+	// the whole edge distribution fail before any user code runs. Rewrite every
+	// static node: import into a `process.getBuiltinModule` binding: on Node
+	// (>= 20.16; the repo pins 24) that returns exactly the module the import
+	// would have, and on workerd available builtins resolve while unavailable
+	// ones become undefined, so node-only paths fail at USE with a TypeError
+	// instead of killing the import. Bun's CJS-interop preamble
+	// `createRequire(import.meta.url)` gets the same guard: workerd rejects
+	// non-file module URLs, and every __require target left in this bundle is
+	// a builtin.
+	const fsp = await import("node:fs/promises");
+	const edgeBundlePath = "dist/edge/index.edge.js";
+	let edgeBundle = await fsp.readFile(edgeBundlePath, "utf8");
+	const shimLine =
+		"var __require = /* @__PURE__ */ createRequire(import.meta.url);";
+	if (edgeBundle.includes(shimLine)) {
+		const guardedLine = [
+			"var __require = /* @__PURE__ */ (globalThis.process?.getBuiltinModule",
+			"  ? (id) => globalThis.process.getBuiltinModule(id)",
+			"  : createRequire(import.meta.url));",
+		].join("\n");
+		edgeBundle = edgeBundle.replace(shimLine, guardedLine);
+	}
+	// Deterministic line-based transform (regexes across a 6 MB bundle proved
+	// easy to get subtly wrong): collect each static import statement, and when
+	// its specifier is a Node builtin or fs-extra, emit the guarded binding.
+	const builtin = (id: string) =>
+		`globalThis.process?.getBuiltinModule?.(${JSON.stringify(id)})`;
+	const rewriteImport = (statement: string): string | null => {
+		const match = statement.match(
+			/^import\s+(.+?)\s+from\s+"(node:[\w/]+|fs-extra)";$/s,
+		);
+		if (!match) return null;
+		const [, clause, id] = match;
+		if (id === "fs-extra") {
+			const name = clause.trim();
+			if (!/^[A-Za-z_$][\w$]*$/.test(name)) return null;
+			return `const ${name} = (() => { try { return __require("fs-extra"); } catch { return void 0; } })();`;
+		}
+		const star = clause.match(/^\*\s+as\s+([A-Za-z_$][\w$]*)$/);
+		if (star) return `const ${star[1]} = ${builtin(id)};`;
+		const braces = clause.match(/^\{([\s\S]*)\}$/);
+		if (braces) {
+			const destructured = braces[1]
+				.split(",")
+				.map((part) => part.trim().replace(/^(\S+)\s+as\s+(\S+)$/, "$1: $2"))
+				.filter((part) => part.length > 0)
+				.join(", ");
+			return `const { ${destructured} } = ${builtin(id)} ?? {};`;
+		}
+		if (/^[A-Za-z_$][\w$]*$/.test(clause.trim())) {
+			return `const ${clause.trim()} = ${builtin(id)};`;
+		}
+		return null;
+	};
+	const outLines: string[] = [];
+	const lines = edgeBundle.split("\n");
+	for (let i = 0; i < lines.length; i++) {
+		const line = lines[i];
+		if (!/^import\s/.test(line)) {
+			outLines.push(line);
+			continue;
+		}
+		// Accumulate a full statement: imports the bundler emits always end in
+		// `;` on their final line.
+		let statement = line;
+		let j = i;
+		while (!/;\s*$/.test(statement) && j + 1 < lines.length && j - i < 40) {
+			j += 1;
+			statement += `\n${lines[j]}`;
+		}
+		const rewritten = rewriteImport(statement);
+		if (rewritten !== null) {
+			outLines.push(rewritten);
+			i = j;
+		} else {
+			outLines.push(line);
+		}
+	}
+	edgeBundle = outLines.join("\n");
+	const residual = edgeBundle.match(
+		/^import [^;]+ from "(?:node:[\w/]+|fs-extra)";$/m,
+	);
+	if (residual) {
+		throw new Error(
+			`edge build: unhandled static node builtin import survived the rewrite: ${residual[0]}`,
+		);
+	}
+	await fsp.writeFile(edgeBundlePath, edgeBundle);
+
 	const duration = ((Date.now() - startTime) / 1000).toFixed(2);
 	console.log(`✅ Edge build complete in ${duration}s`);
 }
