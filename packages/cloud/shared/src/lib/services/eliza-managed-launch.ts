@@ -93,6 +93,9 @@ export async function readManagedElizaAgentConnection(params: {
   if (sandbox.status !== "running") {
     throw new ManagedElizaLaunchError("Managed agent is not running", 409);
   }
+  if (sandbox.claimed_at && !hasReadyWarmClaimCredential(sandbox)) {
+    throw new ManagedElizaLaunchError("Agent credential recovery is still in progress", 409);
+  }
 
   const apiBase = resolveManagedAgentApiBase(sandbox);
   if (!apiBase) {
