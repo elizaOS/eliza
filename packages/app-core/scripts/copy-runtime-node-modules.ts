@@ -2055,10 +2055,7 @@ export function shouldQueueRuntimeDependency(
   entry: DependencyEntry,
   alwaysBundled: ReadonlySet<string>,
 ): boolean {
-  return (
-    entry.required ||
-    shouldBundleDiscoveredPackage(entry.name, alwaysBundled)
-  );
+  return entry.required || shouldBundleDiscoveredPackage(entry.name, alwaysBundled);
 }
 
 export function getRuntimeDependencyEntries(
