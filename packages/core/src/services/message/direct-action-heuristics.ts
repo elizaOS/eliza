@@ -641,38 +641,63 @@ function findOwnerRoutinesActionName(
 	return findAvailableActionName(actions, OWNER_ROUTINES_ACTION_NAMES);
 }
 
-const SCHEDULED_ADMIN_ACTION_NAMES = [
-	"OWNER_REMINDERS",
-	"SCHEDULED_TASKS",
-	"REMINDERS",
-	"REMINDER",
-] as const;
+type ScheduledAdminDomain =
+	| "reminders"
+	| "alarms"
+	| "routines"
+	| "scheduled-tasks";
+
+const SCHEDULED_ADMIN_ACTION_NAMES_BY_DOMAIN: Record<
+	ScheduledAdminDomain,
+	readonly string[]
+> = {
+	reminders: ["OWNER_REMINDERS", "REMINDERS", "REMINDER"],
+	alarms: ["OWNER_ALARMS", "ALARMS", "ALARM"],
+	routines: OWNER_ROUTINES_ACTION_NAMES,
+	"scheduled-tasks": ["SCHEDULED_TASKS"],
+};
 
 /**
- * Detects admin operations on an existing scheduled item ("snooze the water
- * the ficus reminder until 6pm sunday", "skip today's checkin",
- * "reschedule my dentist reminder"). Live miss (matrix F5,
- * tj-a793149be84b86): with no deterministic candidate the turn fell through
- * to the view/app overlap, routed to APP, and failed "could not find that
- * active item" without ever reaching the reminders surface. Same
- * owner-domain-evidence rule as the mutation legs: these verbs act on owner
- * data; navigation cannot satisfy them.
+ * Detects admin operations on an existing scheduled item and preserves the
+ * owning action boundary. Reminder, alarm, and routine definitions use their
+ * owner surfaces; structural check-ins, follow-ups, and raw scheduled tasks use
+ * SCHEDULED_TASKS. A bare "skip this task" remains ambiguous and yields no
+ * deterministic candidate.
  */
-function looksLikeScheduledItemAdminRequest(text: string): boolean {
+function detectScheduledItemAdminDomain(
+	text: string,
+): ScheduledAdminDomain | null {
 	const normalized = text.toLowerCase().replace(/\s+/gu, " ").trim();
-	if (!normalized) return false;
-	if (!/\b(?:snooze|reschedule|postpone|unsnooze|skip)\b/iu.test(normalized)) {
-		return false;
+	if (
+		!normalized ||
+		!/\b(?:snooze|reschedule|postpone|unsnooze|skip)\b/iu.test(normalized)
+	) {
+		return null;
 	}
-	return /\b(?:reminders?|tasks?|check[- ]?ins?|alarms?|follow[- ]?ups?)\b/iu.test(
-		normalized,
-	);
+	if (/\balarms?\b/iu.test(normalized)) return "alarms";
+	if (/\b(?:check[- ]?ins?|follow[- ]?ups?)\b/iu.test(normalized)) {
+		return "scheduled-tasks";
+	}
+	if (/\b(?:routines?|habits?)\b/iu.test(normalized)) return "routines";
+	if (/\bscheduled\s+tasks?\b/iu.test(normalized)) return "scheduled-tasks";
+	if (
+		/\btasks?\b/iu.test(normalized) &&
+		/\b(?:snooze|reschedule|postpone|unsnooze)\b/iu.test(normalized)
+	) {
+		return "scheduled-tasks";
+	}
+	if (/\breminders?\b/iu.test(normalized)) return "reminders";
+	return null;
 }
 
 function findScheduledAdminActionName(
 	actions: ReadonlyArray<Pick<Action, "name" | "similes">>,
+	domain: ScheduledAdminDomain,
 ): string | undefined {
-	return findAvailableActionName(actions, SCHEDULED_ADMIN_ACTION_NAMES);
+	return findAvailableActionName(
+		actions,
+		SCHEDULED_ADMIN_ACTION_NAMES_BY_DOMAIN[domain],
+	);
 }
 
 const MEDIA_GENERATION_ACTION_NAMES = [
@@ -1020,12 +1045,15 @@ export function inferDirectCurrentRequestCandidateInference(
 		}
 		return EMPTY_DIRECT_CANDIDATE_INFERENCE;
 	}
-	// Scheduled-item admin verbs (snooze/reschedule/skip) are owner mutations
-	// on existing data; without a deterministic candidate they fall through to
-	// the view/app overlap and fail off-surface (matrix F5). Same
-	// no-candidate-on-missing-surface rule as the other mutation legs.
-	if (looksLikeScheduledItemAdminRequest(messageText)) {
-		const scheduledAdminAction = findScheduledAdminActionName(actions);
+	// Scheduled-item admin verbs are mutations on an existing owner record.
+	// Resolve the noun's owning surface first so a co-registered reminders
+	// umbrella cannot steal alarms, routines, check-ins, or raw scheduled tasks.
+	const scheduledAdminDomain = detectScheduledItemAdminDomain(messageText);
+	if (scheduledAdminDomain) {
+		const scheduledAdminAction = findScheduledAdminActionName(
+			actions,
+			scheduledAdminDomain,
+		);
 		if (scheduledAdminAction) {
 			return { names: [scheduledAdminAction], kind: "owner-scheduled-admin" };
 		}

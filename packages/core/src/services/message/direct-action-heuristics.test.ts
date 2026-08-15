@@ -1218,39 +1218,67 @@ describe("batch-1 matrix fixes: budget noun + scheduled-item admin (F3/F5)", () 
 		).toEqual({ names: [], kind: null });
 	});
 
-	it("snooze/reschedule verbs hint the scheduled surface (F5, tj-a793149be84b86)", () => {
-		const reminders = { name: "OWNER_REMINDERS", similes: [], tags: [] };
+	it("routes scheduled-admin nouns to their owner with the full action set", () => {
 		const appAction = {
 			name: "APP",
 			similes: ["LAUNCH_APP"],
 			tags: ["app", "apps"],
 		};
+		const actions = [
+			viewsAction,
+			appAction,
+			{ name: "OWNER_REMINDERS", similes: [], tags: [] },
+			{ name: "OWNER_ALARMS", similes: [], tags: [] },
+			{ name: "OWNER_ROUTINES", similes: [], tags: [] },
+			{ name: "SCHEDULED_TASKS", similes: [], tags: [] },
+		];
+		const cases = [
+			["snooze the water the ficus reminder until 6pm sunday", "OWNER_REMINDERS"],
+			["reschedule my dentist reminder to friday", "OWNER_REMINDERS"],
+			["snooze my 6am alarm", "OWNER_ALARMS"],
+			["postpone my morning routine", "OWNER_ROUTINES"],
+			["skip today's check-in", "SCHEDULED_TASKS"],
+			["reschedule my follow-up", "SCHEDULED_TASKS"],
+			["reschedule the scheduled task", "SCHEDULED_TASKS"],
+			["snooze the task until tomorrow", "SCHEDULED_TASKS"],
+		] as const;
+
+		for (const [message, expected] of cases) {
+			expect(
+				inferDirectCurrentRequestCandidateInference(actions, message),
+			).toEqual({ names: [expected], kind: "owner-scheduled-admin" });
+		}
+	});
+
+	it("never falls back to reminders when the scheduled-admin owner is absent", () => {
+		const actions = [
+			viewsAction,
+			{ name: "OWNER_REMINDERS", similes: [], tags: [] },
+			{ name: "OWNER_ROUTINES", similes: [], tags: [] },
+			{ name: "SCHEDULED_TASKS", similes: [], tags: [] },
+		];
+		expect(
+			inferDirectCurrentRequestCandidateInference(actions, "snooze my alarm"),
+		).toEqual({ names: [], kind: null });
 		expect(
 			inferDirectCurrentRequestCandidateInference(
-				[viewsAction, appAction, reminders],
-				"snooze the water the ficus reminder until 6pm sunday",
-			),
-		).toEqual({ names: ["OWNER_REMINDERS"], kind: "owner-scheduled-admin" });
-		expect(
-			inferDirectCurrentRequestCandidateInference(
-				[viewsAction, appAction, reminders],
-				"reschedule my dentist reminder to friday",
-			),
-		).toEqual({ names: ["OWNER_REMINDERS"], kind: "owner-scheduled-admin" });
-		// Admin verb with no scheduled surface: yield nothing, never APP.
-		expect(
-			inferDirectCurrentRequestCandidateInference(
-				[viewsAction, appAction],
-				"snooze the water the ficus reminder until 6pm sunday",
+				actions.filter((action) => action.name !== "SCHEDULED_TASKS"),
+				"skip today's check-in",
 			),
 		).toEqual({ names: [], kind: null });
-		// "snooze" without a scheduled noun stays untouched (chat/alarm apps etc).
-		expect(
-			inferDirectCurrentRequestCandidateInference(
-				[viewsAction, appAction, reminders],
-				"i want to snooze for a bit",
-			).kind,
-		).not.toBe("owner-scheduled-admin");
+	});
+
+	it("keeps ambiguous task skips and nounless snooze requests unhinted", () => {
+		const actions = [
+			viewsAction,
+			{ name: "OWNER_REMINDERS", similes: [], tags: [] },
+			{ name: "SCHEDULED_TASKS", similes: [], tags: [] },
+		];
+		for (const message of ["skip this task", "i want to snooze for a bit"]) {
+			expect(
+				inferDirectCurrentRequestCandidateInference(actions, message),
+			).toEqual({ names: [], kind: null });
+		}
 	});
 
 	it("owner-item deletes hint the owning umbrella (F31, tj-f02205ae366226)", () => {
