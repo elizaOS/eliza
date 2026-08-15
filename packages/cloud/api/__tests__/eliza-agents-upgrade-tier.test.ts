@@ -1277,6 +1277,7 @@ describe("POST /api/v1/eliza/agents/:agentId/upgrade-tier", () => {
           importedMessages: 2,
           importedScheduledTasks: 2,
           importedTodos: 1,
+          importedTodoMutations: 1,
         },
       });
       expect(importFetch).toHaveBeenLastCalledWith(
