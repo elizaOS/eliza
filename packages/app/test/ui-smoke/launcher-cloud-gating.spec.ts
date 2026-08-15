@@ -7,7 +7,6 @@ import { expect, type Page, type TestInfo, test } from "@playwright/test";
 import {
   installDefaultAppRoutes,
   openAppPath,
-  openSettingsSection,
   seedAppStorage,
 } from "./helpers";
 import { captureScreenshotWithQualityRetry } from "./helpers/screenshot-quality";
@@ -36,8 +35,10 @@ import { saveBrowserVideoArtifact } from "./helpers/video-artifacts";
  * real one, not a mock of it.
  *
  * Capture artifacts are written into Playwright's per-test output directory.
- * The walkthrough test also records a video of the agent-first cloud setup
- * flow: launcher without the tile → Settings → Cloud → Connect → connected →
+ * The walkthrough test also records a video of the cloud setup contract after
+ * the eliza.app consolidation: launcher without the tile → Settings shows NO
+ * local Connect Cloud section (cloud sections are managed-cloud-only) → the
+ * backend status flips connected (as a completed hosted login would) →
  * launcher STILL without the tile (My Apps remains the one apps entry).
  */
 
@@ -238,33 +239,29 @@ test.describe("launcher: one apps tile — cloud-apps never tiles", () => {
       await expect(cloudTile(page)).toHaveCount(0);
       await screenshot(page, testInfo, "walkthrough-1-launcher-disconnected");
 
-      // Agent-first cloud setup: Settings → Cloud → Overview → Connect Cloud.
-      // (The cloud group's overview section registers with defaultLabel
-      // "Overview" and defaultTitle "Eliza Cloud" — settings-sections.ts.)
+      // Since the eliza.app consolidation (0468c1850a3), the Settings Cloud
+      // group is managed-cloud-only: `cloudOnly` sections are filtered out
+      // unless `isManagedCloudRuntime(target)` holds (SettingsView.tsx), so a
+      // local runtime shows NO Cloud Overview / Connect Cloud section — cloud
+      // sign-in happens on the hosted eliza.app surface instead.
       await openAppPath(page, "/settings");
-      await openSettingsSection(page, /^Overview$/);
-      const connectButton = page.getByRole("button", {
-        name: /Connect Cloud|Connect Eliza Cloud/i,
+      await expect(page.getByTestId("settings-shell")).toBeVisible({
+        timeout: 30_000,
       });
-      await expect(connectButton.first()).toBeVisible({ timeout: 30_000 });
-      await screenshot(page, testInfo, "walkthrough-2-settings-cloud-section");
+      await expect(
+        page.getByTestId("settings-shell").getByText(/^Overview$/),
+      ).toHaveCount(0);
+      await expect(
+        page.getByRole("button", {
+          name: /Connect Cloud|Connect Eliza Cloud/i,
+        }),
+      ).toHaveCount(0);
+      await screenshot(page, testInfo, "walkthrough-2-settings-no-cloud-connect");
 
-      // Completing the (stubbed) login flips the backend status; the UI must
-      // observe it through its own status poll — the same signal a real
-      // device-code/Steward completion produces.
+      // A completed hosted login flips the backend status; the UI must observe
+      // it through its own status poll — the same signal a real device-code /
+      // Steward completion produces on return to the app.
       state.connected = true;
-      await connectButton.first().click();
-      await expect(
-        page.getByRole("button", { name: /Open Eliza Cloud/i }).first(),
-      ).toBeVisible({ timeout: 60_000 });
-      await expect(
-        page.getByRole("button", { name: /Open Eliza Cloud/i }).first(),
-      ).toContainText("Cloud connected");
-      await screenshot(
-        page,
-        testInfo,
-        "walkthrough-3-settings-cloud-connected",
-      );
 
       await openAppPath(page, "/views");
       await expect(page.getByTestId("launcher")).toBeVisible({
@@ -274,7 +271,7 @@ test.describe("launcher: one apps tile — cloud-apps never tiles", () => {
       // inside My Apps, so the grid still shows only the My Apps entry.
       await expect(myAppsTile(page)).toBeVisible({ timeout: 30_000 });
       await expect(cloudTile(page)).toHaveCount(0);
-      await screenshot(page, testInfo, "walkthrough-4-launcher-connected");
+      await screenshot(page, testInfo, "walkthrough-3-launcher-connected");
 
       // Persist the recording next to the screenshots.
       const video = page.video();
@@ -294,9 +291,10 @@ test.describe("launcher: one apps tile — cloud-apps never tiles", () => {
           notePath,
           [
             "Recorded by launcher-cloud-gating.spec.ts (cloud setup walkthrough).",
-            "Flow: launcher without cloud-apps tile → Settings → Eliza Cloud →",
-            "Connect Cloud → status flips connected → launcher still shows only",
-            "the My Apps tile (the studio lives inside My Apps).",
+            "Flow: launcher without cloud-apps tile → Settings offers no local",
+            "Connect Cloud section (cloud sections are managed-cloud-only) →",
+            "status flips connected → launcher still shows only the My Apps",
+            "tile (the studio lives inside My Apps).",
             "",
             "Repro: bun run --cwd packages/app test:e2e -- --project=chromium test/ui-smoke/launcher-cloud-gating.spec.ts",
           ].join("\n"),
