@@ -13,19 +13,25 @@ import {
 
 /**
  * Pins the intended desktop experience documented in
- * `docs/desktop-window-lifecycle.md` (#10720): chat-first launch, tray on by
- * default, tray-first / popover opt-in, and kiosk overriding both. A regression
- * that flips any of these defaults fails here.
+ * `docs/desktop-window-lifecycle.md` (#10720): window-first launch, tray on by
+ * default, bottom-bar / tray-first / popover opt-in, and kiosk overriding both.
+ * A regression that flips any of these defaults fails here.
+ *
+ * Launch opens the ordinary window, matching the assistant this shell is
+ * modelled on: Claude Desktop launches a normal window and keeps its floating
+ * quick-chat bar as a separate summoned surface. Launching straight into the
+ * chromeless transparent click-through bar left the desktop with no reachable
+ * window at all.
  */
-describe("desktop experience contract — chat-first launch", () => {
-  it("launches into the chromeless chat bottom bar by default", () => {
-    expect(shouldStartBottomBar({}, [])).toBe(true);
+describe("desktop experience contract — window-first launch", () => {
+  it("launches into the ordinary window by default", () => {
+    expect(shouldStartBottomBar({}, [])).toBe(false);
   });
 
-  it("honors the ELIZA_DESKTOP_BOTTOM_BAR kill switch", () => {
-    for (const off of ["0", "false", "no", "off"]) {
-      expect(shouldStartBottomBar({ ELIZA_DESKTOP_BOTTOM_BAR: off }, [])).toBe(
-        false,
+  it("opts into the chromeless chat bottom bar explicitly", () => {
+    for (const on of ["1", "true", "yes", "on"]) {
+      expect(shouldStartBottomBar({ ELIZA_DESKTOP_BOTTOM_BAR: on }, [])).toBe(
+        true,
       );
     }
   });
@@ -42,9 +48,19 @@ describe("desktop experience contract — chat-first launch", () => {
     expect(tagged).toContain("shellMode=chat-overlay");
   });
 
-  it("presents the default window as a transparent, frameless bottom bar (macOS)", () => {
+  it("presents the default window as an ordinary opaque window (macOS)", () => {
     const presentation = resolveDesktopShellWindowPresentation(
       {},
+      [],
+      "darwin",
+    );
+    expect(presentation.mode).toBe("default");
+    expect(presentation.transparent).toBe(false);
+  });
+
+  it("presents the opted-in bar as a transparent, frameless surface (macOS)", () => {
+    const presentation = resolveDesktopShellWindowPresentation(
+      { ELIZA_DESKTOP_BOTTOM_BAR: "1" },
       [],
       "darwin",
     );

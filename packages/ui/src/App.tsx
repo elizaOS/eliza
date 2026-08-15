@@ -369,6 +369,17 @@ function useChatOverlayWindowHeight(overlayOpen: boolean): void {
           height: nextHeight,
         },
       });
+      if (cancelled) return;
+
+      // The bar is created click-through so the desktop stays usable through
+      // its transparent region. While the overlay is open the window must stop
+      // passing clicks through, or the chat renders but cannot be clicked,
+      // typed into, or dragged.
+      await invokeDesktopBridgeRequest<void>({
+        rpcMethod: "desktopSetWindowPassthrough",
+        ipcChannel: "desktop:setWindowPassthrough",
+        params: { enabled: !overlayOpen },
+      });
     })();
 
     return () => {

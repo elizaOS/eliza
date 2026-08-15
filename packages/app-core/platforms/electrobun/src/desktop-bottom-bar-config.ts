@@ -7,31 +7,40 @@
  * renderer URL so the React app renders the chat-overlay shell only (not the
  * full `<App>`), and the bar's screen geometry.
  *
- * Default ON (#10350): the chromeless bottom bar is the resting desktop surface,
- * satisfying #9953 acceptance criterion #1. The opt-out kill switch is
- * `ELIZA_DESKTOP_BOTTOM_BAR=0` (or `false`/`no`/`off`), which restores the legacy
- * full-window dashboard. Excludes kiosk shell mode (kiosk wants a fullscreen
- * view-manager surface), which always wins.
+ * Launch opens the ordinary window; the bar is a summoned surface.
+ *
+ * This mirrors the assistant this shell is modelled on. Claude Desktop launches
+ * into a normal `layer=0` window and exposes its floating quick-chat bar as a
+ * SEPARATE, on-demand surface opened from the menu-bar item and dismissed with
+ * Escape — the bar never owns the resting state, and its window does not exist
+ * while it is closed. Launching straight into a chromeless, transparent,
+ * click-through bar instead left the desktop with no reachable window: the bar
+ * is nearly invisible at rest, cannot be dragged (no chrome), and its
+ * creation-time click-through meant a real cursor could not use it.
+ *
+ * Opt IN to launching directly into the bar with `ELIZA_DESKTOP_BOTTOM_BAR=1`
+ * (or `true`/`yes`/`on`). Kiosk shell mode always wins over both.
  */
 
 import { appendShellModeParam, isKioskShellMode } from "./kiosk-mode";
 
-/** Explicit opt-out values for the bottom-bar default (the kill switch). */
-function parseFalsy(value: string | undefined): boolean {
+/** Explicit opt-in values for launching directly into the bottom bar. */
+function parseTruthy(value: string | undefined): boolean {
   if (value === undefined) return false;
   const normalized = value.trim().toLowerCase();
   return (
-    normalized === "0" ||
-    normalized === "false" ||
-    normalized === "no" ||
-    normalized === "off"
+    normalized === "1" ||
+    normalized === "true" ||
+    normalized === "yes" ||
+    normalized === "on"
   );
 }
 
 /**
  * Whether the desktop should launch as a chromeless bottom chat bar instead of
- * the full-window dashboard. Default ON (#10350); opt out with
- * `ELIZA_DESKTOP_BOTTOM_BAR=0`; never in kiosk mode.
+ * the ordinary window. Default OFF: launch opens the window, and the bar is
+ * summoned from the tray. Opt in with `ELIZA_DESKTOP_BOTTOM_BAR=1`; never in
+ * kiosk mode.
  */
 export function shouldStartBottomBar(
   env: Record<string, string | undefined> = process.env,
@@ -40,10 +49,7 @@ export function shouldStartBottomBar(
   if (isKioskShellMode(env, argv)) {
     return false;
   }
-  if (parseFalsy(env.ELIZA_DESKTOP_BOTTOM_BAR)) {
-    return false;
-  }
-  return true;
+  return parseTruthy(env.ELIZA_DESKTOP_BOTTOM_BAR);
 }
 
 /**

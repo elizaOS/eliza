@@ -11,20 +11,20 @@ import {
 
 describe("desktop bottom-bar config", () => {
   describe("shouldStartBottomBar", () => {
-    it("is ON by default (#10350: bottom bar is the resting desktop surface)", () => {
-      expect(shouldStartBottomBar({}, [])).toBe(true);
+    it("is OFF by default — launch opens the ordinary window", () => {
+      expect(shouldStartBottomBar({}, [])).toBe(false);
     });
 
-    it("stays ON for unset / empty / truthy values", () => {
-      for (const value of ["1", "true", "yes", "on", " TRUE ", ""]) {
+    it("opts in for explicit truthy ELIZA_DESKTOP_BOTTOM_BAR", () => {
+      for (const value of ["1", "true", "yes", "on", " TRUE "]) {
         expect(
           shouldStartBottomBar({ ELIZA_DESKTOP_BOTTOM_BAR: value }, []),
         ).toBe(true);
       }
     });
 
-    it("opts out via explicit falsy ELIZA_DESKTOP_BOTTOM_BAR (the kill switch)", () => {
-      for (const value of ["0", "false", "no", "off", " OFF "]) {
+    it("stays OFF for unset, empty, and falsy values", () => {
+      for (const value of ["", "0", "false", "no", "off", " OFF "]) {
         expect(
           shouldStartBottomBar({ ELIZA_DESKTOP_BOTTOM_BAR: value }, []),
         ).toBe(false);
@@ -103,16 +103,36 @@ describe("desktop bottom-bar config", () => {
   });
 
   describe("resolveDesktopShellWindowPresentation", () => {
-    it("reports the bottom-bar presentation by default (#10350)", () => {
-      expect(resolveDesktopShellWindowPresentation({}, [], "win32")).toEqual({
+    it("reports the bottom-bar presentation when opted in (=1)", () => {
+      expect(
+        resolveDesktopShellWindowPresentation(
+          { ELIZA_DESKTOP_BOTTOM_BAR: "1" },
+          [],
+          "win32",
+        ),
+      ).toEqual({
         mode: "bottom-bar",
         titleBarStyle: "hidden",
         transparent: false,
       });
-      expect(resolveDesktopShellWindowPresentation({}, [], "darwin")).toEqual({
+      expect(
+        resolveDesktopShellWindowPresentation(
+          { ELIZA_DESKTOP_BOTTOM_BAR: "1" },
+          [],
+          "darwin",
+        ),
+      ).toEqual({
         mode: "bottom-bar",
         titleBarStyle: "hidden",
         transparent: true,
+      });
+    });
+
+    it("reports the ordinary window presentation by default", () => {
+      expect(resolveDesktopShellWindowPresentation({}, [], "darwin")).toEqual({
+        mode: "default",
+        titleBarStyle: "hiddenInset",
+        transparent: false,
       });
     });
 

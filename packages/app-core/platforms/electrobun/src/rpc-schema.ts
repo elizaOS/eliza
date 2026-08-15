@@ -1450,6 +1450,17 @@ export type ElizaDesktopRPCSchema = {
       desktopSetWindowOptions: { params: WindowOptions; response: undefined };
       desktopGetWindowBounds: { params: undefined; response: WindowBounds };
       desktopSetWindowBounds: { params: WindowBounds; response: undefined };
+      /**
+       * Toggle OS-level click-through on the main window at runtime. The
+       * chromeless bottom bar is created click-through so the desktop stays
+       * usable through its transparent region; it must stop passing clicks
+       * through while the chat overlay is open or the overlay is visible but
+       * not interactive.
+       */
+      desktopSetWindowPassthrough: {
+        params: { enabled: boolean };
+        response: undefined;
+      };
       desktopMinimizeWindow: { params: undefined; response: undefined };
       desktopUnminimizeWindow: { params: undefined; response: undefined };
       desktopMaximizeWindow: { params: undefined; response: undefined };
@@ -2435,6 +2446,7 @@ export const CHANNEL_TO_RPC_METHOD: Record<string, string> = {
   "desktop:setWindowOptions": "desktopSetWindowOptions",
   "desktop:getWindowBounds": "desktopGetWindowBounds",
   "desktop:setWindowBounds": "desktopSetWindowBounds",
+  "desktop:setWindowPassthrough": "desktopSetWindowPassthrough",
   "desktop:minimizeWindow": "desktopMinimizeWindow",
   "desktop:unminimizeWindow": "desktopUnminimizeWindow",
   "desktop:maximizeWindow": "desktopMaximizeWindow",

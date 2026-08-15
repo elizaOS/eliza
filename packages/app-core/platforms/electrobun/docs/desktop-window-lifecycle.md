@@ -8,9 +8,20 @@ Issue #10720.
 
 ## The experience in one paragraph
 
-On launch the desktop app opens **chat first** — a chromeless, transparent,
-always-on-top bottom bar rendering only the floating chat overlay, **not** the
-full dashboard window. On macOS the app is **dockless by default** (#12184): the
+On launch the desktop app opens an **ordinary window**. The chromeless,
+transparent, always-on-top chat bar is a **summoned** surface, opt-in at launch
+with `ELIZA_DESKTOP_BOTTOM_BAR=1`.
+
+This matches the assistant this shell is modelled on. Claude Desktop launches a
+normal `layer=0` window; its floating quick-chat bar is a separate `layer=1000`
+surface opened from the menu-bar item and dismissed with Escape, and that
+window does not exist while it is closed. Launching straight into the bar
+instead left the desktop with no reachable window: the resting bar is a 96x6px
+25%-opacity mark, has no chrome to drag, and its creation-time click-through
+meant a real cursor could not use it.
+
+Historic note: the bar used to be the launch default and the rest of this
+document is written from that perspective. On macOS the app is **dockless by default** (#12184): the
 pill + menu-bar icon are the resting surface and there is **no Dock icon** until
 a full window opens. The pill passes clicks through its transparent regions
 (`passthrough`), joins every Space (`setVisibleOnAllWorkspaces`), and re-anchors
@@ -27,7 +38,7 @@ summoned on demand.
 
 | Concern | Function | Default |
 | --- | --- | --- |
-| Bottom-bar (chat-overlay) shell is the resting surface | `shouldStartBottomBar()` (`desktop-bottom-bar-config.ts`) | **ON** (#10350); opt out with `ELIZA_DESKTOP_BOTTOM_BAR=0` |
+| Bottom-bar (chat-overlay) shell at launch | `shouldStartBottomBar()` (`desktop-bottom-bar-config.ts`) | **OFF**; opt in with `ELIZA_DESKTOP_BOTTOM_BAR=1` |
 | Window presentation (frameless / transparent / titleBarStyle) | `resolveDesktopShellWindowPresentation()` | `bottom-bar` unless kiosk; **transparency is scoped to the pill (macOS)** — the full dashboard and kiosk stay opaque, and no window gets a vibrancy frost, so nothing renders as a full-window glass sheet (#12184) |
 | Renderer told to render the overlay shell | `appendChatOverlayShellModeParam()` → `?shellMode=chat-overlay` | appended in `createMainWindow()` (`index.ts`) |
 | Bar geometry (anchored to work-area bottom edge) | `computeBottomBarFrame()` | 140px tall, full width |

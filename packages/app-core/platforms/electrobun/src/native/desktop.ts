@@ -22,8 +22,10 @@
  */
 
 import * as fs from "node:fs";
+import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 import {
   clearWorkspaceFolderConfig,
   writeWorkspaceFolderConfig,
@@ -317,6 +319,47 @@ export interface NotificationDiagnosticsEntry {
 }
 
 const MAX_NOTIFICATION_DIAGNOSTICS = 50;
+
+type WebviewSetPassthrough = (ptr: unknown, enabled: boolean) => void;
+
+let webviewSetPassthroughPromise: Promise<WebviewSetPassthrough> | null = null;
+
+/**
+ * Resolve Electrobun's native `webviewSetPassthrough` FFI symbol.
+ *
+ * Electrobun exposes `passthrough` only as a window/view *creation* option, but
+ * its native layer can flip it at runtime — the symbol backs the
+ * `<electrobun-webview>` tag's `togglePassthrough()`. The module holding it
+ * (`proc/native`) is not in the package `exports` map, so it is resolved
+ * relative to the public `electrobun/bun` barrel instead of deep-imported
+ * (`electrobun/bun/proc/native` does not resolve).
+ *
+ * This is a deliberate reach past the public API and the reason it is isolated
+ * here: if a future Electrobun moves the module or the symbol, this throws with
+ * a specific message instead of leaving the bar silently click-through.
+ */
+async function loadWebviewSetPassthrough(): Promise<WebviewSetPassthrough> {
+  webviewSetPassthroughPromise ??= (async () => {
+    const require_ = createRequire(import.meta.url);
+    const barrelPath = require_.resolve("electrobun/bun");
+    const nativePath = path.join(path.dirname(barrelPath), "proc", "native.ts");
+    const nativeModule = (await import(pathToFileURL(nativePath).href)) as {
+      native?: { symbols?: Record<string, unknown> } | null;
+    };
+    const symbol = nativeModule.native?.symbols?.webviewSetPassthrough;
+    if (typeof symbol !== "function") {
+      throw new Error(
+        `[Desktop] webviewSetPassthrough is unavailable in this Electrobun build (${nativePath}).`,
+      );
+    }
+    return symbol as WebviewSetPassthrough;
+  })().catch((err) => {
+    // Do not cache a failure: a later call should retry rather than inherit it.
+    webviewSetPassthroughPromise = null;
+    throw err;
+  });
+  return webviewSetPassthroughPromise;
+}
 
 /**
  * Desktop Manager — handles all native desktop features for Electrobun.
@@ -1245,6 +1288,38 @@ X-GNOME-Autostart-enabled=true
     if (!win) return;
     win.setPosition(options.x, options.y);
     win.setSize(options.width, options.height);
+  }
+
+  /**
+   * Toggle OS-level click-through on the main window's webview at runtime.
+   *
+   * The chromeless bottom bar is created with `passthrough: true` so clicks on
+   * its large transparent region reach the app underneath. That flag is a
+   * *creation* option in Electrobun's `BrowserWindow`/`BrowserView` API, so the
+   * bar could never catch a real cursor once the chat overlay opened — the
+   * overlay rendered but was not clickable or draggable.
+   *
+   * The native layer does support flipping it: `webviewSetPassthrough(ptr, bool)`
+   * is a real FFI symbol (it backs the `<electrobun-webview>` tag's
+   * `togglePassthrough()`), it is simply not surfaced on the window class. We
+   * reach it through the view's public `ptr`. If the symbol or pointer is
+   * missing on this Electrobun build we report that rather than silently
+   * leaving the window click-through.
+   */
+  async setWindowPassthrough(options: { enabled: boolean }): Promise<void> {
+    const win = this.getWindow();
+    if (!win) return;
+
+    const view = (win as { webview?: { ptr?: unknown } }).webview;
+    const ptr = view?.ptr;
+    if (!ptr) {
+      throw new Error(
+        "[Desktop] Cannot set passthrough: main window webview has no native pointer.",
+      );
+    }
+
+    const setPassthrough = await loadWebviewSetPassthrough();
+    setPassthrough(ptr, options.enabled);
   }
 
   async minimizeWindow(): Promise<void> {
