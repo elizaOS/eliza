@@ -84,6 +84,24 @@ const NEGATED_REQUESTS = [
 ] as const;
 
 describe("textStatesExplicitUndatedTodo", () => {
+  it("recognizes the live F32 residual composite and its parts (deadline/general forms)", () => {
+    for (const text of [
+      "no deadline, it's just a general todo",
+      "no deadline",
+      "without a deadline",
+      "just a general todo",
+      "it's a simple task",
+      "make it a regular todo",
+    ]) {
+      expect(textStatesExplicitUndatedTodo(text)).toBe(true);
+    }
+    // Negations and schedules still win over the new phrases.
+    expect(textStatesExplicitUndatedTodo("not a general todo")).toBe(false);
+    expect(
+      textStatesExplicitUndatedTodo("no deadline, actually make it friday"),
+    ).toBe(false);
+  });
+
   it.each(EXPLICIT_UNDATED_REQUESTS)(
     "accepts explicit undated authority in %s",
     (_caseName, text) => {
