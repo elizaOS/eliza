@@ -11,12 +11,14 @@
  * on non-finite timestamps so provider text never shows "NaN days ago".
  */
 
-import type {
-  IAgentRuntime,
-  Memory,
-  Provider,
-  ProviderResult,
-  State,
+import {
+  type IAgentRuntime,
+  type Memory,
+  OWNER_EXCLUSIVE_DISCLOSURE_GATE,
+  type Provider,
+  type ProviderResult,
+  revalidateOwnerExclusiveDisclosure,
+  type State,
 } from "@elizaos/core";
 import type { IPermissionsRegistry, PermissionState } from "@elizaos/shared";
 import { PERMISSIONS_REGISTRY_SERVICE } from "../services/permissions-registry.ts";
@@ -124,15 +126,25 @@ export const pendingPermissionsProvider: Provider = {
   // on the very turn that needs it instead of being materialized as `general`
   // and filtered out before the model call.
   alwaysInResponseState: true,
+  disclosureGate: OWNER_EXCLUSIVE_DISCLOSURE_GATE,
   position: -5,
   cacheStable: false,
   cacheScope: "turn",
 
   async get(
     runtime: IAgentRuntime,
-    _message: Memory,
+    message: Memory,
     _state: State,
   ): Promise<ProviderResult> {
+    // Keep the provider fail-closed even when invoked directly outside the
+    // central composeState disclosure gate (tests, plugins, or future callers).
+    const disclosure = await revalidateOwnerExclusiveDisclosure(
+      runtime,
+      message,
+    );
+    if (!disclosure.allowed) {
+      return { text: "", values: {}, data: {} };
+    }
     const registry = resolveRegistry(runtime);
     if (!registry) return { text: "", values: {}, data: {} };
 
