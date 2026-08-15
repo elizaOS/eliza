@@ -60,10 +60,6 @@ export const SCRIPT_TEST_EXCLUSIONS = new Map([
     "scripts/lifeops/connector-paths.test.mjs",
     "2/24 tests parse docs/testing/hitl-identity-slots.md, deleted from the tree; lifeops-owner repair tracked in #19448",
   ],
-  [
-    "scripts/lifeops/env-layers.test.mjs",
-    "1/14 tests pin a stale layered-env consumer list; lifeops-owner repair tracked in #19448",
-  ],
 ]);
 
 function compareText(left, right) {
