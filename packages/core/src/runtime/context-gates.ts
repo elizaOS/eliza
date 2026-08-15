@@ -124,10 +124,9 @@ export function filterByContextGate<T extends ContextGateCandidate>(
 		// waive the declared role requirement. Fall back to item.roleGate whenever the
 		// contextGate does not specify its own.
 		const explicit = item.contextGate;
-		const gate: ContextGate = {
-			contexts: explicit?.contexts ?? item.contexts,
-			roleGate: explicit?.roleGate ?? item.roleGate,
-		};
+		const gate: ContextGate = explicit
+			? { ...explicit, contexts: explicit.contexts ?? item.contexts, roleGate: explicit.roleGate ?? item.roleGate }
+			: { contexts: item.contexts, roleGate: item.roleGate };
 		return satisfiesContextGate(activeContexts, gate, userRoles);
 	});
 }
