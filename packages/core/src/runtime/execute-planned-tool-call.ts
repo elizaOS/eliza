@@ -72,7 +72,7 @@ export interface ExecutePlannedToolCallContext {
 
 export interface ToolArgAliasCapability {
 	/** Exact redacted token emitted into this turn's planner context. */
-	token: string;
+	token: `[REDACTED:${string}]`;
 	/** Already-authorized value; never read from a model-authored setting name. */
 	value: string;
 	kind: "entity_id";
