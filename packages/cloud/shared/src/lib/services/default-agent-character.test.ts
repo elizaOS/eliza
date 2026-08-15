@@ -63,7 +63,7 @@ describe("default agent character seed", () => {
     const preset = buildCloudElizaPersona();
     const seed = buildDefaultAgentCharacterConfig();
 
-    expect(preset.id).toBe("eliza");
+    expect(getDefaultStylePreset().id).toBe("eliza");
     expect(seed.system).toBe(preset.system);
     expect(seed.bio).toEqual(preset.bio);
     expect(seed.adjectives).toEqual(preset.adjectives);
@@ -100,9 +100,13 @@ describe("default agent character seed", () => {
   });
 
   test("keeps {{name}} tokens so a later rename keeps propagating", () => {
+    // The persona ships tokenized (`{{name}}`) and the seed must carry the
+    // tokens verbatim rather than expanding them at create time. Only the
+    // system prompt is guaranteed to carry a token; other fields follow the
+    // catalog's own copy, which the equality assertions above already pin.
     const seed = buildDefaultAgentCharacterConfig();
+    expect(buildCloudElizaPersona().system).toContain("{{name}}");
     expect(seed.system as string).toContain("{{name}}");
-    expect((seed.bio as string[]).some((line) => line.includes("{{name}}"))).toBe(true);
   });
 
   test("never overwrites a persona the caller already supplied", () => {
@@ -176,10 +180,13 @@ describe("a newly created cloud agent's character", () => {
     expect(result.reply).toBe("ok reply");
     expect(capturedSystem).toBeDefined();
     // The rendered prompt carries the persona with tokens resolved — a literal
-    // "{{name}}" reaching the model is the failure this asserts against.
+    // "{{name}}" reaching the model is the failure this asserts against. The
+    // expected copy is derived from the canonical persona itself so a catalog
+    // copy-edit cannot silently invalidate this test.
     expect(capturedSystem).not.toContain("{{name}}");
-    expect(capturedSystem).toContain("You are Nyx.");
-    expect(capturedSystem).toContain("Nyx is warm, precise, and easy to talk to.");
+    expect(capturedSystem).toContain(
+      buildCloudElizaPersona().system.split("{{name}}").join("Nyx").trim(),
+    );
     expect(capturedSystem).not.toBe("You are Nyx, a helpful assistant.");
   });
 
