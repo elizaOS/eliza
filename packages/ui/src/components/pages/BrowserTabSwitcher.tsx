@@ -133,7 +133,7 @@ export function BrowserTabFoldControl({
       aria-label={openLabel}
       aria-haspopup="dialog"
       data-testid="browser-workspace-tab-fold-control"
-      className="flex h-11 min-h-11 min-w-0 shrink-0 items-center gap-2 rounded-full border-border/40 bg-card/70 px-3 text-sm text-txt"
+      className="flex h-11 min-h-11 min-w-0 shrink-0 items-center gap-2 rounded-full border-transparent bg-card/70 px-3 text-sm text-txt shadow-inset"
     >
       <Globe className="h-4 w-4 shrink-0 text-muted" aria-hidden />
       <span className="min-w-0 max-w-[9rem] truncate font-medium">

@@ -149,14 +149,37 @@ html.eliza-chat-overlay-shell #root {
 }
 
 html.eliza-chat-overlay-shell .shell-assistant-overlay-panel {
+  /* The desktop popup is a light neutral frost, not the app's dark card token.
+     Scope the palette to the sheet so transcript, composer, and controls keep
+     contrast over both light and dark desktops while the wallpaper remains
+     visible through the material. */
+  --card: rgb(255 255 255 / 78%);
+  --card-foreground: #171717;
+  --text: #171717;
+  --text-strong: #090909;
+  --txt: var(--text);
+  --muted: rgb(0 0 0 / 58%);
+  --muted-strong: rgb(0 0 0 / 76%);
+  --foreground: var(--text);
+  --muted-foreground: var(--muted);
+  --bg: rgb(255 255 255 / 32%);
+  --accent-subtle: rgb(255 88 0 / 18%);
   top: auto;
-  right: 10px;
-  bottom: 10px;
-  left: 10px;
-  width: auto;
-  height: min(220px, calc(100% - 20px));
-  transform: none;
-  border-radius: var(--radius-xs);
+  right: auto;
+  /* Keep the conversation physically above the persistent Flow handle. The
+     native popup is 680px tall when expanded: 24px top breathing room + 600px
+     chat + 16px gap + 32px pill + 8px bottom margin. */
+  bottom: 56px;
+  left: 50%;
+  width: min(560px, calc(100% - 24px));
+  height: min(600px, calc(100% - 80px));
+  transform: translateX(-50%);
+  border-radius: 1.5rem;
+  border-color: rgb(255 255 255 / 72%);
+  background-color: rgb(244 244 246 / 72%);
+  box-shadow:
+    0 24px 70px rgb(0 0 0 / 28%),
+    inset 0 1px 0 rgb(255 255 255 / 88%);
 }
 
 /* `body.pwa-standalone` mirrors the native mobile lockdown for an INSTALLED

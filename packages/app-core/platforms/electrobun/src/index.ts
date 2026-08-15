@@ -1128,10 +1128,12 @@ async function createMainWindow(rpc: ElizaDesktopRpc): Promise<BrowserWindow> {
   // transparency there reads as a frosted-glass sheet (#12184). Win/Linux
   // transparency support varies, so the bar stays opaque there for now.
   const transparent = presentation.transparent;
-  // The pill spans the full work-area width but only the small bar is visible;
-  // OS-level click-through (passthrough) lets clicks on the transparent region
-  // land on the app underneath instead of being eaten by the invisible window.
-  const passthrough = bottomBar;
+  // Electrobun's BrowserWindow passthrough moves the hosted WKWebView into its
+  // offscreen mirror mode. That is suitable for a wholly non-interactive
+  // overlay, but it also removes the launcher's painted pixels and native hit
+  // target. Keep the bottom-bar webview live; its transparent page chrome and
+  // pointer-events rules leave only the visible launcher interactive.
+  const passthrough = false;
   const forceMainWindowCef = shouldForceMainWindowCef(
     process.env,
     process.platform,
@@ -1182,8 +1184,9 @@ async function createMainWindow(rpc: ElizaDesktopRpc): Promise<BrowserWindow> {
       },
       windowId: win.id,
       rpc,
-      // Mirror the window's click-through onto the hosted view so the isolated
-      // (CEF) main-view path passes clicks through its transparent region too.
+      // Keep the isolated view consistent with the owning BrowserWindow. In
+      // particular, the launcher must not enter Electrobun's offscreen mirror
+      // mode or its visible pill disappears from the native compositor.
       startPassthrough: passthrough,
     });
     win.webviewId = mainView.id;

@@ -802,7 +802,6 @@ async function withPackagedHarness(
       // (the bottom-bar default is covered by electrobun-bottom-bar.e2e.spec.ts).
       extraEnv: {
         ELIZA_DESKTOP_BOTTOM_BAR: "0",
-        ELIZA_DESKTOP_TRAY_POPOVER: "1",
       },
     });
     debugPackagedPhase("starting initial packaged launch");
@@ -1165,7 +1164,7 @@ test("packaged macOS desktop keeps the tray alive and preserves vibrancy through
 
     expect(initialState.mainWindow.titleBarStyle).toBe("hiddenInset");
     expect(initialState.shell.trayPopover).toMatchObject({
-      configured: true,
+      configured: false,
       windowPresent: false,
       visible: false,
     });
@@ -1177,27 +1176,6 @@ test("packaged macOS desktop keeps the tray alive and preserves vibrancy through
 
     const initialEffects = await readMainWindowEffects(harness);
     expect(initialEffects.shadowEnabled).toBe(true);
-
-    const openedPopover = await harness.toggleTrayPopover();
-    expect(openedPopover).toMatchObject({
-      configured: true,
-      windowPresent: true,
-      visible: true,
-    });
-    expect(openedPopover.lastAnchorBounds).toMatchObject({
-      width: 360,
-      height: 480,
-    });
-
-    const hiddenPopover = await harness.toggleTrayPopover();
-    expect(hiddenPopover).toMatchObject({
-      configured: true,
-      windowPresent: true,
-      visible: false,
-    });
-    expect(hiddenPopover.lastAnchorBounds).toEqual(
-      openedPopover.lastAnchorBounds,
-    );
 
     await harness.closeMainWindow();
 

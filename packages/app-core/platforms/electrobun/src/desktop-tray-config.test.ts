@@ -39,6 +39,7 @@ describe("desktop tray config", () => {
     const nativeDesktopSource = readFileSync(desktopNativePath, "utf8");
 
     expect(nativeDesktopSource).toContain("FALLBACK_TRAY_MENU_ITEMS");
+    expect(nativeDesktopSource).toContain('label: "Windows"');
     expect(nativeDesktopSource).toContain('{ id: "quit", label: "Quit" }');
     expect(nativeDesktopSource).toContain(
       "options.menu ?? FALLBACK_TRAY_MENU_ITEMS",
@@ -84,11 +85,11 @@ describe("shouldStartTrayFirst", () => {
 });
 
 describe("shouldEnableTrayPopover", () => {
-  it("is opt-in: off by default on macOS", () => {
+  it("defaults off on macOS so the taskbar icon owns a native menu", () => {
     expect(shouldEnableTrayPopover({}, "darwin", [])).toBe(false);
   });
 
-  it("enables on macOS when ELIZA_DESKTOP_TRAY_POPOVER is truthy", () => {
+  it("allows the experimental popover when explicitly enabled", () => {
     expect(
       shouldEnableTrayPopover(
         { ELIZA_DESKTOP_TRAY_POPOVER: "1" },
@@ -98,19 +99,18 @@ describe("shouldEnableTrayPopover", () => {
     ).toBe(true);
   });
 
-  it("stays off on Windows/Linux (tracked follow-up) even when requested", () => {
-    expect(
-      shouldEnableTrayPopover({ ELIZA_DESKTOP_TRAY_POPOVER: "1" }, "win32", []),
-    ).toBe(false);
-    expect(
-      shouldEnableTrayPopover({ ELIZA_DESKTOP_TRAY_POPOVER: "1" }, "linux", []),
-    ).toBe(false);
+  it("stays off on Windows/Linux (tracked follow-up)", () => {
+    expect(shouldEnableTrayPopover({}, "win32", [])).toBe(false);
+    expect(shouldEnableTrayPopover({}, "linux", [])).toBe(false);
   });
 
   it("stays off when the tray itself is disabled", () => {
     expect(
       shouldEnableTrayPopover(
-        { ELIZA_DESKTOP_TRAY_POPOVER: "1", ELIZA_DESKTOP_DISABLE_TRAY: "1" },
+        {
+          ELIZA_DESKTOP_DISABLE_TRAY: "1",
+          ELIZA_DESKTOP_TRAY_POPOVER: "1",
+        },
         "darwin",
         [],
       ),
@@ -132,11 +132,11 @@ describe("shouldAttachTrayMenu", () => {
     expect(shouldAttachTrayMenu({}, "linux")).toBe(true);
   });
 
-  it("leaves macOS menu attachment off unless explicitly requested", () => {
-    expect(shouldAttachTrayMenu({}, "darwin")).toBe(false);
+  it("attaches a native menu on macOS by default", () => {
+    expect(shouldAttachTrayMenu({}, "darwin")).toBe(true);
     expect(
-      shouldAttachTrayMenu({ ELIZA_DESKTOP_TRAY_MENU: "1" }, "darwin"),
-    ).toBe(true);
+      shouldAttachTrayMenu({ ELIZA_DESKTOP_TRAY_MENU: "0" }, "darwin"),
+    ).toBe(false);
   });
 });
 

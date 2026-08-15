@@ -338,6 +338,7 @@
     "@elizaos/plugin-browser": "workspace:*",
     "@elizaos/plugin-capacitor-bridge": "workspace:*",
     "@elizaos/plugin-cloud-apps": "workspace:*",
+    "@elizaos/plugin-calendar": "workspace:*",
     "@elizaos/plugin-coding-tools": "workspace:*",
     "@elizaos/plugin-commands": "workspace:*",
     "@elizaos/plugin-computeruse": "workspace:*",

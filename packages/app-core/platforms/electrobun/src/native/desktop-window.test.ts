@@ -285,6 +285,12 @@ class FakeBrowserWindow {
   readonly setSize = vi.fn((width: number, height: number) => {
     this.size = { width, height };
   });
+  readonly setFrame = vi.fn(
+    (x: number, y: number, width: number, height: number) => {
+      this.position = { x, y };
+      this.size = { width, height };
+    },
+  );
   position = { x: 10, y: 20 };
   size = { width: 800, height: 600 };
   minimized = false;
@@ -385,6 +391,18 @@ describe("DesktopManager main window controls", () => {
       width: 900,
       height: 700,
     });
+  });
+
+  it("expands and collapses the managed bottom bar against the work area", async () => {
+    const { manager, window } = createManagerWithWindow();
+    manager.enableBottomBarReanchor();
+
+    await manager.setBottomBarExpanded({ expanded: true });
+    expect(window.setFrame).toHaveBeenLastCalledWith(100, 90, 900, 660);
+
+    await manager.setBottomBarExpanded({ expanded: false });
+    expect(window.setFrame).toHaveBeenLastCalledWith(100, 610, 900, 140);
+    await manager.dispose();
   });
 
   it("returns safe fallback states when no main window is present", async () => {
@@ -524,6 +542,34 @@ describe("DesktopManager main window controls", () => {
 
     await vi.waitFor(() => expect(requestQuit).toHaveBeenCalledTimes(1));
     expect(electrobunMock.Utils.quit).not.toHaveBeenCalled();
+  });
+
+  it("attaches a native Windows and Quit fallback menu at tray creation", async () => {
+    const manager = new DesktopManager();
+
+    await manager.createTray({ icon: "/tmp/appIcon.png" });
+
+    const tray = electrobunMock.trayInstances[0];
+    expect(tray.setMenu).toHaveBeenCalledTimes(1);
+    expect(tray.setMenu).toHaveBeenCalledWith([
+      expect.objectContaining({
+        type: "normal",
+        label: "Windows",
+        submenu: [
+          expect.objectContaining({
+            type: "normal",
+            label: "Open Eliza",
+            action: "tray-show-window",
+          }),
+        ],
+      }),
+      { type: "separator" },
+      expect.objectContaining({
+        type: "normal",
+        label: "Quit",
+        action: "quit",
+      }),
+    ]);
   });
 
   it("reports global shortcut registration rejection without tracking the shortcut", async () => {
