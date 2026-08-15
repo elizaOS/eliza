@@ -162,11 +162,7 @@ export function mergeStreamingText(existing: string, incoming: string): string {
       return incoming.length === 1 ? `${existing}${incoming}` : existing;
     }
 
-    const suffix = sliceAfterNormalizedOverlap(
-      incoming,
-      incomingNorm,
-      overlap,
-    );
+    const suffix = sliceAfterNormalizedOverlap(incoming, incomingNorm, overlap);
     return `${existing.slice(0, existing.length - (existingNorm.length - existingTrimmedLength))}${suffix}`;
   }
 
