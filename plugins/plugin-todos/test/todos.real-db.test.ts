@@ -23,10 +23,16 @@ import {
 } from "../../../packages/app-core/test/helpers/real-runtime.ts";
 import todosPlugin from "../src/index.ts";
 import { currentTodosProvider } from "../src/providers/current-todos.ts";
-import { TodosService } from "../src/service.ts";
+import {
+  TODO_INVALID_PARENT_ERROR_CODE,
+  TODO_PARENT_CYCLE_ERROR_CODE,
+  TodosService,
+} from "../src/service.ts";
 
 // Stable per-user (entityId) UUID; agentId comes from the runtime.
 const ENTITY_ID = "11111111-1111-4111-8111-111111111111" as UUID;
+const OTHER_ENTITY_ID = "66666666-6666-4666-8666-666666666666" as UUID;
+const OTHER_AGENT_ID = "77777777-7777-4777-8777-777777777777" as UUID;
 
 describe("TodosService + currentTodosProvider — real PGLite", () => {
   let runtime: AgentRuntime;
@@ -48,6 +54,10 @@ describe("TodosService + currentTodosProvider — real PGLite", () => {
     await testResult?.cleanup();
   });
 
+  function scope(entityId: UUID) {
+    return { agentId: runtime.agentId, entityId };
+  }
+
   it("creates a todo and reads it back from the live DB via get / list", async () => {
     const created = await service.create({
       entityId: ENTITY_ID,
@@ -62,7 +72,7 @@ describe("TodosService + currentTodosProvider — real PGLite", () => {
     expect(created.completedAt).toBeNull();
 
     // Round-trip: the row is really in the DB (raw select by id).
-    const fetched = await service.get(created.id);
+    const fetched = await service.get(scope(ENTITY_ID), created.id);
     expect(fetched).not.toBeNull();
     expect(fetched?.content).toBe("Write the real-db tests");
     expect(fetched?.activeForm).toBe("Writing the real-db tests");
@@ -84,16 +94,20 @@ describe("TodosService + currentTodosProvider — real PGLite", () => {
       status: "pending",
     });
 
-    const started = await service.update(created.id, { status: "in_progress" });
+    const started = await service.update(scope(ENTITY_ID), created.id, {
+      status: "in_progress",
+    });
     expect(started?.status).toBe("in_progress");
     expect(started?.completedAt).toBeNull();
 
-    const completed = await service.update(created.id, { status: "completed" });
+    const completed = await service.update(scope(ENTITY_ID), created.id, {
+      status: "completed",
+    });
     expect(completed?.status).toBe("completed");
     expect(completed?.completedAt).not.toBeNull();
 
     // Re-read straight from the DB to prove the UPDATE landed.
-    const reread = await service.get(created.id);
+    const reread = await service.get(scope(ENTITY_ID), created.id);
     expect(reread?.status).toBe("completed");
     expect(reread?.completedAt).not.toBeNull();
   });
@@ -112,7 +126,7 @@ describe("TodosService + currentTodosProvider — real PGLite", () => {
       content: "Done one",
       status: "pending",
     });
-    await service.update(done.id, { status: "completed" });
+    await service.update(scope(entityId), done.id, { status: "completed" });
 
     // includeCompleted:false narrows to pending + in_progress at the SQL layer.
     const active = await service.list({
@@ -197,8 +211,8 @@ describe("TodosService + currentTodosProvider — real PGLite", () => {
       status: "pending",
     });
 
-    expect(await service.delete(a.id)).toBe(true);
-    expect(await service.get(a.id)).toBeNull();
+    expect(await service.delete(scope(entityId), a.id)).toBe(true);
+    expect(await service.get(scope(entityId), a.id)).toBeNull();
 
     const cleared = await service.clear({ entityId, agentId: runtime.agentId });
     expect(cleared).toBe(1);
@@ -220,7 +234,9 @@ describe("TodosService + currentTodosProvider — real PGLite", () => {
       content: "Read a book",
       status: "pending",
     });
-    await service.update(inProgress.id, { status: "in_progress" });
+    await service.update(scope(entityId), inProgress.id, {
+      status: "in_progress",
+    });
     // A completed todo must NOT appear in the provider output.
     const done = await service.create({
       entityId,
@@ -228,7 +244,7 @@ describe("TodosService + currentTodosProvider — real PGLite", () => {
       content: "Old chore",
       status: "pending",
     });
-    await service.update(done.id, { status: "completed" });
+    await service.update(scope(entityId), done.id, { status: "completed" });
 
     // todosPlugin registered TodosService, so runtime.initialize() already
     // started it; the provider resolves that started instance off the runtime.
@@ -246,5 +262,132 @@ describe("TodosService + currentTodosProvider — real PGLite", () => {
       "Buy milk",
       "Read a book",
     ]);
+  });
+
+  it("requires the exact agent and entity scope for every read and mutation", async () => {
+    const created = await service.create({
+      entityId: OTHER_ENTITY_ID,
+      agentId: runtime.agentId,
+      content: "Private todo",
+      status: "pending",
+    });
+    const wrongAgent = { agentId: OTHER_AGENT_ID, entityId: OTHER_ENTITY_ID };
+    const wrongEntity = { agentId: runtime.agentId, entityId: ENTITY_ID };
+
+    expect(await service.get(wrongAgent, created.id)).toBeNull();
+    expect(await service.get(wrongEntity, created.id)).toBeNull();
+    expect(
+      await service.update(wrongAgent, created.id, { content: "stolen" }),
+    ).toBeNull();
+    expect(await service.delete(wrongEntity, created.id)).toBe(false);
+    expect(await service.clear(wrongAgent)).toBe(0);
+    expect(
+      (await service.get(scope(OTHER_ENTITY_ID), created.id))?.content,
+    ).toBe("Private todo");
+  });
+
+  it("sets completedAt when a completed todo is created directly", async () => {
+    const created = await service.create({
+      entityId: OTHER_ENTITY_ID,
+      agentId: runtime.agentId,
+      content: "Already done",
+      status: "completed",
+    });
+
+    expect(created.completedAt).not.toBeNull();
+    expect(
+      (await service.get(scope(OTHER_ENTITY_ID), created.id))?.completedAt,
+    ).not.toBeNull();
+  });
+
+  it("rejects cross-scope parents, self-parenting, and hierarchy cycles", async () => {
+    const parent = await service.create({
+      entityId: OTHER_ENTITY_ID,
+      agentId: runtime.agentId,
+      content: "Parent",
+      status: "pending",
+    });
+    await expect(
+      service.create({
+        entityId: ENTITY_ID,
+        agentId: runtime.agentId,
+        content: "Cross-scope child",
+        parentTodoId: parent.id,
+      }),
+    ).rejects.toMatchObject({ code: TODO_INVALID_PARENT_ERROR_CODE });
+    await expect(
+      service.update(scope(OTHER_ENTITY_ID), parent.id, {
+        parentTodoId: parent.id,
+      }),
+    ).rejects.toMatchObject({ code: TODO_PARENT_CYCLE_ERROR_CODE });
+
+    const child = await service.create({
+      entityId: OTHER_ENTITY_ID,
+      agentId: runtime.agentId,
+      content: "Child",
+      parentTodoId: parent.id,
+    });
+    await expect(
+      service.update(scope(OTHER_ENTITY_ID), parent.id, {
+        parentTodoId: child.id,
+      }),
+    ).rejects.toMatchObject({ code: TODO_PARENT_CYCLE_ERROR_CODE });
+  });
+
+  it("rolls back the entire writeList when the desired hierarchy is invalid", async () => {
+    const entityId = "88888888-8888-4888-8888-888888888888" as UUID;
+    const original = await service.create({
+      entityId,
+      agentId: runtime.agentId,
+      content: "Original",
+      status: "pending",
+    });
+
+    await expect(
+      service.writeList({
+        entityId,
+        agentId: runtime.agentId,
+        roomId: null,
+        worldId: null,
+        parentTrajectoryStepId: null,
+        todos: [
+          { id: original.id, content: "Mutated", status: "completed" },
+          {
+            content: "Invalid child",
+            status: "pending",
+            parentTodoId: "99999999-9999-4999-8999-999999999999",
+          },
+        ],
+      }),
+    ).rejects.toMatchObject({ code: TODO_INVALID_PARENT_ERROR_CODE });
+
+    const rows = await service.list({ entityId, agentId: runtime.agentId });
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      id: original.id,
+      content: "Original",
+      status: "pending",
+      completedAt: null,
+    });
+  });
+
+  it("promotes children to roots before deleting their parent", async () => {
+    const entityId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa" as UUID;
+    const parent = await service.create({
+      entityId,
+      agentId: runtime.agentId,
+      content: "Parent",
+    });
+    const child = await service.create({
+      entityId,
+      agentId: runtime.agentId,
+      content: "Child",
+      parentTodoId: parent.id,
+    });
+
+    expect(await service.delete(scope(entityId), parent.id)).toBe(true);
+    expect(
+      (await service.get(scope(entityId), child.id))?.parentTodoId,
+    ).toBeNull();
   });
 });

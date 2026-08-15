@@ -13,6 +13,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { validateToolArgs } from "../../../../packages/core/src/actions/validate-tool-args.js";
 import { currentTodosProvider } from "../providers/current-todos.js";
 import { TODO_LIST_LIMIT_ERROR_CODE, TodosService } from "../service.js";
+import type { TodoScope } from "../store.js";
 import { TODOS_SERVICE_TYPE } from "../types.js";
 import { todoAction } from "./todo.js";
 
@@ -79,14 +80,21 @@ class FakeTodosService {
     return row;
   }
 
-  async get(id: string): Promise<StoredTodo | null> {
+  async get(scope: TodoScope, id: string): Promise<StoredTodo | null> {
     this.throwIf("get");
-    return this.rows.find((r) => r.id === id) ?? null;
+    return (
+      this.rows.find(
+        (row) =>
+          row.id === id &&
+          row.agentId === scope.agentId &&
+          row.entityId === scope.entityId,
+      ) ?? null
+    );
   }
 
   async list(filter: {
     entityId: string;
-    agentId?: string;
+    agentId: string;
     roomId?: string | null;
     includeCompleted?: boolean;
     limit?: number;
@@ -95,7 +103,7 @@ class FakeTodosService {
     this.throwIf("list");
     let results = this.rows.filter((r) => {
       if (r.entityId !== filter.entityId) return false;
-      if (filter.agentId && r.agentId !== filter.agentId) return false;
+      if (r.agentId !== filter.agentId) return false;
       if (filter.roomId && r.roomId !== filter.roomId) return false;
       if (
         filter.includeCompleted === false &&
@@ -112,11 +120,17 @@ class FakeTodosService {
   }
 
   async update(
+    scope: TodoScope,
     id: string,
     patch: Record<string, unknown>,
   ): Promise<StoredTodo | null> {
     this.throwIf("update");
-    const row = this.rows.find((r) => r.id === id);
+    const row = this.rows.find(
+      (candidate) =>
+        candidate.id === id &&
+        candidate.agentId === scope.agentId &&
+        candidate.entityId === scope.entityId,
+    );
     if (!row) return null;
     if (patch.content !== undefined) row.content = String(patch.content);
     if (patch.activeForm !== undefined)
@@ -132,10 +146,15 @@ class FakeTodosService {
     return row;
   }
 
-  async delete(id: string): Promise<boolean> {
+  async delete(scope: TodoScope, id: string): Promise<boolean> {
     this.throwIf("delete");
     const before = this.rows.length;
-    this.rows = this.rows.filter((r) => r.id !== id);
+    this.rows = this.rows.filter(
+      (row) =>
+        row.id !== id ||
+        row.agentId !== scope.agentId ||
+        row.entityId !== scope.entityId,
+    );
     return this.rows.length < before;
   }
 
@@ -165,7 +184,7 @@ class FakeTodosService {
       const existing = item.id ? beforeById.get(item.id) : undefined;
       if (existing) {
         keep.add(existing.id);
-        const updated = await this.update(existing.id, {
+        const updated = await this.update(args, existing.id, {
           content: item.content,
           status: item.status,
           activeForm: item.activeForm ?? item.content,
@@ -197,14 +216,14 @@ class FakeTodosService {
 
   async clear(filter: {
     entityId: string;
-    agentId?: string;
+    agentId: string;
     roomId?: string | null;
   }): Promise<number> {
     this.throwIf("clear");
     const before = this.rows.length;
     this.rows = this.rows.filter((r) => {
       if (r.entityId !== filter.entityId) return true;
-      if (filter.agentId && r.agentId !== filter.agentId) return true;
+      if (r.agentId !== filter.agentId) return true;
       if (filter.roomId && r.roomId !== filter.roomId) return true;
       return false;
     });
@@ -215,7 +234,8 @@ class FakeTodosService {
 function mockRuntime(service: FakeTodosService): IAgentRuntime {
   const stub = {
     agentId: AGENT,
-    getSetting: (): string | boolean | number | null => null,
+    getSetting: (key: string): string | boolean | number | null =>
+      process.env[key] ?? null,
     getService: ((name: string) =>
       name === TODOS_SERVICE_TYPE
         ? service

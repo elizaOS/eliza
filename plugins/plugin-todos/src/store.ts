@@ -4,7 +4,7 @@ import type { Todo, TodoStatus } from "./types.js";
 
 export interface TodoFilter {
   entityId: string;
-  agentId?: string;
+  agentId: string;
   roomId?: string | null;
   status?: TodoStatus | TodoStatus[];
   includeCompleted?: boolean;
@@ -48,6 +48,7 @@ export interface WriteTodoListInput {
     content: string;
     status: TodoStatus;
     activeForm?: string;
+    parentTodoId?: string | null;
   }>;
 }
 
@@ -64,14 +65,26 @@ export interface TodoStore {
   writeList(
     input: WriteTodoListInput,
   ): Promise<{ before: Todo[]; after: Todo[] }>;
-  clear(filter: {
-    entityId: string;
-    agentId?: string;
-    roomId?: string | null;
-  }): Promise<number>;
+  clear(filter: TodoScope & { roomId?: string | null }): Promise<number>;
+}
+
+export function isTodoStore(value: unknown): value is TodoStore {
+  if (!value || typeof value !== "object") return false;
+  const candidate = value as Record<string, unknown>;
+  return [
+    "create",
+    "get",
+    "list",
+    "update",
+    "delete",
+    "writeList",
+    "clear",
+  ].every((method) => typeof candidate[method] === "function");
 }
 
 export const TODO_LIST_LIMIT_ERROR_CODE = "TODO_INVALID_LIST_LIMIT";
+export const TODO_INVALID_PARENT_ERROR_CODE = "TODO_INVALID_PARENT";
+export const TODO_PARENT_CYCLE_ERROR_CODE = "TODO_PARENT_CYCLE";
 
 export function isValidTodoListLimit(value: unknown): value is number {
   return typeof value === "number" && Number.isSafeInteger(value) && value > 0;

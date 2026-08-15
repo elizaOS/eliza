@@ -21,10 +21,11 @@ import type {
   IAgentRuntime,
   Memory,
   State,
-} from "@elizaos/core/edge";
+} from "@elizaos/core";
 
 import {
   type CreateTodoInput,
+  isTodoStore,
   isValidTodoListLimit,
   type TodoStore,
   type UpdateTodoInput,
@@ -126,6 +127,7 @@ interface ParsedListItem {
   content: string;
   status: TodoStatus;
   activeForm?: string;
+  parentTodoId?: string | null;
 }
 
 function parseTodoList(
@@ -160,6 +162,9 @@ function parseTodoList(
     if (id) item.id = id;
     const activeForm = readString(e.activeForm);
     if (activeForm) item.activeForm = activeForm;
+    if (Object.hasOwn(e, "parentTodoId")) {
+      item.parentTodoId = readString(e.parentTodoId) ?? null;
+    }
     items.push(item);
   }
   return { ok: true, items };
@@ -472,7 +477,8 @@ export interface TodoActionOptions {
 }
 
 function runtimeTodoStore(runtime: IAgentRuntime): TodoStore | null {
-  return runtime.getService<TodoStore>(TODOS_SERVICE_TYPE);
+  const service = runtime.getService(TODOS_SERVICE_TYPE);
+  return isTodoStore(service) ? service : null;
 }
 
 /** Canonical planner-facing todo surface shared by Node and edge hosts. */
@@ -484,7 +490,7 @@ export function createTodoAction(options: TodoActionOptions = {}): Action {
     roleGate: options.roleGate ?? { minRole: "ADMIN" },
     contextGate: { anyOf: [...TODOS_CONTEXTS] },
     tags: [
-      "domain:reminders",
+      "domain:todos",
       "capability:read",
       "capability:write",
       "capability:update",
@@ -561,7 +567,7 @@ export function createTodoAction(options: TodoActionOptions = {}): Action {
       {
         name: "todos",
         description:
-          "Array of {id?, content, status, activeForm?} for action=write. Replaces the user's list for this conversation.",
+          "Array of {id?, content, status, activeForm?, parentTodoId?} for action=write. Replaces the user's list for this conversation.",
         required: false,
         schema: {
           type: "array" as const,
@@ -572,6 +578,7 @@ export function createTodoAction(options: TodoActionOptions = {}): Action {
               content: { type: "string" as const },
               status: { type: "string" as const, enum: [...TODO_STATUSES] },
               activeForm: { type: "string" as const },
+              parentTodoId: { type: "string" as const },
             },
             required: ["content", "status"],
           },
@@ -643,6 +650,8 @@ export function createTodoAction(options: TodoActionOptions = {}): Action {
             return await actionClear(args);
         }
       } catch (error) {
+        // error-policy:J1 action boundary translates durable-store failures
+        // into an explicit tool failure the planner and user can observe.
         const message =
           error instanceof Error ? error.message : "todo persistence failed";
         return failure("persistence_error", message);
@@ -697,24 +706,6 @@ export function createTodoAction(options: TodoActionOptions = {}): Action {
             actions: ["TODO"],
             thought:
               "Cancel intent on a specific id maps to TODO action=cancel with id=abc-123.",
-          },
-        },
-      ],
-      [
-        {
-          name: "{{name1}}",
-          content: {
-            text: "rappelle-moi de relire l'audit demain",
-            source: "chat",
-          },
-        },
-        {
-          name: "{{agentName}}",
-          content: {
-            text: "Saved. I'll remind you tomorrow about the audit re-read.",
-            actions: ["TODO"],
-            thought:
-              "Casual French reminder phrasing maps to TODO action=create. Plugin examples must cover non-English idiom so the few-shot extends past the literal 'Add X to my todo list' pattern.",
           },
         },
       ],

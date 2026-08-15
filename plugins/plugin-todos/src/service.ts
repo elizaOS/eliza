@@ -10,14 +10,16 @@ import {
   Service,
   type UUID,
 } from "@elizaos/core";
-import { and, desc, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 
 import { type TodoRow, todosTable } from "./db/schema.js";
 import {
   type CreateTodoInput,
   isValidTodoListLimit,
+  TODO_INVALID_PARENT_ERROR_CODE,
   TODO_LIST_LIMIT_ERROR_CODE,
+  TODO_PARENT_CYCLE_ERROR_CODE,
   type TodoFilter,
   type TodoScope,
   type TodoStore,
@@ -30,6 +32,46 @@ import {
   type Todo,
   type TodoStatus,
 } from "./types.js";
+
+interface TodoHierarchyRow {
+  id: string;
+  parentTodoId: string | null;
+}
+
+function assertTodoHierarchy(rows: TodoHierarchyRow[]): void {
+  const byId = new Map(rows.map((row) => [row.id, row]));
+  for (const row of rows) {
+    if (!row.parentTodoId) continue;
+    if (!byId.has(row.parentTodoId)) {
+      throw new ElizaError(
+        `${TODOS_LOG_PREFIX} parent todo is outside the current agent/user scope`,
+        {
+          code: TODO_INVALID_PARENT_ERROR_CODE,
+          context: { todoId: row.id, parentTodoId: row.parentTodoId },
+        },
+      );
+    }
+    const visited = new Set<string>([row.id]);
+    let cursor: TodoHierarchyRow | undefined = row;
+    while (cursor?.parentTodoId) {
+      if (visited.has(cursor.parentTodoId)) {
+        throw new ElizaError(
+          `${TODOS_LOG_PREFIX} todo hierarchy contains a cycle`,
+          {
+            code: TODO_PARENT_CYCLE_ERROR_CODE,
+            context: { todoId: row.id, parentTodoId: row.parentTodoId },
+          },
+        );
+      }
+      visited.add(cursor.parentTodoId);
+      cursor = byId.get(cursor.parentTodoId);
+    }
+  }
+}
+
+function scopeLockKey(scope: TodoScope): string {
+  return `todos:${scope.agentId}:${scope.entityId}`;
+}
 
 function rowToTodo(row: TodoRow): Todo {
   const metadata =
@@ -83,23 +125,49 @@ export class TodosService extends Service implements TodoStore {
 
   async create(input: CreateTodoInput): Promise<Todo> {
     const db = this.getDb();
-    const [row] = await db
-      .insert(todosTable)
-      .values({
-        agentId: input.agentId as UUID,
-        entityId: input.entityId as UUID,
-        roomId: (input.roomId ?? null) as UUID | null,
-        worldId: (input.worldId ?? null) as UUID | null,
-        content: input.content,
-        activeForm: input.activeForm ?? input.content,
-        status: input.status ?? "pending",
-        parentTodoId: (input.parentTodoId ?? null) as UUID | null,
-        parentTrajectoryStepId: input.parentTrajectoryStepId ?? null,
-        metadata: input.metadata ?? {},
-      })
-      .returning();
-    if (!row) throw new Error(`${TODOS_LOG_PREFIX} insert returned no row`);
-    return rowToTodo(row);
+    return db.transaction(async (tx) => {
+      const scope = { agentId: input.agentId, entityId: input.entityId };
+      await tx.execute(
+        sql`SELECT pg_advisory_xact_lock(hashtext(${scopeLockKey(scope)}))`,
+      );
+      const hierarchy = await tx
+        .select({ id: todosTable.id, parentTodoId: todosTable.parentTodoId })
+        .from(todosTable)
+        .where(
+          and(
+            eq(todosTable.agentId, input.agentId as UUID),
+            eq(todosTable.entityId, input.entityId as UUID),
+          ),
+        );
+      if (input.parentTodoId) {
+        assertTodoHierarchy([
+          ...hierarchy.map((row) => ({
+            id: row.id,
+            parentTodoId: row.parentTodoId,
+          })),
+          { id: "__new_todo__", parentTodoId: input.parentTodoId },
+        ]);
+      }
+      const status = input.status ?? "pending";
+      const [row] = await tx
+        .insert(todosTable)
+        .values({
+          agentId: input.agentId as UUID,
+          entityId: input.entityId as UUID,
+          roomId: (input.roomId ?? null) as UUID | null,
+          worldId: (input.worldId ?? null) as UUID | null,
+          content: input.content,
+          activeForm: input.activeForm ?? input.content,
+          status,
+          parentTodoId: (input.parentTodoId ?? null) as UUID | null,
+          parentTrajectoryStepId: input.parentTrajectoryStepId ?? null,
+          metadata: input.metadata ?? {},
+          completedAt: status === "completed" ? new Date() : null,
+        })
+        .returning();
+      if (!row) throw new Error(`${TODOS_LOG_PREFIX} insert returned no row`);
+      return rowToTodo(row);
+    });
   }
 
   async get(scope: TodoScope, id: string): Promise<Todo | null> {
@@ -135,10 +203,10 @@ export class TodosService extends Service implements TodoStore {
     }
 
     const db = this.getDb();
-    const conditions = [eq(todosTable.entityId, filter.entityId as UUID)];
-    if (filter.agentId) {
-      conditions.push(eq(todosTable.agentId, filter.agentId as UUID));
-    }
+    const conditions = [
+      eq(todosTable.entityId, filter.entityId as UUID),
+      eq(todosTable.agentId, filter.agentId as UUID),
+    ];
     if (filter.roomId !== undefined && filter.roomId !== null) {
       conditions.push(eq(todosTable.roomId, filter.roomId as UUID));
     }
@@ -168,42 +236,84 @@ export class TodosService extends Service implements TodoStore {
     patch: UpdateTodoInput,
   ): Promise<Todo | null> {
     const db = this.getDb();
-    const set: Record<string, unknown> = { updatedAt: new Date() };
-    if (patch.content !== undefined) set.content = patch.content;
-    if (patch.activeForm !== undefined) set.activeForm = patch.activeForm;
-    if (patch.status !== undefined) {
-      set.status = patch.status;
-      set.completedAt = patch.status === "completed" ? new Date() : null;
-    }
-    if (patch.parentTodoId !== undefined) set.parentTodoId = patch.parentTodoId;
-    if (patch.metadata !== undefined) set.metadata = patch.metadata;
-    const [row] = await db
-      .update(todosTable)
-      .set(set)
-      .where(
-        and(
-          eq(todosTable.id, id as UUID),
-          eq(todosTable.agentId, scope.agentId as UUID),
-          eq(todosTable.entityId, scope.entityId as UUID),
-        ),
-      )
-      .returning();
-    return row ? rowToTodo(row) : null;
+    return db.transaction(async (tx) => {
+      await tx.execute(
+        sql`SELECT pg_advisory_xact_lock(hashtext(${scopeLockKey(scope)}))`,
+      );
+      const hierarchy = await tx
+        .select({ id: todosTable.id, parentTodoId: todosTable.parentTodoId })
+        .from(todosTable)
+        .where(
+          and(
+            eq(todosTable.agentId, scope.agentId as UUID),
+            eq(todosTable.entityId, scope.entityId as UUID),
+          ),
+        );
+      const existing = hierarchy.find((row) => row.id === id);
+      if (!existing) return null;
+      if (patch.parentTodoId !== undefined) {
+        assertTodoHierarchy(
+          hierarchy.map((row) => ({
+            id: row.id,
+            parentTodoId:
+              row.id === id ? (patch.parentTodoId ?? null) : row.parentTodoId,
+          })),
+        );
+      }
+      const set: Record<string, unknown> = { updatedAt: new Date() };
+      if (patch.content !== undefined) set.content = patch.content;
+      if (patch.activeForm !== undefined) set.activeForm = patch.activeForm;
+      if (patch.status !== undefined) {
+        set.status = patch.status;
+        set.completedAt = patch.status === "completed" ? new Date() : null;
+      }
+      if (patch.parentTodoId !== undefined) {
+        set.parentTodoId = patch.parentTodoId;
+      }
+      if (patch.metadata !== undefined) set.metadata = patch.metadata;
+      const [row] = await tx
+        .update(todosTable)
+        .set(set)
+        .where(
+          and(
+            eq(todosTable.id, id as UUID),
+            eq(todosTable.agentId, scope.agentId as UUID),
+            eq(todosTable.entityId, scope.entityId as UUID),
+          ),
+        )
+        .returning();
+      return row ? rowToTodo(row) : null;
+    });
   }
 
   async delete(scope: TodoScope, id: string): Promise<boolean> {
     const db = this.getDb();
-    const rows = await db
-      .delete(todosTable)
-      .where(
-        and(
-          eq(todosTable.id, id as UUID),
-          eq(todosTable.agentId, scope.agentId as UUID),
-          eq(todosTable.entityId, scope.entityId as UUID),
-        ),
-      )
-      .returning({ id: todosTable.id });
-    return rows.length > 0;
+    return db.transaction(async (tx) => {
+      await tx.execute(
+        sql`SELECT pg_advisory_xact_lock(hashtext(${scopeLockKey(scope)}))`,
+      );
+      await tx
+        .update(todosTable)
+        .set({ parentTodoId: null, updatedAt: new Date() })
+        .where(
+          and(
+            eq(todosTable.agentId, scope.agentId as UUID),
+            eq(todosTable.entityId, scope.entityId as UUID),
+            eq(todosTable.parentTodoId, id as UUID),
+          ),
+        );
+      const rows = await tx
+        .delete(todosTable)
+        .where(
+          and(
+            eq(todosTable.id, id as UUID),
+            eq(todosTable.agentId, scope.agentId as UUID),
+            eq(todosTable.entityId, scope.entityId as UUID),
+          ),
+        )
+        .returning({ id: todosTable.id });
+      return rows.length > 0;
+    });
   }
 
   /**
@@ -216,80 +326,124 @@ export class TodosService extends Service implements TodoStore {
     args: WriteTodoListInput,
   ): Promise<{ before: Todo[]; after: Todo[] }> {
     const db = this.getDb();
-    const filter: TodoFilter = {
-      entityId: args.entityId,
-      agentId: args.agentId,
-    };
-    if (args.roomId !== null) {
-      filter.roomId = args.roomId;
-    }
-    const before = await this.list(filter);
-    const beforeById = new Map(before.map((t) => [t.id, t]));
+    return db.transaction(async (tx) => {
+      const scope = { agentId: args.agentId, entityId: args.entityId };
+      await tx.execute(
+        sql`SELECT pg_advisory_xact_lock(hashtext(${scopeLockKey(scope)}))`,
+      );
+      const conditions = [
+        eq(todosTable.agentId, args.agentId as UUID),
+        eq(todosTable.entityId, args.entityId as UUID),
+      ];
+      if (args.roomId !== null) {
+        conditions.push(eq(todosTable.roomId, args.roomId as UUID));
+      }
+      const beforeRows = await tx
+        .select()
+        .from(todosTable)
+        .where(and(...conditions))
+        .orderBy(desc(todosTable.updatedAt));
+      const before = beforeRows.map(rowToTodo);
+      const beforeById = new Map(before.map((todo) => [todo.id, todo]));
+      const keepIds = new Set<string>();
+      const after: Todo[] = [];
 
-    const keepIds = new Set<string>();
-    const after: Todo[] = [];
-    for (const item of args.todos) {
-      const existing = item.id ? beforeById.get(item.id) : undefined;
-      if (existing) {
-        keepIds.add(existing.id);
-        const needsUpdate =
-          existing.content !== item.content ||
-          existing.status !== item.status ||
-          existing.activeForm !== (item.activeForm ?? item.content);
-        if (needsUpdate) {
-          const updated = await this.update(args, existing.id, {
+      for (const item of args.todos) {
+        const existing = item.id ? beforeById.get(item.id) : undefined;
+        if (existing) {
+          keepIds.add(existing.id);
+          const parentTodoId =
+            item.parentTodoId === undefined
+              ? existing.parentTodoId
+              : item.parentTodoId;
+          const needsUpdate =
+            existing.content !== item.content ||
+            existing.status !== item.status ||
+            existing.activeForm !== (item.activeForm ?? item.content) ||
+            existing.parentTodoId !== parentTodoId;
+          if (!needsUpdate) {
+            after.push(existing);
+            continue;
+          }
+          const [updated] = await tx
+            .update(todosTable)
+            .set({
+              content: item.content,
+              activeForm: item.activeForm ?? item.content,
+              status: item.status,
+              completedAt: item.status === "completed" ? new Date() : null,
+              parentTodoId: parentTodoId as UUID | null,
+              updatedAt: new Date(),
+            })
+            .where(
+              and(
+                eq(todosTable.id, existing.id as UUID),
+                eq(todosTable.agentId, args.agentId as UUID),
+                eq(todosTable.entityId, args.entityId as UUID),
+              ),
+            )
+            .returning();
+          if (!updated) {
+            throw new Error(
+              `${TODOS_LOG_PREFIX} scoped update returned no row`,
+            );
+          }
+          after.push(rowToTodo(updated));
+          continue;
+        }
+
+        const [created] = await tx
+          .insert(todosTable)
+          .values({
+            entityId: args.entityId as UUID,
+            agentId: args.agentId as UUID,
+            roomId: args.roomId as UUID | null,
+            worldId: args.worldId as UUID | null,
             content: item.content,
             activeForm: item.activeForm ?? item.content,
             status: item.status,
-          });
-          if (updated) after.push(updated);
-        } else {
-          after.push(existing);
+            parentTodoId: (item.parentTodoId ?? null) as UUID | null,
+            parentTrajectoryStepId: args.parentTrajectoryStepId,
+            completedAt: item.status === "completed" ? new Date() : null,
+          })
+          .returning();
+        if (!created) {
+          throw new Error(`${TODOS_LOG_PREFIX} scoped insert returned no row`);
         }
-      } else {
-        const created = await this.create({
-          entityId: args.entityId,
-          agentId: args.agentId,
-          roomId: args.roomId,
-          worldId: args.worldId,
-          content: item.content,
-          activeForm: item.activeForm ?? item.content,
-          status: item.status,
-          parentTrajectoryStepId: args.parentTrajectoryStepId,
-        });
         keepIds.add(created.id);
-        after.push(created);
+        after.push(rowToTodo(created));
       }
-    }
 
-    const toDelete = before
-      .filter((t) => !keepIds.has(t.id))
-      .map((t) => t.id as UUID);
-    if (toDelete.length > 0) {
-      await db
-        .delete(todosTable)
-        .where(
-          and(
-            eq(todosTable.agentId, args.agentId as UUID),
-            eq(todosTable.entityId, args.entityId as UUID),
-            inArray(todosTable.id, toDelete),
-          ),
-        );
-    }
-
-    return { before, after };
+      assertTodoHierarchy(
+        after.map((todo) => ({
+          id: todo.id,
+          parentTodoId: todo.parentTodoId,
+        })),
+      );
+      const toDelete = before
+        .filter((todo) => !keepIds.has(todo.id))
+        .map((todo) => todo.id as UUID);
+      if (toDelete.length > 0) {
+        await tx
+          .delete(todosTable)
+          .where(
+            and(
+              eq(todosTable.agentId, args.agentId as UUID),
+              eq(todosTable.entityId, args.entityId as UUID),
+              inArray(todosTable.id, toDelete),
+            ),
+          );
+      }
+      return { before, after };
+    });
   }
 
-  async clear(filter: {
-    entityId: string;
-    agentId?: string;
-    roomId?: string | null;
-  }): Promise<number> {
+  async clear(filter: TodoScope & { roomId?: string | null }): Promise<number> {
     const db = this.getDb();
-    const conditions = [eq(todosTable.entityId, filter.entityId as UUID)];
-    if (filter.agentId) {
-      conditions.push(eq(todosTable.agentId, filter.agentId as UUID));
-    }
+    const conditions = [
+      eq(todosTable.entityId, filter.entityId as UUID),
+      eq(todosTable.agentId, filter.agentId as UUID),
+    ];
     if (filter.roomId) {
       conditions.push(eq(todosTable.roomId, filter.roomId as UUID));
     }
@@ -304,7 +458,9 @@ export class TodosService extends Service implements TodoStore {
 export {
   type CreateTodoInput,
   isValidTodoListLimit,
+  TODO_INVALID_PARENT_ERROR_CODE,
   TODO_LIST_LIMIT_ERROR_CODE,
+  TODO_PARENT_CYCLE_ERROR_CODE,
   type TodoFilter,
   type TodoScope,
   type TodoStore,

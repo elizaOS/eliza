@@ -8,9 +8,9 @@ import type {
   Provider,
   ProviderResult,
   State,
-} from "@elizaos/core/edge";
+} from "@elizaos/core";
 
-import type { TodoStore } from "../store.js";
+import { isTodoStore, type TodoStore } from "../store.js";
 import { TODOS_CONTEXTS, TODOS_SERVICE_TYPE, type Todo } from "../types.js";
 
 function checkboxFor(status: Todo["status"]): string {
@@ -39,7 +39,8 @@ export interface CurrentTodosProviderOptions {
 }
 
 function runtimeTodoStore(runtime: IAgentRuntime): TodoStore | null {
-  return runtime.getService<TodoStore>(TODOS_SERVICE_TYPE);
+  const service = runtime.getService(TODOS_SERVICE_TYPE);
+  return isTodoStore(service) ? service : null;
 }
 
 export function createCurrentTodosProvider(
@@ -63,7 +64,9 @@ export function createCurrentTodosProvider(
       const entityId = message.entityId;
       if (!entityId) return { text: "", data: { todos: [] } };
       const service = resolveStore(runtime);
-      if (!service) return { text: "", data: { todos: [] } };
+      if (!service) {
+        throw new Error("Todo storage is unavailable for CURRENT_TODOS");
+      }
       const todos = await service.list({
         entityId: String(entityId),
         agentId: String(runtime.agentId),
