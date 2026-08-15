@@ -990,7 +990,9 @@ export class GatewayManager {
       consecutiveFailures: 0,
       lastHeartbeat: new Date(),
       listeners: new Map(),
-      dmPolicyState: parseDiscordConnectionDmPolicyState(`r`n        assignment.dmPolicyState,`r`n      ),
+      dmPolicyState: parseDiscordConnectionDmPolicyState(
+        assignment.dmPolicyState,
+      ),
     };
 
     this.connections.set(assignment.connectionId, conn);
@@ -1478,7 +1480,10 @@ export class GatewayManager {
 
     // Enforce one fail-closed DM gate before selecting either route. The
     // cloud-shared event-router remains defense-in-depth for in-worker events.
-    if (`r`n      !message.guildId &&`r`n      !isDmSenderAllowed(conn.dmPolicyState, message.author.id)`r`n    ) {
+    if (
+      !message.guildId &&
+      !isDmSenderAllowed(conn.dmPolicyState, message.author.id)
+    ) {
       logger.debug("DM dropped by connection policy at the gateway", {
         connectionId,
         dmPolicy:
@@ -1496,9 +1501,14 @@ export class GatewayManager {
     // never registers) falls through to forwardEvent -> CF in-worker, which
     // is the live, proven path. Gradual + reversible: removing the registry
     // key reverts an agent to in-worker with zero redeploy.
-    let route: Awaited<`r`n      ReturnType<GatewayManagerRoutingAdapters["resolveAgentServer"]>`r`n    > = null;
+    let route: Awaited<
+      ReturnType<GatewayManagerRoutingAdapters["resolveAgentServer"]>
+    > = null;
     try {
-      route = await this.routingAdapters.resolveAgentServer(`r`n        this.redis,`r`n        conn.characterId,`r`n      );
+      route = await this.routingAdapters.resolveAgentServer(
+        this.redis,
+        conn.characterId,
+      );
     } catch (error) {
       logger.warn("resolveAgentServer failed; falling back to in-worker", {
         connectionId,
@@ -1515,7 +1525,10 @@ export class GatewayManager {
     }
 
     try {
-      await this.routingAdapters.refreshKedaActivity(`r`n        this.redis,`r`n        route.serverName,`r`n      );
+      await this.routingAdapters.refreshKedaActivity(
+        this.redis,
+        route.serverName,
+      );
       const { channel } = message;
       if ("sendTyping" in channel && typeof channel.sendTyping === "function") {
         await channel.sendTyping();
