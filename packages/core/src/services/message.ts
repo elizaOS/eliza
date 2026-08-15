@@ -353,11 +353,14 @@ import {
 } from "./message/direct-action-heuristics";
 import {
 	buildFailureReplyPrompt,
+	classifyTurnFailureCause,
 	INSUFFICIENT_CREDITS_REPLY,
 	isAuthError,
 	isInsufficientCreditsError,
 	isRateLimitError,
 	stripReasoningBlocks,
+	TURN_FAILURE_FALLBACK_REPLIES,
+	type TurnFailureCause,
 } from "./message/fallback-reply";
 import {
 	extractGenerateTextContentText,
@@ -1580,6 +1583,7 @@ export function shouldSkipResponseMemoryPersistence(memory: Memory): boolean {
 
 export {
 	buildFailureReplyPrompt,
+	classifyTurnFailureCause,
 	INSUFFICIENT_CREDITS_REPLY,
 	isAuthError,
 	isInsufficientCreditsError,
@@ -1587,6 +1591,8 @@ export {
 	isModelProviderFallbackError,
 	isRateLimitError,
 	stripReasoningBlocks,
+	TURN_FAILURE_FALLBACK_REPLIES,
+	type TurnFailureCause,
 } from "./message/fallback-reply";
 export {
 	type EffectiveMuteState,
@@ -12576,6 +12582,7 @@ export class DefaultMessageService implements IMessageService {
 						state,
 						responseId,
 						"running the native tool message runtime",
+						error,
 					);
 					_usedV5Runtime = true;
 					state = strategyResult.state;
@@ -14057,7 +14064,15 @@ export class DefaultMessageService implements IMessageService {
 		state: State,
 		responseId: UUID,
 		stage: string,
+		cause?: unknown,
 	): Promise<StrategyResult> {
+		// Classify the error that killed the turn so the reply is honest about
+		// WHAT failed (#17027 AC6): missing capability, planner exhaustion,
+		// handler failure, and persistence failure each get a visibly distinct
+		// reply that states the request was NOT completed, instead of one
+		// generic "something went wrong".
+		const turnFailureCause: TurnFailureCause | null =
+			classifyTurnFailureCause(cause);
 		// Short-circuit when no LLM provider is configured at all. The fallback
 		// model loop below would just throw `NoModelProviderConfiguredError` for
 		// every model type and surface a misleading generic failure to the user.
@@ -14076,7 +14091,10 @@ export class DefaultMessageService implements IMessageService {
 			state,
 			message,
 		);
-		const failurePrompt = buildFailureReplyPrompt(recentMessages);
+		const failurePrompt = buildFailureReplyPrompt(
+			recentMessages,
+			turnFailureCause,
+		);
 
 		const attempt = await this.generateFailureReplyText(
 			runtime,
@@ -14116,6 +14134,11 @@ export class DefaultMessageService implements IMessageService {
 				replyText =
 					(typeof tmpl === "function" ? tmpl({ state }) : tmpl) ||
 					"My Eliza Cloud key isn't authorized for inference right now — check that your cloud key is valid and your account has credits, then try again.";
+			} else if (turnFailureCause) {
+				// A classified turn failure gets its cause-specific canned reply
+				// so a missing capability never reads like a transient blip and
+				// no failure shape can be mistaken for a completed request.
+				replyText = TURN_FAILURE_FALLBACK_REPLIES[turnFailureCause];
 			} else {
 				const tmpl = runtime.character.templates?.transientFailureReply;
 				replyText =
@@ -14137,6 +14160,10 @@ export class DefaultMessageService implements IMessageService {
 				attempt.kind === "creditsExhausted"
 					? "insufficient_credits"
 					: "transient_failure",
+			// Additive structural marker (#17027 AC6): downstream consumers and
+			// tests can distinguish WHY the turn failed without parsing reply
+			// prose. Absent when the cause was unclassified.
+			...(turnFailureCause ? { turnFailureCause } : {}),
 			elizaSyntheticFailure: true,
 			transient: true,
 			doNotPersist: true,

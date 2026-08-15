@@ -7,6 +7,10 @@
  * status first, falling back to a message-substring scan for status-less errors.
  * buildFailureReplyPrompt shapes the in-character apology (never answering on the
  * merits), and stripReasoningBlocks removes <think> spans from the raw reply.
+ * classifyTurnFailureCause additionally maps the error that terminated a turn
+ * (trajectory exhaustion, missing capability, repeated handler failure,
+ * persistence failure) to a TurnFailureCause so the fallback reply states the
+ * specific failure and never reads as a completed request (#17027 AC6).
  */
 import { ModelType } from "../../types/model";
 
@@ -301,17 +305,127 @@ export function isModelProviderFallbackError(
 	);
 }
 
-export function buildFailureReplyPrompt(recentMessages: string): string {
-	return [
-		"You hit a transient model error and have to send a short user-facing reply.",
+/**
+ * Structural cause of a failed turn, classified from the error that killed the
+ * message runtime. Distinguishes the four terminal shapes issue #17027 AC6
+ * requires to produce visibly different user-facing replies: the agent lacked
+ * the capability, the planner ran out of budget, a step failed while
+ * executing, or the result could not be persisted. `null` means the cause is
+ * unclassified and the generic transient framing applies.
+ */
+export type TurnFailureCause =
+	| "capability_unavailable"
+	| "planner_exhausted"
+	| "execution_failed"
+	| "persistence_failed";
+
+/**
+ * Deterministic last-ditch reply per classified turn-failure cause, used when
+ * every fallback model slot also failed. Each text states plainly that the
+ * request was NOT completed and nothing was saved — a fabricated-success
+ * guardrail, so never soften these into ambiguous acknowledgements.
+ */
+export const TURN_FAILURE_FALLBACK_REPLIES: Record<TurnFailureCause, string> = {
+	capability_unavailable:
+		"I can't do that here, I don't have the ability set up right now. Nothing was saved or changed.",
+	planner_exhausted:
+		"I ran out of room before finishing that, so I stopped without completing it. Nothing was saved or changed. Want me to try again?",
+	execution_failed:
+		"Something failed while I was working on that, so I stopped without completing it. Nothing was saved or changed. Please try again.",
+	persistence_failed:
+		"I couldn't save that, the change did not stick. Treat it as not done and please try again.",
+};
+
+function errorCode(error: unknown): string {
+	const candidate = asErrorObject(error);
+	return candidate && typeof candidate.code === "string" ? candidate.code : "";
+}
+
+/**
+ * Maps the error that terminated a message-runtime turn to a
+ * {@link TurnFailureCause}. Trajectory-limit exhaustion is matched by error
+ * name (not instanceof) so wrapped or cross-realm errors still classify, and
+ * its `kind` splits missing-capability shapes (the planner repeatedly reached
+ * for tools that do not exist or never produced the required tool) from
+ * repeated handler failures and plain budget exhaustion. Persistence failures
+ * are recognized by the `*_PERSISTENCE_FAILED` ElizaError code convention.
+ */
+export function classifyTurnFailureCause(
+	error: unknown,
+): TurnFailureCause | null {
+	if (error instanceof Error && error.name === "TrajectoryLimitExceeded") {
+		const kind = (error as Error & { kind?: unknown }).kind;
+		switch (kind) {
+			case "required_tool_misses":
+			case "unavailable_tool_calls":
+				return "capability_unavailable";
+			case "repeated_failures":
+				return "execution_failed";
+			default:
+				return "planner_exhausted";
+		}
+	}
+	const code = errorCode(error);
+	if (code === "CAPABILITY_UNAVAILABLE") return "capability_unavailable";
+	if (code.includes("PERSISTENCE_FAILED") || code.includes("PERSIST_FAILED")) {
+		return "persistence_failed";
+	}
+	return null;
+}
+
+const TURN_FAILURE_PROMPT_FRAMING: Record<TurnFailureCause, string[]> = {
+	capability_unavailable: [
+		"You could not do what the user asked because you do not have that ability in this environment.",
 		"Write a one or two sentence reply in plain language.",
 		"",
 		"Hard rules:",
+		"- Say plainly that you can't do that here, and that nothing was set up, saved, or changed.",
+	],
+	planner_exhausted: [
+		"You ran out of attempts before completing the user's request. The task was NOT completed and nothing was saved or changed.",
+		"Write a one or two sentence reply in plain language.",
+		"",
+		"Hard rules:",
+		"- Say plainly that the task was not completed and nothing was saved or changed.",
+	],
+	execution_failed: [
+		"A step failed while carrying out the user's request. The task was NOT completed and nothing was saved or changed.",
+		"Write a one or two sentence reply in plain language.",
+		"",
+		"Hard rules:",
+		"- Say plainly that the task failed partway and nothing was saved or changed.",
+	],
+	persistence_failed: [
+		"The user's request could not be saved. The change did not persist, so the task is NOT done.",
+		"Write a one or two sentence reply in plain language.",
+		"",
+		"Hard rules:",
+		"- Say plainly that the change could not be saved and the task is not done.",
+	],
+};
+
+export function buildFailureReplyPrompt(
+	recentMessages: string,
+	cause?: TurnFailureCause | null,
+): string {
+	const framing = cause
+		? TURN_FAILURE_PROMPT_FRAMING[cause]
+		: [
+				"You hit a transient model error and have to send a short user-facing reply.",
+				"Write a one or two sentence reply in plain language.",
+				"",
+				"Hard rules:",
+			];
+	return [
+		...framing,
 		"- Stay in character. Keep your usual voice and tone.",
 		"- NEVER answer the user's question on the merits.",
 		"- The trajectory that would have GROUNDED the answer failed, so do not emit answer-shaped tokens from memory or context.",
 		"- Do not provide a SHA, a count, a price, a date, a status, a file path, or a name as if it were verified.",
-		"- Acknowledge that something went wrong and suggest a retry.",
+		"- NEVER claim anything was saved, scheduled, created, updated, or set up.",
+		cause === "capability_unavailable"
+			? "- Do not suggest retrying; retrying cannot succeed without the missing ability."
+			: "- Acknowledge that something went wrong and suggest a retry.",
 		"- Do not paraphrase or echo the user's question as if you are about to answer it.",
 		"- NEVER mention internal mechanism words such as: planner, action_planner,",
 		"  XML, JSON, schema, structured output, model, retries, sonnet,",

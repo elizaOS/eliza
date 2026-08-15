@@ -6,11 +6,14 @@
  */
 import { APICallError, RetryError } from "ai";
 import { describe, expect, it } from "vitest";
+import { TrajectoryLimitExceeded } from "../../runtime/limits";
 import { ModelType } from "../../types";
 import {
 	buildFailureReplyPrompt,
+	classifyTurnFailureCause,
 	isModelProviderFallbackError,
 	isRateLimitError,
+	TURN_FAILURE_FALLBACK_REPLIES,
 } from "../message";
 
 /**
@@ -270,6 +273,120 @@ describe("isModelProviderFallbackError", () => {
 				statusCode,
 			});
 			expect(isModelProviderFallbackError(err)).toBe(false);
+		}
+	});
+});
+
+/**
+ * #17027 AC6 — the four terminal turn-failure shapes (missing capability,
+ * planner exhaustion, handler failure, persistence failure) must classify
+ * distinctly and produce visibly different, never-success-shaped replies.
+ */
+describe("classifyTurnFailureCause", () => {
+	it("maps required-tool misses and unavailable-tool retries to capability_unavailable", () => {
+		for (const kind of ["required_tool_misses", "unavailable_tool_calls"]) {
+			expect(
+				classifyTurnFailureCause(
+					new TrajectoryLimitExceeded({
+						kind: kind as never,
+						max: 3,
+						observed: 4,
+					}),
+				),
+			).toBe("capability_unavailable");
+		}
+	});
+
+	it("maps repeated handler failures to execution_failed", () => {
+		expect(
+			classifyTurnFailureCause(
+				new TrajectoryLimitExceeded({
+					kind: "repeated_failures",
+					max: 2,
+					observed: 3,
+				}),
+			),
+		).toBe("execution_failed");
+	});
+
+	it("maps budget exhaustion kinds to planner_exhausted", () => {
+		for (const kind of [
+			"tool_calls",
+			"terminal_only_continuations",
+			"trajectory_token_budget",
+		]) {
+			expect(
+				classifyTurnFailureCause(
+					new TrajectoryLimitExceeded({
+						kind: kind as never,
+						max: 16,
+						observed: 17,
+					}),
+				),
+			).toBe("planner_exhausted");
+		}
+	});
+
+	it("maps CAPABILITY_UNAVAILABLE and *_PERSISTENCE_FAILED codes", () => {
+		const capability = Object.assign(new Error("no fs here"), {
+			code: "CAPABILITY_UNAVAILABLE",
+		});
+		expect(classifyTurnFailureCause(capability)).toBe("capability_unavailable");
+		const persistence = Object.assign(new Error("write failed"), {
+			code: "MESSAGE_OUTBOUND_MEMORY_PERSISTENCE_FAILED",
+		});
+		expect(classifyTurnFailureCause(persistence)).toBe("persistence_failed");
+	});
+
+	it("returns null for unclassified errors and non-errors", () => {
+		expect(classifyTurnFailureCause(new Error("boom"))).toBeNull();
+		expect(classifyTurnFailureCause(undefined)).toBeNull();
+		expect(classifyTurnFailureCause("string failure")).toBeNull();
+	});
+});
+
+describe("buildFailureReplyPrompt turn-failure framing", () => {
+	const RECENT = "@user: track my workouts and check in daily";
+
+	it("frames capability_unavailable as a missing ability with no retry suggestion", () => {
+		const prompt = buildFailureReplyPrompt(RECENT, "capability_unavailable");
+		expect(prompt).toContain("do not have that ability");
+		expect(prompt).toContain("nothing was set up, saved, or changed");
+		expect(prompt).not.toContain("suggest a retry");
+		expect(prompt).toContain("NEVER answer the user's question on the merits");
+	});
+
+	it("frames planner_exhausted, execution_failed, and persistence_failed as NOT completed", () => {
+		for (const cause of [
+			"planner_exhausted",
+			"execution_failed",
+			"persistence_failed",
+		] as const) {
+			const prompt = buildFailureReplyPrompt(RECENT, cause);
+			expect(prompt).toContain("NOT");
+			expect(prompt).toContain(
+				"NEVER claim anything was saved, scheduled, created, updated, or set up",
+			);
+			expect(prompt).toContain("suggest a retry");
+		}
+	});
+
+	it("keeps the generic transient framing when no cause is classified", () => {
+		const prompt = buildFailureReplyPrompt(RECENT, null);
+		expect(prompt).toContain("transient model error");
+		expect(prompt).toBe(buildFailureReplyPrompt(RECENT));
+	});
+});
+
+describe("TURN_FAILURE_FALLBACK_REPLIES", () => {
+	it("gives each cause a distinct reply that denies completion", () => {
+		const texts = Object.values(TURN_FAILURE_FALLBACK_REPLIES);
+		expect(new Set(texts).size).toBe(texts.length);
+		for (const text of texts) {
+			expect(/nothing was saved|not done|did not stick/i.test(text)).toBe(true);
+			expect(/\bI (saved|scheduled|created|set up|updated)\b/i.test(text)).toBe(
+				false,
+			);
 		}
 	});
 });
