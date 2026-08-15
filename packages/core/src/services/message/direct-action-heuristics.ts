@@ -681,7 +681,9 @@ const SCHEDULED_ADMIN_ACTION_NAMES_BY_DOMAIN: Record<
  * SCHEDULED_TASKS. A bare "skip this task" remains ambiguous and yields no
  * deterministic candidate.
  */
-function detectScheduledItemAdminDomain(text: string): ScheduledAdminDomain | null {
+function detectScheduledItemAdminDomain(
+	text: string,
+): ScheduledAdminDomain | null {
 	const normalized = text.toLowerCase().replace(/\s+/gu, " ").trim();
 	if (!normalized || !SCHEDULED_ADMIN_VERB_PATTERN.test(normalized)) {
 		return null;
