@@ -686,7 +686,7 @@ function extractCodexAccountId(accessToken: string): string | null {
     if (parts.length !== 3) return null;
     const payload = parts[1];
     const decoded = JSON.parse(
-      Buffer.from(payload, "base64").toString("utf-8"),
+      Buffer.from(payload, "base64url").toString("utf-8"),
     ) as Record<string, unknown>;
     const claim = decoded["https://api.openai.com/auth"];
     if (!claim || typeof claim !== "object") return null;
