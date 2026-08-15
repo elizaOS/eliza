@@ -85,11 +85,16 @@ describe("release-electrobun.yml heavy E2E step", () => {
   );
   const heavyStep = steps[heavyIndex];
 
-  test("provisions a Chrome binary before the heavy step", () => {
+  test("provisions the lock-pinned Playwright Chromium before the heavy step", () => {
     expect(provisionIndex).toBeGreaterThanOrEqual(0);
     expect(heavyIndex).toBeGreaterThan(provisionIndex);
     const provision = steps[provisionIndex];
-    expect(provision?.run).toContain("@puppeteer/browsers install chrome");
+    expect(provision?.run).toContain(
+      ".github/scripts/install-playwright-browsers.sh chromium",
+    );
+    expect(provision?.run).toContain("chromium.executablePath()");
+    expect(provision?.run).not.toContain("@puppeteer/browsers");
+    expect(provision?.run).not.toContain("chrome@stable");
     expect(provision?.run).toContain("chrome-path=");
   });
 
