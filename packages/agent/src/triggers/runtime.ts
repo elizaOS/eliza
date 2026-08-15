@@ -730,7 +730,18 @@ export async function executeTriggerTask(
   });
 
   let metadataToPersist: TriggerTaskMetadata;
-  if (!nextMetadata) {
+  if (!nextMetadata && !updatedTrigger.enabled) {
+    metadataToPersist = {
+      ...existingMetadata,
+      updatedAt: finishedAt,
+      updateInterval: DISABLED_TRIGGER_INTERVAL_MS,
+      trigger: {
+        ...updatedTrigger,
+        nextRunAtMs: finishedAt + DISABLED_TRIGGER_INTERVAL_MS,
+      },
+      triggerRuns: appendRunRecord(existingMetadata.triggerRuns, runRecord),
+    };
+  } else if (!nextMetadata) {
     metadataToPersist = {
       ...existingMetadata,
       updatedAt: finishedAt,
