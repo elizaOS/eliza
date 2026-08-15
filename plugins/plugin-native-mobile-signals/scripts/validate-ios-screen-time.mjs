@@ -1,4 +1,8 @@
 #!/usr/bin/env node
+/**
+ * Validates the native iOS Screen Time entitlements, extension targets, and
+ * plugin framework wiring against either the current repository or fixtures.
+ */
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
@@ -7,7 +11,7 @@ import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const pluginRoot = path.resolve(__dirname, "..");
-const defaultRepoRoot = path.resolve(pluginRoot, "..", "..", "..");
+const defaultRepoRoot = path.resolve(pluginRoot, "..", "..");
 
 export const IOS_SCREEN_TIME_REQUIREMENTS = Object.freeze({
   entitlements: Object.freeze({
@@ -21,6 +25,20 @@ export const IOS_SCREEN_TIME_REQUIREMENTS = Object.freeze({
   extensionTargets: Object.freeze({
     deviceActivityMonitor: "DeviceActivityMonitorExtension",
     deviceActivityReport: "DeviceActivityReportExtension",
+  }),
+  extensionBundleIdentifiers: Object.freeze({
+    deviceActivityMonitor: "ai.elizaos.app.DeviceActivityMonitorExtension",
+    deviceActivityReport: "ai.elizaos.app.DeviceActivityReportExtension",
+  }),
+  extensionEntitlementsRelativePaths: Object.freeze({
+    deviceActivityMonitor: path.join(
+      "DeviceActivityMonitorExtension",
+      "DeviceActivityMonitorExtension.entitlements",
+    ),
+    deviceActivityReport: path.join(
+      "DeviceActivityReportExtension",
+      "DeviceActivityReportExtension.entitlements",
+    ),
   }),
   appEntitlementsRelativePath: path.join("App", "App.entitlements"),
 });
@@ -60,9 +78,8 @@ export function defaultIosScreenTimeValidationPaths({
     ),
     podspecPath: path.join(
       repoRootValue,
-      "packages",
-      "native-plugins",
-      "mobile-signals",
+      "plugins",
+      "plugin-native-mobile-signals",
       "ElizaosCapacitorMobileSignals.podspec",
     ),
   };
@@ -110,6 +127,31 @@ function extractDictAfterKey(plist, key) {
   const keyEnd = findKeyEnd(plist, key);
   if (keyEnd === -1) return null;
   return extractNextDict(plist, keyEnd);
+}
+
+function extractBalancedBlock(source, openingBraceIndex) {
+  let depth = 0;
+  for (let index = openingBraceIndex; index < source.length; index += 1) {
+    if (source[index] === "{") depth += 1;
+    if (source[index] === "}") depth -= 1;
+    if (depth === 0) return source.slice(openingBraceIndex, index + 1);
+  }
+  return null;
+}
+
+function extractPbxBuildSettingsBlocks(project) {
+  const marker = "buildSettings = {";
+  const blocks = [];
+  let searchFrom = 0;
+  for (;;) {
+    const markerIndex = project.indexOf(marker, searchFrom);
+    if (markerIndex === -1) return blocks;
+    const openingBraceIndex = project.indexOf("{", markerIndex);
+    const block = extractBalancedBlock(project, openingBraceIndex);
+    if (!block) return blocks;
+    blocks.push(block);
+    searchFrom = openingBraceIndex + block.length;
+  }
 }
 
 function plistStringValue(plist, key, { enclosingKey } = {}) {
@@ -267,6 +309,78 @@ export function validateIosScreenTimeBuildWiring(options = {}) {
     );
   } catch (error) {
     addCheck(checks, "xcode-entitlements-build-setting", false, error.message);
+  }
+
+  try {
+    const invalidExtensions = Object.entries(
+      IOS_SCREEN_TIME_REQUIREMENTS.extensionEntitlementsRelativePaths,
+    ).flatMap(([key, relativePath]) => {
+      const entitlementPath = path.join(appRootPath, relativePath);
+      const entitlements = readRequiredText(
+        entitlementPath,
+        `${IOS_SCREEN_TIME_REQUIREMENTS.extensionTargets[key]} entitlements`,
+      );
+      return missingRequiredEntitlements(entitlements).map(
+        (entitlement) => `${relativePath}: ${entitlement}`,
+      );
+    });
+    addCheck(
+      checks,
+      "deviceactivity-extension-entitlements",
+      invalidExtensions.length === 0,
+      invalidExtensions.length === 0
+        ? "DeviceActivity extensions include the Family Controls entitlement."
+        : `DeviceActivity extension entitlements are missing required keys: ${invalidExtensions.join(
+            ", ",
+          )}.`,
+    );
+  } catch (error) {
+    addCheck(
+      checks,
+      "deviceactivity-extension-entitlements",
+      false,
+      error.message,
+    );
+  }
+
+  try {
+    const project = readRequiredText(projectPath, "Xcode project");
+    const buildSettingsBlocks = extractPbxBuildSettingsBlocks(project);
+    const invalidTargets = Object.entries(
+      IOS_SCREEN_TIME_REQUIREMENTS.extensionEntitlementsRelativePaths,
+    ).flatMap(([key, relativePath]) => {
+      const bundleIdentifier =
+        IOS_SCREEN_TIME_REQUIREMENTS.extensionBundleIdentifiers[key];
+      const targetBlocks = buildSettingsBlocks.filter((block) =>
+        block.includes(`PRODUCT_BUNDLE_IDENTIFIER = ${bundleIdentifier};`),
+      );
+      const expected = `CODE_SIGN_ENTITLEMENTS = App/${relativePath};`;
+      if (targetBlocks.length === 0) {
+        return [
+          `${IOS_SCREEN_TIME_REQUIREMENTS.extensionTargets[key]}: no build settings found`,
+        ];
+      }
+      return targetBlocks.some((block) => !block.includes(expected))
+        ? [`${IOS_SCREEN_TIME_REQUIREMENTS.extensionTargets[key]}: ${expected}`]
+        : [];
+    });
+    addCheck(
+      checks,
+      "xcode-deviceactivity-extension-entitlements-build-settings",
+      invalidTargets.length === 0,
+      invalidTargets.length === 0
+        ? "Xcode project signs each DeviceActivity extension with its matching entitlement file."
+        : `Xcode project has invalid DeviceActivity target entitlement settings: ${invalidTargets.join(
+            ", ",
+          )}.`,
+    );
+  } catch (error) {
+    addCheck(
+      checks,
+      "xcode-deviceactivity-extension-entitlements-build-settings",
+      false,
+      error.message,
+    );
   }
 
   try {
