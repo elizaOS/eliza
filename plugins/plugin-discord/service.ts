@@ -155,6 +155,7 @@ import {
 	type DiscordOutboundDeliveryReservation,
 	MessageManager,
 } from "./messages";
+import { chunkDiscordText } from "./messaging";
 import {
 	createTurnDrainRegistry,
 	DISCORD_SHUTDOWN_DRAIN_TIMEOUT_MS,
@@ -3147,47 +3148,260 @@ export class DiscordService extends Service implements IDiscordService {
 			throw new Error(`Discord thread ${params.thread.threadId} not found.`);
 		}
 
-		if (params.identity?.name && params.thread.parentChannelId) {
-			const parent = (await client.channels.fetch(
-				params.thread.parentChannelId,
-			)) as TextChannel | null;
-			if (parent) {
-				const webhook = await this.findOrCreateWebhook(
-					parent,
-					params.identity.name,
-				);
-				if (webhook) {
-					const sent = await webhook.send({
-						content: text,
-						threadId: params.thread.threadId,
-						username: params.identity.name,
-						...(params.identity.avatarUrl
-							? { avatarURL: params.identity.avatarUrl }
-							: {}),
-					});
-					const memory = await this.buildMemoryFromMessage(sent as Message, {
-						accountId,
-						extraMetadata: extractContentMetadata(params.content),
-					});
-					return memory ?? undefined;
+		const chunks = chunkDiscordText(text);
+		if (chunks.length === 0) {
+			return undefined;
+		}
+
+		const textContent = text;
+		const dedupeParams = {
+			accountId,
+			channelId: params.thread.threadId,
+			text: textContent,
+		};
+		let outboundDedupe = beginDiscordOutboundDelivery(dedupeParams);
+		while (outboundDedupe.kind === "in_flight") {
+			const settled = await outboundDedupe.settlement;
+			if (settled.kind === "settled") {
+				const receiptIds = settled.receipt.providerMessageIds;
+				if (receiptIds.length > 0) {
+					try {
+						const priorMemoryId = createUniqueUuid(runtime, receiptIds[0]);
+						const prior = await runtime.getMemoryById?.(priorMemoryId);
+						if (prior) return prior as Memory;
+					} catch (error) {
+						// error-policy:J1 The connector boundary preserves the settled
+						// provider receipt while exposing an unavailable local memory.
+						runtime.reportError("discord:outbound-dedupe-memory-read", error, {
+							accountId,
+							channelId: params.thread.threadId,
+							providerMessageId: receiptIds[0],
+						});
+					}
 				}
-				runtime.logger?.warn?.(
+				return undefined;
+			}
+			outboundDedupe = beginDiscordOutboundDelivery(dedupeParams);
+		}
+		if (outboundDedupe.kind === "duplicate") {
+			const receiptIds = outboundDedupe.receipt.providerMessageIds;
+			if (receiptIds.length > 0) {
+				try {
+					const priorMemoryId = createUniqueUuid(runtime, receiptIds[0]);
+					const prior = await runtime.getMemoryById?.(priorMemoryId);
+					if (prior) return prior as Memory;
+				} catch (error) {
+					// error-policy:J1 The connector boundary preserves the settled
+					// provider receipt while exposing an unavailable local memory.
+					runtime.reportError("discord:outbound-dedupe-memory-read", error, {
+						accountId,
+						channelId: params.thread.threadId,
+						providerMessageId: receiptIds[0],
+					});
+				}
+			}
+			return undefined;
+		}
+		let outboundReservation: DiscordOutboundDeliveryReservation | undefined =
+			outboundDedupe.kind === "deliver"
+				? outboundDedupe.reservation
+				: undefined;
+
+		// Resolve webhook once if identity requested; shared dedupe/persistence contract covers both paths.
+		let webhook: Webhook | null = null;
+		if (params.identity?.name && params.thread.parentChannelId) {
+			try {
+				const parent = (await client.channels.fetch(
+					params.thread.parentChannelId,
+				)) as TextChannel | null;
+				if (parent) {
+					webhook = await this.findOrCreateWebhook(
+						parent,
+						params.identity.name,
+					);
+					if (!webhook) {
+						runtime.logger?.warn?.(
+							{
+								src: "plugin:discord",
+								channelId: parent.id,
+								requestedIdentity: params.identity.name,
+							},
+							"postToConnectorThread: webhook unavailable (likely missing MANAGE_WEBHOOKS or 10-per-channel limit); falling back to bot identity",
+						);
+					}
+				}
+			} catch (err) {
+				// error-policy:J4 Webhook identity is optional, so a parent lookup
+				// failure visibly falls back to the bot identity.
+				runtime.logger.warn(
 					{
 						src: "plugin:discord",
-						channelId: parent.id,
-						requestedIdentity: params.identity.name,
+						channelId: params.thread.parentChannelId,
+						err: err instanceof Error ? err.message : String(err),
 					},
-					"postToConnectorThread: webhook unavailable (likely missing MANAGE_WEBHOOKS or 10-per-channel limit); falling back to bot identity",
+					"postToConnectorThread: parent channel fetch failed; falling back to bot identity",
 				);
 			}
 		}
 
-		const sent = await threadChannel.send(text);
-		const memory = await this.buildMemoryFromMessage(sent as Message, {
-			accountId,
-			extraMetadata: extractContentMetadata(params.content),
-		});
-		return memory ?? undefined;
+		const sentMessages: Message[] = [];
+		let providerAcceptedAt: number | undefined;
+		let providerSendFailure: unknown;
+		let acceptedProviderMessages: Message[] = [];
+
+		try {
+			for (const chunk of chunks) {
+				try {
+					let sent: Message;
+					if (webhook) {
+						sent = (await webhook.send({
+							content: chunk,
+							threadId: params.thread.threadId,
+							username: params.identity?.name,
+							...(params.identity?.avatarUrl
+								? { avatarURL: params.identity.avatarUrl }
+								: {}),
+						})) as unknown as Message;
+					} else {
+						sent = (await threadChannel.send(chunk)) as Message;
+					}
+					sentMessages.push(sent);
+					acceptedProviderMessages = [...sentMessages];
+					providerAcceptedAt ??=
+						(sent as unknown as { createdTimestamp?: number })
+							.createdTimestamp ?? Date.now();
+				} catch (error) {
+					// error-policy:J1 The provider boundary records an accepted prefix
+					// as partial delivery instead of allowing a duplicate retry.
+					providerSendFailure = error;
+					if (sentMessages.length === 0) {
+						throw error;
+					}
+					runtime.reportError("discord:outbound-partial-delivery", error, {
+						accountId,
+						channelId: params.thread.threadId,
+						providerMessageIds: sentMessages.map((m) => m.id),
+					});
+					break;
+				}
+			}
+
+			if (sentMessages.length === 0) {
+				outboundReservation?.release();
+				outboundReservation = undefined;
+				throw (
+					providerSendFailure ??
+					new Error("Discord thread send produced no accepted messages.")
+				);
+			}
+
+			const persistedMemories: Memory[] = [];
+			const persistenceFailures: SendHandlerPersistenceFailure[] = [];
+			for (const sentMsg of sentMessages) {
+				try {
+					const built = await this.buildMemoryFromMessage(sentMsg, {
+						accountId,
+						extraMetadata: extractContentMetadata(params.content),
+					});
+					if (!built)
+						throw new Error("Failed to build memory from thread message.");
+					const persisted = await createDiscordMessageMemoryOnce(
+						runtime,
+						built,
+						{
+							operation: "discord-connector-postToThread",
+							platformMessageId: sentMsg.id,
+						},
+					);
+					if (!persisted)
+						throw new Error(
+							"Discord thread memory persistence returned no stored record.",
+						);
+					persistedMemories.push(persisted);
+				} catch (error) {
+					// error-policy:J1 The connector boundary records provider
+					// acceptance even when its local memory cannot be persisted.
+					persistenceFailures.push({
+						providerMessageId: sentMsg.id,
+						stage: "memory",
+						code: deliveryErrorCode(error),
+						message: deliveryErrorMessage(error),
+					});
+					runtime.reportError("discord:outbound-memory-persistence", error, {
+						accountId,
+						channelId: params.thread.threadId,
+						providerMessageId: sentMsg.id,
+					});
+				}
+			}
+
+			const receipt = buildDiscordSendReceipt({
+				messages: sentMessages,
+				acceptedAt: providerAcceptedAt ?? Date.now(),
+				persistedMemories,
+				failures: persistenceFailures,
+			});
+			const deliveryKind = providerSendFailure
+				? "partially_delivered"
+				: "delivered";
+			outboundReservation?.commit(deliveryKind, receipt);
+			outboundReservation = undefined;
+
+			if (persistedMemories.length === 0) {
+				return undefined;
+			}
+			return persistedMemories[persistedMemories.length - 1];
+		} catch (error) {
+			// error-policy:J1 The connector boundary preserves any provider-
+			// accepted prefix and releases only reservations with no acceptance.
+			if (outboundReservation && acceptedProviderMessages.length > 0) {
+				const receipt: SendHandlerReceipt = {
+					providerMessageIds: providerMessageIds(acceptedProviderMessages),
+					acceptedAt: Date.now(),
+					persistence: {
+						status: "failed",
+						failures: acceptedProviderMessages.map((m) => ({
+							providerMessageId: m.id,
+							stage: "memory" as const,
+							code: deliveryErrorCode(error),
+							message: deliveryErrorMessage(error),
+						})),
+					},
+				};
+				outboundReservation.commit(
+					providerSendFailure ? "partially_delivered" : "delivered",
+					receipt,
+				);
+				outboundReservation = undefined;
+				runtime.reportError("discord:outbound-finalization", error, {
+					accountId,
+					providerMessageIds: receipt.providerMessageIds,
+				});
+				try {
+					const fallbackId = createUniqueUuid(
+						runtime,
+						acceptedProviderMessages[0].id,
+					);
+					const prior = await runtime.getMemoryById?.(fallbackId);
+					if (prior) return prior as Memory;
+				} catch (memoryReadError) {
+					// error-policy:J1 Provider delivery remains settled while the
+					// failed local lookup is reported as unavailable.
+					runtime.reportError(
+						"discord:outbound-finalization-memory-read",
+						memoryReadError,
+						{
+							accountId,
+							channelId: params.thread.threadId,
+							providerMessageId: acceptedProviderMessages[0].id,
+						},
+					);
+				}
+				return undefined;
+			}
+			outboundReservation?.release();
+			throw error;
+		}
 	}
 
 	private async findOrCreateWebhook(
