@@ -35,6 +35,9 @@ describe("computeForecast — guards", () => {
     expect(() => computeForecast({ ...base, emaAlpha: 0 })).toThrow(/emaAlpha/);
     expect(() => computeForecast({ ...base, emaAlpha: -0.1 })).toThrow(/emaAlpha/);
     expect(() => computeForecast({ ...base, emaAlpha: 1.5 })).toThrow(/emaAlpha/);
+    expect(() => computeForecast({ ...base, emaAlpha: Number.NaN, bucketCounts: [3] })).toThrow(
+      /emaAlpha/,
+    );
   });
 
   test("accepts the boundary emaAlpha = 1", () => {
