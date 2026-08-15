@@ -121,6 +121,10 @@ class_name = "AnonymousChatGate"
 name = "ONBOARDING_SESSIONS"
 class_name = "OnboardingSessionCoordinator"
 
+[[durable_objects.bindings]]
+name = "TWITTER_OAUTH_REFRESH_COORDINATORS"
+class_name = "TwitterOAuthRefreshCoordinator"
+
 [[migrations]]
 tag = "shared-runtime-conversations-v1"
 new_sqlite_classes = ["SharedRuntimeConversation"]
@@ -136,6 +140,10 @@ new_sqlite_classes = ["AnonymousChatGate"]
 [[migrations]]
 tag = "onboarding-session-coordinator-v1"
 new_sqlite_classes = ["OnboardingSessionCoordinator"]
+
+[[migrations]]
+tag = "twitter-oauth-refresh-coordinator-v1"
+new_sqlite_classes = ["TwitterOAuthRefreshCoordinator"]
 
 # General API limits and queues may use Railway Redis via REDIS_URL. Inference
 # routes never connect to it: Cloudflare Rate Limiting bindings protect ingress,
@@ -160,6 +168,7 @@ new_sqlite_classes = ["OnboardingSessionCoordinator"]
 # Vars (non-secret build/runtime config — the rest live as wrangler secrets)
 # -----------------------------------------------------------------------------
 [vars]
+# Local/default deployments retain the direct-model control unless explicitly opted in.
 NODE_ENV = "production"
 SHARED_ELIZA_AGENT_RUNTIME = "false"
 NEXT_PUBLIC_APP_URL = "https://cloud.eliza.app"
@@ -427,6 +436,7 @@ __dirname = '"/"'
 __filename = '"/worker.js"'
 
 [env.staging.vars]
+# Protected staging proves the genuine Workerd AgentRuntime before production promotion.
 NODE_ENV = "production"
 SHARED_ELIZA_AGENT_RUNTIME = "true"
 # Apps (Product 2): wire the real deploy trigger so POST /api/v1/apps/:id/deploy
@@ -618,6 +628,10 @@ class_name = "AnonymousChatGate"
 name = "ONBOARDING_SESSIONS"
 class_name = "OnboardingSessionCoordinator"
 
+[[env.staging.durable_objects.bindings]]
+name = "TWITTER_OAUTH_REFRESH_COORDINATORS"
+class_name = "TwitterOAuthRefreshCoordinator"
+
 [[env.staging.ratelimits]]
 name = "GLOBAL_RATE_LIMITER"
 namespace_id = "1615311"
@@ -674,8 +688,9 @@ __dirname = '"/"'
 __filename = '"/worker.js"'
 
 [env.production.vars]
+# Production uses the genuine Shared Workerd runtime for personal voice.
 NODE_ENV = "production"
-SHARED_ELIZA_AGENT_RUNTIME = "false"
+SHARED_ELIZA_AGENT_RUNTIME = "true"
 THIN_INFERENCE_ENTRY_ENABLED = "true"
 # Apps deploy (Product 2): arms the Worker-side deploy trigger (configureAppsDeployTrigger,
 # bootstrap-app.ts) so POST /api/v1/apps/:id/deploy enqueues a real APP_DEPLOY job instead of
@@ -838,6 +853,10 @@ class_name = "AnonymousChatGate"
 [[env.production.durable_objects.bindings]]
 name = "ONBOARDING_SESSIONS"
 class_name = "OnboardingSessionCoordinator"
+
+[[env.production.durable_objects.bindings]]
+name = "TWITTER_OAUTH_REFRESH_COORDINATORS"
+class_name = "TwitterOAuthRefreshCoordinator"
 
 [[env.production.ratelimits]]
 name = "GLOBAL_RATE_LIMITER"

@@ -275,6 +275,9 @@ async function driveDiscordTurn(options: {
 			ownerDiscordUserIds,
 			accountPool: { get: () => null, getDefault: () => null },
 			turnDrainRegistry: createTurnDrainRegistry(),
+			// Object.create skips the service's class-field initializer. Keep this
+			// real-prototype harness aligned with constructor-created instances.
+			dmRegistries: new Map(),
 			// The shutdown cordon field is a constructor-initialized class field;
 			// `Object.create` skips the constructor, and `admitInboundMessage`
 			// treats anything other than exactly `null` as a closed ingress, so

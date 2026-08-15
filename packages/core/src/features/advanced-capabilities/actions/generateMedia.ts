@@ -97,6 +97,22 @@ function readBooleanParam(
 	return typeof value === "boolean" ? value : undefined;
 }
 
+/**
+ * True when the message text is an explicit request to generate a visual or
+ * audio artifact ("make me a pixel-art castle image", "generate a picture of a
+ * lighthouse"). A generation verb must pair with a media-artifact noun so
+ * incidental mentions ("send me the image you saved", "make a plan") never
+ * match. Module-local by design: validate() must not depend on the message
+ * service's Stage-1 heuristics (that is a higher layer).
+ */
+function looksLikeExplicitMediaGenerationRequest(text: string): boolean {
+	const normalized = text.toLowerCase().replace(/\s+/gu, " ").trim();
+	if (!normalized) return false;
+	return /\b(?:generate|make|draw|create|render|paint|produce|design)\b[^.!?]{0,64}\b(?:image|picture|photo|art(?:work)?|illustration|logo|sticker|wallpaper|drawing|painting|meme|gif|video|animation|clip|music|song|audio|sound(?:\s?effect)?|sfx|voice(?:over)?|speech)s?\b/iu.test(
+		normalized,
+	);
+}
+
 function normalizeMediaType(
 	value: unknown,
 ): MediaGenerationMediaType | undefined {
@@ -344,6 +360,19 @@ export const generateMediaAction = {
 
 		const params = readParams(options);
 		if (normalizeMediaType(params.mediaType)) return true;
+
+		// An explicit natural-language generation ask is self-selecting: with a
+		// working generator (canGenerate above) it must not additionally require
+		// a pre-selected media/files context. Requiring one meant a fresh image
+		// ask that Stage-1 classified into "simple"/"general" was dropped from
+		// the catalog entirely, and the model then honestly denied a capability
+		// it has — the same box generated an image an hour earlier only because
+		// that turn already carried a media context (matrix F35,
+		// tj-ec2962758e6a13 vs the 13:27 lighthouse). The context gate still
+		// governs the incidental case (no explicit ask) below.
+		if (looksLikeExplicitMediaGenerationRequest(messageText(message))) {
+			return true;
+		}
 
 		return hasActionContext(message, state, {
 			contexts: [...MEDIA_CONTEXTS],

@@ -33,6 +33,7 @@ const SANCTIONED_INTERACTIVE_SITES = new Set([
   "src/components/pages/ElizaCloudDashboard.tsx",
   "src/first-run/first-run-finish.ts",
   "src/components/settings/CloudOverviewSection.tsx",
+  "src/components/settings/ProviderSwitcher.tsx",
   "src/cloud/connectors/CloudConnectorsUpsell.tsx",
 ]);
 

@@ -35,6 +35,8 @@ export class TwitterError extends Error {
 interface ProbableErrorShape {
   message?: unknown;
   code?: unknown;
+  status?: unknown;
+  data?: { status?: unknown };
   response?: { status?: unknown };
 }
 
@@ -53,9 +55,16 @@ function errorMessage(error: unknown): string {
 function errorCode(error: unknown): number | undefined {
   const probed = probeError(error);
   if (typeof probed.code === "number") return probed.code;
-  const status = probed.response?.status;
+  const status =
+    probed.data?.status ?? probed.response?.status ?? probed.status;
   if (typeof status === "number") return status;
   return undefined;
+}
+
+/** A concrete 4xx response proves the provider rejected the write pre-acceptance. */
+export function isExplicitTwitterRejection(error: unknown): boolean {
+  const status = errorCode(error);
+  return status !== undefined && status >= 400 && status < 500;
 }
 
 export function getErrorType(error: unknown): TwitterErrorType {

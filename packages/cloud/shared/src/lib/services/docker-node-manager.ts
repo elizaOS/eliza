@@ -550,6 +550,44 @@ function isAutoscaledNode(node: DockerNode): boolean {
   return meta.provider === "hetzner-cloud" && meta.autoscaled === true;
 }
 
+/**
+ * Whether a node belongs to the hand-registered robot (auction/dedicated)
+ * fleet rather than the autoscaled cloud fleet.
+ *
+ * Explicit `metadata.fleet` wins when present ("robot" vs anything else).
+ * Otherwise the discriminator is the one the scheduler already relies on
+ * (hetzner-client/scheduling.ts findNodeInLocation): only Cloud-provisioned
+ * nodes carry `metadata.location`, so an autoscaled flag or a location string
+ * marks cloud, and a hand-registered node without either is robot.
+ */
+export function isRobotFleetNode(node: DockerNode): boolean {
+  const meta = node.metadata as Record<string, unknown> | null | undefined;
+  if (meta && typeof meta === "object") {
+    if (typeof meta.fleet === "string") return meta.fleet === "robot";
+    if (isAutoscaledNode(node)) return false;
+    if (typeof meta.location === "string" && meta.location.length > 0) return false;
+  }
+  return true;
+}
+
+/**
+ * Placement ordering (#18485): robot slots cost ~€3-4.5/agent/mo against
+ * ~€35/agent/mo on autoscaled cloud, and the workload is identical on both, so
+ * every dedicated agent placed on cloud while a robot has a real free slot is
+ * pure drift. Robot-fleet candidates come first; within a fleet the existing
+ * least-loaded order (most free slots first) is preserved, which also serves
+ * as the tie-break between equal fleets.
+ */
+export function comparePlacementCandidates(
+  a: { node: DockerNode; available: number },
+  b: { node: DockerNode; available: number },
+): number {
+  const fleetRankA = isRobotFleetNode(a.node) ? 0 : 1;
+  const fleetRankB = isRobotFleetNode(b.node) ? 0 : 1;
+  if (fleetRankA !== fleetRankB) return fleetRankA - fleetRankB;
+  return b.available - a.available;
+}
+
 function prePullPidFile(marker: string): string {
   return `${PREPULL_PID_DIR}/eliza-prepull-${marker}.pid`;
 }
@@ -632,7 +670,10 @@ export class DockerNodeManager {
   // ---- Node Selection ---------------------------------------------------
 
   /**
-   * Find the least-loaded healthy node with available capacity.
+   * Find the best healthy node with available capacity: robot-fleet nodes
+   * first (see {@link comparePlacementCandidates}), least-loaded within a
+   * fleet. Sticky-volume pinning and location matching happen in the callers
+   * (hetzner-client/scheduling.ts) before this fallback is consulted.
    * Returns null if no capacity is available.
    */
   async getAvailableNode(options: NodeSelectionOptions = {}): Promise<DockerNode | null> {
@@ -652,7 +693,7 @@ export class DockerNodeManager {
     )
       .filter((candidate) => candidate.available > 0)
       .filter((candidate) => candidate.node.node_id !== options.excludeNodeId)
-      .sort((a, b) => b.available - a.available);
+      .sort(comparePlacementCandidates);
 
     const compatibleCandidates = candidates.filter((candidate) => {
       if (isNodeMetadataCompatible(candidate.node, options.requiredPlatform)) {

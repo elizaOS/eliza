@@ -475,6 +475,95 @@ df -h / /home
 		);
 	});
 
+	it("verified tool text overrides recovered prose — committed state is authoritative (F30)", async () => {
+		// Live fabrication (tj-e9bdfb8015bc11): OWNER_REMINDERS_REVIEW returned
+		// verified "water the ficus at 10am. then again at 5pm." and the
+		// unparseable evaluator prose invented conversation-history items
+		// ("your 20 pushups and the sandpaper run"). The verified
+		// do-not-paraphrase text must ship, not the prose.
+		const runtime = {
+			useModel: vi.fn(
+				async () =>
+					"your 20 pushups and the sandpaper run. you've got the dentist in two days.",
+			),
+		};
+
+		const result = await runEvaluator({
+			runtime,
+			context: {
+				id: "ctx",
+				staticPrefix: {
+					characterPrompt: { content: "agent_name: Eliza", stable: true },
+				},
+				events: [],
+			},
+			trajectory: {
+				context: { id: "ctx" },
+				steps: [
+					{
+						toolCall: {
+							id: "tool-1",
+							name: "OWNER_REMINDERS_REVIEW",
+							params: {},
+						},
+						result: {
+							success: true,
+							text: "water the ficus at 10am. then again at 5pm.",
+							userFacingText: "water the ficus at 10am. then again at 5pm.",
+							verifiedUserFacing: true,
+						},
+					},
+				],
+				archivedSteps: [],
+				plannedQueue: [],
+				evaluatorOutputs: [],
+			},
+		});
+
+		expect(result.success).toBe(true);
+		expect(result.decision).toBe("FINISH");
+		expect(result.messageToUser).toBe(
+			"water the ficus at 10am. then again at 5pm.",
+		);
+		expect(result.messageToUser).not.toContain("pushups");
+	});
+
+	it("keeps prose recovery for tools without a verified-text claim", async () => {
+		const runtime = {
+			useModel: vi.fn(
+				async () => "The search found three articles about ficus care.",
+			),
+		};
+
+		const result = await runEvaluator({
+			runtime,
+			context: {
+				id: "ctx",
+				staticPrefix: {
+					characterPrompt: { content: "agent_name: Eliza", stable: true },
+				},
+				events: [],
+			},
+			trajectory: {
+				context: { id: "ctx" },
+				steps: [
+					{
+						toolCall: { id: "tool-1", name: "WEB_SEARCH", params: {} },
+						result: { success: true, text: "3 results" },
+					},
+				],
+				archivedSteps: [],
+				plannedQueue: [],
+				evaluatorOutputs: [],
+			},
+		});
+
+		expect(result.decision).toBe("FINISH");
+		expect(result.messageToUser).toBe(
+			"The search found three articles about ficus care.",
+		);
+	});
+
 	it("strips a trailing evaluator JSON envelope from recovered prose", async () => {
 		const runtime = {
 			useModel: vi.fn(

@@ -56,7 +56,11 @@ import {
   encodeTwilioMedia,
 } from "../lib/twilio-media-codec";
 import { verifyTwilioStreamToken } from "../lib/twilio-stream-token";
-import { callEndedEvent, callStartedPrompt } from "../lib/voice-continuity";
+import {
+  callEndedEvent,
+  callOpeningGreeting,
+  callStartedEvent,
+} from "../lib/voice-continuity";
 
 const app = new Hono<AppEnv>();
 // Twilio sends 20 ms frames immediately after `start`. A cold Hyperdrive
@@ -387,6 +391,14 @@ app.get("/", async (c) => {
     });
     const callExpSeconds =
       Math.floor(Date.now() / 1_000) + resolveMaxCallSeconds(env);
+    const prewarmAndRecordCallStart = async (): Promise<void> => {
+      await elizaFetch.recordLifecycleEvent({
+        id: `twilio-call:${claims.callSid}:started`,
+        content: callStartedEvent(claims.previousInteractionAt),
+        createdAt: Date.now(),
+      });
+      await elizaFetch.prewarm?.();
+    };
     session = new VoiceSession({
       sessionId: claims.sessionId,
       jti: claims.jti,
@@ -410,9 +422,8 @@ app.get("/", async (c) => {
       elizaAuthorization,
       elizaModel: resolveElizaModel(env),
       fetchImpl: elizaFetch,
-      prewarmElizaContext: elizaFetch.prewarm,
-      openingPrompt: callStartedPrompt(claims.previousInteractionAt),
-      openingClientMessageId: `twilio-call:${claims.callSid}:started`,
+      prewarmElizaContext: prewarmAndRecordCallStart,
+      openingGreeting: callOpeningGreeting(claims.returningCaller),
       usageStore,
       usageLimits: resolveVoiceUsageLimits(env),
       isRevoked: (jti) =>

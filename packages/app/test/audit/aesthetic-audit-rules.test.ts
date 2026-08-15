@@ -243,6 +243,7 @@ describe("computeVerdict (#8796 verdict precedence)", () => {
     consoleErrors: [],
     qualityIssues: [],
     readableChars: 500,
+    semanticReady: null,
     borderDividerDensity: 20,
     textDensity: 8,
     whitespaceRatio: 0.72,
@@ -277,6 +278,33 @@ describe("computeVerdict (#8796 verdict precedence)", () => {
     ).toBe("broken");
   });
 
+  it("uses declared semantics as content authority and the character floor only as fallback", () => {
+    expect(
+      computeVerdict(
+        finding({
+          slug: "plugin-focus-gui",
+          readableChars: "Idle".length,
+          semanticReady: true,
+        }),
+      ),
+    ).toBe("good");
+    expect(computeVerdict(finding({ readableChars: "junk".length }))).toBe(
+      "broken",
+    );
+    expect(
+      computeVerdict(finding({ readableChars: 500, semanticReady: false })),
+    ).toBe("broken");
+    expect(
+      computeVerdict(
+        finding({
+          readableChars: "Idle".length,
+          semanticReady: true,
+          qualityIssues: ["blank pixels"],
+        }),
+      ),
+    ).toBe("broken");
+  });
+
   it("TUI and overlay surfaces are exempt from the quality/content floors", () => {
     expect(
       computeVerdict(
@@ -289,6 +317,20 @@ describe("computeVerdict (#8796 verdict precedence)", () => {
           slug: "builtin-chat",
           qualityIssues: ["x"],
           readableChars: 0,
+        }),
+      ),
+    ).toBe("good");
+    expect(
+      computeVerdict(
+        finding({ viewType: "tui", readableChars: 0, semanticReady: false }),
+      ),
+    ).toBe("good");
+    expect(
+      computeVerdict(
+        finding({
+          slug: "builtin-chat",
+          readableChars: 0,
+          semanticReady: false,
         }),
       ),
     ).toBe("good");
@@ -360,6 +402,7 @@ describe("minimalism density gate (#9950)", () => {
     consoleErrors: [],
     qualityIssues: [],
     readableChars: 500,
+    semanticReady: null,
     borderDividerDensity: 20,
     textDensity: 8,
     whitespaceRatio: 0.72,
@@ -430,6 +473,7 @@ describe("minimalism ratchet (#9950 Her-minimal gate teeth)", () => {
     consoleErrors: [],
     qualityIssues: [],
     readableChars: 500,
+    semanticReady: null,
     borderDividerDensity: 100,
     textDensity: 10,
     whitespaceRatio: 0.4,
@@ -713,6 +757,7 @@ describe("minimalism baseline parse/build (#9950 update path)", () => {
           consoleErrors: [],
           qualityIssues: [],
           readableChars: 500,
+          semanticReady: null,
           borderDividerDensity: 300,
           textDensity: 61.2,
           whitespaceRatio: 0.18,

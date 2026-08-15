@@ -14,7 +14,17 @@ const DEFAULT_REDACT_KEEP_END = 4;
 
 // Minimum length for a secret to be considered for redaction
 // Shorter values could cause false positives
-const MIN_SECRET_LENGTH = 8;
+export const MIN_SECRET_LENGTH = 8;
+
+// RFC 9110 §5.6.2 and §11.2. Keeping these grammar fragments together makes
+// Authorization classification one authority for both direct redaction and
+// SecretSwapSession, which compiles this module's exported default patterns.
+const HTTP_TOKEN_PATTERN = "[!#$%&'*+\\-.^_`|~0-9A-Za-z]+";
+const HTTP_BWS_PATTERN = String.raw`[ \t]*`;
+const HTTP_QUOTED_STRING_PATTERN = String.raw`"(?:[\t\x20\x21\x23-\x5B\x5D-\x7E\x80-\xFF]|\\[\t\x20-\x7E\x80-\xFF])*"`;
+const HTTP_AUTH_PARAM_PATTERN = `${HTTP_TOKEN_PATTERN}${HTTP_BWS_PATTERN}=${HTTP_BWS_PATTERN}(?:${HTTP_TOKEN_PATTERN}|${HTTP_QUOTED_STRING_PATTERN})`;
+const HTTP_AUTH_PARAM_LIST_PATTERN = `(?:,${HTTP_BWS_PATTERN})*${HTTP_AUTH_PARAM_PATTERN}(?:${HTTP_BWS_PATTERN},${HTTP_BWS_PATTERN}(?:${HTTP_AUTH_PARAM_PATTERN})?)*`;
+const HTTP_TOKEN68_PATTERN = String.raw`[A-Za-z0-9._~+/\-]+={0,}`;
 
 /**
  * Default patterns for detecting sensitive data.
@@ -27,17 +37,22 @@ const DEFAULT_REDACT_PATTERNS: string[] = [
 	String.raw`"(?:apiKey|token|secret|password|passwd|accessToken|refreshToken|mnemonic|seedPhrase|passphrase|privateKey|credential)"\s*:\s*"([^"]+)"`,
 	// CLI flags (space-separated and --flag=value forms).
 	String.raw`--(?:api[-_]?key|token|secret|password|passwd)(?:\s+|=)(["']?)([^\s"']+)\1`,
-	// Authorization headers. RFC 7235 credentials are either one token68 value
-	// or a comma-separated auth-param list. Match the complete credential
-	// remainder rather than naming schemes: Basic, Digest, Proxy-Authorization,
-	// and extension schemes all carry reusable authentication material. The
-	// line boundary prevents an invalid prose sentence such as
-	// "Authorization: required for this endpoint" from being partially masked.
-	// Bearer keeps its floor-free rule for compatibility with short service
-	// values in env-style `*_AUTHORIZATION` output.
+	// Authorization credentials are either one token68 value or a complete
+	// comma-separated auth-param list. Basic is classified first because its
+	// trailing `=` is token68 padding, not an auth-param assignment; this also
+	// lets diagnostic prose follow a Basic credential without being swallowed.
+	// Extension schemes then use the complete RFC token/quoted-string grammar.
+	// Line boundaries keep invalid prose such as "Authorization: required for
+	// this endpoint" unchanged. Bearer retains its floor-free compatibility for
+	// short service values in env-style `*_AUTHORIZATION` output.
 	String.raw`(?:Proxy-)?Authorization\s*[:=]\s*Bearer\s+([A-Za-z0-9._\-+=/~]+)`,
-	String.raw`(?:Proxy-)?Authorization\s*[:=]\s*([A-Za-z][A-Za-z0-9-]*)[ \t]+((?=[A-Za-z][A-Za-z0-9!#$%&'*+.^_|~-]*[ \t]*=)[^\r\n]+)(?=[\r\n]|$)`,
-	String.raw`(?:Proxy-)?Authorization\s*[:=]\s*([A-Za-z][A-Za-z0-9-]*)[ \t]+([A-Za-z0-9._~+/\-]{8,}={0,})(?=[\r\n]|$)`,
+	String.raw`(?:Proxy-)?Authorization\s*[:=]\s*Basic[ \t]+(${HTTP_TOKEN68_PATTERN})(?=[ \t]|[\r\n]|$)`,
+	String.raw`(?:Proxy-)?Authorization\s*[:=]\s*(${HTTP_TOKEN_PATTERN})[ \t]+(${HTTP_AUTH_PARAM_LIST_PATTERN})(?=${HTTP_BWS_PATTERN}(?:[\r\n]|$))`,
+	String.raw`(?:Proxy-)?Authorization\s*[:=]\s*(${HTTP_TOKEN_PATTERN})[ \t]+(${HTTP_TOKEN68_PATTERN})(?=${HTTP_BWS_PATTERN}(?:[\r\n]|$))`,
+	// Once a non-Basic/Bearer credential has the unambiguous `token BWS =`
+	// assignment opener, malformed quoting or a truncated list must fail toward
+	// masking rather than leave a likely credential in diagnostics.
+	String.raw`(?:Proxy-)?Authorization\s*[:=]\s*(?!(?:Basic|Bearer)(?:[ \t]|$))(${HTTP_TOKEN_PATTERN})[ \t]+((?=${HTTP_TOKEN_PATTERN}${HTTP_BWS_PATTERN}=)[^\r\n]+)(?=[\r\n]|$)`,
 	String.raw`(?:Proxy-)?Authorization\s*[:=]\s*([A-Za-z0-9._~+/\-]{18,}={0,})(?=[\r\n]|$)`,
 	String.raw`\bBearer\s+([A-Za-z0-9._\-+=]{18,})\b`,
 	// URI userinfo. Mask the complete userinfo component (user:password,

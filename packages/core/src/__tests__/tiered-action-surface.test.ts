@@ -591,7 +591,7 @@ describe("v5 tiered action surface", () => {
 			responses: [
 				stage1Response({
 					contexts: ["general"],
-					candidateActionNames: ["SHELL", "FILE"],
+					candidateActionNames: ["SHELL", "FILE", "TOTALLY_UNKNOWN_ACTION"],
 				}),
 				plannerToolResponse("SHELL", { command: "git status --short" }),
 				finishEvaluatorResponse("Shell checked."),
@@ -614,6 +614,22 @@ describe("v5 tiered action surface", () => {
 		const toolNames = tools?.map((tool) => tool.name).filter(Boolean) ?? [];
 		expect(toolNames).toContain("SHELL");
 		expect(toolNames).not.toContain("FILE");
+		expect(runtime.logger.warn).toHaveBeenCalledWith(
+			expect.objectContaining({
+				action: "FILE",
+				candidate: "FILE",
+				gate: "action-gate",
+				reason: expect.stringContaining("not allowed"),
+			}),
+			"Explicit stage-1 candidate rejected at the action gate",
+		);
+		expect(runtime.logger.warn).toHaveBeenCalledWith(
+			expect.objectContaining({
+				candidate: "TOTALLY_UNKNOWN_ACTION",
+				gate: "resolved-to-no-runtime-action",
+			}),
+			"Explicit stage-1 candidate resolved to no runtime action",
+		);
 	});
 
 	it("lets a Tier B parent invoke its sub-planner and execute child actions", async () => {

@@ -136,6 +136,13 @@ async function fetchAuthStatus(): Promise<void> {
         return;
       }
       if (result.status === 503) {
+        // A cloud Steward-refresh outage/throttle is not the local-agent boot
+        // race this retry budget exists for; each retry would re-POST the
+        // refresh endpoint and amplify a 429. Surface unavailability at once.
+        if (result.reason === "cloud_unavailable") {
+          publishAuthStatus({ phase: "server_unavailable" });
+          return;
+        }
         if (attempt < SERVER_UNAVAILABLE_RETRIES) {
           await new Promise((resolve) =>
             setTimeout(resolve, SERVER_UNAVAILABLE_RETRY_MS),

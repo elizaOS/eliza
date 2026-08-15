@@ -715,6 +715,35 @@ describe("AgentGatewayRouterService phone routing", () => {
     });
     expect(findByPhoneNumberWithOrganization).not.toHaveBeenCalled();
   });
+
+  test("throws a typed failure when a registered BlueBubbles bridge cannot route", async () => {
+    findRunningSandbox.mockResolvedValue({
+      id: "registered-agent",
+      organization_id: "registered-org",
+      user_id: "registered-user",
+      status: "running",
+      agent_config: {},
+    });
+    bridge.mockRejectedValue(new Error("registered bridge unavailable"));
+
+    await expect(
+      newRouter().routeRegisteredBlueBubblesMessage({
+        organizationId: "registered-org",
+        userId: "registered-user",
+        agentId: "registered-agent",
+        from: "+1 (555) 555-0100",
+        to: "+1 (415) 555-0123",
+        body: "retry this message",
+        providerMessageId: "bb-message-retry",
+      }),
+    ).rejects.toMatchObject({
+      code: "BLUEBUBBLES_REGISTERED_BRIDGE_FAILED",
+      context: expect.objectContaining({
+        agentId: "registered-agent",
+        organizationId: "registered-org",
+      }),
+    });
+  });
 });
 
 describe("AgentGatewayRouterService discord DM onboarding (#17341)", () => {

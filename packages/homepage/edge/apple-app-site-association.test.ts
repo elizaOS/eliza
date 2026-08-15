@@ -184,20 +184,15 @@ describe("eliza.app AASA edge Worker", () => {
     expect(wranglerConfig).toContain(
       'globs = ["**/apple-app-site-association.json"]',
     );
-    expect(workflow).toContain("branches: [main]");
+    expect(workflow).toContain("workflow_dispatch:");
+    expect(workflow).not.toContain("  push:");
     expect(workflow).toContain("environment: production");
     expect(workflow.match(/runs-on: ubuntu-24\.04/g)).toHaveLength(2);
     expect(workflow.match(/persist-credentials: false/g)).toHaveLength(2);
     expect(workflow).not.toContain("workflow_call:");
     expect(workflow).not.toContain("bun install");
     expect(workflow).toContain(
-      '"packages/homepage/edge/apple-app-site-association.json"',
-    );
-    expect(workflow).toContain(
-      '"packages/app-core/platforms/ios/App/App.xcodeproj/project.pbxproj"',
-    );
-    expect(workflow).toContain(
-      '"packages/app-core/platforms/ios/App/App/App.entitlements"',
+      "Manual production AASA deployments must dispatch the workflow from main.",
     );
     expect(workflow).toContain("Check AASA edge credentials");
     expect(workflow).toContain("CLOUDFLARE_API_TOKEN");

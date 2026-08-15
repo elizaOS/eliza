@@ -37,7 +37,6 @@ import {
   rm,
   writeFile,
 } from "node:fs/promises";
-import { builtinModules } from "node:module";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { chromium } from "playwright";
@@ -217,6 +216,7 @@ const stubElizaCore = {
             isViewVisible: (d, enabled) =>
               isViewKindEnabled(resolveViewKind(d), enabled),
             dedupeModalities: (m) => Array.from(new Set(Array.isArray(m) ? m : [])),
+            stripUnclaimedInteractionMarkup: (text) => text,
             // The fixture defaults to attention mode, so the home notification
             // center (NotificationsHomeCenter) mounts and triages each seeded
             // notification by tier — it needs the REAL priority→tier mapping. A

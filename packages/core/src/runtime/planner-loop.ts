@@ -3023,6 +3023,7 @@ async function executeQueuedToolCall(params: {
 		toolName: params.toolCall.name,
 		success: result.success,
 		error: projectToolDiagnosticValue(failureError, redactDiagnosticText),
+		failureProvenance: result.failureProvenance,
 		repeatKey: isParameterValidationFailure
 			? "parameter_validation"
 			: toolFailureRepeatKey(params.toolCall),
@@ -4011,11 +4012,19 @@ function terminalMessageFromToolCalls(
  * the log into the channel. The contract is structural: tools declare what is
  * safe to show, the framework never guesses by parsing wrapper text.
  */
-function latestToolResultText(
+export function latestToolResultText(
 	trajectory: PlannerTrajectory,
 ): string | undefined {
 	for (const step of [...trajectory.steps].reverse()) {
-		const text = step.result?.userFacingText?.trim();
+		const result = step.result;
+		// A failed step's text is planner-facing diagnostics unless the tool
+		// explicitly claimed failure authority (verifiedUserFacing) — surfacing
+		// it here delivered raw catalog errors verbatim when the evaluator
+		// finished without a messageToUser (live tj-1a1dd4704d0293).
+		if (result?.success === false && result.verifiedUserFacing !== true) {
+			continue;
+		}
+		const text = result?.userFacingText?.trim();
 		if (text) {
 			return text;
 		}
@@ -5408,7 +5417,9 @@ function userSafeFinalMessage(
  */
 export const HANDLED_STEP_FALLBACK_MESSAGE = "I handled the available step.";
 
-function isUnsafeUserVisibleText(value: string | undefined): boolean {
+// Exported for unit coverage of the egress rejection contract (F18):
+// the last-line guard is the deliverable, so tests pin its shapes.
+export function isUnsafeUserVisibleText(value: string | undefined): boolean {
 	if (!value) return false;
 	const text = value.trim();
 	if (!text) return false;
@@ -5417,6 +5428,20 @@ function isUnsafeUserVisibleText(value: string | undefined): boolean {
 		output.kind === "control" ||
 		output.kind === "invalid" ||
 		output.fieldPath.length > 0
+	) {
+		return true;
+	}
+	// Reasoning-token residue and evaluator protocol envelopes are internals,
+	// never replies: a `</think>` anywhere means upstream stripping failed, and
+	// a JSON body carrying the evaluator's decision/success protocol keys is
+	// the verdict envelope itself (live tj-b8809c9841cdfd delivered
+	// `None</think>\`\`\`json {"success": true, "decision": "FINISH"…}` to
+	// Discord when a think-prefixed envelope defeated the parser). Egress is
+	// the last line: reject both shapes regardless of how they got here.
+	if (text.includes("</think>")) return true;
+	if (
+		/"decision"\s*:\s*"(?:FINISH|CONTINUE|NEXT_RECOMMENDED)"/.test(text) &&
+		/"success"\s*:\s*(?:true|false)/.test(text)
 	) {
 		return true;
 	}
@@ -5669,6 +5694,7 @@ export function actionResultToPlannerToolResult(
 		userFacingEffectReceiptIds: result.userFacingEffectReceiptIds,
 		data: Object.keys(data).length > 0 ? data : undefined,
 		error: result.error,
+		failureProvenance: result.failureProvenance,
 		turnComplete: result.turnComplete,
 		continueChain: result.continueChain,
 	};

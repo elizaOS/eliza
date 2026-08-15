@@ -1390,17 +1390,21 @@ function handleOAuthStatusSse(
     }
   };
 
-  const unsubscribe = subscribeFlow(sessionId, (state) => {
+  let unsubscribe: (() => void) | undefined;
+  let terminalReplayBeforeSubscription = false;
+  unsubscribe = subscribeFlow(sessionId, (state) => {
     if (closed) return;
     writeEvent(state);
     if (state.status !== "pending") {
-      unsubscribe();
+      if (unsubscribe) unsubscribe();
+      else terminalReplayBeforeSubscription = true;
       finish();
     }
   });
+  if (terminalReplayBeforeSubscription) unsubscribe();
 
   req.on("close", () => {
-    unsubscribe();
+    unsubscribe?.();
     finish();
   });
   return true;

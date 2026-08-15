@@ -6,6 +6,15 @@ const requireUserOrApiKeyWithOrg = mock(async () => ({
   id: "user-1",
   organization_id: "org-1",
 }));
+const getAdminStatusForUser = mock(
+  async (): Promise<{
+    isAdmin: boolean;
+    role: "super_admin" | null;
+  }> => ({
+    isAdmin: true,
+    role: "super_admin",
+  }),
+);
 const findByIdAndOrg = mock(async () => ({
   id: "11111111-1111-4111-8111-111111111111",
   user_id: "user-1",
@@ -26,6 +35,9 @@ const listBlueBubblesGateways = mock(async () => []);
 mock.module("@/lib/auth/workers-hono-auth", () => ({
   requireUserOrApiKeyWithOrg,
 }));
+mock.module("@/lib/services/admin", () => ({
+  adminService: { getAdminStatusForUser },
+}));
 mock.module("@/db/repositories/agent-sandboxes", () => ({
   agentSandboxesRepository: { findByIdAndOrg },
 }));
@@ -41,11 +53,37 @@ describe("BlueBubbles gateway registration API", () => {
     findByIdAndOrg.mockClear();
     createBlueBubblesGatewayRegistration.mockClear();
     listBlueBubblesGateways.mockClear();
+    getAdminStatusForUser.mockClear();
+    getAdminStatusForUser.mockResolvedValue({
+      isAdmin: true,
+      role: "super_admin",
+    });
     findByIdAndOrg.mockResolvedValue({
       id: "11111111-1111-4111-8111-111111111111",
       user_id: "user-1",
       organization_id: "org-1",
     });
+  });
+
+  test("rejects sender-owned identity attestation from an ordinary account", async () => {
+    getAdminStatusForUser.mockResolvedValueOnce({
+      isAdmin: false,
+      role: null,
+    });
+
+    const response = await app.fetch(
+      new Request("https://api.elizacloud.ai/", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          routingMode: "sender-owned",
+          phoneNumber: "+14155550123",
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(403);
+    expect(createBlueBubblesGatewayRegistration).not.toHaveBeenCalled();
   });
 
   test("lists only gateways owned by the authenticated user", async () => {
@@ -117,6 +155,7 @@ describe("BlueBubbles gateway registration API", () => {
     );
 
     expect(response.status).toBe(404);
+    expect(getAdminStatusForUser).not.toHaveBeenCalled();
     expect(createBlueBubblesGatewayRegistration).not.toHaveBeenCalled();
   });
 });

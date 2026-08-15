@@ -169,6 +169,69 @@ describe("PAYMENT", () => {
 		expect(client.create).not.toHaveBeenCalled();
 	});
 
+	test("create_request rejects invalid expiration values at the action boundary", async () => {
+		for (const expiresInMs of [
+			Number.NaN,
+			Number.POSITIVE_INFINITY,
+			Number.MAX_VALUE,
+		]) {
+			const client: PaymentRequestsClient = {
+				create: vi.fn(),
+				get: vi.fn(),
+				cancel: vi.fn(),
+			};
+
+			const result = await paymentAction.handler(
+				createRuntime({ [PAYMENT_REQUESTS_CLIENT_SERVICE]: client }) as never,
+				message() as never,
+				undefined,
+				{
+					parameters: {
+						action: "create_request",
+						provider: "stripe",
+						amountCents: 1000,
+						paymentContext: { kind: "any_payer" },
+						expiresInMs,
+					},
+				} as never,
+			);
+
+			expect(result.success).toBe(false);
+			expect(result.text).toContain("expiresInMs");
+			expect(client.create).not.toHaveBeenCalled();
+		}
+	});
+
+	test("create_request forwards a valid expiration and preserves the default", async () => {
+		const create = vi.fn().mockResolvedValue(envelope());
+		const client: PaymentRequestsClient = {
+			create,
+			get: vi.fn(),
+			cancel: vi.fn(),
+		};
+		const base = {
+			action: "create_request",
+			provider: "stripe",
+			amountCents: 1000,
+			paymentContext: { kind: "any_payer" },
+		};
+
+		await paymentAction.handler(
+			createRuntime({ [PAYMENT_REQUESTS_CLIENT_SERVICE]: client }) as never,
+			message() as never,
+			undefined,
+			{ parameters: base } as never,
+		);
+		await paymentAction.handler(
+			createRuntime({ [PAYMENT_REQUESTS_CLIENT_SERVICE]: client }) as never,
+			message() as never,
+			undefined,
+			{ parameters: { ...base, expiresInMs: 60_000 } } as never,
+		);
+
+		expect(create.mock.calls[0][0].expiresInMs).toBeUndefined();
+		expect(create.mock.calls[1][0].expiresInMs).toBe(60_000);
+	});
 	test("validate fails when the service for the selected action is missing", async () => {
 		const ok = await paymentAction.validate?.(
 			createRuntime({}) as never,

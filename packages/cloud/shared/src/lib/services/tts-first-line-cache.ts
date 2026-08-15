@@ -86,7 +86,9 @@ export interface CloudFirstLineCacheKey {
 }
 
 export interface CloudFirstLineCacheEntry extends CloudFirstLineCacheKey {
-  bytes: Uint8Array;
+  /** Owned copy backed by a plain ArrayBuffer so callers can hand it straight
+   * to `Response` without asserting away SharedArrayBuffer possibilities. */
+  bytes: Uint8Array<ArrayBuffer>;
   rawText: string;
   contentType: string;
   durationMs: number;
@@ -192,7 +194,7 @@ export function shouldBypassCloudFirstLineCache(args: {
 // R2 read + write helpers
 // ---------------------------------------------------------------------------
 
-async function r2GetBytes(blobKey: string): Promise<Uint8Array | null> {
+async function r2GetBytes(blobKey: string): Promise<Uint8Array<ArrayBuffer> | null> {
   const bucket = getRuntimeR2Bucket();
   if (!bucket) return null;
   try {

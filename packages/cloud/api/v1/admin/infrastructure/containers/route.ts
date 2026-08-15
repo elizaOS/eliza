@@ -9,6 +9,7 @@
  * Requires admin role.
  */
 
+import { parsePositiveInteger } from "@elizaos/shared/utils/number-parsing";
 import { Hono } from "hono";
 import { containersRepository } from "@/db/repositories/containers";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
@@ -22,7 +23,10 @@ app.get("/", async (c) => {
   try {
     await requireAdmin(c);
 
-    const limit = Math.min(parseInt(c.req.query("limit") || "500", 10), 2000);
+    const limit = Math.min(
+      parsePositiveInteger(c.req.query("limit"), 500),
+      2000,
+    );
 
     const rows = await containersRepository.listForAdminInfrastructure(limit);
 

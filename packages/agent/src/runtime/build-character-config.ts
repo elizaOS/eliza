@@ -26,6 +26,7 @@ import {
   applyAdvancedCapabilitySettings,
   resolveAdvancedCapabilitiesEnabled,
 } from "./advanced-capabilities-config.ts";
+import { projectConnectorSettings } from "./project-connector-settings.ts";
 
 /**
  * Build a Character object from the runtime ElizaConfig.
@@ -50,11 +51,16 @@ export function buildCharacterFromConfig(config: ElizaConfig): Character {
   // Prefer the UI-level assistant name when it diverges from the bundled
   // preset entry so renames take effect immediately across prompts/logging.
   const configuredName = configuredUiName || configuredAgentName;
+  // A rename alone must not erase the default operating persona: a custom
+  // name that matches no bundled preset still inherits the default preset
+  // (its {{name}} tokens pick up the custom name at prompt time). Only an
+  // explicit replacement system prompt opts the agent out of that
+  // inheritance (#17026).
   const bundledPreset =
     resolveStylePresetById(uiConfig.presetId, language) ??
     resolveStylePresetByAvatarIndex(uiConfig.avatarIndex, language) ??
     resolveStylePresetByName(configuredName, language) ??
-    (configuredName ? undefined : getDefaultStylePreset(language));
+    (agentEntry?.system ? undefined : getDefaultStylePreset(language));
   const name =
     configuredName ??
     bundledPreset?.name ??
@@ -276,10 +282,14 @@ export function buildCharacterFromConfig(config: ElizaConfig): Character {
     capabilityHints.length > 0
       ? `${systemWithoutCapabilityHints}\n\n${capabilityHints.join("\n")}`
       : systemWithoutCapabilityHints;
-  const mergedSettings = {
-    ...(agentEntry?.settings ?? {}),
-    ...settings,
-  };
+  const connectorProjection = projectConnectorSettings(
+    {
+      ...(agentEntry?.settings ?? {}),
+      ...settings,
+    },
+    config.connectors,
+  );
+  Object.assign(secrets, connectorProjection.secrets);
 
   return mergeCharacterDefaults({
     name,
@@ -294,7 +304,7 @@ export function buildCharacterFromConfig(config: ElizaConfig): Character {
     ...(mappedExamples ? { messageExamples: mappedExamples } : {}),
     ...(knowledge ? { knowledge } : {}),
     advancedMemory,
-    settings: mergedSettings,
+    settings: connectorProjection.settings,
     secrets,
   });
 }

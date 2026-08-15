@@ -45,6 +45,7 @@ import {
 } from "../inference-provider-outcome";
 import { admitOrganizationInference } from "../organization-inference-admission";
 import {
+  type RunSharedAgentTurnInput,
   type RunSharedAgentTurnResult,
   resolveSharedAgentTurnModel,
   runSharedAgentTurn,
@@ -60,6 +61,7 @@ import type { SharedRuntimeAgent } from "./shared-runtime-agent";
 import { SharedRuntimeCacheWarmingError, SharedTurnConflictError } from "./shared-runtime-errors";
 import { MAX_HISTORY_MESSAGES } from "./shared-runtime-history-policy";
 import { createSharedScheduledTaskRunner } from "./shared-scheduling";
+import { createSharedTodoStore, sharedTodoStorageScope } from "./shared-todos";
 
 export { MAX_HISTORY_MESSAGES } from "./shared-runtime-history-policy";
 
@@ -82,8 +84,9 @@ export interface SharedRuntimeHistoryStore {
 }
 
 function turnActionResults(
-  turn: Pick<RunSharedAgentTurnResult, "navIntent" | "capabilityWall">,
+  turn: Pick<RunSharedAgentTurnResult, "actionResults" | "navIntent" | "capabilityWall">,
 ): unknown[] | undefined {
+  if (turn.actionResults?.length) return turn.actionResults;
   if (turn.capabilityWall) return [capabilityWallActionResult(turn.capabilityWall)];
   if (turn.navIntent) return [navIntentActionResult(turn.navIntent)];
   return undefined;
@@ -178,6 +181,39 @@ function trustedReminderDelivery(params: Record<string, unknown>) {
   };
 }
 
+function sharedElizaRuntimeExecution(
+  agent: SharedRuntimeAgent,
+  params: Record<string, unknown>,
+  funding: SharedRuntimeChatOptions["funding"],
+): NonNullable<RunSharedAgentTurnInput["execution"]> {
+  const reminderDelivery = funding === "platform" ? trustedReminderDelivery(params) : undefined;
+  return {
+    engine: "eliza-runtime",
+    agentKey: agent.id,
+    todos: {
+      scope: sharedTodoStorageScope({
+        sourceAgentId: agent.id,
+        ownerId: agent.user_id,
+      }),
+      store: createSharedTodoStore(),
+    },
+    ...(reminderDelivery
+      ? {
+          reminders: {
+            delivery: reminderDelivery,
+            runner: createSharedScheduledTaskRunner(agent.id, {
+              dispatch: async () => {
+                throw new Error(
+                  "Interactive Shared turns cannot fire reminders; Cloudflare cron owns dispatch",
+                );
+              },
+            }),
+          },
+        }
+      : {}),
+  };
+}
+
 function stableUuid(raw: string): string {
   if (/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(raw)) {
     return raw;
@@ -188,9 +224,9 @@ function stableUuid(raw: string): string {
 
 /**
  * Client-supplied idempotency key for a shared turn (#18045). When present it
- * becomes the bridge RPC id (so `turnMessageIds` derives the SAME user and
- * assistant message ids on a retry) AND the coordinator's durable claim key: a
- * retried submission replays the stored terminal result without a second
+ * becomes the durable message-identity seed and the coordinator's claim key,
+ * so `turnMessageIds` derives the SAME user and assistant message ids on a
+ * retry. A retried submission replays the stored terminal result without a second
  * admission, provider dispatch, or charge, and a reused key with different
  * text is rejected. Untrusted input: accept only a non-empty string of a
  * sane length; anything else means "no key" and the caller generates a fresh id
@@ -228,22 +264,20 @@ async function claimSharedTurn(
   return decision.state === "replay" ? decision.result : undefined;
 }
 
-function rpcTurnIdentity(rpc: BridgeRequest): string {
-  if (typeof rpc.id === "string" || typeof rpc.id === "number") {
-    return String(rpc.id);
-  }
-  return crypto.randomUUID();
-}
-
 function turnMessageIds(
   agentId: string,
   roomId: string,
-  rpc: BridgeRequest,
+  clientMessageId: string | undefined,
 ): {
   user: string;
   assistant: string;
 } {
-  const turn = rpcTurnIdentity(rpc);
+  // JSON-RPC ids correlate one connection's responses; clients may restart
+  // their counters and legitimately reuse `1`. Only the durable client key is
+  // a cross-session mutation identity. An unkeyed request therefore receives
+  // fresh message ids and accepts the documented loss of retry deduplication
+  // instead of colliding with an old Todo ledger entry.
+  const turn = clientMessageId ?? crypto.randomUUID();
   return {
     user: stableUuid(`shared-runtime:${agentId}:${roomId}:${turn}:user`),
     assistant: stableUuid(`shared-runtime:${agentId}:${roomId}:${turn}:assistant`),
@@ -795,9 +829,7 @@ export class SharedRuntimeChatService {
       throw error;
     }
 
-    const messageIds = turnMessageIds(agent.id, roomId, rpc);
-    const reminderDelivery =
-      options.funding === "platform" ? trustedReminderDelivery(params) : undefined;
+    const messageIds = turnMessageIds(agent.id, roomId, claimKey);
     let turn: RunSharedAgentTurnResult;
     try {
       turn = await runSharedAgentTurn({
@@ -806,27 +838,11 @@ export class SharedRuntimeChatService {
         message: text,
         messageRole,
         messageIds,
+        ...(claimKey ? { originClientMessageId: claimKey } : {}),
         onProviderDispatch: billing?.markProviderDispatched,
         ...(options.executionEngine === "eliza-runtime"
           ? {
-              execution: {
-                engine: "eliza-runtime" as const,
-                agentKey: agent.id,
-                ...(reminderDelivery
-                  ? {
-                      reminders: {
-                        delivery: reminderDelivery,
-                        runner: createSharedScheduledTaskRunner(agent.id, {
-                          dispatch: async () => {
-                            throw new Error(
-                              "Interactive Shared turns cannot fire reminders; Cloudflare cron owns dispatch",
-                            );
-                          },
-                        }),
-                      },
-                    }
-                  : {}),
-              },
+              execution: sharedElizaRuntimeExecution(agent, params, options.funding),
             }
           : {}),
       });
@@ -969,7 +985,7 @@ export class SharedRuntimeChatService {
       }
       throw error;
     }
-    const messageIds = turnMessageIds(agent.id, roomId, rpc);
+    const messageIds = turnMessageIds(agent.id, roomId, claimKey);
     const generationAbort = new AbortController();
     const abortFromRequest = () => {
       generationAbort.abort(options.abortSignal?.reason);
@@ -992,7 +1008,13 @@ export class SharedRuntimeChatService {
         message: text,
         messageRole,
         messageIds,
+        ...(claimKey ? { originClientMessageId: claimKey } : {}),
         onProviderDispatch: billing?.markProviderDispatched,
+        ...(options.executionEngine === "eliza-runtime"
+          ? {
+              execution: sharedElizaRuntimeExecution(agent, params, options.funding),
+            }
+          : {}),
       });
     } catch (error) {
       detachRequestAbort();
@@ -1139,6 +1161,9 @@ export class SharedRuntimeChatService {
               );
               continue;
             }
+            const actionResults = part.actionResults?.length
+              ? part.actionResults
+              : turnActionResults(turn);
             await finalizeMessages(finalReply, false, async () => {
               // Durable claim completion before the done frame: a lost/dropped
               // terminal frame replays this result on retry instead of
@@ -1154,7 +1179,7 @@ export class SharedRuntimeChatService {
                   degraded: false,
                   runtime: "shared",
                   transport: "shared-runtime",
-                  ...(turnActionResults(turn) ? { actionResults: turnActionResults(turn) } : {}),
+                  ...(actionResults ? { actionResults } : {}),
                 });
               }
               if (isDeterministicFreeTurn(turn)) {
@@ -1167,7 +1192,6 @@ export class SharedRuntimeChatService {
                 );
               }
             });
-            const actionResults = turnActionResults(turn);
             const done = actionResults
               ? {
                   messageId: messageIds.assistant,

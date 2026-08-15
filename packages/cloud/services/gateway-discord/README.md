@@ -284,6 +284,10 @@ curl -X POST http://localhost:3000/api/v1/discord/connections \
 | `metadata.enabledChannels` | string[] | No | Only respond in these channels |
 | `metadata.disabledChannels` | string[] | No | Ignore these channels |
 | `metadata.keywords` | string[] | No | Required if responseMode is `"keyword"` |
+| `metadata.ownerDiscordUserId` | string | No | Owner user snowflake; always passes DM gating except under `"disabled"` |
+| `metadata.ownerDiscordUserIds` | string[] | No | Additional owner snowflakes (mirrors `ELIZA_DISCORD_OWNER_USER_IDS_JSON`) |
+| `metadata.dmPolicy` | string | No | `"open"` (default), `"allowlist"`, `"pairing"` (owner only), or `"disabled"` (mirrors `DISCORD_DM_POLICY`) |
+| `metadata.dmAllowFrom` | string[] | No | Extra user snowflakes admitted under `"allowlist"` (mirrors `DISCORD_ALLOW_FROM`) |
 
 **Update Connection Request Body:**
 

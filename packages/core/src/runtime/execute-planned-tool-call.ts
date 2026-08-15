@@ -200,6 +200,9 @@ export function projectActionResultForClipboard(
 					userFacingEffectReceiptIds: result.userFacingEffectReceiptIds,
 				}
 			: {}),
+		...(result.failureProvenance !== undefined
+			? { failureProvenance: result.failureProvenance }
+			: {}),
 		...(Object.keys(safeControlData).length > 0
 			? { data: safeControlData }
 			: {}),
@@ -235,6 +238,9 @@ function projectSettledResultForObserver(
 		success: projected.success,
 		...(projected.effectReceipts !== undefined
 			? { effectReceipts: projected.effectReceipts }
+			: {}),
+		...(projected.failureProvenance !== undefined
+			? { failureProvenance: projected.failureProvenance }
 			: {}),
 		data: controlData,
 		...(projected.turnComplete !== undefined
@@ -340,6 +346,50 @@ function runWithMessageTrajectoryContext<T>(
 	);
 }
 
+/**
+ * Resolve prompt-side redaction placeholders the model copied into tool args
+ * (matrix F16, tj-b6bf03e81193a2): settings values are redacted in prompts as
+ * `[REDACTED:<NAME>]`, the model faithfully reproduces the placeholder in an
+ * argument (`entityId: "[REDACTED:ELIZA_ADMIN_ENTITY_ID]"`), and schema/UUID
+ * validation rejects it — every tool wanting the admin entity id fails.
+ *
+ * Deliberately narrow: only full-string placeholders whose setting name ends
+ * in `_ENTITY_ID` (non-credential identifiers) resolve, and only when the
+ * runtime setting exists and is UUID-shaped. Credential-class placeholders
+ * stay unresolved by design — substituting bearer secrets into tool args
+ * would hand them to any tool that echoes its inputs. The broader design
+ * (resolvable redaction aliases) is a flagged follow-up.
+ *
+ * The RECORDED tool call keeps the placeholder (this transforms only the
+ * executed-args copy), so resolved ids never enter trajectories.
+ */
+const REDACTED_ENTITY_REF = /^\[REDACTED:([A-Z0-9_]*_ENTITY_ID)\]$/;
+const UUID_SHAPE =
+	/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export function resolveRedactedSettingRefs(
+	runtime: Pick<IAgentRuntime, "getSetting" | "logger">,
+	args: Record<string, unknown>,
+): Record<string, unknown> {
+	let changed = false;
+	const resolved: Record<string, unknown> = { ...args };
+	for (const [key, value] of Object.entries(args)) {
+		if (typeof value !== "string") continue;
+		const match = REDACTED_ENTITY_REF.exec(value);
+		if (!match?.[1]) continue;
+		const settingValue = runtime.getSetting(match[1]);
+		if (typeof settingValue === "string" && UUID_SHAPE.test(settingValue)) {
+			resolved[key] = settingValue;
+			changed = true;
+			runtime.logger?.debug?.(
+				{ src: "runtime:tool-args", argument: key, setting: match[1] },
+				"Resolved redaction placeholder in tool argument",
+			);
+		}
+	}
+	return changed ? resolved : args;
+}
+
 export async function executePlannedToolCall(
 	runtime: IAgentRuntime,
 	ctx: ExecutePlannedToolCallContext,
@@ -358,7 +408,17 @@ export async function executePlannedToolCall(
 		return emitToolResult(
 			toolCall,
 			redactDiagnosticText,
-			failureResult(toolCall.name, `Action not found: ${toolCall.name}`),
+			failureResult(
+				toolCall.name,
+				`Action not found: ${toolCall.name}`,
+				{},
+				{
+					kind: "missing_capability",
+					boundary: "capability",
+					code: "ACTION_NOT_FOUND",
+					retryable: false,
+				},
+			),
 		);
 	}
 
@@ -399,7 +459,10 @@ export async function executePlannedToolCall(
 			dropUndeclaredPlannerWrapperArgs(action, normalizedArgs),
 		),
 	);
-	const validation = validateToolArgs(action, argsForValidation);
+	const validation = validateToolArgs(
+		action,
+		resolveRedactedSettingRefs(runtime, argsForValidation),
+	);
 	if (!validation.valid) {
 		// The planner correlates a corrected retry with this failed operation by
 		// removing only arguments the schema rejected. Keeping this structural
@@ -460,7 +523,17 @@ export async function executePlannedToolCall(
 			return emitToolResult(
 				toolCall,
 				redactDiagnosticText,
-				failureResult(action.name, stringifyError(error), { error }),
+				failureResult(
+					action.name,
+					stringifyError(error),
+					{ error },
+					{
+						kind: "handler_error",
+						boundary: "handler",
+						code: "ACTION_VALIDATION_FAILED",
+						retryable: true,
+					},
+				),
 			);
 		}
 		if (!valid) {
@@ -470,6 +543,13 @@ export async function executePlannedToolCall(
 				failureResult(
 					action.name,
 					`Action ${action.name} is not available for the current state`,
+					{},
+					{
+						kind: "missing_capability",
+						boundary: "capability",
+						code: "ACTION_UNAVAILABLE",
+						retryable: false,
+					},
 				),
 			);
 		}

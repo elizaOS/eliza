@@ -1,3 +1,7 @@
+/**
+ The widget extension presents Eliza quick actions across Home and Lock Screen
+ families and routes every interaction through the canonical deep-link spine.
+ */
 import SwiftUI
 import WidgetKit
 
@@ -105,7 +109,7 @@ struct ElizaWidgetTimelineProvider: TimelineProvider {
 /// (`ElizaAppIntents.swift`): Ask, Voice, Daily Brief, New Task, Smart Reply.
 private struct ElizaQuickAction: Identifiable {
     let id: String
-    let title: String
+    let title: LocalizedStringResource
     let systemImage: String
     let url: URL
 }

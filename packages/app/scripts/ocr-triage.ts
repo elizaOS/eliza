@@ -30,7 +30,9 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 import { OVERLAY_NATIVE_OR_CANVAS_SLUGS } from "../test/ui-smoke/aesthetic-audit-rules";
 import {
+  type EvaluateArgs,
   evaluateOcrContent,
+  type OcrContentFinding,
   type OcrExpectation,
   type OcrResult,
   type OcrVerdict,
@@ -145,6 +147,56 @@ export interface TriageResult {
 interface PolicyEvaluationInput {
   expectation: OcrExpectation;
   semanticExemptionReason?: string;
+}
+
+type OcrEvaluationPolicy = Omit<EvaluateArgs, "ocr">;
+
+/**
+ * Prefer a bounded fallback transcript when it proves more of the declared
+ * semantics without hiding any leak or forbidden-content signal found by the
+ * engine-selected transcript. OCR's confidence/word-count selector is useful
+ * globally, but it cannot know that a smaller sparse pass captured the exact
+ * label an audit row exists to prove.
+ */
+export function selectSemanticallyBestOcrAttempt<T extends OcrResult>(
+  record: T,
+  policy: OcrEvaluationPolicy,
+): { record: T; finding: OcrContentFinding } {
+  let bestRecord = record;
+  let bestFinding = evaluateOcrContent({ ocr: record, ...policy });
+
+  for (const attempt of record.attempts ?? []) {
+    if (!attempt.ok) continue;
+    const candidate = {
+      ...record,
+      text: attempt.text,
+      lines: attempt.text.split("\n").filter(Boolean),
+      words: attempt.words,
+      meanConfidence: attempt.meanConfidence,
+      selectedMode: attempt.mode,
+    } as T;
+    const finding = evaluateOcrContent({ ocr: candidate, ...policy });
+    const preservesSafetySignals =
+      bestFinding.errorLeaks.every((leak) =>
+        finding.errorLeaks.includes(leak),
+      ) &&
+      bestFinding.placeholderLeaks.every((leak) =>
+        finding.placeholderLeaks.includes(leak),
+      ) &&
+      bestFinding.forbiddenPresent.every((label) =>
+        finding.forbiddenPresent.includes(label),
+      ) &&
+      finding.blankPixels === bestFinding.blankPixels;
+    if (
+      preservesSafetySignals &&
+      finding.missingRequired.length < bestFinding.missingRequired.length
+    ) {
+      bestRecord = candidate;
+      bestFinding = finding;
+    }
+  }
+
+  return { record: bestRecord, finding: bestFinding };
 }
 
 function resolvePolicyEvaluationInput(
@@ -368,11 +420,12 @@ export async function runOcrTriage(argv: string[]): Promise<TriageResult> {
     const policyInput = resolvePolicyEvaluationInput(slug, policy, rep);
     const exemptFromBlank =
       rep.viewType === "tui" || BLANK_EXEMPT_SLUGS.has(slug);
-    let finding = evaluateOcrContent({
-      ocr: rec,
+    let selection = selectSemanticallyBestOcrAttempt(rec, {
       ...policyInput,
       exemptFromBlank,
     });
+    rec = selection.record;
+    let finding = selection.finding;
     const alreadyTriedSparseFallback = rec.attempts?.some(
       (attempt) => attempt.mode === "sparse-high-contrast",
     );
@@ -392,11 +445,12 @@ export async function runOcrTriage(argv: string[]): Promise<TriageResult> {
         );
       }
       rec = retryRecord;
-      finding = evaluateOcrContent({
-        ocr: rec,
+      selection = selectSemanticallyBestOcrAttempt(rec, {
         ...policyInput,
         exemptFromBlank,
       });
+      rec = selection.record;
+      finding = selection.finding;
     }
     const domVerdict = rep.verdict ?? null;
     const domPassed = domVerdict === "good" || domVerdict === "needs-eyeball";

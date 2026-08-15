@@ -48,7 +48,8 @@
  */
 
 import { createHash } from "node:crypto";
-import { desc, eq, isNull, lt, or, sql } from "drizzle-orm";
+import { ElizaError } from "@elizaos/core";
+import { desc, eq, isNotNull, isNull, lt, or, sql } from "drizzle-orm";
 import {
   decryptAgentBackupStateData,
   isEncryptedAgentBackupStateData,
@@ -129,6 +130,18 @@ export interface BackupVerifierConfig {
   erroredAlertStreak: number;
 }
 
+function requireVerificationAgentId(row: StoredAgentSandboxBackup): string {
+  const agentId = row.sandbox_record_id ?? row.recovery_agent_id;
+  if (!agentId) {
+    throw new ElizaError("Backup has neither an attached nor recovery agent id", {
+      code: "AGENT_BACKUP_OWNER_MISSING",
+      context: { backupId: row.id },
+      severity: "fatal",
+    });
+  }
+  return agentId;
+}
+
 const DEFAULT_BATCH_SIZE = 10;
 const DEFAULT_REVERIFY_HOURS = 24;
 const DEFAULT_ESCALATION_PCT = 50;
@@ -140,8 +153,14 @@ const CHAIN_LOOKUP_LIMIT = 1000;
 
 function parsePositiveInt(value: string | undefined, fallback: number): number {
   if (!value) return fallback;
-  const parsed = Number.parseInt(value, 10);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+  // The whole trimmed string must be digits: parseInt stops at the first
+  // non-digit, so "7junk" parsed to 7 and silently passed the range check
+  // (#20013). isSafeInteger additionally rejects digit strings beyond the
+  // double-precision safe range instead of letting them round-trip.
+  const trimmed = value.trim();
+  if (!/^[0-9]+$/.test(trimmed)) return fallback;
+  const parsed = Number.parseInt(trimmed, 10);
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : fallback;
 }
 
 function parseBooleanDefaultTrue(value: string | undefined): boolean {
@@ -570,8 +589,9 @@ async function reconstructIncrementalStateSequential(
   | { failure: BackupVerificationFailure }
   | { skipped: BackupVerificationSkip }
 > {
+  const sandboxRecordId = requireVerificationAgentId(row);
   const metadata = await agentSandboxesRepository.listBackupMetadata(
-    row.sandbox_record_id,
+    sandboxRecordId,
     CHAIN_LOOKUP_LIMIT,
   );
   const nodes: BackupChainNode[] = metadata.map((b) => ({
@@ -845,10 +865,20 @@ export async function runBackupVerificationCycle(
   const now = (deps.now ?? (() => new Date()))();
   const cutoff = new Date(now.getTime() - config.reVerifyIntervalMs);
 
+  const verificationAgentId = sql<string>`COALESCE(
+    ${agentSandboxBackups.sandbox_record_id},
+    ${agentSandboxBackups.recovery_agent_id}
+  )`;
   const latest = dbRead
-    .selectDistinctOn([agentSandboxBackups.sandbox_record_id])
+    .selectDistinctOn([verificationAgentId])
     .from(agentSandboxBackups)
-    .orderBy(agentSandboxBackups.sandbox_record_id, desc(agentSandboxBackups.created_at))
+    .where(
+      or(
+        isNotNull(agentSandboxBackups.sandbox_record_id),
+        isNotNull(agentSandboxBackups.recovery_agent_id),
+      ),
+    )
+    .orderBy(verificationAgentId, desc(agentSandboxBackups.created_at))
     .as("latest_backup_per_agent");
 
   const candidates = await dbRead
@@ -887,7 +917,7 @@ export async function runBackupVerificationCycle(
           "every re-verify interval.",
         details: {
           backupId: row.id,
-          sandboxRecordId: row.sandbox_record_id,
+          sandboxRecordId: requireVerificationAgentId(row),
           streak,
           error: message,
         },
@@ -898,6 +928,7 @@ export async function runBackupVerificationCycle(
   };
 
   for (const row of candidates) {
+    const sandboxRecordId = requireVerificationAgentId(row);
     let result: BackupVerificationResult;
     try {
       result = await verifyBackupRestorability(row, { budget });
@@ -912,7 +943,7 @@ export async function runBackupVerificationCycle(
       const streak = await stampInfraError(row, message);
       logger.error("[AgentBackupVerifier] verification errored (infrastructure)", {
         backupId: row.id,
-        sandboxRecordId: row.sandbox_record_id,
+        sandboxRecordId,
         erroredStreak: streak,
         error: message,
       });
@@ -928,7 +959,7 @@ export async function runBackupVerificationCycle(
           "[AgentBackupVerifier] cycle decrypt budget exhausted; deferring remaining sample",
           {
             backupId: row.id,
-            sandboxRecordId: row.sandbox_record_id,
+            sandboxRecordId,
             requiredBytes: result.skipped.requiredBytes,
             budgetBytes: result.skipped.budgetBytes,
             usedBytes: budget.usedBytes,
@@ -947,7 +978,7 @@ export async function runBackupVerificationCycle(
       const streak = await stampInfraError(row, message);
       logger.error("[AgentBackupVerifier] backup payload exceeds the cycle decrypt budget", {
         backupId: row.id,
-        sandboxRecordId: row.sandbox_record_id,
+        sandboxRecordId,
         requiredBytes: result.skipped.requiredBytes,
         budgetBytes: result.skipped.budgetBytes,
         erroredStreak: streak,
@@ -976,13 +1007,13 @@ export async function runBackupVerificationCycle(
     const failure = result.failure ?? { kind: "invalid-payload" as const, message: "unknown" };
     summary.failures.push({
       backupId: row.id,
-      sandboxRecordId: row.sandbox_record_id,
+      sandboxRecordId,
       kind: failure.kind,
       message: failure.message,
     });
     logger.error("[AgentBackupVerifier] backup failed restorability verification", {
       backupId: row.id,
-      sandboxRecordId: row.sandbox_record_id,
+      sandboxRecordId,
       snapshotType: row.snapshot_type,
       backupKind: row.backup_kind,
       createdAt: row.created_at.toISOString(),

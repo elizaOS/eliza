@@ -3,6 +3,7 @@ import crypto from "node:crypto";
 import { z } from "zod";
 import {
   calculateTwilioSmsBilling,
+  classifyTwilioSmsCostConfig,
   resolveTwilioSmsCostPerSegment,
 } from "../billing";
 import { logger } from "../logger";
@@ -12,16 +13,13 @@ const TWILIO_API_BASE = "https://api.twilio.com/2010-04-01";
 
 function resolveSmsCostPerSegment(): number {
   const raw = process.env.TWILIO_SMS_COST_PER_SEGMENT_USD;
-  if (raw) {
-    const parsed = Number.parseFloat(raw);
-    if (!Number.isFinite(parsed) || parsed < 0) {
-      logger.warn(
-        "Invalid TWILIO_SMS_COST_PER_SEGMENT_USD; falling back to default",
-        {
-          raw,
-        },
-      );
-    }
+  if (classifyTwilioSmsCostConfig(raw).status === "invalid") {
+    logger.warn(
+      "Invalid TWILIO_SMS_COST_PER_SEGMENT_USD; falling back to default",
+      {
+        raw,
+      },
+    );
   }
   return resolveTwilioSmsCostPerSegment(raw);
 }

@@ -93,6 +93,9 @@ describe("personal Eliza cutover marker", () => {
     cutoverToken: "personal-cutover:shared-1:dedicated-1",
     sharedMessageCount: 12,
     sharedScheduledTaskCount: 3,
+    sharedTodoCount: 4,
+    sharedTodoMutationCount: 7,
+    sharedTodoDigest: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
     activatedAt: "2026-08-13T18:00:00.000Z",
   };
 
@@ -108,11 +111,46 @@ describe("personal Eliza cutover marker", () => {
     ).toBeNull();
   });
 
-  test("older markers normalize a missing reminder count to zero", () => {
-    const { sharedScheduledTaskCount: _count, ...legacy } = marker;
+  test("older markers normalize missing reminder and Todo receipts safely", () => {
+    const {
+      sharedScheduledTaskCount: _scheduledCount,
+      sharedTodoCount: _todoCount,
+      sharedTodoMutationCount: _todoMutationCount,
+      sharedTodoDigest: _todoDigest,
+      ...legacy
+    } = marker;
     expect(readPersonalElizaCutover({ [AGENT_PERSONAL_CUTOVER_KEY]: legacy })).toMatchObject({
       sharedScheduledTaskCount: 0,
+      sharedTodoCount: 0,
+      sharedTodoMutationCount: 0,
+      sharedTodoDigest: null,
     });
+  });
+
+  test("rejects a partial Todo receipt pair", () => {
+    const { sharedTodoDigest: _digest, ...missingDigest } = marker;
+    const { sharedTodoCount: _count, ...missingCount } = marker;
+
+    expect(
+      readPersonalElizaCutover({
+        [AGENT_PERSONAL_CUTOVER_KEY]: missingDigest,
+      }),
+    ).toBeNull();
+    expect(
+      readPersonalElizaCutover({
+        [AGENT_PERSONAL_CUTOVER_KEY]: missingCount,
+      }),
+    ).toBeNull();
+  });
+
+  test("rejects a mutation count without the Todo snapshot receipt", () => {
+    const { sharedTodoCount: _count, sharedTodoDigest: _digest, ...mutationOnly } = marker;
+
+    expect(
+      readPersonalElizaCutover({
+        [AGENT_PERSONAL_CUTOVER_KEY]: mutationOnly,
+      }),
+    ).toBeNull();
   });
 });
 

@@ -107,6 +107,34 @@ describe("tryHandleTrajectoryReadRoutes", () => {
 		expect(b.trajectories[1]).toMatchObject({ id: "t2", status: "error" });
 	});
 
+	it("normalizes trajectory pagination before forwarding it", async () => {
+		let receivedLimit: number | undefined;
+		let receivedOffset: number | undefined;
+		const service = {
+			listTrajectories: async (options: {
+				limit?: number;
+				offset?: number;
+			}) => {
+				receivedLimit = options.limit;
+				receivedOffset = options.offset;
+				return { trajectories: [], total: 0 };
+			},
+		};
+		const { res, get } = mockRes();
+		const handled = await tryHandleTrajectoryReadRoutes({
+			pathname: "/api/trajectories",
+			method: "GET",
+			url: url("/api/trajectories?limit=1.5&offset=Infinity"),
+			runtime: runtimeWith(service),
+			res,
+		});
+
+		expect(handled).toBe(true);
+		expect(get().status).toBe(200);
+		expect(receivedLimit).toBe(1);
+		expect(receivedOffset).toBe(0);
+	});
+
 	it("forwards the search param to the SQL reader so only matches return", async () => {
 		const rows = [
 			{ id: "match-1", status: "completed", llmCallCount: 1 },

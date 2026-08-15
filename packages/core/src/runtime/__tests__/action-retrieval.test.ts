@@ -14,6 +14,7 @@ import { buildActionCatalog } from "../action-catalog";
 import {
 	parentAliasesForCandidateAction,
 	retrieveActions,
+	stripControlBlockMarkers,
 	tokenizeActionSearchText,
 } from "../action-retrieval";
 
@@ -142,11 +143,10 @@ describe("action catalogue and retrieval", () => {
 		});
 	});
 
-	it("resolves a simile candidate hint to its catalog parent (BASH -> SHELL)", () => {
-		// The live regression this locks: Stage-1 hints candidateActions=["BASH"]
-		// (the documented canonical hint) but the parent action is named SHELL with
-		// BASH only as a simile. Without simile resolution the hint is dead and the
-		// surface cut hands the planner unrelated keyword matches instead.
+	it("normalizes simile candidate hints before resolving catalog parents", () => {
+		// Stage-1 producers may use lower- or camel-cased spellings while action
+		// metadata remains canonical. Both must resolve through the same exact-hint
+		// path rather than falling through to unrelated keyword matches.
 		const catalog = buildActionCatalog([
 			{
 				name: "SHELL",
@@ -156,15 +156,17 @@ describe("action catalogue and retrieval", () => {
 			},
 			...actions,
 		]);
-		const response = retrieveActions({
-			catalog,
-			messageText: "how much disk space is left on the server",
-			candidateActions: ["BASH"],
-		});
-		expect(response.results[0]).toMatchObject({
-			name: "SHELL",
-			matchedBy: expect.arrayContaining(["exact"]),
-		});
+		for (const candidateAction of ["bash", "runCommand"]) {
+			const response = retrieveActions({
+				catalog,
+				messageText: "how much disk space is left on the server",
+				candidateActions: [candidateAction],
+			});
+			expect(response.results[0]).toMatchObject({
+				name: "SHELL",
+				matchedBy: expect.arrayContaining(["exact"]),
+			});
+		}
 	});
 
 	it("drops a simile claimed by multiple parents instead of first-writer-wins (#16561)", () => {
@@ -250,7 +252,7 @@ describe("action catalogue and retrieval", () => {
 		const response = retrieveActions({
 			catalog,
 			messageText: "message my contact",
-			candidateActions: ["EMAIL"],
+			candidateActions: ["email"],
 		});
 		expect(response.results[0]?.name).toBe("EMAIL");
 	});
@@ -709,6 +711,116 @@ describe("action catalogue and retrieval", () => {
 		]);
 	});
 
+	// Todo-shaped invented names must hint both todo owners: the
+	// personal-assistant umbrella and plugin-todos' TODO parent. Deployments
+	// load one or the other; the resolver keeps whichever is registered.
+	it("hints todo candidates at OWNER_TODOS and TODO", () => {
+		for (const candidate of [
+			"ADD_TODO",
+			"CREATE_TODO",
+			"TODO_CREATE",
+			"TODOS_CREATE",
+			"TODO_ADD",
+			"NEW_TODO",
+			"SAVE_TODO",
+			"TODOS",
+			"TODO_LIST",
+			"LIST_TODOS",
+			"GET_TODOS",
+			"SHOW_TODOS",
+			"READ_TODOS",
+			"USER_TODOS_READ",
+			"COMPLETE_TODO",
+			"TODO_COMPLETE",
+			"DELETE_TODO",
+			"REMOVE_TODO",
+		]) {
+			expect(parentAliasesForCandidateAction(candidate)).toEqual([
+				"OWNER_TODOS",
+				"TODO",
+			]);
+		}
+		// Bare TODO hints only the owner umbrella: when plugin-todos is loaded
+		// its TODO action resolves directly by name before aliases apply.
+		expect(parentAliasesForCandidateAction("TODO")).toEqual(["OWNER_TODOS"]);
+	});
+
+	it("retains both registered todo owners through production retrieval", () => {
+		const catalog = buildActionCatalog([
+			{
+				name: "OWNER_TODOS",
+				description: "Manage the owner's private LifeOps todos.",
+			},
+			{
+				name: "TODO",
+				description: "Manage the current user's standalone todo list.",
+			},
+		]);
+
+		for (const candidate of ["CREATE_TODO", "TODOS_CREATE"]) {
+			const response = retrieveActions({
+				catalog,
+				messageText: "add a todo to buy milk",
+				candidateActions: [candidate],
+			});
+
+			expect(response.query.parentActionHints).toEqual(["OWNER_TODOS", "TODO"]);
+			expect(response.results.map((result) => result.name)).toEqual(
+				expect.arrayContaining(["OWNER_TODOS", "TODO"]),
+			);
+		}
+	});
+
+	it("does not route non-financial budget language to owner finances", () => {
+		const catalog = buildActionCatalog([
+			{
+				name: "OWNER_FINANCES",
+				description: "Manage the owner's private financial records.",
+			},
+			{
+				name: "REPLY",
+				description:
+					"Reply to the user within the requested response constraints.",
+			},
+		]);
+		const response = retrieveActions({
+			catalog,
+			messageText: "keep this response within the token budget",
+			candidateActions: ["BUDGET"],
+		});
+
+		expect(response.query.parentActionHints).not.toContain("OWNER_FINANCES");
+		expect(response.results[0]?.name).toBe("REPLY");
+	});
+
+	it("hints alarm candidates at OWNER_ALARMS and TRIGGER", () => {
+		for (const candidate of [
+			"ADD_ALARM",
+			"SET_ALARM",
+			"CREATE_ALARM",
+			"ALARM_CREATE",
+			"WAKE_ME_UP",
+		]) {
+			expect(parentAliasesForCandidateAction(candidate)).toEqual([
+				"OWNER_ALARMS",
+				"TRIGGER",
+			]);
+		}
+	});
+
+	it("hints finance candidates at OWNER_FINANCES", () => {
+		for (const candidate of [
+			"FINANCE",
+			"SPENDING",
+			"SPENDING_SUMMARY",
+			"EXPENSES",
+		]) {
+			expect(parentAliasesForCandidateAction(candidate)).toEqual([
+				"OWNER_FINANCES",
+			]);
+		}
+	});
+
 	it("leaves non-permission candidates off the SETTINGS parent", () => {
 		// A bare person-scoped access revoke is BLOCK, not a settings write; view /
 		// app surface candidates keep their existing VIEWS/APP hints untouched.
@@ -718,5 +830,201 @@ describe("action catalogue and retrieval", () => {
 			"APP",
 		]);
 		expect(parentAliasesForCandidateAction("LAUNCH_APP")).toEqual(["APP"]);
+	});
+});
+
+describe("canonical OWNER_* fallbacks for non-PA topologies", () => {
+	// The stage-1 routing floor names OWNER_* parents; on deployments without
+	// plugin-personal-assistant those names must degrade to the registered
+	// capability instead of forcing an unavailable surface (#19863 review P1).
+	it("aliases canonical owner parents to their topology fallbacks", () => {
+		expect(parentAliasesForCandidateAction("OWNER_TODOS")).toEqual(["TODO"]);
+		expect(parentAliasesForCandidateAction("OWNER_REMINDERS")).toEqual([
+			"TRIGGER",
+		]);
+		expect(parentAliasesForCandidateAction("OWNER_ALARMS")).toEqual([
+			"TRIGGER",
+		]);
+		expect(parentAliasesForCandidateAction("OWNER_ROUTINES")).toEqual([
+			"TRIGGER",
+		]);
+		expect(parentAliasesForCandidateAction("OWNER_GOALS")).toEqual([]);
+	});
+
+	it("falls back to TODO when the owner-todo parent is absent from the catalog", () => {
+		const catalog = buildActionCatalog([
+			{ name: "TODO", description: "User-scoped persistent todos with CRUD." },
+			{
+				name: "TRIGGER",
+				description: "Schedule one-shot and recurring triggers.",
+			},
+		]);
+		const response = retrieveActions({
+			catalog,
+			messageText: "add a todo: buy milk",
+			candidateActions: ["OWNER_TODOS"],
+		});
+		expect(response.query.parentActionHints).toEqual(["TODO"]);
+		expect(response.results[0]).toMatchObject({ name: "TODO" });
+	});
+
+	it("does not reinterpret an unavailable owner goal as a todo or raw trigger", () => {
+		const catalog = buildActionCatalog([
+			{ name: "TODO", description: "User-scoped persistent todos with CRUD." },
+			{
+				name: "TRIGGER",
+				description: "Schedule one-shot and recurring triggers.",
+			},
+		]);
+		const response = retrieveActions({
+			catalog,
+			messageText: "set a goal to save for a trip",
+			candidateActions: ["OWNER_GOALS"],
+		});
+		expect(response.query.parentActionHints).toEqual([]);
+		expect(
+			response.results.every((result) => result.matchedBy.length === 0),
+		).toBe(true);
+	});
+
+	it("keeps the direct owner parent when personal-assistant is registered", () => {
+		const catalog = buildActionCatalog([
+			{
+				name: "OWNER_TODOS",
+				description: "Owner todos: create/update/delete/complete/review.",
+			},
+			{ name: "TODO", description: "User-scoped persistent todos with CRUD." },
+		]);
+		const response = retrieveActions({
+			catalog,
+			messageText: "add a todo: buy milk",
+			candidateActions: ["OWNER_TODOS"],
+		});
+		// Direct catalog reference wins; the fallback aliases must not fire.
+		expect(response.query.parentActionHints).toEqual(["OWNER_TODOS"]);
+		expect(response.results[0]).toMatchObject({ name: "OWNER_TODOS" });
+	});
+
+	it("strips app-surface control blocks from text", () => {
+		const text = [
+			"2 scheduled items: water the garden, submit the invoice",
+			"[FOLLOWUPS]",
+			"navigate:/apps/reminders=Open reminders",
+			"prompt:Delete water the garden=Delete water garden",
+			"[/FOLLOWUPS]",
+			"[CHECKLIST]",
+			'{"title":"Cleanup","items":[]}',
+			"[/CHECKLIST]",
+			"connect it first. [CONFIG:google_calendars]",
+		].join("\n");
+		const cleaned = stripControlBlockMarkers(text);
+		expect(cleaned).toContain("water the garden, submit the invoice");
+		expect(cleaned).toContain("connect it first.");
+		for (const leak of [
+			"FOLLOWUPS",
+			"navigate",
+			"/apps/",
+			"prompt:",
+			"CHECKLIST",
+			"CONFIG",
+		]) {
+			expect(cleaned).not.toContain(leak);
+		}
+	});
+
+	it("does not let a leaked control block in the window evict the candidate action (tj-f8bdfafb488900)", () => {
+		const catalog = buildActionCatalog([
+			{
+				name: "OWNER_REMINDERS",
+				description:
+					"Create, list, update, and delete the owner's reminders and scheduled nudges.",
+			},
+			{
+				name: "CLOSE_ALL_VIEWS",
+				description:
+					"Close every open app view. Navigate views, open apps, prompt panels.",
+			},
+		]);
+		const response = retrieveActions({
+			catalog,
+			messageText: "now delete the submit the invoice reminder too",
+			candidateActions: ["OWNER_REMINDERS"],
+			recentConversationText: [
+				"2 scheduled items: water the garden, submit the invoice",
+				"[FOLLOWUPS]\nnavigate:/apps/reminders=Open reminders\nprompt:Delete water the garden=Delete water garden\nprompt:Delete submit the invoice=Delete invoice\n[/FOLLOWUPS]",
+			],
+		});
+
+		// Live failure shape: the leaked navigate/apps/open/prompt vocabulary
+		// out-scored the stage-1 candidate and tiering kept only the view
+		// action. With the window stripped, the candidate stays on top.
+		expect(response.results[0]).toMatchObject({ name: "OWNER_REMINDERS" });
+	});
+});
+
+describe("F21 alias rows: email + terminal candidates bind to real parents", () => {
+	it("email-shaped candidates alias to the inbox triage umbrella", () => {
+		expect(parentAliasesForCandidateAction("EMAIL")).toEqual([
+			"MESSAGE",
+			"INBOX",
+		]);
+		expect(parentAliasesForCandidateAction("EMAIL_SEARCH")).toEqual([
+			"MESSAGE",
+			"INBOX",
+		]);
+		expect(parentAliasesForCandidateAction("CHECK_INBOX")).toEqual([
+			"MESSAGE",
+			"INBOX",
+		]);
+	});
+
+	it("terminal-shaped candidates alias to the shell surface", () => {
+		expect(parentAliasesForCandidateAction("TERMINAL_COMMAND")).toEqual([
+			"SHELL",
+			"TERMINAL_SHELL",
+		]);
+		expect(parentAliasesForCandidateAction("RUN_COMMAND")).toEqual([
+			"SHELL",
+			"TERMINAL_SHELL",
+		]);
+	});
+});
+describe("F21 aliases survive production retrieval topology filtering", () => {
+	it.each([
+		["EMAIL", "MESSAGE"],
+		["EMAIL_SEARCH", "INBOX"],
+		["TERMINAL_COMMAND", "SHELL"],
+		["RUN_COMMAND", "TERMINAL_SHELL"],
+	])("binds %s to the available %s parent", (candidate, parentName) => {
+		const catalog = buildActionCatalog([
+			{
+				name: parentName,
+				description:
+					"A registered runtime surface with no candidate-name overlap.",
+			},
+		]);
+		const response = retrieveActions({
+			catalog,
+			messageText: "",
+			candidateActions: [candidate],
+		});
+
+		expect(response.results[0]).toMatchObject({ name: parentName });
+	});
+
+	it("keeps a registered EMAIL parent authoritative over its fallback aliases", () => {
+		const catalog = buildActionCatalog([
+			{ name: "EMAIL", description: "Direct email capability." },
+			{ name: "MESSAGE", description: "Per-channel message triage." },
+			{ name: "INBOX", description: "Cross-channel inbox triage." },
+		]);
+		const response = retrieveActions({
+			catalog,
+			messageText: "",
+			candidateActions: ["EMAIL"],
+		});
+
+		expect(response.query.parentActionHints).toEqual(["EMAIL"]);
+		expect(response.results[0]).toMatchObject({ name: "EMAIL" });
 	});
 });

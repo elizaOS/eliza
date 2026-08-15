@@ -4,6 +4,8 @@
  * actions, parent-action hints, deterministic tool call, reply — in priority
  * order and collecting a per-evaluator trace of what changed.
  */
+
+import { ElizaError } from "../errors";
 import type {
 	MessageHandlerAction,
 	MessageHandlerDeterministicToolCall,
@@ -49,6 +51,8 @@ export interface ResponseHandlerEvaluator {
 	name: string;
 	description?: string;
 	priority?: number;
+	/** Exact action names this evaluator may select for deterministic execution. */
+	deterministicActions?: readonly string[];
 	shouldRun(
 		context: ResponseHandlerEvaluatorContext,
 	): boolean | Promise<boolean>;
@@ -114,6 +118,31 @@ function normalizeDeterministicToolCall(
 			? { ...toolCall.params }
 			: undefined;
 	return params ? { name, params } : { name };
+}
+
+function assertDeterministicToolCallAllowed(
+	evaluator: ResponseHandlerEvaluator,
+	patch: ResponseHandlerPatch,
+): void {
+	const toolCall = normalizeDeterministicToolCall(patch.deterministicToolCall);
+	if (!toolCall) return;
+
+	const requested = toolCall.name.toLowerCase();
+	const allowed = uniqueStrings(evaluator.deterministicActions).some(
+		(actionName) => actionName.toLowerCase() === requested,
+	);
+	if (!allowed) {
+		throw new ElizaError(
+			`Response-handler evaluator "${evaluator.name}" is not allowed to select deterministic action "${toolCall.name}"`,
+			{
+				code: "RESPONSE_HANDLER_DETERMINISTIC_ACTION_DENIED",
+				context: {
+					evaluator: evaluator.name,
+					requestedAction: toolCall.name,
+				},
+			},
+		);
+	}
 }
 
 function availableContextSet(
@@ -281,6 +310,7 @@ export async function runResponseHandlerEvaluators(args: {
 			if (!patch) {
 				continue;
 			}
+			assertDeterministicToolCallAllowed(evaluator, patch);
 			if (patch.clearCandidateActions === true) {
 				result.candidateActionsClearedByEvaluators = true;
 			}

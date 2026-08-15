@@ -12,7 +12,7 @@
 import { computeNextCronRunAtMs, stringToUuid } from "@elizaos/core/edge";
 
 import type { AnchorRegistry } from "../anchors/anchor-registry.js";
-import { parseLocalHHMM, resolveLocalHHMMToIso } from "./local-time.js";
+import { resolveLocalHHMMToIso } from "./local-time.js";
 import { resolveTriggerTz } from "./trigger-tz.js";
 import type {
   OwnerFactsView,
@@ -20,6 +20,7 @@ import type {
   ScheduledTaskStatus,
   ScheduledTaskTrigger,
 } from "./types.js";
+import { resolveOwnerWindowBoundsMinutes } from "./window-bounds.js";
 
 const MINUTE_MS = 60_000;
 const DAY_MS = 24 * 60 * MINUTE_MS;
@@ -316,12 +317,8 @@ function windowBoundsMinutes(
   windowKey: string,
   ownerFacts: OwnerFactsView,
 ): Array<{ name: string; start: number; end: number }> {
-  const morningStart =
-    parseLocalHHMM(ownerFacts.morningWindow?.start) ?? 6 * 60;
-  const morningEnd = parseLocalHHMM(ownerFacts.morningWindow?.end) ?? 11 * 60;
-  const eveningStart =
-    parseLocalHHMM(ownerFacts.eveningWindow?.start) ?? 18 * 60;
-  const eveningEnd = parseLocalHHMM(ownerFacts.eveningWindow?.end) ?? 22 * 60;
+  const { morningStart, morningEnd, eveningStart, eveningEnd } =
+    resolveOwnerWindowBoundsMinutes(ownerFacts);
   const afternoonStart = morningEnd;
   const afternoonEnd = eveningStart;
   const windows: Record<

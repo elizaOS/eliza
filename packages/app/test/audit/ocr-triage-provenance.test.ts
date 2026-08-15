@@ -19,6 +19,7 @@ import {
   authorizedShots,
   type ReportEntry,
   runOcrTriage,
+  selectSemanticallyBestOcrAttempt,
   validateImportedOcrRecords,
 } from "../../scripts/ocr-triage";
 
@@ -72,6 +73,81 @@ const CURRENT_ROWS: ReportEntry[] = [
 const CHAT_OCR = "Mostly clear Today";
 const PHONE_OCR = "Phone call-blocked recent";
 const STALE_SLUG = "plugin-retired-gui";
+
+describe("semantic OCR attempt selection", () => {
+  it("uses the sparse transcript when it proves a label omitted by auto OCR", () => {
+    const selection = selectSemanticallyBestOcrAttempt(
+      {
+        ok: true,
+        text: "Misty Forest Ocean Deep",
+        lines: ["Misty Forest Ocean Deep"],
+        words: 4,
+        meanConfidence: 0.72,
+        selectedMode: "auto",
+        pixelBlank: false,
+        pixelBlankReasons: [],
+        attempts: [
+          {
+            mode: "auto",
+            ok: true,
+            text: "Misty Forest Ocean Deep",
+            words: 4,
+            chars: 22,
+            meanConfidence: 0.72,
+          },
+          {
+            mode: "sparse-high-contrast",
+            ok: true,
+            text: "Misty Forest Desert Dusk Ocean Deep",
+            words: 6,
+            chars: 36,
+            meanConfidence: 0.66,
+          },
+        ],
+      },
+      {
+        expectation: {
+          requireAll: ["Misty Forest", "Desert Dusk"],
+          requireAny: ["Ocean Deep"],
+        },
+      },
+    );
+
+    expect(selection.record.selectedMode).toBe("sparse-high-contrast");
+    expect(selection.finding.verdict).toBe("verified");
+    expect(selection.finding.missingRequired).toHaveLength(0);
+  });
+
+  it("does not trade a missing label for a hidden developer leak", () => {
+    const selection = selectSemanticallyBestOcrAttempt(
+      {
+        ok: true,
+        text: "Misty Forest [object Object]",
+        lines: ["Misty Forest [object Object]"],
+        words: 4,
+        meanConfidence: 0.7,
+        selectedMode: "auto",
+        pixelBlank: false,
+        pixelBlankReasons: [],
+        attempts: [
+          {
+            mode: "sparse-high-contrast",
+            ok: true,
+            text: "Misty Forest Desert Dusk",
+            words: 4,
+            chars: 23,
+            meanConfidence: 0.68,
+          },
+        ],
+      },
+      { expectation: { requireAll: ["Misty Forest", "Desert Dusk"] } },
+    );
+
+    expect(selection.record.selectedMode).toBe("auto");
+    expect(selection.finding.errorLeaks).toContain("[object Object]");
+    expect(selection.finding.verdict).toBe("broken");
+  });
+});
 
 describe("authorizedShots (report-authoritative selection)", () => {
   let dir: string;

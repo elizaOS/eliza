@@ -3,9 +3,10 @@
  * messages, sending and listing DMs through `ClientBase`. Backs the message
  * connector handlers and the LifeOps DM adapter.
  */
-import { createUniqueUuid, logger, type UUID } from "@elizaos/core";
+import { createUniqueUuid, ElizaError, logger, type UUID } from "@elizaos/core";
 import type { ClientBase } from "../base";
 import { SearchMode } from "../client";
+import { extractXWriteReceiptId } from "../utils/provider-receipt";
 import { getEpochMs } from "../utils/time";
 import {
   type GetMessagesOptions,
@@ -22,156 +23,125 @@ export class TwitterMessageService implements IMessageService {
     return error instanceof Error ? error.message : String(error);
   }
 
-  private extractRestId(result: unknown): string | undefined {
-    const r = result as {
-      rest_id?: unknown;
-      data?: {
-        create_tweet?: { tweet_results?: { result?: { rest_id?: unknown } } };
-        data?: {
-          create_tweet?: { tweet_results?: { result?: { rest_id?: unknown } } };
-        };
-      };
-    } | null;
-    const candidate =
-      r?.rest_id ??
-      r?.data?.create_tweet?.tweet_results?.result?.rest_id ??
-      r?.data?.data?.create_tweet?.tweet_results?.result?.rest_id;
-    return typeof candidate === "string" ? candidate : undefined;
-  }
-
-  private async extractResultId(result: unknown): Promise<string | undefined> {
-    const r = result as {
-      id?: unknown;
-      data?: { id?: unknown; data?: { id?: unknown } };
-      json?: unknown;
-    } | null;
-    const direct = r?.id ?? r?.data?.id ?? r?.data?.data?.id;
-    if (typeof direct === "string") return direct;
-    const restId = this.extractRestId(result);
-    if (restId) return restId;
-
-    if (r && typeof r.json === "function") {
-      try {
-        const body = (await (r.json as () => Promise<unknown>)()) as {
-          id?: unknown;
-          data?: { id?: unknown; data?: { id?: unknown } };
-        } | null;
-        const viaBody = body?.id ?? body?.data?.id ?? body?.data?.data?.id;
-        if (typeof viaBody === "string") return viaBody;
-        return this.extractRestId(body);
-      } catch {
-        return undefined;
-      }
-    }
-
-    return undefined;
-  }
-
   async getMessages(options: GetMessagesOptions): Promise<Message[]> {
     try {
-      // Twitter doesn't have a direct way to get messages by room ID
-      // We'll need to use search to find related tweets/DMs
-      const username = this.client.profile?.username;
-      if (!username) {
-        logger.error("No Twitter profile available");
-        return [];
-      }
+      return await this.client.withAuthenticatedSession(async ({ profile }) => {
+        // Twitter doesn't have a direct way to get messages by room ID
+        // We'll need to use search to find related tweets/DMs
+        const searchResult = await this.client.fetchSearchTweets(
+          `@${profile.username}`,
+          options.limit || 20,
+          SearchMode.Latest,
+        );
 
-      // Search for mentions and replies
-      const searchResult = await this.client.fetchSearchTweets(
-        `@${username}`,
-        options.limit || 20,
-        SearchMode.Latest,
-      );
-
-      const messages: Message[] = searchResult.tweets.flatMap((tweet) => {
-        // Normalize once per row; rows without a usable identity or timestamp
-        // fail closed instead of surfacing as fresh messages (#18965).
-        const timestamp = getEpochMs(tweet.timestamp);
-        if (typeof tweet.id !== "string" || timestamp === undefined) return [];
-        const tweetId = tweet.id;
-        const conversationId = tweet.conversationId ?? tweetId;
-        if (options.roomId) {
-          const tweetRoomId = createUniqueUuid(
-            this.client.runtime,
-            conversationId,
-          );
-          if (tweetRoomId !== options.roomId) return [];
-        }
-        return [
-          {
-            id: tweetId,
-            agentId: this.client.runtime.agentId,
-            roomId: createUniqueUuid(this.client.runtime, conversationId),
-            userId: tweet.userId ?? "",
-            username: tweet.username ?? "",
-            text: tweet.text ?? "",
-            type: tweet.inReplyToStatusId
-              ? MessageType.REPLY
-              : MessageType.MENTION,
-            timestamp,
-            inReplyTo: tweet.inReplyToStatusId,
-            metadata: {
-              tweetId,
-              permanentUrl: tweet.permanentUrl,
+        const messages: Message[] = searchResult.tweets.flatMap((tweet) => {
+          // Normalize once per row; rows without a usable identity or timestamp
+          // fail closed instead of surfacing as fresh messages (#18965).
+          const timestamp = getEpochMs(tweet.timestamp);
+          if (typeof tweet.id !== "string" || timestamp === undefined)
+            return [];
+          const tweetId = tweet.id;
+          const conversationId = tweet.conversationId ?? tweetId;
+          if (options.roomId) {
+            const tweetRoomId = createUniqueUuid(
+              this.client.runtime,
+              conversationId,
+            );
+            if (tweetRoomId !== options.roomId) return [];
+          }
+          return [
+            {
+              id: tweetId,
+              agentId: this.client.runtime.agentId,
+              roomId: createUniqueUuid(this.client.runtime, conversationId),
+              userId: tweet.userId ?? "",
+              username: tweet.username ?? "",
+              text: tweet.text ?? "",
+              type: tweet.inReplyToStatusId
+                ? MessageType.REPLY
+                : MessageType.MENTION,
+              timestamp,
+              inReplyTo: tweet.inReplyToStatusId,
+              metadata: {
+                tweetId,
+                permanentUrl: tweet.permanentUrl,
+              },
             },
-          },
-        ];
-      });
+          ];
+        });
 
-      return messages;
+        return messages;
+      });
     } catch (error) {
-      // error-policy:J7 a DM fetch failure must surface to the agent (RECENT_ERRORS)
-      // rather than reading as an empty inbox; degrade to no messages after reporting.
+      // error-policy:J7 Report the connector failure to the agent, then keep it
+      // distinct from a legitimately empty inbox.
       this.client.runtime.reportError("XMessageService.getMessages", error);
-      return [];
+      throw error;
     }
   }
 
   async sendMessage(options: SendMessageOptions): Promise<Message> {
-    try {
-      let result: unknown;
+    return this.client.withAuthenticatedSession(async (session) => {
+      const { profile } = session;
+      try {
+        let result: unknown;
+        if (!this.client.isAuthenticatedSessionCurrent(session)) {
+          throw new ElizaError("X credentials rotated before message egress", {
+            code: "X_AUTH_SESSION_ROTATED",
+          });
+        }
 
-      if (options.type === MessageType.DIRECT_MESSAGE) {
-        // Send direct message using the roomId as conversationId
-        result = await this.client.twitterClient.sendDirectMessage(
-          options.roomId.toString(),
-          options.text,
-        );
-      } else {
-        // Send tweet (reply, mention, or regular post)
-        result = await this.client.twitterClient.sendTweet(
-          options.text,
-          options.replyToId,
-        );
+        if (options.type === MessageType.DIRECT_MESSAGE) {
+          // Send direct message using the roomId as conversationId
+          result = await this.client.twitterClient.sendDirectMessage(
+            options.roomId.toString(),
+            options.text,
+          );
+        } else {
+          // Send tweet (reply, mention, or regular post)
+          result = await this.client.twitterClient.sendTweet(
+            options.text,
+            options.replyToId,
+          );
+        }
+
+        const extractedId = await extractXWriteReceiptId(result);
+        if (!extractedId) {
+          throw new ElizaError(
+            "X accepted the message but returned no usable receipt; do not retry blindly",
+            {
+              code: "X_MESSAGE_RECEIPT_INDETERMINATE",
+              context: {
+                accountId: this.client.accountId,
+                providerAccepted: true,
+                retrySafe: false,
+              },
+            },
+          );
+        }
+
+        const message: Message = {
+          id: extractedId,
+          agentId: options.agentId,
+          roomId: options.roomId,
+          userId: profile.id,
+          username: profile.username,
+          text: options.text,
+          type: options.type,
+          timestamp: Date.now(),
+          inReplyTo: options.replyToId,
+          metadata: {
+            ...options.metadata,
+            result,
+          },
+        };
+
+        return message;
+      } catch (error) {
+        logger.error("Error sending message:", this.errorDetail(error));
+        throw error;
       }
-
-      const extractedId = await this.extractResultId(result);
-      const resultId = (result as { id?: unknown } | null)?.id;
-      const messageId =
-        extractedId ?? (typeof resultId === "string" ? resultId : "");
-
-      const message: Message = {
-        id: messageId,
-        agentId: options.agentId,
-        roomId: options.roomId,
-        userId: this.client.profile?.id || "",
-        username: this.client.profile?.username || "",
-        text: options.text,
-        type: options.type,
-        timestamp: Date.now(),
-        inReplyTo: options.replyToId,
-        metadata: {
-          ...options.metadata,
-          result,
-        },
-      };
-
-      return message;
-    } catch (error) {
-      logger.error("Error sending message:", this.errorDetail(error));
-      throw error;
-    }
+    });
   }
 
   async deleteMessage(messageId: string, _agentId: UUID): Promise<void> {
@@ -212,10 +182,10 @@ export class TwitterMessageService implements IMessageService {
 
       return message;
     } catch (error) {
-      // error-policy:J7 a message-fetch failure must surface to the agent rather
-      // than reading as "no such message"; degrade to null after reporting.
+      // error-policy:J7 Report the connector failure to the agent, then keep it
+      // distinct from the legitimate null returned for a missing message.
       this.client.runtime.reportError("XMessageService.getMessage", error);
-      return null;
+      throw error;
     }
   }
 

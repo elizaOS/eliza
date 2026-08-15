@@ -33,6 +33,7 @@ import {
   DISCORD_RATE_LIMIT_REQUESTS,
   DISCORD_RATE_LIMIT_WINDOW_MS,
 } from "./constants";
+import { isDmSenderAllowed } from "./dm-policy";
 import type { DiscordEventPayload, MessageCreateData } from "./schemas";
 import { MessageCreateDataSchema } from "./schemas";
 
@@ -346,6 +347,16 @@ async function handleMessageCreate(
     }
     if (metadata.disabledChannels?.includes(data.channel_id)) {
       return { processed: true }; // Skip - channel disabled
+    }
+
+    // DM gating (#18691): skip messages the connection's DM policy rejects.
+    if (!data.guild_id && !isDmSenderAllowed(metadata, data.author.id)) {
+      logger.debug("[DiscordRouter] DM blocked by policy", {
+        connectionId: connection.id,
+        dmPolicy: metadata.dmPolicy ?? "open",
+        authorId: data.author.id,
+      });
+      return { processed: true };
     }
 
     // Check response mode

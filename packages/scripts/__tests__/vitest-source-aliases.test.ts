@@ -34,6 +34,10 @@ describe("workspace source aliases", () => {
     const aliases = buildWorkspaceSourceAliases(workspaceRepoRoot);
     const cases = [
       {
+        specifier: "@elizaos/core/edge",
+        target: "packages/core/src/index.edge.ts",
+      },
+      {
         specifier: "@elizaos/core/security/mcp-server-config",
         target: "packages/core/src/security/mcp-server-config.ts",
       },

@@ -318,6 +318,10 @@ describe("Stage-1 prompt tiering", () => {
 		);
 		expect(systemContent).toContain('candidateActionNames=["CALENDAR"]');
 		expect(systemContent).toContain(
+			"goals -> tasks + OWNER_GOALS, todos -> tasks + OWNER_TODOS, reminders -> tasks + OWNER_REMINDERS, alarms -> tasks + OWNER_ALARMS, habits/routines -> tasks + OWNER_ROUTINES",
+		);
+		expect(systemContent).toContain("never work threads and never VIEWS");
+		expect(systemContent).toContain(
 			"Sticky Notes -> NOTES; UI navigation and native-device operations -> VIEWS; calendar events -> CALENDAR.",
 		);
 		expect(systemContent).not.toContain(GROUP_TRIAGE_MARKER);

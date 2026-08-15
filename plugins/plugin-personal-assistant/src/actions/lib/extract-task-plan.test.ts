@@ -11,7 +11,11 @@
 
 import type { IAgentRuntime } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
-import { extractTaskCreatePlanWithLlm } from "./extract-task-plan.js";
+import {
+  extractTaskCreatePlanWithLlm,
+  textExplicitlyLeavesScheduleUnspecified,
+  textStatesExplicitSchedule,
+} from "./extract-task-plan.js";
 
 function makeRuntime(respond: (prompt: string) => string): IAgentRuntime {
   return {
@@ -48,6 +52,49 @@ const BASE_PLAN_JSON = {
   dueWeekday: null,
   dueInMinutes: null,
 };
+
+describe("textExplicitlyLeavesScheduleUnspecified", () => {
+  it.each([
+    "Remind me to call Mom, but I have not said when.",
+    "Remind me to call Mom. I haven't specified the time yet.",
+    "Create the reminder without saying when.",
+    "No date or time specified yet for this reminder.",
+    "Don't guess a schedule. Ask me when.",
+  ])("keeps an explicitly withheld schedule unresolved: %s", (text) => {
+    expect(textExplicitlyLeavesScheduleUnspecified(text)).toBe(true);
+  });
+
+  it.each([
+    "Remind me to call Mom tomorrow at 9.",
+    "I hadn't said when before, but use Friday at noon.",
+    "Don't guess a time; use next Monday.",
+    "No time was specified in the draft. Make it every morning instead.",
+    "Remind me to renew the registration by the 20th.",
+  ])(
+    "lets a later concrete schedule override earlier uncertainty: %s",
+    (text) => {
+      expect(textExplicitlyLeavesScheduleUnspecified(text)).toBe(false);
+    },
+  );
+});
+
+describe("textStatesExplicitSchedule", () => {
+  it.each([
+    "Use Friday.",
+    "Make it tomorrow at 9.",
+    "Use the 20th.",
+    "Set it every morning.",
+  ])("recognizes current-turn schedule authority: %s", (text) => {
+    expect(textStatesExplicitSchedule(text)).toBe(true);
+  });
+
+  it.each(["Yes, save it now.", "Confirm that draft.", "Looks good."])(
+    "does not treat save timing as the item's schedule: %s",
+    (text) => {
+      expect(textStatesExplicitSchedule(text)).toBe(false);
+    },
+  );
+});
 
 describe("extractTaskCreatePlanWithLlm datetime fields", () => {
   it("keeps dueWeekday and timeOfDay for a weekday reminder", async () => {

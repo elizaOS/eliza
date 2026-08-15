@@ -22,6 +22,9 @@ export interface PersonalElizaCutover {
   cutoverToken: string;
   sharedMessageCount: number;
   sharedScheduledTaskCount: number;
+  sharedTodoCount: number;
+  sharedTodoMutationCount: number;
+  sharedTodoDigest: string | null;
   activatedAt: string;
 }
 
@@ -38,6 +41,9 @@ export function readPersonalElizaCutover(
   agentConfig?: Record<string, unknown> | null,
 ): PersonalElizaCutover | null {
   const value = asRecord(agentConfig?.[AGENT_PERSONAL_CUTOVER_KEY]);
+  const hasSharedTodoCount = value?.sharedTodoCount !== undefined;
+  const hasSharedTodoMutationCount = value?.sharedTodoMutationCount !== undefined;
+  const hasSharedTodoDigest = value?.sharedTodoDigest !== undefined;
   if (
     value?.mode !== "dedicated" ||
     typeof value.sourceAgentId !== "string" ||
@@ -53,6 +59,19 @@ export function readPersonalElizaCutover(
       (typeof value.sharedScheduledTaskCount !== "number" ||
         !Number.isInteger(value.sharedScheduledTaskCount) ||
         value.sharedScheduledTaskCount < 0)) ||
+    (value.sharedTodoCount !== undefined &&
+      (typeof value.sharedTodoCount !== "number" ||
+        !Number.isSafeInteger(value.sharedTodoCount) ||
+        value.sharedTodoCount < 0)) ||
+    (value.sharedTodoMutationCount !== undefined &&
+      (typeof value.sharedTodoMutationCount !== "number" ||
+        !Number.isSafeInteger(value.sharedTodoMutationCount) ||
+        value.sharedTodoMutationCount < 0)) ||
+    (value.sharedTodoDigest !== undefined &&
+      (typeof value.sharedTodoDigest !== "string" ||
+        !/^[a-f0-9]{64}$/.test(value.sharedTodoDigest))) ||
+    hasSharedTodoCount !== hasSharedTodoDigest ||
+    (hasSharedTodoMutationCount && !hasSharedTodoCount) ||
     typeof value.activatedAt !== "string" ||
     !value.activatedAt.trim()
   ) {
@@ -65,6 +84,9 @@ export function readPersonalElizaCutover(
     cutoverToken: value.cutoverToken,
     sharedMessageCount: value.sharedMessageCount,
     sharedScheduledTaskCount: value.sharedScheduledTaskCount ?? 0,
+    sharedTodoCount: value.sharedTodoCount ?? 0,
+    sharedTodoMutationCount: value.sharedTodoMutationCount ?? 0,
+    sharedTodoDigest: value.sharedTodoDigest ?? null,
     activatedAt: value.activatedAt,
   };
 }

@@ -124,6 +124,88 @@ class ExpireScopingRepository extends PaymentRequestsRepository {
 }
 
 describe("createPaymentRequestsService", () => {
+  test("rejects invalid expiration values before creating a row", async () => {
+    for (const expiresInMs of [Number.NaN, Number.POSITIVE_INFINITY, Number.MAX_VALUE]) {
+      const repository = new GuardedPaymentRequestsRepository();
+      const service = createPaymentRequestsService({
+        repository,
+        adapters: [
+          {
+            provider: "stripe",
+            async createIntent() {
+              return { providerIntent: {} };
+            },
+          },
+        ],
+      });
+
+      await expect(
+        service.create({
+          organizationId: "org-1",
+          provider: "stripe",
+          amountCents: 500,
+          paymentContext: { kind: "any_payer" },
+          expiresInMs,
+        }),
+      ).rejects.toThrow(/expiresInMs must/);
+      expect(repository.createCalls).toBe(0);
+    }
+  });
+
+  test("passes default and valid expiration dates across the repository boundary", async () => {
+    class RecordingRepository extends PaymentRequestsRepository {
+      readonly expirations: Date[] = [];
+      private row: PaymentRequestRow | null = null;
+
+      override async createPaymentRequest(input: NewPaymentRequest): Promise<PaymentRequestRow> {
+        this.expirations.push(input.expiresAt);
+        this.row = {
+          ...fakeRow("pr-valid-expiry", input.organizationId),
+          status: "pending",
+          expiresAt: input.expiresAt,
+        };
+        return this.row;
+      }
+
+      override async initializePaymentRequest(): Promise<PaymentRequestRow | null> {
+        return this.row && { ...this.row, status: "delivered" };
+      }
+    }
+    const repository = new RecordingRepository();
+    const service = createPaymentRequestsService({
+      repository,
+      adapters: [
+        {
+          provider: "stripe",
+          async createIntent() {
+            return { providerIntent: {} };
+          },
+        },
+      ],
+    });
+    const beforeDefault = Date.now();
+    await service.create({
+      organizationId: "org-1",
+      provider: "stripe",
+      amountCents: 500,
+      paymentContext: { kind: "any_payer" },
+    });
+    const afterDefault = Date.now();
+    expect(repository.expirations[0].getTime()).toBeGreaterThanOrEqual(beforeDefault + 1_800_000);
+    expect(repository.expirations[0].getTime()).toBeLessThanOrEqual(afterDefault + 1_800_000);
+
+    const beforeValid = Date.now();
+    await service.create({
+      organizationId: "org-1",
+      provider: "stripe",
+      amountCents: 500,
+      paymentContext: { kind: "any_payer" },
+      expiresInMs: 60_000,
+    });
+    const afterValid = Date.now();
+    expect(repository.expirations[1].getTime()).toBeGreaterThanOrEqual(beforeValid + 60_000);
+    expect(repository.expirations[1].getTime()).toBeLessThanOrEqual(afterValid + 60_000);
+  });
   test("rejects providers without a real adapter before creating a row", async () => {
     const repository = new GuardedPaymentRequestsRepository();
     const service = createPaymentRequestsService({

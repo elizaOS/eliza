@@ -18,6 +18,8 @@ import {
   type ScheduledTaskDispatcher,
 } from "@elizaos/plugin-scheduling/edge";
 
+export { SHARED_CUTOVER_GATEWAY_CHANNEL } from "@elizaos/plugin-scheduling/edge";
+
 export class SharedReminderCutoverConflictError extends Error {
   constructor(readonly activeToken: string) {
     super("Shared reminders are already reserved by another Dedicated cutover");
@@ -70,6 +72,28 @@ export function createSharedScheduledTaskRunner(
     channelKeys: () => new Set(["current_dm"]),
     hostCapabilities: () => new Set(["notify-only"]),
   });
+}
+
+/** Resolve only the source-owned reminder committed to one Dedicated target. */
+export async function readCommittedSharedReminderForTarget(input: {
+  targetAgentId: string;
+  taskId: string;
+}): Promise<ScheduledTask | null> {
+  const [{ dbRead }, { sql }] = await Promise.all([
+    import("../../../db/client"),
+    import("drizzle-orm"),
+  ]);
+  const rows = extractRows(
+    await dbRead.execute(sql`
+      SELECT *
+        FROM app_scheduling.life_scheduled_tasks
+       WHERE id = ${input.taskId}
+         AND transfer_target_agent_id = ${input.targetAgentId}
+         AND transfer_status = 'committed'
+       LIMIT 1
+    `),
+  );
+  return rows[0] ? parseScheduledTaskRow(rows[0]) : null;
 }
 
 /**

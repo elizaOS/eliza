@@ -43,6 +43,16 @@
   },
   "exports": {
     "./package.json": "./package.json",
+    "./todo-cutover": {
+      "types": "./dist/todo-cutover.d.ts",
+      "eliza-source": {
+        "types": "./src/todo-cutover.ts",
+        "import": "./src/todo-cutover.ts",
+        "default": "./src/todo-cutover.ts"
+      },
+      "import": "./dist/todo-cutover.js",
+      "default": "./dist/todo-cutover.js"
+    },
     ".": {
       "types": "./dist/index.d.ts",
       "eliza-source": {

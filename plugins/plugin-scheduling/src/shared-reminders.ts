@@ -17,6 +17,9 @@ import type {
   ScheduledTaskTrigger,
 } from "./scheduled-task/types.js";
 
+/** Dedicated runtimes route imported Shared reminders through Cloud's trusted gateway. */
+export const SHARED_CUTOVER_GATEWAY_CHANNEL = "shared_gateway_dm";
+
 export const SHARED_REMINDERS_EDGE_COMPATIBILITY = {
   target: "edge",
   state: "scheduled-task",

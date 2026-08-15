@@ -24,11 +24,12 @@ function getRuntimeWindow(): ElectrobunBrowserWindow | null {
 
 function hasElectrobunRendererBridge(): boolean {
   const rpc = getElectrobunRendererRpc();
+  const requestType = typeof rpc?.request;
   return Boolean(
     rpc &&
       typeof rpc.onMessage === "function" &&
       rpc.request &&
-      typeof rpc.request === "object",
+      (requestType === "object" || requestType === "function"),
   );
 }
 

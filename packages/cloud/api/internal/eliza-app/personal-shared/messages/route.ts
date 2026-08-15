@@ -2,6 +2,7 @@
 
 import { Hono } from "hono";
 import { z } from "zod";
+import type { AgentSandbox } from "@/db/schemas/agent-sandboxes";
 import { failureResponse, jsonError } from "@/lib/api/cloud-worker-errors";
 import { sha256Hex } from "@/lib/oidc/crypto";
 import { findActivePersonalDedicatedTarget } from "@/lib/services/agent-tier-upgrade-target";
@@ -67,7 +68,10 @@ const sharedMessageSchema = z.discriminatedUnion("platform", [
     ),
   z.object({
     platform: z.literal("discord"),
-    discordUserId: z.string().trim().min(1).max(32),
+    discordUserId: z
+      .string()
+      .trim()
+      .regex(/^\d{1,32}$/),
     discordUsername: z.string().trim().min(1).max(80),
     displayName: z.string().trim().min(1).max(128).optional(),
     avatarUrl: z.string().url().nullable().optional(),
@@ -217,28 +221,51 @@ app.post("/", async (c) => {
       );
     }
 
-    const account =
-      parsed.data.platform === "telegram"
-        ? await elizaAppUserService.findOrCreateByTelegram({
-            telegramId: parsed.data.telegramUserId,
-            username: parsed.data.telegramUsername,
-            displayName: parsed.data.displayName,
-          })
-        : parsed.data.platform === "discord"
-          ? await elizaAppUserService.findOrCreateByDiscordId(
-              parsed.data.discordUserId,
-              {
-                username: parsed.data.discordUsername,
-                globalName: parsed.data.displayName,
-                avatarUrl: parsed.data.avatarUrl,
-              },
-            )
-          : await elizaAppUserService.findOrCreateByPhone(
-              parsed.data.phoneNumber,
-            );
+    const accountStartedAt = performance.now();
+    let account: { userId: string; organizationId: string };
+    let dedicated:
+      | Pick<AgentSandbox, "id" | "status" | "bridge_url" | "agent_config">
+      | null
+      | undefined;
+    if (parsed.data.platform === "telegram") {
+      const delivery = await elizaAppUserService.resolvePersonalDelivery({
+        platform: "telegram",
+        telegramId: parsed.data.telegramUserId,
+        username: parsed.data.telegramUsername,
+        displayName: parsed.data.displayName,
+      });
+      account = {
+        userId: delivery.userId,
+        organizationId: delivery.organizationId,
+      };
+      dedicated = delivery.dedicatedTarget;
+    } else if (parsed.data.platform === "discord") {
+      const delivery = await elizaAppUserService.resolvePersonalDelivery({
+        platform: "discord",
+        discordId: parsed.data.discordUserId,
+        username: parsed.data.discordUsername,
+        globalName: parsed.data.displayName,
+        avatarUrl: parsed.data.avatarUrl,
+      });
+      account = {
+        userId: delivery.userId,
+        organizationId: delivery.organizationId,
+      };
+      dedicated = delivery.dedicatedTarget;
+    } else {
+      const phoneAccount = await elizaAppUserService.findOrCreateByPhone(
+        parsed.data.phoneNumber,
+      );
+      account = {
+        userId: phoneAccount.user.id,
+        organizationId: phoneAccount.organization.id,
+      };
+    }
+    const accountMs = performance.now() - accountStartedAt;
+    c.header("Server-Timing", `account;dur=${accountMs.toFixed(1)}`);
     const agent = personalSharedAgent({
-      userId: account.user.id,
-      organizationId: account.organization.id,
+      userId: account.userId,
+      organizationId: account.organizationId,
     });
     let deliveryMessage = parsed.data.message;
     if (
@@ -262,7 +289,7 @@ app.post("/", async (c) => {
         {
           durationSeconds: parsed.data.voiceNote.durationSeconds,
           sizeBytes: parsed.data.voiceNote.sizeBytes,
-          userId: account.user.id,
+          userId: account.userId,
         },
       );
     }
@@ -293,8 +320,8 @@ app.post("/", async (c) => {
           parsed.data.telegramUsername ??
           parsed.data.telegramUserId,
         authenticatedUser: {
-          userId: account.user.id,
-          organizationId: account.organization.id,
+          userId: account.userId,
+          organizationId: account.organizationId,
           telegramId: parsed.data.telegramUserId,
         },
         trustedPlatformIdentity: true,
@@ -308,23 +335,26 @@ app.post("/", async (c) => {
         data: {
           identity: { id: agent.id, runtime: "shared" as const },
           account: {
-            userId: account.user.id,
-            organizationId: account.organization.id,
+            userId: account.userId,
+            organizationId: account.organizationId,
           },
           reply: `Sign in to connect this Telegram chat to your Eliza account: ${loginUrl.toString()}`,
         },
       });
     }
-    const dedicated = await findActivePersonalDedicatedTarget(
-      account.organization.id,
-      agent.id,
-    );
+    if (dedicated === undefined) {
+      dedicated = await findActivePersonalDedicatedTarget(
+        account.organizationId,
+        agent.id,
+      );
+    }
     if (dedicated) {
+      const dedicatedStartedAt = performance.now();
       const preparation = await preparePersonalDedicatedDelivery(
         dedicated,
         {
-          organizationId: account.organization.id,
-          userId: account.user.id,
+          organizationId: account.organizationId,
+          userId: account.userId,
         },
         c.env,
         worker.executionCtx,
@@ -382,7 +412,7 @@ app.post("/", async (c) => {
           roomId: agent.id,
           conversationId: agent.id,
           canonicalBridgeBase: dedicated.bridge_url,
-          userId: account.user.id,
+          userId: account.userId,
           clientMessageId: parsed.data.messageId,
           platformName: parsed.data.platform,
           source: parsed.data.platform,
@@ -400,7 +430,7 @@ app.post("/", async (c) => {
       };
       let response = await elizaSandboxService.bridge(
         dedicated.id,
-        account.organization.id,
+        account.organizationId,
         bridgeRequest,
       );
       if (response.error?.message === "Bridge returned HTTP 404") {
@@ -432,7 +462,7 @@ app.post("/", async (c) => {
           importMessages.length === importableHistory.length
             ? await elizaSandboxService.importCanonicalConversation(
                 dedicated.id,
-                account.organization.id,
+                account.organizationId,
                 agent.id,
                 importMessages,
               )
@@ -440,7 +470,7 @@ app.post("/", async (c) => {
         if (!receipt && importMessages.length > 0) {
           receipt = await elizaSandboxService.importCanonicalConversation(
             dedicated.id,
-            account.organization.id,
+            account.organizationId,
             agent.id,
             [],
           );
@@ -448,7 +478,7 @@ app.post("/", async (c) => {
         if (receipt) {
           response = await elizaSandboxService.bridge(
             dedicated.id,
-            account.organization.id,
+            account.organizationId,
             bridgeRequest,
           );
         }
@@ -470,6 +500,12 @@ app.post("/", async (c) => {
           "service_unavailable",
         );
       }
+      c.header(
+        "Server-Timing",
+        `account;dur=${accountMs.toFixed(1)}, dedicated;dur=${(
+          performance.now() - dedicatedStartedAt
+        ).toFixed(1)}`,
+      );
       return c.json({
         success: true,
         data: {
@@ -479,13 +515,14 @@ app.post("/", async (c) => {
             activeAgentId: dedicated.id,
           },
           account: {
-            userId: account.user.id,
-            organizationId: account.organization.id,
+            userId: account.userId,
+            organizationId: account.organizationId,
           },
           reply: result.text,
         },
       });
     }
+    const sharedStartedAt = performance.now();
     const result = await sharedRestMessageSend(
       agent,
       agent.id,
@@ -503,14 +540,20 @@ app.post("/", async (c) => {
           }
         : undefined,
     );
+    c.header(
+      "Server-Timing",
+      `account;dur=${accountMs.toFixed(1)}, shared;dur=${(
+        performance.now() - sharedStartedAt
+      ).toFixed(1)}`,
+    );
 
     return c.json({
       success: true,
       data: {
         identity: { id: agent.id, runtime: "shared" as const },
         account: {
-          userId: account.user.id,
-          organizationId: account.organization.id,
+          userId: account.userId,
+          organizationId: account.organizationId,
         },
         reply: result.text,
       },

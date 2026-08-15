@@ -153,5 +153,12 @@
   "publishConfig": {
     "access": "public",
     "directory": "dist"
+  },
+  "elizaos": {
+    "scripts": {
+      "testLanes": [
+        "server"
+      ]
+    }
   }
 }

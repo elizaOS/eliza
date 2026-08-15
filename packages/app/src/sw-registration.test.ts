@@ -4,8 +4,11 @@
  * becomes a second navigation owner; the real worker owns the one safe refresh.
  */
 
-import { describe, expect, it, vi } from "vitest";
-import { wireServiceWorkerUpdateActivation } from "./sw-registration";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  registerViewServiceWorker,
+  wireServiceWorkerUpdateActivation,
+} from "./sw-registration";
 
 interface ListenerStore {
   registration: Map<string, EventListener>;
@@ -51,6 +54,10 @@ function makeHarness({
 }
 
 describe("service-worker update activation", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
   it("does not activate an installing worker on its first installation", () => {
     const { listeners, messages, worker } = makeHarness({
       hasController: false,
@@ -83,5 +90,24 @@ describe("service-worker update activation", () => {
     const { serviceWorkers } = makeHarness({ hasController: true });
 
     expect(serviceWorkers.addEventListener).not.toHaveBeenCalled();
+  });
+
+  it("registers once when the public shell hands the same document to the full app", async () => {
+    vi.stubEnv("PROD", true);
+    const registration = {
+      waiting: null,
+      installing: null,
+      scope: "/",
+      addEventListener: vi.fn(),
+    } as unknown as ServiceWorkerRegistration;
+    const register = vi.fn(async () => registration);
+    Object.defineProperty(navigator, "serviceWorker", {
+      configurable: true,
+      value: { controller: null, register },
+    });
+
+    registerViewServiceWorker();
+    registerViewServiceWorker();
+    await vi.waitFor(() => expect(register).toHaveBeenCalledOnce());
   });
 });

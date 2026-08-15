@@ -16,7 +16,7 @@ import { users } from "./users";
  * `owner_or_linked_identity` policies without leaning on connector-specific
  * fallbacks.
  */
-export const IDENTITY_LINK_SOURCES = ["oauth", "manual", "wallet"] as const;
+export const IDENTITY_LINK_SOURCES = ["oauth", "manual", "wallet", "transport"] as const;
 export type IdentityLinkSource = (typeof IDENTITY_LINK_SOURCES)[number];
 
 export const identityLinks = pgTable(
@@ -44,7 +44,7 @@ export const identityLinks = pgTable(
     org_user_idx: index("idx_identity_links_org_user").on(table.organization_id, table.user_id),
     source_check: check(
       "identity_links_source_check",
-      sql`${table.source} IN ('oauth','manual','wallet')`,
+      sql`${table.source} IN ('oauth','manual','wallet','transport')`,
     ),
   }),
 );

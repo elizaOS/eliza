@@ -21,6 +21,7 @@ import {
   stubElizaCore,
   stubNodeBuiltins,
 } from "../../../testing/e2e-runner/esbuild-stubs.ts";
+import { FILE_FIXTURE_BOOTSTRAP } from "../../../testing/e2e-runner/fixture-bundle.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const stylesDir = join(here, "../../../styles");
@@ -109,7 +110,7 @@ const html = `<!doctype html><html class="dark"><head><meta charset="utf-8"><tit
 <script src="https://cdn.tailwindcss.com"></script>
 <style>${baseCss}</style><style>${TOKEN_SHIM}</style>
 <style>html,body{margin:0;height:100%}</style>
-<script>window.process=window.process||{env:{NODE_ENV:"production"},platform:"browser",cwd:function(){return "/"}};window.global=window.global||window;</script>
+<script>${FILE_FIXTURE_BOOTSTRAP};window.global=window.global||window;</script>
 </head><body><div id="root"></div><script>${js}</script></body></html>`;
 const htmlPath = join(outDir, "home-locale.html");
 await writeFile(htmlPath, html);

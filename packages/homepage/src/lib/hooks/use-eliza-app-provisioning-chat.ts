@@ -2,7 +2,9 @@
  * React hook for the authenticated homepage provisioning chat.
  *
  * It supports both the current shared onboarding session API and the legacy
- * provisioning-agent endpoint while exposing one chat-shaped client state.
+ * provisioning-agent status/chat endpoints while exposing one chat-shaped
+ * client state. Mounting and polling are read-only; compute lifecycle changes
+ * require a separate explicit user action.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import { elizacloudAuthFetch } from "@/lib/api/client";
@@ -64,7 +66,7 @@ const WELCOME: ProvisioningChatMessage = {
   id: "welcome",
   role: "assistant",
   content:
-    "Hi! I'm Eliza. I can set up your private cloud agent and keep this setup chat with it.",
+    "Hi! I'm Eliza. I'll show your Cloud status here. Dedicated compute stays off until you explicitly start it.",
 };
 
 function toChatMessages(
@@ -100,6 +102,7 @@ export function useElizaAppProvisioningChat(
     WELCOME,
   ]);
   const [containerStatus, setContainerStatus] = useState<string>("pending");
+  const [hasObservedStatus, setHasObservedStatus] = useState(false);
   const [bridgeUrl, setBridgeUrl] = useState<string | null>(null);
   const [agentId, setAgentId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -107,16 +110,19 @@ export function useElizaAppProvisioningChat(
     null,
   );
   const stoppedRef = useRef(false);
-  const provisionedRef = useRef(false);
   const pollStartRef = useRef<number | null>(null);
 
   const isReady = containerStatus === "running" && bridgeUrl !== null;
+  const isDedicatedOff = containerStatus === "none";
   const usesSharedOnboarding = Boolean(onboardingSessionId);
 
   const applyOnboardingResponse = useCallback((data: ChatResponse["data"]) => {
     if (!data) return;
     const provisioning = data.provisioning;
-    if (provisioning?.status) setContainerStatus(provisioning.status);
+    if (provisioning?.status) {
+      setContainerStatus(provisioning.status);
+      setHasObservedStatus(true);
+    }
     if (provisioning?.agentId) setAgentId(provisioning.agentId);
     if (provisioning?.bridgeUrl) setBridgeUrl(provisioning.bridgeUrl);
     const nextMessages = toChatMessages(data.messages);
@@ -124,49 +130,6 @@ export function useElizaAppProvisioningChat(
       setMessages(nextMessages);
     }
   }, []);
-
-  useEffect(() => {
-    if (!active || provisionedRef.current) return;
-    provisionedRef.current = true;
-
-    (async () => {
-      try {
-        if (!usesSharedOnboarding) {
-          const res = await elizacloudAuthFetch<LegacyStatusResponse>(
-            "/api/eliza-app/provisioning-agent",
-            {
-              method: "POST",
-            },
-          );
-          if (res.success && res.data) {
-            setContainerStatus(res.data.status ?? "pending");
-            if (res.data.agentId) setAgentId(res.data.agentId);
-            if (res.data.bridgeUrl) setBridgeUrl(res.data.bridgeUrl);
-          }
-          return;
-        }
-
-        const res = await elizacloudAuthFetch<ChatResponse>(
-          "/api/eliza-app/onboarding/chat",
-          {
-            method: "POST",
-            body: JSON.stringify({
-              sessionId: onboardingSessionId ?? undefined,
-              platform: onboardingSessionId ? "blooio" : "web",
-            }),
-          },
-        );
-        if (res.success && res.data) applyOnboardingResponse(res.data);
-      } catch {
-        return;
-      }
-    })();
-  }, [
-    active,
-    applyOnboardingResponse,
-    onboardingSessionId,
-    usesSharedOnboarding,
-  ]);
 
   const generationRef = useRef(0);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -200,8 +163,8 @@ export function useElizaAppProvisioningChat(
       pollStartRef.current = Date.now();
       stoppedRef.current = false;
       generationRef.current += 1;
-      provisionedRef.current = false;
       setContainerStatus("pending");
+      setHasObservedStatus(false);
       setAgentId(null);
       setBridgeUrl(null);
       setMessages([WELCOME]);
@@ -214,7 +177,7 @@ export function useElizaAppProvisioningChat(
   }, [onboardingSessionId]);
 
   useEffect(() => {
-    if (!active || isReady || provisioningError) return;
+    if (!active || isReady || isDedicatedOff || provisioningError) return;
     stoppedRef.current = false;
     if (pollStartRef.current === null) pollStartRef.current = Date.now();
     generationRef.current += 1;
@@ -253,6 +216,7 @@ export function useElizaAppProvisioningChat(
           if (res.success && res.data) {
             const newStatus = res.data.status ?? containerStatusRef.current;
             setContainerStatus(newStatus);
+            if (res.data.status) setHasObservedStatus(true);
             if (res.data.agentId && !agentIdRef.current)
               setAgentId(res.data.agentId);
             if (res.data.bridgeUrl) {
@@ -269,6 +233,10 @@ export function useElizaAppProvisioningChat(
                     "Your AI space is ready! You can start chatting in full now.",
                 },
               ]);
+              return;
+            }
+            if (newStatus === "none") {
+              stoppedRef.current = true;
               return;
             }
             if (newStatus === "error") {
@@ -299,15 +267,13 @@ export function useElizaAppProvisioningChat(
             const provisioning = res.data.provisioning;
             const newStatus =
               provisioning?.status ?? containerStatusRef.current;
-            setContainerStatus(newStatus);
-            if (provisioning?.agentId && !agentIdRef.current)
-              setAgentId(provisioning.agentId);
-            if (provisioning?.bridgeUrl) {
-              setBridgeUrl(provisioning.bridgeUrl);
-            }
+            applyOnboardingResponse(res.data);
             if (newStatus === "running" && provisioning?.bridgeUrl) {
               stoppedRef.current = true;
-              applyOnboardingResponse(res.data);
+              return;
+            }
+            if (newStatus === "none") {
+              stoppedRef.current = true;
               return;
             }
             if (newStatus === "error") {
@@ -348,6 +314,7 @@ export function useElizaAppProvisioningChat(
     active,
     applyOnboardingResponse,
     isReady,
+    isDedicatedOff,
     onboardingSessionId,
     provisioningError,
     usesSharedOnboarding,
@@ -355,7 +322,8 @@ export function useElizaAppProvisioningChat(
 
   const sendMessage = useCallback(
     async (content: string) => {
-      if (isLoading || !content.trim()) return;
+      if (!hasObservedStatus || isLoading || isDedicatedOff || !content.trim())
+        return;
 
       const userMsg: ProvisioningChatMessage = {
         id: uid(),
@@ -414,7 +382,7 @@ export function useElizaAppProvisioningChat(
             id: uid(),
             role: "assistant",
             content:
-              "I'm having trouble connecting. Your space is still warming up in the background!",
+              "I'm having trouble connecting. Dedicated compute was not started or changed.",
           },
         ]);
       } finally {
@@ -424,6 +392,8 @@ export function useElizaAppProvisioningChat(
     [
       agentId,
       applyOnboardingResponse,
+      hasObservedStatus,
+      isDedicatedOff,
       isLoading,
       onboardingSessionId,
       usesSharedOnboarding,
@@ -438,6 +408,8 @@ export function useElizaAppProvisioningChat(
     agentId,
     isLoading,
     isReady,
+    isDedicatedOff,
+    hasObservedStatus,
     provisioningError,
     retryProvisioning,
   };

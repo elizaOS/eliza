@@ -1,7 +1,7 @@
 /**
  * Static catalog + label localization for the desktop (Electrobun) system-tray
  * menu. Declares the tray item tree (DESKTOP_TRAY_MENU_ITEMS), the
- * desktop-eligible builtin views surfaced under the "Views" submenu
+ * desktop-eligible builtin views surfaced under the "Windows" submenu
  * (DESKTOP_VIEW_WINDOWS), the `tray-open-view-<id>` item-id codec, and the
  * click-audit table (DESKTOP_TRAY_CLICK_AUDIT) that pins each tray id to its
  * expected renderer action. `buildLocalizedTrayMenu()` resolves labelKeys
@@ -24,7 +24,7 @@ interface DesktopTrayMenuItem {
 }
 
 /**
- * Curated desktop-eligible view windows for the tray "Views" submenu (#10716).
+ * Curated desktop-eligible view windows for the tray "Windows" submenu (#10716).
  *
  * Mirror of the `desktopTabEnabled: true` entries in
  * `packages/agent/src/api/builtin-views.ts` (`BUILTIN_VIEWS`) that also run on
@@ -105,7 +105,7 @@ export function parseTrayOpenViewItemId(itemId: string): string | null {
 }
 
 /**
- * Build the tray "Views" submenu items from {@link DESKTOP_VIEW_WINDOWS}. Each
+ * Build the tray "Windows" submenu items from {@link DESKTOP_VIEW_WINDOWS}. Each
  * item id is `tray-open-view-<viewId>`; the renderer opens the matching view in
  * its own desktop window. Pure so the menu shape is unit-testable.
  */
@@ -138,11 +138,11 @@ export const DESKTOP_TRAY_MENU_ITEMS: readonly DesktopTrayMenuItem[] = [
     label: "Open Voice Controls",
     labelKey: "desktop.tray.openVoiceControls",
   },
-  // "Views" submenu (#10716): open any desktop-eligible builtin view in its own
+  // "Windows" submenu (#10716): open any desktop-eligible builtin view in its own
   // window from the tray, not just switch the main-window tab.
   {
     id: "tray-views",
-    label: "Views",
+    label: "Windows",
     labelKey: "desktop.tray.views",
     submenu: buildTrayViewItems(),
   },

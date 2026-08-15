@@ -393,6 +393,7 @@ describe("build-agent-image workflow", () => {
       "@elizaos/plugin-wallet",
       "@elizaos/plugin-whatsapp",
       "@elizaos/plugin-workflow",
+      "@elizaos/plugin-x",
     ]);
   });
 

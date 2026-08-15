@@ -36,6 +36,7 @@ import {
   type PluginCallAppBridgeResult,
   type PluginOwnership,
   type RemotePluginModuleManifest,
+  runResponseHandlerEvaluators,
   type Service,
   type UUID,
 } from "@elizaos/core";
@@ -1204,6 +1205,103 @@ describe("remote plugin adapter", () => {
       message:
         'Remote plugin "remote-response-handler" responseHandler.REMOTE_RESPONSE_HANDLER.evaluate returned invalid patch field "addCandidateActions".',
     });
+  });
+
+  it("limits remote deterministic response-handler calls to actions owned by the same module", async () => {
+    let deterministicAction = "REMOTE_DEMO";
+    const router = makeRouter({
+      shouldRunResponseHandlerEvaluator: async () => ({ shouldRun: true }),
+      evaluateResponseHandlerEvaluator: async () => ({
+        patch: {
+          clearReply: true,
+          clearCandidateActions: true,
+          deterministicToolCall: { name: deterministicAction },
+        },
+      }),
+    });
+    const plugin = createRemoteCapabilityPlugin({
+      id: "remote-response-handler",
+      name: "@remote/response-handler",
+      actions: [
+        {
+          name: "REMOTE_DEMO",
+          description: "Run the module-owned remote action.",
+        },
+      ],
+      responseHandlerEvaluators: [
+        {
+          name: "REMOTE_RESPONSE_HANDLER",
+          description: "Remote response handler.",
+        },
+      ],
+    });
+    const evaluator = plugin.responseHandlerEvaluators?.[0];
+    expect(evaluator?.deterministicActions).toEqual(["REMOTE_DEMO"]);
+
+    const reportError = vi.fn();
+    const runtime = makeRuntime(router, {
+      actions: plugin.actions ?? [],
+      responseHandlerEvaluators: evaluator ? [evaluator] : [],
+      reportError,
+      logger: { warn: vi.fn(), debug: vi.fn() } as never,
+    });
+    const run = (messageHandler: {
+      processMessage: "RESPOND";
+      thought: string;
+      plan: {
+        contexts: string[];
+        reply: string;
+        candidateActions: string[];
+      };
+    }) =>
+      runResponseHandlerEvaluators({
+        runtime,
+        message: { content: { text: "run it" } } as never,
+        state: {} as never,
+        messageHandler: messageHandler as never,
+        availableContexts: [],
+      });
+
+    const allowedHandler = {
+      processMessage: "RESPOND" as const,
+      thought: "base",
+      plan: {
+        contexts: ["general"],
+        reply: "base reply",
+        candidateActions: ["BASE"],
+      },
+    };
+    const allowed = await run(allowedHandler);
+    expect(allowedHandler.plan).toMatchObject({
+      deterministicToolCall: { name: "REMOTE_DEMO" },
+    });
+    expect(allowed.errors).toEqual([]);
+
+    deterministicAction = "VIEWS";
+    const deniedHandler = {
+      processMessage: "RESPOND" as const,
+      thought: "base",
+      plan: {
+        contexts: ["general"],
+        reply: "base reply",
+        candidateActions: ["BASE"],
+      },
+    };
+    const denied = await run(deniedHandler);
+    expect(deniedHandler.plan).toEqual({
+      contexts: ["general"],
+      reply: "base reply",
+      candidateActions: ["BASE"],
+    });
+    expect(denied.candidateActionsClearedByEvaluators).toBe(false);
+    expect(denied.errors).toEqual([
+      {
+        evaluatorName: "REMOTE_RESPONSE_HANDLER",
+        error:
+          'Response-handler evaluator "REMOTE_RESPONSE_HANDLER" is not allowed to select deterministic action "VIEWS"',
+      },
+    ]);
+    expect(reportError).toHaveBeenCalledOnce();
   });
 
   it("rejects missing remote app diagnostics instead of using an empty fallback", async () => {

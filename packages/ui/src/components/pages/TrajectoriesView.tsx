@@ -482,125 +482,127 @@ export function TrajectoriesView({
     >
       <SidebarScrollRegion>
         <SidebarPanel>
-          <SidebarContent.Toolbar className="mb-3 items-center justify-end gap-2">
-            <SidebarContent.ToolbarActions>
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <AgentToolbarButton
-                    agentId="trajectories-export-open"
-                    agentLabel="Open trajectory export menu"
-                    agentDescription="Open export options for trajectory logs"
-                    agentStatus={
-                      exporting || trajectories.length === 0
-                        ? "disabled"
-                        : "ready"
+          {hasActiveFilters || trajectories.length > 0 ? (
+            <SidebarContent.Toolbar className="mb-3 items-center justify-end gap-2">
+              <SidebarContent.ToolbarActions>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <AgentToolbarButton
+                      agentId="trajectories-export-open"
+                      agentLabel="Open trajectory export menu"
+                      agentDescription="Open export options for trajectory logs"
+                      agentStatus={
+                        exporting || trajectories.length === 0
+                          ? "disabled"
+                          : "ready"
+                      }
+                      variant="outline"
+                      size="icon"
+                      type="button"
+                      className="h-7 w-7 rounded-full"
+                      disabled={exporting || trajectories.length === 0}
+                      title={t("common.export")}
+                    >
+                      <Download className="h-3 w-3" />
+                    </AgentToolbarButton>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-48">
+                    <AgentDropdownMenuItem
+                      agentId="trajectories-export-json-prompts"
+                      agentLabel="Export trajectories as JSON with prompts"
+                      onClick={() => handleExport("json", true)}
+                    >
+                      {t("trajectoriesview.JSONWithPrompts")}
+                    </AgentDropdownMenuItem>
+                    <AgentDropdownMenuItem
+                      agentId="trajectories-export-jsonl-native"
+                      agentLabel="Export trajectories as native JSONL training data"
+                      onClick={() =>
+                        handleExport("jsonl", true, "eliza_native_v1")
+                      }
+                    >
+                      {t("trajectoriesview.JSONLNativeTraining")}
+                    </AgentDropdownMenuItem>
+                    <AgentDropdownMenuItem
+                      agentId="trajectories-export-json-redacted"
+                      agentLabel="Export trajectories as redacted JSON"
+                      onClick={() => handleExport("json", false)}
+                    >
+                      {t("trajectoriesview.JSONRedacted")}
+                    </AgentDropdownMenuItem>
+                    <AgentDropdownMenuItem
+                      agentId="trajectories-export-csv-summary"
+                      agentLabel="Export trajectories as CSV summary"
+                      onClick={() => handleExport("csv", false)}
+                    >
+                      {t("trajectoriesview.CSVSummaryOnly")}
+                    </AgentDropdownMenuItem>
+                    <AgentDropdownMenuItem
+                      agentId="trajectories-export-zip-folders"
+                      agentLabel="Export trajectories as ZIP folders"
+                      onClick={() => handleExport("zip", true)}
+                    >
+                      {t("trajectoriesview.ZIPFolders")}
+                    </AgentDropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+                <ConfirmDeleteControl
+                  agentId="trajectories-delete-current-open"
+                  agentLabel="Delete current trajectory"
+                  agentGroup="trajectories-toolbar"
+                  agentDescription="Open the confirmation controls for deleting the selected trajectory"
+                  confirmAgentId="trajectories-delete-current-confirm"
+                  cancelAgentId="trajectories-delete-current-cancel"
+                  triggerVariant="outline"
+                  triggerClassName="h-7 w-7 rounded-full text-danger transition-all hover:bg-danger/10"
+                  confirmClassName="h-7 rounded-full border border-danger/25 bg-danger/14 px-3 text-2xs font-bold text-danger transition-all hover:bg-danger/20"
+                  cancelClassName="h-7 rounded-full border border-border/35 px-3 text-2xs font-bold text-muted-strong transition-all hover:border-border-strong hover:text-txt"
+                  disabled={deleteDisabled}
+                  triggerLabel={<Trash2 className="h-3 w-3" />}
+                  triggerTitle={t("trajectoriesview.DeleteCurrent", {
+                    defaultValue: "Delete current",
+                  })}
+                  promptText={t("trajectoriesview.DeleteCurrentPrompt", {
+                    defaultValue: "Delete this trajectory?",
+                  })}
+                  busyLabel={t("trajectoriesview.Deleting", {
+                    defaultValue: "Deleting...",
+                  })}
+                  onConfirm={() => {
+                    if (detailTrajectoryId) {
+                      void handleDeleteTrajectory(detailTrajectoryId);
                     }
-                    variant="outline"
-                    size="icon"
-                    type="button"
-                    className="h-7 w-7 rounded-full"
-                    disabled={exporting || trajectories.length === 0}
-                    title={t("common.export")}
-                  >
-                    <Download className="h-3 w-3" />
-                  </AgentToolbarButton>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-48">
-                  <AgentDropdownMenuItem
-                    agentId="trajectories-export-json-prompts"
-                    agentLabel="Export trajectories as JSON with prompts"
-                    onClick={() => handleExport("json", true)}
-                  >
-                    {t("trajectoriesview.JSONWithPrompts")}
-                  </AgentDropdownMenuItem>
-                  <AgentDropdownMenuItem
-                    agentId="trajectories-export-jsonl-native"
-                    agentLabel="Export trajectories as native JSONL training data"
-                    onClick={() =>
-                      handleExport("jsonl", true, "eliza_native_v1")
-                    }
-                  >
-                    {t("trajectoriesview.JSONLNativeTraining")}
-                  </AgentDropdownMenuItem>
-                  <AgentDropdownMenuItem
-                    agentId="trajectories-export-json-redacted"
-                    agentLabel="Export trajectories as redacted JSON"
-                    onClick={() => handleExport("json", false)}
-                  >
-                    {t("trajectoriesview.JSONRedacted")}
-                  </AgentDropdownMenuItem>
-                  <AgentDropdownMenuItem
-                    agentId="trajectories-export-csv-summary"
-                    agentLabel="Export trajectories as CSV summary"
-                    onClick={() => handleExport("csv", false)}
-                  >
-                    {t("trajectoriesview.CSVSummaryOnly")}
-                  </AgentDropdownMenuItem>
-                  <AgentDropdownMenuItem
-                    agentId="trajectories-export-zip-folders"
-                    agentLabel="Export trajectories as ZIP folders"
-                    onClick={() => handleExport("zip", true)}
-                  >
-                    {t("trajectoriesview.ZIPFolders")}
-                  </AgentDropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-              <ConfirmDeleteControl
-                agentId="trajectories-delete-current-open"
-                agentLabel="Delete current trajectory"
-                agentGroup="trajectories-toolbar"
-                agentDescription="Open the confirmation controls for deleting the selected trajectory"
-                confirmAgentId="trajectories-delete-current-confirm"
-                cancelAgentId="trajectories-delete-current-cancel"
-                triggerVariant="outline"
-                triggerClassName="h-7 w-7 rounded-full text-danger transition-all hover:bg-danger/10"
-                confirmClassName="h-7 rounded-full border border-danger/25 bg-danger/14 px-3 text-2xs font-bold text-danger transition-all hover:bg-danger/20"
-                cancelClassName="h-7 rounded-full border border-border/35 px-3 text-2xs font-bold text-muted-strong transition-all hover:border-border-strong hover:text-txt"
-                disabled={deleteDisabled}
-                triggerLabel={<Trash2 className="h-3 w-3" />}
-                triggerTitle={t("trajectoriesview.DeleteCurrent", {
-                  defaultValue: "Delete current",
-                })}
-                promptText={t("trajectoriesview.DeleteCurrentPrompt", {
-                  defaultValue: "Delete this trajectory?",
-                })}
-                busyLabel={t("trajectoriesview.Deleting", {
-                  defaultValue: "Deleting...",
-                })}
-                onConfirm={() => {
-                  if (detailTrajectoryId) {
-                    void handleDeleteTrajectory(detailTrajectoryId);
-                  }
-                }}
-              />
-              <ConfirmDeleteControl
-                agentId="trajectories-clear-all-open"
-                agentLabel="Clear all trajectories"
-                agentGroup="trajectories-toolbar"
-                agentDescription="Open the confirmation controls for deleting every trajectory"
-                confirmAgentId="trajectories-clear-all-confirm"
-                cancelAgentId="trajectories-clear-all-cancel"
-                triggerVariant="outline"
-                triggerClassName="h-7 w-7 rounded-full text-danger transition-all hover:bg-danger/10"
-                confirmClassName="h-7 rounded-full border border-danger/25 bg-danger/14 px-3 text-2xs font-bold text-danger transition-all hover:bg-danger/20"
-                cancelClassName="h-7 rounded-full border border-border/35 px-3 text-2xs font-bold text-muted-strong transition-all hover:border-border-strong hover:text-txt"
-                disabled={clearAllDisabled}
-                triggerLabel={<XCircle className="h-3 w-3" />}
-                triggerTitle={t("trajectoriesview.ClearAll", {
-                  defaultValue: "Clear all",
-                })}
-                promptText={t("trajectoriesview.ClearAllPrompt", {
-                  defaultValue: "Delete all trajectories?",
-                })}
-                busyLabel={t("trajectoriesview.Clearing", {
-                  defaultValue: "Clearing...",
-                })}
-                onConfirm={() => {
-                  void handleClearAllTrajectories();
-                }}
-              />
-            </SidebarContent.ToolbarActions>
-          </SidebarContent.Toolbar>
+                  }}
+                />
+                <ConfirmDeleteControl
+                  agentId="trajectories-clear-all-open"
+                  agentLabel="Clear all trajectories"
+                  agentGroup="trajectories-toolbar"
+                  agentDescription="Open the confirmation controls for deleting every trajectory"
+                  confirmAgentId="trajectories-clear-all-confirm"
+                  cancelAgentId="trajectories-clear-all-cancel"
+                  triggerVariant="outline"
+                  triggerClassName="h-7 w-7 rounded-full text-danger transition-all hover:bg-danger/10"
+                  confirmClassName="h-7 rounded-full border border-danger/25 bg-danger/14 px-3 text-2xs font-bold text-danger transition-all hover:bg-danger/20"
+                  cancelClassName="h-7 rounded-full border border-border/35 px-3 text-2xs font-bold text-muted-strong transition-all hover:border-border-strong hover:text-txt"
+                  disabled={clearAllDisabled}
+                  triggerLabel={<XCircle className="h-3 w-3" />}
+                  triggerTitle={t("trajectoriesview.ClearAll", {
+                    defaultValue: "Clear all",
+                  })}
+                  promptText={t("trajectoriesview.ClearAllPrompt", {
+                    defaultValue: "Delete all trajectories?",
+                  })}
+                  busyLabel={t("trajectoriesview.Clearing", {
+                    defaultValue: "Clearing...",
+                  })}
+                  onConfirm={() => {
+                    void handleClearAllTrajectories();
+                  }}
+                />
+              </SidebarContent.ToolbarActions>
+            </SidebarContent.Toolbar>
+          ) : null}
 
           {loading && trajectories.length === 0 ? (
             <SidebarContent.EmptyState>

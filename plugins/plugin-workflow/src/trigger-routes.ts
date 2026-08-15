@@ -123,6 +123,7 @@ interface TriggerDraftInput {
   wakeMode?: TriggerWakeMode;
   enabled?: boolean;
   createdBy?: string;
+  notifyOnOutcome?: boolean;
   timezone?: string;
   intervalMs?: number;
   scheduledAtIso?: string;
@@ -142,6 +143,7 @@ interface NormalizeTriggerDraftFallback {
   wakeMode: TriggerWakeMode;
   enabled: boolean;
   createdBy: string;
+  notifyOnOutcome?: boolean;
 }
 
 export interface TriggerRouteContext extends RouteRequestContext {
@@ -319,6 +321,7 @@ export async function handleTriggerRoutes(ctx: TriggerRouteContext): Promise<boo
       wakeMode: typeof body.wakeMode === 'string' ? (body.wakeMode as TriggerWakeMode) : undefined,
       enabled: !!(body.enabled ?? true),
       createdBy: creator,
+      notifyOnOutcome: true,
       timezone: typeof body.timezone === 'string' ? body.timezone : undefined,
       intervalMs: typeof body.intervalMs === 'number' ? body.intervalMs : undefined,
       scheduledAtIso: typeof body.scheduledAtIso === 'string' ? body.scheduledAtIso : undefined,
@@ -344,6 +347,7 @@ export async function handleTriggerRoutes(ctx: TriggerRouteContext): Promise<boo
           typeof body.wakeMode === 'string' ? (body.wakeMode as TriggerWakeMode) : 'inject_now',
         enabled: body.enabled === undefined ? true : body.enabled === true,
         createdBy: creator,
+        notifyOnOutcome: true,
       },
     });
     if (!normalized.draft) {
@@ -589,6 +593,7 @@ export async function handleTriggerRoutes(ctx: TriggerRouteContext): Promise<boo
       wakeMode: typeof body.wakeMode === 'string' ? (body.wakeMode as TriggerWakeMode) : undefined,
       enabled: body.enabled === undefined ? current.enabled : body.enabled === true,
       createdBy: current.createdBy,
+      notifyOnOutcome: current.notifyOnOutcome === true,
       timezone: typeof body.timezone === 'string' ? body.timezone : undefined,
       intervalMs: typeof body.intervalMs === 'number' ? body.intervalMs : current.intervalMs,
       scheduledAtIso:
@@ -615,6 +620,7 @@ export async function handleTriggerRoutes(ctx: TriggerRouteContext): Promise<boo
         wakeMode: current.wakeMode,
         enabled: body.enabled === undefined ? current.enabled : body.enabled === true,
         createdBy: current.createdBy,
+        notifyOnOutcome: current.notifyOnOutcome === true,
       },
     });
     if (!normalized.draft) {

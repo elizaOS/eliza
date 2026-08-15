@@ -3,7 +3,12 @@
  * role normalization and the env-vs-config account resolution/role wiring.
  * Uses a hand-built fake runtime; no live Slack API.
  */
-import type { Character, IAgentRuntime } from "@elizaos/core";
+import {
+  type Character,
+  connectorAccountCredentialSettingKey,
+  connectorBaseCredentialSettingKey,
+  type IAgentRuntime,
+} from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import {
   listSlackAccountIds,
@@ -15,15 +20,37 @@ import {
 function createRuntime(
   slackConfig?: SlackMultiAccountConfig,
   envOverrides?: Record<string, string | undefined>,
+  privateCredentials?: Record<string, unknown>,
 ): IAgentRuntime {
+  const credentialSecrets: Record<string, string> = {};
+  for (const [field, value] of Object.entries(privateCredentials ?? {})) {
+    if (field === "accounts" || typeof value !== "string") continue;
+    credentialSecrets[connectorBaseCredentialSettingKey("slack", field)] =
+      value;
+  }
+  const accounts = privateCredentials?.accounts;
+  if (accounts && typeof accounts === "object" && !Array.isArray(accounts)) {
+    for (const [accountId, rawAccount] of Object.entries(accounts)) {
+      if (!rawAccount || typeof rawAccount !== "object") continue;
+      for (const [field, value] of Object.entries(rawAccount)) {
+        if (typeof value !== "string") continue;
+        credentialSecrets[
+          connectorAccountCredentialSettingKey("slack", accountId, field)
+        ] = value;
+      }
+    }
+  }
   const character: Partial<Character> = {
     settings: slackConfig ? { slack: slackConfig } : {},
+    secrets: credentialSecrets,
   };
   const env = envOverrides ?? {};
   const runtime = {
     agentId: "agent-1",
     character: character as Character,
-    getSetting: vi.fn((key: string) => env[key]),
+    getSetting: vi.fn(
+      (key: string) => character.secrets?.[key] ?? env[key] ?? null,
+    ),
     logger: { info: vi.fn(), debug: vi.fn(), warn: vi.fn(), error: vi.fn() },
   };
   return runtime as unknown as IAgentRuntime;
@@ -53,16 +80,56 @@ describe("normalizeSlackAccountRole", () => {
 });
 
 describe("resolveSlackAccount role wiring", () => {
-  it("normalizes and deduplicates configured account IDs", () => {
+  it("combines public policy with private per-account credentials", () => {
+    const runtime = createRuntime(
+      {
+        accounts: {
+          support: {
+            role: "OWNER",
+            groupPolicy: "allowlist",
+            channels: { support: { enabled: true } },
+          },
+        },
+      },
+      undefined,
+      {
+        accounts: {
+          support: {
+            botToken: "xoxb-private",
+            appToken: "xapp-private",
+            userToken: "xoxp-private",
+            signingSecret: "signing-private",
+          },
+        },
+      },
+    );
+
+    const account = resolveSlackAccount(runtime, "support");
+    expect(account).toMatchObject({
+      role: "OWNER",
+      botToken: "xoxb-private",
+      appToken: "xapp-private",
+      userToken: "xoxp-private",
+      signingSecret: "signing-private",
+      channels: { support: { enabled: true } },
+    });
+  });
+
+  it("does not consume the retired packed credential setting", () => {
+    const runtime = createRuntime(undefined, {
+      SLACK_CONNECTOR_CREDENTIALS_JSON: JSON.stringify({
+        groupPolicy: "open",
+      }),
+    });
+    expect(resolveSlackAccount(runtime).config.groupPolicy).toBeUndefined();
+  });
+
+  it("normalizes configured account IDs", () => {
     const runtime = createRuntime({
       accounts: {
         " Owner ": {
           botToken: "xoxb-owner",
           appToken: "xapp-owner",
-        },
-        owner: {
-          botToken: "xoxb-owner-2",
-          appToken: "xapp-owner-2",
         },
         TEAM: {
           botToken: "xoxb-team",
@@ -84,6 +151,19 @@ describe("resolveSlackAccount role wiring", () => {
     });
     expect(resolveSlackAccount(whitespaceOnly, "team").botToken).toBe(
       "xoxb-team",
+    );
+  });
+
+  it("rejects account identifiers that collide after normalization", () => {
+    const runtime = createRuntime({
+      accounts: {
+        " Owner ": { botToken: "xoxb-owner", appToken: "xapp-owner" },
+        owner: { botToken: "xoxb-owner-2", appToken: "xapp-owner-2" },
+      },
+    });
+
+    expect(() => listSlackAccountIds(runtime)).toThrowError(
+      expect.objectContaining({ code: "SLACK_ACCOUNT_ID_COLLISION" }),
     );
   });
 

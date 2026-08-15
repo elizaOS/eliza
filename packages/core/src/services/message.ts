@@ -67,7 +67,7 @@ import {
 	buildActionCatalog,
 	type LocalizedActionExampleResolver,
 } from "../runtime/action-catalog";
-import { canActionRun } from "../runtime/action-gate";
+import { actionGateFailure, canActionRun } from "../runtime/action-gate";
 import {
 	parentAliasesForCandidateAction,
 	retrieveActions,
@@ -148,6 +148,7 @@ import {
 	FAILED_TOOL_FALLBACK_MESSAGE,
 	isTerminalPlannerToolName,
 	type PlannerLoopParams,
+	type PlannerLoopResult,
 	type PlannerRuntime,
 	type PlannerToolCall,
 	type PlannerToolResult,
@@ -185,16 +186,21 @@ import {
 	runSubPlanner,
 	subPlannerCallDigest,
 } from "../runtime/sub-planner";
-import { buildCanonicalSystemPrompt } from "../runtime/system-prompt";
+import {
+	buildCanonicalSystemPrompt,
+	buildCharacterStyleDirections,
+} from "../runtime/system-prompt";
 import { resolveTraceCorrelationFromEnv } from "../runtime/trace-correlation";
 import {
 	buildProviderAttributionsFromState,
 	flattenTrajectoryMessages,
 } from "../runtime/trajectory-provider-attribution";
 import {
+	captureToolStageIO,
 	createJsonFileTrajectoryRecorder,
 	finalizeTrajectoryRecording,
 	isTrajectoryRecordingEnabled,
+	type RecordedStage,
 	type TrajectoryRecorder,
 } from "../runtime/trajectory-recorder";
 import { TurnAbortedError } from "../runtime/turn-controller";
@@ -353,10 +359,12 @@ import {
 } from "./message/direct-action-heuristics";
 import {
 	buildFailureReplyPrompt,
+	classifyStructuredFailureCause,
 	INSUFFICIENT_CREDITS_REPLY,
 	isAuthError,
 	isInsufficientCreditsError,
 	isRateLimitError,
+	type StructuredFailureCause,
 	stripReasoningBlocks,
 } from "./message/fallback-reply";
 import {
@@ -877,8 +885,9 @@ function alwaysOnResponseStateProviderNames(runtime: IAgentRuntime): string[] {
  *   - ACTIONS / PROVIDERS / ACTION_STATE: meta-listings — the planner sees
  *     actions as native function tools, so a parallel text block is
  *     duplicative and confusing.
- *   - CHARACTER: already rendered via `staticPrefix.systemPrompt` (which
- *     includes system + bio + role) so the text-block CHARACTER provider
+ *   - CHARACTER: identity is already rendered via `staticPrefix.systemPrompt`
+ *     (system + bio + role) and chat style directions via
+ *     `staticPrefix.characterPrompt`, so the text-block CHARACTER provider
  *     would duplicate the same content.
  * RECENT_MESSAGES stays included because Stage 1 needs full prior dialogue
  * text when no structured `recentMessages` array is available from the
@@ -1580,12 +1589,14 @@ export function shouldSkipResponseMemoryPersistence(memory: Memory): boolean {
 
 export {
 	buildFailureReplyPrompt,
+	classifyStructuredFailureCause,
 	INSUFFICIENT_CREDITS_REPLY,
 	isAuthError,
 	isInsufficientCreditsError,
 	isInsufficientCreditsMessage,
 	isModelProviderFallbackError,
 	isRateLimitError,
+	type StructuredFailureCause,
 	stripReasoningBlocks,
 } from "./message/fallback-reply";
 export {
@@ -2688,6 +2699,7 @@ async function collectV5PlannerCandidateActions(args: {
 		action: Action,
 		parentActionName?: string,
 		activeContexts: readonly AgentContext[] | undefined = args.selectedContexts,
+		explicitCandidateName?: string,
 	): Promise<boolean> => {
 		const normalizedName = normalizeActionIdentifier(action.name);
 		if (!normalizedName || seen.has(normalizedName)) {
@@ -2696,13 +2708,27 @@ async function collectV5PlannerCandidateActions(args: {
 		// One gate for exposure and execution (#12087 Item 9): private-action gate
 		// (private actions never reach the planner on a user turn) + ACTION_ROLE_POLICY
 		// + contextGate + roleGate, all via the shared chokepoint.
-		if (
-			!canActionRun(action, {
-				message: args.message,
-				activeContexts,
-				userRoles: args.userRoles,
-			})
-		) {
+		// Explicit Stage-1 hints need a diagnostic when their resolved action is
+		// rejected. The all-action pass stays quiet because ordinary gate misses
+		// are expected while building a narrowed surface.
+		const gateFailure = actionGateFailure(action, {
+			message: args.message,
+			activeContexts,
+			userRoles: args.userRoles,
+		});
+		if (gateFailure !== undefined) {
+			if (explicitCandidateName) {
+				args.runtime.logger.warn(
+					{
+						src: "service:message",
+						action: action.name,
+						candidate: explicitCandidateName,
+						gate: "action-gate",
+						reason: gateFailure,
+					},
+					"Explicit stage-1 candidate rejected at the action gate",
+				);
+			}
 			return false;
 		}
 		try {
@@ -2714,6 +2740,18 @@ async function collectV5PlannerCandidateActions(args: {
 				},
 			);
 			if (!accountPolicy.allowed) {
+				if (explicitCandidateName) {
+					args.runtime.logger.warn(
+						{
+							src: "service:message",
+							action: action.name,
+							candidate: explicitCandidateName,
+							gate: "connector-account-policy",
+							reason: accountPolicy.reason,
+						},
+						"Explicit stage-1 candidate rejected by connector account policy",
+					);
+				}
 				return false;
 			}
 			if (action.validate) {
@@ -2723,6 +2761,18 @@ async function collectV5PlannerCandidateActions(args: {
 					args.state,
 				);
 				if (!valid) {
+					if (explicitCandidateName) {
+						args.runtime.logger.warn(
+							{
+								src: "service:message",
+								action: action.name,
+								candidate: explicitCandidateName,
+								gate: "validate-returned-false",
+								reason: `Action ${action.name} is not available for the current state`,
+							},
+							"Explicit stage-1 candidate rejected by action validate()",
+						);
+					}
 					return false;
 				}
 			}
@@ -2766,11 +2816,23 @@ async function collectV5PlannerCandidateActions(args: {
 			: parentAliasesForCandidateAction(candidateName)
 					.map((alias) => resolveRuntimeAction(actionLookup, alias))
 					.filter((action): action is Action => action !== undefined);
+		if (resolved.length === 0) {
+			args.runtime.logger.warn(
+				{
+					src: "service:message",
+					candidate: candidateName,
+					gate: "resolved-to-no-runtime-action",
+				},
+				"Explicit stage-1 candidate resolved to no runtime action",
+			);
+			continue;
+		}
 		for (const action of resolved) {
 			await appendIfAllowed(
 				action,
 				undefined,
 				mergeAgentContexts(args.selectedContexts, action.contexts),
+				candidateName,
 			);
 		}
 	}
@@ -3425,6 +3487,13 @@ async function createV5MessageContextObject(args: {
 		character: args.runtime.character,
 		userRole: args.userRoles?.[0],
 	});
+	// Chat style directions (style.all + style.chat) render exactly once here,
+	// in the stable prefix. Computed statically from the character — not via the
+	// per-room CHARACTER provider — so the KV-cacheable prefix stays
+	// byte-identical across turns (#17026).
+	const characterStyleDirections = buildCharacterStyleDirections({
+		character: args.runtime.character,
+	});
 	// Stage 2 exposes each Action as its own native tool. Per-action specs live
 	// in `events[type=tool]`; the LLM calls each action directly by name. We
 	// also expose the universal terminal-sentinel tools (REPLY / IGNORE / STOP)
@@ -3458,6 +3527,14 @@ async function createV5MessageContextObject(args: {
 						id: "system",
 						label: "system",
 						content: systemPrompt,
+						stable: true,
+					}
+				: undefined,
+			characterPrompt: characterStyleDirections
+				? {
+						id: "character-style",
+						label: "system",
+						content: characterStyleDirections,
 						stable: true,
 					}
 				: undefined,
@@ -3691,7 +3768,21 @@ export function plannedReplyHasClaimGroundingReceipt(args: {
 			(action.tags ?? []).map((tag) => tag.trim().toLowerCase()),
 		);
 		if (args.kind === "empty_tracked_state") {
-			return tags.has("resource:tracked-work") && tags.has("capability:read");
+			if (!tags.has("resource:tracked-work") || !tags.has("capability:read")) {
+				return false;
+			}
+			const isMixedMutationSurface = [
+				"capability:write",
+				"capability:update",
+				"capability:delete",
+				"capability:schedule",
+			].some((tag) => tags.has(tag));
+			if (!isMixedMutationSurface) return true;
+			const claimGrounding = result.data?.claimGrounding;
+			return (
+				Array.isArray(claimGrounding) &&
+				claimGrounding.includes("empty_tracked_state")
+			);
 		}
 		return false;
 	});
@@ -4090,7 +4181,7 @@ direct/private rules:
 - Slash-command questions are conversation: contexts=["general"]; say /commands shows the list; never select VIEWS or ask clarification for "show commands".
 - Sticky Notes use contexts=["notes"], candidateActionNames=["NOTES"]. Native device controls such as flashlight operations use contexts=["general"], candidateActionNames=["VIEWS"]. Do not route sticky Notes to documents or invent action names such as CREATE_NOTE.
 - Calendar-event reads or mutations use contexts=["calendar"], candidateActionNames=["CALENDAR"]. A timed "add X tomorrow at 9am" request is a calendar event unless the user explicitly asks for a task or reminder.
-- Goals/todos/reminders/habits/routines are non-simple; goals -> tasks + OWNER_GOALS, never work threads.
+- Reading or changing goals/todos/reminders/alarms/habits/routines DATA is non-simple; goals -> tasks + OWNER_GOALS, todos -> tasks + OWNER_TODOS, reminders -> tasks + OWNER_REMINDERS, alarms -> tasks + OWNER_ALARMS, habits/routines -> tasks + OWNER_ROUTINES, never work threads and never VIEWS. Opening or showing their PAGE ("open my todos page", "show the reminders screen") stays UI navigation -> VIEWS per the rule above.
 - Only use "simple" when you can answer directly from your static knowledge or the visible prior_message / reply_reference context. If a specific name/thing is unclear, choose general or memory.
 - Never claim searched/scanned/recalled unless tool returned it; includes "I scanned the chat" or "Spawning a sub-agent".
 - Never deny a capability when current_turn_boundary says a role-visible executable action can attempt it. available_contexts supplies routing domains but does not by itself prove a handler exists.
@@ -5376,11 +5467,17 @@ export function applyDirectCurrentCandidateBackstopToMessageHandler(
 		return messageHandler;
 	}
 
+	const stageOneCandidateActions =
+		getMessageHandlerCandidateActions(messageHandler);
+	const composedCandidateActions =
+		directCurrentInference.kind === "owner-reads"
+			? directCurrentCandidateActions
+			: uniqueActionNames([
+					...stageOneCandidateActions,
+					...directCurrentCandidateActions,
+				]);
 	const runnableCandidateActions = filterRunnableCandidateActions(
-		uniqueActionNames([
-			...getMessageHandlerCandidateActions(messageHandler),
-			...directCurrentCandidateActions,
-		]),
+		composedCandidateActions,
 		runtimeContext,
 	);
 	if (runnableCandidateActions.length === 0) return messageHandler;
@@ -6389,6 +6486,13 @@ interface ExecuteV5PlannedToolCallParams {
 	recorder?: TrajectoryRecorder;
 	trajectoryId?: string;
 	plannerLoopConfig?: PlannerLoopParams["config"];
+	/**
+	 * Normal planner selection may activate the selected action's routing
+	 * contexts after that action was surfaced through the context-filtered tool
+	 * set. Deterministic evaluator calls have no such planner-surface proof and
+	 * must retain the turn's original contexts for the canonical gate.
+	 */
+	activateActionContexts?: boolean;
 }
 
 interface BuildV5ExecutorContextParams {
@@ -6464,15 +6568,26 @@ async function executeV5PlannedToolCall(
 	const action = executionActions.find(
 		(candidate) => candidate.name === toolCall.name,
 	);
-	const executorCtx = action
-		? {
-				...args.executorCtx,
-				activeContexts: mergeAgentContexts(
-					args.executorCtx.activeContexts,
-					action.contexts,
-				),
-			}
-		: args.executorCtx;
+	const executorCtx =
+		action && args.activateActionContexts !== false
+			? {
+					...args.executorCtx,
+					activeContexts: mergeAgentContexts(
+						args.executorCtx.activeContexts,
+						action.contexts,
+					),
+				}
+			: args.executorCtx;
+	if (
+		action &&
+		actionHasSubActions(action) &&
+		args.activateActionContexts === false
+	) {
+		const gateFailure = actionGateFailure(action, executorCtx);
+		if (gateFailure) {
+			return { success: false, error: gateFailure, text: gateFailure };
+		}
+	}
 
 	const hasDispatcherActionParameter =
 		plannerToolCallHasActionParameter(toolCall);
@@ -8094,19 +8209,22 @@ export async function runV5MessageRuntimeStage1(args: {
 		// evaluator that cleared Stage-1 candidates has already established an
 		// authoritative route from richer runtime state, so the generic text
 		// heuristic must not undo that decision.
-		const directPlannerCandidateActions =
-			inferDirectCurrentRequestCandidateActions(
-				args.runtime.actions ?? [],
-				getUserMessageText(args.message) ?? "",
-			);
+		const directPlannerInference = inferDirectCurrentRequestCandidateInference(
+			args.runtime.actions ?? [],
+			getUserMessageText(args.message) ?? "",
+		);
+		const directPlannerCandidateActions = directPlannerInference.names;
 		if (
 			directPlannerCandidateActions.length > 0 &&
 			!responseHandlerEvaluation.candidateActionsClearedByEvaluators
 		) {
-			messageHandler.plan.candidateActions = uniqueActionNames([
-				...getMessageHandlerCandidateActions(messageHandler),
-				...directPlannerCandidateActions,
-			]);
+			messageHandler.plan.candidateActions =
+				directPlannerInference.kind === "owner-reads"
+					? directPlannerCandidateActions
+					: uniqueActionNames([
+							...getMessageHandlerCandidateActions(messageHandler),
+							...directPlannerCandidateActions,
+						]);
 		}
 		const routedResponseHandlerReply = getMessageHandlerReply(messageHandler);
 		let earlyReplyText = actionOwnsResponseHandlerEarlyReply(
@@ -8511,6 +8629,149 @@ export async function runV5MessageRuntimeStage1(args: {
 			result: PlannerToolResult;
 		}> = [];
 
+		const invokeDeterministicToolCall =
+			async (): Promise<PlannerLoopResult> => {
+				const selected = messageHandler.plan.deterministicToolCall;
+				if (!selected) {
+					throw new Error(
+						"Deterministic tool execution requires a selected call",
+					);
+				}
+				const actionLookup = buildRuntimeActionLookup(args.runtime);
+				const action = resolveRuntimeAction(actionLookup, selected.name);
+				const toolCall: PlannerToolCall = {
+					id: `response-handler:${normalizeActionIdentifier(action?.name ?? selected.name)}`,
+					name: action?.name ?? selected.name,
+					...(selected.params ? { params: selected.params } : {}),
+				};
+				const startedAt = Date.now();
+				let callbackDelivered = false;
+				const deterministicCallback: HandlerCallback | undefined =
+					recordingCallback
+						? async (...callbackArgs) => {
+								callbackDelivered = true;
+								return recordingCallback(...callbackArgs);
+							}
+						: undefined;
+				let result: PlannerToolResult;
+				try {
+					result = trackSettledPlannerToolResult(
+						settledPlannerToolResults,
+						toolCall.name,
+						await executeV5PlannedToolCall({
+							runtime: args.runtime,
+							toolCall,
+							plannerContext: plannerContextAfterEarlyReply,
+							executorCtx: buildV5ExecutorContext({
+								message: args.message,
+								state: plannerState,
+								selectedContexts,
+								senderRole,
+								previousResults: [],
+								...(deterministicCallback
+									? { callback: deterministicCallback }
+									: {}),
+							}),
+							plannerRuntime,
+							executorOptions: {
+								// The evaluator selected one exact action. Keep that single-action
+								// surface while the canonical executor rechecks role, context,
+								// private-action, argument, account, and validate gates.
+								actions: action ? [action] : [],
+								...(args.onSettledActionResult
+									? { onSettledResult: args.onSettledActionResult }
+									: {}),
+							},
+							evaluatorEffects,
+							recorder,
+							trajectoryId,
+							plannerLoopConfig: args.plannerLoopConfig,
+							activateActionContexts: false,
+						}),
+					);
+				} catch (error) {
+					// error-policy:J1 Match the planner loop's tool boundary: a handler or
+					// sub-planner throw becomes one explicit failed result for the normal
+					// reply/error path rather than falling through to a second planner call.
+					result = trackSettledPlannerToolResult(
+						settledPlannerToolResults,
+						toolCall.name,
+						{
+							success: false,
+							error,
+							text: error instanceof Error ? error.message : String(error),
+						},
+					);
+				}
+				const endedAt = Date.now();
+				if (recorder && trajectoryId) {
+					try {
+						const input = selected.params ?? {};
+						const io = captureToolStageIO({
+							input,
+							output: result,
+							error: result.error,
+						});
+						const stage: RecordedStage = {
+							stageId: `stage-tool-${toolCall.name}-${startedAt}`,
+							kind: "tool",
+							startedAt,
+							endedAt,
+							latencyMs: endedAt - startedAt,
+							tool: {
+								name: toolCall.name,
+								args: input,
+								result,
+								success: result.success,
+								durationMs: endedAt - startedAt,
+								description: action?.description,
+								input: io.input,
+								output: io.output,
+								errorText: io.errorText,
+								truncated: io.truncated,
+							},
+						};
+						await recorder.recordStage(trajectoryId, stage);
+					} catch (error) {
+						// error-policy:J7 Trajectory persistence is diagnostic and cannot
+						// change the already-settled deterministic action result.
+						args.runtime.reportError(
+							"MessageService.recordDeterministicTool",
+							error,
+							{ trajectoryId, tool: toolCall.name },
+						);
+						args.runtime.logger.warn(
+							{
+								src: "service:message",
+								err: error instanceof Error ? error.message : String(error),
+								trajectoryId,
+								tool: toolCall.name,
+							},
+							"Failed to record deterministic tool stage",
+						);
+					}
+				}
+
+				const reportableResultText = result.userFacingText?.trim();
+				const finalMessage =
+					!callbackDelivered &&
+					reportableResultText &&
+					(result.success === true || result.verifiedUserFacing === true)
+						? reportableResultText
+						: undefined;
+				return {
+					status: "finished",
+					trajectory: {
+						context: plannerContextAfterEarlyReply,
+						steps: [{ iteration: 0, toolCall, result }],
+						archivedSteps: [],
+						plannedQueue: [],
+						evaluatorOutputs: [],
+					},
+					...(finalMessage ? { finalMessage } : {}),
+				};
+			};
+
 		const invokePlannerLoop = (
 			loopContext: typeof plannerContextAfterEarlyReply,
 		) =>
@@ -8632,7 +8893,12 @@ export async function runV5MessageRuntimeStage1(args: {
 
 		let plannerResult: Awaited<ReturnType<typeof invokePlannerLoop>>;
 		try {
-			plannerResult = await invokePlannerLoop(plannerContextAfterEarlyReply);
+			plannerResult = messageHandler.plan.deterministicToolCall
+				? await timeInferenceSpan(
+						"actions:response-handler-deterministic-tool",
+						invokeDeterministicToolCall,
+					)
+				: await invokePlannerLoop(plannerContextAfterEarlyReply);
 		} catch (error) {
 			const preservedAnswer = prePatchStageOneReplyIsUngroundedAppliedClaim
 				? undefined
@@ -8864,6 +9130,7 @@ export async function runV5MessageRuntimeStage1(args: {
 		const preservedAnswerFallback =
 			!plannedText &&
 			!suppressesPlannerReply &&
+			!messageHandler.plan.deterministicToolCall &&
 			prePatchStageOneReply &&
 			!prePatchStageOneReplyIsUngroundedAppliedClaim &&
 			!PROGRESS_ONLY_ANSWER_REJECT.test(prePatchStageOneReply.trim()) &&
@@ -9021,14 +9288,69 @@ export async function runV5MessageRuntimeStage1(args: {
 				strippedPlannedReplyText = source.slice(rawVerified.length).trim();
 			}
 		}
-		const effectiveDeliveredReplyText =
+		let effectiveDeliveredReplyText =
 			strippedPlannedReplyText || effectiveReplyText;
-		const shouldSendPlannedText =
+		let shouldSendPlannedText =
 			Boolean(effectiveReplyText) &&
 			!plannedTextRepeatsEarlyReply &&
 			!plannedTextRepeatsActionReply &&
 			!plannedTextIsRedundantFailureFallback &&
 			!plannedTextRepeatsVerifiedActionDelivery;
+		// NEVER-SILENT INVARIANT (matrix F24/F12, tj-bfe764bf544bed /
+		// tj-fda9d65e8d04b9): a RESPOND turn that executed tools must not end
+		// with zero deliveries. Every suppression above presupposes the user
+		// already received the content through some earlier delivery — when
+		// NOTHING was delivered this turn (no early ack, empty delivered-set)
+		// that premise is false by construction, and an empty
+		// `effectiveReplyText` (a FINISH whose message evaporated in the
+		// safety chain) otherwise ships `responseContent: null`: the runtime
+		// produced a correct answer and the user got silence. Recover with the
+		// best grounded text available and name the failure in the log so the
+		// upstream emptying path is diagnosable instead of invisible.
+		// Two states are NOT recoverable silence: a synchronously delivered
+		// media deliverable is a delivery even though it never enters the
+		// visible-TEXT set, and deliberate silence (suppressPlannerReply
+		// terminals, ambient IGNORE after tool work) is a contract this
+		// invariant must honor, not a failure for it to "fix" into filler.
+		if (
+			!shouldSendPlannedText &&
+			!earlyReplySent &&
+			!suppressesPlannerReply &&
+			deliveredVisibleTexts.size === 0 &&
+			deliveredMediaUrls.length === 0 &&
+			actionResults.length > 0
+		) {
+			const recoveredText =
+				effectiveDeliveredReplyText ||
+				stageOneAck ||
+				actionResults
+					.map((result) =>
+						typeof result.userFacingText === "string"
+							? result.userFacingText.trim()
+							: "",
+					)
+					.filter((ownedText) => ownedText.length > 0)
+					.at(-1) ||
+				"I finished working on that but could not compose a clean reply — ask again and I will retry.";
+			args.runtime.logger.warn(
+				{
+					src: "service:message",
+					emptyFinal: !effectiveReplyText,
+					suppressedByEarlyReply: plannedTextRepeatsEarlyReply,
+					suppressedByActionReply: plannedTextRepeatsActionReply,
+					recoveredFrom: effectiveDeliveredReplyText
+						? "plannedText"
+						: stageOneAck
+							? "stageOneAck"
+							: "actionUserFacingText",
+				},
+				"RESPOND turn reached the reply gate with zero deliveries; recovering instead of ending silent",
+			);
+			effectiveReplyText = recoveredText;
+			strippedPlannedReplyText = recoveredText;
+			effectiveDeliveredReplyText = recoveredText;
+			shouldSendPlannedText = true;
+		}
 		// Voice-gate provenance (#14873): the Stage-1 ack has unambiguous model
 		// provenance. A byte-exact canonical action result also needs preservation:
 		// `verifiedUserFacing` promises do-not-paraphrase semantics, so routing that
@@ -9236,7 +9558,13 @@ async function recordFactsAndRelationshipsStage(args: {
 		const candidates = extractCandidatesForRecording(result);
 		const kept = result?.parsed
 			? {
-					facts: result.parsed.facts,
+					// The trajectory contract records facts as strings; the speaker
+					// attribution is rendered inline so replays can audit it.
+					facts: result.parsed.facts.map((fact) =>
+						fact.subject && fact.subject !== "user"
+							? `[${fact.subject}] ${fact.fact}`
+							: fact.fact,
+					),
 					relationships: result.parsed.relationships,
 				}
 			: { facts: [], relationships: [] };
@@ -12570,12 +12898,26 @@ export class DefaultMessageService implements IMessageService {
 				if (failureGate.addressed || stage1DecidedRespond) {
 					shouldRespondToMessage = true;
 					terminalDecision = null;
+					// Distinguish WHY the runtime died so the failure reply names
+					// the real condition: a capability that was never invocable is
+					// not a transient blip and must not read like one (#17027 AC6).
+					const failureCause = classifyStructuredFailureCause(error);
+					runtime.logger.info(
+						{
+							src: "service:message",
+							agentId: runtime.agentId,
+							roomId: message.roomId,
+							failureCause,
+						},
+						"MessageService: structured failure reply cause classified",
+					);
 					strategyResult = await this.buildStructuredFailureReply(
 						runtime,
 						message,
 						state,
 						responseId,
 						"running the native tool message runtime",
+						failureCause,
 					);
 					_usedV5Runtime = true;
 					state = strategyResult.state;
@@ -12720,6 +13062,9 @@ export class DefaultMessageService implements IMessageService {
 				result = strategyResult;
 			} else {
 				_usedV5Runtime = true;
+				// No thrown trajectory error reaches this fallback-only branch, so
+				// there is no structural capability/exhaustion cause to preserve.
+				// Keep the default generic transient classification.
 				result = await this.buildStructuredFailureReply(
 					runtime,
 					message,
@@ -14057,6 +14402,7 @@ export class DefaultMessageService implements IMessageService {
 		state: State,
 		responseId: UUID,
 		stage: string,
+		cause: StructuredFailureCause = "transient",
 	): Promise<StrategyResult> {
 		// Short-circuit when no LLM provider is configured at all. The fallback
 		// model loop below would just throw `NoModelProviderConfiguredError` for
@@ -14076,7 +14422,7 @@ export class DefaultMessageService implements IMessageService {
 			state,
 			message,
 		);
-		const failurePrompt = buildFailureReplyPrompt(recentMessages);
+		const failurePrompt = buildFailureReplyPrompt(recentMessages, cause);
 
 		const attempt = await this.generateFailureReplyText(
 			runtime,
@@ -14116,6 +14462,28 @@ export class DefaultMessageService implements IMessageService {
 				replyText =
 					(typeof tmpl === "function" ? tmpl({ state }) : tmpl) ||
 					"My Eliza Cloud key isn't authorized for inference right now — check that your cloud key is valid and your account has credits, then try again.";
+			} else if (cause === "missing_capability") {
+				// Permanent gap: never fall through to transientFailureReply
+				// ("try again in a moment") — that copy invites a retry that
+				// cannot succeed until the capability is enabled (#17027 AC6).
+				// Dedicated template when present; otherwise the built-in
+				// capability-unavailable default.
+				const tmpl = runtime.character.templates?.missingCapabilityFailureReply;
+				replyText =
+					(typeof tmpl === "function" ? tmpl({ state }) : tmpl) ||
+					"I can't do that here right now - it needs a capability that isn't available in this setup.";
+			} else if (cause === "planner_exhaustion") {
+				// Retryable budget exhaustion. Dedicated template first; the
+				// legacy transientFailureReply remains a voice-compatible
+				// fallback only for this recoverable class.
+				const tmpl = runtime.character.templates?.plannerExhaustionFailureReply;
+				const fallbackTmpl = runtime.character.templates?.transientFailureReply;
+				replyText =
+					(typeof tmpl === "function" ? tmpl({ state }) : tmpl) ||
+					(typeof fallbackTmpl === "function"
+						? fallbackTmpl({ state })
+						: fallbackTmpl) ||
+					"I ran out of attempts before I could finish that. Nothing was completed - please try again.";
 			} else {
 				const tmpl = runtime.character.templates?.transientFailureReply;
 				replyText =
@@ -14126,19 +14494,29 @@ export class DefaultMessageService implements IMessageService {
 
 		replyText = truncateToCompleteSentence(replyText.trim(), 2000);
 
-		// Credit exhaustion is not transient — it persists until the user tops
-		// up — so the synthetic reply carries the structural kind downstream
-		// consumers already key on (chat DTO failureKind gate, recent-messages
-		// synthetic-failure filter) instead of masquerading as a blip.
+		// Preserve the terminal cause at the delivery boundary. Provider failures
+		// encountered while generating the apology take precedence because the
+		// canned reply describes that condition. Capability, action, persistence,
+		// auth, and credit failures remain stable until their cause changes;
+		// throttling, planner exhaustion, and generic infrastructure failures can
+		// be retried without presenting a durable success record.
+		const failureKind =
+			attempt.kind === "creditsExhausted"
+				? "insufficient_credits"
+				: attempt.kind === "rateLimited"
+					? "rate_limited"
+					: attempt.kind === "authFailed"
+						? "provider_issue"
+						: cause === "transient"
+							? "transient_failure"
+							: cause;
 		const responseContent: Content = {
-			thought: `Handle a temporary reply failure during ${stage}.`,
+			thought: `Handle a ${cause} reply failure during ${stage}.`,
 			actions: ["REPLY"],
-			failureKind:
-				attempt.kind === "creditsExhausted"
-					? "insufficient_credits"
-					: "transient_failure",
+			failureKind,
 			elizaSyntheticFailure: true,
-			transient: true,
+			transient:
+				failureKind === "transient_failure" || failureKind === "rate_limited",
 			doNotPersist: true,
 			text: replyText,
 			responseId,

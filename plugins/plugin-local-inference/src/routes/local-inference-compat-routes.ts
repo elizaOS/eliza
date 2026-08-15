@@ -35,6 +35,7 @@ import {
 	readRoutingPreferences,
 	setPolicy,
 	setPreferredProvider,
+	setTextRouting,
 } from "../services/routing-preferences";
 import { localInferenceService } from "../services/service";
 import { readSystemMemory } from "../services/system-memory";
@@ -450,6 +451,38 @@ export async function handleLocalInferenceCompatRoutes(
 				res,
 				500,
 				err instanceof Error ? err.message : "Failed to read routing state",
+			);
+		}
+		return true;
+	}
+
+	// ── POST: atomically route both text-generation slots ───────────────
+	if (method === "POST" && pathname === "/api/local-inference/routing/text") {
+		if (!ensureCompatSensitiveRouteAuthorized(req, res)) return true;
+		const body = await readCompatJsonBody(req, res);
+		if (!body) return true;
+		const provider = stringBody(body, "provider");
+		if (!provider) {
+			sendJsonErrorResponse(res, 400, "provider is required");
+			return true;
+		}
+		const policy = body.policy ?? "manual";
+		if (!isRoutingPolicy(policy)) {
+			sendJsonErrorResponse(
+				res,
+				400,
+				`policy must be one of ${ROUTING_POLICIES.join(", ")}`,
+			);
+			return true;
+		}
+		try {
+			const prefs = await setTextRouting(provider, policy);
+			sendJsonResponse(res, 200, { preferences: prefs });
+		} catch (err) {
+			sendJsonErrorResponse(
+				res,
+				500,
+				err instanceof Error ? err.message : "Failed to write text routing",
 			);
 		}
 		return true;

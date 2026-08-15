@@ -28,7 +28,8 @@ describe("UsersRepository Telegram account promotion (real PGlite)", () => {
 
   const createTelegramAccount = async (telegramId: string) => {
     sequence += 1;
-    return usersRepository.findOrCreateTelegramPersonalAccount({
+    return usersRepository.findOrCreateMessagingPersonalAccount({
+      platform: "telegram",
       telegramId,
       telegramUsername: `telegram_user_${sequence}`,
       telegramFirstName: `Telegram ${sequence}`,

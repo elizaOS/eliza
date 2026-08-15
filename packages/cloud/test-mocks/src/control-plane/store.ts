@@ -11,6 +11,12 @@
  *   job.type:       agent_provision | agent_delete
  */
 
+import type {
+  SharedTodoCutoverRecord,
+  SharedTodoCutoverSnapshot,
+  SharedTodoMutationCutoverRecord,
+} from "@elizaos/shared/todo-cutover";
+
 export type SandboxStatus =
   | "provisioning"
   | "running"
@@ -137,7 +143,116 @@ export interface ConversationImportResult {
   skippedScheduledTasks: number;
   activatedScheduledTasks: number;
   skippedActivatedScheduledTasks: number;
+  sourceTodoCount?: number;
+  importedTodos?: number;
+  repairedTodos?: number;
+  skippedTodos?: number;
+  removedStaleTodos?: number;
+  sourceTodoMutationCount?: number;
+  importedTodoMutations?: number;
+  skippedTodoMutations?: number;
+  sourceTodoDigest?: string;
+  targetTodoDigest?: string;
   alreadyPopulated?: boolean;
+}
+
+type TodoImportReceipt = Pick<
+  ConversationImportResult,
+  | "sourceTodoCount"
+  | "importedTodos"
+  | "repairedTodos"
+  | "skippedTodos"
+  | "removedStaleTodos"
+  | "sourceTodoMutationCount"
+  | "importedTodoMutations"
+  | "skippedTodoMutations"
+  | "sourceTodoDigest"
+  | "targetTodoDigest"
+>;
+
+interface StoredTodoCutoverState {
+  todos: SharedTodoCutoverRecord[];
+  mutations: SharedTodoMutationCutoverRecord[];
+}
+
+function stageTodoCutoverImport(
+  previousState: StoredTodoCutoverState | undefined,
+  snapshot: SharedTodoCutoverSnapshot,
+): { receipt: TodoImportReceipt; state: StoredTodoCutoverState } {
+  const previousTodos = previousState?.todos ?? [];
+  const previousById = new Map(
+    previousTodos.map((todo) => [todo.sourceId, todo]),
+  );
+  const nextIds = new Set(snapshot.todos.map((todo) => todo.sourceId));
+  let importedTodos = 0;
+  let repairedTodos = 0;
+  let skippedTodos = 0;
+  for (const todo of snapshot.todos) {
+    const previous = previousById.get(todo.sourceId);
+    if (!previous) importedTodos += 1;
+    else if (JSON.stringify(previous) === JSON.stringify(todo)) {
+      skippedTodos += 1;
+    } else {
+      repairedTodos += 1;
+    }
+  }
+  const removedStaleTodos = previousTodos.filter(
+    (todo) => !nextIds.has(todo.sourceId),
+  ).length;
+
+  // Dedicated keeps old replay receipts even when a later source snapshot is
+  // smaller; deleting one would make an already-committed provider retry run
+  // the mutation again after cutover.
+  const mutations = structuredClone(previousState?.mutations ?? []);
+  const mutationsByKey = new Map(
+    mutations.map((mutation) => [mutation.idempotencyKey, mutation]),
+  );
+  const mutationsById = new Map(
+    mutations.map((mutation) => [mutation.mutationId, mutation]),
+  );
+  let importedTodoMutations = 0;
+  let skippedTodoMutations = 0;
+  for (const mutation of snapshot.mutations) {
+    const previous = mutationsByKey.get(mutation.idempotencyKey);
+    if (previous) {
+      if (JSON.stringify(previous) !== JSON.stringify(mutation)) {
+        throw new Error(
+          "Todo mutation idempotency key belongs to a different record",
+        );
+      }
+      skippedTodoMutations += 1;
+      continue;
+    }
+    if (mutationsById.has(mutation.mutationId)) {
+      throw new Error(
+        "Todo mutation id belongs to a different idempotency key",
+      );
+    }
+    const stored = structuredClone(mutation);
+    mutations.push(stored);
+    mutationsByKey.set(stored.idempotencyKey, stored);
+    mutationsById.set(stored.mutationId, stored);
+    importedTodoMutations += 1;
+  }
+
+  return {
+    receipt: {
+      sourceTodoCount: snapshot.todos.length,
+      importedTodos,
+      repairedTodos,
+      skippedTodos,
+      removedStaleTodos,
+      sourceTodoMutationCount: snapshot.mutations.length,
+      importedTodoMutations,
+      skippedTodoMutations,
+      sourceTodoDigest: snapshot.digest,
+      targetTodoDigest: snapshot.digest,
+    },
+    state: {
+      todos: structuredClone(snapshot.todos),
+      mutations,
+    },
+  };
 }
 
 export class ControlPlaneStore {
@@ -156,6 +271,7 @@ export class ControlPlaneStore {
     string,
     Map<string, StoredScheduledTask>
   >();
+  private readonly todoSnapshots = new Map<string, StoredTodoCutoverState>();
   private readonly conversationTurnReplies = new Map<string, string>();
   private hotPoolTarget = 0;
   private warmPoolState: WarmPoolState = {
@@ -363,8 +479,15 @@ export class ControlPlaneStore {
     scheduledTasks: ImportedScheduledTask[] = [],
     cutoverToken = "",
     activateScheduledTasks = false,
+    todoSnapshot?: SharedTodoCutoverSnapshot,
   ): ConversationImportResult {
     const key = this.convKey(sandboxId, conversationId);
+    // The real Dedicated route rejects a Todo conflict before it writes any
+    // transcript or task state. Stage the complete Todo result first so this
+    // mock preserves that all-or-nothing boundary for cloud E2E.
+    const stagedTodoImport = todoSnapshot
+      ? stageTodoCutoverImport(this.todoSnapshots.get(key), todoSnapshot)
+      : null;
     const existing = this.conversations.get(key);
     let inserted = messages.length;
     let skipped = 0;
@@ -411,6 +534,10 @@ export class ControlPlaneStore {
       }
     }
 
+    if (stagedTodoImport) {
+      this.todoSnapshots.set(key, stagedTodoImport.state);
+    }
+
     return {
       conversationId,
       complete: true,
@@ -422,6 +549,7 @@ export class ControlPlaneStore {
       skippedScheduledTasks,
       activatedScheduledTasks,
       skippedActivatedScheduledTasks,
+      ...(stagedTodoImport?.receipt ?? {}),
       ...(existing && existing.length > 0 ? { alreadyPopulated: true } : {}),
     };
   }
@@ -445,6 +573,28 @@ export class ControlPlaneStore {
       this.scheduledTasks
         .get(this.convKey(sandboxId, conversationId))
         ?.values() ?? [],
+    );
+  }
+
+  /** Read the exact Todo records materialized by the Dedicated import mock. */
+  getTodos(
+    sandboxId: string,
+    conversationId: string,
+  ): SharedTodoCutoverRecord[] {
+    return structuredClone(
+      this.todoSnapshots.get(this.convKey(sandboxId, conversationId))?.todos ??
+        [],
+    );
+  }
+
+  /** Read the durable Todo replay authority materialized by Dedicated. */
+  getTodoMutations(
+    sandboxId: string,
+    conversationId: string,
+  ): SharedTodoMutationCutoverRecord[] {
+    return structuredClone(
+      this.todoSnapshots.get(this.convKey(sandboxId, conversationId))
+        ?.mutations ?? [],
     );
   }
 
@@ -500,6 +650,28 @@ export class ControlPlaneStore {
     );
     if (!sandbox) return [];
     return this.getScheduledTasks(sandbox.id, conversationId);
+  }
+
+  getTodosByAgent(
+    agentId: string,
+    conversationId: string,
+  ): SharedTodoCutoverRecord[] {
+    const sandbox = [...this.sandboxes.values()].find(
+      (candidate) => candidate.agentId === agentId,
+    );
+    if (!sandbox) return [];
+    return this.getTodos(sandbox.id, conversationId);
+  }
+
+  getTodoMutationsByAgent(
+    agentId: string,
+    conversationId: string,
+  ): SharedTodoMutationCutoverRecord[] {
+    const sandbox = [...this.sandboxes.values()].find(
+      (candidate) => candidate.agentId === agentId,
+    );
+    if (!sandbox) return [];
+    return this.getTodoMutations(sandbox.id, conversationId);
   }
 
   createJob(input: {

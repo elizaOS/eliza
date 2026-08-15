@@ -17,6 +17,9 @@
 		ELIZASTARTTRACE000000001 /* ElizaStartupTrace.swift in Sources */ = {isa = PBXBuildFile; fileRef = ELIZASTARTTRACE000000002 /* ElizaStartupTrace.swift */; };
 		A084ECDBA7D38E1E42DFC39D /* Pods_App.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = AF277DCFFFF123FFC6DF26C7 /* Pods_App.framework */; };
 		E1A5105A0000000000000001 /* ElizaAppIntents.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1A5105A0000000000000002 /* ElizaAppIntents.swift */; };
+		LCLZ00010000000000000001 /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = LCLZ00010000000000000101 /* Localizable.xcstrings */; };
+		LCLZ00010000000000000002 /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = LCLZ00010000000000000101 /* Localizable.xcstrings */; };
+		SHCT00010000000000000001 /* AppShortcuts.strings in Resources */ = {isa = PBXBuildFile; fileRef = SHCT00010000000000000101 /* AppShortcuts.strings */; };
 		MIPL00010000000000000001 /* ElizaIntentPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = MIPL00010000000000000002 /* ElizaIntentPlugin.swift */; };
 		AWDG00010000000000000001 /* AgentWatchdog.swift in Sources */ = {isa = PBXBuildFile; fileRef = AWDG00010000000000000002 /* AgentWatchdog.swift */; };
 		NTRN00010000000000000001 /* NativeTranscriptReducer.swift in Sources */ = {isa = PBXBuildFile; fileRef = NTRN00010000000000000002 /* NativeTranscriptReducer.swift */; };
@@ -132,6 +135,9 @@
 		AF277DCFFFF123FFC6DF26C7 /* Pods_App.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_App.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		AF51FD2D460BCFE21FA515B2 /* Pods-App.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-App.release.xcconfig"; path = "Pods/Target Support Files/Pods-App/Pods-App.release.xcconfig"; sourceTree = "<group>"; };
 		E1A5105A0000000000000002 /* ElizaAppIntents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ElizaAppIntents.swift; sourceTree = "<group>"; };
+		LCLZ00010000000000000101 /* Localizable.xcstrings */ = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; path = Localizable.xcstrings; sourceTree = "<group>"; };
+		SHCT00010000000000000102 /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/AppShortcuts.strings; sourceTree = "<group>"; };
+		SHCT00010000000000000103 /* es */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = es; path = es.lproj/AppShortcuts.strings; sourceTree = "<group>"; };
 		FC68EB0AF532CFC21C3344DD /* Pods-App.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-App.debug.xcconfig"; path = "Pods/Target Support Files/Pods-App/Pods-App.debug.xcconfig"; sourceTree = "<group>"; };
 		MIPL00010000000000000002 /* ElizaIntentPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ElizaIntentPlugin.swift; sourceTree = "<group>"; };
 		AWDG00010000000000000002 /* AgentWatchdog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentWatchdog.swift; sourceTree = "<group>"; };
@@ -270,6 +276,8 @@
 			isa = PBXGroup;
 			children = (
 				50379B222058CBB4000EE86E /* capacitor.config.json */,
+				LCLZ00010000000000000101 /* Localizable.xcstrings */,
+				SHCT00010000000000000101 /* AppShortcuts.strings */,
 				504EC3071FED79650016851F /* AppDelegate.swift */,
 				ELIZASTARTTRACE000000002 /* ElizaStartupTrace.swift */,
 				ELIZAIOSBRIDGE00000000002 /* ElizaBridgeViewController.swift */,
@@ -557,6 +565,7 @@
 			hasScannedForEncodings = 0;
 			knownRegions = (
 				en,
+				es,
 				Base,
 			);
 			mainGroup = 504EC2FB1FED79650016851F;
@@ -580,6 +589,8 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				LCLZ00010000000000000001 /* Localizable.xcstrings in Resources */,
+				SHCT00010000000000000001 /* AppShortcuts.strings in Resources */,
 				504EC3121FED79650016851F /* LaunchScreen.storyboard in Resources */,
 				PRIVACYAPP000000000000001 /* PrivacyInfo.xcprivacy in Resources */,
 				50B271D11FEDC1A000F3C39B /* public in Resources */,
@@ -622,6 +633,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				LCLZ00010000000000000002 /* Localizable.xcstrings in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -819,6 +831,15 @@
 				504EC3111FED79650016851F /* Base */,
 			);
 			name = LaunchScreen.storyboard;
+			sourceTree = "<group>";
+		};
+		SHCT00010000000000000101 /* AppShortcuts.strings */ = {
+			isa = PBXVariantGroup;
+			children = (
+				SHCT00010000000000000102 /* en */,
+				SHCT00010000000000000103 /* es */,
+			);
+			name = AppShortcuts.strings;
 			sourceTree = "<group>";
 		};
 /* End PBXVariantGroup section */

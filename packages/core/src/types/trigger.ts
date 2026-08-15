@@ -30,6 +30,8 @@ interface TriggerConfigBase {
 	enabled: boolean;
 	wakeMode: TriggerWakeMode;
 	createdBy: string;
+	/** Explicit persisted policy set only by user-facing trigger creation paths. */
+	notifyOnOutcome?: boolean;
 	timezone?: string;
 	intervalMs?: number;
 	scheduledAtIso?: string;

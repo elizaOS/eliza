@@ -48,6 +48,7 @@ import {
   shouldSkipPackagedAppCoreEntry,
   shouldSkipPackagedDependency,
   visitFiles,
+  workspacePackageNeedsRuntimeBuild,
 } from "./copy-runtime-node-modules";
 
 let tmpDir: string;
@@ -104,6 +105,26 @@ describe("matchesRuntimeVariant", () => {
     expect(matchesRuntimeVariant("linux-glibc-x64", "darwin", "x64")).toBe(
       false,
     );
+  });
+});
+
+describe("workspacePackageNeedsRuntimeBuild", () => {
+  it("requires a build when a workspace package's runtime export is missing", () => {
+    const packageJsonPath = writeManifest("@elizaos/plugin-wallet", {
+      exports: {
+        ".": {
+          import: "./dist/index.mjs",
+          default: "./dist/index.mjs",
+        },
+        "./*": {
+          import: "./dist/*.js",
+          default: "./dist/*.js",
+        },
+      },
+      scripts: { build: "bun run build.ts" },
+    });
+
+    expect(workspacePackageNeedsRuntimeBuild(packageJsonPath)).toBe(true);
   });
 });
 
@@ -441,6 +462,11 @@ describe("getRuntimeDependencyEntries", () => {
     expect(names).toEqual(["alpha", "beta", "gamma"]);
     // first-writer wins: beta keeps its dependencies spec, not the optional one.
     expect(entries.find((e) => e.name === "beta")?.spec).toBe("1.0.0");
+    expect(entries.map(({ name, required }) => ({ name, required }))).toEqual([
+      { name: "alpha", required: false },
+      { name: "beta", required: true },
+      { name: "gamma", required: false },
+    ]);
   });
 
   it("returns [] for a manifest with no dependency fields", () => {

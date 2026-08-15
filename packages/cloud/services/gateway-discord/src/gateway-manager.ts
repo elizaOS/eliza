@@ -24,6 +24,11 @@ import {
   type DiscordInstallWelcomeJob,
   DiscordInstallWelcomeQueue,
 } from "./discord-install-welcome-queue";
+import {
+  type DiscordConnectionDmPolicyState,
+  isDmSenderAllowed,
+  parseDiscordConnectionDmPolicyState,
+} from "./dm-policy";
 import { pollTrackedDiscordDms, type TrackedDiscordDm } from "./dm-polling";
 import { logger } from "./logger";
 import {
@@ -34,6 +39,7 @@ import {
 import {
   deliverManagedReply,
   postManagedAgentMessageWithRetry,
+  withManagedTypingHeartbeat,
 } from "./managed-message-egress";
 import {
   drainAndDeliverGreetings as drainAndDeliverPendingGreetings,
@@ -302,6 +308,8 @@ interface BotConnection {
   error?: string;
   /** Store listener references for cleanup */
   listeners: Map<string, unknown>;
+  /** Validated DM state, refreshed from every assignment poll without reconnecting. */
+  dmPolicyState: DiscordConnectionDmPolicyState;
 }
 
 interface HealthStatus {
@@ -345,6 +353,22 @@ async function fetchWithTimeout(
   }
 }
 
+interface GatewayManagerRoutingAdapters {
+  resolveAgentServer: typeof resolveAgentServer;
+  refreshKedaActivity: typeof refreshKedaActivity;
+  forwardToServer: typeof forwardToServer;
+  fetchAssignments: typeof fetchWithTimeout;
+  forwardInWorkerEvent: typeof fetchWithTimeout;
+}
+
+const DEFAULT_ROUTING_ADAPTERS: GatewayManagerRoutingAdapters = {
+  resolveAgentServer,
+  refreshKedaActivity,
+  forwardToServer,
+  fetchAssignments: fetchWithTimeout,
+  forwardInWorkerEvent: fetchWithTimeout,
+};
+
 // ============================================
 // Gateway Manager
 // ============================================
@@ -359,6 +383,7 @@ export class GatewayManager {
   private failoverInterval: NodeJS.Timeout | null = null;
   private tokenRefreshTimeout: NodeJS.Timeout | null = null;
   private voiceHandler: VoiceMessageHandler;
+  private readonly routingAdapters: GatewayManagerRoutingAdapters;
   private consecutivePollFailures: number = 0;
   private lastSuccessfulPoll: Date | null = null;
   /** Pod is draining - no new assignments, waiting for failover */
@@ -394,9 +419,16 @@ export class GatewayManager {
   /** Interval for leader election checks */
   private elizaAppLeaderInterval: NodeJS.Timeout | null = null;
 
-  constructor(config: GatewayConfig) {
+  constructor(
+    config: GatewayConfig,
+    routingAdapters: Partial<GatewayManagerRoutingAdapters> = {},
+  ) {
     this.config = config;
     this.voiceHandler = new VoiceMessageHandler();
+    this.routingAdapters = {
+      ...DEFAULT_ROUTING_ADAPTERS,
+      ...routingAdapters,
+    };
 
     // Initialize Redis for failover coordination.
     // MOCK_REDIS=1 is an explicit opt-in for tests/CI; never silently used
@@ -806,9 +838,12 @@ export class GatewayManager {
       url.searchParams.set("current", currentCount.toString());
       url.searchParams.set("max", MAX_BOTS_PER_POD.toString());
 
-      const response = await fetchWithTimeout(url.toString(), {
-        headers: this.getAuthHeader(),
-      });
+      const response = await this.routingAdapters.fetchAssignments(
+        url.toString(),
+        {
+          headers: this.getAuthHeader(),
+        },
+      );
 
       if (!response.ok) {
         this.consecutivePollFailures++;
@@ -832,12 +867,19 @@ export class GatewayManager {
           botToken: string;
           intents: number;
           characterId: string | null;
+          dmPolicyState?: unknown;
         }>;
       };
 
       for (const assignment of data.assignments) {
-        // Skip if already connected
-        if (this.connections.has(assignment.connectionId)) {
+        const dmPolicyState = parseDiscordConnectionDmPolicyState(
+          assignment.dmPolicyState,
+        );
+        // Refresh the validated state in place so edits reach an existing bot
+        // within one poll interval without replacing its Discord client.
+        const existing = this.connections.get(assignment.connectionId);
+        if (existing) {
+          existing.dmPolicyState = dmPolicyState;
           continue;
         }
 
@@ -871,6 +913,7 @@ export class GatewayManager {
           consecutiveFailures: 0,
           lastHeartbeat: new Date(),
           listeners: new Map(),
+          dmPolicyState,
         };
         this.connections.set(assignment.connectionId, reservation);
 
@@ -922,6 +965,7 @@ export class GatewayManager {
     botToken: string;
     intents: number;
     characterId: string | null;
+    dmPolicyState?: unknown;
   }): Promise<void> {
     logger.info("Connecting bot", {
       connectionId: assignment.connectionId,
@@ -949,6 +993,9 @@ export class GatewayManager {
       consecutiveFailures: 0,
       lastHeartbeat: new Date(),
       listeners: new Map(),
+      dmPolicyState: parseDiscordConnectionDmPolicyState(
+        assignment.dmPolicyState,
+      ),
     };
 
     this.connections.set(assignment.connectionId, conn);
@@ -1338,6 +1385,23 @@ export class GatewayManager {
     const conn = this.connections.get(connectionId);
     if (!conn) return;
 
+    // Enforce one fail-closed DM gate before attachment processing or either
+    // routing topology. The cloud-shared event router remains defense in depth
+    // for in-worker events.
+    if (
+      !message.guildId &&
+      !isDmSenderAllowed(conn.dmPolicyState, message.author.id)
+    ) {
+      logger.debug("DM dropped by connection policy at the gateway", {
+        connectionId,
+        dmPolicy:
+          conn.dmPolicyState.status === "valid"
+            ? (conn.dmPolicyState.metadata.dmPolicy ?? "open")
+            : "invalid",
+      });
+      return;
+    }
+
     const eventData: Record<string, unknown> = {
       id: message.id,
       channel_id: message.channelId,
@@ -1441,9 +1505,14 @@ export class GatewayManager {
     // never registers) falls through to forwardEvent -> CF in-worker, which
     // is the live, proven path. Gradual + reversible: removing the registry
     // key reverts an agent to in-worker with zero redeploy.
-    let route: Awaited<ReturnType<typeof resolveAgentServer>> = null;
+    let route: Awaited<
+      ReturnType<GatewayManagerRoutingAdapters["resolveAgentServer"]>
+    > = null;
     try {
-      route = await resolveAgentServer(this.redis, conn.characterId);
+      route = await this.routingAdapters.resolveAgentServer(
+        this.redis,
+        conn.characterId,
+      );
     } catch (error) {
       logger.warn("resolveAgentServer failed; falling back to in-worker", {
         connectionId,
@@ -1460,14 +1529,17 @@ export class GatewayManager {
     }
 
     try {
-      await refreshKedaActivity(this.redis, route.serverName);
+      await this.routingAdapters.refreshKedaActivity(
+        this.redis,
+        route.serverName,
+      );
       const { channel } = message;
       if ("sendTyping" in channel && typeof channel.sendTyping === "function") {
         await channel.sendTyping();
       }
 
       const userId = `discord-user-${message.author.id}`;
-      const response = await forwardToServer(
+      const response = await this.routingAdapters.forwardToServer(
         route.serverUrl,
         route.serverName,
         conn.characterId,
@@ -1531,7 +1603,7 @@ export class GatewayManager {
     };
 
     try {
-      const response = await fetchWithTimeout(
+      const response = await this.routingAdapters.forwardInWorkerEvent(
         `${this.config.elizaCloudUrl}/api/internal/discord/events`,
         {
           method: "POST",
@@ -2373,53 +2445,77 @@ export class GatewayManager {
     content: string,
   ): Promise<void> {
     try {
-      if ("sendTyping" in message.channel) {
-        await message.channel.sendTyping();
-      }
-
       // Egress health (proven dropped-turn class, E2E 2026-08-05): a single
       // transient failure from the routing API must not consume the user's
       // turn. The route is idempotent on `discord:<messageId>`, so bounded
       // retry replays the SAME turn instead of dropping it.
-      const outcome = await postManagedAgentMessageWithRetry({
-        doPost: () =>
-          fetchWithTimeout(
-            `${this.config.elizaCloudUrl}/api/internal/discord/eliza-app/messages`,
-            {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                ...this.getAuthHeader(),
-              },
-              body: JSON.stringify({
-                ...(message.guildId ? { guildId: message.guildId } : {}),
-                channelId: message.channelId,
-                messageId: message.id,
-                content,
-                sender: {
-                  id: message.author.id,
-                  username: message.author.username,
-                  displayName:
-                    message.member?.displayName ??
-                    message.author.globalName ??
-                    undefined,
-                  avatar: message.author.displayAvatarURL() || null,
+      const startedAt = Date.now();
+      const route = () =>
+        postManagedAgentMessageWithRetry({
+          doPost: () =>
+            fetchWithTimeout(
+              `${this.config.elizaCloudUrl}/api/internal/discord/eliza-app/messages`,
+              {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  ...this.getAuthHeader(),
                 },
-              }),
-              timeout: EVENT_FORWARD_TIMEOUT_MS,
+                body: JSON.stringify({
+                  ...(message.guildId ? { guildId: message.guildId } : {}),
+                  channelId: message.channelId,
+                  messageId: message.id,
+                  content,
+                  sender: {
+                    id: message.author.id,
+                    username: message.author.username,
+                    displayName:
+                      message.member?.displayName ??
+                      message.author.globalName ??
+                      undefined,
+                    avatar: message.author.displayAvatarURL() || null,
+                  },
+                }),
+                timeout: EVENT_FORWARD_TIMEOUT_MS,
+              },
+            ),
+          refreshAuth: () => this.refreshToken(),
+          onAttemptFailure: ({ attempt, status, error }) => {
+            logger.warn("Managed Agent Discord routing attempt failed", {
+              guildId: message.guildId ?? null,
+              channelId: message.channelId,
+              messageId: message.id,
+              attempt,
+              ...(status !== undefined ? { status } : {}),
+              error: sanitizeError(error),
+            });
+          },
+        });
+      const typingChannel =
+        "sendTyping" in message.channel ? message.channel : null;
+      const outcome = typingChannel
+        ? await withManagedTypingHeartbeat(
+            {
+              sendTyping: () => typingChannel.sendTyping(),
+              onFailure: (error) => {
+                logger.warn("Managed Agent Discord typing heartbeat failed", {
+                  guildId: message.guildId ?? null,
+                  channelId: message.channelId,
+                  messageId: message.id,
+                  error,
+                });
+              },
             },
-          ),
-        refreshAuth: () => this.refreshToken(),
-        onAttemptFailure: ({ attempt, status, error }) => {
-          logger.warn("Managed Agent Discord routing attempt failed", {
-            guildId: message.guildId ?? null,
-            channelId: message.channelId,
-            messageId: message.id,
-            attempt,
-            ...(status !== undefined ? { status } : {}),
-            error: sanitizeError(error),
-          });
-        },
+            route,
+          )
+        : await route();
+      logger.info("Managed Agent Discord routing completed", {
+        guildId: message.guildId ?? null,
+        channelId: message.channelId,
+        messageId: message.id,
+        elapsedMs: Date.now() - startedAt,
+        attempts: outcome.attempts,
+        ok: outcome.ok,
       });
 
       if (!outcome.ok) {

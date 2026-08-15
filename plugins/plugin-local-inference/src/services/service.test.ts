@@ -223,6 +223,36 @@ describe("LocalInferenceService activation prewarm", () => {
 			},
 		});
 	});
+
+	it("atomically upgrades legacy local slots without overwriting explicit providers", async () => {
+		const service = new LocalInferenceService();
+		const installed = makeInstalledModel("eliza-1-test");
+
+		await writeRoutingPreferences({
+			preferredProvider: {
+				TEXT_SMALL: "capacitor-llama",
+				TEXT_LARGE: "anthropic",
+			},
+			policy: {
+				TEXT_SMALL: "prefer-local",
+				TEXT_LARGE: "manual",
+			},
+		});
+		vi.spyOn(service, "getInstalled").mockResolvedValue([installed]);
+		vi.spyOn(ActiveModelCoordinator.prototype, "switchTo").mockResolvedValue(
+			readyState(installed.id),
+		);
+
+		await service.setActive(null, installed.id);
+
+		await expect(readRoutingPreferences()).resolves.toMatchObject({
+			preferredProvider: {
+				TEXT_SMALL: "eliza-local-inference",
+				TEXT_LARGE: "anthropic",
+			},
+			policy: { TEXT_SMALL: "manual", TEXT_LARGE: "manual" },
+		});
+	});
 });
 
 describe("LocalInferenceService image-gen GPU vendor detection (#10727)", () => {

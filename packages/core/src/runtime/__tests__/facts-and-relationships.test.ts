@@ -119,7 +119,9 @@ describe("parseFactsAndRelationshipsOutput", () => {
 				thought: "kept one fact and one rel",
 			}),
 		);
-		expect(result.facts).toEqual(["the user's birthday is 1990-03-05"]);
+		expect(result.facts).toEqual([
+			{ subject: "user", fact: "the user's birthday is 1990-03-05" },
+		]);
 		expect(result.relationships).toEqual([
 			{ subject: "user", predicate: "works_with", object: "Alice" },
 		]);
@@ -138,7 +140,7 @@ describe("parseFactsAndRelationshipsOutput", () => {
 				},
 			],
 		});
-		expect(result.facts).toEqual(["a"]);
+		expect(result.facts).toEqual([{ subject: "user", fact: "a" }]);
 	});
 
 	it("parses AI SDK v5 / Cerebras tool-call shape (toolCalls[0].input)", () => {
@@ -166,7 +168,9 @@ describe("parseFactsAndRelationshipsOutput", () => {
 				},
 			],
 		});
-		expect(result.facts).toEqual(["my dog's name is Jeff"]);
+		expect(result.facts).toEqual([
+			{ subject: "user", fact: "my dog's name is Jeff" },
+		]);
 		expect(result.relationships).toEqual([
 			{ subject: "user", predicate: "has_dog_named", object: "Jeff" },
 		]);
@@ -176,11 +180,11 @@ describe("parseFactsAndRelationshipsOutput", () => {
 		const viaArgs = parseFactsAndRelationshipsOutput({
 			toolCalls: [{ args: { facts: ["x"], relationships: [], thought: "" } }],
 		});
-		expect(viaArgs.facts).toEqual(["x"]);
+		expect(viaArgs.facts).toEqual([{ subject: "user", fact: "x" }]);
 		const viaParams = parseFactsAndRelationshipsOutput({
 			toolCalls: [{ params: { facts: ["y"], relationships: [], thought: "" } }],
 		});
-		expect(viaParams.facts).toEqual(["y"]);
+		expect(viaParams.facts).toEqual([{ subject: "user", fact: "y" }]);
 	});
 
 	it("rejects malformed relationship entries instead of silently dropping them", () => {
@@ -273,7 +277,9 @@ describe("runFactsAndRelationshipsStage", () => {
 		);
 
 		// Result parsed and persisted
-		expect(result.parsed.facts).toEqual(["the user's birthday is March 5"]);
+		expect(result.parsed.facts).toEqual([
+			{ subject: "user", fact: "the user's birthday is March 5" },
+		]);
 		expect(result.written.facts).toBe(1);
 		expect(runtime.createMemory).toHaveBeenCalledWith(
 			expect.objectContaining({
@@ -769,5 +775,97 @@ describe("runFactsAndRelationshipsStage — voice/text parity (#8786)", () => {
 			text.result.parsed.relationships,
 		);
 		expect(group.result.written).toEqual(text.result.written);
+	});
+});
+
+describe("fact speaker attribution", () => {
+	const runWithFacts = async (
+		facts: unknown[],
+		priorDialogue: Memory[] = [],
+	) => {
+		const runtime = makeRuntime(
+			JSON.stringify({ facts, relationships: [], thought: "attributed" }),
+		);
+		const result = await runFactsAndRelationshipsStage({
+			runtime,
+			message: makeMessage(),
+			state: makeState(),
+			extract: { facts: ["seed candidate"], relationships: [] },
+			priorDialogue,
+		});
+		return { runtime, result };
+	};
+
+	it("persists a fact under the room entity the model attributed it to", async () => {
+		const { runtime } = await runWithFacts([
+			{ subject: "Alice", fact: "Alice's favorite color is crimson" },
+		]);
+		expect(runtime.createMemory).toHaveBeenCalledWith(
+			expect.objectContaining({
+				entityId: "00000000-0000-0000-0000-0000000000a1",
+				content: expect.objectContaining({
+					text: "Alice's favorite color is crimson",
+				}),
+			}),
+			"facts",
+			true,
+		);
+	});
+
+	it("persists subject 'user' under the current message author", async () => {
+		const { runtime } = await runWithFacts([
+			{ subject: "user", fact: "the user's birthday is March 5" },
+		]);
+		expect(runtime.createMemory).toHaveBeenCalledWith(
+			expect.objectContaining({
+				entityId: "00000000-0000-0000-0000-000000000001",
+			}),
+			"facts",
+			true,
+		);
+	});
+
+	it("falls back to the current author when the subject resolves to nobody", async () => {
+		const { runtime } = await runWithFacts([
+			{ subject: "Zoe", fact: "Zoe's timezone is UTC" },
+		]);
+		expect(runtime.createMemory).toHaveBeenCalledWith(
+			expect.objectContaining({
+				entityId: "00000000-0000-0000-0000-000000000001",
+			}),
+			"facts",
+			true,
+		);
+	});
+
+	it("labels prior dialogue lines with the actual speaker, not a collapsed 'user'", async () => {
+		const bobLine: Memory = {
+			id: "00000000-0000-0000-0000-00000000dddd" as UUID,
+			entityId: "00000000-0000-0000-0000-0000000000b2" as UUID,
+			agentId: "00000000-0000-0000-0000-000000000002" as UUID,
+			roomId: "00000000-0000-0000-0000-000000000003" as UUID,
+			content: { text: "my favorite color is teal", source: "test" },
+			createdAt: 0,
+		};
+		const { runtime } = await runWithFacts(
+			[{ subject: "Bob", fact: "Bob's favorite color is teal" }],
+			[bobLine],
+		);
+		const call = runtime.useModel.mock.calls.find(
+			(entry) => entry[0] === ModelType.TEXT_LARGE || entry[0] === "TEXT_LARGE",
+		);
+		const params = call?.[1] as {
+			messages?: Array<{ role: string; content: string }>;
+		};
+		expect(params.messages?.[1]?.content).toContain(
+			"Bob: my favorite color is teal",
+		);
+		expect(runtime.createMemory).toHaveBeenCalledWith(
+			expect.objectContaining({
+				entityId: "00000000-0000-0000-0000-0000000000b2",
+			}),
+			"facts",
+			true,
+		);
 	});
 });
