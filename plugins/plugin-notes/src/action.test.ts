@@ -157,3 +157,34 @@ describe("NOTES operation parsing", () => {
     expect(after.text).toContain("don't have any notes");
   });
 });
+
+describe("identical-duplicate notes", () => {
+  it("deletes every byte-identical copy as one logical note", async () => {
+    const runtime = await harness();
+    for (let i = 0; i < 4; i += 1) {
+      await run(runtime, { action: "create", content: "i need to buy milk" });
+    }
+    await run(runtime, {
+      action: "create",
+      content: "spare key under the mat",
+    });
+
+    const result = await run(runtime, { action: "delete", content: "milk" });
+    expect(result.success).toBe(true);
+    expect(result.text).toContain("removed 4 identical copies");
+
+    const after = await run(runtime, { action: "list" });
+    expect(after.text).not.toContain("milk");
+    expect(after.text).toContain("spare key");
+  });
+
+  it("still refuses genuinely differing matches as ambiguous", async () => {
+    const runtime = await harness();
+    await run(runtime, { action: "create", content: "buy milk at aldi" });
+    await run(runtime, { action: "create", content: "buy milk for the cat" });
+
+    await expect(
+      run(runtime, { action: "delete", content: "milk" }),
+    ).rejects.toMatchObject({ code: "NOTES_AMBIGUOUS_NOTE" });
+  });
+});
