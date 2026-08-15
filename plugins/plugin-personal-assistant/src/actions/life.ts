@@ -2363,6 +2363,10 @@ function normalizeCadenceDetail(value: unknown): LifeOpsCadence | undefined {
 const EXPLICIT_SCHEDULED_TODO_PATTERNS = [
   /\b(?:today|tomorrow|tonight|next (?:day|week|month|year|monday|tuesday|wednesday|thursday|friday|saturday|sunday))\b/i,
   /\b(?:at|by|on)\s+(?:\d{1,2}(?::\d{2})?\s*(?:a\.?m\.?|p\.?m\.?)?|monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b/i,
+  /\bin\s+(?:\d+|one|two|three|four|five|six|seven|eight|nine|ten|a|an)\s+(?:minutes?|hours?|days?|weeks?|months?|years?)\b/i,
+  /\b(?:at|by|before|after)\s+(?:the\s+)?(?:start|beginning|middle|end)\s+of\s+(?:the\s+|this\s+|next\s+)?(?:day|week|month|year)\b/i,
+  /\b(?:before|after)\s+(?:the\s+)?(?:meeting|game|work|school|lunch|dinner|appointment|trip|flight|event)\b/i,
+  /\b(?:a|one|two|three|four|five|six|seven|eight|nine|ten|\d+)\s+(?:days?|weeks?|months?|years?)\s+from\s+(?:today|tomorrow|monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b/i,
   /\b(?:every|each|daily|weekly|monthly|yearly)\b/i,
   /\b\d{4}-\d{2}-\d{2}\b/,
   /(?:今天|明天|今晚|每天|每周|每週|每月|每年|今日|明日|今夜|毎日|毎週|毎月|毎年|오늘|내일|오늘 밤|매일|매주|매월|매년)/,
@@ -2374,7 +2378,6 @@ const EXPLICIT_UNSCHEDULED_PATTERNS = [
   /\bno (?:schedule|scheduled time|time needed|required time)\b/i,
   /\b(?:plain|undated|unscheduled) (?:todo|task|item)\b/i,
   /\bjust (?:a )?(?:plain )?(?:todo|task)\b/i,
-  /\b(?:someday|whenever)\b/i,
   /\b(?:sin fecha|sin plazo|sin horario)\b/i,
   /\b(?:sem data|sem prazo|sem hor[aá]rio)\b/i,
   /(?:没有|沒有|无|無)(?:截止日期|到期日|日期|时间|時間|日程)/,

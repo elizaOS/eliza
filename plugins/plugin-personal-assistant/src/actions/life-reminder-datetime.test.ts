@@ -767,7 +767,7 @@ describe("runLifeOperationHandler definition update targeting", () => {
 describe("explicit unscheduled owner authority", () => {
   it.each([
     "add buy milk with no due date",
-    "add buy milk someday",
+    "add buy milk as an undated task",
     "añade comprar leche sin fecha",
     "adicionar comprar leite sem prazo",
     "添加买牛奶，没有截止日期",
@@ -785,6 +785,11 @@ describe("explicit unscheduled owner authority", () => {
     "no due date, but actually schedule it tomorrow at 9",
     "not a plain todo — schedule it tomorrow",
     "add buy milk every monday",
+    "someday in two weeks",
+    "whenever, end of the month",
+    "no due date, but in two weeks",
+    "no schedule, after the meeting",
+    "plain todo a week from friday",
   ])("rejects omitted or contradicted no-date authority in %p", (text) => {
     expect(textStatesExplicitUnscheduled(text)).toBe(false);
   });
@@ -852,7 +857,12 @@ describe("runLifeOperationHandler clarification contract", () => {
     ]);
   });
 
-  it.each(["add buy milk as a todo", "add buy milk tomorrow at 9 as a todo"])(
+  it.each([
+    "add buy milk as a todo",
+    "add buy milk tomorrow at 9 as a todo",
+    "someday in two weeks",
+    "whenever, end of the month",
+  ])(
     "does not treat planner-only unscheduled output as explicit for %p",
     async (ownerText) => {
       const runtime = makeRuntime((prompt) => {
