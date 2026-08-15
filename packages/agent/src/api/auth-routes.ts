@@ -64,9 +64,7 @@ export async function handleAuthRoutes(
 
   if (method === "GET" && pathname === "/api/auth/me") {
     const authorized = isAuthorized(req);
-    const localAccess =
-      process.env.ELIZA_REQUIRE_LOCAL_AUTH === "1" ||
-      isTrustedLocalRequest(req);
+    const localAccess = isTrustedLocalRequest(req);
     if (!authorized) {
       json(
         res,
