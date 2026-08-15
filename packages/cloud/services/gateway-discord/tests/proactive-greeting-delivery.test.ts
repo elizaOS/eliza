@@ -5,6 +5,7 @@
 import { describe, expect, mock, test } from "bun:test";
 import {
   drainAndDeliverGreetings,
+  isKnownDiscordDirectMessageRejection,
   isTerminalDiscordDirectMessageError,
 } from "../src/proactive-greeting-delivery";
 
@@ -267,6 +268,22 @@ describe("isTerminalDiscordDirectMessageError", () => {
     expect(isTerminalDiscordDirectMessageError({ status: 429 })).toBe(false);
     expect(isTerminalDiscordDirectMessageError({ status: 503 })).toBe(false);
     expect(isTerminalDiscordDirectMessageError(new TypeError("network"))).toBe(
+      false,
+    );
+  });
+});
+
+describe("isKnownDiscordDirectMessageRejection", () => {
+  test("separates explicit Discord rejection from acceptance ambiguity", () => {
+    expect(
+      isKnownDiscordDirectMessageRejection({ code: 50007, status: 403 }),
+    ).toBe(true);
+    expect(isKnownDiscordDirectMessageRejection({ status: 429 })).toBe(true);
+    expect(isKnownDiscordDirectMessageRejection({ code: 0, status: 503 })).toBe(
+      false,
+    );
+    expect(isKnownDiscordDirectMessageRejection({ status: 503 })).toBe(false);
+    expect(isKnownDiscordDirectMessageRejection(new TypeError("network"))).toBe(
       false,
     );
   });

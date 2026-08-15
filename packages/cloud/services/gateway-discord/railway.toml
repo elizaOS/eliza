@@ -10,6 +10,7 @@
 #   REDIS_URL                  Upstash Redis REST URL (or KV_REST_API_URL).
 #   KV_REST_API_TOKEN          Upstash Redis REST token (paired with REDIS_URL/KV_REST_API_URL).
 #   AGENT_SERVER_SHARED_SECRET Shared secret for /internal/* routes from agent-server.
+#   GATEWAY_INTERNAL_SECRET    Shared secret for authenticated reminder delivery.
 #
 # Optional:
 #   ELIZA_APP_DISCORD_BOT_ENABLED        "true" to run the Eliza App system bot leader.

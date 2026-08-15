@@ -21,6 +21,7 @@ const SHARED_ENV = {
   CEREBRAS_API_KEY: "contract-value",
   ELIZA_APP_WEBHOOK_GATEWAY_URL: "https://gateway.example.invalid",
   ELIZA_APP_WEBHOOK_GATEWAY_SECRET: "contract-value",
+  GATEWAY_INTERNAL_SECRET: "contract-value",
 };
 
 function runStrict(channels, env = {}) {
@@ -85,4 +86,5 @@ test("workflow keeps trusted configuration checks manual and source tests on dev
     workflow,
     /ELIZA_APP_WEBHOOK_GATEWAY_URL: \$\{\{ secrets\.ELIZA_APP_WEBHOOK_GATEWAY_URL \}\}/,
   );
+  assert.match(workflow, /GATEWAY_INTERNAL_SECRET: \$\{\{ secrets\.GATEWAY_INTERNAL_SECRET \}\}/);
 });

@@ -161,6 +161,13 @@ function checkShared() {
     "Webhook gateway forwarder secret is configured",
     "Set ELIZA_APP_WEBHOOK_GATEWAY_SECRET to the shared BFF→gateway trust secret.",
   );
+  addCheck(
+    "shared",
+    "internal delivery secret",
+    hasAny(["GATEWAY_INTERNAL_SECRET"]),
+    "Internal reminder delivery secret is configured",
+    "Set GATEWAY_INTERNAL_SECRET consistently on the Cloud Worker and messaging gateways.",
+  );
 }
 
 if (selectedChannels.has("shared")) checkShared();

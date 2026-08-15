@@ -80,7 +80,7 @@ function parseDelivery(value: unknown): InternalWebhookDelivery | undefined {
     !/^[a-z0-9][a-z0-9_-]{0,63}$/i.test(input.project) ||
     typeof input.text !== "string" ||
     !input.text.trim() ||
-    input.text.length > 4096 ||
+    input.text.length > 2000 ||
     typeof input.idempotencyKey !== "string" ||
     !/^[a-zA-Z0-9:._-]{1,200}$/.test(input.idempotencyKey)
   ) {
@@ -138,7 +138,21 @@ export async function deliverInternalMessage(
   }
 
   const dedupeKey = `internal-delivery:${delivery.platform}:${delivery.project}:${delivery.idempotencyKey}`;
-  const existingValue = await dependencies.redis.get<string>(dedupeKey);
+  let existingValue: string | null;
+  try {
+    existingValue = await dependencies.redis.get<string>(dedupeKey);
+  } catch {
+    // error-policy:J1 no provider call occurs when durable replay state is unavailable.
+    return Response.json(
+      {
+        success: false,
+        error: "delivery receipt store unavailable",
+        retryable: true,
+        acceptance: "not_accepted",
+      },
+      { status: 503, headers: { "Retry-After": "1" } },
+    );
+  }
   const existing = parseReceipt(existingValue);
   if (existing?.state === "complete") {
     const acceptedAt = existing.acceptedAt ?? new Date().toISOString();
@@ -170,10 +184,24 @@ export async function deliverInternalMessage(
       { status: 409, headers: { "Retry-After": "1" } },
     );
   }
-  const claimed = await dependencies.redis.set(dedupeKey, "pending", {
-    ex: 60,
-    nx: true,
-  });
+  let claimed: unknown;
+  try {
+    claimed = await dependencies.redis.set(dedupeKey, "pending", {
+      ex: 60,
+      nx: true,
+    });
+  } catch {
+    // error-policy:J1 no provider call occurs without a durable dispatch claim.
+    return Response.json(
+      {
+        success: false,
+        error: "delivery receipt store unavailable",
+        retryable: true,
+        acceptance: "not_accepted",
+      },
+      { status: 503, headers: { "Retry-After": "1" } },
+    );
+  }
   if (claimed === null) {
     return Response.json(
       { success: false, error: "delivery in progress", retryable: true },
@@ -191,10 +219,22 @@ export async function deliverInternalMessage(
       delivery.project,
     );
     if (!config) {
-      await dependencies.redis.del(dedupeKey);
+      let claimReleased = true;
+      try {
+        await dependencies.redis.del(dedupeKey);
+      } catch {
+        // error-policy:J6 the bounded pre-egress claim expires without provider side effects.
+        claimReleased = false;
+      }
       return Response.json(
-        { success: false, error: "connector unavailable", retryable: true },
-        { status: 503, headers: { "Retry-After": "1" } },
+        {
+          success: false,
+          error: "connector unavailable",
+          retryable: true,
+          acceptance: "not_accepted",
+          claimReleased,
+        },
+        { status: 503, headers: { "Retry-After": claimReleased ? "1" : "60" } },
       );
     }
     const event: ChatEvent = {
@@ -260,7 +300,13 @@ export async function deliverInternalMessage(
       error instanceof TelegramApiResponseError ||
       error instanceof BlooioApiResponseError
     ) {
-      await dependencies.redis.del(dedupeKey);
+      let claimReleased = true;
+      try {
+        await dependencies.redis.del(dedupeKey);
+      } catch {
+        // error-policy:J6 the bounded claim expires after this explicit provider rejection.
+        claimReleased = false;
+      }
       const providerStatus =
         error instanceof TelegramApiResponseError
           ? error.errorCode
@@ -283,12 +329,13 @@ export async function deliverInternalMessage(
           error: "provider rejected delivery",
           retryable: true,
           acceptance: "not_accepted",
+          claimReleased,
           idempotencyKey: delivery.idempotencyKey,
         },
         {
           status,
           headers:
-            status === 429
+            status === 429 && claimReleased
               ? {
                   "Retry-After": String(
                     error instanceof TelegramApiResponseError
@@ -296,7 +343,9 @@ export async function deliverInternalMessage(
                       : 1,
                   ),
                 }
-              : undefined,
+              : !claimReleased
+                ? { "Retry-After": "60" }
+                : undefined,
         },
       );
     }
@@ -305,7 +354,11 @@ export async function deliverInternalMessage(
     if (!connectorAttempted || delivery.platform === "blooio") {
       // Blooio enforces the stable provider idempotency key, so clearing this
       // process-local claim permits a safe operator retry after an unknown response.
-      await dependencies.redis.del(dedupeKey);
+      try {
+        await dependencies.redis.del(dedupeKey);
+      } catch {
+        // error-policy:J6 the bounded claim expires; the primary acceptance result wins.
+      }
     }
     logger.error("Shared reminder delivery failed", {
       project: delivery.project,
@@ -327,7 +380,12 @@ export async function deliverInternalMessage(
       );
     }
     return Response.json(
-      { success: false, error: "delivery failed", retryable: true },
+      {
+        success: false,
+        error: "delivery failed",
+        retryable: true,
+        acceptance: "not_accepted",
+      },
       { status: 502, headers: { "Retry-After": "1" } },
     );
   }

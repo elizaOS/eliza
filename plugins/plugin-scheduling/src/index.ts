@@ -45,4 +45,7 @@ export {
   type SchedulingRouteContext,
 } from "./routes/scheduled-tasks.ts";
 export * from "./scheduled-task/index.ts";
-export { SHARED_CUTOVER_GATEWAY_CHANNEL } from "./shared-reminders.ts";
+export {
+  SHARED_CUTOVER_GATEWAY_CHANNEL,
+  SHARED_REMINDER_MAX_TEXT_LENGTH,
+} from "./shared-reminders.ts";

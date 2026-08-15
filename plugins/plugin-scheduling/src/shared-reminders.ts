@@ -19,6 +19,7 @@ import type {
 
 /** Dedicated runtimes route imported Shared reminders through Cloud's trusted gateway. */
 export const SHARED_CUTOVER_GATEWAY_CHANNEL = "shared_gateway_dm";
+export const SHARED_REMINDER_MAX_TEXT_LENGTH = 2000;
 
 export const SHARED_REMINDERS_EDGE_COMPATIBILITY = {
   target: "edge",
@@ -288,6 +289,12 @@ export function createSharedRemindersEdgeAction(
         const body = textParameter(input, "reminderText", "text", "body");
         if (!body)
           return await actionFailure("Reminder text is required.", callback);
+        if (body.length > SHARED_REMINDER_MAX_TEXT_LENGTH) {
+          return await actionFailure(
+            `Reminder text must be ${SHARED_REMINDER_MAX_TEXT_LENGTH} characters or fewer.`,
+            callback,
+          );
+        }
         const trigger = reminderTrigger(input, now());
         if (!trigger) {
           return await actionFailure(

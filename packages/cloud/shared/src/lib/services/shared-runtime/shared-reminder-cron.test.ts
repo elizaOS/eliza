@@ -5,12 +5,16 @@ import { afterEach, describe, expect, mock, test } from "bun:test";
 const listDueScheduledTaskRefs = mock(async () => [
   { agentId: "personal:owner", taskId: "reminder-1" },
 ]);
+const listRecoverableScheduledTaskRefs = mock(async () => []);
 const claims = new Set<string>();
 const createSharedScheduledTaskRunner = mock(
   (
     agentId: string,
     dispatcher: {
-      dispatch(record: Record<string, unknown>): Promise<{ ok: boolean }>;
+      dispatch(record: Record<string, unknown>): Promise<{
+        ok: boolean;
+        acceptance?: "unknown" | "not_accepted";
+      }>;
     },
   ) => ({
     async fireWithResult(taskId: string) {
@@ -22,6 +26,7 @@ const createSharedScheduledTaskRunner = mock(
         promptInstructions: "stand up and stretch",
         firedAtIso: "2026-08-14T20:00:00.000Z",
         metadata: {
+          dispatchIdempotencyKey: "reminder-1:2026-08-14T20:00:00.000Z",
           delivery: {
             platform: "telegram",
             project: "eliza-app",
@@ -30,13 +35,18 @@ const createSharedScheduledTaskRunner = mock(
         },
         output: { fallback: { body: "time to stand up and stretch" } },
       });
-      return result.ok ? { kind: "fired" as const } : { kind: "dispatch_deferred" as const };
+      if (result.ok) return { kind: "fired" as const };
+      return result.acceptance === "unknown"
+        ? { kind: "dispatch_failed" as const }
+        : { kind: "dispatch_deferred" as const };
     },
   }),
 );
 
 mock.module("@elizaos/plugin-scheduling/edge", () => ({
   listDueScheduledTaskRefs,
+  listRecoverableScheduledTaskRefs,
+  SHARED_REMINDER_MAX_TEXT_LENGTH: 2000,
   parseSharedReminderDelivery(value: unknown) {
     if (!value || typeof value !== "object") return undefined;
     const delivery = value as Record<string, unknown>;
@@ -60,6 +70,7 @@ afterEach(() => {
   globalThis.fetch = originalFetch;
   claims.clear();
   listDueScheduledTaskRefs.mockClear();
+  listRecoverableScheduledTaskRefs.mockClear();
   createSharedScheduledTaskRunner.mockClear();
   mock.restore();
 });
@@ -152,6 +163,7 @@ describe("Shared reminder cron", () => {
       promptInstructions: "check Discord",
       firedAtIso: "2026-08-15T20:00:00.000Z",
       metadata: {
+        dispatchIdempotencyKey: "discord-reminder:2026-08-15T20:00:00.000Z",
         delivery: {
           platform: "discord",
           discordUserId: "123456789012345678",
@@ -163,6 +175,7 @@ describe("Shared reminder cron", () => {
       promptInstructions: "check Messages",
       firedAtIso: "2026-08-15T20:01:00.000Z",
       metadata: {
+        dispatchIdempotencyKey: "imessage-reminder:2026-08-15T20:01:00.000Z",
         delivery: {
           platform: "blooio",
           project: "eliza-app",
@@ -193,6 +206,61 @@ describe("Shared reminder cron", () => {
       target: "123456789012345678",
     });
     expect(blooio).toMatchObject({ ok: true, target: "+15551234567" });
+  });
+
+  test("reuses the persisted occurrence key across recovery and rejects oversized text", async () => {
+    const requests: Request[] = [];
+    globalThis.fetch = mock(async (input, init) => {
+      const outgoing = new Request(input, init);
+      requests.push(outgoing);
+      const body = (await outgoing.clone().json()) as Record<string, unknown>;
+      return Response.json({
+        success: true,
+        idempotencyKey: body.idempotencyKey,
+        acceptedAt: "2026-08-15T20:05:00.000Z",
+        providerMessageIds: ["provider-recovered"],
+      });
+    }) as typeof fetch;
+    const dispatcher = sharedReminderDispatcher(env);
+    await expect(
+      dispatcher.dispatch({
+        taskId: "recovered-reminder",
+        promptInstructions: "recover me",
+        firedAtIso: "2026-08-15T20:05:00.000Z",
+        metadata: {
+          dispatchIdempotencyKey: "recovered-reminder:2026-08-15T20:00:00.000Z",
+          delivery: {
+            platform: "telegram",
+            project: "eliza-app",
+            chatId: "123456789",
+          },
+        },
+      }),
+    ).resolves.toMatchObject({ ok: true });
+    await expect(requests[0]?.json()).resolves.toMatchObject({
+      idempotencyKey: "recovered-reminder:2026-08-15T20:00:00.000Z",
+    });
+
+    await expect(
+      dispatcher.dispatch({
+        taskId: "oversized-reminder",
+        promptInstructions: "x".repeat(2001),
+        firedAtIso: "2026-08-15T20:05:00.000Z",
+        metadata: {
+          dispatchIdempotencyKey: "oversized-reminder:occurrence",
+          delivery: {
+            platform: "telegram",
+            project: "eliza-app",
+            chatId: "123456789",
+          },
+        },
+      }),
+    ).resolves.toMatchObject({
+      ok: false,
+      acceptance: "not_accepted",
+      userActionable: true,
+    });
+    expect(requests).toHaveLength(1);
   });
 
   for (const status of [403, 429]) {
@@ -235,8 +303,8 @@ describe("Shared reminder cron", () => {
       scanned: 1,
       fired: 0,
       raced: 0,
-      deferred: 1,
-      failed: 0,
+      deferred: 0,
+      failed: 1,
     });
   });
 
@@ -269,8 +337,8 @@ describe("Shared reminder cron", () => {
         scanned: 1,
         fired: 0,
         raced: 0,
-        deferred: 1,
-        failed: 0,
+        deferred: 0,
+        failed: 1,
       });
     });
   }
@@ -294,6 +362,7 @@ describe("Shared reminder cron", () => {
         promptInstructions: "stand up",
         firedAtIso: "2026-08-14T20:00:00.000Z",
         metadata: {
+          dispatchIdempotencyKey: "reminder-1:2026-08-14T20:00:00.000Z",
           delivery: {
             platform: "telegram",
             project: "eliza-app",
