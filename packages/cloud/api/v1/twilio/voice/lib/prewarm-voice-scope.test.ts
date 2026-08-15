@@ -35,11 +35,14 @@ describe("Twilio voice scope prewarm", () => {
       claims,
       env: {} as never,
       executionCtx: { waitUntil: (promise) => waits.push(promise) },
+      freshConversation: true,
       hydrateScope,
     });
 
     await Promise.resolve();
-    expect(hydrateScope).toHaveBeenCalledWith({}, claims, agent);
+    expect(hydrateScope).toHaveBeenCalledWith({}, claims, agent, {
+      freshConversation: true,
+    });
     expect(waits).toEqual([prewarm]);
     releaseHydration?.();
     await prewarm;
