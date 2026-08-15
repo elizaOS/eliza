@@ -64,6 +64,32 @@ describe("renderMessageHandlerStablePrefix", () => {
 		expect(a).toBe(b);
 	});
 
+	it("renders chat style directions exactly once, excluding post style", async () => {
+		const runtime = makeRuntime();
+		(
+			runtime.character as {
+				style?: { all?: string[]; chat?: string[]; post?: string[] };
+			}
+		).style = {
+			all: ["be brief", "no emoji"],
+			chat: ["match their energy"],
+			post: ["one idea per post"],
+		};
+		const prefix = await renderMessageHandlerStablePrefix(runtime, ROOM_ID);
+		expect(prefix.split("# Message Directions for Test Agent").length - 1).toBe(
+			1,
+		);
+		expect(prefix).toContain("be brief");
+		expect(prefix).toContain("match their energy");
+		expect(prefix).not.toContain("one idea per post");
+	});
+
+	it("omits the style block when the character declares no chat style", async () => {
+		const runtime = makeRuntime();
+		const prefix = await renderMessageHandlerStablePrefix(runtime, ROOM_ID);
+		expect(prefix).not.toContain("# Message Directions");
+	});
+
 	it("calls composeState once per render (so providers are sampled)", async () => {
 		const runtime = makeRuntime();
 		await renderMessageHandlerStablePrefix(runtime, ROOM_ID);
