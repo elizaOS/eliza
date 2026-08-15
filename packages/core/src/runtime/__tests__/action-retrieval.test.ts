@@ -14,6 +14,7 @@ import { buildActionCatalog } from "../action-catalog";
 import {
 	parentAliasesForCandidateAction,
 	retrieveActions,
+	stripControlBlockMarkers,
 	tokenizeActionSearchText,
 } from "../action-retrieval";
 
@@ -901,5 +902,61 @@ describe("canonical OWNER_* fallbacks for non-PA topologies", () => {
 		// Direct catalog reference wins; the fallback aliases must not fire.
 		expect(response.query.parentActionHints).toEqual(["OWNER_TODOS"]);
 		expect(response.results[0]).toMatchObject({ name: "OWNER_TODOS" });
+	});
+
+	it("strips app-surface control blocks from text", () => {
+		const text = [
+			"2 scheduled items: water the garden, submit the invoice",
+			"[FOLLOWUPS]",
+			"navigate:/apps/reminders=Open reminders",
+			"prompt:Delete water the garden=Delete water garden",
+			"[/FOLLOWUPS]",
+			"[CHECKLIST]",
+			'{"title":"Cleanup","items":[]}',
+			"[/CHECKLIST]",
+			"connect it first. [CONFIG:google_calendars]",
+		].join("\n");
+		const cleaned = stripControlBlockMarkers(text);
+		expect(cleaned).toContain("water the garden, submit the invoice");
+		expect(cleaned).toContain("connect it first.");
+		for (const leak of [
+			"FOLLOWUPS",
+			"navigate",
+			"/apps/",
+			"prompt:",
+			"CHECKLIST",
+			"CONFIG",
+		]) {
+			expect(cleaned).not.toContain(leak);
+		}
+	});
+
+	it("does not let a leaked control block in the window evict the candidate action (tj-f8bdfafb488900)", () => {
+		const catalog = buildActionCatalog([
+			{
+				name: "OWNER_REMINDERS",
+				description:
+					"Create, list, update, and delete the owner's reminders and scheduled nudges.",
+			},
+			{
+				name: "CLOSE_ALL_VIEWS",
+				description:
+					"Close every open app view. Navigate views, open apps, prompt panels.",
+			},
+		]);
+		const response = retrieveActions({
+			catalog,
+			messageText: "now delete the submit the invoice reminder too",
+			candidateActions: ["OWNER_REMINDERS"],
+			recentConversationText: [
+				"2 scheduled items: water the garden, submit the invoice",
+				"[FOLLOWUPS]\nnavigate:/apps/reminders=Open reminders\nprompt:Delete water the garden=Delete water garden\nprompt:Delete submit the invoice=Delete invoice\n[/FOLLOWUPS]",
+			],
+		});
+
+		// Live failure shape: the leaked navigate/apps/open/prompt vocabulary
+		// out-scored the stage-1 candidate and tiering kept only the view
+		// action. With the window stripped, the candidate stays on top.
+		expect(response.results[0]).toMatchObject({ name: "OWNER_REMINDERS" });
 	});
 });
