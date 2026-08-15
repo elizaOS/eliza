@@ -13,5 +13,7 @@ export {
 	readRoutingPreferences,
 	setPolicy,
 	setPreferredProvider,
+	setTextRouting,
+	updateRoutingPreferences,
 	writeRoutingPreferences,
 } from "@elizaos/shared/local-inference/routing-preferences";

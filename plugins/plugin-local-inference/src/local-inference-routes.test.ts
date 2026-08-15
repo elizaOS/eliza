@@ -8,6 +8,10 @@ import type http from "node:http";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { PassThrough } from "node:stream";
+import {
+	readRoutingPreferences,
+	writeRoutingPreferences,
+} from "@elizaos/shared/local-inference/routing-preferences";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 function freshActiveState() {
@@ -156,6 +160,7 @@ import {
 	getLocalInferenceActiveModelId,
 	getLocalInferenceActiveSnapshot,
 	getLocalInferenceChatStatus,
+	handleLocalInferenceChatCommand,
 	handleLocalInferenceRoutes,
 	reauthorizeRedirectHeaders,
 } from "./local-inference-routes.js";
@@ -229,6 +234,62 @@ function writeInstalledModel(id: string): string {
 	return modelPath;
 }
 
+describe("POST /api/local-inference/routing/text", () => {
+	beforeEach(() => {
+		tempStateDir = mkdtempSync(path.join(tmpdir(), "eliza-routing-routes-"));
+		process.env.ELIZA_STATE_DIR = tempStateDir;
+	});
+
+	afterEach(() => {
+		if (tempStateDir) {
+			rmSync(tempStateDir, { recursive: true, force: true });
+			tempStateDir = null;
+		}
+		if (originalStateDir === undefined) delete process.env.ELIZA_STATE_DIR;
+		else process.env.ELIZA_STATE_DIR = originalStateDir;
+	});
+
+	it("publishes provider and policy for both text slots in one request", async () => {
+		const req = makeJsonRequest("POST", "/api/local-inference/routing/text", {
+			provider: "elizacloud",
+			policy: "manual",
+		});
+		const res = makeJsonResponse();
+
+		await expect(handleLocalInferenceRoutes(req, res)).resolves.toBe(true);
+
+		expect(res.statusCode).toBe(200);
+		await expect(readRoutingPreferences()).resolves.toMatchObject({
+			preferredProvider: {
+				TEXT_SMALL: "elizacloud",
+				TEXT_LARGE: "elizacloud",
+			},
+			policy: { TEXT_SMALL: "manual", TEXT_LARGE: "manual" },
+		});
+	});
+
+	it("rejects invalid input without changing either text slot", async () => {
+		await writeRoutingPreferences({
+			preferredProvider: {
+				TEXT_SMALL: "eliza-local-inference",
+				TEXT_LARGE: "eliza-local-inference",
+			},
+			policy: { TEXT_SMALL: "manual", TEXT_LARGE: "manual" },
+		});
+		const before = await readRoutingPreferences();
+		const req = makeJsonRequest("POST", "/api/local-inference/routing/text", {
+			provider: "elizacloud",
+			policy: "sometimes",
+		});
+		const res = makeJsonResponse();
+
+		await expect(handleLocalInferenceRoutes(req, res)).resolves.toBe(true);
+
+		expect(res.statusCode).toBe(400);
+		await expect(readRoutingPreferences()).resolves.toEqual(before);
+	});
+});
+
 describe("local inference chat status", () => {
 	beforeEach(() => {
 		if (tempStateDir) {
@@ -295,6 +356,33 @@ describe("local inference chat status", () => {
 		});
 		expect(status.text).toContain("Model: eliza-1-2b.");
 		expect(status.text).not.toMatch(/none is loaded|waiting to be activated/i);
+	});
+
+	it("does not publish local routing when chat-command activation fails", async () => {
+		writeInstalledModel("eliza-1-2b");
+		await writeRoutingPreferences({
+			preferredProvider: {
+				TEXT_SMALL: "elizacloud",
+				TEXT_LARGE: "elizacloud",
+			},
+			policy: { TEXT_SMALL: "manual", TEXT_LARGE: "manual" },
+		});
+		bridgeMock.loadMobileDeviceBridgeModel.mockRejectedValueOnce(
+			new Error("activation refused"),
+		);
+
+		await expect(
+			handleLocalInferenceChatCommand("use_local", "use eliza-1-2b"),
+		).resolves.toMatchObject({
+			localInference: { status: "failed", error: "activation refused" },
+		});
+
+		await expect(readRoutingPreferences()).resolves.toMatchObject({
+			preferredProvider: {
+				TEXT_SMALL: "elizacloud",
+				TEXT_LARGE: "elizacloud",
+			},
+		});
 	});
 
 	it("uses the AOSP active marker when the native APK loader has the chat model open", async () => {

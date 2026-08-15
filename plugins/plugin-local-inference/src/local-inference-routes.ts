@@ -23,16 +23,26 @@ import {
 	sendJsonError,
 } from "@elizaos/core";
 import {
+	AGENT_MODEL_SLOTS,
+	type AgentModelSlot,
 	buildHuggingFaceResolveUrl,
 	isMobilePlatform,
+	isRoutingPolicy,
+	ROUTING_POLICIES,
+	type RoutingPreferences,
 	resolveHubAuthHeaders,
 	MODEL_CATALOG as SHARED_MODEL_CATALOG,
 	type CatalogModel as SharedCatalogModel,
 } from "@elizaos/shared";
 import {
+	readRoutingPreferences,
+	setPolicy,
+	setPreferredProvider,
+	setTextRouting,
+} from "@elizaos/shared/local-inference/routing-preferences";
+import {
 	LOCAL_INFERENCE_MODEL_TYPES,
 	LOCAL_INFERENCE_PROVIDER_ID,
-	LOCAL_INFERENCE_TEXT_MODEL_TYPES,
 } from "./provider.js";
 import { classifyDeviceTier } from "./services/device-tier.js";
 import {
@@ -225,16 +235,6 @@ type Assignments = Partial<
 	Record<(typeof LOCAL_INFERENCE_MODEL_TYPES)[number], string>
 >;
 
-interface RoutingPreferences {
-	preferredProvider: Record<string, string>;
-	policy: Record<string, string>;
-}
-
-interface RoutingPreferencesFile {
-	version: number;
-	preferences: RoutingPreferences;
-}
-
 let activeModelState: {
 	modelId: string | null;
 	loadedAt: string | null;
@@ -379,10 +379,6 @@ function registryPath(): string {
 
 function assignmentsPath(): string {
 	return path.join(localInferenceRoot(), "assignments.json");
-}
-
-function routingPath(): string {
-	return path.join(localInferenceRoot(), "routing.json");
 }
 
 function aospActivePath(): string {
@@ -625,16 +621,6 @@ async function writeAssignments(
 ): Promise<Assignments> {
 	await writeJsonFile(assignmentsPath(), { version: 1, assignments });
 	return assignments;
-}
-
-function defaultRoutingPreferences(): RoutingPreferencesFile {
-	return {
-		version: 1,
-		preferences: {
-			preferredProvider: {},
-			policy: {},
-		},
-	};
 }
 
 async function assignModel(
@@ -1079,16 +1065,7 @@ async function resolveDefaultChatModel(
 }
 
 async function setRoutingForChat(provider: string): Promise<void> {
-	const current = await readJsonFile<RoutingPreferencesFile>(
-		routingPath(),
-		defaultRoutingPreferences(),
-	);
-	const preferences = current.preferences;
-	for (const slot of LOCAL_INFERENCE_TEXT_MODEL_TYPES) {
-		preferences.preferredProvider[slot] = provider;
-		preferences.policy[slot] = "manual";
-	}
-	await writeJsonFile(routingPath(), { version: 1, preferences });
+	await setTextRouting(provider, "manual");
 }
 
 async function activateInstalledModel(
@@ -1248,17 +1225,21 @@ export async function handleLocalInferenceChatCommand(
 	}
 
 	if (intent === "use_local") {
-		await setRoutingForChat("capacitor-llama");
 		const installed = await installedSnapshot();
 		const requested = await resolveDefaultChatModel(prompt);
 		const installedModel = installed.find(
 			(entry) => entry.id === requested?.id,
 		);
 		if (installedModel) {
-			return activateInstalledModel(installedModel);
+			const result = await activateInstalledModel(installedModel);
+			if (result.localInference.status === "ready") {
+				await setRoutingForChat("capacitor-llama");
+			}
+			return result;
 		}
 		if (requested) {
 			const job = await startDownload(requested.id);
+			await setRoutingForChat("capacitor-llama");
 			return buildLocalInferenceChatResult(
 				{
 					intent: "download",
@@ -1440,41 +1421,38 @@ export async function applyLocalInferenceManagementMutation(
 			});
 		}
 		case "set_policy": {
-			const slot = requireSlot(input.slot, input.op);
-			const current = await readJsonFile<RoutingPreferencesFile>(
-				routingPath(),
-				defaultRoutingPreferences(),
-			);
-			if (typeof input.policy === "string" && input.policy.trim()) {
-				current.preferences.policy[slot] = input.policy.trim();
-			} else {
-				delete current.preferences.policy[slot];
+			const slot = requireSlot(input.slot, input.op) as AgentModelSlot;
+			if (!AGENT_MODEL_SLOTS.includes(slot)) {
+				throw new Error(`Unknown local-inference routing slot: ${slot}`);
 			}
-			await writeJsonFile(routingPath(), current);
+			const rawPolicy = input.policy?.trim() || null;
+			if (rawPolicy !== null && !isRoutingPolicy(rawPolicy)) {
+				throw new Error(
+					`Routing policy must be one of ${ROUTING_POLICIES.join(", ")}`,
+				);
+			}
+			const preferences = await setPolicy(slot, rawPolicy);
 			return {
 				op: input.op,
 				slot,
-				policy: current.preferences.policy[slot] ?? null,
-				preferences: current.preferences,
+				policy: preferences.policy[slot] ?? null,
+				preferences,
 			};
 		}
 		case "set_preferred_provider": {
-			const slot = requireSlot(input.slot, input.op);
-			const current = await readJsonFile<RoutingPreferencesFile>(
-				routingPath(),
-				defaultRoutingPreferences(),
-			);
-			if (typeof input.provider === "string" && input.provider.trim()) {
-				current.preferences.preferredProvider[slot] = input.provider.trim();
-			} else {
-				delete current.preferences.preferredProvider[slot];
+			const slot = requireSlot(input.slot, input.op) as AgentModelSlot;
+			if (!AGENT_MODEL_SLOTS.includes(slot)) {
+				throw new Error(`Unknown local-inference routing slot: ${slot}`);
 			}
-			await writeJsonFile(routingPath(), current);
+			const preferences = await setPreferredProvider(
+				slot,
+				input.provider?.trim() || null,
+			);
 			return {
 				op: input.op,
 				slot,
-				provider: current.preferences.preferredProvider[slot] ?? null,
-				preferences: current.preferences,
+				provider: preferences.preferredProvider[slot] ?? null,
+				preferences,
 			};
 		}
 		case "set_assignment": {
@@ -1720,10 +1698,7 @@ export async function handleLocalInferenceRoutes(
 		return true;
 	}
 	if (method === "GET" && pathname === "/api/local-inference/routing") {
-		const preferences = await readJsonFile<RoutingPreferencesFile>(
-			routingPath(),
-			defaultRoutingPreferences(),
-		);
+		const preferences = await readRoutingPreferences();
 		sendJson(res, {
 			registrations: LOCAL_INFERENCE_MODEL_TYPES.map((modelType) => ({
 				modelType,
@@ -1731,8 +1706,32 @@ export async function handleLocalInferenceRoutes(
 				priority: 0,
 				registeredAt: new Date().toISOString(),
 			})),
-			preferences: preferences.preferences,
+			preferences,
 		});
+		return true;
+	}
+	if (method === "POST" && pathname === "/api/local-inference/routing/text") {
+		const body = await readJsonBody<Record<string, unknown>>(req, res);
+		if (!body) return true;
+		const provider =
+			typeof body.provider === "string" && body.provider.trim().length > 0
+				? body.provider.trim()
+				: null;
+		if (!provider) {
+			sendJsonError(res, "provider is required");
+			return true;
+		}
+		const policy = body.policy ?? "manual";
+		if (!isRoutingPolicy(policy)) {
+			sendJsonError(
+				res,
+				`policy must be one of ${ROUTING_POLICIES.join(", ")}`,
+				400,
+			);
+			return true;
+		}
+		const preferences = await setTextRouting(provider, policy);
+		sendJson(res, { preferences });
 		return true;
 	}
 	if (
@@ -1745,24 +1744,29 @@ export async function handleLocalInferenceRoutes(
 			sendJsonError(res, "slot is required");
 			return true;
 		}
-		const current = await readJsonFile<RoutingPreferencesFile>(
-			routingPath(),
-			defaultRoutingPreferences(),
-		);
-		const preferences = current.preferences;
-		const slot = body.slot;
-		if (pathname.endsWith("/preferred")) {
-			if (typeof body.provider === "string" && body.provider.trim()) {
-				preferences.preferredProvider[slot] = body.provider.trim();
-			} else {
-				delete preferences.preferredProvider[slot];
-			}
-		} else if (typeof body.policy === "string" && body.policy.trim()) {
-			preferences.policy[slot] = body.policy.trim();
-		} else {
-			delete preferences.policy[slot];
+		const slot = body.slot as AgentModelSlot;
+		if (!AGENT_MODEL_SLOTS.includes(slot)) {
+			sendJsonError(res, "slot must be a valid AgentModelSlot");
+			return true;
 		}
-		await writeJsonFile(routingPath(), { version: 1, preferences });
+		let preferences: Awaited<ReturnType<typeof setPolicy>>;
+		if (pathname.endsWith("/preferred")) {
+			preferences = await setPreferredProvider(
+				slot,
+				typeof body.provider === "string" && body.provider.trim()
+					? body.provider.trim()
+					: null,
+			);
+		} else if (body.policy === null || isRoutingPolicy(body.policy)) {
+			preferences = await setPolicy(slot, body.policy);
+		} else {
+			sendJsonError(
+				res,
+				`policy must be one of ${ROUTING_POLICIES.join(", ")} or null`,
+				400,
+			);
+			return true;
+		}
 		sendJson(res, { preferences });
 		return true;
 	}

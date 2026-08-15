@@ -45,7 +45,6 @@ import {
   findCatalogModel,
   type ProviderId,
   readJsonBody,
-  TEXT_GENERATION_SLOTS,
 } from "@elizaos/shared";
 import { PendingRequestMap } from "./pending-request-map.ts";
 
@@ -192,27 +191,16 @@ async function applyTextRouting(
   fetchImpl: typeof fetch,
   provider: ProviderId,
 ): Promise<void> {
-  // `preferredProvider` is only honoured under the "manual" policy
-  // (plugin-local-inference routing-policy.ts), so both are set per text slot.
-  for (const slot of TEXT_GENERATION_SLOTS) {
-    const preferred = await loopbackJson(
-      fetchImpl,
-      "POST",
-      "/api/local-inference/routing/preferred",
-      { slot, provider },
-    );
-    if (!preferred.ok) {
-      throw new Error(`routing/preferred ${slot} returned ${preferred.status}`);
-    }
-    const policy = await loopbackJson(
-      fetchImpl,
-      "POST",
-      "/api/local-inference/routing/policy",
-      { slot, policy: "manual" },
-    );
-    if (!policy.ok) {
-      throw new Error(`routing/policy ${slot} returned ${policy.status}`);
-    }
+  // Provider and policy for both text slots become visible in one canonical
+  // routing transaction; no request can observe a half-switched model stack.
+  const routing = await loopbackJson(
+    fetchImpl,
+    "POST",
+    "/api/local-inference/routing/text",
+    { provider, policy: "manual" },
+  );
+  if (!routing.ok) {
+    throw new Error(`routing/text returned ${routing.status}`);
   }
 }
 
@@ -259,8 +247,6 @@ async function switchToLocal(
         : `assignments returned ${assignment.status}`,
     );
   }
-  await applyTextRouting(fetchImpl, LOCAL_TEXT_PROVIDER);
-
   if (await isModelInstalled(fetchImpl, modelId)) {
     const active = await loopbackJson(
       fetchImpl,
@@ -278,6 +264,14 @@ async function switchToLocal(
     }
     const status: ModelSwitchStatus =
       active.body?.status === "ready" ? "ready" : "loading";
+    if (active.body?.status !== "ready" && active.body?.status !== "loading") {
+      throw new Error(
+        typeof active.body?.error === "string"
+          ? active.body.error
+          : "active model did not enter a serving state",
+      );
+    }
+    await applyTextRouting(fetchImpl, LOCAL_TEXT_PROVIDER);
     return { ok: true, target: "local", model: modelId, displayName, status };
   }
 
@@ -294,6 +288,7 @@ async function switchToLocal(
         : `downloads returned ${download.status}`,
     );
   }
+  await applyTextRouting(fetchImpl, LOCAL_TEXT_PROVIDER);
   return {
     ok: true,
     target: "local",
