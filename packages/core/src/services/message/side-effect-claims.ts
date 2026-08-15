@@ -238,12 +238,7 @@ function replyClaimsCompletedSideEffectMultilingual(text: string): boolean {
 				if (rule.nonAssertiveLead?.test(prefix)) continue;
 				if (rule.nonAssertiveSuffix?.test(suffix)) continue;
 				if (
-					multilingualClaimIsQuestion(
-						text,
-						matchIndex,
-						match[0].length,
-						rule,
-					)
+					multilingualClaimIsQuestion(text, matchIndex, match[0].length, rule)
 				)
 					continue;
 				return true;

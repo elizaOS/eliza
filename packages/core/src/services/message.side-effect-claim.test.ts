@@ -486,7 +486,10 @@ describe("multilingual completed-side-effect claims (#17027 AC7)", () => {
 	});
 
 	it.each([
-		["es", "Todavía no los he creado, pero tus recordatorios siguen pendientes."],
+		[
+			"es",
+			"Todavía no los he creado, pero tus recordatorios siguen pendientes.",
+		],
 		["pt", "Ainda não os criei; os lembretes continuam pendentes."],
 		["ko", "아직 알림을 못 설정했어요."],
 		["vi", "Nếu bạn đã lưu lời nhắc rồi, nó sẽ xuất hiện ở đây."],
@@ -503,9 +506,12 @@ describe("multilingual completed-side-effect claims (#17027 AC7)", () => {
 		["vi", "Nếu bạn đã lưu lời nhắc rồi, nó sẽ xuất hiện ở đây."],
 		["tl", "Kapag naka-schedule na ang paalala mo, lalabas ito rito."],
 		["zh-CN", "如果你已经设置好了提醒，它会显示在这里。"],
-	])("passes %s conditional completion shapes through: %s", (_locale, reply) => {
-		expect(replyClaimsCompletedSideEffect(reply)).toBe(false);
-	});
+	])(
+		"passes %s conditional completion shapes through: %s",
+		(_locale, reply) => {
+			expect(replyClaimsCompletedSideEffect(reply)).toBe(false);
+		},
+	);
 
 	it.each([
 		["es", "¿He creado el recordatorio para las 9 a.m.?"],
@@ -525,9 +531,12 @@ describe("multilingual completed-side-effect claims (#17027 AC7)", () => {
 		["vi", "Đã tạo lời nhắc rồi — bạn cần gì nữa không?"],
 		["tl", "Na-set ko na ang reminder — may iba pa?"],
 		["zh-CN", "提醒设置好了，还需要别的吗？"],
-	])("keeps %s completed assertions before tag questions: %s", (_locale, reply) => {
-		expect(replyClaimsCompletedSideEffect(reply)).toBe(true);
-	});
+	])(
+		"keeps %s completed assertions before tag questions: %s",
+		(_locale, reply) => {
+			expect(replyClaimsCompletedSideEffect(reply)).toBe(true);
+		},
+	);
 
 	it("passes multilingual descriptions of existing state and ordinary language through", () => {
 		// Existing-state descriptions (the "is scheduled for Tuesday" twins).
@@ -549,9 +558,9 @@ describe("multilingual completed-side-effect claims (#17027 AC7)", () => {
 		expect(
 			replyClaimsCompletedSideEffect("你的预约已安排在周二下午3点。"),
 		).toBe(false);
-		expect(
-			replyClaimsCompletedSideEffect("你的提醒已设置为每天9点。"),
-		).toBe(false);
+		expect(replyClaimsCompletedSideEffect("你的提醒已设置为每天9点。")).toBe(
+			false,
+		);
 		// Ordinary language without a schedulable noun never fires.
 		expect(replyClaimsCompletedSideEffect("La capital es París.")).toBe(false);
 		expect(replyClaimsCompletedSideEffect("좋은 아침이에요!")).toBe(false);
