@@ -175,17 +175,31 @@ describe("triage read actions disclose their scope", () => {
 		expect(result.text).not.toContain("launch");
 	});
 
-	it("says the result limit was reached instead of reporting it as the total", async () => {
-		const result = await searchMessagesAction.handler(
+	it("distinguishes a truncated page from an exact fit by probing past the limit", async () => {
+		// Two messages exist. limit=1 leaves one behind — real truncation, and
+		// the text must say so definitively rather than hedge "more may match".
+		const truncated = await searchMessagesAction.handler(
 			runtimeWithDiscord(),
 			messageRef({ id: "turn" }) as never,
 			undefined,
 			{ parameters: { limit: 1 } } as never,
 		);
 
-		expect((result.data as { count: number }).count).toBe(1);
-		expect(result.text).toContain("limit 1");
-		expect(result.text).toContain("limit was reached");
+		expect((truncated.data as { count: number }).count).toBe(1);
+		expect(truncated.text).toContain("limit 1");
+		expect(truncated.text).toContain("more matched beyond the 1-result limit");
+
+		// limit=2 fits exactly. Inferring a cap from `hits.length >= limit`
+		// would claim messages exist that do not — the exact-fit fabrication.
+		const exact = await searchMessagesAction.handler(
+			runtimeWithDiscord(),
+			messageRef({ id: "turn" }) as never,
+			undefined,
+			{ parameters: { limit: 2 } } as never,
+		);
+
+		expect((exact.data as { count: number }).count).toBe(2);
+		expect(exact.text).not.toContain("more matched");
 	});
 
 	// A schema-valid number is not necessarily a representable instant. `1e100`

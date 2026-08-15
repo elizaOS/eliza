@@ -120,10 +120,22 @@ export const searchMessagesAction: Action = {
 	): Promise<ActionResult> => {
 		const filters = parseSearchMessagesParams(options);
 		const service = getDefaultTriageService();
-		const { refs: hits, receipt } = await service.searchWithReceipt(
+		// Probe one past the limit: a page of exactly `limit` hits cannot say by
+		// itself whether the limit truncated anything, and inferring "more may
+		// match" from `hits.length >= limit` fabricates a cap claim on an
+		// exact-fit result. The extra ref is never shown — it only decides
+		// whether the truncation sentence is earned.
+		const probeFilters =
+			typeof filters.limit === "number"
+				? { ...filters, limit: filters.limit + 1 }
+				: filters;
+		const { refs: probed, receipt } = await service.searchWithReceipt(
 			runtime,
-			filters,
+			probeFilters,
 		);
+		const truncated =
+			typeof filters.limit === "number" && probed.length > filters.limit;
+		const hits = truncated ? probed.slice(0, filters.limit) : probed;
 
 		const sourcesHit = new Set(hits.map((m) => m.source));
 		// The filters are the search: an empty result that claims coverage
@@ -143,14 +155,12 @@ export const searchMessagesAction: Action = {
 			untilMs: filters.untilMs,
 			limit: filters.limit,
 		});
-		const capped =
-			typeof filters.limit === "number" && hits.length >= filters.limit;
 		const text =
 			hits.length === 0
 				? `No matching messages found in the searched scope (${scope}). This is a filtered search, not a statement that no such message exists — drop or widen the filters to search everything.`
 				: `Found ${hits.length} match(es) across ${sourcesHit.size} channel(s) in the searched scope (${scope}).${
-						capped
-							? ` The ${filters.limit}-result limit was reached, so more may match.`
+						truncated
+							? ` Only the first ${filters.limit} are shown — more matched beyond the ${filters.limit}-result limit.`
 							: ""
 					}`;
 
