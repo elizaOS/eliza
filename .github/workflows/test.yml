@@ -127,7 +127,7 @@ jobs:
             fi
             sleep 5
             docker exec "$target" sh -lc \
-              'test "$(grep -o "userId: senderId" /app/plugins/plugin-x/dist/index.js | wc -l)" -eq 1 && sed -i "s/userId: senderId/userId: entityId/" /app/plugins/plugin-x/dist/index.js'
+              'grep -q "userId: senderId" /app/plugins/plugin-x/dist/index.js && sed -i "0,/userId: senderId/s//userId: entityId/" /app/plugins/plugin-x/dist/index.js && grep -q "ensureConnection" /app/plugins/plugin-x/dist/index.js'
             docker restart "$target" >/dev/null
             sleep 15
             after="$(docker inspect --format '{{.State.Status}}' "$target")"
