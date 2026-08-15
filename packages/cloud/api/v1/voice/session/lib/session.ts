@@ -28,6 +28,7 @@
  */
 
 import { projectVoiceOutput, type VoiceOutputPolicy } from "@elizaos/shared";
+import { scoreEndOfTurnHeuristic } from "@elizaos/shared/voice-eot";
 import {
   CartesiaSonicTtsAdapter,
   type CartesiaWebSocketFactory,
@@ -106,6 +107,11 @@ const STT_RECONNECT_DELAYS_MS = [0, 250, 1_000] as const;
  * 11.25s, below the 12.8s provider-audio buffer retained during replacement.
  */
 const STT_CONNECT_TIMEOUT_MS = 2_500;
+/** Keep an unfinished provider final tentative long enough for resumed speech. */
+const SEMANTIC_EOT_MERGE_WINDOW_MS = 900;
+/** A provider turn that resumed but never finalized cannot hold memory forever. */
+const SEMANTIC_EOT_MAX_HOLD_MS = 5_000;
+const SEMANTIC_EOT_ACTIVE_RECHECK_MS = 100;
 const CACHE_WARMING_CODES = new Set([
   "agent_cache_warming",
   "shared_runtime_cache_warming",
@@ -114,6 +120,8 @@ const CACHE_WARMING_CODES = new Set([
 const SPOKEN_TRANSCRIPT_RE = /[\p{L}\p{N}]/u;
 const SPOKEN_STOP_COMMAND_RE =
   /^(?:(?:ok(?:ay)?|please),?\s+)?(?:stop(?:\s+(?:(?:talking|speaking)(?:\s+now)?|now))?|be\s+quiet|cancel|never\s*mind|that(?:['’]s| is)\s+enough)$/u;
+const BARE_INTERROGATIVE_RE =
+  /^(?:what|who|whom|whose|where|when|why|how|which)$/iu;
 
 // Cartesia's server buffers streamed transcript for up to 3000ms by default
 // before starting synthesis, which measured ~2.7s of the speaking_start gap on
@@ -136,6 +144,47 @@ export function isSpokenStopCommand(transcript: string): boolean {
     .replace(/[.!?,;:\u2026]+$/gu, "")
     .replace(/\s+/gu, " ");
   return SPOKEN_STOP_COMMAND_RE.test(normalized);
+}
+
+function shouldHoldSemanticFinal(transcript: string): boolean {
+  const normalized = transcript.trim();
+  if (!SPOKEN_TRANSCRIPT_RE.test(normalized)) return false;
+  if (isSpokenStopCommand(normalized)) return false;
+  return (
+    BARE_INTERROGATIVE_RE.test(normalized) ||
+    scoreEndOfTurnHeuristic(normalized) < 0.5
+  );
+}
+
+/** Join provider-final fragments without repeating overlap from revised text. */
+function mergeTranscriptFragments(
+  prefix: string,
+  continuation: string,
+): string {
+  const left = prefix.trim();
+  const right = continuation.trim();
+  if (!left) return right;
+  if (!right) return left;
+  const leftLower = left.toLocaleLowerCase("en-US");
+  const rightLower = right.toLocaleLowerCase("en-US");
+  if (rightLower === leftLower || rightLower.startsWith(`${leftLower} `)) {
+    return right;
+  }
+  if (leftLower.endsWith(` ${rightLower}`)) return left;
+  const leftWords = left.split(/\s+/u);
+  const rightWords = right.split(/\s+/u);
+  const maxOverlap = Math.min(leftWords.length, rightWords.length);
+  for (let overlap = maxOverlap; overlap > 0; overlap -= 1) {
+    const leftSuffix = leftWords.slice(-overlap).join(" ").toLocaleLowerCase();
+    const rightPrefix = rightWords
+      .slice(0, overlap)
+      .join(" ")
+      .toLocaleLowerCase();
+    if (leftSuffix === rightPrefix) {
+      return [...leftWords, ...rightWords.slice(overlap)].join(" ");
+    }
+  }
+  return `${left} ${right}`;
 }
 
 export interface VoiceSessionConfig {
@@ -178,6 +227,10 @@ export interface VoiceSessionConfig {
   sttReconnectDelaysMs?: readonly number[];
   /** Deterministic test override for the Ink connection-establishment bound. */
   sttConnectTimeoutMs?: number;
+  /** Deterministic test override; production holds unfinished finals for 900ms. */
+  semanticEotMergeWindowMs?: number;
+  /** Deterministic test override for a resumed provider turn that never ends. */
+  semanticEotMaxHoldMs?: number;
 
   // Metering (SEC-15). Server-derived only.
   usageStore: VoiceUsageStore;
@@ -248,6 +301,12 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
   private lastSttPartialText = "";
   private lastSttPartialSentAtMs = Number.NEGATIVE_INFINITY;
   private sttPartialTimer: ReturnType<typeof setTimeout> | null = null;
+  private pendingSemanticEot: {
+    prefix: string;
+    continuation: string;
+    startedAtMs: number;
+  } | null = null;
+  private semanticEotTimer: ReturnType<typeof setTimeout> | null = null;
   private llmAbort: AbortController | null = null;
   private elizaPrewarm: Promise<void> | null = null;
   private turnSttMs = 0;
@@ -498,6 +557,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
 
   /** Explicit UI barge-in (contract §7.2). */
   bargeIn(): void {
+    this.clearPendingSemanticEot();
     this.interrupt("explicit");
   }
 
@@ -585,7 +645,8 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
           SPOKEN_TRANSCRIPT_RE.test(event.transcript)
         ) {
           this.interruptForConfirmedSpeech(event.transcript);
-          this.queueSttPartial(event.transcript);
+          this.updatePendingSemanticContinuation(event.transcript);
+          this.queueSttPartial(this.semanticTranscript(event.transcript));
         }
         break;
       }
@@ -597,6 +658,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
           break;
         }
         this.interruptForConfirmedSpeech(event.transcript);
+        this.updatePendingSemanticContinuation(event.transcript);
         this.flushSttPartial();
         this.send({
           t: "stt_eager_eot",
@@ -606,12 +668,21 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
       }
       case "end-of-turn": {
         if (!this.activeSttTurn) return;
-        const transcript = event.transcript ?? "";
+        const providerTranscript = event.transcript ?? "";
         this.activeSttTurn = false;
         this.resetSttPartialDelivery();
         if (
+          this.pendingSemanticEot &&
+          !SPOKEN_TRANSCRIPT_RE.test(providerTranscript)
+        ) {
+          // A noise-only continuation cannot revoke the already-finalized
+          // prefix. Keep the tentative turn alive until its original bound.
+          this.armSemanticEotTimer();
+          break;
+        }
+        if (
           this.protectedResponseTraceId &&
-          !SPOKEN_TRANSCRIPT_RE.test(transcript)
+          !SPOKEN_TRANSCRIPT_RE.test(providerTranscript)
         ) {
           // A false browser/local acoustic start never owns the response turn.
           // Discard it without minting a trace, invalidating old callbacks, or
@@ -619,13 +690,21 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
           this.discardProtectedFalseStartAccounting();
           break;
         }
+        const pendingStartedAtMs = this.pendingSemanticEot?.startedAtMs;
+        const transcript = this.semanticTranscript(providerTranscript);
         if (isSpokenStopCommand(transcript)) {
+          this.clearPendingSemanticEot();
           const confirmedUplinkBytes = this.detachProtectedSpeechAccounting();
           this.interrupt("explicit");
           this.accrueTurnTelemetry(confirmedUplinkBytes);
         } else {
           this.interruptForConfirmedSpeech(transcript);
         }
+        if (shouldHoldSemanticFinal(transcript)) {
+          this.holdSemanticEot(transcript, pendingStartedAtMs);
+          break;
+        }
+        this.clearPendingSemanticEot();
         this.commitTurn(transcript);
         break;
       }
@@ -669,6 +748,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
     this.stt = null;
     this.sttReady = false;
     this.activeSttTurn = false;
+    this.clearPendingSemanticEot();
     this.resetSttPartialDelivery();
     this.sttGeneration += 1;
     if (failed) {
@@ -813,6 +893,93 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
     this.pendingSttPartial = null;
     this.lastSttPartialText = "";
     this.lastSttPartialSentAtMs = Number.NEGATIVE_INFINITY;
+  }
+
+  private semanticTranscript(providerTranscript: string): string {
+    const pending = this.pendingSemanticEot;
+    return pending
+      ? mergeTranscriptFragments(pending.prefix, providerTranscript)
+      : providerTranscript;
+  }
+
+  private updatePendingSemanticContinuation(transcript: string): void {
+    if (!this.pendingSemanticEot || !SPOKEN_TRANSCRIPT_RE.test(transcript)) {
+      return;
+    }
+    this.pendingSemanticEot.continuation = transcript.trim();
+    this.armSemanticEotTimer();
+  }
+
+  private holdSemanticEot(
+    transcript: string,
+    originalStartedAtMs?: number,
+  ): void {
+    const existing = this.pendingSemanticEot;
+    this.pendingSemanticEot = {
+      prefix: transcript.trim(),
+      continuation: "",
+      startedAtMs: originalStartedAtMs ?? existing?.startedAtMs ?? this.now(),
+    };
+    this.state = "transcribing";
+    const maxHoldMs = Math.max(
+      1,
+      this.config.semanticEotMaxHoldMs ?? SEMANTIC_EOT_MAX_HOLD_MS,
+    );
+    if (
+      !this.activeSttTurn &&
+      this.now() - this.pendingSemanticEot.startedAtMs >= maxHoldMs
+    ) {
+      const pending = this.pendingSemanticEot;
+      this.clearPendingSemanticEot();
+      this.commitTurn(
+        mergeTranscriptFragments(pending.prefix, pending.continuation),
+      );
+      return;
+    }
+    this.armSemanticEotTimer();
+  }
+
+  private armSemanticEotTimer(): void {
+    if (!this.pendingSemanticEot || this.closed) return;
+    if (this.semanticEotTimer !== null) clearTimeout(this.semanticEotTimer);
+    const mergeWindowMs = Math.max(
+      1,
+      this.config.semanticEotMergeWindowMs ?? SEMANTIC_EOT_MERGE_WINDOW_MS,
+    );
+    this.semanticEotTimer = setTimeout(() => {
+      this.semanticEotTimer = null;
+      this.onSemanticEotTimer();
+    }, mergeWindowMs);
+  }
+
+  private onSemanticEotTimer(): void {
+    const pending = this.pendingSemanticEot;
+    if (!pending || this.closed) return;
+    if (this.activeSttTurn) {
+      // Never force-commit while Ink is still transcribing: doing so would
+      // create one turn from the partial and a second when the provider later
+      // emits its authoritative final. The provider's own silence/transport
+      // bounds settle or reconnect this active turn.
+      this.semanticEotTimer = setTimeout(() => {
+        this.semanticEotTimer = null;
+        this.onSemanticEotTimer();
+      }, SEMANTIC_EOT_ACTIVE_RECHECK_MS);
+      return;
+    }
+    const transcript = mergeTranscriptFragments(
+      pending.prefix,
+      pending.continuation,
+    );
+    this.clearPendingSemanticEot();
+    this.commitTurn(transcript);
+  }
+
+  private clearPendingSemanticEot(): void {
+    if (this.semanticEotTimer !== null) {
+      clearTimeout(this.semanticEotTimer);
+      this.semanticEotTimer = null;
+    }
+    this.pendingSemanticEot = null;
   }
 
   /** Authoritative user turn: mint the turn trace, run the LLM+TTS legs. */
@@ -1285,6 +1452,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
     // Invalidate any live turn so racing callbacks are dropped.
     this.currentVoiceTurnId = null;
     this.clearProtectedResponseAccounting();
+    this.clearPendingSemanticEot();
     this.resetSttPartialDelivery();
     this.sttGeneration += 1;
     if (this.sttReconnectTimer !== null) {

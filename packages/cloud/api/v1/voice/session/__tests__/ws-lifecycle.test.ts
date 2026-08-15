@@ -465,6 +465,8 @@ async function connectSession(opts: {
   inkSocketFactory?: () => CartesiaInkWebSocket;
   sttReconnectDelaysMs?: readonly number[];
   sttConnectTimeoutMs?: number;
+  semanticEotMergeWindowMs?: number;
+  semanticEotMaxHoldMs?: number;
   prewarmElizaContext?: () => Promise<void>;
   openingGreeting?: string;
   cacheWarmingRetryDelaysMs?: readonly number[];
@@ -525,6 +527,12 @@ async function connectSession(opts: {
           : {}),
         ...(opts.sttConnectTimeoutMs !== undefined
           ? { sttConnectTimeoutMs: opts.sttConnectTimeoutMs }
+          : {}),
+        ...(opts.semanticEotMergeWindowMs !== undefined
+          ? { semanticEotMergeWindowMs: opts.semanticEotMergeWindowMs }
+          : {}),
+        ...(opts.semanticEotMaxHoldMs !== undefined
+          ? { semanticEotMaxHoldMs: opts.semanticEotMaxHoldMs }
           : {}),
         usageStore,
         usageLimits: { organizationDailyMinutes: 600, userDailyMinutes: 120 },
@@ -701,6 +709,183 @@ describe("voice-session WS lifecycle", () => {
     expect(client.audioFrames.length).toBeGreaterThan(0);
     expect(client.controlTypes()).toContain("speaking_end");
     expect(client.controlTypes()).toContain("usage");
+  });
+
+  test("merges a resumed unfinished Ink final into one canonical user turn", async () => {
+    const requests: Array<Record<string, unknown>> = [];
+    const client = new FakeClientSocket();
+    await connectSession({
+      client,
+      semanticEotMergeWindowMs: 100,
+      semanticEotMaxHoldMs: 500,
+      fetchImpl: (async (_url: string, init?: RequestInit) => {
+        requests.push(JSON.parse(String(init?.body)));
+        return makeCanonicalChunkFetch(["It is test time."])(_url, init);
+      }) as typeof fetch,
+    });
+
+    const ink = FakeInkSocket.instances.at(-1)!;
+    ink.emitTurn("turn.start");
+    ink.emitTurn("turn.update", "What");
+    ink.emitTurn("turn.eager_end", "What");
+    ink.emitTurn("turn.end", "What");
+
+    expect(requests).toHaveLength(0);
+    expect(
+      client.controlFrames.filter((frame) => frame.t === "stt_final"),
+    ).toHaveLength(0);
+
+    ink.emitTurn("turn.start");
+    ink.emitTurn("turn.update", "time");
+    ink.emitTurn("turn.update", "time is it?");
+    ink.emitTurn("turn.eager_end", "time is it?");
+    ink.emitTurn("turn.end", "time is it?");
+    await flush();
+    await flush();
+
+    expect(requests).toHaveLength(1);
+    expect(requests[0]).toMatchObject({ text: "What time is it?" });
+    expect(
+      client.controlFrames.filter((frame) => frame.t === "stt_final"),
+    ).toEqual([
+      expect.objectContaining({ t: "stt_final", text: "What time is it?" }),
+    ]);
+    expect(
+      client.controlTypes().filter((type) => type === "llm_first_text"),
+    ).toHaveLength(1);
+  });
+
+  test("commits an abandoned unfinished final after the bounded merge window", async () => {
+    const requests: Array<Record<string, unknown>> = [];
+    const client = new FakeClientSocket();
+    await connectSession({
+      client,
+      semanticEotMergeWindowMs: 10,
+      semanticEotMaxHoldMs: 50,
+      fetchImpl: (async (_url: string, init?: RequestInit) => {
+        requests.push(JSON.parse(String(init?.body)));
+        return makeCanonicalChunkFetch(["Could you finish the request?"])(
+          _url,
+          init,
+        );
+      }) as typeof fetch,
+    });
+
+    const ink = FakeInkSocket.instances.at(-1)!;
+    ink.emitTurn("turn.start");
+    ink.emitTurn("turn.end", "schedule a meeting with");
+    expect(requests).toHaveLength(0);
+
+    await flush();
+    await flush();
+    expect(requests).toHaveLength(1);
+    expect(requests[0]).toMatchObject({ text: "schedule a meeting with" });
+    expect(
+      client.controlFrames.filter((frame) => frame.t === "stt_final"),
+    ).toHaveLength(1);
+  });
+
+  test("does not duplicate a prefix when Ink revises the continuation as full text", async () => {
+    const requests: Array<Record<string, unknown>> = [];
+    const client = new FakeClientSocket();
+    await connectSession({
+      client,
+      semanticEotMergeWindowMs: 100,
+      fetchImpl: (async (_url: string, init?: RequestInit) => {
+        requests.push(JSON.parse(String(init?.body)));
+        return makeCanonicalChunkFetch(["Scheduled."])(_url, init);
+      }) as typeof fetch,
+    });
+
+    const ink = FakeInkSocket.instances.at(-1)!;
+    ink.emitTurn("turn.start");
+    ink.emitTurn("turn.end", "schedule a meeting with");
+    ink.emitTurn("turn.start");
+    ink.emitTurn("turn.update", "schedule a meeting with Bob");
+    ink.emitTurn("turn.end", "schedule a meeting with Bob");
+    await flush();
+    await flush();
+
+    expect(requests).toHaveLength(1);
+    expect(requests[0]).toMatchObject({
+      text: "schedule a meeting with Bob",
+    });
+  });
+
+  test("never force-commits an active resumed turn at the semantic hold bound", async () => {
+    const requests: Array<Record<string, unknown>> = [];
+    const client = new FakeClientSocket();
+    await connectSession({
+      client,
+      semanticEotMergeWindowMs: 10,
+      semanticEotMaxHoldMs: 20,
+      fetchImpl: (async (_url: string, init?: RequestInit) => {
+        requests.push(JSON.parse(String(init?.body)));
+        return makeCanonicalChunkFetch(["It is test time."])(_url, init);
+      }) as typeof fetch,
+    });
+
+    const ink = FakeInkSocket.instances.at(-1)!;
+    ink.emitTurn("turn.start");
+    ink.emitTurn("turn.end", "What");
+    ink.emitTurn("turn.start");
+    ink.emitTurn("turn.update", "time is");
+
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    expect(requests).toHaveLength(0);
+
+    ink.emitTurn("turn.end", "time is it?");
+    await flush();
+    await flush();
+    expect(requests).toHaveLength(1);
+    expect(requests[0]).toMatchObject({ text: "What time is it?" });
+  });
+
+  test("noise-only resumed finals preserve the unfinished prefix", async () => {
+    const requests: Array<Record<string, unknown>> = [];
+    const client = new FakeClientSocket();
+    await connectSession({
+      client,
+      semanticEotMergeWindowMs: 25,
+      fetchImpl: (async (_url: string, init?: RequestInit) => {
+        requests.push(JSON.parse(String(init?.body)));
+        return makeCanonicalChunkFetch(["Please continue."])(_url, init);
+      }) as typeof fetch,
+    });
+
+    const ink = FakeInkSocket.instances.at(-1)!;
+    ink.emitTurn("turn.start");
+    ink.emitTurn("turn.end", "schedule a meeting with");
+    ink.emitTurn("turn.start");
+    ink.emitTurn("turn.end", "...");
+
+    expect(requests).toHaveLength(0);
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    await flush();
+    expect(requests).toHaveLength(1);
+    expect(requests[0]).toMatchObject({ text: "schedule a meeting with" });
+  });
+
+  test("session teardown cancels a tentative semantic final without a ghost turn", async () => {
+    const requests: Array<Record<string, unknown>> = [];
+    const client = new FakeClientSocket();
+    await connectSession({
+      client,
+      semanticEotMergeWindowMs: 10,
+      fetchImpl: (async (_url: string, init?: RequestInit) => {
+        requests.push(JSON.parse(String(init?.body)));
+        return makeCanonicalChunkFetch(["unused"])(_url, init);
+      }) as typeof fetch,
+    });
+
+    const ink = FakeInkSocket.instances.at(-1)!;
+    ink.emitTurn("turn.start");
+    ink.emitTurn("turn.end", "schedule a meeting with");
+    client.clientSend(JSON.stringify({ t: "bye" }));
+
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    await flush();
+    expect(requests).toHaveLength(0);
   });
 
   test("coalesces provider-rate interim revisions while preserving the exact final transcript", async () => {
