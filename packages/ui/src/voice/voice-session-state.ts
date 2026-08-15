@@ -185,6 +185,8 @@ export function applyServerEvent(
       };
     case "llm_first_text":
       return { ...state, phase: "thinking", traceId: event.traceId };
+    case "trace_mark":
+      return { ...state, traceId: event.traceId };
     case "assistant_progress":
       // The caption accompanies a server-authorized progress preamble. Speech
       // lifecycle remains owned by speaking_start/audio/turn_end.

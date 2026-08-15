@@ -94,6 +94,21 @@ export interface ServerLlmFirstTextEvent {
   traceId: string;
 }
 
+export type VoiceRuntimeTraceMark =
+  | "turn_committed"
+  | "router_decided"
+  | "llm_requested"
+  | "speakable_text_ready"
+  | "tts_requested"
+  | "tts_first_byte";
+
+/** Content-free server milestone; receipt is stamped on the client clock. */
+export interface ServerTraceMarkEvent {
+  t: "trace_mark";
+  name: VoiceRuntimeTraceMark;
+  traceId: string;
+}
+
 /** Exact caption for a bounded, server-authorized spoken progress preamble. */
 export interface ServerAssistantProgressEvent {
   t: "assistant_progress";
@@ -169,6 +184,7 @@ export type ServerControlFrame =
   | ServerSttEagerEotEvent
   | ServerSttFinalEvent
   | ServerLlmFirstTextEvent
+  | ServerTraceMarkEvent
   | ServerAssistantProgressEvent
   | ServerSpeakingStartEvent
   | ServerSpeakingEndEvent
@@ -244,6 +260,12 @@ export function parseServerControl(raw: string): ServerControlFrame | null {
     case "speaking_start":
     case "speaking_end":
       return traceId ? { t, traceId } : null;
+    case "trace_mark": {
+      const name = frame.name;
+      return traceId && isVoiceRuntimeTraceMark(name)
+        ? { t, name, traceId }
+        : null;
+    }
     case "assistant_progress": {
       const text = readFrameText(frame.text, 160);
       return text !== null && text.trim().length > 0 && traceId
@@ -345,6 +367,7 @@ const SERVER_TYPES: ReadonlySet<string> = new Set<ServerControlType>([
   "stt_eager_eot",
   "stt_final",
   "llm_first_text",
+  "trace_mark",
   "assistant_progress",
   "speaking_start",
   "speaking_end",
@@ -354,6 +377,21 @@ const SERVER_TYPES: ReadonlySet<string> = new Set<ServerControlType>([
   "error",
   "usage",
 ]);
+
+const VOICE_RUNTIME_TRACE_MARKS: ReadonlySet<string> = new Set([
+  "turn_committed",
+  "router_decided",
+  "llm_requested",
+  "speakable_text_ready",
+  "tts_requested",
+  "tts_first_byte",
+]);
+
+function isVoiceRuntimeTraceMark(
+  value: unknown,
+): value is VoiceRuntimeTraceMark {
+  return typeof value === "string" && VOICE_RUNTIME_TRACE_MARKS.has(value);
+}
 
 function isKnownServerType(t: string): t is ServerControlType {
   return SERVER_TYPES.has(t);

@@ -373,6 +373,7 @@ export function createVoiceSessionClient(
   let captureRecoveryTask: Promise<void> | null = null;
   let microphoneMuted = false;
   let playbackMayHaveAudio = false;
+  let pendingAcousticSpeechEndedAtMs: number | null = null;
   const playbackTraceBySequence = new Map<number, string | null>();
   const playbackStartedTraceIds = new Set<string>();
   const turnAuthority = new VoiceSessionTurnAuthority();
@@ -481,6 +482,8 @@ export function createVoiceSessionClient(
           ) {
             playback?.pause();
             mark("local_speech_start", traceId);
+            mark("local_speech_detected", traceId);
+            mark("local_playback_paused", traceId);
           }
           break;
         case "playback/resume":
@@ -825,6 +828,7 @@ export function createVoiceSessionClient(
         );
         break;
       case "stt_eager_eot":
+        pendingAcousticSpeechEndedAtMs = atMs;
         authorityTransition = turnAuthority.acceptTentativeEot(atMs);
         break;
       case "stt_final":
@@ -868,6 +872,7 @@ export function createVoiceSessionClient(
         break;
       case "navigate_view":
       case "assistant_progress":
+      case "trace_mark":
       case "usage":
       case "error":
         if (!turnAuthority.acceptsResponseControlTrace(event.traceId)) {
@@ -912,6 +917,14 @@ export function createVoiceSessionClient(
         }
         break;
       case "stt_final":
+        if (pendingAcousticSpeechEndedAtMs !== null) {
+          mark(
+            "acoustic_speech_ended",
+            event.traceId,
+            pendingAcousticSpeechEndedAtMs,
+          );
+          pendingAcousticSpeechEndedAtMs = null;
+        }
         mark("stt_final", event.traceId);
         // An empty final never dispatches the LLM leg server-side, so no
         // speaking_end will follow — the machine parked at 'complete' and the
@@ -923,6 +936,9 @@ export function createVoiceSessionClient(
         break;
       case "llm_first_text":
         mark("llm_first_text", event.traceId);
+        break;
+      case "trace_mark":
+        mark(event.name, event.traceId);
         break;
       case "assistant_progress":
         mark("assistant_progress", event.traceId);
@@ -956,6 +972,7 @@ export function createVoiceSessionClient(
         // Reconcile: the server confirms the interruption. Ensure local audio is
         // silenced (idempotent with an optimistic local flush) and loop to
         // listening.
+        mark("server_interrupt_ack", event.traceId);
         mark("interrupted", event.traceId);
         setState(loopToListening(state));
         break;
@@ -1428,6 +1445,7 @@ export function createVoiceSessionClient(
     disposed = true;
     intentionalClose = true;
     microphoneMuted = false;
+    pendingAcousticSpeechEndedAtMs = null;
     const closingAuthority = turnAuthority.close(now());
     applyAuthorityEffects(closingAuthority);
     clearAuthorityTimers();
@@ -1503,6 +1521,7 @@ export function createVoiceSessionClient(
       lastLiveAtMs = null;
       everLiveThisLifecycle = false;
       microphoneMuted = false;
+      pendingAcousticSpeechEndedAtMs = null;
       setPlaybackMayHaveAudio(false);
       clearAuthorityTimers();
       setState({ ...INITIAL_VOICE_SESSION_STATE, phase: "connecting" });

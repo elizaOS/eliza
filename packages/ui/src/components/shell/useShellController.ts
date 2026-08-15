@@ -64,6 +64,10 @@ import {
   type MicrophonePermissionState,
   queryMicrophonePermission,
 } from "../../voice/local-asr-capture";
+import {
+  createNormalVoiceTraceCollector,
+  type NormalVoiceTraceCollector,
+} from "../../voice/realtime-voice-trace-collector";
 import { shouldRespondToVoiceTurn } from "../../voice/should-respond";
 import { TranscriptSessionAccumulator } from "../../voice/transcript-session";
 import {
@@ -487,11 +491,19 @@ export function useShellController(): ShellController {
   const realtimeTurnTimingRef = React.useRef(
     new Map<string, RealtimeTurnTiming>(),
   );
+  const realtimeTraceCollectorRef =
+    React.useRef<NormalVoiceTraceCollector | null>(null);
+  if (!realtimeTraceCollectorRef.current) {
+    realtimeTraceCollectorRef.current = createNormalVoiceTraceCollector();
+  }
   conversationsRef.current = conversations;
   activeConversationIdRef.current = activeConversationId;
 
   const handleRealtimeVoiceServerEvent = React.useCallback(
     (event: ServerControlFrame) => {
+      if (event.t === "ready") {
+        realtimeTraceCollectorRef.current?.resetSession(event.sessionId);
+      }
       if (event.t === "navigate_view") {
         dispatchNavigateViewEvent({
           viewId: event.viewId,
@@ -527,6 +539,32 @@ export function useShellController(): ShellController {
         correlated: Boolean(mark.traceId),
       });
       if (!mark.traceId) return;
+      const completed = realtimeTraceCollectorRef.current?.accept(mark);
+      if (completed) {
+        const marks = completed.trace.marks;
+        voiceCaptureDebug("realtime:trace-complete", {
+          outcome: completed.trace.outcome,
+          evidenceComplete: completed.coverage.complete,
+          missingMarks: completed.coverage.missingMarks,
+          lateAudioFrames: completed.trace.lateAudioFrames,
+          acousticEndToFinalMs: roundedTimingDelta(
+            marks.stt_final,
+            marks.acoustic_speech_ended,
+          ),
+          commitToModelMs: roundedTimingDelta(
+            marks.llm_first_useful_text,
+            marks.turn_committed,
+          ),
+          speakableToTtsByteMs: roundedTimingDelta(
+            marks.tts_first_byte,
+            marks.speakable_text_ready,
+          ),
+          acousticEndToAudibleMs: roundedTimingDelta(
+            marks.first_audio_playout,
+            marks.acoustic_speech_ended,
+          ),
+        });
+      }
       const timing = realtimeTurnTimingRef.current.get(mark.traceId) ?? {};
       if (mark.name === "stt_final") timing.sttFinalAtMs = mark.atMs;
       if (mark.name === "llm_first_text") timing.llmFirstTextAtMs = mark.atMs;
@@ -564,6 +602,17 @@ export function useShellController(): ShellController {
   const handleRealtimeVoiceDiagnostic = React.useCallback(
     (event: VoiceSessionClientDiagnosticEvent) => {
       if (event.type === "capture_ready") {
+        realtimeTraceCollectorRef.current?.updateDimensions({
+          transport: "websocket",
+          frameDurationMs: event.capture.frameDurationMs,
+          sampleRateHz:
+            typeof event.capture.granted.sampleRateHz === "number"
+              ? event.capture.granted.sampleRateHz
+              : event.capture.audioContextSampleRateHz,
+          echoCancellation: event.capture.granted.echoCancellation,
+          noiseSuppression: event.capture.granted.noiseSuppression,
+          autoGainControl: event.capture.granted.autoGainControl,
+        });
         voiceCaptureDebug("realtime:capture-ready", {
           backend: event.capture.backend,
           frameMs: event.capture.frameDurationMs,

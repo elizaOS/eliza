@@ -1009,6 +1009,20 @@ describe("voice-session WS lifecycle", () => {
     expect(types).toContain("stt_final");
     expect(types).toContain("llm_first_text");
     expect(types).toContain("speaking_start");
+    expect(
+      client.controlFrames
+        .filter((frame) => frame.t === "trace_mark")
+        .map((frame) => frame.name),
+    ).toEqual(
+      expect.arrayContaining([
+        "turn_committed",
+        "router_decided",
+        "llm_requested",
+        "speakable_text_ready",
+        "tts_requested",
+        "tts_first_byte",
+      ]),
+    );
 
     // Cartesia produced downlink audio.
     const cartesia = FakeCartesiaSocket.instances.at(-1)!;

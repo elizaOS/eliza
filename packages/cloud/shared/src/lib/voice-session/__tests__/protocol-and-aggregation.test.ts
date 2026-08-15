@@ -140,6 +140,22 @@ describe("protocol framing", () => {
       traceId: "trace-1",
     });
   });
+
+  test("serializes a content-free runtime trace milestone", () => {
+    expect(
+      JSON.parse(
+        serializeServerFrame({
+          t: "trace_mark",
+          name: "speakable_text_ready",
+          traceId: "trace-1",
+        }),
+      ),
+    ).toEqual({
+      t: "trace_mark",
+      name: "speakable_text_ready",
+      traceId: "trace-1",
+    });
+  });
 });
 
 describe("phrase aggregator", () => {

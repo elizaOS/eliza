@@ -71,6 +71,7 @@ export {
   type PlaybackFrameTap,
   resamplePcmTo16k,
 } from "./playback-frame-pump";
+export * from "./realtime-voice-trace-collector";
 export { StreamingLinearResampler } from "./streaming-linear-resampler";
 export * from "./types";
 export {

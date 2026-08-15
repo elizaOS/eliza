@@ -76,12 +76,22 @@ export type ClientControlFrame =
 
 // --- server -> client control / state frames ------------------------------
 
+/** Content-free milestones; the client stamps receipt in its own clock domain. */
+export type VoiceRuntimeTraceMark =
+  | "turn_committed"
+  | "router_decided"
+  | "llm_requested"
+  | "speakable_text_ready"
+  | "tts_requested"
+  | "tts_first_byte";
+
 export type ServerControlFrame =
   | { t: "ready"; sessionId: string; traceId: string }
   | { t: "stt_partial"; text: string; traceId: string }
   | { t: "stt_eager_eot"; traceId: string }
   | { t: "stt_final"; text: string; traceId: string }
   | { t: "llm_first_text"; traceId: string }
+  | { t: "trace_mark"; name: VoiceRuntimeTraceMark; traceId: string }
   | { t: "assistant_progress"; text: string; traceId: string }
   | { t: "speaking_start"; traceId: string }
   | { t: "speaking_end"; traceId: string }

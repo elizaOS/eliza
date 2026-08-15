@@ -1077,6 +1077,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
     this.firstLlmTextEmitted = false;
 
     this.send({ t: "stt_final", text: transcript, traceId });
+    this.send({ t: "trace_mark", name: "turn_committed", traceId });
 
     if (isSpokenStopCommand(transcript)) {
       // Spoken stop is a control command, not a semantic chat turn. It never
@@ -1108,6 +1109,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
     const stream = this.createTtsStream(traceId, {
       onFirstAudio: () => {
         if (this.currentVoiceTurnId !== traceId) return;
+        this.send({ t: "trace_mark", name: "tts_first_byte", traceId });
         this.state = "speaking";
         this.send({ t: "speaking_start", traceId });
       },
@@ -1167,6 +1169,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
       const callbacks: RealtimeTtsStreamCallbacks = {
         onFirstAudio: () => {
           if (this.currentVoiceTurnId !== traceId) return;
+          this.send({ t: "trace_mark", name: "tts_first_byte", traceId });
           this.state = "speaking";
           this.send({ t: "speaking_start", traceId });
         },
@@ -1275,6 +1278,8 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
         text: start.speechText,
         traceId,
       });
+      this.send({ t: "trace_mark", name: "speakable_text_ready", traceId });
+      this.send({ t: "trace_mark", name: "tts_requested", traceId });
       this.turnTtsChars += start.speechText.length;
       ensureTts().sendPhrase({
         text: start.speechText,
@@ -1338,6 +1343,8 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
         fetchImpl: this.config.fetchImpl,
         onStatus: updateProgressStatus,
       };
+      this.send({ t: "trace_mark", name: "router_decided", traceId });
+      this.send({ t: "trace_mark", name: "llm_requested", traceId });
       const onDelta = (delta: string) => {
         if (this.currentVoiceTurnId !== traceId) return;
         if (!this.firstLlmTextEmitted) {
@@ -1449,6 +1456,8 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
       }
 
       this.turnTtsChars += safeSpeechText.length;
+      this.send({ t: "trace_mark", name: "speakable_text_ready", traceId });
+      this.send({ t: "trace_mark", name: "tts_requested", traceId });
       ensureTts().sendPhrase({
         text: safeSpeechText,
         continueContext: false,

@@ -87,6 +87,27 @@ describe("voice session server protocol", () => {
     ).toBeNull();
   });
 
+  it("accepts only allowlisted content-free runtime trace marks", () => {
+    expect(
+      parseServerControl(
+        JSON.stringify({
+          t: "trace_mark",
+          name: "tts_requested",
+          traceId: " trace-1 ",
+        }),
+      ),
+    ).toEqual({ t: "trace_mark", name: "tts_requested", traceId: "trace-1" });
+    expect(
+      parseServerControl(
+        JSON.stringify({
+          t: "trace_mark",
+          name: "raw_prompt_or_secret",
+          traceId: "trace-1",
+        }),
+      ),
+    ).toBeNull();
+  });
+
   it("accepts a bounded navigate-view handoff", () => {
     expect(
       parseServerControl(

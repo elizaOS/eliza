@@ -327,10 +327,16 @@ describe("voice-session client (real framing/state/barge-in/reconnect)", () => {
     expect(client.state.phase).toBe("listening");
 
     sock.emitControl({ t: "stt_partial", text: "he", traceId: "T1" });
+    sock.emitControl({ t: "stt_eager_eot", traceId: "provider-turn" });
     sock.emitControl({ t: "stt_final", text: "hello", traceId: "T1" });
     expect(client.state.finalTranscript).toBe("hello");
     sock.emitControl({ t: "llm_first_text", traceId: "T1" });
     expect(client.state.phase).toBe("thinking");
+    sock.emitControl({
+      t: "trace_mark",
+      name: "tts_requested",
+      traceId: "T1",
+    });
     sock.emitControl({ t: "speaking_start", traceId: "T1" });
     expect(client.state.phase).toBe("speaking");
     // downlink audio during speaking
@@ -344,7 +350,9 @@ describe("voice-session client (real framing/state/barge-in/reconnect)", () => {
     expect(markNames).toContain("hello_sent");
     expect(markNames).toContain("ready");
     expect(markNames).toContain("stt_final");
+    expect(markNames).toContain("acoustic_speech_ended");
     expect(markNames).toContain("llm_first_text");
+    expect(markNames).toContain("tts_requested");
     expect(markNames).toContain("speaking_start");
     expect(markNames).toContain("downlink_audio");
     expect(markNames).toContain("speaking_end");
