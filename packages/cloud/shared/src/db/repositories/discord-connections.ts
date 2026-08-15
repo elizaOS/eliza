@@ -344,7 +344,9 @@ export const discordConnectionsRepository = {
     const tokenUpdates = newBotToken === undefined ? {} : await encryptDiscordBotToken(newBotToken);
     const conditions = [eq(discordConnections.id, id)];
     if (expectedConfigurationRevision !== undefined) {
-      conditions.push(eq(discordConnections.configuration_revision, expectedConfigurationRevision));
+      conditions.push(
+        sql`CAST(${discordConnections.configuration_revision} AS text) = ${expectedConfigurationRevision}`,
+      );
     }
 
     const [connection] = await db

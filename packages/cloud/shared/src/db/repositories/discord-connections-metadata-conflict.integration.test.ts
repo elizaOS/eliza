@@ -237,4 +237,19 @@ describe("discordConnectionsRepository.updateConfiguration", () => {
     });
     expect(versionless?.edit_version).toBe("9223372036854775809");
   });
+
+  test("treats an oversized opaque revision as stale without parsing it as numeric", async () => {
+    const oversizedRevision = "1".repeat(131_073);
+
+    const stale = await discordConnectionsRepository.updateConfiguration(
+      CONNECTION_ID,
+      { metadata: { responseMode: "mention" } },
+      oversizedRevision,
+    );
+
+    expect(stale).toBeNull();
+    const stored = await discordConnectionsRepository.findById(CONNECTION_ID);
+    expect(stored?.edit_version).toBe("0");
+    expect(stored?.metadata?.responseMode).toBe("keyword");
+  });
 });
