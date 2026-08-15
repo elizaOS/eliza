@@ -200,6 +200,9 @@ export function projectActionResultForClipboard(
 					userFacingEffectReceiptIds: result.userFacingEffectReceiptIds,
 				}
 			: {}),
+		...(result.failureProvenance !== undefined
+			? { failureProvenance: result.failureProvenance }
+			: {}),
 		...(Object.keys(safeControlData).length > 0
 			? { data: safeControlData }
 			: {}),
@@ -235,6 +238,9 @@ function projectSettledResultForObserver(
 		success: projected.success,
 		...(projected.effectReceipts !== undefined
 			? { effectReceipts: projected.effectReceipts }
+			: {}),
+		...(projected.failureProvenance !== undefined
+			? { failureProvenance: projected.failureProvenance }
 			: {}),
 		data: controlData,
 		...(projected.turnComplete !== undefined
@@ -358,7 +364,17 @@ export async function executePlannedToolCall(
 		return emitToolResult(
 			toolCall,
 			redactDiagnosticText,
-			failureResult(toolCall.name, `Action not found: ${toolCall.name}`),
+			failureResult(
+				toolCall.name,
+				`Action not found: ${toolCall.name}`,
+				{},
+				{
+					kind: "missing_capability",
+					boundary: "capability",
+					code: "ACTION_NOT_FOUND",
+					retryable: false,
+				},
+			),
 		);
 	}
 
@@ -460,7 +476,17 @@ export async function executePlannedToolCall(
 			return emitToolResult(
 				toolCall,
 				redactDiagnosticText,
-				failureResult(action.name, stringifyError(error), { error }),
+				failureResult(
+					action.name,
+					stringifyError(error),
+					{ error },
+					{
+						kind: "handler_error",
+						boundary: "handler",
+						code: "ACTION_VALIDATION_FAILED",
+						retryable: true,
+					},
+				),
 			);
 		}
 		if (!valid) {
@@ -470,6 +496,13 @@ export async function executePlannedToolCall(
 				failureResult(
 					action.name,
 					`Action ${action.name} is not available for the current state`,
+					{},
+					{
+						kind: "missing_capability",
+						boundary: "capability",
+						code: "ACTION_UNAVAILABLE",
+						retryable: false,
+					},
 				),
 			);
 		}

@@ -81,4 +81,8 @@ export type ChatFailureKind =
   | "provider_issue"
   | "generation_timeout"
   | "rate_limited"
+  | "missing_capability"
+  | "handler_error"
+  | "persistence_error"
+  | "planner_exhaustion"
   | "local_inference";

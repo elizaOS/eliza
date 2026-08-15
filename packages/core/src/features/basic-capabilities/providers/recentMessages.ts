@@ -72,6 +72,10 @@ const SYNTHETIC_ASSISTANT_FAILURE_KINDS = new Set([
 	"insufficient_credits",
 	"no_response",
 	"transient_failure",
+	"missing_capability",
+	"handler_error",
+	"persistence_error",
+	"planner_exhaustion",
 ]);
 const RECALL_REFERENTIAL_PATTERNS = [
 	/\bwhat\s+(?:did|was|were)\s+(?:i|we|you)\b.*\b(?:ask|say|tell|compute|calculate|mention|discuss|talk(?:ed)?\s+about)\b/i,

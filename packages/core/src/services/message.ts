@@ -14158,15 +14158,25 @@ export class DefaultMessageService implements IMessageService {
 		// up — so the synthetic reply carries the structural kind downstream
 		// consumers already key on (chat DTO failureKind gate, recent-messages
 		// synthetic-failure filter) instead of masquerading as a blip.
+		const failureKind =
+			attempt.kind === "creditsExhausted"
+				? "insufficient_credits"
+				: attempt.kind === "rateLimited"
+					? "rate_limited"
+					: attempt.kind === "authFailed"
+						? "provider_issue"
+						: cause === "transient"
+							? "transient_failure"
+							: cause;
 		const responseContent: Content = {
-			thought: `Handle a temporary reply failure during ${stage}.`,
+			thought: `Handle a ${cause} reply failure during ${stage}.`,
 			actions: ["REPLY"],
-			failureKind:
-				attempt.kind === "creditsExhausted"
-					? "insufficient_credits"
-					: "transient_failure",
+			failureKind,
 			elizaSyntheticFailure: true,
-			transient: true,
+			transient:
+				failureKind === "transient_failure" ||
+				failureKind === "rate_limited" ||
+				failureKind === "provider_issue",
 			doNotPersist: true,
 			text: replyText,
 			responseId,
