@@ -1481,4 +1481,30 @@ describe("budgeted provider capture completeness", () => {
     expect(normalized?.params.data).toEqual({ text: "ok", success: true });
     expect(normalized?.params.purpose).toBe("action");
   });
+
+  it("retains required provider fields through logger flush and SQL serialization", async () => {
+    const { runtime, logger, execute } = makeRuntime();
+    await installDatabaseTrajectoryLogger(runtime);
+    await logger.startTrajectory?.("provider-budget-persistence", {
+      agentId: runtime.agentId,
+      source: "test",
+    });
+    await flushTrajectoryWrites(runtime);
+    execute.mockClear();
+
+    logger.logProviderAccess({
+      stepId: "provider-budget-persistence",
+      providerName: "KNOWLEDGE",
+      data: oversizedProviderData(),
+      purpose: "Provider KNOWLEDGE accessed for context",
+    });
+    await logger.flushWriteQueue?.("provider-budget-persistence");
+
+    const serialized = trajectoryPersistenceSql(execute).join("\n");
+    expect(serialized).toContain('"providerName":"KNOWLEDGE"');
+    expect(serialized).toContain(
+      '"purpose":"Provider KNOWLEDGE accessed for context"',
+    );
+    expect(serialized).toContain('"data":');
+  });
 });

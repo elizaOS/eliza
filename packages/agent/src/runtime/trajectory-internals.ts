@@ -3582,6 +3582,28 @@ function normalizeStepForPersistence(
     }
     return bounded;
   };
+  const normalizeProviderRecord = (
+    access: PersistedProviderAccess,
+    index: number,
+  ): PersistedProviderAccess => {
+    const bounded = snapshotCaptureParams(
+      {
+        providerId: access.providerId,
+        providerName: access.providerName,
+        timestamp: access.timestamp,
+        purpose: access.purpose,
+        data: access.data,
+        ...access,
+      },
+      step.stepId,
+    );
+    return parsePersistedProviderAccess(
+      bounded,
+      trajectoryId,
+      step.stepId,
+      index,
+    );
+  };
 
   return {
     ...(boundedScalars as unknown as PersistedStep),
@@ -3592,14 +3614,7 @@ function normalizeStepForPersistence(
       (call, index) =>
         normalizeRecord(call, "llmCalls", index) as unknown as PersistedLlmCall,
     ),
-    providerAccesses: providerAccesses.map(
-      (access, index) =>
-        normalizeRecord(
-          access,
-          "providerAccesses",
-          index,
-        ) as unknown as PersistedProviderAccess,
-    ),
+    providerAccesses: providerAccesses.map(normalizeProviderRecord),
     ...(childSteps !== undefined ? { childSteps: [...childSteps] } : {}),
     ...(usedSkills !== undefined ? { usedSkills: [...usedSkills] } : {}),
     ...(skillInvocations !== undefined
