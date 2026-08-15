@@ -119,9 +119,8 @@ describe("runDeploy", () => {
     },
   );
 
-  // The accepted grammar is any Number()-compatible integer spelling, not
-  // just base-10 - the error message must describe the real contract instead
-  // of claiming a narrower one (review finding on #19384).
+  // The accepted grammar follows Number()-compatible integer spellings, so
+  // non-decimal forms must reach the timer with their resolved values.
   it.each([
     ["0x10", 16],
     ["0b10", 2],
@@ -172,13 +171,9 @@ describe("runDeploy", () => {
     },
   );
 
-  // Mutation-resistant: proves a configured, non-default poll interval actually
-  // reaches the real setTimeout call inside pollDeploymentStatus's sleep(), not
-  // just that the standalone parser resolves it correctly in isolation. Also
-  // covers every Number()-compatible spelling the pre-existing Number(...)
-  // parser accepted (blank/unset, leading zero, exponent, surrounding
-  // whitespace) to prove the stricter regex didn't silently narrow the
-  // accepted configuration grammar.
+  // Prove configured, non-default values reach the real timer rather than only
+  // exercising parsing in isolation. The matrix covers compatible spelling
+  // variants and the timer's maximum supported delay.
   it.each([
     ["", 5_000],
     ["01000", 1_000],
@@ -245,14 +240,8 @@ describe("runDeploy", () => {
     },
   );
 
-  // rndrntwrk's review of #19384: the accepted max poll interval
-  // (2147483647ms, ~24.8 days) can defeat the documented deploy timeout,
-  // because pollDeploymentStatus only rechecks the deadline after a sleep
-  // completes - an interval bigger than the timeout means the deadline is
-  // never rechecked until the huge sleep itself finishes. Proves the fix
-  // (bounding each sleep by the remaining timeout budget) makes a max
-  // interval still exit at the configured timeout, using fake timers so the
-  // test doesn't actually wait.
+  // A maximum timer interval must remain bounded by the shorter deployment
+  // timeout because the deadline is checked only between sleeps.
   it("bounds a max poll interval by the remaining timeout, not by intervalMs itself", async () => {
     vi.useFakeTimers();
     try {
