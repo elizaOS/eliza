@@ -127,6 +127,7 @@ test("real cache + canonical coordinator dispatch performs no response-path DB w
     operation: "prewarm",
     agentId: AGENT_ID,
     roomId: CONVERSATION_ID,
+    startEmpty: false,
   });
   expect(JSON.parse(String(coordinatorCalls[1]?.init?.body))).toMatchObject({
     operation: "stream",

@@ -6,6 +6,7 @@ import {
   LOOPBACK_REDIRECT_ORIGINS,
   resolveOAuthSuccessRedirectUrl,
 } from "@/lib/security/redirect-validation";
+import { linkVerifiedXOwnerIdentity } from "@/lib/services/eliza-app/x-personal-identity";
 import { invalidateOAuthState } from "@/lib/services/oauth/invalidation";
 import {
   clearOAuthSuccessParams,
@@ -176,6 +177,13 @@ app.get("/", async (c) => {
     }
 
     try {
+      if (state.connectionRole === "owner" && tokens.userId) {
+        await linkVerifiedXOwnerIdentity({
+          organizationId: state.organizationId,
+          userId: state.userId,
+          twitterUserId: tokens.userId,
+        });
+      }
       await twitterAutomationService.storeCredentials(
         state.organizationId,
         state.userId,
@@ -183,6 +191,7 @@ app.get("/", async (c) => {
           accessToken: tokens.accessToken,
           refreshToken: tokens.refreshToken,
           scope: tokens.scope,
+          expiresAt: tokens.expiresAt,
           screenName: tokens.screenName,
           twitterUserId: tokens.userId,
           authMode: "oauth2",
@@ -326,6 +335,13 @@ app.get("/", async (c) => {
   }
 
   try {
+    if (state.connectionRole === "owner" && tokens.userId) {
+      await linkVerifiedXOwnerIdentity({
+        organizationId: state.organizationId,
+        userId: state.userId,
+        twitterUserId: tokens.userId,
+      });
+    }
     await twitterAutomationService.storeCredentials(
       state.organizationId,
       state.userId,

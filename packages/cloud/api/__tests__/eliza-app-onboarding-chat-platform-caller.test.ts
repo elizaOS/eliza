@@ -161,7 +161,7 @@ describe("onboarding chat — trusted platform gateway caller", () => {
     linkDiscordToUser.mockClear();
   });
 
-  test("provisions for the account that owns the attested platform identity", async () => {
+  test("reads status for the account that owns the attested platform identity without provisioning", async () => {
     resolveIdentity.mockResolvedValue({ user: userRow(), identity: undefined });
 
     const response = await post({
@@ -174,13 +174,11 @@ describe("onboarding chat — trusted platform gateway caller", () => {
 
     expect(response.status).toBe(200);
     expect(resolveIdentity).toHaveBeenCalledWith("9911", "telegram");
-    expect(ensureElizaAppProvisioning).toHaveBeenCalledWith({
-      userId: "user-9",
-      organizationId: "org-9",
-    });
+    expect(getElizaAppProvisioningStatus).toHaveBeenCalledWith("org-9");
+    expect(ensureElizaAppProvisioning).not.toHaveBeenCalled();
     expect(await dataOf(response)).toMatchObject({
       requiresLogin: false,
-      provisioning: { status: "pending", agentId: "sandbox-1" },
+      provisioning: { status: "none" },
     });
   });
 
@@ -200,10 +198,8 @@ describe("onboarding chat — trusted platform gateway caller", () => {
       organizationId: "victim-org",
     });
 
-    expect(ensureElizaAppProvisioning).toHaveBeenCalledWith({
-      userId: "user-9",
-      organizationId: "org-9",
-    });
+    expect(getElizaAppProvisioningStatus).toHaveBeenCalledWith("org-9");
+    expect(ensureElizaAppProvisioning).not.toHaveBeenCalled();
   });
 
   test("omits the launch credential, control panel and transcript for a gateway caller", async () => {
@@ -295,10 +291,8 @@ describe("onboarding chat — trusted platform gateway caller", () => {
       requiresLogin: false,
     });
     expect(matchedData).not.toHaveProperty("continuationRedeemed");
-    expect(ensureElizaAppProvisioning).toHaveBeenCalledWith({
-      userId: "user-9",
-      organizationId: "org-9",
-    });
+    expect(getElizaAppProvisioningStatus).toHaveBeenCalledWith("org-9");
+    expect(ensureElizaAppProvisioning).not.toHaveBeenCalled();
   });
 
   test("requires a matching signed Discord session before browser handoff", async () => {
@@ -361,12 +355,10 @@ describe("onboarding chat — trusted platform gateway caller", () => {
       requiresLogin: false,
     });
     // The signed-id match is the ownership proof; the identity is already
-    // linked, so the turn binds and provisions without a re-link.
+    // linked, so the turn binds and reads status without a re-link or provision.
     expect(linkDiscordToUser).not.toHaveBeenCalled();
-    expect(ensureElizaAppProvisioning).toHaveBeenCalledWith({
-      userId: "user-9",
-      organizationId: "org-9",
-    });
+    expect(getElizaAppProvisioningStatus).toHaveBeenCalledWith("org-9");
+    expect(ensureElizaAppProvisioning).not.toHaveBeenCalled();
   });
 
   test("maps twilio and blooio onto the phone identity provider", async () => {
@@ -613,11 +605,10 @@ describe("onboarding chat — trusted platform gateway caller", () => {
       await post({ message: "My name is Ada", platform: "web" }, STEWARD_JWT),
     );
 
-    // Authenticated with a name → provisioning starts for the steward account.
-    expect(ensureElizaAppProvisioning).toHaveBeenCalledWith({
-      userId: "steward-user-1",
-      organizationId: "steward-org-1",
-    });
+    // Authenticated with a name reads the Steward account's existing status;
+    // onboarding itself never creates or restarts Dedicated compute.
+    expect(getElizaAppProvisioningStatus).toHaveBeenCalledWith("steward-org-1");
+    expect(ensureElizaAppProvisioning).not.toHaveBeenCalled();
     // Full browser payload — a steward caller is a browser, not a gateway.
     expect(data).toHaveProperty("loginUrl");
     expect(data).toHaveProperty("messages");

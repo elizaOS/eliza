@@ -1,4 +1,4 @@
-/** Verifies the AppModeEntryRoute gate — auth gating and the chat-floor routing table (any agents → the same-origin chat app with ZERO pairing traffic; empty org → /join) — through the package's configured test harness (jsdom, real render, hand-rolled fetch stub; no Steward provider mounted, sessions come from the persisted localStorage JWT). */
+/** Verifies the AppModeEntryRoute gate — auth gating, the chat-floor routing table (any agents → the same-origin chat app with ZERO pairing traffic), and the rowless personal-entry path (zero sandbox rows → the authoritative personal binding is resolved in place; /join is only the resolution-failure fallback) — through the package's configured test harness (jsdom, real render, hand-rolled fetch stub; no Steward provider mounted, sessions come from the persisted localStorage JWT). */
 // @vitest-environment jsdom
 
 import { STEWARD_TOKEN_KEY } from "@elizaos/shared/steward-session-client";
@@ -6,7 +6,10 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { afterEach, describe, expect, it } from "vitest";
-import { savePersistedActiveServer } from "../../state/persistence";
+import {
+  loadPersistedActiveServer,
+  savePersistedActiveServer,
+} from "../../state/persistence";
 import { AppModeEntryRoute } from "./AppModeEntryRoute";
 import { type AppModeAgent, appModeNavigation } from "./app-mode";
 
@@ -60,6 +63,8 @@ function agent(
 interface StubRoutes {
   /** Response for GET /api/v1/eliza/agents. */
   agents: () => Response;
+  /** Response for GET <cloud>/api/v1/eliza/personal (rowless personal entry). */
+  personal?: () => Response;
 }
 
 const realFetch = globalThis.fetch;
@@ -75,6 +80,9 @@ function stubNetwork(routes: StubRoutes): void {
     fetchLog.push(`${init?.method ?? "GET"} ${url}`);
     if (url === "/api/v1/eliza/agents") {
       return Promise.resolve(routes.agents());
+    }
+    if (routes.personal && url.endsWith("/api/v1/eliza/personal")) {
+      return Promise.resolve(routes.personal());
     }
     return Promise.resolve(
       new Response(JSON.stringify({ error: `unstubbed ${url}` }), {
@@ -244,8 +252,10 @@ describe("AppModeEntryRoute — chat-floor routing table", () => {
     expect(assignedUrls).toEqual([]);
   });
 
-  it("no agents at all → the /join deploy-first-agent flow", async () => {
+  it("no agents and no resolvable personal identity → the /join fallback flow", async () => {
     signIn();
+    // No `personal` stub: the identity endpoint answers 500, so the rowless
+    // resolver errors and entry falls back to /join, which owns retry UI.
     stubNetwork({ agents: agentsOk([]) });
     renderEntry();
 
@@ -308,5 +318,107 @@ describe("AppModeEntryRoute — chat-floor routing table", () => {
     renderEntry("/cloud/billing");
 
     expect(await screen.findByTestId("agent-app")).toBeTruthy();
+  });
+});
+
+describe("AppModeEntryRoute — rowless personal entry", () => {
+  const PERSONAL_ID = "personal:00000000-0000-5000-8000-000000000001";
+
+  function personalOk(id = PERSONAL_ID): () => Response {
+    return () =>
+      jsonResponse(200, {
+        success: true,
+        data: { identity: { id, displayName: "Eliza", runtime: "shared" } },
+      });
+  }
+
+  function bindPersonal(id = PERSONAL_ID): void {
+    savePersistedActiveServer({
+      id: `cloud:${id}`,
+      kind: "cloud",
+      label: "Eliza",
+      apiBase: `https://api.eliza.app/api/v1/eliza/agents/${encodeURIComponent(id)}`,
+    });
+  }
+
+  it("clean account with a matching personal binding → chat, no /join bounce, no reload (the #19360 loop)", async () => {
+    signIn();
+    bindPersonal();
+    stubNetwork({ agents: agentsOk([]), personal: personalOk() });
+    renderEntry();
+
+    expect(await screen.findByTestId("agent-app")).toBeTruthy();
+    expect(screen.queryByTestId("join-page")).toBeNull();
+    expect(assignedUrls).toEqual([]);
+  });
+
+  it("fresh browser, clean account → authoritative binding persisted, then one clean-boot reload", async () => {
+    signIn();
+    stubNetwork({ agents: agentsOk([]), personal: personalOk() });
+    renderEntry();
+
+    await waitFor(() => expect(assignedUrls).toEqual(["/"]));
+    expect(loadPersistedActiveServer()?.id).toBe(`cloud:${PERSONAL_ID}`);
+    expect(screen.queryByTestId("join-page")).toBeNull();
+    // Chat must boot from the clean reload, not from the stale in-page boot.
+    expect(screen.queryByTestId("agent-app")).toBeNull();
+  });
+
+  it("stale cross-account binding is repaired to the authenticated identity before any boot", async () => {
+    signIn();
+    bindPersonal("personal:00000000-0000-5000-8000-0000000000ff");
+    stubNetwork({ agents: agentsOk([]), personal: personalOk() });
+    renderEntry();
+
+    await waitFor(() => expect(assignedUrls).toEqual(["/"]));
+    expect(loadPersistedActiveServer()?.id).toBe(`cloud:${PERSONAL_ID}`);
+    expect(screen.queryByTestId("agent-app")).toBeNull();
+  });
+
+  it("an invalid identity response → /join, never a wrong-runtime chat boot", async () => {
+    signIn();
+    bindPersonal();
+    stubNetwork({
+      agents: agentsOk([]),
+      personal: () =>
+        jsonResponse(200, {
+          success: true,
+          data: {
+            identity: {
+              id: "not-a-personal-id",
+              displayName: "Eliza",
+              runtime: "shared",
+            },
+          },
+        }),
+    });
+    renderEntry();
+
+    expect(await screen.findByTestId("join-page")).toBeTruthy();
+    expect(screen.queryByTestId("agent-app")).toBeNull();
+  });
+
+  it("identity endpoint unavailable → /join (retryable there), no infinite entry loop", async () => {
+    signIn();
+    bindPersonal();
+    stubNetwork({
+      agents: agentsOk([]),
+      personal: () => jsonResponse(503, { error: "down" }),
+    });
+    renderEntry();
+
+    expect(await screen.findByTestId("join-page")).toBeTruthy();
+    expect(assignedUrls).toEqual([]);
+  });
+
+  it("rowless Cloud management stays reachable without touching the personal identity endpoint", async () => {
+    signIn();
+    stubNetwork({ agents: agentsOk([]), personal: personalOk() });
+    renderEntry("/cloud/billing");
+
+    expect(await screen.findByTestId("agent-app")).toBeTruthy();
+    expect(
+      fetchLog.filter((line) => line.includes("/api/v1/eliza/personal")),
+    ).toEqual([]);
   });
 });

@@ -12,11 +12,16 @@ import cloudApiWorker, {
   isUnsupportedLegacyWildcardHostname,
   redirectFrontendHost,
   SharedRuntimeConversation,
+  TwitterOAuthRefreshCoordinator,
 } from "./index";
 import { resetProvidersResponseCacheForTests } from "./steward/embedded";
 
 test("exports the shared-runtime conversation Durable Object", () => {
   expect(typeof SharedRuntimeConversation).toBe("function");
+});
+
+test("exports the X OAuth refresh Durable Object", () => {
+  expect(typeof TwitterOAuthRefreshCoordinator).toBe("function");
 });
 
 describe("thin inference entry dispatch", () => {
@@ -759,6 +764,24 @@ describe("cloud-api worker entrypoint", () => {
     expect(productionRoutes).toContain("api.eliza.app/*");
     expect(productionRoutes).toContain("relay.eliza.app/*");
     expect(productionRoutes).toContain("*.cloud.eliza.app/*");
+  });
+
+  test("publishes the genuine Shared runtime in staging and production", async () => {
+    const config = Bun.TOML.parse(
+      await Bun.file(new URL("../wrangler.toml", import.meta.url)).text(),
+    ) as {
+      vars?: { SHARED_ELIZA_AGENT_RUNTIME?: string };
+      env?: {
+        staging?: { vars?: { SHARED_ELIZA_AGENT_RUNTIME?: string } };
+        production?: { vars?: { SHARED_ELIZA_AGENT_RUNTIME?: string } };
+      };
+    };
+
+    expect(config.vars?.SHARED_ELIZA_AGENT_RUNTIME).toBe("false");
+    expect(config.env?.staging?.vars?.SHARED_ELIZA_AGENT_RUNTIME).toBe("true");
+    expect(config.env?.production?.vars?.SHARED_ELIZA_AGENT_RUNTIME).toBe(
+      "true",
+    );
   });
 
   test("binds the global native limiter in every Worker environment and keeps inference routes gate-free", async () => {

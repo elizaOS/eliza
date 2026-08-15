@@ -14,6 +14,7 @@ import {
   type InteractionBlock,
   type NeutralButton,
   parseInteractionBlocks,
+  stripDashboardOnlyMarkers,
   toNeutralLayout,
 } from "@elizaos/core";
 import type { InlineKeyboardButton } from "@telegraf/types";
@@ -93,8 +94,13 @@ export function renderTelegramInteractions(
     if (!producedButton && layout.text) extraLines.push(layout.text);
   }
 
-  const text = [cleanedText, ...extraLines]
-    .filter((s) => s.trim().length > 0)
-    .join("\n\n");
+  // A buttonless block can contribute fallback prose after parsing (for
+  // example, a task title). Strip again at the final delivery boundary so a
+  // marker nested inside that block cannot bypass the parsed-text cleanup.
+  const text = stripDashboardOnlyMarkers(
+    [cleanedText, ...extraLines]
+      .filter((s) => s.trim().length > 0)
+      .join("\n\n"),
+  );
   return { text, keyboardRows, needsFreeTextReply };
 }

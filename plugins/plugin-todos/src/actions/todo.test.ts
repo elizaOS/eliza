@@ -13,7 +13,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { validateToolArgs } from "../../../../packages/core/src/actions/validate-tool-args.js";
 import { currentTodosProvider } from "../providers/current-todos.js";
 import { TODO_LIST_LIMIT_ERROR_CODE, TodosService } from "../service.js";
-import { TODOS_SERVICE_TYPE } from "../types.js";
+import type {
+  TodoMutationExecution,
+  TodoMutationInput,
+  TodoScope,
+} from "../store.js";
+import { TODOS_SERVICE_TYPE, type TodoStatus } from "../types.js";
 import { todoAction } from "./todo.js";
 
 const ENTITY = "00000000-0000-0000-0000-0000000000aa";
@@ -29,7 +34,7 @@ interface StoredTodo {
   worldId: string | null;
   content: string;
   activeForm: string;
-  status: string;
+  status: TodoStatus;
   parentTodoId: string | null;
   parentTrajectoryStepId: string | null;
   metadata: Record<string, unknown>;
@@ -40,6 +45,10 @@ interface StoredTodo {
 
 class FakeTodosService {
   private nextId = 0;
+  private mutationLedger = new Map<
+    string,
+    { request: string; execution: TodoMutationExecution }
+  >();
   rows: StoredTodo[] = [];
   failOn: string | null = null;
   listCallCount = 0;
@@ -66,7 +75,7 @@ class FakeTodosService {
       worldId: (input.worldId as string | null) ?? null,
       content: String(input.content),
       activeForm: String(input.activeForm ?? input.content),
-      status: String(input.status ?? "pending"),
+      status: (input.status ?? "pending") as TodoStatus,
       parentTodoId: (input.parentTodoId as string | null) ?? null,
       parentTrajectoryStepId:
         (input.parentTrajectoryStepId as string | null) ?? null,
@@ -79,14 +88,21 @@ class FakeTodosService {
     return row;
   }
 
-  async get(id: string): Promise<StoredTodo | null> {
+  async get(scope: TodoScope, id: string): Promise<StoredTodo | null> {
     this.throwIf("get");
-    return this.rows.find((r) => r.id === id) ?? null;
+    return (
+      this.rows.find(
+        (row) =>
+          row.id === id &&
+          row.agentId === scope.agentId &&
+          row.entityId === scope.entityId,
+      ) ?? null
+    );
   }
 
   async list(filter: {
     entityId: string;
-    agentId?: string;
+    agentId: string;
     roomId?: string | null;
     includeCompleted?: boolean;
     limit?: number;
@@ -95,7 +111,7 @@ class FakeTodosService {
     this.throwIf("list");
     let results = this.rows.filter((r) => {
       if (r.entityId !== filter.entityId) return false;
-      if (filter.agentId && r.agentId !== filter.agentId) return false;
+      if (r.agentId !== filter.agentId) return false;
       if (filter.roomId && r.roomId !== filter.roomId) return false;
       if (
         filter.includeCompleted === false &&
@@ -112,17 +128,23 @@ class FakeTodosService {
   }
 
   async update(
+    scope: TodoScope,
     id: string,
     patch: Record<string, unknown>,
   ): Promise<StoredTodo | null> {
     this.throwIf("update");
-    const row = this.rows.find((r) => r.id === id);
+    const row = this.rows.find(
+      (candidate) =>
+        candidate.id === id &&
+        candidate.agentId === scope.agentId &&
+        candidate.entityId === scope.entityId,
+    );
     if (!row) return null;
     if (patch.content !== undefined) row.content = String(patch.content);
     if (patch.activeForm !== undefined)
       row.activeForm = String(patch.activeForm);
     if (patch.status !== undefined) {
-      row.status = String(patch.status);
+      row.status = String(patch.status) as TodoStatus;
       row.completedAt = row.status === "completed" ? new Date() : null;
     }
     if (patch.parentTodoId !== undefined) {
@@ -132,10 +154,15 @@ class FakeTodosService {
     return row;
   }
 
-  async delete(id: string): Promise<boolean> {
+  async delete(scope: TodoScope, id: string): Promise<boolean> {
     this.throwIf("delete");
     const before = this.rows.length;
-    this.rows = this.rows.filter((r) => r.id !== id);
+    this.rows = this.rows.filter(
+      (row) =>
+        row.id !== id ||
+        row.agentId !== scope.agentId ||
+        row.entityId !== scope.entityId,
+    );
     return this.rows.length < before;
   }
 
@@ -148,16 +175,18 @@ class FakeTodosService {
     todos: Array<{
       id?: string;
       content: string;
-      status: string;
+      status: TodoStatus;
       activeForm?: string;
     }>;
   }): Promise<{ before: StoredTodo[]; after: StoredTodo[] }> {
     this.throwIf("writeList");
-    const before = await this.list({
-      entityId: args.entityId,
-      agentId: args.agentId,
-      roomId: args.roomId,
-    });
+    const before = (
+      await this.list({
+        entityId: args.entityId,
+        agentId: args.agentId,
+        roomId: args.roomId,
+      })
+    ).map((todo) => ({ ...todo }));
     const beforeById = new Map(before.map((t) => [t.id, t]));
     const keep = new Set<string>();
     const after: StoredTodo[] = [];
@@ -165,7 +194,7 @@ class FakeTodosService {
       const existing = item.id ? beforeById.get(item.id) : undefined;
       if (existing) {
         keep.add(existing.id);
-        const updated = await this.update(existing.id, {
+        const updated = await this.update(args, existing.id, {
           content: item.content,
           status: item.status,
           activeForm: item.activeForm ?? item.content,
@@ -197,25 +226,139 @@ class FakeTodosService {
 
   async clear(filter: {
     entityId: string;
-    agentId?: string;
+    agentId: string;
     roomId?: string | null;
   }): Promise<number> {
     this.throwIf("clear");
     const before = this.rows.length;
     this.rows = this.rows.filter((r) => {
       if (r.entityId !== filter.entityId) return true;
-      if (filter.agentId && r.agentId !== filter.agentId) return true;
+      if (r.agentId !== filter.agentId) return true;
       if (filter.roomId && r.roomId !== filter.roomId) return true;
       return false;
     });
     return before - this.rows.length;
+  }
+
+  async applyMutation(
+    input: TodoMutationInput,
+  ): Promise<TodoMutationExecution> {
+    const ledgerKey = `${input.scope.agentId}:${input.scope.entityId}:${input.idempotencyKey}`;
+    const request = JSON.stringify(input.mutation);
+    const existing = this.mutationLedger.get(ledgerKey);
+    if (existing) {
+      if (existing.request !== request) throw new Error("idempotency conflict");
+      return structuredClone({ ...existing.execution, replayed: true });
+    }
+
+    let result: TodoMutationExecution["result"];
+    switch (input.mutation.action) {
+      case "create":
+        result = {
+          action: input.mutation.action,
+          todo: await this.create({
+            ...input.mutation.input,
+            ...input.scope,
+          }),
+        };
+        break;
+      case "update":
+        result = {
+          action: input.mutation.action,
+          todo: await this.update(
+            input.scope,
+            input.mutation.id,
+            input.mutation.patch,
+          ),
+        };
+        break;
+      case "complete":
+      case "cancel":
+        result = {
+          action: input.mutation.action,
+          todo: await this.update(input.scope, input.mutation.id, {
+            status:
+              input.mutation.action === "complete" ? "completed" : "cancelled",
+          }),
+        };
+        break;
+      case "delete": {
+        const deleted = await this.get(input.scope, input.mutation.id);
+        if (deleted) await this.delete(input.scope, input.mutation.id);
+        result = { action: input.mutation.action, deleted };
+        break;
+      }
+      case "write": {
+        const list = await this.writeList({
+          ...input.mutation.input,
+          ...input.scope,
+        });
+        result = { action: input.mutation.action, ...list };
+        break;
+      }
+      case "clear":
+        result = {
+          action: input.mutation.action,
+          count: await this.clear({
+            ...input.scope,
+            ...(input.mutation.roomId !== undefined
+              ? { roomId: input.mutation.roomId }
+              : {}),
+          }),
+        };
+        break;
+    }
+    const applied =
+      result.action === "create" ||
+      ((result.action === "update" ||
+        result.action === "complete" ||
+        result.action === "cancel") &&
+        result.todo !== null) ||
+      (result.action === "delete" && result.deleted !== null) ||
+      (result.action === "write" &&
+        JSON.stringify(
+          result.before.map(({ updatedAt: _updatedAt, ...todo }) => todo),
+        ) !==
+          JSON.stringify(
+            result.after.map(({ updatedAt: _updatedAt, ...todo }) => todo),
+          )) ||
+      (result.action === "clear" && result.count > 0);
+    const execution: TodoMutationExecution = {
+      mutationId: crypto.randomUUID(),
+      idempotencyKey: input.idempotencyKey,
+      replayed: false,
+      committedAt: new Date(),
+      applied,
+      result,
+    };
+    this.mutationLedger.set(ledgerKey, {
+      request,
+      execution: structuredClone(execution),
+    });
+    return execution;
+  }
+
+  async listMutationRecords(): Promise<[]> {
+    return [];
+  }
+
+  async readCutoverState(): Promise<{ todos: StoredTodo[]; mutations: [] }> {
+    return { todos: structuredClone(this.rows), mutations: [] };
+  }
+
+  async importMutationRecords(): Promise<{
+    imported: number;
+    skipped: number;
+  }> {
+    return { imported: 0, skipped: 0 };
   }
 }
 
 function mockRuntime(service: FakeTodosService): IAgentRuntime {
   const stub = {
     agentId: AGENT,
-    getSetting: (): string | boolean | number | null => null,
+    getSetting: (key: string): string | boolean | number | null =>
+      process.env[key] ?? null,
     getService: ((name: string) =>
       name === TODOS_SERVICE_TYPE
         ? service
@@ -224,8 +367,12 @@ function mockRuntime(service: FakeTodosService): IAgentRuntime {
   return stub as never as IAgentRuntime;
 }
 
+let messageSequence = 0;
+
 function makeMessage(overrides: Partial<Memory> = {}): Memory {
+  messageSequence++;
   return {
+    id: `message-${messageSequence}`,
     entityId: ENTITY,
     roomId: ROOM,
     worldId: WORLD,
@@ -238,13 +385,46 @@ async function invoke(
   runtime: IAgentRuntime,
   parameters: Record<string, unknown>,
   message: Memory = makeMessage(),
+  options: Partial<HandlerOptions> = {},
 ): Promise<ActionResult> {
-  const opts = { parameters } as HandlerOptions;
+  const opts = { ...options, parameters } as HandlerOptions;
   const result = await todoAction.handler?.(runtime, message, undefined, opts);
   if (result === undefined) {
     throw new Error("todoAction.handler returned undefined");
   }
   return result;
+}
+
+function expectAppliedMutation(
+  result: ActionResult,
+  action: string,
+  resourceId?: string,
+): void {
+  expect(result.success).toBe(true);
+  expect(result.verifiedUserFacing).toBe(true);
+  expect(result.userFacingText).toBe(result.text);
+  expect(result.turnComplete).toBe(true);
+  expect(result.continueChain).toBe(false);
+  expect(result.data).toMatchObject({ actionName: "TODO", action, op: action });
+  expect(result.effectReceipts).toHaveLength(1);
+  const receipt = result.effectReceipts?.[0];
+  expect(receipt).toMatchObject({
+    operation: `todos.${action}`,
+    outcome: "applied",
+    artifacts: [],
+    idempotency: {
+      key: expect.stringMatching(/^todos:v1:/),
+      replayed: false,
+    },
+    ...(resourceId ? { resource: { id: resourceId } } : {}),
+  });
+  if (receipt?.outcome !== "applied") {
+    throw new Error("Expected one applied Todo mutation receipt.");
+  }
+  expect(receipt.commit.kind).toBe("durable");
+  expect(receipt.commit.committedAt).toBe(receipt.observedAt);
+  expect(Number.isNaN(Date.parse(receipt.observedAt))).toBe(false);
+  expect(result.userFacingEffectReceiptIds).toEqual([receipt.receiptId]);
 }
 
 describe("TODO action", () => {
@@ -258,6 +438,151 @@ describe("TODO action", () => {
 
   afterEach(() => {
     delete process.env.ELIZA_PARENT_TRAJECTORY_STEP_ID;
+  });
+
+  describe("verified mutation receipts", () => {
+    it("binds every durable mutation to its exact applied receipt", async () => {
+      const write = await invoke(runtime, {
+        action: "write",
+        todos: [{ content: "written", status: "pending" }],
+      });
+      expectAppliedMutation(write, "write", `${AGENT}:${ENTITY}`);
+
+      const create = await invoke(runtime, {
+        action: "create",
+        content: "created",
+      });
+      const todoId = service.rows.at(-1)?.id;
+      if (!todoId) throw new Error("Create must return a durable todo id.");
+      expectAppliedMutation(create, "create", todoId);
+
+      expectAppliedMutation(
+        await invoke(runtime, {
+          action: "update",
+          id: todoId,
+          content: "updated",
+        }),
+        "update",
+        todoId,
+      );
+      expectAppliedMutation(
+        await invoke(runtime, { action: "complete", id: todoId }),
+        "complete",
+        todoId,
+      );
+      expectAppliedMutation(
+        await invoke(runtime, { action: "cancel", id: todoId }),
+        "cancel",
+        todoId,
+      );
+      expectAppliedMutation(
+        await invoke(runtime, { action: "delete", id: todoId }),
+        "delete",
+        todoId,
+      );
+      expectAppliedMutation(
+        await invoke(runtime, { action: "clear" }),
+        "clear",
+        `${AGENT}:${ENTITY}`,
+      );
+    });
+
+    it("keeps reads and zero-change clears receipt-free", async () => {
+      const list = await invoke(runtime, { action: "list" });
+      expect(list.data).toMatchObject({ actionName: "TODO", action: "list" });
+      expect(list.effectReceipts).toBeUndefined();
+      expect(list.userFacingEffectReceiptIds).toBeUndefined();
+
+      const clear = await invoke(runtime, { action: "clear" });
+      expect(clear.data).toMatchObject({
+        actionName: "TODO",
+        action: "clear",
+        count: 0,
+      });
+      expect(clear.effectReceipts).toBeUndefined();
+      expect(clear.verifiedUserFacing).toBeUndefined();
+      expect(clear.turnComplete).toBe(true);
+      expect(clear.continueChain).toBe(false);
+    });
+
+    it("replays one committed mutation with a stable noop receipt", async () => {
+      const message = makeMessage({
+        content: {
+          text: "add it",
+          chatIdempotency: { clientMessageId: "connector-message-1" },
+        },
+      });
+      const first = await invoke(
+        runtime,
+        { action: "create", content: "only once" },
+        message,
+      );
+      const replay = await invoke(
+        runtime,
+        { action: "create", content: "only once" },
+        message,
+      );
+
+      expect(service.rows).toHaveLength(1);
+      expect(replay.text).toBe(first.text);
+      expect(replay.data).toEqual(first.data);
+      expect(replay.continueChain).toBe(false);
+      expect(replay.effectReceipts?.[0]).toMatchObject({
+        receiptId: first.effectReceipts?.[0]?.receiptId,
+        outcome: "noop",
+        reason: "Reused the previously committed Todo mutation",
+        idempotency: {
+          key: "todos:v1:connector-message-1:0",
+          replayed: true,
+        },
+      });
+      expect(replay.effectReceipts?.[0]).not.toHaveProperty("commit");
+    });
+
+    it("conflicts instead of applying a changed retry plan", async () => {
+      const message = makeMessage({ id: "same-memory-id" });
+      await invoke(runtime, { action: "create", content: "original" }, message);
+      const changed = await invoke(
+        runtime,
+        { action: "create", content: "changed" },
+        message,
+      );
+
+      expect(changed.success).toBe(false);
+      expect(changed.text).toContain("idempotency conflict");
+      expect(changed.continueChain).toBe(false);
+      expect(service.rows.map((todo) => todo.content)).toEqual(["original"]);
+    });
+
+    it("counts prior Todo mutations but ignores reads and unrelated tools", async () => {
+      const previousResults: ActionResult[] = [
+        { success: true, data: { actionName: "SEARCH", action: "search" } },
+        {
+          success: true,
+          data: { actionName: "TODO", action: "list", op: "list" },
+        },
+        {
+          success: true,
+          data: { actionName: "TODO", action: "create", op: "create" },
+        },
+      ];
+      const result = await invoke(
+        runtime,
+        { action: "create", content: "second mutation" },
+        makeMessage({
+          content: {
+            text: "add another",
+            chatIdempotency: { clientMessageId: "connector-message-2" },
+          },
+        }),
+        { actionContext: { previousResults } },
+      );
+
+      expect(result.effectReceipts?.[0]?.idempotency.key).toBe(
+        "todos:v1:connector-message-2:1",
+      );
+      expect(result.continueChain).toBe(false);
+    });
   });
 
   describe("action=write", () => {
@@ -509,6 +834,27 @@ describe("TODO action", () => {
       expect(result.success).toBe(true);
       expect(service.rows[0]?.status).toBe("pending");
       expect(service.rows[0]?.completedAt).toBeNull();
+    });
+
+    it("detaches a todo from its parent when detachParent is true", async () => {
+      await invoke(runtime, { action: "create", content: "parent" });
+      const parentId = service.rows[0]?.id;
+      await invoke(runtime, {
+        action: "create",
+        content: "child",
+        parentTodoId: parentId,
+      });
+      const childId = service.rows[1]?.id;
+      expect(service.rows[1]?.parentTodoId).toBe(parentId);
+
+      const result = await invoke(runtime, {
+        action: "update",
+        id: childId,
+        detachParent: true,
+      });
+
+      expect(result.success).toBe(true);
+      expect(service.rows[1]?.parentTodoId).toBeNull();
     });
   });
 

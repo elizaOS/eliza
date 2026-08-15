@@ -177,6 +177,10 @@ export const PROVISIONING_JOB_TEST_TABLES: readonly string[] = [
   "deletion_previous_billing_status" text,
   "deletion_previous_shutdown_warning_sent_at" timestamptz,
   "deletion_previous_scheduled_shutdown_at" timestamptz,
+  "pre_delete_capture_waiver_attempt_id" uuid,
+  "pre_delete_capture_waiver_environment_revision" integer,
+  "pre_delete_capture_waiver_sandbox_id" text,
+  "pre_delete_capture_waiver_bridge_url" text,
   "deletion_allocation_counted" boolean,
   "execution_tier" text NOT NULL DEFAULT 'shared'::text,
   "bridge_url" text,
@@ -336,6 +340,80 @@ EXECUTE FUNCTION advance_agent_sandbox_lifecycle_revision()`,
   "created_at" timestamp NOT NULL DEFAULT now(),
   PRIMARY KEY ("job_id")
 )`,
+  `CREATE SCHEMA IF NOT EXISTS "app_scheduling"`,
+  `CREATE TABLE IF NOT EXISTS "app_scheduling"."life_scheduled_tasks" (
+  "id" text NOT NULL,
+  "agent_id" text NOT NULL,
+  "kind" text NOT NULL,
+  "prompt_instructions" text NOT NULL,
+  "context_request_json" text,
+  "trigger_json" text NOT NULL,
+  "priority" text DEFAULT 'medium' NOT NULL,
+  "should_fire_json" text,
+  "completion_check_json" text,
+  "escalation_json" text,
+  "output_json" text,
+  "pipeline_json" text,
+  "subject_kind" text,
+  "subject_id" text,
+  "idempotency_key" text,
+  "respects_global_pause" boolean DEFAULT true NOT NULL,
+  "state_json" text DEFAULT '{}' NOT NULL,
+  "source" text DEFAULT 'user_chat' NOT NULL,
+  "created_by" text DEFAULT '' NOT NULL,
+  "owner_visible" boolean DEFAULT true NOT NULL,
+  "metadata_json" text DEFAULT '{}' NOT NULL,
+  "execution_profile" text,
+  "transfer_token" text,
+  "transfer_holder_token" text,
+  "transfer_target_agent_id" text,
+  "transfer_status" text,
+  "version" integer DEFAULT 1 NOT NULL,
+  "next_fire_at" timestamptz,
+  "created_at" text NOT NULL,
+  "updated_at" text NOT NULL
+,
+  PRIMARY KEY ("agent_id", "id")
+)`,
+  `CREATE SCHEMA IF NOT EXISTS "todos"`,
+  `CREATE TABLE IF NOT EXISTS "todos"."todos" (
+  "id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+  "agent_id" uuid NOT NULL,
+  "entity_id" uuid NOT NULL,
+  "room_id" uuid,
+  "world_id" uuid,
+  "content" text NOT NULL,
+  "active_form" text NOT NULL,
+  "status" text NOT NULL,
+  "parent_todo_id" uuid,
+  "parent_trajectory_step_id" text,
+  "metadata" jsonb DEFAULT '{}'::jsonb NOT NULL,
+  "created_at" timestamp DEFAULT now() NOT NULL,
+  "updated_at" timestamp DEFAULT now() NOT NULL,
+  "completed_at" timestamp
+)`,
+  `CREATE INDEX IF NOT EXISTS "idx_todos_entity_status"
+  ON "todos"."todos" ("entity_id", "status")`,
+  `CREATE INDEX IF NOT EXISTS "idx_todos_agent_entity"
+  ON "todos"."todos" ("agent_id", "entity_id")`,
+  `CREATE INDEX IF NOT EXISTS "idx_todos_room"
+  ON "todos"."todos" ("room_id")`,
+  `CREATE TABLE IF NOT EXISTS "todos"."todo_mutations" (
+  "mutation_id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+  "agent_id" uuid NOT NULL,
+  "entity_id" uuid NOT NULL,
+  "idempotency_key" text NOT NULL,
+  "request_digest" text NOT NULL,
+  "operation" text NOT NULL,
+  "applied" boolean NOT NULL,
+  "result_json" jsonb NOT NULL,
+  "committed_at" timestamptz DEFAULT now() NOT NULL,
+  CONSTRAINT "todo_mutations_agent_entity_idempotency_key_unique"
+    UNIQUE ("agent_id", "entity_id", "idempotency_key")
+)`,
+  `CREATE INDEX IF NOT EXISTS "idx_todo_mutations_scope_commit"
+  ON "todos"."todo_mutations"
+  ("agent_id", "entity_id", "committed_at", "mutation_id")`,
 ];
 
 export const TIER_UPGRADE_TEST_TABLES = PROVISIONING_JOB_TEST_TABLES;

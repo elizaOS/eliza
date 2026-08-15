@@ -1346,6 +1346,20 @@ function tryParseJson(candidate: string): unknown {
 }
 
 function parseEvaluatorText(text: string): ParsedEvaluatorObject {
+	// Reasoning-token residue defeats every stage below: a reply like
+	// `None</think>\`\`\`json {…}` fails the fence unwrap, the strict parse,
+	// AND the leading-fence repair (which requires the text to START with a
+	// fence) — the raw envelope then leaked verbatim to Discord (live
+	// tj-b8809c9841cdfd, matrix F18). The think contract is unambiguous:
+	// everything before the LAST </think> is reasoning, never output — strip
+	// it before any envelope handling.
+	const thinkEnd = text.lastIndexOf("</think>");
+	const visible =
+		thinkEnd >= 0 ? text.slice(thinkEnd + "</think>".length) : text;
+	return parseEvaluatorVisibleText(visible);
+}
+
+function parseEvaluatorVisibleText(text: string): ParsedEvaluatorObject {
 	const candidate = unwrapJsonFence(text.trim());
 	if (!candidate) {
 		return { object: null, parseError: "empty response" };

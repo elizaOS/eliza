@@ -632,7 +632,7 @@ describe("oc home-format variants (cross-version)", () => {
   });
 });
 
-describe("migrate-agent --json stdout purity (GAP E)", () => {
+describe("migrate-agent command behavior", () => {
   afterEach(() => {
     vi.restoreAllMocks();
   });
@@ -664,5 +664,27 @@ describe("migrate-agent --json stdout purity (GAP E)", () => {
     expect(parsed.memoryCount).toBeGreaterThan(0);
     expect(parsed.summary).toHaveProperty("sqliteStores");
     expect(parsed.summary).toHaveProperty("warnings");
+  });
+
+  it("rejects a non-finite --memory-days value", async () => {
+    let err = "";
+    vi.spyOn(process.stderr, "write").mockImplementation((chunk: unknown) => {
+      err += String(chunk);
+      return true;
+    });
+    vi.spyOn(process, "exit").mockImplementation(() => {
+      throw new Error("process.exit called");
+    });
+
+    await expect(
+      migrateAgent({
+        from: FIXTURE,
+        agentId: "tess",
+        memoryDays: "Infinity",
+        dryRun: true,
+        json: true,
+      }),
+    ).rejects.toThrow("process.exit called");
+    expect(err).toContain("--memory-days must be a non-negative number.");
   });
 });

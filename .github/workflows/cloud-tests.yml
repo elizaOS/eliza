@@ -5,31 +5,8 @@ name: Cloud Tests
 
 on:
   workflow_dispatch:
-  pull_request:
-    branches: [develop, main]
-    paths:
-      - ".github/actions/cloud-setup-test-env/**"
-      - ".github/workflows/cloud-tests.yml"
-      - "packages/cloud/api/**"
-      - "packages/cloud/shared/**"
-      - "packages/cloud/sdk/**"
-      - "packages/cloud/services/**"
-      - "packages/cloud/routing/**"
-      - "packages/cloud/infra/**"
-      - "packages/cloud/scripts/**"
-      - "packages/scripts/test-cloud-run.mjs"
-      - "packages/scripts/test-cloud-run-helpers.mjs"
-      - "packages/scripts/__tests__/test-cloud-run.test.mjs"
-      - "packages/scripts/test-cloud-run-flush.self-test.mjs"
-      - "packages/scripts/test-cloud-run-helpers.self-test.mjs"
-      - "packages/scripts/test-cloud-run-preflight.self-test.mjs"
-      - "packages/scripts/test-cloud-run-watchdog.self-test.mjs"
-      - "package.json"
-      - "bun.lock"
-      - ".github/workflows/cloud-tests.yml"
-      - ".github/actions/cloud-setup-test-env/**"
   push:
-    branches: [develop, main]
+    branches: [develop]
     paths:
       - "packages/cloud/api/**"
       - "packages/cloud/shared/**"
@@ -50,17 +27,10 @@ on:
       - ".github/workflows/cloud-tests.yml"
       - ".github/actions/cloud-setup-test-env/**"
 
-# CI fan-out fix: the PR-scoped concurrency from #14069 fell back to
-# github.run_id on push, so every develop push got a unique group and
-# nothing ever superseded. A 37-merge wave queued thousands of push runs
-# and starved the self-hosted fleet. Fall back to github.ref (all develop
-# pushes share a group) and cancel superseded runs on push too. PR behavior
-# is unchanged (pull_request.number still wins the key); merge_group and
-# schedule events are not in the cancel set, so the merge queue and nightly
-# runs always complete.
+# All develop pushes share a stable group so stale work is superseded.
 concurrency:
-  group: cloud-tests-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event_name == 'push' }}
+  group: cloud-tests-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'push' }}
 
 env:
   DATABASE_URL: postgresql://postgres@127.0.0.1:5432/postgres

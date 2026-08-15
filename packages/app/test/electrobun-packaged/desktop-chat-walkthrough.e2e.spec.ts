@@ -44,6 +44,7 @@ import {
 } from "./bridge-frame-recorder";
 import { type MockApiServer, startMockApiServer } from "./mock-api";
 import {
+  isMacConsoleSessionLocked,
   PackagedDesktopHarness,
   resolvePackagedLauncher,
 } from "./packaged-app-helpers";
@@ -315,6 +316,10 @@ test("packaged desktop chat walkthrough records a real-time MP4", async ({
 }, testInfo) => {
   void _browserName;
   test.setTimeout(600_000);
+  test.skip(
+    isMacConsoleSessionLocked(),
+    "macOS console is locked — recording requires real screen pixels and key-window focus.",
+  );
 
   const tempRoot = await fs.mkdtemp(
     path.join(os.tmpdir(), "eliza-desktop-chat-walkthrough-"),

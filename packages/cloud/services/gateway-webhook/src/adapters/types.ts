@@ -44,12 +44,21 @@ export interface PlatformAdapter {
     event: ChatEvent,
     text: string,
   ): Promise<void>;
+  sendReplyWithReceipt?(
+    config: WebhookConfig,
+    event: ChatEvent,
+    text: string,
+  ): Promise<PlatformDeliveryReceipt>;
   sendTypingIndicator(config: WebhookConfig, event: ChatEvent): Promise<void>;
   /** Resolve provider-owned voice bytes while credentials are still local. */
   resolveVoiceNote?(
     config: WebhookConfig,
     event: ChatEvent,
   ): Promise<ResolvedVoiceNote>;
+}
+
+export interface PlatformDeliveryReceipt {
+  providerMessageIds: string[];
 }
 
 export interface ResolvedVoiceNote {

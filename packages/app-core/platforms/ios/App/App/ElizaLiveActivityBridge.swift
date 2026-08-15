@@ -1,3 +1,7 @@
+/**
+ The Capacitor bridge owns ActivityKit lifecycle calls and translates the web
+ voice session into localized native Live Activity attributes and state.
+ */
 import ActivityKit
 import Capacitor
 import Foundation
@@ -18,7 +22,7 @@ import Foundation
 /// Exposes:
 ///   - `isSupported()` → `{ supported, enabled }` — iOS 16.1 gate + the user's
 ///     system Live-Activities toggle (`ActivityAuthorizationInfo`).
-///   - `start({ sessionTitle?, phase?, transcript? })` → `{ activityId }`
+///   - `start({ sessionTitleKind?, sessionTitle?, phase?, transcript? })` → `{ activityId }`
 ///   - `update({ activityId?, phase, transcript? })` → `{ updated }`
 ///   - `end({ activityId?, phase? })` → `{ ended }`
 @objc(ElizaLiveActivityPlugin)
@@ -57,7 +61,7 @@ public class ElizaLiveActivityPlugin: CAPPlugin, CAPBridgedPlugin {
             return
         }
 
-        let title = call.getString("sessionTitle") ?? "Voice session"
+        let title = Self.sessionTitle(from: call)
         let phase = Self.phase(from: call.getString("phase")) ?? .recording
         let transcript = call.getString("transcript") ?? ""
         let startedAt = Date()
@@ -89,6 +93,28 @@ public class ElizaLiveActivityPlugin: CAPPlugin, CAPBridgedPlugin {
             call.resolve(["activityId": activity.id])
         } catch {
             call.reject("Failed to start Live Activity: \(error.localizedDescription)")
+        }
+    }
+
+    private enum SessionTitleKind: String {
+        case keyboardDictation = "keyboard-dictation"
+    }
+
+    private static func sessionTitle(from call: CAPPluginCall) -> String {
+        if
+            let requestedTitle = call.getString("sessionTitle"),
+            !requestedTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        {
+            // Genuine caller-supplied titles remain verbatim. App-owned titles
+            // cross the bridge as semantic kinds and localize natively.
+            return requestedTitle
+        }
+
+        switch call.getString("sessionTitleKind").flatMap(SessionTitleKind.init(rawValue:)) {
+        case .keyboardDictation:
+            return String(localized: "Keyboard dictation")
+        case .none:
+            return String(localized: "Voice session")
         }
     }
 

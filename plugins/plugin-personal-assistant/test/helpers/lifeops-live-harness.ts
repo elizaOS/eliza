@@ -28,7 +28,6 @@ export const REPO_ROOT = path.resolve(
   "..",
   "..",
   "..",
-  "..",
 );
 const ENV_PATH = path.join(REPO_ROOT, ".env");
 const LIVE_HTTP_REQUEST_TIMEOUT_MS = 120_000;
@@ -736,17 +735,20 @@ export async function startLifeOpsLiveRuntime(options?: {
   child.stderr.on("data", (chunk: string) => logs.push(chunk));
 
   const bootTimeoutMs = options?.bootTimeoutMs ?? LIVE_RUNTIME_BOOT_TIMEOUT_MS;
+  const bootDeadlineMs = Date.now() + bootTimeoutMs;
+  const remainingBootTimeMs = (): number =>
+    Math.max(1, bootDeadlineMs - Date.now());
 
   try {
     await waitForJsonPredicate<{ ready?: boolean; runtime?: string }>(
       `http://127.0.0.1:${apiPort}/api/health`,
       (value) => value.ready === true && value.runtime === "ok",
-      bootTimeoutMs,
+      remainingBootTimeMs(),
     );
     await waitForJsonPredicate<{ trajectories?: unknown[] }>(
       `http://127.0.0.1:${apiPort}/api/trajectories?limit=1`,
       (value) => Array.isArray(value.trajectories),
-      bootTimeoutMs,
+      remainingBootTimeMs(),
     );
     await waitForJsonPredicate<{
       occurrences?: unknown[];
@@ -757,9 +759,9 @@ export async function startLifeOpsLiveRuntime(options?: {
         Array.isArray(value.occurrences) &&
         !!value.summary &&
         typeof value.summary === "object",
-      bootTimeoutMs,
+      remainingBootTimeMs(),
     );
-    await waitForLiveRuntimeBootstrap(apiPort, bootTimeoutMs);
+    await waitForLiveRuntimeBootstrap(apiPort, remainingBootTimeMs());
   } catch (error) {
     const logTail = logs.join("").slice(-8_000);
     if (child.exitCode == null) {

@@ -86,6 +86,26 @@ describe("parseViewWindowAction", () => {
 describe("buildApplicationMenu", () => {
   const noWindows: ManagedWindowSnapshot[] = [];
 
+  it.each([
+    { isMac: true, accelerator: "Command+Q" },
+    { isMac: false, accelerator: "Ctrl+Q" },
+  ])(
+    "routes Quit through graceful app shutdown on every platform",
+    ({ isMac, accelerator }) => {
+      const menu = buildApplicationMenu({
+        isMac,
+        browserEnabled: false,
+        detachedWindows: noWindows,
+      });
+      const appMenu = menu[0];
+      const quit = appMenu?.submenu?.find((item) =>
+        item.label?.startsWith("Quit "),
+      );
+      expect(quit).toMatchObject({ action: "quit", accelerator });
+      expect(quit?.role).toBeUndefined();
+    },
+  );
+
   it("places the Views submenu in the menu bar with the correct actions", () => {
     const menu = buildApplicationMenu({
       isMac: true,

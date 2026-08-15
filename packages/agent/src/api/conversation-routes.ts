@@ -46,6 +46,11 @@ import {
   type UUID,
   validateUuid,
 } from "@elizaos/core";
+import {
+  getScheduledTaskRunner,
+  isScheduledTask,
+  type ScheduledTask,
+} from "@elizaos/plugin-scheduling";
 import type { ChatFailureKind } from "@elizaos/shared";
 import {
   PatchConversationRequestSchema,
@@ -55,6 +60,10 @@ import {
   PostSeedMessagesRequestSchema,
   parsePositiveInteger,
 } from "@elizaos/shared";
+import {
+  parseSharedTodoCutoverSnapshot,
+  TodoCutoverContractError,
+} from "@elizaos/shared/todo-cutover";
 import type { ElizaConfig } from "../config/config.ts";
 import { resolveStateDir } from "../config/paths.ts";
 import type { AgentHttpRequestAuthorization } from "../runtime/host-bridge.ts";
@@ -132,6 +141,10 @@ import {
 } from "./server-helpers.ts";
 import { normalizeWsClientId } from "./server-helpers-auth.ts";
 import type { ConversationMeta } from "./server-types.ts";
+import {
+  importSharedTodoCutover,
+  type SharedTodoImportReceipt,
+} from "./todo-cutover-import.ts";
 import {
   resolveWaifuChatAccess,
   type WaifuChatAccess,
@@ -286,6 +299,7 @@ export interface ConversationRouteState {
 export interface ConversationRouteContext extends RouteRequestContext {
   state: ConversationRouteState;
   callerAuthorization?: AgentHttpRequestAuthorization;
+  todoCutoverImporter?: typeof importSharedTodoCutover;
 }
 
 function readViewInteractionClientId(
@@ -3265,6 +3279,85 @@ export async function handleConversationRoutes(
       error(res, "Imported message sourceIds must be unique", 400);
       return true;
     }
+    const rawScheduledTasks = rawImport.scheduledTasks;
+    if (rawScheduledTasks !== undefined && !Array.isArray(rawScheduledTasks)) {
+      error(res, "`scheduledTasks` must be an array", 400);
+      return true;
+    }
+    const cutoverToken =
+      typeof rawImport.cutoverToken === "string" &&
+      rawImport.cutoverToken.trim().length > 0 &&
+      rawImport.cutoverToken.length <= 512
+        ? rawImport.cutoverToken.trim()
+        : null;
+    if (rawImport.cutoverToken !== undefined && !cutoverToken) {
+      error(
+        res,
+        "A cutoverToken must be a non-empty string of at most 512 characters",
+        400,
+      );
+      return true;
+    }
+    const importTasks: ScheduledTask[] = [];
+    for (const rawTask of rawScheduledTasks ?? []) {
+      if (!isScheduledTask(rawTask) || rawTask.kind !== "reminder") {
+        error(
+          res,
+          "Every imported scheduled task must be a valid reminder",
+          400,
+        );
+        return true;
+      }
+      importTasks.push(rawTask);
+    }
+    if (importTasks.length > 0 && !cutoverToken) {
+      error(res, "A cutoverToken is required to import scheduled tasks", 400);
+      return true;
+    }
+    const activateScheduledTasks = rawImport.activateScheduledTasks;
+    if (
+      activateScheduledTasks !== undefined &&
+      typeof activateScheduledTasks !== "boolean"
+    ) {
+      error(res, "`activateScheduledTasks` must be a boolean", 400);
+      return true;
+    }
+    if (activateScheduledTasks === true && !cutoverToken) {
+      error(res, "A cutoverToken is required to activate scheduled tasks", 400);
+      return true;
+    }
+    const rawTodoSnapshot = rawImport.todoSnapshot;
+    if (cutoverToken && rawTodoSnapshot === undefined) {
+      error(res, "A todoSnapshot is required for an exact cutover import", 400);
+      return true;
+    }
+    if (rawTodoSnapshot !== undefined && !cutoverToken) {
+      error(res, "A cutoverToken is required to import todos", 400);
+      return true;
+    }
+    let todoSnapshot: Awaited<
+      ReturnType<typeof parseSharedTodoCutoverSnapshot>
+    > | null = null;
+    if (rawTodoSnapshot !== undefined) {
+      try {
+        todoSnapshot = await parseSharedTodoCutoverSnapshot(rawTodoSnapshot);
+      } catch (err) {
+        // error-policy:J3 the authenticated import boundary rejects malformed
+        // or digest-mismatched Todo data without admitting any partial import.
+        error(
+          res,
+          err instanceof TodoCutoverContractError
+            ? err.message
+            : `Todo snapshot validation failed: ${getErrorMessage(err)}`,
+          400,
+        );
+        return true;
+      }
+      if (todoSnapshot.sourceAgentId !== convId) {
+        error(res, "Todo snapshot source does not match the conversation", 400);
+        return true;
+      }
+    }
 
     const runtime = state.runtime;
     if (!runtime) {
@@ -3345,7 +3438,7 @@ export async function handleConversationRoutes(
         return true;
       }
 
-      if (!exactImport) {
+      if (!exactImport && importTasks.length === 0 && !todoSnapshot) {
         // Legacy imports predate source ids. Preserve their room-level
         // idempotency while exact cloud cutovers use per-message identities.
         const existing = await runtime.getMemories({
@@ -3362,6 +3455,26 @@ export async function handleConversationRoutes(
             skipped: importMessages.length,
             alreadyPopulated: true,
           });
+          return true;
+        }
+      }
+
+      let todoReceipt: SharedTodoImportReceipt | null = null;
+      if (todoSnapshot && cutoverToken) {
+        try {
+          todoReceipt = await (
+            ctx.todoCutoverImporter ?? importSharedTodoCutover
+          )({
+            runtime,
+            entityId: caller.entityId,
+            targetRoomId: conv.roomId,
+            cutoverToken,
+            snapshot: todoSnapshot,
+          });
+        } catch (err) {
+          // error-policy:J1 the import boundary keeps Shared authoritative when
+          // the Dedicated Todo transaction cannot prove the exact snapshot.
+          error(res, `Todo import failed: ${getErrorMessage(err)}`, 500);
           return true;
         }
       }
@@ -3426,6 +3539,56 @@ export async function handleConversationRoutes(
           return true;
         }
       }
+      let importedScheduledTasks = 0;
+      let skippedScheduledTasks = 0;
+      let activatedScheduledTasks = 0;
+      let skippedActivatedScheduledTasks = 0;
+      if (importTasks.length > 0 && cutoverToken) {
+        const runner = getScheduledTaskRunner(runtime, {
+          agentId: runtime.agentId,
+        });
+        for (let i = 0; i < importTasks.length; i += 1) {
+          try {
+            const result = await runner.importTask(importTasks[i], {
+              sourceAgentId: convId,
+              cutoverToken,
+            });
+            if (result.imported) importedScheduledTasks += 1;
+            else skippedScheduledTasks += 1;
+          } catch (err) {
+            // error-policy:J1 the conversation import boundary reports the exact failing task.
+            error(
+              res,
+              `Scheduled task import failed at task ${i}: ${getErrorMessage(err)}`,
+              500,
+            );
+            return true;
+          }
+        }
+        if (activateScheduledTasks === true) {
+          for (let i = 0; i < importTasks.length; i += 1) {
+            try {
+              const result = await runner.activateImportedTask(
+                importTasks[i].taskId,
+                {
+                  sourceAgentId: convId,
+                  cutoverToken,
+                },
+              );
+              if (result.activated) activatedScheduledTasks += 1;
+              else skippedActivatedScheduledTasks += 1;
+            } catch (err) {
+              // error-policy:J1 the conversation import boundary reports the exact failing task.
+              error(
+                res,
+                `Scheduled task activation failed at task ${i}: ${getErrorMessage(err)}`,
+                500,
+              );
+              return true;
+            }
+          }
+        }
+      }
       conv.updatedAt = new Date().toISOString();
       state.broadcastWs?.({ type: "conversation-updated", conversation: conv });
       json(res, {
@@ -3434,6 +3597,12 @@ export async function handleConversationRoutes(
         sourceMessageCount: importMessages.length,
         inserted,
         skipped,
+        sourceScheduledTaskCount: importTasks.length,
+        importedScheduledTasks,
+        skippedScheduledTasks,
+        activatedScheduledTasks,
+        skippedActivatedScheduledTasks,
+        ...(todoReceipt ?? {}),
       });
       return true;
     } finally {

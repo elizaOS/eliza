@@ -51,7 +51,6 @@ import {
 } from "@elizaos/app-core/api/ios-local-agent-transport";
 import type { DetachedShellRootProps } from "@elizaos/app-core/desktop-shell";
 import { Agent } from "@elizaos/capacitor-agent";
-import { Desktop } from "@elizaos/capacitor-desktop";
 import type { DeviceBridgeClient } from "@elizaos/capacitor-llama";
 import { logger } from "@elizaos/logger";
 import type {
@@ -69,6 +68,7 @@ import { isElizaDedicatedAgentHostname } from "@elizaos/shared/elizacloud";
 import { client } from "@elizaos/ui/api";
 import { installAndroidNativeAgentFetchBridge } from "@elizaos/ui/api/android-native-agent-transport";
 import {
+  invokeDesktopBridgeRequest,
   isElectrobunRuntime,
   shellLocalStorage,
   subscribeDesktopBridgeEvent,
@@ -2338,17 +2338,34 @@ function dispatchDeepLinkNavigation(intent: DeepLinkNavigationIntent): void {
 async function initializeDesktopShell(): Promise<void> {
   document.body.classList.add("desktop");
 
-  const version = await Desktop.getVersion();
+  const version = await invokeDesktopBridgeRequest<{ runtime: string }>({
+    rpcMethod: "desktopGetVersion",
+    ipcChannel: "desktop:getVersion",
+  });
   const desktopNativeReady =
+    version !== null &&
     typeof version.runtime === "string" &&
     version.runtime !== "N/A" &&
     version.runtime !== "unknown";
-  if (!desktopNativeReady) return;
+  if (!desktopNativeReady) {
+    throw new Error("[desktop-shell] Native Electrobun bridge is unavailable");
+  }
 
-  await Desktop.registerShortcut({
-    id: "command-palette",
-    accelerator: "CommandOrControl+K",
+  const commandPaletteRegistration = await invokeDesktopBridgeRequest<{
+    success: boolean;
+  }>({
+    rpcMethod: "desktopRegisterShortcut",
+    ipcChannel: "desktop:registerShortcut",
+    params: {
+      id: "command-palette",
+      accelerator: "CommandOrControl+K",
+    },
   });
+  if (commandPaletteRegistration?.success !== true) {
+    throw new Error(
+      "[desktop-shell] Operating system rejected the command-palette shortcut",
+    );
+  }
 
   // Programmable chat-overlay summon hotkey (#10716). The command palette keeps
   // CommandOrControl+K; this is a distinct, user-configurable global shortcut
@@ -2357,10 +2374,21 @@ async function initializeDesktopShell(): Promise<void> {
   // when enabled in Desktop settings.
   const chatOverlayHotkey = getChatOverlayHotkey();
   if (chatOverlayHotkey.enabled) {
-    await Desktop.registerShortcut({
-      id: "chat-overlay",
-      accelerator: chatOverlayHotkey.accelerator,
+    const chatOverlayRegistration = await invokeDesktopBridgeRequest<{
+      success: boolean;
+    }>({
+      rpcMethod: "desktopRegisterShortcut",
+      ipcChannel: "desktop:registerShortcut",
+      params: {
+        id: "chat-overlay",
+        accelerator: chatOverlayHotkey.accelerator,
+      },
     });
+    if (chatOverlayRegistration?.success !== true) {
+      throw new Error(
+        `[desktop-shell] Operating system rejected the chat-overlay shortcut ${chatOverlayHotkey.accelerator}`,
+      );
+    }
   }
 
   // Toggle semantics (#12184): a focused + visible overlay is dismissed
@@ -2368,16 +2396,36 @@ async function initializeDesktopShell(): Promise<void> {
   // otherwise summon + focus it. Blur does NOT hide the pill — it is a resting
   // surface (unlike the tray popover).
   const summonChatOverlay = async (): Promise<void> => {
-    const [{ focused }, { visible }] = await Promise.all([
-      Desktop.isWindowFocused(),
-      Desktop.isWindowVisible(),
+    const [focusState, visibilityState] = await Promise.all([
+      invokeDesktopBridgeRequest<{ focused: boolean }>({
+        rpcMethod: "desktopIsWindowFocused",
+        ipcChannel: "desktop:isWindowFocused",
+      }),
+      invokeDesktopBridgeRequest<{ visible: boolean }>({
+        rpcMethod: "desktopIsWindowVisible",
+        ipcChannel: "desktop:isWindowVisible",
+      }),
     ]);
+    if (!focusState || !visibilityState) {
+      throw new Error("[desktop-shell] Native window state is unavailable");
+    }
+    const { focused } = focusState;
+    const { visible } = visibilityState;
     if (decideChatOverlayToggle({ focused, visible }) === "hide") {
-      await Desktop.hideWindow();
+      await invokeDesktopBridgeRequest<void>({
+        rpcMethod: "desktopHideWindow",
+        ipcChannel: "desktop:hideWindow",
+      });
       return;
     }
-    await Desktop.showWindow();
-    await Desktop.focusWindow();
+    await invokeDesktopBridgeRequest<void>({
+      rpcMethod: "desktopShowWindow",
+      ipcChannel: "desktop:showWindow",
+    });
+    await invokeDesktopBridgeRequest<void>({
+      rpcMethod: "desktopFocusWindow",
+      ipcChannel: "desktop:focusWindow",
+    });
   };
 
   subscribeDesktopBridgeEvent({
@@ -2393,16 +2441,30 @@ async function initializeDesktopShell(): Promise<void> {
     },
   });
 
-  await Desktop.setTrayMenu({
-    menu: await buildLocalizedTrayMenuAsync(createTranslator(loadUiLanguage())),
+  await invokeDesktopBridgeRequest<void>({
+    rpcMethod: "desktopSetTrayMenu",
+    ipcChannel: "desktop:setTrayMenu",
+    params: {
+      menu: await buildLocalizedTrayMenuAsync(
+        createTranslator(loadUiLanguage()),
+      ),
+    },
   });
 
-  await Desktop.addListener(
-    "trayMenuClick",
-    (event: { itemId: string; checked?: boolean }) => {
-      dispatchAppEvent(TRAY_ACTION_EVENT, event);
+  subscribeDesktopBridgeEvent({
+    rpcMessage: "desktopTrayMenuClick",
+    ipcChannel: "desktop:trayMenuClick",
+    listener: (event: unknown) => {
+      if (!event || typeof event !== "object") return;
+      const itemId = Reflect.get(event, "itemId");
+      const checked = Reflect.get(event, "checked");
+      if (typeof itemId !== "string") return;
+      dispatchAppEvent(TRAY_ACTION_EVENT, {
+        itemId,
+        ...(typeof checked === "boolean" ? { checked } : {}),
+      });
     },
-  );
+  });
 
   subscribeDesktopBridgeEvent({
     rpcMessage: "shareTargetReceived",
@@ -3333,6 +3395,13 @@ async function main(): Promise<void> {
     }
     await initializeStorageBridge();
     initializeCapacitorBridge();
+    // The desktop main window uses the standalone chat-overlay route, but it
+    // still owns the global shortcut and tray event wiring. Without this the
+    // early standalone-shell return paints the pill while silently skipping
+    // every native desktop control.
+    if (isChatOverlayWindowShell(windowShellRoute) && isDesktopPlatform()) {
+      await initializeDesktopShell();
+    }
     mountReactApp();
     scheduleDeferredAppModuleLoadsAfterPaint();
     return;

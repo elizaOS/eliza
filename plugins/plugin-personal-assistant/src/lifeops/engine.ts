@@ -461,6 +461,12 @@ export function materializeDefinitionOccurrences(
   );
   const materialized: LifeOpsOccurrence[] = [];
 
+  // An explicitly undated definition is reviewable state, not scheduled work:
+  // it materializes no occurrences and never fires.
+  if (definition.cadence.kind === "unscheduled") {
+    return materialized;
+  }
+
   if (definition.cadence.kind === "once") {
     const occurrence = buildOnceOccurrence(
       definition,

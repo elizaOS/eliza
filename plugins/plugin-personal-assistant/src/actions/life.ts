@@ -58,6 +58,7 @@ import {
 import {
   buildNativeAppleReminderMetadata,
   type NativeAppleReminderLikeKind,
+  readNativeAppleReminderMetadata,
 } from "../lifeops/apple-reminders.js";
 import {
   resolveDefaultTimeZone,
@@ -252,6 +253,7 @@ type InternalLifeOp =
   | "skip_occurrence"
   | "snooze_occurrence"
   | "review_goal"
+  | "review_definitions"
   | "policy_set_reminder"
   | "policy_configure_escalation";
 
@@ -273,7 +275,11 @@ function toInternalLifeOp(
     case "snooze":
       return "snooze_occurrence";
     case "review":
-      return "review_goal";
+      // A goal review ranks progress toward outcomes; every definition
+      // surface (todos/habits/routines/reminders) reviews its tracked
+      // definitions — including unscheduled ones that never materialize
+      // occurrences and are invisible to the occurrence overview.
+      return kind === "goal" ? "review_goal" : "review_definitions";
     case "policy_set_reminder":
       return "policy_set_reminder";
     case "policy_configure_escalation":
@@ -923,15 +929,12 @@ type DefinitionResult = {
   ambiguousCandidates: string[];
 };
 
-async function resolveDefinition(
-  service: LifeOpsService,
+function resolveDefinitionInRecords(
+  defs: LifeOpsDefinitionRecord[],
   target: string | undefined,
-  domain?: LifeOpsDomain,
-): Promise<DefinitionResult> {
+  destructive = false,
+): DefinitionResult {
   if (!target) return { match: null, ambiguousCandidates: [] };
-  const defs = (await service.listDefinitions()).filter((e) =>
-    domain ? e.definition.domain === domain : true,
-  );
   const byId = defs.find((entry) => entry.definition.id === target);
   if (byId) {
     return { match: byId, ambiguousCandidates: [] };
@@ -982,13 +985,20 @@ async function resolveDefinition(
   const bestMatches = scored
     .filter(({ score }) => score === bestScore)
     .map(({ entry }) => entry);
-  if (bestMatches.length === 1) {
+  // Destructive ops never act on a token-overlap guess: shared filler tokens
+  // let "check the oven" resolve to "check the kettle" and DELETE the wrong
+  // record with a confident receipt (live, watchtower's post-resurrection
+  // audit). Sibling of the trigger path's TRIGGER_REF_MISMATCH guard: the
+  // containment stages above (id / exact / substring) satisfy "one name
+  // contains the other" and still resolve; a scorer-only "match" degrades to
+  // a clarification candidate so the handler ASKS instead of deleting.
+  if (bestMatches.length === 1 && !destructive) {
     return {
       match: bestMatches.at(0) ?? null,
       ambiguousCandidates: [],
     };
   }
-  if (bestMatches.length > 1) {
+  if (bestMatches.length >= 1) {
     return {
       match: null,
       ambiguousCandidates: bestMatches.map((entry) => entry.definition.title),
@@ -997,11 +1007,25 @@ async function resolveDefinition(
   return { match: null, ambiguousCandidates: [] };
 }
 
+async function resolveDefinition(
+  service: LifeOpsService,
+  target: string | undefined,
+  domain?: LifeOpsDomain,
+  destructive = false,
+): Promise<DefinitionResult> {
+  if (!target) return { match: null, ambiguousCandidates: [] };
+  const defs = (await service.listDefinitions()).filter((e) =>
+    domain ? e.definition.domain === domain : true,
+  );
+  return resolveDefinitionInRecords(defs, target, destructive);
+}
+
 async function resolveDefinitionForMutation(
   service: LifeOpsService,
   target: string | undefined,
   ownerText: string,
   domain?: LifeOpsDomain,
+  destructive = false,
 ): Promise<DefinitionResult> {
   const defs = (await service.listDefinitions()).filter((entry) =>
     domain ? entry.definition.domain === domain : true,
@@ -1039,19 +1063,23 @@ async function resolveDefinitionForMutation(
   const bestMatches = scored
     .filter(({ score }) => score === bestScore)
     .map(({ entry }) => entry);
-  if (bestMatches.length === 1) {
+  // Same destructive guard as resolveDefinitionInRecords: a token-overlap
+  // "best match" is a guess, and guesses may not delete records. The explicit
+  // containment branch above already resolved anything whose stored title
+  // appears in the owner's text.
+  if (bestMatches.length === 1 && !destructive) {
     return {
       match: bestMatches.at(0) ?? null,
       ambiguousCandidates: [],
     };
   }
-  if (bestMatches.length > 1) {
+  if (bestMatches.length >= 1) {
     return {
       match: null,
       ambiguousCandidates: bestMatches.map((entry) => entry.definition.title),
     };
   }
-  return resolveDefinition(service, target, domain);
+  return resolveDefinition(service, target, domain, destructive);
 }
 
 function tokenizeTitle(value: string): string[] {
@@ -1344,6 +1372,8 @@ function summarizeCadence(cadence: LifeOpsCadence): string {
     : [];
 
   switch (cadence.kind) {
+    case "unscheduled":
+      return "no due date";
     case "once": {
       const dueAt = new Date(cadence.dueAt);
       if (Number.isNaN(dueAt.getTime())) {
@@ -1408,6 +1438,7 @@ type LifeReplyScenario =
   | "calendar_next"
   | "email_triage"
   | "weekly_goal_review"
+  | "definitions_review"
   | "service_error";
 
 function buildRuleBasedLifeReply(args: {
@@ -2183,6 +2214,10 @@ function normalizeCadenceDetail(value: unknown): LifeOpsCadence | undefined {
     return undefined;
   }
 
+  if (cadenceKind === "unscheduled") {
+    return { kind: "unscheduled" };
+  }
+
   if (cadenceKind === "once" && typeof record.dueAt === "string") {
     return {
       kind: "once",
@@ -2339,6 +2374,64 @@ function normalizeCadenceDetail(value: unknown): LifeOpsCadence | undefined {
   return undefined;
 }
 
+const EXPLICIT_SCHEDULED_TODO_PATTERNS = [
+  /\b(?:today|tomorrow|tonight|next (?:day|week|month|year|monday|tuesday|wednesday|thursday|friday|saturday|sunday))\b/i,
+  /\b(?:at|by|on)\s+(?:\d{1,2}(?::\d{2})?\s*(?:a\.?m\.?|p\.?m\.?)?|monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b/i,
+  /\bin\s+(?:\d+|one|two|three|four|five|six|seven|eight|nine|ten|a|an)\s+(?:minutes?|hours?|days?|weeks?|months?|years?)\b/i,
+  /\b(?:at|by|before|after)\s+(?:the\s+)?(?:start|beginning|middle|end)\s+of\s+(?:the\s+|this\s+|next\s+)?(?:day|week|month|year)\b/i,
+  /\b(?:before|after)\s+(?:the\s+)?(?:meeting|game|work|school|lunch|dinner|appointment|trip|flight|event)\b/i,
+  /\b(?:a|one|two|three|four|five|six|seven|eight|nine|ten|\d+)\s+(?:days?|weeks?|months?|years?)\s+from\s+(?:today|tomorrow|monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b/i,
+  /\b(?:every|each|daily|weekly|monthly|yearly)\b/i,
+  /\b\d{4}-\d{2}-\d{2}\b/,
+  /(?:hoy|mañana|esta noche|próxim[oa] (?:día|semana|mes|año)|cada (?:día|semana|mes|año)|diariamente|semanalmente|mensualmente|anualmente)/i,
+  /(?:a las?|dentro de)\s+(?:\d+|un[oa]?|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez)(?:\s+(?:minutos?|horas?|días?|semanas?|meses?|años?))?/i,
+  /(?:hoje|amanhã|esta noite|próxim[oa] (?:dia|semana|m[eê]s|ano)|cada (?:dia|semana|m[eê]s|ano)|diariamente|semanalmente|mensalmente|anualmente)/i,
+  /(?:às?|dentro de)\s+(?:\d+|um|uma|dois|duas|tr[eê]s|quatro|cinco|seis|sete|oito|nove|dez)(?:\s+(?:minutos?|horas?|dias?|semanas?|meses?|anos?))?/i,
+  /(?:今天|明天|今晚|每天|每周|每週|每月|每年)/,
+  /(?:今日|明日|今夜|毎日|毎週|毎月|毎年)/,
+  /(?:오늘|내일|오늘 밤|매일|매주|매월|매년)/,
+  /(?:hôm nay|hom nay|ngày mai|ngay mai|tối nay|toi nay|tuần tới|tuan toi|tháng tới|thang toi|năm tới|nam toi|mỗi ngày|moi ngay|hàng tuần|hang tuan|hàng tháng|hang thang|hàng năm|hang nam)/i,
+  /(?:lúc|luc)\s*\d{1,2}\s*(?:giờ|gio)|(?:trong|sau)\s+(?:\d+|một|mot|hai|ba|bốn|bon|năm|nam|sáu|sau|bảy|bay|tám|tam|chín|chin|mười|muoi)\s+(?:phút|phut|giờ|gio|ngày|ngay|tuần|tuan|tháng|thang|năm|nam)/i,
+  /(?:ngayon|bukas|mamayang gabi|sa susunod na (?:araw|linggo|buwan|taon)|araw-araw|lingguhan|buwan-buwan|taun-taon)/i,
+  /(?:alas\s+\d{1,2}|sa loob ng\s+(?:\d+|isa|dalawa|tatlo|apat|lima|anim|pito|walo|siyam|sampu)\s+(?:minuto|oras|araw|linggo|buwan|taon))/i,
+] as const;
+
+const NEGATED_UNSCHEDULED_PATTERNS = [
+  /\b(?:not|never)\s+(?:an?\s+)?(?:plain|undated|unscheduled)\s+(?:todo|task|item)\b/i,
+  /\b(?:do not|don't|dont)\s+(?:make|save|add|create)(?:\s+it)?\s+(?:as\s+)?(?:an?\s+)?(?:plain|undated|unscheduled)\s+(?:todo|task|item)\b/i,
+] as const;
+
+const EXPLICIT_UNSCHEDULED_PATTERNS = [
+  /\bno (?:due )?date\b/i,
+  /\bwithout (?:a )?(?:due )?date\b/i,
+  /\bno (?:schedule|scheduled time|time needed|required time)\b/i,
+  /\b(?:plain|undated|unscheduled) (?:todo|task|item)\b/i,
+  /\bjust (?:a )?(?:plain )?(?:todo|task)\b/i,
+  /\b(?:sin fecha|sin plazo|sin horario)\b/i,
+  /\b(?:sem data|sem prazo|sem hor[aá]rio)\b/i,
+  /(?:没有|沒有|无|無)(?:截止日期|到期日|日期|时间|時間|日程)/,
+  /(?:期限|締め切り|日付|予定)(?:は)?なし/,
+  /(?:마감일|날짜|일정) 없이/,
+  /(?:không|khong) (?:có |co )?(?:ngày đến hạn|ngay den han|lịch|lich)/i,
+  /(?:walang takdang petsa|walang iskedyul)/i,
+] as const;
+
+/** Require current user-authored text before trusting model-only no-date shape. */
+export function textStatesExplicitUnscheduled(text: string): boolean {
+  const normalized = normalizeLifeInputText(text);
+  if (
+    EXPLICIT_SCHEDULED_TODO_PATTERNS.some((pattern) =>
+      pattern.test(normalized),
+    ) ||
+    NEGATED_UNSCHEDULED_PATTERNS.some((pattern) => pattern.test(normalized))
+  ) {
+    return false;
+  }
+  return EXPLICIT_UNSCHEDULED_PATTERNS.some((pattern) =>
+    pattern.test(normalized),
+  );
+}
+
 /**
  * Convert LLM-extracted params into a typed LifeOpsCadence.
  * Returns null when the LLM output is insufficient to construct a
@@ -2348,6 +2441,7 @@ function normalizeCadenceDetail(value: unknown): LifeOpsCadence | undefined {
 export function buildCadenceFromLlmParams(
   params: ExtractedTaskParams,
   context?: {
+    allowUnscheduled?: boolean;
     intent?: string;
     now?: Date;
     timeZone?: string;
@@ -2358,6 +2452,13 @@ export function buildCadenceFromLlmParams(
 } | null {
   const kind = params.cadenceKind;
   if (!kind) return null;
+  // Explicitly undated ("no due date", "just a plain todo"): a real answer,
+  // not a missing one — no windows/slots machinery applies.
+  if (kind === "unscheduled") {
+    return context?.allowUnscheduled === true
+      ? { cadence: { kind: "unscheduled" } }
+      : null;
+  }
   const effectiveTimeZone = context?.timeZone;
   const timeOfDayMinute =
     typeof params.timeOfDay === "string"
@@ -3149,6 +3250,12 @@ async function isForeignPageScope(
 // `runLifeOperationHandler` below.
 export const OWNER_OPERATION_TAGS: string[] = [
   "domain:reminders",
+  // "resource:tracked-work" + "capability:read" ground empty-tracked-state
+  // replies at the planned-reply egress guard: a verified owner-surface review
+  // that authored the exact reply ("nothing on the list") is real evidence,
+  // not a fabricated recap, so the guard must not replace it with a canned
+  // failure (core services/message.ts plannedReplyHasClaimGroundingReceipt).
+  "resource:tracked-work",
   "capability:read",
   "capability:write",
   "capability:update",
@@ -3157,6 +3264,18 @@ export const OWNER_OPERATION_TAGS: string[] = [
   "effect:receipt-required",
   "surface:internal",
 ];
+
+const EMPTY_TRACKED_STATE_CLAIM_GROUNDING = ["empty_tracked_state"] as const;
+
+function ownerOverviewIsEmpty(overview: {
+  owner: { goals: unknown[]; occurrences: unknown[]; reminders: unknown[] };
+}): boolean {
+  return (
+    overview.owner.goals.length === 0 &&
+    overview.owner.occurrences.length === 0 &&
+    overview.owner.reminders.length === 0
+  );
+}
 
 // "productivity" is deliberate: Stage-1 routinely tags habit/reminder-shaped
 // asks with the productivity context (a child of tasks). Retrieval uses
@@ -3197,6 +3316,58 @@ function ownerSurfaceActionNameFromOptions(
   return typeof raw?.ownerSurface === "string" && raw.ownerSurface.length > 0
     ? raw.ownerSurface
     : "OWNER_TODOS";
+}
+
+const OWNER_DEFINITION_SURFACES = [
+  "OWNER_TODOS",
+  "OWNER_REMINDERS",
+  "OWNER_ALARMS",
+  "OWNER_ROUTINES",
+] as const;
+
+type OwnerDefinitionSurface = (typeof OWNER_DEFINITION_SURFACES)[number];
+
+function ownerDefinitionSurface(value: unknown): OwnerDefinitionSurface | null {
+  return typeof value === "string" &&
+    OWNER_DEFINITION_SURFACES.includes(value as OwnerDefinitionSurface)
+    ? (value as OwnerDefinitionSurface)
+    : null;
+}
+
+function definitionReviewSurface(
+  record: LifeOpsDefinitionRecord,
+): OwnerDefinitionSurface | null {
+  const persisted = ownerDefinitionSurface(
+    record.definition.metadata.ownerSurface,
+  );
+  if (persisted) return persisted;
+
+  const nativeReminder = readNativeAppleReminderMetadata(
+    record.definition.metadata,
+  );
+  if (nativeReminder?.kind === "alarm") return "OWNER_ALARMS";
+  if (nativeReminder?.kind === "reminder") return "OWNER_REMINDERS";
+  if (record.definition.kind === "task") return "OWNER_TODOS";
+  if (
+    record.definition.kind === "habit" ||
+    record.definition.kind === "routine"
+  ) {
+    return "OWNER_ROUTINES";
+  }
+  return null;
+}
+
+function definitionReviewSurfaceLabel(surface: OwnerDefinitionSurface): string {
+  switch (surface) {
+    case "OWNER_TODOS":
+      return "todos";
+    case "OWNER_REMINDERS":
+      return "reminders";
+    case "OWNER_ALARMS":
+      return "alarms";
+    case "OWNER_ROUTINES":
+      return "habits or routines";
+  }
 }
 
 function lifeEffectRequestId(message: Memory): string {
@@ -4030,7 +4201,13 @@ async function runLifeOperationHandlerInner(
             .map((goal) => goal.title),
         },
       }),
-      data: toActionData(overview),
+      data: toActionData({
+        ...overview,
+        actionName: ownerSurfaceActionName,
+        ...(ownerOverviewIsEmpty(overview)
+          ? { claimGrounding: EMPTY_TRACKED_STATE_CLAIM_GROUNDING }
+          : {}),
+      }),
     };
   }
   // Internal handler dispatch key (definition vs goal split lives here).
@@ -4248,6 +4425,7 @@ async function runLifeOperationHandlerInner(
                   windowPolicy?.timezone,
               ) ?? ownerFactTimeZone;
             const llmCadence = buildCadenceFromLlmParams(llmPlan, {
+              allowUnscheduled: ownerSurfaceActionName === "OWNER_TODOS",
               intent,
               timeZone: llmCadenceTimeZone ?? undefined,
             });
@@ -4277,6 +4455,13 @@ async function runLifeOperationHandlerInner(
             deferredDefinitionDraft?.request.timezone ??
             windowPolicy?.timezone,
         ) ?? ownerFactTimeZone;
+      if (
+        cadence?.kind === "unscheduled" &&
+        (ownerSurfaceActionName !== "OWNER_TODOS" ||
+          (!reuseDeferredDraft && !textStatesExplicitUnscheduled(currentText)))
+      ) {
+        cadence = undefined;
+      }
       const timedRequestKind = llmRequestKind;
       const nativeAppleMetadata =
         timedRequestKind && cadence?.kind === "once"
@@ -4285,13 +4470,22 @@ async function runLifeOperationHandlerInner(
               source: "llm",
             })
           : undefined;
+      const surfaceMetadata = ownerDefinitionSurface(ownerSurfaceActionName)
+        ? { ownerSurface: ownerSurfaceActionName }
+        : undefined;
       const definitionMetadata = editingDeferredDefinitionDraft
         ? mergeMetadataRecords(
             deferredDefinitionDraft.request.metadata,
-            mergeMetadataRecords(explicitMetadata, nativeAppleMetadata),
+            explicitMetadata,
+            nativeAppleMetadata,
+            surfaceMetadata,
           )
-        : (deferredDefinitionDraft?.request.metadata ??
-          mergeMetadataRecords(explicitMetadata, nativeAppleMetadata));
+        : mergeMetadataRecords(
+            deferredDefinitionDraft?.request.metadata,
+            explicitMetadata,
+            nativeAppleMetadata,
+            surfaceMetadata,
+          );
 
       if (!title) {
         const fallback = "What should I call it?";
@@ -4372,7 +4566,7 @@ async function runLifeOperationHandlerInner(
         (detailString(details, "kind") as
           | CreateLifeOpsDefinitionRequest["kind"]
           | undefined) ??
-        "habit";
+        (ownerSurfaceActionName === "OWNER_TODOS" ? "task" : "habit");
       const leadShaped = applyLeadUpReminderShape({
         cadence,
         plan:
@@ -5259,13 +5453,16 @@ async function runLifeOperationHandlerInner(
           targetName,
           messageText(message) || intent,
           domain,
+          // Destructive: a fuzzy near-miss must ask, never delete (the
+          // wrong-item deletion guard — sibling of TRIGGER_REF_MISMATCH).
+          true,
         );
       if (!target)
         return {
           success: false,
           text:
             ambiguousCandidates.length > 0
-              ? `Multiple items match — which one?\n${ambiguousCandidates.map((title) => `  - ${title}`).join("\n")}`
+              ? `I found ${ambiguousCandidates.length === 1 ? "a similarly named item" : "similarly named items"} but not an exact match — delete ${ambiguousCandidates.length === 1 ? "it" : "which one"}?\n${ambiguousCandidates.map((title) => `  - ${title}`).join("\n")}`
               : "I could not find that item to delete.",
         };
       await service.deleteDefinition(target.definition.id);
@@ -5529,6 +5726,106 @@ async function runLifeOperationHandlerInner(
       };
     }
 
+    if (internalOp === "review_definitions") {
+      const surface = ownerDefinitionSurface(ownerSurfaceActionName);
+      if (!surface) {
+        return {
+          success: false,
+          text: "That owner surface cannot review LifeOps definitions.",
+          data: toActionData({
+            actionName: ownerSurfaceActionName,
+            definitions: [],
+            error: "LIFEOPS_DEFINITION_SURFACE_UNSUPPORTED",
+          }),
+        };
+      }
+      const reviewDomain = domain ?? "user_lifeops";
+      const active = (await service.listDefinitions()).filter(
+        (record) =>
+          record.definition.status === "active" &&
+          record.definition.domain === reviewDomain &&
+          definitionReviewSurface(record) === surface,
+      );
+      let selected = active;
+      if (targetName) {
+        const resolved = resolveDefinitionInRecords(active, targetName);
+        if (resolved.ambiguousCandidates.length > 0) {
+          const fallback = `Multiple ${definitionReviewSurfaceLabel(surface)} match "${targetName}": ${resolved.ambiguousCandidates.join(", ")}. Which one did you mean?`;
+          return {
+            success: false,
+            text: fallback,
+            data: toActionData({
+              actionName: ownerSurfaceActionName,
+              ambiguousCandidates: resolved.ambiguousCandidates,
+              definitions: [],
+              error: "LIFEOPS_DEFINITION_AMBIGUOUS",
+            }),
+          };
+        }
+        if (!resolved.match) {
+          const fallback = `I couldn't find an active ${definitionReviewSurfaceLabel(surface)} item matching "${targetName}".`;
+          return {
+            success: false,
+            text: fallback,
+            data: toActionData({
+              actionName: ownerSurfaceActionName,
+              definitions: [],
+              error: "LIFEOPS_DEFINITION_NOT_FOUND",
+            }),
+          };
+        }
+        selected = [resolved.match];
+      }
+      if (selected.length === 0) {
+        const label = definitionReviewSurfaceLabel(surface);
+        return {
+          success: true,
+          text: await renderLifeActionReply({
+            runtime,
+            message,
+            state,
+            intent,
+            scenario: "definitions_review",
+            fallback: `You aren't tracking any active ${label} right now.`,
+            context: { definitions: [] },
+          }),
+          data: toActionData({
+            actionName: ownerSurfaceActionName,
+            claimGrounding: EMPTY_TRACKED_STATE_CLAIM_GROUNDING,
+            definitions: [],
+          }),
+        };
+      }
+      const listed = selected.slice(0, 12).map((record) => ({
+        title: record.definition.title,
+        cadence: summarizeCadence(record.definition.cadence),
+        kind: record.definition.kind,
+      }));
+      const fallback = [
+        `You're tracking ${selected.length} ${definitionReviewSurfaceLabel(surface)} item${selected.length === 1 ? "" : "s"}:`,
+        ...listed.map((item) => `- ${item.title} (${item.cadence})`),
+        ...(selected.length > listed.length
+          ? [`…and ${selected.length - listed.length} more.`]
+          : []),
+      ].join("\n");
+      return {
+        success: true,
+        text: await renderLifeActionReply({
+          runtime,
+          message,
+          state,
+          intent,
+          scenario: "definitions_review",
+          fallback,
+          context: { definitions: listed, total: selected.length },
+        }),
+        data: toActionData({
+          actionName: ownerSurfaceActionName,
+          definitions: selected.map((record) => record.definition),
+        }),
+      };
+    }
+
     if (internalOp === "review_goal") {
       const target = await resolveGoal(service, targetName, domain);
       if (!target) {
@@ -5558,7 +5855,11 @@ async function runLifeOperationHandlerInner(
                   .map((goal) => goal.title),
               },
             }),
-            data: toActionData(overview),
+            data: toActionData({
+              ...overview,
+              actionName: ownerSurfaceActionName,
+              claimGrounding: EMPTY_TRACKED_STATE_CLAIM_GROUNDING,
+            }),
           };
         }
         const fallback = formatWeeklyGoalReview(weeklyReview);

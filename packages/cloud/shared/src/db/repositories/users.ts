@@ -1,6 +1,12 @@
 // Persists users records for cloud services through the shared DB boundary.
 import { ElizaError } from "@elizaos/core";
+import { convergeTodoScopesInTransaction } from "@elizaos/plugin-todos/edge";
 import { and, desc, eq, isNull, ne, or, type SQL, sql } from "drizzle-orm";
+import {
+  sharedRuntimeConversationRoomId,
+  sharedRuntimeWorldId,
+  sharedTodoStorageScope,
+} from "../../lib/services/shared-runtime/shared-runtime-storage-identity";
 import { type SqlExecutor, sqlRows } from "../execute-helpers";
 import { dbRead, dbWrite } from "../helpers";
 import { type Organization, organizations } from "../schemas/organizations";
@@ -1092,9 +1098,9 @@ export class UsersRepository {
   }
 
   /**
-   * Commits a previously history-sealed convergence plan. Every eligibility
-   * predicate is checked again under deterministic account locks so funding,
-   * provisioning, or identity drift between planning and commit fails closed.
+   * Commits a previously history-sealed convergence plan. Identity and Todo
+   * state move in one transaction; every eligibility predicate is checked
+   * again under deterministic locks so intervening drift fails closed.
    */
   async commitPhoneTelegramPersonalAccountConvergence(
     params: CommitPhoneTelegramConvergenceParams,
@@ -1297,6 +1303,29 @@ export class UsersRepository {
       if (unexpectedState === "phone") return { status: "phone_account_mature" };
       if (unexpectedState === "telegram") return { status: "telegram_account_mature" };
 
+      const [sourceSchedulingState] = await sqlRows<{ has_state: boolean }>(
+        tx,
+        sql`
+          SELECT
+            EXISTS (
+              SELECT 1
+                FROM app_scheduling.life_scheduled_tasks
+               WHERE agent_id = ${params.sourceAgentId}
+            ) OR EXISTS (
+              SELECT 1
+                FROM app_scheduling.life_scheduled_task_log
+               WHERE agent_id = ${params.sourceAgentId}
+            ) AS has_state
+        `,
+      );
+      if (!sourceSchedulingState) {
+        throw new Error("Provisional scheduling-state guard returned no row");
+      }
+      // Phone transports do not expose the Shared reminder plugin. Any source
+      // scheduler state therefore represents an unsupported ownership shape;
+      // deleting the source account would orphan it, so convergence stops.
+      if (sourceSchedulingState.has_state) return { status: "phone_account_mature" };
+
       const [canonicalStewardOwner] = await tx
         .select({ id: users.id })
         .from(users)
@@ -1313,6 +1342,25 @@ export class UsersRepository {
       ) {
         return { status: "steward_subject_owned_by_other_user" };
       }
+
+      const sourceTodoScope = sharedTodoStorageScope({
+        sourceAgentId: params.sourceAgentId,
+        ownerId: sourceUser.id,
+      });
+      const targetTodoScope = sharedTodoStorageScope({
+        sourceAgentId: params.targetAgentId,
+        ownerId: targetUser.id,
+      });
+      const sourceRoomId = sharedRuntimeConversationRoomId(params.sourceAgentId);
+      const targetRoomId = sharedRuntimeConversationRoomId(params.targetAgentId);
+      const sourceWorldId = sharedRuntimeWorldId(params.sourceAgentId);
+      const targetWorldId = sharedRuntimeWorldId(params.targetAgentId);
+      await convergeTodoScopesInTransaction(tx, {
+        sourceScope: sourceTodoScope,
+        targetScope: targetTodoScope,
+        roomIdMap: { [sourceRoomId]: targetRoomId },
+        worldIdMap: { [sourceWorldId]: targetWorldId },
+      });
 
       const deletedProjection = await tx
         .delete(userIdentities)

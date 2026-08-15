@@ -2568,3 +2568,203 @@ describe("isRecoverableRemoteBase — allowLoopback", () => {
     ).toBe(false);
   });
 });
+
+describe("runPollingBackend hosted-web unreachable dedicated agent (#19627)", () => {
+  const webPolicy = {
+    supportsLocalRuntime: false,
+    backendTimeoutMs: 30_000,
+    agentReadyTimeoutMs: 30_000,
+    probeForExistingInstall: false,
+    defaultTarget: null,
+  };
+
+  const dedicatedBase =
+    "https://123e4567-e89b-12d3-a456-426614174000.cloud.eliza.app";
+
+  function dedicatedCtx(): RestoringSessionCtx {
+    const server = {
+      id: "cloud:123e4567-e89b-12d3-a456-426614174000",
+      kind: "cloud" as const,
+      label: "Dedicated agent",
+      apiBase: dedicatedBase,
+    };
+    return {
+      persistedActiveServer: server,
+      restoredActiveServer: server,
+      shouldPreserveCompletedFirstRun: false,
+      hadPriorFirstRun: true,
+    };
+  }
+
+  function installWebWindow(): void {
+    (globalThis as { window?: unknown }).window = {
+      location: { origin: "https://cloud.eliza.app", protocol: "https:" },
+    };
+  }
+
+  it("bounds connection-level failures against a dedicated agent host and names the unreachable host", async () => {
+    // The #19627 production shape: no wildcard TLS on *.cloud.eliza.app, so
+    // every fetch to the agent subdomain dies at the handshake — a statusless
+    // "Failed to fetch". Without the bounded streak the shell spins
+    // "Booting up…" for the full backendTimeoutMs (180s in prod) and then
+    // reports a generic timeout that never names the dead host.
+    const deps = createDeps();
+    const dispatch = vi.fn();
+    installWebWindow();
+    clientMock.getBaseUrl.mockReturnValue(dedicatedBase);
+    clientMock.getAuthStatus.mockReset();
+    clientMock.getAuthStatus.mockRejectedValue(
+      Object.assign(new TypeError("Failed to fetch"), {
+        kind: "network",
+        path: "/api/auth/status",
+      }),
+    );
+
+    await runPollingBackend(
+      deps,
+      dispatch,
+      { ...webPolicy, agentUnreachableFailureBudgetMs: 200 },
+      dedicatedCtx(),
+      1,
+      { current: 1 },
+      { current: false },
+      { current: null },
+    );
+
+    // The overall backendTimeoutMs (30s) never elapsed — the unreachable
+    // budget produced the terminal transition with a distinct error.
+    expect(dispatch).toHaveBeenCalledWith({ type: "BACKEND_TIMEOUT" });
+    expect(deps.setStartupError).toHaveBeenCalledWith(
+      expect.objectContaining({
+        reason: "backend-unreachable",
+        message: expect.stringContaining(
+          "123e4567-e89b-12d3-a456-426614174000.cloud.eliza.app",
+        ),
+        detail: expect.stringContaining("Failed to fetch"),
+      }),
+    );
+    // The dedicated base must NOT be abandoned for the page origin.
+    expect(clearPersistedActiveServer).not.toHaveBeenCalled();
+  });
+
+  it("resets the unreachable streak on a successful probe (a slow agent is not a dead transport)", async () => {
+    const deps = createDeps();
+    const dispatch = vi.fn();
+    installWebWindow();
+    clientMock.getBaseUrl.mockReturnValue(dedicatedBase);
+    const networkError = () =>
+      Object.assign(new TypeError("Failed to fetch"), {
+        kind: "network",
+        path: "/api/auth/status",
+      });
+    clientMock.getAuthStatus.mockReset();
+    clientMock.getAuthStatus
+      .mockRejectedValueOnce(networkError())
+      .mockResolvedValue({
+        required: false,
+        authenticated: true,
+        pairingEnabled: false,
+        expiresAt: null,
+      });
+    clientMock.getFirstRunStatus.mockReset();
+    clientMock.getFirstRunStatus
+      .mockRejectedValueOnce(networkError())
+      .mockResolvedValue({ complete: true, cloudProvisioned: false });
+
+    // Budget 450ms: WITHOUT the reset, the second failure (~500ms in, after
+    // the first backoff) would exceed the budget and dead-end on the
+    // unreachable card. WITH the reset (the auth probe between the two
+    // failures succeeded) the streak restarts and the third round completes.
+    await runPollingBackend(
+      deps,
+      dispatch,
+      { ...webPolicy, agentUnreachableFailureBudgetMs: 450 },
+      dedicatedCtx(),
+      1,
+      { current: 1 },
+      { current: false },
+      { current: null },
+    );
+
+    expect(dispatch).toHaveBeenCalledWith({
+      type: "BACKEND_REACHED",
+      firstRunComplete: true,
+    });
+    expect(dispatch).not.toHaveBeenCalledWith({ type: "BACKEND_TIMEOUT" });
+  });
+
+  it("keeps the plain retry path for a NON-dedicated base (no premature unreachable card)", async () => {
+    // A same-origin base with connection-level failures must not trip the
+    // dedicated-agent unreachable card — it keeps the existing timeout path.
+    const deps = createDeps();
+    const dispatch = vi.fn();
+    installWebWindow();
+    clientMock.getBaseUrl.mockReturnValue("");
+    clientMock.getAuthStatus.mockReset();
+    clientMock.getAuthStatus.mockRejectedValue(
+      Object.assign(new TypeError("Failed to fetch"), {
+        kind: "network",
+        path: "/api/auth/status",
+      }),
+    );
+
+    await runPollingBackend(
+      deps,
+      dispatch,
+      {
+        ...webPolicy,
+        backendTimeoutMs: 700,
+        agentUnreachableFailureBudgetMs: 200,
+      },
+      dedicatedCtx(),
+      1,
+      { current: 1 },
+      { current: false },
+      { current: null },
+    );
+
+    expect(dispatch).toHaveBeenCalledWith({ type: "BACKEND_TIMEOUT" });
+    expect(deps.setStartupError).toHaveBeenCalledWith(
+      expect.objectContaining({ reason: "backend-timeout" }),
+    );
+  });
+
+  it("does not label a malformed HTTP-200 auth payload as a TLS or network failure", async () => {
+    // ElizaClient's successful-response parser can return null for an HTTP-200
+    // `null` body. The poll then throws while reading `auth.required`; that
+    // plain TypeError has no status, but the response was not a transport
+    // failure. This negative case makes the kind gate mutation-sensitive: a
+    // regression to `status === undefined` trips the short unreachable budget.
+    const deps = createDeps();
+    const dispatch = vi.fn();
+    installWebWindow();
+    clientMock.getBaseUrl.mockReturnValue(dedicatedBase);
+    clientMock.getAuthStatus.mockReset();
+    clientMock.getAuthStatus.mockResolvedValue(null);
+
+    await runPollingBackend(
+      deps,
+      dispatch,
+      {
+        ...webPolicy,
+        backendTimeoutMs: 700,
+        agentUnreachableFailureBudgetMs: 0,
+      },
+      dedicatedCtx(),
+      1,
+      { current: 1 },
+      { current: false },
+      { current: null },
+    );
+
+    expect(dispatch).toHaveBeenCalledWith({ type: "BACKEND_TIMEOUT" });
+    expect(deps.setStartupError).toHaveBeenCalledWith(
+      expect.objectContaining({ reason: "backend-timeout" }),
+    );
+    expect(deps.setStartupError).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        message: expect.stringContaining("TLS or network failure"),
+      }),
+    );
+  });
+});

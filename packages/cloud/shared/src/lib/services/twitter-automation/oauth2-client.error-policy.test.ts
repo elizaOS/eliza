@@ -54,6 +54,17 @@ describe("requestTwitterOAuth2Token — fail-closed token exchange", () => {
     expect(token.refresh_token).toBe("ref_456");
   });
 
+  test("bounds the provider request with an abort signal", async () => {
+    process.env.TWITTER_CLIENT_ID = "test-client-id";
+    let observedSignal: AbortSignal | null | undefined;
+    globalThis.fetch = (async (_input, init) => {
+      observedSignal = init?.signal;
+      return new Response(JSON.stringify({ access_token: "bounded-token" }), { status: 200 });
+    }) as typeof fetch;
+    await requestTwitterOAuth2Token({ grant_type: "refresh_token" });
+    expect(observedSignal).toBeInstanceOf(AbortSignal);
+  });
+
   test("non-OK status with JSON error body throws with provider detail (failure surfaces)", async () => {
     process.env.TWITTER_CLIENT_ID = "test-client-id";
     stubFetch(

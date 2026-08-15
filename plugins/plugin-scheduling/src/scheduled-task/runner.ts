@@ -18,6 +18,7 @@
  *    skip: pause suppresses proactive behavior, and chaining is proactive.
  */
 
+import { stableStringify } from "@elizaos/core/edge";
 import { decideDispatchPolicy } from "../dispatch-policy.js";
 import type { DispatchResult } from "../dispatch-types.js";
 import type { CompletionCheckRegistry } from "./completion-check-registry.js";
@@ -168,6 +169,12 @@ export function createInMemoryScheduledTaskStore(): ScheduledTaskStore {
     async claimForFire({ taskId, firedAtIso, expected }) {
       const existing = map.get(taskId);
       if (!existing) return { kind: "raced" };
+      const cutoverStatus = (
+        existing.metadata?.sharedCutoverImport as
+          | { status?: unknown }
+          | undefined
+      )?.status;
+      if (cutoverStatus === "reserved") return { kind: "raced" };
       if (expected) {
         if (
           existing.state.status !== expected.status ||
@@ -522,6 +529,26 @@ export type ScheduledTaskFireResult =
 
 export interface ScheduledTaskRunnerExtras {
   /**
+   * Land one server-authorized task with its existing identity and state.
+   * Exact retries carrying the same transfer receipt are idempotent; a task id
+   * already owned by another import is a hard conflict.
+   */
+  importTask(
+    task: ScheduledTask,
+    receipt: {
+      sourceAgentId: string;
+      cutoverToken: string;
+    },
+  ): Promise<{ task: ScheduledTask; imported: boolean }>;
+  /** Activate an exact imported task only after its server-owned cutover commits. */
+  activateImportedTask(
+    taskId: string,
+    receipt: {
+      sourceAgentId: string;
+      cutoverToken: string;
+    },
+  ): Promise<{ task: ScheduledTask; activated: boolean }>;
+  /**
    * Convenience wrapper around {@link ScheduledTaskRunnerExtras.fireWithResult}
    * that flattens the discriminated union into a `ScheduledTask`. Returns
    * the post-fire task on `fired` / `skipped` / `dispatch_failed`, and the
@@ -827,6 +854,87 @@ export function createScheduledTaskRunner(
       });
     }
     return task;
+  }
+
+  async function importTask(
+    task: ScheduledTask,
+    receipt: { sourceAgentId: string; cutoverToken: string },
+  ): Promise<{ task: ScheduledTask; imported: boolean }> {
+    const existing = await deps.store.get(task.taskId);
+    const existingReceipt = existing?.metadata?.sharedCutoverImport;
+    const taskDigest = stableStringify(task);
+    if (existing) {
+      if (
+        existingReceipt !== null &&
+        typeof existingReceipt === "object" &&
+        "sourceAgentId" in existingReceipt &&
+        existingReceipt.sourceAgentId === receipt.sourceAgentId &&
+        "cutoverToken" in existingReceipt &&
+        existingReceipt.cutoverToken === receipt.cutoverToken &&
+        "taskDigest" in existingReceipt &&
+        existingReceipt.taskDigest === taskDigest
+      ) {
+        return { task: existing, imported: false };
+      }
+      throw new Error(
+        `Scheduled task ${task.taskId} already exists with another owner`,
+      );
+    }
+
+    const { taskId: _taskId, state: _state, ...input } = task;
+    const validationIssues = validateScheduledTaskInput(input, deps);
+    if (validationIssues.length > 0) {
+      throw new ScheduledTaskValidationError(validationIssues, "importedTask");
+    }
+    const imported = structuredClone(task);
+    imported.metadata = {
+      ...(imported.metadata ?? {}),
+      sharedCutoverImport: {
+        sourceAgentId: receipt.sourceAgentId,
+        cutoverToken: receipt.cutoverToken,
+        taskDigest,
+        status: "reserved",
+      },
+    };
+    await persist(imported);
+    return { task: imported, imported: true };
+  }
+
+  async function activateImportedTask(
+    taskId: string,
+    receipt: { sourceAgentId: string; cutoverToken: string },
+  ): Promise<{ task: ScheduledTask; activated: boolean }> {
+    const existing = await deps.store.get(taskId);
+    const importedReceipt = existing?.metadata?.sharedCutoverImport;
+    if (
+      !existing ||
+      importedReceipt === null ||
+      typeof importedReceipt !== "object" ||
+      !("sourceAgentId" in importedReceipt) ||
+      importedReceipt.sourceAgentId !== receipt.sourceAgentId ||
+      !("cutoverToken" in importedReceipt) ||
+      importedReceipt.cutoverToken !== receipt.cutoverToken ||
+      !("status" in importedReceipt) ||
+      (importedReceipt.status !== "reserved" &&
+        importedReceipt.status !== "active")
+    ) {
+      throw new Error(
+        `Scheduled task ${taskId} does not carry the expected cutover receipt`,
+      );
+    }
+    if (importedReceipt.status === "active") {
+      return { task: existing, activated: false };
+    }
+    const activated = structuredClone(existing);
+    activated.metadata = {
+      ...(activated.metadata ?? {}),
+      sharedCutoverImport: {
+        ...importedReceipt,
+        status: "active",
+      },
+    };
+    await persist(activated);
+    return { task: activated, activated: true };
   }
 
   function applyApprovalCompletionDefault(
@@ -1881,6 +1989,8 @@ export function createScheduledTaskRunner(
 
   return {
     schedule,
+    importTask,
+    activateImportedTask,
     list,
     apply,
     pipeline,

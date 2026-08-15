@@ -295,8 +295,18 @@ describe("looksLikeWebSearchRequest", () => {
 	});
 
 	it("respects an explicit do-not-browse negation", () => {
-		expect(looksLikeWebSearchRequest("don't browse the web for this")).toBe(
-			false,
+		for (const text of [
+			"don't browse the web for this",
+			"don’t ever search the web for this",
+			"never, under any circumstances, google this",
+		]) {
+			expect(looksLikeWebSearchRequest(text)).toBe(false);
+		}
+		expect(
+			looksLikeWebSearchRequest("never mind, search the web for elizaOS"),
+		).toBe(true);
+		expect(looksLikeWebSearchRequest("search the web without Google")).toBe(
+			true,
 		);
 	});
 });
@@ -634,6 +644,249 @@ describe("inferDirectCurrentRequestCandidateInference kinds", () => {
 		).toEqual({ names: [], kind: null });
 	});
 
+	it("routes possessive owner-data reads to the owner reader, never VIEWS (read-side of fead478cfa)", () => {
+		const todosAction: Pick<Action, "name" | "similes" | "tags"> = {
+			name: "OWNER_TODOS",
+			similes: ["TODOS", "TODO_LIST"],
+			tags: [],
+		};
+		const todosTaggedViews: Pick<Action, "name" | "similes" | "tags"> = {
+			...viewsAction,
+			tags: [...(viewsAction.tags ?? []), "todos"],
+		};
+		// The live hijack shape: a possessive read must select the reader.
+		for (const message of [
+			"list my personal todos",
+			"what are my todos",
+			"show my todo list",
+		]) {
+			expect(
+				inferDirectCurrentRequestCandidateInference(
+					[todosTaggedViews, todosAction],
+					message,
+				),
+			).toEqual({ names: ["OWNER_TODOS"], kind: "owner-reads" });
+		}
+		// Lean stacks resolve the standalone todo owner (one owner per deployment).
+		const pluginTodosAction: Pick<Action, "name" | "similes" | "tags"> = {
+			name: "TODO",
+			similes: ["TODOS"],
+			tags: [],
+		};
+		expect(
+			inferDirectCurrentRequestCandidateInference(
+				[todosTaggedViews, pluginTodosAction],
+				"list my personal todos",
+			),
+		).toEqual({ names: ["TODO"], kind: "owner-reads" });
+		// Without any reader the read yields NO candidate — never the view
+		// catalog (that fallthrough was the live "Cannot invoke get-todos" turn).
+		expect(
+			inferDirectCurrentRequestCandidateInference(
+				[todosTaggedViews],
+				"list my personal todos",
+			),
+		).toEqual({ names: [], kind: null });
+		// Surface-noun asks stay with the navigation legs.
+		expect(
+			inferDirectCurrentRequestCandidateInference(
+				[todosTaggedViews, todosAction],
+				"open my todos page",
+			).kind,
+		).not.toBe("owner-reads");
+		// Mutations and completions are not reads.
+		for (const message of [
+			"add a todo: buy milk",
+			"check off my todo buy milk",
+			"mark my first todo done",
+			"how should i organize my todos",
+		]) {
+			expect(
+				inferDirectCurrentRequestCandidateInference(
+					[todosTaggedViews, todosAction],
+					message,
+				).kind,
+			).not.toBe("owner-reads");
+		}
+	});
+
+	it("covers the other owner-read domains and leaves non-possessive asks alone", () => {
+		const readers: Array<Pick<Action, "name" | "similes" | "tags">> = [
+			{ name: "OWNER_TODOS", similes: [], tags: [] },
+			{ name: "OWNER_GOALS", similes: [], tags: [] },
+			{ name: "OWNER_REMINDERS", similes: [], tags: [] },
+			{ name: "OWNER_ROUTINES", similes: [], tags: [] },
+			{ name: "OWNER_ALARMS", similes: [], tags: [] },
+			{ name: "OWNER_FINANCES", similes: [], tags: [] },
+		];
+		for (const [message, actionName] of [
+			["list my personal todos", "OWNER_TODOS"],
+			["review our shared goals", "OWNER_GOALS"],
+			["what are my reminders for today", "OWNER_REMINDERS"],
+			["show my habits", "OWNER_ROUTINES"],
+			["check my alarms", "OWNER_ALARMS"],
+			["go over my expenses this week", "OWNER_FINANCES"],
+		] as const) {
+			expect(
+				inferDirectCurrentRequestCandidateInference(
+					[viewsAction, ...readers],
+					message,
+				),
+			).toEqual({ names: [actionName], kind: "owner-reads" });
+		}
+
+		// Contextual nouns outside the possessive clause cannot steal the route.
+		expect(
+			inferDirectCurrentRequestCandidateInference(
+				[viewsAction, ...readers],
+				"show my reminders about goal planning",
+			),
+		).toEqual({ names: ["OWNER_REMINDERS"], kind: "owner-reads" });
+		expect(
+			inferDirectCurrentRequestCandidateInference(
+				[viewsAction, ...readers],
+				"review my goals concerning reminder planning",
+			),
+		).toEqual({ names: ["OWNER_GOALS"], kind: "owner-reads" });
+		// The compound phrase names finance data, not the routines surface.
+		expect(
+			inferDirectCurrentRequestCandidateInference(
+				[viewsAction, ...readers],
+				"what are my spending habits?",
+			),
+		).toEqual({ names: ["OWNER_FINANCES"], kind: "owner-reads" });
+		for (const [message, actionName] of [
+			["show my reminders about today's bitcoin price", "OWNER_REMINDERS"],
+			["review my goals concerning the current stock market", "OWNER_GOALS"],
+			["show my todos about checking the latest weather", "OWNER_TODOS"],
+		] as const) {
+			expect(
+				inferDirectCurrentRequestCandidateInference(
+					[
+						viewsAction,
+						...readers,
+						{ name: "WEB_SEARCH", similes: [], tags: [] },
+					],
+					message,
+				),
+			).toEqual({ names: [actionName], kind: "owner-reads" });
+		}
+
+		// Multiple requested owner domains must not be silently reduced by the
+		// fixed registry order; the planner can clarify or compose readers.
+		for (const message of [
+			"show my goals and reminders",
+			"show my reminders and goals",
+			"review my todos and our routines",
+		]) {
+			expect(
+				inferDirectCurrentRequestCandidateInference(
+					[viewsAction, ...readers],
+					message,
+				),
+			).toEqual({ names: [], kind: null });
+		}
+
+		// Advice, negation, quotation, and metalinguistic examples mention owner
+		// nouns but do not request private records.
+		for (const message of [
+			"tell me how to organize my todos",
+			"give me advice on my finances",
+			"what are good ways to organize my finances?",
+			"what are effective ways to manage my todos?",
+			"tell me ways to organize my reminders",
+			"show me how i can organize my goals",
+			"what are the best methods for tracking my spending?",
+			"do not show my reminders",
+			"please don't ever show my reminders",
+			"dont show my reminders",
+			"don’t ever show my reminders",
+			"do not ever show my reminders",
+			"do not, under any circumstances, show my reminders",
+			"never again list my todos",
+			"never, ever list my todos",
+			"never please under any circumstances show my reminders",
+			"what happens when I say show my reminders",
+			'write a story where she says "show my goals"',
+			"explain the phrase show my routines",
+		]) {
+			expect(
+				inferDirectCurrentRequestCandidateInference(
+					[viewsAction, ...readers],
+					message,
+				),
+			).toEqual({ names: [], kind: null });
+		}
+		// No possessive anchor → not an owner read (precision over recall).
+		expect(
+			inferDirectCurrentRequestCandidateInference(
+				[viewsAction, ...readers],
+				"list the reminders",
+			).kind,
+		).not.toBe("owner-reads");
+		expect(
+			inferDirectCurrentRequestCandidateInference(
+				[viewsAction, ...readers],
+				"what's on my todo list? i'd like to know",
+			),
+		).toEqual({ names: ["OWNER_TODOS"], kind: "owner-reads" });
+		for (const message of [
+			"search the web for ways to organize my finances",
+			"look up advice about my finances",
+			"google tips to manage my spending",
+		]) {
+			expect(
+				inferDirectCurrentRequestCandidateInference(
+					[
+						viewsAction,
+						...readers,
+						{ name: "WEB_SEARCH", similes: [], tags: [] },
+					],
+					message,
+				),
+			).toEqual({ names: ["WEB_SEARCH"], kind: "web" });
+		}
+		for (const message of [
+			"what are good ways to manage my current stock spending?",
+			"don't show my reminders about today's bitcoin price",
+			"show my goals and reminders about current stock prices",
+		]) {
+			expect(
+				inferDirectCurrentRequestCandidateInference(
+					[
+						viewsAction,
+						...readers,
+						{ name: "WEB_SEARCH", similes: [], tags: [] },
+					],
+					message,
+				),
+			).toEqual({ names: [], kind: null });
+		}
+		expect(
+			inferDirectCurrentRequestCandidateInference(
+				[viewsAction, ...readers],
+				"don't browse the web; show my reminders",
+			),
+		).toEqual({ names: ["OWNER_REMINDERS"], kind: "owner-reads" });
+		expect(
+			inferDirectCurrentRequestCandidateInference(
+				[
+					viewsAction,
+					...readers,
+					{ name: "WEB_SEARCH", similes: [], tags: [] },
+				],
+				"don't show my reminders; search the web for today's bitcoin price",
+			),
+		).toEqual({ names: ["WEB_SEARCH"], kind: "web" });
+		// The existing settings capability contract is untouched.
+		expect(
+			inferDirectCurrentRequestCandidateInference(
+				[viewsAction],
+				"show my settings",
+			),
+		).toEqual({ names: ["VIEWS"], kind: "view-capability" });
+	});
+
 	it("gives owner goal mutations precedence over the views goals tag (#17028)", () => {
 		const goalsAction: Pick<Action, "name" | "similes" | "tags"> = {
 			name: "OWNER_GOALS",
@@ -926,5 +1179,65 @@ describe("cloud-apps surface request inference", () => {
 				"settings",
 			),
 		).toEqual(["VIEWS"]);
+	});
+});
+
+describe("batch-1 matrix fixes: budget noun + scheduled-item admin (F3/F5)", () => {
+	const viewsAction = {
+		name: "VIEWS",
+		similes: ["OPEN_VIEW"],
+		tags: ["views", "ui", "finances", "app"],
+	};
+
+	it("'what is my budget?' routes to the finances reader, never VIEWS (F3, tj-a5f72b6aa95253)", () => {
+		const finances = { name: "OWNER_FINANCES", similes: [], tags: [] };
+		expect(
+			inferDirectCurrentRequestCandidateInference(
+				[viewsAction, finances],
+				"what is my budget?",
+			),
+		).toEqual({ names: ["OWNER_FINANCES"], kind: "owner-reads" });
+		// No reader registered → no candidate, never the view catalog.
+		expect(
+			inferDirectCurrentRequestCandidateInference(
+				[viewsAction],
+				"what is my budget?",
+			),
+		).toEqual({ names: [], kind: null });
+	});
+
+	it("snooze/reschedule verbs hint the scheduled surface (F5, tj-a793149be84b86)", () => {
+		const reminders = { name: "OWNER_REMINDERS", similes: [], tags: [] };
+		const appAction = {
+			name: "APP",
+			similes: ["LAUNCH_APP"],
+			tags: ["app", "apps"],
+		};
+		expect(
+			inferDirectCurrentRequestCandidateInference(
+				[viewsAction, appAction, reminders],
+				"snooze the water the ficus reminder until 6pm sunday",
+			),
+		).toEqual({ names: ["OWNER_REMINDERS"], kind: "owner-scheduled-admin" });
+		expect(
+			inferDirectCurrentRequestCandidateInference(
+				[viewsAction, appAction, reminders],
+				"reschedule my dentist reminder to friday",
+			),
+		).toEqual({ names: ["OWNER_REMINDERS"], kind: "owner-scheduled-admin" });
+		// Admin verb with no scheduled surface: yield nothing, never APP.
+		expect(
+			inferDirectCurrentRequestCandidateInference(
+				[viewsAction, appAction],
+				"snooze the water the ficus reminder until 6pm sunday",
+			),
+		).toEqual({ names: [], kind: null });
+		// "snooze" without a scheduled noun stays untouched (chat/alarm apps etc).
+		expect(
+			inferDirectCurrentRequestCandidateInference(
+				[viewsAction, appAction, reminders],
+				"i want to snooze for a bit",
+			).kind,
+		).not.toBe("owner-scheduled-admin");
 	});
 });

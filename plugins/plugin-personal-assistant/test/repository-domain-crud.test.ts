@@ -658,7 +658,26 @@ describe("LifeOpsRepository domain CRUD", () => {
     );
     expect(
       await repository.getScheduledTask(runtime.agentId, "task-crud-1"),
-    ).toMatchObject({ taskId: "task-crud-1" });
+    ).toMatchObject({
+      taskId: "task-crud-1",
+      promptInstructions: "Remind the owner",
+    });
+    const secondAgentId = crypto.randomUUID();
+    await repository.upsertScheduledTask(
+      secondAgentId,
+      {
+        ...scheduledTask,
+        agentId: secondAgentId,
+        promptInstructions: "Remind the second owner",
+      } as never,
+      { nextFireAtIso: LATER },
+    );
+    expect(
+      await repository.getScheduledTask(secondAgentId, "task-crud-1"),
+    ).toMatchObject({ promptInstructions: "Remind the second owner" });
+    expect(
+      await repository.getScheduledTask(runtime.agentId, "task-crud-1"),
+    ).toMatchObject({ promptInstructions: "Remind the owner" });
     expect(
       await repository.listScheduledTasks(runtime.agentId, {
         kind: "reminder",

@@ -32,6 +32,7 @@ function makeRuntime(overrides: Partial<IAgentRuntime> = {}): IAgentRuntime & {
       cache.set(key, value);
     }),
     ensureWorldExists: vi.fn(async () => undefined),
+    updateWorld: vi.fn(async () => undefined),
     ensureRoomExists: vi.fn(async () => undefined),
     ensureConnection: vi.fn(async () => undefined),
     createMemory: vi.fn(async (memory: Memory) => {

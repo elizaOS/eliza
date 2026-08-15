@@ -30,12 +30,21 @@ function makeKeys() {
 const KEYS = makeKeys();
 
 const denylistStore = new Map<string, string>();
-let denylistConfigured = true;
 let denylistGetError: Error | null = null;
+let workerRuntime = false;
+let lastRedisEnv: Record<string, string | undefined> | undefined;
+
+function hasConfiguredRedis(env: Record<string, string | undefined>): boolean {
+  if (env.MOCK_REDIS === "1" || env.REDIS_URL) return true;
+  const restUrl = env.KV_REST_API_URL || env.UPSTASH_REDIS_REST_URL;
+  const restToken = env.KV_REST_API_TOKEN || env.UPSTASH_REDIS_REST_TOKEN;
+  return Boolean(restUrl && restToken);
+}
 
 mock.module("../cache/redis-factory", () => ({
-  buildRedisClient: () => {
-    if (!denylistConfigured) return null;
+  buildRedisClient: (env: Record<string, string | undefined> = process.env) => {
+    lastRedisEnv = env;
+    if (!hasConfiguredRedis(env)) return null;
     return {
       async get(key: string) {
         if (denylistGetError) throw denylistGetError;
@@ -50,8 +59,9 @@ mock.module("../cache/redis-factory", () => ({
       },
     };
   },
-  hasRedisConfig: () => denylistConfigured,
-  isCloudflareWorkerRuntime: () => false,
+  hasRedisConfig: (env: Record<string, string | undefined> = process.env) =>
+    hasConfiguredRedis(env),
+  isCloudflareWorkerRuntime: () => workerRuntime,
 }));
 
 mock.module("../utils/logger", () => ({
@@ -70,8 +80,9 @@ describe("internal JWT jti revocation denylist (#12879)", () => {
     process.env.JWT_SIGNING_KEY_ID = "test";
     process.env.MOCK_REDIS = "1";
     denylistStore.clear();
-    denylistConfigured = true;
     denylistGetError = null;
+    workerRuntime = false;
+    lastRedisEnv = undefined;
     denylistMod.__resetDenylistClientForTests();
     setSystemTime();
   });
@@ -84,6 +95,9 @@ describe("internal JWT jti revocation denylist (#12879)", () => {
     delete process.env.REDIS_URL;
     delete process.env.KV_REST_API_URL;
     delete process.env.KV_REST_API_TOKEN;
+    delete process.env.UPSTASH_REDIS_REST_URL;
+    delete process.env.UPSTASH_REDIS_REST_TOKEN;
+    workerRuntime = false;
     setSystemTime();
   });
 
@@ -173,7 +187,6 @@ describe("internal JWT jti revocation denylist (#12879)", () => {
       delete process.env.REDIS_URL;
       delete process.env.KV_REST_API_URL;
       delete process.env.KV_REST_API_TOKEN;
-      denylistConfigured = false;
       denylistMod.__resetDenylistClientForTests();
     });
 
@@ -191,6 +204,55 @@ describe("internal JWT jti revocation denylist (#12879)", () => {
       await expect(mod.revokeInternalToken("some-jti", undefined)).rejects.toThrow(
         /no Redis backend configured/i,
       );
+    });
+  });
+
+  describe("runtime-compatible denylist transport selection", () => {
+    test("ignores TCP REDIS_URL in Workers and uses key rotation plus TTL", async () => {
+      delete process.env.MOCK_REDIS;
+      process.env.REDIS_URL = "redis://railway.internal:6379";
+      workerRuntime = true;
+      denylistMod.__resetDenylistClientForTests();
+
+      expect(mod.isDenylistConfigured()).toBe(false);
+      const { access_token } = await mod.signInternalToken({ subject: "worker-tcp-only" });
+      const result = await mod.verifyInternalToken(access_token);
+
+      expect(result.valid).toBe(true);
+      expect(lastRedisEnv?.REDIS_URL).toBeUndefined();
+    });
+
+    test("uses REST Redis in Workers and remains fail-closed on read errors", async () => {
+      delete process.env.MOCK_REDIS;
+      process.env.REDIS_URL = "redis://railway.internal:6379";
+      process.env.KV_REST_API_URL = "https://redis-rest.example.test";
+      process.env.KV_REST_API_TOKEN = "test-token";
+      workerRuntime = true;
+      denylistGetError = new Error("REST Redis unavailable");
+      denylistMod.__resetDenylistClientForTests();
+
+      expect(mod.isDenylistConfigured()).toBe(true);
+      const { access_token } = await mod.signInternalToken({ subject: "worker-rest" });
+
+      await expect(mod.verifyInternalToken(access_token)).rejects.toThrow(
+        /REST Redis unavailable/i,
+      );
+      expect(lastRedisEnv?.REDIS_URL).toBeUndefined();
+      expect(lastRedisEnv?.KV_REST_API_URL).toBe("https://redis-rest.example.test");
+    });
+
+    test("keeps TCP REDIS_URL available to Node services", async () => {
+      delete process.env.MOCK_REDIS;
+      process.env.REDIS_URL = "redis://railway.internal:6379";
+      workerRuntime = false;
+      denylistMod.__resetDenylistClientForTests();
+
+      expect(mod.isDenylistConfigured()).toBe(true);
+      const { access_token } = await mod.signInternalToken({ subject: "node-tcp" });
+      const result = await mod.verifyInternalToken(access_token);
+
+      expect(result.valid).toBe(true);
+      expect(lastRedisEnv?.REDIS_URL).toBe("redis://railway.internal:6379");
     });
   });
 });

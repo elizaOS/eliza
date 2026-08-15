@@ -1,10 +1,15 @@
 /**
- * Scheduling plugin boot tests cover the seed hook's lifecycle barrier against
- * the runtime service registry and the core TaskService fallback registration.
+ * Scheduling plugin boot tests cover the structural runner boot hook (seeding
+ * runs only when the started service instance is handed to the hook), the
+ * reportError path for failed boot seeds, and the core TaskService fallback
+ * registration. The runner-service module is mocked; the hook mechanics
+ * themselves are covered against the real service in
+ * runner-service-boot-hook.test.ts.
  */
 
 import type { IAgentRuntime } from "@elizaos/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { ScheduledTaskRunnerService } from "./scheduled-task/runner-service.js";
 
 const mocks = vi.hoisted(() => ({
   getDeps: vi.fn(() => null),
@@ -12,6 +17,7 @@ const mocks = vi.hoisted(() => ({
   registerPack: vi.fn(),
   seedPacks: vi.fn(async () => ({ seeded: [], skipped: [] })),
   runner: { schedule: vi.fn() },
+  bootHooks: [] as Array<(service: ScheduledTaskRunnerService) => unknown>,
 }));
 
 vi.mock("./scheduled-task/default-pack.js", () => ({
@@ -28,7 +34,11 @@ vi.mock("./scheduled-task/runner-service.js", () => ({
     static serviceType = "lifeops_scheduled_task_runner";
   },
   getScheduledTaskRunnerDeps: mocks.getDeps,
-  getScheduledTaskRunner: vi.fn(() => mocks.runner),
+  registerScheduledTaskRunnerBootHook: vi.fn(
+    (_runtime: IAgentRuntime, hook: (service: unknown) => unknown) => {
+      mocks.bootHooks.push(hook as never);
+    },
+  ),
 }));
 
 vi.mock("./scheduled-task/seed-registry.js", () => ({
@@ -41,10 +51,35 @@ import {
   schedulingPlugin,
   waitForScheduledTaskRunnerService,
 } from "./plugin.js";
-import { ScheduledTaskRunnerService } from "./scheduled-task/runner-service.js";
+import { ScheduledTaskRunnerService as MockedRunnerService } from "./scheduled-task/runner-service.js";
+
+function buildRuntime(overrides: Record<string, unknown> = {}): IAgentRuntime {
+  return {
+    agentId: "agent-1",
+    initPromise: Promise.resolve(),
+    hasService: () => true,
+    getServiceLoadPromise: vi.fn(async () => ({})),
+    getTaskWorker: () => undefined,
+    registerTaskWorker: vi.fn(),
+    getTasks: vi.fn(async () => []),
+    createTask: vi.fn(async () => "driver-task-id"),
+    reportError: vi.fn(),
+    ...overrides,
+  } as unknown as IAgentRuntime;
+}
+
+const fakeService = {
+  getRunner: vi.fn(() => mocks.runner),
+} as unknown as ScheduledTaskRunnerService;
 
 describe("scheduling plugin boot", () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.bootHooks.length = 0;
+    mocks.getDeps.mockReturnValue(null);
+    mocks.getPacks.mockReturnValue([]);
+    mocks.seedPacks.mockResolvedValue({ seeded: [], skipped: [] });
+  });
 
   it("waits one microtask for the plugin's own service declaration to register", async () => {
     let registered = false;
@@ -66,40 +101,60 @@ describe("scheduling plugin boot", () => {
     registered = true;
     await expect(load).resolves.toBe(service);
     expect(getServiceLoadPromise).toHaveBeenCalledWith(
-      ScheduledTaskRunnerService.serviceType,
+      MockedRunnerService.serviceType,
     );
   });
 
-  it("seeds after the registration barrier and registers the fallback pack", async () => {
-    const registerTaskWorker = vi.fn();
-    const createTask = vi.fn(async () => "driver-task-id");
-    const runtime = {
-      agentId: "agent-1",
-      initPromise: Promise.resolve(),
-      hasService: () => true,
-      getServiceLoadPromise: vi.fn(async () => ({})),
-      getTaskWorker: () => undefined,
-      registerTaskWorker,
-      getTasks: vi.fn(async () => []),
-      createTask,
-    } as unknown as IAgentRuntime;
+  it("does not seed at init; seeding waits for the runner boot hook", async () => {
+    const runtime = buildRuntime();
 
     await schedulingPlugin.init?.({}, runtime);
-    await vi.waitFor(() => expect(mocks.seedPacks).toHaveBeenCalled());
+    // Let any stray promise chains settle: without a started runner service
+    // the hook must not have fired.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(mocks.bootHooks).toHaveLength(1);
+    expect(mocks.seedPacks).not.toHaveBeenCalled();
+    expect(mocks.registerPack).not.toHaveBeenCalled();
+  });
+
+  it("seeds through the hook's service instance and registers the fallback pack", async () => {
+    const runtime = buildRuntime();
+
+    await schedulingPlugin.init?.({}, runtime);
+    expect(mocks.bootHooks).toHaveLength(1);
+    await mocks.bootHooks[0](fakeService);
 
     expect(mocks.registerPack).toHaveBeenCalledWith(
       runtime,
       expect.objectContaining({ id: "fallback-agent-1", fallback: true }),
     );
+    expect(fakeService.getRunner).toHaveBeenCalledWith({ agentId: "agent-1" });
     expect(mocks.seedPacks).toHaveBeenCalledWith(runtime, mocks.runner);
-    expect(registerTaskWorker).toHaveBeenCalledWith(
+    expect(runtime.registerTaskWorker).toHaveBeenCalledWith(
       expect.objectContaining({ name: "SCHEDULED_TASK_RUNNER" }),
     );
-    expect(createTask).toHaveBeenCalledWith(
+    expect(runtime.createTask).toHaveBeenCalledWith(
       expect.objectContaining({
         name: "SCHEDULED_TASK_RUNNER",
         tags: ["queue", "repeat", "scheduling"],
       }),
+    );
+    expect(runtime.reportError).not.toHaveBeenCalled();
+  });
+
+  it("reports a failed boot seed through runtime.reportError and survives", async () => {
+    const seedFailure = new Error("seed exploded");
+    mocks.seedPacks.mockRejectedValueOnce(seedFailure);
+    const runtime = buildRuntime();
+
+    await schedulingPlugin.init?.({}, runtime);
+    await mocks.bootHooks[0](fakeService);
+
+    expect(runtime.reportError).toHaveBeenCalledWith(
+      "scheduling.bootSeed",
+      seedFailure,
+      { agentId: "agent-1" },
     );
   });
 });

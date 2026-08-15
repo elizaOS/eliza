@@ -8,6 +8,7 @@
 import { describe, expect, it } from "vitest";
 import {
 	buildCanonicalSystemPrompt,
+	buildCharacterStyleDirections,
 	dropDuplicateLeadingSystemMessage,
 	resolveEffectiveSystemPrompt,
 } from "../system-prompt";
@@ -155,5 +156,42 @@ describe("system prompt helpers", () => {
 		expect(dropDuplicateLeadingSystemMessage(messages, "Other.")).toEqual(
 			messages,
 		);
+	});
+});
+
+describe("buildCharacterStyleDirections", () => {
+	it("renders style.all then style.chat once, excluding style.post", () => {
+		const block = buildCharacterStyleDirections({
+			character: {
+				name: "Ada",
+				style: {
+					all: ["be brief", "{{name}} never uses emoji"],
+					chat: ["match their energy"],
+					post: ["one idea per post"],
+				},
+			},
+		});
+
+		expect(block).toBe(
+			[
+				"# Message Directions for Ada",
+				"be brief",
+				"Ada never uses emoji",
+				"match their energy",
+			].join("\n"),
+		);
+		expect(block).not.toContain("one idea per post");
+	});
+
+	it("returns empty when the character declares no chat style", () => {
+		expect(buildCharacterStyleDirections({ character: { name: "Ada" } })).toBe(
+			"",
+		);
+		expect(
+			buildCharacterStyleDirections({
+				character: { name: "Ada", style: { all: [], chat: [] } },
+			}),
+		).toBe("");
+		expect(buildCharacterStyleDirections({ character: null })).toBe("");
 	});
 });

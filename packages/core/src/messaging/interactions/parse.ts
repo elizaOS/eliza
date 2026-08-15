@@ -26,6 +26,7 @@ import type {
 	InteractionOption,
 	TaskInteraction,
 } from "../../types/interactions";
+import { stripDashboardOnlyMarkers } from "./dashboard-markers";
 
 /** Hard caps mirroring the dashboard parsers — keep a runaway template safe. */
 export const MAX_FORM_FIELDS = 20;
@@ -388,7 +389,12 @@ export function stripUnclaimedInteractionMarkup(text: string): string {
 export function parseInteractionBlocks(text: string): ParsedInteractions {
 	const regions = findInteractionRegions(text);
 	if (regions.length === 0) {
-		return { blocks: [], cleanedText: stripUnclaimedInteractionMarkup(text) };
+		return {
+			blocks: [],
+			cleanedText: stripDashboardOnlyMarkers(
+				stripUnclaimedInteractionMarkup(text),
+			),
+		};
 	}
 	const blocks: InteractionBlock[] = [];
 	const parts: string[] = [];
@@ -399,9 +405,11 @@ export function parseInteractionBlocks(text: string): ParsedInteractions {
 		cursor = r.end;
 	}
 	if (cursor < text.length) parts.push(text.slice(cursor));
-	const cleanedText = stripUnclaimedInteractionMarkup(parts.join(""))
-		.replace(/\n{3,}/g, "\n\n")
-		.trim();
+	const cleanedText = stripDashboardOnlyMarkers(
+		stripUnclaimedInteractionMarkup(parts.join(""))
+			.replace(/\n{3,}/g, "\n\n")
+			.trim(),
+	);
 	return { blocks, cleanedText };
 }
 

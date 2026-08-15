@@ -38,7 +38,11 @@ import {
   type TwitterClientState,
   type TwitterInteractionPayload,
 } from "./types";
-import { buildTwitterMessageMetadata, createMemorySafe } from "./utils/memory";
+import {
+  buildTwitterMessageMetadata,
+  createMemorySafe,
+  reconcileTwitterWorld,
+} from "./utils/memory";
 import { getSetting } from "./utils/settings";
 import { getEpochMs } from "./utils/time";
 
@@ -592,12 +596,16 @@ export class ClientBase {
 
           // Create a world for this Twitter user if it doesn't exist
           const worldId = createUniqueUuid(this.runtime, tweet.userId) as UUID;
-          await this.runtime.ensureWorldExists({
+          const entityId =
+            tweet.userId === profile.id
+              ? this.runtime.agentId
+              : createUniqueUuid(this.runtime, tweet.userId);
+          await reconcileTwitterWorld(this.runtime, {
             id: worldId,
             name: `${tweet.username}'s Twitter`,
             agentId: this.runtime.agentId,
             metadata: {
-              ownership: { ownerId: tweet.userId },
+              ownership: { ownerId: entityId },
               twitter: {
                 username: tweet.username,
                 id: tweet.userId,
@@ -609,11 +617,6 @@ export class ClientBase {
             this.runtime,
             this.tweetRoomKey(tweet),
           );
-          const entityId =
-            tweet.userId === profile.id
-              ? this.runtime.agentId
-              : createUniqueUuid(this.runtime, tweet.userId);
-
           // Ensure the entity exists with proper world association
           await this.runtime.ensureConnection({
             entityId,
@@ -729,12 +732,16 @@ export class ClientBase {
 
       // Create a world for this Twitter user if it doesn't exist
       const worldId = createUniqueUuid(this.runtime, tweet.userId) as UUID;
-      await this.runtime.ensureWorldExists({
+      const entityId =
+        tweet.userId === profile.id
+          ? this.runtime.agentId
+          : createUniqueUuid(this.runtime, tweet.userId);
+      await reconcileTwitterWorld(this.runtime, {
         id: worldId,
         name: `${tweet.username}'s Twitter`,
         agentId: this.runtime.agentId,
         metadata: {
-          ownership: { ownerId: tweet.userId },
+          ownership: { ownerId: entityId },
           twitter: {
             username: tweet.username,
             id: tweet.userId,
@@ -743,11 +750,6 @@ export class ClientBase {
       });
 
       const roomId = createUniqueUuid(this.runtime, this.tweetRoomKey(tweet));
-
-      const entityId =
-        tweet.userId === profile.id
-          ? this.runtime.agentId
-          : createUniqueUuid(this.runtime, tweet.userId);
 
       // Ensure the entity exists with proper world association
       await this.runtime.ensureConnection({

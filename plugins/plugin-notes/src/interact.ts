@@ -350,18 +350,24 @@ async function dispatchCapability(
     );
   }
   if (capability === "delete-note") {
-    assertOnlyParams(params, ["id", "query", "title"]);
+    assertOnlyParams(params, ["id", "query", "title", "ownerText"]);
     const target = parseLookupTarget(params, capability, [
       "id",
       "query",
       "title",
     ]);
+    // The user's original words, injected by the VIEWS dispatcher for
+    // destructive capabilities. Id-selected deletes skip the fence (ids come
+    // from structured contexts, not name translation).
+    const ownerText =
+      typeof params.ownerText === "string" ? params.ownerText : undefined;
     const removed =
       target.selector === "id"
         ? await service.deleteNoteWithCommit(target.value)
         : await service.deleteNoteByLookupWithCommit(
             target.selector,
             target.value,
+            { requireTitleInText: ownerText },
           );
     const { value: note, snapshot, removedIds } = removed;
     return mutationSuccess(

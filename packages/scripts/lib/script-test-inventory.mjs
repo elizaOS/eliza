@@ -56,10 +56,6 @@ export const SCRIPT_TEST_EXCLUSIONS = new Map([
     "packages/scripts/__tests__/release-verdaccio.integration.test.ts",
     "the release-candidate workflow owns this slow real-registry transport test",
   ],
-  [
-    "scripts/lifeops/connector-paths.test.mjs",
-    "2/24 tests parse docs/testing/hitl-identity-slots.md, deleted from the tree; lifeops-owner repair tracked in #19448",
-  ],
 ]);
 
 function compareText(left, right) {

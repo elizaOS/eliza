@@ -25,6 +25,7 @@ function createRuntime(settings: Record<string, string> = {}) {
     ensureConnection: vi.fn(async () => undefined),
     ensureRoomExists: vi.fn(async () => undefined),
     ensureWorldExists: vi.fn(async () => undefined),
+    updateWorld: vi.fn(async () => undefined),
     getMemoryById: vi.fn(async () => null),
     getMemories: vi.fn(async () => []),
     getSetting: vi.fn((key: string) => settings[key]),
@@ -120,6 +121,10 @@ describe("Twitter interaction processing", () => {
 
     expect(runtime.createMemory).toHaveBeenCalledTimes(1);
     expect(handleTweet).toHaveBeenCalledTimes(1);
+    const world = runtime.ensureWorldExists.mock.calls[0]?.[0];
+    const connection = runtime.ensureConnection.mock.calls[0]?.[0];
+    expect(world?.metadata?.ownership?.ownerId).toBe(connection?.entityId);
+    expect(world?.metadata?.ownership?.ownerId).not.toBe("user-1");
     expect(clientBase.lastCheckedTweetId).toBe(300n);
   });
 });

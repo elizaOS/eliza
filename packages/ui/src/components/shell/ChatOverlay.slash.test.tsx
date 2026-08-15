@@ -149,7 +149,7 @@ function renderOverlay(
   render(<ChatOverlay controller={controller} slash={slash} />);
   expect(
     (screen.getByLabelText("message") as HTMLTextAreaElement).placeholder,
-  ).toBe("Ask Eliza");
+  ).toBe("Message Eliza");
   return {
     controller,
     input: screen.getByLabelText("message") as HTMLInputElement,

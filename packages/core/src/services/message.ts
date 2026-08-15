@@ -67,7 +67,7 @@ import {
 	buildActionCatalog,
 	type LocalizedActionExampleResolver,
 } from "../runtime/action-catalog";
-import { canActionRun } from "../runtime/action-gate";
+import { actionGateFailure, canActionRun } from "../runtime/action-gate";
 import {
 	parentAliasesForCandidateAction,
 	retrieveActions,
@@ -82,6 +82,7 @@ import {
 	type CandidateActionBackstopRule,
 	getCandidateActionBackstopRules,
 } from "../runtime/candidate-action-backstop";
+import { isCanonicalModelCapabilityDisabled } from "../runtime/canonical-model-capabilities.ts";
 import { filterProvidersByContextGate } from "../runtime/context-gates.ts";
 import { computePrefixHashes, hashString } from "../runtime/context-hash";
 import {
@@ -184,7 +185,10 @@ import {
 	runSubPlanner,
 	subPlannerCallDigest,
 } from "../runtime/sub-planner";
-import { buildCanonicalSystemPrompt } from "../runtime/system-prompt";
+import {
+	buildCanonicalSystemPrompt,
+	buildCharacterStyleDirections,
+} from "../runtime/system-prompt";
 import { resolveTraceCorrelationFromEnv } from "../runtime/trace-correlation";
 import {
 	buildProviderAttributionsFromState,
@@ -876,8 +880,9 @@ function alwaysOnResponseStateProviderNames(runtime: IAgentRuntime): string[] {
  *   - ACTIONS / PROVIDERS / ACTION_STATE: meta-listings — the planner sees
  *     actions as native function tools, so a parallel text block is
  *     duplicative and confusing.
- *   - CHARACTER: already rendered via `staticPrefix.systemPrompt` (which
- *     includes system + bio + role) so the text-block CHARACTER provider
+ *   - CHARACTER: identity is already rendered via `staticPrefix.systemPrompt`
+ *     (system + bio + role) and chat style directions via
+ *     `staticPrefix.characterPrompt`, so the text-block CHARACTER provider
  *     would duplicate the same content.
  * RECENT_MESSAGES stays included because Stage 1 needs full prior dialogue
  * text when no structured `recentMessages` array is available from the
@@ -2687,6 +2692,7 @@ async function collectV5PlannerCandidateActions(args: {
 		action: Action,
 		parentActionName?: string,
 		activeContexts: readonly AgentContext[] | undefined = args.selectedContexts,
+		explicitCandidateName?: string,
 	): Promise<boolean> => {
 		const normalizedName = normalizeActionIdentifier(action.name);
 		if (!normalizedName || seen.has(normalizedName)) {
@@ -2695,13 +2701,27 @@ async function collectV5PlannerCandidateActions(args: {
 		// One gate for exposure and execution (#12087 Item 9): private-action gate
 		// (private actions never reach the planner on a user turn) + ACTION_ROLE_POLICY
 		// + contextGate + roleGate, all via the shared chokepoint.
-		if (
-			!canActionRun(action, {
-				message: args.message,
-				activeContexts,
-				userRoles: args.userRoles,
-			})
-		) {
+		// Explicit Stage-1 hints need a diagnostic when their resolved action is
+		// rejected. The all-action pass stays quiet because ordinary gate misses
+		// are expected while building a narrowed surface.
+		const gateFailure = actionGateFailure(action, {
+			message: args.message,
+			activeContexts,
+			userRoles: args.userRoles,
+		});
+		if (gateFailure !== undefined) {
+			if (explicitCandidateName) {
+				args.runtime.logger.warn(
+					{
+						src: "service:message",
+						action: action.name,
+						candidate: explicitCandidateName,
+						gate: "action-gate",
+						reason: gateFailure,
+					},
+					"Explicit stage-1 candidate rejected at the action gate",
+				);
+			}
 			return false;
 		}
 		try {
@@ -2713,6 +2733,18 @@ async function collectV5PlannerCandidateActions(args: {
 				},
 			);
 			if (!accountPolicy.allowed) {
+				if (explicitCandidateName) {
+					args.runtime.logger.warn(
+						{
+							src: "service:message",
+							action: action.name,
+							candidate: explicitCandidateName,
+							gate: "connector-account-policy",
+							reason: accountPolicy.reason,
+						},
+						"Explicit stage-1 candidate rejected by connector account policy",
+					);
+				}
 				return false;
 			}
 			if (action.validate) {
@@ -2722,6 +2754,18 @@ async function collectV5PlannerCandidateActions(args: {
 					args.state,
 				);
 				if (!valid) {
+					if (explicitCandidateName) {
+						args.runtime.logger.warn(
+							{
+								src: "service:message",
+								action: action.name,
+								candidate: explicitCandidateName,
+								gate: "validate-returned-false",
+								reason: `Action ${action.name} is not available for the current state`,
+							},
+							"Explicit stage-1 candidate rejected by action validate()",
+						);
+					}
 					return false;
 				}
 			}
@@ -2765,11 +2809,23 @@ async function collectV5PlannerCandidateActions(args: {
 			: parentAliasesForCandidateAction(candidateName)
 					.map((alias) => resolveRuntimeAction(actionLookup, alias))
 					.filter((action): action is Action => action !== undefined);
+		if (resolved.length === 0) {
+			args.runtime.logger.warn(
+				{
+					src: "service:message",
+					candidate: candidateName,
+					gate: "resolved-to-no-runtime-action",
+				},
+				"Explicit stage-1 candidate resolved to no runtime action",
+			);
+			continue;
+		}
 		for (const action of resolved) {
 			await appendIfAllowed(
 				action,
 				undefined,
 				mergeAgentContexts(args.selectedContexts, action.contexts),
+				candidateName,
 			);
 		}
 	}
@@ -3424,6 +3480,13 @@ async function createV5MessageContextObject(args: {
 		character: args.runtime.character,
 		userRole: args.userRoles?.[0],
 	});
+	// Chat style directions (style.all + style.chat) render exactly once here,
+	// in the stable prefix. Computed statically from the character — not via the
+	// per-room CHARACTER provider — so the KV-cacheable prefix stays
+	// byte-identical across turns (#17026).
+	const characterStyleDirections = buildCharacterStyleDirections({
+		character: args.runtime.character,
+	});
 	// Stage 2 exposes each Action as its own native tool. Per-action specs live
 	// in `events[type=tool]`; the LLM calls each action directly by name. We
 	// also expose the universal terminal-sentinel tools (REPLY / IGNORE / STOP)
@@ -3457,6 +3520,14 @@ async function createV5MessageContextObject(args: {
 						id: "system",
 						label: "system",
 						content: systemPrompt,
+						stable: true,
+					}
+				: undefined,
+			characterPrompt: characterStyleDirections
+				? {
+						id: "character-style",
+						label: "system",
+						content: characterStyleDirections,
 						stable: true,
 					}
 				: undefined,
@@ -3690,7 +3761,21 @@ export function plannedReplyHasClaimGroundingReceipt(args: {
 			(action.tags ?? []).map((tag) => tag.trim().toLowerCase()),
 		);
 		if (args.kind === "empty_tracked_state") {
-			return tags.has("resource:tracked-work") && tags.has("capability:read");
+			if (!tags.has("resource:tracked-work") || !tags.has("capability:read")) {
+				return false;
+			}
+			const isMixedMutationSurface = [
+				"capability:write",
+				"capability:update",
+				"capability:delete",
+				"capability:schedule",
+			].some((tag) => tags.has(tag));
+			if (!isMixedMutationSurface) return true;
+			const claimGrounding = result.data?.claimGrounding;
+			return (
+				Array.isArray(claimGrounding) &&
+				claimGrounding.includes("empty_tracked_state")
+			);
 		}
 		return false;
 	});
@@ -4089,7 +4174,7 @@ direct/private rules:
 - Slash-command questions are conversation: contexts=["general"]; say /commands shows the list; never select VIEWS or ask clarification for "show commands".
 - Sticky Notes use contexts=["notes"], candidateActionNames=["NOTES"]. Native device controls such as flashlight operations use contexts=["general"], candidateActionNames=["VIEWS"]. Do not route sticky Notes to documents or invent action names such as CREATE_NOTE.
 - Calendar-event reads or mutations use contexts=["calendar"], candidateActionNames=["CALENDAR"]. A timed "add X tomorrow at 9am" request is a calendar event unless the user explicitly asks for a task or reminder.
-- Goals/todos/reminders/habits/routines are non-simple; goals -> tasks + OWNER_GOALS, never work threads.
+- Reading or changing goals/todos/reminders/alarms/habits/routines DATA is non-simple; goals -> tasks + OWNER_GOALS, todos -> tasks + OWNER_TODOS, reminders -> tasks + OWNER_REMINDERS, alarms -> tasks + OWNER_ALARMS, habits/routines -> tasks + OWNER_ROUTINES, never work threads and never VIEWS. Opening or showing their PAGE ("open my todos page", "show the reminders screen") stays UI navigation -> VIEWS per the rule above.
 - Only use "simple" when you can answer directly from your static knowledge or the visible prior_message / reply_reference context. If a specific name/thing is unclear, choose general or memory.
 - Never claim searched/scanned/recalled unless tool returned it; includes "I scanned the chat" or "Spawning a sub-agent".
 - Never deny a capability when current_turn_boundary says a role-visible executable action can attempt it. available_contexts supplies routing domains but does not by itself prove a handler exists.
@@ -5375,11 +5460,17 @@ export function applyDirectCurrentCandidateBackstopToMessageHandler(
 		return messageHandler;
 	}
 
+	const stageOneCandidateActions =
+		getMessageHandlerCandidateActions(messageHandler);
+	const composedCandidateActions =
+		directCurrentInference.kind === "owner-reads"
+			? directCurrentCandidateActions
+			: uniqueActionNames([
+					...stageOneCandidateActions,
+					...directCurrentCandidateActions,
+				]);
 	const runnableCandidateActions = filterRunnableCandidateActions(
-		uniqueActionNames([
-			...getMessageHandlerCandidateActions(messageHandler),
-			...directCurrentCandidateActions,
-		]),
+		composedCandidateActions,
 		runtimeContext,
 	);
 	if (runnableCandidateActions.length === 0) return messageHandler;
@@ -8093,19 +8184,22 @@ export async function runV5MessageRuntimeStage1(args: {
 		// evaluator that cleared Stage-1 candidates has already established an
 		// authoritative route from richer runtime state, so the generic text
 		// heuristic must not undo that decision.
-		const directPlannerCandidateActions =
-			inferDirectCurrentRequestCandidateActions(
-				args.runtime.actions ?? [],
-				getUserMessageText(args.message) ?? "",
-			);
+		const directPlannerInference = inferDirectCurrentRequestCandidateInference(
+			args.runtime.actions ?? [],
+			getUserMessageText(args.message) ?? "",
+		);
+		const directPlannerCandidateActions = directPlannerInference.names;
 		if (
 			directPlannerCandidateActions.length > 0 &&
 			!responseHandlerEvaluation.candidateActionsClearedByEvaluators
 		) {
-			messageHandler.plan.candidateActions = uniqueActionNames([
-				...getMessageHandlerCandidateActions(messageHandler),
-				...directPlannerCandidateActions,
-			]);
+			messageHandler.plan.candidateActions =
+				directPlannerInference.kind === "owner-reads"
+					? directPlannerCandidateActions
+					: uniqueActionNames([
+							...getMessageHandlerCandidateActions(messageHandler),
+							...directPlannerCandidateActions,
+						]);
 		}
 		const routedResponseHandlerReply = getMessageHandlerReply(messageHandler);
 		let earlyReplyText = actionOwnsResponseHandlerEarlyReply(
@@ -9020,14 +9114,62 @@ export async function runV5MessageRuntimeStage1(args: {
 				strippedPlannedReplyText = source.slice(rawVerified.length).trim();
 			}
 		}
-		const effectiveDeliveredReplyText =
+		let effectiveDeliveredReplyText =
 			strippedPlannedReplyText || effectiveReplyText;
-		const shouldSendPlannedText =
+		let shouldSendPlannedText =
 			Boolean(effectiveReplyText) &&
 			!plannedTextRepeatsEarlyReply &&
 			!plannedTextRepeatsActionReply &&
 			!plannedTextIsRedundantFailureFallback &&
 			!plannedTextRepeatsVerifiedActionDelivery;
+		// NEVER-SILENT INVARIANT (matrix F24/F12, tj-bfe764bf544bed /
+		// tj-fda9d65e8d04b9): a RESPOND turn that executed tools must not end
+		// with zero deliveries. Every suppression above presupposes the user
+		// already received the content through some earlier delivery — when
+		// NOTHING was delivered this turn (no early ack, empty delivered-set)
+		// that premise is false by construction, and an empty
+		// `effectiveReplyText` (a FINISH whose message evaporated in the
+		// safety chain) otherwise ships `responseContent: null`: the runtime
+		// produced a correct answer and the user got silence. Recover with the
+		// best grounded text available and name the failure in the log so the
+		// upstream emptying path is diagnosable instead of invisible.
+		if (
+			!shouldSendPlannedText &&
+			!earlyReplySent &&
+			deliveredVisibleTexts.size === 0 &&
+			actionResults.length > 0
+		) {
+			const recoveredText =
+				effectiveDeliveredReplyText ||
+				stageOneAck ||
+				actionResults
+					.map((result) =>
+						typeof result.userFacingText === "string"
+							? result.userFacingText.trim()
+							: "",
+					)
+					.filter((ownedText) => ownedText.length > 0)
+					.at(-1) ||
+				"I finished working on that but could not compose a clean reply — ask again and I will retry.";
+			args.runtime.logger.warn(
+				{
+					src: "service:message",
+					emptyFinal: !effectiveReplyText,
+					suppressedByEarlyReply: plannedTextRepeatsEarlyReply,
+					suppressedByActionReply: plannedTextRepeatsActionReply,
+					recoveredFrom: effectiveDeliveredReplyText
+						? "plannedText"
+						: stageOneAck
+							? "stageOneAck"
+							: "actionUserFacingText",
+				},
+				"RESPOND turn reached the reply gate with zero deliveries; recovering instead of ending silent",
+			);
+			effectiveReplyText = recoveredText;
+			strippedPlannedReplyText = recoveredText;
+			effectiveDeliveredReplyText = recoveredText;
+			shouldSendPlannedText = true;
+		}
 		// Voice-gate provenance (#14873): the Stage-1 ack has unambiguous model
 		// provenance. A byte-exact canonical action result also needs preservation:
 		// `verifiedUserFacing` promises do-not-paraphrase semantics, so routing that
@@ -12124,7 +12266,11 @@ export class DefaultMessageService implements IMessageService {
 		// error-policy:J7 diagnostics-must-not-kill-the-loop — a warm failure only
 		// forfeits the overlap; the compose-time caller re-embeds and fails open.
 		const recallWarmText = message.content?.text;
-		if (typeof recallWarmText === "string" && recallWarmText.trim() !== "") {
+		if (
+			typeof recallWarmText === "string" &&
+			recallWarmText.trim() !== "" &&
+			!isCanonicalModelCapabilityDisabled(runtime, ModelType.TEXT_EMBEDDING)
+		) {
 			const recallWarmMessageId =
 				typeof message.id === "string" ? message.id : undefined;
 			const recallWarmTask = embedRecallQuery(runtime, recallWarmText, {

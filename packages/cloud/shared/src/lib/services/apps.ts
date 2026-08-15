@@ -60,20 +60,27 @@ function isNoneMarker(value: unknown): value is { __none: true } {
   );
 }
 
-function resolveMaxAppsPerOrg(): number {
+/**
+ * Read-only view of the per-org app ceiling for the account-limits snapshot
+ * (#19777) — the same resolution `assertCanCreateForOrganization` enforces.
+ */
+export function getMaxAppsPerOrg(): number {
   const raw = process.env.ELIZA_CLOUD_MAX_APPS_PER_ORG;
-  if (!raw) return DEFAULT_MAX_APPS_PER_ORG;
+  if (raw === undefined) return DEFAULT_MAX_APPS_PER_ORG;
 
   const value = raw.trim();
-  if (!/^[1-9]\d*$/.test(value)) {
-    logger.warn("[Apps] Invalid ELIZA_CLOUD_MAX_APPS_PER_ORG; using default", {
-      value: raw,
-      defaultValue: DEFAULT_MAX_APPS_PER_ORG,
+  const parsed = Number(value);
+  if (!/^[1-9]\d*$/.test(value) || !Number.isSafeInteger(parsed) || parsed <= 0) {
+    throw new ElizaError("ELIZA_CLOUD_MAX_APPS_PER_ORG must be a positive safe integer", {
+      code: "INVALID_MAX_APPS_PER_ORG",
+      context: {
+        environmentVariable: "ELIZA_CLOUD_MAX_APPS_PER_ORG",
+      },
+      severity: "fatal",
     });
-    return DEFAULT_MAX_APPS_PER_ORG;
   }
 
-  return Number.parseInt(value, 10);
+  return parsed;
 }
 
 export class AppNameConflictError extends Error {
@@ -408,7 +415,7 @@ export class AppsService {
   }
 
   async assertCanCreateForOrganization(organizationId: string): Promise<{ limit: number }> {
-    const limit = resolveMaxAppsPerOrg();
+    const limit = getMaxAppsPerOrg();
     const currentCount = await appsRepository.countByOrganization(organizationId);
 
     if (currentCount >= limit) {
@@ -477,7 +484,11 @@ export class AppsService {
         limit,
       );
     } catch (error) {
+      // error-policy:J2 — remove the provisional API key, then preserve the
+      // original atomic app-create failure for the caller.
       await apiKeysService.delete(apiKey.id).catch((cleanupError) => {
+        // error-policy:J6 — key rollback is best-effort after the primary app
+        // create failure and cannot replace that failure.
         logger.warn("[Apps] Failed to clean up API key after app create failure", {
           apiKeyId: apiKey.id,
           error: cleanupError instanceof Error ? cleanupError.message : String(cleanupError),
@@ -488,6 +499,8 @@ export class AppsService {
 
     if (!app) {
       await apiKeysService.delete(apiKey.id).catch((cleanupError) => {
+        // error-policy:J6 — key rollback is best-effort after the authoritative
+        // cap rejection; the typed cap error remains the result.
         logger.warn("[Apps] Failed to clean up API key after app cap rejection", {
           apiKeyId: apiKey.id,
           error: cleanupError instanceof Error ? cleanupError.message : String(cleanupError),
@@ -554,6 +567,8 @@ export class AppsService {
         });
         logger.info("Cleaned up user database for app", { appId: id });
       } catch (error) {
+        // error-policy:J6 — app deletion remains authoritative when optional
+        // database teardown is already absent or separately recoverable.
         // Log but don't fail deletion - database might already be gone
         logger.warn("Failed to clean up user database (continuing with deletion)", {
           appId: id,
@@ -582,6 +597,8 @@ export class AppsService {
           });
         }
       } catch (error) {
+        // error-policy:J6 — artifact teardown is best-effort during deletion;
+        // the warning keeps orphan cleanup observable without hiding delete.
         logger.warn("Failed to clean up frontend artifacts (continuing with deletion)", {
           appId: id,
           error: error instanceof Error ? error.message : "Unknown",
@@ -639,6 +656,8 @@ export class AppsService {
         });
       }
     } catch (error) {
+      // error-policy:J7 — usage tracking is diagnostic side-channel work; its
+      // warning must not fail the already-authorized API request.
       logger.warn("[Apps] Failed to track app usage by API key", {
         apiKeyId: apiKeyId.substring(0, 8),
         error: error instanceof Error ? error.message : "Unknown error",
@@ -704,6 +723,8 @@ export class AppsService {
         source: requestData.source,
       });
     } catch (error) {
+      // error-policy:J7 — request analytics are diagnostic side-channel work;
+      // their warning must not replace the primary request outcome.
       logger.warn("[Apps] Failed to log detailed request", {
         apiKeyId: apiKeyId.substring(0, 8),
         error: error instanceof Error ? error.message : "Unknown error",
@@ -753,6 +774,8 @@ export class AppsService {
         source: data.source,
       });
     } catch (error) {
+      // error-policy:J7 — page-view analytics are diagnostic side-channel work;
+      // their warning must not replace the page response.
       logger.warn("[Apps] Failed to track page view", {
         appId,
         error: error instanceof Error ? error.message : "Unknown error",

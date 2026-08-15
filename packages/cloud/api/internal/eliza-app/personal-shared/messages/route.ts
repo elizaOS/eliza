@@ -44,6 +44,14 @@ const sharedMessageSchema = z.discriminatedUnion("platform", [
   z
     .object({
       platform: z.literal("telegram"),
+      project: z
+        .string()
+        .trim()
+        .regex(/^[a-z0-9][a-z0-9_-]{0,63}$/i),
+      chatId: z
+        .string()
+        .trim()
+        .regex(/^-?\d{1,20}$/),
       telegramUserId: z
         .string()
         .trim()
@@ -487,6 +495,13 @@ app.post("/", async (c) => {
       worker.namespace,
       parsed.data.messageId,
       "platform",
+      parsed.data.platform === "telegram"
+        ? {
+            platform: "telegram",
+            project: parsed.data.project,
+            chatId: parsed.data.chatId,
+          }
+        : undefined,
     );
 
     return c.json({

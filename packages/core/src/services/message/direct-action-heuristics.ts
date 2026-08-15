@@ -201,33 +201,40 @@ export function linkShareOwnText(text: string): string {
 		.trim();
 }
 
+const WEB_SEARCH_NEGATION_PATTERN =
+	/\b(?:(?:do\s+not|don['’]?t|never(?!\s+mind\b))\b[^.!?;]{0,64}\b(?:google\b|(?:browse|search|look\s+up|use)\s+(?:the\s+)?(?:web|internet|live prices?|current prices?)\b)|without\b[^.!?;]{0,32}\b(?:brows(?:e|ing)|search(?:ing)?|look(?:ing)?\s+up|us(?:e|ing))\s+(?:the\s+)?(?:web|internet|live prices?|current prices?)\b)/iu;
+const EXPLICIT_WEB_SEARCH_PATTERN =
+	/\b(?:search\s+(?:the\s+)?web|web\s+search|search\s+online|look\s+up|lookup|google|browse\s+(?:the\s+)?web|search\s+(?:the\s+)?internet)\b/iu;
+const INTENT_CLAUSE_BOUNDARY_PATTERN =
+	/\s*(?:;|\b(?:but|however|instead)\b)\s*/iu;
+
+function intentClauses(text: string): string[] {
+	return text
+		.toLowerCase()
+		.split(INTENT_CLAUSE_BOUNDARY_PATTERN)
+		.map((clause) => clause.trim())
+		.filter(Boolean);
+}
+
+function explicitlyAsksWebSearch(text: string): boolean {
+	return intentClauses(text).some(
+		(clause) =>
+			!WEB_SEARCH_NEGATION_PATTERN.test(clause) &&
+			EXPLICIT_WEB_SEARCH_PATTERN.test(clause),
+	);
+}
+
 export function looksLikeWebSearchRequest(text: string): boolean {
-	const normalized = text.toLowerCase();
-	if (!normalized.trim()) {
-		return false;
-	}
-
-	if (
-		/\b(?:do not|don't|dont|without)\s+(?:browse|search|google|look\s+up|use)\s+(?:the\s+)?(?:web|internet|live prices?|current prices?)\b/iu.test(
-			normalized,
-		)
-	) {
-		return false;
-	}
-
-	const explicitlyAsksSearch =
-		/\b(?:search\s+(?:the\s+)?web|web\s+search|search\s+online|look\s+up|lookup|google|browse\s+(?:the\s+)?web|search\s+(?:the\s+)?internet)\b/iu.test(
-			normalized,
-		);
 	const asksCurrentInfo =
-		/\b(?:current|currently|latest|live|real[- ]?time|right now|today|now|rn|atm|up[- ]?to[- ]?date)\b/iu.test(
-			normalized,
-		);
+		/\b(?:current|currently|latest|live|real[- ]?time|right now|today|now|rn|atm|up[- ]?to[- ]?date)\b/iu;
 	const mentionsMarketOrNews =
-		/\b(?:price|prices|quote|btc|bitcoin|eth|ethereum|stock|stocks?|ticker|market|markets?|exchange rate|news|headline|headlines|weather)\b/iu.test(
-			normalized,
-		);
-	return explicitlyAsksSearch || (asksCurrentInfo && mentionsMarketOrNews);
+		/\b(?:price|prices|quote|btc|bitcoin|eth|ethereum|stock|stocks?|ticker|market|markets?|exchange rate|news|headline|headlines|weather)\b/iu;
+	return intentClauses(text).some(
+		(clause) =>
+			!WEB_SEARCH_NEGATION_PATTERN.test(clause) &&
+			(EXPLICIT_WEB_SEARCH_PATTERN.test(clause) ||
+				(asksCurrentInfo.test(clause) && mentionsMarketOrNews.test(clause))),
+	);
 }
 
 export function findAvailableActionName(
@@ -356,6 +363,12 @@ export function isShellDirectActionName(
  * - "owner-goals": concrete owner goal create/save/confirm phrasing.
  * - "owner-routines": habit/routine commitment phrasing, including recurring
  *   cadences ("3 times a day") — an owner mutation, never navigation.
+ * - "owner-scheduled-admin": snooze/reschedule/skip verbs acting on an
+ *   existing scheduled item — owner mutations that navigation cannot satisfy.
+ * - "owner-reads": a possessive owner-data read ("list my personal todos",
+ *   "what are my reminders") — the read-side mirror of the mutation rule
+ *   above: data asks are owner-domain evidence, and VIEWS can only navigate,
+ *   so a registered owner reader outranks the view-capability overlap.
  * - "view-surface": an operation verb PLUS an explicit UI-surface noun
  *   (view/window/panel/app/screen/ui) — strong navigation evidence.
  * - "view-navigation": the message is nothing but a bare registered surface
@@ -372,6 +385,8 @@ export type DirectCurrentRequestCandidateKind =
 	| "settings-write"
 	| "owner-goals"
 	| "owner-routines"
+	| "owner-reads"
+	| "owner-scheduled-admin"
 	| "view-surface"
 	| "view-navigation"
 	| "view-capability"
@@ -624,6 +639,181 @@ function findOwnerRoutinesActionName(
 	return findAvailableActionName(actions, OWNER_ROUTINES_ACTION_NAMES);
 }
 
+const SCHEDULED_ADMIN_ACTION_NAMES = [
+	"OWNER_REMINDERS",
+	"SCHEDULED_TASKS",
+	"REMINDERS",
+	"REMINDER",
+] as const;
+
+/**
+ * Detects admin operations on an existing scheduled item ("snooze the water
+ * the ficus reminder until 6pm sunday", "skip today's checkin",
+ * "reschedule my dentist reminder"). Live miss (matrix F5,
+ * tj-a793149be84b86): with no deterministic candidate the turn fell through
+ * to the view/app overlap, routed to APP, and failed "could not find that
+ * active item" without ever reaching the reminders surface. Same
+ * owner-domain-evidence rule as the mutation legs: these verbs act on owner
+ * data; navigation cannot satisfy them.
+ */
+function looksLikeScheduledItemAdminRequest(text: string): boolean {
+	const normalized = text.toLowerCase().replace(/\s+/gu, " ").trim();
+	if (!normalized) return false;
+	if (!/\b(?:snooze|reschedule|postpone|unsnooze|skip)\b/iu.test(normalized)) {
+		return false;
+	}
+	return /\b(?:reminders?|tasks?|check[- ]?ins?|alarms?|follow[- ]?ups?)\b/iu.test(
+		normalized,
+	);
+}
+
+function findScheduledAdminActionName(
+	actions: ReadonlyArray<Pick<Action, "name" | "similes">>,
+): string | undefined {
+	return findAvailableActionName(actions, SCHEDULED_ADMIN_ACTION_NAMES);
+}
+
+/**
+ * Owner-life domains with a possessive read shape. Each maps to its reader
+ * surface in preference order: the personal-assistant umbrella first, then the
+ * standalone domain plugin's action names, so lean stacks (one todo owner per
+ * deployment) resolve their reader too.
+ */
+type OwnerLifeReadDomain =
+	| "todos"
+	| "goals"
+	| "reminders"
+	| "routines"
+	| "alarms"
+	| "finances";
+
+const BLOCKED_OWNER_LIFE_READ = Symbol("blocked-owner-life-read");
+
+const OWNER_READ_ACTION_NAMES_BY_DOMAIN: Record<
+	OwnerLifeReadDomain,
+	readonly string[]
+> = {
+	todos: ["OWNER_TODOS", "TODOS", "TODO", "TODO_LIST", "LIST_TODOS"],
+	goals: OWNER_GOALS_ACTION_NAMES,
+	reminders: ["OWNER_REMINDERS", "REMINDERS", "REMINDER", "LIST_REMINDERS"],
+	routines: OWNER_ROUTINES_ACTION_NAMES,
+	alarms: ["OWNER_ALARMS", "ALARMS", "ALARM"],
+	finances: ["OWNER_FINANCES", "FINANCES"],
+};
+
+const OWNER_READ_DOMAIN_NOUNS: ReadonlyArray<[OwnerLifeReadDomain, RegExp]> = [
+	["todos", /\b(?:todos?|to[- ]dos?|todo\s+list|task\s+list)\b/iu],
+	["goals", /\bgoals?\b/iu],
+	["reminders", /\breminders?\b/iu],
+	["routines", /\b(?:routines?|habits?)\b/iu],
+	["alarms", /\balarms?\b/iu],
+	["finances", /\b(?:finances|budget|spending|expenses)\b/iu],
+];
+
+function ownerLifeReadDomainsInPossessiveScopes(
+	normalized: string,
+): Set<OwnerLifeReadDomain> {
+	const domains = new Set<OwnerLifeReadDomain>();
+	for (const match of normalized.matchAll(/\b(?:my|our)\b([^,;.!?]*)/giu)) {
+		const rawScope = match[1] ?? "";
+		const scope =
+			rawScope.split(
+				/\b(?:about|concerning|regarding|for|due|from|on|in|with|where|that|which|because)\b/iu,
+				1,
+			)[0] ?? "";
+		// "Spending habits" names finance data; treating the trailing generic
+		// habit noun as a routine would make registry order decide the surface.
+		const domainScope = scope.replace(
+			/\b(?:finance|financial|spending|expenses?)\s+habits?\b/giu,
+			"finances",
+		);
+		for (const [domain, noun] of OWNER_READ_DOMAIN_NOUNS) {
+			if (noun.test(domainScope)) domains.add(domain);
+		}
+	}
+	return domains;
+}
+
+/**
+ * Detects a possessive owner-data READ ("list my personal todos", "what are
+ * my reminders for today") — the read-side mirror of the owner-mutation rule
+ * (#17028 / fead478cfa): a data ask is owner-domain evidence, and VIEWS can
+ * only navigate, so it must never degrade into the view-capability overlap
+ * (live: "list my personal todos" routed to VIEWS view-disambiguation, then
+ * failed on an undeclared get-todos capability). Explicit UI-surface nouns
+ * stay with the navigation legs, and advice/organizing questions stay chat.
+ */
+function detectOwnerLifeReadDomain(
+	text: string,
+): OwnerLifeReadDomain | typeof BLOCKED_OWNER_LIFE_READ | null {
+	const normalized = text.toLowerCase().replace(/\s+/gu, " ").trim();
+	if (!normalized) return null;
+	// Surface-noun asks are navigation, owned by the earlier view legs.
+	if (
+		/\b(?:view|views|page|screen|tab|panel|window|ui|dashboard|app)\b/iu.test(
+			normalized,
+		)
+	) {
+		return null;
+	}
+	const domains = ownerLifeReadDomainsInPossessiveScopes(normalized);
+	if (domains.size === 0) return null;
+	// Mutation shapes belong to the write detectors above (or the model);
+	// "check off"/"mark ... done" are completions, not reads.
+	if (
+		/\b(?:add|create|set|save|track|make|store|delete|remove|cancel|clear|update|edit|rename|complete|finish|snooze|reschedule)\b/iu.test(
+			normalized,
+		) ||
+		/\bcheck(?:ed)?\s+off\b/iu.test(normalized) ||
+		/\bmark\b[\s\S]{0,40}\b(?:done|complete|off)\b/iu.test(normalized)
+	) {
+		return BLOCKED_OWNER_LIFE_READ;
+	}
+	// Advice, quoted examples, negated commands, and metalinguistic discussion
+	// mention owner nouns without requesting the underlying private records.
+	if (
+		/\b(?:advice|tips?|suggestions?|recommendations?)\b/iu.test(normalized) ||
+		/\bhow\s+to\b/iu.test(normalized) ||
+		/\bhow\s+(?:do|can|could|should|would)\s+(?:i|we)\b/iu.test(normalized) ||
+		/\b(?:how(?:\s+(?:do|can|could|should|would))?(?:\s+(?:i|we))?|ways?|methods?|approaches?|strategies?)\b[^.!?]{0,80}\b(?:organize|manage|track|plan|improve|handle|structure|prioritize|budget)\w*\b/iu.test(
+			normalized,
+		) ||
+		/\b(?:what|which)\s+should\s+(?:i|we)\b/iu.test(normalized) ||
+		/\b(?:help|teach|guide)\s+(?:me|us)\b/iu.test(normalized) ||
+		/\b(?:when|if)\s+i\s+say\b/iu.test(normalized) ||
+		/\b(?:the\s+)?(?:phrase|sentence|wording|utterance|quote|quoted)\b/iu.test(
+			normalized,
+		) ||
+		/["“][^"”]*\b(?:my|our)\b[^"”]*["”]/u.test(normalized) ||
+		/‘[^’]*\b(?:my|our)\b[^’]*’/u.test(normalized) ||
+		/(?:^|[^\p{L}\p{N}])'[^'\r\n]*\b(?:my|our)\b[^'\r\n]*'(?![\p{L}\p{N}])/u.test(
+			normalized,
+		) ||
+		/\b(?:do\s+not|don['’]?t|never(?!\s+mind\b))\b(?:(?!\b(?:but|however|instead)\b)[^.!?;]){0,96}\b(?:list|show|tell|give|read|check|see|look|review|go\s+over)\b/iu.test(
+			normalized,
+		)
+	) {
+		return BLOCKED_OWNER_LIFE_READ;
+	}
+	const hasReadShape =
+		/\b(?:list|show|what(?:'s|s| is| are)(?:\s+(?:on|in))?|do i have|have i got|any(?:thing)?\s+(?:on|in|left|due)|tell me|give me|read(?:\s+(?:me|out))?|check|see|look at|go over|review)\b/iu.test(
+			normalized,
+		);
+	if (!hasReadShape) return null;
+	if (domains.size !== 1) return BLOCKED_OWNER_LIFE_READ;
+	return domains.values().next().value ?? null;
+}
+
+function findOwnerLifeReadActionName(
+	actions: ReadonlyArray<Pick<Action, "name" | "similes">>,
+	domain: OwnerLifeReadDomain,
+): string | undefined {
+	return findAvailableActionName(
+		actions,
+		OWNER_READ_ACTION_NAMES_BY_DOMAIN[domain],
+	);
+}
+
 export function inferDirectCurrentRequestCandidateActions(
 	actions: ReadonlyArray<Pick<Action, "name" | "similes" | "tags">>,
 	messageText: string,
@@ -721,6 +911,42 @@ export function inferDirectCurrentRequestCandidateInference(
 		}
 		return EMPTY_DIRECT_CANDIDATE_INFERENCE;
 	}
+	// Scheduled-item admin verbs (snooze/reschedule/skip) are owner mutations
+	// on existing data; without a deterministic candidate they fall through to
+	// the view/app overlap and fail off-surface (matrix F5). Same
+	// no-candidate-on-missing-surface rule as the other mutation legs.
+	if (looksLikeScheduledItemAdminRequest(messageText)) {
+		const scheduledAdminAction = findScheduledAdminActionName(actions);
+		if (scheduledAdminAction) {
+			return { names: [scheduledAdminAction], kind: "owner-scheduled-admin" };
+		}
+		return EMPTY_DIRECT_CANDIDATE_INFERENCE;
+	}
+	// Owner reads outrank the view-capability overlap for the same reason the
+	// mutations above do (read-side of fead478cfa): "list my personal todos"
+	// wants the data, and VIEWS can only navigate. With no registered owner
+	// reader the turn yields NO deterministic candidate rather than degrading
+	// into the view catalog.
+	const webLookupActions = looksLikeWebSearchRequest(messageText)
+		? findWebLookupActionNames(actions)
+		: [];
+	const ownerReadDomain = detectOwnerLifeReadDomain(messageText);
+	if (ownerReadDomain === BLOCKED_OWNER_LIFE_READ) {
+		if (explicitlyAsksWebSearch(messageText) && webLookupActions.length > 0) {
+			return { names: webLookupActions, kind: "web" };
+		}
+		return EMPTY_DIRECT_CANDIDATE_INFERENCE;
+	}
+	if (ownerReadDomain) {
+		const ownerReadAction = findOwnerLifeReadActionName(
+			actions,
+			ownerReadDomain,
+		);
+		if (ownerReadAction) {
+			return { names: [ownerReadAction], kind: "owner-reads" };
+		}
+		return EMPTY_DIRECT_CANDIDATE_INFERENCE;
+	}
 	const viewCapabilityAction = findViewCapabilityActionName(
 		actions,
 		messageText,
@@ -728,9 +954,8 @@ export function inferDirectCurrentRequestCandidateInference(
 	if (viewCapabilityAction) {
 		return { names: [viewCapabilityAction], kind: "view-capability" };
 	}
-	if (looksLikeWebSearchRequest(messageText)) {
-		const lookupActions = findWebLookupActionNames(actions);
-		if (lookupActions.length > 0) return { names: lookupActions, kind: "web" };
+	if (webLookupActions.length > 0) {
+		return { names: webLookupActions, kind: "web" };
 	}
 	return EMPTY_DIRECT_CANDIDATE_INFERENCE;
 }

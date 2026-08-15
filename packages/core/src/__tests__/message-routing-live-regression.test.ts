@@ -180,6 +180,34 @@ emotion: none`;
 	});
 });
 
+describe("owner-read candidate authority", () => {
+	it("replaces an invented Stage-1 VIEWS capability with the proven owner reader", () => {
+		const routed = applyDirectCurrentCandidateBackstopToMessageHandler(
+			{
+				processMessage: "RESPOND",
+				thought: "",
+				plan: {
+					contexts: ["general"],
+					reply: "I'll check that.",
+					simple: false,
+					requiresTool: true,
+					candidateActions: ["VIEWS.get_reminders", "OWNER_FINANCES"],
+				},
+			},
+			{
+				actions: [
+					{ name: "OWNER_REMINDERS" },
+					{ name: "OWNER_FINANCES" },
+					{ name: "VIEWS" },
+				] as Action[],
+				messageText: "Show my reminders about goal planning.",
+			},
+		);
+
+		expect(routed.plan.candidateActions).toEqual(["OWNER_REMINDERS"]);
+	});
+});
+
 describe("reply that QUOTES a field transcript — diagnosis workflow (follow-up to #11712)", () => {
 	// Live regression: a user pastes a leaked `shouldRespond:/replyText:`
 	// transcript into discord and asks the bot to diagnose it (this repo's own
@@ -1121,6 +1149,52 @@ describe("VIEWS hijack of answered simple turns (tj-501e594bfb23a7)", () => {
 			},
 		);
 
+		expect(routed.plan.requiresTool).toBe(false);
+		expect(routed.plan.candidateActions ?? []).toEqual([]);
+	});
+
+	it("recovers answered VIEWS-overlap reads to the one possessive owner domain", () => {
+		const ownerReaders: Array<Pick<Action, "name" | "similes" | "tags">> = [
+			{ name: "OWNER_TODOS", similes: [], tags: [] },
+			{ name: "OWNER_REMINDERS", similes: [], tags: [] },
+			{ name: "OWNER_FINANCES", similes: [], tags: [] },
+		];
+		for (const [messageText, expected] of [
+			["what's on my todo list? i'd like to know", "OWNER_TODOS"],
+			["show my reminders about goal planning", "OWNER_REMINDERS"],
+			["what are my spending habits?", "OWNER_FINANCES"],
+		] as const) {
+			const routed = messageHandlerFromFieldResult(
+				stageOneAnswered("Let me check."),
+				undefined,
+				{
+					actions: [replyAction, viewsAction, ...ownerReaders],
+					messageText,
+				},
+			);
+
+			expect(routed.plan.simple).toBe(false);
+			expect(routed.plan.requiresTool).toBe(true);
+			expect(routed.plan.candidateActions).toEqual([expected]);
+		}
+	});
+
+	it("keeps mixed owner domains out of the VIEWS recovery path", () => {
+		const routed = messageHandlerFromFieldResult(
+			stageOneAnswered("Which records should I review?"),
+			undefined,
+			{
+				actions: [
+					replyAction,
+					viewsAction,
+					{ name: "OWNER_GOALS", similes: [], tags: [] },
+					{ name: "OWNER_REMINDERS", similes: [], tags: [] },
+				],
+				messageText: "show my goals and reminders",
+			},
+		);
+
+		expect(routed.plan.simple).toBe(true);
 		expect(routed.plan.requiresTool).toBe(false);
 		expect(routed.plan.candidateActions ?? []).toEqual([]);
 	});

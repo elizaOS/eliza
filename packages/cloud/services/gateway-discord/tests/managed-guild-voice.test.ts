@@ -36,7 +36,7 @@ function clientHarness() {
 }
 
 function interactionHarness(
-  mode: "join" | "leave",
+  subcommand: "join" | "leave",
   userId = "111111111111111",
 ) {
   const reply = mock(async () => undefined);
@@ -68,7 +68,7 @@ function interactionHarness(
         has: (permission: bigint) =>
           permission === PermissionFlagsBits.ManageGuild,
       },
-      options: { getString: () => mode },
+      options: { getSubcommand: () => subcommand },
       reply,
       deferReply,
       editReply,
@@ -95,6 +95,10 @@ describe("ManagedGuildVoiceController", () => {
     await controller.start();
     expect(harness.create).toHaveBeenCalledTimes(1);
     expect(harness.create.mock.calls[0]?.[0]).toEqual(MANAGED_VOICE_COMMAND);
+    expect(MANAGED_VOICE_COMMAND.options.map((option) => option.name)).toEqual([
+      "join",
+      "leave",
+    ]);
     await controller.stop();
   });
 
@@ -114,10 +118,39 @@ describe("ManagedGuildVoiceController", () => {
     harness.client.emit(Events.InteractionCreate, command.interaction);
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(join).not.toHaveBeenCalled();
-    expect(command.reply).toHaveBeenCalledWith(
-      expect.objectContaining({
-        content: expect.stringContaining("canonical owner"),
-      }),
+    expect(command.deferReply).toHaveBeenCalledTimes(1);
+    expect(command.editReply).toHaveBeenCalledWith(
+      expect.stringContaining("canonical owner"),
+    );
+    await controller.stop();
+  });
+
+  test("acknowledges before delayed Cloud authorization", async () => {
+    const harness = clientHarness();
+    let releaseAuthorization: (() => void) | undefined;
+    const authorize = mock(
+      () =>
+        new Promise<{ allowed: boolean }>((resolve) => {
+          releaseAuthorization = () => resolve({ allowed: false });
+        }),
+    );
+    const controller = new ManagedGuildVoiceController({
+      client: harness.client as never,
+      bridge: { authorize, turn: mock() },
+    });
+    await controller.start();
+    const command = interactionHarness("join");
+    harness.client.emit(Events.InteractionCreate, command.interaction);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(command.deferReply).toHaveBeenCalledTimes(1);
+    expect(authorize).toHaveBeenCalledTimes(1);
+    expect(command.editReply).not.toHaveBeenCalled();
+
+    releaseAuthorization?.();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(command.editReply).toHaveBeenCalledWith(
+      expect.stringContaining("canonical owner"),
     );
     await controller.stop();
   });

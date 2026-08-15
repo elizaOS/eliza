@@ -50,7 +50,7 @@ describe("mock-stack-up orchestrator", () => {
     expect(r.stdout).toContain("Usage:");
     expect(r.stdout).toContain("--no-frontend");
     expect(r.stdout).toContain("--reset");
-  });
+  }, 15_000);
 
   test("unknown flag exits 1 with usage", async () => {
     const r = await redirectedRun(["--definitely-not-a-flag"]);

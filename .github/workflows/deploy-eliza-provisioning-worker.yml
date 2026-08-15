@@ -9,7 +9,7 @@ name: Deploy Eliza Provisioning Worker
 
 on:
   push:
-    branches: [develop, main]
+    branches: [develop]
     paths:
       - '.github/workflows/deploy-eliza-provisioning-worker.yml'
       - 'packages/cloud/scripts/admin/daemons/provisioning-worker.ts'
@@ -601,21 +601,6 @@ jobs:
             done
             sudo nginx -t
             sudo systemctl reload nginx
-            canonical_router_ready=false
-            for attempt in $(seq 1 30); do
-              if curl -fsS "https://${AGENT_ROUTER_PUBLIC_HOST}/healthz" \
-                | grep -Eq '"ok"[[:space:]]*:[[:space:]]*true'; then
-                canonical_router_ready=true
-                break
-              fi
-              echo "Canonical agent-router health not ready (attempt ${attempt}/30)"
-              sleep 2
-            done
-            if [ "$canonical_router_ready" != "true" ]; then
-              echo "::error::Canonical agent-router did not return JSON health after 30 attempts"
-              exit 1
-            fi
-            echo "Verified canonical agent-router nginx host alias: ${AGENT_ROUTER_PUBLIC_HOST}"
 
       - name: Health check
         if: steps.deploy_config.outputs.configured == 'true'
@@ -625,7 +610,7 @@ jobs:
           username: deploy
           key: ${{ env.DEPLOY_SSH_KEY }}
           command_timeout: 5m
-          envs: SYSTEMD_UNIT,ELIZA_CLOUD_AGENT_BASE_DOMAIN
+          envs: SYSTEMD_UNIT,ELIZA_CLOUD_AGENT_BASE_DOMAIN,AGENT_ROUTER_PUBLIC_HOST
           script: |
             set -euo pipefail
             ENV_FILE=/opt/eliza/cloud/.env.local
@@ -641,6 +626,36 @@ jobs:
             HEALTH_SINCE_TS="$(date -u '+%Y-%m-%d %H:%M:%S')"
             STABLE_THRESHOLD_SEC=20
             FATAL_LOG_PATTERN="\[(provisioning-worker|agent-router)\] (fatal|unhandled rejection)|node:internal/.*Error:|Error \[ERR_|^[A-Za-z]+Error:"
+            report_public_route_failure() {
+              sudo nginx -t || true
+              sudo systemctl status nginx --no-pager || true
+              sudo journalctl -u nginx --since "$HEALTH_SINCE_TS" -n 200 --no-pager || true
+              sudo systemctl status eliza-agent-router.service --no-pager || true
+              sudo journalctl -u eliza-agent-router.service --since "$HEALTH_SINCE_TS" -n 200 --no-pager || true
+            }
+            # The router's health contract is a JSON object with boolean
+            # ok === true. A substring grep would also accept HTML error
+            # pages that merely contain the text, so parse for real.
+            validate_public_health_payload() {
+              node -e '
+                let raw = "";
+                process.stdin.on("data", (chunk) => { raw += chunk; });
+                process.stdin.on("end", () => {
+                  let parsed;
+                  try {
+                    parsed = JSON.parse(raw);
+                  } catch {
+                    process.exit(1);
+                  }
+                  const healthy =
+                    typeof parsed === "object" &&
+                    parsed !== null &&
+                    !Array.isArray(parsed) &&
+                    parsed.ok === true;
+                  process.exit(healthy ? 0 : 1);
+                });
+              '
+            }
             for attempt in $(seq 1 18); do
               if sudo systemctl is-active --quiet "$SYSTEMD_UNIT"; then
                 JOURNAL=$(sudo journalctl -u "$SYSTEMD_UNIT" --since "$HEALTH_SINCE_TS" --no-pager 2>/dev/null || true)
@@ -677,7 +692,27 @@ jobs:
                   ROUTER_PORT=$(systemctl show eliza-agent-router.service --property=Environment --value | tr ' ' '\n' | awk -F= '$1=="AGENT_ROUTER_PORT" {print $2}')
                   : "${ROUTER_PORT:=3458}"
                   if curl -sf -m 3 "http://127.0.0.1:${ROUTER_PORT}/healthz" >/dev/null 2>&1; then
-                    echo "Both daemons active and stable (worker ${AGE}s, router ${ROUTER_AGE}s, router /healthz OK) on attempt $attempt."
+                    PUBLIC_HEALTH=""
+                    public_route_ok=false
+                    for public_attempt in 1 2 3; do
+                      if PUBLIC_HEALTH=$(curl -fsS -m 5 "https://${AGENT_ROUTER_PUBLIC_HOST}/healthz"); then
+                        public_route_ok=true
+                        break
+                      fi
+                      echo "Canonical /healthz attempt ${public_attempt}/3 failed for ${AGENT_ROUTER_PUBLIC_HOST}; retrying in 2s."
+                      sleep 2
+                    done
+                    if [ "$public_route_ok" != "true" ]; then
+                      echo "::error::Canonical agent-router host failed after local readiness: ${AGENT_ROUTER_PUBLIC_HOST}"
+                      report_public_route_failure
+                      exit 1
+                    fi
+                    if ! printf '%s' "$PUBLIC_HEALTH" | validate_public_health_payload; then
+                      echo "::error::Canonical agent-router host returned an unexpected health payload: ${AGENT_ROUTER_PUBLIC_HOST}"
+                      report_public_route_failure
+                      exit 1
+                    fi
+                    echo "Both daemons active and stable (worker ${AGE}s, router ${ROUTER_AGE}s, local and canonical /healthz OK) on attempt $attempt."
                     exit 0
                   fi
                   echo "Health check attempt $attempt/18: worker stable (${AGE}s), router ${ROUTER_AGE}s but /healthz not ready on port ${ROUTER_PORT}."

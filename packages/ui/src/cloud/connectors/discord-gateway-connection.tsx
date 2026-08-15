@@ -83,12 +83,34 @@ async function fetchRuntimeCharacters(
   return normalizeCharacters(data.agents);
 }
 
+type DiscordDmPolicy = "open" | "allowlist" | "pairing" | "disabled";
+
+const DISCORD_SNOWFLAKE_RE = /^\d{15,20}$/;
+
+/**
+ * Parse a comma/whitespace-separated snowflake list. Returns null when any
+ * entry is not a Discord user snowflake so callers can surface a validation
+ * error instead of silently persisting a broken allowlist.
+ */
+function parseSnowflakeList(raw: string): string[] | null {
+  const ids = raw
+    .split(/[\s,]+/)
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
+  for (const id of ids) {
+    if (!DISCORD_SNOWFLAKE_RE.test(id)) return null;
+  }
+  return ids;
+}
+
 interface DiscordConnectionPatch {
   characterId: string | null;
   isActive: boolean;
   metadata: {
     responseMode: "always" | "mention" | "keyword";
     ownerDiscordUserId?: string;
+    dmPolicy?: DiscordDmPolicy;
+    dmAllowFrom?: string[];
   };
   botToken?: string;
 }
@@ -110,6 +132,8 @@ interface DiscordGatewayConnection {
     enabledChannels?: string[];
     disabledChannels?: string[];
     ownerDiscordUserId?: string;
+    dmPolicy?: DiscordDmPolicy;
+    dmAllowFrom?: string[];
   } | null;
   connectedAt: string | null;
   lastHeartbeat: string | null;
@@ -193,6 +217,8 @@ export function DiscordGatewayConnection() {
     "always" | "mention" | "keyword"
   >("always");
   const [ownerDiscordUserId, setOwnerDiscordUserId] = useState("");
+  const [dmPolicy, setDmPolicy] = useState<DiscordDmPolicy>("open");
+  const [dmAllowFrom, setDmAllowFrom] = useState("");
 
   // Edit state for existing connections
   const [editState, setEditState] = useState<
@@ -202,6 +228,8 @@ export function DiscordGatewayConnection() {
         characterId: string;
         responseMode: "always" | "mention" | "keyword";
         ownerDiscordUserId: string;
+        dmPolicy: DiscordDmPolicy;
+        dmAllowFrom: string;
         botToken: string;
         isActive: boolean;
       }
@@ -328,6 +356,17 @@ export function DiscordGatewayConnection() {
       return;
     }
 
+    const parsedDmAllowFrom = parseSnowflakeList(dmAllowFrom);
+    if (parsedDmAllowFrom === null) {
+      toast.error(
+        t("cloud.discord.dmAllowFromInvalid", {
+          defaultValue:
+            "Allowed DM user IDs must be Discord snowflakes (15-20 digits), separated by commas.",
+        }),
+      );
+      return;
+    }
+
     setIsCreating(true);
 
     try {
@@ -343,6 +382,10 @@ export function DiscordGatewayConnection() {
               responseMode,
               ...(ownerDiscordUserId.trim()
                 ? { ownerDiscordUserId: ownerDiscordUserId.trim() }
+                : {}),
+              ...(dmPolicy !== "open" ? { dmPolicy } : {}),
+              ...(parsedDmAllowFrom.length > 0
+                ? { dmAllowFrom: parsedDmAllowFrom }
                 : {}),
             },
           },
@@ -361,6 +404,8 @@ export function DiscordGatewayConnection() {
         setCharacterId("");
         setResponseMode("always");
         setOwnerDiscordUserId("");
+        setDmPolicy("open");
+        setDmAllowFrom("");
         setShowForm(false);
         void fetchConnections();
       } else {
@@ -403,6 +448,17 @@ export function DiscordGatewayConnection() {
     const edit = editState[connId];
     if (!edit) return;
 
+    const parsedDmAllowFrom = parseSnowflakeList(edit.dmAllowFrom);
+    if (parsedDmAllowFrom === null) {
+      toast.error(
+        t("cloud.discord.dmAllowFromInvalid", {
+          defaultValue:
+            "Allowed DM user IDs must be Discord snowflakes (15-20 digits), separated by commas.",
+        }),
+      );
+      return;
+    }
+
     setSavingId(connId);
 
     try {
@@ -413,6 +469,10 @@ export function DiscordGatewayConnection() {
           responseMode: edit.responseMode,
           ...(edit.ownerDiscordUserId.trim()
             ? { ownerDiscordUserId: edit.ownerDiscordUserId.trim() }
+            : {}),
+          ...(edit.dmPolicy !== "open" ? { dmPolicy: edit.dmPolicy } : {}),
+          ...(parsedDmAllowFrom.length > 0
+            ? { dmAllowFrom: parsedDmAllowFrom }
             : {}),
         },
       };
@@ -500,6 +560,8 @@ export function DiscordGatewayConnection() {
           characterId: conn.characterId || "",
           responseMode: conn.metadata?.responseMode || "always",
           ownerDiscordUserId: conn.metadata?.ownerDiscordUserId || "",
+          dmPolicy: conn.metadata?.dmPolicy || "open",
+          dmAllowFrom: (conn.metadata?.dmAllowFrom || []).join(", "),
           botToken: "",
           isActive: conn.isActive,
         },
@@ -784,6 +846,72 @@ export function DiscordGatewayConnection() {
                                     updateEditState(
                                       conn.id,
                                       "ownerDiscordUserId",
+                                      e.target.value,
+                                    )
+                                  }
+                                />
+                              </div>
+
+                              <div className="space-y-2">
+                                <Label>
+                                  {t("cloud.discord.dmPolicy", {
+                                    defaultValue: "DM Policy",
+                                  })}
+                                </Label>
+                                <Select
+                                  value={edit.dmPolicy}
+                                  onValueChange={(v) =>
+                                    updateEditState(conn.id, "dmPolicy", v)
+                                  }
+                                >
+                                  <SelectTrigger>
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="open">
+                                      {t("cloud.discord.dmPolicyOpen", {
+                                        defaultValue: "Open (anyone can DM)",
+                                      })}
+                                    </SelectItem>
+                                    <SelectItem value="allowlist">
+                                      {t("cloud.discord.dmPolicyAllowlist", {
+                                        defaultValue:
+                                          "Allowlist (owner + allowed users)",
+                                      })}
+                                    </SelectItem>
+                                    <SelectItem value="pairing">
+                                      {t("cloud.discord.dmPolicyPairing", {
+                                        defaultValue: "Owner only",
+                                      })}
+                                    </SelectItem>
+                                    <SelectItem value="disabled">
+                                      {t("cloud.discord.dmPolicyDisabled", {
+                                        defaultValue: "Disabled (no DMs)",
+                                      })}
+                                    </SelectItem>
+                                  </SelectContent>
+                                </Select>
+                              </div>
+
+                              <div className="space-y-2">
+                                <Label>
+                                  {t("cloud.discord.dmAllowFrom", {
+                                    defaultValue: "Allowed DM User IDs",
+                                  })}
+                                </Label>
+                                <Input
+                                  placeholder={t(
+                                    "cloud.discord.dmAllowFromPlaceholder",
+                                    {
+                                      defaultValue:
+                                        "Comma-separated Discord user snowflakes",
+                                    },
+                                  )}
+                                  value={edit.dmAllowFrom}
+                                  onChange={(e) =>
+                                    updateEditState(
+                                      conn.id,
+                                      "dmAllowFrom",
                                       e.target.value,
                                     )
                                   }
@@ -1300,6 +1428,64 @@ export function DiscordGatewayConnection() {
             })}
             value={ownerDiscordUserId}
             onChange={(e) => setOwnerDiscordUserId(e.target.value)}
+          />
+        </div>
+
+        <div className="space-y-2">
+          <Label htmlFor="dmPolicy">
+            {t("cloud.discord.dmPolicy", { defaultValue: "DM Policy" })}
+          </Label>
+          <Select
+            value={dmPolicy}
+            onValueChange={(v) => setDmPolicy(v as DiscordDmPolicy)}
+          >
+            <SelectTrigger id="dmPolicy">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="open">
+                {t("cloud.discord.dmPolicyOpen", {
+                  defaultValue: "Open (anyone can DM)",
+                })}
+              </SelectItem>
+              <SelectItem value="allowlist">
+                {t("cloud.discord.dmPolicyAllowlist", {
+                  defaultValue: "Allowlist (owner + allowed users)",
+                })}
+              </SelectItem>
+              <SelectItem value="pairing">
+                {t("cloud.discord.dmPolicyPairing", {
+                  defaultValue: "Owner only",
+                })}
+              </SelectItem>
+              <SelectItem value="disabled">
+                {t("cloud.discord.dmPolicyDisabled", {
+                  defaultValue: "Disabled (no DMs)",
+                })}
+              </SelectItem>
+            </SelectContent>
+          </Select>
+          <p className="text-xs text-muted-foreground">
+            {t("cloud.discord.dmPolicyHint", {
+              defaultValue:
+                "Who may direct-message the bot. Owner only and Allowlist admit the Discord Owner ID above.",
+            })}
+          </p>
+        </div>
+
+        <div className="space-y-2">
+          <Label htmlFor="dmAllowFrom">
+            {t("cloud.discord.dmAllowFrom", {
+              defaultValue: "Allowed DM User IDs",
+            })}
+          </Label>
+          <Input
+            id="dmAllowFrom"
+            placeholder={t("cloud.discord.dmAllowFromPlaceholder", {
+              defaultValue: "Comma-separated Discord user snowflakes",
+            })}
+            value={dmAllowFrom}
+            onChange={(e) => setDmAllowFrom(e.target.value)}
           />
         </div>
 

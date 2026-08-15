@@ -25,7 +25,6 @@ interface Manifest {
 
 interface Workflow {
   on?: {
-    pull_request?: { paths?: string[] };
     push?: { paths?: string[] };
   };
 }
@@ -159,7 +158,6 @@ function filteredWorkspacePackages(source: string): string[] {
 
 describe("Cloud release dependency trigger contract", () => {
   const cloudPushPaths = cloudWorkflow.on?.push?.paths ?? [];
-  const cloudPullRequestPaths = cloudWorkflow.on?.pull_request?.paths ?? [];
   const imagePushPaths = imageWorkflow.on?.push?.paths ?? [];
   const packages = readWorkspacePackages();
   const cloudReleaseClosure = runtimeWorkspaceClosure(packages, [
@@ -171,10 +169,6 @@ describe("Cloud release dependency trigger contract", () => {
     ...CORE_BUILD_PACKAGES,
     ...filteredWorkspacePackages(imageWorkflowSource),
   ]);
-
-  test("keeps push and pull-request source admission identical", () => {
-    expect(cloudPullRequestPaths).toEqual(cloudPushPaths);
-  });
 
   test("covers every Cloud CF source-form runtime workspace dependency", () => {
     const uncovered = cloudReleaseClosure

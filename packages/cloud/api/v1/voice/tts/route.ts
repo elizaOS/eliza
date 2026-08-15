@@ -303,7 +303,7 @@ async function __hono_POST(c: AppContext) {
             logger.info(
               `[Voice TTS API] Kokoro first-line cache HIT (${cached.byteSize}B, hits=${cached.hitCount}, voice=${kokoroVoice}) — no upstream request`,
             );
-            return new Response(cached.bytes as unknown as BodyInit, {
+            return new Response(cached.bytes, {
               status: 200,
               headers: {
                 "Content-Type": cached.contentType,
@@ -383,7 +383,7 @@ async function __hono_POST(c: AppContext) {
             );
           });
 
-        return new Response(bytes as unknown as BodyInit, {
+        return new Response(bytes, {
           status: 200,
           headers: {
             "Content-Type": kokoroContentType,
@@ -467,7 +467,7 @@ async function __hono_POST(c: AppContext) {
           logger.info(
             `[Voice TTS API] first-line cache HIT (${cacheScope}, ${cached.byteSize}B, hits=${cached.hitCount})`,
           );
-          return new Response(cached.bytes as unknown as BodyInit, {
+          return new Response(cached.bytes, {
             headers: {
               "Content-Type": cached.contentType,
               "Cache-Control": "no-cache",
@@ -523,7 +523,7 @@ async function __hono_POST(c: AppContext) {
           logger.info(
             `[Voice TTS API] WAV first-line cache HIT (${cached.byteSize}B, hits=${cached.hitCount})`,
           );
-          return new Response(cached.bytes as unknown as BodyInit, {
+          return new Response(cached.bytes, {
             headers: {
               "Content-Type": "audio/wav",
               "Cache-Control": "no-cache",

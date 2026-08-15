@@ -74,6 +74,7 @@ import {
 	runWithoutActionRoutingContext,
 } from "./runtime/action-routing-context";
 import { BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS } from "./runtime/builtin-field-evaluators";
+import { isCanonicalModelCapabilityDisabled } from "./runtime/canonical-model-capabilities.ts";
 import { ChatPreHandlerRegistry } from "./runtime/chat-pre-handler-registry";
 import { computePrefixHashes } from "./runtime/context-hash";
 import { ContextRegistry } from "./runtime/context-registry";
@@ -107,6 +108,11 @@ import {
 } from "./runtime/turn-controller";
 import { BM25 } from "./search";
 import {
+	locateConfiguredSecretFragmentTaint,
+	type SecretFragment,
+	type SecretFragmentTaintProfile,
+} from "./security/fragment-redaction.js";
+import {
 	authorizeOwnerExclusiveDisclosure,
 	CompositeEntityRecognizer,
 	DEFAULT_PSEUDONYM_BLOCKLIST,
@@ -126,7 +132,7 @@ import {
 	trustedDeliveryAudienceCacheKey,
 } from "./security/index.js";
 import { guardOutboundEnvelopeText } from "./security/outbound-envelope-guard.js";
-import { redactWithSecrets } from "./security/redact.js";
+import { MIN_SECRET_LENGTH, redactWithSecrets } from "./security/redact.js";
 import {
 	parseSecretSwapExemptValues,
 	SECRET_SWAP_ENABLED_SETTING,
@@ -323,6 +329,7 @@ import {
 	getActiveRoutingContextsForTurn,
 	shouldIncludeByContext,
 } from "./utils/context-routing";
+import { createHash } from "./utils/crypto-compat";
 import { buildDeterministicSeed, shortStringHash } from "./utils/deterministic";
 import { getNumberEnv } from "./utils/environment";
 import {
@@ -648,10 +655,6 @@ export class EmbeddingDimensionProbeError extends Error {
 
 const TEXT_GENERATION_MODEL_KEYS: readonly string[] =
 	TEXT_GENERATION_MODEL_TYPES;
-
-const CANONICAL_TEXT_CAPABILITY_SETTING = "ELIZA_CANONICAL_LLM_TEXT_ENABLED";
-const CANONICAL_EMBEDDING_CAPABILITY_SETTING =
-	"ELIZA_CANONICAL_EMBEDDINGS_ENABLED";
 
 type StructuredResponseFormat = "JSON" | "TOON";
 
@@ -1338,6 +1341,8 @@ export class AgentRuntime implements IAgentRuntime {
 	private embeddingGenerationDisabledReason: string | null = null;
 	/** Once-latch so the embedding-skip warning fires once, not per write. */
 	private embeddingSkipWarned = false;
+	private secretRedactionProfileSignature = "";
+	private secretRedactionProfileRevision = 0;
 	private taskWorkers = new Map<string, TaskWorker>();
 	private sendHandlers = new Map<string, SendHandlerFunction>();
 	private messageConnectors = new Map<string, MessageConnector>();
@@ -6122,14 +6127,7 @@ export class AgentRuntime implements IAgentRuntime {
 	}
 
 	private isCanonicalModelCapabilityDisabled(modelType: string): boolean {
-		const setting = TEXT_GENERATION_MODEL_KEYS.includes(modelType)
-			? this.getSetting(CANONICAL_TEXT_CAPABILITY_SETTING)
-			: modelType === ModelType.TEXT_EMBEDDING
-				? this.getSetting(CANONICAL_EMBEDDING_CAPABILITY_SETTING)
-				: undefined;
-		return (
-			setting === false || String(setting).trim().toLowerCase() === "false"
-		);
+		return isCanonicalModelCapabilityDisabled(this, modelType);
 	}
 
 	private assertCanonicalModelCapabilityEnabled(modelType: string): void {
@@ -11306,6 +11304,33 @@ ${section_end}`;
 			return text;
 		}
 		return redactWithSecrets(text, { secrets, applyPatterns: true });
+	}
+
+	locateConfiguredSecretFragmentTaint(
+		fragments: readonly SecretFragment[],
+	): SecretFragmentTaintProfile {
+		const secrets = this.getSecretsForRedaction();
+		const signature = createHash("sha256")
+			.update(
+				JSON.stringify(
+					[
+						...new Set(
+							Object.values(secrets).filter(
+								(value) => value.length >= MIN_SECRET_LENGTH,
+							),
+						),
+					].sort(),
+				),
+			)
+			.digest("hex");
+		if (signature !== this.secretRedactionProfileSignature) {
+			this.secretRedactionProfileSignature = signature;
+			this.secretRedactionProfileRevision += 1;
+		}
+		return {
+			...locateConfiguredSecretFragmentTaint(fragments, secrets),
+			profileRevision: this.secretRedactionProfileRevision,
+		};
 	}
 
 	async clearAllAgentMemories(): Promise<void> {
