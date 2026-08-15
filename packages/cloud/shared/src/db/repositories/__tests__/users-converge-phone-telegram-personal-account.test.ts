@@ -52,7 +52,8 @@ describe("UsersRepository phone + Telegram provisional convergence (real PGlite)
       organizationName: `Phone ${sequence}`,
       organizationSlug: `phone-convergence-${sequence}`,
     });
-    const telegram = await usersRepository.findOrCreateTelegramPersonalAccount({
+    const telegram = await usersRepository.findOrCreateMessagingPersonalAccount({
+      platform: "telegram",
       telegramId,
       telegramUsername: `telegram_${sequence}`,
       telegramFirstName: `Telegram ${sequence}`,

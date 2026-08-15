@@ -68,7 +68,10 @@ const sharedMessageSchema = z.discriminatedUnion("platform", [
     ),
   z.object({
     platform: z.literal("discord"),
-    discordUserId: z.string().trim().min(1).max(32),
+    discordUserId: z
+      .string()
+      .trim()
+      .regex(/^\d{1,32}$/),
     discordUsername: z.string().trim().min(1).max(80),
     displayName: z.string().trim().min(1).max(128).optional(),
     avatarUrl: z.string().url().nullable().optional(),
@@ -225,30 +228,30 @@ app.post("/", async (c) => {
       | null
       | undefined;
     if (parsed.data.platform === "telegram") {
-      const delivery =
-        await elizaAppUserService.resolvePersonalDeliveryByTelegram({
-          telegramId: parsed.data.telegramUserId,
-          username: parsed.data.telegramUsername,
-          displayName: parsed.data.displayName,
-        });
+      const delivery = await elizaAppUserService.resolvePersonalDelivery({
+        platform: "telegram",
+        telegramId: parsed.data.telegramUserId,
+        username: parsed.data.telegramUsername,
+        displayName: parsed.data.displayName,
+      });
       account = {
         userId: delivery.userId,
         organizationId: delivery.organizationId,
       };
       dedicated = delivery.dedicatedTarget;
     } else if (parsed.data.platform === "discord") {
-      const discordAccount = await elizaAppUserService.findOrCreateByDiscordId(
-        parsed.data.discordUserId,
-        {
-          username: parsed.data.discordUsername,
-          globalName: parsed.data.displayName,
-          avatarUrl: parsed.data.avatarUrl,
-        },
-      );
+      const delivery = await elizaAppUserService.resolvePersonalDelivery({
+        platform: "discord",
+        discordId: parsed.data.discordUserId,
+        username: parsed.data.discordUsername,
+        globalName: parsed.data.displayName,
+        avatarUrl: parsed.data.avatarUrl,
+      });
       account = {
-        userId: discordAccount.user.id,
-        organizationId: discordAccount.organization.id,
+        userId: delivery.userId,
+        organizationId: delivery.organizationId,
       };
+      dedicated = delivery.dedicatedTarget;
     } else {
       const phoneAccount = await elizaAppUserService.findOrCreateByPhone(
         parsed.data.phoneNumber,
