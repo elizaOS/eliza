@@ -507,6 +507,37 @@ describe("voice-session mic capture (ScriptProcessor fallback path — WebView 1
     await capture.stop();
   });
 
+  it("reports an ended input track once and detaches the listener on stop", async () => {
+    const track = Object.assign(new EventTarget(), {
+      kind: "audio",
+      stop: vi.fn(),
+      getSettings: () => ({ sampleRate: 16_000, channelCount: 1 }),
+    }) as unknown as MediaStreamTrack;
+    const onDeviceLost = vi.fn();
+    const capture = await startVoiceMicCapture({
+      onFrame: () => {},
+      onDeviceLost,
+      getUserMedia: async () =>
+        ({
+          getAudioTracks: () => [track],
+          getTracks: () => [track],
+        }) as unknown as MediaStream,
+      createAudioContext: () => new FakeMicAudioContext(16_000),
+      visibility: {
+        addListener() {},
+        removeListener() {},
+        isHidden: () => false,
+      },
+    });
+
+    track.dispatchEvent(new Event("ended"));
+    expect(onDeviceLost).toHaveBeenCalledTimes(1);
+
+    await capture.stop();
+    track.dispatchEvent(new Event("ended"));
+    expect(onDeviceLost).toHaveBeenCalledTimes(1);
+  });
+
   it("rejects capture frame durations outside the 20-40ms contract before requesting permission", async () => {
     const getUserMedia = vi.fn(fakeGetUserMedia());
 

@@ -146,6 +146,12 @@ export interface VoiceMicCaptureOptions {
   onResume?: () => void;
   /** Called on a fatal capture error mid-session. */
   onError?: (error: VoiceMicCaptureError) => void;
+  /**
+   * Called when the browser ends the active input track (for example a
+   * Bluetooth/headset route change). The owning session may reacquire the
+   * default input without reconnecting its voice transport.
+   */
+  onDeviceLost?: () => void;
   /** Content-free requested/granted media settings for device evaluation. */
   onDiagnostics?: (diagnostics: VoiceCaptureDiagnostics) => void;
   /**
@@ -536,12 +542,12 @@ export async function startVoiceMicCapture(
     );
   }
 
+  const audioTrack =
+    stream.getAudioTracks?.()[0] ??
+    stream.getTracks().find((track) => track.kind === "audio") ??
+    stream.getTracks()[0];
   let grantedSettings: MediaTrackSettings | undefined;
   try {
-    const audioTrack =
-      stream.getAudioTracks?.()[0] ??
-      stream.getTracks().find((track) => track.kind === "audio") ??
-      stream.getTracks()[0];
     grantedSettings = audioTrack?.getSettings?.();
   } catch (ignoredError) {
     // error-policy:J7 granted settings are best-effort diagnostics; capture remains live when a browser omits or rejects them.
@@ -575,6 +581,18 @@ export async function startVoiceMicCapture(
 
   let visibilityEpoch = 0;
   let resumeTask: Promise<void> | null = null;
+
+  const onTrackEnded = (): void => {
+    if (stopped) return;
+    try {
+      options.onDeviceLost?.();
+    } catch (ignoredError) {
+      // error-policy:J7 device observers cannot keep a dead media track alive;
+      // the owning client still sees capture stop producing frames.
+      void ignoredError;
+    }
+  };
+  audioTrack?.addEventListener?.("ended", onTrackEnded, { once: true });
 
   const reportResumeFailure = (cause: unknown): void => {
     const error =
@@ -670,6 +688,7 @@ export async function startVoiceMicCapture(
     stopped = true;
     if (onAbort && signal) signal.removeEventListener("abort", onAbort);
     visibility?.removeListener(onVisibilityChange);
+    audioTrack?.removeEventListener?.("ended", onTrackEnded);
     if (workletNode) {
       workletNode.port.onmessage = null;
       workletNode.disconnect();

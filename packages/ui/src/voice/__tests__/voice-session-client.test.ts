@@ -1564,6 +1564,63 @@ describe("voice-session client (real framing/state/barge-in/reconnect)", () => {
     expect(errors).toEqual([]);
   });
 
+  it("reacquires a changed microphone on the live socket without reminting", async () => {
+    const tracks = [0, 1].map(() =>
+      Object.assign(new EventTarget(), {
+        kind: "audio",
+        stop: vi.fn(),
+        getSettings: () => ({ sampleRate: 16_000, channelCount: 1 }),
+      }),
+    ) as unknown as MediaStreamTrack[];
+    let mediaIndex = 0;
+    const getUserMedia = vi.fn(async () => {
+      const track = tracks[Math.min(mediaIndex, tracks.length - 1)];
+      mediaIndex += 1;
+      return {
+        getAudioTracks: () => [track],
+        getTracks: () => [track],
+      } as unknown as MediaStream;
+    });
+    const mint = makeMintFetch();
+    const ws = makeWsFactory();
+    const marks: VoiceTraceMark[] = [];
+    const errors: Error[] = [];
+    const client = createVoiceSessionClient({
+      agentId: "11111111-1111-1111-1111-111111111111",
+      conversationId: "22222222-2222-2222-2222-222222222222",
+      getConsentNonce: async () => "device-change",
+      fetch: mint.fetch,
+      webSocketFactory: ws.factory,
+      getUserMedia,
+      createMicAudioContext: () => new FakeMicAudioContext(16_000),
+      createPlaybackAudioContext: () => new FakePlaybackAudioContext(16_000),
+      onTraceMark: (mark) => marks.push(mark),
+      onError: (error) => errors.push(error),
+    });
+
+    await client.start();
+    const socket = ws.last();
+    socket.emitOpen();
+    socket.emitControl({ t: "ready", sessionId: "s", traceId: "T-device" });
+    await flush();
+    expect(client.state.phase).toBe("listening");
+    expect(getUserMedia).toHaveBeenCalledTimes(1);
+
+    tracks[0]?.dispatchEvent(new Event("ended"));
+    await vi.waitFor(() => expect(getUserMedia).toHaveBeenCalledTimes(2));
+    await vi.waitFor(() =>
+      expect(marks.map((mark) => mark.name)).toEqual(
+        expect.arrayContaining(["mic_device_lost", "mic_device_recovered"]),
+      ),
+    );
+
+    expect(mint.calls).toHaveLength(1);
+    expect(ws.sockets).toHaveLength(1);
+    expect(client.state.phase).toBe("listening");
+    expect(errors).toEqual([]);
+    await client.stop();
+  });
+
   it("reconnect cancels stalled AudioWorklet setup before starting a new mic", async () => {
     vi.stubGlobal("AudioWorkletNode", FakeVoiceAudioWorkletNode);
     const moduleLoad = deferred<void>();

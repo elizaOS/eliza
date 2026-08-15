@@ -370,6 +370,7 @@ export function createVoiceSessionClient(
   let recoveryPromise: Promise<void> | null = null;
   let captureSocket: VoiceWebSocketLike | null = null;
   let captureAbort: AbortController | null = null;
+  let captureRecoveryTask: Promise<void> | null = null;
   let microphoneMuted = false;
   let playbackMayHaveAudio = false;
   const playbackTraceBySequence = new Map<number, string | null>();
@@ -1034,6 +1035,16 @@ export function createVoiceSessionClient(
             void stop();
           }
         },
+        onDeviceLost: () => {
+          if (
+            !isLifecycleCurrent(generation) ||
+            ws !== socket ||
+            !turnAuthority.isSessionLeaseCurrent(sessionLease)
+          ) {
+            return;
+          }
+          recoverCaptureAfterDeviceLoss(generation, socket, sessionLease);
+        },
         onDiagnostics: (capture) => {
           if (
             isLifecycleCurrent(generation) &&
@@ -1096,6 +1107,42 @@ export function createVoiceSessionClient(
       if (captureSocket === socket) captureSocket = null;
       if (captureAbort === captureController) captureAbort = null;
     }
+  }
+
+  function recoverCaptureAfterDeviceLoss(
+    generation: number,
+    socket: VoiceWebSocketLike,
+    sessionLease: VoiceSessionLease,
+  ): void {
+    if (captureRecoveryTask) return;
+    mark("mic_device_lost", state.traceId);
+    const task = (async (): Promise<void> => {
+      const lostMic = mic;
+      mic = null;
+      captureAbort?.abort();
+      captureAbort = null;
+      captureSocket = null;
+      await lostMic?.stop().catch(() => {});
+      if (
+        !isLifecycleCurrent(generation) ||
+        ws !== socket ||
+        !turnAuthority.isSessionLeaseCurrent(sessionLease)
+      ) {
+        return;
+      }
+      await startCapture(generation, socket, sessionLease);
+      if (
+        mic &&
+        isLifecycleCurrent(generation) &&
+        ws === socket &&
+        turnAuthority.isSessionLeaseCurrent(sessionLease)
+      ) {
+        mark("mic_device_recovered", state.traceId);
+      }
+    })().finally(() => {
+      if (captureRecoveryTask === task) captureRecoveryTask = null;
+    });
+    captureRecoveryTask = task;
   }
 
   async function openConnection(
@@ -1362,6 +1409,7 @@ export function createVoiceSessionClient(
   }
 
   async function teardownMic(): Promise<void> {
+    captureRecoveryTask = null;
     const pendingCapture = captureAbort;
     captureAbort = null;
     captureSocket = null;
