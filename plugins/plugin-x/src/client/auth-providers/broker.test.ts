@@ -63,4 +63,39 @@ describe("BrokerAuthProvider", () => {
       "X broker returned an invalid credential response",
     );
   });
+
+  it("can use the owner's X connection for a personal agent", async () => {
+    const fetchMock = vi.fn(async () =>
+      Response.json({
+        auth_mode: "oauth2",
+        access_token: "owner-oauth-token",
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const provider = new BrokerAuthProvider(
+      runtime({
+        ELIZAOS_CLOUD_API_KEY: "personal-agent-key",
+        TWITTER_BROKER_CONNECTION_ROLE: "owner",
+      }),
+    );
+
+    await expect(provider.getAccessToken()).resolves.toBe("owner-oauth-token");
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://cloud.eliza.app/api/v1/twitter/token?connectionRole=owner",
+      expect.any(Object),
+    );
+  });
+
+  it("rejects an unknown broker connection role", async () => {
+    const provider = new BrokerAuthProvider(
+      runtime({
+        ELIZAOS_CLOUD_API_KEY: "agent-cloud-key",
+        TWITTER_BROKER_CONNECTION_ROLE: "team",
+      }),
+    );
+
+    await expect(provider.getAccessToken()).rejects.toThrow(
+      "Expected agent|owner",
+    );
+  });
 });

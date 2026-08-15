@@ -1,7 +1,8 @@
 /** Unit tests for X account status and trusted multi-account connector routing. Network clients are deterministic fakes. */
 import type { Content, IAgentRuntime, TargetInfo } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
-import { XService } from "./x.service";
+import type { TwitterClientState } from "../types";
+import { TwitterClientInstance, XService } from "./x.service";
 
 function asRuntime<T extends object>(runtime: T): IAgentRuntime & T {
   return runtime as IAgentRuntime & T;
@@ -25,6 +26,18 @@ function serviceWithRuntime(settings: Record<string, string>): XService {
 }
 
 describe("XService account status", () => {
+  it("honors account-scoped DM disablement over the runtime default", () => {
+    const instance = new TwitterClientInstance(
+      runtimeWithSettings({ TWITTER_ENABLE_DMS: "true" }),
+      {
+        accountId: "personal",
+        TWITTER_ENABLE_DMS: "false",
+      } as TwitterClientState,
+    );
+
+    expect(instance.directMessages).toBeUndefined();
+  });
+
   it("declares that its unscoped message connector dispatches trusted account ids", () => {
     const registerMessageConnector = vi.fn();
     const runtime = asRuntime({

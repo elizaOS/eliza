@@ -99,6 +99,18 @@ export class BrokerAuthProvider implements TwitterBrokerProvider {
     return token;
   }
 
+  private connectionRole(): "agent" | "owner" {
+    const configured =
+      getSetting(this.runtime, "TWITTER_BROKER_CONNECTION_ROLE") ?? "agent";
+    const normalized = configured.trim().toLowerCase();
+    if (normalized !== "agent" && normalized !== "owner") {
+      throw new Error(
+        `Invalid TWITTER_BROKER_CONNECTION_ROLE=${configured}. Expected agent|owner.`,
+      );
+    }
+    return normalized;
+  }
+
   private async fetchToken(): Promise<BrokerToken> {
     if (this.cached && Date.now() < this.cached.expiresAt) {
       return this.cached.token;
@@ -127,7 +139,7 @@ export class BrokerAuthProvider implements TwitterBrokerProvider {
 
   private async fetchFromBroker(): Promise<BrokerToken> {
     const response = await fetch(
-      `${this.brokerUrl()}/token?connectionRole=agent`,
+      `${this.brokerUrl()}/token?connectionRole=${this.connectionRole()}`,
       {
         headers: {
           Accept: "application/json",

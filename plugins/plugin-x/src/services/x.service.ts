@@ -276,9 +276,12 @@ export class TwitterClientInstance implements ITwitterClient {
       logger.info("Twitter replies/interactions are DISABLED");
     }
 
-    const directMessagesEnabled =
-      (getSetting(runtime, "TWITTER_ENABLE_DMS") ??
-        process.env.TWITTER_ENABLE_DMS) !== "false";
+    const directMessagesEnabled = parseBooleanFromText(
+      state.TWITTER_ENABLE_DMS ??
+        getSetting(runtime, "TWITTER_ENABLE_DMS") ??
+        process.env.TWITTER_ENABLE_DMS ??
+        "true",
+    );
     if (directMessagesEnabled) {
       logger.info("Twitter direct-message replies are ENABLED");
       this.directMessages = new TwitterDirectMessageClient(

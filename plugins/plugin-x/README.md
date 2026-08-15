@@ -41,6 +41,7 @@ TWITTER_ACCESS_TOKEN_SECRET=...
 # Eliza Cloud managed-agent alternative
 # TWITTER_AUTH_MODE=broker
 # TWITTER_BROKER_URL=https://cloud.eliza.app/api/v1/twitter
+# TWITTER_BROKER_CONNECTION_ROLE=agent # use owner for a user's personal X identity
 
 # Feature toggles (posting/actions/discovery are opt-in)
 TWITTER_ENABLE_POST=false         # autonomous posting loop

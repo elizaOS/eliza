@@ -5,8 +5,10 @@
  * the first poll establishes a watermark instead of replying to historical
  * conversations. Each poll pages through the DM event timeline until it reaches
  * the durable cursor, so bursts larger than one API page are not dropped, and the
- * cursor only advances past an event once its reply was actually delivered (or
- * deliberately skipped), so a transient send failure is retried on the next poll.
+ * cursor only advances past an event once its reply was delivered, deliberately
+ * skipped, or reached an indeterminate provider-egress state. X does not expose
+ * an idempotency key for DM sends, so an ambiguous failure after egress starts is
+ * retained as an at-most-once tombstone instead of risking a duplicate reply.
  */
 import {
   ChannelType,
@@ -46,6 +48,9 @@ interface DirectMessagePage {
   fetchNext?: (maxResults?: number) => Promise<unknown>;
 }
 
+/** Fail closed before an anomalous paginator can monopolize the polling loop. */
+const MAX_DM_PAGES_PER_POLL = 1_000;
+
 function parseBoolean(value: unknown, fallback: boolean): boolean {
   if (typeof value === "boolean") return value;
   if (typeof value !== "string" || !value.trim()) return fallback;
@@ -72,20 +77,6 @@ function compareEventIds(left: string, right: string): number {
     // fall back to explicit lexicographic ordering instead of guessing.
     return left.localeCompare(right);
   }
-}
-
-/** A received Twitter API error proves rejection; transport failures do not. */
-function rejectedByTwitterStatus(error: unknown): number | null {
-  if (!error || typeof error !== "object") return null;
-  const candidate = error as {
-    code?: unknown;
-    status?: unknown;
-    data?: { status?: unknown };
-  };
-  const status = candidate.data?.status ?? candidate.status ?? candidate.code;
-  return typeof status === "number" && status >= 400 && status <= 599
-    ? status
-    : null;
 }
 
 export class TwitterDirectMessageClient {
@@ -181,24 +172,25 @@ export class TwitterDirectMessageClient {
     // accumulates events across fetches. The first (watermark) poll only
     // needs the newest event, so it never paginates.
     if (cursor) {
+      let previousEventCount = -1;
+      let fetchedPages = 1;
       while (page.done === false && typeof page.fetchNext === "function") {
         const fetched = collectEvents();
         const oldest = fetched[fetched.length - 1];
         if (oldest && compareEventIds(oldest.id, cursor) <= 0) break;
-        const priorCount = fetched.length;
-        const priorOldestId = oldest?.id;
-        await page.fetchNext(50);
-        const nextFetched = collectEvents();
-        const nextOldest = nextFetched[nextFetched.length - 1];
-        if (
-          page.done === false &&
-          nextFetched.length <= priorCount &&
-          nextOldest?.id === priorOldestId
-        ) {
+        if (fetched.length === previousEventCount) {
           throw new Error(
             "X DM paginator made no progress before reaching the durable cursor.",
           );
         }
+        previousEventCount = fetched.length;
+        if (fetchedPages >= MAX_DM_PAGES_PER_POLL) {
+          throw new Error(
+            `X DM catch-up exceeded ${MAX_DM_PAGES_PER_POLL} pages before reaching the durable cursor.`,
+          );
+        }
+        await page.fetchNext(50);
+        fetchedPages += 1;
       }
     }
 
@@ -345,10 +337,7 @@ export class TwitterDirectMessageClient {
     // Captures a reply-send failure even if the message service swallows the
     // callback rejection, so settlement below can distinguish "delivered or
     // deliberately silent" from "send failed, retry next poll".
-    const delivery: {
-      failure: { error: unknown; acceptance: "rejected" | "unknown" } | null;
-    } = { failure: null };
-    let settled = false;
+    let deliveryError: unknown = null;
     const callback: HandlerCallback = async (response: Content) => {
       const text =
         typeof response.text === "string" ? response.text.trim() : "";
@@ -364,34 +353,36 @@ export class TwitterDirectMessageClient {
       const api = await this.client.twitterClient.getV2Client();
       const isGroup = (event.participant_ids?.length ?? 0) > 2;
       let sent: unknown;
+      // X's DM create endpoints do not accept an idempotency key. Persist a
+      // no-replay barrier before the request so a crash, timeout, or receipt
+      // persistence failure cannot cause a second externally visible reply.
+      // An explicit provider rejection clears the barrier below and may retry.
+      await this.runtime.setCache(settledKey, "egress_started");
       try {
         sent = isGroup
           ? await api.v2.sendDmInConversation(conversationId, { text })
           : await api.v2.sendDmToParticipant(senderId, { text });
       } catch (error) {
-        // error-policy:J2 preserve the provider error for the settlement gate.
-        // An HTTP rejection is safe to retry; a transport failure has unknown
-        // acceptance and must be terminal to avoid duplicating a delivered DM.
-        delivery.failure = {
-          error,
-          acceptance:
-            rejectedByTwitterStatus(error) === null ? "unknown" : "rejected",
-        };
-        if (delivery.failure.acceptance === "unknown") {
-          await this.runtime.setCache(settledKey, "unknown_acceptance");
-          settled = true;
+        // error-policy:J2 explicit HTTP rejection proves X did not accept the
+        // send, so reopen it for a later retry. Transport failures are
+        // indeterminate and retain the no-replay tombstone.
+        deliveryError = error;
+        if (isExplicitTwitterRejection(error)) {
+          await this.runtime.deleteCache(settledKey);
+        } else {
+          await this.runtime.setCache(settledKey, "indeterminate");
         }
         throw error;
       }
-      // Persist delivery settlement before the response memory: a database
-      // failure after X accepted the DM must never turn into a duplicate send.
-      await this.runtime.setCache(settledKey, "delivered");
-      settled = true;
       const sentResult = sent as {
         data?: { dm_event_id?: string };
         dm_event_id?: string;
       };
       const sentId = sentResult.data?.dm_event_id ?? sentResult.dm_event_id;
+      await this.runtime.setCache(
+        settledKey,
+        sentId ? `delivered:${sentId}` : "delivered",
+      );
       if (!sentId) {
         // The reply was accepted by X but no event id came back, so there is
         // no stable identity for a response memory. Do not fail (that would
@@ -427,56 +418,54 @@ export class TwitterDirectMessageClient {
         } satisfies Memory["metadata"],
         createdAt: Date.now(),
       };
-      await createMemorySafe(this.runtime, responseMemory, "messages");
+      try {
+        await createMemorySafe(this.runtime, responseMemory, "messages");
+      } catch (error) {
+        // error-policy:J7 X has already accepted the reply and the durable
+        // delivery marker prevents replay. Report the local receipt loss while
+        // preserving the successful external outcome.
+        this.runtime.reportError("XDirectMessages.responseMemory", error, {
+          accountId: this.client.accountId,
+          conversationId,
+          dmEventId: sentId,
+        });
+      }
       return [responseMemory];
     };
 
-    let messageLoopError: unknown = null;
-    try {
-      await this.runtime.messageService.handleMessage(
-        this.runtime,
-        inboundMemory,
-        callback,
-      );
-    } catch (error) {
-      // error-policy:J2 the settlement state below determines whether this
-      // failure is safe to retry; otherwise preserve it for the poll boundary.
-      messageLoopError = error;
+    await this.runtime.messageService.handleMessage(
+      this.runtime,
+      inboundMemory,
+      callback,
+    );
+    if (deliveryError) {
+      throw deliveryError instanceof Error
+        ? deliveryError
+        : new Error(String(deliveryError));
     }
-    if (delivery.failure?.acceptance === "rejected") {
-      throw delivery.failure.error instanceof Error
-        ? delivery.failure.error
-        : new Error(String(delivery.failure.error));
+    if (!(await this.runtime.getCache<string>(settledKey))) {
+      await this.runtime.setCache(settledKey, "settled_without_reply");
     }
-    if (delivery.failure?.acceptance === "unknown") {
-      // error-policy:J7 an acceptance-unknown send is deliberately not retried;
-      // surface it through diagnostics while allowing the cursor to advance.
-      this.runtime.reportError(
-        "XDirectMessages.deliveryAcceptanceUnknown",
-        delivery.failure.error,
-        { accountId: this.client.accountId, eventId: event.id, conversationId },
-      );
-      return;
-    }
-    if (messageLoopError) {
-      if (settled) {
-        // error-policy:J7 X already accepted the reply, so persistence or
-        // post-callback diagnostics cannot be allowed to trigger a resend.
-        this.runtime.reportError(
-          "XDirectMessages.postDelivery",
-          messageLoopError,
-          {
-            accountId: this.client.accountId,
-            eventId: event.id,
-            conversationId,
-          },
-        );
-        return;
-      }
-      throw messageLoopError instanceof Error
-        ? messageLoopError
-        : new Error(String(messageLoopError));
-    }
-    if (!settled) await this.runtime.setCache(settledKey, "silent");
   }
+}
+
+function isExplicitTwitterRejection(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const candidate = error as {
+    code?: unknown;
+    status?: unknown;
+    data?: { status?: unknown };
+    response?: { status?: unknown };
+  };
+  const status =
+    candidate.data?.status ??
+    candidate.response?.status ??
+    candidate.status ??
+    candidate.code;
+  return (
+    typeof status === "number" &&
+    Number.isInteger(status) &&
+    status >= 400 &&
+    status < 500
+  );
 }

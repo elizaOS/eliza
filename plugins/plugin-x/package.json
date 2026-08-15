@@ -173,6 +173,13 @@
         "required": false,
         "sensitive": true
       },
+      "TWITTER_BROKER_CONNECTION_ROLE": {
+        "type": "string",
+        "description": "Broker connection role: 'agent' for the agent identity or 'owner' for the user's personal X identity.",
+        "required": false,
+        "default": "agent",
+        "sensitive": false
+      },
       "TWITTER_TARGET_USERS": {
         "type": "string",
         "description": "Comma-separated list of Twitter usernames the bot should interact with. Use '*' for all users.",

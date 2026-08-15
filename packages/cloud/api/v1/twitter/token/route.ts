@@ -43,7 +43,7 @@ app.get("/", async (c) => {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
     const role =
-      c.req.query("connectionRole") === "owner" ? "owner" : ("agent" as const);
+      c.req.query("connectionRole") === "agent" ? "agent" : ("owner" as const);
 
     const broker = await twitterAutomationService.getBrokerCredentials(
       user.organization_id,
