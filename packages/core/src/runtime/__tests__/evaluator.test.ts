@@ -991,6 +991,26 @@ describe("native tool dialects never recover as the user-facing answer", () => {
 		expect(result.messageToUser ?? "").not.toContain("arg_key");
 	});
 
+	it("does not launder pseudo-tag tool markup into a fabricated effect claim (matrix F38, tj-9129a432454364)", async () => {
+		// Live stage-7 shape: prose claiming the effect beside an UNEXECUTED
+		// `<NOTES_CREATE>{…}</NOTES_CREATE>` invocation. Recovering the prose
+		// would ship "saving note." while no note exists — the strip-and-send
+		// launder. The turn must stay on the replanning path instead.
+		const result = await runWithModelText(
+			'temp is 35°C. saving note.\n\n<NOTES_CREATE>\n{"title": "b50 paris wx", "content": "Paris temperature: 35°C"}\n</NOTES_CREATE>',
+		);
+		expect(result.decision).toBe("CONTINUE");
+		expect(result.messageToUser ?? "").toBe("");
+	});
+
+	it("still recovers prose that merely quotes a short acronym tag", async () => {
+		const result = await runWithModelText(
+			"the <AI> tag in that template is just a label, not markup you need to escape.",
+		);
+		expect(result.decision).toBe("FINISH");
+		expect(result.messageToUser ?? "").toContain("<AI>");
+	});
+
 	it("does not deliver a standalone bare action name + JSON args block", async () => {
 		const result = await runWithModelText(
 			'GET_WEATHER\n{ "location": "Tokyo" }',
