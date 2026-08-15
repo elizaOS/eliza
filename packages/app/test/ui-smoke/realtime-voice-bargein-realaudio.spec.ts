@@ -132,8 +132,8 @@ test.describe("normal-chat realtime acoustic barge-in", () => {
       // Streaming audio can evict these short-lived marks from the 12-line HUD
       // before a locator observes them. Debug logging retains the same
       // content-free breadcrumbs for the whole run. Require immediate local
-      // provisional pause, followed by either prompt local confirmation or the
-      // intended bounded false-trigger repair and authoritative server flush.
+      // provisional pause followed by sustained local confirmation; a slower
+      // provider partial must not let stale audio resume over real speech.
       await expect
         .poll(
           () =>
@@ -147,20 +147,22 @@ test.describe("normal-chat realtime acoustic barge-in", () => {
         .toBe(true);
       await expect
         .poll(
-          () => {
-            const has = (step: string) =>
-              consoleMessages.some((message) =>
-                message.includes(`[eliza][voice-capture] realtime:${step}`),
-              );
-            return (
-              has("local_speech_start_confirmed") ||
-              (has("local_speech_start_unconfirmed") &&
-                has("server_speech_start_confirmed"))
-            );
-          },
+          () =>
+            consoleMessages.some((message) =>
+              message.includes(
+                "[eliza][voice-capture] realtime:local_speech_start_confirmed",
+              ),
+            ),
           { timeout: 30_000 },
         )
         .toBe(true);
+      expect(
+        consoleMessages.some((message) =>
+          message.includes(
+            "[eliza][voice-capture] realtime:local_speech_start_unconfirmed",
+          ),
+        ),
+      ).toBe(false);
       await muteAfterSecondTurn;
 
       const replacementTraceLine = page

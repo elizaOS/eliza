@@ -156,9 +156,13 @@ export interface VoiceMicCaptureOptions {
   onDiagnostics?: (diagnostics: VoiceCaptureDiagnostics) => void;
   /**
    * Optional local-only speech onset signal. It is provisional: callers must
-   * wait for server STT confirmation before cancelling remote work.
+   * wait for sustained local evidence or server STT before cancelling work.
    */
   onProvisionalSpeechStart?: (event: ProvisionalSpeechStartEvent) => void;
+  /** Sustained local speech reached the configured confirmation duration. */
+  onProvisionalSpeechConfirmed?: (event: ProvisionalSpeechStartEvent) => void;
+  /** A provisional episode ended before or after confirmation. */
+  onProvisionalSpeechEnd?: (event: ProvisionalSpeechStartEvent) => void;
   /** Conservative detector thresholds for the optional onset signal. */
   provisionalSpeechStart?: ProvisionalSpeechStartConfig;
   /** Whether onset evidence is currently relevant (normally agent speaking). */
@@ -428,9 +432,12 @@ export async function startVoiceMicCapture(
     ctx.sampleRate,
     VOICE_PCM_SAMPLE_RATE,
   );
-  const speechStartDetector = options.onProvisionalSpeechStart
-    ? new ProvisionalSpeechStartDetector(options.provisionalSpeechStart)
-    : null;
+  const speechStartDetector =
+    options.onProvisionalSpeechStart ||
+    options.onProvisionalSpeechConfirmed ||
+    options.onProvisionalSpeechEnd
+      ? new ProvisionalSpeechStartDetector(options.provisionalSpeechStart)
+      : null;
   const now =
     options.now ??
     (() =>
@@ -447,12 +454,20 @@ export async function startVoiceMicCapture(
     if (resampled.length === 0) return;
     if (speechStartDetector) {
       if (options.isProvisionalSpeechStartEnabled?.() ?? true) {
-        const event = speechStartDetector.push(
+        const events = speechStartDetector.push(
           resampled,
           VOICE_PCM_SAMPLE_RATE,
           now(),
         );
-        if (event) options.onProvisionalSpeechStart?.(event);
+        for (const event of events) {
+          if (event.phase === "started") {
+            options.onProvisionalSpeechStart?.(event);
+          } else if (event.phase === "confirmed") {
+            options.onProvisionalSpeechConfirmed?.(event);
+          } else {
+            options.onProvisionalSpeechEnd?.(event);
+          }
+        }
       } else {
         speechStartDetector.reset();
       }

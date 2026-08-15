@@ -120,6 +120,31 @@ describe("VoiceSessionTurnAuthority", () => {
     expect(authority.state?.response?.id).toBe(responseId);
   });
 
+  it("locally confirms sustained speech and flushes the exact old response", () => {
+    const authority = new VoiceSessionTurnAuthority();
+    const responseId = committedResponse(authority);
+    authority.acceptSpeakingStarted("trace-a", 3);
+    const audio = authority.authorizeAudioFrame();
+    authority.acceptPlaybackEnqueued(audio as never, 7, 4);
+    authority.beginProvisionalSpeech(5);
+    const attemptId = authority.speechAttemptId;
+    const confirmed = authority.confirmProvisionalSpeech(
+      attemptId as never,
+      305,
+    );
+
+    expect(confirmed.accepted).toBe(true);
+    expect(confirmed.effects).toEqual(
+      expect.arrayContaining([
+        { type: "playback/flush", responseId },
+        { type: "timer/cancel", key: expect.any(String) },
+      ]),
+    );
+    expect(authority.state?.speechAttempt).toBeNull();
+    expect(authority.state?.response).toBeNull();
+    expect(authority.state?.turn?.stage).toBe("transcribing");
+  });
+
   it("invalidates session leases and callbacks across reconnect/reset", () => {
     const authority = new VoiceSessionTurnAuthority();
     committedResponse(authority);

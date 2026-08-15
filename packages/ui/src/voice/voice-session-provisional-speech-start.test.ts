@@ -15,9 +15,10 @@ describe("ProvisionalSpeechStartDetector", () => {
       minimumSpeechMs: 60,
     });
 
-    expect(detector.push(block(20, 0.06), SAMPLE_RATE, 20)).toBeNull();
-    expect(detector.push(block(20, 0.06), SAMPLE_RATE, 40)).toBeNull();
-    const event = detector.push(block(20, 0.06), SAMPLE_RATE, 60);
+    expect(detector.push(block(20, 0.06), SAMPLE_RATE, 20)).toEqual([]);
+    expect(detector.push(block(20, 0.06), SAMPLE_RATE, 40)).toEqual([]);
+    const [event] = detector.push(block(20, 0.06), SAMPLE_RATE, 60);
+    expect(event?.phase).toBe("started");
     expect(event?.atMs).toBe(60);
     expect(event?.rms).toBeCloseTo(0.06, 6);
     expect(event?.peak).toBeCloseTo(0.06, 6);
@@ -28,9 +29,9 @@ describe("ProvisionalSpeechStartDetector", () => {
       minimumSpeechMs: 60,
     });
 
-    expect(detector.push(block(40, 0.06), SAMPLE_RATE, 40)).toBeNull();
-    expect(detector.push(block(20, 0.005), SAMPLE_RATE, 60)).toBeNull();
-    expect(detector.push(block(40, 0.06), SAMPLE_RATE, 100)).toBeNull();
+    expect(detector.push(block(40, 0.06), SAMPLE_RATE, 40)).toEqual([]);
+    expect(detector.push(block(20, 0.005), SAMPLE_RATE, 60)).toEqual([]);
+    expect(detector.push(block(40, 0.06), SAMPLE_RATE, 100)).toEqual([]);
   });
 
   it("rejects a peak-only click without sustained RMS evidence", () => {
@@ -40,7 +41,7 @@ describe("ProvisionalSpeechStartDetector", () => {
     const click = block(100, 0);
     click[0] = 1;
 
-    expect(detector.push(click, SAMPLE_RATE, 100)).toBeNull();
+    expect(detector.push(click, SAMPLE_RATE, 100)).toEqual([]);
   });
 
   it("fires only once until the rearm silence window passes", () => {
@@ -49,12 +50,52 @@ describe("ProvisionalSpeechStartDetector", () => {
       rearmSilenceMs: 80,
     });
 
-    expect(detector.push(block(40, 0.06), SAMPLE_RATE, 40)).not.toBeNull();
-    expect(detector.push(block(80, 0.06), SAMPLE_RATE, 120)).toBeNull();
-    expect(detector.push(block(40, 0), SAMPLE_RATE, 160)).toBeNull();
-    expect(detector.push(block(40, 0.06), SAMPLE_RATE, 200)).toBeNull();
-    expect(detector.push(block(80, 0), SAMPLE_RATE, 280)).toBeNull();
-    expect(detector.push(block(40, 0.06), SAMPLE_RATE, 320)).not.toBeNull();
+    expect(detector.push(block(40, 0.06), SAMPLE_RATE, 40)).toMatchObject([
+      { phase: "started" },
+    ]);
+    expect(detector.push(block(80, 0.06), SAMPLE_RATE, 120)).toEqual([]);
+    expect(detector.push(block(40, 0), SAMPLE_RATE, 160)).toEqual([]);
+    expect(detector.push(block(40, 0.06), SAMPLE_RATE, 200)).toEqual([]);
+    expect(detector.push(block(80, 0), SAMPLE_RATE, 280)).toMatchObject([
+      { phase: "ended" },
+    ]);
+    expect(detector.push(block(40, 0.06), SAMPLE_RATE, 320)).toMatchObject([
+      { phase: "started" },
+    ]);
+  });
+
+  it("confirms only after sustained local speech and reports the episode end", () => {
+    const detector = new ProvisionalSpeechStartDetector({
+      minimumSpeechMs: 60,
+      confirmationSpeechMs: 300,
+      rearmSilenceMs: 120,
+    });
+
+    expect(detector.push(block(60, 0.06), SAMPLE_RATE, 60)).toMatchObject([
+      { phase: "started" },
+    ]);
+    expect(detector.push(block(220, 0.06), SAMPLE_RATE, 280)).toEqual([]);
+    expect(detector.push(block(20, 0.06), SAMPLE_RATE, 300)).toMatchObject([
+      { phase: "confirmed", atMs: 300 },
+    ]);
+    expect(detector.push(block(120, 0), SAMPLE_RATE, 420)).toMatchObject([
+      { phase: "ended", atMs: 420 },
+    ]);
+  });
+
+  it("ends a short provisional episode without falsely confirming it", () => {
+    const detector = new ProvisionalSpeechStartDetector({
+      minimumSpeechMs: 60,
+      confirmationSpeechMs: 300,
+      rearmSilenceMs: 120,
+    });
+
+    expect(detector.push(block(80, 0.06), SAMPLE_RATE, 80)).toMatchObject([
+      { phase: "started" },
+    ]);
+    expect(detector.push(block(120, 0), SAMPLE_RATE, 200)).toMatchObject([
+      { phase: "ended" },
+    ]);
   });
 
   it("reset drops evidence collected outside an interruptible phase", () => {
@@ -62,15 +103,22 @@ describe("ProvisionalSpeechStartDetector", () => {
       minimumSpeechMs: 60,
     });
 
-    expect(detector.push(block(40, 0.06), SAMPLE_RATE, 40)).toBeNull();
+    expect(detector.push(block(40, 0.06), SAMPLE_RATE, 40)).toEqual([]);
     detector.reset();
-    expect(detector.push(block(40, 0.06), SAMPLE_RATE, 80)).toBeNull();
+    expect(detector.push(block(40, 0.06), SAMPLE_RATE, 80)).toEqual([]);
   });
 
   it("rejects invalid thresholds and sample rates at the boundary", () => {
     expect(
       () => new ProvisionalSpeechStartDetector({ rmsThreshold: -1 }),
     ).toThrow(/rmsThreshold/);
+    expect(
+      () =>
+        new ProvisionalSpeechStartDetector({
+          minimumSpeechMs: 100,
+          confirmationSpeechMs: 80,
+        }),
+    ).toThrow(/confirmationSpeechMs/);
     const detector = new ProvisionalSpeechStartDetector();
     expect(() => detector.push(block(20, 0.06), 0, 20)).toThrow(/sampleRate/);
   });

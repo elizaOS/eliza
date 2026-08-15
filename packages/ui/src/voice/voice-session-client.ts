@@ -540,18 +540,26 @@ export function createVoiceSessionClient(
     }
   };
 
-  const rejectCurrentProvisionalSpeech = (): void => {
+  const rejectCurrentProvisionalSpeech = (atMs = now()): void => {
     const attemptId = turnAuthority.speechAttemptId;
     if (!attemptId) return;
     applyAuthorityEffects(
-      turnAuthority.rejectProvisionalSpeech(attemptId, now(), "detector"),
+      turnAuthority.rejectProvisionalSpeech(attemptId, atMs, "detector"),
+    );
+  };
+
+  const confirmCurrentProvisionalSpeech = (atMs = now()): void => {
+    const attemptId = turnAuthority.speechAttemptId;
+    if (!attemptId) return;
+    applyAuthorityEffects(
+      turnAuthority.confirmProvisionalSpeech(attemptId, atMs),
     );
   };
 
   const isPlaybackInterruptible = (): boolean =>
     state.phase === "speaking" || playbackMayHaveAudio;
 
-  const beginProvisionalBargeIn = (): void => {
+  const beginProvisionalBargeIn = (atMs = now()): void => {
     const currentPlayback = playback;
     if (
       !provisionalBargeInEnabled ||
@@ -562,7 +570,7 @@ export function createVoiceSessionClient(
     ) {
       return;
     }
-    applyAuthorityEffects(turnAuthority.beginProvisionalSpeech(now()));
+    applyAuthorityEffects(turnAuthority.beginProvisionalSpeech(atMs));
   };
 
   const emitError = (error: Error): void => {
@@ -1082,7 +1090,12 @@ export function createVoiceSessionClient(
         },
         ...(provisionalBargeInEnabled
           ? {
-              onProvisionalSpeechStart: beginProvisionalBargeIn,
+              onProvisionalSpeechStart: (event) =>
+                beginProvisionalBargeIn(event.atMs),
+              onProvisionalSpeechConfirmed: (event) =>
+                confirmCurrentProvisionalSpeech(event.atMs),
+              onProvisionalSpeechEnd: (event) =>
+                rejectCurrentProvisionalSpeech(event.atMs),
               ...(options.provisionalBargeIn?.detector
                 ? {
                     provisionalSpeechStart: options.provisionalBargeIn.detector,

@@ -15,11 +15,19 @@ export interface ProvisionalSpeechStartConfig {
   peakThreshold?: number;
   /** Sustained above-threshold audio required before firing. Default 60ms. */
   minimumSpeechMs?: number;
+  /**
+   * Total sustained above-threshold audio required to confirm local speech.
+   * Default 300ms. This stays below the coordinator's 350ms provisional
+   * deadline so a real continuing utterance cannot briefly resume stale audio
+   * while waiting for a slower provider partial.
+   */
+  confirmationSpeechMs?: number;
   /** Below-threshold audio required before the detector can fire again. Default 120ms. */
   rearmSilenceMs?: number;
 }
 
 export interface ProvisionalSpeechStartEvent {
+  phase: "started" | "confirmed" | "ended";
   atMs: number;
   rms: number;
   peak: number;
@@ -32,6 +40,7 @@ export const DEFAULT_PROVISIONAL_SPEECH_START_CONFIG: Required<ProvisionalSpeech
     rmsThreshold: 0.012,
     peakThreshold: 0.048,
     minimumSpeechMs: 60,
+    confirmationSpeechMs: 300,
     rearmSilenceMs: 120,
   };
 
@@ -48,7 +57,8 @@ export class ProvisionalSpeechStartDetector {
   private readonly config: Required<ProvisionalSpeechStartConfig>;
   private speechMs = 0;
   private silenceMs = 0;
-  private latched = false;
+  private started = false;
+  private confirmed = false;
 
   constructor(config: ProvisionalSpeechStartConfig = {}) {
     this.config = {
@@ -67,34 +77,48 @@ export class ProvisionalSpeechStartDetector {
         config.minimumSpeechMs ??
           DEFAULT_PROVISIONAL_SPEECH_START_CONFIG.minimumSpeechMs,
       ),
+      confirmationSpeechMs: requireFiniteNonNegative(
+        "confirmationSpeechMs",
+        config.confirmationSpeechMs ??
+          DEFAULT_PROVISIONAL_SPEECH_START_CONFIG.confirmationSpeechMs,
+      ),
       rearmSilenceMs: requireFiniteNonNegative(
         "rearmSilenceMs",
         config.rearmSilenceMs ??
           DEFAULT_PROVISIONAL_SPEECH_START_CONFIG.rearmSilenceMs,
       ),
     };
+    if (this.config.confirmationSpeechMs < this.config.minimumSpeechMs) {
+      throw new TypeError(
+        "confirmationSpeechMs must be greater than or equal to minimumSpeechMs",
+      );
+    }
   }
 
   /** Drop all accumulated evidence when playback is not eligible for interruption. */
   reset(): void {
     this.speechMs = 0;
     this.silenceMs = 0;
-    this.latched = false;
+    this.started = false;
+    this.confirmed = false;
   }
 
   /**
-   * Consume one 16 kHz-domain PCM block. Returns one event per speech episode;
-   * sustained speech stays latched until the configured silence window passes.
+   * Consume one 16 kHz-domain PCM block. Returns ordered lifecycle evidence:
+   * start, sustained local confirmation, then end/rearm after real silence.
    */
   push(
     pcm: Float32Array,
     sampleRate: number,
     atMs: number,
-  ): ProvisionalSpeechStartEvent | null {
+  ): readonly ProvisionalSpeechStartEvent[] {
     if (!Number.isFinite(sampleRate) || sampleRate <= 0) {
       throw new TypeError("sampleRate must be a finite positive number");
     }
-    if (pcm.length === 0) return null;
+    if (pcm.length === 0) return [];
+
+    const events: ProvisionalSpeechStartEvent[] = [];
+    const blockDurationMs = (pcm.length / sampleRate) * 1000;
 
     // Browser callback sizes vary widely. Analyze fixed short windows so one
     // click cannot count as the full duration of a 100-250ms callback.
@@ -109,27 +133,43 @@ export class ProvisionalSpeechStartDetector {
       );
       const durationMs = (window.length / sampleRate) * 1000;
       const stats = measurePcmAudio(window);
+      const windowAtMs =
+        atMs - blockDurationMs + ((offset + window.length) / sampleRate) * 1000;
       const aboveThreshold =
         stats.rms >= this.config.rmsThreshold &&
         stats.peak >= this.config.peakThreshold;
 
       if (aboveThreshold) {
         this.silenceMs = 0;
-        if (this.latched) continue;
         this.speechMs += durationMs;
-        if (this.speechMs < this.config.minimumSpeechMs) continue;
-        this.latched = true;
-        return { atMs, ...stats };
+        if (!this.started && this.speechMs >= this.config.minimumSpeechMs) {
+          this.started = true;
+          events.push({ phase: "started", atMs: windowAtMs, ...stats });
+        }
+        if (
+          this.started &&
+          !this.confirmed &&
+          this.speechMs >= this.config.confirmationSpeechMs
+        ) {
+          this.confirmed = true;
+          events.push({ phase: "confirmed", atMs: windowAtMs, ...stats });
+        }
+        continue;
       }
 
-      this.speechMs = 0;
-      if (!this.latched) continue;
+      if (!this.started) {
+        this.speechMs = 0;
+        continue;
+      }
       this.silenceMs += durationMs;
       if (this.silenceMs >= this.config.rearmSilenceMs) {
-        this.latched = false;
+        events.push({ phase: "ended", atMs: windowAtMs, ...stats });
+        this.speechMs = 0;
         this.silenceMs = 0;
+        this.started = false;
+        this.confirmed = false;
       }
     }
-    return null;
+    return events;
   }
 }

@@ -171,6 +171,21 @@ export class VoiceSessionTurnAuthority {
     ]);
   }
 
+  confirmProvisionalSpeech(
+    speechAttemptId: SpeechAttemptId,
+    atMs: number,
+  ): VoiceAuthorityTransition {
+    return this.publish([
+      (state) => ({
+        type: "speech/confirmed",
+        sessionId: state.sessionId,
+        atMs,
+        speechAttemptId,
+        continuation: "auto",
+      }),
+    ]);
+  }
+
   acceptPartialTranscript(
     text: string,
     atMs: number,
