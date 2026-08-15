@@ -146,12 +146,16 @@ describe("gateway webhook handler e2e routing", () => {
     mock.restore();
   });
 
-  test("routes unresolved Twilio identity into the Eliza Cloud onboarding chat", async () => {
+  test("acks before an unresolved phone message enters personal Shared", async () => {
     configureEnv();
     const redis = new MemoryRedis();
     const event = createTwilioEvent();
     const adapter = createAdapter(event);
-    let onboardingBody: Record<string, unknown> | null = null;
+    let sharedBody: Record<string, unknown> | null = null;
+    let resolveShared: ((response: Response) => void) | undefined;
+    const sharedResponse = new Promise<Response>((resolve) => {
+      resolveShared = resolve;
+    });
 
     globalThis.fetch = mock(async (input, init) => {
       const request = new Request(input, init);
@@ -165,21 +169,13 @@ describe("gateway webhook handler e2e routing", () => {
       }
       if (
         request.url ===
-        "https://api.elizacloud.ai/api/eliza-app/onboarding/chat"
+        "https://api.elizacloud.ai/api/internal/eliza-app/personal-shared/messages"
       ) {
         expect(request.headers.get("authorization")).toBe(
           "Bearer internal-secret",
         );
-        onboardingBody = (await request.json()) as Record<string, unknown>;
-        return new Response(
-          JSON.stringify({
-            success: true,
-            data: {
-              reply: "onboarding reply with control-panel action metadata",
-            },
-          }),
-          { status: 200, headers: { "content-type": "application/json" } },
-        );
+        sharedBody = (await request.json()) as Record<string, unknown>;
+        return sharedResponse;
       }
       throw new Error(`Unexpected fetch: ${request.url}`);
     }) as typeof fetch;
@@ -197,18 +193,90 @@ describe("gateway webhook handler e2e routing", () => {
 
     expect(response.status).toBe(200);
     expect(response.headers.get("content-type")).toContain("text/xml");
-    await waitFor(() => adapter.replies.length === 1, "onboarding reply");
-    expect(adapter.replies).toEqual([
-      "onboarding reply with control-panel action metadata",
-    ]);
-    expect(onboardingBody).toMatchObject({
-      sessionId: "platform:twilio:+15551234567",
+    expect(adapter.replies).toEqual([]);
+    await waitFor(() => sharedBody !== null, "personal Shared request");
+    expect(sharedBody).toEqual({
       message: "My name is Ada",
       platform: "twilio",
-      platformUserId: "+15551234567",
-      platformDisplayName: "Ada",
-      platformReplyAddress: "+15550000000",
+      phoneNumber: "+15551234567",
+      messageId: `twilio:eliza-app:${event.messageId}`,
     });
+    resolveShared?.(
+      new Response(JSON.stringify({ data: { reply: "same personal Eliza" } }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    await waitFor(() => adapter.replies.length === 1, "personal Shared reply");
+    expect(adapter.replies).toEqual(["same personal Eliza"]);
+  });
+
+  test("routes an unresolved Blooio iMessage to the same phone Shared path", async () => {
+    const redis = new MemoryRedis();
+    const event: ChatEvent = {
+      platform: "blooio",
+      messageId: "blooio-message-1",
+      chatId: "+15551234567",
+      channelType: "blooio",
+      protocol: "imessage",
+      senderId: "+15551234567",
+      senderName: "Ada",
+      text: "hello from iMessage",
+      rawPayload: {},
+    };
+    const replies: string[] = [];
+    const adapter: PlatformAdapter = {
+      platform: "blooio",
+      verifyWebhook: mock(async () => true),
+      extractEvent: mock(async () => event),
+      sendTypingIndicator: mock(async () => undefined),
+      sendReply: mock(async (_config, _event, reply) => {
+        replies.push(reply);
+      }),
+    };
+    let sharedBody: Record<string, unknown> | null = null;
+    globalThis.fetch = mock(async (input, init) => {
+      const request = new Request(input, init);
+      if (request.url.endsWith("/api/internal/identity/resolve")) {
+        return new Response(JSON.stringify({ success: false }), {
+          status: 404,
+        });
+      }
+      if (
+        request.url.endsWith("/api/internal/eliza-app/personal-shared/messages")
+      ) {
+        sharedBody = (await request.json()) as Record<string, unknown>;
+        return new Response(
+          JSON.stringify({ data: { reply: "hello from personal Eliza" } }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      }
+      throw new Error(`Unexpected fetch: ${request.url}`);
+    }) as typeof fetch;
+
+    const response = await handleWebhook(
+      new Request("https://gateway.example/webhook/eliza-app/blooio", {
+        method: "POST",
+        body: "{}",
+      }),
+      adapter,
+      {
+        redis,
+        cloudBaseUrl: "https://api.elizacloud.ai",
+        getAuthHeader: () => ({ Authorization: "Bearer internal-secret" }),
+      },
+      "eliza-app",
+    );
+
+    expect(response.status).toBe(200);
+    await waitFor(() => replies.length === 1, "Blooio personal Shared reply");
+    expect(sharedBody).toEqual({
+      platform: "blooio",
+      phoneNumber: "+15551234567",
+      messageId: "blooio:eliza-app:blooio-message-1",
+      message: "hello from iMessage",
+    });
+    expect(replies).toEqual(["hello from personal Eliza"]);
   });
 
   test("refuses Telegram egress when another worker atomically claimed delivery", async () => {
@@ -244,19 +312,9 @@ describe("gateway webhook handler e2e routing", () => {
       }
     }
     const redis = new EgressContendedRedis();
-    redis.store.set(
-      "identity:telegram:sender-1",
-      JSON.stringify({
-        userId: "user-1",
-        organizationId: "org-1",
-        agentId: "agent-1",
-      }),
-    );
-    redis.store.set("agent:agent-1:server", "server-1");
-    redis.store.set("server:server-1:url", "http://agent-server.local");
     globalThis.fetch = mock(
       async () =>
-        new Response(JSON.stringify({ response: "agent reply" }), {
+        new Response(JSON.stringify({ data: { reply: "agent reply" } }), {
           status: 200,
           headers: { "content-type": "application/json" },
         }),
@@ -309,14 +367,14 @@ describe("gateway webhook handler e2e routing", () => {
       "identity:telegram:sender-1",
       JSON.stringify({ notFound: true }),
     );
-    let onboardingAttempts = 0;
+    let sharedAttempts = 0;
     globalThis.fetch = mock(async () => {
-      onboardingAttempts += 1;
-      if (onboardingAttempts === 1) {
+      sharedAttempts += 1;
+      if (sharedAttempts <= 3) {
         return new Response("temporarily unavailable", { status: 503 });
       }
       return new Response(
-        JSON.stringify({ data: { reply: "onboarding reply" } }),
+        JSON.stringify({ data: { reply: "personal Shared reply" } }),
         { status: 200, headers: { "content-type": "application/json" } },
       );
     }) as typeof fetch;
@@ -335,7 +393,7 @@ describe("gateway webhook handler e2e routing", () => {
 
     await expect(
       handleWebhook(request(), adapter, deps, "eliza-app"),
-    ).rejects.toThrow(/onboarding chat failed \(503\)/);
+    ).rejects.toThrow(/personal Shared chat failed \(503\)/);
     expect(redis.store.has(processingKey)).toBe(false);
 
     const retry = await handleWebhook(request(), adapter, deps, "eliza-app");
@@ -344,15 +402,89 @@ describe("gateway webhook handler e2e routing", () => {
     expect(redis.store.has(processingKey)).toBe(true);
   });
 
-  test("retries onboarding once with fresh auth and the same idempotency key", async () => {
+  test("routes an unlinked Telegram DM to rowless personal Shared", async () => {
+    process.env.ELIZA_APP_TELEGRAM_BOT_TOKEN = "telegram-test-token";
+    const event: ChatEvent = {
+      platform: "telegram",
+      messageId: "update-personal-1",
+      chatId: "chat-1",
+      chatType: "private",
+      senderId: "123456789",
+      senderName: "Ada",
+      text: "what should I focus on today?",
+      rawPayload: {},
+    };
+    const sendReply = mock(async () => undefined);
+    const adapter: PlatformAdapter = {
+      platform: "telegram",
+      getDedupeScope: () => "scope",
+      verifyWebhook: mock(async () => true),
+      extractEvent: mock(async () => event),
+      sendTypingIndicator: mock(async () => undefined),
+      sendReply,
+    };
+    const redis = new MemoryRedis();
+    let sharedBody: Record<string, unknown> | null = null;
+    globalThis.fetch = mock(async (input, init) => {
+      const url = String(input);
+      if (url.endsWith("/api/internal/identity/resolve")) {
+        return new Response(JSON.stringify({ error: "not found" }), {
+          status: 404,
+        });
+      }
+      if (url.endsWith("/api/internal/eliza-app/personal-shared/messages")) {
+        sharedBody = JSON.parse(String(init?.body)) as Record<string, unknown>;
+        return new Response(
+          JSON.stringify({
+            data: { reply: "start with the launch checklist" },
+          }),
+          {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          },
+        );
+      }
+      throw new Error(`unexpected request: ${url}`);
+    }) as typeof fetch;
+
+    const response = await handleWebhook(
+      new Request("https://gateway.example/webhook/eliza-app/telegram", {
+        method: "POST",
+        body: "{}",
+      }),
+      adapter,
+      {
+        redis,
+        cloudBaseUrl: "https://api.elizacloud.ai",
+        getAuthHeader: () => ({ Authorization: "Bearer internal-secret" }),
+      },
+      "eliza-app",
+    );
+
+    expect(response.status).toBe(200);
+    expect(sharedBody).toEqual({
+      platform: "telegram",
+      telegramUserId: "123456789",
+      displayName: "Ada",
+      messageId: "telegram:eliza-app:update-personal-1",
+      message: "what should I focus on today?",
+    });
+    expect(sendReply).toHaveBeenCalledWith(
+      expect.anything(),
+      event,
+      "start with the launch checklist",
+    );
+  });
+
+  test("retries personal Shared with fresh auth and the same message id", async () => {
     configureEnv();
     const redis = new MemoryRedis();
     const event = createTwilioEvent({ messageId: "SM_onboarding_retry" });
     const adapter = createAdapter(event);
     const reauth = mock(async () => ({ Authorization: "Bearer fresh" }));
-    const onboardingRequests: Array<{
+    const personalRequests: Array<{
       authorization: string | null;
-      idempotencyKey: string | null;
+      messageId: unknown;
     }> = [];
 
     globalThis.fetch = mock(async (input, init) => {
@@ -367,13 +499,14 @@ describe("gateway webhook handler e2e routing", () => {
       }
       if (
         request.url ===
-        "https://api.elizacloud.ai/api/eliza-app/onboarding/chat"
+        "https://api.elizacloud.ai/api/internal/eliza-app/personal-shared/messages"
       ) {
-        onboardingRequests.push({
+        const body = (await request.json()) as Record<string, unknown>;
+        personalRequests.push({
           authorization: request.headers.get("authorization"),
-          idempotencyKey: request.headers.get("idempotency-key"),
+          messageId: body.messageId,
         });
-        if (onboardingRequests.length === 1) {
+        if (personalRequests.length === 1) {
           return new Response("unauthorized", { status: 401 });
         }
         return new Response(
@@ -399,59 +532,44 @@ describe("gateway webhook handler e2e routing", () => {
     expect(response.status).toBe(200);
     await waitFor(
       () => adapter.replies.length === 1,
-      "retried onboarding reply",
+      "retried personal Shared reply",
     );
     expect(reauth).toHaveBeenCalledTimes(1);
-    expect(onboardingRequests).toEqual([
+    expect(personalRequests).toEqual([
       {
         authorization: "Bearer stale",
-        idempotencyKey: event.messageId,
+        messageId: `twilio:eliza-app:${event.messageId}`,
       },
       {
         authorization: "Bearer fresh",
-        idempotencyKey: event.messageId,
+        messageId: `twilio:eliza-app:${event.messageId}`,
       },
     ]);
     expect(adapter.replies).toEqual(["fresh-token reply"]);
   });
 
-  test("routes linked Twilio identity to the running agent server and sends the agent reply", async () => {
+  test("routes linked Twilio through the canonical personal conversation", async () => {
     configureEnv();
     const redis = new MemoryRedis();
-    redis.store.set("agent:agent-1:server", "server-1");
-    redis.store.set("server:server-1:url", "http://agent-server.local");
     const event = createTwilioEvent({
       messageId: "SM_linked_1",
       text: "Are you running?",
     });
     const adapter = createAdapter(event);
-    let forwardedBody: Record<string, unknown> | null = null;
+    let personalBody: Record<string, unknown> | null = null;
 
     globalThis.fetch = mock(async (input, init) => {
       const request = new Request(input, init);
       if (
         request.url ===
-        "https://api.elizacloud.ai/api/internal/identity/resolve"
+        "https://api.elizacloud.ai/api/internal/eliza-app/personal-shared/messages"
       ) {
+        personalBody = (await request.json()) as Record<string, unknown>;
         return new Response(
           JSON.stringify({
-            success: true,
-            data: {
-              user: { id: "user-1", organizationId: "org-1" },
-              agent: { id: "agent-1" },
-            },
+            data: { reply: "agent reply: container is running" },
           }),
           { status: 200, headers: { "content-type": "application/json" } },
-        );
-      }
-      if (request.url === "http://agent-server.local/agents/agent-1/message") {
-        forwardedBody = (await request.json()) as Record<string, unknown>;
-        return new Response(
-          JSON.stringify({ response: "agent reply: container is running" }),
-          {
-            status: 200,
-            headers: { "content-type": "application/json" },
-          },
         );
       }
       throw new Error(`Unexpected fetch: ${request.url}`);
@@ -472,12 +590,11 @@ describe("gateway webhook handler e2e routing", () => {
     await waitFor(() => adapter.replies.length === 1, "agent reply");
     expect(adapter.typingCount).toBe(1);
     expect(adapter.replies).toEqual(["agent reply: container is running"]);
-    expect(forwardedBody).toMatchObject({
-      userId: "user-1",
-      text: "Are you running?",
-      platformName: "twilio",
-      senderName: "Ada",
-      chatId: "+15551234567",
+    expect(personalBody).toEqual({
+      platform: "twilio",
+      phoneNumber: "+15551234567",
+      messageId: "twilio:eliza-app:SM_linked_1",
+      message: "Are you running?",
     });
   });
 
@@ -491,8 +608,6 @@ describe("gateway webhook handler e2e routing", () => {
     // no reply is sent and no error is raised.
     configureEnv();
     const redis = new MemoryRedis();
-    redis.store.set("agent:agent-1:server", "server-1");
-    redis.store.set("server:server-1:url", "http://agent-server.local");
     const event = createTwilioEvent({
       messageId: "SM_silent_1",
       text: "(a message the agent chooses not to answer)",
@@ -503,21 +618,9 @@ describe("gateway webhook handler e2e routing", () => {
       const request = new Request(input, init);
       if (
         request.url ===
-        "https://api.elizacloud.ai/api/internal/identity/resolve"
+        "https://api.elizacloud.ai/api/internal/eliza-app/personal-shared/messages"
       ) {
-        return new Response(
-          JSON.stringify({
-            success: true,
-            data: {
-              user: { id: "user-1", organizationId: "org-1" },
-              agent: { id: "agent-1" },
-            },
-          }),
-          { status: 200, headers: { "content-type": "application/json" } },
-        );
-      }
-      if (request.url === "http://agent-server.local/agents/agent-1/message") {
-        return new Response(JSON.stringify({ response: "" }), {
+        return new Response(JSON.stringify({ data: { reply: "" } }), {
           status: 200,
           headers: { "content-type": "application/json" },
         });
@@ -542,12 +645,12 @@ describe("gateway webhook handler e2e routing", () => {
     expect(adapter.replies).toEqual([]);
   });
 
-  test("routes a linked user whose agent is still provisioning to onboarding", async () => {
+  test("keeps a linked user on personal Shared while Dedicated is provisioning", async () => {
     // Identity resolve returns a real user with `agent: null` while the
     // provisioning job is still in flight. Previously resolveIdentity threw on
     // the missing agentId, which aborted processMessage and dropped the user's
-    // message with no reply at all. The user must instead get the onboarding
-    // worker's provisioning status, and must NOT be routed to the project
+    // message with no reply at all. The user must instead retain the personal
+    // Shared identity, and must NOT be routed to the project
     // default agent (a runtime that belongs to nobody in particular).
     configureEnv();
     const redis = new MemoryRedis();
@@ -556,7 +659,7 @@ describe("gateway webhook handler e2e routing", () => {
       text: "is my agent ready?",
     });
     const adapter = createAdapter(event);
-    let onboardingBody: Record<string, unknown> | null = null;
+    let sharedBody: Record<string, unknown> | null = null;
 
     globalThis.fetch = mock(async (input, init) => {
       const request = new Request(input, init);
@@ -580,13 +683,13 @@ describe("gateway webhook handler e2e routing", () => {
       }
       if (
         request.url ===
-        "https://api.elizacloud.ai/api/eliza-app/onboarding/chat"
+        "https://api.elizacloud.ai/api/internal/eliza-app/personal-shared/messages"
       ) {
-        onboardingBody = (await request.json()) as Record<string, unknown>;
+        sharedBody = (await request.json()) as Record<string, unknown>;
         return new Response(
           JSON.stringify({
             success: true,
-            data: { reply: "still setting up your agent, one moment" },
+            data: { reply: "I am still here while Dedicated starts." },
           }),
           { status: 200, headers: { "content-type": "application/json" } },
         );
@@ -606,25 +709,26 @@ describe("gateway webhook handler e2e routing", () => {
     );
 
     expect(response.status).toBe(200);
-    await waitFor(() => adapter.replies.length === 1, "provisioning reply");
+    await waitFor(() => adapter.replies.length === 1, "personal Shared reply");
     expect(adapter.replies).toEqual([
-      "still setting up your agent, one moment",
+      "I am still here while Dedicated starts.",
     ]);
-    expect(onboardingBody).toMatchObject({
-      sessionId: "platform:twilio:+15551234567",
+    expect(sharedBody).toMatchObject({
       platform: "twilio",
-      platformUserId: "+15551234567",
+      phoneNumber: "+15551234567",
+      messageId: "twilio:eliza-app:SM_provisioning_1",
     });
   });
 
-  test("re-resolves an unresolved identity on the next message", async () => {
-    // A sender can finish browser onboarding between two provider messages, so
-    // an unresolved result must not hide the completed link from the next turn.
+  test("leaves account identity resolution to the canonical personal route", async () => {
+    // The API resolves the latest phone/account link transactionally. Gateway
+    // identity caching would let a newly linked sender fork back onto a stale
+    // generic-agent room between provider messages.
     configureEnv();
     const redis = new MemoryRedis();
     const event = createTwilioEvent({ messageId: "SM_negcache_1" });
     const adapter = createAdapter(event);
-    let resolveCalls = 0;
+    let personalCalls = 0;
 
     globalThis.fetch = mock(async (input, init) => {
       const request = new Request(input, init);
@@ -632,15 +736,15 @@ describe("gateway webhook handler e2e routing", () => {
         request.url ===
         "https://api.elizacloud.ai/api/internal/identity/resolve"
       ) {
-        resolveCalls += 1;
-        return new Response(JSON.stringify({ success: false }), {
-          status: 404,
-        });
+        throw new Error(
+          "account transports must not use generic identity routing",
+        );
       }
       if (
         request.url ===
-        "https://api.elizacloud.ai/api/eliza-app/onboarding/chat"
+        "https://api.elizacloud.ai/api/internal/eliza-app/personal-shared/messages"
       ) {
+        personalCalls += 1;
         return new Response(
           JSON.stringify({ success: true, data: { reply: "hi there" } }),
           { status: 200, headers: { "content-type": "application/json" } },
@@ -659,11 +763,10 @@ describe("gateway webhook handler e2e routing", () => {
       },
       "eliza-app",
     );
-    await waitFor(() => adapter.replies.length === 1, "first onboarding reply");
+    await waitFor(() => adapter.replies.length === 1, "first personal reply");
 
-    // A second inbound message re-queries even while the sender is still
-    // unlinked; if browser onboarding completed between these messages, this
-    // request would observe the new account and route it immediately.
+    // A second inbound message reaches the same canonical endpoint, where a
+    // just-completed account link is visible without gateway cache invalidation.
     const second = createTwilioEvent({ messageId: "SM_negcache_2" });
     const secondAdapter = createAdapter(second);
     await handleWebhook(
@@ -678,14 +781,14 @@ describe("gateway webhook handler e2e routing", () => {
     );
     await waitFor(
       () => secondAdapter.replies.length === 1,
-      "second onboarding reply",
+      "second personal reply",
     );
 
-    expect(resolveCalls).toBe(2);
+    expect(personalCalls).toBe(2);
     expect(redis.store.has("identity:twilio:+15551234567")).toBe(false);
   });
 
-  test("routes to onboarding when the owned agent has no registered server", async () => {
+  test("uses personal Shared when the owned agent has no registered server", async () => {
     // A sandbox row exists from the moment provisioning starts, but
     // `agent:<id>:server` only appears once a container has booted. Between the
     // two, routing on the row alone logs and returns — silence for the whole
@@ -716,7 +819,7 @@ describe("gateway webhook handler e2e routing", () => {
       }
       if (
         request.url ===
-        "https://api.elizacloud.ai/api/eliza-app/onboarding/chat"
+        "https://api.elizacloud.ai/api/internal/eliza-app/personal-shared/messages"
       ) {
         return new Response(
           JSON.stringify({
@@ -740,16 +843,14 @@ describe("gateway webhook handler e2e routing", () => {
       "eliza-app",
     );
 
-    await waitFor(() => adapter.replies.length === 1, "onboarding reply");
+    await waitFor(() => adapter.replies.length === 1, "personal Shared reply");
     expect(adapter.replies).toEqual(["Still starting up, Ada."]);
   });
 
-  test("stays silent rather than onboarding when an established agent's pod is down", async () => {
-    // `agent:<id>:server` lives 30 days; `server:<name>:url` is heartbeat-backed
-    // and expires after 120s. Routing key present + URL gone means an agent that
-    // HAS booted whose pod is now down or scaled to zero. Onboarding that owner
-    // would answer "you're live" while the message goes nowhere, and copy the
-    // transcript into their agent's memory again.
+  test("retries a waking Dedicated target without reopening Shared", async () => {
+    // The canonical API owns wake/resume and returns a retryable status while
+    // preserving the Dedicated marker. Gateway must never synthesize a Shared
+    // onboarding reply for that established account.
     configureEnv();
     const redis = new MemoryRedis();
     redis.store.set("agent:agent-7:server", "server-7");
@@ -758,32 +859,21 @@ describe("gateway webhook handler e2e routing", () => {
       text: "Are you there?",
     });
     const adapter = createAdapter(event);
-    let onboardingCalls = 0;
+    let personalCalls = 0;
 
     globalThis.fetch = mock(async (input, init) => {
       const request = new Request(input, init);
       if (
         request.url ===
-        "https://api.elizacloud.ai/api/internal/identity/resolve"
+        "https://api.elizacloud.ai/api/internal/eliza-app/personal-shared/messages"
       ) {
-        return new Response(
-          JSON.stringify({
-            success: true,
-            userId: "user-7",
-            organizationId: "org-7",
-            agentId: "agent-7",
-          }),
-          { status: 200, headers: { "content-type": "application/json" } },
-        );
-      }
-      if (
-        request.url ===
-        "https://api.elizacloud.ai/api/eliza-app/onboarding/chat"
-      ) {
-        onboardingCalls += 1;
-        return new Response(JSON.stringify({ success: true, data: {} }), {
-          status: 200,
-          headers: { "content-type": "application/json" },
+        personalCalls += 1;
+        return new Response(JSON.stringify({ code: "dedicated_starting" }), {
+          status: 503,
+          headers: {
+            "content-type": "application/json",
+            "Retry-After": "0",
+          },
         });
       }
       throw new Error(`Unexpected fetch: ${request.url}`);
@@ -801,7 +891,7 @@ describe("gateway webhook handler e2e routing", () => {
     );
 
     await new Promise((resolve) => setTimeout(resolve, 200));
-    expect(onboardingCalls).toBe(0);
+    expect(personalCalls).toBe(3);
     expect(adapter.replies).toEqual([]);
   });
 
@@ -854,7 +944,7 @@ describe("gateway webhook handler e2e routing", () => {
       }
       if (
         request.url ===
-        "https://api.elizacloud.ai/api/eliza-app/onboarding/chat"
+        "https://api.elizacloud.ai/api/internal/eliza-app/personal-shared/messages"
       ) {
         onboardingCalls += 1;
         return new Response(JSON.stringify({ success: true, data: {} }), {
@@ -939,7 +1029,7 @@ describe("gateway webhook handler e2e routing", () => {
       }
       if (
         request.url ===
-        "https://api.elizacloud.ai/api/eliza-app/onboarding/chat"
+        "https://api.elizacloud.ai/api/internal/eliza-app/personal-shared/messages"
       ) {
         onboardingCalls += 1;
         return new Response(JSON.stringify({ success: true, data: {} }), {

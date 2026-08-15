@@ -34,6 +34,8 @@
  */
 
 import crypto from "node:crypto";
+
+import { parseCanonicalInt } from "./cli-numbers.mjs";
 import { resolveTestSerialPackages } from "./script-metadata.mjs";
 
 /**
@@ -126,9 +128,15 @@ export async function runPool(items, worker, concurrency) {
   return results;
 }
 
+/** Upper bound for --concurrency / TEST_CONCURRENCY; matches the widest task
+ * fan-out any repository lane benefits from before workers starve each other. */
+export const MAX_TASK_CONCURRENCY = 32;
+
 /**
  * Normalise a requested concurrency value (CLI flag or env var) into a positive
- * integer, defaulting to 1 (fully serial — the historical behaviour).
+ * integer, defaulting to 1 (fully serial — the historical behaviour) only when
+ * the value is absent. A present-but-malformed value throws instead of
+ * degrading to serial: "1e3" and "8abc" used to silently become 1 and 8.
  *
  * @param {string | number | undefined | null} value
  * @returns {number}
@@ -137,12 +145,10 @@ export function normalizeConcurrency(value) {
   if (value === undefined || value === null || value === "") {
     return 1;
   }
-  const parsed =
-    typeof value === "number" ? value : Number.parseInt(String(value), 10);
-  if (!Number.isFinite(parsed) || parsed < 1) {
-    return 1;
-  }
-  return Math.trunc(parsed);
+  return parseCanonicalInt(value, "concurrency", {
+    min: 1,
+    max: MAX_TASK_CONCURRENCY,
+  });
 }
 
 /**

@@ -179,7 +179,11 @@ import type {
 import type { ResponseHandlerFieldSelectionOptions } from "../runtime/response-handler-field-registry";
 import type { RoomHandlerLease } from "../runtime/room-handler-queue";
 import type { ShortcutRegistry } from "../runtime/shortcut-registry";
-import { actionHasSubActions, runSubPlanner } from "../runtime/sub-planner";
+import {
+	actionHasSubActions,
+	runSubPlanner,
+	subPlannerCallDigest,
+} from "../runtime/sub-planner";
 import { buildCanonicalSystemPrompt } from "../runtime/system-prompt";
 import { resolveTraceCorrelationFromEnv } from "../runtime/trace-correlation";
 import {
@@ -1387,6 +1391,38 @@ type MediaWithInlineData = Media & {
  */
 const ATTACHMENT_FETCH_MAX_BYTES = 50 * 1024 * 1024;
 
+/** Aggregate bytes admitted to enrichment for one message turn. */
+const ATTACHMENT_TURN_MAX_BYTES = 100 * 1024 * 1024;
+
+type AttachmentByteBudget = { remaining: number };
+
+function attachmentFailure(
+	phase: NonNullable<Media["enrichmentFailure"]>["phase"],
+	code: NonNullable<Media["enrichmentFailure"]>["code"],
+	retryable: boolean,
+	message: string,
+): Pick<Media, "notProcessed" | "enrichmentFailure"> {
+	return {
+		notProcessed: message,
+		enrichmentFailure: { phase, code, retryable },
+	};
+}
+
+function sanitizedAttachmentDiagnostic(
+	code: string,
+	message: string,
+	attachment: Media,
+): ElizaError {
+	return new ElizaError(message, {
+		code,
+		severity: "ephemeral",
+		context: {
+			attachmentId: attachment.id,
+			contentType: attachment.contentType,
+		},
+	});
+}
+
 function sanitizeAttachmentsForStorage(
 	attachments: Media[] | undefined,
 ): Media[] | undefined {
@@ -1848,7 +1884,7 @@ export function preservedSettledToolResult(
 ): (PlannerToolResult & { userFacingText: string }) | undefined {
 	for (let index = settled.length - 1; index >= 0; index--) {
 		const entry = settled[index];
-		if (!entry || entry.result.success !== true) continue;
+		if (entry?.result.success !== true) continue;
 		if (isTerminalPlannerToolName(entry.name)) continue;
 		const candidate = entry.result.userFacingText?.trim();
 		if (!candidate) continue;
@@ -6411,6 +6447,8 @@ function plannerToolCallHasActionParameter(toolCall: PlannerToolCall): boolean {
 interface SubPlannerSubStep {
 	action: string;
 	success: boolean;
+	callDigest: string;
+	retryable: boolean;
 	summary?: string;
 	internalTranscriptText?: string;
 	error?: string;
@@ -6446,6 +6484,8 @@ function collectSubPlannerSubSteps(
 		subSteps.push({
 			action: step.toolCall.name,
 			success: result.success,
+			callDigest: subPlannerCallDigest(step.toolCall),
+			retryable: result.data?.retryable !== false,
 			...(summarySource ? { summary: truncateSubStepText(summarySource) } : {}),
 			...(result.transcriptVisibility === "internal" &&
 			typeof result.text === "string"
@@ -11559,14 +11599,12 @@ export class DefaultMessageService implements IMessageService {
 								}
 							: opts.abortSignal
 								? {
-										// No stream callback but caller provided an abort
-										// signal — install a no-op chunk handler so the
-										// streaming-context plumbing carries the signal
-										// down into `runtime.useModel`. The runtime never
-										// invokes onStreamChunk when no streaming is happening.
-										onStreamChunk: async () => undefined,
+										// Cancellation-only contexts deliberately omit a chunk
+										// consumer. `useModel` treats a present consumer as the
+										// request to use its streaming transport and parser.
 										messageId: responseId,
 										abortSignal: opts.abortSignal,
+										reportError: runtime.reportError.bind(runtime),
 									}
 								: undefined;
 					const processingPromise = runtime.turnControllers.runWith(
@@ -11584,7 +11622,6 @@ export class DefaultMessageService implements IMessageService {
 										}
 									: abortSignal
 										? {
-												onStreamChunk: async () => undefined,
 												messageId: responseId,
 												abortSignal,
 												reportError: runtime.reportError.bind(runtime),
@@ -13274,8 +13311,15 @@ export class DefaultMessageService implements IMessageService {
 			"Processing attachments",
 		);
 
-		const processedAttachments = await Promise.all(
-			attachments.map(async (attachment) => {
+		const processedAttachments: Media[] = [];
+		const byteBudget: AttachmentByteBudget = {
+			remaining: ATTACHMENT_TURN_MAX_BYTES,
+		};
+		// Enrichment is deliberately ordered. In particular, transcription models
+		// are often backed by one local GPU/process; launching an attacker-sized
+		// attachment array concurrently caused memory spikes and provider storms.
+		for (const attachment of attachments) {
+			const processed = await (async () => {
 				const processedAttachment: Media = { ...attachment };
 
 				const isRemote = /^(http|https):\/\//.test(attachment.url);
@@ -13323,6 +13367,8 @@ export class DefaultMessageService implements IMessageService {
 								attachment.url,
 								url,
 								isRemote,
+								byteBudget,
+								attachment.size,
 							);
 							imageUrl = `data:${contentType};base64,${buffer.toString("base64")}`;
 						}
@@ -13369,6 +13415,8 @@ export class DefaultMessageService implements IMessageService {
 							attachment.url,
 							url,
 							isRemote,
+							byteBudget,
+							attachment.size,
 						);
 						// Any text/* document (plain, csv, markdown) and application/json —
 						// all on the chat upload allow-list — is readable as UTF-8 text;
@@ -13419,7 +13467,15 @@ export class DefaultMessageService implements IMessageService {
 								"Extracted PDF text content",
 							);
 						} else {
-							processedAttachment.notProcessed = `Unsupported document type (${contentType}); stored but text not extracted`;
+							Object.assign(
+								processedAttachment,
+								attachmentFailure(
+									"extract",
+									"unsupported_type",
+									false,
+									`Unsupported document type (${contentType}); stored but text not extracted`,
+								),
+							);
 							runtime.logger.warn(
 								{ src: "service:message", contentType },
 								"Skipping unsupported document type",
@@ -13443,6 +13499,8 @@ export class DefaultMessageService implements IMessageService {
 								attachment.url,
 								url,
 								isRemote,
+								byteBudget,
+								attachment.size,
 							);
 
 							const transcript = await runtime.useModel(
@@ -13467,8 +13525,15 @@ export class DefaultMessageService implements IMessageService {
 									"Transcribed audio attachment",
 								);
 							} else {
-								processedAttachment.notProcessed =
-									"Audio transcription returned no text (empty or no speech detected)";
+								Object.assign(
+									processedAttachment,
+									attachmentFailure(
+										"transcribe",
+										"empty_result",
+										false,
+										"Audio transcription returned no text (empty or no speech detected)",
+									),
+								);
 							}
 						} catch (err) {
 							// error-policy:J4 The attachment remains available with an
@@ -13478,17 +13543,41 @@ export class DefaultMessageService implements IMessageService {
 							// the "transcription unavailable" marker is reserved for genuine
 							// provider failures because the read action treats it as
 							// STT-is-disabled evidence.
-							processedAttachment.notProcessed =
+							Object.assign(
+								processedAttachment,
 								err instanceof Error && err.name === "MediaFetchError"
-									? `Audio attachment could not be fetched: ${err.message}`
-									: `Audio transcription unavailable: ${err instanceof Error ? err.message : String(err)}`;
+									? attachmentFailure(
+											err.message.includes("turn byte budget")
+												? "budget"
+												: "fetch",
+											err.message.includes("turn byte budget")
+												? "byte_limit"
+												: "unavailable",
+											true,
+											"Audio attachment could not be fetched for enrichment",
+										)
+									: attachmentFailure(
+											"transcribe",
+											"unavailable",
+											true,
+											"Audio transcription unavailable",
+										),
+							);
 							runtime.logger.warn(
-								{ src: "service:message", err },
+								{
+									src: "service:message",
+									errorName: err instanceof Error ? err.name : "UnknownError",
+								},
 								"Audio transcription failed, continuing without transcript",
 							);
-							runtime.reportError("MessageService.audioTranscription", err, {
-								url: attachment.url,
-							});
+							runtime.reportError(
+								"MessageService.audioTranscription",
+								sanitizedAttachmentDiagnostic(
+									"ATTACHMENT_AUDIO_TRANSCRIPTION_FAILED",
+									"Audio attachment enrichment failed",
+									attachment,
+								),
+							);
 						}
 					} else if (
 						attachment.contentType === ContentType.VIDEO &&
@@ -13508,6 +13597,8 @@ export class DefaultMessageService implements IMessageService {
 								attachment.url,
 								url,
 								isRemote,
+								byteBudget,
+								attachment.size,
 							);
 
 							const transcript = await runtime.useModel(
@@ -13532,8 +13623,15 @@ export class DefaultMessageService implements IMessageService {
 									"Transcribed video attachment",
 								);
 							} else {
-								processedAttachment.notProcessed =
-									"Video transcription returned no text (empty or no speech detected)";
+								Object.assign(
+									processedAttachment,
+									attachmentFailure(
+										"transcribe",
+										"empty_result",
+										false,
+										"Video transcription returned no text (empty or no speech detected)",
+									),
+								);
 							}
 						} catch (err) {
 							// error-policy:J4 The attachment remains available with an
@@ -13543,17 +13641,41 @@ export class DefaultMessageService implements IMessageService {
 							// the "transcription unavailable" marker is reserved for genuine
 							// provider failures because the read action treats it as
 							// STT-is-disabled evidence.
-							processedAttachment.notProcessed =
+							Object.assign(
+								processedAttachment,
 								err instanceof Error && err.name === "MediaFetchError"
-									? `Video attachment could not be fetched: ${err.message}`
-									: `Video transcription unavailable: ${err instanceof Error ? err.message : String(err)}`;
+									? attachmentFailure(
+											err.message.includes("turn byte budget")
+												? "budget"
+												: "fetch",
+											err.message.includes("turn byte budget")
+												? "byte_limit"
+												: "unavailable",
+											true,
+											"Video attachment could not be fetched for enrichment",
+										)
+									: attachmentFailure(
+											"transcribe",
+											"unavailable",
+											true,
+											"Video transcription unavailable",
+										),
+							);
 							runtime.logger.warn(
-								{ src: "service:message", err },
+								{
+									src: "service:message",
+									errorName: err instanceof Error ? err.name : "UnknownError",
+								},
 								"Video transcription failed, continuing without transcript",
 							);
-							runtime.reportError("MessageService.videoTranscription", err, {
-								url: attachment.url,
-							});
+							runtime.reportError(
+								"MessageService.videoTranscription",
+								sanitizedAttachmentDiagnostic(
+									"ATTACHMENT_VIDEO_TRANSCRIPTION_FAILED",
+									"Video attachment enrichment failed",
+									attachment,
+								),
+							);
 						}
 					}
 
@@ -13565,19 +13687,35 @@ export class DefaultMessageService implements IMessageService {
 					// Degrade to the un-enriched attachment (marking remote ones
 					// ephemeral so the UI can offer a retry) and keep processing.
 					runtime.logger.warn(
-						{ src: "service:message", url: attachment.url, err },
+						{
+							src: "service:message",
+							attachmentId: attachment.id,
+							errorName: err instanceof Error ? err.name : "UnknownError",
+						},
 						"Attachment processing failed; keeping un-enriched attachment",
 					);
-					runtime.reportError("MessageService.attachmentEnrichment", err, {
-						url: attachment.url,
-					});
+					runtime.reportError(
+						"MessageService.attachmentEnrichment",
+						sanitizedAttachmentDiagnostic(
+							"ATTACHMENT_ENRICHMENT_FAILED",
+							"Attachment enrichment failed",
+							attachment,
+						),
+					);
 					return {
 						...attachment,
+						...attachmentFailure(
+							"extract",
+							"unavailable",
+							true,
+							"Attachment enrichment unavailable",
+						),
 						ephemeral: isRemote ? true : attachment.ephemeral,
 					};
 				}
-			}),
-		);
+			})();
+			processedAttachments.push(processed);
+		}
 
 		return processedAttachments;
 	}
@@ -13601,12 +13739,34 @@ export class DefaultMessageService implements IMessageService {
 		rawUrl: string,
 		resolvedLocalUrl: string,
 		isRemote: boolean,
+		budget: AttachmentByteBudget,
+		expectedBytes?: number,
 	): Promise<{ buffer: Buffer; contentType: string }> {
+		if (budget.remaining <= 0) {
+			throw new MediaFetchError(
+				"max_bytes",
+				"Attachment turn byte budget exhausted",
+			);
+		}
+		const maxBytes = Math.min(ATTACHMENT_FETCH_MAX_BYTES, budget.remaining);
+		if (
+			typeof expectedBytes === "number" &&
+			Number.isFinite(expectedBytes) &&
+			expectedBytes > maxBytes
+		) {
+			throw new MediaFetchError(
+				"max_bytes",
+				expectedBytes > budget.remaining
+					? "Attachment exceeds turn byte budget"
+					: `Attachment exceeds ${ATTACHMENT_FETCH_MAX_BYTES} bytes`,
+			);
+		}
 		if (isRemote) {
 			const { buffer, contentType } = await fetchRemoteMedia({
 				url: rawUrl,
-				maxBytes: ATTACHMENT_FETCH_MAX_BYTES,
+				maxBytes,
 			});
+			budget.remaining -= Math.max(buffer.byteLength, expectedBytes ?? 0);
 			return {
 				buffer,
 				contentType: contentType ?? "application/octet-stream",
@@ -13627,21 +13787,18 @@ export class DefaultMessageService implements IMessageService {
 			// Reject on the declared size before reading; the streamed read below
 			// cancels at the cap when the header is absent or lying.
 			const declaredLength = Number(res.headers.get("content-length"));
-			if (
-				Number.isFinite(declaredLength) &&
-				declaredLength > ATTACHMENT_FETCH_MAX_BYTES
-			) {
+			if (Number.isFinite(declaredLength) && declaredLength > maxBytes) {
 				throw new MediaFetchError(
 					"max_bytes",
-					`Attachment exceeds ${ATTACHMENT_FETCH_MAX_BYTES} bytes`,
+					declaredLength > budget.remaining
+						? "Attachment exceeds turn byte budget"
+						: `Attachment exceeds ${ATTACHMENT_FETCH_MAX_BYTES} bytes`,
 				);
 			}
 			const contentType =
 				res.headers.get("content-type") || "application/octet-stream";
-			const buffer = await readResponseWithLimit(
-				res,
-				ATTACHMENT_FETCH_MAX_BYTES,
-			);
+			const buffer = await readResponseWithLimit(res, maxBytes);
+			budget.remaining -= Math.max(buffer.byteLength, expectedBytes ?? 0);
 			return { buffer, contentType };
 		} catch (err) {
 			// error-policy:J2 typed transient-class rethrow covering the whole

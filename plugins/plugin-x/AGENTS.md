@@ -13,7 +13,6 @@ Auto-enabled when `config.connectors.x` (or legacy `config.connectors.twitter`) 
 **Services** (registered in `XPlugin.services`):
 
 - `XService` (`serviceType = "x"`) — Core service. Starts `TwitterClientInstance` per account; registers the X message connector (DMs) and post connector (public feed) with the runtime; manages per-account client lifecycle.
-- `XWorkflowCredentialProvider` (`serviceType = "workflow_credential_provider"`) — Supplies OAuth 1.0a credentials (`twitterApi` credential type) to the workflow plugin. Only supports `twitterApi`; does not support `twitterOAuth2Api`.
 
 **Providers** (registered in `XPlugin.providers`):
 
@@ -34,7 +33,7 @@ Auto-enabled when `config.connectors.x` (or legacy `config.connectors.twitter`) 
 plugins/plugin-x/
   auto-enable.ts                   Auto-enable entry-point (no heavy imports)
   src/
-    index.ts                       XPlugin export; services: [XService, XWorkflowCredentialProvider]
+    index.ts                       XPlugin export; services: [XService]
     base.ts                        ClientBase — wraps the twitter-api-v2 client; caches profile, fetches timeline/tweets/search
     environment.ts                 twitterEnvSchema (zod); TwitterConfig type; validateTwitterConfig()
     types.ts                       TwitterClientState, ITwitterClient, event payload types, Tweet, MediaData
@@ -48,7 +47,6 @@ plugins/plugin-x/
     identity-provider.ts           xIdentityProvider (TWITTER_IDENTITY) — surfaces the agent's own username/screen name/bio/nicknames into prompt context
     connector-account-provider.ts  ConnectorAccountProvider impl; bridges env-mode + OAuth PKCE to ConnectorAccountManager
     connector-credential-refs.ts   Persists connector credential references into runtime cache
-    workflow-credential-provider.ts XWorkflowCredentialProvider service
     client/
       index.ts                     Re-exports Client, SearchMode, QueryTweetsResponse, Tweet
       client.ts                    Low-level twitter-api-v2 wrapper (Client class)
@@ -168,7 +166,6 @@ All vars are read via `getSetting(runtime, key)` which checks `runtime.getSettin
 - **`TWITTER_DRY_RUN=true`** simulates all write operations without calling the API. Use during development.
 - **`getSetting(runtime, key)`** in `src/utils/settings.ts` is the canonical way to read any config — it checks runtime settings before `process.env`. Never read `process.env.TWITTER_*` directly inside service code.
 - **Multi-account**: use `TWITTER_ACCOUNTS` (JSON) or add accounts via the ConnectorAccountManager HTTP surface. All methods on `XService` accept an `accountId` parameter. The default account is `TWITTER_DEFAULT_ACCOUNT_ID` (default: `"default"`).
-- **`XWorkflowCredentialProvider`** only resolves `twitterApi` (OAuth 1.0a). Attempting to use `twitterOAuth2Api` with env-mode credentials will silently fail at workflow execution time.
 - **twitter-api-v2** is the sole external Twitter API dep. Check its types and docs when adding new API calls.
 - **One provider** (`TWITTER_IDENTITY`) is registered to make the agent aware of its own X identity; no actions or evaluators are registered. All other agent-facing behavior goes through message/post connector handlers.
 

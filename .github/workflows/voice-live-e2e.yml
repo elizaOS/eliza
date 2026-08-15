@@ -192,6 +192,7 @@ jobs:
       WHISPER_STT_URL: ${{ vars.ELIZA_VOICE_WHISPER_STT_URL }}
       WHISPER_STT_MODEL: ${{ vars.ELIZA_VOICE_WHISPER_STT_MODEL }}
       CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
+      ELIZAOS_CLOUD_API_KEY: ${{ secrets.ELIZACLOUD_API_KEY }}
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -206,11 +207,15 @@ jobs:
           docker system prune -af || true
           df -h /
 
-      - name: Require a live model credential
+      - name: Require live model and Cloud credentials
         run: |
           set -euo pipefail
           if [ -z "${CEREBRAS_API_KEY:-}" ]; then
             echo "::error::The web Railway voice lane requires the provisioned CEREBRAS_API_KEY live model credential."
+            exit 1
+          fi
+          if [ -z "${ELIZAOS_CLOUD_API_KEY:-}" ]; then
+            echo "::error::The web Railway voice lane requires ELIZACLOUD_API_KEY so the app's authenticated Cloud STT/TTS proxies can reach Railway."
             exit 1
           fi
 

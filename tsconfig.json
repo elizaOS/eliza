@@ -38,6 +38,9 @@
         "./plugins/plugin-agent-skills/src/index.ts"
       ],
       "@elizaos/plugin-anthropic": ["./plugins/plugin-anthropic/index.ts"],
+      "@elizaos/plugin-anthropic/endpoint-config": [
+        "./plugins/plugin-anthropic/utils/config.ts"
+      ],
       "@elizaos/plugin-app-manager": [
         "./plugins/plugin-app-manager/src/index.ts"
       ],
@@ -57,6 +60,9 @@
       "@elizaos/plugin-elizacloud": [
         "./plugins/plugin-elizacloud/src/index.ts"
       ],
+      "@elizaos/plugin-elizacloud/endpoint-config": [
+        "./plugins/plugin-elizacloud/src/utils/config.ts"
+      ],
       "@elizaos/plugin-imessage": ["./plugins/plugin-imessage/src/index.ts"],
       "@elizaos/plugin-personal-assistant": [
         "./plugins/plugin-personal-assistant/src/index.ts"
@@ -64,6 +70,9 @@
       "@elizaos/plugin-mcp": ["./plugins/plugin-mcp/src/index.ts"],
       "@elizaos/plugin-messages": ["./plugins/plugin-messages/src/index.ts"],
       "@elizaos/plugin-openai": ["./plugins/plugin-openai/index.ts"],
+      "@elizaos/plugin-openai/endpoint-config": [
+        "./plugins/plugin-openai/utils/config.ts"
+      ],
       "@elizaos/plugin-phone": ["./plugins/plugin-phone/src/index.ts"],
       "@elizaos/plugin-phone/*": ["./plugins/plugin-phone/src/*"],
       "@elizaos/plugin-registry": ["./plugins/plugin-registry/src/index.ts"],

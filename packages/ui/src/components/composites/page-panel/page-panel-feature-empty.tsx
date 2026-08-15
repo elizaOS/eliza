@@ -26,6 +26,7 @@ export interface PagePanelFeatureEmptyProps
 }
 
 export function PagePanelFeatureEmpty({
+  children,
   className,
   description,
   features = [],
@@ -54,9 +55,11 @@ export function PagePanelFeatureEmpty({
         >
           <Icon className="h-7 w-7" />
         </div>
-        <h2 className="mt-4 text-base font-semibold text-txt">{title}</h2>
+        <h2 className="mt-4 text-balance text-base font-semibold text-txt">
+          {title}
+        </h2>
         {description ? (
-          <p className="mx-auto mt-2 max-w-lg text-sm leading-6 text-muted">
+          <p className="mx-auto mt-2 max-w-lg text-sm leading-6 text-pretty text-muted">
             {description}
           </p>
         ) : null}
@@ -67,7 +70,7 @@ export function PagePanelFeatureEmpty({
               return (
                 <div
                   key={item.id}
-                  className="inline-flex items-center gap-1.5 text-xs text-muted"
+                  className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap text-xs text-muted"
                 >
                   <FeatureIcon
                     className={cn("h-4 w-4", item.tone ?? "text-muted")}
@@ -78,6 +81,7 @@ export function PagePanelFeatureEmpty({
             })}
           </div>
         ) : null}
+        {children ? <div className="mt-5">{children}</div> : null}
       </div>
     </PagePanelRoot>
   );

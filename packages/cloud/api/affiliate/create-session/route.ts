@@ -20,6 +20,36 @@ import type { AppEnv } from "@/types/cloud-worker-env";
 
 const ANON_SESSION_COOKIE = "eliza-anon-session";
 
+function parsePositiveIntEnv(
+  value: string | undefined,
+  defaultValue: number,
+  name: string,
+  max: number,
+): number {
+  const raw = value ?? String(defaultValue);
+  // Reject trailing junk, scientific notation, and non-decimal strings.
+  if (!/^\d+$/.test(raw)) {
+    logger.warn(
+      `[affiliate/create-session] Invalid ${name} (expected positive integer), using default: ${defaultValue}`,
+    );
+    return defaultValue;
+  }
+  const n = Number.parseInt(raw, 10);
+  if (Number.isNaN(n) || n <= 0 || !Number.isSafeInteger(n)) {
+    logger.warn(
+      `[affiliate/create-session] Invalid ${name} (expected safe positive integer), using default: ${defaultValue}`,
+    );
+    return defaultValue;
+  }
+  if (n > max) {
+    logger.warn(
+      `[affiliate/create-session] ${name} exceeds maximum (${max}), clamping to: ${max}`,
+    );
+    return max;
+  }
+  return n;
+}
+
 const CreateSessionSchema = z.object({
   characterId: z.string().uuid(),
   source: z.string().optional(),
@@ -62,13 +92,17 @@ app.post("/", async (c) => {
 
     const { characterId, source } = validationResult.data;
 
-    const expiryDays = Number.parseInt(
-      (c.env.ANON_SESSION_EXPIRY_DAYS as string | undefined) || "7",
-      10,
+    const expiryDays = parsePositiveIntEnv(
+      c.env.ANON_SESSION_EXPIRY_DAYS as string | undefined,
+      7,
+      "ANON_SESSION_EXPIRY_DAYS",
+      365,
     );
-    const messagesLimit = Number.parseInt(
-      (c.env.ANON_MESSAGE_LIMIT as string | undefined) || "5",
-      10,
+    const messagesLimit = parsePositiveIntEnv(
+      c.env.ANON_MESSAGE_LIMIT as string | undefined,
+      5,
+      "ANON_MESSAGE_LIMIT",
+      1000,
     );
 
     const sessionToken = nanoid(32);

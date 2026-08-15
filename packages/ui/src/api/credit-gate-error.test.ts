@@ -2,8 +2,7 @@
  * Unit coverage for the domain-neutral insufficient-credits (402) classifier.
  * Deterministic error fixtures for both client transport shapes (ApiError-like
  * and the direct-cloud request error carrying the parsed body on `data`), no
- * network. The /join welcome-bonus reading layered on top is covered by
- * `cloud/join/lib/join-credit-gate-error.test.ts`.
+ * network.
  */
 import { describe, expect, test } from "vitest";
 import { ApiError } from "./client-types-core";

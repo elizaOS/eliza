@@ -13,7 +13,6 @@ The exported `matrixPlugin` object (`src/index.ts`) registers:
 | Kind | Name | What it does |
 |------|------|-------------|
 | Service | `MatrixService` (`serviceType: "matrix"`) | Core Matrix client lifecycle: connects to homeserver, syncs rooms, dispatches incoming messages as events, exposes send/react/join/leave/typing/read-receipt API. Registers a `MessageConnector` with the runtime that wires `resolveTargets`, `listRecentTargets`, `listRooms`, `fetchMessages`, `searchMessages`, `reactHandler`, `joinHandler`, `leaveHandler`, `getChatContext`, `getUserContext`, and the `sendHandler`. |
-| Service | `MatrixWorkflowCredentialProvider` (`serviceType: "workflow_credential_provider"`) | Supplies `matrixApi` credentials (`accessToken` + `homeserverUrl`) to the workflow plugin without adding a compile-time dep on it. |
 | Actions | _(none registered)_ | Matrix send/react/join/leave surfaces are exposed via the `MessageConnector` registered by `MatrixService`, not through standalone actions. |
 | Providers | _(none registered)_ | Room list is exposed through the connector's `MESSAGE list_channels` path; provider index is intentionally empty. |
 
@@ -44,7 +43,6 @@ plugins/plugin-matrix/
                                         + MATRIX_ACCOUNTS JSON); exports resolveMatrixAccountSettings,
                                         listMatrixAccountIds, normalizeMatrixAccountId, readMatrixAccountId
     connector-account-provider.ts     ConnectorAccountProvider adapter for ConnectorAccountManager
-    workflow-credential-provider.ts   MatrixWorkflowCredentialProvider — duck-typed for plugin-workflow
     types.ts                          MatrixSettings, MatrixMessage, MatrixRoom, IMatrixService,
                                         MatrixEventTypes enum, error classes, utility functions
     fake-indexeddb-auto.d.ts          Type shim for fake-indexeddb used in tests
@@ -55,7 +53,6 @@ plugins/plugin-matrix/
       connector.test.ts               Connector integration tests
       crypto-store.test.ts            Crypto store tests
       service-hardening.test.ts       MatrixService hardening / error-path tests
-      workflow-credential-provider.test.ts  WorkflowCredentialProvider unit tests
 ```
 
 ## Commands
@@ -119,7 +116,6 @@ Supply `MATRIX_ACCOUNTS='[{"accountId":"work","homeserver":"...","userId":"...",
 - **E2EE flag exists but relies on SDK-level support.** Setting `MATRIX_ENCRYPTION=true` flags the intent; the SDK must also have appropriate crypto support enabled in the deployment.
 - **Message splitting is the caller's responsibility.** `MAX_MATRIX_MESSAGE_LENGTH = 4000` (exported from `types.ts`) — the service does not auto-split; callers must chunk before calling `sendMessage`.
 - **`providers/index.ts` is intentionally empty.** Room context is surfaced by the `MessageConnector` hooks (`getChatContext`, `listRooms`), not by a runtime provider.
-- **`MatrixWorkflowCredentialProvider` duck-types the workflow contract.** It does not import `@elizaos/plugin-workflow` to avoid a circular dep; the runtime matches by `serviceType` string only.
 
 ## Verification
 

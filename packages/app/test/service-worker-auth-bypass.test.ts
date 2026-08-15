@@ -25,6 +25,7 @@ function loadServiceWorker() {
   const listeners = new Map<string, ((event: unknown) => void)[]>();
   const self = {
     location: { origin: "https://app.example.test" },
+    registration: { active: null },
     addEventListener(type: string, listener: (event: unknown) => void) {
       listeners.set(type, [...(listeners.get(type) ?? []), listener]);
     },

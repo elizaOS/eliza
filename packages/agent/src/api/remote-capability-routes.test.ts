@@ -16,11 +16,21 @@ import {
   type RouteRequestMeta,
   type UUID,
 } from "@elizaos/core";
+import { ELIZA_DOMAIN_CONTRACTS } from "@elizaos/shared/elizacloud";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { RemotePluginSyncResult } from "../services/remote-plugin-adapter";
 import { handleRemoteCapabilityRoutes } from "./remote-capability-routes";
 
 const originalFetch = globalThis.fetch;
+
+/**
+ * The cloud sandbox canonicalizes a recognized legacy elizacloud.ai host onto
+ * the current cloud API origin before it calls out, so the fetch stub below is
+ * keyed on the contract rather than the pre-consolidation literal. Keying it on
+ * the old host made the stub silently miss and fall through to its 404 branch,
+ * which surfaced as the cloud plugin never registering.
+ */
+const CLOUD_API_ORIGIN = ELIZA_DOMAIN_CONTRACTS.production.cloudApiOrigin;
 const originalEnabled = process.env.ELIZA_CAPABILITY_ROUTER_ENABLED;
 const originalUrls = process.env.ELIZA_CAPABILITY_ROUTER_URLS;
 const originalAllowedModules =
@@ -619,12 +629,12 @@ describe("handleRemoteCapabilityRoutes", () => {
         method: body?.method,
         moduleId: body?.params?.moduleId,
       });
-      if (href === "https://api.elizacloud.ai/api/v1/eliza/agents") {
+      if (href === `${CLOUD_API_ORIGIN}/api/v1/eliza/agents`) {
         return jsonResponse({ data: { id: "cloud-agent-1" } });
       }
       if (
         href ===
-        "https://api.elizacloud.ai/api/v1/eliza/agents/cloud-agent-1/provision"
+        `${CLOUD_API_ORIGIN}/api/v1/eliza/agents/cloud-agent-1/provision`
       ) {
         return jsonResponse({
           data: {

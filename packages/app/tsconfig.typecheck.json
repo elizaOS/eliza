@@ -135,6 +135,9 @@
       "@elizaos/capacitor-contacts/*": [
         "../../plugins/plugin-native-contacts/src/*"
       ],
+      "@elizaos/capacitor-mobile-agent-bridge": [
+        "../../plugins/plugin-native-mobile-agent-bridge/src/index.ts"
+      ],
       "@elizaos/capacitor-mobile-signals": [
         "../../plugins/plugin-native-mobile-signals/src/index.ts"
       ],

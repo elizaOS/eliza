@@ -13,6 +13,7 @@ import {
 	detectSubActionCycles,
 	resolveSubActions,
 	runSubPlanner,
+	subPlannerCallDigest,
 } from "../sub-planner";
 
 type SubPlannerTestRuntime = Pick<IAgentRuntime, "actions" | "useModel"> & {
@@ -126,6 +127,61 @@ describe("sub-planner helpers", () => {
 		expect(result.finalMessage).toBe("Done.");
 	});
 
+	it("does not replay an exact prior non-retryable nested operation", async () => {
+		const child = makeAction({ name: "CHILD" });
+		const parent = makeAction({
+			name: "PARENT",
+			subActions: ["CHILD"],
+			subPlanner: true,
+		});
+		const call = { name: "CHILD", params: { target: "same" } };
+		const execute = vi.fn(async () => ({ success: true }));
+		const result = await runSubPlanner({
+			runtime: makeRuntime(
+				[parent, child],
+				vi.fn(async () => ({
+					text: "",
+					toolCalls: [
+						{ id: "call-replay", name: "CHILD", arguments: call.params },
+					],
+				})),
+			),
+			action: parent,
+			context: { id: "ctx", events: [] },
+			ctx: {
+				message: makeMessage(),
+				previousResults: [
+					{
+						success: false,
+						data: {
+							subSteps: [
+								{
+									action: "CHILD",
+									success: false,
+									callDigest: subPlannerCallDigest(call),
+									retryable: false,
+								},
+							],
+						},
+					},
+				],
+			},
+			execute,
+			evaluate: async () => ({
+				success: false,
+				decision: "FINISH",
+				messageToUser: "That exact operation cannot be retried this turn.",
+			}),
+		});
+
+		expect(execute).not.toHaveBeenCalled();
+		expect(result.trajectory.steps[0]?.result?.data).toMatchObject({
+			retryable: false,
+			replaySuppressed: true,
+			code: "PRIOR_NON_RETRYABLE_SUBSTEP",
+		});
+	});
+
 	it("resolves child action similes before rejecting sub-planner tool calls", async () => {
 		const child = makeAction({
 			name: "GOOGLE_CALENDAR",
@@ -166,6 +222,142 @@ describe("sub-planner helpers", () => {
 			expect.objectContaining({ name: "GOOGLE_CALENDAR" }),
 			expect.objectContaining({ actions: [child] }),
 		);
+	});
+
+	it("records a simile call under the canonical child identity", async () => {
+		const child = makeAction({
+			name: "GOOGLE_CALENDAR",
+			similes: ["CALENDAR_READ"],
+		});
+		const parent = makeAction({
+			name: "CALENDAR",
+			subActions: ["GOOGLE_CALENDAR"],
+			subPlanner: true,
+		});
+		const result = await runSubPlanner({
+			runtime: makeRuntime(
+				[parent, child],
+				vi.fn(async () => ({
+					text: "",
+					toolCalls: [
+						{
+							id: "call-canonical",
+							name: "CALENDAR_READ",
+							arguments: { calendar: "primary" },
+						},
+					],
+				})),
+			),
+			action: parent,
+			context: { id: "ctx", events: [] },
+			ctx: { message: makeMessage() },
+			execute: vi.fn(async () => ({ success: true, text: "done" })),
+			evaluate: async () => ({
+				success: true,
+				decision: "FINISH",
+				messageToUser: "Done.",
+			}),
+		});
+
+		const recordedCall = result.trajectory.steps[0]?.toolCall;
+		if (!recordedCall) throw new Error("Expected a recorded child call");
+		expect(recordedCall).toMatchObject({
+			name: "GOOGLE_CALENDAR",
+			params: { calendar: "primary" },
+		});
+		expect(subPlannerCallDigest(recordedCall)).toBe(
+			subPlannerCallDigest({
+				name: "GOOGLE_CALENDAR",
+				params: { calendar: "primary" },
+			}),
+		);
+	});
+
+	it("suppresses a second-pass replay when the model changes child aliases", async () => {
+		const child = makeAction({
+			name: "GOOGLE_CALENDAR",
+			similes: ["CALENDAR_READ", "READ_CALENDAR"],
+		});
+		const parent = makeAction({
+			name: "CALENDAR",
+			subActions: ["GOOGLE_CALENDAR"],
+			subPlanner: true,
+		});
+		const params = { calendar: "primary" };
+		const first = await runSubPlanner({
+			runtime: makeRuntime(
+				[parent, child],
+				vi.fn(async () => ({
+					text: "",
+					toolCalls: [
+						{ id: "call-first", name: "CALENDAR_READ", arguments: params },
+					],
+				})),
+			),
+			action: parent,
+			context: { id: "ctx-first", events: [] },
+			ctx: { message: makeMessage() },
+			execute: vi.fn(async () => ({
+				success: false,
+				text: "calendar access is permanently unavailable",
+				data: { retryable: false },
+			})),
+			evaluate: async () => ({
+				success: false,
+				decision: "FINISH",
+				messageToUser: "Calendar access is unavailable.",
+			}),
+		});
+		const firstCall = first.trajectory.steps[0]?.toolCall;
+		if (!firstCall)
+			throw new Error("Expected the first child call to be recorded");
+		expect(firstCall?.name).toBe("GOOGLE_CALENDAR");
+
+		const secondExecute = vi.fn(async () => ({ success: true }));
+		const second = await runSubPlanner({
+			runtime: makeRuntime(
+				[parent, child],
+				vi.fn(async () => ({
+					text: "",
+					toolCalls: [
+						{ id: "call-second", name: "READ_CALENDAR", arguments: params },
+					],
+				})),
+			),
+			action: parent,
+			context: { id: "ctx-second", events: [] },
+			ctx: {
+				message: makeMessage(),
+				previousResults: [
+					{
+						success: false,
+						data: {
+							subSteps: [
+								{
+									action: firstCall.name,
+									success: false,
+									callDigest: subPlannerCallDigest(firstCall),
+									retryable: false,
+								},
+							],
+						},
+					},
+				],
+			},
+			execute: secondExecute,
+			evaluate: async () => ({
+				success: false,
+				decision: "FINISH",
+				messageToUser: "That operation is already known to be unavailable.",
+			}),
+		});
+
+		expect(secondExecute).not.toHaveBeenCalled();
+		expect(second.trajectory.steps[0]?.result?.data).toMatchObject({
+			retryable: false,
+			replaySuppressed: true,
+			code: "PRIOR_NON_RETRYABLE_SUBSTEP",
+		});
 	});
 
 	it("passes child actions to the model as native tool definitions", async () => {
