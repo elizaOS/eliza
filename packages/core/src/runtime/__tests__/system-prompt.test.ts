@@ -9,10 +9,74 @@ import { describe, expect, it } from "vitest";
 import {
 	buildCanonicalSystemPrompt,
 	dropDuplicateLeadingSystemMessage,
+	renderInlineCharacterKnowledge,
 	resolveEffectiveSystemPrompt,
 } from "../system-prompt";
 
 describe("system prompt helpers", () => {
+	it("puts inline character knowledge in the prompt, after bio", () => {
+		const prompt = buildCanonicalSystemPrompt({
+			character: {
+				name: "Ada",
+				system: "Policy.",
+				bio: ["Fast."],
+				knowledge: [
+					"Shaw founded elizaOS.",
+					"Cloud apps can set inference markup.",
+				],
+			},
+		});
+		expect(prompt).toContain(
+			"# What Ada knows\nShaw founded elizaOS.\nCloud apps can set inference markup.",
+		);
+		expect(prompt.indexOf("# About Ada")).toBeLessThan(
+			prompt.indexOf("# What Ada knows"),
+		);
+	});
+
+	it("keeps document sources out of the prompt: paths, directories, typed items", () => {
+		const rendered = renderInlineCharacterKnowledge([
+			"A real fact.",
+			"/abs/manual.pdf",
+			"./rel/notes.md",
+			"../up/doc.txt",
+			"~/home/doc.txt",
+			"file:///x.txt",
+			"C:\\win\\doc.txt",
+			{ item: { case: "path", value: "/a/b.md" } },
+			{ path: "/c/d.md" },
+			{ directory: "/e/dir" },
+			42,
+			"",
+			"   ",
+		]);
+		expect(rendered).toBe("A real fact.");
+	});
+
+	it("expands name tokens inside knowledge and omits the section when empty", () => {
+		const withTokens = buildCanonicalSystemPrompt({
+			character: {
+				name: "Ada",
+				system: "s",
+				bio: [],
+				knowledge: ["{{name}} runs on elizaOS."],
+			},
+		});
+		expect(withTokens).toContain("Ada runs on elizaOS.");
+		const empty = buildCanonicalSystemPrompt({
+			character: { name: "Ada", system: "s", bio: [], knowledge: [] },
+		});
+		expect(empty).not.toContain("What Ada knows");
+	});
+
+	it("bounds knowledge to the character budget instead of flooding the prompt", () => {
+		const facts = Array.from({ length: 100 }, (_, i) => `Fact ${i} ${"x".repeat(80)}.`);
+		const rendered = renderInlineCharacterKnowledge(facts);
+		expect(rendered.length).toBeLessThanOrEqual(1500 + facts.length);
+		expect(rendered).toContain("Fact 0");
+		expect(rendered).not.toContain("Fact 99");
+	});
+
 	it("renders character system, bio, then user role", () => {
 		const prompt = buildCanonicalSystemPrompt({
 			character: {

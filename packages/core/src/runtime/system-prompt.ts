@@ -36,8 +36,35 @@ export function normalizeSystemPromptRole(
 	return normalized || undefined;
 }
 
+/**
+ * Character `knowledge` entries that are inline facts rather than document
+ * sources. Path-shaped strings and `{ path | directory }` objects are document
+ * ingestion inputs (see DocumentService.processCharacterDocuments) and stay out
+ * of the prompt; everything else is identity-tier content the character author
+ * wrote to be known, not retrieved.
+ */
+const PATHLIKE_RE = /^(?:\.{0,2}[\\/]|~[\\/]|file:\/\/|[A-Za-z]:[\\/])/;
+
+export function renderInlineCharacterKnowledge(
+	value: unknown,
+	maxChars = 1500,
+): string {
+	if (!Array.isArray(value)) return "";
+	const facts: string[] = [];
+	let total = 0;
+	for (const entry of value) {
+		if (typeof entry !== "string") continue;
+		const fact = entry.trim();
+		if (!fact || PATHLIKE_RE.test(fact)) continue;
+		if (total + fact.length > maxChars) break;
+		total += fact.length;
+		facts.push(fact);
+	}
+	return facts.join("\n");
+}
+
 export function buildCanonicalSystemPrompt(args: {
-	character?: Pick<Character, "name" | "system" | "bio"> | null;
+	character?: Pick<Character, "name" | "system" | "bio" | "knowledge"> | null;
 	userRole?: RoleGateRole | string | null;
 }): string {
 	const character = args.character;
@@ -50,10 +77,19 @@ export function buildCanonicalSystemPrompt(args: {
 		name,
 	);
 	const bio = replaceNameTokens(renderSystemPromptBio(character?.bio), name);
+	// Identity knowledge is always in the prompt, like bio. The documents store
+	// also ingests these entries for semantic recall, but retrieval is gated to
+	// contexts Stage-1 does not select for identity questions ("who made you"),
+	// which are exactly the questions this content exists to answer.
+	const knowledge = replaceNameTokens(
+		renderInlineCharacterKnowledge(character?.knowledge),
+		name,
+	);
 	const role = normalizeSystemPromptRole(args.userRole);
 	return [
 		system,
 		bio ? `# About ${name}\n${bio}` : "",
+		knowledge ? `# What ${name} knows\n${knowledge}` : "",
 		role ? `user_role: ${role}` : "",
 	]
 		.filter(Boolean)
