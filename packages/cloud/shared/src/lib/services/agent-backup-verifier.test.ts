@@ -332,6 +332,11 @@ describe("readBackupVerifierConfig", () => {
     expect(garbage.batchSize).toBe(10);
     expect(garbage.reVerifyIntervalMs).toBe(24 * 3_600_000);
     expect(garbage.maxDecryptBytesPerCycle).toBe(256 * 1024 * 1024);
+    expect(
+      readBackupVerifierConfig({
+        BACKUP_VERIFICATION_BATCH_SIZE: "7junk",
+      } as NodeJS.ProcessEnv).batchSize,
+    ).toBe(10);
   });
 });
 
