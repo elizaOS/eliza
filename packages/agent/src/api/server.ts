@@ -1883,7 +1883,13 @@ async function handleRequest(
     }
     try {
       const result = await restoreAgentSnapshot(state.runtime, body);
-      json(res, result);
+      const restarted = await restartRuntime("agent backup restored");
+      if (!restarted) {
+        throw new Error(
+          "Backup restored, but the runtime could not restart on the restored database",
+        );
+      }
+      json(res, { ...result, requiresRestart: false });
     } catch (err) {
       logger.error(
         {
