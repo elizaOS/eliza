@@ -14,13 +14,13 @@ import { computeNextCronRunAtMs, stringToUuid } from "@elizaos/core/edge";
 import type { AnchorRegistry } from "../anchors/anchor-registry.js";
 import { resolveLocalHHMMToIso } from "./local-time.js";
 import { resolveTriggerTz } from "./trigger-tz.js";
-import { resolveOwnerWindowBoundsMinutes } from "./window-bounds.js";
 import type {
   OwnerFactsView,
   ScheduledTask,
   ScheduledTaskStatus,
   ScheduledTaskTrigger,
 } from "./types.js";
+import { resolveOwnerWindowBoundsMinutes } from "./window-bounds.js";
 
 const MINUTE_MS = 60_000;
 const DAY_MS = 24 * 60 * MINUTE_MS;

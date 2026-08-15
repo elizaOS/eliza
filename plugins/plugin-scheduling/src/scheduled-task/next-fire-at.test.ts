@@ -259,16 +259,8 @@ describe("computeNextFireAt during_window bounds", () => {
   });
 
   it.each([
-    [
-      "spring-forward",
-      "2026-03-08T08:00:00.000Z",
-      "2026-03-08T13:00:00.000Z",
-    ],
-    [
-      "fall-back",
-      "2026-11-01T07:00:00.000Z",
-      "2026-11-01T14:00:00.000Z",
-    ],
+    ["spring-forward", "2026-03-08T08:00:00.000Z", "2026-03-08T13:00:00.000Z"],
+    ["fall-back", "2026-11-01T07:00:00.000Z", "2026-11-01T14:00:00.000Z"],
   ])(
     "indexes the default morning window across %s",
     async (_label, now, expected) => {

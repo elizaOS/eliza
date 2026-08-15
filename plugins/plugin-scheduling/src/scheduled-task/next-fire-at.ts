@@ -20,15 +20,15 @@ import { computeNextCronRunAtMs } from "@elizaos/core/edge";
 import type { AnchorRegistry } from "../anchors/anchor-registry.js";
 import { resolveLocalHHMMToIso } from "./local-time.js";
 import { resolveTriggerTz } from "./trigger-tz.js";
-import {
-  formatLocalHHMM,
-  resolveOwnerWindowBoundsMinutes,
-} from "./window-bounds.js";
 import type {
   OwnerFactsView,
   ScheduledTask,
   ScheduledTaskTrigger,
 } from "./types.js";
+import {
+  formatLocalHHMM,
+  resolveOwnerWindowBoundsMinutes,
+} from "./window-bounds.js";
 
 const MINUTE_MS = 60_000;
 
