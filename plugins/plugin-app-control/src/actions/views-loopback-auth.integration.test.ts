@@ -514,6 +514,7 @@ describe("authenticated view loopback requests", () => {
 			text: 'Cannot invoke capability "undeclared-capability" on view "tasks": the view catalog does not declare that capability.',
 		});
 		expect(result).not.toHaveProperty("turnComplete");
+		expect(result).not.toHaveProperty("userFacingText");
 		expect(
 			(result as { verifiedUserFacing?: boolean }).verifiedUserFacing,
 		).not.toBe(true);

@@ -195,6 +195,7 @@ const CANDIDATE_ACTION_PARENT_ALIASES: Record<string, readonly string[]> = {
 	TODOS: ["OWNER_TODOS", "TODO"],
 	TODO_ADD: ["OWNER_TODOS", "TODO"],
 	TODO_CREATE: ["OWNER_TODOS", "TODO"],
+	TODOS_CREATE: ["OWNER_TODOS", "TODO"],
 	NEW_TODO: ["OWNER_TODOS", "TODO"],
 	SAVE_TODO: ["OWNER_TODOS", "TODO"],
 	TODO_LIST: ["OWNER_TODOS", "TODO"],
@@ -219,7 +220,6 @@ const CANDIDATE_ACTION_PARENT_ALIASES: Record<string, readonly string[]> = {
 	FINANCE: ["OWNER_FINANCES"],
 	SPENDING: ["OWNER_FINANCES"],
 	SPENDING_SUMMARY: ["OWNER_FINANCES"],
-	BUDGET: ["OWNER_FINANCES"],
 	EXPENSES: ["OWNER_FINANCES"],
 	// Habit/reminder-shaped candidates hint BOTH the owner-life umbrella and the
 	// always-registered TRIGGER scheduler. Stage-1 routinely invents these names
@@ -373,11 +373,14 @@ export function retrieveActions(
 		...candidateActions.filter((actionName) =>
 			catalogParentNames.has(normalizeActionName(actionName)),
 		),
-		...candidateActions.flatMap((actionName) =>
-			candidateNamespaceParentExists(input.catalog.parents, actionName)
+		...candidateActions.flatMap((actionName) => {
+			const explicitAliases =
+				explicitParentAliasesForCandidateAction(actionName);
+			if (explicitAliases.length > 0) return explicitAliases;
+			return candidateNamespaceParentExists(input.catalog.parents, actionName)
 				? []
-				: parentAliasesForCandidateAction(actionName),
-		),
+				: parentAliasesForCandidateAction(actionName);
+		}),
 		// Stage-1 routinely hints an action by one of its similes — the canonical
 		// documented example is candidateActions=["BASH"] for the SHELL parent
 		// (message-handler.ts). Similes feed the fuzzy search text but carry no
@@ -996,10 +999,8 @@ function dedupeNormalizedStrings(values: string[] | undefined): string[] {
 
 export function parentAliasesForCandidateAction(actionName: string): string[] {
 	const normalized = normalizeActionName(actionName);
-	const explicit = CANDIDATE_ACTION_PARENT_ALIASES[normalized];
-	if (explicit) {
-		return [...explicit];
-	}
+	const explicit = explicitParentAliasesForCandidateAction(normalized);
+	if (explicit.length > 0) return explicit;
 	// Permission/access management is SETTINGS (grant/revoke an app's fs/net
 	// namespace, OS permission requests, shell access) — never view navigation.
 	// Checked before the view/app surface heuristics because Stage-1 invents
@@ -1023,6 +1024,11 @@ export function parentAliasesForCandidateAction(actionName: string): string[] {
 		aliases.push("APP");
 	}
 	return aliases;
+}
+
+function explicitParentAliasesForCandidateAction(actionName: string): string[] {
+	const normalized = normalizeActionName(actionName);
+	return [...(CANDIDATE_ACTION_PARENT_ALIASES[normalized] ?? [])];
 }
 
 const APP_SURFACE_TOKENS = new Set([

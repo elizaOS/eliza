@@ -717,6 +717,7 @@ describe("action catalogue and retrieval", () => {
 			"ADD_TODO",
 			"CREATE_TODO",
 			"TODO_CREATE",
+			"TODOS_CREATE",
 			"TODO_ADD",
 			"NEW_TODO",
 			"SAVE_TODO",
@@ -742,6 +743,54 @@ describe("action catalogue and retrieval", () => {
 		expect(parentAliasesForCandidateAction("TODO")).toEqual(["OWNER_TODOS"]);
 	});
 
+	it("retains both registered todo owners through production retrieval", () => {
+		const catalog = buildActionCatalog([
+			{
+				name: "OWNER_TODOS",
+				description: "Manage the owner's private LifeOps todos.",
+			},
+			{
+				name: "TODO",
+				description: "Manage the current user's standalone todo list.",
+			},
+		]);
+
+		for (const candidate of ["CREATE_TODO", "TODOS_CREATE"]) {
+			const response = retrieveActions({
+				catalog,
+				messageText: "add a todo to buy milk",
+				candidateActions: [candidate],
+			});
+
+			expect(response.query.parentActionHints).toEqual(["OWNER_TODOS", "TODO"]);
+			expect(response.results.map((result) => result.name)).toEqual(
+				expect.arrayContaining(["OWNER_TODOS", "TODO"]),
+			);
+		}
+	});
+
+	it("does not route non-financial budget language to owner finances", () => {
+		const catalog = buildActionCatalog([
+			{
+				name: "OWNER_FINANCES",
+				description: "Manage the owner's private financial records.",
+			},
+			{
+				name: "REPLY",
+				description:
+					"Reply to the user within the requested response constraints.",
+			},
+		]);
+		const response = retrieveActions({
+			catalog,
+			messageText: "keep this response within the token budget",
+			candidateActions: ["BUDGET"],
+		});
+
+		expect(response.query.parentActionHints).not.toContain("OWNER_FINANCES");
+		expect(response.results[0]?.name).toBe("REPLY");
+	});
+
 	it("hints alarm candidates at OWNER_ALARMS and TRIGGER", () => {
 		for (const candidate of [
 			"ADD_ALARM",
@@ -762,7 +811,6 @@ describe("action catalogue and retrieval", () => {
 			"FINANCE",
 			"SPENDING",
 			"SPENDING_SUMMARY",
-			"BUDGET",
 			"EXPENSES",
 		]) {
 			expect(parentAliasesForCandidateAction(candidate)).toEqual([

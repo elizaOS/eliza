@@ -2371,6 +2371,9 @@ async function runViewsLayout({
 }
 
 function withViewsUserFacingText(result: ActionResult): ActionResult {
+	if (result.success !== true && result.userFacingText === undefined) {
+		return result;
+	}
 	if (
 		result.transcriptVisibility === "internal" &&
 		result.userFacingText === undefined
