@@ -116,6 +116,11 @@ export const createChoiceShortcutEvaluator: ResponseHandlerEvaluator = {
 	description:
 		"Deterministically routes explicit model-switch requests and app-control choice replies through their owning action.",
 	priority: 12,
+	deterministicActions: [
+		APP_ACTION_NAME,
+		MODEL_SWITCH_ACTION_NAME,
+		VIEWS_ACTION_NAME,
+	],
 	shouldRun: async (context) => (await resolveChoiceShortcut(context)) !== null,
 	evaluate: async (context) => {
 		const shortcut = await resolveChoiceShortcut(context);

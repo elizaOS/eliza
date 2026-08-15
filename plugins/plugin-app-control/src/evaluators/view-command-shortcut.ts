@@ -43,6 +43,7 @@ export const viewCommandShortcutEvaluator: ResponseHandlerEvaluator = {
 	// Run before core.simple_registered_action_request (20) so deterministic view
 	// intents never get captured by a broader coding/domain action first.
 	priority: 10,
+	deterministicActions: [VIEWS_ACTION_NAME],
 	shouldRun: (context) => shouldShortcut(context) !== null,
 	evaluate: (context) => {
 		const viewId = shouldShortcut(context);

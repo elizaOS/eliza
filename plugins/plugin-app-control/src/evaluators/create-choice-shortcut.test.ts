@@ -104,6 +104,14 @@ function modelSwitchIntent(roomId = "room-1") {
 }
 
 describe("createChoiceShortcutEvaluator", () => {
+	it("declares only its owned deterministic actions", () => {
+		expect(createChoiceShortcutEvaluator.deterministicActions).toEqual([
+			"APP",
+			"MODEL_SWITCH",
+			"VIEWS",
+		]);
+	});
+
 	it("forces a pending APP create choice reply through APP", async () => {
 		const ctx = context("cancel", [appIntent()]);
 

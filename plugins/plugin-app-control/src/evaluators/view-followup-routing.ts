@@ -174,6 +174,7 @@ export const viewFollowupRoutingEvaluator: ResponseHandlerEvaluator = {
 	// generic tasks, so replace the candidate surface only after the active view
 	// proves it owns the requested capability.
 	priority: 10,
+	deterministicActions: [VIEWS_ACTION_NAME],
 	shouldRun: (context) => shouldConsiderViewFollowup(context) !== null,
 	evaluate: async (context) => {
 		const family = shouldConsiderViewFollowup(context);

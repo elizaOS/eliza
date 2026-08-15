@@ -1098,6 +1098,7 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 		const deterministicViewEvaluator = {
 			name: "test.force_failed_view",
 			priority: 10,
+			deterministicActions: ["VIEWS"],
 			shouldRun: () => true,
 			evaluate: () => ({
 				requiresTool: true,
@@ -1376,6 +1377,7 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 		const deterministicViewEvaluator = {
 			name: "test.force_deterministic_view",
 			priority: 10,
+			deterministicActions: ["VIEWS"],
 			shouldRun: () => true,
 			evaluate: () => ({
 				requiresTool: true,
@@ -1447,6 +1449,7 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 		const evaluator = {
 			name: "test.owner_deterministic_call",
 			priority: 10,
+			deterministicActions: ["OWNER_CONTROL"],
 			shouldRun: () => true,
 			evaluate: () => ({
 				requiresTool: true,
@@ -1505,6 +1508,7 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 		const evaluator = {
 			name: "test.non_owner_deterministic_call",
 			priority: 10,
+			deterministicActions: ["OWNER_CONTROL"],
 			shouldRun: () => true,
 			evaluate: () => ({
 				requiresTool: true,
@@ -1558,6 +1562,7 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 		const evaluator = {
 			name: "test.throwing_deterministic_call",
 			priority: 10,
+			deterministicActions: ["UNSAFE_CONTROL"],
 			shouldRun: () => true,
 			evaluate: () => ({
 				requiresTool: true,
