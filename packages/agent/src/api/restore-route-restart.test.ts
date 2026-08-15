@@ -60,7 +60,7 @@ describe("POST /api/restore runtime lifecycle", () => {
     const targetDir = path.join(stateDir, "pglite");
     const configPath = path.join(stateDir, "eliza.json");
     let runtime: AgentRuntime | null = null;
-    let replacement: AgentRuntime | null = null;
+    const replacementRuntimes: AgentRuntime[] = [];
     let api: Awaited<ReturnType<typeof startApiServer>> | null = null;
 
     try {
@@ -92,13 +92,20 @@ describe("POST /api/restore runtime lifecycle", () => {
       await runtime.initialize({ allowNoDatabase: true, skipMigrations: true });
 
       let restartCalls = 0;
+      let disposeCurrentBeforeBuild = false;
       api = await startApiServer({
         port: 0,
         runtime,
         skipDeferredStartupWork: true,
-        onRestart: async () => {
+        onRestart: async (options) => {
           restartCalls += 1;
-          replacement = new AgentRuntime({ logLevel: "fatal", plugins: [] });
+          disposeCurrentBeforeBuild =
+            options?.disposeCurrentBeforeBuild === true;
+          const replacement = new AgentRuntime({
+            logLevel: "fatal",
+            plugins: [],
+          });
+          replacementRuntimes.push(replacement);
           replacement.registerDatabaseAdapter(new InMemoryDatabaseAdapter());
           await replacement.initialize({
             allowNoDatabase: true,
@@ -130,6 +137,7 @@ describe("POST /api/restore runtime lifecycle", () => {
         requiresRestart: false,
       });
       expect(restartCalls).toBe(1);
+      expect(disposeCurrentBeforeBuild).toBe(true);
 
       const restored = new PGlite(`file://${targetDir}`);
       await restored.waitReady;
@@ -141,7 +149,7 @@ describe("POST /api/restore runtime lifecycle", () => {
       await restored.close();
     } finally {
       if (api) await api.close();
-      if (replacement) {
+      for (const replacement of replacementRuntimes) {
         await replacement.stop({ fast: true });
         await replacement.close();
       }

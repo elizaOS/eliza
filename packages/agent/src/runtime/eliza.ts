@@ -6076,13 +6076,20 @@ export async function startEliza(
     // access, e2e harnesses). Every non-local boot leaves localAgentMode unset,
     // so skipApiListen is false and the port binds exactly as before.
     const skipApiListen = !bootPlan.bindApiListener;
+    let disposedRuntimeBeforeReplacement = false;
     const { port: actualApiPort } = await startApiServer({
       port: apiPort,
       runtime,
       skipListen: skipApiListen,
-      onRestart: async () => {
+      onRestart: async (restartOptions) => {
         logger.info("[eliza] Hot-reload: building replacement runtime...");
         try {
+          if (restartOptions?.disposeCurrentBeforeBuild) {
+            await shutdownRuntime(runtime, "pre-restore runtime disposal", {
+              fast: true,
+            });
+            disposedRuntimeBeforeReplacement = true;
+          }
           const replacement = await buildInitializedRuntime({
             config: loadElizaConfig(),
             localAgentMode: opts?.localAgentMode,
@@ -6098,6 +6105,10 @@ export async function startEliza(
       onRuntimeActivated: async (previousRuntime, activeRuntime) => {
         runtime = activeRuntime;
         if (!previousRuntime || previousRuntime === activeRuntime) {
+          return;
+        }
+        if (disposedRuntimeBeforeReplacement) {
+          disposedRuntimeBeforeReplacement = false;
           return;
         }
         try {
