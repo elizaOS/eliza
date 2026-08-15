@@ -51,6 +51,16 @@ const preflight = publishStep.run.slice(
   0,
   publishStep.run.indexOf("# The Worker is the gateway"),
 );
+const shellHelpers = publishStep.run.slice(
+  0,
+  publishStep.run.indexOf("# Construct the staging fallback"),
+);
+const secretFunctions = publishStep.run
+  .slice(
+    publishStep.run.indexOf("publish_secret() {"),
+    publishStep.run.indexOf("# Like publish_secret"),
+  )
+  .replaceAll("$" + "{{ steps.env.outputs.wrangler_args }}", "");
 
 // The executed cases run the workflow's VERBATIM preflight bash, which uses
 // bash >= 4 `${1,,}` lowercasing (GitHub's Linux runners). macOS /bin/bash 3.2
@@ -91,6 +101,56 @@ function runPreflight(env: Record<string, string>) {
       STAGING_ELIZACLOUD_API_KEY: "",
       ...env,
     },
+  });
+}
+
+function runProductionVoiceBootstrap(
+  cartesiaApiKey: string,
+  putSucceeds = true,
+) {
+  const initialInventory = JSON.stringify([
+    { name: "VOICE_REALTIME_CARTESIA_VOICE_ID" },
+    { name: "VOICE_REALTIME_ELIZA_AUTHORIZATION" },
+    { name: "VOICE_REALTIME_ELIZA_ENDPOINT" },
+  ]);
+  const completeInventory = JSON.stringify([
+    { name: "CARTESIA_API_KEY" },
+    { name: "VOICE_REALTIME_CARTESIA_VOICE_ID" },
+    { name: "VOICE_REALTIME_ELIZA_AUTHORIZATION" },
+    { name: "VOICE_REALTIME_ELIZA_ENDPOINT" },
+  ]);
+  const script = `${shellHelpers}
+STATE_FILE="$(mktemp)"
+trap 'rm -f "$STATE_FILE"' EXIT
+printf '%s' '${initialInventory}' > "$STATE_FILE"
+bunx() {
+  if [[ "$1" == wrangler* && "$2" == "secret" && "$3" == "put" ]]; then
+    cat >/dev/null
+    if [ "$PUT_SUCCEEDS" != "true" ]; then
+      return 1
+    fi
+    printf '%s' '${completeInventory}' > "$STATE_FILE"
+    return 0
+  fi
+  if [[ "$1" == wrangler* && "$2" == "secret" && "$3" == "list" ]]; then
+    cat "$STATE_FILE"
+    return 0
+  fi
+  return 1
+}
+${secretFunctions}
+DEPLOY_ENVIRONMENT=production
+VOICE_REALTIME_WS_ENABLED=true
+VOICE_BATCH_STT_PROVIDER=""
+CARTESIA_API_KEY=${JSON.stringify(cartesiaApiKey)}
+PUT_SUCCEEDS=${JSON.stringify(String(putSucceeds))}
+sleep() { :; }
+publish_secret CARTESIA_API_KEY || exit 1
+verify_production_voice_secret_bindings || exit 1
+`;
+  return spawnSync(requirePreflightBash(), ["-c", script], {
+    encoding: "utf8",
+    env: process.env,
   });
 }
 
@@ -190,6 +250,13 @@ describe("Cloud CF realtime voice deploy contract", () => {
     expect(publishStep.run).toContain('"VOICE_REALTIME_CARTESIA_VOICE_ID"');
     expect(publishStep.run).toContain('"VOICE_REALTIME_ELIZA_ENDPOINT"');
     expect(publishStep.run).toContain("managed Worker secret binding name(s)");
+    const lastPublish = publishStep.run.lastIndexOf(
+      'publish_toggle_secret "$name" || exit 1',
+    );
+    const productionBindingVerification = publishStep.run.lastIndexOf(
+      "verify_production_voice_secret_bindings || exit 1",
+    );
+    expect(productionBindingVerification).toBeGreaterThan(lastPublish);
     expect(wrangler).not.toContain("VOICE_AMBIENT_ENABLED");
     expect(wrangler).not.toContain("VOICE_AMBIENT_PENDANT_BASE_URL");
   });
@@ -287,6 +354,28 @@ const executedDescribe = GNU_BASH ? describe : describe.skip;
 executedDescribe(
   "Cloud CF realtime voice deploy preflight (executed verbatim)",
   () => {
+    test("bootstraps a missing production Cartesia binding before verifying names", () => {
+      const result = runProductionVoiceBootstrap("cartesia-test");
+      expect(result.status, `${result.stdout}${result.stderr}`).toBe(0);
+      expect(result.stdout).toContain(
+        "Verified 4 managed production voice secret binding names",
+      );
+    });
+
+    test("fails closed when a missing production binding has no configured source", () => {
+      const result = runProductionVoiceBootstrap(" ");
+      expect(result.status).toBe(1);
+      expect(`${result.stdout}${result.stderr}`).toContain("CARTESIA_API_KEY");
+    });
+
+    test("fails closed when first-time production secret publication fails", () => {
+      const result = runProductionVoiceBootstrap("cartesia-test", false);
+      expect(result.status).toBe(1);
+      expect(`${result.stdout}${result.stderr}`).toContain(
+        "wrangler secret put CARTESIA_API_KEY failed after 3 attempts",
+      );
+    });
+
     test("does not require realtime secrets when staging opt-in is absent", () => {
       const result = runPreflight({
         DEEPGRAM_API_KEY: "",
