@@ -14,6 +14,7 @@
   },
   "include": [
     "index.node.ts",
+    "index.worker.ts",
     "index.ts",
     "pglite/**/*.ts",
     "pg/**/*.ts",

@@ -10,6 +10,10 @@ import { describe, expect, it, vi } from "vitest";
 import { plugin as defaultPlugin } from "../../index";
 import { plugin as browserPlugin } from "../../index.browser";
 import { plugin as nodePlugin } from "../../index.node";
+import {
+  createDatabaseAdapter as createWorkerAdapter,
+  plugin as workerPlugin,
+} from "../../index.worker";
 
 type RuntimeStub = IAgentRuntime & {
   getDatabaseAdapter?: () => never;
@@ -80,5 +84,17 @@ describe("plugin-sql init error policy", () => {
     const runtime = createRuntimeStub(new Error("browser adapter probe exploded"));
 
     await expectInitReadinessError(browserPlugin, runtime);
+  });
+
+  it("throws unexpected workerd entry adapter readiness failures", async () => {
+    const runtime = createRuntimeStub(new Error("worker adapter probe exploded"));
+
+    await expectInitReadinessError(workerPlugin, runtime);
+  });
+
+  it("reports a typed configuration failure when workerd has no Postgres URL", () => {
+    expect(() => createWorkerAdapter({}, uuidv4() as UUID)).toThrowError(
+      expect.objectContaining({ code: "WORKER_POSTGRES_URL_REQUIRED" })
+    );
   });
 });

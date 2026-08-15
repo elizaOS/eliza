@@ -406,11 +406,14 @@ describe("changed build entrypoints", () => {
 
   test("plugin-sql build writes public shims with injected compilers", async () => {
     const dist = path.join(repoRoot, "plugins/plugin-sql/src/dist");
+    const buildEntrypoints: string[] = [];
     rmSync(dist, { recursive: true, force: true });
     try {
       await buildPluginSql({
-        build: async () =>
-          ({ success: true, logs: [], outputs: [{ size: 1 }] }) as never,
+        build: async (options) => {
+          buildEntrypoints.push(...options.entrypoints.map(String));
+          return { success: true, logs: [], outputs: [{ size: 1 }] } as never;
+        },
         remove: () => undefined,
         emitDeclarations: async () => undefined,
         normalizeDeclarations: async () => undefined,
@@ -421,6 +424,20 @@ describe("changed build entrypoints", () => {
       expect(
         readFileSync(path.join(dist, "schema", "index.js"), "utf8"),
       ).toContain("../node/index.node.js");
+      expect(buildEntrypoints).toContain(
+        path.join(repoRoot, "plugins/plugin-sql/src/index.worker.ts"),
+      );
+      expect(
+        JSON.parse(
+          readFileSync(
+            path.join(
+              repoRoot,
+              "plugins/plugin-sql/src/tsconfig.build.node.json",
+            ),
+            "utf8",
+          ),
+        ).include,
+      ).toContain("index.worker.ts");
     } finally {
       rmSync(dist, { recursive: true, force: true });
     }
