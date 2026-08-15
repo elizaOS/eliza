@@ -4,7 +4,7 @@
  * only taint metadata so stream offsets remain usable without exposing config.
  */
 
-const MIN_CONFIGURED_SECRET_LENGTH = 8;
+export const MIN_CONFIGURED_SECRET_LENGTH = 8;
 const MAX_FRAGMENT_COUNT = 256;
 const MAX_TOTAL_FRAGMENT_CHARACTERS = 256 * 1024;
 const MAX_CONFIGURED_SECRET_COUNT = 128;

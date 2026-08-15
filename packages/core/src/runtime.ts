@@ -109,6 +109,7 @@ import {
 import { BM25 } from "./search";
 import {
 	locateConfiguredSecretFragmentTaint,
+	MIN_CONFIGURED_SECRET_LENGTH,
 	type SecretFragment,
 	type SecretFragmentTaintProfile,
 } from "./security/fragment-redaction.js";
@@ -11315,7 +11316,9 @@ ${section_end}`;
 				JSON.stringify(
 					[
 						...new Set(
-							Object.values(secrets).filter((value) => value.length >= 8),
+							Object.values(secrets).filter(
+								(value) => value.length >= MIN_CONFIGURED_SECRET_LENGTH,
+							),
 						),
 					].sort(),
 				),

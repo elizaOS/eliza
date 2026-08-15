@@ -2558,6 +2558,78 @@ describeIfPosix("shellAction", () => {
     );
     expect(freshPoll.text).toContain("later-safe");
   });
+
+  it("projects the incomplete marker when a rotated secret equals it", async () => {
+    const marker = "[REDACTED:fragment-scan-incomplete]";
+    const { runtime, backgroundShell } = await makeRuntime();
+    const actor = makeMessage();
+    const start = requireActionResult(
+      await shellAction.handler?.(runtime, actor, undefined, {
+        action: "start_background",
+        command: "printf 'retained-output'",
+      }),
+    );
+    const handle = (start.data as Record<string, unknown>).handle as string;
+    for (let attempt = 0; attempt < 40; attempt += 1) {
+      const session = backgroundShell
+        .list(String(actor.roomId))
+        .find((candidate) => candidate.handle === handle);
+      if (session?.status === "exited") break;
+      await delay(25);
+    }
+
+    runtime.character.settings = {
+      secrets: { ROTATED_SECRET: marker },
+    };
+    vi.mocked(runtime.redactSecrets).mockImplementation((text: string) =>
+      text.replaceAll(marker, "[REDACTED:ROTATED_SECRET]"),
+    );
+    const poll = requireActionResult(
+      await shellAction.handler?.(runtime, actor, undefined, {
+        action: "poll_background",
+        handle,
+        stdout_offset: 0,
+      }),
+    );
+
+    expect(JSON.stringify(poll)).not.toContain(marker);
+    expect(poll.text).toContain("[REDACTED:ROTATED_SECRET]");
+  });
+
+  it("projects the incomplete marker for an oversized secret profile", async () => {
+    const marker = "[REDACTED:fragment-scan-incomplete]";
+    const { runtime } = await makeRuntime();
+    runtime.character.settings = {
+      secrets: Object.fromEntries(
+        Array.from({ length: 129 }, (_, index) => [
+          `SECRET_${index}`,
+          index === 0
+            ? marker
+            : `secret-value-${index.toString().padStart(3, "0")}`,
+        ]),
+      ),
+    };
+    vi.mocked(runtime.redactSecrets).mockImplementation((text: string) =>
+      text.replaceAll(marker, "[REDACTED:PROFILE_SECRET]"),
+    );
+    const actor = makeMessage();
+    const start = requireActionResult(
+      await shellAction.handler?.(runtime, actor, undefined, {
+        action: "start_background",
+        command: "printf 'safe-output'",
+      }),
+    );
+    const handle = (start.data as Record<string, unknown>).handle as string;
+    const poll = await pollUntil(
+      runtime,
+      actor,
+      handle,
+      (data) => data.status === "exited",
+    );
+
+    expect(JSON.stringify(poll)).not.toContain(marker);
+    expect(poll.text).toContain("[REDACTED:PROFILE_SECRET]");
+  });
 });
 
 describe("shell timeout operator setting", () => {

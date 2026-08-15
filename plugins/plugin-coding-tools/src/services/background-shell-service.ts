@@ -621,7 +621,7 @@ function projectRingText(
 ): string {
   if (!raw) return "";
   if (session.redaction.incomplete) {
-    return "[REDACTED:fragment-scan-incomplete]";
+    return redactShellText(runtime, "[REDACTED:fragment-scan-incomplete]");
   }
   const endOffset = startOffset + raw.length;
   const ranges = session.redaction.ranges.filter(
