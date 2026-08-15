@@ -647,6 +647,23 @@ type ScheduledAdminDomain =
 	| "routines"
 	| "scheduled-tasks";
 
+const SCHEDULED_ADMIN_VERB_PATTERN =
+	/(?:^|[^\p{L}\p{N}\p{M}])(?:snooze|reschedule|postpone|unsnooze|skip)(?=$|[^\p{L}\p{N}\p{M}])/iu;
+const SCHEDULED_ADMIN_ALARM_PATTERN =
+	/(?:^|[^\p{L}\p{N}\p{M}])alarms?(?=$|[^\p{L}\p{N}\p{M}])/iu;
+const SCHEDULED_ADMIN_STRUCTURAL_PATTERN =
+	/(?:^|[^\p{L}\p{N}\p{M}])(?:check[- ]?ins?|follow[- ]?ups?)(?=$|[^\p{L}\p{N}\p{M}])/iu;
+const SCHEDULED_ADMIN_ROUTINE_PATTERN =
+	/(?:^|[^\p{L}\p{N}\p{M}])(?:routines?|habits?)(?=$|[^\p{L}\p{N}\p{M}])/iu;
+const SCHEDULED_ADMIN_RAW_TASK_PATTERN =
+	/(?:^|[^\p{L}\p{N}\p{M}])scheduled\s+tasks?(?=$|[^\p{L}\p{N}\p{M}])/iu;
+const SCHEDULED_ADMIN_TASK_PATTERN =
+	/(?:^|[^\p{L}\p{N}\p{M}])tasks?(?=$|[^\p{L}\p{N}\p{M}])/iu;
+const SCHEDULED_ADMIN_TEMPORAL_VERB_PATTERN =
+	/(?:^|[^\p{L}\p{N}\p{M}])(?:snooze|reschedule|postpone|unsnooze)(?=$|[^\p{L}\p{N}\p{M}])/iu;
+const SCHEDULED_ADMIN_REMINDER_PATTERN =
+	/(?:^|[^\p{L}\p{N}\p{M}])reminders?(?=$|[^\p{L}\p{N}\p{M}])/iu;
+
 const SCHEDULED_ADMIN_ACTION_NAMES_BY_DOMAIN: Record<
 	ScheduledAdminDomain,
 	readonly string[]
@@ -664,29 +681,26 @@ const SCHEDULED_ADMIN_ACTION_NAMES_BY_DOMAIN: Record<
  * SCHEDULED_TASKS. A bare "skip this task" remains ambiguous and yields no
  * deterministic candidate.
  */
-function detectScheduledItemAdminDomain(
-	text: string,
-): ScheduledAdminDomain | null {
+function detectScheduledItemAdminDomain(text: string): ScheduledAdminDomain | null {
 	const normalized = text.toLowerCase().replace(/\s+/gu, " ").trim();
-	if (
-		!normalized ||
-		!/\b(?:snooze|reschedule|postpone|unsnooze|skip)\b/iu.test(normalized)
-	) {
+	if (!normalized || !SCHEDULED_ADMIN_VERB_PATTERN.test(normalized)) {
 		return null;
 	}
-	if (/\balarms?\b/iu.test(normalized)) return "alarms";
-	if (/\b(?:check[- ]?ins?|follow[- ]?ups?)\b/iu.test(normalized)) {
+	if (SCHEDULED_ADMIN_ALARM_PATTERN.test(normalized)) return "alarms";
+	if (SCHEDULED_ADMIN_STRUCTURAL_PATTERN.test(normalized)) {
 		return "scheduled-tasks";
 	}
-	if (/\b(?:routines?|habits?)\b/iu.test(normalized)) return "routines";
-	if (/\bscheduled\s+tasks?\b/iu.test(normalized)) return "scheduled-tasks";
+	if (SCHEDULED_ADMIN_ROUTINE_PATTERN.test(normalized)) return "routines";
+	if (SCHEDULED_ADMIN_RAW_TASK_PATTERN.test(normalized)) {
+		return "scheduled-tasks";
+	}
 	if (
-		/\btasks?\b/iu.test(normalized) &&
-		/\b(?:snooze|reschedule|postpone|unsnooze)\b/iu.test(normalized)
+		SCHEDULED_ADMIN_TASK_PATTERN.test(normalized) &&
+		SCHEDULED_ADMIN_TEMPORAL_VERB_PATTERN.test(normalized)
 	) {
 		return "scheduled-tasks";
 	}
-	if (/\breminders?\b/iu.test(normalized)) return "reminders";
+	if (SCHEDULED_ADMIN_REMINDER_PATTERN.test(normalized)) return "reminders";
 	return null;
 }
 

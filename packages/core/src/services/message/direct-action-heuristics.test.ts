@@ -1233,7 +1233,10 @@ describe("batch-1 matrix fixes: budget noun + scheduled-item admin (F3/F5)", () 
 			{ name: "SCHEDULED_TASKS", similes: [], tags: [] },
 		];
 		const cases = [
-			["snooze the water the ficus reminder until 6pm sunday", "OWNER_REMINDERS"],
+			[
+				"snooze the water the ficus reminder until 6pm sunday",
+				"OWNER_REMINDERS",
+			],
 			["reschedule my dentist reminder to friday", "OWNER_REMINDERS"],
 			["snooze my 6am alarm", "OWNER_ALARMS"],
 			["postpone my morning routine", "OWNER_ROUTINES"],
@@ -1266,6 +1269,29 @@ describe("batch-1 matrix fixes: budget noun + scheduled-item admin (F3/F5)", () 
 				"skip today's check-in",
 			),
 		).toEqual({ names: [], kind: null });
+	});
+
+	it("requires Unicode-complete admin verbs and nouns while allowing punctuation", () => {
+		const actions = [
+			{ name: "OWNER_ALARMS", similes: [], tags: [] },
+			{ name: "SCHEDULED_TASKS", similes: [], tags: [] },
+		];
+		expect(
+			inferDirectCurrentRequestCandidateInference(
+				actions,
+				"snooze—my 6am alarm!",
+			),
+		).toEqual({ names: ["OWNER_ALARMS"], kind: "owner-scheduled-admin" });
+		for (const message of [
+			"skipé my alarm",
+			"snooze my alarmé",
+			"snooze my alarm計画",
+			"snooze my alarm\u0301",
+		]) {
+			expect(
+				inferDirectCurrentRequestCandidateInference(actions, message),
+			).toEqual({ names: [], kind: null });
+		}
 	});
 
 	it("keeps ambiguous task skips and nounless snooze requests unhinted", () => {
