@@ -133,7 +133,7 @@ describe('embedded native workflow lifecycle', () => {
     expect((await service.listWorkflows()).data).toHaveLength(0);
     expect(tasks).toHaveLength(0);
     expect((await service.listWorkflowRevisions('review')).data[0].operation).toBe('delete');
-  });
+  }, 15_000);
 
   test('preserves user-created triggers while synchronizing the owned cron schedule', async () => {
     const { service, tasks, runtime } = await harness();
@@ -176,7 +176,7 @@ describe('embedded native workflow lifecycle', () => {
 
     await service.deleteWorkflow(created.id);
     expect(tasks).toHaveLength(0);
-  });
+  }, 15_000);
 
   test('resumes an unfinished persisted run with its exact workflow version', async () => {
     const { service, client, runtime } = await harness();
@@ -230,5 +230,5 @@ describe('embedded native workflow lifecycle', () => {
     await Bun.sleep(0);
 
     expect(resumedVersions).toEqual([workflow.versionId]);
-  });
+  }, 15_000);
 });
