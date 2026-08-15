@@ -463,6 +463,79 @@ export function buildCodesignPlan(layout) {
   return steps;
 }
 
+/**
+ * Build the inner→outer codesign step list for an XCUITest runner .app
+ * (AppUITests-Runner.app): frameworks first, then loose dylibs, then the
+ * PlugIns/*.xctest bundles, then the runner app itself. Only the runner app
+ * carries the profile-derived entitlements — the .xctest bundle and the
+ * frameworks are signed identity-only, matching what xcodebuild's own
+ * automatic signing produces.
+ *
+ * @param {{
+ *   runnerPath: string,
+ *   frameworks: string[],
+ *   dylibs: string[],
+ *   xctestBundles: string[],
+ *   entitlementsPath: string,
+ * }} layout
+ * @returns {Array<{ path: string, entitlementsPath: string | null }>}
+ */
+export function buildRunnerCodesignPlan(layout) {
+  const steps = [];
+  for (const framework of layout.frameworks) {
+    steps.push({ path: framework, entitlementsPath: null });
+  }
+  for (const dylib of layout.dylibs) {
+    steps.push({ path: dylib, entitlementsPath: null });
+  }
+  for (const bundle of layout.xctestBundles) {
+    steps.push({ path: bundle, entitlementsPath: null });
+  }
+  steps.push({
+    path: layout.runnerPath,
+    entitlementsPath: layout.entitlementsPath,
+  });
+  return steps;
+}
+
+/**
+ * Decide how the device-lane XCUITest runner gets its signature. The default
+ * is the offline graft path (build with CODE_SIGNING_ALLOWED=NO, then graft a
+ * discovered development profile onto the runner — no Xcode account session
+ * required, #13567). --xcode-signing keeps the legacy -allowProvisioningUpdates
+ * build as the fallback, and an already-signed runner (e.g. a --skip-build
+ * reuse of an -allowProvisioningUpdates product) needs no graft at all.
+ *
+ * @param {{ platform: string, xcodeSigning: boolean, runnerSigned: boolean }} input
+ * @returns {{ graft: boolean, reason: string }}
+ */
+export function classifyRunnerSigningMode({
+  platform,
+  xcodeSigning,
+  runnerSigned,
+}) {
+  if (platform !== "device") {
+    return { graft: false, reason: "simulator lane: ad-hoc signing suffices" };
+  }
+  if (xcodeSigning) {
+    return {
+      graft: false,
+      reason:
+        "--xcode-signing: runner signed by xcodebuild via -allowProvisioningUpdates",
+    };
+  }
+  if (runnerSigned) {
+    return {
+      graft: false,
+      reason: "runner already carries a valid code signature",
+    };
+  }
+  return {
+    graft: true,
+    reason: "unsigned runner on the device lane: graft-signing required",
+  };
+}
+
 // ── .xctestrun manipulation ─────────────────────────────────────────────
 
 /**

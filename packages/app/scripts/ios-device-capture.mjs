@@ -9,7 +9,10 @@
  *      AppUITests target from packages/app-core/platforms/ios is present in
  *      the generated packages/app/ios project.
  *   2. `xcodebuild build-for-testing -scheme AppUITests` → produces
- *      AppUITests-Runner.app + App.app + an .xctestrun file.
+ *      AppUITests-Runner.app + App.app + an .xctestrun file. Device builds
+ *      are UNSIGNED by default; the runner is then graft-signed from a
+ *      discovered development profile (no Xcode account session needed —
+ *      #13567). --xcode-signing falls back to -allowProvisioningUpdates.
  *   3. (device only, --app-path) rewrite UITargetAppPath in the .xctestrun to
  *      the grafted-signature App.app produced by ios-device-deploy.mjs.
  *   4. `xcodebuild test-without-building -xctestrun …` drives the app,
@@ -37,6 +40,7 @@ import { execFileSync, spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { discoverProfiles } from "./ios-device-deploy.mjs";
 import {
   readDevicectlDeviceList,
   readDevicectlDeviceLockState,
@@ -45,11 +49,14 @@ import {
   assertDeviceUnlocked,
   buildIosXcuitestShardPlan,
   buildPlistXml,
+  buildRunnerCodesignPlan,
   buildSimctlListappsArgs,
   classifyCodesignPreflight,
   classifyIsolatedReruns,
+  classifyRunnerSigningMode,
   classifyXcresultSummaryForGate,
   DEFAULT_APP_BUNDLE_ID,
+  deriveSigningEntitlements,
   evaluateRunnerStaleness,
   extractSwiftXcuitestEntries,
   extractXctestrunAppPaths,
@@ -59,12 +66,15 @@ import {
   isBenignIosAppAbsence,
   normalizeDeviceLockState,
   parseCliArgs,
+  parseCodesigningIdentities,
   parseFailedTestIdentifiers,
   parsePlist,
   planSignedAppDdOverwrite,
   resolveDeviceId,
   resolveXctestrunTestRoot,
   rewriteXctestrunUITargetApp,
+  selectProvisioningProfile,
+  selectSigningIdentity,
   shouldRunIosXcuitestCoverageGuard,
   sweepXctestrunDependentProductPaths,
 } from "./ios-device-lib.mjs";
@@ -323,6 +333,160 @@ function isCodeSigned(appPath) {
   return result.status === 0;
 }
 
+/** Loose dylibs under `root`, excluding anything inside a .framework (those are signed as units). */
+function listNestedDylibs(root) {
+  const dylibs = [];
+  const stack = [root];
+  while (stack.length > 0) {
+    const dir = stack.pop();
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        if (entry.name.endsWith(".framework")) continue;
+        stack.push(full);
+      } else if (entry.name.endsWith(".dylib")) {
+        dylibs.push(full);
+      }
+    }
+  }
+  return dylibs.sort();
+}
+
+/**
+ * Graft-sign an unsigned AppUITests-Runner.app for a physical device: pick a
+ * discovered development profile covering the runner's bundle id + this
+ * device's UDID (an Xcode-managed wildcard team profile qualifies), derive
+ * signing entitlements from it, and codesign inner→outer — the same #11030
+ * recipe ios-device-deploy.mjs uses for App.app. This removes the Xcode
+ * account-session dependency (-allowProvisioningUpdates) from the default
+ * device capture path (#13567).
+ */
+function graftSignRunner({ runnerApp, deviceUdid, workDir }) {
+  const infoXml = runCaptureCommand(
+    "plutil",
+    ["-convert", "xml1", "-o", "-", path.join(runnerApp, "Info.plist")],
+    { label: "runner Info.plist read" },
+  );
+  const info = parsePlist(infoXml);
+  const runnerBundleId =
+    typeof info.CFBundleIdentifier === "string"
+      ? info.CFBundleIdentifier
+      : null;
+  if (!runnerBundleId) {
+    fail(`runner Info.plist has no CFBundleIdentifier: ${runnerApp}`);
+  }
+
+  const profiles = discoverProfiles();
+  log(
+    `runner graft-sign: scanned ${profiles.length} provisioning profile(s) for ${runnerBundleId}`,
+  );
+  const { selected: profile, rejected } = selectProvisioningProfile(profiles, {
+    bundleId: runnerBundleId,
+    deviceUdid,
+  });
+  if (!profile) {
+    const rejectedLines = rejected
+      .slice(0, 20)
+      .map(
+        ({ profile: p, reasons }) =>
+          `  - ${p.name} (${p.sourcePath}):\n      ${reasons.join("\n      ")}`,
+      )
+      .join("\n");
+    fail(
+      [
+        `no provisioning profile covers the XCUITest runner ${runnerBundleId} on device UDID ${deviceUdid}.`,
+        rejected.length > 0
+          ? `Profiles scanned and rejected:\n${rejectedLines}`
+          : "No profiles found at all.",
+        "Remediation (pick one):",
+        `  1. Mint a development profile via the ASC API: bun run ios:device:provision -- --device ${deviceUdid} --bundle-id ${runnerBundleId}`,
+        "  2. Run the App scheme on this device from Xcode once with the team account",
+        "     signed in — the managed wildcard team profile it mints covers the runner.",
+        "  3. Re-run with --xcode-signing to fall back to xcodebuild's",
+        "     -allowProvisioningUpdates (needs an Xcode account session).",
+      ].join("\n"),
+    );
+  }
+  log(
+    `runner profile: ${profile.name} (${profile.sourcePath}), expires ${profile.expirationDate?.toISOString()}`,
+  );
+
+  let identity = process.env.ELIZA_IOS_SIGN_IDENTITY?.trim() || null;
+  if (!identity) {
+    const identities = parseCodesigningIdentities(
+      runCaptureCommand(
+        "security",
+        ["find-identity", "-v", "-p", "codesigning"],
+        {
+          label: "keychain identity scan",
+        },
+      ),
+    );
+    const match = selectSigningIdentity(identities, profile);
+    if (!match) {
+      fail(
+        `no codesigning identity in the keychain matches the certificates embedded in profile "${profile.name}".\n` +
+          `Keychain identities: ${identities.map((i) => `${i.name} (${i.hash})`).join(", ") || "(none)"}\n` +
+          "Install the Apple Development certificate + private key for this team, or set ELIZA_IOS_SIGN_IDENTITY.",
+      );
+    }
+    identity = match.hash;
+    log(`runner signing identity: ${match.name} (${match.hash})`);
+  } else {
+    log(`runner signing identity (explicit): ${identity}`);
+  }
+
+  fs.copyFileSync(
+    profile.sourcePath,
+    path.join(runnerApp, "embedded.mobileprovision"),
+  );
+  const entitlementsPath = path.join(workDir, "ent-xctrunner.plist");
+  fs.writeFileSync(
+    entitlementsPath,
+    buildPlistXml(deriveSigningEntitlements(profile, runnerBundleId)),
+  );
+
+  const frameworksDir = path.join(runnerApp, "Frameworks");
+  const frameworks = fs.existsSync(frameworksDir)
+    ? fs
+        .readdirSync(frameworksDir)
+        .filter((n) => n.endsWith(".framework") || n.endsWith(".dylib"))
+        .map((n) => path.join(frameworksDir, n))
+        .sort()
+    : [];
+  const dylibs = listNestedDylibs(runnerApp).filter(
+    (dylib) => !dylib.startsWith(`${frameworksDir}${path.sep}`),
+  );
+  const plugInsDir = path.join(runnerApp, "PlugIns");
+  const xctestBundles = fs.existsSync(plugInsDir)
+    ? fs
+        .readdirSync(plugInsDir)
+        .filter((n) => n.endsWith(".xctest"))
+        .map((n) => path.join(plugInsDir, n))
+        .sort()
+    : [];
+  const plan = buildRunnerCodesignPlan({
+    runnerPath: runnerApp,
+    frameworks,
+    dylibs,
+    xctestBundles,
+    entitlementsPath,
+  });
+  log(
+    `runner codesign plan: ${plan.length} step(s) (${frameworks.length} frameworks, ${dylibs.length} nested dylibs, ${xctestBundles.length} xctest bundles, 1 runner app)`,
+  );
+  for (const step of plan) {
+    const signArgs = ["--force", "--sign", identity, "--timestamp=none"];
+    if (step.entitlementsPath) {
+      signArgs.push("--entitlements", step.entitlementsPath);
+    }
+    signArgs.push(step.path);
+    runInherit("codesign", signArgs);
+  }
+  runInherit("codesign", ["--verify", "--deep", "--strict", runnerApp]);
+  log("runner codesign --verify --deep --strict: OK");
+}
+
 /**
  * Record the simulator screen to an .mp4 for the whole test run via
  * `xcrun simctl io recordVideo`. Returns a stop() that SIGINTs the recorder
@@ -452,12 +616,13 @@ async function main() {
       "allow-stale-runner",
       "no-retry-isolation",
       "require-chat",
+      "xcode-signing",
       "help",
     ],
   });
   if (args.help) {
     console.log(
-      "Usage: node scripts/ios-device-capture.mjs --platform sim|device [--device <udid>] [--skip-build] [--strict-gate] [--allow-stale-runner] [--no-retry-isolation] [--require-chat] [--output <dir>] [--app-path <App.app>] [--boot-timeout <sec>] [--interval <sec>] [--agent-ready-timeout <sec>] [--derived-data <dir>] [--only-testing <id>] [--bundle-id <id>]",
+      "Usage: node scripts/ios-device-capture.mjs --platform sim|device [--device <udid>] [--skip-build] [--strict-gate] [--allow-stale-runner] [--no-retry-isolation] [--require-chat] [--xcode-signing] [--output <dir>] [--app-path <App.app>] [--boot-timeout <sec>] [--interval <sec>] [--agent-ready-timeout <sec>] [--derived-data <dir>] [--only-testing <id>] [--bundle-id <id>]",
     );
     return;
   }
@@ -541,11 +706,13 @@ async function main() {
         // signed-appex path users exercise, so keep simulator builds ad-hoc
         // signed. Device: the test RUNNER must be properly signed or installd
         // rejects it (0xe8008018 "identity no longer valid" — the exact
-        // first-device-run failure). The project carries CODE_SIGN_STYLE=
-        // Automatic + the team id, so let xcodebuild sign and mint the
-        // ai.elizaos.app.xctrunner wildcard team profile (-allowProvisioningUpdates
-        // needs the Xcode account session that minted the app profile in the
-        // first place).
+        // first-device-run failure). Default (#13567): build the runner
+        // UNSIGNED and graft-sign it below from a discovered development
+        // profile (same recipe ios-device-deploy uses for App.app) — no Xcode
+        // account session needed. --xcode-signing is the legacy fallback that
+        // lets xcodebuild mint the ai.elizaos.app.xctrunner wildcard team
+        // profile via -allowProvisioningUpdates (requires the Xcode account
+        // session that minted the app profile in the first place).
         ...(platform === "sim"
           ? [
               "CODE_SIGNING_ALLOWED=YES",
@@ -555,7 +722,9 @@ async function main() {
               "ONLY_ACTIVE_ARCH=YES",
               "EXCLUDED_ARCHS=x86_64",
             ]
-          : ["-allowProvisioningUpdates"]),
+          : args["xcode-signing"]
+            ? ["-allowProvisioningUpdates"]
+            : ["CODE_SIGNING_ALLOWED=NO"]),
         "build-for-testing",
       ],
       { cwd: iosProjectDir },
@@ -687,11 +856,43 @@ async function main() {
       log(`DerivedData overwrite skipped: ${overwritePlan.reason}`);
     }
 
+    // Runner signing (#13567): the default device build above is UNSIGNED
+    // (CODE_SIGNING_ALLOWED=NO), so graft-sign the runner from a discovered
+    // development profile before the preflight. --xcode-signing builds arrive
+    // already signed by xcodebuild, and a --skip-build reuse of a previously
+    // signed runner needs no re-graft.
+    const runnerApp =
+      originalBundles.find((bundle) => bundle.endsWith("-Runner.app")) ?? null;
+    if (runnerApp) {
+      const signingMode = classifyRunnerSigningMode({
+        platform,
+        xcodeSigning: Boolean(args["xcode-signing"]),
+        runnerSigned: isCodeSigned(runnerApp),
+      });
+      if (signingMode.graft) {
+        const graftDeviceId = resolveDeviceId({
+          flagValue: args.device ?? null,
+        });
+        if (!graftDeviceId) {
+          fail(
+            "device platform needs --device or ELIZA_IOS_DEVICE_ID to graft-sign the runner.",
+          );
+        }
+        const graftDevice = resolvePhysicalDeviceUdid(graftDeviceId);
+        log(`runner signing: ${signingMode.reason}`);
+        graftSignRunner({
+          runnerApp,
+          deviceUdid: graftDevice.udid,
+          workDir: outputDir,
+        });
+      } else {
+        log(`runner signing: ${signingMode.reason}`);
+      }
+    }
+
     // Preflight: verify the runner app AND the (now-overwritten) DD product are
     // signed, so an unsigned bundle fails fast with the 0xe800801c remediation
     // text instead of an opaque devicectl install error deep in the run.
-    const runnerApp =
-      originalBundles.find((bundle) => bundle.endsWith("-Runner.app")) ?? null;
     const preflightChecks = [];
     if (runnerApp) {
       preflightChecks.push({
