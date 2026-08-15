@@ -65,7 +65,7 @@ const gatewayManager = new GatewayManager({
 const elizaAppBotToken = process.env.ELIZA_APP_DISCORD_BOT_TOKEN?.trim();
 const elizaAppBotEnabled = process.env.ELIZA_APP_DISCORD_BOT_ENABLED === "true";
 const elizaAppApplicationId =
-  process.env.ELIZA_APP_DISCORD_APPLICATION_ID?.trim() ?? "1474591626759376967";
+  process.env.ELIZA_APP_DISCORD_APPLICATION_ID?.trim() ?? "1468649258654630063";
 const resolveDiscordPublicKey = elizaAppBotToken
   ? createDiscordPublicKeyResolver({
       botToken: elizaAppBotToken,
