@@ -190,10 +190,19 @@ export const notesAction: Action = {
     }
 
     if (op === "create") {
-      const note = await service.createNote(parseNoteContent(content));
-      const text = `saved a note: ${describe(note)}`;
+      const created = await service.createNoteWithCommit(
+        parseNoteContent(content),
+      );
+      const note = created.value;
+      const text = created.replayed
+        ? `that note was already saved: ${describe(note)}`
+        : `saved a note: ${describe(note)}`;
       await deliver(text);
-      return committed(text, { op, noteId: note.id });
+      return committed(text, {
+        op,
+        noteId: note.id,
+        replayed: created.replayed,
+      });
     }
 
     if (op === "delete") {
@@ -225,9 +234,16 @@ export const notesAction: Action = {
       content,
       parseNoteContent(replacement),
     );
-    const text = `updated the note: ${describe(updated.value)}`;
+    const text =
+      updated.consolidatedCount > 0
+        ? `updated the note: ${describe(updated.value)} (consolidated ${updated.consolidatedCount + 1} identical copies)`
+        : `updated the note: ${describe(updated.value)}`;
     await deliver(text);
-    return committed(text, { op, noteId: updated.value.id });
+    return committed(text, {
+      op,
+      noteId: updated.value.id,
+      consolidatedCount: updated.consolidatedCount,
+    });
   },
   parameters: [
     {
