@@ -4,7 +4,8 @@
  * The suite spawns the real runner against temporary workspace fixture
  * packages (real harness, no mocks) and asserts each false-green class fails
  * closed: all-skipped lanes, timed-out children, exit-0 zero-evidence
- * wrappers, and — via deterministic fault injection — duplicate and missing
+ * wrappers, incomplete fail-fast ledgers, artifacts missing their protocol
+ * violation, and — via deterministic fault injection — duplicate and missing
  * result records, which cannot be provoked from outside the process.
  */
 import { afterEach, describe, expect, test } from "bun:test";
@@ -33,6 +34,14 @@ const FIXTURE_DIR = join(
   repoRoot,
   "packages",
   "__run_all_tests_result_ledger_fixture__",
+);
+// A second fixture that sorts after the first so the serial fail-fast case has
+// a deterministic "never reached" task.
+const FIXTURE_B_NAME = "@elizaos/run-all-tests-result-ledger-fixture-b";
+const FIXTURE_B_DIR = join(
+  repoRoot,
+  "packages",
+  "__run_all_tests_result_ledger_fixture_b__",
 );
 
 function tail(value: string): string {
@@ -65,23 +74,28 @@ function run(args: string[], env: Record<string, string> = {}) {
   return { status: result.status, stdout, stderr };
 }
 
+function writeFixtureAt(
+  dir: string,
+  name: string,
+  scripts: Record<string, string>,
+  files: Record<string, string> = {},
+) {
+  rmSync(dir, { recursive: true, force: true });
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(
+    join(dir, "package.json"),
+    `${JSON.stringify({ name, private: true, type: "module", scripts }, null, 2)}\n`,
+  );
+  for (const [fileName, content] of Object.entries(files)) {
+    writeFileSync(join(dir, fileName), content);
+  }
+}
+
 function writeFixture(
   scripts: Record<string, string>,
   files: Record<string, string> = {},
 ) {
-  rmSync(FIXTURE_DIR, { recursive: true, force: true });
-  mkdirSync(FIXTURE_DIR, { recursive: true });
-  writeFileSync(
-    join(FIXTURE_DIR, "package.json"),
-    `${JSON.stringify(
-      { name: FIXTURE_NAME, private: true, type: "module", scripts },
-      null,
-      2,
-    )}\n`,
-  );
-  for (const [name, content] of Object.entries(files)) {
-    writeFileSync(join(FIXTURE_DIR, name), content);
-  }
+  writeFixtureAt(FIXTURE_DIR, FIXTURE_NAME, scripts, files);
 }
 
 function fixtureArgs(extra: string[] = []) {
@@ -96,6 +110,7 @@ function fixtureArgs(extra: string[] = []) {
 
 afterEach(() => {
   rmSync(FIXTURE_DIR, { recursive: true, force: true });
+  rmSync(FIXTURE_B_DIR, { recursive: true, force: true });
 });
 
 describe("run-all-tests result ledger (#16994)", () => {
@@ -129,6 +144,10 @@ describe("run-all-tests result ledger (#16994)", () => {
         expect(record.exitCode).toBe(0);
         expect(record.counts.executed).toBeGreaterThanOrEqual(1);
         expect(record.counts.failures).toBe(0);
+        // --no-cloud must land in the artifact as an explicit exclusion, not
+        // silence: a consumer can tell the cloud stage was designed out.
+        expect(payload.cloud.status).toBe("excluded");
+        expect(payload.protocolViolation).toBeUndefined();
       } finally {
         rmSync(resultsDir, { recursive: true, force: true });
       }
@@ -204,6 +223,9 @@ describe("run-all-tests result ledger (#16994)", () => {
         const payload = JSON.parse(readFileSync(resultsFile, "utf8"));
         expect(payload.results).toHaveLength(1);
         expect(payload.results[0].observed).toBe(false);
+        // The final artifact must carry the violation: a downstream consumer
+        // reading the file alone must not reconcile this run as clean.
+        expect(payload.protocolViolation).toBe("vacuous-work");
       } finally {
         rmSync(resultsDir, { recursive: true, force: true });
       }
@@ -255,6 +277,62 @@ describe("run-all-tests result ledger (#16994)", () => {
       expect(`${result.stdout}${result.stderr}`).toContain(
         "finished without a result record",
       );
+    },
+    SPAWN_TIMEOUT_MS,
+  );
+
+  test(
+    "a serial fail-fast run records unreached tasks as not-run in a complete ledger",
+    () => {
+      writeFixture(
+        { test: "bun test" },
+        {
+          "sample.test.ts": [
+            'import { expect, test } from "bun:test";',
+            'test("fails", () => { expect(1).toBe(2); });',
+            "",
+          ].join("\n"),
+        },
+      );
+      writeFixtureAt(
+        FIXTURE_B_DIR,
+        FIXTURE_B_NAME,
+        { test: "bun test" },
+        {
+          "sample.test.ts": [
+            'import { expect, test } from "bun:test";',
+            'test("passes", () => { expect(1).toBe(1); });',
+            "",
+          ].join("\n"),
+        },
+      );
+      const resultsDir = mkdtempSync(join(tmpdir(), "eliza-results-"));
+      const resultsFile = join(resultsDir, "results.json");
+      try {
+        const result = run(fixtureArgs(), {
+          ELIZA_TEST_RESULTS_FILE: resultsFile,
+        });
+        expect(result.status).toBe(1);
+        const payload = JSON.parse(readFileSync(resultsFile, "utf8"));
+        expect(payload.results).toHaveLength(2);
+        const byName = new Map(
+          payload.results.map((record: { packageName: string }) => [
+            record.packageName,
+            record,
+          ]),
+        );
+        const failed = byName.get(FIXTURE_NAME) as { status: string };
+        const unreached = byName.get(FIXTURE_B_NAME) as {
+          status: string;
+          skipReason?: string;
+        };
+        expect(failed.status).toBe("fail");
+        expect(unreached.status).toBe("not-run");
+        expect(unreached.skipReason).toContain("fail-fast");
+        expect(payload.failedTaskLabels).toHaveLength(1);
+      } finally {
+        rmSync(resultsDir, { recursive: true, force: true });
+      }
     },
     SPAWN_TIMEOUT_MS,
   );

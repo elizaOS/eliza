@@ -70,9 +70,12 @@
  * `excluded` entries so they can never be mistaken for passes. The full ledger
  * is written to ELIZA_TEST_RESULTS_FILE (JSON) when that env var is set, and a
  * one-line `[eliza-test] RESULT {...}` is printed per task. A green run with a
- * missing or duplicate record is a protocol violation and exits 3.
- * TEST_TASK_TIMEOUT_MS (0 = off) bounds each child; a timed-out child is a
- * failure, never a skip.
+ * missing or duplicate record is a protocol violation and exits 3. A fail-fast
+ * run records every unreached task as `not-run`, an interrupted run flushes
+ * the partial ledger with `interrupted`, and the optional cloud stage lands in
+ * the artifact (pass/fail/excluded) before the file is finalized.
+ * TEST_TASK_TIMEOUT_MS (0 = off) bounds each child, the cloud stage included;
+ * a timed-out child is a failure, never a skip.
  *
  * See `.env.test.example` and `packages/scripts/test-env.mjs` for live env setup.
  */
@@ -226,9 +229,10 @@ if (!Number.isSafeInteger(minTasks)) {
 }
 const requireWork = requireWorkFlag || minTasks > 0;
 
-// Per-child wall-clock bound. 0 disables (the historical behaviour); CI lanes
-// arm it so a hung child becomes a recorded timeout failure instead of an
-// unobserved cancellation at the job level.
+// Per-child wall-clock bound. 0 disables (the historical behaviour and the
+// default — no caller is armed implicitly). A caller that sets it turns a hung
+// child into a recorded timeout failure instead of an unobserved cancellation
+// at the job level.
 const taskTimeoutRaw = process.env.TEST_TASK_TIMEOUT_MS ?? "0";
 const taskTimeoutMs = /^\d+$/.test(taskTimeoutRaw)
   ? Number(taskTimeoutRaw)
@@ -1158,11 +1162,13 @@ function enforceResultLedger(failures) {
     pass: statuses.filter((s) => s === "pass").length,
     skip: statuses.filter((s) => s === "skip").length,
     fail: statuses.filter((s) => s === "fail").length,
+    notRun: statuses.filter((s) => s === "not-run").length,
     excluded: skippedPlanEntries.length,
   };
   console.log(
     `[eliza-test] RESULTS tasks=${tasks.length} pass=${summary.pass} fail=${summary.fail} ` +
-      `skip=${summary.skip} excluded=${summary.excluded} unobserved=${outcomeTally.unobserved}`,
+      `skip=${summary.skip} not-run=${summary.notRun} excluded=${summary.excluded} ` +
+      `unobserved=${outcomeTally.unobserved}`,
   );
   if (failures.length > 0) return;
   const missing = tasks.filter((task) => !resultLedger.has(task.label));
@@ -1401,12 +1407,35 @@ function runCloudTests() {
       process.stderr.write(chunk);
     });
 
+    // The cloud stage honours the same per-child wall-clock bound as every
+    // resolved task: a hung cloud child becomes a recorded timeout failure,
+    // not an unbounded job.
+    let timedOut = false;
+    let timeoutTimer = null;
+    if (taskTimeoutMs > 0) {
+      timeoutTimer = setTimeout(() => {
+        timedOut = true;
+        child.kill("SIGTERM");
+        setTimeout(() => child.kill("SIGKILL"), 10_000).unref();
+      }, taskTimeoutMs);
+      timeoutTimer.unref();
+    }
+
     child.on("error", reject);
     child.on("exit", (code, signal) => {
+      if (timeoutTimer) clearTimeout(timeoutTimer);
       const durationMs = Date.now() - startedAt;
+      if (timedOut) {
+        const error = new Error(
+          `cloud#test timed out after ${taskTimeoutMs}ms (TEST_TASK_TIMEOUT_MS)`,
+        );
+        error.timedOut = true;
+        reject(error);
+        return;
+      }
       if (code === 0) {
         console.log(`[eliza-test] PASS cloud#test (${durationMs}ms)`);
-        resolve({ skipped: false });
+        resolve({ status: "pass", exitCode: 0, durationMs, timedOut: false });
         return;
       }
       reject(
@@ -1659,11 +1688,26 @@ function enforceRequiredWork() {
       `[eliza-test] VACUOUS-GREEN GUARD ${tasks.length} runnable task(s) completed without reconciled evidence that a testcase executed. ` +
         "Unsupported wrappers do not count as semantic work.",
     );
+    writeResultsFile({
+      protocolViolation: "vacuous-work",
+      failedTaskLabels: [],
+    });
     process.exit(3);
   }
 }
 
 const taskFailures = [];
+
+// A job-level cancellation still flushes the partial ledger, so a downstream
+// consumer sees an explicitly interrupted artifact rather than a missing or
+// stale one. Installed after task resolution so the payload fields exist.
+for (const interruptSignal of ["SIGINT", "SIGTERM"]) {
+  process.on(interruptSignal, () => {
+    console.error(`[eliza-test] INTERRUPTED by ${interruptSignal}`);
+    writeResultsFile({ interrupted: interruptSignal, failedTaskLabels: [] });
+    process.exit(interruptSignal === "SIGINT" ? 130 : 143);
+  });
+}
 
 if (concurrency <= 1) {
   // Default: fully serial, fail-fast — the historical behaviour, except the
@@ -1718,12 +1762,33 @@ if (concurrency <= 1) {
   }
 }
 
+// A failed run still writes a complete ledger: every resolved task the
+// fail-fast serial path never reached gets an explicit not-run record, so a
+// downstream consumer can distinguish "failed", "passed", and "never ran"
+// instead of reconciling a truncated prefix as the whole plan.
+if (taskFailures.length > 0) {
+  for (const task of tasks) {
+    if (!resultLedger.has(task.label)) {
+      recordTaskResult(task, {
+        status: "not-run",
+        observed: false,
+        exitCode: null,
+        signal: null,
+        timedOut: false,
+        durationMs: 0,
+        counts: null,
+        skipReason: "not run: an earlier task failed in fail-fast mode",
+      });
+    }
+  }
+}
+
 enforceResultLedger(taskFailures);
-writeResultsFile({
-  failedTaskLabels: taskFailures.map((failure) => failure.label),
-});
 
 if (taskFailures.length > 0) {
+  writeResultsFile({
+    failedTaskLabels: taskFailures.map((failure) => failure.label),
+  });
   console.error(
     `[eliza-test] ${taskFailures.length} task(s) failed:\n  ${taskFailures
       .map(
@@ -1737,7 +1802,30 @@ if (taskFailures.length > 0) {
 
 enforceRequiredWork();
 
-// Final stage: cloud tests (unless --no-cloud was passed)
+// Final stage: cloud tests (unless --no-cloud was passed). The cloud child is
+// part of the run's result contract: its outcome lands in the results file,
+// which is only finalized after the stage settles so the artifact can never
+// claim a clean run that a later cloud failure contradicts.
+let cloudResult = {
+  status: "excluded",
+  reason: "cloud stage skipped by --no-cloud",
+};
 if (!noCloud) {
-  await runCloudTests();
+  try {
+    cloudResult = await runCloudTests();
+  } catch (error) {
+    // error-policy:J1 the cloud stage failure ends the run with a recorded,
+    // machine-readable result instead of an unhandled rejection.
+    cloudResult = {
+      status: "fail",
+      timedOut: Boolean(error?.timedOut),
+      failReason: error instanceof Error ? error.message : String(error),
+    };
+    writeResultsFile({ failedTaskLabels: ["cloud#test"], cloud: cloudResult });
+    console.error(
+      `[eliza-test] ${error instanceof Error ? error.message : String(error)}`,
+    );
+    process.exit(1);
+  }
 }
+writeResultsFile({ failedTaskLabels: [], cloud: cloudResult });
