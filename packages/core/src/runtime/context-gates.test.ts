@@ -41,6 +41,38 @@ describe("filterByContextGate — top-level roleGate under an explicit contextGa
 	});
 });
 
+describe("filterByContextGate — full explicit context predicate", () => {
+	const item = {
+		name: "CONTEXT_SENSITIVE",
+		contextGate: {
+			anyOf: ["wallet"] as AgentContext[],
+			allOf: ["authenticated"] as AgentContext[],
+			noneOf: ["blocked"] as AgentContext[],
+		},
+	};
+
+	it("requires anyOf/allOf and enforces noneOf on the generic candidate path", () => {
+		expect(
+			filterByContextGate([item], [
+				"wallet",
+				"authenticated",
+			] as AgentContext[]),
+		).toEqual([item]);
+		expect(
+			filterByContextGate([item], ["authenticated"] as AgentContext[]),
+		).toEqual([]);
+		expect(filterByContextGate([item], ["wallet"] as AgentContext[])).toEqual(
+			[],
+		);
+		expect(
+			filterByContextGate([item], [
+				"wallet",
+				"authenticated",
+				"blocked",
+			] as AgentContext[]),
+		).toEqual([]);
+	});
+});
 describe("filterProvidersByContextGate — full declared contextGate honored (#13203)", () => {
 	// A world-style, gate-only provider: contextGate with anyOf and NO contexts.
 	// filterByContextGate's {contexts, roleGate} reduction drops the anyOf terms,

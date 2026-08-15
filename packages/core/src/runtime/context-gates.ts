@@ -125,7 +125,11 @@ export function filterByContextGate<T extends ContextGateCandidate>(
 		// contextGate does not specify its own.
 		const explicit = item.contextGate;
 		const gate: ContextGate = explicit
-			? { ...explicit, contexts: explicit.contexts ?? item.contexts, roleGate: explicit.roleGate ?? item.roleGate }
+			? {
+					...explicit,
+					contexts: explicit.contexts ?? item.contexts,
+					roleGate: explicit.roleGate ?? item.roleGate,
+				}
 			: { contexts: item.contexts, roleGate: item.roleGate };
 		return satisfiesContextGate(activeContexts, gate, userRoles);
 	});
