@@ -65,7 +65,7 @@ function getAppUrl(): string {
 }
 
 function buildAffiliateLoginUrl(origin: string, code: string): string {
-  return `${origin.replace(/\/$/, "")}/login?affiliate=${code}`;
+  return `${origin.replace(/\/$/, "")}/login?affiliate=${encodeURIComponent(code)}`;
 }
 
 export function AffiliatesPageClient() {
