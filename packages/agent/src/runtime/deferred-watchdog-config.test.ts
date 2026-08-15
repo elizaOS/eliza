@@ -138,4 +138,23 @@ describe("startEliza pre-readiness watchdog validation", () => {
       }
     }
   });
+
+  it("validates a watchdog timeout hydrated from persisted config", async () => {
+    delete process.env.ELIZA_DEFERRED_PLUGIN_REGISTRATION_TIMEOUT_MS;
+
+    await expect(
+      startEliza({
+        headless: true,
+        configOverride: {
+          env: {
+            ELIZA_DEFERRED_PLUGIN_REGISTRATION_TIMEOUT_MS: "persisted-invalid",
+          },
+        } as never,
+      }),
+    ).rejects.toMatchObject({
+      code: "INVALID_DEFERRED_PLUGIN_REGISTRATION_TIMEOUT",
+      severity: "fatal",
+      context: { raw: "persisted-invalid" },
+    });
+  });
 });

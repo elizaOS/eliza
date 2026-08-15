@@ -3973,9 +3973,6 @@ export async function startEliza(
   opts?: StartElizaOptions,
 ): Promise<AgentRuntime | undefined> {
   opts?.abortSignal?.throwIfAborted();
-  const deferredWatchdogTimeoutMs = resolveDeferredPluginRegistrationTimeoutMs(
-    process.env.ELIZA_DEFERRED_PLUGIN_REGISTRATION_TIMEOUT_MS,
-  );
   const bootContext =
     opts?.bootContext ?? createBootContext({ observePhase: opts?.onBootPhase });
   const bootTimer = new BootTimer("[eliza-boot]");
@@ -4178,6 +4175,13 @@ export async function startEliza(
       }
     }
   }
+
+  // Persisted plugin settings are hydrated into process.env above. Resolve the
+  // watchdog only after that merge so first boot validates and uses the same
+  // effective value that downstream runtime consumers observe.
+  const deferredWatchdogTimeoutMs = resolveDeferredPluginRegistrationTimeoutMs(
+    process.env.ELIZA_DEFERRED_PLUGIN_REGISTRATION_TIMEOUT_MS,
+  );
 
   // Keep the canonical public key env in sync for Solana plugins that still
   // read process.env directly instead of runtime settings.
