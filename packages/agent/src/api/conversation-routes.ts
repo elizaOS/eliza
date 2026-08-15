@@ -60,6 +60,10 @@ import {
   PostSeedMessagesRequestSchema,
   parsePositiveInteger,
 } from "@elizaos/shared";
+import {
+  parseSharedTodoCutoverSnapshot,
+  TodoCutoverContractError,
+} from "@elizaos/shared/todo-cutover";
 import type { ElizaConfig } from "../config/config.ts";
 import { resolveStateDir } from "../config/paths.ts";
 import type { AgentHttpRequestAuthorization } from "../runtime/host-bridge.ts";
@@ -137,6 +141,10 @@ import {
 } from "./server-helpers.ts";
 import { normalizeWsClientId } from "./server-helpers-auth.ts";
 import type { ConversationMeta } from "./server-types.ts";
+import {
+  importSharedTodoCutover,
+  type SharedTodoImportReceipt,
+} from "./todo-cutover-import.ts";
 import {
   resolveWaifuChatAccess,
   type WaifuChatAccess,
@@ -291,6 +299,7 @@ export interface ConversationRouteState {
 export interface ConversationRouteContext extends RouteRequestContext {
   state: ConversationRouteState;
   callerAuthorization?: AgentHttpRequestAuthorization;
+  todoCutoverImporter?: typeof importSharedTodoCutover;
 }
 
 function readViewInteractionClientId(
@@ -3281,6 +3290,14 @@ export async function handleConversationRoutes(
       rawImport.cutoverToken.length <= 512
         ? rawImport.cutoverToken.trim()
         : null;
+    if (rawImport.cutoverToken !== undefined && !cutoverToken) {
+      error(
+        res,
+        "A cutoverToken must be a non-empty string of at most 512 characters",
+        400,
+      );
+      return true;
+    }
     const importTasks: ScheduledTask[] = [];
     for (const rawTask of rawScheduledTasks ?? []) {
       if (!isScheduledTask(rawTask) || rawTask.kind !== "reminder") {
@@ -3308,6 +3325,38 @@ export async function handleConversationRoutes(
     if (activateScheduledTasks === true && !cutoverToken) {
       error(res, "A cutoverToken is required to activate scheduled tasks", 400);
       return true;
+    }
+    const rawTodoSnapshot = rawImport.todoSnapshot;
+    if (cutoverToken && rawTodoSnapshot === undefined) {
+      error(res, "A todoSnapshot is required for an exact cutover import", 400);
+      return true;
+    }
+    if (rawTodoSnapshot !== undefined && !cutoverToken) {
+      error(res, "A cutoverToken is required to import todos", 400);
+      return true;
+    }
+    let todoSnapshot: Awaited<
+      ReturnType<typeof parseSharedTodoCutoverSnapshot>
+    > | null = null;
+    if (rawTodoSnapshot !== undefined) {
+      try {
+        todoSnapshot = await parseSharedTodoCutoverSnapshot(rawTodoSnapshot);
+      } catch (err) {
+        // error-policy:J3 the authenticated import boundary rejects malformed
+        // or digest-mismatched Todo data without admitting any partial import.
+        error(
+          res,
+          err instanceof TodoCutoverContractError
+            ? err.message
+            : `Todo snapshot validation failed: ${getErrorMessage(err)}`,
+          400,
+        );
+        return true;
+      }
+      if (todoSnapshot.sourceAgentId !== convId) {
+        error(res, "Todo snapshot source does not match the conversation", 400);
+        return true;
+      }
     }
 
     const runtime = state.runtime;
@@ -3389,7 +3438,7 @@ export async function handleConversationRoutes(
         return true;
       }
 
-      if (!exactImport && importTasks.length === 0) {
+      if (!exactImport && importTasks.length === 0 && !todoSnapshot) {
         // Legacy imports predate source ids. Preserve their room-level
         // idempotency while exact cloud cutovers use per-message identities.
         const existing = await runtime.getMemories({
@@ -3406,6 +3455,26 @@ export async function handleConversationRoutes(
             skipped: importMessages.length,
             alreadyPopulated: true,
           });
+          return true;
+        }
+      }
+
+      let todoReceipt: SharedTodoImportReceipt | null = null;
+      if (todoSnapshot && cutoverToken) {
+        try {
+          todoReceipt = await (
+            ctx.todoCutoverImporter ?? importSharedTodoCutover
+          )({
+            runtime,
+            entityId: caller.entityId,
+            targetRoomId: conv.roomId,
+            cutoverToken,
+            snapshot: todoSnapshot,
+          });
+        } catch (err) {
+          // error-policy:J1 the import boundary keeps Shared authoritative when
+          // the Dedicated Todo transaction cannot prove the exact snapshot.
+          error(res, `Todo import failed: ${getErrorMessage(err)}`, 500);
           return true;
         }
       }
@@ -3533,6 +3602,7 @@ export async function handleConversationRoutes(
         skippedScheduledTasks,
         activatedScheduledTasks,
         skippedActivatedScheduledTasks,
+        ...(todoReceipt ?? {}),
       });
       return true;
     } finally {

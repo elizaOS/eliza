@@ -115,6 +115,30 @@ export default defineConfig({
         ),
       },
       {
+        // Dedicated conversation imports depend on the plugin-owned Todo
+        // schema and UI-free runtime subpaths. Unit tests run before workspace
+        // dist builds, so these exact source exports must resolve together.
+        find: /^@elizaos\/plugin-todos\/plugin$/,
+        replacement: path.join(
+          monorepoRoot,
+          "plugins/plugin-todos/src/plugin.ts",
+        ),
+      },
+      {
+        find: /^@elizaos\/plugin-todos\/service$/,
+        replacement: path.join(
+          monorepoRoot,
+          "plugins/plugin-todos/src/service.ts",
+        ),
+      },
+      {
+        find: /^@elizaos\/plugin-todos\/db\/schema$/,
+        replacement: path.join(
+          monorepoRoot,
+          "plugins/plugin-todos/src/db/schema.ts",
+        ),
+      },
+      {
         find: /^@elizaos\/plugin-wallet\/(.+)$/,
         replacement: path.join(monorepoRoot, "plugins/plugin-wallet/src/$1.ts"),
       },

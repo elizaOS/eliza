@@ -11,6 +11,11 @@
  *   job.type:       agent_provision | agent_delete
  */
 
+import type {
+  SharedTodoCutoverRecord,
+  SharedTodoCutoverSnapshot,
+} from "@elizaos/shared/todo-cutover";
+
 export type SandboxStatus =
   | "provisioning"
   | "running"
@@ -137,6 +142,13 @@ export interface ConversationImportResult {
   skippedScheduledTasks: number;
   activatedScheduledTasks: number;
   skippedActivatedScheduledTasks: number;
+  sourceTodoCount?: number;
+  importedTodos?: number;
+  repairedTodos?: number;
+  skippedTodos?: number;
+  removedStaleTodos?: number;
+  sourceTodoDigest?: string;
+  targetTodoDigest?: string;
   alreadyPopulated?: boolean;
 }
 
@@ -156,6 +168,7 @@ export class ControlPlaneStore {
     string,
     Map<string, StoredScheduledTask>
   >();
+  private readonly todoSnapshots = new Map<string, SharedTodoCutoverSnapshot>();
   private readonly conversationTurnReplies = new Map<string, string>();
   private hotPoolTarget = 0;
   private warmPoolState: WarmPoolState = {
@@ -363,6 +376,7 @@ export class ControlPlaneStore {
     scheduledTasks: ImportedScheduledTask[] = [],
     cutoverToken = "",
     activateScheduledTasks = false,
+    todoSnapshot?: SharedTodoCutoverSnapshot,
   ): ConversationImportResult {
     const key = this.convKey(sandboxId, conversationId);
     const existing = this.conversations.get(key);
@@ -411,6 +425,49 @@ export class ControlPlaneStore {
       }
     }
 
+    let todoReceipt: Pick<
+      ConversationImportResult,
+      | "sourceTodoCount"
+      | "importedTodos"
+      | "repairedTodos"
+      | "skippedTodos"
+      | "removedStaleTodos"
+      | "sourceTodoDigest"
+      | "targetTodoDigest"
+    > = {};
+    if (todoSnapshot) {
+      const previousTodos = this.todoSnapshots.get(key)?.todos ?? [];
+      const previousById = new Map(
+        previousTodos.map((todo) => [todo.sourceId, todo]),
+      );
+      const nextIds = new Set(todoSnapshot.todos.map((todo) => todo.sourceId));
+      let importedTodos = 0;
+      let repairedTodos = 0;
+      let skippedTodos = 0;
+      for (const todo of todoSnapshot.todos) {
+        const previous = previousById.get(todo.sourceId);
+        if (!previous) importedTodos += 1;
+        else if (JSON.stringify(previous) === JSON.stringify(todo)) {
+          skippedTodos += 1;
+        } else {
+          repairedTodos += 1;
+        }
+      }
+      const removedStaleTodos = previousTodos.filter(
+        (todo) => !nextIds.has(todo.sourceId),
+      ).length;
+      this.todoSnapshots.set(key, structuredClone(todoSnapshot));
+      todoReceipt = {
+        sourceTodoCount: todoSnapshot.todos.length,
+        importedTodos,
+        repairedTodos,
+        skippedTodos,
+        removedStaleTodos,
+        sourceTodoDigest: todoSnapshot.digest,
+        targetTodoDigest: todoSnapshot.digest,
+      };
+    }
+
     return {
       conversationId,
       complete: true,
@@ -422,6 +479,7 @@ export class ControlPlaneStore {
       skippedScheduledTasks,
       activatedScheduledTasks,
       skippedActivatedScheduledTasks,
+      ...todoReceipt,
       ...(existing && existing.length > 0 ? { alreadyPopulated: true } : {}),
     };
   }
@@ -445,6 +503,17 @@ export class ControlPlaneStore {
       this.scheduledTasks
         .get(this.convKey(sandboxId, conversationId))
         ?.values() ?? [],
+    );
+  }
+
+  /** Read the exact Todo records materialized by the Dedicated import mock. */
+  getTodos(
+    sandboxId: string,
+    conversationId: string,
+  ): SharedTodoCutoverRecord[] {
+    return structuredClone(
+      this.todoSnapshots.get(this.convKey(sandboxId, conversationId))?.todos ??
+        [],
     );
   }
 
@@ -500,6 +569,17 @@ export class ControlPlaneStore {
     );
     if (!sandbox) return [];
     return this.getScheduledTasks(sandbox.id, conversationId);
+  }
+
+  getTodosByAgent(
+    agentId: string,
+    conversationId: string,
+  ): SharedTodoCutoverRecord[] {
+    const sandbox = [...this.sandboxes.values()].find(
+      (candidate) => candidate.agentId === agentId,
+    );
+    if (!sandbox) return [];
+    return this.getTodos(sandbox.id, conversationId);
   }
 
   createJob(input: {
