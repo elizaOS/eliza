@@ -11,11 +11,13 @@
  * Saves default to ~/.eliza/.env — the layer that survives worktree churn —
  * with repo .env as the per-save alternative. Each target file is serialized
  * through an exclusive lock, reread, then written atomically (tmp file mode
- * 600 + rename, tmp unlinked on failure). Lock records bind a live PID to a
- * random owner token, so an aged-but-live writer is never stolen and cleanup
- * cannot remove a replacement owner's lock. Upserts collapse every definition
- * of the written key so parseDotenv's last-wins read cannot resurrect a stale
- * later line, and preserve unrelated lines, comments, and trailing blanks.
+ * 600 + rename, tmp unlinked on failure). A lock is an atomically published,
+ * pre-populated directory whose marker binds a live PID to a random owner
+ * token. Reclamation removes only the observed token marker, so an aged-live
+ * writer and a replacement directory cannot be stolen by a stale observer.
+ * Upserts collapse every definition of the written key so parseDotenv's
+ * last-wins read cannot resurrect a stale later line, and preserve unrelated
+ * lines, comments, and trailing blanks.
  * The parse, merge, and upsert primitives stay unit-testable without touching
  * the real operator files. Values returned by loadLayeredEnv are real secrets:
  * callers must never render them — the display-safe surface is listPresent(),
@@ -23,14 +25,13 @@
  */
 import { randomBytes } from "node:crypto";
 import {
-  closeSync,
   existsSync,
-  linkSync,
+  lstatSync,
   mkdirSync,
-  openSync,
+  readdirSync,
   readFileSync,
   renameSync,
-  statSync,
+  rmdirSync,
   unlinkSync,
   writeFileSync,
 } from "node:fs";
@@ -47,9 +48,9 @@ export const HOME_ENV_PATH = join(homedir(), ".eliza", ".env");
 export const ENV_LAYER_SOURCES = ["process", "repo", "home"];
 
 const ENV_KEY_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/;
-const LOCK_STALE_MS = 10_000;
 const LOCK_WAIT_MS = 5_000;
 const LOCK_POLL_MS = 25;
+const LOCK_OWNER_FILE_PATTERN = /^owner-([a-f0-9]{32})$/;
 
 // --- pure primitives ---------------------------------------------------------
 
@@ -222,30 +223,54 @@ function sleepMs(ms) {
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
 }
 
+function ownerMarkerPath(lockPath, token) {
+  return join(lockPath, `owner-${token}`);
+}
+
 function readLockOwner(lockPath) {
-  let record;
+  let lockStat;
   try {
-    record = readFileSync(lockPath, "utf8");
+    lockStat = lstatSync(lockPath);
   } catch (err) {
     // error-policy:J3 lock ownership changed while contention was inspected
     if (err.code === "ENOENT") return { state: "missing" };
     throw err;
   }
-
-  const match = /^([1-9][0-9]*)(?::([a-f0-9]{32}))?\n$/.exec(record);
-  if (!match) {
-    let ageMs;
-    try {
-      ageMs = Date.now() - statSync(lockPath).mtimeMs;
-    } catch (err) {
-      // error-policy:J3 malformed lock disappeared before its age was checked
-      if (err.code === "ENOENT") return { state: "missing" };
-      throw err;
-    }
-    return ageMs > LOCK_STALE_MS
-      ? { state: "reclaim", record }
-      : { state: "held" };
+  // Never follow a lock-path symlink or reinterpret an unexpected file as a
+  // lock directory. An operator can remove a malformed entry after timeout.
+  if (!lockStat.isDirectory() || lockStat.isSymbolicLink()) {
+    return { state: "held" };
   }
+
+  let entries;
+  try {
+    entries = readdirSync(lockPath, { withFileTypes: true });
+  } catch (err) {
+    // error-policy:J3 the lock directory changed during inspection
+    if (err.code === "ENOENT") return { state: "missing" };
+    throw err;
+  }
+  if (entries.length === 0) return { state: "empty" };
+  if (entries.length !== 1 || !entries[0].isFile()) {
+    return { state: "held" };
+  }
+  const markerMatch = LOCK_OWNER_FILE_PATTERN.exec(entries[0].name);
+  if (!markerMatch) return { state: "held" };
+  const token = markerMatch[1];
+  const markerPath = ownerMarkerPath(lockPath, token);
+  let record;
+  try {
+    record = readFileSync(markerPath, "utf8");
+  } catch (err) {
+    // error-policy:J3 marker removal means ownership changed during inspection
+    if (err.code === "ENOENT") return { state: "missing" };
+    throw err;
+  }
+
+  const match = /^([1-9][0-9]*):([a-f0-9]{32})\n$/.exec(record);
+  // Published candidates are complete before rename, so malformed or
+  // mismatched markers are external corruption and fail closed.
+  if (!match || match[2] !== token) return { state: "held" };
 
   const pid = Number(match[1]);
   if (!Number.isSafeInteger(pid)) {
@@ -256,90 +281,141 @@ function readLockOwner(lockPath) {
     return { state: "held" };
   } catch (err) {
     // error-policy:J3 process liveness is the lock-owner validity boundary
-    if (err.code === "ESRCH") return { state: "reclaim", record };
+    if (err.code === "ESRCH") {
+      return { state: "reclaim", record, markerPath };
+    }
     if (err.code === "EPERM") return { state: "held" };
     throw err;
   }
 }
 
 /**
- * Atomically reclaim a lock whose owner was observed dead. rename() is the
- * ownership-transfer primitive: exactly one reclaimer captures the pathname,
- * so two reclaimers can never both pass a compare-and-unlink and admit
- * concurrent writers. If the captured record is not the observed dead one
- * (the lock was re-acquired between observation and rename), the capture is
- * undone with an exclusive link(); when even that loses to a newer lock, the
- * displaced owner is caught by writeSecret's commit-time ownership check.
+ * Reclaim a dead owner without ever moving the shared lock pathname. The
+ * observed token selects one immutable marker name. A replacement lock uses
+ * a fresh random name in a new non-empty directory, so a stale observer gets
+ * ENOENT for its old marker and cannot remove or rename the new live lock.
  */
 export function reclaimObservedLock(lockPath, observedRecord) {
-  const quarantine = `${lockPath}.reclaim.${process.pid}.${randomBytes(8).toString("hex")}`;
+  const observed = /^([1-9][0-9]*):([a-f0-9]{32})\n$/.exec(observedRecord);
+  if (!observed) return false;
   try {
-    renameSync(lockPath, quarantine);
+    process.kill(Number(observed[1]), 0);
+    return false;
   } catch (err) {
-    // error-policy:J3 losing the rename race means another reclaimer won
-    if (err.code === "ENOENT") return true;
+    // error-policy:J3 reclaim revalidates death at the mutation boundary
+    if (err.code === "EPERM") return false;
+    if (err.code !== "ESRCH") throw err;
+  }
+  const markerPath = ownerMarkerPath(lockPath, observed[2]);
+  try {
+    if (readFileSync(markerPath, "utf8") !== observedRecord) return false;
+    unlinkSync(markerPath);
+  } catch (err) {
+    // error-policy:J3 an absent token belongs to an already-reclaimed or
+    // replacement directory; only a fully absent lock is idempotent success
+    if (err.code === "ENOENT") {
+      try {
+        lstatSync(lockPath);
+        return false;
+      } catch (lockErr) {
+        // error-policy:J3 distinguish an absent lock from a replacement
+        if (lockErr.code === "ENOENT") return true;
+        throw lockErr;
+      }
+    }
     throw err;
   }
-  let quarantined;
   try {
-    quarantined = readFileSync(quarantine, "utf8");
+    rmdirSync(lockPath);
   } catch (err) {
-    // error-policy:J3 quarantine vanished only if the filesystem is hostile
-    if (err.code !== "ENOENT") throw err;
-    return true;
+    // error-policy:J3 another contender may atomically publish a populated
+    // replacement directory after marker removal; it must remain untouched
+    if (!["ENOENT", "ENOTEMPTY", "EEXIST"].includes(err.code)) throw err;
   }
-  if (quarantined === observedRecord) {
-    try {
-      unlinkSync(quarantine);
-    } catch (err) {
-      // error-policy:J6 quarantine cleanup is teardown-only
-      if (err.code !== "ENOENT") throw err;
-    }
-    return true;
-  }
-  // Captured a live re-acquired lock: restore it if the pathname is still
-  // free. link() is exclusive, so a newer lock is never clobbered.
-  try {
-    linkSync(quarantine, lockPath);
-  } catch (err) {
-    // error-policy:J3 a newer lock appeared; its owner holds the pathname and
-    // the displaced owner aborts at commit-time verification
-    if (err.code !== "EEXIST") throw err;
-  }
-  try {
-    unlinkSync(quarantine);
-  } catch (err) {
-    // error-policy:J6 quarantine cleanup is teardown-only
-    if (err.code !== "ENOENT") throw err;
-  }
-  return false;
+  return true;
 }
 
-function removeObservedLock(lockPath, observedRecord) {
+function removeEmptyLock(lockPath) {
   try {
-    if (readFileSync(lockPath, "utf8") !== observedRecord) return false;
-    unlinkSync(lockPath);
+    rmdirSync(lockPath);
     return true;
   } catch (err) {
-    // error-policy:J6 another owner released or reclaimed the observed lock
+    // error-policy:J3 a populated replacement directory is never removable
     if (err.code === "ENOENT") return true;
+    if (["ENOTEMPTY", "EEXIST"].includes(err.code)) return false;
     throw err;
+  }
+}
+
+function cleanupLockCandidate(candidate, primaryError) {
+  const cleanupErrors = [];
+  try {
+    unlinkSync(candidate.candidateMarkerPath);
+  } catch (err) {
+    // error-policy:J6 unpublished lock-candidate marker cleanup
+    if (err.code !== "ENOENT") cleanupErrors.push(err);
+  }
+  try {
+    rmdirSync(candidate.candidatePath);
+  } catch (err) {
+    // error-policy:J6 unpublished lock-candidate directory cleanup
+    if (err.code !== "ENOENT") cleanupErrors.push(err);
+  }
+  if (cleanupErrors.length > 0) {
+    throw new AggregateError(
+      [primaryError, ...cleanupErrors],
+      `writeSecret: lock candidate cleanup failed for ${candidate.lockPath}`,
+    );
   }
 }
 
 function acquireTargetLock(targetPath, waitMs = LOCK_WAIT_MS) {
   const lockPath = `${targetPath}.lock`;
   mkdirSync(dirname(targetPath), { recursive: true });
+  const token = randomBytes(16).toString("hex");
+  const ownerRecord = `${process.pid}:${token}\n`;
+  const candidatePath = `${lockPath}.candidate.${process.pid}.${token}`;
+  const candidateMarkerPath = ownerMarkerPath(candidatePath, token);
+  const candidate = {
+    candidateMarkerPath,
+    candidatePath,
+    lockPath,
+    ownerRecord,
+  };
+  try {
+    mkdirSync(candidatePath, { mode: 0o700 });
+    writeFileSync(candidateMarkerPath, ownerRecord, {
+      encoding: "utf8",
+      flag: "wx",
+      mode: 0o600,
+    });
+  } catch (err) {
+    // error-policy:J2 preserve lock initialization and cleanup failures
+    cleanupLockCandidate(candidate, err);
+    throw err;
+  }
+
   const deadline = Date.now() + waitMs;
-  while (true) {
-    let fd;
-    try {
-      fd = openSync(lockPath, "wx", 0o600);
-    } catch (err) {
-      // error-policy:J3 exclusive-create miss means another writer holds the lock
-      if (err.code !== "EEXIST") throw err;
+  try {
+    while (true) {
+      try {
+        // A prepared directory is already non-empty when published. rename()
+        // cannot replace a valid non-empty lock directory on supported hosts.
+        renameSync(candidatePath, lockPath);
+        return {
+          lockPath,
+          ownerMarkerPath: ownerMarkerPath(lockPath, token),
+          ownerRecord,
+        };
+      } catch (err) {
+        // error-policy:J3 publish failure is contention only when a lock exists
+        if (!["EEXIST", "ENOTEMPTY", "EPERM", "EACCES"].includes(err.code)) {
+          throw err;
+        }
+      }
       const owner = readLockOwner(lockPath);
       if (owner.state === "missing") continue;
+      if (owner.state === "empty" && removeEmptyLock(lockPath)) continue;
       if (
         owner.state === "reclaim" &&
         reclaimObservedLock(lockPath, owner.record)
@@ -350,51 +426,41 @@ function acquireTargetLock(targetPath, waitMs = LOCK_WAIT_MS) {
         throw new Error(`writeSecret: timed out waiting for lock ${lockPath}`);
       }
       sleepMs(LOCK_POLL_MS);
-      continue;
     }
+  } catch (err) {
+    // error-policy:J2 preserve acquisition and candidate-cleanup failures
+    cleanupLockCandidate(candidate, err);
+    throw err;
+  }
+}
 
-    const ownerRecord = `${process.pid}:${randomBytes(16).toString("hex")}\n`;
-    try {
-      writeFileSync(fd, ownerRecord);
-      return { fd, lockPath, ownerRecord };
-    } catch (err) {
-      const cleanupErrors = [];
-      try {
-        closeSync(fd);
-      } catch (candidate) {
-        // error-policy:J6 partial lock initialization must close its descriptor
-        cleanupErrors.push(candidate);
-      }
-      try {
-        unlinkSync(lockPath);
-      } catch (candidate) {
-        // error-policy:J6 partial lock initialization must remove its lock path
-        if (candidate.code !== "ENOENT") cleanupErrors.push(candidate);
-      }
-      if (cleanupErrors.length > 0) {
-        throw new AggregateError(
-          [err, ...cleanupErrors],
-          `writeSecret: failed to initialize lock ${lockPath}`,
-        );
-      }
-      throw err;
-    }
+function stillOwnsLock(lock) {
+  try {
+    return readFileSync(lock.ownerMarkerPath, "utf8") === lock.ownerRecord;
+  } catch (err) {
+    // error-policy:J3 a missing marker means ownership was displaced
+    if (err.code === "ENOENT") return false;
+    throw err;
   }
 }
 
 function releaseTargetLock(lock) {
   const errors = [];
-  try {
-    closeSync(lock.fd);
-  } catch (err) {
-    // error-policy:J6 release attempts both descriptor and owned-path teardown
-    errors.push(err);
-  }
-  try {
-    removeObservedLock(lock.lockPath, lock.ownerRecord);
-  } catch (err) {
-    // error-policy:J6 release attempts both descriptor and owned-path teardown
-    errors.push(err);
+  if (stillOwnsLock(lock)) {
+    try {
+      unlinkSync(lock.ownerMarkerPath);
+    } catch (err) {
+      // error-policy:J6 owned marker cleanup is teardown-only
+      if (err.code !== "ENOENT") errors.push(err);
+    }
+    try {
+      rmdirSync(lock.lockPath);
+    } catch (err) {
+      // error-policy:J6 a populated replacement is owned by another writer
+      if (!["ENOENT", "ENOTEMPTY", "EEXIST"].includes(err.code)) {
+        errors.push(err);
+      }
+    }
   }
   if (errors.length > 0) {
     throw new AggregateError(
@@ -404,13 +470,32 @@ function releaseTargetLock(lock) {
   }
 }
 
-export function atomicWriteEnvFile(path, content) {
+export function atomicWriteEnvFile(path, content, options = {}) {
   mkdirSync(dirname(path), { recursive: true });
   const tmp = `${path}.${process.pid}.${Date.now()}.${randomBytes(4).toString("hex")}.tmp`;
   try {
     writeFileSync(tmp, content, { encoding: "utf8", mode: 0o600 });
+    if (
+      typeof options.confirmCommit === "function" &&
+      !options.confirmCommit()
+    ) {
+      try {
+        unlinkSync(tmp);
+      } catch (cleanupErr) {
+        // error-policy:J6 rejected commits must not retain plaintext tmp files
+        if (cleanupErr.code !== "ENOENT") {
+          throw new Error(
+            `atomicWriteEnvFile: ownership rejected for ${path} and could not remove ${tmp}`,
+            { cause: cleanupErr },
+          );
+        }
+      }
+      return false;
+    }
     renameSync(tmp, path);
+    return true;
   } catch (err) {
+    // error-policy:J2 preserve the atomic-write failure through tmp cleanup
     try {
       unlinkSync(tmp);
     } catch (cleanupErr) {
@@ -430,10 +515,13 @@ export function atomicWriteEnvFile(path, content) {
  * Upsert one KEY=value into the chosen layer file — scope 'home'
  * (~/.eliza/.env, created on first save; the default because it survives
  * worktree churn) or 'repo' (this checkout's .env). The target is locked,
- * reread, then written atomically (tmp+rename, mode 600). Also sets the key
- * on processEnv so probes running in the same process observe the save
- * immediately. Values must be single-line; multi-line values would corrupt
- * the dotenv format and are rejected.
+ * reread, then written atomically (tmp+rename, mode 600). The owner marker is
+ * confirmed at the final commit gate; because valid reclamation can remove
+ * only a dead owner's exact marker, ownership cannot change between that gate
+ * and rename through this protocol. Also sets the key on processEnv so probes
+ * running in the same process observe the save immediately. Values must be
+ * single-line; multi-line values would corrupt the dotenv format and are
+ * rejected.
  */
 export function writeSecret(key, value, options = {}) {
   const {
@@ -456,22 +544,40 @@ export function writeSecret(key, value, options = {}) {
     );
   }
   const path = scope === "home" ? homeEnvPath : join(repoRoot, ".env");
-  // The lock IS the serialization: a writer that cannot acquire it within
-  // lockWaitMs fails fast rather than proceeding unserialized. Dead owners
-  // are reclaimed atomically inside acquireTargetLock; a live owner is never
-  // stolen, so the read-upsert-write below always runs alone.
   const lock = acquireTargetLock(path, lockWaitMs);
   try {
     const existing = existsSync(path) ? readFileSync(path, "utf8") : "";
     if (typeof afterRead === "function") {
       afterRead();
     }
-    atomicWriteEnvFile(path, upsertEnvContent(existing, { [key]: value }));
+    const committed = atomicWriteEnvFile(
+      path,
+      upsertEnvContent(existing, { [key]: value }),
+      { confirmCommit: () => stillOwnsLock(lock) },
+    );
+    if (!committed) {
+      const ownershipError = new Error(
+        `writeSecret(${key}): lock ownership lost before commit`,
+      );
+      ownershipError.code = "ERR_LOCK_OWNERSHIP_LOST";
+      throw ownershipError;
+    }
     processEnv[key] = value;
-    return { key, scope, path };
-  } finally {
-    releaseTargetLock(lock);
+  } catch (err) {
+    // error-policy:J2 preserve transaction failure while releasing ownership
+    try {
+      releaseTargetLock(lock);
+    } catch (releaseError) {
+      // error-policy:J2 preserve both transaction and teardown failures
+      throw new AggregateError(
+        [err, releaseError],
+        `writeSecret(${key}): write and lock release both failed`,
+      );
+    }
+    throw err;
   }
+  releaseTargetLock(lock);
+  return { key, scope, path };
 }
 
 export function saveEnvVar(key, value, target = "home", options = {}) {

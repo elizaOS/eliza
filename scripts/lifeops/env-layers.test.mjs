@@ -14,6 +14,7 @@ import {
   readdirSync,
   readFileSync,
   realpathSync,
+  rmdirSync,
   rmSync,
   statSync,
   unlinkSync,
@@ -52,6 +53,25 @@ function git(cwd, args) {
     `git ${args.join(" ")} failed: ${result.stderr}`,
   );
   return result.stdout.trim();
+}
+
+function writeLockDirectory(lockPath, pid, token) {
+  const record = `${pid}:${token}\n`;
+  const ownerPath = join(lockPath, `owner-${token}`);
+  mkdirSync(lockPath, { mode: 0o700 });
+  writeFileSync(ownerPath, record, { mode: 0o600 });
+  return { ownerPath, record };
+}
+
+function readLockDirectory(lockPath) {
+  const entries = readdirSync(lockPath);
+  assert.equal(entries.length, 1, "lock directory must contain one owner");
+  assert.match(entries[0], /^owner-[a-f0-9]{32}$/);
+  const ownerPath = join(lockPath, entries[0]);
+  return {
+    ownerPath,
+    record: readFileSync(ownerPath, "utf8"),
+  };
 }
 
 // --- parseDotenv --------------------------------------------------------------
@@ -477,7 +497,7 @@ test("atomicWriteEnvFile removes the tmp file when rename cannot replace the tar
   }
 });
 
-test("writeSecret recovers from a stale sibling lock file", () => {
+test("writeSecret recovers from a stale sibling lock directory", () => {
   const base = tempDir("env-layers-stale-lock-");
   try {
     const homeEnvPath = join(base, ".eliza", ".env");
@@ -485,9 +505,13 @@ test("writeSecret recovers from a stale sibling lock file", () => {
     const lockPath = `${homeEnvPath}.lock`;
     const deadOwner = spawnSync(process.execPath, ["-e", ""]);
     assert.equal(deadOwner.status, 0);
-    writeFileSync(lockPath, `${deadOwner.pid}:${"d".repeat(32)}\n`, "utf8");
+    const deadLock = writeLockDirectory(
+      lockPath,
+      deadOwner.pid,
+      "d".repeat(32),
+    );
     const stale = new Date(Date.now() - 30_000);
-    utimesSync(lockPath, stale, stale);
+    utimesSync(deadLock.ownerPath, stale, stale);
     writeSecret("RECOVERED", "yes", {
       scope: "home",
       homeEnvPath,
@@ -514,9 +538,10 @@ function writeSecretInChild(
     join(ROOT, "scripts/lifeops/env-layers.mjs"),
   ).href;
   const script = `
-    import { existsSync } from "node:fs";
+    import { existsSync, writeFileSync } from "node:fs";
     import { writeSecret } from ${JSON.stringify(moduleUrl)};
     const waitPath = ${JSON.stringify(afterReadWaitPath ?? "")};
+    const readyPath = ${JSON.stringify(options.readyPath ?? "")};
     writeSecret(${JSON.stringify(key)}, ${JSON.stringify(value)}, {
       scope: "repo",
       repoRoot: ${JSON.stringify(repoRoot)},
@@ -526,6 +551,9 @@ function writeSecretInChild(
         : { lockWaitMs: ${JSON.stringify(options.lockWaitMs ?? null)} }),
       afterRead: waitPath
         ? () => {
+            if (readyPath) {
+              writeFileSync(readyPath, "ready\\n");
+            }
             const deadline = Date.now() + 5000;
             while (!existsSync(waitPath) && Date.now() < deadline) {
               Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
@@ -557,6 +585,55 @@ function writeSecretInChild(
         return;
       }
       reject(new Error(`child write ${key} exited ${code}: ${stderr}`));
+    });
+  });
+}
+
+function reclaimLockInChild(lockPath, observedRecord, readyPath, waitPath) {
+  const moduleUrl = pathToFileURL(
+    join(ROOT, "scripts/lifeops/env-layers.mjs"),
+  ).href;
+  const token = observedRecord.split(":")[1].trim();
+  const script = `
+    import { existsSync, readFileSync, writeFileSync } from "node:fs";
+    import { join } from "node:path";
+    import { reclaimObservedLock } from ${JSON.stringify(moduleUrl)};
+    const lockPath = ${JSON.stringify(lockPath)};
+    const observedRecord = ${JSON.stringify(observedRecord)};
+    const markerPath = join(lockPath, ${JSON.stringify(`owner-${token}`)});
+    if (readFileSync(markerPath, "utf8") !== observedRecord) {
+      throw new Error("reclaimer did not observe seeded dead owner");
+    }
+    writeFileSync(${JSON.stringify(readyPath)}, "ready\\n");
+    const deadline = Date.now() + 8000;
+    while (!existsSync(${JSON.stringify(waitPath)}) && Date.now() < deadline) {
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
+    }
+    process.stdout.write(JSON.stringify({
+      reclaimed: reclaimObservedLock(lockPath, observedRecord),
+    }));
+  `;
+  return new Promise((resolvePromise, reject) => {
+    const child = spawn(process.execPath, [
+      "--input-type=module",
+      "-e",
+      script,
+    ]);
+    let stdout = "";
+    let stderr = "";
+    child.stdout.on("data", (chunk) => {
+      stdout += chunk;
+    });
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk;
+    });
+    child.on("error", reject);
+    child.on("close", (code) => {
+      if (code !== 0) {
+        reject(new Error(`reclaimer exited ${code}: ${stderr}`));
+        return;
+      }
+      resolvePromise(JSON.parse(stdout));
     });
   });
 }
@@ -600,9 +677,9 @@ test("an aged live writer keeps lock ownership until its transaction finishes", 
       true,
       "first writer must acquire the lock",
     );
-    const firstOwner = readFileSync(lockPath, "utf8");
+    const firstOwner = readLockDirectory(lockPath);
     const stale = new Date(Date.now() - 30_000);
-    utimesSync(lockPath, stale, stale);
+    utimesSync(firstOwner.ownerPath, stale, stale);
 
     const second = writeSecretInChild(base, "KEY_B", "bbb");
     Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 150);
@@ -611,7 +688,7 @@ test("an aged live writer keeps lock ownership until its transaction finishes", 
       true,
       "live owner lock must remain present",
     );
-    assert.equal(readFileSync(lockPath, "utf8"), firstOwner);
+    assert.equal(readFileSync(firstOwner.ownerPath, "utf8"), firstOwner.record);
 
     writeFileSync(waitPath, "go\n");
     await Promise.all([first, second]);
@@ -629,9 +706,7 @@ test("writeSecret fails fast when a live owner holds the lock past the wait", as
     const lockPath = `${join(base, ".env")}.lock`;
     mkdirSync(base, { recursive: true });
     // This test process is the live lock owner and never releases.
-    writeFileSync(lockPath, `${process.pid}:${"a".repeat(32)}\n`, {
-      mode: 0o600,
-    });
+    const liveLock = writeLockDirectory(lockPath, process.pid, "a".repeat(32));
     const blocked = await writeSecretInChild(base, "TOKEN", "secret", null, {
       lockWaitMs: 300,
       allowFailure: true,
@@ -640,9 +715,45 @@ test("writeSecret fails fast when a live owner holds the lock past the wait", as
     assert.match(blocked.stderr, /timed out waiting for lock/);
     // Fail-fast means no unserialized write happened behind the owner.
     assert.equal(existsSync(join(base, ".env")), false);
+    assert.equal(readFileSync(liveLock.ownerPath, "utf8"), liveLock.record);
+  } finally {
+    rmSync(base, { recursive: true, force: true });
+  }
+}, 20_000);
+
+test("a writer without its owner marker cannot commit", async () => {
+  const base = tempDir("env-layers-owned-lock-");
+  try {
+    const lockPath = `${join(base, ".env")}.lock`;
+    const waitPath = join(base, "release-writer");
+    const readyPath = join(base, "writer-ready");
+    const writer = writeSecretInChild(base, "TOKEN", "secret", waitPath, {
+      allowFailure: true,
+      readyPath,
+    });
+    const deadline = Date.now() + 5000;
+    while (!existsSync(readyPath) && Date.now() < deadline) {
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
+    }
+    assert.equal(existsSync(readyPath), true, "writer must pause after read");
+
+    const displaced = readLockDirectory(lockPath);
+    unlinkSync(displaced.ownerPath);
+    rmdirSync(lockPath);
+    const replacement = writeLockDirectory(
+      lockPath,
+      process.pid,
+      "f".repeat(32),
+    );
+    writeFileSync(waitPath, "go\n");
+    const result = await writer;
+
+    assert.notEqual(result.code, 0);
+    assert.match(result.stderr, /lock ownership lost before commit/);
+    assert.equal(existsSync(join(base, ".env")), false);
     assert.equal(
-      readFileSync(lockPath, "utf8"),
-      `${process.pid}:${"a".repeat(32)}\n`,
+      readFileSync(replacement.ownerPath, "utf8"),
+      replacement.record,
     );
   } finally {
     rmSync(base, { recursive: true, force: true });
@@ -682,12 +793,10 @@ test("a reclaim stampede over a dead owner admits exactly one writer at a time",
     await new Promise((resolvePromise) => dead.once("close", resolvePromise));
     const lockPath = `${join(base, ".env")}.lock`;
     mkdirSync(base, { recursive: true });
-    writeFileSync(lockPath, `${dead.pid}:${"b".repeat(32)}\n`, {
-      mode: 0o600,
-    });
+    writeLockDirectory(lockPath, dead.pid, "b".repeat(32));
 
     // Several worktrees notice the same dead lock at once (the recovery
-    // stampede): rename-based reclamation lets exactly one capture it, and
+    // stampede): token-marker reclamation lets exactly one remove it, and
     // every distinct update must survive.
     await Promise.all([
       writeSecretInChild(base, "KEY_ONE", "one"),
@@ -703,25 +812,92 @@ test("a reclaim stampede over a dead owner admits exactly one writer at a time",
   }
 }, 20_000);
 
-test("reclaim restores a lock that was re-acquired between observation and rename", () => {
-  const base = tempDir("env-layers-reclaim-restore-");
+test("a stale observer cannot remove a newly live lock directory", () => {
+  const base = tempDir("env-layers-stale-observer-");
   try {
     const lockPath = `${join(base, ".env")}.lock`;
     mkdirSync(base, { recursive: true });
     const deadRecord = `999999999:${"c".repeat(32)}\n`;
-    const liveRecord = `${process.pid}:${"d".repeat(32)}\n`;
-    // The reclaimer observed deadRecord, but a new owner re-acquired first.
-    writeFileSync(lockPath, liveRecord, { mode: 0o600 });
+    const liveLock = writeLockDirectory(lockPath, process.pid, "d".repeat(32));
+    // A stale observer targets only deadRecord's immutable token marker. It
+    // cannot rename the shared path or remove the replacement directory.
     assert.equal(reclaimObservedLock(lockPath, deadRecord), false);
-    assert.equal(readFileSync(lockPath, "utf8"), liveRecord);
+    assert.equal(readFileSync(liveLock.ownerPath, "utf8"), liveLock.record);
 
     // Idempotence: reclaiming an already-gone lock is a win, not an error.
-    unlinkSync(lockPath);
+    rmSync(lockPath, { recursive: true });
     assert.equal(reclaimObservedLock(lockPath, deadRecord), true);
   } finally {
     rmSync(base, { recursive: true, force: true });
   }
 });
+
+test("three-process stale observation cannot admit a concurrent writer", async () => {
+  const base = tempDir("env-layers-stale-three-process-");
+  try {
+    const lockPath = `${join(base, ".env")}.lock`;
+    const dead = spawn(process.execPath, ["-e", "process.exit(0)"]);
+    await new Promise((resolvePromise) => dead.once("close", resolvePromise));
+    const deadLock = writeLockDirectory(lockPath, dead.pid, "e".repeat(32));
+    const readyR = join(base, "ready-r");
+    const goR = join(base, "go-r");
+    const reclaimer = reclaimLockInChild(
+      lockPath,
+      deadLock.record,
+      readyR,
+      goR,
+    );
+    const rDeadline = Date.now() + 5000;
+    while (!existsSync(readyR) && Date.now() < rDeadline) {
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
+    }
+    assert.equal(existsSync(readyR), true, "R must observe the dead owner");
+
+    const goB = join(base, "go-b");
+    const readyB = join(base, "ready-b");
+    const writerB = writeSecretInChild(base, "KEY_B", "bbb", goB, {
+      readyPath: readyB,
+    });
+    const bDeadline = Date.now() + 5000;
+    while (!existsSync(readyB) && Date.now() < bDeadline) {
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
+    }
+    assert.equal(existsSync(readyB), true, "B must own the replacement lock");
+    const ownerB = readLockDirectory(lockPath);
+
+    writeFileSync(goR, "go\n");
+    assert.deepEqual(await reclaimer, { reclaimed: false });
+    assert.equal(readFileSync(ownerB.ownerPath, "utf8"), ownerB.record);
+
+    const goC = join(base, "go-c");
+    const readyC = join(base, "ready-c");
+    const writerC = writeSecretInChild(base, "KEY_C", "ccc", goC, {
+      readyPath: readyC,
+    });
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 200);
+    assert.equal(
+      existsSync(readyC),
+      false,
+      "C must not enter while B owns the replacement lock",
+    );
+
+    writeFileSync(goB, "go\n");
+    await writerB;
+    const cDeadline = Date.now() + 5000;
+    while (!existsSync(readyC) && Date.now() < cDeadline) {
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
+    }
+    assert.equal(existsSync(readyC), true, "C must enter after B releases");
+    writeFileSync(goC, "go\n");
+    await writerC;
+
+    const parsed = parseDotenv(readFileSync(join(base, ".env"), "utf8"));
+    assert.equal(parsed.KEY_B, "bbb");
+    assert.equal(parsed.KEY_C, "ccc");
+  } finally {
+    rmSync(base, { recursive: true, force: true });
+  }
+}, 30_000);
 
 test("writeSecret same-key child writers leave exactly one definition", async () => {
   const base = tempDir("env-layers-same-key-race-");
