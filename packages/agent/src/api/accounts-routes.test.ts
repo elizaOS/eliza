@@ -29,7 +29,12 @@ const fakes = vi.hoisted(() => ({
   submitFlowCode: vi.fn(() => true),
   cancelFlow: vi.fn(() => true),
   getFlowState: vi.fn(),
-  subscribeFlow: vi.fn(() => vi.fn()),
+  subscribeFlow: vi.fn(
+    (
+      _sessionId?: string,
+      _listener?: (state: Record<string, unknown>) => void,
+    ) => vi.fn(),
+  ),
   startFlow: vi.fn(async () => ({
     sessionId: "session-1",
     authUrl: "https://provider.example/authorize",
@@ -628,4 +633,31 @@ describe("accounts routes", () => {
       "text/event-stream",
     );
   });
-});
+
+  it("releases a synchronous terminal OAuth replay after subscription returns", async () => {
+    const unsubscribe = vi.fn();
+    const terminal = {
+      providerId: "openai-codex",
+      status: "completed",
+    };
+    fakes.getFlowState.mockReturnValue(terminal);
+    fakes.subscribeFlow.mockImplementationOnce((_sessionId, listener) => {
+      if (!listener) throw new Error("OAuth flow listener missing");
+      listener(terminal);
+      return unsubscribe;
+    });
+
+    const status = makeContext(
+      "GET",
+      "/api/accounts/openai-codex/oauth/status",
+      undefined,
+      "/api/accounts/openai-codex/oauth/status?sessionId=session-1",
+    );
+    await handleAccountsRoutes(status.ctx);
+
+    expect(status.res.write).toHaveBeenCalledWith(
+      `data: ${JSON.stringify(terminal)}\n\n`,
+    );
+    expect(status.res.end).toHaveBeenCalledTimes(1);
+    expect(unsubscribe).toHaveBeenCalledTimes(1);
+  });});
