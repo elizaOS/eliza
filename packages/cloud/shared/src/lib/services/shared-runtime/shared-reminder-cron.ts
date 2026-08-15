@@ -2,9 +2,11 @@
 
 import {
   listDueScheduledTaskRefs,
+  listRecoverableScheduledTaskRefs,
   parseSharedReminderDelivery,
   type ScheduledTaskDispatcher,
   type ScheduledTaskDispatchRecord,
+  SHARED_REMINDER_MAX_TEXT_LENGTH,
   type SharedReminderDelivery,
 } from "@elizaos/plugin-scheduling/edge";
 import type { Bindings } from "../../../types/cloud-worker-env";
@@ -63,7 +65,20 @@ export function sharedReminderDispatcher(env: Bindings): ScheduledTaskDispatcher
   return {
     async dispatch(record) {
       const delivery = reminderDelivery(record);
-      const idempotencyKey = `${record.taskId}:${record.firedAtIso}`;
+      const idempotencyKey = record.metadata?.dispatchIdempotencyKey;
+      if (typeof idempotencyKey !== "string" || !idempotencyKey) {
+        throw new Error("Shared reminder dispatch idempotency key is missing");
+      }
+      const text = record.output?.fallback?.body ?? record.promptInstructions;
+      if (text.length > SHARED_REMINDER_MAX_TEXT_LENGTH) {
+        return {
+          ok: false,
+          reason: "transport_error",
+          userActionable: true,
+          acceptance: "not_accepted",
+          message: `Reminder text exceeds the ${SHARED_REMINDER_MAX_TEXT_LENGTH}-character connector limit.`,
+        };
+      }
       const baseUrl =
         delivery.platform === "discord" ? discordGatewayBaseUrl(env) : gatewayBaseUrl(env);
       let response: Response;
@@ -76,7 +91,7 @@ export function sharedReminderDispatcher(env: Bindings): ScheduledTaskDispatcher
           },
           body: JSON.stringify({
             ...delivery,
-            text: record.output?.fallback?.body ?? record.promptInstructions,
+            text,
             idempotencyKey,
           }),
           signal: AbortSignal.timeout(10_000),
@@ -191,20 +206,40 @@ export async function processDueSharedReminders(
   options: { now?: Date; limit?: number } = {},
 ) {
   const now = options.now ?? new Date();
+  const limit = Math.min(Math.max(Math.trunc(options.limit ?? 100), 1), 500);
+  const recoveryCutoff = new Date(now.getTime() - 2 * 60 * 1000);
+  const recoverable = await listRecoverableScheduledTaskRefs(executeSharedSchedulingSql, {
+    updatedBeforeIso: recoveryCutoff.toISOString(),
+    limit,
+  });
   const due = await listDueScheduledTaskRefs(executeSharedSchedulingSql, {
     dueAtIso: now.toISOString(),
-    limit: options.limit,
+    limit,
   });
   const dispatcher = sharedReminderDispatcher(env);
   let fired = 0;
   let raced = 0;
   let deferred = 0;
   let failed = 0;
-  for (let offset = 0; offset < due.length; offset += 10) {
-    const batch = due.slice(offset, offset + 10);
+  const work = [
+    ...recoverable.map((ref) => ({ ...ref, recovery: true as const })),
+    ...due
+      .filter(
+        (ref) =>
+          !recoverable.some(
+            (candidate) => candidate.taskId === ref.taskId && candidate.agentId === ref.agentId,
+          ),
+      )
+      .map((ref) => ({ ...ref, recovery: false as const })),
+  ].slice(0, limit);
+  for (let offset = 0; offset < work.length; offset += 10) {
+    const batch = work.slice(offset, offset + 10);
     const outcomes = await Promise.all(
-      batch.map(({ agentId, taskId }) =>
-        createSharedScheduledTaskRunner(agentId, dispatcher).fireWithResult(taskId),
+      batch.map((item) =>
+        createSharedScheduledTaskRunner(item.agentId, dispatcher).fireWithResult(
+          item.taskId,
+          item.recovery ? { recoverFiredAtIso: item.firedAtIso } : { allowTerminalRefire: true },
+        ),
       ),
     );
     for (const outcome of outcomes) {
@@ -214,5 +249,5 @@ export async function processDueSharedReminders(
       else failed += 1;
     }
   }
-  return { scanned: due.length, fired, raced, deferred, failed };
+  return { scanned: work.length, fired, raced, deferred, failed };
 }

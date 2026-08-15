@@ -9,8 +9,12 @@ type RedisSetOptions = { ex?: number; nx?: boolean };
 class MemoryRedis implements GatewayRedis {
   readonly store = new Map<string, string>();
   failCompletionWrite = false;
+  failGet = false;
+  failClaimWrite = false;
+  failDelete = false;
 
   async get<T = unknown>(key: string): Promise<T | null> {
+    if (this.failGet) throw new Error("receipt read unavailable");
     return (this.store.get(key) as T | undefined) ?? null;
   }
 
@@ -19,6 +23,7 @@ class MemoryRedis implements GatewayRedis {
     value: string,
     options: RedisSetOptions = {},
   ): Promise<unknown> {
+    if (this.failClaimWrite && options.nx) throw new Error("claim unavailable");
     if (options.nx && this.store.has(key)) return null;
     if (this.failCompletionWrite && value.includes('"state":"complete"')) {
       throw new Error("completion receipt unavailable");
@@ -28,6 +33,7 @@ class MemoryRedis implements GatewayRedis {
   }
 
   async del(key: string): Promise<unknown> {
+    if (this.failDelete) throw new Error("claim release unavailable");
     return this.store.delete(key) ? 1 : 0;
   }
 
@@ -87,6 +93,48 @@ function dependencies(redis: GatewayRedis) {
 }
 
 describe("internal proactive delivery", () => {
+  test("reports Redis read and claim failures as retryable before egress", async () => {
+    const send = mock(async () => {
+      throw new Error("provider must not run");
+    });
+    globalThis.fetch = send as typeof fetch;
+    for (const failure of ["read", "claim"] as const) {
+      const redis = new MemoryRedis();
+      if (failure === "read") redis.failGet = true;
+      else redis.failClaimWrite = true;
+      const response = await deliverInternalMessage(
+        request(),
+        dependencies(redis),
+      );
+      expect(response.status).toBe(503);
+      await expect(response.json()).resolves.toMatchObject({
+        retryable: true,
+        acceptance: "not_accepted",
+      });
+    }
+    expect(send).not.toHaveBeenCalled();
+  });
+
+  test("does not mask an explicit provider rejection when claim release fails", async () => {
+    process.env.ELIZA_APP_TELEGRAM_BOT_TOKEN = "telegram-test-token";
+    const redis = new MemoryRedis();
+    redis.failDelete = true;
+    globalThis.fetch = mock(async () =>
+      Response.json({ ok: false, error_code: 403, description: "blocked" }),
+    ) as typeof fetch;
+
+    const response = await deliverInternalMessage(
+      request(),
+      dependencies(redis),
+    );
+    expect(response.status).toBe(403);
+    expect(response.headers.get("Retry-After")).toBe("60");
+    await expect(response.json()).resolves.toMatchObject({
+      acceptance: "not_accepted",
+      claimReleased: false,
+    });
+  });
+
   test("delivers once and replays the completed idempotency key", async () => {
     process.env.ELIZA_APP_TELEGRAM_BOT_TOKEN = "telegram-test-token";
     const redis = new MemoryRedis();

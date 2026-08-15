@@ -44,6 +44,7 @@ import {
 } from "./managed-message-egress";
 import {
   drainAndDeliverGreetings as drainAndDeliverPendingGreetings,
+  isKnownDiscordDirectMessageRejection,
   isTerminalDiscordDirectMessageError,
 } from "./proactive-greeting-delivery";
 import { createMockRedis, createNativeRedis } from "./redis-adapter";
@@ -492,13 +493,32 @@ export class GatewayManager {
     if (!this.isElizaAppLeader || !client?.isReady()) {
       return { accepted: false };
     }
-    const sent = await client.users.send(input.discordUserId, {
-      content: input.text,
-      nonce: input.nonce,
-      enforceNonce: true,
-      allowedMentions: { parse: [] },
-    });
-    await this.trackElizaAppDm(sent.channelId, input.discordUserId, sent.id);
+    let sent: Awaited<ReturnType<typeof client.users.send>>;
+    try {
+      sent = await client.users.send(input.discordUserId, {
+        content: input.text,
+        nonce: input.nonce,
+        enforceNonce: true,
+        allowedMentions: { parse: [] },
+      });
+    } catch (error) {
+      // error-policy:J1 Discord API rejections prove no message was accepted;
+      // network and response ambiguity still propagate to the receipt tombstone.
+      if (isKnownDiscordDirectMessageRejection(error))
+        return { accepted: false };
+      throw error;
+    }
+    try {
+      await this.trackElizaAppDm(sent.channelId, input.discordUserId, sent.id);
+    } catch (error) {
+      // error-policy:J4 polling cursor loss degrades reply ingestion only; the
+      // provider receipt remains authoritative for this outbound delivery.
+      logger.warn("Failed to persist Eliza App DM polling cursor", {
+        discordUserId: input.discordUserId,
+        providerMessageId: sent.id,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
     return { accepted: true, providerMessageId: sent.id };
   }
 
