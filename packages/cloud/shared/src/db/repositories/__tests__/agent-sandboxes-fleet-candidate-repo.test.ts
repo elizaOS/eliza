@@ -132,7 +132,8 @@ describe("fleet candidate selection matches default image by repo (#15101)", () 
       dockerImage: `${DEFAULT_REPO}:sha-oldabc`,
       imageDigest: "sha256:stale-1",
     });
-    // Same repo, digest-pinned ref — also a fleet agent.
+    // Same repo, malformed short-hex pseudo-pin — NOT a canonical operator
+    // digest pin (#18030), so it remains an ordinary fleet drift candidate.
     const digestPinned = await seedFleetAgent(organizationId, userId, {
       dockerImage: `${DEFAULT_REPO}@sha256:deadbeef`,
       imageDigest: "sha256:stale-2",
@@ -241,5 +242,126 @@ describe("imageRepoSql matches imageRepo across ref shapes (#15101)", () => {
       );
       expect(row.repo).toBe(imageRepo(ref));
     }
+  });
+});
+
+const NEWER_PIN_DIGEST = `sha256:${"b".repeat(64)}`;
+const TARGET_DIGEST = `sha256:${"a".repeat(64)}`;
+
+describe("operator digest pins are not tag drift (#18030)", () => {
+  test("a canonical @sha256 pin on the default repo is excluded from convergence", async () => {
+    expect(pgliteReady).toBe(true);
+    const { organizationId, userId } = await seedOrgAndUser();
+
+    // Digest-pinned-newer: operator pinned an exact digest (e.g. a canary
+    // build published AFTER the default tag's digest). Pre-fix this row was
+    // selected as drift and auto-downgraded mid-canary.
+    const pinnedNewer = await seedFleetAgent(organizationId, userId, {
+      dockerImage: `${DEFAULT_REPO}@${NEWER_PIN_DIGEST}`,
+      imageDigest: NEWER_PIN_DIGEST,
+    });
+    // Tag-pinned-older: an old TAG is still mutable fleet drift (#15101 scope
+    // survives for tags) — must be selected.
+    const tagPinnedOlder = await seedFleetAgent(organizationId, userId, {
+      dockerImage: `${DEFAULT_REPO}:sha-older`,
+      imageDigest: `sha256:${"c".repeat(64)}`,
+    });
+    // Default-tag row on a stale digest — the ordinary upgrade candidate.
+    const defaultTag = await seedFleetAgent(organizationId, userId, {
+      dockerImage: DEFAULT_IMAGE,
+      imageDigest: `sha256:${"d".repeat(64)}`,
+    });
+
+    const rows = await repo.listRunningWithDigestOtherThan(TARGET_DIGEST, DEFAULT_IMAGE, 50);
+    const ids = new Set(rows.map((r) => r.id));
+
+    expect(ids.has(pinnedNewer)).toBe(false);
+    expect(ids.has(tagPinnedOlder)).toBe(true);
+    expect(ids.has(defaultTag)).toBe(true);
+  });
+
+  test("a pin equal to the target digest still self-heals a stale image_digest column", async () => {
+    expect(pgliteReady).toBe(true);
+    const { organizationId, userId } = await seedOrgAndUser();
+
+    const selfHeal = await seedFleetAgent(organizationId, userId, {
+      dockerImage: `${DEFAULT_REPO}@${TARGET_DIGEST}`,
+      imageDigest: `sha256:${"e".repeat(64)}`,
+    });
+    // Pin equals target AND the column already matches — nothing to do.
+    const converged = await seedFleetAgent(organizationId, userId, {
+      dockerImage: `${DEFAULT_REPO}@${TARGET_DIGEST}`,
+      imageDigest: TARGET_DIGEST,
+    });
+
+    const rows = await repo.listRunningWithDigestOtherThan(TARGET_DIGEST, DEFAULT_IMAGE, 50);
+    const ids = new Set(rows.map((r) => r.id));
+
+    expect(ids.has(selfHeal)).toBe(true);
+    expect(ids.has(converged)).toBe(false);
+  });
+
+  test("malformed pseudo-pins do not earn operator-pin status", async () => {
+    expect(pgliteReady).toBe(true);
+    const { organizationId, userId } = await seedOrgAndUser();
+
+    const shortHex = await seedFleetAgent(organizationId, userId, {
+      dockerImage: `${DEFAULT_REPO}@sha256:deadbeef`,
+      imageDigest: `sha256:${"f".repeat(64)}`,
+    });
+    const doubleAt = await seedFleetAgent(organizationId, userId, {
+      dockerImage: `${DEFAULT_REPO}@@${NEWER_PIN_DIGEST}`,
+      imageDigest: `sha256:${"9".repeat(64)}`,
+    });
+
+    const rows = await repo.listRunningWithDigestOtherThan(TARGET_DIGEST, DEFAULT_IMAGE, 50);
+    const ids = new Set(rows.map((r) => r.id));
+
+    expect(ids.has(shortHex)).toBe(true);
+    expect(ids.has(doubleAt)).toBe(true);
+  });
+
+  test("SQL pin classification agrees with the JS helpers for every ref shape", async () => {
+    expect(pgliteReady).toBe(true);
+    const { isDigestPinnedImage, isDigestPinnedImageSql, pinnedImageDigest, pinnedImageDigestSql } =
+      await import("../../utils/docker-image-ref");
+    const cases = [
+      `${DEFAULT_REPO}@${TARGET_DIGEST}`,
+      `${DEFAULT_REPO}:prod@${TARGET_DIGEST}`,
+      ` ${DEFAULT_REPO}@${TARGET_DIGEST} `,
+      `${DEFAULT_REPO}@sha256:deadbeef`,
+      `${DEFAULT_REPO}@@${TARGET_DIGEST}`,
+      `${DEFAULT_REPO}:prod`,
+      DEFAULT_REPO,
+      `${DEFAULT_REPO}@sha256:${"A".repeat(64)}`,
+    ];
+    for (const ref of cases) {
+      const [row] = await sqlRows<{ pinned: boolean; digest: string }>(
+        dbWrite,
+        sql`SELECT ${isDigestPinnedImageSql(sql`${ref}`)} AS pinned, ${pinnedImageDigestSql(sql`${ref}`)} AS digest`,
+      );
+      expect(row.pinned).toBe(isDigestPinnedImage(ref));
+      if (row.pinned) {
+        expect(row.digest).toBe(pinnedImageDigest(ref) ?? "");
+      }
+    }
+  });
+});
+
+describe("repinImageDigest keeps writeback pairs matched (#18030)", () => {
+  test("re-pins a canonical pin, leaves tags/bare/malformed refs untouched", async () => {
+    const { repinImageDigest } = await import("../../utils/docker-image-ref");
+    const to = TARGET_DIGEST;
+    expect(repinImageDigest(`${DEFAULT_REPO}@${NEWER_PIN_DIGEST}`, to)).toBe(
+      `${DEFAULT_REPO}@${to}`,
+    );
+    expect(repinImageDigest(`${DEFAULT_REPO}:prod@${NEWER_PIN_DIGEST}`, to)).toBe(
+      `${DEFAULT_REPO}:prod@${to}`,
+    );
+    expect(repinImageDigest(`${DEFAULT_REPO}:prod`, to)).toBe(`${DEFAULT_REPO}:prod`);
+    expect(repinImageDigest(DEFAULT_REPO, to)).toBe(DEFAULT_REPO);
+    expect(repinImageDigest(`${DEFAULT_REPO}@sha256:deadbeef`, to)).toBe(
+      `${DEFAULT_REPO}@sha256:deadbeef`,
+    );
   });
 });
