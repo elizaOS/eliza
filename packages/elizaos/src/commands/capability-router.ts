@@ -5,6 +5,8 @@
 
 import pc from "picocolors";
 
+const MAX_TIMER_DELAY_MS = 2_147_483_647;
+
 export interface CapabilityRouterConnectOptions {
   apiBase?: string;
   apiToken?: string;
@@ -261,7 +263,13 @@ function parsePositiveInteger(
   if (!/^[1-9]\d*$/.test(normalized)) {
     return new Error(`${label} must be a positive integer.`);
   }
-  return Number(normalized);
+  const parsed = Number(normalized);
+  if (parsed > MAX_TIMER_DELAY_MS) {
+    return new Error(
+      `${label} must be a positive integer no greater than ${MAX_TIMER_DELAY_MS}.`,
+    );
+  }
+  return parsed;
 }
 
 function normalizeStringList(values: string[] | undefined): string[] {
