@@ -7,14 +7,14 @@ import { defineConfig } from "vitest/config";
 export default defineConfig({
   test: {
     environment: "node",
-    include: ["src/**/*.test.ts"],
+    include: ["src/**/*.test.ts", "test/**/*.test.ts"],
     exclude: [
       "dist/**",
       "node_modules/**",
       // Live extraction tests self-skip keyless and only run in post-merge.
       ...(process.env.VITEST_LANE === "post-merge"
         ? []
-        : ["src/**/*.live.test.ts", "test/**/*.live.test.ts"]),
+        : ["src/**/*.live.test.ts", "test/**/*.live.e2e.test.ts"]),
     ],
   },
 });

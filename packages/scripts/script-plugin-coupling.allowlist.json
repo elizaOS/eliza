@@ -130,6 +130,7 @@
     "file": "packages/scripts/vitest/e2e.config.ts",
     "tokens": [
       "plugins/plugin-documents",
+      "plugins/plugin-form",
       "plugins/plugin-personal-assistant",
       "plugins/plugin-task-coordinator",
       "plugins/plugin-workflow"
