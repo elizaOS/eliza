@@ -1,4 +1,4 @@
-// Persists discord connections records for cloud services through the shared DB boundary.
+/** Persists Discord connections and produces validated gateway assignment records. */
 import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import { getEncryptionService } from "../../lib/services/secrets/encryption";
 import { logger } from "../../lib/utils/logger";
@@ -7,22 +7,11 @@ import { sqlRows } from "../execute-helpers";
 import {
   DISCORD_DEFAULT_INTENTS,
   type DiscordConnection,
-  type DiscordConnectionMetadata,
-  DiscordConnectionMetadataSchema,
+  type DiscordConnectionDmPolicyState,
   discordConnections,
+  parseDiscordConnectionDmPolicyState,
 } from "../schemas/discord-connections";
 
-/**
- * Validate stored JSONB metadata before it leaves the repository in the
- * gateway assignment contract. Rows predating the schema (or hand-edited)
- * must degrade to null (policy-unknown), never ship a malformed shape the
- * gateway would misread as a policy.
- */
-function validatedConnectionMetadata(value: unknown): DiscordConnectionMetadata | null {
-  if (value == null) return null;
-  const parsed = DiscordConnectionMetadataSchema.safeParse(value);
-  return parsed.success ? parsed.data : null;
-}
 
 interface CreateConnectionInput {
   organizationId: string;
@@ -41,15 +30,11 @@ interface DecryptedAssignment {
   intents: number;
   characterId: string | null;
   /**
-   * Validated bot-behavior metadata (DM policy, owners, allowlists). Carried
-   * in the assignment contract so the gateway can enforce DM policy BEFORE
-   * choosing the in-worker vs dedicated route (#19912 P1: the Cloud shared
-   * event-router gate never runs for self-registered agent servers) and can
-   * refresh policy for already-connected bots on every poll. Null when the
-   * stored JSONB is absent or fails validation — the gateway treats null as
-   * policy-unknown and applies the historical open behavior.
+   * Independently validated DM metadata. Missing metadata is valid/open;
+   * malformed DM fields remain explicit invalid state and fail closed in the
+   * gateway. Unrelated guild response fields cannot suppress DM enforcement.
    */
-  connectionMetadata: DiscordConnectionMetadata | null;
+  dmPolicyState: DiscordConnectionDmPolicyState;
 }
 
 /** Valid connection status values (matches migration CHECK constraint) */
@@ -405,7 +390,7 @@ export const discordConnectionsRepository = {
             botToken,
             intents: conn.intents ?? DISCORD_DEFAULT_INTENTS,
             characterId: conn.character_id ?? null,
-            connectionMetadata: validatedConnectionMetadata(conn.metadata),
+            dmPolicyState: parseDiscordConnectionDmPolicyState(conn.metadata),
           };
         } catch (error) {
           const errorMessage = error instanceof Error ? error.message : String(error);

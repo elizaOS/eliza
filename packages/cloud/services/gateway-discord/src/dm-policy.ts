@@ -1,36 +1,107 @@
 /**
- * Gateway-local DM-policy gate, applied BEFORE the in-worker vs dedicated
- * route choice in gateway-manager (#19912 P1: the Cloud shared event-router
- * gate only runs on the in-worker path, so self-registered agent servers
- * received DMs the policy forbids).
+ * Validates and enforces the standalone gateway's Discord DM-policy assignment state.
  *
- * This service is standalone (no @elizaos/cloud-shared dependency), so the
- * policy semantics and the metadata subset are mirrored from
- * `packages/cloud/shared/src/lib/services/gateway-discord/dm-policy.ts` and
- * the DiscordConnectionMetadata schema — keep the three in lockstep. The
- * assignment API validates the stored JSONB against the canonical zod schema
- * before it reaches this contract, so absent/malformed rows arrive as null
- * (policy-unknown → historical open behavior).
+ * The inner policy semantics mirror cloud-shared, while the explicit envelope
+ * prevents missing or malformed assignment data from bypassing the gate before
+ * the in-worker versus dedicated route choice.
  */
 
-/** DM-relevant subset of the canonical DiscordConnectionMetadata. */
+const DISCORD_SNOWFLAKE_PATTERN = /^\d{15,20}$/;
+
 export interface DiscordConnectionDmMetadata {
-  dmPolicy?: "open" | "disabled" | "allowlist" | "pairing" | null;
-  ownerDiscordUserId?: string | null;
-  ownerDiscordUserIds?: string[] | null;
-  dmAllowFrom?: string[] | null;
+  dmPolicy?: "open" | "disabled" | "allowlist" | "pairing";
+  ownerDiscordUserId?: string;
+  ownerDiscordUserIds?: string[];
+  dmAllowFrom?: string[];
 }
 
-/**
- * Decide whether a direct-message sender passes the connection's DM policy.
- * Mirrors the shared gate exactly: unset/"open" admits everyone, "disabled"
- * admits nobody, "allowlist" admits owners plus dmAllowFrom, "pairing"
- * admits owners only (the gateway has no pairing flow).
- */
+export type DiscordConnectionDmPolicyState =
+  | { status: "valid"; metadata: DiscordConnectionDmMetadata }
+  | { status: "invalid" };
+
+export const INVALID_DISCORD_DM_POLICY_STATE: DiscordConnectionDmPolicyState =
+  Object.freeze({ status: "invalid" });
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function isDmPolicy(
+  value: unknown,
+): value is NonNullable<DiscordConnectionDmMetadata["dmPolicy"]> {
+  return (
+    value === "open" ||
+    value === "disabled" ||
+    value === "allowlist" ||
+    value === "pairing"
+  );
+}
+
+function isSnowflakeArray(value: unknown): value is string[] {
+  return (
+    Array.isArray(value) &&
+    value.every(
+      (entry) =>
+        typeof entry === "string" && DISCORD_SNOWFLAKE_PATTERN.test(entry),
+    )
+  );
+}
+
+/** Normalize the untrusted assignment envelope; every malformed shape is invalid. */
+export function parseDiscordConnectionDmPolicyState(
+  value: unknown,
+): DiscordConnectionDmPolicyState {
+  if (!isRecord(value)) return INVALID_DISCORD_DM_POLICY_STATE;
+  if (value.status === "invalid") return INVALID_DISCORD_DM_POLICY_STATE;
+  if (value.status !== "valid" || !isRecord(value.metadata)) {
+    return INVALID_DISCORD_DM_POLICY_STATE;
+  }
+
+  const raw = value.metadata;
+  if (raw.dmPolicy !== undefined && !isDmPolicy(raw.dmPolicy)) {
+    return INVALID_DISCORD_DM_POLICY_STATE;
+  }
+  if (
+    raw.ownerDiscordUserId !== undefined &&
+    (typeof raw.ownerDiscordUserId !== "string" ||
+      !DISCORD_SNOWFLAKE_PATTERN.test(raw.ownerDiscordUserId))
+  ) {
+    return INVALID_DISCORD_DM_POLICY_STATE;
+  }
+  if (
+    raw.ownerDiscordUserIds !== undefined &&
+    !isSnowflakeArray(raw.ownerDiscordUserIds)
+  ) {
+    return INVALID_DISCORD_DM_POLICY_STATE;
+  }
+  if (raw.dmAllowFrom !== undefined && !isSnowflakeArray(raw.dmAllowFrom)) {
+    return INVALID_DISCORD_DM_POLICY_STATE;
+  }
+
+  return {
+    status: "valid",
+    metadata: {
+      ...(raw.dmPolicy === undefined ? {} : { dmPolicy: raw.dmPolicy }),
+      ...(raw.ownerDiscordUserId === undefined
+        ? {}
+        : { ownerDiscordUserId: raw.ownerDiscordUserId }),
+      ...(raw.ownerDiscordUserIds === undefined
+        ? {}
+        : { ownerDiscordUserIds: raw.ownerDiscordUserIds }),
+      ...(raw.dmAllowFrom === undefined
+        ? {}
+        : { dmAllowFrom: raw.dmAllowFrom }),
+    },
+  };
+}
+
+/** Decide whether a direct-message sender passes the validated connection policy. */
 export function isDmSenderAllowed(
-  metadata: DiscordConnectionDmMetadata,
+  state: DiscordConnectionDmPolicyState | undefined,
   authorId: string,
 ): boolean {
+  if (state?.status !== "valid") return false;
+  const metadata = state.metadata;
   const dmPolicy = metadata.dmPolicy ?? "open";
   if (dmPolicy === "open") return true;
   if (dmPolicy === "disabled") return false;

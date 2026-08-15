@@ -1,61 +1,94 @@
-/**
- * Policy matrix for the gateway-local DM gate (#19912 P1 repair): the gate
- * runs BEFORE the in-worker vs dedicated route choice in gateway-manager, so
- * these semantics now hold for BOTH topologies. Mirrors (and must stay in
- * lockstep with) the Cloud shared event-router gate's suite.
- */
+/** Tests standalone assignment-state validation and the mirrored DM policy matrix. */
 import { describe, expect, test } from "bun:test";
-import { isDmSenderAllowed } from "../src/dm-policy";
+import {
+  type DiscordConnectionDmPolicyState,
+  isDmSenderAllowed,
+  parseDiscordConnectionDmPolicyState,
+} from "../src/dm-policy";
 
-const OWNER = "111";
-const CO_OWNER = "222";
-const FRIEND = "333";
-const STRANGER = "999";
+const OWNER = "111111111111111111";
+const CO_OWNER = "222222222222222222";
+const FRIEND = "333333333333333333";
+const STRANGER = "999999999999999999";
 
-describe("isDmSenderAllowed — policy matrix", () => {
-  test("unset and open admit everyone (historical behavior)", () => {
-    expect(isDmSenderAllowed({}, STRANGER)).toBe(true);
-    expect(isDmSenderAllowed({ dmPolicy: "open" }, STRANGER)).toBe(true);
-    expect(isDmSenderAllowed({ dmPolicy: null }, STRANGER)).toBe(true);
+function valid(
+  metadata: Extract<
+    DiscordConnectionDmPolicyState,
+    { status: "valid" }
+  >["metadata"],
+): DiscordConnectionDmPolicyState {
+  return { status: "valid", metadata };
+}
+
+describe("isDmSenderAllowed", () => {
+  test("valid unset and open policies admit everyone", () => {
+    expect(isDmSenderAllowed(valid({}), STRANGER)).toBe(true);
+    expect(isDmSenderAllowed(valid({ dmPolicy: "open" }), STRANGER)).toBe(true);
   });
 
   test("disabled admits nobody, including owners", () => {
-    const metadata = {
-      dmPolicy: "disabled" as const,
+    const state = valid({
+      dmPolicy: "disabled",
       ownerDiscordUserId: OWNER,
-    };
-    expect(isDmSenderAllowed(metadata, OWNER)).toBe(false);
-    expect(isDmSenderAllowed(metadata, STRANGER)).toBe(false);
+    });
+    expect(isDmSenderAllowed(state, OWNER)).toBe(false);
+    expect(isDmSenderAllowed(state, STRANGER)).toBe(false);
   });
 
-  test("allowlist admits owners (both fields) plus dmAllowFrom, nobody else", () => {
-    const metadata = {
-      dmPolicy: "allowlist" as const,
-      ownerDiscordUserId: OWNER,
-      ownerDiscordUserIds: [CO_OWNER],
-      dmAllowFrom: [FRIEND],
-    };
-    expect(isDmSenderAllowed(metadata, OWNER)).toBe(true);
-    expect(isDmSenderAllowed(metadata, CO_OWNER)).toBe(true);
-    expect(isDmSenderAllowed(metadata, FRIEND)).toBe(true);
-    expect(isDmSenderAllowed(metadata, STRANGER)).toBe(false);
-  });
-
-  test("pairing admits owners only — dmAllowFrom does NOT apply", () => {
-    const metadata = {
-      dmPolicy: "pairing" as const,
+  test("allowlist admits owners and configured senders only", () => {
+    const state = valid({
+      dmPolicy: "allowlist",
       ownerDiscordUserId: OWNER,
       ownerDiscordUserIds: [CO_OWNER],
       dmAllowFrom: [FRIEND],
-    };
-    expect(isDmSenderAllowed(metadata, OWNER)).toBe(true);
-    expect(isDmSenderAllowed(metadata, CO_OWNER)).toBe(true);
-    expect(isDmSenderAllowed(metadata, FRIEND)).toBe(false);
-    expect(isDmSenderAllowed(metadata, STRANGER)).toBe(false);
+    });
+    expect(isDmSenderAllowed(state, OWNER)).toBe(true);
+    expect(isDmSenderAllowed(state, CO_OWNER)).toBe(true);
+    expect(isDmSenderAllowed(state, FRIEND)).toBe(true);
+    expect(isDmSenderAllowed(state, STRANGER)).toBe(false);
   });
 
-  test("restrictive policies with empty owner sets fail closed", () => {
-    expect(isDmSenderAllowed({ dmPolicy: "allowlist" }, STRANGER)).toBe(false);
-    expect(isDmSenderAllowed({ dmPolicy: "pairing" }, STRANGER)).toBe(false);
+  test("pairing admits owners but ignores dmAllowFrom", () => {
+    const state = valid({
+      dmPolicy: "pairing",
+      ownerDiscordUserId: OWNER,
+      dmAllowFrom: [FRIEND],
+    });
+    expect(isDmSenderAllowed(state, OWNER)).toBe(true);
+    expect(isDmSenderAllowed(state, FRIEND)).toBe(false);
+  });
+
+  test("missing or invalid assignment state fails closed", () => {
+    expect(isDmSenderAllowed(undefined, OWNER)).toBe(false);
+    expect(isDmSenderAllowed({ status: "invalid" }, OWNER)).toBe(false);
+  });
+});
+
+describe("parseDiscordConnectionDmPolicyState", () => {
+  test("accepts the producer envelope and strips unrelated fields", () => {
+    expect(
+      parseDiscordConnectionDmPolicyState({
+        status: "valid",
+        metadata: {
+          dmPolicy: "disabled",
+          responseMode: "keyword",
+        },
+      }),
+    ).toEqual({ status: "valid", metadata: { dmPolicy: "disabled" } });
+  });
+
+  test("rejects missing, malformed, and invalid restrictive envelopes", () => {
+    for (const value of [
+      undefined,
+      null,
+      {},
+      { status: "valid", metadata: { dmPolicy: "allowlist", dmAllowFrom: ["bad"] } },
+      { status: "valid", metadata: { dmPolicy: "unknown" } },
+      { status: "invalid" },
+    ]) {
+      expect(parseDiscordConnectionDmPolicyState(value)).toEqual({
+        status: "invalid",
+      });
+    }
   });
 });

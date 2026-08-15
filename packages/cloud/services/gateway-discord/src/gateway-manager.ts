@@ -25,8 +25,10 @@ import {
   DiscordInstallWelcomeQueue,
 } from "./discord-install-welcome-queue";
 import {
-  type DiscordConnectionDmMetadata,
+  type DiscordConnectionDmPolicyState,
+  INVALID_DISCORD_DM_POLICY_STATE,
   isDmSenderAllowed,
+  parseDiscordConnectionDmPolicyState,
 } from "./dm-policy";
 import { pollTrackedDiscordDms, type TrackedDiscordDm } from "./dm-polling";
 import { logger } from "./logger";
@@ -307,14 +309,8 @@ interface BotConnection {
   error?: string;
   /** Store listener references for cleanup */
   listeners: Map<string, unknown>;
-  /**
-   * Validated DM-policy/owner metadata from the assignment contract. Applied
-   * at the gateway boundary BEFORE the in-worker vs dedicated route choice
-   * (#19912 P1) and refreshed from every assignment poll so policy edits
-   * reach already-connected bots without a reconnect. Null = policy-unknown
-   * (historical open behavior).
-   */
-  connectionMetadata: DiscordConnectionDmMetadata | null;
+  /** Validated DM state, refreshed from every assignment poll without reconnecting. */
+  dmPolicyState: DiscordConnectionDmPolicyState;
 }
 
 interface HealthStatus {
@@ -358,6 +354,22 @@ async function fetchWithTimeout(
   }
 }
 
+interface GatewayManagerRoutingAdapters {
+  resolveAgentServer: typeof resolveAgentServer;
+  refreshKedaActivity: typeof refreshKedaActivity;
+  forwardToServer: typeof forwardToServer;
+  fetchAssignments: typeof fetchWithTimeout;
+  forwardInWorkerEvent: typeof fetchWithTimeout;
+}
+
+const DEFAULT_ROUTING_ADAPTERS: GatewayManagerRoutingAdapters = {
+  resolveAgentServer,
+  refreshKedaActivity,
+  forwardToServer,
+  fetchAssignments: fetchWithTimeout,
+  forwardInWorkerEvent: fetchWithTimeout,
+};
+
 // ============================================
 // Gateway Manager
 // ============================================
@@ -372,6 +384,7 @@ export class GatewayManager {
   private failoverInterval: NodeJS.Timeout | null = null;
   private tokenRefreshTimeout: NodeJS.Timeout | null = null;
   private voiceHandler: VoiceMessageHandler;
+  private readonly routingAdapters: GatewayManagerRoutingAdapters;
   private consecutivePollFailures: number = 0;
   private lastSuccessfulPoll: Date | null = null;
   /** Pod is draining - no new assignments, waiting for failover */
@@ -407,9 +420,16 @@ export class GatewayManager {
   /** Interval for leader election checks */
   private elizaAppLeaderInterval: NodeJS.Timeout | null = null;
 
-  constructor(config: GatewayConfig) {
+  constructor(
+    config: GatewayConfig,
+    routingAdapters: Partial<GatewayManagerRoutingAdapters> = {},
+  ) {
     this.config = config;
     this.voiceHandler = new VoiceMessageHandler();
+    this.routingAdapters = {
+      ...DEFAULT_ROUTING_ADAPTERS,
+      ...routingAdapters,
+    };
 
     // Initialize Redis for failover coordination.
     // MOCK_REDIS=1 is an explicit opt-in for tests/CI; never silently used
@@ -819,7 +839,7 @@ export class GatewayManager {
       url.searchParams.set("current", currentCount.toString());
       url.searchParams.set("max", MAX_BOTS_PER_POD.toString());
 
-      const response = await fetchWithTimeout(url.toString(), {
+      const response = await this.routingAdapters.fetchAssignments(url.toString(), {
         headers: this.getAuthHeader(),
       });
 
@@ -845,17 +865,19 @@ export class GatewayManager {
           botToken: string;
           intents: number;
           characterId: string | null;
-          connectionMetadata?: DiscordConnectionDmMetadata | null;
+          dmPolicyState?: unknown;
         }>;
       };
 
       for (const assignment of data.assignments) {
-        // Already connected: refresh policy metadata in place (no reconnect)
-        // so DM-policy edits propagate within one poll interval instead of
-        // staying frozen at connect time (#19912 P1 repair contract step 2).
+        const dmPolicyState = parseDiscordConnectionDmPolicyState(
+          assignment.dmPolicyState,
+        );
+        // Refresh the validated state in place so edits reach an existing bot
+        // within one poll interval without replacing its Discord client.
         const existing = this.connections.get(assignment.connectionId);
         if (existing) {
-          existing.connectionMetadata = assignment.connectionMetadata ?? null;
+          existing.dmPolicyState = dmPolicyState;
           continue;
         }
 
@@ -889,7 +911,7 @@ export class GatewayManager {
           consecutiveFailures: 0,
           lastHeartbeat: new Date(),
           listeners: new Map(),
-          connectionMetadata: assignment.connectionMetadata ?? null,
+          dmPolicyState,
         };
         this.connections.set(assignment.connectionId, reservation);
 
@@ -941,7 +963,7 @@ export class GatewayManager {
     botToken: string;
     intents: number;
     characterId: string | null;
-    connectionMetadata?: DiscordConnectionDmMetadata | null;
+    dmPolicyState?: unknown;
   }): Promise<void> {
     logger.info("Connecting bot", {
       connectionId: assignment.connectionId,
@@ -969,7 +991,7 @@ export class GatewayManager {
       consecutiveFailures: 0,
       lastHeartbeat: new Date(),
       listeners: new Map(),
-      connectionMetadata: assignment.connectionMetadata ?? null,
+      dmPolicyState: parseDiscordConnectionDmPolicyState(assignment.dmPolicyState),
     };
 
     this.connections.set(assignment.connectionId, conn);
@@ -1455,21 +1477,17 @@ export class GatewayManager {
       return;
     }
 
-    // ONE DM-policy gate for BOTH routes (#19912 P1): the Cloud shared
-    // event-router's gate only runs on the in-worker path, so a dedicated
-    // (self-registered) agent server would receive DMs the policy forbids.
-    // Gating here, before the route choice, makes `disabled`/`allowlist`/
-    // owner-only policies hold regardless of topology; the event-router gate
-    // stays as in-worker defense-in-depth. Null metadata = policy-unknown =
-    // historical open behavior.
-    if (!message.guildId && conn.connectionMetadata) {
-      if (!isDmSenderAllowed(conn.connectionMetadata, message.author.id)) {
-        logger.debug("DM dropped by connection policy at the gateway", {
-          connectionId,
-          dmPolicy: conn.connectionMetadata.dmPolicy ?? "open",
-        });
-        return;
-      }
+    // Enforce one fail-closed DM gate before selecting either route. The
+    // cloud-shared event-router remains defense-in-depth for in-worker events.
+    if (!message.guildId && !isDmSenderAllowed(conn.dmPolicyState, message.author.id)) {
+      logger.debug("DM dropped by connection policy at the gateway", {
+        connectionId,
+        dmPolicy:
+          conn.dmPolicyState.status === "valid"
+            ? (conn.dmPolicyState.metadata.dmPolicy ?? "open")
+            : "invalid",
+      });
+      return;
     }
 
     // Path A routing: prefer a self-registered container when its registry
@@ -1479,9 +1497,9 @@ export class GatewayManager {
     // never registers) falls through to forwardEvent -> CF in-worker, which
     // is the live, proven path. Gradual + reversible: removing the registry
     // key reverts an agent to in-worker with zero redeploy.
-    let route: Awaited<ReturnType<typeof resolveAgentServer>> = null;
+    let route: Awaited<ReturnType<GatewayManagerRoutingAdapters["resolveAgentServer"]>> = null;
     try {
-      route = await resolveAgentServer(this.redis, conn.characterId);
+      route = await this.routingAdapters.resolveAgentServer(this.redis, conn.characterId);
     } catch (error) {
       logger.warn("resolveAgentServer failed; falling back to in-worker", {
         connectionId,
@@ -1498,14 +1516,14 @@ export class GatewayManager {
     }
 
     try {
-      await refreshKedaActivity(this.redis, route.serverName);
+      await this.routingAdapters.refreshKedaActivity(this.redis, route.serverName);
       const { channel } = message;
       if ("sendTyping" in channel && typeof channel.sendTyping === "function") {
         await channel.sendTyping();
       }
 
       const userId = `discord-user-${message.author.id}`;
-      const response = await forwardToServer(
+      const response = await this.routingAdapters.forwardToServer(
         route.serverUrl,
         route.serverName,
         conn.characterId,
@@ -1569,7 +1587,7 @@ export class GatewayManager {
     };
 
     try {
-      const response = await fetchWithTimeout(
+      const response = await this.routingAdapters.forwardInWorkerEvent(
         `${this.config.elizaCloudUrl}/api/internal/discord/events`,
         {
           method: "POST",
