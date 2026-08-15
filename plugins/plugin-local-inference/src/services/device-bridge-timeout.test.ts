@@ -44,7 +44,6 @@ describe("DeviceBridge device-generate timeout validation", () => {
 		// the assertion only needs the delay setTimeout was actually called
 		// with, so it's cleared below without waiting for the real 38s.
 		const pending = bridge.generate({ prompt: "wiring probe" });
-		pending.catch(() => {});
 
 		const callIndex = setTimeoutSpy.mock.calls.findIndex(
 			(c) => c[1] === configuredMs,
@@ -56,6 +55,7 @@ describe("DeviceBridge device-generate timeout validation", () => {
 		const timeoutHandle = setTimeoutSpy.mock.results[callIndex]
 			?.value as ReturnType<typeof setTimeout>;
 		clearTimeout(timeoutHandle);
+		void pending;
 		setTimeoutSpy.mockRestore();
 	});
 });
