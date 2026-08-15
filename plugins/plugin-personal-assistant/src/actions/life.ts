@@ -252,6 +252,7 @@ type InternalLifeOp =
   | "skip_occurrence"
   | "snooze_occurrence"
   | "review_goal"
+  | "review_definitions"
   | "policy_set_reminder"
   | "policy_configure_escalation";
 
@@ -273,7 +274,11 @@ function toInternalLifeOp(
     case "snooze":
       return "snooze_occurrence";
     case "review":
-      return "review_goal";
+      // A goal review ranks progress toward outcomes; every definition
+      // surface (todos/habits/routines/reminders) reviews its tracked
+      // definitions — including unscheduled ones that never materialize
+      // occurrences and are invisible to the occurrence overview.
+      return kind === "goal" ? "review_goal" : "review_definitions";
     case "policy_set_reminder":
       return "policy_set_reminder";
     case "policy_configure_escalation":
@@ -1410,6 +1415,7 @@ type LifeReplyScenario =
   | "calendar_next"
   | "email_triage"
   | "weekly_goal_review"
+  | "definitions_review"
   | "service_error";
 
 function buildRuleBasedLifeReply(args: {
@@ -5533,6 +5539,55 @@ async function runLifeOperationHandlerInner(
           },
         }),
         data: toActionData(snoozed),
+      };
+    }
+
+    if (internalOp === "review_definitions") {
+      const records = await service.listDefinitions();
+      const active = records.filter(
+        (record) => record.definition.status === "active",
+      );
+      if (active.length === 0) {
+        return {
+          success: true,
+          text: await renderLifeActionReply({
+            runtime,
+            message,
+            state,
+            intent,
+            scenario: "definitions_review",
+            fallback: "You aren't tracking any todos or routines right now.",
+            context: { definitions: [] },
+          }),
+          data: toActionData({ definitions: [] }),
+        };
+      }
+      const listed = active.slice(0, 12).map((record) => ({
+        title: record.definition.title,
+        cadence: summarizeCadence(record.definition.cadence),
+        kind: record.definition.kind,
+      }));
+      const fallback = [
+        `You're tracking ${active.length} item${active.length === 1 ? "" : "s"}:`,
+        ...listed.map((item) => `- ${item.title} (${item.cadence})`),
+        ...(active.length > listed.length
+          ? [`…and ${active.length - listed.length} more.`]
+          : []),
+      ].join("\n");
+      return {
+        success: true,
+        text: await renderLifeActionReply({
+          runtime,
+          message,
+          state,
+          intent,
+          scenario: "definitions_review",
+          fallback,
+          context: { definitions: listed, total: active.length },
+        }),
+        data: toActionData({
+          definitions: active.map((record) => record.definition),
+        }),
       };
     }
 
