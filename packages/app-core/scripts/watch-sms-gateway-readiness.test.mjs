@@ -2,12 +2,12 @@
  * Focused coverage for watch-sms-gateway-readiness --timeout / --interval:
  * parser contract plus real CLI rejection before any adb poll.
  */
-import { describe, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { describe, expect, test } from "vitest";
 import {
   DEFAULT_INTERVAL_SECONDS,
   DEFAULT_TIMEOUT_SECONDS,
