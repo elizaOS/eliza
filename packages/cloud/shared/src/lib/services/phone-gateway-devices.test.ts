@@ -1,5 +1,6 @@
 /** Exercises phone-gateway persistence and authentication with deterministic Cloud fixtures. */
 import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
+import { PgDialect } from "drizzle-orm/pg-core";
 
 import * as realDbClient from "../../db/client";
 import * as realDbSchemas from "../../db/schemas";
@@ -21,6 +22,7 @@ const selectLimit = mock();
 const updateSet = mock();
 const updateWhere = mock();
 const updateReturning = mock();
+const transaction = mock();
 
 const insertBuilder = {
   values,
@@ -48,6 +50,7 @@ mock.module("../../db/client", () => ({
     select: mock(() => selectBuilder),
     update: mock(() => updateBuilder),
     execute,
+    transaction,
   },
   getDbConnectionInfo: mock(() => ({ databaseUrlConfigured: true })),
   runWithDbCache: (fn: () => unknown) => fn(),
@@ -88,6 +91,7 @@ mock.module("../../db/schemas", () => ({
     bridge_id: "bridge_id",
     organization_id: "organization_id",
     is_active: "is_active",
+    metadata: "metadata",
   },
   userCharacters: {},
   userMcps: {},
@@ -129,6 +133,15 @@ describe("registerPhoneGatewayDevice", () => {
     updateWhere.mockReturnValue(updateBuilder);
     updateReturning.mockReset();
     updateReturning.mockResolvedValue([{ id: "gateway-device-1" }]);
+    transaction.mockReset();
+    transaction.mockImplementation(
+      async (fn: (tx: unknown) => Promise<unknown>) =>
+        await fn({
+          execute,
+          insert: mock(() => insertBuilder),
+          update: mock(() => updateBuilder),
+        }),
+    );
   });
 
   test("upserts a shared gateway device by provider, phone number, and bridge id", async () => {
@@ -228,6 +241,49 @@ describe("registerPhoneGatewayDevice", () => {
     expect(metadata).not.toHaveProperty("token");
     expect(metadata.authTokenHash).toBe(await hashBlueBubblesGatewayToken(result.token));
     expect(values).toHaveBeenCalledWith(expect.objectContaining({ last_seen_at: null }));
+  });
+
+  test("atomically deactivates the prior credential before re-registration", async () => {
+    await createBlueBubblesGatewayRegistration({
+      organizationId: "org-1",
+      userId: "user-1",
+      routingMode: "sender-owned",
+      phoneNumber: "+1 (415) 555-0123",
+    });
+
+    expect(transaction).toHaveBeenCalledTimes(1);
+    expect(execute).toHaveBeenCalledWith(expect.anything());
+    expect(updateSet).toHaveBeenCalledWith(expect.objectContaining({ is_active: false }));
+    expect(updateWhere).toHaveBeenCalled();
+  });
+
+  test("rotates a phone credential across trusted administrators", async () => {
+    await createBlueBubblesGatewayRegistration({
+      organizationId: "org-1",
+      userId: "first-admin",
+      routingMode: "sender-owned",
+      phoneNumber: "+1 (415) 555-0123",
+    });
+    await createBlueBubblesGatewayRegistration({
+      organizationId: "org-1",
+      userId: "second-admin",
+      routingMode: "sender-owned",
+      phoneNumber: "+1 (415) 555-0123",
+    });
+
+    const dialect = new PgDialect();
+    const lockParameters = execute.mock.calls.map(
+      ([statement]) => dialect.sqlToQuery(statement).params,
+    );
+    expect(lockParameters).toEqual([["org-1:+14155550123"], ["org-1:+14155550123"]]);
+
+    for (const [predicate] of updateWhere.mock.calls) {
+      const parameters = dialect.sqlToQuery(predicate).params;
+      expect(parameters).toContain("org-1");
+      expect(parameters).toContain("+14155550123");
+      expect(parameters).not.toContain("first-admin");
+      expect(parameters).not.toContain("second-admin");
+    }
   });
 
   test("authenticates only the token issued for a sender-owned registered bridge", async () => {

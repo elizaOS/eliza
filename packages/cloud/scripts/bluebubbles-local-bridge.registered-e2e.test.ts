@@ -3,7 +3,6 @@
  * deterministic Cloud/BlueBubbles substitutes; no Apple account is required.
  */
 
-import { Database } from "bun:sqlite";
 import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { createServer } from "node:net";
@@ -40,9 +39,51 @@ async function unusedPort(): Promise<number> {
   });
 }
 
-async function waitForRelay(url: string): Promise<void> {
+type RelayOutput = { stdout: string; stderr: string };
+
+function redactRelayOutput(value: string): string {
+  return value
+    .replace(/bbg_[A-Za-z0-9_-]+/g, "<redacted-token>")
+    .replace(/\+[1-9]\d{7,14}/g, "<redacted-phone>")
+    .slice(-4_000);
+}
+
+function captureRelayOutput(
+  stream: ReadableStream<Uint8Array>,
+  output: RelayOutput,
+  key: keyof RelayOutput,
+): void {
+  void (async () => {
+    const reader = stream.getReader();
+    const decoder = new TextDecoder();
+    try {
+      while (true) {
+        const chunk = await reader.read();
+        if (chunk.done) break;
+        output[key] = redactRelayOutput(
+          `${output[key]}${decoder.decode(chunk.value, { stream: true })}`,
+        );
+      }
+      output[key] = redactRelayOutput(`${output[key]}${decoder.decode()}`);
+    } catch {
+      // error-policy:J5 readiness observes the same child exit; log capture is
+      // diagnostic only and must not create an unhandled rejection.
+    }
+  })();
+}
+
+async function waitForRelay(
+  url: string,
+  child: Bun.Subprocess,
+  output: RelayOutput,
+): Promise<void> {
   const deadline = Date.now() + 10_000;
   while (Date.now() < deadline) {
+    if (child.exitCode !== null) {
+      throw new Error(
+        `BlueBubbles relay exited before readiness (code ${child.exitCode})\nstdout:\n${output.stdout}\nstderr:\n${output.stderr}`,
+      );
+    }
     try {
       const response = await fetch(url);
       if (response.status === 404) return;
@@ -51,7 +92,9 @@ async function waitForRelay(url: string): Promise<void> {
     }
     await Bun.sleep(50);
   }
-  throw new Error("BlueBubbles relay did not start within 10 seconds");
+  throw new Error(
+    `BlueBubbles relay did not start within 10 seconds\nstdout:\n${output.stdout}\nstderr:\n${output.stderr}`,
+  );
 }
 
 describe("registered BlueBubbles local bridge E2E", () => {
@@ -127,7 +170,11 @@ describe("registered BlueBubbles local bridge E2E", () => {
           const messageGuid = decodeURIComponent(
             url.pathname.slice("/api/v1/message/".length),
           );
-          if (["inbound-1", "inbound-retry"].includes(messageGuid)) {
+          if (
+            ["inbound-1", "inbound-retry", "cross-number-inbound"].includes(
+              messageGuid,
+            )
+          ) {
             return Response.json({
               status: 200,
               data: {
@@ -153,15 +200,6 @@ describe("registered BlueBubbles local bridge E2E", () => {
       join(tmpdir(), "eliza-bluebubbles-loopback-"),
     );
     temporaryDirectories.push(temporaryDirectory);
-    const messagesDbPath = join(temporaryDirectory, "chat.db");
-    const messagesDb = new Database(messagesDbPath);
-    messagesDb.exec(
-      "create table message (guid text primary key, destination_caller_id text)",
-    );
-    messagesDb
-      .query("insert into message (guid, destination_caller_id) values (?, ?)")
-      .run("cross-number-inbound", "+14155550998");
-    messagesDb.close();
     const bridgeId = "bb-11111111-1111-4111-8111-111111111111";
     const token = `bbg_${"a".repeat(64)}`;
     const child = Bun.spawn(
@@ -180,23 +218,24 @@ describe("registered BlueBubbles local bridge E2E", () => {
           BLUEBUBBLES_GATEWAY_TOKEN: token,
           BLUEBUBBLES_BRIDGE_ID: bridgeId,
           BLUEBUBBLES_GATEWAY_PHONE_NUMBER: "+14155550123",
-          BLUEBUBBLES_MESSAGES_DB_PATH: messagesDbPath,
           BLUEBUBBLES_OUTBOUND_VALIDATION_PATH: join(
             temporaryDirectory,
             "outbound-validation.json",
           ),
-          BLUEBUBBLES_LOOPBACK_NORMALIZATION_ENABLED: "true",
           ELIZA_CLOUD_BLUEBUBBLES_URL: `http://127.0.0.1:${cloud.port}/api/webhooks/bluebubbles/${bridgeId}`,
           BLUEBUBBLES_AUTO_START: "false",
           BLUEBUBBLES_SEND_METHOD: "apple-script",
         },
-        stdout: "ignore",
-        stderr: "ignore",
+        stdout: "pipe",
+        stderr: "pipe",
       },
     );
     childProcesses.push(child);
+    const relayOutput: RelayOutput = { stdout: "", stderr: "" };
+    captureRelayOutput(child.stdout, relayOutput, "stdout");
+    captureRelayOutput(child.stderr, relayOutput, "stderr");
     const relayUrl = `http://127.0.0.1:${relayPort}`;
-    await waitForRelay(`${relayUrl}/not-found`);
+    await waitForRelay(`${relayUrl}/not-found`, child, relayOutput);
 
     const personalIdentityResponse = await fetch(
       `${relayUrl}/webhooks/bluebubbles`,
