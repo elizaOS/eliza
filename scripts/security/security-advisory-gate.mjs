@@ -286,7 +286,7 @@ export async function canary(name) {
   console.log(`canary passed: ${name}`);
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (import.meta.main) {
   const selected = process.env.CANARY_SCENARIO;
   await (selected ? canary(selected) : live());
 }
