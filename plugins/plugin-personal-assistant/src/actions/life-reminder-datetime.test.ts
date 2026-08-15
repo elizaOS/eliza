@@ -1367,8 +1367,8 @@ describe("runLifeOperationHandler clarification contract", () => {
 
     expect(result).toMatchObject({
       success: false,
-      text: "When should it happen?",
-      userFacingText: "When should it happen?",
+      text: clarification,
+      userFacingText: clarification,
       values: {
         success: false,
         error: "MISSING_DEFINITION_FIELD",
@@ -2620,9 +2620,9 @@ describe("runLifeOperationHandler consent gate (#16941)", () => {
     });
   });
 
-  it("honors planner confirmed:true against a draft previewed on an earlier message", async () => {
-    // A prior-turn draft means the owner actually saw the preview; a muted
-    // acknowledgement ("mhm") plus the planner flag may then save.
+  it("rejects planner confirmed:true without deterministic current-turn consent", async () => {
+    // A prior-turn draft proves a preview exists, not that neutral current
+    // text authorizes the write. The planner cannot turn "mhm" into consent.
     const runtime = routineRuntime();
 
     const preview = await runLifeOperationHandler(
@@ -2649,8 +2649,13 @@ describe("runLifeOperationHandler consent gate (#16941)", () => {
       } as HandlerOptions,
     );
 
-    expect(confirm.success).toBe(true);
-    expect(serviceState.createCalls).toHaveLength(1);
+    expect(confirm.success).toBe(false);
+    expect(serviceState.createCalls).toHaveLength(0);
+    expect(confirm.data).toMatchObject({
+      deferred: true,
+      saved: false,
+      requiresConfirmation: true,
+    });
   });
 });
 

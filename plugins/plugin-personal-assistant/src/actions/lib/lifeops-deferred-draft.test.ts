@@ -121,6 +121,22 @@ describe("deferred owner-Todo routing", () => {
     ).toBe(false);
   });
 
+  it("routes an applied neutral claim only for repair, not as owner consent", async () => {
+    const input = context({
+      draft: pendingTodoDraft(),
+      replyEffectStatus: "applied",
+      text: "Maybe later.",
+    });
+
+    expect(await deferredOwnerTodoRoutingEvaluator.shouldRun(input)).toBe(true);
+    expect(
+      await deferredOwnerTodoRoutingEvaluator.evaluate(input),
+    ).toMatchObject({
+      clearReply: true,
+      addCandidateActions: ["OWNER_TODOS"],
+    });
+  });
+
   it("requires both a pending draft and the registered owner action", async () => {
     expect(await deferredOwnerTodoRoutingEvaluator.shouldRun(context())).toBe(
       false,

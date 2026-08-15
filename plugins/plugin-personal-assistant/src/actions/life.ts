@@ -4205,21 +4205,11 @@ async function runLifeOperationHandlerInner(
     params.title ??
     routedParams?.target ??
     routedParams?.title;
-  // Planner-asserted `confirmed` is only real consent when the owner has
-  // actually seen a preview: either the current owner text is an explicit
-  // yes, or a draft previewed on an EARLIER message is still pending.
-  // Observed live (#16941, child-morning-routine): after previewing a daily
-  // routine, the planner immediately re-called create with confirmed:true in
-  // the same turn — saving a routine the child never approved — then told the
-  // child nothing was saved, and the real confirm turn duplicated the row.
-  const plannerAssertedConfirmed =
-    params.confirmed === true || detailBoolean(details, "confirmed") === true;
+  // Consent must come from the owner's current text. A pending draft proves
+  // only that a preview exists; neither a planner `confirmed:true` field nor a
+  // Stage-1 applied-effect claim can authorize the consequential write.
   const createConfirmed =
-    deferredDraftReuseMode === "confirm" ||
-    explicitCreateConfirmation ||
-    (plannerAssertedConfirmed &&
-      draftIsFromPriorTurn &&
-      deferredDraftReuseMode !== "edit");
+    deferredDraftReuseMode === "confirm" || explicitCreateConfirmation;
 
   try {
     const createDefinition = async () => {
