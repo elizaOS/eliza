@@ -1199,6 +1199,94 @@ describe("passthrough streaming — #16079 milestone telemetry", () => {
     expect(res.headers.get("X-Eliza-Provider-Request-Id")).toBe(
       "bad_id_with_spaces_and__script_",
     );
+
+    // Absent upstream x-request-id → the echo header is OMITTED entirely, not
+    // emitted empty, and the ring event carries no providerRequestId field.
+    fetchImpl = async () => sseResponse(UPSTREAM_SSE);
+    const bareRes = await callStreaming(async () => null, {});
+    await bareRes.text();
+    expect(bareRes.headers.get("X-Eliza-Provider-Request-Id")).toBeNull();
+    const snapshot = getCloudTelemetrySnapshot(10);
+    const event = snapshot.streamMilestones.find(
+      (e) => e.path === "passthrough",
+    );
+    if (!event) throw new Error("no passthrough milestone event recorded");
+    expect(event.providerRequestId).toBeUndefined();
+    // The rest of the event is still healthy without the provider id.
+    expect(event.upstreamHeadersMs).not.toBeUndefined();
+    expect(event.completionMs).not.toBeNull();
+  });
+
+  test("clean SSE error frame then close records aborted=true and no completion", async () => {
+    // RP round-1 finding: a provider that reports failure mid-stream and then
+    // closes cleanly must NOT be recorded as a healthy completed run.
+    fetchImpl = async () =>
+      sseResponse(
+        `data: {"id":"c1","choices":[{"index":0,"delta":{"content":"Hi"},"finish_reason":null}],"usage":null}\n\n` +
+          `data: {"error":{"message":"model overloaded","type":"overloaded_error"}}\n\n`,
+      );
+
+    const res = await callStreaming(async () => null, {});
+    await res.text();
+
+    const snapshot = getCloudTelemetrySnapshot(10);
+    const event = snapshot.streamMilestones.find(
+      (e) => e.path === "passthrough",
+    );
+    if (!event) throw new Error("no passthrough milestone event recorded");
+    // Observed partial milestones survive…
+    expect(event.firstContentMs).not.toBeNull();
+    // …but the run is recorded as failed: aborted=true, completionMs null.
+    expect(event.aborted).toBe(true);
+    expect(event.completionMs).toBeNull();
+  });
+
+  test("client-branch cancel records aborted=true with partial milestones", async () => {
+    // RP round-1 finding: the existing abort test simulated an upstream read
+    // error; this one cancels the CLIENT branch mid-stream, exercising the
+    // cancel() → meterAbortController.abort() path a real disconnect takes.
+    const deliveredText = "partial before disconnect";
+    const waitUntilPromises: Array<Promise<unknown>> = [];
+
+    fetchImpl = async () =>
+      new Response(
+        new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(
+              encoder.encode(
+                `data: {"id":"c1","choices":[{"index":0,"delta":{"content":${JSON.stringify(deliveredText)}},"finish_reason":null}],"usage":null}\n\n`,
+              ),
+            );
+            // No close: the provider is still streaming when the client drops.
+          },
+        }),
+        { status: 200, headers: { "Content-Type": "text/event-stream" } },
+      );
+
+    const res = await callStreaming(async () => null, {
+      executionCtx: {
+        waitUntil(promise: Promise<unknown>) {
+          waitUntilPromises.push(promise);
+        },
+      },
+    });
+    const reader = res.body?.getReader();
+    if (!reader) throw new Error("expected passthrough response body");
+    const first = await reader.read();
+    expect(new TextDecoder().decode(first.value)).toContain(deliveredText);
+    await reader.cancel(new DOMException("client disconnected", "AbortError"));
+    await Promise.all(waitUntilPromises);
+
+    const snapshot = getCloudTelemetrySnapshot(10);
+    const event = snapshot.streamMilestones.find(
+      (e) => e.path === "passthrough",
+    );
+    if (!event) throw new Error("no passthrough milestone event recorded");
+    // The client disconnect reached the meter branch: the run is aborted with
+    // the partial content milestone observed, never a completion.
+    expect(event.aborted).toBe(true);
+    expect(event.firstContentMs).not.toBeNull();
+    expect(event.completionMs).toBeNull();
   });
 
   test("aborted stream records aborted=true and keeps observed partial milestones", async () => {

@@ -123,10 +123,12 @@ interface SseUsageRecord {
  */
 function hasReasoningDelta(delta: Record<string, unknown> | undefined): boolean {
   if (!delta) return false;
+  // Non-empty only, mirroring the content milestone: providers emit empty
+  // carrier strings on the first frame before any reasoning exists (#16079).
   return (
-    typeof delta.reasoning === "string" ||
-    typeof delta.reasoning_content === "string" ||
-    typeof delta.thinking === "string"
+    (typeof delta.reasoning === "string" && delta.reasoning.length > 0) ||
+    (typeof delta.reasoning_content === "string" && delta.reasoning_content.length > 0) ||
+    (typeof delta.thinking === "string" && delta.thinking.length > 0)
   );
 }
 
@@ -200,6 +202,10 @@ export async function readPassthroughStreamTail(
     if (!payload) return;
     if (payload === "[DONE]") {
       tail.sawDone = true;
+      // [DONE] IS the provider's completion marker (#16079): record it now
+      // rather than at EOF, so a provider that delays the connection close
+      // after [DONE] (or drops it) cannot skew or lose the boundary.
+      tail.milestones.completionMs ??= roundedElapsed(now, startedAt);
       return;
     }
     let frame: unknown;
@@ -275,8 +281,13 @@ export async function readPassthroughStreamTail(
     // Normal termination (upstream close, with or without [DONE]) still counts
     // as observed completion; abort/error paths fall through with the
     // milestone left null so they cannot masquerade as a completed stream.
-    if (tail.readError === null) {
-      tail.milestones.completionMs = roundedElapsed(now, startedAt);
+    // `??=` — NOT assignment — so a completion already recorded at [DONE]
+    // parse time keeps the [DONE] boundary even when the provider delays the
+    // connection close after it (#16079). An in-stream SSE error frame is NOT
+    // completion: the provider reported failure mid-stream and the stream must
+    // not be recorded as if it ran to a healthy end.
+    if (tail.readError === null && !tail.sawErrorFrame) {
+      tail.milestones.completionMs ??= roundedElapsed(now, startedAt);
     }
   } catch (error) {
     // error-policy:J7 metering must not kill the settle chain — the route

@@ -2480,11 +2480,12 @@ async function tryPassthroughStreamingRequest(params: {
   }
 
   let upstreamResponse: Response;
-  // #16079: the milestone origin is the provider fetch dispatch — every
-  // milestone below is elapsed from here, so upstream headers/first-frame
-  // times are attributable to the provider leg, not gateway preforward work
-  // (which the preforward snapshot already covers).
-  const upstreamFetchStartedAt = performance.now();
+  // #16079: the milestone origin is the provider fetch dispatch itself —
+  // assigned AFTER the dispatch-marker await (which can carry Durable Object
+  // acknowledgement latency) and immediately before fetch(), so every
+  // milestone below is attributable to the provider leg, not gateway
+  // preforward work (which the preforward snapshot already covers).
+  let upstreamFetchStartedAt = 0;
   const upstreamInit: RequestInit = {
     method: "POST",
     headers: {
@@ -2496,6 +2497,7 @@ async function tryPassthroughStreamingRequest(params: {
   };
   try {
     await params.markProviderDispatched?.();
+    upstreamFetchStartedAt = performance.now();
     upstreamResponse = await invokeAtGatewayHandoff(
       params.gatewayHandoffTelemetry,
       () => fetch(upstream.url, upstreamInit),
@@ -2632,7 +2634,9 @@ async function tryPassthroughStreamingRequest(params: {
       firstReasoningMs: tail.milestones.firstReasoningMs,
       firstContentMs: tail.milestones.firstContentMs,
       completionMs: tail.milestones.completionMs,
-      aborted: tail.readError !== null,
+      // An in-stream SSE error frame is an upstream-reported failure: record
+      // it as not-completed rather than a healthy run (#16079).
+      aborted: tail.readError !== null || tail.sawErrorFrame,
       createdAt: new Date().toISOString(),
     });
     if (tail.usage) {

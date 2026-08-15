@@ -197,3 +197,70 @@ describe("readPassthroughStreamTail — milestones (#16079)", () => {
     expect(tail.milestones.completionMs).not.toBeNull();
   });
 });
+
+describe("readPassthroughStreamTail — RP review round 1 hardening (#16079)", () => {
+  test("clean SSE error frame then close: completion stays null (no fake healthy end)", async () => {
+    const clock = scriptedClock(0, 10);
+    const tail = await readWithClock(
+      [
+        `data: {"id":"c1","choices":[{"index":0,"delta":{"content":"Hi"},"finish_reason":null}]}\n\n`,
+        `data: {"error":{"message":"upstream overloaded","code":503}}\n\n`,
+      ],
+      0,
+      clock,
+    );
+    expect(tail.sawErrorFrame).toBe(true);
+    expect(tail.readError).toBeNull();
+    // The provider reported failure mid-stream: absence reported as absence.
+    expect(tail.milestones.firstContentMs).not.toBeNull();
+    expect(tail.milestones.completionMs).toBeNull();
+  });
+
+  test("completion records at [DONE] parse time, not EOF time", async () => {
+    const clock = scriptedClock(0, 10);
+    let i = 0;
+    const frames = [
+      `data: {"id":"c1","choices":[{"index":0,"delta":{"content":"Hi"},"finish_reason":null}]}\n\n`,
+      `data: [DONE]\n\n`,
+    ];
+    const stream = new ReadableStream<Uint8Array>({
+      async pull(controller) {
+        if (i >= frames.length) {
+          // Provider delays the connection close well past [DONE]; the
+          // completion boundary must reflect [DONE], not this late EOF.
+          clock.tick();
+          clock.tick();
+          clock.tick();
+          clock.tick();
+          controller.close();
+          return;
+        }
+        clock.tick();
+        controller.enqueue(encoder.encode(frames[i]));
+        i += 1;
+      },
+    });
+    const tail = await readPassthroughStreamTail(stream, undefined, {
+      startedAt: 0,
+      now: clock.now,
+    });
+    // [DONE] arrived at tick 20 (frames 1 and 2); EOF happened at tick 60.
+    expect(tail.milestones.completionMs).toBe(20);
+  });
+
+  test("empty reasoning carriers do not fabricate firstReasoningMs", async () => {
+    const clock = scriptedClock(0, 10);
+    const tail = await readWithClock(
+      [
+        `data: {"id":"c1","choices":[{"index":0,"delta":{"role":"assistant","reasoning":"","reasoning_content":""},"finish_reason":null}]}\n\n`,
+        `data: {"id":"c1","choices":[{"index":0,"delta":{"content":"Hi"},"finish_reason":null}]}\n\n`,
+        `data: [DONE]\n\n`,
+      ],
+      0,
+      clock,
+    );
+    expect(tail.milestones.firstEventMs).toBe(10);
+    expect(tail.milestones.firstReasoningMs).toBeNull();
+    expect(tail.milestones.firstContentMs).toBe(20);
+  });
+});
