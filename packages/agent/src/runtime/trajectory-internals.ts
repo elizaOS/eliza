@@ -3586,10 +3586,7 @@ function normalizeStepForPersistence(
     access: PersistedProviderAccess,
     index: number,
   ): PersistedProviderAccess => {
-    const bounded = snapshotCaptureParams(
-      { ...access },
-      step.stepId,
-    );
+    const bounded = snapshotCaptureParams({ ...access }, step.stepId);
     return parsePersistedProviderAccess(
       bounded,
       trajectoryId,
