@@ -217,6 +217,29 @@ describe("logger", () => {
     expect(consoleInfo).toHaveBeenCalledWith("[BROWSER-TEST] child message");
   });
 
+  it("dispatches each log exactly once with the correct level (no duplicate ingestion)", () => {
+    const logger = bufferLogger();
+    const listener = vi.fn<(entry: LogEntry) => void>();
+    const unsubscribe = addLogListener(listener);
+    try {
+      logger.error("DB fail");
+      // Exactly one dispatch per log call
+      expect(listener).toHaveBeenCalledTimes(1);
+      const entry = listener.mock.calls[0]?.[0] as LogEntry;
+      // Pino level for error is 50 — not Adze internal level 1 (which would map to info)
+      expect(entry.level).toBe(50);
+      expect(entry.msg).toBe("DB fail");
+      // recentLogs reflects a single entry, not a duplicate
+      const lines = recentLogs()
+        .split("\n")
+        .filter((l) => l.includes("DB fail"));
+      expect(lines).toHaveLength(1);
+      expect(lines[0]).toContain("error");
+    } finally {
+      unsubscribe();
+    }
+  });
+
   it("keeps the public prompt/chat instrumentation helpers available", () => {
     expect(logPrompt("text", "hello")).toBe("");
     expect(logResponse("text", "world")).toBe("");
