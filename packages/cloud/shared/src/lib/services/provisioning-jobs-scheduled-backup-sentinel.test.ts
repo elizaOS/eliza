@@ -546,6 +546,8 @@ describe("enqueueAgent*Once — real lifecycle-job inserts", () => {
       .from(agentSandboxes)
       .where(eq(agentSandboxes.id, agentId));
     expect(sandbox?.status).toBe("deletion_pending");
+    expect(sandbox?.deletion_previous_status).toBe("running");
+    expect(sandbox?.deletion_previous_billing_status).toBe("active");
 
     // The superseded suspend is cancelled (delete wins), the delete itself is not.
     const suspendRows = await jobsOfType(agentId, JOB_TYPES.AGENT_SUSPEND);
