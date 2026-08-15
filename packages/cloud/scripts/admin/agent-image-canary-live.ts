@@ -1435,7 +1435,8 @@ export async function runAgentImageCanary(
       if (config.mode === "upgrade") {
         if (
           evidence.image.sourceRepository !==
-          AGENT_IMAGE_CANARY_CANONICAL_REPOSITORY
+            AGENT_IMAGE_CANARY_CANONICAL_REPOSITORY &&
+          evidence.image.sourceRepository !== AGENT_IMAGE_CANARY_DEMO_REPOSITORY
         ) {
           fail("inventory", "invalid_source_image");
         }
