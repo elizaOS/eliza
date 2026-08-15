@@ -4,7 +4,7 @@
  * text and serialized tool detail as display payload only.
  */
 
-import { isRetryableChatFailureKind } from "@elizaos/shared/contracts/chat";
+import { isRetryableChatFailureKind } from "@elizaos/shared/contracts";
 import type { ChatFailureKind, ChatToolCallEvent } from "../api";
 import { publishNativeTranscriptEvent } from "./transport";
 

@@ -9,11 +9,6 @@
 
 import { ElizaError } from "../errors";
 import { runWithSuppressedModelStream } from "../streaming-context";
-import {
-	normalizeActionFailureProvenance,
-	readActionFailureProvenance,
-	type ActionFailureProvenance,
-} from "../types/action-failure";
 import type {
 	Action,
 	ActionResult,
@@ -22,6 +17,11 @@ import type {
 	IAgentRuntime,
 	Memory,
 } from "../types";
+import {
+	type ActionFailureProvenance,
+	normalizeActionFailureProvenance,
+	readActionFailureProvenance,
+} from "../types/action-failure";
 import {
 	normalizeEffectReceipts,
 	normalizeUserFacingEffectReceiptIds,
@@ -144,9 +144,7 @@ export function normalizeActionResult(
 		...(userFacingEffectReceiptIds !== undefined
 			? { userFacingEffectReceiptIds }
 			: {}),
-		...(failureProvenance !== undefined
-			? { failureProvenance }
-			: {}),
+		...(failureProvenance !== undefined ? { failureProvenance } : {}),
 		data: {
 			...resultData,
 			// The executor, not an action-owned payload, is authoritative about

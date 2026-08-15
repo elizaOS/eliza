@@ -16,7 +16,7 @@
  * Presentation only — actions are delegated to callbacks.
  */
 
-import { isRetryableChatFailureKind } from "@elizaos/shared/contracts/chat";
+import { isRetryableChatFailureKind } from "@elizaos/shared/contracts";
 import { Check, LoaderCircle, RotateCcw, Sparkles, X } from "lucide-react";
 import { motion } from "motion/react";
 import type * as React from "react";

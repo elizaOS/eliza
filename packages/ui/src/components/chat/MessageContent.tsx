@@ -15,7 +15,7 @@
  */
 
 import { stripUnclaimedInteractionMarkup } from "@elizaos/core";
-import { isRetryableChatFailureKind } from "@elizaos/shared/contracts/chat";
+import { isRetryableChatFailureKind } from "@elizaos/shared/contracts";
 import {
   type FormEvent,
   memo,

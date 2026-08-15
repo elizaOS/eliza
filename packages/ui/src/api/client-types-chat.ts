@@ -9,7 +9,7 @@ import type {
   ChatFailureKind,
   ChatToolCallEvent,
   ChatTurnStatus,
-} from "@elizaos/shared/contracts/chat";
+} from "@elizaos/shared/contracts";
 import type { NativeToolCallEvent } from "./client-types-cloud";
 import type {
   ConversationMetadata,
