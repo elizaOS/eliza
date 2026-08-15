@@ -18,8 +18,14 @@ import {
   classifyElizaHostname,
   ELIZA_DOMAIN_CONTRACTS,
 } from "@elizaos/shared/elizacloud";
-import type { Hono } from "hono";
+import type { Hono, ExecutionContext as HonoExecutionContext } from "hono";
 import { makeCronHandler } from "@/lib/cron/cloudflare-cron";
+import {
+  ELIZA_TRACE_ID_HEADER,
+  resolveElizaTraceId,
+  setHttpTelemetryHeaders,
+} from "@/lib/observability/http-telemetry";
+import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 import { serveBlobHostRequest } from "./blob-host";
 import { serveRegistryHostRequest } from "./registry-host";
@@ -171,6 +177,64 @@ type AgentDomainBindings = Pick<
 async function getApp(): Promise<Hono<AppEnv>> {
   appPromise ??= import("./bootstrap-app").then((m) => m.createApp());
   return appPromise;
+}
+
+async function dispatchFullApp(
+  request: Request,
+  env: AppEnv["Bindings"],
+  ctx: ExecutionContext | HonoExecutionContext,
+): Promise<Response> {
+  const startedAt = performance.now();
+  const moduleWasInitialized = appPromise !== undefined;
+  const traceId = resolveElizaTraceId(request.headers);
+  const headers = new Headers(request.headers);
+  headers.set(ELIZA_TRACE_ID_HEADER, traceId);
+  const tracedRequest = new Request(request, { headers });
+  let moduleInitMs: number | null = null;
+  let status: number | null = null;
+
+  try {
+    const app = await getApp();
+    moduleInitMs = Math.round((performance.now() - startedAt) * 100) / 100;
+    const response = await app.fetch(tracedRequest, env, ctx);
+    status = response.status;
+    const dispatchMs = Math.round((performance.now() - startedAt) * 100) / 100;
+    const responseHeaders = new Headers(response.headers);
+    setHttpTelemetryHeaders(responseHeaders, traceId, [
+      { name: "full_app_dispatch", durationMs: dispatchMs },
+      ...(!moduleWasInitialized
+        ? [{ name: "full_app_module_init", durationMs: moduleInitMs }]
+        : []),
+    ]);
+    return new Response(response.body, {
+      status,
+      statusText: response.statusText,
+      headers: responseHeaders,
+    });
+  } finally {
+    const durationMs = Math.round((performance.now() - startedAt) * 100) / 100;
+    const logContext = {
+      traceId,
+      path: new URL(request.url).pathname,
+      status,
+      moduleWasInitialized,
+      moduleInitMs,
+      durationMs,
+    };
+    if (
+      status === null ||
+      status >= 500 ||
+      durationMs >= 1_000 ||
+      (moduleInitMs ?? 0) >= 250
+    ) {
+      logger.warn(
+        "[CloudEntrypoint] full app dispatch slow or failed",
+        logContext,
+      );
+    } else {
+      logger.info("[CloudEntrypoint] full app dispatch completed", logContext);
+    }
+  }
 }
 
 async function getStewardThinApp(): Promise<Hono<AppEnv>> {
@@ -634,7 +698,7 @@ export function getHostedFrontendServeRewrite(
 }
 
 const scheduled = makeCronHandler(async (request, env, ctx) =>
-  (await getApp()).fetch(request, env, ctx),
+  dispatchFullApp(request, env, ctx),
 );
 
 export default {
@@ -662,7 +726,7 @@ export default {
       if (stewardThinResponse) return stewardThinResponse;
       const inferenceResponse = await dispatchInference(apiRequest, env, ctx);
       if (inferenceResponse) return inferenceResponse;
-      return (await getApp()).fetch(apiRequest, env, ctx);
+      return dispatchFullApp(apiRequest, env, ctx);
     }
 
     const frontendAliasResponse = proxyFrontendAliasRequest(request, url);
@@ -680,7 +744,7 @@ export default {
 
     const hostedFrontendServe = getHostedFrontendServeRewrite(url, env);
     if (hostedFrontendServe) {
-      return (await getApp()).fetch(
+      return dispatchFullApp(
         new Request(hostedFrontendServe, request),
         env,
         ctx,
@@ -721,10 +785,10 @@ export default {
         ctx,
       );
       if (rewrittenInferenceResponse) return rewrittenInferenceResponse;
-      return (await getApp()).fetch(rewrittenRequest, env, ctx);
+      return dispatchFullApp(rewrittenRequest, env, ctx);
     }
 
-    return (await getApp()).fetch(request, env, ctx);
+    return dispatchFullApp(request, env, ctx);
   },
 
   scheduled,

@@ -24,6 +24,54 @@ test("exports the X OAuth refresh Durable Object", () => {
   expect(typeof TwitterOAuthRefreshCoordinator).toBe("function");
 });
 
+test("correlates and times dispatch outside full-app middleware", async () => {
+  const traceId = "11111111-1111-4111-8111-111111111111";
+  const env = {
+    ENVIRONMENT: "test",
+    NODE_ENV: "test",
+    REDIS_RATE_LIMITING: "false",
+    CACHE_ENABLED: "false",
+    THIN_INFERENCE_ENTRY_ENABLED: "false",
+    BLOB: {},
+  } as unknown as AppEnv["Bindings"];
+  const executionCtx = {
+    waitUntil: () => undefined,
+    passThroughOnException: () => undefined,
+  } as unknown as ExecutionContext;
+  const makeRequest = () =>
+    new Request("https://api.eliza.app/api/eliza-app/webhook/telegram", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-eliza-trace-id": traceId,
+      },
+      body: "{}",
+    });
+
+  const response = await cloudApiWorker.fetch(makeRequest(), env, executionCtx);
+
+  expect(response.status).toBe(503);
+  expect(response.headers.get("x-eliza-trace-id")).toBe(traceId);
+  expect(response.headers.get("server-timing")).toMatch(
+    /full_app_dispatch;dur=\d+(?:\.\d+)?/,
+  );
+  expect(response.headers.get("server-timing")).toMatch(
+    /full_app_module_init;dur=\d+(?:\.\d+)?/,
+  );
+
+  const warmResponse = await cloudApiWorker.fetch(
+    makeRequest(),
+    env,
+    executionCtx,
+  );
+  expect(warmResponse.headers.get("server-timing")).toContain(
+    "full_app_dispatch",
+  );
+  expect(warmResponse.headers.get("server-timing")).not.toContain(
+    "full_app_module_init",
+  );
+});
+
 describe("thin inference entry dispatch", () => {
   const executionCtx = {
     waitUntil: () => undefined,
