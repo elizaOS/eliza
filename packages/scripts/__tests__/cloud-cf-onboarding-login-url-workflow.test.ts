@@ -41,7 +41,7 @@ describe("staging onboarding login URL deployment", () => {
   test("restores the known staging value when deployment fails after deletion", () => {
     expect(workflow).toContain("trap restore_legacy_onboarding_secrets ERR");
     expect(workflow).toContain(
-      'printf \'%s\' "$STAGING_ONBOARDING_LOGIN_APP_URL" | bunx wrangler secret put "$name" --env staging',
+      'printf \'%s\' "$STAGING_ONBOARDING_LOGIN_APP_URL" | bunx wrangler versions secret put "$name" --env staging',
     );
     expect(workflow).toContain("trap - ERR");
   });
