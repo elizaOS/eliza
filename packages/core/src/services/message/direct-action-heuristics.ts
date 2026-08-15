@@ -1720,3 +1720,164 @@ export function inferWebSearchQueryFromMessageText(
 
 	return query.length > 0 ? query : messageText.trim();
 }
+
+/**
+ * Minimal structural view of a recent-message memory used by continuation
+ * resolution. Kept local so the heuristics module stays free of the full
+ * Memory type; callers pass provider-shaped rows (state RECENT_MESSAGES data).
+ */
+export type ContinuationDialogueEntry = {
+	id?: string;
+	entityId?: string;
+	createdAt?: number;
+	content?: {
+		text?: unknown;
+		type?: unknown;
+		source?: unknown;
+		actionCallbackHistory?: unknown;
+		metadata?: unknown;
+	};
+};
+
+const CONTINUATION_LEAD_IN =
+	"(?:ok(?:ay)?|yes|yep|yeah|sure|alright|great|perfect)?[,.!]?\\s*(?:please\\s+)?";
+
+// Directive continuations explicitly tell the agent to keep working; they are
+// contentless by construction (no domain nouns survive the anchored match), so
+// substituting the resolved prior request for candidate inference cannot mask
+// a fresh ask.
+const CONTINUATION_DIRECTIVE_RE = new RegExp(
+	`^${CONTINUATION_LEAD_IN}(?:(?:finish|complete|continue|resume)(?:\\s+(?:up|it|that|this|(?:my|the|that|this)\\s+(?:request|task|work|job)|what\\s+you\\s+were\\s+doing|where\\s+you\\s+left\\s+off))?|go\\s+ahead|do\\s+it|proceed|keep\\s+going|carry\\s+on|make\\s+it\\s+so)(?:\\s+(?:please|then|now))?$`,
+	"iu",
+);
+
+// Approval continuations accept a pending question/preview ("that is good",
+// bare "yes"). They only resolve when the agent's latest visible turn still
+// looks pending — an ack or a question — so praise after a delivered result
+// does not re-trigger the finished request.
+const CONTINUATION_APPROVAL_RE = new RegExp(
+	`^${CONTINUATION_LEAD_IN}(?:yes|yep|yeah|(?:that|this|it)(?:'s|\\s+is)?\\s+(?:good|great|perfect|fine|right|correct)|(?:that|this|it)\\s+works|sounds\\s+good|looks\\s+good)(?:\\s*[,.!]?\\s*(?:please\\s+)?(?:go\\s+ahead|do\\s+it|proceed|finish(?:\\s+it)?|continue|thanks?|thank\\s+you))?$`,
+	"iu",
+);
+
+function normalizeContinuationText(text: string): string {
+	return text
+		.trim()
+		.replace(/[.!…]+$/u, "")
+		.replace(/\s+/gu, " ");
+}
+
+export type ExplicitContinuationKind = "directive" | "approval";
+
+/**
+ * Classifies a turn that carries no request of its own and only tells the
+ * agent to proceed with (or approves) earlier work. Anchored whole-message
+ * matches with a short length cap keep ordinary chat ("that is a good
+ * question", topic switches) out.
+ */
+export function classifyExplicitContinuationTurn(
+	text: string,
+): ExplicitContinuationKind | null {
+	const normalized = normalizeContinuationText(text);
+	if (normalized.length === 0 || normalized.length > 60) return null;
+	if (normalized.includes("?")) return null;
+	if (CONTINUATION_DIRECTIVE_RE.test(normalized)) return "directive";
+	if (CONTINUATION_APPROVAL_RE.test(normalized)) return "approval";
+	return null;
+}
+
+export function looksLikeExplicitContinuationTurn(text: string): boolean {
+	return classifyExplicitContinuationTurn(text) !== null;
+}
+
+function continuationEntryText(entry: ContinuationDialogueEntry): string {
+	return typeof entry.content?.text === "string"
+		? entry.content.text.trim()
+		: "";
+}
+
+function isContinuationDialogueArtifact(
+	entry: ContinuationDialogueEntry,
+): boolean {
+	const content = entry.content;
+	if (!content || typeof content !== "object") return true;
+	if (content.type === "action_result") return true;
+	if (
+		typeof content.source === "string" &&
+		content.source.includes("sub-agent")
+	) {
+		return true;
+	}
+	const metadata = content.metadata;
+	if (
+		metadata &&
+		typeof metadata === "object" &&
+		(metadata as { subAgent?: unknown }).subAgent === true
+	) {
+		return true;
+	}
+	return false;
+}
+
+const CONTINUATION_LOOKBACK_ENTRIES = 12;
+const PENDING_ASSISTANT_TURN_MAX_CHARS = 160;
+
+/**
+ * Resolves an explicit continuation turn ("finish my request", "that is
+ * good") to the nearest prior user request so candidate inference can rerun
+ * on the request the user is actually referring to. Deterministic and
+ * conservative: non-continuation turns resolve to nothing (topic switches are
+ * untouched), approval turns additionally require the agent's latest visible
+ * reply to still look pending (a question or a short ack without tool-result
+ * callbacks), and the resolved text is the single nearest prior user request
+ * — prior requests are never concatenated together or onto the current turn.
+ */
+export function resolveExplicitContinuationRequestText(
+	currentText: string,
+	recentMessages: ReadonlyArray<ContinuationDialogueEntry>,
+	agentId: string,
+	currentMessageId?: string,
+): string | null {
+	const kind = classifyExplicitContinuationTurn(currentText);
+	if (!kind) return null;
+	const ordered = [...recentMessages]
+		.filter((entry) => {
+			if (!entry || typeof entry !== "object") return false;
+			if (currentMessageId && entry.id === currentMessageId) return false;
+			return continuationEntryText(entry).length > 0;
+		})
+		.sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0))
+		.slice(-CONTINUATION_LOOKBACK_ENTRIES);
+
+	if (kind === "approval") {
+		const lastAssistant = [...ordered]
+			.reverse()
+			.find((entry) => entry.entityId === agentId);
+		if (!lastAssistant || isContinuationDialogueArtifact(lastAssistant)) {
+			return null;
+		}
+		const callbacks = lastAssistant.content?.actionCallbackHistory;
+		if (Array.isArray(callbacks) && callbacks.length > 0) return null;
+		const lastText = continuationEntryText(lastAssistant);
+		const looksPending =
+			lastText.endsWith("?") ||
+			lastText.length <= PENDING_ASSISTANT_TURN_MAX_CHARS;
+		if (!looksPending) return null;
+	}
+
+	for (let index = ordered.length - 1; index >= 0; index--) {
+		const entry = ordered[index];
+		if (!entry || entry.entityId === agentId) continue;
+		if (isContinuationDialogueArtifact(entry)) continue;
+		const text = continuationEntryText(entry);
+		if (text.length === 0) continue;
+		if (classifyExplicitContinuationTurn(text) !== null) continue;
+		if (
+			normalizeContinuationText(text) === normalizeContinuationText(currentText)
+		) {
+			continue;
+		}
+		return text;
+	}
+	return null;
+}
