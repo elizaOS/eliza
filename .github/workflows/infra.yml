@@ -537,6 +537,10 @@ jobs:
 
           for (const resource of changes) {
             const actions = resource.change?.actions ?? [];
+            if (resource.change?.importing) {
+              failures.push(`${resource.address}: import is not additive infrastructure creation`);
+              continue;
+            }
             const noOp = actions.length === 1 && actions[0] === "no-op";
             if (resource.mode !== "managed" || noOp) continue;
             const isPack = resource.address.startsWith(packPrefix);
