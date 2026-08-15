@@ -852,6 +852,27 @@ function recoverEvaluatorTextOutput(
 		};
 	}
 
+	// Committed state is authoritative over recovered prose: when the turn's
+	// successful tool result carries VERIFIED canonical user-facing text
+	// (do-not-paraphrase contract, #14873), the unparseable evaluator prose is
+	// the least trustworthy artifact in the turn — live matrix F30
+	// (tj-e9bdfb8015bc11): OWNER_REMINDERS_REVIEW returned "water the ficus at
+	// 10am…" verified, and this recovery shipped hallucinated
+	// conversation-history items ("your 20 pushups and the sandpaper run")
+	// instead. Finish with the verified tool text; prose recovery remains for
+	// turns whose tools make no verified-text claim (web search, shell, …).
+	const verifiedToolText = latestVerifiedToolUserFacingText(trajectory);
+	if (verifiedToolText) {
+		return {
+			success: true,
+			decision: "FINISH",
+			thought:
+				"Recovered the turn's answer from the verified tool result; unparseable evaluator prose must not override committed state.",
+			messageToUser: verifiedToolText,
+			raw: { recoverySource: "verified_tool_text_over_prose" },
+		};
+	}
+
 	return {
 		success: true,
 		decision: "FINISH",
@@ -860,6 +881,29 @@ function recoverEvaluatorTextOutput(
 		messageToUser: userFacing,
 		raw: { recoverySource: "prose_after_successful_tool" },
 	};
+}
+
+/**
+ * The most recent successful step whose result carries the verified
+ * do-not-paraphrase user-facing text. Archived steps are deliberately
+ * excluded: only the live turn's surface output is authoritative for the
+ * live turn's reply.
+ */
+function latestVerifiedToolUserFacingText(
+	trajectory: PlannerTrajectory,
+): string | null {
+	for (let index = trajectory.steps.length - 1; index >= 0; index -= 1) {
+		const result = trajectory.steps[index]?.result;
+		if (result?.success !== true || result.verifiedUserFacing !== true) {
+			continue;
+		}
+		const text =
+			typeof result.userFacingText === "string"
+				? result.userFacingText.trim()
+				: "";
+		if (text) return text;
+	}
+	return null;
 }
 
 /**
