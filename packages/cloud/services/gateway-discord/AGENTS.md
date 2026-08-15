@@ -71,6 +71,8 @@ Optional features / toggles:
 - `ELIZA_APP_DISCORD_BOT_ENABLED=true` + `ELIZA_APP_DISCORD_BOT_TOKEN` — run the
   Eliza App system bot; `ELIZA_APP_LEADER_KEY` (default `discord:eliza-app-bot:leader`)
   for leader election.
+- `ELIZA_APP_DISCORD_PUBLIC_KEY` — recommended local Ed25519 verification key
+  for the signed install webhook; avoids a bounded first-request key lookup.
 - `VOICE_MESSAGE_ENABLED` (`"false"` disables the voice path),
   `VOICE_AUDIO_TTL_SECONDS`, `VOICE_CLEANUP_INTERVAL_MS`,
   `CLOUD_API_BASE_URL`/`ELIZAOS_CLOUD_BASE_URL`, `BLOB_READ_WRITE_TOKEN` — voice upload.
