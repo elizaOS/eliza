@@ -114,7 +114,10 @@ export interface ProviderSelection {
   routingModeSaving: boolean;
   resolvedSelectedId: string | null;
   visibleProviderPanelId: ProviderPanelId;
+  /** Cloud is selected AND able to serve. Use this for "who is serving". */
   isCloudSelected: boolean;
+  /** Cloud is named by the routing config, regardless of sign-in state. */
+  isCloudConfigured: boolean;
   initializeFromConfig: (cfg: Record<string, unknown>) => void;
   handleSwitchProvider: (newId: string, providerId: string) => Promise<void>;
   handleSelectSubscription: (
@@ -328,13 +331,27 @@ export function useProviderSelection(
     restoreSelection,
   ]);
 
-  const isCloudSelected =
+  // Config intent: the routing entry names Cloud. This stays true when the
+  // account is signed out, because that is what the config says (#20045 U1).
+  const isCloudConfigured =
     resolvedSelectedId === "__cloud__" || resolvedSelectedId === null;
+  // Reconciled: Cloud is only *selected* for serving when it can actually
+  // serve. Consumers previously each had to remember to qualify the raw
+  // config flag with `elizaCloudConnected`; forgetting once is how the Cloud
+  // tile came to be marked current while local answered every turn.
+  const isCloudSelected = isCloudConfigured && elizaCloudConnected;
   // When the runtime is locked to cloud, ignore local persistence in the
   // routing config — the user can't be on local even if config says so.
-  const effectiveCloudCallsDisabled = cloudRuntimeLocked
+  const configuredCloudCallsDisabled = cloudRuntimeLocked
     ? false
     : cloudCallsDisabled;
+  // Cloud calls are equally unavailable when configured-but-unreachable, so
+  // the flag now flips for that state too rather than staying config-only
+  // (#20045 U2). `cloudRuntimeLocked` still wins: a cloud-only build has no
+  // local path to fall back to.
+  const effectiveCloudCallsDisabled =
+    configuredCloudCallsDisabled ||
+    (!cloudRuntimeLocked && isCloudConfigured && !elizaCloudConnected);
   const activeProviderPanelId = resolveDefaultIntelligencePanelId({
     cloudCallsDisabled: effectiveCloudCallsDisabled,
     cloudRuntimeLocked,
@@ -399,6 +416,7 @@ export function useProviderSelection(
     resolvedSelectedId,
     visibleProviderPanelId,
     isCloudSelected,
+    isCloudConfigured,
     initializeFromConfig,
     handleSwitchProvider,
     handleSelectSubscription,

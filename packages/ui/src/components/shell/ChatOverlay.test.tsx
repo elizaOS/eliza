@@ -619,8 +619,11 @@ describe("ChatOverlay", () => {
         />,
       );
 
+      // #20024 renamed the compact-landing placeholder "Ask" → "Message" in
+      // ChatOverlay.tsx without updating this assertion, leaving the suite red
+      // on develop. The source is the intent; this follows it.
       expect(screen.getByLabelText("message").getAttribute("placeholder")).toBe(
-        "Ask",
+        "Message",
       );
 
       expect(
@@ -637,7 +640,7 @@ describe("ChatOverlay", () => {
       fireEvent.focus(screen.getByLabelText("message"));
 
       expect(screen.getByLabelText("message").getAttribute("placeholder")).toBe(
-        "Ask Playwright Smoke",
+        "Message Playwright Smoke",
       );
 
       expect(

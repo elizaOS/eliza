@@ -30,6 +30,7 @@ import {
 	isRoutingPolicy,
 	ROUTING_POLICIES,
 	type RoutingPreferences,
+	resolveElizaCloudTopology,
 	resolveHubAuthHeaders,
 	MODEL_CATALOG as SHARED_MODEL_CATALOG,
 	type CatalogModel as SharedCatalogModel,
@@ -801,19 +802,45 @@ async function installedSnapshot(): Promise<InstalledModel[]> {
 	return readRegistry();
 }
 
+/**
+ * Whether local inference is the routing target for chat text, independent of
+ * whether a model is resident. Local is routed when the config does not send
+ * text to Eliza Cloud at all, or when it does but no Cloud credential is
+ * linked — in which case plugin-elizacloud registers no chat handler and local
+ * is the only provider that can serve. Reporting only `status` made that state
+ * read as `idle` while local was in fact the active path (#20045 R5).
+ *
+ * Returns undefined when the config cannot be read, so the field is absent
+ * rather than a fabricated boolean.
+ */
+async function isLocalInferenceRouted(): Promise<boolean | undefined> {
+	const config = await readJsonFile<Record<string, unknown> | null>(
+		path.join(stateDir(), "eliza.json"),
+		null,
+	);
+	if (!config) return undefined;
+	const topology = resolveElizaCloudTopology(config);
+	if (!topology.services.inference) return true;
+	return topology.servicesUnreconciled.includes("inference");
+}
+
 export async function getLocalInferenceActiveSnapshot(): Promise<{
 	modelId: string | null;
 	loadedAt: string | null;
 	status: "idle" | "loading" | "ready" | "error";
+	routed?: boolean;
 	error?: string;
 	loadedContextSize?: number | null;
 	loadedCacheTypeK?: string | null;
 	loadedCacheTypeV?: string | null;
 	loadedGpuLayers?: number | null;
 }> {
+	const routed = await isLocalInferenceRouted();
+	const withRouted = <T extends object>(state: T): T & { routed?: boolean } =>
+		routed === undefined ? state : { ...state, routed };
 	const serviceActive = (await localInferenceServiceLazy()).getActive();
 	if (serviceActive.status === "ready" && serviceActive.modelId) {
-		return serviceActive;
+		return withRouted(serviceActive);
 	}
 	const aospActive = await readJsonFile<{
 		status?: string;
@@ -837,13 +864,13 @@ export async function getLocalInferenceActiveSnapshot(): Promise<{
 		const installed = (await installedSnapshot()).find(
 			(model) => model.path === aospActive.path,
 		);
-		return {
+		return withRouted({
 			modelId:
 				installed?.id ?? path.basename(aospActive.path).replace(/\.gguf$/i, ""),
 			loadedAt:
 				typeof aospActive.loadedAt === "string" ? aospActive.loadedAt : null,
-			status: "ready",
-		};
+			status: "ready" as const,
+		});
 	}
 	const bridgeStatus = await getMobileDeviceBridgeApi()
 		.then((api) => api.getMobileDeviceBridgeStatus())
@@ -851,7 +878,7 @@ export async function getLocalInferenceActiveSnapshot(): Promise<{
 	const loadedPath = bridgeStatus.devices.find((device) =>
 		Boolean(device.loadedPath),
 	)?.loadedPath;
-	if (!loadedPath) return activeModelState;
+	if (!loadedPath) return withRouted(activeModelState);
 	// A connected device bridge that reports a loadedPath has the GGUF loaded and
 	// serving on-device — that's "ready", same as the AOSP path above. Don't gate
 	// on the installed-models registry (a device may load a directly-staged
@@ -860,11 +887,11 @@ export async function getLocalInferenceActiveSnapshot(): Promise<{
 	const installed = (await installedSnapshot()).find(
 		(model) => model.path === loadedPath,
 	);
-	return {
+	return withRouted({
 		modelId: installed?.id ?? path.basename(loadedPath).replace(/\.gguf$/i, ""),
 		loadedAt: activeModelState.loadedAt,
-		status: "ready",
-	};
+		status: "ready" as const,
+	});
 }
 
 async function hubSnapshot(): Promise<Record<string, unknown>> {
