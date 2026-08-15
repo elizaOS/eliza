@@ -1,6 +1,6 @@
 /**
- * Authorizes and executes managed Discord guild-voice turns against personal
- * Shared Eliza while isolating public guild history from private transports.
+ * Authorizes and executes managed Discord guild text and voice turns against
+ * personal Shared Eliza while isolating public guild history from private transports.
  */
 import { ElevenLabsService } from "./elevenlabs";
 import { elizaAppUserService } from "./eliza-app";
@@ -10,7 +10,7 @@ import {
 } from "./managed-discord-guild-voice-policy";
 import {
   personalSharedAgent,
-  personalSharedGuildVoiceRoomId,
+  personalSharedDiscordGuildRoomId,
 } from "./shared-runtime/personal-shared-agent";
 import { sharedRestMessageSend } from "./shared-runtime/shared-rest-adapter";
 
@@ -22,11 +22,75 @@ interface GuildVoiceRuntimeContext {
   elevenLabsEnv: Parameters<typeof ElevenLabsService.fromEnv>[0];
 }
 
+interface GuildTextRuntimeContext {
+  namespace: Parameters<typeof sharedRestMessageSend>[5];
+  executionCtx: Parameters<typeof sharedRestMessageSend>[4];
+}
+
 export async function authorizeManagedDiscordGuildVoice(
   discordUserId: string,
 ): Promise<ManagedDiscordGuildVoiceIdentity> {
   const account = await elizaAppUserService.getByDiscordId(discordUserId);
   return evaluateManagedDiscordGuildVoiceOwner(account);
+}
+
+/** Execute one owner-authorized public guild text turn in an isolated room. */
+export async function runManagedDiscordGuildTextTurn(
+  input: {
+    discordUserId: string;
+    discordUsername: string;
+    displayName?: string;
+    guildId: string;
+    channelId: string;
+    messageId: string;
+    message: string;
+    userId: string;
+    organizationId: string;
+  },
+  context: GuildTextRuntimeContext,
+): Promise<{
+  replyText: string;
+  agentId: string;
+  roomId: string;
+  userId: string;
+  organizationId: string;
+}> {
+  const agent = personalSharedAgent({
+    userId: input.userId,
+    organizationId: input.organizationId,
+  });
+  const roomId = personalSharedDiscordGuildRoomId({
+    agentId: agent.id,
+    discordUserId: input.discordUserId,
+    guildId: input.guildId,
+    channelId: input.channelId,
+  });
+  const speaker = (input.displayName ?? input.discordUsername)
+    .replace(/[\r\n\t]+/g, " ")
+    .trim()
+    .slice(0, 80);
+  const publicTurn = [
+    `[Public Discord guild text; speaker: ${speaker}.`,
+    "Use only this public guild channel's context. Never reveal or summarize private DM, phone, SMS, or Telegram history.]",
+    input.message,
+  ].join("\n");
+  const reply = await sharedRestMessageSend(
+    agent,
+    roomId,
+    publicTurn,
+    agent.agent_name ?? "Eliza",
+    context.executionCtx,
+    context.namespace,
+    `discord-guild:${input.messageId}`,
+    "platform",
+  );
+  return {
+    replyText: reply.text.trim(),
+    agentId: agent.id,
+    roomId,
+    userId: input.userId,
+    organizationId: input.organizationId,
+  };
 }
 
 function decodeCanonicalWav(wavBase64: string): Uint8Array {
@@ -105,7 +169,7 @@ export async function runManagedDiscordGuildVoiceTurn(
     userId: identity.userId,
     organizationId: identity.organizationId,
   });
-  const roomId = personalSharedGuildVoiceRoomId({
+  const roomId = personalSharedDiscordGuildRoomId({
     agentId: agent.id,
     discordUserId: input.discordUserId,
     guildId: input.guildId,
