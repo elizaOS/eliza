@@ -830,3 +830,62 @@ describe("action catalogue and retrieval", () => {
 		expect(parentAliasesForCandidateAction("LAUNCH_APP")).toEqual(["APP"]);
 	});
 });
+
+describe("canonical OWNER_* fallbacks for non-PA topologies", () => {
+	// The stage-1 routing floor names OWNER_* parents; on deployments without
+	// plugin-personal-assistant those names must degrade to the registered
+	// capability instead of forcing an unavailable surface (#19863 review P1).
+	it("aliases canonical owner parents to their topology fallbacks", () => {
+		expect(parentAliasesForCandidateAction("OWNER_TODOS")).toEqual([
+			"TODO",
+			"TRIGGER",
+		]);
+		expect(parentAliasesForCandidateAction("OWNER_REMINDERS")).toEqual([
+			"TRIGGER",
+		]);
+		expect(parentAliasesForCandidateAction("OWNER_ALARMS")).toEqual([
+			"TRIGGER",
+		]);
+		expect(parentAliasesForCandidateAction("OWNER_ROUTINES")).toEqual([
+			"TRIGGER",
+		]);
+		expect(parentAliasesForCandidateAction("OWNER_GOALS")).toEqual([
+			"TODO",
+			"TRIGGER",
+		]);
+	});
+
+	it("falls back to TODO/TRIGGER when the owner parent is absent from the catalog", () => {
+		const catalog = buildActionCatalog([
+			{ name: "TODO", description: "User-scoped persistent todos with CRUD." },
+			{ name: "TRIGGER", description: "Schedule one-shot and recurring triggers." },
+		]);
+		const response = retrieveActions({
+			catalog,
+			messageText: "add a todo: buy milk",
+			candidateActions: ["OWNER_TODOS"],
+		});
+		expect(response.query.parentActionHints).toEqual(
+			expect.arrayContaining(["TODO", "TRIGGER"]),
+		);
+		expect(response.results[0]).toMatchObject({ name: "TODO" });
+	});
+
+	it("keeps the direct owner parent when personal-assistant is registered", () => {
+		const catalog = buildActionCatalog([
+			{
+				name: "OWNER_TODOS",
+				description: "Owner todos: create/update/delete/complete/review.",
+			},
+			{ name: "TODO", description: "User-scoped persistent todos with CRUD." },
+		]);
+		const response = retrieveActions({
+			catalog,
+			messageText: "add a todo: buy milk",
+			candidateActions: ["OWNER_TODOS"],
+		});
+		// Direct catalog reference wins; the fallback aliases must not fire.
+		expect(response.query.parentActionHints).toEqual(["OWNER_TODOS"]);
+		expect(response.results[0]).toMatchObject({ name: "OWNER_TODOS" });
+	});
+});
