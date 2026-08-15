@@ -62,6 +62,8 @@ export function PstnCallButton({ disabled = false }: { disabled?: boolean }) {
   const handleOpenChange = async (nextOpen: boolean) => {
     setOpen(nextOpen);
     if (!nextOpen) return;
+    setPhoneNumber("");
+    setPhoneVerified(false);
     setLoadingProfile(true);
     try {
       const user = await api<CurrentUserResponse>("/api/v1/user");
@@ -116,8 +118,7 @@ export function PstnCallButton({ disabled = false }: { disabled?: boolean }) {
           <DialogHeader>
             <DialogTitle>Call me</DialogTitle>
             <DialogDescription>
-              Eliza will call your verified account phone from +1 (808)
-              788-1821.
+              Eliza will call your verified account phone.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-2">
@@ -128,7 +129,7 @@ export function PstnCallButton({ disabled = false }: { disabled?: boolean }) {
               autoComplete="tel"
               placeholder="+1 415 555 0100"
               value={phoneNumber}
-              onChange={(event) => setPhoneNumber(event.target.value)}
+              readOnly
               disabled={loadingProfile || submitting}
             />
             {!loadingProfile && !phoneVerified ? (
