@@ -2,7 +2,7 @@ name: Deploy iOS Association
 
 on:
   push:
-    branches: [main]
+    branches: [develop]
     paths:
       - "packages/homepage/edge/apple-app-site-association.json"
       - "packages/homepage/edge/apple-app-site-association.ts"

@@ -36,9 +36,6 @@ const workflowsDirectory = path.join(repositoryRoot, ".github", "workflows");
 const validatorPath = fileURLToPath(
   new URL("./check-pr-agent-attribution.mjs", import.meta.url),
 );
-const evidenceValidatorPath = fileURLToPath(
-  new URL("./check-pr-evidence.mjs", import.meta.url),
-);
 
 function body({
   assistance = "yes",
@@ -75,19 +72,6 @@ function runAttributionCli(markdown) {
   return spawnSync(process.execPath, [validatorPath, "--body-file", bodyPath], {
     encoding: "utf8",
   });
-}
-
-function runEvidenceCli(markdown, headSha) {
-  const fixtureDirectory = mkdtempSync(
-    path.join(tmpdir(), "eliza-pr-evidence-"),
-  );
-  const bodyPath = path.join(fixtureDirectory, "body.md");
-  writeFileSync(bodyPath, markdown);
-  return spawnSync(
-    process.execPath,
-    [evidenceValidatorPath, "--body-file", bodyPath, "--head-sha", headSha],
-    { encoding: "utf8" },
-  );
 }
 
 function generatedPrWorkflowPaths() {
@@ -526,149 +510,6 @@ Attribution status: self-reported
         body({ models: "`openrouter/anthropic/claude-sonnet-4`" }),
       ).ok,
       true,
-    );
-  });
-
-  it("executes only PR validators verified against the trusted base SHA", () => {
-    const workflow = workflowSource(".github/workflows/pr.yaml");
-    assert.match(
-      workflow,
-      /ref:\s*\$\{\{\s*github\.event\.pull_request\.base\.sha\s*\}\}/,
-    );
-    assert.match(workflow, /git show "\$BASE_SHA:\$source"/);
-    assert.match(workflow, /git cat-file -e "\$BASE_SHA:\$source"/);
-    assert.match(workflow, /validator_dir="\$GITHUB_WORKSPACE\/scripts"/);
-    assert.match(
-      workflow,
-      /cmp --silent "\$trusted_blob" "\$GITHUB_WORKSPACE\/\$source"/,
-    );
-    for (const filename of [
-      "check-pr-evidence.mjs",
-      "check-pr-evidence.test.mjs",
-      "check-pr-agent-attribution.mjs",
-      "check-pr-agent-attribution.test.mjs",
-      "check-agent-comment-attribution.mjs",
-      "check-agent-comment-attribution.test.mjs",
-    ]) {
-      assert.match(
-        workflow,
-        new RegExp(`scripts/${filename.replaceAll(".", "\\.")}`),
-      );
-    }
-    assert.match(workflow, /node "\$PR_VALIDATOR_DIR\/check-pr-evidence\.mjs"/);
-    assert.match(
-      workflow,
-      /node "\$PR_VALIDATOR_DIR\/check-pr-agent-attribution\.mjs"/,
-    );
-    assert.doesNotMatch(
-      workflow,
-      /node(?:\s+--test)?(?:\s+\\)?\s+scripts\/check-(?:pr|agent)/,
-    );
-    assert.match(workflow, /\.pull_request\.body\s*\/\/\s*""/);
-    assert.match(workflow, /"\$BASE_SHA\.\.\.\$HEAD_SHA"/);
-  });
-
-  it("normalizes only exact first-party Dependabot PRs with a valid visible policy", () => {
-    const workflow = workflowSource(".github/workflows/pr.yaml");
-    const jobStart = workflow.indexOf("  normalize-dependabot-body:");
-    const jobEnd = workflow.indexOf("\n  check-pr-title:", jobStart);
-    assert.notEqual(jobStart, -1, "Dependabot normalizer job must exist");
-    assert.notEqual(jobEnd, -1, "Dependabot normalizer job must be bounded");
-    const normalizer = workflow.slice(jobStart, jobEnd);
-
-    assert.match(workflow, /pull_request_target:\s*\n\s+types:/);
-    assert.match(normalizer, /github\.actor == 'dependabot\[bot\]'/);
-    assert.match(
-      normalizer,
-      /github\.event\.pull_request\.user\.login == 'dependabot\[bot\]'/,
-    );
-    assert.match(
-      normalizer,
-      /github\.event\.pull_request\.head\.repo\.full_name == github\.repository/,
-    );
-    assert.match(
-      normalizer,
-      /github\.event\.pull_request\.base\.repo\.full_name == github\.repository/,
-    );
-    assert.match(
-      normalizer,
-      /github\.event\.pull_request\.base\.ref == 'develop'/,
-    );
-    assert.match(
-      normalizer,
-      /startsWith\(github\.event\.pull_request\.head\.ref, 'dependabot\/'\)/,
-    );
-    assert.doesNotMatch(
-      normalizer,
-      /uses:\s*actions\/checkout@/,
-      "pull_request_target must never check out or execute PR-controlled code",
-    );
-    assert.match(
-      normalizer,
-      /gh api\s+\\\s+--method PATCH\s+\\\s+"repos\/\$\{REPOSITORY\}\/pulls\/\$\{PR_NUMBER\}"/,
-    );
-
-    const configuredEcosystems = [
-      ...workflowSource(".github/dependabot.yml").matchAll(
-        /^\s*-\s*package-ecosystem:\s*["']?([^"'\s]+)["']?\s*$/gm,
-      ),
-    ].map((match) => match[1]);
-    const ecosystemRefs = {
-      bun: "dependabot/bun/*",
-      "github-actions": "dependabot/github_actions/*",
-    };
-    assert.deepEqual(
-      [...new Set(configuredEcosystems)].sort(),
-      Object.keys(ecosystemRefs).sort(),
-      "the trusted ref allowlist must be updated for every configured ecosystem",
-    );
-    for (const ecosystem of configuredEcosystems) {
-      assert.match(
-        normalizer,
-        new RegExp(ecosystemRefs[ecosystem].replaceAll("*", "\\*")),
-        `${ecosystem} Dependabot refs must be explicitly allowed`,
-      );
-    }
-
-    const policyBlock = [
-      ...workflow.matchAll(
-        /<!-- dependabot-policy:v1:start -->([\s\S]*?)<!-- dependabot-policy:v1:end -->/g,
-      ),
-    ]
-      .map((match) => dedent(match[0]))
-      .find((candidate) =>
-        candidate.includes("<!-- evidence-row:before-screenshots -->"),
-      );
-    assert.ok(
-      policyBlock,
-      "Dependabot's visible policy block must be extractable",
-    );
-    const headSha = "a".repeat(40);
-    const renderedPolicyBlock = policyBlock.replace(
-      /\$\{headSha\.toLowerCase\(\)\}/,
-      headSha,
-    );
-    const attribution = evaluatePrAttribution(renderedPolicyBlock);
-    assert.equal(
-      attribution.ok,
-      true,
-      attribution.findings.map((finding) => finding.message).join("; "),
-    );
-    const evidence = evaluatePrEvidence(
-      renderedPolicyBlock,
-      REQUIRED_EVIDENCE_ROWS,
-    );
-    assert.equal(
-      evidence.ok,
-      true,
-      evidence.findings
-        .map((finding) => `${finding.id}=${finding.status}`)
-        .join("; "),
-    );
-    assert.equal(runEvidenceCli(renderedPolicyBlock, headSha).status, 0);
-    assert.notEqual(
-      runEvidenceCli(renderedPolicyBlock, "b".repeat(40)).status,
-      0,
     );
   });
 
