@@ -283,13 +283,13 @@
   "exceptions": {
     "heavyOnlyE2E": [
       {
-        "path": "eliza/packages/app-core/test/app/memory-relationships.real.e2e.test.ts",
+        "path": "packages/app-core/test/app/memory-relationships.real.e2e.test.ts",
         "suite": "e2e-heavy",
         "tier": "heavy",
         "rationale": "requires the browser QA harness and stays out of the default live API/runtime lane"
       },
       {
-        "path": "eliza/packages/app-core/test/app/qa-checklist.real.e2e.test.ts",
+        "path": "packages/app-core/test/app/qa-checklist.real.e2e.test.ts",
         "suite": "e2e-heavy",
         "tier": "heavy",
         "rationale": "validates the browser QA checklist and belongs in the heavy nightly or release gate"
