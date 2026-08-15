@@ -233,6 +233,15 @@ describe("scheduling SQL persistence", () => {
     async () => {
       const harness = await createRuntimeHarness();
       harnesses.push(harness);
+      await harness.pg.query(`
+        ALTER TABLE app_scheduling.life_scheduled_tasks
+          DROP CONSTRAINT life_scheduled_tasks_pkey,
+          ADD CONSTRAINT life_scheduled_tasks_pkey PRIMARY KEY (id)
+      `);
+      await migrateSchedulingTables(async (sql) => {
+        const result = await harness.pg.query<Record<string, unknown>>(sql);
+        return result.rows;
+      });
       const executeSql = async (sql: string) =>
         (await harness.pg.query<Record<string, unknown>>(sql)).rows;
       const sourceStore = createSchedulingSqlScheduledTaskStore({
