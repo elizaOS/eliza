@@ -480,6 +480,9 @@ AGENT_ROUTER_ORIGIN_HOST = "eliza-staging-1.eliza.app"
 WAIFU_SERVICE_ORG_ID = "d96d3fc8-cc07-40be-b81c-ba7a7b4e8028"
 WAIFU_SERVICE_USER_ID = "90101225-836f-4fa7-a69c-f70691dcf256"
 ELIZA_APP_URL = "https://cloud-staging.eliza.app"
+# Shared reminder cron dispatches Discord occurrences to the stateful gateway;
+# keep the public destination committed so a Worker redeploy cannot remove it.
+ELIZA_APP_DISCORD_WEBHOOK_HANDLER_URL = "https://gateway-discord-staging-staging.up.railway.app"
 # Onboarding and billing links land in the hosted agent application's in-app
 # Cloud view. This host is distinct from staging.eliza.app, which owns the
 # public homepage and login entrypoint.
@@ -730,6 +733,7 @@ AGENT_ROUTER_ORIGIN_HOST = "eliza-production-1.eliza.app"
 WAIFU_SERVICE_ORG_ID = "d96d3fc8-cc07-40be-b81c-ba7a7b4e8028"
 WAIFU_SERVICE_USER_ID = "90101225-836f-4fa7-a69c-f70691dcf256"
 ELIZA_APP_URL = "https://cloud.eliza.app"
+ELIZA_APP_DISCORD_WEBHOOK_HANDLER_URL = "https://gateway-discord-production.up.railway.app"
 ELIZA_ONBOARDING_APP_URL = "https://cloud.eliza.app"
 ELIZA_ONBOARDING_LOGIN_APP_URL = "https://eliza.app"
 NEXT_PUBLIC_NETWORK = "base"
