@@ -200,9 +200,10 @@ describe("POST /api/models/config chat writes", () => {
       string,
       unknown
     > & { vars: Record<string, string> };
-    expect(env.OPENAI_LARGE_MODEL).toBe("gpt-oss-120b");
-    expect(env.vars.OPENAI_LARGE_MODEL).toBe("gpt-oss-120b");
-    expect(processEnv.OPENAI_LARGE_MODEL).toBe("gpt-oss-120b");
+    expect(env.CEREBRAS_LARGE_MODEL).toBe("gpt-oss-120b");
+    expect(env.vars.CEREBRAS_LARGE_MODEL).toBe("gpt-oss-120b");
+    expect(processEnv.CEREBRAS_LARGE_MODEL).toBe("gpt-oss-120b");
+    expect(env.OPENAI_LARGE_MODEL).toBeUndefined();
     expect(env.OPENAI_REASONING_EFFORT).toBe("high");
     expect(env.vars.OPENAI_REASONING_EFFORT).toBe("high");
     expect(processEnv.OPENAI_REASONING_EFFORT).toBe("high");
@@ -313,12 +314,12 @@ describe("POST /api/models/config chat writes", () => {
       { target: "large", provider: "cerebras", model: "zai-glm-4.7" },
       {
         // service.env-style value: present in process.env, absent from config.
-        processEnv: { OPENAI_LARGE_MODEL: "llama-x-from-service-env" },
+        processEnv: { CEREBRAS_LARGE_MODEL: "llama-x-from-service-env" },
       },
     );
     await handleModelConfigRoutes(ctx as never);
     const { body } = responseOf(json);
-    expect(body.conflictingServiceEnvKeys).toEqual(["OPENAI_LARGE_MODEL"]);
+    expect(body.conflictingServiceEnvKeys).toEqual(["CEREBRAS_LARGE_MODEL"]);
   });
 
   it("does not flag a conflict when process.env just mirrors the old config value", async () => {
@@ -327,9 +328,9 @@ describe("POST /api/models/config chat writes", () => {
       { target: "large", provider: "cerebras", model: "zai-glm-4.7" },
       {
         config: {
-          env: { vars: { OPENAI_LARGE_MODEL: "gpt-oss-120b" } },
+          env: { vars: { CEREBRAS_LARGE_MODEL: "gpt-oss-120b" } },
         } as ElizaConfig,
-        processEnv: { OPENAI_LARGE_MODEL: "gpt-oss-120b" },
+        processEnv: { CEREBRAS_LARGE_MODEL: "gpt-oss-120b" },
       },
     );
     await handleModelConfigRoutes(ctx as never);
@@ -488,6 +489,7 @@ describe("GET /api/models/config resolution order", () => {
           vars: {
             OPENAI_LARGE_MODEL: "vars-model",
             OPENAI_SMALL_MODEL: "vars-small",
+            CEREBRAS_SMALL_MODEL: "cerebras-small",
           },
         },
       } as ElizaConfig,
@@ -508,6 +510,10 @@ describe("GET /api/models/config resolution order", () => {
     });
     expect(targets.small?.OPENAI_SMALL_MODEL).toEqual({
       value: "vars-small",
+      source: "config.env.vars",
+    });
+    expect(targets.small?.CEREBRAS_SMALL_MODEL).toEqual({
+      value: "cerebras-small",
       source: "config.env.vars",
     });
     expect(targets.coding?.ELIZA_CLAUDE_MODEL_POWERFUL).toEqual({

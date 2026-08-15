@@ -29,6 +29,9 @@
  * to which model/auth a backend resolves to fails loudly.
  */
 
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { CODING_AGENT_SELECTOR_BRIDGE_SYMBOL } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type {
@@ -405,6 +408,7 @@ async function resolveSpawnAuth(input: {
   const hermeticEnv = Object.fromEntries(
     AUTH_KEYS.map((key) => [key, input.parentEnv?.[key]]),
   ) as Record<string, string | undefined>;
+  hermeticEnv.ELIZA_CONFIG_PATH = "/tmp/eliza-model-chooser-no-config.json";
   await withEnv(hermeticEnv, async () => {
     const service = new AcpService(runtime());
     await service.start();
@@ -571,6 +575,57 @@ describe("model-chooser contract: elizaos + pi-agent are single-auth (bridge NOT
       expect(dropped).toContain("CODEX_HOME");
     });
   }
+
+  it("elizaos reads the allowlisted Cerebras provider config saved by the dashboard", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "eliza-acp-config-"));
+    const configPath = join(dir, "eliza.json");
+    await writeFile(
+      configPath,
+      JSON.stringify({
+        env: {
+          CEREBRAS_API_KEY: "enc:v1:test-placeholder",
+          CEREBRAS_SMALL_MODEL: "gemma-4-31b",
+          CEREBRAS_LARGE_MODEL: "zai-glm-4.7",
+          ELIZA_ELIZAOS_MODEL_POWERFUL: "zai-glm-4.7",
+        },
+      }),
+    );
+    try {
+      await withEnv(
+        {
+          ELIZA_CONFIG_PATH: configPath,
+          CEREBRAS_API_KEY: undefined,
+          CEREBRAS_SMALL_MODEL: undefined,
+          CEREBRAS_LARGE_MODEL: undefined,
+        },
+        async () => {
+          const service = new AcpService(
+            runtime({ CEREBRAS_API_KEY: "csk-runtime-test" }),
+          );
+          await service.start();
+          try {
+            await service.spawnSession({
+              name: "elizaos-config-contract",
+              agentType: "elizaos",
+              workdir: "/tmp/acp-model-chooser-test",
+            });
+            const env = lastNativeEnv();
+            expect(env.CEREBRAS_API_KEY).toBe("csk-runtime-test");
+            expect(env.CEREBRAS_API_KEY).not.toContain("enc:");
+            expect(env.CEREBRAS_SMALL_MODEL).toBe("gemma-4-31b");
+            expect(env.CEREBRAS_LARGE_MODEL).toBe("zai-glm-4.7");
+            expect(env.OPENAI_RESPONSE_HANDLER_MODEL).toBe("zai-glm-4.7");
+            expect(env.OPENAI_ACTION_PLANNER_MODEL).toBe("zai-glm-4.7");
+            expect(env.OPENAI_LARGE_MODEL).toBe("zai-glm-4.7");
+          } finally {
+            await service.stop();
+          }
+        },
+      );
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
 });
 
 // ===========================================================================

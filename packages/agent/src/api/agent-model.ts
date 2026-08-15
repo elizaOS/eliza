@@ -109,9 +109,43 @@ function readCharacterModel(runtime: AgentRuntime): string | undefined {
   );
 }
 
+function readConfiguredModelSetting(
+  runtime: AgentRuntime,
+  config: Pick<ElizaConfig, "env"> | undefined,
+  key: string,
+): string | undefined {
+  const runtimeValue = normalizeModelSpec(runtime.getSetting?.(key));
+  if (runtimeValue) return runtimeValue;
+
+  const env = config?.env as
+    | (Record<string, unknown> & { vars?: Record<string, unknown> })
+    | undefined;
+  return normalizeModelSpec(env?.[key]) ?? normalizeModelSpec(env?.vars?.[key]);
+}
+
+/** Match plugin-openai's effective RESPONSE_HANDLER selector in Cerebras mode. */
+function readCerebrasResponseModel(
+  runtime: AgentRuntime,
+  config: Pick<ElizaConfig, "env"> | undefined,
+): string | undefined {
+  for (const key of [
+    "OPENAI_RESPONSE_HANDLER_MODEL",
+    "OPENAI_SHOULD_RESPOND_MODEL",
+    "CEREBRAS_SMALL_MODEL",
+    "CEREBRAS_MODEL",
+  ]) {
+    const value = readConfiguredModelSetting(runtime, config, key);
+    if (value) return value;
+  }
+  return undefined;
+}
+
 export function detectRuntimeModel(
   runtime: AgentRuntime | null,
-  config?: Pick<ElizaConfig, "deploymentTarget" | "serviceRouting" | "agents">,
+  config?: Pick<
+    ElizaConfig,
+    "deploymentTarget" | "serviceRouting" | "agents" | "env"
+  >,
 ): string | undefined {
   if (!runtime) return undefined;
 
@@ -129,6 +163,17 @@ export function detectRuntimeModel(
 
   if (llmText?.transport === "direct") {
     const provider = backend && backend !== "elizacloud" ? backend : undefined;
+    if (provider === "cerebras") {
+      // serviceRouting.primaryModel is a boot/provider default and may lag a
+      // model-config change. Report the exact response-handler selector the
+      // loaded Cerebras plugin consumes, so /api/status describes the model
+      // serving normal chat/voice turns rather than a stale bootstrap label.
+      return (
+        readCerebrasResponseModel(runtime, config) ??
+        llmText.primaryModel ??
+        provider
+      );
+    }
     return llmText.primaryModel ?? provider;
   }
 

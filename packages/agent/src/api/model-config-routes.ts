@@ -84,14 +84,22 @@ const CODING_BACKENDS = new Set<CodingBackend>([
 ]);
 
 // Chat providers → the env-var family the corresponding model plugin reads.
-// cerebras serves through plugin-openai's Cerebras mode (OPENAI_*), but
-// elizacloud serves through plugin-elizacloud, which reads only the
-// ELIZAOS_CLOUD_* keys — under cloud-proxy routing the plugin-collector
-// removes plugin-openai entirely, so an OPENAI_* write for the elizacloud
-// provider would be silently inert.
+// Cerebras uses plugin-openai as its transport implementation, but its model
+// selectors intentionally prioritize CEREBRAS_SMALL/LARGE_MODEL so the normal
+// response-handler and action-planner paths cannot be held on a stale legacy
+// CEREBRAS_MODEL. Eliza Cloud reads only ELIZAOS_CLOUD_* keys — under
+// cloud-proxy routing the plugin-collector removes plugin-openai entirely, so
+// an OPENAI_* write for the elizacloud provider would be silently inert.
 type ChatKeyFamily = "OPENAI" | "ANTHROPIC" | "ELIZAOS_CLOUD";
 const CHAT_PROVIDER_KEY_FAMILY: Record<string, ChatKeyFamily> = {
   cerebras: "OPENAI",
+  elizacloud: "ELIZAOS_CLOUD",
+  "claude-chat": "ANTHROPIC",
+};
+
+type ChatModelKeyPrefix = ChatKeyFamily | "CEREBRAS";
+const CHAT_PROVIDER_MODEL_KEY_PREFIX: Record<string, ChatModelKeyPrefix> = {
+  cerebras: "CEREBRAS",
   elizacloud: "ELIZAOS_CLOUD",
   "claude-chat": "ANTHROPIC",
 };
@@ -338,9 +346,12 @@ function resolveChatWrites(
   }
 
   const family = CHAT_PROVIDER_KEY_FAMILY[provider] as ChatKeyFamily;
+  const modelKeyPrefix = CHAT_PROVIDER_MODEL_KEY_PREFIX[
+    provider
+  ] as ChatModelKeyPrefix;
   const targetUpper = body.target.toUpperCase();
   const writes: ResolvedWrite[] = [
-    { key: `${family}_${targetUpper}_MODEL`, value: model },
+    { key: `${modelKeyPrefix}_${targetUpper}_MODEL`, value: model },
   ];
   if (body.effort !== undefined) {
     validateEffort(entry, body.effort);
@@ -633,6 +644,7 @@ function buildEffectiveConfig(
   };
   const chatKeys = (target: "SMALL" | "LARGE") => ({
     [`OPENAI_${target}_MODEL`]: resolve(`OPENAI_${target}_MODEL`),
+    [`CEREBRAS_${target}_MODEL`]: resolve(`CEREBRAS_${target}_MODEL`),
     [`ANTHROPIC_${target}_MODEL`]: resolve(`ANTHROPIC_${target}_MODEL`),
     [`ELIZAOS_CLOUD_${target}_MODEL`]: cloudModel(target),
     OPENAI_REASONING_EFFORT: resolve("OPENAI_REASONING_EFFORT"),

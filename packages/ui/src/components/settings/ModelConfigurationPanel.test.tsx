@@ -148,13 +148,19 @@ function fixtureConfig(): ModelsConfigResponse {
   return {
     targets: {
       small: {
-        OPENAI_SMALL_MODEL: { value: "gemma-4-31b", source: "process.env" },
+        CEREBRAS_SMALL_MODEL: {
+          value: "gemma-4-31b",
+          source: "process.env",
+        },
         ANTHROPIC_SMALL_MODEL: null,
         OPENAI_REASONING_EFFORT: { value: "low", source: "config.env" },
         ANTHROPIC_EFFORT_SMALL: null,
       },
       large: {
-        OPENAI_LARGE_MODEL: { value: "zai-glm-4.7", source: "config.env" },
+        CEREBRAS_LARGE_MODEL: {
+          value: "zai-glm-4.7",
+          source: "config.env",
+        },
         ANTHROPIC_LARGE_MODEL: null,
         OPENAI_REASONING_EFFORT: { value: "low", source: "config.env" },
         ANTHROPIC_EFFORT_LARGE: null,
@@ -404,7 +410,7 @@ describe("active-provider scoping", () => {
     clientMock.updateModelsConfig.mockResolvedValue({
       kind: "applied",
       restart: true,
-      keys: ["OPENAI_SMALL_MODEL"],
+      keys: ["CEREBRAS_SMALL_MODEL"],
       operationId: "op-1",
     });
     render(<ModelConfigurationPanel activeChatProvider="cerebras" />);
@@ -436,7 +442,7 @@ describe("chat save flow", () => {
       kind: "applied",
       restart: true,
       operationId: "op-1",
-      keys: ["OPENAI_SMALL_MODEL", "OPENAI_REASONING_EFFORT"],
+      keys: ["CEREBRAS_SMALL_MODEL", "OPENAI_REASONING_EFFORT"],
     });
     let resolveStatus: (value: unknown) => void = () => {};
     clientMock.getStatus.mockReturnValue(

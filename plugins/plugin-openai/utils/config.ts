@@ -321,9 +321,10 @@ function getEvoLinkModel(runtime: IAgentRuntime): string | undefined {
 }
 
 export function getSmallModel(runtime: IAgentRuntime): string {
+  const cerebrasModel = getCerebrasSmallModel(runtime);
+  if (cerebrasModel) return cerebrasModel;
   return (
     getSetting(runtime, "OPENAI_SMALL_MODEL") ??
-    getCerebrasSmallModel(runtime) ??
     getEvoLinkModel(runtime) ??
     getSetting(runtime, "SMALL_MODEL") ??
     "gpt-5.6-luna"
@@ -351,9 +352,10 @@ export function getMediumModel(runtime: IAgentRuntime): string {
 }
 
 export function getLargeModel(runtime: IAgentRuntime): string {
+  const cerebrasModel = getCerebrasLargeModel(runtime);
+  if (cerebrasModel) return cerebrasModel;
   return (
     getSetting(runtime, "OPENAI_LARGE_MODEL") ??
-    getCerebrasLargeModel(runtime) ??
     getEvoLinkModel(runtime) ??
     getSetting(runtime, "LARGE_MODEL") ??
     "gpt-5.6-sol"

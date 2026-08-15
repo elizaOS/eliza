@@ -186,6 +186,33 @@ describe("plugin-openai Cerebras config (pure)", () => {
     expect(getActionPlannerModel(runtime)).toBe("cerebras-small");
   });
 
+  it("keeps provider-owned Cerebras tiers authoritative over stale OpenAI pins", () => {
+    const runtime = buildRuntime({
+      ELIZA_PROVIDER: "cerebras",
+      CEREBRAS_SMALL_MODEL: "gemma-4-31b",
+      CEREBRAS_LARGE_MODEL: "zai-glm-4.7",
+      OPENAI_SMALL_MODEL: "stale-small-from-older-settings-route",
+      OPENAI_LARGE_MODEL: "stale-large-from-older-settings-route",
+    });
+    expect(getSmallModel(runtime)).toBe("gemma-4-31b");
+    expect(getLargeModel(runtime)).toBe("zai-glm-4.7");
+    expect(getResponseHandlerModel(runtime)).toBe("gemma-4-31b");
+    expect(getActionPlannerModel(runtime)).toBe("gemma-4-31b");
+  });
+
+  it("preserves OpenAI tier precedence outside Cerebras mode", () => {
+    const runtime = buildRuntime({
+      ELIZA_PROVIDER: "openai",
+      OPENAI_API_KEY: "sk-openai-fake",
+      OPENAI_SMALL_MODEL: "openai-small",
+      OPENAI_LARGE_MODEL: "openai-large",
+      CEREBRAS_SMALL_MODEL: "inactive-cerebras-small",
+      CEREBRAS_LARGE_MODEL: "inactive-cerebras-large",
+    });
+    expect(getSmallModel(runtime)).toBe("openai-small");
+    expect(getLargeModel(runtime)).toBe("openai-large");
+  });
+
   it("can route image descriptions to OpenAI while text uses Cerebras", () => {
     const runtime = buildRuntime({
       OPENAI_BASE_URL: "https://api.cerebras.ai/v1",

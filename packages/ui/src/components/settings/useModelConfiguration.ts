@@ -41,13 +41,14 @@ const CHAT_PROVIDERS: ReadonlyArray<{ id: string; label: string }> = [
 /**
  * Chat provider → the env-key family its model plugin actually reads.
  * Mirrors CHAT_PROVIDER_KEY_FAMILY in packages/agent/src/api/
- * model-config-routes.ts: cerebras persists through OPENAI_* (plugin-openai's
- * Cerebras mode), elizacloud through ELIZAOS_CLOUD_* (plugin-elizacloud), and
- * claude-chat through ANTHROPIC_*.
+ * model-config-routes.ts: Cerebras persists through its provider-owned
+ * CEREBRAS_* model keys even though plugin-openai supplies the transport,
+ * elizacloud through ELIZAOS_CLOUD_* (plugin-elizacloud), and claude-chat
+ * through ANTHROPIC_*.
  */
-type ChatKeyFamily = "OPENAI" | "ANTHROPIC" | "ELIZAOS_CLOUD";
+type ChatKeyFamily = "OPENAI" | "CEREBRAS" | "ANTHROPIC" | "ELIZAOS_CLOUD";
 const CHAT_PROVIDER_KEY_FAMILY: Record<string, ChatKeyFamily> = {
-  cerebras: "OPENAI",
+  cerebras: "CEREBRAS",
   elizacloud: "ELIZAOS_CLOUD",
   "claude-chat": "ANTHROPIC",
 };
@@ -239,7 +240,11 @@ function resolveChatDraft(
   catalog: ModelCatalog,
   config: ModelsConfigResponse,
 ): ChatDraft {
-  const openaiModel = effective(config, target, chatModelKey(target, "OPENAI"));
+  const cerebrasModel = effective(
+    config,
+    target,
+    chatModelKey(target, "CEREBRAS"),
+  );
   const cloudModel = effective(
     config,
     target,
@@ -255,7 +260,7 @@ function resolveChatDraft(
     provider: string;
     value: ModelsConfigEffectiveValue | null;
   }> = [
-    { provider: "cerebras", value: openaiModel },
+    { provider: "cerebras", value: cerebrasModel },
     { provider: "elizacloud", value: cloudModel },
     { provider: "claude-chat", value: anthropicModel },
   ];
@@ -288,7 +293,7 @@ function resolveChatDraft(
     CHAT_PROVIDERS.find(
       (choice) => entriesForRole(catalog, choice.id, target).length > 0,
     )?.id ?? "";
-  const unmatched = anthropicModel ?? cloudModel ?? openaiModel;
+  const unmatched = anthropicModel ?? cloudModel ?? cerebrasModel;
   return {
     provider: unmatched
       ? anthropicModel

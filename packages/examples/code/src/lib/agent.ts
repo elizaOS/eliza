@@ -96,6 +96,11 @@ export async function initializeAgent(
   if (provider === "openai" && !process.env.OPENAI_API_KEY) {
     throw new Error("OPENAI_API_KEY is required (ELIZA_CODE_PROVIDER=openai).");
   }
+  if (provider === "cerebras" && !process.env.CEREBRAS_API_KEY) {
+    throw new Error(
+      "CEREBRAS_API_KEY is required (ELIZA_CODE_PROVIDER=cerebras).",
+    );
+  }
 
   const providerPlugin =
     provider === "anthropic"

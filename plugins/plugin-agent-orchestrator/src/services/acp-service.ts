@@ -163,6 +163,24 @@ export function forwardableSubAgentEnv(
   return applySubAgentEnvPolicy(source, forwardCloudKey);
 }
 
+/**
+ * Config-backed provider settings that eliza-code's in-process model plugin
+ * consumes directly. The dashboard persists these under config.env, so they
+ * are absent from process.env until a full service restart. Read only this
+ * narrow allowlist for an `elizaos` ACP spawn; later custom/spawn env merges
+ * can still override it, and model-gateway mode still strips raw provider keys
+ * in its final fail-closed pass.
+ */
+const ELIZA_CODE_CONFIG_ENV_KEYS = [
+  "CEREBRAS_API_KEY",
+  "CEREBRAS_BASE_URL",
+  "CEREBRAS_MODEL",
+  "CEREBRAS_SMALL_MODEL",
+  "CEREBRAS_LARGE_MODEL",
+  "ELIZA_PROVIDER",
+  "ELIZA_ELIZAOS_MODEL_POWERFUL",
+] as const;
+
 type RuntimeLike = IAgentRuntime & {
   logger?: Partial<
     Record<
@@ -4233,6 +4251,20 @@ export class AcpService extends Service {
     // OS vars like `Path` with native casing, which a child must not inherit
     // alongside an uppercase duplicate).
     const env: NodeJS.ProcessEnv = forwardableSubAgentEnv(process.env);
+    if (agentType === "elizaos") {
+      for (const key of ELIZA_CODE_CONFIG_ENV_KEYS) {
+        // Provider secrets are encrypted/vault-backed at rest. runtime.getSetting
+        // is the authorized resolution seam; reading the raw config value would
+        // forward an `enc:` sentinel and make the provider reject a seemingly
+        // present key. Non-secret model/endpoint selectors remain restart-free
+        // config reads.
+        const value =
+          key === "CEREBRAS_API_KEY"
+            ? this.setting(key)
+            : readConfigEnvKey(key);
+        if (value) env[key] = value;
+      }
+    }
     // #14118: the raw owner cloud key is broker-gated by default. When an
     // operator opts INTO forwarding it and a key actually landed in the child
     // env, surface it — an autonomous child now holds the owner's Cloud bearer,
@@ -4287,6 +4319,22 @@ export class AcpService extends Service {
       )?.trim();
       const normalizedConfigured = normalizeClaudeAcpModelId(configured);
       if (normalizedConfigured) env.ANTHROPIC_MODEL = normalizedConfigured;
+    }
+    if (agentType === "elizaos") {
+      // The in-house ACP backend runs the normal eliza response pipeline. Its
+      // provider's RESPONSE_HANDLER / ACTION_PLANNER selectors do not consume
+      // bare OPENAI_MODEL, so route the explicit per-spawn model (or the model
+      // dashboard's eliza-code powerful tier) into the selectors that actually
+      // serve a coding turn. Chat-small remains independent in the parent.
+      const codingModel =
+        model?.trim() ??
+        readConfigEnvKey("ELIZA_ELIZAOS_MODEL_POWERFUL")?.trim();
+      if (codingModel) {
+        env.OPENAI_RESPONSE_HANDLER_MODEL = codingModel;
+        env.OPENAI_ACTION_PLANNER_MODEL = codingModel;
+        env.OPENAI_LARGE_MODEL = codingModel;
+        env.CEREBRAS_LARGE_MODEL = codingModel;
+      }
     }
     if (childSessionId?.trim()) {
       env[TRACE_ENV.SESSION_ID] = childSessionId.trim();

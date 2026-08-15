@@ -195,7 +195,8 @@ describe("/model slash handler ↔ real /api/models/config route", () => {
     );
     expect(h.managerStart).toHaveBeenCalledTimes(1);
     const env = (h.config as { env?: Record<string, unknown> }).env ?? {};
-    expect(env.OPENAI_LARGE_MODEL).toBe("zai-glm-4.7");
+    expect(env.CEREBRAS_LARGE_MODEL).toBe("zai-glm-4.7");
+    expect(env.OPENAI_LARGE_MODEL).toBeUndefined();
     expect(env.OPENAI_REASONING_EFFORT).toBe("high");
   });
 

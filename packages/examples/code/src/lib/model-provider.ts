@@ -1,5 +1,5 @@
 // Provides shared support logic for the Code example.
-type ModelProvider = "anthropic" | "openai";
+type ModelProvider = "anthropic" | "openai" | "cerebras";
 
 /**
  * Make eliza-code a drop-in replacement for the `opencode` coding sub-agent:
@@ -50,9 +50,13 @@ export function describeActiveModel(
   // Only the env vars the provider plugins actually honor — showing a model
   // from a var the agent ignores (OPENAI_MODEL / ANTHROPIC_MODEL) would lie.
   const model =
-    provider === "openai"
-      ? (env.OPENAI_LARGE_MODEL ?? env.OPENAI_SMALL_MODEL)
-      : (env.ANTHROPIC_LARGE_MODEL ?? env.ANTHROPIC_SMALL_MODEL);
+    provider === "anthropic"
+      ? (env.ANTHROPIC_LARGE_MODEL ?? env.ANTHROPIC_SMALL_MODEL)
+      : provider === "cerebras"
+        ? (env.CEREBRAS_LARGE_MODEL ??
+          env.CEREBRAS_SMALL_MODEL ??
+          env.CEREBRAS_MODEL)
+        : (env.OPENAI_LARGE_MODEL ?? env.OPENAI_SMALL_MODEL);
   const trimmed = model?.trim();
   return trimmed && trimmed.length > 0 ? trimmed : provider;
 }
@@ -66,8 +70,11 @@ export function resolveModelProvider(
 
   if (explicit === "anthropic" || explicit === "claude") return "anthropic";
   if (explicit === "openai" || explicit === "codex") return "openai";
+  if (explicit === "cerebras") return "cerebras";
 
   // Auto-detect based on available keys (incl. the opencode-compatible key).
+  if (env.CEREBRAS_API_KEY && env.CEREBRAS_API_KEY.trim().length > 0)
+    return "cerebras";
   if (env.OPENAI_API_KEY && env.OPENAI_API_KEY.trim().length > 0)
     return "openai";
   if (
@@ -79,6 +86,6 @@ export function resolveModelProvider(
     return "anthropic";
 
   throw new Error(
-    "No model provider configured. Set ANTHROPIC_API_KEY or OPENAI_API_KEY (or ELIZA_CODE_PROVIDER=anthropic|openai).",
+    "No model provider configured. Set ANTHROPIC_API_KEY, OPENAI_API_KEY, or CEREBRAS_API_KEY (or ELIZA_CODE_PROVIDER=anthropic|openai|cerebras).",
   );
 }
