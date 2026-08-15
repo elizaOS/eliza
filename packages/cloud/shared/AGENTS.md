@@ -82,6 +82,8 @@ bun run --cwd packages/cloud/shared generate:email-templates
 
 `CREDIT_COST_BUFFER` (`credits-config.ts`, default `1.5`) sizes the safety margin on every pre-request credit reservation and affiliate-admission check (`credits.ts`'s `reserve()` and `organization-inference-admission.ts`). Must be a canonical decimal from `1` through `1000` (`1` = no buffer); unset/blank uses the default, anything else throws `ElizaError` (`INVALID_CREDIT_COST_BUFFER`) at module load. The minimum is `1`, not `0` — a buffer below `1` underflows the reservation calculation back toward `MIN_RESERVATION`, defeating the purpose of the setting.
 
+`INFERENCE_AUTH_HYDRATION_DEADLINE_MS` (`inference-auth-context.ts`, default `10000`) bounds a background auth hydration attempt. It must be a canonical decimal integer from `1` through `2147483647`; unset/blank uses the default, and invalid values throw `ElizaError` (`INVALID_INFERENCE_AUTH_HYDRATION_DEADLINE`) at module load.
+
 ## How to extend
 
 - **New table:** add a schema in `src/db/schemas/`, then `bun run --cwd packages/cloud/shared db:generate`, review the SQL in `src/db/migrations/`, run `db:migrate`, commit schema + migration together. Add a repository in `src/db/repositories/` (reader and writer split per CQRS).

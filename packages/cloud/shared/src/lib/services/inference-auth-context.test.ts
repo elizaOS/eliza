@@ -82,8 +82,12 @@ mock.module("./inference-app-key-scope", () => ({
   loadInferenceAppKeyScope: async () => null,
 }));
 
-const { __clearInferenceApiKeyHydrations, resolveInferenceAuthContext, extractApiKeyCredential } =
-  await import("./inference-auth-context");
+const {
+  __clearInferenceApiKeyHydrations,
+  resolveInferenceAuthContext,
+  extractApiKeyCredential,
+  resolveInferenceAuthHydrationDeadlineMs,
+} = await import("./inference-auth-context");
 const { cache } = await import("../cache/client");
 const { CacheKeys } = await import("../cache/keys");
 const {
@@ -118,6 +122,46 @@ beforeEach(async () => {
 
 afterEach(() => {
   mock.restore();
+});
+
+describe("resolveInferenceAuthHydrationDeadlineMs", () => {
+  test.each([
+    [undefined, 10_000],
+    ["", 10_000],
+    ["  ", 10_000],
+    ["1", 1],
+    [" 60 ", 60],
+    ["2147483647", 2_147_483_647],
+  ])("resolves a timer-safe hydration deadline from %p", (raw, expected) => {
+    expect(resolveInferenceAuthHydrationDeadlineMs(raw)).toBe(expected);
+  });
+
+  test.each([
+    "0",
+    "-1",
+    "+1",
+    "1.5",
+    "1e3",
+    "60ms",
+    "NaN",
+    "Infinity",
+    "2147483648",
+    "9007199254740992",
+  ])("rejects an invalid hydration deadline %p", (raw) => {
+    let thrown: unknown;
+    try {
+      resolveInferenceAuthHydrationDeadlineMs(raw);
+    } catch (error) {
+      thrown = error;
+    }
+    expect(thrown).toMatchObject({
+      code: "INVALID_INFERENCE_AUTH_HYDRATION_DEADLINE",
+      context: {
+        envKey: "INFERENCE_AUTH_HYDRATION_DEADLINE_MS",
+        configured: raw,
+      },
+    });
+  });
 });
 
 describe("extractApiKeyCredential", () => {
