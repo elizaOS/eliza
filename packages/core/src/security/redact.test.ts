@@ -169,6 +169,11 @@ describe("redactSensitiveText (pattern detection)", () => {
 		for (const line of [
 			"Authorization: required for this endpoint",
 			"Authorization: none",
+			// Two-word prose must stay byte-identical: the token68 rule must not
+			// treat an ordinary English word after a short scheme-like token as a
+			// credential (e.g. masking "carefully" after "use").
+			"Authorization: use carefully",
+			"Authorization: use Bearer to authenticate",
 			"region=AsiaPacificRegion123 selected",
 			"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  file.txt",
 			"404fd6cd53 Merge pull request #19662 from elizaOS/develop",
@@ -181,8 +186,53 @@ describe("redactSensitiveText (pattern detection)", () => {
 		// `String.replace(string)` rewrites the FIRST occurrence; when the
 		// credential also appears earlier in the match it masked the scheme and
 		// left the credential itself in the output.
-		const out = redactSensitiveText("Authorization: abcdefgh abcdefgh");
-		expect(out).toBe("Authorization: abcdefgh ***");
+		const out = redactSensitiveText("Authorization: abcd1234 abcd1234");
+		expect(out).toBe("Authorization: abcd1234 ***");
+	});
+
+	it("masks Digest and custom auth-param credentials as a whole", () => {
+		// RFC 9110 allows credentials = auth-scheme SP #auth-param. A token68-
+		// only rule captures the first parameter *name* and leaves username /
+		// realm / response values in plaintext — looking redacted while leaking.
+		const responseHash = "0123456789abcdef0123456789abcdef";
+		const digest = `Authorization: Digest username="Mufasa", realm="test", response="${responseHash}"`;
+		const out = redactSensitiveText(digest);
+		expect(out).toContain("Authorization: Digest");
+		expect(out).toContain("***");
+		expect(out).not.toContain("Mufasa");
+		expect(out).not.toContain(responseHash);
+		expect(out).not.toContain("realm=");
+		expect(out).not.toContain("username=");
+		expect(out).not.toContain("response=");
+
+		const digestAlice = `Authorization: Digest username="alice", nonce="n-0S6_WzA2Mj", response="${responseHash}"`;
+		const outAlice = redactSensitiveText(digestAlice);
+		expect(outAlice).not.toContain("alice");
+		expect(outAlice).not.toContain(responseHash);
+		expect(outAlice).not.toContain("n-0S6_WzA2Mj");
+
+		const custom =
+			'Authorization: Custom token="secret-value-here", extra="more-secret-data"';
+		const outCustom = redactSensitiveText(custom);
+		expect(outCustom).toContain("Authorization: Custom");
+		expect(outCustom).not.toContain("secret-value-here");
+		expect(outCustom).not.toContain("more-secret-data");
+		expect(outCustom).toMatch(/Authorization: Custom\s+\*\*\*/);
+	});
+
+	it("masks Bearer credentials that contain / or ~", () => {
+		// Standard base64 (not base64url) uses `/`; without it in the Bearer
+		// class the rule truncated at the first slash and leaked the tail while
+		// shadowing the /~-aware general rules.
+		const withSlash = "AbCd/EfGhIjKlMnOpQrStUvWxYz0123456789/+/34";
+		const slashOut = redactSensitiveText(`Authorization: Bearer ${withSlash}`);
+		expect(slashOut).not.toContain(withSlash);
+		expect(slashOut).not.toContain("EfGhIjKlMnOpQrStUvWxYz");
+		expect(slashOut).toContain("Authorization: Bearer");
+
+		const withTilde = "abcdefghijklmnopqrst~uvwxyz012345";
+		const tildeOut = redactSensitiveText(`Authorization: Bearer ${withTilde}`);
+		expect(tildeOut).not.toContain(withTilde);
 	});
 
 	it("masks an AWS access key id", () => {

@@ -27,24 +27,37 @@ const DEFAULT_REDACT_PATTERNS: string[] = [
 	String.raw`"(?:apiKey|token|secret|password|passwd|accessToken|refreshToken|mnemonic|seedPhrase|passphrase|privateKey|credential)"\s*:\s*"([^"]+)"`,
 	// CLI flags (space-separated and --flag=value forms).
 	String.raw`--(?:api[-_]?key|token|secret|password|passwd)(?:\s+|=)(["']?)([^\s"']+)\1`,
-	// Authorization headers. RFC 7235 credentials are `<auth-scheme> SP
-	// <credentials>` and the scheme set is open-ended, so matching `Bearer`
-	// alone left every other scheme in plaintext: a `curl -v` trace or a config
-	// dump relayed `Basic <base64 of user:password>` — a complete, reusable
-	// credential — verbatim. Key on the header grammar rather than a scheme
-	// list: any scheme token followed by a credential-shaped value, plus the
-	// scheme-less form. The length floors keep header-shaped prose
-	// ("Authorization: required for this endpoint") byte-identical.
+	// Authorization headers. RFC 9110 credentials are `<auth-scheme> SP
+	// ( token68 / #auth-param )` and the scheme set is open-ended, so matching
+	// `Bearer` alone left every other scheme in plaintext: a `curl -v` trace or
+	// a config dump relayed `Basic <base64 of user:password>` — a complete,
+	// reusable credential — verbatim. Key on the header grammar rather than a
+	// scheme list:
+	//   1. Bearer (floor-free, includes `/` and `~` so standard base64 tokens
+	//      are not truncated and shadowed before the general rules run),
+	//   2. auth-param lists (Digest/custom: `name=value` pairs, quoted values,
+	//      comma-separated) captured as a whole so a partial mask cannot leave
+	//      `response=` / `username=` material behind,
+	//   3. token68 after a scheme, plus the scheme-less form.
+	// token68 length floors keep short header-shaped prose byte-identical
+	// ("Authorization: required for this endpoint"). Pure-lowercase tokens
+	// shorter than 18 chars are also left alone so two-word prose such as
+	// "Authorization: use carefully" is not rewritten; base64/mixed/digit
+	// credentials still mask at the 8-char floor.
 	// Deliberately unanchored on the left, matching the rule this replaces: `_`
 	// is a word character, so a `\b` here would stop matching the env-style
 	// `SERVICE_AUTHORIZATION=Bearer …` names that an `env` dump prints.
 	// Bearer keeps its own floor-free rule so this stays a strict superset of the
 	// behaviour it replaces; the general rules below carry a length floor that
 	// would otherwise stop masking a short `Bearer <value>`.
-	String.raw`(?:Proxy-)?Authorization\s*[:=]\s*Bearer\s+([A-Za-z0-9._\-+=]+)`,
-	String.raw`(?:Proxy-)?Authorization\s*[:=]\s*([A-Za-z][A-Za-z0-9-]*)[ \t]+([A-Za-z0-9._\-+=/~]{8,})`,
+	String.raw`(?:Proxy-)?Authorization\s*[:=]\s*Bearer\s+([A-Za-z0-9._\-+=/~]+)`,
+	// #auth-param (Digest, etc.): one or more name=token|quoted-string pairs.
+	String.raw`(?:Proxy-)?Authorization\s*[:=]\s*([A-Za-z][A-Za-z0-9-]*)[ \t]+([A-Za-z0-9!#$%&'*+.^_\`|~-]+\s*=\s*(?:"[^"]*"|[^,\r\n]+)(?:\s*,\s*[A-Za-z0-9!#$%&'*+.^_\`|~-]+\s*=\s*(?:"[^"]*"|[^,\r\n]+))*)`,
+	// token68 after a scheme. Require a non-lowercase char at len 8–17 so
+	// ordinary two-word prose is preserved; any token68 shape at len ≥18.
+	String.raw`(?:Proxy-)?Authorization\s*[:=]\s*([A-Za-z][A-Za-z0-9-]*)[ \t]+((?=[A-Za-z0-9._\-+=/~]{8,})(?=[A-Za-z0-9._\-+=/~]*[^a-z])[A-Za-z0-9._\-+=/~]+|[A-Za-z0-9._\-+=/~]{18,})`,
 	String.raw`(?:Proxy-)?Authorization\s*[:=]\s*([A-Za-z0-9._\-+=/~]{18,})`,
-	String.raw`\bBearer\s+([A-Za-z0-9._\-+=]{18,})\b`,
+	String.raw`\bBearer\s+([A-Za-z0-9._\-+=/~]{18,})`,
 	// URI userinfo. Mask the complete userinfo component (user:password,
 	// token-only, or password-only) so credentials in database URLs, curl
 	// arguments, and remote URLs never survive as output.
@@ -216,6 +229,16 @@ function redactMatch(match: string, groups: string[]): string {
 		(value) => typeof value === "string" && value.length > 0,
 	);
 	const token = filteredGroups[filteredGroups.length - 1] ?? match;
+	// Auth-param credentials (Digest and custom schemes) are a comma-separated
+	// list of name=value fields. A prefix/suffix window would keep `username=`
+	// or the tail of `response=` — mask the whole parameter list.
+	if (/[=,"]/.test(token) && token !== match) {
+		const tailIndex = match.length - token.length;
+		if (tailIndex > 0 && match.startsWith(token, tailIndex)) {
+			return `${match.slice(0, tailIndex)}***`;
+		}
+		return match.replace(token, () => "***");
+	}
 	// Unlike provider tokens, URI userinfo includes an account identifier; do
 	// not preserve its usual six-character prefix in diagnostics.
 	// Anchor the rewrite to the userinfo span. A plain `replace(token, …)` hits
