@@ -1,6 +1,6 @@
 // Wires hosted Eliza agent agent behavior for cloud runtime services.
-import { getDefaultModels, getElizaCloudApiUrl } from "./config";
 import { buildCloudElizaPersona } from "../utils/cloud-eliza-persona";
+import { getDefaultModels, getElizaCloudApiUrl } from "./config";
 
 // The persona is the shipped preset plus the cloud memory delta. Only the
 // runtime wiring below (id, plugins, settings) and the Cloud-specific
