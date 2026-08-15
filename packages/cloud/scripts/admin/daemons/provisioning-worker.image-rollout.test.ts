@@ -271,6 +271,13 @@ describe("real one-shot daemon entrypoint", () => {
       reaped: 1,
       reapFailed: 0,
     }));
+    const cleanupExpiredPreDeleteRecoveryBackups = mock(async () => ({
+      scanned: 1,
+      deletedRows: 1,
+      deletedObjects: 1,
+      failedRows: 0,
+      invalidRows: 0,
+    }));
 
     class OneShotWarmPoolManager {
       drainIdle = drainIdle;
@@ -325,7 +332,10 @@ describe("real one-shot daemon entrypoint", () => {
         resolveImageDigest: async () => targetDigest,
       },
       "@elizaos/cloud-shared/db/repositories/agent-sandboxes": {
-        agentSandboxesRepository: { listRunningWithDigestOtherThan },
+        agentSandboxesRepository: {
+          listRunningWithDigestOtherThan,
+          cleanupExpiredPreDeleteRecoveryBackups,
+        },
       },
       "@elizaos/cloud-shared/db/repositories/jobs": {
         jobsRepository: {
@@ -461,6 +471,7 @@ describe("real one-shot daemon entrypoint", () => {
         expect(replenish).toHaveBeenCalledWith(configuredImage);
         expect(reconcileOrphanContainersOnNodes).toHaveBeenCalledTimes(1);
         expect(reconcileOrphanAppContainersOnNodes).toHaveBeenCalledTimes(1);
+        expect(cleanupExpiredPreDeleteRecoveryBackups).toHaveBeenCalledTimes(1);
         expect(publishProvisioningWorkerHeartbeat).toHaveBeenCalledTimes(1);
         expect(disconnectAll).toHaveBeenCalledTimes(1);
         expect(closeDatabaseConnectionsForTests).toHaveBeenCalledTimes(1);
