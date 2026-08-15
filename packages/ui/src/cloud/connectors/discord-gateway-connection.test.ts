@@ -206,7 +206,10 @@ describe("DiscordGatewayConnection editor concurrency", () => {
     editVersion: "3",
   };
 
-  function mockConnectionApi(repeatConflict: boolean) {
+  function mockConnectionApi(
+    repeatConflict: boolean,
+    failConflictRead = false,
+  ) {
     const requests = { detailReads: 0, patchAttempts: 0 };
     apiMock.mockImplementation(
       async (path: string, options?: { method?: string; json?: unknown }) => {
@@ -233,6 +236,9 @@ describe("DiscordGatewayConnection editor concurrency", () => {
             };
           }
           requests.detailReads += 1;
+          if (requests.detailReads > 1 && failConflictRead) {
+            throw new Error("latest connection unavailable");
+          }
           return {
             connection:
               requests.detailReads === 1
@@ -281,6 +287,11 @@ describe("DiscordGatewayConnection editor concurrency", () => {
     expect(requests.patchAttempts).toBe(1);
     expect(screen.getByDisplayValue("555555555555555")).toBeTruthy();
     expect(screen.getByDisplayValue("replacement-token")).toBeTruthy();
+    expect(
+      screen.getByText(
+        "Keeping this draft may replace a bot token that was rotated elsewhere.",
+      ),
+    ).toBeTruthy();
 
     fireEvent.click(
       screen.getByRole("button", {
@@ -330,6 +341,11 @@ describe("DiscordGatewayConnection editor concurrency", () => {
     expect(
       screen.getByPlaceholderText("Leave empty to keep current token"),
     ).toHaveProperty("value", "");
+    expect(
+      screen.queryByText(
+        "Keeping this draft may replace a bot token that was rotated elsewhere.",
+      ),
+    ).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Save Changes" }));
 
     await waitFor(() => expect(requests.patchAttempts).toBe(2));
@@ -350,5 +366,25 @@ describe("DiscordGatewayConnection editor concurrency", () => {
     await waitFor(() =>
       expect(screen.queryByRole("button", { name: "Save Changes" })).toBeNull(),
     );
+  });
+
+  it("keeps saving blocked when the authoritative conflict refresh fails", async () => {
+    const requests = mockConnectionApi(false, true);
+    const ownerInput = await openEditor();
+    fireEvent.change(ownerInput, { target: { value: "555555555555555" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save Changes" }));
+
+    expect(
+      await screen.findByText(
+        "The latest settings could not be loaded. Saving remains blocked until the refresh succeeds.",
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: "Retry loading latest" }),
+    ).toBeTruthy();
+    const blockedSave = screen.getByRole("button", { name: "Save Changes" });
+    expect((blockedSave as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(blockedSave);
+    expect(requests.patchAttempts).toBe(1);
   });
 });

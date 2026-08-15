@@ -139,7 +139,11 @@ interface DiscordGatewayConnectionEditState {
   expectedEditVersion: string;
   botToken: string;
   isActive: boolean;
-  pendingConflict: DiscordGatewayConnection | null;
+  pendingConflict:
+    | { status: "loading" }
+    | { status: "load-failed" }
+    | { status: "ready"; latest: DiscordGatewayConnection }
+    | null;
 }
 
 function editStateFromConnection(
@@ -292,6 +296,51 @@ export function DiscordGatewayConnection() {
         ...current,
         [connectionId]: editStateFromConnection(connection),
       }));
+    },
+    [fetchLatestConnection],
+  );
+
+  const loadLatestConflict = useCallback(
+    async (connectionId: string): Promise<boolean> => {
+      setEditState((current) => {
+        const existing = current[connectionId];
+        if (!existing) return current;
+        return {
+          ...current,
+          [connectionId]: { ...existing, pendingConflict: { status: "loading" } },
+        };
+      });
+
+      try {
+        const latest = await fetchLatestConnection(connectionId);
+        setEditState((current) => {
+          const existing = current[connectionId];
+          if (!existing) return current;
+          return {
+            ...current,
+            [connectionId]: {
+              ...existing,
+              pendingConflict: { status: "ready", latest },
+            },
+          };
+        });
+        return true;
+      } catch {
+        // error-policy:J4 A failed authoritative refresh leaves the editor in
+        // a durable unavailable state; only a successful retry can unblock it.
+        setEditState((current) => {
+          const existing = current[connectionId];
+          if (!existing) return current;
+          return {
+            ...current,
+            [connectionId]: {
+              ...existing,
+              pendingConflict: { status: "load-failed" },
+            },
+          };
+        });
+        return false;
+      }
     },
     [fetchLatestConnection],
   );
@@ -551,28 +600,15 @@ export function DiscordGatewayConnection() {
       }
     } catch (error) {
       if (error instanceof ApiError && error.status === 409) {
-        try {
-          const latestConnection = await fetchLatestConnection(connId);
-          setEditState((current) => {
-            const existing = current[connId];
-            if (!existing) return current;
-            return {
-              ...current,
-              [connId]: {
-                ...existing,
-                pendingConflict: latestConnection,
-              },
-            };
-          });
+        const loaded = await loadLatestConflict(connId);
+        if (loaded) {
           toast.error(
             t("cloud.discord.connectionChanged", {
               defaultValue:
                 "Connection settings changed elsewhere. Choose which version to keep before saving again.",
             }),
           );
-        } catch {
-          // error-policy:J4 The editor stays visibly blocked until it can load
-          // the authoritative row that superseded the user's stale snapshot.
+        } else {
           toast.error(
             t("cloud.discord.connectionChangedRefreshFailed", {
               defaultValue:
@@ -671,8 +707,9 @@ export function DiscordGatewayConnection() {
   ) => {
     setEditState((current) => {
       const edit = current[connId];
-      const latest = edit?.pendingConflict;
-      if (!edit || !latest) return current;
+      const conflict = edit?.pendingConflict;
+      if (!edit || conflict?.status !== "ready") return current;
+      const { latest } = conflict;
 
       const resolved =
         resolution === "reload"
@@ -685,6 +722,18 @@ export function DiscordGatewayConnection() {
             };
       return { ...current, [connId]: resolved };
     });
+  };
+
+  const retryConflictRefresh = async (connId: string) => {
+    const loaded = await loadLatestConflict(connId);
+    if (!loaded) {
+      toast.error(
+        t("cloud.discord.connectionChangedRefreshFailed", {
+          defaultValue:
+            "Connection settings changed elsewhere, but the latest version could not be loaded. Close and reopen the editor before retrying.",
+        }),
+      );
+    }
   };
 
   const getInviteUrl = (appId: string) => {
@@ -865,59 +914,108 @@ export function DiscordGatewayConnection() {
                                   })}
                                 </AlertTitle>
                                 <AlertDescription>
-                                  <p>
-                                    {t(
-                                      "cloud.discord.connectionConflictDescription",
-                                      {
-                                        defaultValue:
-                                          "Reload the latest settings and discard this draft, or explicitly keep this draft and overwrite the newer settings on your next save.",
-                                      },
-                                    )}
-                                  </p>
-                                  {edit.botToken && (
+                                  {edit.pendingConflict.status ===
+                                    "loading" && (
                                     <p>
                                       {t(
-                                        "cloud.discord.connectionConflictTokenWarning",
+                                        "cloud.discord.loadingLatestConflict",
                                         {
                                           defaultValue:
-                                            "Keeping this draft may replace a bot token that was rotated elsewhere.",
+                                            "Loading the latest connection settings...",
                                         },
                                       )}
                                     </p>
                                   )}
-                                  <div className="mt-2 flex flex-wrap gap-2">
-                                    <Button
-                                      type="button"
-                                      variant="outline"
-                                      size="sm"
-                                      onClick={() =>
-                                        resolveEditConflict(conn.id, "reload")
-                                      }
-                                    >
-                                      {t(
-                                        "cloud.discord.reloadLatestSettings",
-                                        {
-                                          defaultValue:
-                                            "Reload latest and discard my draft",
-                                        },
+                                  {edit.pendingConflict.status ===
+                                    "load-failed" && (
+                                    <>
+                                      <p>
+                                        {t(
+                                          "cloud.discord.latestConflictUnavailable",
+                                          {
+                                            defaultValue:
+                                              "The latest settings could not be loaded. Saving remains blocked until the refresh succeeds.",
+                                          },
+                                        )}
+                                      </p>
+                                      <Button
+                                        type="button"
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={() =>
+                                          void retryConflictRefresh(conn.id)
+                                        }
+                                      >
+                                        {t(
+                                          "cloud.discord.retryLatestConflict",
+                                          { defaultValue: "Retry loading latest" },
+                                        )}
+                                      </Button>
+                                    </>
+                                  )}
+                                  {edit.pendingConflict.status === "ready" && (
+                                    <>
+                                      <p>
+                                        {t(
+                                          "cloud.discord.connectionConflictDescription",
+                                          {
+                                            defaultValue:
+                                              "Reload the latest settings and discard this draft, or explicitly keep this draft and overwrite the newer settings on your next save.",
+                                          },
+                                        )}
+                                      </p>
+                                      {edit.botToken && (
+                                        <p>
+                                          {t(
+                                            "cloud.discord.connectionConflictTokenWarning",
+                                            {
+                                              defaultValue:
+                                                "Keeping this draft may replace a bot token that was rotated elsewhere.",
+                                            },
+                                          )}
+                                        </p>
                                       )}
-                                    </Button>
-                                    <Button
-                                      type="button"
-                                      size="sm"
-                                      onClick={() =>
-                                        resolveEditConflict(
-                                          conn.id,
-                                          "keep-draft",
-                                        )
-                                      }
-                                    >
-                                      {t("cloud.discord.keepDraftSettings", {
-                                        defaultValue:
-                                          "Keep my draft and overwrite latest",
-                                      })}
-                                    </Button>
-                                  </div>
+                                      <div className="mt-2 flex flex-wrap gap-2">
+                                        <Button
+                                          type="button"
+                                          variant="outline"
+                                          size="sm"
+                                          onClick={() =>
+                                            resolveEditConflict(
+                                              conn.id,
+                                              "reload",
+                                            )
+                                          }
+                                        >
+                                          {t(
+                                            "cloud.discord.reloadLatestSettings",
+                                            {
+                                              defaultValue:
+                                                "Reload latest and discard my draft",
+                                            },
+                                          )}
+                                        </Button>
+                                        <Button
+                                          type="button"
+                                          size="sm"
+                                          onClick={() =>
+                                            resolveEditConflict(
+                                              conn.id,
+                                              "keep-draft",
+                                            )
+                                          }
+                                        >
+                                          {t(
+                                            "cloud.discord.keepDraftSettings",
+                                            {
+                                              defaultValue:
+                                                "Keep my draft and overwrite latest",
+                                            },
+                                          )}
+                                        </Button>
+                                      </div>
+                                    </>
+                                  )}
                                 </AlertDescription>
                               </Alert>
                             )}
