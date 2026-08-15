@@ -74,6 +74,7 @@ jobs:
           test -n "${DEPLOY_HOST//[[:space:]]/}"
           test -n "${DEPLOY_SSH_KEY//[[:space:]]/}"
       - name: Fence and retire the exact broken placement
+        if: false
         uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2
         with:
           host: ${{ env.DEPLOY_HOST }}
@@ -189,6 +190,18 @@ jobs:
             FROM agent_sandboxes
             WHERE id = '4602b3be-2c01-4e7e-9cdc-849604e1bef7';
             SQL
+      - name: Inspect the exact stalled provision execution
+        uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2
+        with:
+          host: ${{ env.DEPLOY_HOST }}
+          username: deploy
+          key: ${{ env.DEPLOY_SSH_KEY }}
+          command_timeout: 2m
+          script: |
+            set -euo pipefail
+            journalctl --since '2026-08-15 03:13:00 UTC' --no-pager \
+              | grep -E '41634d57-c296-40c2-9ad7-dbf90a6eac1e|4602b3be-2c01-4e7e-9cdc-849604e1bef7|a4d6156aef4c79fc01709a85025fd1a9f010a99279493e9545ed14f7137bd8cd' \
+              | tail -200
 
   changes:
     name: Classify changed paths
