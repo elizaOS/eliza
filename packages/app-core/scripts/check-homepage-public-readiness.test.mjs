@@ -5,6 +5,7 @@
 import { expect, test } from "vitest";
 import {
   evaluatePublicSurface,
+  messageButtonAccessibleName,
   resolveWhatsAppAdmission,
 } from "./check-homepage-public-readiness.mjs";
 
@@ -19,6 +20,10 @@ const healthySurface = {
   whatsAppHrefs: [],
   consoleErrors: [],
 };
+
+test("targets the shipped primary messaging action", () => {
+  expect(messageButtonAccessibleName).toBe("Text Eliza");
+});
 
 test("accepts the Cloudflare homepage with WhatsApp disabled", () => {
   for (const whatsAppNumber of ["", "+14159611510"]) {
