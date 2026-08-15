@@ -117,6 +117,16 @@ export const RateLimitedRetry: Story = {
   },
 };
 
+/** Planner exhaustion is recoverable and offers the same one-tap Retry. */
+export const PlannerExhaustionRetry: Story = {
+  args: {
+    message: makeMessage({
+      text: "I ran out of planning attempts before I could finish. Please try again.",
+      failureKind: "planner_exhaustion",
+    }),
+  },
+};
+
 /** Local-inference `downloading` status shows the warn banner + progress CTA. */
 export const LocalModelDownloading: Story = {
   args: {

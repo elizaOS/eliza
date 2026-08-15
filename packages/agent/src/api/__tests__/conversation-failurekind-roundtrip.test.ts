@@ -350,13 +350,15 @@ describe("conversation failureKind round-trip", () => {
     "missing_capability",
     "persistence_error",
     "planner_exhaustion",
+    "generation_timeout",
   ] as const)(
     "GET /messages preserves the %s structured runtime cause",
     async (failureKind:
       | "handler_error"
       | "missing_capability"
       | "persistence_error"
-      | "planner_exhaustion") => {
+      | "planner_exhaustion"
+      | "generation_timeout") => {
       const state = createState([
         userMemory(),
         assistantMemory({ text: "Structured failure.", failureKind }),
@@ -438,13 +440,15 @@ describe("conversation failureKind round-trip", () => {
     "missing_capability",
     "persistence_error",
     "planner_exhaustion",
+    "generation_timeout",
   ] as const)(
     "non-streaming JSON accepts the %s durable outcome discriminator",
     async (failureKind:
       | "handler_error"
       | "missing_capability"
       | "persistence_error"
-      | "planner_exhaustion") => {
+      | "planner_exhaustion"
+      | "generation_timeout") => {
       generateResult = { failureKind };
       const state = createState();
       const { ctx, captured } = createCtx(

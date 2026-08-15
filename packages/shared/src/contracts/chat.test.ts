@@ -11,7 +11,15 @@ import type {
   ChatFailureKind as RootChatFailureKind,
   ChatTurnStatus as RootChatTurnStatus,
 } from "../index.js";
-import type { ChatFailureKind, ChatTurnStatus } from "./chat.js";
+import {
+  CHAT_FAILURE_KINDS,
+  type ChatFailureKind,
+  type ChatTurnStatus,
+  isChatFailureKind,
+  isRetryableChatFailureKind,
+  parseChatFailureKind,
+  RETRYABLE_CHAT_FAILURE_KINDS,
+} from "./chat.js";
 
 // Compile-time proof the root barrel re-exports the same declaration: a
 // mismatch on either side is a type error, not a silent divergence.
@@ -50,7 +58,10 @@ describe("ChatTurnStatus contract", () => {
 
 describe("ChatFailureKind contract", () => {
   it("covers exactly the ten turn-failure discriminators", () => {
-    const kinds: ChatFailureKind[] = [
+    const kinds: ChatFailureKind[] = [...CHAT_FAILURE_KINDS];
+    expect(new Set(kinds).size).toBe(kinds.length);
+    expect(kinds).toHaveLength(10);
+    expect(kinds).toEqual([
       "insufficient_credits",
       "missing_capability",
       "no_provider",
@@ -61,8 +72,35 @@ describe("ChatFailureKind contract", () => {
       "handler_error",
       "persistence_error",
       "local_inference",
-    ];
-    expect(new Set(kinds).size).toBe(kinds.length);
-    expect(kinds).toHaveLength(10);
+    ]);
+  });
+
+  it("validates every public kind and rejects unknowns", () => {
+    for (const kind of CHAT_FAILURE_KINDS) {
+      expect(isChatFailureKind(kind)).toBe(true);
+      expect(parseChatFailureKind(kind)).toBe(kind);
+    }
+    expect(isChatFailureKind("transient_failure")).toBe(false);
+    expect(isChatFailureKind("not_a_kind")).toBe(false);
+    expect(parseChatFailureKind("generation_timeout")).toBe(
+      "generation_timeout",
+    );
+    expect(parseChatFailureKind(undefined)).toBeUndefined();
+  });
+
+  it("marks only recoverable kinds retryable for UI contracts", () => {
+    const expectedRetryable = new Set<ChatFailureKind>([
+      ...RETRYABLE_CHAT_FAILURE_KINDS,
+    ]);
+    for (const kind of CHAT_FAILURE_KINDS) {
+      expect(isRetryableChatFailureKind(kind)).toBe(
+        expectedRetryable.has(kind),
+      );
+    }
+    expect(isRetryableChatFailureKind("planner_exhaustion")).toBe(true);
+    expect(isRetryableChatFailureKind("generation_timeout")).toBe(true);
+    expect(isRetryableChatFailureKind("missing_capability")).toBe(false);
+    expect(isRetryableChatFailureKind("no_provider")).toBe(false);
+    expect(isRetryableChatFailureKind("insufficient_credits")).toBe(false);
   });
 });

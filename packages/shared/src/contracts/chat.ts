@@ -70,19 +70,74 @@ export interface ChatToolCallEvent {
 }
 
 /**
+ * Exhaustive public turn-failure discriminators. Agent transport allowlists,
+ * history reconstruction, durable outcome validation, and UI retry gates must
+ * all derive from this single table so a new kind cannot ship half-wired.
+ *
+ * - `insufficient_credits` — billing/quota; do not retry as-is.
+ * - `missing_capability` — tool/capability absent; retry cannot help.
+ * - `no_provider` — no model configured; UX gate, not a chat retry.
+ * - `planner_exhaustion` — budget/attempt limit with tools present; retry may help.
+ * - `provider_issue` — provider/auth/infrastructure; often retryable.
+ * - `generation_timeout` — turn wall-clock expired; retryable.
+ * - `rate_limited` — throttle; retryable after a pause.
+ * - `handler_error` — action handler failed; not a generic Retry affordance.
+ * - `persistence_error` — save boundary failed; not a generic Retry affordance.
+ * - `local_inference` — local model path issue; may recover after load/retry.
+ */
+export const CHAT_FAILURE_KINDS = [
+  "insufficient_credits",
+  "missing_capability",
+  "no_provider",
+  "planner_exhaustion",
+  "provider_issue",
+  "generation_timeout",
+  "rate_limited",
+  "handler_error",
+  "persistence_error",
+  "local_inference",
+] as const;
+
+/**
  * Discriminator the conversation route includes in its 200 response so the
  * renderer can distinguish "provider configured but throwing" from "no
  * provider configured at all" — the latter is a UX gate ("Connect a
  * provider"), not a chat reply.
  */
-export type ChatFailureKind =
-  | "insufficient_credits"
-  | "missing_capability"
-  | "no_provider"
-  | "planner_exhaustion"
-  | "provider_issue"
-  | "generation_timeout"
-  | "rate_limited"
-  | "handler_error"
-  | "persistence_error"
-  | "local_inference";
+export type ChatFailureKind = (typeof CHAT_FAILURE_KINDS)[number];
+
+/**
+ * Failure kinds for which a one-tap Retry (resend preceding user turn) is a
+ * truthful affordance. Permanent configuration/billing/capability gaps and
+ * specialized action/persistence failures stay off this list so the UI does
+ * not invite a loop that cannot succeed.
+ */
+export const RETRYABLE_CHAT_FAILURE_KINDS = [
+  "provider_issue",
+  "rate_limited",
+  "local_inference",
+  "planner_exhaustion",
+  "generation_timeout",
+] as const satisfies readonly ChatFailureKind[];
+
+const CHAT_FAILURE_KIND_SET: ReadonlySet<string> = new Set(CHAT_FAILURE_KINDS);
+const RETRYABLE_CHAT_FAILURE_KIND_SET: ReadonlySet<string> = new Set(
+  RETRYABLE_CHAT_FAILURE_KINDS,
+);
+
+/** Exhaustive runtime validator for wire/transport failure discriminators. */
+export function isChatFailureKind(value: unknown): value is ChatFailureKind {
+  return typeof value === "string" && CHAT_FAILURE_KIND_SET.has(value);
+}
+
+/** Narrow unknown transport payloads to a public `ChatFailureKind` or drop. */
+export function parseChatFailureKind(
+  value: unknown,
+): ChatFailureKind | undefined {
+  return isChatFailureKind(value) ? value : undefined;
+}
+
+/** Whether UI surfaces should offer Retry for this structured failure. */
+export function isRetryableChatFailureKind(kind: ChatFailureKind): boolean {
+  return RETRYABLE_CHAT_FAILURE_KIND_SET.has(kind);
+}

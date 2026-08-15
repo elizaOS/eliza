@@ -655,7 +655,8 @@ function createEphemeralReplyMessageService(
     | "handler_error"
     | "missing_capability"
     | "persistence_error"
-    | "planner_exhaustion" = "rate_limited",
+    | "planner_exhaustion"
+    | "generation_timeout" = "rate_limited",
 ): NonNullable<AgentRuntime["messageService"]> {
   return {
     async handleMessage() {
@@ -2029,13 +2030,15 @@ describe("conversation stream SSE contract (#10712)", () => {
     "missing_capability",
     "persistence_error",
     "planner_exhaustion",
+    "generation_timeout",
   ] as const)(
     "preserves the %s discriminator in the direct chat DTO",
     async (failureKind:
       | "handler_error"
       | "missing_capability"
       | "persistence_error"
-      | "planner_exhaustion") => {
+      | "planner_exhaustion"
+      | "generation_timeout") => {
       const { ctx, record } = createCtx(
         createEphemeralReplyMessageService(failureKind),
       );

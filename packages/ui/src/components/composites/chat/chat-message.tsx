@@ -15,6 +15,8 @@
  * deliberately excluded from that check (see `enterOnMount`).
  * Presentation only — actions are delegated to callbacks.
  */
+
+import { isRetryableChatFailureKind } from "@elizaos/shared/contracts/chat";
 import { Check, LoaderCircle, RotateCcw, Sparkles, X } from "lucide-react";
 import { motion } from "motion/react";
 import type * as React from "react";
@@ -979,13 +981,13 @@ export const ChatMessage = memo(function ChatMessage({
       isAssistant && messageHasInteractiveWidget(message.text);
     const bubbleInteractive = hasActions && !isEditing && !hasInteractiveWidget;
     // A recoverable assistant failure gets a one-tap Retry that re-sends the
-    // preceding user turn. `no_provider` (the overlay's own Settings gate) and
-    // `insufficient_credits` are excluded: a retry can't fix those.
+    // preceding user turn. Permanent gates stay on the shared non-retry
+    // contract (`no_provider`, credits, missing capability).
     const canRetry =
       isAssistant &&
       !!onRetry &&
-      (message.failureKind === "rate_limited" ||
-        message.failureKind === "provider_issue");
+      !!message.failureKind &&
+      isRetryableChatFailureKind(message.failureKind);
 
     const toggleRevealed = () => {
       if (!hasActions || isEditing) return;

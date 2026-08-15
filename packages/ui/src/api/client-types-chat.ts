@@ -4,12 +4,12 @@
  * surface, re-exported through client-types.ts.
  */
 
+import type { LinkedAccountProviderId } from "@elizaos/shared";
 import type {
   ChatFailureKind,
   ChatToolCallEvent,
   ChatTurnStatus,
-  LinkedAccountProviderId,
-} from "@elizaos/shared";
+} from "@elizaos/shared/contracts/chat";
 import type { NativeToolCallEvent } from "./client-types-cloud";
 import type {
   ConversationMetadata,

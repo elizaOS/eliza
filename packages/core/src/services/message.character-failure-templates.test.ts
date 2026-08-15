@@ -316,21 +316,32 @@ describe("character failure templates on the connector delivery path", () => {
 		});
 	}
 
-	it.each([
-		["missing capability", missingCapabilityError],
-		["planner exhaustion", plannerExhaustionError],
-	] as const)(
-		"keeps the character voice for %s through transientFailureReply compatibility",
-		async (_label: string, makeError: () => Error) => {
-			const visibleTexts = await runTurn(makeError(), {
-				templates: {
-					transientFailureReply: TEMPLATES.transientFailureReply,
-				},
-			});
+	it("never uses transientFailureReply for a missing capability", async () => {
+		// Permanent gap: only the dedicated key or the built-in capability
+		// copy may ship. Legacy transient voice ("try again") must not leak.
+		const visibleTexts = await runTurn(missingCapabilityError(), {
+			templates: {
+				transientFailureReply: TEMPLATES.transientFailureReply,
+			},
+		});
 
-			expect(visibleTexts).toEqual([TEMPLATES.transientFailureReply]);
-		},
-	);
+		expect(visibleTexts).toHaveLength(1);
+		expect(visibleTexts[0]).not.toBe(TEMPLATES.transientFailureReply);
+		expect(visibleTexts[0]?.toLowerCase()).not.toMatch(
+			/\btry (that )?again\b|\bin a moment\b/,
+		);
+		expect(visibleTexts[0]?.toLowerCase()).toMatch(/capability|can't|cannot/);
+	});
+
+	it("keeps the character voice for planner exhaustion through transientFailureReply compatibility", async () => {
+		const visibleTexts = await runTurn(plannerExhaustionError(), {
+			templates: {
+				transientFailureReply: TEMPLATES.transientFailureReply,
+			},
+		});
+
+		expect(visibleTexts).toEqual([TEMPLATES.transientFailureReply]);
+	});
 
 	it("keeps the framework insufficient-credits default reachable", async () => {
 		// Guards the fallback expression itself: if `|| INSUFFICIENT_CREDITS_REPLY`

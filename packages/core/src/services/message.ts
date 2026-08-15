@@ -14463,18 +14463,19 @@ export class DefaultMessageService implements IMessageService {
 					(typeof tmpl === "function" ? tmpl({ state }) : tmpl) ||
 					"My Eliza Cloud key isn't authorized for inference right now — check that your cloud key is valid and your account has credits, then try again.";
 			} else if (cause === "missing_capability") {
-				// Not transient: retrying cannot succeed until the capability is
-				// enabled, so the default names the gap instead of inviting a
-				// retry (#17027 AC6).
+				// Permanent gap: never fall through to transientFailureReply
+				// ("try again in a moment") — that copy invites a retry that
+				// cannot succeed until the capability is enabled (#17027 AC6).
+				// Dedicated template when present; otherwise the built-in
+				// capability-unavailable default.
 				const tmpl = runtime.character.templates?.missingCapabilityFailureReply;
-				const fallbackTmpl = runtime.character.templates?.transientFailureReply;
 				replyText =
 					(typeof tmpl === "function" ? tmpl({ state }) : tmpl) ||
-					(typeof fallbackTmpl === "function"
-						? fallbackTmpl({ state })
-						: fallbackTmpl) ||
 					"I can't do that here right now - it needs a capability that isn't available in this setup.";
 			} else if (cause === "planner_exhaustion") {
+				// Retryable budget exhaustion. Dedicated template first; the
+				// legacy transientFailureReply remains a voice-compatible
+				// fallback only for this recoverable class.
 				const tmpl = runtime.character.templates?.plannerExhaustionFailureReply;
 				const fallbackTmpl = runtime.character.templates?.transientFailureReply;
 				replyText =
