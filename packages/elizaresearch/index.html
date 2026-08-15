@@ -11,11 +11,14 @@
 <meta property="og:url" content="https://elizaresearch.ai" />
 <meta property="og:type" content="website" />
 <meta property="og:image" content="https://elizaresearch.ai/assets/og.png" />
+<meta property="og:image:secure_url" content="https://elizaresearch.ai/assets/og.png" />
 <meta property="og:image:width" content="1200" />
 <meta property="og:image:height" content="630" />
 <meta property="og:image:alt" content="Eliza Research — AI, built around people." />
 <meta name="twitter:card" content="summary_large_image" />
 <meta name="twitter:image" content="https://elizaresearch.ai/assets/og.png" />
+<meta name="twitter:image:alt" content="Eliza Research — AI, built around people." />
+<link rel="canonical" href="https://elizaresearch.ai/" />
 <link rel="icon" type="image/svg+xml" href="assets/logo_orange_nobg.svg" />
 <style>
   @font-face {
@@ -55,8 +58,6 @@
     -webkit-font-smoothing: antialiased;
     -webkit-tap-highlight-color: transparent;
     -webkit-touch-callout: none;
-    -webkit-user-select: none;
-    user-select: none;
   }
   h1, h2, h3 { text-wrap: balance; line-height: 1.02; }
   p { text-wrap: pretty; max-width: 62ch; }
@@ -84,7 +85,7 @@
     color: white; overflow: hidden;
     display: grid; align-content: end;
   }
-  #swarm { position: absolute; inset: 0; width: 100%; height: 100%; background: var(--orange); touch-action: pan-y; }
+  #swarm { position: absolute; inset: 0; width: 100%; height: 100%; background: var(--orange); touch-action: pan-y; -webkit-user-select: none; user-select: none; }
   .hero-inner { position: relative; padding-block: clamp(3rem, 8vh, 6rem); }
   .hero-inner h1 {
     font-size: clamp(2.6rem, 8.5vw, 5.8rem);
@@ -214,7 +215,7 @@
       <h2>Eliza</h2>
       <p class="role">Your personal agent and an open source operating system.</p>
       <p class="body">Eliza is an agent that lives with you: it remembers, schedules, connects to your tools, and acts on your behalf across every device you own. Underneath it is elizaOS, a fully open source operating system for agents. It is auditable, extensible, and yours to run anywhere, from a laptop to a phone to your own metal.</p>
-      <a class="cta" href="https://github.com/elizaOS/eliza">Explore Eliza on GitHub →</a>
+      <a rel="noopener noreferrer" class="cta" href="https://github.com/elizaOS/eliza">Explore Eliza on GitHub →</a>
     </div>
   </div>
 </section>
@@ -228,7 +229,7 @@
       <h2>slop.cash</h2>
       <p class="role">A swarm contribution platform.</p>
       <p class="body">Some problems are too big for any one machine or any one team. slop.cash incentivizes compute applied to swarm problems: post a problem, fund it, and let a swarm of contributors, human and machine, earn by moving it forward. Contribution is measured, rewarded, and open to anyone with cycles to spare.</p>
-      <a class="cta" href="https://slop.cash">Visit slop.cash →</a>
+      <a rel="noopener noreferrer" class="cta" href="https://slop.cash">Visit slop.cash →</a>
     </div>
   </div>
 </section>
@@ -240,9 +241,9 @@
     <div class="row">
       <span>© 2026 Eliza Research</span>
       <span style="display:flex; gap:1.5rem;">
-        <a href="https://github.com/elizaOS">GitHub</a>
-        <a href="https://x.com/elizaOS">X</a>
-        <a href="https://slop.cash">slop.cash</a>
+        <a rel="noopener noreferrer" href="https://github.com/elizaOS">GitHub</a>
+        <a rel="noopener noreferrer" href="https://x.com/elizaOS">X</a>
+        <a rel="noopener noreferrer" href="https://slop.cash">slop.cash</a>
       </span>
     </div>
   </div>
@@ -263,7 +264,13 @@
   let born = 0;
   let entranceStarted = false;
   let entranceComplete = reduced;
-  const ENTER_MS = 2800, ENTER_STAGGER_MS = 280;
+  const ENTER_MS = 4200, ENTER_STAGGER_MS = 900;
+  const FADE_FRAMES = 75;            // ~1.25s fade in and out per dot
+  const ALPHA_LEVELS = 8;            // bucketed so per-dot alpha stays one state change per level
+  let order = new Int32Array(0);
+  let level = new Uint8Array(0);
+  const counts = new Int32Array(ALPHA_LEVELS);
+  const starts = new Int32Array(ALPHA_LEVELS);
   const LANE_COUNT = 16;
   const laneEase = new Float32Array(LANE_COUNT);
   const laneCos = new Float32Array(LANE_COUNT);
@@ -279,6 +286,13 @@
   for (let i = 0; i < SIN_N; i++) SIN[i] = Math.sin((i / SIN_N) * Math.PI * 2);
   const wave = (turns) => SIN[((turns * SIN_N) | 0) & (SIN_N - 1)];
   const smootherstep = (progress) => progress * progress * progress * (progress * (progress * 6 - 15) + 10);
+  // settle curve: smootherstep eases the departure, quintic ease-out stretches
+  // the landing, so particles leave gently and glide a long way onto the face
+  const easeSettle = (progress) => {
+    const s = smootherstep(progress);
+    const inv = 1 - s;
+    return 1 - inv * inv;
+  };
   let entranceSeed = 0;
   function entranceRandom() {
     entranceSeed += 0x6d2b79f5;
@@ -360,7 +374,7 @@
         sz: entranceComplete ? 0 : Math.min(W, H) * (0.35 + entranceRandom() * 0.55) * (entranceRandom() < 0.5 ? -1 : 1),
         lane: (entranceRandom() * LANE_COUNT) | 0,
         offsetX: 0, offsetY: 0, depthScale: 1,
-        size: entranceRandom() * 0.95 + 0.85, life: entranceRandom() * 100,
+        size: entranceRandom() * 1.15 + 1.05, life: entranceRandom() * 100, age: 0,
         ph: entranceRandom(), phy: entranceRandom(),
         fs: 0.6 + entranceRandom() * 0.8, amp: 1.1 + entranceRandom() * 2.6 });
     }
@@ -411,11 +425,11 @@
       for (let lane = 0; lane < LANE_COUNT; lane++) {
         const delay = lane / (LANE_COUNT - 1) * ENTER_STAGGER_MS;
         const progress = Math.min(1, Math.max(0, (now - born - delay) / (ENTER_MS - delay)));
-        const eased = smootherstep(progress);
-        const angle = eased * Math.PI * 2;
-        const tilt = Math.sin(progress * Math.PI) * 0.24;
-        const roll = Math.sin(progress * Math.PI) * 0.28 * (lane % 2 ? -1 : 1);
-        laneEase[lane] = eased;
+        const spin = smootherstep(progress);
+        const angle = spin * Math.PI * 2;
+        const tilt = Math.sin(spin * Math.PI) * 0.24;
+        const roll = Math.sin(spin * Math.PI) * 0.28 * (lane % 2 ? -1 : 1);
+        laneEase[lane] = easeSettle(progress);
         laneCos[lane] = Math.cos(angle);
         laneSin[lane] = Math.sin(angle);
         laneTiltCos[lane] = Math.cos(tilt);
@@ -472,11 +486,16 @@
       b.offsetY += (desiredY - b.offsetY) * response;
       b.x = gx + b.offsetX;
       b.y = gy + b.offsetY;
-      if (entranceComplete && !reduced && --b.life <= 0) {
-        const t = targets[(Math.random() * targets.length) | 0];
-        b.x = b.sx = b.tx = t.x; b.y = b.sy = b.ty = t.y;
-        b.offsetX = 0; b.offsetY = 0;
-        b.life = Math.random() * 150 + 90;
+      if (entranceComplete && !reduced) {
+        b.age++;
+        if (--b.life <= 0) {
+          // move only once fully faded out, so the jump is never visible
+          const t = targets[(Math.random() * targets.length) | 0];
+          b.x = b.sx = b.tx = t.x; b.y = b.sy = b.ty = t.y;
+          b.offsetX = 0; b.offsetY = 0;
+          b.life = Math.random() * 150 + 90 + FADE_FRAMES * 2;
+          b.age = 0;
+        }
       }
     }
   }
@@ -484,16 +503,39 @@
   function draw(now) {
     ctx.fillStyle = "#ff5800";
     ctx.fillRect(0, 0, W, H);
-    ctx.globalAlpha = 1;
     ctx.fillStyle = "#fff";
     const arrivalProgress = entranceComplete ? 1 : Math.min(1, Math.max(0, (now - born) / ENTER_MS));
-    const arrivalScale = 0.64 + smootherstep(arrivalProgress) * 0.36;
-    for (let i = 0; i < boids.length; i++) {
+    const arrivalScale = 0.64 + easeSettle(arrivalProgress) * 0.36;
+    const n = boids.length;
+    if (order.length !== n) { order = new Int32Array(n); level = new Uint8Array(n); }
+    counts.fill(0);
+    for (let i = 0; i < n; i++) {
       const b = boids[i];
-      const shimmer = 0.88 + (1 - Math.abs((((now / 1000) * 0.28 * b.fs + b.ph) % 1) * 2 - 1)) * 0.2;
-      const size = b.size * arrivalScale * shimmer * b.depthScale;
-      ctx.fillRect(b.x - (size - b.size) / 2, b.y - (size - b.size) / 2, size, size);
+      // fade in on arrival, fade out before the dot re-seeds elsewhere
+      const a = entranceComplete && !reduced
+        ? Math.min(1, Math.min(b.age, b.life) / FADE_FRAMES)
+        : 1;
+      const idx = a >= 1 ? ALPHA_LEVELS - 1 : (a * ALPHA_LEVELS) | 0;
+      level[i] = idx;
+      counts[idx]++;
     }
+    let running = 0;
+    for (let k = 0; k < ALPHA_LEVELS; k++) { starts[k] = running; running += counts[k]; }
+    for (let i = 0; i < n; i++) order[starts[level[i]]++] = i;
+    let from = 0;
+    for (let k = 0; k < ALPHA_LEVELS; k++) {
+      const to = starts[k];
+      if (to === from) continue;
+      ctx.globalAlpha = (k + 1) / ALPHA_LEVELS;
+      for (let j = from; j < to; j++) {
+        const b = boids[order[j]];
+        const shimmer = 0.88 + (1 - Math.abs((((now / 1000) * 0.28 * b.fs + b.ph) % 1) * 2 - 1)) * 0.2;
+        const size = b.size * arrivalScale * shimmer * b.depthScale;
+        ctx.fillRect(b.x - (size - b.size) / 2, b.y - (size - b.size) / 2, size, size);
+      }
+      from = to;
+    }
+    ctx.globalAlpha = 1;
   }
 
   function loop(now) {

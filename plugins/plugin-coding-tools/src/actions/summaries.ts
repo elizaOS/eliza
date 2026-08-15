@@ -30,9 +30,9 @@ export function summarizeFileOperation(
 }
 
 export function summarizeShellCommand(
-  params: Record<string, unknown>,
+  redactedCommand: unknown,
 ): string | undefined {
-  const command = params.command;
+  const command = redactedCommand;
   if (typeof command !== "string" || command.trim().length === 0) {
     return undefined;
   }

@@ -4,7 +4,11 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import { mergeSharedRuntimeHistoryMessages } from "./shared-runtime-history-policy";
+import {
+  MAX_HISTORY_MESSAGES,
+  mergeSharedRuntimeHistoryMessages,
+  selectSharedRuntimeContext,
+} from "./shared-runtime-history-policy";
 
 describe("shared runtime history merge policy", () => {
   test("a late interrupted fragment cannot replace a completed assistant message", () => {
@@ -55,5 +59,46 @@ describe("shared runtime history merge policy", () => {
       current[1],
       incoming[1],
     ]);
+  });
+});
+
+describe("shared runtime long-term transcript context", () => {
+  test("keeps recent turns and recalls an older preference with its reply", () => {
+    const history = Array.from({ length: 60 }, (_, index) => ({
+      id: `message-${index}`,
+      role: index % 2 === 0 ? ("user" as const) : ("assistant" as const),
+      content:
+        index === 4
+          ? "Remember that my favorite wine is Barolo"
+          : index === 5
+            ? "Got it, Barolo is your favorite wine."
+            : `ordinary turn ${index}`,
+      createdAt: index,
+    }));
+
+    const context = selectSharedRuntimeContext(
+      history,
+      "What was my favorite wine?",
+      MAX_HISTORY_MESSAGES,
+    );
+
+    expect(context.length).toBeLessThanOrEqual(MAX_HISTORY_MESSAGES);
+    expect(context.map((message) => message.id)).toContain("message-4");
+    expect(context.map((message) => message.id)).toContain("message-5");
+    expect(context.at(-1)?.id).toBe("message-59");
+  });
+
+  test("does not displace recent context for unrelated old chatter", () => {
+    const history = Array.from({ length: 80 }, (_, index) => ({
+      id: `message-${index}`,
+      role: index % 2 === 0 ? ("user" as const) : ("assistant" as const),
+      content: `ordinary turn ${index}`,
+      createdAt: index,
+    }));
+
+    const context = selectSharedRuntimeContext(history, "completely unrelated", 24);
+    expect(context.map((message) => message.id)).toEqual(
+      Array.from({ length: 24 }, (_, index) => `message-${index + 56}`),
+    );
   });
 });
