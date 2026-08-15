@@ -2052,10 +2052,11 @@ describe("transport-loss recovery (stop-class hardening)", () => {
   });
 
   it("rotates the session before token expiry at a listening boundary without consuming budget", async () => {
+    const epochMs = Date.now();
     const mint = makeMintFetch([
-      { token: "A", expiresAtMs: Date.now() + 120 },
-      { token: "B" },
-      { token: "C" },
+      { token: "A", expiresAtMs: epochMs + 120 },
+      { token: "B", expiresAtMs: epochMs + 60_000 },
+      { token: "C", expiresAtMs: epochMs + 60_000 },
     ]);
     const ws = makeWsFactory();
     const { client, marks, errors } = recoveryClient(mint, ws, {
@@ -2063,6 +2064,7 @@ describe("transport-loss recovery (stop-class hardening)", () => {
       rotationLeadMs: 90,
       rotationRecheckMs: 10,
       reconnectBudgetResetMs: 1e9,
+      epochNow: () => epochMs,
     });
     await client.start();
     await flush();
@@ -2098,14 +2100,16 @@ describe("transport-loss recovery (stop-class hardening)", () => {
   });
 
   it("defers a due rotation while a turn is in flight, then rotates at listening", async () => {
+    const epochMs = Date.now();
     const mint = makeMintFetch([
-      { token: "A", expiresAtMs: Date.now() + 2_000 },
-      { token: "B" },
+      { token: "A", expiresAtMs: epochMs + 2_000 },
+      { token: "B", expiresAtMs: epochMs + 60_000 },
     ]);
     const ws = makeWsFactory();
     const { client, marks, errors } = recoveryClient(mint, ws, {
       rotationLeadMs: 1_980,
       rotationRecheckMs: 20,
+      epochNow: () => epochMs,
     });
     await client.start();
     await flush();
