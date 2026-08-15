@@ -31,6 +31,10 @@
 		DAMON000100000000000002 /* DeviceActivityMonitorExtension.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = DAMON000100000000000101 /* DeviceActivityMonitorExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		DAREP000100000000000001 /* DeviceActivityReportExtension.swift in Sources */ = {isa = PBXBuildFile; fileRef = DAREP000100000000000102 /* DeviceActivityReportExtension.swift */; };
 		DAREP000100000000000002 /* DeviceActivityReportExtension.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = DAREP000100000000000101 /* DeviceActivityReportExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		DAREP000100000000000003 /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = DAREP000100000000000105 /* Localizable.xcstrings */; };
+		DAREP000100000000000004 /* ScreenTimeReportModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = DAREP000100000000000106 /* ScreenTimeReportModel.swift */; };
+		AUIT00010000000000000011 /* ScreenTimeReportModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = DAREP000100000000000106 /* ScreenTimeReportModel.swift */; };
+		AUIT00010000000000000013 /* ScreenTimeReportModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AUIT00010000000000000012 /* ScreenTimeReportModelTests.swift */; };
 		EWDG00010000000000000001 /* ElizaWidgets.swift in Sources */ = {isa = PBXBuildFile; fileRef = EWDG00010000000000000102 /* ElizaWidgets.swift */; };
 		EWDG00010000000000000002 /* ElizaWidgets.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = EWDG00010000000000000101 /* ElizaWidgets.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		EWDG00010000000000000003 /* ElizaWidgetControls.swift in Sources */ = {isa = PBXBuildFile; fileRef = EWDG00010000000000000105 /* ElizaWidgetControls.swift */; };
@@ -154,6 +158,9 @@
 		DAREP000100000000000102 /* DeviceActivityReportExtension.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceActivityReportExtension.swift; sourceTree = "<group>"; };
 		DAREP000100000000000103 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		DAREP000100000000000104 /* DeviceActivityReportExtension.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = DeviceActivityReportExtension.entitlements; sourceTree = "<group>"; };
+		DAREP000100000000000105 /* Localizable.xcstrings */ = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; path = Localizable.xcstrings; sourceTree = "<group>"; };
+		DAREP000100000000000106 /* ScreenTimeReportModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScreenTimeReportModel.swift; sourceTree = "<group>"; };
+		AUIT00010000000000000012 /* ScreenTimeReportModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScreenTimeReportModelTests.swift; sourceTree = "<group>"; };
 		EWDG00010000000000000101 /* ElizaWidgets.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = ElizaWidgets.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		EWDG00010000000000000102 /* ElizaWidgets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ElizaWidgets.swift; sourceTree = "<group>"; };
 		EWDG00010000000000000103 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
@@ -342,6 +349,8 @@
 				DAREP000100000000000102 /* DeviceActivityReportExtension.swift */,
 				DAREP000100000000000103 /* Info.plist */,
 				DAREP000100000000000104 /* DeviceActivityReportExtension.entitlements */,
+				DAREP000100000000000105 /* Localizable.xcstrings */,
+				DAREP000100000000000106 /* ScreenTimeReportModel.swift */,
 			);
 			path = DeviceActivityReportExtension;
 			sourceTree = "<group>";
@@ -382,6 +391,7 @@
 				AUIT0001000000000000000C /* DeviceLifecycleUITests.swift */,
 				AUIT0001000000000000000E /* ChatFailureStrings.generated.swift */,
 				AUIT00010000000000000010 /* DeviceExtensionSurfaceUITests.swift */,
+				AUIT00010000000000000012 /* ScreenTimeReportModelTests.swift */,
 			);
 			path = AppUITests;
 			sourceTree = "<group>";
@@ -619,6 +629,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				DAREP000100000000000003 /* Localizable.xcstrings in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -743,6 +754,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				DAREP000100000000000001 /* DeviceActivityReportExtension.swift in Sources */,
+				DAREP000100000000000004 /* ScreenTimeReportModel.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -758,6 +770,8 @@
 				AUIT0001000000000000000B /* DeviceLifecycleUITests.swift in Sources */,
 				AUIT0001000000000000000D /* ChatFailureStrings.generated.swift in Sources */,
 				AUIT0001000000000000000F /* DeviceExtensionSurfaceUITests.swift in Sources */,
+				AUIT00010000000000000011 /* ScreenTimeReportModel.swift in Sources */,
+				AUIT00010000000000000013 /* ScreenTimeReportModelTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
