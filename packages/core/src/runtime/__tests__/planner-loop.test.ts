@@ -4448,3 +4448,82 @@ describe("tool-turn reply guarantee (#16935)", () => {
 		);
 	});
 });
+
+describe("terminal-only tool surface short-circuit", () => {
+	const terminalOnlyTools = [
+		{ name: "REPLY", description: "Reply to the user." },
+		{ name: "IGNORE", description: "Ignore the message." },
+		{ name: "STOP", description: "Stop the conversation." },
+	];
+	const baseContext = {
+		id: "ctx",
+		staticPrefix: {
+			characterPrompt: { content: "agent_name: Eliza", stable: true },
+		},
+		events: [
+			{
+				id: "msg",
+				type: "message" as const,
+				message: {
+					role: "user" as const,
+					content: { text: "send a text message to my mom" },
+				},
+			},
+		],
+	};
+
+	it("ships the answer-shaped stage-1 decline without a model call", async () => {
+		const runtime = { useModel: vi.fn(), getService: vi.fn(() => null) };
+		const result = await runPlannerLoop({
+			runtime,
+			context: baseContext,
+			tools: terminalOnlyTools,
+			stageOneReplyText:
+				"can't do that from here. i don't have phone/sms access configured.",
+			executeToolCall: vi.fn(),
+			evaluate: vi.fn(),
+		});
+		expect(result.status).toBe("finished");
+		expect(result.finalMessage).toBe(
+			"can't do that from here. i don't have phone/sms access configured.",
+		);
+		expect(runtime.useModel).not.toHaveBeenCalled();
+	});
+
+	it("still runs the loop when the stage-1 draft is not answer-shaped", async () => {
+		const runtime = {
+			useModel: vi.fn(async () => ({
+				text: '{"success":true,"decision":"FINISH","thought":"done","messageToUser":"nothing to run here."}',
+			})),
+			getService: vi.fn(() => null),
+		};
+		const result = await runPlannerLoop({
+			runtime,
+			context: baseContext,
+			tools: terminalOnlyTools,
+			stageOneReplyText: "On it.",
+			executeToolCall: vi.fn(),
+			evaluate: vi.fn(),
+		});
+		expect(runtime.useModel).toHaveBeenCalled();
+		expect(result.status).toBe("finished");
+	});
+
+	it("does not short-circuit the deliberate no-tools planning mode", async () => {
+		const runtime = {
+			useModel: vi.fn(async () => ({
+				text: '{"success":true,"decision":"FINISH","thought":"done","messageToUser":"the capital is ulaanbaatar."}',
+			})),
+			getService: vi.fn(() => null),
+		};
+		await runPlannerLoop({
+			runtime,
+			context: baseContext,
+			stageOneReplyText:
+				"can't do that from here. i don't have phone/sms access configured.",
+			executeToolCall: vi.fn(),
+			evaluate: vi.fn(),
+		});
+		expect(runtime.useModel).toHaveBeenCalled();
+	});
+});

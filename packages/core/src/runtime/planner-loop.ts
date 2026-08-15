@@ -394,6 +394,41 @@ async function runPlannerLoopIterations(
 	const requireNonTerminalToolCall =
 		(params.requireNonTerminalToolCall === true || codingMode) &&
 		hasExposedNonTerminalTool(params.tools);
+	// A PRESENT but terminal-only surface (REPLY/IGNORE/STOP and nothing else)
+	// means every stage-1 candidate failed to resolve to a runnable action —
+	// the turn has zero capability. Running a planner round anyway hands a
+	// fresh model call the chance to improvise around the missing capability:
+	// observed live ("send a text to my mom"), stage-1 drafted an honest
+	// "no phone/sms access configured" decline and the terminal-only round
+	// replaced it with "need your mom's phone number or iMessage handle" — an
+	// ask implying a surface this runtime does not have. When stage-1 already
+	// produced an answer-shaped reply, ship it and skip the round entirely
+	// (grounded decline + one model call saved). An undefined/empty tools
+	// param stays on the normal path — that is the deliberate no-actions-gated
+	// planning mode, not a failed resolution — and an ack-shaped stage-1 draft
+	// falls through so the loop can still produce a real answer.
+	if (
+		params.tools !== undefined &&
+		params.tools.length > 0 &&
+		!hasExposedNonTerminalTool(params.tools)
+	) {
+		const stageOneDecline = userSafeCapturedAnswerCandidate(
+			params.stageOneReplyText,
+		);
+		if (stageOneDecline !== undefined) {
+			return {
+				status: "finished",
+				trajectory: {
+					context: plannerContext,
+					steps: [],
+					archivedSteps: [],
+					plannedQueue: [],
+					evaluatorOutputs: [],
+				},
+				finalMessage: stageOneDecline,
+			};
+		}
+	}
 	// Stage 1's own answer for this turn, shape-guarded once up front. Consulted
 	// only when the required-tool gate exhausts without a captured refusal — the
 	// ground-truth answer Stage 1 already produced beats the caller's generic
