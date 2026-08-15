@@ -1554,16 +1554,11 @@ describe("runV5MessageRuntimeStage1", () => {
 		);
 	});
 
-	it("keeps tool-like direct messages on the structured routing path", async () => {
+	it("returns a typed missing-capability refusal when a direct web ask has no web action", async () => {
 		const runtime = makeRuntime([
 			stage1Response({
 				contexts: ["general"],
 				replyText: "Looking into it.",
-			}),
-			JSON.stringify({
-				thought: "No tool is registered in this fixture.",
-				toolCalls: [],
-				messageToUser: "I would need a web tool to check current prices.",
 			}),
 		]);
 
@@ -1577,9 +1572,19 @@ describe("runV5MessageRuntimeStage1", () => {
 			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 		});
 
-		expect(result.kind).toBe("planned_reply");
+		expect(result.kind).toBe("direct_reply");
 		const firstCall = useModelCalls(runtime)[0];
 		expect(firstCall?.[0]).toBe(ModelType.RESPONSE_HANDLER);
+		expect(useModelCalls(runtime)).toHaveLength(1);
+		if (result.kind === "direct_reply") {
+			expect(result.result.responseContent).toMatchObject({
+				text: "I don't have a live web search action available here, so I can't look up current information in this chat.",
+				failureKind: "missing_capability",
+				elizaSyntheticFailure: true,
+				transient: false,
+				doNotPersist: true,
+			});
+		}
 	});
 
 	it("keeps edit-style direct messages on the structured routing path", async () => {
@@ -2446,6 +2451,12 @@ describe("runV5MessageRuntimeStage1", () => {
 			expect(result.result.responseContent?.text).toBe(
 				"I don't have a live web search action available here, so I can't look up current information in this chat.",
 			);
+			expect(result.result.responseContent).toMatchObject({
+				failureKind: "missing_capability",
+				elizaSyntheticFailure: true,
+				transient: false,
+				doNotPersist: true,
+			});
 		}
 	});
 
@@ -2516,6 +2527,12 @@ describe("runV5MessageRuntimeStage1", () => {
 			expect(result.result.responseContent?.text).toBe(
 				"I don't have a live web search action available here, so I can't look up current information in this chat.",
 			);
+			expect(result.result.responseContent).toMatchObject({
+				failureKind: "missing_capability",
+				elizaSyntheticFailure: true,
+				transient: false,
+				doNotPersist: true,
+			});
 		}
 	});
 
@@ -2666,6 +2683,12 @@ describe("runV5MessageRuntimeStage1", () => {
 			expect(result.result.responseContent?.text).toBe(
 				"I don't have a live web search action available here, so I can't look up current information in this chat.",
 			);
+			expect(result.result.responseContent).toMatchObject({
+				failureKind: "missing_capability",
+				elizaSyntheticFailure: true,
+				transient: false,
+				doNotPersist: true,
+			});
 		}
 	});
 

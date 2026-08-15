@@ -8356,6 +8356,29 @@ export async function runV5MessageRuntimeStage1(args: {
 						]);
 		}
 		const routedResponseHandlerReply = getMessageHandlerReply(messageHandler);
+		// Progress-shaped current-data replies are normally promoted to planning,
+		// but no planner can satisfy them when the runtime has no web lookup
+		// action. Preserve the established direct refusal before assembling a
+		// misleading shell/terminal surface, and mark it as a typed terminal
+		// capability failure for downstream persistence and retry policy.
+		if (
+			shouldReplaceUnavailableLiveLookupAck({
+				message: args.message,
+				actions: args.runtime.actions ?? [],
+				reply: routedResponseHandlerReply,
+			})
+		) {
+			return {
+				kind: "direct_reply",
+				messageHandler,
+				result: createV5ReplyStrategyResult({
+					...args,
+					text: LIVE_LOOKUP_UNAVAILABLE_REPLY,
+					thought: messageHandler.thought,
+					failureKind: "missing_capability",
+				}),
+			};
+		}
 		let earlyReplyText = actionOwnsResponseHandlerEarlyReply(
 			args.runtime,
 			messageHandler,
