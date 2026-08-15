@@ -347,12 +347,30 @@ async function deleteAllLiveConversations(page: Page): Promise<void> {
     listResponse.ok(),
     `live runtime should list conversations (status=${listResponse.status()})`,
   ).toBe(true);
-  const listBody = (await listResponse.json()) as {
-    conversations?: Array<{ id?: string }>;
-  };
-  const ids = (listBody.conversations ?? [])
-    .map((conversation) => conversation.id?.trim())
-    .filter((id): id is string => Boolean(id));
+  const listBody: unknown = await listResponse.json();
+  if (
+    !listBody ||
+    typeof listBody !== "object" ||
+    !Array.isArray((listBody as { conversations?: unknown }).conversations)
+  ) {
+    throw new Error(
+      "live runtime returned an invalid conversation-list payload",
+    );
+  }
+  const ids = (listBody as { conversations: unknown[] }).conversations.map(
+    (conversation, index) => {
+      const id =
+        conversation && typeof conversation === "object"
+          ? (conversation as { id?: unknown }).id
+          : undefined;
+      if (typeof id !== "string" || id.trim().length === 0) {
+        throw new Error(
+          `live runtime conversation at index ${index} has no valid id`,
+        );
+      }
+      return id.trim();
+    },
+  );
   for (const id of ids) {
     const deleteResponse = await page.request.delete(
       `/api/conversations/${encodeURIComponent(id)}`,
