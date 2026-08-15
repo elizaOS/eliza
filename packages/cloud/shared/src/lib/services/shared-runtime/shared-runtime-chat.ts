@@ -59,6 +59,7 @@ import { navIntentActionResult } from "./shared-nav-intent";
 import type { SharedRuntimeAgent } from "./shared-runtime-agent";
 import { SharedRuntimeCacheWarmingError, SharedTurnConflictError } from "./shared-runtime-errors";
 import { MAX_HISTORY_MESSAGES } from "./shared-runtime-history-policy";
+import { createSharedScheduledTaskRunner } from "./shared-scheduling";
 
 export { MAX_HISTORY_MESSAGES } from "./shared-runtime-history-policy";
 
@@ -142,6 +143,8 @@ export interface SharedRuntimeChatOptions {
   funding?: "organization-credits" | "platform";
   /** Server-authenticated lifecycle prompt; never derived from bridge params. */
   trustedMessageRole?: "system";
+  /** Local/transition gate for proving the genuine Workerd AgentRuntime path. */
+  executionEngine?: "direct-model" | "eliza-runtime";
 }
 
 export {
@@ -155,6 +158,24 @@ function stringValue(value: unknown): string | undefined {
 
 function record(value: unknown): Record<string, unknown> | undefined {
   return value && typeof value === "object" ? (value as Record<string, unknown>) : undefined;
+}
+
+function trustedReminderDelivery(params: Record<string, unknown>) {
+  const delivery = record(params.trustedDelivery);
+  if (
+    delivery?.platform !== "telegram" ||
+    typeof delivery.project !== "string" ||
+    !/^[a-z0-9][a-z0-9_-]{0,63}$/i.test(delivery.project) ||
+    typeof delivery.chatId !== "string" ||
+    !/^-?\d{1,20}$/.test(delivery.chatId)
+  ) {
+    return undefined;
+  }
+  return {
+    platform: "telegram" as const,
+    project: delivery.project,
+    chatId: delivery.chatId,
+  };
 }
 
 function stableUuid(raw: string): string {
@@ -775,6 +796,8 @@ export class SharedRuntimeChatService {
     }
 
     const messageIds = turnMessageIds(agent.id, roomId, rpc);
+    const reminderDelivery =
+      options.funding === "platform" ? trustedReminderDelivery(params) : undefined;
     let turn: RunSharedAgentTurnResult;
     try {
       turn = await runSharedAgentTurn({
@@ -784,6 +807,28 @@ export class SharedRuntimeChatService {
         messageRole,
         messageIds,
         onProviderDispatch: billing?.markProviderDispatched,
+        ...(options.executionEngine === "eliza-runtime"
+          ? {
+              execution: {
+                engine: "eliza-runtime" as const,
+                agentKey: agent.id,
+                ...(reminderDelivery
+                  ? {
+                      reminders: {
+                        delivery: reminderDelivery,
+                        runner: createSharedScheduledTaskRunner(agent.id, {
+                          dispatch: async () => {
+                            throw new Error(
+                              "Interactive Shared turns cannot fire reminders; Cloudflare cron owns dispatch",
+                            );
+                          },
+                        }),
+                      },
+                    }
+                  : {}),
+              },
+            }
+          : {}),
       });
     } catch (error) {
       await settleFailedProviderWorkOffPath(

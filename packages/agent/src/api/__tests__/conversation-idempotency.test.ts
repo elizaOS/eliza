@@ -31,6 +31,7 @@ import type {
   AgentRuntime,
   EffectReceipt,
   Memory,
+  Service,
 } from "@elizaos/core";
 import {
   executePlannedToolCall,
@@ -126,6 +127,8 @@ interface TestHarness {
   storedMemories: Memory[];
   deleteManyMemories: ReturnType<typeof vi.fn>;
   deleteRoom: ReturnType<typeof vi.fn>;
+  importScheduledTask: ReturnType<typeof vi.fn>;
+  activateScheduledTask: ReturnType<typeof vi.fn>;
 }
 
 /** Real-route harness: the runtime stub streams one "ok" chunk per turn via
@@ -134,7 +137,7 @@ interface TestHarness {
  *  memories are retained and served back through `getMemories`, so the dupe
  *  branches' persisted-first-reply lookup reads the real write path's output. */
 function createHarness(
-  options: { maxPendingPerRoom?: number } = {},
+  options: { maxPendingPerRoom?: number; scheduling?: boolean } = {},
 ): TestHarness {
   const handleMessage = vi.fn(
     async (
@@ -178,6 +181,24 @@ function createHarness(
   });
   const deleteRoom = vi.fn(async () => undefined);
   const emitEvent = vi.fn(async () => undefined);
+  const importedScheduledTaskIds = new Set<string>();
+  const importScheduledTask = vi.fn(async (task: { taskId: string }) => {
+    const imported = !importedScheduledTaskIds.has(task.taskId);
+    importedScheduledTaskIds.add(task.taskId);
+    return { task, imported };
+  });
+  const activatedScheduledTaskIds = new Set<string>();
+  const activateScheduledTask = vi.fn(async (taskId: string) => {
+    const activated = !activatedScheduledTaskIds.has(taskId);
+    activatedScheduledTaskIds.add(taskId);
+    return { task: { taskId }, activated };
+  });
+  const schedulingService = {
+    getRunner: () => ({
+      importTask: importScheduledTask,
+      activateImportedTask: activateScheduledTask,
+    }),
+  };
   const runtime = {
     agentId: AGENT_ID,
     character: {
@@ -189,7 +210,8 @@ function createHarness(
     plugins: [],
     logger,
     emitEvent,
-    getService: vi.fn(() => null),
+    getService: <T extends Service = Service>() =>
+      options.scheduling ? (schedulingService as unknown as T) : null,
     getServicesByType: vi.fn(() => []),
     drainChatPreHandlers: vi.fn(async () => null),
     messageService: {
@@ -262,6 +284,8 @@ function createHarness(
     storedMemories,
     deleteManyMemories,
     deleteRoom,
+    importScheduledTask,
+    activateScheduledTask,
   };
 }
 
@@ -1648,5 +1672,90 @@ describe("conversation handoff import — exact source identities", () => {
       "hello back",
       "one more thing",
     ]);
+  });
+
+  it("imports exact Shared reminders with the same cutover receipt", async () => {
+    const {
+      state,
+      storedMemories,
+      importScheduledTask,
+      activateScheduledTask,
+    } = createHarness({ scheduling: true });
+    const body = {
+      messages: [
+        {
+          sourceId: "shared-u1",
+          role: "user",
+          text: "remind me",
+          timestamp: 10,
+        },
+      ],
+      scheduledTasks: [
+        {
+          taskId: "shared-reminder-1",
+          kind: "reminder",
+          promptInstructions: "call mom",
+          trigger: { kind: "once", atIso: "2026-08-15T17:00:00.000Z" },
+          priority: "medium",
+          respectsGlobalPause: true,
+          state: { status: "scheduled", followupCount: 0 },
+          source: "user_chat",
+          createdBy: "owner",
+          ownerVisible: true,
+        },
+      ],
+      cutoverToken: "personal-cutover-token",
+    };
+
+    const first = await runRoute(
+      "POST",
+      "/api/conversations/personal:source/import",
+      state,
+      body,
+    );
+    expect(first.captured.payload).toMatchObject({
+      complete: true,
+      sourceMessageCount: 1,
+      inserted: 1,
+      sourceScheduledTaskCount: 1,
+      importedScheduledTasks: 1,
+      skippedScheduledTasks: 0,
+      activatedScheduledTasks: 0,
+    });
+
+    const replay = await runRoute(
+      "POST",
+      "/api/conversations/personal:source/import",
+      state,
+      body,
+    );
+    expect(replay.captured.payload).toMatchObject({
+      complete: true,
+      inserted: 0,
+      skipped: 1,
+      importedScheduledTasks: 0,
+      skippedScheduledTasks: 1,
+      activatedScheduledTasks: 0,
+    });
+    const activated = await runRoute(
+      "POST",
+      "/api/conversations/personal:source/import",
+      state,
+      { ...body, activateScheduledTasks: true },
+    );
+    expect(activated.captured.payload).toMatchObject({
+      complete: true,
+      importedScheduledTasks: 0,
+      skippedScheduledTasks: 1,
+      activatedScheduledTasks: 1,
+      skippedActivatedScheduledTasks: 0,
+    });
+    expect(storedMemories).toHaveLength(1);
+    expect(importScheduledTask).toHaveBeenCalledTimes(3);
+    expect(activateScheduledTask).toHaveBeenCalledTimes(1);
+    expect(importScheduledTask.mock.calls[0]?.[1]).toEqual({
+      sourceAgentId: "personal:source",
+      cutoverToken: "personal-cutover-token",
+    });
   });
 });

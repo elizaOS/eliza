@@ -22,6 +22,7 @@ import {
 import {
   createSchedulingSqlScheduledTaskLogStore,
   createSchedulingSqlScheduledTaskStore,
+  listDueScheduledTaskRefs,
 } from "./store.js";
 
 type RawSqlQuery = {
@@ -161,6 +162,68 @@ describe("scheduling SQL persistence", () => {
         "SELECT id FROM app_lifeops.life_scheduled_tasks",
       );
       expect(source.rows).toEqual([{ id: "legacy-watcher" }]);
+    },
+    SQL_PERSISTENCE_TEST_TIMEOUT_MS,
+  );
+
+  it(
+    "discovers only due reminders across agents in deterministic order",
+    async () => {
+      const harness = await createRuntimeHarness();
+      harnesses.push(harness);
+      await harness.pg.query(`
+        INSERT INTO app_scheduling.life_scheduled_tasks (
+          id, agent_id, kind, prompt_instructions, trigger_json, priority,
+          respects_global_pause, state_json, source, created_by, owner_visible,
+          metadata_json, next_fire_at, created_at, updated_at
+        ) VALUES
+          ('later', 'personal:b', 'reminder', 'later', '{"kind":"once","atIso":"2026-07-17T10:00:00.000Z"}', 'medium', TRUE, '{"status":"scheduled","followupCount":0}', 'user_chat', 'owner', TRUE, '{}', '2026-07-17T10:00:00.000Z', '2026-07-17T08:00:00.000Z', '2026-07-17T08:00:00.000Z'),
+          ('due-b', 'personal:b', 'reminder', 'due b', '{"kind":"once","atIso":"2026-07-17T09:00:00.000Z"}', 'medium', TRUE, '{"status":"scheduled","followupCount":0}', 'user_chat', 'owner', TRUE, '{}', '2026-07-17T09:00:00.000Z', '2026-07-17T08:00:00.000Z', '2026-07-17T08:00:00.000Z'),
+          ('due-a', 'personal:a', 'reminder', 'due a', '{"kind":"once","atIso":"2026-07-17T09:00:00.000Z"}', 'medium', TRUE, '{"status":"scheduled","followupCount":0}', 'user_chat', 'owner', TRUE, '{}', '2026-07-17T09:00:00.000Z', '2026-07-17T08:00:00.000Z', '2026-07-17T08:00:00.000Z'),
+          ('reserved', 'personal:a', 'reminder', 'reserved', '{"kind":"once","atIso":"2026-07-17T09:00:00.000Z"}', 'medium', TRUE, '{"status":"scheduled","followupCount":0}', 'user_chat', 'owner', TRUE, '{}', '2026-07-17T09:00:00.000Z', '2026-07-17T08:00:00.000Z', '2026-07-17T08:00:00.000Z'),
+          ('import-reserved', 'dedicated', 'reminder', 'import reserved', '{"kind":"once","atIso":"2026-07-17T09:00:00.000Z"}', 'medium', TRUE, '{"status":"scheduled","followupCount":0}', 'user_chat', 'owner', TRUE, '{"sharedCutoverImport":{"status":"reserved"}}', '2026-07-17T09:00:00.000Z', '2026-07-17T08:00:00.000Z', '2026-07-17T08:00:00.000Z'),
+          ('todo', 'personal:a', 'todo', 'not a reminder', '{"kind":"once","atIso":"2026-07-17T09:00:00.000Z"}', 'medium', TRUE, '{"status":"scheduled","followupCount":0}', 'user_chat', 'owner', TRUE, '{}', '2026-07-17T09:00:00.000Z', '2026-07-17T08:00:00.000Z', '2026-07-17T08:00:00.000Z')
+      `);
+      await harness.pg.query(`
+        UPDATE app_scheduling.life_scheduled_tasks
+           SET transfer_token = 'cutover',
+               transfer_target_agent_id = 'dedicated',
+               transfer_status = 'reserved'
+         WHERE id = 'reserved'
+      `);
+
+      const due = await listDueScheduledTaskRefs(
+        async (sql) =>
+          (await harness.pg.query<Record<string, unknown>>(sql)).rows,
+        { dueAtIso: "2026-07-17T09:00:00.000Z" },
+      );
+
+      expect(due).toEqual([
+        { agentId: "personal:a", taskId: "due-a" },
+        { agentId: "personal:b", taskId: "due-b" },
+      ]);
+      const sourceStore = createSchedulingSqlScheduledTaskStore({
+        agentId: "personal:a",
+        executeSql: async (sql) =>
+          (await harness.pg.query<Record<string, unknown>>(sql)).rows,
+      });
+      await expect(
+        sourceStore.claimForFire({
+          taskId: "reserved",
+          firedAtIso: "2026-07-17T09:00:00.000Z",
+        }),
+      ).resolves.toEqual({ kind: "raced" });
+      const dedicatedStore = createSchedulingSqlScheduledTaskStore({
+        agentId: "dedicated",
+        executeSql: async (sql) =>
+          (await harness.pg.query<Record<string, unknown>>(sql)).rows,
+      });
+      await expect(
+        dedicatedStore.claimForFire({
+          taskId: "import-reserved",
+          firedAtIso: "2026-07-17T09:00:00.000Z",
+        }),
+      ).resolves.toEqual({ kind: "raced" });
     },
     SQL_PERSISTENCE_TEST_TIMEOUT_MS,
   );

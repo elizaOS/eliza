@@ -1394,6 +1394,13 @@
       "when": 1786910400000,
       "tag": "0199_personal_account_convergence_receipts",
       "breakpoints": true
+    },
+    {
+      "idx": 199,
+      "version": "7",
+      "when": 1787169600000,
+      "tag": "0202_shared_scheduled_tasks",
+      "breakpoints": true
     }
   ]
 }
