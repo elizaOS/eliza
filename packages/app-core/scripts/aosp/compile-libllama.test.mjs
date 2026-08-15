@@ -203,6 +203,8 @@ describe("compile-libllama Zig driver generation", () => {
     expect(output).toContain(
       `-DCMAKE_RANLIB=${path.join(driverDir, "zig-ranlib")}`,
     );
+    expect(output).toContain("-DLLAMA_OPENSSL=OFF");
+    expect(output).toContain("-DKOKORO_ENABLE_ESPEAK=OFF");
     expect(output).toContain("ggml-vulkan");
     expect(output).toContain("static marker in libelizainference.so");
   });
