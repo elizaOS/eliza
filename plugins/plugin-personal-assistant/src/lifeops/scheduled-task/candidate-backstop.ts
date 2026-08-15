@@ -62,10 +62,11 @@ export function looksLikeScheduledTaskRequest(text: string): boolean {
     /\b(?:schedule|create|make|add|set\s+up|track)\b[\s\S]{0,80}\b(?:task|reminder|todo|to[- ]?do|check[- ]?in|follow[- ]?up|watcher|recap|approval|habit|routine)\b/iu.test(
       normalized,
     ) ||
-    // Past tense covers fabricated side-effect claims ("I've scheduled your
-    // pushups"), which are matched against REPLY text to pick recovery
-    // candidates (#17028).
-    /\bscheduled\b/iu.test(normalized) ||
+    // First-person past tense covers fabricated side-effect claims ("I've
+    // scheduled your pushups"), which are matched against REPLY text to pick
+    // recovery candidates. A bare "scheduled" is intentionally insufficient:
+    // status reports and coding asks commonly discuss scheduled work (#17028).
+    /\b(?:i|we)(?:['’]ve| have)\s+scheduled\b/iu.test(normalized) ||
     // Recurring cadence phrasing is a scheduled-item commitment even without
     // an explicit task/reminder noun ("25 pushups, 3 times a day").
     /\b\d+\s+times?\s+(?:a|per|each|every)\s+(?:day|week|month)\b/iu.test(

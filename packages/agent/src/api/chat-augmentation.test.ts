@@ -291,16 +291,16 @@ describe("maybeAugmentChatMessageWithDocuments", () => {
     expect(result.content.text).toContain("<contextual_documents>");
   });
 
-  it("never injects for a query made only of stopwords", async () => {
+  it("keeps literal document relevance available for non-English scripts", async () => {
     const message = makeMessage();
-    (message.content as { text: string }).text = "what are you up to?";
+    (message.content as { text: string }).text = "如何切换视图";
     const documents = {
       countMemories: vi.fn().mockResolvedValue(14),
       searchDocuments: vi.fn().mockResolvedValue([
         {
-          content: { text: "Anything at all scores 1.0 relative to itself." },
+          content: { text: "帮助：如何切换视图。" },
           similarity: 1,
-          metadata: { filename: "noise.txt" },
+          metadata: { filename: "help-navigation-zh.txt" },
         },
       ]),
     };
@@ -308,7 +308,33 @@ describe("maybeAugmentChatMessageWithDocuments", () => {
 
     const result = await maybeAugmentChatMessageWithDocuments(runtime, message);
 
-    expect(result).toBe(message);
+    expect(result).not.toBe(message);
+    expect(result.content.text).toContain("如何切换视图");
+  });
+
+  it("never injects for a query made only of stopwords", async () => {
+    for (const query of ["what are you up to?", "this does not do it"]) {
+      const message = makeMessage();
+      (message.content as { text: string }).text = query;
+      const documents = {
+        countMemories: vi.fn().mockResolvedValue(14),
+        searchDocuments: vi.fn().mockResolvedValue([
+          {
+            content: { text: "This does not do it either." },
+            similarity: 1,
+            metadata: { filename: "noise.txt" },
+          },
+        ]),
+      };
+      const runtime = makeRuntime(documents);
+
+      const result = await maybeAugmentChatMessageWithDocuments(
+        runtime,
+        message,
+      );
+
+      expect(result).toBe(message);
+    }
   });
 
   it("keeps uploaded corpora on the lexical pre-model path", async () => {

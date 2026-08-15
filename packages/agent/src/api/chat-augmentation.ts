@@ -167,10 +167,22 @@ const CHAT_DOCUMENT_QUERY_STOPWORDS: ReadonlySet<string> = new Set([
   "your",
 ]);
 
-/** Lowercase alphanumeric tokens with a trailing plural "s" stripped. */
+/** Lowercase Unicode word tokens with conservative English plural folding. */
 function coverageTokens(text: string): string[] {
-  return (text.toLowerCase().match(/[a-z0-9]+/g) ?? []).map((token) =>
-    token.length > 3 && token.endsWith("s") ? token.slice(0, -1) : token,
+  return (text.toLocaleLowerCase().match(/[\p{L}\p{N}]+/gu) ?? []).map(
+    (token) => {
+      // Preserve stopwords before folding: otherwise "this" became "thi" and
+      // "does" became "doe", manufacturing lexical anchors for stopword-only
+      // queries. Restrict the fold to Latin-looking plurals so non-English
+      // scripts remain exact instead of passing through English morphology.
+      if (CHAT_DOCUMENT_QUERY_STOPWORDS.has(token)) return token;
+      return /^[a-z]+$/u.test(token) &&
+        token.length > 3 &&
+        token.endsWith("s") &&
+        !token.endsWith("ss")
+        ? token.slice(0, -1)
+        : token;
+    },
   );
 }
 

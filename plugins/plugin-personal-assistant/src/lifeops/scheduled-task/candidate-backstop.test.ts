@@ -43,6 +43,12 @@ describe("looksLikeScheduledTaskRequest", () => {
     ).toBe(true);
   });
 
+  it("does not treat bare scheduled status prose as a mutation claim", () => {
+    expect(
+      looksLikeScheduledTaskRequest("the report was scheduled by the server"),
+    ).toBe(false);
+  });
+
   it("keeps existing reminder and time phrasing matching", () => {
     expect(looksLikeScheduledTaskRequest("remind me tomorrow at 9am")).toBe(
       true,
