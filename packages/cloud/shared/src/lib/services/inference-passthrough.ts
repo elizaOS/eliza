@@ -8,14 +8,14 @@
  * decode/re-encode pipeline, not the provider. For requests that need NO
  * transformation (plain streaming chat against an OpenAI-compatible upstream,
  * no tools / response_format / web search), the route can instead pipe the
- * upstream response body straight to the client and meter a teed copy in the
- * background.
+ * upstream response body straight to the client and meter the same
+ * backpressured byte path in the background.
  *
  * This module owns the pieces that are independent of the route:
  *   - the `INFERENCE_PASSTHROUGH_STREAMING` flag (default OFF — same
  *     soak-then-cutover discipline as the #9899 INFERENCE_* flags; flag off is
  *     byte-identical to today),
- *   - the background meter: an SSE reader for the teed branch that extracts
+ *   - the background meter: an SSE reader for the pass-through channel that extracts
  *     the terminal `stream_options.include_usage` usage frame plus the
  *     delivered text, which the route feeds into the EXISTING billing settle
  *     chain (billUsage → settleReservation → analytics → audit),
@@ -23,12 +23,12 @@
  *     first SSE frame, the first reasoning delta, the first visible content
  *     delta, and stream completion were observed, so one correlated trace can
  *     assign provider-side latency instead of collapsing it into "gateway
- *     time". Milestones are measured at the meter branch against an injected
+ *     time". Milestones are measured at the meter channel against an injected
  *     monotonic origin (the route pins it to the provider fetch start); they
  *     bound when the upstream made each frame available, not when a specific
  *     client received it.
  *
- * The qualification predicate and the upstream fetch/tee orchestration live in
+ * The qualification predicate and upstream stream orchestration live in
  * the chat-completions route (they depend on route-local billing helpers); the
  * upstream resolution lives in providers/language-model.ts (provider
  * knowledge).
@@ -50,7 +50,7 @@ export function isPassthroughStreamingEnabled(env: StringEnv = getCloudAwareEnv(
 /**
  * Sibling flag for the non-streaming embeddings pipe (#15512). Same soak
  * discipline and rollback shape as the streaming flag; embeddings are simpler
- * (single JSON response, no tee) so the two roll out independently.
+ * (single JSON response, no streaming meter) so the two roll out independently.
  */
 export function isPassthroughEmbeddingsEnabled(env: StringEnv = getCloudAwareEnv()): boolean {
   return (env.INFERENCE_PASSTHROUGH_EMBEDDINGS ?? "").trim() === "true";
@@ -69,7 +69,7 @@ export interface PassthroughUsage {
 }
 
 /**
- * Stream milestones observed on the teed branch (#16079). `null` means the
+ * Stream milestones observed by the pass-through meter (#16079). `null` means the
  * boundary was never observed (no such frame arrived, or the read failed
  * first) — absence is reported as absence, never as zero.
  */
@@ -84,7 +84,7 @@ export interface PassthroughStreamMilestones {
   completionMs: number | null;
 }
 
-/** What the background meter observed on the teed upstream branch. */
+/** What the background meter observed on the upstream byte path. */
 export interface PassthroughStreamTail {
   /** Last usage frame seen (OpenAI contract: the terminal frame before [DONE]). */
   usage: PassthroughUsage | null;
@@ -153,7 +153,7 @@ function roundedElapsed(now: () => number, origin: number): number {
 }
 
 /**
- * Drain one tee branch of the upstream SSE response and report what it
+ * Drain the metering channel of an upstream SSE response and report what it
  * carried. This is the billing meter, so it must never throw: a read failure
  * (client abort propagated to the upstream fetch, upstream drop) is returned
  * as `readError` with everything observed up to that point intact, and the
@@ -164,9 +164,9 @@ function roundedElapsed(now: () => number, origin: number): number {
  *
  * Milestone timestamps (#16079) are taken when a frame is PARSED, using
  * `startedAt` as the monotonic origin and the injectable `now` clock (tests
- * pin both). The tee delivers both branches at the reader's pace, so these
- * timestamps bound the upstream's frame availability; they are not proof of
- * exactly when the client branch delivered the same bytes.
+ * pin both). The route writes each chunk here before enqueueing that same chunk
+ * for the client, so these timestamps bound frame availability but are not
+ * proof of exactly when the client consumed the bytes.
  */
 export async function readPassthroughStreamTail(
   stream: ReadableStream<Uint8Array>,

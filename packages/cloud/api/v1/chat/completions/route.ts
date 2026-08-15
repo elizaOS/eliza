@@ -2367,11 +2367,12 @@ function sanitizeProviderRequestId(value: string | null): string | undefined {
  * chat/completions directly with `stream: true` and return the response body
  * piped to the client byte-for-byte — no AI-SDK decode, no per-part
  * processing, no SSE re-encode (the measured ~1.5s TTFB / ~5s total gateway
- * overhead vs ~0.17s / ~0.6s direct). Billing parity comes from
- * `response.body.tee()`: one branch goes to the client untouched while the
- * other is read in the background (via the same settleOffResponsePath seam as
- * the SDK path) to extract the terminal usage frame + delivered text for the
- * EXISTING settle chain (billUsage → settleReservation → analytics → audit).
+ * overhead vs ~0.17s / ~0.6s direct). A backpressured pass-through reads one
+ * upstream chunk only when the client branch pulls, sends that same chunk
+ * through the billing meter, then enqueues it byte-for-byte for the client.
+ * The meter extracts the terminal usage frame + delivered text for the EXISTING
+ * settle chain (billUsage → settleReservation → analytics → audit) without a
+ * faster `tee()` branch buffering an unbounded slow-client queue.
  *
  * Returns null when the fast path does not apply (flag off, non-qualifying
  * request, no direct upstream) — callers fall through to streamText. Runs
@@ -2582,44 +2583,59 @@ async function tryPassthroughStreamingRequest(params: {
   const providerRequestId = sanitizeProviderRequestId(
     upstreamResponse.headers.get("x-request-id"),
   );
-  const [clientBranch, meterBranch] = upstreamResponse.body.tee();
   const meterAbortController = new AbortController();
-  const clientReader = clientBranch.getReader();
-  const cancelAwareClientBranch = new ReadableStream<Uint8Array>({
+  const meterChannel = new TransformStream<Uint8Array, Uint8Array>();
+  const meterWriter = meterChannel.writable.getWriter();
+  const upstreamReader = upstreamResponse.body.getReader();
+  const tailPromise = readPassthroughStreamTail(
+    meterChannel.readable,
+    meterAbortController.signal,
+    // #16079: milestones measured from the provider fetch dispatch.
+    { startedAt: upstreamFetchStartedAt },
+  );
+  let settlementTask: Promise<void> | undefined;
+  const backpressuredClientStream = new ReadableStream<Uint8Array>({
     async pull(controller) {
       try {
-        const { done, value } = await clientReader.read();
+        const { done, value } = await upstreamReader.read();
         if (done) {
+          await meterWriter.close();
+          // Tests and non-Worker callers have no waitUntil lifetime. Preserve
+          // their inline-settlement contract at EOF without delaying any
+          // preceding streamed bytes.
+          if (!params.executionCtx) await settlementTask;
           controller.close();
         } else {
+          // Await metering before enqueueing the exact same chunk. Upstream is
+          // therefore driven by client demand, with at most the readable's
+          // bounded queue ahead of a slow consumer.
+          await meterWriter.write(value);
           controller.enqueue(value);
         }
       } catch (error) {
         // error-policy:J1 translate upstream read failure to the client stream.
+        meterAbortController.abort(error);
+        await meterWriter.abort(error).catch(() => undefined);
         controller.error(error);
       }
     },
     async cancel(reason) {
-      // A tee keeps the upstream alive until both branches stop. Explicitly
-      // stop the metering branch when the client disconnects so billing can
-      // settle the observed partial output inside Cloudflare's waitUntil window.
+      // Stop both the upstream and meter when the client disconnects so billing
+      // settles the observed partial output inside Cloudflare's waitUntil window.
       meterAbortController.abort(reason);
-      await clientReader.cancel(reason);
+      await Promise.allSettled([
+        upstreamReader.cancel(reason),
+        meterWriter.abort(reason),
+      ]);
     },
   });
   const billingPrompt = buildChatPromptForBilling(request);
 
-  // Meter + settle on the teed branch, OFF the response path when a Workers
-  // executionCtx exists (the same seam the SDK path defers its settlement
-  // through); inline for tests / non-Worker callers — tee buffers the client
-  // branch, so inline draining never deadlocks the response.
-  await settleOffResponsePath(params.executionCtx, async () => {
-    const tail = await readPassthroughStreamTail(
-      meterBranch,
-      meterAbortController.signal,
-      // #16079: milestones measured from the provider fetch dispatch.
-      { startedAt: upstreamFetchStartedAt },
-    );
+  // Meter + settle OFF the response path. The tail cannot resolve until client
+  // demand has driven the pass-through stream to completion, so awaiting this
+  // task before returning the Response would deadlock non-Worker callers.
+  settlementTask = settleOffResponsePath(params.executionCtx, async () => {
+    const tail = await tailPromise;
     // Always-on correlated milestone record (#16079): the ring buffer is read
     // back via the admin cloud-observability endpoint, so unlike logger.info
     // it survives without VERBOSE_LOGGING. Bounded fields only.
@@ -2748,10 +2764,17 @@ async function tryPassthroughStreamingRequest(params: {
       "[Chat Completions] Passthrough stream ended without usage frame; settled from estimates",
       { model, readAborted: tail.readError !== null, sawDone: tail.sawDone },
     );
+  }).catch((error) => {
+    // error-policy:J7 settlement diagnostics must not create an unhandled
+    // rejection after the response has begun streaming.
+    logger.error("[Chat Completions] Passthrough settlement task failed", {
+      model,
+      error: error instanceof Error ? error.message : String(error),
+    });
   });
 
   return addCorsHeaders(
-    new Response(cancelAwareClientBranch, {
+    new Response(backpressuredClientStream, {
       status: 200,
       headers: {
         "Content-Type": "text/event-stream",
@@ -2812,7 +2835,7 @@ async function handleStreamingRequest(
 ) {
   // #15428 pass-through fast path: qualifying plain streamed chat against a
   // direct OpenAI-compatible upstream pipes the provider bytes straight
-  // through (zero decode/re-encode) and meters a teed branch into the same
+  // through (zero decode/re-encode) and meters the backpressured byte path into the same
   // billing chain. Anything the pipe cannot represent — pooled BYO keys,
   // Anthropic CoT provider options, provider-native web search, tools,
   // response_format, multimodal content — takes the streamText path below,
@@ -3832,7 +3855,7 @@ export const __billingBranchTestHooks = {
 /**
  * Test-only seam for the pass-through streaming fast path (#15428): the
  * qualification predicate and the upstream-status mapping, unit-tested
- * directly; the pipe/tee/settle behavior itself is driven through
+ * directly; the pass-through stream and settle behavior itself is driven through
  * `handleStreamingRequest` with a mocked global fetch in
  * `__tests__/chat-completions-passthrough-streaming.test.ts`.
  */

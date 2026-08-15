@@ -6,7 +6,7 @@
  * upstream boundary) and the REAL credit-reservation settler, mirroring
  * chat-completions-streaming-credit-leak. Asserts the fast-path contract:
  * qualifying requests pipe the upstream SSE bytes VERBATIM (no re-encode)
- * while usage is metered from the teed branch and billed through the same
+ * while usage is metered from the backpressured byte path and billed through the same
  * settle chain with the same amounts as the SDK path; non-qualifying requests
  * and flag-off fall through to `streamText` untouched; client aborts cancel
  * the upstream fetch and settle the delivered portion; upstream errors refund
@@ -1156,7 +1156,7 @@ describe("passthrough streaming — #16079 milestone telemetry", () => {
 
     // The always-on ring buffer holds one correlated event keyed by the
     // fallback trace id (the test harness's requestId) with the milestones
-    // the teed meter observed from the upstream SSE bytes.
+    // the meter observed from the upstream SSE bytes.
     const snapshot = getCloudTelemetrySnapshot(10);
     const event = snapshot.streamMilestones.find(
       (e) => e.path === "passthrough",
@@ -1290,7 +1290,7 @@ describe("passthrough streaming — #16079 milestone telemetry", () => {
 
   test("client-branch cancel records aborted=true with partial milestones", async () => {
     // RP round-1 finding: the existing abort test simulated an upstream read
-    // error; this one cancels the CLIENT branch mid-stream, exercising the
+    // error; this one cancels the client stream mid-flight, exercising the
     // cancel() → meterAbortController.abort() path a real disconnect takes.
     const deliveredText = "partial before disconnect";
     const waitUntilPromises: Array<Promise<unknown>> = [];
@@ -1329,11 +1329,59 @@ describe("passthrough streaming — #16079 milestone telemetry", () => {
       (e) => e.path === "passthrough",
     );
     if (!event) throw new Error("no passthrough milestone event recorded");
-    // The client disconnect reached the meter branch: the run is aborted with
+    // The client disconnect reached the meter: the run is aborted with
     // the partial content milestone observed, never a completion.
     expect(event.aborted).toBe(true);
     expect(event.firstContentMs).not.toBeNull();
     expect(event.completionMs).toBeNull();
+  });
+
+  test("a stalled client applies backpressure instead of draining upstream", async () => {
+    const waitUntilPromises: Array<Promise<unknown>> = [];
+    let upstreamPulls = 0;
+    fetchImpl = async () =>
+      new Response(
+        new ReadableStream<Uint8Array>({
+          pull(controller) {
+            upstreamPulls++;
+            controller.enqueue(
+              encoder.encode(
+                `data: {"choices":[{"delta":{"content":"${upstreamPulls}"}}]}\n\n`,
+              ),
+            );
+          },
+        }),
+        { status: 200, headers: { "Content-Type": "text/event-stream" } },
+      );
+
+    const res = await callStreaming(async () => null, {
+      executionCtx: {
+        waitUntil(promise: Promise<unknown>) {
+          waitUntilPromises.push(promise);
+        },
+      },
+    });
+    const reader = res.body?.getReader();
+    if (!reader) throw new Error("expected passthrough response body");
+
+    // The response stream may prefill its single default queue slot, but it
+    // must not let the meter race ahead and drain an unbounded provider stream.
+    for (let index = 0; index < 20; index++) await Promise.resolve();
+    // The upstream source and response stream may each prefill one bounded
+    // queue slot; the count must then remain stable while the client stalls.
+    expect(upstreamPulls).toBeLessThanOrEqual(2);
+    const pullsWhileStalled = upstreamPulls;
+    for (let index = 0; index < 20; index++) await Promise.resolve();
+    expect(upstreamPulls).toBe(pullsWhileStalled);
+
+    await reader.read();
+    for (let index = 0; index < 20; index++) await Promise.resolve();
+    expect(upstreamPulls).toBeLessThanOrEqual(3);
+
+    await reader.cancel(
+      new DOMException("stalled client closed", "AbortError"),
+    );
+    await Promise.all(waitUntilPromises);
   });
 
   test("aborted stream records aborted=true and keeps observed partial milestones", async () => {
@@ -1366,9 +1414,9 @@ describe("passthrough streaming — #16079 milestone telemetry", () => {
       (e) => e.path === "passthrough",
     );
     if (!event) throw new Error("no passthrough milestone event recorded");
-    // The errored tee discards buffered chunks, so mid-stream milestones may
-    // legitimately be null here — what MUST hold: the event exists, is marked
-    // aborted, and never claims a completion it did not observe.
+    // An errored upstream may reject the pending read before its final buffered
+    // chunk reaches the meter, so partial milestones may legitimately be null.
+    // The event must still exist, be aborted, and never claim completion.
     expect(event.aborted).toBe(true);
     expect(event.completionMs).toBeNull();
   });
