@@ -324,9 +324,21 @@ jobs:
           command_timeout: 5m
           script: |
             set -euo pipefail
-            systemctl show eliza-provisioning-worker \
-              --property=WorkingDirectory --property=ExecStart --no-pager
-            find /opt/eliza -path '*shared/src/lib/services/eliza-sandbox.ts' -print | head -5
+            database_url="$(sed -n 's/^DATABASE_URL=//p' /opt/eliza/cloud/.env.local | tail -1)"
+            database_url="${database_url/sslmode=no-verify/sslmode=require}"
+            organization_id="$(psql "$database_url" -v ON_ERROR_STOP=1 -Atc "SELECT organization_id FROM agent_sandboxes WHERE id = '4602b3be-2c01-4e7e-9cdc-849604e1bef7'")"
+            test -n "$organization_id"
+            cd /opt/eliza
+            TARGET_AGENT_ID=4602b3be-2c01-4e7e-9cdc-849604e1bef7 \
+              TARGET_ORG_ID="$organization_id" \
+              /home/deploy/.bun/bin/bun --env-file=cloud/.env.local -e '
+                const { elizaSandboxService } = await import("./packages/cloud/shared/src/lib/services/eliza-sandbox.ts");
+                await elizaSandboxService.convergeReplacementCleanupFence(
+                  process.env.TARGET_AGENT_ID,
+                  process.env.TARGET_ORG_ID,
+                );
+                process.stdout.write("exact replacement cleanup converged\n");
+              '
 
   changes:
     name: Classify changed paths
