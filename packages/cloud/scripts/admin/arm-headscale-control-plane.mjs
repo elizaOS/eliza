@@ -424,24 +424,35 @@ validate_retirable_legacy_vhost() {
     }
   ')
   legacy_upgrade_map_shape=$(printf '%s\\n' "$legacy_vhost_source" | awk '
-    function is_exact_map_token(token, expected, quote) {
+    function normalize_map_variable(token, quote, name) {
       quote = substr(token, 1, 1)
       if (quote == sprintf("%c", 39) || quote == sprintf("%c", 34)) {
-        if (length(token) < 2 || substr(token, length(token), 1) != quote) return 0
+        if (length(token) < 2 || substr(token, length(token), 1) != quote) return ""
         token = substr(token, 2, length(token) - 2)
       }
-      return token == expected \
-        || token == "$" "{" substr(expected, 2) "}"
+      if (token ~ /^[$][[:alpha:]_][[:alnum:]_]*$/) return token
+      if (token ~ /^[$][{][[:alpha:]_][[:alnum:]_]*[}]$/) {
+        name = token
+        sub(/^[$][{]/, "", name)
+        sub(/[}]$/, "", name)
+        return "$" name
+      }
+      return ""
     }
-    function inspect_map_header(normalized, body, fields, count, has_open) {
+    function is_exact_map_source(token) {
+      return normalize_map_variable(token) == "$http_upgrade"
+    }
+    function inspect_map_header(normalized, body, fields, count, has_open, output) {
       body = normalized
       sub(/^map[[:space:]]+/, "", body)
       has_open = body ~ /[{]$/
       if (has_open) sub(/[[:space:]]*[{]$/, "", body)
       count = split(body, fields, /[[:space:]]+/)
+      output = count >= 2 ? normalize_map_variable(fields[2]) : ""
       if (count != 2 \
-          || !is_exact_map_token(fields[1], "$http_upgrade") \
-          || !is_exact_map_token(fields[2], "$connection_upgrade")) return 0
+          || !is_exact_map_source(fields[1]) \
+          || output == "") return 0
+      upgrade_map_output_variable = output
       if (has_open) {
         blocks += 1
         in_upgrade_map = 1
@@ -492,12 +503,13 @@ validate_retirable_legacy_vhost() {
     END {
       if (in_upgrade_map) unexpected += 1
       if (awaiting_upgrade_map_open) unexpected += 1
-      printf "%d %d %d %d %d\\n", blocks + 0, defaults + 0, closes + 0, endings + 0, unexpected + 0
+      printf "%d %d %d %d %d %s\\n", blocks + 0, defaults + 0, closes + 0, endings + 0, unexpected + 0, upgrade_map_output_variable
     }
   ')
+  legacy_upgrade_map_output_variable=
   read -r legacy_upgrade_map_blocks legacy_upgrade_map_defaults \\
     legacy_upgrade_map_closes legacy_upgrade_map_endings \\
-    legacy_upgrade_map_unexpected \\
+    legacy_upgrade_map_unexpected legacy_upgrade_map_output_variable \\
     <<<"$legacy_upgrade_map_shape"
   legacy_has_upgrade_map=false
   if [ "$legacy_upgrade_map_blocks" -ne 0 ] \\
@@ -509,7 +521,8 @@ validate_retirable_legacy_vhost() {
         || [ "$legacy_upgrade_map_defaults" -ne 1 ] \\
         || [ "$legacy_upgrade_map_closes" -ne 1 ] \\
         || [ "$legacy_upgrade_map_endings" -ne 1 ] \\
-        || [ "$legacy_upgrade_map_unexpected" -ne 0 ]; then
+        || [ "$legacy_upgrade_map_unexpected" -ne 0 ] \\
+        || [ -z "$legacy_upgrade_map_output_variable" ]; then
       echo "legacy Headscale vhost has an unexpected upgrade map shape: blocks=$legacy_upgrade_map_blocks defaults=$legacy_upgrade_map_defaults empty-close=$legacy_upgrade_map_closes endings=$legacy_upgrade_map_endings unexpected=$legacy_upgrade_map_unexpected"
       legacy_upgrade_map_header_profile=$(printf '%s\\n' "$legacy_vhost_source" | awk '
         function token_form(token, expected, quote, prefix) {
@@ -668,15 +681,21 @@ validate_retirable_legacy_vhost() {
     return 1
   fi
   legacy_upgrade_map_external_references=$(printf '%s\\n' "$loaded_nginx_config" \\
-    | awk -v target="$HS_RETIRABLE_LEGACY_VHOST" '
+    | awk -v target="$HS_RETIRABLE_LEGACY_VHOST" \\
+        -v map_output="$legacy_upgrade_map_output_variable" '
+      BEGIN {
+        map_output_name = substr(map_output, 2)
+        plain_output_pattern = "[$]" map_output_name "([^[:alnum:]_]|$)"
+        braced_output_pattern = "[$][{]" map_output_name "[}]"
+      }
       /^# configuration file / {
         config_file = $0
         sub(/^# configuration file /, "", config_file)
         sub(/:$/, "", config_file)
         next
       }
-      config_file != target \\
-          && $0 ~ /[$]connection_upgrade([^[:alnum:]_]|$)/ { count += 1 }
+      map_output != "" && config_file != target \\
+          && ($0 ~ plain_output_pattern || $0 ~ braced_output_pattern) { count += 1 }
       END { print count + 0 }
     ')
   if [ "$legacy_has_upgrade_map" = "true" ] \\
