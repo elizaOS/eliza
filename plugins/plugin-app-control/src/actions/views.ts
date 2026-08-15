@@ -3333,10 +3333,7 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 						let params = paramsResolution.params;
 						// Bind note-title deletion to the owner's current wording without
 						// widening unrelated capability schemas.
-						if (
-							normalizeCapabilityKey(capability) === "delete-note" &&
-							text
-						) {
+						if (normalizeCapabilityKey(capability) === "delete-note" && text) {
 							params = { ...params, ownerText: text };
 						}
 						const timeoutMs =

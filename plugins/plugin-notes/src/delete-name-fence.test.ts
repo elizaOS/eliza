@@ -70,11 +70,9 @@ describe("delete-note owner-text fence", () => {
 
   it("accepts an exactly named punctuation-bearing title", async () => {
     const service = await seeded("C++");
-    const removed = await service.deleteNoteByLookupWithCommit(
-      "title",
-      "C++",
-      { requireTitleInText: 'delete the "C++" note' },
-    );
+    const removed = await service.deleteNoteByLookupWithCommit("title", "C++", {
+      requireTitleInText: 'delete the "C++" note',
+    });
     expect(removed.value.title).toBe("C++");
     expect(service.snapshot().notes).toHaveLength(0);
   });
