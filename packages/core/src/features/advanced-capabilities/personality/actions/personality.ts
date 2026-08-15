@@ -83,9 +83,11 @@ type PersonalityEffect = "inspect" | "reconfigure";
  * is whatever scope the request resolves to; the rest carry no scope parameter
  * and so have a fixed reach. `load_profile` is the case that shape catches and
  * an op-name list does not: it takes no scope yet writes the agent-wide slot, so
- * it is an agent-wide reconfiguration however it is spelled. `save_profile`
- * files a copy of that slot without changing behaviour, so it sits with the
- * agent-wide inspections.
+ * it is an agent-wide reconfiguration however it is spelled. `list_profiles`
+ * takes no scope either, but `runListProfiles` reads the complete shared
+ * PersonalityStore catalog — agent-wide inspection, not a requester-local view.
+ * `save_profile` snapshots the global slot into that same shared catalog, so it
+ * is shared-storage reconfiguration (OWNER), not a read-only inspection.
  */
 const PERSONALITY_OP_SHAPE: Record<
 	PersonalityOp,
@@ -99,8 +101,8 @@ const PERSONALITY_OP_SHAPE: Record<
 	clear_directives: { effect: "reconfigure", reach: "scoped" },
 	show_state: { effect: "inspect", reach: "scoped" },
 	load_profile: { effect: "reconfigure", reach: "agent_wide" },
-	save_profile: { effect: "inspect", reach: "agent_wide" },
-	list_profiles: { effect: "inspect", reach: "requester" },
+	save_profile: { effect: "reconfigure", reach: "agent_wide" },
+	list_profiles: { effect: "inspect", reach: "agent_wide" },
 };
 
 /**

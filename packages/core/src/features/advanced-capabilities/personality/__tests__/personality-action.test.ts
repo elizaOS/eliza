@@ -2,8 +2,8 @@
  * Covers the PERSONALITY action handler against the in-memory FakeRuntime and a
  * real PersonalityStore (no live model): scope-clarification for ambiguous
  * requests, trait/reply-gate/directive mutations, named-profile load/save, and
- * the audit-memory trail. Admin-only paths run on an owner-seeded runtime so
- * hasRoleAccess grants access.
+ * the audit-memory trail. Agent-wide profile ops run on an owner-seeded runtime
+ * so hasRoleAccess grants the OWNER / ADMIN floors those shapes require.
  */
 import { beforeEach, describe, expect, test } from "vitest";
 import type { ActionResult, HandlerOptions } from "../../../../types/index.ts";
@@ -23,7 +23,8 @@ describe("personalityAction — routing ownership", () => {
 });
 
 // Fixed sender entity for the `run` helper. Pass it as `owner` to makeFakeRuntime
-// when a test needs the sender treated as admin/owner (admin-only ops).
+// when a test needs the sender treated as owner (agent-wide reconfigure / shared
+// catalog ops) or as `admins` for agent-wide inspect-only paths.
 const TEST_SENDER = "00000000-0000-4000-8000-0000000000ff" as never;
 
 async function run(
@@ -239,8 +240,9 @@ describe("personalityAction — subactions write structured state", () => {
 describe("personalityAction — profiles", () => {
 	let fake: ReturnType<typeof makeFakeRuntime>;
 	beforeEach(async () => {
-		// load_profile / save_profile are admin-only; make the test sender the
-		// canonical owner so hasRoleAccess grants admin (it now fails CLOSED on an
+		// load_profile / save_profile rewrite or extend shared agent-wide storage
+		// (OWNER floor); list_profiles reads that catalog (ADMIN floor). Seed the
+		// sender as owner so hasRoleAccess grants both (it fails CLOSED on an
 		// unresolved role — the old "no world → admin" leniency is gone).
 		fake = makeFakeRuntime({ owner: TEST_SENDER });
 		await initStore(fake);
@@ -343,7 +345,7 @@ describe("personalityAction — single-delivery settlement", () => {
 
 	for (const { op, userText, params } of cases) {
 		test(`${op} settles its confirmation as the sole user-facing delivery`, async () => {
-			// Owner-seeded so the admin-only profile ops pass the role gate.
+			// Owner-seeded so agent-wide profile ops clear OWNER/ADMIN floors.
 			const fake = makeFakeRuntime({ owner: TEST_SENDER });
 			await initStore(fake);
 			const { result, calls } = await run(fake, userText, op, params);
@@ -443,14 +445,94 @@ describe("personalityAction — authorization floors (blast radius, not op name)
 		// slot — the case an op-name allowlist misses and the shape table catches.
 		const fake = makeFakeRuntime({ admins: [TEST_SENDER] });
 		await initStore(fake);
-		const { result } = await run(fake, "load the weekend vibe", "load_profile", {
-			name: "weekend",
-		});
+		const { result } = await run(
+			fake,
+			"load the weekend vibe",
+			"load_profile",
+			{
+				name: "weekend",
+			},
+		);
 		expect(result.success).toBe(false);
 		expect(result.data).toMatchObject({
 			reach: "agent_wide",
 			requiredRole: "OWNER",
 		});
+	});
+
+	test("list_profiles is agent-wide inspection of the shared catalog", async () => {
+		// list_profiles takes no scope, but runListProfiles reads the complete
+		// shared PersonalityStore catalog — ADMIN floor, not requester inspect.
+		const plain = makeFakeRuntime();
+		await initStore(plain);
+		const denied = await run(plain, "list saved profiles", "list_profiles", {});
+		expect(denied.result.success).toBe(false);
+		expect(denied.result.data).toMatchObject({
+			reach: "agent_wide",
+			requiredRole: "ADMIN",
+		});
+
+		const admin = makeFakeRuntime({ admins: [TEST_SENDER] });
+		await initStore(admin);
+		const allowed = await run(
+			admin,
+			"list saved profiles",
+			"list_profiles",
+			{},
+		);
+		expect(allowed.result.success).toBe(true);
+	});
+
+	test("save_profile is shared-catalog reconfiguration from the global slot", async () => {
+		// save_profile persists a named profile into the shared catalog from the
+		// global slot — agent-wide reconfigure (OWNER), not a read-only inspect.
+		const plain = makeFakeRuntime();
+		await initStore(plain);
+		const beforeNames = plain.store
+			.listProfiles()
+			.map((p) => p.name)
+			.sort();
+		const denied = await run(plain, "save this vibe", "save_profile", {
+			name: "user-snapshot",
+			description: "must not land",
+		});
+		expect(denied.result.success).toBe(false);
+		expect(denied.result.data).toMatchObject({
+			reach: "agent_wide",
+			requiredRole: "OWNER",
+		});
+		// Refusal changed nothing: the shared catalog is untouched.
+		expect(plain.store.getProfile("user-snapshot")).toBeNull();
+		expect(
+			plain.store
+				.listProfiles()
+				.map((p) => p.name)
+				.sort(),
+		).toEqual(beforeNames);
+
+		const admin = makeFakeRuntime({ admins: [TEST_SENDER] });
+		await initStore(admin);
+		const adminDenied = await run(admin, "save this vibe", "save_profile", {
+			name: "admin-snapshot",
+			description: "must not land either",
+		});
+		expect(adminDenied.result.success).toBe(false);
+		expect(adminDenied.result.data).toMatchObject({
+			reach: "agent_wide",
+			requiredRole: "OWNER",
+		});
+		expect(admin.store.getProfile("admin-snapshot")).toBeNull();
+
+		const owner = makeFakeRuntime({ owner: TEST_SENDER });
+		await initStore(owner);
+		const allowed = await run(owner, "save this vibe", "save_profile", {
+			name: "owner-snapshot",
+			description: "owner may persist shared profiles",
+		});
+		expect(allowed.result.success).toBe(true);
+		expect(owner.store.getProfile("owner-snapshot")?.description).toBe(
+			"owner may persist shared profiles",
+		);
 	});
 
 	test("the owner clears the agent-wide floor", async () => {
