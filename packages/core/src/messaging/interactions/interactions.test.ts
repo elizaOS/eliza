@@ -924,4 +924,13 @@ describe("stripDashboardOnlyMarkers", () => {
 			"no markers at all",
 		);
 	});
+
+	it("is part of the canonical connector text boundary", () => {
+		const source =
+			"Connect it. [CONFIG:google_calendars]\n[FOLLOWUPS]\nreply:yes=Yes\n[/FOLLOWUPS]";
+		const parsed = parseInteractionBlocks(source);
+		expect(parsed.blocks).toHaveLength(1);
+		expect(parsed.cleanedText).toBe("Connect it.");
+		expect(renderInteractionsAsPlainText(source).text).not.toContain("CONFIG");
+	});
 });

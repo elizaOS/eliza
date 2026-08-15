@@ -40,6 +40,20 @@ describe("renderDiscordInteractions", () => {
 		expect(out.components[0]?.components[0]?.label).toBe("More");
 	});
 
+	it("strips dashboard-only config cards with and without native controls", () => {
+		const interactive = renderDiscordInteractions({
+			text: "Connect it. [CONFIG:google_calendars]\n[FOLLOWUPS]\nreply:yes=Yes\n[/FOLLOWUPS]",
+		} as Content);
+		expect(interactive.text).toBe("Connect it.");
+		expect(interactive.components).toHaveLength(1);
+
+		const plain = renderDiscordInteractions({
+			text: "Set up here: [CONFIG:@elizaos/plugin-gmail]",
+		} as Content);
+		expect(plain.text).toBe("Set up here:");
+		expect(plain.components).toEqual([]);
+	});
+
 	it("renders a choice block as a button action row and strips the marker", () => {
 		const content: Content = {
 			text: "Approve?\n[CHOICE:approve id=c1]\nyes=Yes, ship it\nno=Cancel\n[/CHOICE]",

@@ -14,7 +14,6 @@ import {
   type InteractionBlock,
   type NeutralButton,
   parseInteractionBlocks,
-  stripDashboardOnlyMarkers,
   toNeutralLayout,
 } from "@elizaos/core";
 import type { InlineKeyboardButton } from "@telegraf/types";
@@ -59,13 +58,7 @@ export function renderTelegramInteractions(
   content: Content,
   opts: TelegramInteractionOptions = {},
 ): TelegramInteractionRender {
-  const { blocks, cleanedText: parsedText } = parseInteractionBlocks(
-    content.text ?? "",
-  );
-  // Dashboard-only markers ([CONFIG:…] plugin cards) are outside the
-  // interaction grammar, so the parser leaves them in the prose — strip them
-  // before Telegram delivery (Finding B, HQ #18309).
-  const cleanedText = stripDashboardOnlyMarkers(parsedText);
+  const { blocks, cleanedText } = parseInteractionBlocks(content.text ?? "");
   if (blocks.length === 0) {
     return {
       text: cleanedText,
