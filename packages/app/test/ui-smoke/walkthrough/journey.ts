@@ -578,6 +578,17 @@ export async function installJourneyRoutes(
     }
     await route.fallback();
   });
+  // Voice readiness is outside this journey's contract. The compatibility
+  // plugin authenticates with an API token rather than the live harness's
+  // browser session, so probing it would emit an expected 401 on every reload
+  // and drown the diagnostics gate without exercising any walkthrough step.
+  await page.route("**/api/tts/local-inference/status", async (route) => {
+    if (route.request().method() === "GET") {
+      await fulfillJson(route, 200, { ready: false, provider: null });
+      return;
+    }
+    await route.fallback();
+  });
   // The renderer HEAD-probes the OPTIONAL character VRM avatar on most views.
   // Answer the probe with a 404 ("no VRM") so the gate fails only on real
   // errors, without changing the fallback behaviour the UI already relies on.
@@ -1286,13 +1297,45 @@ export const JOURNEY_STEPS: readonly JourneyStep[] = [
         .getByRole("button", { name: /New chat|New conversation/i })
         .first();
       if (await newChat.isVisible().catch(() => false)) {
-        await newChat.click().catch(() => undefined);
+        await newChat.click();
       } else {
-        await page.evaluate(async () => {
-          await fetch("/api/conversations", { method: "POST" }).catch(
-            () => undefined,
-          );
+        const createdId = await page.evaluate(async () => {
+          const response = await fetch("/api/conversations", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: "{}",
+          });
+          if (!response.ok) {
+            throw new Error(
+              `POST /api/conversations failed with ${response.status}: ${await response.text()}`,
+            );
+          }
+          const body = (await response.json()) as {
+            conversation?: { id?: unknown };
+          };
+          if (typeof body.conversation?.id !== "string") {
+            throw new Error(
+              "POST /api/conversations returned no conversation id",
+            );
+          }
+          return body.conversation.id;
         });
+        await expect
+          .poll(() =>
+            page.evaluate(async (expectedId) => {
+              const response = await fetch("/api/conversations");
+              if (!response.ok) return false;
+              const body = (await response.json()) as {
+                conversations?: Array<{ id?: unknown }>;
+              };
+              return Boolean(
+                body.conversations?.some(
+                  (conversation) => conversation.id === expectedId,
+                ),
+              );
+            }, createdId),
+          )
+          .toBe(true);
       }
       await expect(composer(page)).toBeVisible({ timeout: 20_000 });
       const value = await composer(page)

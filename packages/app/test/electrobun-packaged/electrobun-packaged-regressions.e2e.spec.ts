@@ -1121,17 +1121,20 @@ test("packaged desktop notification store reaches native OS notifications", asyn
     });
 
     await harness.clearNotifications();
-    await harness.minimizeMainWindow();
+    // GTK/Xvfb accepts the native minimize command but can leave both focus and
+    // visibility telemetry unchanged. Closing this tray-backed window exercises
+    // the same background notification path with an observable native state.
+    await harness.closeMainWindow();
     await harness.waitForState(
-      (state) => state.mainWindow.present && !state.shell.windowFocused,
-      "Expected the packaged main window to lose focus before background notification injection.",
+      (state) => state.mainWindow.present && !state.shell.windowVisible,
+      "Expected the packaged main window to hide before background notification injection.",
       30_000,
     );
 
     const backgroundFocus = await ingestPackagedNotification(harness, {
       id: "packaged-background-normal",
       title: "Background normal packaged alert",
-      body: "The minimized normal notification should reach the OS bridge.",
+      body: "The hidden normal notification should reach the OS bridge.",
       priority: "normal",
     });
     expect(backgroundFocus.hasFocus).toBe(false);
@@ -1143,7 +1146,7 @@ test("packaged desktop notification store reaches native OS notifications", asyn
       ),
     ).toMatchObject({
       title: "Background normal packaged alert",
-      body: "The minimized normal notification should reach the OS bridge.",
+      body: "The hidden normal notification should reach the OS bridge.",
       silent: false,
     });
   });

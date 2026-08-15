@@ -41,6 +41,8 @@ const MODEL =
   process.env.AI_QA_VISION_MODEL ||
   (BACKEND === "openai" ? "gpt-5-mini" : "claude-haiku-4-5-20251001");
 const ANTHROPIC_VERSION = "2023-06-01";
+const REVIEW_ATTEMPTS = 2;
+const REVIEW_TIMEOUT_MS = 90_000;
 const DEFAULT_VERDICT_MD = join(
   REPO_ROOT,
   "packages/app/test/ui-smoke/walkthrough/WALKTHROUGH_VERDICTS.md",
@@ -116,78 +118,105 @@ async function reviewOne(capture) {
       issues: capture.issues,
     });
     const isOpenAi = BACKEND === "openai";
-    const res = await fetch(
-      isOpenAi
-        ? "https://api.openai.com/v1/chat/completions"
-        : "https://api.anthropic.com/v1/messages",
-      {
-        method: "POST",
-        headers: isOpenAi
-          ? {
-              "content-type": "application/json",
-              authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-            }
-          : {
-              "content-type": "application/json",
-              "x-api-key": process.env.ANTHROPIC_API_KEY,
-              "anthropic-version": ANTHROPIC_VERSION,
-            },
-        body: JSON.stringify(
-          isOpenAi
+    let lastError;
+    for (let attempt = 1; attempt <= REVIEW_ATTEMPTS; attempt += 1) {
+      const res = await fetch(
+        isOpenAi
+          ? "https://api.openai.com/v1/chat/completions"
+          : "https://api.anthropic.com/v1/messages",
+        {
+          method: "POST",
+          headers: isOpenAi
             ? {
-                model: MODEL,
-                max_completion_tokens: 1024,
-                response_format: { type: "json_object" },
-                messages: [
-                  {
-                    role: "user",
-                    content: [
-                      { type: "text", text: prompt },
-                      {
-                        type: "image_url",
-                        image_url: { url: `data:image/png;base64,${base64}` },
-                      },
-                    ],
-                  },
-                ],
+                "content-type": "application/json",
+                authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
               }
             : {
-                model: MODEL,
-                max_tokens: 1024,
-                messages: [
-                  {
-                    role: "user",
-                    content: [
-                      imageBlock(base64),
-                      { type: "text", text: prompt },
-                    ],
-                  },
-                ],
+                "content-type": "application/json",
+                "x-api-key": process.env.ANTHROPIC_API_KEY,
+                "anthropic-version": ANTHROPIC_VERSION,
               },
-        ),
-      },
-    );
-    if (!res.ok)
-      throw new Error(
-        `HTTP ${res.status}: ${(await res.text()).slice(0, 200)}`,
+          body: JSON.stringify(
+            isOpenAi
+              ? {
+                  model: MODEL,
+                  max_completion_tokens: 4096,
+                  reasoning_effort: "minimal",
+                  response_format: { type: "json_object" },
+                  messages: [
+                    {
+                      role: "user",
+                      content: [
+                        { type: "text", text: prompt },
+                        {
+                          type: "image_url",
+                          image_url: { url: `data:image/png;base64,${base64}` },
+                        },
+                      ],
+                    },
+                  ],
+                }
+              : {
+                  model: MODEL,
+                  max_tokens: 1024,
+                  messages: [
+                    {
+                      role: "user",
+                      content: [
+                        imageBlock(base64),
+                        { type: "text", text: prompt },
+                      ],
+                    },
+                  ],
+                },
+          ),
+          signal: AbortSignal.timeout(REVIEW_TIMEOUT_MS),
+        },
       );
-    const body = await res.json();
-    const text = isOpenAi
-      ? body.choices?.[0]?.message?.content || ""
-      : (body.content ?? [])
-          .filter((b) => b.type === "text")
-          .map((b) => b.text)
-          .join("");
-    const verdict = parseVisionVerdict(text);
-    return {
-      key: capture.key,
-      stepN: capture.stepN,
-      stepId: capture.stepId,
-      title: capture.title,
-      viewport: capture.viewport,
-      lane: capture.lane,
-      ...verdict,
-    };
+      if (!res.ok) {
+        const error = new Error(
+          `HTTP ${res.status}: ${(await res.text()).slice(0, 200)}`,
+        );
+        if (
+          attempt === REVIEW_ATTEMPTS ||
+          (res.status < 500 && res.status !== 429)
+        ) {
+          throw error;
+        }
+        lastError = error;
+        continue;
+      }
+      const body = await res.json();
+      const text = isOpenAi
+        ? body.choices?.[0]?.message?.content || ""
+        : (body.content ?? [])
+            .filter((b) => b.type === "text")
+            .map((b) => b.text)
+            .join("");
+      try {
+        const verdict = parseVisionVerdict(text);
+        return {
+          key: capture.key,
+          stepN: capture.stepN,
+          stepId: capture.stepId,
+          title: capture.title,
+          viewport: capture.viewport,
+          lane: capture.lane,
+          ...verdict,
+        };
+      } catch (error) {
+        // error-policy:J3 Model output is untrusted; retry it or retain an
+        // explicit review error instead of fabricating a valid verdict.
+        const finishReason = isOpenAi
+          ? body.choices?.[0]?.finish_reason
+          : body.stop_reason;
+        lastError = new Error(
+          `${error?.message || String(error)} (finish=${finishReason ?? "unknown"})`,
+        );
+        if (attempt === REVIEW_ATTEMPTS) throw lastError;
+      }
+    }
+    throw lastError ?? new Error("vision-review: attempts exhausted");
   } catch (err) {
     return {
       key: capture.key,
