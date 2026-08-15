@@ -660,4 +660,5 @@ describe("accounts routes", () => {
     );
     expect(status.res.end).toHaveBeenCalledTimes(1);
     expect(unsubscribe).toHaveBeenCalledTimes(1);
-  });});
+  });
+});
