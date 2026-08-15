@@ -1258,7 +1258,7 @@ export interface IAgentRuntime extends RuntimeDatabaseAdapterSurface {
 	 */
 	locateConfiguredSecretFragmentTaint(
 		fragments: readonly import("../security/fragment-redaction").SecretFragment[],
-	): import("../security/fragment-redaction").SecretFragmentTaint;
+	): import("../security/fragment-redaction").SecretFragmentTaintProfile;
 
 	// ========================================================================
 	// Single-item convenience wrappers

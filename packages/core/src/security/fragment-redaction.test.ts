@@ -1,6 +1,8 @@
 /** Verifies configured-secret taint mapping without exposing secret values. */
 
 import { describe, expect, it } from "vitest";
+import { AgentRuntime } from "../runtime.js";
+import type { Character } from "../types/index.js";
 import {
 	locateConfiguredSecretFragmentTaint,
 	type SecretFragment,
@@ -105,7 +107,7 @@ describe("locateConfiguredSecretFragmentTaint", () => {
 			status: "incomplete",
 			reason: "invalid-input",
 			ranges: [],
-			maxSecretLength: 0,
+			maxSecretLength: 9,
 		});
 	});
 
@@ -119,7 +121,7 @@ describe("locateConfiguredSecretFragmentTaint", () => {
 				status: "incomplete",
 				reason: "invalid-input",
 				ranges: [],
-				maxSecretLength: 0,
+				maxSecretLength: 9,
 			});
 		}
 	});
@@ -180,7 +182,49 @@ describe("locateConfiguredSecretFragmentTaint", () => {
 			status: "incomplete",
 			reason: "resource-limit",
 			ranges: [],
+			maxSecretLength: 9,
 		});
+	});
+
+	it("short-circuits an empty eligible profile before fragment limits", () => {
+		const fragments = Array.from({ length: 257 }, (_, index) => ({
+			source: "stdout",
+			startOffset: index,
+			text: "x",
+		}));
+		expect(
+			locateConfiguredSecretFragmentTaint(fragments, { SHORT: "short" }),
+		).toEqual({ status: "complete", ranges: [], maxSecretLength: 0 });
+	});
+
+	it("returns an opaque revision that changes with the eligible profile", () => {
+		const runtime = new AgentRuntime({
+			character: {
+				name: "fragment-redaction-runtime",
+				settings: { secrets: { SERVICE_TOKEN: SECRET } },
+			} as Character,
+		});
+		const exhausted = runtime.locateConfiguredSecretFragmentTaint(
+			Array.from({ length: 257 }, (_, index) => ({
+				source: "stdout",
+				startOffset: index,
+				text: "x",
+			})),
+		);
+		expect(exhausted).toMatchObject({
+			status: "incomplete",
+			reason: "resource-limit",
+			maxSecretLength: SECRET.length,
+		});
+		expect(JSON.stringify(exhausted)).not.toContain(SECRET);
+
+		const firstRevision = exhausted.profileRevision;
+		runtime.character.settings = {
+			secrets: { SERVICE_TOKEN: "violet73x" },
+		};
+		const rotated = runtime.locateConfiguredSecretFragmentTaint([]);
+		expect(rotated.profileRevision).toBeGreaterThan(firstRevision);
+		expect(JSON.stringify(rotated)).not.toContain("violet73x");
 	});
 
 	it("does not mutate inputs or return configured secret values", () => {

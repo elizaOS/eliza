@@ -137,9 +137,15 @@ type RuntimeSecretTaint = ReturnType<
 function locateTestSecretTaint(
   fragments: readonly RuntimeSecretFragment[],
   secret: string | undefined,
+  profileRevision = 1,
 ): RuntimeSecretTaint {
   if (!secret || secret.length < 8) {
-    return { status: "complete", ranges: [], maxSecretLength: 0 };
+    return {
+      status: "complete",
+      ranges: [],
+      maxSecretLength: 0,
+      profileRevision,
+    };
   }
   const found: Array<{
     source: string;
@@ -193,7 +199,12 @@ function locateTestSecretTaint(
       }
       return merged;
     }, []);
-  return { status: "complete", ranges, maxSecretLength: secret.length };
+  return {
+    status: "complete",
+    ranges,
+    maxSecretLength: secret.length,
+    profileRevision,
+  };
 }
 
 function requireActionResult(result: ActionResult | undefined): ActionResult {
@@ -2353,6 +2364,7 @@ describeIfPosix("shellAction", () => {
       reason: "resource-limit",
       ranges: [],
       maxSecretLength: 128,
+      profileRevision: 1,
     });
     const actor = makeMessage();
     const start = requireActionResult(
@@ -2383,8 +2395,14 @@ describeIfPosix("shellAction", () => {
               reason: "resource-limit",
               ranges: [],
               maxSecretLength: 8,
+              profileRevision: 1,
             }
-          : { status: "complete", ranges: [], maxSecretLength: 8 },
+          : {
+              status: "complete",
+              ranges: [],
+              maxSecretLength: 8,
+              profileRevision: 1,
+            },
     );
     const actor = makeMessage();
     const start = requireActionResult(
@@ -2410,6 +2428,85 @@ describeIfPosix("shellAction", () => {
     expect(stdout.text).toContain("later-safe");
     expect(stdout.text).not.toContain("unsafe");
     expect(stdout.text).not.toContain("12345678");
+  });
+
+  it("does not let one stream consume another stream's recovery window", async () => {
+    const { runtime, backgroundShell } = await makeRuntime();
+    let injectedIncomplete = false;
+    vi.mocked(runtime.locateConfiguredSecretFragmentTaint).mockImplementation(
+      (fragments: readonly RuntimeSecretFragment[]) => {
+        if (
+          !injectedIncomplete &&
+          fragments.some((fragment) => fragment.text.includes("TRIGGER"))
+        ) {
+          injectedIncomplete = true;
+          return {
+            status: "incomplete",
+            reason: "resource-limit",
+            ranges: [],
+            maxSecretLength: 9,
+            profileRevision: 1,
+          };
+        }
+        return {
+          status: "complete",
+          ranges: [],
+          maxSecretLength: 9,
+          profileRevision: 1,
+        };
+      },
+    );
+    const actor = makeMessage();
+    const start = requireActionResult(
+      await shellAction.handler?.(runtime, actor, undefined, {
+        action: "start_background",
+        command: [
+          "printf '\\x6d\\x61\\x72\\x69'",
+          "sleep 0.15",
+          "printf 'TRIGGER' >&2",
+          "sleep 0.15",
+          "printf 'yyyyyyyyy'",
+          "sleep 0.15",
+          "printf '\\x67\\x6f\\x6c\\x64\\x39' >&2",
+        ].join("; "),
+      }),
+    );
+    const handle = (start.data as Record<string, unknown>).handle as string;
+    const first = await pollUntil(runtime, actor, handle, (data) => {
+      const stdout = data.stdout as Record<string, unknown> | undefined;
+      const stderr = data.stderr as Record<string, unknown> | undefined;
+      return stdout?.text === "mari" && stderr?.text === "";
+    });
+    for (let attempt = 0; attempt < 40; attempt += 1) {
+      const status = backgroundShell
+        .list(String(actor.roomId))
+        .find((candidate) => candidate.handle === handle)?.status;
+      if (status === "exited") break;
+      await delay(25);
+    }
+    const later = requireActionResult(
+      await shellAction.handler?.(runtime, actor, undefined, {
+        action: "poll_background",
+        handle,
+        stdout_offset: 4,
+        stderr_offset: 0,
+      }),
+    );
+    const firstStdout = (
+      (first.data as Record<string, unknown>).stdout as Record<string, unknown>
+    ).text as string;
+    const laterData = later.data as Record<string, unknown>;
+    const laterStderr = (laterData.stderr as Record<string, unknown>)
+      .text as string;
+
+    expect(injectedIncomplete).toBe(true);
+    expect(firstStdout).toBe("mari");
+    expect(laterStderr).toContain("[REDACTED:configured-secret-fragment]");
+    expect(laterStderr).not.toContain("gold9");
+    expect(firstStdout + laterStderr).not.toContain("marigold9");
+    expect((laterData.stdout as Record<string, unknown>).text).not.toContain(
+      "yyyyyyyyy",
+    );
   });
 
   it("keeps an eviction-split configured secret inside the private overlap", async () => {
@@ -2454,7 +2551,7 @@ describeIfPosix("shellAction", () => {
     );
     vi.mocked(runtime.locateConfiguredSecretFragmentTaint).mockImplementation(
       (fragments: readonly RuntimeSecretFragment[]) =>
-        locateTestSecretTaint(fragments, rotatedSecret),
+        locateTestSecretTaint(fragments, rotatedSecret, 2),
     );
     const actor = makeMessage();
     const start = requireActionResult(
@@ -2476,7 +2573,7 @@ describeIfPosix("shellAction", () => {
     expect(JSON.stringify(poll)).not.toContain(rotatedSecret.slice(-12));
   });
 
-  it("rescans retained cross-stream output when a secret rotates before the first poll", async () => {
+  it("invalidates retained output on secret rotation and recovers in a fresh session", async () => {
     const rotatedSecret = "marigold9";
     const { runtime, backgroundShell } = await makeRuntime();
     const actor = makeMessage();
@@ -2509,7 +2606,7 @@ describeIfPosix("shellAction", () => {
     );
     vi.mocked(runtime.locateConfiguredSecretFragmentTaint).mockImplementation(
       (fragments: readonly RuntimeSecretFragment[]) =>
-        locateTestSecretTaint(fragments, rotatedSecret),
+        locateTestSecretTaint(fragments, rotatedSecret, 2),
     );
 
     const poll = requireActionResult(
@@ -2528,11 +2625,27 @@ describeIfPosix("shellAction", () => {
       JSON.stringify({ stdout: data.stdout, stderr: data.stderr }),
     ).not.toContain("gold9");
     expect((data.stdout as Record<string, unknown>).text).toContain(
-      "[REDACTED:configured-secret-fragment]",
+      "[REDACTED:fragment-scan-incomplete]",
     );
     expect((data.stderr as Record<string, unknown>).text).toContain(
-      "[REDACTED:configured-secret-fragment]",
+      "[REDACTED:fragment-scan-incomplete]",
     );
+
+    const freshStart = requireActionResult(
+      await shellAction.handler?.(runtime, actor, undefined, {
+        action: "start_background",
+        command: "printf 'later-safe'",
+      }),
+    );
+    const freshHandle = (freshStart.data as Record<string, unknown>)
+      .handle as string;
+    const freshPoll = await pollUntil(
+      runtime,
+      actor,
+      freshHandle,
+      (freshData) => freshData.status === "exited",
+    );
+    expect(freshPoll.text).toContain("later-safe");
   });
 });
 

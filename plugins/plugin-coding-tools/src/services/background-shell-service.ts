@@ -97,7 +97,8 @@ interface FragmentRedactionState {
   fragments: SecretFragment[];
   ranges: SecretTaintRange[];
   incomplete: boolean;
-  quarantineCharacters: number;
+  quarantineCharacters: Record<"stdout" | "stderr", number>;
+  profileRevision?: number;
 }
 
 export class BackgroundShellService extends Service {
@@ -385,7 +386,7 @@ function emptyFragmentRedactionState(): FragmentRedactionState {
     fragments: [],
     ranges: [],
     incomplete: false,
-    quarantineCharacters: 0,
+    quarantineCharacters: { stdout: 0, stderr: 0 },
   };
 }
 
@@ -403,9 +404,9 @@ function appendSessionOutput(
     { source, startOffset, text: "x" },
   ]);
   const maxSecretLength = profile.maxSecretLength;
-  appendRing(ring, text, cap, Math.max(cap, maxSecretLength));
+  appendRing(ring, text, cap, maxSecretLength);
   const quarantinedCharacters = Math.min(
-    session.redaction.quarantineCharacters,
+    session.redaction.quarantineCharacters[source],
     text.length,
   );
   if (quarantinedCharacters > 0) {
@@ -417,7 +418,7 @@ function appendSessionOutput(
         endOffset: startOffset + quarantinedCharacters,
       },
     ]);
-    session.redaction.quarantineCharacters -= quarantinedCharacters;
+    session.redaction.quarantineCharacters[source] -= quarantinedCharacters;
   }
   const detectionText = text.slice(quarantinedCharacters);
   if (detectionText) {
@@ -435,9 +436,31 @@ function refreshSessionRedaction(
   runtime: IAgentRuntime,
   session: BackgroundShellSession,
 ): void {
+  if (session.redaction.incomplete) return;
   const analyses = observableFragmentOrders(session.redaction.fragments).map(
     (fragments) => runtime.locateConfiguredSecretFragmentTaint(fragments),
   );
+  const revisions = new Set(
+    analyses.map((analysis) => analysis.profileRevision),
+  );
+  if (revisions.size !== 1) {
+    session.redaction.incomplete = true;
+    return;
+  }
+  const revision = analyses[0]?.profileRevision ?? 0;
+  if (
+    session.redaction.profileRevision !== undefined &&
+    revision !== session.redaction.profileRevision
+  ) {
+    session.redaction.incomplete = true;
+    session.redaction.ranges = mergeTaintRanges([
+      ...session.redaction.ranges,
+      ...retainedRingRanges(session),
+    ]);
+    session.redaction.fragments = [];
+    return;
+  }
+  session.redaction.profileRevision = revision;
   const incomplete = analyses.find(
     (analysis) => analysis.status === "incomplete",
   );
@@ -449,10 +472,12 @@ function refreshSessionRedaction(
         ...retainedRingRanges(session),
       ]);
       session.redaction.fragments = [];
-      session.redaction.quarantineCharacters = Math.max(
-        session.redaction.quarantineCharacters,
-        incomplete.maxSecretLength,
-      );
+      for (const source of ["stdout", "stderr"] as const) {
+        session.redaction.quarantineCharacters[source] = Math.max(
+          session.redaction.quarantineCharacters[source],
+          incomplete.maxSecretLength,
+        );
+      }
     }
     return;
   }

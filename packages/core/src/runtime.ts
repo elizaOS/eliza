@@ -110,7 +110,7 @@ import { BM25 } from "./search";
 import {
 	locateConfiguredSecretFragmentTaint,
 	type SecretFragment,
-	type SecretFragmentTaint,
+	type SecretFragmentTaintProfile,
 } from "./security/fragment-redaction.js";
 import {
 	authorizeOwnerExclusiveDisclosure,
@@ -329,6 +329,7 @@ import {
 	getActiveRoutingContextsForTurn,
 	shouldIncludeByContext,
 } from "./utils/context-routing";
+import { createHash } from "./utils/crypto-compat";
 import { buildDeterministicSeed, shortStringHash } from "./utils/deterministic";
 import { getNumberEnv } from "./utils/environment";
 import {
@@ -1340,6 +1341,8 @@ export class AgentRuntime implements IAgentRuntime {
 	private embeddingGenerationDisabledReason: string | null = null;
 	/** Once-latch so the embedding-skip warning fires once, not per write. */
 	private embeddingSkipWarned = false;
+	private secretRedactionProfileSignature = "";
+	private secretRedactionProfileRevision = 0;
 	private taskWorkers = new Map<string, TaskWorker>();
 	private sendHandlers = new Map<string, SendHandlerFunction>();
 	private messageConnectors = new Map<string, MessageConnector>();
@@ -11305,11 +11308,27 @@ ${section_end}`;
 
 	locateConfiguredSecretFragmentTaint(
 		fragments: readonly SecretFragment[],
-	): SecretFragmentTaint {
-		return locateConfiguredSecretFragmentTaint(
-			fragments,
-			this.getSecretsForRedaction(),
-		);
+	): SecretFragmentTaintProfile {
+		const secrets = this.getSecretsForRedaction();
+		const signature = createHash("sha256")
+			.update(
+				JSON.stringify(
+					[
+						...new Set(
+							Object.values(secrets).filter((value) => value.length >= 8),
+						),
+					].sort(),
+				),
+			)
+			.digest("hex");
+		if (signature !== this.secretRedactionProfileSignature) {
+			this.secretRedactionProfileSignature = signature;
+			this.secretRedactionProfileRevision += 1;
+		}
+		return {
+			...locateConfiguredSecretFragmentTaint(fragments, secrets),
+			profileRevision: this.secretRedactionProfileRevision,
+		};
 	}
 
 	async clearAllAgentMemories(): Promise<void> {

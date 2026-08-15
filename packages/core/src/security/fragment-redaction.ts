@@ -39,6 +39,11 @@ export type SecretFragmentTaint =
 			maxSecretLength: number;
 	  };
 
+export type SecretFragmentTaintProfile = SecretFragmentTaint & {
+	/** Monotonic runtime-local revision; changes never expose secret values. */
+	profileRevision: number;
+};
+
 interface CandidateRange extends SecretTaintRange {
 	fragmentIndex: number;
 }
@@ -264,14 +269,19 @@ export function locateConfiguredSecretFragmentTaint(
 	fragments: readonly SecretFragment[],
 	secrets: Record<string, string>,
 ): SecretFragmentTaint {
-	const normalized = normalizeFragments(fragments);
-	if (typeof normalized === "string") return incomplete(normalized);
 	const values = configuredSecretValues(secrets);
 	if (typeof values === "string") return incomplete(values);
 	const maxSecretLength = values.reduce(
 		(maximum, secret) => Math.max(maximum, secret.length),
 		0,
 	);
+	if (values.length === 0) {
+		return { status: "complete", ranges: [], maxSecretLength: 0 };
+	}
+	const normalized = normalizeFragments(fragments);
+	if (typeof normalized === "string") {
+		return incomplete(normalized, maxSecretLength);
+	}
 	const availableCharacters = normalized.reduce(
 		(total, fragment) => total + fragment.text.length,
 		0,
