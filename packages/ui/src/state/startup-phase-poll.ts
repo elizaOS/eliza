@@ -422,6 +422,18 @@ export async function runPollingBackend(
     policy.nativeConsecutiveFailureBudgetMs ??
     NATIVE_CONSECUTIVE_FAILURE_BUDGET_MS;
   let nativeFailureStreakStartedAt: number | null = null;
+  // Hosted-web bounded boot for a DEDICATED cloud agent base (issue #19627):
+  // timestamp of the first CONNECTION-LEVEL failure (no HTTP response at all —
+  // e.g. a TLS handshake failure on `<id>.cloud.eliza.app`) in the current
+  // unbroken streak. Reset by any successful probe or any response that
+  // carries an HTTP status; when the streak outlives the budget the poll
+  // surfaces a distinct "agent unreachable" error instead of spending the full
+  // `backendTimeoutMs` on a generic timeout card (error-policy J4: a transport
+  // failure is an error state, not a loading state).
+  const agentUnreachableBudgetMs =
+    policy.agentUnreachableFailureBudgetMs ??
+    STARTUP_TIMING_POLICY.agentUnreachableFailureBudgetMs;
+  let agentUnreachableStreakStartedAt: number | null = null;
   let latestAuth: Awaited<ReturnType<typeof client.getAuthStatus>> = {
     required: false,
     pairingEnabled: false,
@@ -724,6 +736,7 @@ export async function runPollingBackend(
       // transport works; any remaining slowness is the agent booting, which
       // the overall `deadline` already budgets for.
       nativeFailureStreakStartedAt = null;
+      agentUnreachableStreakStartedAt = null;
       if (cancelled.current) return;
       if (auth.required && !auth.authenticated && !client.hasToken()) {
         if (auth.bootstrapRequired) {
@@ -1220,6 +1233,55 @@ export async function runPollingBackend(
         continue;
       }
       lastErr = err;
+      if (!isCapacitorNative()) {
+        // Hosted-web bounded boot for a DEDICATED cloud agent base (#19627):
+        // `shouldFallBackToLocalOrigin` deliberately never abandons a
+        // dedicated base, so a host with broken transport (e.g. missing
+        // wildcard TLS on `<id>.cloud.eliza.app` — every fetch dies at the
+        // handshake with no HTTP status) used to spin "Booting up…" for the
+        // whole `backendTimeoutMs` and then report a generic timeout. Bound
+        // the connection-level failure streak and surface the unreachable
+        // host explicitly instead.
+        const isConnectionLevelFailure =
+          err instanceof ApiHangTimeoutError ||
+          ae?.kind === "network" ||
+          ae?.kind === "timeout";
+        if (
+          isConnectionLevelFailure &&
+          isDedicatedCloudAgentBase(client.getBaseUrl())
+        ) {
+          agentUnreachableStreakStartedAt ??= Date.now();
+          const failingForMs = Date.now() - agentUnreachableStreakStartedAt;
+          if (failingForMs >= agentUnreachableBudgetMs) {
+            const detail = formatStartupErrorDetail(err) ?? String(err);
+            let agentHost = client.getBaseUrl();
+            try {
+              agentHost = new URL(client.getBaseUrl()).host;
+            } catch {
+              // error-policy:J3 unparsable base — report the raw base string.
+            }
+            logger.warn(
+              { failingForMs, agentHost, detail },
+              "[startup-phase-poll] dedicated cloud agent host is unreachable at the connection level; surfacing the startup error",
+            );
+            deps.setStartupError({
+              reason: "backend-unreachable",
+              phase: "starting-backend",
+              message: `Your agent at ${agentHost} is unreachable: every connection attempt for ${Math.round(failingForMs / 1000)}s failed without an HTTP response (TLS or network failure). Last failure: ${detail}`,
+              detail,
+              path: ae?.path,
+            });
+            deps.setFirstRunLoading(false);
+            dispatch({ type: "BACKEND_TIMEOUT" });
+            return;
+          }
+        } else {
+          // Only explicit transport failures count. Parse/protocol failures —
+          // including malformed HTTP-200 payloads — prove the host answered
+          // and must break the TLS/network streak even when they lack status.
+          agentUnreachableStreakStartedAt = null;
+        }
+      }
       if (isCapacitorNative()) {
         // Android detached local agent now exposes the service-owned boot
         // state over the Capacitor plugin. That distinguishes a cold boot
