@@ -6,7 +6,13 @@
  */
 
 import { ElizaError, stringToUuid, type UUID } from "@elizaos/core/edge";
-import { createTodosSqlStore, type Todo, type TodoStore } from "@elizaos/plugin-todos/edge";
+import {
+  createTodosSqlStore,
+  serializeTodoMutationRecord,
+  type Todo,
+  type TodoStore,
+} from "@elizaos/plugin-todos/edge";
+import type { SharedTodoMutationCutoverRecord } from "@elizaos/shared/todo-cutover";
 import { dbWrite } from "../../../db/client";
 
 export interface SharedTodoSourceScope {
@@ -17,6 +23,11 @@ export interface SharedTodoSourceScope {
 export interface SharedTodoStorageScope {
   agentId: UUID;
   entityId: UUID;
+}
+
+export interface SharedTodoCutoverState {
+  todos: Todo[];
+  mutations: SharedTodoMutationCutoverRecord[];
 }
 
 function requireScopePart(value: string, field: keyof SharedTodoSourceScope): string {
@@ -46,14 +57,16 @@ export function createSharedTodoStore(): TodoStore {
 }
 
 /**
- * Returns every canonical source Todo in stable order for an atomic tier
- * cutover. Storage failures propagate; only a readable empty source is `[]`.
+ * Reads the Todo rows and durable mutation ledger from one scope-locked
+ * transaction for tier cutover. Storage failures propagate; readable empty
+ * state remains two valid empty arrays.
  */
-export async function listSharedTodosSnapshot(input: SharedTodoSourceScope): Promise<Todo[]> {
-  const scope = sharedTodoStorageScope(input);
-  const todos = await createSharedTodoStore().list({
-    ...scope,
-    status: ["pending", "in_progress", "completed", "cancelled"],
-  });
-  return [...todos].sort((left, right) => left.id.localeCompare(right.id));
+export async function readSharedTodoCutoverState(
+  input: SharedTodoSourceScope,
+): Promise<SharedTodoCutoverState> {
+  const state = await createSharedTodoStore().readCutoverState(sharedTodoStorageScope(input));
+  return {
+    todos: state.todos,
+    mutations: state.mutations.map(serializeTodoMutationRecord),
+  };
 }

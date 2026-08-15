@@ -3,8 +3,9 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { readFile } from "node:fs/promises";
 import { PGlite } from "@electric-sql/pglite";
+import { and, asc, eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/pglite";
-import { todosTable } from "../../../../../plugins/plugin-todos/src/db/schema";
+import { todoMutationsTable, todosTable } from "../../../../../plugins/plugin-todos/src/db/schema";
 
 describe("0206-0207 Shared Todos", () => {
   const databases: PGlite[] = [];
@@ -159,7 +160,9 @@ describe("0206-0207 Shared Todos", () => {
       "todos_pkey",
     ]);
 
-    const client = drizzle(database, { schema: { todosTable } });
+    const client = drizzle(database, {
+      schema: { todoMutationsTable, todosTable },
+    });
     const agentId = "d67cf563-74cf-4514-89a3-af4f4fd38c6c";
     const entityId = "6dcd5bb9-36f9-4323-8347-5f53f4de9d4d";
     const [created] = await client
@@ -268,20 +271,35 @@ describe("0206-0207 Shared Todos", () => {
       "todo_mutations_pkey",
     ]);
 
-    await database.exec(`
-      INSERT INTO todos.todo_mutations (
-        agent_id, entity_id, idempotency_key, request_digest, operation,
-        applied, result_json
-      ) VALUES (
-        'd67cf563-74cf-4514-89a3-af4f4fd38c6c',
-        '6dcd5bb9-36f9-4323-8347-5f53f4de9d4d',
-        'telegram:message-1:action-0',
-        'digest-create',
-        'create',
-        true,
-        '{"action":"create","todo":{"content":"Prove Shared Todos"}}'::jsonb
-      );
-    `);
+    const requestDigest = "a".repeat(64);
+    const resultJson = {
+      action: "create",
+      todo: { content: "Prove Shared Todos" },
+    };
+    const [mutation] = await client
+      .insert(todoMutationsTable)
+      .values({
+        agentId,
+        entityId,
+        idempotencyKey: "telegram:message-1:action-0",
+        requestDigest,
+        operation: "create",
+        applied: true,
+        resultJson,
+      })
+      .returning();
+
+    expect(mutation).toMatchObject({
+      agentId,
+      entityId,
+      idempotencyKey: "telegram:message-1:action-0",
+      requestDigest,
+      operation: "create",
+      applied: true,
+      resultJson,
+    });
+    expect(mutation?.mutationId).toMatch(/^[0-9a-f-]{36}$/i);
+    expect(mutation?.committedAt).toBeInstanceOf(Date);
 
     await expect(
       database.exec(`
@@ -289,10 +307,10 @@ describe("0206-0207 Shared Todos", () => {
           agent_id, entity_id, idempotency_key, request_digest, operation,
           applied, result_json
         ) VALUES (
-          'd67cf563-74cf-4514-89a3-af4f4fd38c6c',
-          '6dcd5bb9-36f9-4323-8347-5f53f4de9d4d',
+          '${agentId}',
+          '${entityId}',
           'telegram:message-1:action-0',
-          'digest-delete',
+          '${"b".repeat(64)}',
           'delete',
           true,
           '{"action":"delete","deleted":null}'::jsonb
@@ -300,41 +318,47 @@ describe("0206-0207 Shared Todos", () => {
       `),
     ).rejects.toThrow("todo_mutations_agent_entity_idempotency_key_unique");
 
-    await database.exec(`
-      INSERT INTO todos.todo_mutations (
-        agent_id, entity_id, idempotency_key, request_digest, operation,
-        applied, result_json
-      ) VALUES
-      (
-        'd67cf563-74cf-4514-89a3-af4f4fd38c6c',
-        'df89c28c-e54c-439a-b5cd-cfc2bb0d6598',
-        'telegram:message-1:action-0',
-        'digest-create-other-entity',
-        'create',
-        true,
-        '{"action":"create","todo":{"content":"Other entity"}}'::jsonb
-      ),
-      (
-        '21f69e67-c39d-45fc-9b42-3c9a5bc3bc19',
-        '6dcd5bb9-36f9-4323-8347-5f53f4de9d4d',
-        'telegram:message-1:action-0',
-        'digest-create-other-agent',
-        'create',
-        true,
-        '{"action":"create","todo":{"content":"Other agent"}}'::jsonb
+    const otherEntityId = "df89c28c-e54c-439a-b5cd-cfc2bb0d6598";
+    const otherAgentId = "21f69e67-c39d-45fc-9b42-3c9a5bc3bc19";
+    await client.insert(todoMutationsTable).values([
+      {
+        agentId,
+        entityId: otherEntityId,
+        idempotencyKey: "telegram:message-1:action-0",
+        requestDigest: "c".repeat(64),
+        operation: "create",
+        applied: true,
+        resultJson: { action: "create", todo: { content: "Other entity" } },
+      },
+      {
+        agentId: otherAgentId,
+        entityId,
+        idempotencyKey: "telegram:message-1:action-0",
+        requestDigest: "d".repeat(64),
+        operation: "create",
+        applied: true,
+        resultJson: { action: "create", todo: { content: "Other agent" } },
+      },
+    ]);
+    const mutationRows = await client
+      .select()
+      .from(todoMutationsTable)
+      .orderBy(asc(todoMutationsTable.agentId), asc(todoMutationsTable.entityId));
+    expect(mutationRows).toHaveLength(3);
+    expect(mutationRows.every((row) => row.operation === "create")).toBe(true);
+    expect(mutationRows.every((row) => row.committedAt instanceof Date)).toBe(true);
+
+    const originalScopeRows = await client
+      .select()
+      .from(todoMutationsTable)
+      .where(
+        and(eq(todoMutationsTable.agentId, agentId), eq(todoMutationsTable.entityId, entityId)),
       );
-    `);
-    const mutationRows = await database.query<{
-      agent_id: string;
-      entity_id: string;
-      idempotency_key: string;
-      operation: string;
-    }>(`
-      SELECT agent_id, entity_id, idempotency_key, operation
-        FROM todos.todo_mutations
-       ORDER BY agent_id, entity_id
-    `);
-    expect(mutationRows.rows).toHaveLength(3);
-    expect(mutationRows.rows.every((row) => row.operation === "create")).toBe(true);
+    expect(originalScopeRows).toHaveLength(1);
+    expect(originalScopeRows[0]).toMatchObject({
+      mutationId: mutation?.mutationId,
+      idempotencyKey: "telegram:message-1:action-0",
+      resultJson,
+    });
   });
 });

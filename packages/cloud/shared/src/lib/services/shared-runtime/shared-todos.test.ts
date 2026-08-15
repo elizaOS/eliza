@@ -10,22 +10,25 @@ import { readFile } from "node:fs/promises";
 const ORIGINAL_DATABASE_URL = process.env.DATABASE_URL;
 
 describe("Shared Todo storage", () => {
+  let database: typeof import("../../../db/client");
   let closeDatabaseConnectionsForTests: () => Promise<void>;
   let createSharedTodoStore: typeof import("./shared-todos").createSharedTodoStore;
-  let listSharedTodosSnapshot: typeof import("./shared-todos").listSharedTodosSnapshot;
+  let readSharedTodoCutoverState: typeof import("./shared-todos").readSharedTodoCutoverState;
   let sharedTodoStorageScope: typeof import("./shared-todos").sharedTodoStorageScope;
 
   beforeAll(async () => {
     process.env.DATABASE_URL = "pglite://memory";
     const todos = await import("./shared-todos");
-    ({ createSharedTodoStore, listSharedTodosSnapshot, sharedTodoStorageScope } = todos);
-    const database = await import("../../../db/client");
+    ({ createSharedTodoStore, readSharedTodoCutoverState, sharedTodoStorageScope } = todos);
+    database = await import("../../../db/client");
     closeDatabaseConnectionsForTests = database.closeDatabaseConnectionsForTests;
-    const migration = await readFile(
-      new URL("../../../db/migrations/0206_shared_todos.sql", import.meta.url),
-      "utf8",
-    );
-    await database.getPgliteClientForTests().exec(migration);
+    for (const filename of ["0206_shared_todos.sql", "0207_todo_mutation_ledger.sql"]) {
+      await database
+        .getPgliteClientForTests()
+        .exec(
+          await readFile(new URL(`../../../db/migrations/${filename}`, import.meta.url), "utf8"),
+        );
+    }
   });
 
   afterAll(async () => {
@@ -52,48 +55,81 @@ describe("Shared Todo storage", () => {
     );
 
     const store = createSharedTodoStore();
-    await store.create({
-      ...scope,
-      content: "Pending task",
-      activeForm: "Handling pending task",
-      status: "pending",
-    });
-    await store.create({
-      ...scope,
-      content: "Completed task",
-      activeForm: "Completing task",
-      status: "completed",
-    });
-    await store.create({
-      ...scope,
-      content: "Cancelled task",
-      activeForm: "Cancelling task",
-      status: "cancelled",
-    });
-    await store.create({
-      ...sharedTodoStorageScope(otherOwner),
-      content: "Another owner's task",
-      activeForm: "Handling another owner's task",
-      status: "pending",
+    for (const [index, todo] of [
+      {
+        content: "Pending task",
+        activeForm: "Handling pending task",
+        status: "pending" as const,
+      },
+      {
+        content: "Completed task",
+        activeForm: "Completing task",
+        status: "completed" as const,
+      },
+      {
+        content: "Cancelled task",
+        activeForm: "Cancelling task",
+        status: "cancelled" as const,
+      },
+    ].entries()) {
+      await store.applyMutation({
+        scope,
+        idempotencyKey: `telegram:source-message-${index}:action-0`,
+        mutation: { action: "create", input: todo },
+      });
+    }
+    await store.applyMutation({
+      scope: sharedTodoStorageScope(otherOwner),
+      idempotencyKey: "telegram:other-owner:action-0",
+      mutation: {
+        action: "create",
+        input: {
+          content: "Another owner's task",
+          activeForm: "Handling another owner's task",
+          status: "pending",
+        },
+      },
     });
 
-    const snapshot = await listSharedTodosSnapshot(source);
-    expect(snapshot).toHaveLength(3);
-    expect(snapshot.map((todo) => todo.status).sort()).toEqual([
+    const snapshot = await readSharedTodoCutoverState(source);
+    expect(snapshot.todos).toHaveLength(3);
+    expect(snapshot.todos.map((todo) => todo.status).sort()).toEqual([
       "cancelled",
       "completed",
       "pending",
     ]);
-    expect(snapshot.map((todo) => todo.id)).toEqual(
-      snapshot.map((todo) => todo.id).sort((left, right) => left.localeCompare(right)),
+    expect(snapshot.todos).toEqual(
+      [...snapshot.todos].sort(
+        (left, right) =>
+          left.createdAt.getTime() - right.createdAt.getTime() || left.id.localeCompare(right.id),
+      ),
     );
-    expect(snapshot.every((todo) => todo.agentId === scope.agentId)).toBe(true);
-    expect(snapshot.every((todo) => todo.entityId === scope.entityId)).toBe(true);
+    expect(snapshot.todos.every((todo) => todo.agentId === scope.agentId)).toBe(true);
+    expect(snapshot.todos.every((todo) => todo.entityId === scope.entityId)).toBe(true);
+    expect(snapshot.mutations).toHaveLength(3);
+    expect(snapshot.mutations).toEqual(
+      [...snapshot.mutations].sort(
+        (left, right) =>
+          Date.parse(left.committedAt) - Date.parse(right.committedAt) ||
+          left.mutationId.localeCompare(right.mutationId),
+      ),
+    );
     expect(
-      await listSharedTodosSnapshot({
+      snapshot.mutations.every(
+        (mutation) =>
+          mutation.version === 1 &&
+          mutation.operation === "create" &&
+          /^[a-f0-9]{64}$/.test(mutation.requestDigest),
+      ),
+    ).toBe(true);
+    expect(
+      await readSharedTodoCutoverState({
         sourceAgentId: "personal:44444444-4444-5444-8444-444444444444",
         ownerId: "55555555-5555-4555-8555-555555555555",
       }),
-    ).toEqual([]);
+    ).toEqual({ todos: [], mutations: [] });
+
+    await database.getPgliteClientForTests().exec("DROP TABLE todos.todo_mutations");
+    await expect(readSharedTodoCutoverState(source)).rejects.toThrow("todo_mutations");
   });
 });
