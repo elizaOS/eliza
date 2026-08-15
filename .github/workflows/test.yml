@@ -495,7 +495,7 @@ jobs:
               --request POST \
               --header "X-Service-Key: $service_key" \
               "https://api.eliza.app/api/v1/agents/$agent_id/restart")"
-            test "$(jq -r '.success' <<<"$response")" = true
+            printf '%s' "$response" | jq -e '.success == true' >/dev/null
             psql "$database_url" -v ON_ERROR_STOP=1 -c \
               "SELECT id, type, status, created_at FROM jobs WHERE agent_id = '$agent_id' ORDER BY created_at DESC LIMIT 3"
 
