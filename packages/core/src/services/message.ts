@@ -9133,10 +9133,17 @@ export async function runV5MessageRuntimeStage1(args: {
 		// produced a correct answer and the user got silence. Recover with the
 		// best grounded text available and name the failure in the log so the
 		// upstream emptying path is diagnosable instead of invisible.
+		// Two states are NOT recoverable silence: a synchronously delivered
+		// media deliverable is a delivery even though it never enters the
+		// visible-TEXT set, and deliberate silence (suppressPlannerReply
+		// terminals, ambient IGNORE after tool work) is a contract this
+		// invariant must honor, not a failure for it to "fix" into filler.
 		if (
 			!shouldSendPlannedText &&
 			!earlyReplySent &&
+			!suppressesPlannerReply &&
 			deliveredVisibleTexts.size === 0 &&
+			deliveredMediaUrls.length === 0 &&
 			actionResults.length > 0
 		) {
 			const recoveredText =

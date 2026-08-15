@@ -665,7 +665,10 @@ describe("renderInteractionsAsPlainText", () => {
 			title: "Configure account [CONFIG:@elizaos/plugin-gmail]",
 			fields: [{ name: "account", type: "text" }],
 		});
-		const rendered = renderInteractionsAsPlainText(`[FORM]${form}[/FORM]`);
+		// The documented block form requires newlines around the JSON body
+		// (parse.ts header; the malformed-marker containment regex deliberately
+		// rejects inline bodies).
+		const rendered = renderInteractionsAsPlainText(`[FORM]\n${form}\n[/FORM]`);
 		expect(rendered.hadBlocks).toBe(true);
 		expect(rendered.text).toBe(`Configure account\n\n${FORM_FREE_TEXT_INVITE}`);
 	});
