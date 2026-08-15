@@ -179,6 +179,7 @@ describe("splitText", () => {
 			expect(await measuredLength(chunk)).toBeLessThanOrEqual(4);
 		}
 	});
+
 	it("measures dropped separators with the custom length function", async () => {
 		const weightedLength = async (text: string) =>
 			Array.from(text).reduce(
