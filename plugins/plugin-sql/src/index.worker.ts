@@ -13,7 +13,7 @@
  * the pool instead of re-dialing Hyperdrive.
  */
 import type { IDatabaseAdapter, UUID } from "@elizaos/core";
-import { type IAgentRuntime, logger, type Plugin } from "@elizaos/core";
+import { ElizaError, type IAgentRuntime, logger, type Plugin } from "@elizaos/core";
 import {
   createAdapterReadinessError,
   describeAdapterReadinessError,
@@ -54,35 +54,40 @@ function shouldReusePostgresManager(
   return !manager.isShuttingDown();
 }
 
-function readWorkerEnv(name: string): string | undefined {
-  const env = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process
-    ?.env;
-  return env?.[name];
-}
-
 export function createDatabaseAdapter(
   config: {
     postgresUrl?: string;
+    dataIsolationEnabled?: boolean;
+    serverId?: string;
   },
   agentId: UUID
 ): IDatabaseAdapter {
   if (!config.postgresUrl) {
-    throw new Error(
+    throw new ElizaError(
       "plugin-sql (workerd): POSTGRES_URL is required. Pass the Hyperdrive binding's " +
         "connectionString (env.HYPERDRIVE.connectionString) to the runtime as POSTGRES_URL; " +
-        "a Worker isolate has no disk for an embedded database fallback."
+        "a Worker isolate has no disk for an embedded database fallback.",
+      {
+        code: "WORKER_POSTGRES_URL_REQUIRED",
+        context: { entrypoint: "workerd" },
+        severity: "fatal",
+      }
     );
   }
 
-  const dataIsolationEnabled = readWorkerEnv("ENABLE_DATA_ISOLATION") === "true";
   let rlsServerId: string | undefined;
-  let managerKey = "default";
+  let managerKey = stringToUuid(config.postgresUrl);
 
-  if (dataIsolationEnabled) {
-    const rlsServerIdString = readWorkerEnv("ELIZA_SERVER_ID");
+  if (config.dataIsolationEnabled) {
+    const rlsServerIdString = config.serverId;
     if (!rlsServerIdString) {
-      throw new Error(
-        "[Data Isolation] ENABLE_DATA_ISOLATION=true requires ELIZA_SERVER_ID environment variable"
+      throw new ElizaError(
+        "[Data Isolation] ENABLE_DATA_ISOLATION=true requires the ELIZA_SERVER_ID runtime setting",
+        {
+          code: "DATA_ISOLATION_SERVER_ID_REQUIRED",
+          context: { entrypoint: "workerd" },
+          severity: "fatal",
+        }
       );
     }
     rlsServerId = stringToUuid(rlsServerIdString);
@@ -157,10 +162,14 @@ export const plugin: Plugin = {
     }
 
     const postgresUrl = runtime.getSetting("POSTGRES_URL");
+    const dataIsolationSetting = runtime.getSetting("ENABLE_DATA_ISOLATION");
+    const serverId = runtime.getSetting("ELIZA_SERVER_ID");
 
     const dbAdapter = createDatabaseAdapter(
       {
         postgresUrl: typeof postgresUrl === "string" ? postgresUrl : undefined,
+        dataIsolationEnabled: dataIsolationSetting === true || dataIsolationSetting === "true",
+        serverId: typeof serverId === "string" ? serverId : undefined,
       },
       runtime.agentId
     );

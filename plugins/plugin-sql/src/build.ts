@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 /**
- * Build script for plugin-sql: bundles Node ESM, browser ESM, and CJS
+ * Build script for plugin-sql: bundles Node ESM, Workers ESM, browser ESM, and CJS
  * entrypoints via Bun, emits `tsc`-generated `.d.ts` declarations, rewrites
  * relative declaration import specifiers to point at the bundled `.js`
  * files, and hand-writes small re-export shims (root index, `/schema`,
