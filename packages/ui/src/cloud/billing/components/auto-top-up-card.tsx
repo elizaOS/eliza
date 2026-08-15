@@ -14,8 +14,15 @@
 "use client";
 
 import { BrandCard, Button, CornerBrackets } from "@elizaos/ui/cloud-ui";
-import { CreditCard, DollarSign, Info, Loader2 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  AlertCircle,
+  CreditCard,
+  DollarSign,
+  Info,
+  Loader2,
+  RefreshCw,
+} from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
   SettingsInputRow,
@@ -47,33 +54,154 @@ interface BillingSettingsResponse {
 
 const ENDPOINT = "/api/v1/billing/settings";
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function requireRecord(value: unknown, field: string): Record<string, unknown> {
+  if (!isRecord(value)) {
+    throw new TypeError(`Billing settings response omitted ${field}`);
+  }
+  return value;
+}
+
+function requireBoolean(value: unknown, field: string): boolean {
+  if (typeof value !== "boolean") {
+    throw new TypeError(`Billing settings response omitted ${field}`);
+  }
+  return value;
+}
+
+function requireFiniteNumber(value: unknown, field: string): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    throw new TypeError(`Billing settings response omitted ${field}`);
+  }
+  return value;
+}
+
+function parseAutoTopUpSettings(value: unknown): AutoTopUpSettings {
+  const settings = requireRecord(value, "settings.autoTopUp");
+  return {
+    enabled: requireBoolean(settings.enabled, "settings.autoTopUp.enabled"),
+    amount: requireFiniteNumber(settings.amount, "settings.autoTopUp.amount"),
+    threshold: requireFiniteNumber(
+      settings.threshold,
+      "settings.autoTopUp.threshold",
+    ),
+    hasPaymentMethod: requireBoolean(
+      settings.hasPaymentMethod,
+      "settings.autoTopUp.hasPaymentMethod",
+    ),
+  };
+}
+
+function parseBillingSettingsResponse(value: unknown): BillingSettingsResponse {
+  const response = requireRecord(value, "response");
+  const settings = requireRecord(response.settings, "settings");
+  const limitsRecord = requireRecord(settings.limits, "settings.limits");
+  const limits = {
+    minAmount: requireFiniteNumber(
+      limitsRecord.minAmount,
+      "settings.limits.minAmount",
+    ),
+    maxAmount: requireFiniteNumber(
+      limitsRecord.maxAmount,
+      "settings.limits.maxAmount",
+    ),
+    minThreshold: requireFiniteNumber(
+      limitsRecord.minThreshold,
+      "settings.limits.minThreshold",
+    ),
+    maxThreshold: requireFiniteNumber(
+      limitsRecord.maxThreshold,
+      "settings.limits.maxThreshold",
+    ),
+  };
+  if (
+    limits.minAmount > limits.maxAmount ||
+    limits.minThreshold > limits.maxThreshold
+  ) {
+    throw new TypeError("Billing settings response contains inverted limits");
+  }
+  return {
+    settings: {
+      autoTopUp: parseAutoTopUpSettings(settings.autoTopUp),
+      limits,
+    },
+  };
+}
+
+function parseAutoTopUpSaveResponse(value: unknown): AutoTopUpSettings {
+  const response = requireRecord(value, "response");
+  const settings = requireRecord(response.settings, "settings");
+  return parseAutoTopUpSettings(settings.autoTopUp);
+}
+
+function inputValue(value: number): string {
+  return value === 0 ? "" : String(value);
+}
+
 export function AutoTopUpCard() {
   const t = useCloudT();
   const [settings, setSettings] = useState<AutoTopUpSettings | null>(null);
   const [limits, setLimits] = useState<Limits | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadFailed, setLoadFailed] = useState(false);
   const [saving, setSaving] = useState(false);
 
   const [enabled, setEnabled] = useState(false);
   const [amount, setAmount] = useState("");
   const [threshold, setThreshold] = useState("");
+  const mountedRef = useRef(false);
+  const loadInFlightRef = useRef(false);
+  const saveInFlightRef = useRef(false);
+  const loadGenerationRef = useRef(0);
+  const saveGenerationRef = useRef(0);
 
   const load = useCallback(async () => {
+    if (loadInFlightRef.current) return;
+
+    loadInFlightRef.current = true;
+    const generation = ++loadGenerationRef.current;
     setLoading(true);
     try {
-      const data = await api<BillingSettingsResponse>(ENDPOINT);
+      const data = parseBillingSettingsResponse(await api<unknown>(ENDPOINT));
+      if (!mountedRef.current || generation !== loadGenerationRef.current) {
+        return;
+      }
+
       setSettings(data.settings.autoTopUp);
       setLimits(data.settings.limits);
       setEnabled(data.settings.autoTopUp.enabled);
-      setAmount(String(data.settings.autoTopUp.amount || ""));
-      setThreshold(String(data.settings.autoTopUp.threshold || ""));
+      setAmount(inputValue(data.settings.autoTopUp.amount));
+      setThreshold(inputValue(data.settings.autoTopUp.threshold));
+      setLoadFailed(false);
+    } catch {
+      if (!mountedRef.current || generation !== loadGenerationRef.current) {
+        return;
+      }
+      // error-policy:J4 the settings UI keeps transport and malformed payload failures visibly unavailable and retryable.
+      setSettings(null);
+      setLimits(null);
+      setLoadFailed(true);
     } finally {
-      setLoading(false);
+      if (generation === loadGenerationRef.current) {
+        loadInFlightRef.current = false;
+        if (mountedRef.current) setLoading(false);
+      }
     }
   }, []);
 
   useEffect(() => {
+    mountedRef.current = true;
     void load();
+    return () => {
+      mountedRef.current = false;
+      loadGenerationRef.current += 1;
+      saveGenerationRef.current += 1;
+      loadInFlightRef.current = false;
+      saveInFlightRef.current = false;
+    };
   }, [load]);
 
   const parsedAmount = parseFloat(amount);
@@ -113,6 +241,16 @@ export function AutoTopUpCard() {
   }, [enabled, limits, parsedThreshold, t]);
 
   const handleSave = async () => {
+    if (
+      saveInFlightRef.current ||
+      loading ||
+      loadFailed ||
+      !settings ||
+      !limits ||
+      !settings.hasPaymentMethod
+    ) {
+      return;
+    }
     if (amountError) {
       document.getElementById("cloud-billing-auto-top-up-amount")?.focus();
       return;
@@ -121,28 +259,43 @@ export function AutoTopUpCard() {
       document.getElementById("cloud-billing-auto-top-up-threshold")?.focus();
       return;
     }
+
+    saveInFlightRef.current = true;
+    const generation = ++saveGenerationRef.current;
     setSaving(true);
     try {
-      const body = await api<BillingSettingsResponse>(ENDPOINT, {
-        method: "PUT",
-        json: {
-          autoTopUp: {
-            enabled,
-            amount: parsedAmount || undefined,
-            threshold: Number.isFinite(parsedThreshold)
-              ? parsedThreshold
-              : undefined,
+      const saved = parseAutoTopUpSaveResponse(
+        await api<unknown>(ENDPOINT, {
+          method: "PUT",
+          json: {
+            autoTopUp: {
+              enabled,
+              amount: parsedAmount || undefined,
+              threshold: Number.isFinite(parsedThreshold)
+                ? parsedThreshold
+                : undefined,
+            },
           },
-        },
-      });
-      setSettings(body.settings.autoTopUp);
+        }),
+      );
+      if (!mountedRef.current || generation !== saveGenerationRef.current) {
+        return;
+      }
+
+      setSettings(saved);
+      setEnabled(saved.enabled);
+      setAmount(inputValue(saved.amount));
+      setThreshold(inputValue(saved.threshold));
       toast.success(
         t("cloud.autoTopUp.saved", {
           defaultValue: "Auto top-up settings saved",
         }),
       );
     } catch (error) {
-      // error-policy:J1 billing settings save boundary returns a toast
+      if (!mountedRef.current || generation !== saveGenerationRef.current) {
+        return;
+      }
+      // error-policy:J4 the settings UI preserves the retryable draft and reports save failure without claiming success.
       toast.error(
         error instanceof ApiError
           ? error.message
@@ -151,7 +304,10 @@ export function AutoTopUpCard() {
             }),
       );
     } finally {
-      setSaving(false);
+      if (mountedRef.current && generation === saveGenerationRef.current) {
+        saveInFlightRef.current = false;
+        setSaving(false);
+      }
     }
   };
 
@@ -162,7 +318,72 @@ export function AutoTopUpCard() {
     defaultValue: "Save auto top-up",
   });
 
-  if (loading) {
+  if (loadFailed) {
+    const errorTitle = t("cloud.billing.loadError", {
+      defaultValue: "Couldn't load auto top-up settings",
+    });
+    const errorDescription = t("cloud.apiKeys.tryAgain", {
+      defaultValue:
+        "Your current settings are unavailable. Check your connection and retry.",
+    });
+    const retryLabel = t("common.retry", {
+      defaultValue: "Retry",
+    });
+
+    return (
+      <BrandCard className="relative">
+        <CornerBrackets size="sm" className="opacity-50" />
+        <div
+          role="alert"
+          aria-labelledby="cloud-auto-top-up-load-error-title"
+          aria-describedby="cloud-auto-top-up-load-error-description"
+          className="relative z-10 flex flex-col gap-4 border border-danger/30 bg-danger/10 p-4 sm:flex-row sm:items-center sm:justify-between"
+        >
+          <div className="flex min-w-0 items-start gap-3">
+            <AlertCircle
+              className="mt-0.5 h-5 w-5 shrink-0 text-danger"
+              aria-hidden="true"
+            />
+            <div className="min-w-0 space-y-1">
+              <h3
+                id="cloud-auto-top-up-load-error-title"
+                className="text-sm font-mono text-txt"
+              >
+                {errorTitle}
+              </h3>
+              <p
+                id="cloud-auto-top-up-load-error-description"
+                className="text-pretty text-xs font-mono text-muted"
+              >
+                {errorDescription}
+              </p>
+            </div>
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="min-h-touch shrink-0 font-mono"
+            disabled={loading}
+            aria-busy={loading}
+            onClick={() => void load()}
+          >
+            {loading ? (
+              <Loader2
+                className="animate-spin motion-reduce:animate-none"
+                aria-hidden="true"
+              />
+            ) : (
+              <RefreshCw aria-hidden="true" />
+            )}
+            {retryLabel}
+          </Button>
+        </div>
+      </BrandCard>
+    );
+  }
+
+  if (loading || !settings || !limits) {
     return (
       <BrandCard className="relative">
         <CornerBrackets size="sm" className="opacity-50" />
@@ -182,7 +403,7 @@ export function AutoTopUpCard() {
     );
   }
 
-  const noPaymentMethod = settings && !settings.hasPaymentMethod;
+  const noPaymentMethod = !settings.hasPaymentMethod;
 
   return (
     <BrandCard className="relative">
