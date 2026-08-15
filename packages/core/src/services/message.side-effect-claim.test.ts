@@ -485,6 +485,50 @@ describe("multilingual completed-side-effect claims (#17027 AC7)", () => {
 		expect(replyClaimsCompletedSideEffect("提醒设置好了吗？")).toBe(false);
 	});
 
+	it.each([
+		["es", "Todavía no los he creado, pero tus recordatorios siguen pendientes."],
+		["pt", "Ainda não os criei; os lembretes continuam pendentes."],
+		["ko", "아직 알림을 못 설정했어요."],
+		["vi", "Nếu bạn đã lưu lời nhắc rồi, nó sẽ xuất hiện ở đây."],
+		["tl", "Hindi ko pa talaga na-set ang reminder mo."],
+		["zh-CN", "如果你已经设置好了提醒，它会显示在这里。"],
+	])("passes %s denials or conditionals through: %s", (_locale, reply) => {
+		expect(replyClaimsCompletedSideEffect(reply)).toBe(false);
+	});
+
+	it.each([
+		["es", "Si he guardado bien tus recordatorios, aparecerán aquí."],
+		["pt", "Se já salvei os teus lembretes, eles aparecerão aqui."],
+		["ko", "알림을 설정했으면 자동으로 알림이 올 거예요."],
+		["vi", "Nếu bạn đã lưu lời nhắc rồi, nó sẽ xuất hiện ở đây."],
+		["tl", "Kapag naka-schedule na ang paalala mo, lalabas ito rito."],
+		["zh-CN", "如果你已经设置好了提醒，它会显示在这里。"],
+	])("passes %s conditional completion shapes through: %s", (_locale, reply) => {
+		expect(replyClaimsCompletedSideEffect(reply)).toBe(false);
+	});
+
+	it.each([
+		["es", "¿He creado el recordatorio para las 9 a.m.?"],
+		["pt", "Criei o lembrete para amanhã?"],
+		["ko", "알림 설정했나요"],
+		["vi", "Đã tạo lời nhắc chưa?"],
+		["tl", "Na-set ko na ang reminder?"],
+		["zh-CN", "提醒设置好了吗"],
+	])("passes %s direct questions through: %s", (_locale, reply) => {
+		expect(replyClaimsCompletedSideEffect(reply)).toBe(false);
+	});
+
+	it.each([
+		["es", "He creado tus recordatorios — ¿algo más?"],
+		["pt", "Criei o lembrete — mais alguma coisa?"],
+		["ko", "알림 설정했어요 — 더 필요한 게 있나요?"],
+		["vi", "Đã tạo lời nhắc rồi — bạn cần gì nữa không?"],
+		["tl", "Na-set ko na ang reminder — may iba pa?"],
+		["zh-CN", "提醒设置好了，还需要别的吗？"],
+	])("keeps %s completed assertions before tag questions: %s", (_locale, reply) => {
+		expect(replyClaimsCompletedSideEffect(reply)).toBe(true);
+	});
+
 	it("passes multilingual descriptions of existing state and ordinary language through", () => {
 		// Existing-state descriptions (the "is scheduled for Tuesday" twins).
 		expect(
@@ -496,6 +540,17 @@ describe("multilingual completed-side-effect claims (#17027 AC7)", () => {
 			replyClaimsCompletedSideEffect(
 				"Sua consulta está agendada para terça às 15h.",
 			),
+		).toBe(false);
+		expect(
+			replyClaimsCompletedSideEffect(
+				"Cuộc hẹn của bạn đã đặt vào thứ ba lúc 3 giờ.",
+			),
+		).toBe(false);
+		expect(
+			replyClaimsCompletedSideEffect("你的预约已安排在周二下午3点。"),
+		).toBe(false);
+		expect(
+			replyClaimsCompletedSideEffect("你的提醒已设置为每天9点。"),
 		).toBe(false);
 		// Ordinary language without a schedulable noun never fires.
 		expect(replyClaimsCompletedSideEffect("La capital es París.")).toBe(false);

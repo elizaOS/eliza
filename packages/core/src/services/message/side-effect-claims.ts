@@ -74,28 +74,31 @@ function sideEffectClaimSentenceIsQuestion(
  * keyword translations for (packages/shared/src/i18n/keywords: es, ko, pt,
  * tl, vi, zh-CN). The send-boundary gates are receipt-based and therefore
  * language-independent whenever a mutation-capable action ran; this tier only
- * closes the zero-tool hole — a fabricated "¡Guardado!"/"已保存" with no tool
- * call — where wording is the ONLY available signal (#17027 AC7).
+ * closes the zero-tool hole for explicit completions such as
+ * "已经为你创建了提醒" and "提醒设置好了", where wording is the ONLY
+ * available signal (#17027 AC7).
  *
  * Each rule keeps the English tier's precision discipline: a claim fires only
  * when (a) the text names a schedulable/saved subject noun, (b) a perfective
- * completion shape matches, (c) the immediately preceding words are not a
- * negation/subordination lead, and (d) the containing sentence is not a
- * question. Romance perfective participles ("creado"/"criei") cannot follow
- * modals or subjunctive offer forms ("¿Quieres que cree…?"), so the offer
- * false-positive class that plagued English "set" (#16966) is structurally
- * absent; the negation leads carry the denial cases ("no he creado…",
- * "hindi ko pa na-set…").
+ * completion shape matches, (c) the surrounding clause is not a denial or
+ * hypothetical, and (d) locale-specific question morphology does not turn the
+ * completion shape into an interrogative. This tier intentionally prefers
+ * precision over recall; receipts remain the primary language-independent
+ * proof whenever a mutation-capable action ran.
  */
 interface LocaleSideEffectClaimRule {
-	/** BCP-47-ish tag, for maintenance only. */
+	/** BCP-47-ish tag, used by locale-specific question boundaries. */
 	readonly locale: string;
 	/** Schedulable/saved subject nouns; gate before any claim pattern runs. */
 	readonly nouns: RegExp;
 	/** Perfective completed-side-effect shapes (global flags for matchAll). */
 	readonly claims: readonly RegExp[];
-	/** Prefix shapes that turn the match into a denial/hypothetical. */
-	readonly negationLead?: RegExp;
+	/** Clause-scoped prefix shapes that make the match non-assertive. */
+	readonly nonAssertiveLead?: RegExp;
+	/** Suffixes that continue a matched stem as a conditional or quotation. */
+	readonly nonAssertiveSuffix?: RegExp;
+	/** Locale-specific interrogative endings attached to a matched claim. */
+	readonly questionSuffix?: RegExp;
 }
 
 const LOCALE_SIDE_EFFECT_CLAIM_RULES: readonly LocaleSideEffectClaimRule[] = [
@@ -112,7 +115,8 @@ const LOCALE_SIDE_EFFECT_CLAIM_RULES: readonly LocaleSideEffectClaimRule[] = [
 			// twin) and must pass through.
 			/\b(?:ya\s+(?:está|están)|queda|quedan|quedó|quedaron)\s+(?:guardad[oa]s?|programad[oa]s?|agendad[oa]s?|configurad[oa]s?|cread[oa]s?|anotad[oa]s?)\b/giu,
 		],
-		negationLead: /\b(?:no|aún\s+no|todavía\s+no|nunca)\s+$/iu,
+		nonAssertiveLead:
+			/(?:\b(?:si|cuando|una\s+vez\s+que|en\s+caso\s+de\s+que)\b[^.!?。！？\n]*|\b(?:no|aún\s+no|todavía\s+no|nunca)\b(?:\s+(?:me|te|se|lo|la|los|las|le|les|nos|os|ya|todavía|aún))*)\s*$/iu,
 	},
 	{
 		locale: "pt",
@@ -126,7 +130,8 @@ const LOCALE_SIDE_EFFECT_CLAIM_RULES: readonly LocaleSideEffectClaimRule[] = [
 			// state and must pass through.
 			/\b(?:já\s+(?:está|estão)|ficou|ficaram)\s+(?:salv[oa]s?|guardad[oa]s?|agendad[oa]s?|programad[oa]s?|configurad[oa]s?|criad[oa]s?)\b/giu,
 		],
-		negationLead: /\b(?:não|nao|ainda\s+não|ainda\s+nao|nunca)\s+$/iu,
+		nonAssertiveLead:
+			/(?:\b(?:se|quando|caso)\b[^.!?。！？\n]*|\b(?:não|nao|ainda\s+não|ainda\s+nao|nunca)\b(?:\s+(?:me|te|se|o|a|os|as|lhe|lhes|nos|vos|já|ainda))*)\s*$/iu,
 	},
 	{
 		locale: "ko",
@@ -137,7 +142,9 @@ const LOCALE_SIDE_EFFECT_CLAIM_RULES: readonly LocaleSideEffectClaimRule[] = [
 			// "일정 잡았어요"
 			/일정(?:을|를)?\s*잡았/g,
 		],
-		negationLead: /(?:안|못)\s*$/,
+		nonAssertiveLead: /(?:안|못)\s*$/,
+		nonAssertiveSuffix: /^(?:으면|다면|을지|는지|다고)/,
+		questionSuffix: /^(?:나요|습니까|니|을까요|ㄹ까요)(?:[?？]|$)/,
 	},
 	{
 		locale: "vi",
@@ -149,9 +156,10 @@ const LOCALE_SIDE_EFFECT_CLAIM_RULES: readonly LocaleSideEffectClaimRule[] = [
 			// anchored on start-of-text/whitespace instead.
 			/(?:^|\s)đã\s+(?:lưu|tạo|đặt(?:\s+lịch)?|lên\s+lịch|thêm|cài(?:\s+đặt)?|ghi(?:\s+lại)?|hẹn)\b/giu,
 		],
-		// "chưa"/"sẽ" shapes don't contain "đã"; guard the explicit denial "đã
-		// không lưu" and hypothetical "nếu … đã".
-		negationLead: /\b(?:không|chưa|nếu)\s*$/iu,
+		// A possessive subject before "đã" describes existing state rather than
+		// an action the assistant reports performing.
+		nonAssertiveLead:
+			/(?:\b(?:nếu|khi|giả\s+sử)\b[^.!?。！？\n]*|\b(?:không|chưa)\s*|\bcủa\s+(?:bạn|anh|chị|em)\s*)$/iu,
 	},
 	{
 		locale: "tl",
@@ -163,20 +171,55 @@ const LOCALE_SIDE_EFFECT_CLAIM_RULES: readonly LocaleSideEffectClaimRule[] = [
 			// "Naka-schedule na ang paalala mo"
 			/\bnaka[- ]?(?:set|save|schedule|iskedyul)\s+na\b/gi,
 		],
-		negationLead: /\b(?:hindi|di|wala)\s+[^.!?\n]{0,16}$/i,
+		nonAssertiveLead:
+			/(?:\b(?:kapag|kung|sakaling)\b[^.!?。！？\n]*|\b(?:hindi|di|wala)\b[^.!?。！？\n]*)$/i,
 	},
 	{
 		locale: "zh-CN",
 		nouns: /(?:提醒|任务|日程|闹钟|习惯|目标|待办|日历|预约|打卡)/,
 		claims: [
-			// "已保存"/"已经为你创建了提醒"
-			/已(?:经)?(?:为(?:你|您))?(?:帮(?:你|您))?(?:保存|创建|设置|安排|添加|记录|预约)/g,
+			// Bare "已 + verb" is ambiguous between a completed action and an
+			// existing state. Require an explicit beneficiary or completion 了.
+			/已(?:经)?(?:(?:(?:为|帮)(?:你|您))(?:保存|创建|设置|安排|添加|记录|预约)(?:了)?|(?:保存|创建|设置|安排|添加|记录|预约)了)/g,
 			// "设置好了"/"保存好了"
 			/(?:保存|创建|设置|安排|添加|记录|预约)好了/g,
 		],
-		negationLead: /(?:还没(?:有)?|没有|尚未|如果)\s*$/,
+		nonAssertiveLead:
+			/(?:(?:如果|假如|若|一旦)[^。！？.!?\n]*|(?:还没(?:有)?|没有|尚未)[^。！？.!?\n]*)$/,
+		questionSuffix: /^(?:吗|嘛|呢)(?:[?？]|$)/,
 	},
 ];
+
+function multilingualClaimIsQuestion(
+	text: string,
+	match: RegExpMatchArray,
+	rule: LocaleSideEffectClaimRule,
+): boolean {
+	const matchIndex = match.index;
+	const prefix = text.slice(0, matchIndex);
+	const sentenceStart = Math.max(
+		prefix.lastIndexOf("."),
+		prefix.lastIndexOf("!"),
+		prefix.lastIndexOf("?"),
+		prefix.lastIndexOf("。"),
+		prefix.lastIndexOf("！"),
+		prefix.lastIndexOf("？"),
+		prefix.lastIndexOf("\n"),
+	);
+	const clausePrefix = prefix.slice(sentenceStart + 1);
+	if (clausePrefix.includes("¿")) return true;
+
+	const suffix = text.slice(matchIndex + match[0].length);
+	if (rule.questionSuffix?.test(suffix.trimStart())) return true;
+	const questionIndex = suffix.search(/[?？]/u);
+	if (questionIndex < 0) return false;
+	const beforeQuestion = suffix.slice(0, questionIndex);
+	if (/[.!。！\n]/u.test(beforeQuestion)) return false;
+	// A clause separator after the assertion starts a tag question; the
+	// completed-work assertion before it must still be detected.
+	if (/[—–]|\s-\s|¿|[,，;；]/u.test(beforeQuestion)) return false;
+	return true;
+}
 
 /**
  * True when the reply asserts a completed scheduling/save side effect in one
@@ -188,9 +231,12 @@ function replyClaimsCompletedSideEffectMultilingual(text: string): boolean {
 		if (!rule.nouns.test(text)) continue;
 		for (const claim of rule.claims) {
 			for (const match of text.matchAll(claim)) {
-				const prefix = text.slice(0, match.index);
-				if (rule.negationLead?.test(prefix)) continue;
-				if (sideEffectClaimSentenceIsQuestion(text, match.index)) continue;
+				const matchIndex = match.index;
+				const prefix = text.slice(0, matchIndex);
+				const suffix = text.slice(matchIndex + match[0].length);
+				if (rule.nonAssertiveLead?.test(prefix)) continue;
+				if (rule.nonAssertiveSuffix?.test(suffix)) continue;
+				if (multilingualClaimIsQuestion(text, match, rule)) continue;
 				return true;
 			}
 		}
