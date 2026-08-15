@@ -70,7 +70,10 @@ describe("system prompt helpers", () => {
 	});
 
 	it("bounds knowledge to the character budget instead of flooding the prompt", () => {
-		const facts = Array.from({ length: 100 }, (_, i) => `Fact ${i} ${"x".repeat(80)}.`);
+		const facts = Array.from(
+			{ length: 100 },
+			(_, i) => `Fact ${i} ${"x".repeat(80)}.`,
+		);
 		const rendered = renderInlineCharacterKnowledge(facts);
 		expect(rendered.length).toBeLessThanOrEqual(1500 + facts.length);
 		expect(rendered).toContain("Fact 0");
