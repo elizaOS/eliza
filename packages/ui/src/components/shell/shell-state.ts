@@ -53,6 +53,8 @@ export interface ShellMessage {
    * topic grouping + chips bar (#8928). Absent when the turn had no topic.
    */
   topics?: string[];
+  /** Visible assistant prefix was cut off by an exact voice interruption. */
+  interrupted?: boolean;
 }
 
 /**

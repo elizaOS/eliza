@@ -72,6 +72,7 @@ export {
   resamplePcmTo16k,
 } from "./playback-frame-pump";
 export * from "./realtime-voice-trace-collector";
+export * from "./realtime-voice-trace-store";
 export { StreamingLinearResampler } from "./streaming-linear-resampler";
 export * from "./types";
 export {

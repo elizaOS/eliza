@@ -141,6 +141,44 @@ describe("protocol framing", () => {
     });
   });
 
+  test("serializes a cumulative assistant display snapshot", () => {
+    expect(
+      JSON.parse(
+        serializeServerFrame({
+          t: "assistant_display",
+          text: "The answer is visibly streaming.",
+          traceId: "trace-1",
+        }),
+      ),
+    ).toEqual({
+      t: "assistant_display",
+      text: "The answer is visibly streaming.",
+      traceId: "trace-1",
+    });
+  });
+
+  test("serializes the exact terminal voice display projection", () => {
+    expect(
+      JSON.parse(
+        serializeServerFrame({
+          t: "assistant_output",
+          displayMarkdown: "Full persisted display.",
+          speechText: "Concise spoken display.",
+          displayTruncated: false,
+          messageId: "assistant-1",
+          traceId: "trace-1",
+        }),
+      ),
+    ).toEqual({
+      t: "assistant_output",
+      displayMarkdown: "Full persisted display.",
+      speechText: "Concise spoken display.",
+      displayTruncated: false,
+      messageId: "assistant-1",
+      traceId: "trace-1",
+    });
+  });
+
   test("serializes a content-free runtime trace milestone", () => {
     expect(
       JSON.parse(

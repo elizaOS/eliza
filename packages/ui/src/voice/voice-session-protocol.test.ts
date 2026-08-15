@@ -87,6 +87,97 @@ describe("voice session server protocol", () => {
     ).toBeNull();
   });
 
+  it("accepts only bounded non-empty cumulative assistant display", () => {
+    expect(
+      parseServerControl(
+        JSON.stringify({
+          t: "assistant_display",
+          text: "The answer is streaming now.",
+          traceId: " trace-1 ",
+        }),
+      ),
+    ).toEqual({
+      t: "assistant_display",
+      text: "The answer is streaming now.",
+      traceId: "trace-1",
+    });
+    expect(
+      parseServerControl(
+        JSON.stringify({
+          t: "assistant_display",
+          text: "",
+          traceId: "trace-1",
+        }),
+      ),
+    ).toBeNull();
+    expect(
+      parseServerControl(
+        JSON.stringify({
+          t: "assistant_display",
+          text: "x".repeat(32_769),
+          traceId: "trace-1",
+        }),
+      ),
+    ).toBeNull();
+  });
+
+  it("accepts a bounded terminal display projection with exact message ownership", () => {
+    expect(
+      parseServerControl(
+        JSON.stringify({
+          t: "assistant_output",
+          displayMarkdown: "Full persisted display.",
+          speechText: "Concise spoken display.",
+          displayTruncated: false,
+          messageId: " assistant-1 ",
+          traceId: " trace-1 ",
+        }),
+      ),
+    ).toEqual({
+      t: "assistant_output",
+      displayMarkdown: "Full persisted display.",
+      speechText: "Concise spoken display.",
+      displayTruncated: false,
+      messageId: "assistant-1",
+      traceId: "trace-1",
+    });
+    expect(
+      parseServerControl(
+        JSON.stringify({
+          t: "assistant_output",
+          displayMarkdown: "Display only.",
+          speechText: null,
+          displayTruncated: false,
+          traceId: "trace-2",
+        }),
+      ),
+    ).toEqual({
+      t: "assistant_output",
+      displayMarkdown: "Display only.",
+      speechText: null,
+      displayTruncated: false,
+      traceId: "trace-2",
+    });
+  });
+
+  it.each([
+    { displayMarkdown: "x".repeat(32_769), speechText: null },
+    { displayMarkdown: "safe", speechText: "x".repeat(601) },
+    { displayMarkdown: "safe", speechText: 42 },
+    { displayMarkdown: "safe", speechText: null, messageId: "" },
+  ])("rejects malformed terminal display projection %#", (fields) => {
+    expect(
+      parseServerControl(
+        JSON.stringify({
+          t: "assistant_output",
+          displayTruncated: false,
+          traceId: "trace-1",
+          ...fields,
+        }),
+      ),
+    ).toBeNull();
+  });
+
   it("accepts only allowlisted content-free runtime trace marks", () => {
     expect(
       parseServerControl(

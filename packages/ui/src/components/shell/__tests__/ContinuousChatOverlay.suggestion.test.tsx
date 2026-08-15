@@ -61,6 +61,20 @@ afterEach(() => {
 });
 
 describe("ChatOverlay ThreadLine proactive suggestion (#8792)", () => {
+  it("shows the interrupted marker on the shipped glass assistant row", () => {
+    withApp(
+      __renderThreadLineForParity(
+        makeMessage({
+          content: "Only the audible prefix remains.",
+          interrupted: true,
+        }),
+      ),
+    );
+    expect(screen.getByTestId("chat-message-interrupted").textContent).toBe(
+      "Response interrupted",
+    );
+  });
+
   it("renders the Suggestion affordance for source proactive-interaction", () => {
     withApp(
       __renderThreadLineForParity(

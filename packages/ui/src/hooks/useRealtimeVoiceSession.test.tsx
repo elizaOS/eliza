@@ -357,6 +357,27 @@ describe("useRealtimeVoiceSession", () => {
     });
   });
 
+  it("keeps hook and client microphone mute state synchronized", async () => {
+    const { options, ws } = makeOptions();
+    const { result } = renderHook(() => useRealtimeVoiceSession(options));
+    const startPromise = beginStart(result);
+    await act(async () => {
+      await flushAsync();
+    });
+    await driveReady(ws, "sess-mute", "T-mute");
+    await expect(startPromise).resolves.toEqual({ kind: "live" });
+
+    expect(result.current.microphoneMuted).toBe(false);
+    act(() => result.current.toggleMicrophoneMute());
+    expect(result.current.microphoneMuted).toBe(true);
+    act(() => result.current.toggleMicrophoneMute());
+    expect(result.current.microphoneMuted).toBe(false);
+
+    await act(async () => {
+      await result.current.stop();
+    });
+  });
+
   it("keeps the real-shell speaking guard true for a buffered tail so an explicit click flushes it", async () => {
     const { options, ws } = makeOptions();
     const { result } = renderHook(() => useRealtimeVoiceSession(options));

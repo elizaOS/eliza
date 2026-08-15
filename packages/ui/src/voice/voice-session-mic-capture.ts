@@ -165,6 +165,8 @@ export interface VoiceMicCaptureOptions {
   onProvisionalSpeechEnd?: (event: ProvisionalSpeechStartEvent) => void;
   /** Conservative detector thresholds for the optional onset signal. */
   provisionalSpeechStart?: ProvisionalSpeechStartConfig;
+  /** Whether microphone speech evidence may be retained at all (false when muted). */
+  isProvisionalSpeechTrackingEnabled?: () => boolean;
   /** Whether onset evidence is currently relevant (normally agent speaking). */
   isProvisionalSpeechStartEnabled?: () => boolean;
   /**
@@ -453,11 +455,12 @@ export async function startVoiceMicCapture(
     const resampled = resampler.push(mono);
     if (resampled.length === 0) return;
     if (speechStartDetector) {
-      if (options.isProvisionalSpeechStartEnabled?.() ?? true) {
+      if (options.isProvisionalSpeechTrackingEnabled?.() ?? true) {
         const events = speechStartDetector.push(
           resampled,
           VOICE_PCM_SAMPLE_RATE,
           now(),
+          options.isProvisionalSpeechStartEnabled?.() ?? true,
         );
         for (const event of events) {
           if (event.phase === "started") {

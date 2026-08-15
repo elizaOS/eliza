@@ -508,10 +508,31 @@ export function createVoiceSessionClient(
           }
           const wasPaused = playback?.paused ?? false;
           const hadBufferedAudio = playbackMayHaveAudio;
+          let interruptedSequence: number | null = null;
+          let interruptedTraceId: string | null = null;
+          for (const [sequence, bufferedTraceId] of playbackTraceBySequence) {
+            if (
+              interruptedSequence === null ||
+              sequence > interruptedSequence
+            ) {
+              interruptedSequence = sequence;
+              interruptedTraceId = bufferedTraceId;
+            }
+          }
           playback?.flush();
           playbackTraceBySequence.clear();
           turnAuthority.acknowledgePlaybackFlush(transition, effect.responseId);
           setPlaybackMayHaveAudio(false);
+          if (hadBufferedAudio && interruptedTraceId) {
+            const atMs = now();
+            emitDiagnostic({
+              type: "playback_interrupted",
+              atMs,
+              traceId: interruptedTraceId,
+              sequence: interruptedSequence,
+            });
+            mark("playback_interrupted", interruptedTraceId, atMs);
+          }
           if (wasPaused) {
             mark("local_speech_start_confirmed", traceId);
           } else if (hadBufferedAudio) {
@@ -880,6 +901,8 @@ export function createVoiceSessionClient(
         break;
       case "navigate_view":
       case "assistant_progress":
+      case "assistant_display":
+      case "assistant_output":
       case "trace_mark":
       case "usage":
       case "error":
@@ -950,6 +973,12 @@ export function createVoiceSessionClient(
         break;
       case "assistant_progress":
         mark("assistant_progress", event.traceId);
+        break;
+      case "assistant_display":
+        mark("assistant_display", event.traceId);
+        break;
+      case "assistant_output":
+        mark("assistant_output", event.traceId);
         break;
       case "speaking_start":
         mark("speaking_start", event.traceId);
@@ -1101,11 +1130,15 @@ export function createVoiceSessionClient(
                     provisionalSpeechStart: options.provisionalBargeIn.detector,
                   }
                 : {}),
+              isProvisionalSpeechTrackingEnabled: () =>
+                isLifecycleCurrent(generation) &&
+                ws === socket &&
+                turnAuthority.isSessionLeaseCurrent(sessionLease) &&
+                !microphoneMuted,
               isProvisionalSpeechStartEnabled: () =>
                 isLifecycleCurrent(generation) &&
                 ws === socket &&
                 turnAuthority.isSessionLeaseCurrent(sessionLease) &&
-                !microphoneMuted &&
                 isPlaybackInterruptible() &&
                 Boolean(playback?.unlocked),
               now,

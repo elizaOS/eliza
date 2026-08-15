@@ -108,6 +108,32 @@ describe("ProvisionalSpeechStartDetector", () => {
     expect(detector.push(block(40, 0.06), SAMPLE_RATE, 80)).toEqual([]);
   });
 
+  it("carries ongoing speech across the instant playout becomes interruptible", () => {
+    const detector = new ProvisionalSpeechStartDetector({
+      minimumSpeechMs: 60,
+      confirmationSpeechMs: 300,
+    });
+
+    expect(detector.push(block(300, 0.06), SAMPLE_RATE, 300, false)).toEqual(
+      [],
+    );
+    expect(
+      detector.push(block(20, 0.06), SAMPLE_RATE, 320, true),
+    ).toMatchObject([{ phase: "started" }, { phase: "confirmed" }]);
+    expect(detector.push(block(20, 0.06), SAMPLE_RATE, 340, true)).toEqual([]);
+  });
+
+  it("does not replay a suppressed episode that ended before playout", () => {
+    const detector = new ProvisionalSpeechStartDetector({
+      minimumSpeechMs: 60,
+      rearmSilenceMs: 120,
+    });
+
+    expect(detector.push(block(80, 0.06), SAMPLE_RATE, 80, false)).toEqual([]);
+    expect(detector.push(block(120, 0), SAMPLE_RATE, 200, false)).toEqual([]);
+    expect(detector.push(block(40, 0), SAMPLE_RATE, 240, true)).toEqual([]);
+  });
+
   it("rejects invalid thresholds and sample rates at the boundary", () => {
     expect(
       () => new ProvisionalSpeechStartDetector({ rmsThreshold: -1 }),

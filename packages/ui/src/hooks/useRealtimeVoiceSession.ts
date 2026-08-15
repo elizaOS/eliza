@@ -748,11 +748,13 @@ export function useRealtimeVoiceSession(
   const toggleMicrophoneMute = useCallback(() => {
     const client = clientRef.current;
     if (!client) return;
-    setMicrophoneMuted((current) => {
-      const next = !current;
-      client.setMicrophoneMuted(next);
-      return next;
-    });
+    // Never invoke client callbacks from inside a React state updater. The
+    // client emits a diagnostic synchronously, and HUD subscribers legitimately
+    // set their own state; doing that while React is calculating this updater
+    // produces a cross-component render-phase update warning.
+    const next = !client.microphoneMuted;
+    client.setMicrophoneMuted(next);
+    setMicrophoneMuted(next);
   }, []);
 
   const unlock = useCallback(async () => {

@@ -113,7 +113,11 @@ writeFakeCaptureWav(
 // Tuneable only for the opt-in live barge proof: bracket the real provider's
 // semantic-EOT/playout boundary without changing application behavior.
 const bargeGapMs = Number.parseInt(
-  process.env.ELIZA_REALTIME_VOICE_BARGE_GAP_MS ?? "1300",
+  // The first clip is ~1.72s. Four seconds of silence places the second clip
+  // inside the deliberately long seeded answer across the supported local
+  // model-latency envelope; the former 1.3s gap could finish the utterance
+  // before playout began and therefore did not actually exercise double-talk.
+  process.env.ELIZA_REALTIME_VOICE_BARGE_GAP_MS ?? "4000",
   10,
 );
 if (!Number.isFinite(bargeGapMs) || bargeGapMs < 1_000 || bargeGapMs > 5_000) {

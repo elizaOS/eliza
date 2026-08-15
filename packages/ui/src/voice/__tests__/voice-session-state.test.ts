@@ -68,6 +68,35 @@ describe("voice-session-state machine (§7.4)", () => {
     expect(next.traceId).toBe("T1");
   });
 
+  it("keeps incremental assistant display independent from audio phase", () => {
+    const next = applyServerEvent(
+      { ...fresh(), phase: "thinking", traceId: "T1" },
+      {
+        t: "assistant_display",
+        text: "The answer is streaming.",
+        traceId: "T1",
+      },
+    );
+    expect(next.phase).toBe("thinking");
+    expect(next.traceId).toBe("T1");
+  });
+
+  it("keeps terminal assistant display projection independent from audio phase", () => {
+    const next = applyServerEvent(
+      { ...fresh(), phase: "thinking", traceId: "T1" },
+      {
+        t: "assistant_output",
+        displayMarkdown: "Full display.",
+        speechText: "Spoken display.",
+        displayTruncated: false,
+        messageId: "assistant-1",
+        traceId: "T1",
+      },
+    );
+    expect(next.phase).toBe("thinking");
+    expect(next.traceId).toBe("T1");
+  });
+
   it("an empty final (noise EOT) terminates the turn instead of stranding 'thinking' (#16662)", () => {
     let s = applyClientAction(fresh(), { type: "client/connect" });
     s = applyServerEvent(s, {

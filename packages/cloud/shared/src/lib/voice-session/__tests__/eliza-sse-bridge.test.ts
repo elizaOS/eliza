@@ -124,6 +124,7 @@ describe("eliza sse bridge", () => {
         `data: ${JSON.stringify({
           type: "done",
           fullText: "Exact display text.",
+          messageId: "assistant-1",
           voiceOutput: { policy: "both", spoken: "Concise speech." },
         })}\n\n`,
       ])) as unknown as typeof fetch;
@@ -147,6 +148,7 @@ describe("eliza sse bridge", () => {
     expect(result).toEqual({
       completed: true,
       aborted: false,
+      messageId: "assistant-1",
       outputDirective: { policy: "both", spoken: "Concise speech." },
     });
   });

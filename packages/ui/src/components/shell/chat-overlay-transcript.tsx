@@ -168,6 +168,7 @@ export function shellToChatMessageData(m: ShellMessage): ChatMessageData {
     ...(m.failureKind ? { failureKind: m.failureKind } : {}),
     ...(m.attachments ? { attachments: m.attachments } : {}),
     ...(m.secretRequest ? { secretRequest: m.secretRequest } : {}),
+    ...(m.interrupted ? { interrupted: true } : {}),
   };
   shellMessageDataCache.set(m, data);
   return data;

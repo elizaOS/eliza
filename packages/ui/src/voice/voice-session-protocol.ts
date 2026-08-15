@@ -116,6 +116,23 @@ export interface ServerAssistantProgressEvent {
   traceId: string;
 }
 
+/** Cumulative canonical text for immediate chat display; never spoken directly. */
+export interface ServerAssistantDisplayEvent {
+  t: "assistant_display";
+  text: string;
+  traceId: string;
+}
+
+/** Whole-answer projection used to pace voice captions against audible output. */
+export interface ServerAssistantOutputEvent {
+  t: "assistant_output";
+  displayMarkdown: string;
+  speechText: string | null;
+  displayTruncated: boolean;
+  messageId?: string;
+  traceId: string;
+}
+
 export interface ServerSpeakingStartEvent {
   t: "speaking_start";
   traceId: string;
@@ -186,6 +203,8 @@ export type ServerControlFrame =
   | ServerLlmFirstTextEvent
   | ServerTraceMarkEvent
   | ServerAssistantProgressEvent
+  | ServerAssistantDisplayEvent
+  | ServerAssistantOutputEvent
   | ServerSpeakingStartEvent
   | ServerSpeakingEndEvent
   | ServerTurnEndEvent
@@ -271,6 +290,38 @@ export function parseServerControl(raw: string): ServerControlFrame | null {
       return text !== null && text.trim().length > 0 && traceId
         ? { t, text, traceId }
         : null;
+    }
+    case "assistant_display": {
+      const text = readFrameText(frame.text);
+      return text !== null && text.length > 0 && traceId
+        ? { t, text, traceId }
+        : null;
+    }
+    case "assistant_output": {
+      const displayMarkdown = readFrameText(frame.displayMarkdown);
+      const speechText =
+        frame.speechText === null ? null : readFrameText(frame.speechText, 600);
+      const displayTruncated = frame.displayTruncated;
+      const rawMessageId = frame.messageId;
+      const messageId =
+        rawMessageId === undefined ? null : readBoundedString(rawMessageId);
+      if (
+        displayMarkdown === null ||
+        (speechText === null && frame.speechText !== null) ||
+        typeof displayTruncated !== "boolean" ||
+        !traceId ||
+        (rawMessageId !== undefined && !messageId)
+      ) {
+        return null;
+      }
+      return {
+        t,
+        displayMarkdown,
+        speechText,
+        displayTruncated,
+        ...(messageId ? { messageId } : {}),
+        traceId,
+      };
     }
     case "turn_end": {
       const outcome = frame.outcome;
@@ -369,6 +420,8 @@ const SERVER_TYPES: ReadonlySet<string> = new Set<ServerControlType>([
   "llm_first_text",
   "trace_mark",
   "assistant_progress",
+  "assistant_display",
+  "assistant_output",
   "speaking_start",
   "speaking_end",
   "turn_end",

@@ -302,6 +302,7 @@ describe("voice-session client (real framing/state/barge-in/reconnect)", () => {
     const ws = makeWsFactory();
     const micCtx = new FakeMicAudioContext(16_000);
     const marks: VoiceTraceMark[] = [];
+    const serverEvents: string[] = [];
     const phases: string[] = [];
     const client = createVoiceSessionClient({
       agentId: "11111111-1111-1111-1111-111111111111",
@@ -313,6 +314,7 @@ describe("voice-session client (real framing/state/barge-in/reconnect)", () => {
       createMicAudioContext: () => micCtx,
       createPlaybackAudioContext: () => new FakePlaybackAudioContext(16_000),
       onState: (s) => phases.push(s.phase),
+      onServerEvent: (event) => serverEvents.push(event.t),
       onTraceMark: (m) => marks.push(m),
       now: () => marks.length + 1,
     });
@@ -333,6 +335,19 @@ describe("voice-session client (real framing/state/barge-in/reconnect)", () => {
     sock.emitControl({ t: "llm_first_text", traceId: "T1" });
     expect(client.state.phase).toBe("thinking");
     sock.emitControl({
+      t: "assistant_display",
+      text: "Full persisted",
+      traceId: "T1",
+    });
+    sock.emitControl({
+      t: "assistant_output",
+      displayMarkdown: "Full persisted answer.",
+      speechText: "Full persisted answer.",
+      displayTruncated: false,
+      messageId: "assistant-1",
+      traceId: "T1",
+    });
+    sock.emitControl({
       t: "trace_mark",
       name: "tts_requested",
       traceId: "T1",
@@ -352,6 +367,8 @@ describe("voice-session client (real framing/state/barge-in/reconnect)", () => {
     expect(markNames).toContain("stt_final");
     expect(markNames).toContain("acoustic_speech_ended");
     expect(markNames).toContain("llm_first_text");
+    expect(markNames).toContain("assistant_display");
+    expect(markNames).toContain("assistant_output");
     expect(markNames).toContain("tts_requested");
     expect(markNames).toContain("speaking_start");
     expect(markNames).toContain("downlink_audio");
@@ -359,6 +376,8 @@ describe("voice-session client (real framing/state/barge-in/reconnect)", () => {
     // Every server-derived mark carries the turn traceId (not synthesized).
     const sttMark = marks.find((m) => m.name === "stt_final");
     expect(sttMark?.traceId).toBe("T1");
+    expect(serverEvents).toContain("assistant_display");
+    expect(serverEvents).toContain("assistant_output");
     await client.stop();
   });
 
@@ -1004,6 +1023,7 @@ describe("voice-session client (real framing/state/barge-in/reconnect)", () => {
       const ws = makeWsFactory();
       const pbCtx = new FakePlaybackAudioContext(16_000);
       const marks: VoiceTraceMark[] = [];
+      const diagnostics: VoiceSessionClientDiagnosticEvent[] = [];
       const client = createVoiceSessionClient({
         agentId: "11111111-1111-1111-1111-111111111111",
         conversationId: "22222222-2222-2222-2222-222222222222",
@@ -1014,6 +1034,7 @@ describe("voice-session client (real framing/state/barge-in/reconnect)", () => {
         createMicAudioContext: () => new FakeMicAudioContext(16_000),
         createPlaybackAudioContext: () => pbCtx,
         onTraceMark: (mark) => marks.push(mark),
+        onDiagnostic: (event) => diagnostics.push(event),
       });
       await client.start();
       await flush();
@@ -1043,6 +1064,13 @@ describe("voice-session client (real framing/state/barge-in/reconnect)", () => {
       ).toBe(true);
       expect(marks.map((mark) => mark.name)).toContain(
         "server_speech_start_confirmed",
+      );
+      expect(diagnostics).toContainEqual(
+        expect.objectContaining({
+          type: "playback_interrupted",
+          traceId: "T-old",
+          sequence: expect.any(Number),
+        }),
       );
       await client.stop();
     },

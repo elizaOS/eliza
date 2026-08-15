@@ -93,6 +93,21 @@ export type ServerControlFrame =
   | { t: "llm_first_text"; traceId: string }
   | { t: "trace_mark"; name: VoiceRuntimeTraceMark; traceId: string }
   | { t: "assistant_progress"; text: string; traceId: string }
+  | {
+      /** Cumulative canonical display snapshot; never an authorization for TTS. */
+      t: "assistant_display";
+      text: string;
+      traceId: string;
+    }
+  | {
+      /** Terminally projected display plus the exact text authorized for speech. */
+      t: "assistant_output";
+      displayMarkdown: string;
+      speechText: string | null;
+      displayTruncated: boolean;
+      messageId?: string;
+      traceId: string;
+    }
   | { t: "speaking_start"; traceId: string }
   | { t: "speaking_end"; traceId: string }
   | { t: "turn_end"; outcome: VoiceTurnEndOutcome; traceId: string }

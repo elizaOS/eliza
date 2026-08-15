@@ -1187,6 +1187,16 @@ export const ChatMessage = memo(function ChatMessage({
               {bubbleContent}
             </ChatBubble>
           )}
+          {!isUser && message.interrupted ? (
+            <div
+              className="mt-1.5 self-start"
+              data-testid="chat-message-interrupted"
+            >
+              <span className="inline-flex rounded-sm border border-danger/30 bg-danger/10 px-2 py-0.5 text-xs font-medium text-danger">
+                {labels.responseInterrupted ?? "Response interrupted"}
+              </span>
+            </div>
+          ) : null}
           {hasActionLane ? (
             <motion.div
               data-testid="thread-line-actions"

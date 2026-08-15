@@ -120,9 +120,13 @@ const SEMANTIC_EOT_MERGE_WINDOW_MS = 900;
 /** A provider turn that resumed but never finalized cannot hold memory forever. */
 const SEMANTIC_EOT_MAX_HOLD_MS = 5_000;
 const SEMANTIC_EOT_ACTIVE_RECHECK_MS = 100;
-/** One short, truthful preamble keeps a slow local turn from feeling frozen. */
-const VOICE_PROGRESS_SPOKEN_THRESHOLD_MS = 900;
+/** Specific tool/action progress may speak, but normal thinking stays quiet. */
+const VOICE_PROGRESS_SPOKEN_THRESHOLD_MS = 2_500;
 const VOICE_PROGRESS_MAX_SPOKEN_UPDATES = 1;
+/** Bound incremental display traffic while keeping the normal chat visibly live. */
+const VOICE_DISPLAY_MAX_CHARS = 32_768;
+const VOICE_DISPLAY_MIN_UPDATE_CHARS = 24;
+const VOICE_DISPLAY_MAX_UPDATE_CHARS = 48;
 const CACHE_WARMING_CODES = new Set([
   "agent_cache_warming",
   "shared_runtime_cache_warming",
@@ -216,22 +220,14 @@ function progressForStatus(status: ChatTurnStatus): {
 } | null {
   switch (status.kind) {
     case "thinking":
-      return {
-        phase: status.kind,
-        displayMarkdown: "I’m thinking through your request.",
-        spokenCandidate: "I’m thinking through your request.",
-      };
     case "waking":
-      return {
-        phase: status.kind,
-        displayMarkdown: "I’m waking the agent now.",
-        spokenCandidate: "I’m waking the agent now.",
-      };
+    case "evaluating":
+    case "streaming":
+      return null;
     case "running_action": {
       const name = boundedProgressName(status.actionName);
-      const text = name
-        ? `I’m working on ${name.toLocaleLowerCase("en-US")}.`
-        : "I’m completing the action.";
+      if (!name) return null;
+      const text = `I’m working on ${name.toLocaleLowerCase("en-US")}.`;
       return {
         phase: status.kind,
         displayMarkdown: text,
@@ -240,27 +236,14 @@ function progressForStatus(status: ChatTurnStatus): {
     }
     case "running_tool": {
       const name = boundedProgressName(status.toolName);
-      const text = name
-        ? `I’m checking ${name.toLocaleLowerCase("en-US")}.`
-        : "I’m checking that now.";
+      if (!name) return null;
+      const text = `I’m checking ${name.toLocaleLowerCase("en-US")}.`;
       return {
         phase: status.kind,
         displayMarkdown: text,
         spokenCandidate: text,
       };
     }
-    case "evaluating":
-      return {
-        phase: status.kind,
-        displayMarkdown: "I’m checking the result.",
-        spokenCandidate: "I’m checking the result.",
-      };
-    case "streaming":
-      return {
-        phase: status.kind,
-        displayMarkdown: "I’m putting the answer together.",
-        spokenCandidate: "I’m putting the answer together.",
-      };
     case "speaking":
       return null;
     default:
@@ -1164,6 +1147,45 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
 
     let tts: RealtimeTtsStream | null = null;
     let canonicalDisplayText = "";
+    let lastDisplaySnapshot = "";
+    const sendDisplaySnapshot = (force = false): void => {
+      if (this.currentVoiceTurnId !== traceId || abort.signal.aborted) return;
+      const boundedCanonicalText = canonicalDisplayText.slice(
+        0,
+        VOICE_DISPLAY_MAX_CHARS,
+      );
+      const maxEnd = Math.min(
+        boundedCanonicalText.length,
+        lastDisplaySnapshot.length + VOICE_DISPLAY_MAX_UPDATE_CHARS,
+      );
+      let end = maxEnd;
+      if (maxEnd < boundedCanonicalText.length) {
+        // `lastIndexOf` includes its fromIndex. Searching at `maxEnd` and then
+        // adding one for the space could therefore exceed the advertised
+        // per-frame cap by one character.
+        const wordBoundary = boundedCanonicalText.lastIndexOf(" ", maxEnd - 1);
+        if (
+          wordBoundary >
+          lastDisplaySnapshot.length + VOICE_DISPLAY_MIN_UPDATE_CHARS
+        ) {
+          end = wordBoundary + 1;
+        }
+      }
+      const text = boundedCanonicalText.slice(0, end);
+      if (!text || text === lastDisplaySnapshot) return;
+      const addedChars = text.length - lastDisplaySnapshot.length;
+      const naturalBoundary = /(?:[.!?…:]|\n)\s*$/u.test(text);
+      if (
+        !force &&
+        lastDisplaySnapshot &&
+        addedChars < VOICE_DISPLAY_MIN_UPDATE_CHARS &&
+        !naturalBoundary
+      ) {
+        return;
+      }
+      lastDisplaySnapshot = text;
+      this.send({ t: "assistant_display", text, traceId });
+    };
     const ensureTts = (): RealtimeTtsStream => {
       if (tts) return tts;
       const callbacks: RealtimeTtsStreamCallbacks = {
@@ -1355,6 +1377,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
         // filesystem paths, code fences, and tables can all straddle arbitrary
         // SSE boundaries; only the terminal whole-answer projection may speak.
         canonicalDisplayText += delta;
+        sendDisplaySnapshot();
       };
       const retryDelays =
         this.config.cacheWarmingRetryDelaysMs ?? CACHE_WARMING_RETRY_DELAYS_MS;
@@ -1404,6 +1427,9 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
       }
 
       finishProgress("final");
+      // Flush the final cumulative display before terminal metadata/TTS. This
+      // keeps the chat visibly streaming without making fragments speakable.
+      sendDisplaySnapshot(true);
 
       if (result.viewHandoff) {
         this.send({
@@ -1441,6 +1467,19 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
         projection.captions === projection.speechText
           ? projection.captions
           : null;
+      const displayMarkdown = canonicalDisplayText.slice(
+        0,
+        VOICE_DISPLAY_MAX_CHARS,
+      );
+      this.send({
+        t: "assistant_output",
+        displayMarkdown,
+        speechText: safeSpeechText,
+        displayTruncated:
+          displayMarkdown.length !== canonicalDisplayText.length,
+        ...(result.messageId ? { messageId: result.messageId } : {}),
+        traceId,
+      });
       if (!safeSpeechText) {
         // The canonical route has already persisted/displayed non-empty output.
         // Cancel only the speculative provider context and report that truthful

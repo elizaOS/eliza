@@ -2,7 +2,7 @@
  * Opt-in live acoustic-interruption proof for the normal-chat Talk surface.
  *
  * The dedicated Chromium project feeds two committed real-speech clips with a
- * 1.3-second gap, after semantic EOT but during measured local playout. No STT,
+ * controlled silence gap, after semantic EOT but during measured local playout. No STT,
  * agent, TTS, WebSocket, or playback mock is installed; CI skips this unless a
  * developer explicitly enables live voice.
  */
@@ -108,6 +108,19 @@ test.describe("normal-chat realtime acoustic barge-in", () => {
     await expect(mic).toHaveAttribute("aria-label", "end conversation", {
       timeout: 45_000,
     });
+    await expect
+      .poll(
+        () =>
+          consoleMessages.some((message) =>
+            message.includes("[eliza][voice-capture] realtime:capture-ready"),
+          ),
+        {
+          message:
+            "live acoustic proof must arm the realtime PCM/WebSocket client, not the legacy batch recorder",
+          timeout: 30_000,
+        },
+      )
+      .toBe(true);
 
     try {
       // Start this guard immediately: whether or not the interruption contract
@@ -178,6 +191,11 @@ test.describe("normal-chat realtime acoustic barge-in", () => {
         .poll(() => assistantMessageRows.count())
         .toBeGreaterThanOrEqual(1);
       expect(await assistantMessageRows.count()).toBeLessThanOrEqual(2);
+      expect(
+        consoleMessages.some((message) =>
+          message.includes("Cannot update a component"),
+        ),
+      ).toBe(false);
       expect(pageErrors).toEqual([]);
       await page.screenshot({
         path: testInfo.outputPath("normal-chat-realtime-barge-live.png"),

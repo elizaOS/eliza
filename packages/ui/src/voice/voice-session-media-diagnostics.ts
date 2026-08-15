@@ -39,6 +39,11 @@ export type VoiceSessionClientDiagnosticEvent =
   | (VoiceSessionClientDiagnosticBase & {
       readonly type: "playback_started" | "playback_drained";
       readonly sequence: number;
+    })
+  | (VoiceSessionClientDiagnosticBase & {
+      /** Exact response whose queued local audio was authoritatively flushed. */
+      readonly type: "playback_interrupted";
+      readonly sequence: number | null;
     });
 
 function positiveNumberOrUnknown(value: unknown): number | "unknown" {

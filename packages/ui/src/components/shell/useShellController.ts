@@ -68,6 +68,7 @@ import {
   createNormalVoiceTraceCollector,
   type NormalVoiceTraceCollector,
 } from "../../voice/realtime-voice-trace-collector";
+import { persistCompletedNormalVoiceTrace } from "../../voice/realtime-voice-trace-store";
 import { shouldRespondToVoiceTurn } from "../../voice/should-respond";
 import { TranscriptSessionAccumulator } from "../../voice/transcript-session";
 import {
@@ -101,6 +102,12 @@ import {
   type ConversationNavDirection,
   resolveAdjacentConversationId,
 } from "./conversation-nav";
+import {
+  EMPTY_REALTIME_VOICE_DISPLAY_STATE,
+  projectRealtimeVoiceDisplayMessages,
+  realtimeVoiceDisplayIsAnimating,
+  reduceRealtimeVoiceDisplay,
+} from "./realtime-voice-display";
 import type { ShellMessage, ShellPhase } from "./shell-state";
 import { useShellVoiceOutput } from "./useShellVoiceOutput";
 
@@ -129,6 +136,14 @@ function roundedTimingDelta(
 ): number | "not_measured" {
   if (endAtMs === undefined || startAtMs === undefined) return "not_measured";
   return Math.max(0, Math.round(endAtMs - startAtMs));
+}
+
+function voiceDisplayNow(): number {
+  return typeof performance !== "undefined" ? performance.now() : Date.now();
+}
+
+function hasSpokenTranscript(text: string): boolean {
+  return /[\p{L}\p{N}]/u.test(text);
 }
 
 /**
@@ -493,9 +508,24 @@ export function useShellController(): ShellController {
   );
   const realtimeTraceCollectorRef =
     React.useRef<NormalVoiceTraceCollector | null>(null);
+  const [realtimeVoiceDisplay, dispatchRealtimeVoiceDisplay] = React.useReducer(
+    reduceRealtimeVoiceDisplay,
+    EMPTY_REALTIME_VOICE_DISPLAY_STATE,
+  );
+  const realtimeVoiceDisplayAnimating =
+    realtimeVoiceDisplayIsAnimating(realtimeVoiceDisplay);
   if (!realtimeTraceCollectorRef.current) {
-    realtimeTraceCollectorRef.current = createNormalVoiceTraceCollector();
+    realtimeTraceCollectorRef.current = createNormalVoiceTraceCollector(
+      persistCompletedNormalVoiceTrace,
+    );
   }
+  React.useEffect(() => {
+    if (!realtimeVoiceDisplayAnimating) return;
+    const interval = window.setInterval(() => {
+      dispatchRealtimeVoiceDisplay({ type: "tick", atMs: voiceDisplayNow() });
+    }, 40);
+    return () => window.clearInterval(interval);
+  }, [realtimeVoiceDisplayAnimating]);
   conversationsRef.current = conversations;
   activeConversationIdRef.current = activeConversationId;
 
@@ -513,13 +543,73 @@ export function useShellController(): ShellController {
         });
         return;
       }
+      if (
+        (event.t === "stt_partial" || event.t === "stt_final") &&
+        hasSpokenTranscript(event.text)
+      ) {
+        // The exact server interruption normally arrives first. This fallback
+        // still freezes any audible/in-flight answer when a browser observes
+        // confirmed user speech but an older server/client missed the exact
+        // interruption frame. Completed answers are deliberately ignored by
+        // the reducer.
+        dispatchRealtimeVoiceDisplay({
+          type: "user_speech",
+          atMs: voiceDisplayNow(),
+        });
+      }
+      if (event.t === "assistant_display") {
+        dispatchRealtimeVoiceDisplay({
+          type: "stream",
+          traceId: event.traceId,
+          text: event.text,
+          atMs: voiceDisplayNow(),
+        });
+      } else if (event.t === "assistant_output") {
+        dispatchRealtimeVoiceDisplay({
+          type: "output",
+          traceId: event.traceId,
+          ...(event.messageId ? { messageId: event.messageId } : {}),
+          displayMarkdown: event.displayMarkdown,
+          speechText: event.speechText,
+          displayTruncated: event.displayTruncated,
+          // Every reveal event shares the monotonic performance clock. Mixing
+          // epoch time here with performance.now() ticks made elapsed time
+          // negative, reducing a paced reveal to one character per tick.
+          atMs: voiceDisplayNow(),
+        });
+      } else if (event.t === "speaking_start") {
+        dispatchRealtimeVoiceDisplay({
+          type: "speaking_start",
+          traceId: event.traceId,
+          atMs: voiceDisplayNow(),
+        });
+      } else if (event.t === "interrupted") {
+        dispatchRealtimeVoiceDisplay({
+          type: "interrupted",
+          traceId: event.traceId,
+          atMs: voiceDisplayNow(),
+        });
+      } else if (event.t === "turn_end") {
+        dispatchRealtimeVoiceDisplay({
+          type: "turn_end",
+          traceId: event.traceId,
+          outcome: event.outcome,
+          atMs: voiceDisplayNow(),
+        });
+      }
       // The voice gateway submits through the canonical conversation stream,
       // outside this renderer's useChatSend instance. Reconcile at first model
       // text so the committed user turn appears promptly, then at terminal usage
       // so the persisted assistant reply replaces the in-flight state. Never
       // synthesize local bubbles: the normal conversation loader remains the
       // sole reader and deduper for saved history.
-      if (event.t !== "llm_first_text" && event.t !== "usage") return;
+      if (
+        event.t !== "llm_first_text" &&
+        event.t !== "assistant_output" &&
+        event.t !== "usage"
+      ) {
+        return;
+      }
       const conversationId = activeConversationIdRef.current?.trim() || null;
       if (!conversationId) return;
       dispatchConversationResync({
@@ -571,6 +661,14 @@ export function useShellController(): ShellController {
       if (mark.name === "first_audio_playout")
         timing.firstAudioAtMs = mark.atMs;
       realtimeTurnTimingRef.current.set(mark.traceId, timing);
+
+      if (mark.name === "downlink_audio") {
+        dispatchRealtimeVoiceDisplay({
+          type: "playback_active",
+          traceId: mark.traceId,
+          atMs: mark.atMs,
+        });
+      }
 
       if (mark.name === "interrupted" || mark.name.startsWith("turn_end(")) {
         voiceCaptureDebug("realtime:turn-latency", {
@@ -641,6 +739,26 @@ export function useShellController(): ShellController {
           correlated: Boolean(event.traceId),
         },
       );
+      if (!event.traceId) return;
+      if (event.type === "playback_started") {
+        dispatchRealtimeVoiceDisplay({
+          type: "playback_active",
+          traceId: event.traceId,
+          atMs: event.atMs,
+        });
+      } else if (event.type === "playback_drained") {
+        dispatchRealtimeVoiceDisplay({
+          type: "playback_drained",
+          traceId: event.traceId,
+          atMs: event.atMs,
+        });
+      } else if (event.type === "playback_interrupted") {
+        dispatchRealtimeVoiceDisplay({
+          type: "interrupted",
+          traceId: event.traceId,
+          atMs: event.atMs,
+        });
+      }
     },
     [],
   );
@@ -665,6 +783,17 @@ export function useShellController(): ShellController {
   });
   const realtimeVoiceRef = React.useRef(realtimeVoice);
   realtimeVoiceRef.current = realtimeVoice;
+  const realtimeVoiceDisplayConversationRef =
+    React.useRef(activeConversationId);
+
+  React.useEffect(() => {
+    if (realtimeVoiceDisplayConversationRef.current === activeConversationId) {
+      return;
+    }
+    realtimeVoiceDisplayConversationRef.current = activeConversationId;
+    dispatchRealtimeVoiceDisplay({ type: "conversation_changed" });
+  }, [activeConversationId]);
+
   const realtimeVoiceWantedRef = React.useRef(false);
   // True once the CURRENT wanted session has reached live; distinguishes a
   // mid-session death (parked by the effect below startRealtimeVoice) from an
@@ -1061,7 +1190,7 @@ export function useShellController(): ShellController {
   const shellMessageCacheRef = React.useRef<Map<string, ShellMessage>>(
     new Map(),
   );
-  const messages = React.useMemo<ShellMessage[]>(() => {
+  const canonicalMessages = React.useMemo<ShellMessage[]>(() => {
     const source = Array.isArray(conversationMessages)
       ? conversationMessages
       : [];
@@ -1073,6 +1202,7 @@ export function useShellController(): ShellController {
         cached &&
         cached.content === message.text &&
         cached.failureKind === message.failureKind &&
+        cached.interrupted === message.interrupted &&
         (cached.reasoning || undefined) === (message.reasoning || undefined) &&
         cached.secretRequest === message.secretRequest &&
         // Tool-event merges return a NEW array reference each step, so a
@@ -1092,6 +1222,7 @@ export function useShellController(): ShellController {
         // can omit it. Drives the suggestion affordance (#8792).
         ...(message.source ? { source: message.source } : {}),
         failureKind: message.failureKind,
+        ...(message.interrupted ? { interrupted: true } : {}),
         ...(message.reasoning ? { reasoning: message.reasoning } : {}),
         ...(message.toolEvents?.length
           ? { toolEvents: message.toolEvents }
@@ -1110,6 +1241,14 @@ export function useShellController(): ShellController {
     shellMessageCacheRef.current = next;
     return out;
   }, [conversationMessages]);
+  const messages = React.useMemo(
+    () =>
+      projectRealtimeVoiceDisplayMessages(
+        canonicalMessages,
+        realtimeVoiceDisplay,
+      ),
+    [canonicalMessages, realtimeVoiceDisplay],
+  );
 
   // The agent's most recent reply, for the always-on shouldRespond echo guard
   // (suppress a voice turn that's just the agent's own TTS heard back). A ref so

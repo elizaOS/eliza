@@ -191,6 +191,14 @@ export function applyServerEvent(
       // The caption accompanies a server-authorized progress preamble. Speech
       // lifecycle remains owned by speaking_start/audio/turn_end.
       return { ...state, phase: "thinking", traceId: event.traceId };
+    case "assistant_display":
+      // Streaming display is presentation state; response/audio ownership is
+      // unchanged until the server emits its terminal lifecycle frames.
+      return { ...state, phase: "thinking", traceId: event.traceId };
+    case "assistant_output":
+      // Display ownership is independent from the audio lifecycle. The client
+      // paces this terminal projection only after speaking actually starts.
+      return { ...state, phase: "thinking", traceId: event.traceId };
     case "speaking_start":
       return { ...state, phase: "speaking", traceId: event.traceId };
     case "speaking_end":

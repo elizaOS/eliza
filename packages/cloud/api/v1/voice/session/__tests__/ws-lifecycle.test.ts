@@ -1537,6 +1537,7 @@ describe("voice-session WS lifecycle", () => {
       client,
       fetchImpl: makeLocalTokenFetch([{ text: canonical }], {
         fullText: canonical,
+        messageId: "assistant-voice-1",
         voiceOutput: { policy: "both", spoken },
       }),
     });
@@ -1557,6 +1558,14 @@ describe("voice-session WS lifecycle", () => {
       expect.objectContaining({ transcript: spoken, continue: false }),
     ]);
     expect(cartesia.sentText()).not.toContain(canonical);
+    expect(client.controlFrames).toContainEqual({
+      t: "assistant_output",
+      displayMarkdown: canonical,
+      speechText: spoken,
+      displayTruncated: false,
+      messageId: "assistant-voice-1",
+      traceId: expect.any(String),
+    });
   });
 
   test("coerces unsupported say-only policy to both without hiding canonical display", async () => {
@@ -1731,6 +1740,12 @@ describe("voice-session WS lifecycle", () => {
 
     const cartesia = FakeCartesiaSocket.instances.at(-1)!;
     expect(client.controlTypes()).toContain("llm_first_text");
+    expect(client.controlFrames).toContainEqual({
+      t: "assistant_display",
+      text: streamedChunk,
+      traceId: expect.any(String),
+    });
+    expect(client.controlTypes()).not.toContain("assistant_output");
     expect(cartesia.sentText()).toBe("");
     expect(client.audioFrames).toHaveLength(0);
     expect(client.controlTypes()).not.toContain("usage");
@@ -1753,6 +1768,84 @@ describe("voice-session WS lifecycle", () => {
     cartesia.emitDone();
     await flush();
     expect(client.controlTypes()).toContain("usage");
+  });
+
+  test("a provider that resolves one large chunk cannot dump the whole answer into chat", async () => {
+    const controlled = makeControlledCanonicalChunkFetch();
+    const client = new FakeClientSocket();
+    await connectSession({
+      client,
+      fetchImpl: controlled.fetchImpl,
+    });
+
+    const ink = FakeInkSocket.instances.at(-1)!;
+    ink.emitTurn("turn.start");
+    ink.emitTurn("turn.end", "give me a detailed answer");
+    await controlled.ready;
+
+    // The space at zero-based index 48 is the exact boundary case: it must not
+    // be included as a 49th character when a display frame is capped at 48.
+    const wholeAnswer = `${"A".repeat(48)} ${"More careful detail follows. ".repeat(14)}`;
+    controlled.enqueueChunk(wholeAnswer);
+    await flush();
+
+    const beforeTerminal = client.controlFrames.filter(
+      (frame) => frame.t === "assistant_display",
+    );
+    expect(beforeTerminal).toHaveLength(1);
+    expect(beforeTerminal[0]).toMatchObject({
+      t: "assistant_display",
+      traceId: expect.any(String),
+    });
+    if (beforeTerminal[0]?.t !== "assistant_display") {
+      throw new Error("expected assistant_display");
+    }
+    expect(beforeTerminal[0].text.length).toBeLessThanOrEqual(48);
+    expect(beforeTerminal[0].text.length).toBeLessThan(wholeAnswer.length);
+
+    controlled.finish();
+    await flush();
+    const displayFrames = client.controlFrames.filter(
+      (frame) => frame.t === "assistant_display",
+    );
+    expect(displayFrames.length).toBeGreaterThanOrEqual(1);
+    for (const frame of displayFrames) {
+      if (frame.t !== "assistant_display") continue;
+      expect(frame.text.length).toBeLessThan(wholeAnswer.length);
+    }
+    expect(client.controlFrames).toContainEqual({
+      t: "assistant_output",
+      displayMarkdown: wholeAnswer,
+      speechText: wholeAnswer.trim(),
+      displayTruncated: false,
+      traceId: expect.any(String),
+    });
+  });
+
+  test("normal thinking stays silent instead of speaking a canned progress line", async () => {
+    const controlled = makeControlledCanonicalChunkFetch();
+    const client = new FakeClientSocket();
+    await connectSession({
+      client,
+      fetchImpl: controlled.fetchImpl,
+      voiceProgressSpokenThresholdMs: 10,
+    });
+
+    const ink = FakeInkSocket.instances.at(-1)!;
+    ink.emitTurn("turn.start");
+    ink.emitTurn("turn.end", "give me a thoughtful answer");
+    await controlled.ready;
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    await flush();
+
+    const cartesia = FakeCartesiaSocket.instances.at(-1)!;
+    expect(client.controlTypes()).not.toContain("assistant_progress");
+    expect(cartesia.sentText()).toBe("");
+
+    controlled.enqueueChunk("A direct answer without filler.");
+    controlled.finish();
+    await flush();
+    expect(client.controlTypes()).not.toContain("assistant_progress");
   });
 
   test("a slow canonical turn speaks one captioned progress preamble before the final answer", async () => {

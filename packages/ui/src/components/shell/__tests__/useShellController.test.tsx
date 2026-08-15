@@ -2469,6 +2469,210 @@ describe("useShellController — mounted Cartesia Talk ownership", () => {
     }
   });
 
+  it("streams the exact voice row and freezes it on a local buffered-tail interruption", () => {
+    const fullAnswer =
+      "The whole declaration continues far beyond the visible streamed prefix.";
+    appMock.value.conversationMessages = [
+      {
+        id: "assistant-voice-1",
+        role: "assistant",
+        text: fullAnswer,
+        timestamp: 1_000,
+      },
+    ];
+    const { result } = renderHook(() => useShellController());
+    const clientOptions = realtimeVoiceMock.options?.clientOptions;
+
+    act(() => {
+      clientOptions?.onServerEvent?.({
+        t: "assistant_display",
+        text: "The whole declaration continues",
+        traceId: "trace-voice-display",
+      });
+    });
+    expect(result.current.messages.at(-1)?.content).toBe(
+      "The whole declaration continues",
+    );
+
+    act(() => {
+      clientOptions?.onServerEvent?.({
+        t: "assistant_output",
+        displayMarkdown: fullAnswer,
+        speechText: fullAnswer,
+        displayTruncated: false,
+        messageId: "assistant-voice-1",
+        traceId: "trace-voice-display",
+      });
+      clientOptions?.onDiagnostic?.({
+        type: "playback_interrupted",
+        atMs: performance.now(),
+        traceId: "trace-voice-display",
+        sequence: 7,
+      });
+      // A late frame/terminal replay must never dump the remainder.
+      clientOptions?.onServerEvent?.({
+        t: "assistant_display",
+        text: fullAnswer,
+        traceId: "trace-voice-display",
+      });
+    });
+    expect(result.current.messages[0]).toMatchObject({
+      content: "The whole declaration continues",
+      interrupted: true,
+    });
+  });
+
+  it("preserves the interrupted row and replacement across the real acoustic wire order", () => {
+    const oldAnswer =
+      "Star formation begins in a cold molecular cloud and continues through a long explanation.";
+    appMock.value.conversationMessages = [
+      {
+        id: "assistant-old-wire",
+        role: "assistant",
+        text: oldAnswer,
+        timestamp: 1_000,
+      },
+    ];
+    const { result, rerender } = renderHook(() => useShellController());
+    const clientOptions = realtimeVoiceMock.options?.clientOptions;
+
+    act(() => {
+      clientOptions?.onServerEvent?.({
+        t: "assistant_display",
+        text: "Star formation begins in a cold molecular cloud",
+        traceId: "trace-old-wire",
+      });
+      clientOptions?.onServerEvent?.({
+        t: "assistant_output",
+        displayMarkdown: oldAnswer,
+        speechText: oldAnswer,
+        displayTruncated: false,
+        messageId: "assistant-old-wire",
+        traceId: "trace-old-wire",
+      });
+      clientOptions?.onServerEvent?.({
+        t: "speaking_start",
+        traceId: "trace-old-wire",
+      });
+      clientOptions?.onTraceMark?.({
+        name: "downlink_audio",
+        traceId: "trace-old-wire",
+        atMs: performance.now(),
+      });
+      // The live server sends the exact old-trace interruption before Ink's
+      // first partial, whose trace may still be the old response trace.
+      clientOptions?.onServerEvent?.({
+        t: "interrupted",
+        reason: "acoustic",
+        traceId: "trace-old-wire",
+      });
+      clientOptions?.onServerEvent?.({
+        t: "stt_partial",
+        text: "Actually",
+        traceId: "trace-old-wire",
+      });
+      clientOptions?.onServerEvent?.({
+        t: "stt_final",
+        text: "Actually stop. Reply with only pineapple.",
+        traceId: "trace-new-wire",
+      });
+    });
+    const frozenOld = result.current.messages[0]?.content;
+
+    appMock.value.conversationMessages = [
+      ...appMock.value.conversationMessages,
+      {
+        id: "assistant-new-wire",
+        role: "assistant",
+        text: "pineapple",
+        timestamp: 2_000,
+      },
+    ];
+    rerender();
+    act(() => {
+      clientOptions?.onServerEvent?.({
+        t: "assistant_display",
+        text: "pineapple",
+        traceId: "trace-new-wire",
+      });
+      clientOptions?.onServerEvent?.({
+        t: "assistant_output",
+        displayMarkdown: "pineapple",
+        speechText: "pineapple",
+        displayTruncated: false,
+        messageId: "assistant-new-wire",
+        traceId: "trace-new-wire",
+      });
+      // Late old frames must remain powerless after replacement starts.
+      clientOptions?.onServerEvent?.({
+        t: "assistant_display",
+        text: oldAnswer,
+        traceId: "trace-old-wire",
+      });
+      clientOptions?.onServerEvent?.({
+        t: "turn_end",
+        outcome: "spoken",
+        traceId: "trace-old-wire",
+      });
+    });
+
+    expect(result.current.messages).toHaveLength(2);
+    expect(result.current.messages[0]).toMatchObject({
+      id: "assistant-old-wire",
+      content: frozenOld,
+      interrupted: true,
+    });
+    expect(result.current.messages[1]).toMatchObject({
+      id: "assistant-new-wire",
+      content: "pineapple",
+    });
+  });
+
+  it("reveals a terminal-only voice answer on the monotonic clock instead of one character per tick", async () => {
+    vi.useFakeTimers();
+    try {
+      const prefix = "The useful visible prefix. ";
+      const fullAnswer = `${prefix}${"Detailed continuation for the reader. ".repeat(24)}`;
+      appMock.value.conversationMessages = [
+        {
+          id: "assistant-voice-paced",
+          role: "assistant",
+          text: fullAnswer,
+          timestamp: 1_000,
+        },
+      ];
+      const { result } = renderHook(() => useShellController());
+      const clientOptions = realtimeVoiceMock.options?.clientOptions;
+
+      act(() => {
+        clientOptions?.onServerEvent?.({
+          t: "assistant_display",
+          text: prefix,
+          traceId: "trace-voice-paced",
+        });
+        clientOptions?.onServerEvent?.({
+          t: "assistant_output",
+          displayMarkdown: fullAnswer,
+          speechText: fullAnswer,
+          displayTruncated: false,
+          messageId: "assistant-voice-paced",
+          traceId: "trace-voice-paced",
+        });
+      });
+      expect(result.current.messages[0]?.content).toBe(prefix);
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(400);
+      });
+      expect(result.current.messages[0]?.content.length).toBeGreaterThan(
+        prefix.length + 10,
+      );
+      expect(result.current.messages[0]?.content).not.toBe(fullAnswer);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("records content-free realtime media and playout evidence in the device-visible debug ring", () => {
     renderHook(() => useShellController());
     const clientOptions = realtimeVoiceMock.options?.clientOptions;

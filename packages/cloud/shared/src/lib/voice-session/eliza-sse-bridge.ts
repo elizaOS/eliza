@@ -70,6 +70,8 @@ export interface ElizaSseBridgeResult {
   completed: boolean;
   /** True if the stream was aborted (interruption / disconnect). */
   aborted: boolean;
+  /** Durable assistant row selected by the canonical terminal frame. */
+  messageId?: string;
   /** Successful model-selected VIEWS handoff carried by the terminal frame. */
   viewHandoff?: ElizaVoiceViewHandoff;
   /**
@@ -310,9 +312,11 @@ export async function streamElizaConversation(
           const viewHandoff = payload === "[DONE]" ? null : extractViewHandoff(payload);
           const outputDirective =
             payload === "[DONE]" ? null : extractVoiceOutputDirective(payload);
+          const messageId = payload === "[DONE]" ? null : extractTerminalMessageId(payload);
           return {
             completed: true,
             aborted: false,
+            ...(messageId ? { messageId } : {}),
             ...(viewHandoff ? { viewHandoff } : {}),
             ...(outputDirective ? { outputDirective } : {}),
           };
@@ -594,6 +598,19 @@ function extractTerminalText(payload: string): {
     return { present: true, text: parsed.text };
   }
   return { present: false, text: "" };
+}
+
+/** Read the exact persisted assistant identity without trusting arbitrary SSE metadata. */
+function extractTerminalMessageId(payload: string): string | null {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(payload);
+  } catch (ignoredError) {
+    void ignoredError;
+    return null;
+  }
+  if (!isRecord(parsed)) return null;
+  return readBoundedString(parsed.messageId);
 }
 
 function extractViewHandoff(payload: string): ElizaVoiceViewHandoff | null {

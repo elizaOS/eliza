@@ -59,6 +59,8 @@ export class ProvisionalSpeechStartDetector {
   private silenceMs = 0;
   private started = false;
   private confirmed = false;
+  private startEmitted = false;
+  private confirmationEmitted = false;
 
   constructor(config: ProvisionalSpeechStartConfig = {}) {
     this.config = {
@@ -101,6 +103,8 @@ export class ProvisionalSpeechStartDetector {
     this.silenceMs = 0;
     this.started = false;
     this.confirmed = false;
+    this.startEmitted = false;
+    this.confirmationEmitted = false;
   }
 
   /**
@@ -111,6 +115,7 @@ export class ProvisionalSpeechStartDetector {
     pcm: Float32Array,
     sampleRate: number,
     atMs: number,
+    emitEvents = true,
   ): readonly ProvisionalSpeechStartEvent[] {
     if (!Number.isFinite(sampleRate) || sampleRate <= 0) {
       throw new TypeError("sampleRate must be a finite positive number");
@@ -144,7 +149,6 @@ export class ProvisionalSpeechStartDetector {
         this.speechMs += durationMs;
         if (!this.started && this.speechMs >= this.config.minimumSpeechMs) {
           this.started = true;
-          events.push({ phase: "started", atMs: windowAtMs, ...stats });
         }
         if (
           this.started &&
@@ -152,6 +156,17 @@ export class ProvisionalSpeechStartDetector {
           this.speechMs >= this.config.confirmationSpeechMs
         ) {
           this.confirmed = true;
+        }
+        // Speech may begin just before local playout becomes interruptible.
+        // Preserve that evidence, but do not emit an interruption event until
+        // the caller authorizes it. Once eligible, emit the exact current
+        // episode in order; never require the speaker to pause and start over.
+        if (emitEvents && this.started && !this.startEmitted) {
+          this.startEmitted = true;
+          events.push({ phase: "started", atMs: windowAtMs, ...stats });
+        }
+        if (emitEvents && this.confirmed && !this.confirmationEmitted) {
+          this.confirmationEmitted = true;
           events.push({ phase: "confirmed", atMs: windowAtMs, ...stats });
         }
         continue;
@@ -163,11 +178,15 @@ export class ProvisionalSpeechStartDetector {
       }
       this.silenceMs += durationMs;
       if (this.silenceMs >= this.config.rearmSilenceMs) {
-        events.push({ phase: "ended", atMs: windowAtMs, ...stats });
+        if (emitEvents && this.startEmitted) {
+          events.push({ phase: "ended", atMs: windowAtMs, ...stats });
+        }
         this.speechMs = 0;
         this.silenceMs = 0;
         this.started = false;
         this.confirmed = false;
+        this.startEmitted = false;
+        this.confirmationEmitted = false;
       }
     }
     return events;
