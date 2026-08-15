@@ -2,7 +2,7 @@
 const DEFAULT_MARKUP_RATE = 0.2;
 const DEFAULT_USD_ROUNDING_PRECISION = 2;
 const TWILIO_SMS_SEGMENT_CHAR_LIMIT = 160;
-const DEFAULT_TWILIO_SMS_COST_PER_SEGMENT_USD = 0.0075;
+export const DEFAULT_TWILIO_SMS_COST_PER_SEGMENT_USD = 0.0075;
 
 interface MarkupBreakdown {
   rawCost: number;
@@ -74,30 +74,60 @@ function estimateTwilioSmsSegments(body: string): number {
   return Math.ceil(body.length / TWILIO_SMS_SEGMENT_CHAR_LIMIT);
 }
 
+/**
+ * Classification of a raw Twilio SMS cost configuration value.
+ *
+ * `absent` means no value was supplied (null/undefined/empty) and the caller
+ * should silently fall back to the default. `invalid` means a value was
+ * supplied but is not a strictly-parseable, finite, non-negative cost and the
+ * caller should both warn and fall back. `valid` carries the parsed cost.
+ */
+export type TwilioSmsCostConfig =
+  | { status: "absent" }
+  | { status: "invalid" }
+  | { status: "valid"; value: number };
+
+/**
+ * Classify a raw Twilio SMS cost value using strict full-string parsing.
+ *
+ * The whole trimmed string must be numeric: partially numeric values such as
+ * `"0.01USD"` or `"1.2.3"` are rejected rather than truncated. This is the
+ * single strict contract shared by {@link resolveTwilioSmsCostPerSegment} and
+ * the adapter's invalid-configuration warning gate so the two cannot drift.
+ */
+export function classifyTwilioSmsCostConfig(
+  rawCostPerSegment: string | number | null | undefined,
+): TwilioSmsCostConfig {
+  if (
+    rawCostPerSegment === null ||
+    rawCostPerSegment === undefined ||
+    rawCostPerSegment === ""
+  ) {
+    return { status: "absent" };
+  }
+
+  const parsed =
+    typeof rawCostPerSegment === "number"
+      ? rawCostPerSegment
+      : Number(rawCostPerSegment.trim());
+
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    return { status: "invalid" };
+  }
+
+  return { status: "valid", value: parsed };
+}
+
 export function resolveTwilioSmsCostPerSegment(
   rawCostPerSegment: string | number | null | undefined,
   fallbackCostPerSegment: number = DEFAULT_TWILIO_SMS_COST_PER_SEGMENT_USD,
 ): number {
   assertValidCost(fallbackCostPerSegment, "fallbackCostPerSegment");
 
-  if (
-    rawCostPerSegment === null ||
-    rawCostPerSegment === undefined ||
-    rawCostPerSegment === ""
-  ) {
-    return fallbackCostPerSegment;
-  }
-
-  const parsed =
-    typeof rawCostPerSegment === "number"
-      ? rawCostPerSegment
-      : Number.parseFloat(rawCostPerSegment);
-
-  if (!Number.isFinite(parsed) || parsed < 0) {
-    return fallbackCostPerSegment;
-  }
-
-  return parsed;
+  const classified = classifyTwilioSmsCostConfig(rawCostPerSegment);
+  return classified.status === "valid"
+    ? classified.value
+    : fallbackCostPerSegment;
 }
 
 export function calculateTwilioSmsBilling(
