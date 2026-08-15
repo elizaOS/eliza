@@ -4,39 +4,37 @@
  */
 
 import { KeyRound } from "lucide-react";
-import { BrandButton, BrandCard, CornerBrackets } from "../../../cloud-ui";
+import {
+  SettingsGroup,
+  SettingsRow,
+  SettingsStack,
+} from "../../../components/settings/settings-layout";
 import { useCloudT } from "../../shell/CloudI18nProvider";
 
 export function ApiKeysLink() {
   const t = useCloudT();
   return (
-    <BrandCard className="relative">
-      <CornerBrackets size="sm" className="opacity-50" />
-      <div className="relative z-10 flex items-start justify-between gap-3">
-        <div className="flex items-start gap-3">
-          <div className="rounded-sm border border-border bg-muted p-2">
-            <KeyRound className="h-4 w-4 text-txt-strong" />
-          </div>
-          <div className="space-y-0.5">
-            <p className="text-sm font-medium text-txt-strong">
-              {t("cloud.apiKeysLink.title", { defaultValue: "API keys" })}
-            </p>
-            <p className="text-xs text-muted">
-              {t("cloud.apiKeysLink.description", {
-                defaultValue:
-                  "Manage long-lived keys, their scopes, and per-key audit history.",
+    <SettingsStack data-testid="cloud-api-keys-link">
+      <SettingsGroup>
+        <SettingsRow
+          icon={KeyRound}
+          label={t("cloud.apiKeysLink.title", { defaultValue: "API keys" })}
+          description={t("cloud.apiKeysLink.description", {
+            defaultValue:
+              "Manage long-lived keys, their scopes, and per-key audit history.",
+          })}
+          control={
+            <a
+              href="#cloud-api-keys"
+              className="text-sm font-medium text-accent underline-offset-2 hover:underline"
+            >
+              {t("cloud.apiKeysLink.manageKeys", {
+                defaultValue: "Manage keys",
               })}
-            </p>
-          </div>
-        </div>
-        {/* Plain anchor: an in-settings hash change fires `hashchange`,
-            which is what SettingsView listens to for section switches. */}
-        <a href="#cloud-api-keys">
-          <BrandButton variant="outline" size="sm">
-            {t("cloud.apiKeysLink.manageKeys", { defaultValue: "Manage keys" })}
-          </BrandButton>
-        </a>
-      </div>
-    </BrandCard>
+            </a>
+          }
+        />
+      </SettingsGroup>
+    </SettingsStack>
   );
 }

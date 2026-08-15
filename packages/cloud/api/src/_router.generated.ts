@@ -501,7 +501,6 @@ import _route_v1_eliza_plaid_exchange_route from "../v1/eliza/plaid/exchange/rou
 import _route_v1_eliza_plaid_link_token_route from "../v1/eliza/plaid/link-token/route";
 import _route_v1_eliza_plaid_status_route from "../v1/eliza/plaid/status/route";
 import _route_v1_eliza_plaid_sync_route from "../v1/eliza/plaid/sync/route";
-import _route_v1_eliza_shared_messages_route from "../v1/eliza/shared/messages/route";
 import _route_v1_embeddings_route from "../v1/embeddings/route";
 import _route_v1_extract_route from "../v1/extract/route";
 import _route_v1_files_p_id_route from "../v1/files/[id]/route";
@@ -626,6 +625,7 @@ import _route_v1_track_pageview_route from "../v1/track/pageview/route";
 import _route_v1_twilio_connect_route from "../v1/twilio/connect/route";
 import _route_v1_twilio_disconnect_route from "../v1/twilio/disconnect/route";
 import _route_v1_twilio_status_route from "../v1/twilio/status/route";
+import _route_v1_twilio_voice_calls_route from "../v1/twilio/voice/calls/route";
 import _route_v1_twilio_voice_inbound_route from "../v1/twilio/voice/inbound/route";
 import _route_v1_twilio_voice_media_route from "../v1/twilio/voice/media/route";
 import _route_v1_twitter_callback_route from "../v1/twitter/callback/route";
@@ -2054,10 +2054,6 @@ export function mountRoutes(app: Hono<AppEnv>): void {
   );
   app.route("/api/v1/eliza/plaid/status", _route_v1_eliza_plaid_status_route);
   app.route("/api/v1/eliza/plaid/sync", _route_v1_eliza_plaid_sync_route);
-  app.route(
-    "/api/v1/eliza/shared/messages",
-    _route_v1_eliza_shared_messages_route,
-  );
   app.route("/api/v1/embeddings", _route_v1_embeddings_route);
   app.route("/api/v1/extract", _route_v1_extract_route);
   app.route("/api/v1/files/:id", _route_v1_files_p_id_route);
@@ -2342,6 +2338,7 @@ export function mountRoutes(app: Hono<AppEnv>): void {
   app.route("/api/v1/twilio/connect", _route_v1_twilio_connect_route);
   app.route("/api/v1/twilio/disconnect", _route_v1_twilio_disconnect_route);
   app.route("/api/v1/twilio/status", _route_v1_twilio_status_route);
+  app.route("/api/v1/twilio/voice/calls", _route_v1_twilio_voice_calls_route);
   app.route(
     "/api/v1/twilio/voice/inbound",
     _route_v1_twilio_voice_inbound_route,

@@ -14,6 +14,8 @@ import { describe, expect, it, vi } from "vitest";
 import {
   enqueueStepWrite,
   ensureTrajectoriesTable,
+  normalizeLlmCallPayload,
+  normalizeProviderAccessPayload,
 } from "./trajectory-internals.ts";
 import { installDatabaseTrajectoryLogger } from "./trajectory-persistence.ts";
 import { loadPersistedTrajectoryRows } from "./trajectory-query.ts";
@@ -1364,5 +1366,145 @@ describe("installDatabaseTrajectoryLogger (capture bridge)", () => {
 
     expect(originalExportTrajectories).not.toHaveBeenCalled();
     expect(hasTraceFilter(execute, "trace-1")).toBe(true);
+  });
+});
+
+describe("budgeted LLM capture completeness", () => {
+  it("retains required fields without exceeding the global row budget", () => {
+    const optionalFields = Object.fromEntries(
+      Array.from({ length: 20 }, (_, index) => [
+        `optional-${index}`,
+        "x".repeat(70_000),
+      ]),
+    );
+    const normalized = normalizeLlmCallPayload([
+      {
+        stepId: "step-budget-exhausted",
+        ...optionalFields,
+        model: "zai-glm-4.7",
+        response: "r".repeat(400_000),
+        purpose: "response",
+        actionType: "llm",
+      },
+    ]);
+
+    expect(normalized?.params).toMatchObject({
+      model: "zai-glm-4.7",
+      purpose: "response",
+      actionType: "llm",
+    });
+    expect(normalized?.params.response).toEqual(
+      expect.stringContaining("...[truncated]"),
+    );
+    expect(
+      new TextEncoder().encode(JSON.stringify(normalized?.params)).byteLength,
+    ).toBeLessThanOrEqual(1024 * 1024);
+  });
+
+  it("leaves a small response byte-identical", () => {
+    const normalized = normalizeLlmCallPayload([
+      {
+        stepId: "step-small",
+        model: "zai-glm-4.7",
+        purpose: "response",
+        actionType: "llm",
+        response: "ok",
+      },
+    ]);
+
+    expect(normalized?.params.response).toBe("ok");
+  });
+});
+
+describe("budgeted provider capture completeness", () => {
+  // The canonical producer shape (TrajectoriesService.logProviderAccess) emits
+  // `data` before the required `purpose` string, so a context-heavy provider
+  // payload exhausted the shared row budget first and `purpose` was bounded
+  // into a truncation marker. Re-validating that snapshot then discarded the
+  // whole provider access, which is the opposite of what the record is for.
+  const oversizedProviderData = () =>
+    Object.fromEntries(
+      Array.from({ length: 20 }, (_, index) => [
+        `chunk-${index}`,
+        "x".repeat(70_000),
+      ]),
+    );
+
+  it("retains required fields when data exhausts the global row budget", () => {
+    const normalized = normalizeProviderAccessPayload([
+      {
+        stepId: "step-provider-budget",
+        providerName: "KNOWLEDGE",
+        data: oversizedProviderData(),
+        purpose: "Provider KNOWLEDGE accessed for context",
+      },
+    ]);
+
+    expect(normalized?.params).toMatchObject({
+      providerName: "KNOWLEDGE",
+      purpose: "Provider KNOWLEDGE accessed for context",
+    });
+    // `data` stays an object so the capture keeps its shape while degrading.
+    expect(normalized?.params.data).toBeTypeOf("object");
+    expect(
+      new TextEncoder().encode(JSON.stringify(normalized?.params)).byteLength,
+    ).toBeLessThanOrEqual(1024 * 1024);
+  });
+
+  it("retains required fields through the (stepId, details) overload", () => {
+    const normalized = normalizeProviderAccessPayload([
+      "step-provider-budget-positional",
+      {
+        providerName: "KNOWLEDGE",
+        data: oversizedProviderData(),
+        purpose: "Provider KNOWLEDGE accessed for context",
+      },
+    ]);
+
+    expect(normalized?.stepId).toBe("step-provider-budget-positional");
+    expect(normalized?.params).toMatchObject({
+      providerName: "KNOWLEDGE",
+      purpose: "Provider KNOWLEDGE accessed for context",
+    });
+  });
+
+  it("leaves a small provider payload byte-identical", () => {
+    const normalized = normalizeProviderAccessPayload([
+      {
+        stepId: "step-provider-small",
+        providerName: "KNOWLEDGE",
+        data: { text: "ok", success: true },
+        purpose: "action",
+      },
+    ]);
+
+    expect(normalized?.params.data).toEqual({ text: "ok", success: true });
+    expect(normalized?.params.purpose).toBe("action");
+  });
+
+  it("retains required provider fields through logger flush and SQL serialization", async () => {
+    const { runtime, logger, execute } = makeRuntime();
+    await installDatabaseTrajectoryLogger(runtime);
+    await logger.startTrajectory?.("provider-budget-persistence", {
+      agentId: runtime.agentId,
+      source: "test",
+    });
+    await flushTrajectoryWrites(runtime);
+    execute.mockClear();
+
+    logger.logProviderAccess({
+      stepId: "provider-budget-persistence",
+      providerName: "KNOWLEDGE",
+      data: oversizedProviderData(),
+      purpose: "Provider KNOWLEDGE accessed for context",
+    });
+    await logger.flushWriteQueue?.("provider-budget-persistence");
+
+    const serialized = trajectoryPersistenceSql(execute).join("\n");
+    expect(serialized).toContain('"providerName":"KNOWLEDGE"');
+    expect(serialized).toContain(
+      '"purpose":"Provider KNOWLEDGE accessed for context"',
+    );
+    expect(serialized).toContain('"data":');
   });
 });

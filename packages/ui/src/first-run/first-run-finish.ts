@@ -50,6 +50,7 @@ import {
 import { runAgentSessionRecovery } from "../state/agent-session-recovery-runner";
 import type { CloudLoginOptions } from "../state/types";
 import { isCloudStatusAuthenticated } from "../utils";
+import { isPersonalSharedElizaId } from "../utils/cloud-agent-base";
 import { reportRendererDiagnostic } from "../utils/renderer-diagnostics";
 import { autoDownloadRecommendedLocalModelInBackground } from "./auto-download-recommended";
 import { assertDeviceRamTierAllowsLocalRuntime } from "./device-ram-gate";
@@ -478,42 +479,6 @@ async function finishLocal(
 // ── Cloud runtime finish ─────────────────────────────────────────────────────
 
 /**
- * Bind every first-run Cloud surface to the account-native personal Eliza.
- * `/join`, browser onboarding, and native companions share this controller so
- * completing first run can never create or wake paid compute implicitly.
- */
-async function bindPersonalEliza(
-  authToken: string,
-  ports: FirstRunFinishPorts,
-): Promise<FirstRunFinishOutcome> {
-  const cloudApiBase = getBootConfig().cloudApiBase || "https://eliza.app";
-  const selected = await runJoinFlow({
-    client,
-    effects: {
-      savePersistedActiveServer,
-      savePersistedFirstRunComplete,
-    },
-    cloudApiBase,
-    authToken,
-    onProgress: (status, detail) => ports.onStatus?.(detail ?? status, status),
-  });
-
-  addAgentProfile({
-    kind: "cloud",
-    label: selected.agentName,
-    cloudAgentId: selected.agentId,
-    apiBase: selected.apiBase,
-    accessToken: authToken,
-  });
-  persistMobileRuntimeModeForServerTarget("elizacloud");
-  clearForceFreshFirstRun();
-  clearPersistedFirstRunState();
-  ports.onStatus?.(null);
-  ports.completeFirstRun("chat");
-  return { kind: "done" };
-}
-
-/**
  * The provisioning tail of the cloud flow — both the silent auto-create path (0
  * agents) and the picker's pick / create-new feed their choice
  * (preferAgentId / forceCreate) into the SAME provisioning call.
@@ -753,6 +718,9 @@ export async function bindCloudAgent(
               containerBase,
               dedicatedAgentId,
               authToken,
+              ...(isPersonalSharedElizaId(sharedAgentId)
+                ? { personalElizaId: sharedAgentId }
+                : {}),
             });
           },
         });
@@ -806,15 +774,39 @@ export async function listOrAutoProvisionCloudAgent(
     firstRunRuntimeTarget("cloud"),
   );
   ports.setRuntimeState("firstRunProvider", "elizacloud");
-  let authToken = getCloudAuthToken(client);
-  if (!authToken) {
+  if (!getCloudAuthToken(client)) {
     await ports.handleInteractiveCloudLogin({ requireClientAuth: true });
-    authToken = getCloudAuthToken(client);
   }
+  const authToken = getCloudAuthToken(client) ?? "";
   if (!authToken) {
     return { kind: "needs-cloud-login" };
   }
-  return bindPersonalEliza(authToken, ports);
+  const cloudApiBase = getBootConfig().cloudApiBase || "https://eliza.app";
+  const selected = await runJoinFlow({
+    client,
+    effects: {
+      savePersistedActiveServer,
+      savePersistedFirstRunComplete,
+    },
+    cloudApiBase,
+    authToken,
+    onProgress: (status, detail) => ports.onStatus?.(detail ?? status, status),
+  });
+  addAgentProfile({
+    kind: "cloud",
+    label: selected.agentName,
+    cloudAgentId: selected.agentId,
+    cloudRuntimeAgentId: selected.activeAgentId,
+    cloudRuntime: selected.runtime,
+    apiBase: selected.apiBase,
+    accessToken: authToken,
+  });
+  persistMobileRuntimeModeForServerTarget("elizacloud");
+  clearForceFreshFirstRun();
+  clearPersistedFirstRunState();
+  ports.onStatus?.(null);
+  ports.completeFirstRun("chat");
+  return { kind: "done" };
 }
 
 // ── Router entry — validate + route by runtime ───────────────────────────────

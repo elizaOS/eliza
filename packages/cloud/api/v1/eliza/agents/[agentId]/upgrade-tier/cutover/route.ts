@@ -7,6 +7,7 @@
 
 import { Hono } from "hono";
 import { z } from "zod";
+import { usersRepository } from "@/db/repositories/users";
 import { errorToResponse } from "@/lib/api/errors";
 import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
 import {
@@ -96,6 +97,25 @@ app.post("/", async (c) => {
         503,
       );
     }
+    if (
+      await usersRepository.hasPendingPhoneTelegramPersonalAccountConvergenceTarget(
+        {
+          targetUserId: user.id,
+          targetOrganizationId: user.organization_id,
+          targetAgentId: sourceAgentId,
+        },
+      )
+    ) {
+      return json(
+        {
+          success: false,
+          code: "personal_identity_convergence_in_progress",
+          error:
+            "Personal history is still linking across channels. Try Dedicated activation again shortly.",
+        },
+        409,
+      );
+    }
     const sealToken = `personal-cutover:${sourceAgentId}:${parsed.data.dedicatedAgentId}`;
     const active = await findActivePersonalDedicatedTarget(
       user.organization_id,
@@ -175,10 +195,15 @@ app.post("/", async (c) => {
     const history = await coordinateSharedCutoverSeal(
       sourceAgentId,
       sourceAgentId,
-      { token: sealToken, leaseMs: CUTOVER_SEAL_LEASE_MS },
+      {
+        token: sealToken,
+        leaseMs: CUTOVER_SEAL_LEASE_MS,
+        organizationId: user.organization_id,
+        dedicatedAgentId: target.id,
+      },
       { namespace: conversationNamespace },
     );
-    let activated = false;
+    let markerCommitted = false;
     try {
       if (history.some((message) => !message.id)) {
         return json(
@@ -191,74 +216,66 @@ app.post("/", async (c) => {
           503,
         );
       }
-      if (history.length > 0) {
-        const authorization = c.req.header("authorization");
-        const apiKey = c.req.header("x-api-key");
-        const response = await fetch(
-          `${base}/api/conversations/${encodeURIComponent(sourceAgentId)}/import`,
-          {
-            method: "POST",
-            headers: {
-              Accept: "application/json",
-              "Content-Type": "application/json",
-              ...(authorization ? { Authorization: authorization } : {}),
-              ...(apiKey ? { "X-API-Key": apiKey } : {}),
-            },
-            body: JSON.stringify({
-              messages: history.map((message) => ({
-                sourceId: message.id,
-                role: message.role,
-                text: message.content,
-                ...(typeof message.createdAt === "number"
-                  ? { timestamp: message.createdAt }
-                  : {}),
-              })),
-            }),
-            signal: AbortSignal.timeout(20_000),
+      const authorization = c.req.header("authorization");
+      const apiKey = c.req.header("x-api-key");
+      const response = await fetch(
+        `${base}/api/conversations/${encodeURIComponent(sourceAgentId)}/import`,
+        {
+          method: "POST",
+          headers: {
+            Accept: "application/json",
+            "Content-Type": "application/json",
+            ...(authorization ? { Authorization: authorization } : {}),
+            ...(apiKey ? { "X-API-Key": apiKey } : {}),
           },
+          body: JSON.stringify({
+            messages: history.map((message) => ({
+              sourceId: message.id,
+              role: message.role,
+              text: message.content,
+              ...(typeof message.createdAt === "number"
+                ? { timestamp: message.createdAt }
+                : {}),
+            })),
+          }),
+          signal: AbortSignal.timeout(20_000),
+        },
+      );
+      if (!response.ok) {
+        return json(
+          {
+            success: false,
+            code: "dedicated_history_import_failed",
+            error:
+              "History did not finish moving to Dedicated. Shared remains active.",
+          },
+          503,
         );
-        if (!response.ok) {
-          return json(
-            {
-              success: false,
-              code: "dedicated_history_import_failed",
-              error:
-                "History did not finish moving to Dedicated. Shared remains active.",
-            },
-            503,
-          );
-        }
-        const receipt = (await readJsonResponse(response)) as {
-          complete?: unknown;
-          inserted?: unknown;
-          skipped?: unknown;
-          sourceMessageCount?: unknown;
-        } | null;
-        if (
-          receipt?.complete !== true ||
-          receipt.sourceMessageCount !== history.length ||
-          typeof receipt.inserted !== "number" ||
-          typeof receipt.skipped !== "number" ||
-          receipt.inserted + receipt.skipped !== history.length
-        ) {
-          return json(
-            {
-              success: false,
-              code: "dedicated_history_receipt_invalid",
-              error:
-                "Dedicated did not confirm the complete history import. Shared remains active.",
-            },
-            503,
-          );
-        }
+      }
+      const receipt = (await readJsonResponse(response)) as {
+        complete?: unknown;
+        inserted?: unknown;
+        skipped?: unknown;
+        sourceMessageCount?: unknown;
+      } | null;
+      if (
+        receipt?.complete !== true ||
+        receipt.sourceMessageCount !== history.length ||
+        typeof receipt.inserted !== "number" ||
+        typeof receipt.skipped !== "number" ||
+        receipt.inserted + receipt.skipped !== history.length
+      ) {
+        return json(
+          {
+            success: false,
+            code: "dedicated_history_receipt_invalid",
+            error:
+              "Dedicated did not confirm the complete history import. Shared remains active.",
+          },
+          503,
+        );
       }
 
-      await coordinateSharedCutoverCommit(
-        sourceAgentId,
-        sourceAgentId,
-        sealToken,
-        { namespace: conversationNamespace },
-      );
       const activeTarget = await finalizePersonalTierUpgradeCutover({
         organizationId: user.organization_id,
         userId: user.id,
@@ -267,7 +284,13 @@ app.post("/", async (c) => {
         cutoverToken: sealToken,
         sharedMessageCount: history.length,
       });
-      activated = true;
+      markerCommitted = true;
+      await coordinateSharedCutoverCommit(
+        sourceAgentId,
+        sourceAgentId,
+        sealToken,
+        { namespace: conversationNamespace },
+      );
       return json({
         success: true,
         data: {
@@ -279,7 +302,7 @@ app.post("/", async (c) => {
         },
       });
     } finally {
-      if (!activated) {
+      if (!markerCommitted) {
         await coordinateSharedCutoverRelease(
           sourceAgentId,
           sourceAgentId,

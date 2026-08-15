@@ -63,7 +63,13 @@ const DEFAULT_TIMEOUT_MS = 30 * 60 * 1000;
 const DEFAULT_REQUEST_TIMEOUT_MS = 60 * 1000;
 const MAX_READ_BYTES = 5 * 1024 * 1024;
 const MAX_LIST_LIMIT = 1000;
-const DEFAULT_ELIZA_CLOUD_API_BASE_URL = "https://api.eliza.app/api/v1";
+/**
+ * Default Eliza Cloud API base for the `eliza-cloud` sandbox provider. Exported
+ * so the contract test asserts against this value instead of restating the host
+ * as a literal, which is how it silently went stale across the eliza.app
+ * consolidation.
+ */
+export const DEFAULT_ELIZA_CLOUD_API_BASE_URL = "https://api.eliza.app/api/v1";
 
 export type CodingAgentRunner = "claude-code" | "codex" | "opencode";
 

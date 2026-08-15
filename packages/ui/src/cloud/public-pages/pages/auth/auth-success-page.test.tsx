@@ -80,6 +80,7 @@ vi.mock("../../../../components/primitives", () => ({
   },
 }));
 
+import { DEFAULT_DIRECT_CLOUD_API_BASE_URL } from "../../../../api/direct-cloud-endpoints";
 import { ApiError } from "../../../lib/api-client";
 import AuthSuccessPage, {
   resolveAuthSuccessCandidate,
@@ -429,9 +430,7 @@ describe("verifyAuthSuccessCandidate", () => {
     expect(apiMock).not.toHaveBeenCalled();
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(fetchMock).toHaveBeenCalledWith(
-      expect.stringMatching(
-        /^https:\/\/api\.elizacloud\.ai\/api\/v1\/oauth\/success-proof\/verify\?proof=loopback\.sig$/,
-      ),
+      `${DEFAULT_DIRECT_CLOUD_API_BASE_URL}/api/v1/oauth/success-proof/verify?proof=loopback.sig`,
       expect.objectContaining({ credentials: "include", method: "GET" }),
     );
   });

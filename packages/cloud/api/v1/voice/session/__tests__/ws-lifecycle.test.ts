@@ -61,9 +61,13 @@ class FakeInkSocket implements CartesiaInkWebSocket {
   closed = false;
   private listeners = new Map<string, Set<(e: unknown) => void>>();
 
-  constructor() {
+  constructor(opts?: { autoOpen?: boolean }) {
     FakeInkSocket.instances.push(this);
-    queueMicrotask(() => this.fire("open", {}));
+    if (opts?.autoOpen === false) {
+      this.readyState = 0;
+    } else {
+      queueMicrotask(() => this.fire("open", {}));
+    }
   }
   send(data: string | ArrayBuffer | ArrayBufferView) {
     if (typeof data === "string") return; // CloseStream control.
@@ -88,8 +92,15 @@ class FakeInkSocket implements CartesiaInkWebSocket {
       data: JSON.stringify({ type: event, transcript }),
     });
   }
+  emitMalformedMessage() {
+    this.fire("message", { data: "{not json" });
+  }
   emitConnectedHandshake() {
     this.fire("message", { data: JSON.stringify({ type: "connected" }) });
+  }
+  emitOpen() {
+    this.readyState = 1;
+    this.fire("open", {});
   }
   emitTransportError() {
     this.fire("error", new Event("error"));
@@ -443,9 +454,13 @@ const CLAIMS = {
 async function connectSession(opts: {
   client: FakeClientSocket;
   fetchImpl: typeof fetch;
+  inkSocketFactory?: () => CartesiaInkWebSocket;
+  sttReconnectDelaysMs?: readonly number[];
+  sttConnectTimeoutMs?: number;
   prewarmElizaContext?: () => Promise<void>;
   openingGreeting?: string;
   cacheWarmingRetryDelaysMs?: readonly number[];
+  onClearAudio?: () => void;
   fish?: {
     enabled?: boolean;
     firstAudioTimeoutMs?: number;
@@ -466,7 +481,8 @@ async function connectSession(opts: {
         agentId: claims.agentId,
         conversationId: claims.conversationId,
         tokenExpSeconds,
-        cartesiaInkWebSocketFactory: () => new FakeInkSocket(),
+        cartesiaInkWebSocketFactory:
+          opts.inkSocketFactory ?? (() => new FakeInkSocket()),
         cartesiaApiKey: "ct-key",
         cartesiaVoiceId: "db6b0ed5-d5d3-463d-ae85-518a07d3c2b4",
         cartesiaWebSocketFactory: () => new FakeCartesiaSocket(),
@@ -492,9 +508,17 @@ async function connectSession(opts: {
               cacheWarmingRetryDelaysMs: opts.cacheWarmingRetryDelaysMs,
             }
           : {}),
+        ...(opts.sttReconnectDelaysMs
+          ? { sttReconnectDelaysMs: opts.sttReconnectDelaysMs }
+          : {}),
+        ...(opts.sttConnectTimeoutMs !== undefined
+          ? { sttConnectTimeoutMs: opts.sttConnectTimeoutMs }
+          : {}),
         usageStore,
         usageLimits: { organizationDailyMinutes: 600, userDailyMinutes: 120 },
-        downlink,
+        downlink: opts.onClearAudio
+          ? { ...downlink, clearAudio: opts.onClearAudio }
+          : downlink,
       }),
   });
 
@@ -784,6 +808,44 @@ describe("voice-session WS lifecycle", () => {
     });
     expect(client.controlTypes()).toContain("ready");
     expect(prewarmCalls).toBe(1);
+  });
+
+  test("first response joins prewarm and an interruption discards the obsolete turn", async () => {
+    let resolvePrewarm: () => void = () => {};
+    const prewarm = new Promise<void>((resolve) => {
+      resolvePrewarm = resolve;
+    });
+    const requestTexts: string[] = [];
+    const successFetch = makeSseFetch(["Replacement response."]);
+    const client = new FakeClientSocket();
+    await connectSession({
+      client,
+      prewarmElizaContext: () => prewarm,
+      fetchImpl: (async (input: RequestInfo | URL, init?: RequestInit) => {
+        const body = JSON.parse(String(init?.body)) as { text: string };
+        requestTexts.push(body.text);
+        return successFetch(input, init);
+      }) as typeof fetch,
+    });
+    const ink = FakeInkSocket.instances.at(-1)!;
+    const ttsBefore = FakeCartesiaSocket.instances.length;
+
+    ink.emitTurn("turn.start");
+    ink.emitTurn("turn.end", "obsolete first request");
+    await flush();
+    expect(FakeCartesiaSocket.instances.length).toBe(ttsBefore + 1);
+    expect(requestTexts).toEqual([]);
+
+    ink.emitTurn("turn.start");
+    ink.emitTurn("turn.end", "replacement request");
+    await flush();
+    expect(requestTexts).toEqual([]);
+
+    resolvePrewarm();
+    await flush();
+    await flush();
+    expect(requestTexts).toEqual(["replacement request"]);
+    expect(client.controlTypes()).toContain("llm_first_text");
   });
 
   test("caps Cartesia server-side buffer delay for realtime voice", async () => {
@@ -1606,6 +1668,32 @@ describe("voice-session WS lifecycle", () => {
     expect(client.audioFrames.length).toBeGreaterThan(audioBeforeInterruption);
   });
 
+  test("semantic turn-start flushes transport audio after server TTS completed", async () => {
+    const client = new FakeClientSocket();
+    let clearCount = 0;
+    await connectSession({
+      client,
+      fetchImpl: makeSseFetch(["A response Twilio may buffer."]),
+      onClearAudio: () => {
+        clearCount += 1;
+      },
+    });
+    const ink = FakeInkSocket.instances.at(-1)!;
+
+    ink.emitTurn("turn.start");
+    ink.emitTurn("turn.end", "say something");
+    await flush();
+    await flush();
+    FakeCartesiaSocket.instances.at(-1)!.emitDone();
+    await flush();
+    expect(client.controlTypes()).toContain("speaking_end");
+    clearCount = 0;
+
+    ink.emitTurn("turn.start");
+    await flush();
+    expect(clearCount).toBe(1);
+  });
+
   test("a final-only caller transcript still interrupts the active response", async () => {
     const client = new FakeClientSocket();
     await connectSession({
@@ -1745,7 +1833,7 @@ describe("voice-session WS lifecycle", () => {
     expect(ink.sentChunks).toHaveLength(0);
   });
 
-  test("provider transport error and close surface fatal session errors", async () => {
+  test("provider transport error replaces Ink and the call keeps transcribing", async () => {
     const errored = new FakeClientSocket();
     await connectSession({ client: errored, fetchImpl: makeSseFetch(["ok."]) });
     const errorInk = FakeInkSocket.instances.at(-1)!;
@@ -1755,20 +1843,178 @@ describe("voice-session WS lifecycle", () => {
       expect.objectContaining({
         t: "error",
         code: "transport_error",
+        retryable: true,
+      }),
+    );
+    expect(errorInk.closed).toBe(true);
+    expect(errored.closedWith).toBeNull();
+    const replacement = FakeInkSocket.instances.at(-1)!;
+    expect(replacement).not.toBe(errorInk);
+    replacement.emitTurn("turn.start");
+    replacement.emitTurn("turn.end", "after reconnect");
+    await flush();
+    await flush();
+    expect(errored.controlFrames).toContainEqual(
+      expect.objectContaining({ t: "stt_final", text: "after reconnect" }),
+    );
+  });
+
+  test("provider protocol error clears the active STT turn", async () => {
+    const client = new FakeClientSocket();
+    await connectSession({ client, fetchImpl: makeSseFetch(["ok."]) });
+    const ink = FakeInkSocket.instances.at(-1)!;
+
+    ink.emitTurn("turn.start");
+    ink.emitMalformedMessage();
+    ink.emitTurn("turn.start");
+    ink.emitTurn("turn.end", "fresh turn");
+    await flush();
+    await flush();
+
+    expect(client.controlFrames).toContainEqual(
+      expect.objectContaining({
+        t: "error",
+        code: "malformed_event",
         retryable: false,
       }),
     );
-    expect(errored.closedWith).toBeNull();
+    expect(client.controlFrames).toContainEqual(
+      expect.objectContaining({ t: "stt_final", text: "fresh turn" }),
+    );
+  });
 
+  test("unexpected Ink close buffers audio until the replacement is connected", async () => {
     const closed = new FakeClientSocket();
-    await connectSession({ client: closed, fetchImpl: makeSseFetch(["ok."]) });
+    let socketCount = 0;
+    let replacement: FakeInkSocket | null = null;
+    await connectSession({
+      client: closed,
+      fetchImpl: makeSseFetch(["ok."]),
+      inkSocketFactory: () => {
+        socketCount += 1;
+        if (socketCount === 1) return new FakeInkSocket();
+        replacement = new FakeInkSocket({ autoOpen: false });
+        return replacement;
+      },
+    });
     const closeInk = FakeInkSocket.instances.at(-1)!;
     closeInk.close(1006, "provider gone");
     await flush();
     expect(closed.controlFrames).toContainEqual(
+      expect.objectContaining({
+        t: "error",
+        code: "stt_reconnecting",
+        retryable: true,
+      }),
+    );
+    expect(closed.closedWith).toBeNull();
+    expect(replacement).not.toBeNull();
+
+    closed.clientSend(pcmChunk(3200));
+    await flush();
+    expect(replacement!.sentChunks).toHaveLength(0);
+    replacement!.emitOpen();
+    await flush();
+    expect(replacement!.sentChunks).toHaveLength(1);
+  });
+
+  test("replacement Ink that never opens consumes the retry budget and fails closed", async () => {
+    const client = new FakeClientSocket();
+    let first: FakeInkSocket | null = null;
+    let stalled: FakeInkSocket | null = null;
+    let attempts = 0;
+    await connectSession({
+      client,
+      fetchImpl: makeSseFetch(["ok."]),
+      sttReconnectDelaysMs: [0],
+      sttConnectTimeoutMs: 10,
+      inkSocketFactory: () => {
+        attempts += 1;
+        if (attempts === 1) {
+          first = new FakeInkSocket();
+          return first;
+        }
+        stalled = new FakeInkSocket({ autoOpen: false });
+        return stalled;
+      },
+    });
+
+    first!.close(1006, "provider gone");
+    await flush();
+
+    expect(attempts).toBe(2);
+    expect(stalled!.closed).toBe(true);
+    expect(client.closedWith).toEqual({ code: 1000, reason: "error" });
+    expect(client.controlFrames).toContainEqual(
+      expect.objectContaining({
+        t: "error",
+        code: "stt_reconnecting",
+        retryable: true,
+      }),
+    );
+  });
+
+  test("a replacement that opens cancels its connection timeout", async () => {
+    const client = new FakeClientSocket();
+    let first: FakeInkSocket | null = null;
+    let replacement: FakeInkSocket | null = null;
+    let attempts = 0;
+    await connectSession({
+      client,
+      fetchImpl: makeSseFetch(["ok."]),
+      sttReconnectDelaysMs: [0],
+      sttConnectTimeoutMs: 10,
+      inkSocketFactory: () => {
+        attempts += 1;
+        if (attempts === 1) {
+          first = new FakeInkSocket();
+          return first;
+        }
+        replacement = new FakeInkSocket({ autoOpen: false });
+        queueMicrotask(() => replacement!.emitOpen());
+        return replacement;
+      },
+    });
+
+    first!.close(1006, "provider gone");
+    await flush();
+
+    expect(attempts).toBe(2);
+    expect(replacement!.closed).toBe(false);
+    expect(client.closedWith).toBeNull();
+    replacement!.emitTurn("turn.start");
+    replacement!.emitTurn("turn.end", "still listening");
+    await flush();
+    expect(client.controlFrames).toContainEqual(
+      expect.objectContaining({ t: "stt_final", text: "still listening" }),
+    );
+  });
+
+  test("Ink reconnect exhaustion fails the call closed", async () => {
+    const client = new FakeClientSocket();
+    let first: FakeInkSocket | null = null;
+    let attempts = 0;
+    await connectSession({
+      client,
+      fetchImpl: makeSseFetch(["ok."]),
+      sttReconnectDelaysMs: [0],
+      inkSocketFactory: () => {
+        attempts += 1;
+        if (attempts === 1) {
+          first = new FakeInkSocket();
+          return first;
+        }
+        throw new Error("Ink unavailable");
+      },
+    });
+    first!.close(1006, "provider gone");
+    await flush();
+
+    expect(attempts).toBe(2);
+    expect(client.closedWith).toEqual({ code: 1000, reason: "error" });
+    expect(client.controlFrames).toContainEqual(
       expect.objectContaining({ t: "error", code: "error", retryable: true }),
     );
-    expect(closed.closedWith).toEqual({ code: 1000, reason: "error" });
   });
 
   test("hello-first is enforced: a binary frame before hello closes the socket", async () => {

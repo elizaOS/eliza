@@ -468,7 +468,28 @@ export async function preparePreChunkedFragmentMemories({
 			unique: false,
 		};
 		if (hasDocumentEmbeddingModel(runtime)) {
-			await runtime.addEmbeddingToMemory(memory);
+			try {
+				await runtime.addEmbeddingToMemory(memory);
+			} catch (error) {
+				// error-policy:J2 addEmbeddingToMemory rejects unusable provider
+				// output itself (#18900), and its error identifies only a memory
+				// id. Ingestion is per-document, so re-throw with the document and
+				// fragment position this failure belongs to and keep the provider
+				// error as `cause`. Without this the caller sees a bare
+				// EMBEDDING_MODEL_OUTPUT_INVALID and cannot say which document or
+				// which fragment refused to embed.
+				throw new ElizaError(
+					"Pre-chunked document fragment embedding is unavailable",
+					{
+						code: "DOCUMENT_FRAGMENT_EMBED_FAILED",
+						context: { documentId, position },
+						cause: error,
+					},
+				);
+			}
+			// Still reachable when the runtime skips generation instead of
+			// throwing (no provider survived the dimension probe), which returns
+			// the memory unchanged rather than rejecting.
 			if (!memory.embedding || memory.embedding.length === 0) {
 				throw new ElizaError(
 					"Pre-chunked document fragment embedding is unavailable",

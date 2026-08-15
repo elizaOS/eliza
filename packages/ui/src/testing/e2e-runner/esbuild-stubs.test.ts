@@ -88,4 +88,17 @@ describe("stubElizaCore", () => {
     expect(evaluated).toBe("function");
     expect(bundle).not.toContain("node:crypto");
   });
+
+  it("exports concrete render-path text helpers for named imports", async () => {
+    const bundle = await bundleWithCoreStub(`
+      import { stripUnclaimedInteractionMarkup } from "@elizaos/core";
+      export const observed = stripUnclaimedInteractionMarkup("fixture reply");
+    `);
+
+    const evaluated = new Function(
+      `${bundle}; return fixture.observed;`,
+    )() as string;
+
+    expect(evaluated).toBe("fixture reply");
+  });
 });

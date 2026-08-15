@@ -1,6 +1,6 @@
 /**
  * Plugin entry point. Assembles the `whatsapp` Plugin object — the connector
- * service, workflow credential provider, connector-account source, triage
+ * service, connector-account source, triage
  * adapter registration, and setup routes — and re-exports the public API for
  * callers. Auto-enables when a `connectors.whatsapp` config block is present.
  */
@@ -9,7 +9,6 @@ import { createWhatsAppConnectorAccountProvider } from "./connector-account-prov
 import { WhatsAppConnectorService } from "./runtime-service";
 import { whatsappSetupRoutes } from "./setup-routes";
 import { registerWhatsappTriageAdapter } from "./triage-adapter";
-import { WhatsAppWorkflowCredentialProvider } from "./workflow-credential-provider";
 
 const whatsappPlugin: Plugin = {
   name: "whatsapp",
@@ -23,7 +22,7 @@ const whatsappPlugin: Plugin = {
     },
   ],
   actions: [],
-  services: [WhatsAppConnectorService, WhatsAppWorkflowCredentialProvider],
+  services: [WhatsAppConnectorService],
   routes: whatsappSetupRoutes,
   // Self-declared auto-enable: activate when the "whatsapp" connector is
   // configured under config.connectors. The hardcoded CONNECTOR_PLUGINS map

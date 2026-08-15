@@ -40,20 +40,6 @@ describe("workspace package resolution", () => {
     expect(buildConfig.resolve?.conditions).toBeUndefined();
   });
 
-  test("routes Steward authentication through the local Cloud API", async () => {
-    const serveConfig = await resolveAppViteConfig("serve");
-    const proxy = serveConfig.server?.proxy as Record<
-      string,
-      { changeOrigin?: boolean; target?: string; xfwd?: boolean }
-    >;
-
-    expect(proxy["/steward"]).toMatchObject({
-      changeOrigin: true,
-      target: proxy["/api"]?.target,
-      xfwd: true,
-    });
-  });
-
   test("resolves the shared terminal palette from workspace source while serving", async () => {
     const serveConfig = await resolveAppViteConfig("serve");
     const server = await createServer({

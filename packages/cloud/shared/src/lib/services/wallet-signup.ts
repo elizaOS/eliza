@@ -13,6 +13,7 @@ import type { UserWithOrganization } from "../../db/repositories/users";
 import { usersRepository } from "../../db/repositories/users";
 import { organizations } from "../../db/schemas/organizations";
 import { users } from "../../db/schemas/users";
+import { SIGNUP_CREDIT_POLICY } from "../signup-credits";
 import { usersService } from "./users";
 
 export interface FindOrCreateWalletOptions {
@@ -68,7 +69,7 @@ async function createOrFindWalletOrg(params: {
     .values({
       name: params.name,
       slug: params.slug,
-      credit_balance: "0.00",
+      credit_balance: SIGNUP_CREDIT_POLICY.openingBalanceUsd,
     })
     .onConflictDoNothing()
     .returning();
@@ -198,7 +199,7 @@ export async function findOrCreateUserByWalletAddress(
         user,
         isNewAccount: true,
         initialCreditsGranted: false,
-        initialFreeCreditsUsd: 0,
+        initialFreeCreditsUsd: SIGNUP_CREDIT_POLICY.automaticGrantUsd,
       };
     });
   } catch (e) {
@@ -276,7 +277,7 @@ export async function findOrCreateSolanaUserByWalletAddress(
         user,
         isNewAccount: true,
         initialCreditsGranted: false,
-        initialFreeCreditsUsd: 0,
+        initialFreeCreditsUsd: SIGNUP_CREDIT_POLICY.automaticGrantUsd,
       };
     });
   } catch (e) {

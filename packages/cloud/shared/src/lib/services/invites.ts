@@ -13,6 +13,7 @@ import { userCharactersRepository } from "../../db/repositories/characters";
 import { containersRepository } from "../../db/repositories/containers";
 import { conversationsRepository } from "../../db/repositories/conversations";
 import { parseOrganizationCreditBalance } from "../../db/repositories/organizations-credit-balance-numeric";
+import { SIGNUP_CREDIT_POLICY } from "../signup-credits";
 import { generateInviteToken, hashInviteToken } from "../utils/invite-tokens";
 import { logger } from "../utils/logger";
 import { apiKeysService } from "./api-keys";
@@ -270,7 +271,7 @@ export class InvitesService {
       // holds purchased or promotional credits. `credit_balance` is a Postgres
       // NUMERIC (string at read); the previous bare `Number(...)` failed OPEN on
       // an unreadable value (`'NaN'::numeric` migration artifact / manual edit
-      // reads back `"NaN"`): `NaN > 0` is FALSE, so the guard
+      // reads back `"NaN"`): comparing NaN to the policy threshold is FALSE, so the guard
       // was bypassed and the org — with whatever real credits it held — was
       // vacated and deleted downstream (`cleanUpVacatedSoloOrganization` ->
       // `organizationsService.delete`), silently destroying the balance. Parsing
@@ -287,7 +288,7 @@ export class InvitesService {
         // vacate path instead of falling through as a generic storage failure.
         throw new Error(SOLO_ORG_CREDITS_BLOCK_MESSAGE, { cause: error });
       }
-      if (creditBalance > 0) {
+      if (creditBalance > SIGNUP_CREDIT_POLICY.automaticGrantUsd) {
         throw new Error(SOLO_ORG_CREDITS_BLOCK_MESSAGE);
       }
     }
