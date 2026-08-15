@@ -40,6 +40,22 @@ function registerAndGetConnector(service: MatrixService) {
   return { runtime, registration };
 }
 
+describe("Matrix plugin connector-source declaration", () => {
+  it("declares matrix as a passive connector source", async () => {
+    // Core's agent-event-bridge only mints user notifications for sources the
+    // registry classifies as passive; without this declaration Matrix ingress
+    // would fail closed and silently stop notifying.
+    const { default: matrixPlugin } = await import("../index.js");
+    expect(matrixPlugin.connectorSources).toEqual([
+      expect.objectContaining({
+        source: "matrix",
+        sourceKind: "passive",
+        isPassive: true,
+      }),
+    ]);
+  });
+});
+
 describe("Matrix message connector", () => {
   it("registers connector metadata and routes sends through Matrix rooms", async () => {
     const runtime = {

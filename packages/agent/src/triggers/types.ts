@@ -51,6 +51,7 @@ export interface NormalizedTriggerDraft {
   wakeMode: import("@elizaos/core").TriggerWakeMode;
   enabled: boolean;
   createdBy: string;
+  notifyOnOutcome?: boolean;
   timezone?: string;
   intervalMs?: number;
   scheduledAtIso?: string;

@@ -63,6 +63,19 @@ describe("google plugin", () => {
     );
   });
 
+  it("declares google-chat as a passive connector source", () => {
+    // Core's agent-event-bridge only mints user notifications for sources the
+    // registry classifies as passive; without this declaration Google Chat
+    // ingress would fail closed and silently stop notifying.
+    expect(googlePlugin.connectorSources).toEqual([
+      expect.objectContaining({
+        source: "google-chat",
+        sourceKind: "passive",
+        isPassive: true,
+      }),
+    ]);
+  });
+
   it("derives OAuth scopes only from selected capabilities", () => {
     const scopes = scopesForGoogleCapabilities(["gmail.read", "calendar.write", "meet.create"]);
 
