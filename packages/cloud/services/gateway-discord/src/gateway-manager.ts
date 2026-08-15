@@ -20,6 +20,10 @@ import {
   type User,
 } from "discord.js";
 import { reconcileDiscordConnectionReady } from "./connection-lifecycle";
+import {
+  type DiscordInstallWelcomeJob,
+  DiscordInstallWelcomeQueue,
+} from "./discord-install-welcome-queue";
 import { pollTrackedDiscordDms, type TrackedDiscordDm } from "./dm-polling";
 import { logger } from "./logger";
 import {
@@ -60,6 +64,13 @@ interface GatewayRedis {
   srem(key: string, ...members: string[]): Promise<number>;
   smembers(key: string): Promise<string[]>;
   lpush(key: string, ...values: string[]): Promise<number>;
+  lmove(
+    source: string,
+    destination: string,
+    whereFrom: "left" | "right",
+    whereTo: "left" | "right",
+  ): Promise<string | null>;
+  lrem(key: string, count: number, value: string): Promise<number>;
   ltrim(key: string, start: number, stop: number): Promise<string>;
 }
 
@@ -371,6 +382,8 @@ export class GatewayManager {
   /** Poll fallback for user-installed bot DMs that omit Gateway message events. */
   private dmPollInterval: NodeJS.Timeout | null = null;
   private dmPollInFlight: Promise<void> | null = null;
+  /** Durable user-install welcome delivery, active on the system-bot leader. */
+  private installWelcomeQueue: DiscordInstallWelcomeQueue | null = null;
   /** Interval for leader election checks */
   private elizaAppLeaderInterval: NodeJS.Timeout | null = null;
 
@@ -406,6 +419,25 @@ export class GatewayManager {
         "Redis URL provided without token - failover disabled. Set REDIS_URL (TCP) or KV_REST_API_TOKEN/redisToken (Upstash).",
       );
     }
+
+    const elizaAppEnabled =
+      process.env.ELIZA_APP_DISCORD_BOT_ENABLED === "true";
+    const elizaAppBotToken = process.env.ELIZA_APP_DISCORD_BOT_TOKEN?.trim();
+    if (elizaAppEnabled && elizaAppBotToken && this.redis) {
+      this.installWelcomeQueue = new DiscordInstallWelcomeQueue(
+        this.redis,
+        elizaAppBotToken,
+      );
+    }
+  }
+
+  async enqueueDiscordInstallWelcome(
+    job: DiscordInstallWelcomeJob,
+  ): Promise<void> {
+    if (!this.installWelcomeQueue) {
+      throw new Error("Discord install welcome queue is unavailable");
+    }
+    await this.installWelcomeQueue.enqueue(job);
   }
 
   /**
@@ -1925,6 +1957,11 @@ export class GatewayManager {
       });
       this.startGreetingPolling();
       this.startDmPolling();
+      void this.installWelcomeQueue?.start().catch((error) => {
+        logger.error("Failed to start Discord install welcome queue", {
+          error: sanitizeError(error),
+        });
+      });
     });
 
     this.elizaAppClient.on(Events.MessageCreate, async (message: Message) => {
@@ -1992,6 +2029,7 @@ export class GatewayManager {
       await this.dmPollInFlight;
       this.dmPollInFlight = null;
     }
+    await this.installWelcomeQueue?.stop();
     if (this.elizaAppClient) {
       logger.info("Disconnecting Eliza App bot", {
         podName: this.config.podName,

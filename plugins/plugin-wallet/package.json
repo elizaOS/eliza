@@ -144,6 +144,11 @@
         "sensitive": true,
         "description": "Solana private key, base58-encoded. Local backend only. Hydrated from OS keychain when available."
       },
+      "JUPITER_API_BASE_URL": {
+        "type": "string",
+        "required": false,
+        "description": "Jupiter Swap API base URL. Defaults to https://lite-api.jup.ag/swap/v1."
+      },
       "STEWARD_API_URL": {
         "type": "string",
         "required": false,

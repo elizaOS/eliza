@@ -10,7 +10,7 @@
  * singleton + the background model download).
  */
 
-import { act, renderHook, waitFor } from "@testing-library/react";
+import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import * as React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { FIRST_RUN_SIGN_IN_PROMPT } from "./first-run-greeting";
@@ -39,6 +39,18 @@ const mocks = vi.hoisted(() => ({
         apiBase: "https://agent.example.test",
         agentId: "agent-1",
         created: false,
+      }),
+    ),
+    // Personal-Eliza bind (#19511): the cloud path resolves the account's one
+    // personal Eliza instead of listing/creating compat agents.
+    getPersonalSharedEliza: vi.fn(
+      async (_options: Record<string, unknown>) => ({
+        personalElizaId: PERSONAL_ELIZA_ID,
+        agentId: PERSONAL_ELIZA_ID,
+        activeAgentId: PERSONAL_ELIZA_ID,
+        agentName: "Eliza Cloud",
+        apiBase: PERSONAL_ELIZA_API_BASE,
+        runtime: "shared" as const,
       }),
     ),
     submitFirstRun: vi.fn(async () => undefined),
@@ -154,6 +166,12 @@ import {
   surfaceCloudLoginRetryTurn,
   useFirstRunConductor,
 } from "./use-first-run-conductor";
+
+// The account's personal Eliza identity (#19511): `personal:<uuidv5>` logical
+// id; shared runtime serves it at the derived control-plane adapter base.
+const PERSONAL_ELIZA_ID = "personal:11111111-1111-5111-8111-111111111111";
+const PERSONAL_ELIZA_API_BASE =
+  "https://eliza.app/api/v1/eliza/agents/personal%3A11111111-1111-5111-8111-111111111111";
 
 // This jsdom env exposes `window.localStorage` as an object without methods;
 // install a real in-memory Storage (mirrors `first-run.test.ts`) so the finish
@@ -280,10 +298,18 @@ beforeEach(() => {
   // default resolved implementations that individual tests override (a leaked
   // `mockRejectedValue`/`mockResolvedValue` would otherwise poison later tests).
   mocks.client.submitFirstRun.mockResolvedValue(undefined);
-  mocks.client.selectOrProvisionCloudAgent.mockResolvedValue({
+  mocks.client.getPersonalSharedEliza.mockResolvedValue({
     apiBase: "https://agent.example.test",
     agentId: "agent-1",
     created: false,
+  });
+  mocks.client.getPersonalSharedEliza.mockResolvedValue({
+    personalElizaId: PERSONAL_ELIZA_ID,
+    agentId: PERSONAL_ELIZA_ID,
+    activeAgentId: PERSONAL_ELIZA_ID,
+    agentName: "Eliza Cloud",
+    apiBase: PERSONAL_ELIZA_API_BASE,
+    runtime: "shared" as const,
   });
   mocks.client.getCloudCompatAgents.mockResolvedValue({
     success: true,
@@ -300,6 +326,10 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  // RTL cleanup must run FIRST: with globals:false RTL never auto-registers
+  // afterEach(cleanup), and a still-mounted conductor re-reads the cleared
+  // store during teardown (#19692 Defect 1).
+  cleanup();
   __setAppValueForTests(null);
   resetTutorialState();
   ensureLocalStorage().clear();
@@ -603,15 +633,15 @@ describe("useFirstRunConductor", () => {
     await waitForTurn(turn, "first-run:tutorial");
     expect(turn("first-run:cloud-oauth")).toBeUndefined();
     expect(turn("first-run:cloud-agent")).toBeUndefined();
-    expect(mocks.client.selectOrProvisionCloudAgent).toHaveBeenCalledTimes(1);
-    expect(
-      mocks.client.selectOrProvisionCloudAgent.mock.calls[0][0],
-    ).toMatchObject({ authToken: "cloud-token" });
-    expect(
-      mocks.client.selectOrProvisionCloudAgent.mock.calls[0][0],
-    ).toMatchObject({ preferAgentId: "agent-1" });
-    // The bound base owns app-shell routes → first-run persisted exactly once.
-    expect(mocks.client.submitFirstRun).toHaveBeenCalledTimes(1);
+    expect(mocks.client.getPersonalSharedEliza).toHaveBeenCalledTimes(1);
+    expect(mocks.client.getPersonalSharedEliza.mock.calls[0][0]).toMatchObject({
+      authToken: "cloud-token",
+    });
+    expect(mocks.client.getPersonalSharedEliza.mock.calls[0][0]).toMatchObject({
+      cloudApiBase: "https://eliza.app",
+    });
+    // #19511: account-native identity; no local first-run profile write.
+    expect(mocks.client.submitFirstRun).not.toHaveBeenCalled();
 
     // "Take the tutorial" completes AND launches the interactive tour.
     expect(tryHandleFirstRunAction("__first_run__:tutorial:start")).toBe(true);
@@ -673,8 +703,10 @@ describe("useFirstRunConductor", () => {
 
     // It resumes straight into provisioning and completes onboarding into chat…
     await waitForTurn(turn, "first-run:tutorial");
-    expect(mocks.client.selectOrProvisionCloudAgent).toHaveBeenCalledTimes(1);
-    expect(mocks.client.submitFirstRun).toHaveBeenCalledTimes(1);
+    expect(mocks.client.getPersonalSharedEliza).toHaveBeenCalledTimes(1);
+    // #19511: the personal Eliza is account-native; the cloud path completes
+    // without writing a local first-run profile.
+    expect(mocks.client.submitFirstRun).not.toHaveBeenCalled();
     // …and NEVER bounced the user back to the runtime chooser.
     expect(transcript.current.some((m) => m.id === "first-run:greeting")).toBe(
       false,
@@ -714,7 +746,7 @@ describe("useFirstRunConductor", () => {
   });
 
   it("surfaces a cloud provisioning lookup failure as a DISTINCT recovery turn (retry / restart / Settings), and 'restart' → LOCAL succeeds", async () => {
-    mocks.client.selectOrProvisionCloudAgent.mockRejectedValueOnce(
+    mocks.client.getPersonalSharedEliza.mockRejectedValueOnce(
       new Error(
         "Couldn't reach Eliza Cloud to find your agents. Check your connection and try again.",
       ),
@@ -820,7 +852,7 @@ describe("useFirstRunConductor", () => {
   });
 
   it("error:retry after a CLOUD lookup failure re-seeds the OAuth turn and re-runs cloud provisioning", async () => {
-    mocks.client.selectOrProvisionCloudAgent.mockRejectedValueOnce(
+    mocks.client.getPersonalSharedEliza.mockRejectedValueOnce(
       new Error(
         "Couldn't reach Eliza Cloud to find your agents. Check your connection and try again.",
       ),
@@ -840,19 +872,22 @@ describe("useFirstRunConductor", () => {
     // again without rendering a second in-chat OAuth card.
     expect(tryHandleFirstRunAction("__first_run__:error:retry")).toBe(true);
     await waitForTurn(turn, "first-run:tutorial");
-    expect(mocks.client.selectOrProvisionCloudAgent).toHaveBeenCalledTimes(2);
-    expect(mocks.client.submitFirstRun).toHaveBeenCalledTimes(1);
+    expect(mocks.client.getPersonalSharedEliza).toHaveBeenCalledTimes(2);
+    expect(mocks.client.submitFirstRun).not.toHaveBeenCalled();
     expect(turn("first-run:cloud-oauth")).toBeUndefined();
     unmount();
   });
 
   it("consumes every pick while a provisioning flow is in flight — no concurrent flows", async () => {
     let releaseAgent: (value: {
-      apiBase: string;
+      personalElizaId: string;
       agentId: string;
-      created: boolean;
+      activeAgentId: string;
+      agentName: string;
+      apiBase: string;
+      runtime: "shared";
     }) => void = () => {};
-    mocks.client.selectOrProvisionCloudAgent.mockImplementation(
+    mocks.client.getPersonalSharedEliza.mockImplementation(
       () =>
         new Promise((resolve) => {
           releaseAgent = resolve as typeof releaseAgent;
@@ -872,19 +907,24 @@ describe("useFirstRunConductor", () => {
       true,
     );
     await new Promise((resolve) => setTimeout(resolve, 25));
-    expect(mocks.client.selectOrProvisionCloudAgent).toHaveBeenCalledTimes(1);
+    expect(mocks.client.getPersonalSharedEliza).toHaveBeenCalledTimes(1);
     expect(turn("first-run:provider")).toBeUndefined();
     expect(mocks.client.submitFirstRun).not.toHaveBeenCalled();
 
     // The in-flight flow settles normally: shared selector → tutorial.
     releaseAgent({
-      apiBase: "https://agent.example.test",
-      agentId: "agent-1",
-      created: false,
+      personalElizaId: PERSONAL_ELIZA_ID,
+      agentId: PERSONAL_ELIZA_ID,
+      activeAgentId: PERSONAL_ELIZA_ID,
+      agentName: "Eliza Cloud",
+      apiBase: PERSONAL_ELIZA_API_BASE,
+      runtime: "shared",
     });
     await waitForTurn(turn, "first-run:tutorial");
-    expect(mocks.client.selectOrProvisionCloudAgent).toHaveBeenCalledTimes(1);
-    expect(mocks.client.submitFirstRun).toHaveBeenCalledTimes(1);
+    expect(mocks.client.getPersonalSharedEliza).toHaveBeenCalledTimes(1);
+    // #19511: the personal Eliza is account-native; the cloud path completes
+    // without writing a local first-run profile.
+    expect(mocks.client.submitFirstRun).not.toHaveBeenCalled();
     unmount();
   });
 
@@ -915,7 +955,7 @@ describe("useFirstRunConductor", () => {
     expect(transcript.current.length).toBe(turnsBefore);
     expect(mocks.client.submitFirstRun).not.toHaveBeenCalled();
     expect(mocks.client.getCloudCompatAgents).not.toHaveBeenCalled();
-    expect(mocks.client.selectOrProvisionCloudAgent).not.toHaveBeenCalled();
+    expect(mocks.client.getPersonalSharedEliza).not.toHaveBeenCalled();
     expect(spies.completeFirstRun).not.toHaveBeenCalled();
     unmount();
   });
@@ -1052,7 +1092,7 @@ describe("useFirstRunConductor", () => {
     expect(tryHandleFirstRunAction("__first_run__:runtime:cloud")).toBe(true);
     const retry = await waitForTurn(turn, "first-run:cloud-oauth");
     expect(retry.secretRequest).toBeUndefined();
-    expect(mocks.client.selectOrProvisionCloudAgent).not.toHaveBeenCalled();
+    expect(mocks.client.getPersonalSharedEliza).not.toHaveBeenCalled();
 
     // The user connects in the browser and the store learns the connection —
     // the flow resumes by itself.
@@ -1062,8 +1102,10 @@ describe("useFirstRunConductor", () => {
 
     await waitForTurn(turn, "first-run:tutorial");
     expect(turn("first-run:cloud-oauth")?.secretRequest).toBeUndefined();
-    expect(mocks.client.selectOrProvisionCloudAgent).toHaveBeenCalledTimes(1);
-    expect(mocks.client.submitFirstRun).toHaveBeenCalledTimes(1);
+    expect(mocks.client.getPersonalSharedEliza).toHaveBeenCalledTimes(1);
+    // #19511: the personal Eliza is account-native; the cloud path completes
+    // without writing a local first-run profile.
+    expect(mocks.client.submitFirstRun).not.toHaveBeenCalled();
     unmount();
   });
 
@@ -1396,14 +1438,14 @@ describe("cloud-only onboarding (runtime chooser off — the production default)
     // agent chat itself — the transcript carries NOT ONE onboarding turn.
     expect(transcript.current).toEqual([]);
     // The shared selector adopts the best healthy agent directly (no picker).
-    expect(mocks.client.selectOrProvisionCloudAgent).toHaveBeenCalledTimes(1);
-    expect(
-      mocks.client.selectOrProvisionCloudAgent.mock.calls[0][0],
-    ).toMatchObject({ authToken: "cloud-token" });
-    expect(
-      mocks.client.selectOrProvisionCloudAgent.mock.calls[0][0],
-    ).toMatchObject({ preferAgentId: "agent-only" });
-    expect(mocks.client.submitFirstRun).toHaveBeenCalledTimes(1);
+    expect(mocks.client.getPersonalSharedEliza).toHaveBeenCalledTimes(1);
+    expect(mocks.client.getPersonalSharedEliza.mock.calls[0][0]).toMatchObject({
+      authToken: "cloud-token",
+    });
+    expect(mocks.client.getPersonalSharedEliza.mock.calls[0][0]).toMatchObject({
+      cloudApiBase: "https://eliza.app",
+    });
+    expect(mocks.client.submitFirstRun).not.toHaveBeenCalled();
     unmount();
   });
 
@@ -1423,7 +1465,7 @@ describe("cloud-only onboarding (runtime chooser off — the production default)
     expect(spies.completeFirstRun).toHaveBeenCalledWith("chat");
     await waitForTurn(turn, "first-run:cloud-done");
     expect(turn("first-run:tutorial")).toBeUndefined();
-    expect(mocks.client.submitFirstRun).toHaveBeenCalledTimes(1);
+    expect(mocks.client.submitFirstRun).not.toHaveBeenCalled();
     unmount();
   });
 
@@ -1433,7 +1475,7 @@ describe("cloud-only onboarding (runtime chooser off — the production default)
     seedAppStore({ elizaCloudConnected: false });
     const { turn, unmount } = renderConductor();
     await waitForTurn(turn, "first-run:greeting");
-    expect(mocks.client.selectOrProvisionCloudAgent).not.toHaveBeenCalled();
+    expect(mocks.client.getPersonalSharedEliza).not.toHaveBeenCalled();
 
     localStorage.setItem("steward_session_token", "cloud-token");
     mocks.client.getCloudStatus.mockResolvedValue({ connected: true });
@@ -1443,7 +1485,7 @@ describe("cloud-only onboarding (runtime chooser off — the production default)
       expect(spies.completeFirstRun).toHaveBeenCalledTimes(1);
     });
     await waitForTurn(turn, "first-run:cloud-done");
-    expect(mocks.client.selectOrProvisionCloudAgent).toHaveBeenCalledTimes(1);
+    expect(mocks.client.getPersonalSharedEliza).toHaveBeenCalledTimes(1);
     unmount();
   });
 
@@ -1475,22 +1517,21 @@ describe("cloud-only onboarding (runtime chooser off — the production default)
       false,
     );
     expect(turn("first-run:cloud-agent")).toBeUndefined();
+    expect(mocks.client.getPersonalSharedEliza.mock.calls[0][0]).toMatchObject({
+      authToken: "cloud-token",
+    });
+    expect(mocks.client.getPersonalSharedEliza.mock.calls[0][0]).toMatchObject({
+      cloudApiBase: "https://eliza.app",
+    });
+    // #19511: the bind takes no agent inventory; the account's one personal
+    // Eliza is resolved server-side, so the call shape stays token + base.
     expect(
-      mocks.client.selectOrProvisionCloudAgent.mock.calls[0][0],
-    ).toMatchObject({ authToken: "cloud-token" });
-    expect(
-      mocks.client.selectOrProvisionCloudAgent.mock.calls[0][0],
-    ).toMatchObject({ preferAgentId: "agent-newest-running" });
-    expect(
-      mocks.client.selectOrProvisionCloudAgent.mock.calls[0][0],
-    ).toHaveProperty("knownAgents", [
-      expect.objectContaining({ agent_id: "agent-newest-running" }),
-      expect.objectContaining({ agent_id: "agent-older" }),
-    ]);
+      Object.keys(mocks.client.getPersonalSharedEliza.mock.calls[0][0]).sort(),
+    ).toEqual(["authToken", "cloudApiBase"]);
     unmount();
   });
 
-  it("a connected cloud-only session prefers the active Settings cloud agent without surfacing a picker", async () => {
+  it("a connected cloud-only session binds the personal Eliza regardless of the Settings selection (#19511: preference is gone)", async () => {
     localStorage.setItem(
       "elizaos:active-server",
       JSON.stringify({
@@ -1525,36 +1566,20 @@ describe("cloud-only onboarding (runtime chooser off — the production default)
       expect(spies.completeFirstRun).toHaveBeenCalledTimes(1);
     });
     expect(turn("first-run:cloud-agent")).toBeUndefined();
-    expect(
-      mocks.client.selectOrProvisionCloudAgent.mock.calls[0][0],
-    ).toMatchObject({ preferAgentId: "agent-older-running" });
+    expect(mocks.client.getPersonalSharedEliza.mock.calls[0][0]).toMatchObject({
+      cloudApiBase: "https://eliza.app",
+    });
     unmount();
   });
 
-  it("zero agents stay silent through the reuse lookup and narrate ONLY the real provisioning (#15133)", async () => {
-    // No stored agents; selectOrProvisionCloudAgent emits the REAL client's
-    // progress sequence for a create: the reuse lookup ("listing"), the actual
-    // create ("creating"), then ready.
+  it("the silent personal bind seeds no onboarding turns — no reuse lookup, no create narration (#15133, #19511)", async () => {
+    // #19511: there is no reuse lookup and no create anymore. The join flow
+    // itself narrates the one real wait through its own onProgress; the client
+    // method takes no progress hook.
     mocks.client.getCloudCompatAgents.mockResolvedValue({
       success: true,
       data: [],
     });
-    mocks.client.selectOrProvisionCloudAgent.mockImplementation(
-      async (options: Record<string, unknown>) => {
-        const onProgress = options.onProgress as (
-          status: string,
-          detail?: string,
-        ) => void;
-        onProgress("listing", "Finding your agents...");
-        onProgress("creating", "Creating Eliza...");
-        onProgress("ready", "Cloud agent ready!");
-        return {
-          apiBase: "https://agent.example.test",
-          agentId: "agent-new",
-          created: true,
-        };
-      },
-    );
     const spies = seedAppStore({ elizaCloudConnected: true });
     const { transcript, turn, unmount } = renderConductor();
 
@@ -1568,17 +1593,11 @@ describe("cloud-only onboarding (runtime chooser off — the production default)
       turn("first-run:status:Setting up your cloud agent"),
     ).toBeUndefined();
     expect(turn("first-run:status:Finding your agents...")).toBeUndefined();
-    // …but the REAL create is a genuine wait, so it narrates honestly from
-    // its first "creating" code onward (including the done wrap-up).
-    await waitForTurn(turn, "first-run:status:Creating Eliza...");
-    await waitForTurn(turn, "first-run:status:Cloud agent ready!");
-    await waitForTurn(turn, "first-run:cloud-done");
+    // …and with no create left in the flow there is nothing real to narrate:
+    // the personal bind resolves silently, so the transcript stays limited to
+    // join-flow status turns at most (no greeting, no signin, no done card).
     expect(
-      transcript.current.every(
-        (m) =>
-          m.id.startsWith("first-run:status:") ||
-          m.id === "first-run:cloud-done",
-      ),
+      transcript.current.every((m) => m.id.startsWith("first-run:status:")),
     ).toBe(true);
     unmount();
   });
@@ -1616,14 +1635,12 @@ describe("cloud-only onboarding (runtime chooser off — the production default)
     // …and the user saw NOTHING: no greeting flash, no welcome-back, no
     // provisioning theater — the next rendered state is the agent chat.
     expect(transcript.current).toEqual([]);
-    expect(
-      mocks.client.selectOrProvisionCloudAgent.mock.calls[0][0],
-    ).toMatchObject({
+    expect(mocks.client.getPersonalSharedEliza.mock.calls[0][0]).toMatchObject({
       authToken: "cookie-token",
     });
-    expect(
-      mocks.client.selectOrProvisionCloudAgent.mock.calls[0][0],
-    ).toMatchObject({ preferAgentId: "agent-console" });
+    expect(mocks.client.getPersonalSharedEliza.mock.calls[0][0]).toMatchObject({
+      cloudApiBase: "https://eliza.app",
+    });
     unmount();
   });
 
@@ -1702,7 +1719,7 @@ describe("cloud-only onboarding (runtime chooser off — the production default)
     const spies = seedAppStore({ elizaCloudConnected: false });
     const { turn, unmount } = renderConductor();
     await waitForTurn(turn, "first-run:greeting");
-    expect(mocks.client.selectOrProvisionCloudAgent).not.toHaveBeenCalled();
+    expect(mocks.client.getPersonalSharedEliza).not.toHaveBeenCalled();
 
     // The storage bridge restores the durable token asynchronously on native;
     // the conductor's 500ms poll must pick it up and skip the sign-in tap.
@@ -1778,7 +1795,7 @@ describe("cloud-only onboarding (runtime chooser off — the production default)
   });
 
   it("finish errors offer retry + Settings only — 'choose a different way to run' does not exist", async () => {
-    mocks.client.selectOrProvisionCloudAgent.mockRejectedValue(
+    mocks.client.getPersonalSharedEliza.mockRejectedValue(
       new Error("cloud agent lookup failed"),
     );
     const spies = seedAppStore({ elizaCloudConnected: true });
@@ -1879,9 +1896,9 @@ describe("cloud-only onboarding (runtime chooser off — the production default)
     // No runaway: give any residual auto-resume loop a window, then prove the
     // provisioning was attempted a bounded number of times and does not keep
     // growing (pre-fix it grew every re-fired render).
-    const attempts = mocks.client.selectOrProvisionCloudAgent.mock.calls.length;
+    const attempts = mocks.client.getPersonalSharedEliza.mock.calls.length;
     await new Promise((resolve) => setTimeout(resolve, 100));
-    expect(mocks.client.selectOrProvisionCloudAgent.mock.calls.length).toBe(
+    expect(mocks.client.getPersonalSharedEliza.mock.calls.length).toBe(
       attempts,
     );
     expect(attempts).toBeLessThanOrEqual(3);
@@ -2293,7 +2310,7 @@ describe("bounded cloud sign-in wait (#19255)", () => {
       for (const release of resolvers) release();
       await vi.advanceTimersByTimeAsync(50);
     });
-    expect(mocks.client.selectOrProvisionCloudAgent).not.toHaveBeenCalled();
+    expect(mocks.client.getPersonalSharedEliza).not.toHaveBeenCalled();
     expect(spies.completeFirstRun).not.toHaveBeenCalled();
     expect(
       transcript.current.some((message) =>

@@ -11,6 +11,7 @@ import { userCharactersRepository } from "@/db/repositories/characters";
 import { cache } from "@/lib/cache/client";
 import { CacheKeys, CacheTTL } from "@/lib/cache/keys";
 import { runWithCloudBindingsAsync } from "@/lib/runtime/cloud-bindings";
+import { warmInferenceAdmissionGate } from "@/lib/services/inference-admission-gate";
 import { warmInferenceAdmissionSnapshot } from "@/lib/services/inference-admission-snapshot";
 import { coordinateSharedConversationPrewarm } from "@/lib/services/shared-runtime/conversation-coordinator";
 import type { SharedRuntimeAgent } from "@/lib/services/shared-runtime/shared-runtime-agent";
@@ -22,6 +23,7 @@ export async function hydrateVoiceSharedAgentScope(
   env: Bindings,
   claims: InternalElizaConversationFetchClaims,
   preloadedAgent?: SharedRuntimeAgent,
+  options: { freshConversation?: boolean } = {},
 ): Promise<void> {
   await runWithCloudBindingsAsync(
     env as unknown as Record<string, unknown>,
@@ -54,16 +56,35 @@ export async function hydrateVoiceSharedAgentScope(
         // hydration makes the next turn fully serviceable.
         const characterId = agent.character_id;
         const hydrateCharacter = async (): Promise<void> => {
-          if (!characterId) return;
-          const cacheKey = `character:data:${characterId}`;
-          if (await cache.get(cacheKey)) return;
-          const character =
-            await userCharactersRepository.findByIdInOrganization(
-              characterId,
-              claims.organizationId,
-            );
-          if (!character) return;
-          await cache.set(cacheKey, character, CacheTTL.agent.characterData);
+          if (characterId) {
+            const cacheKey = `character:data:${characterId}`;
+            if (await cache.get(cacheKey)) return;
+            const linked =
+              await userCharactersRepository.findByIdInOrganization(
+                characterId,
+                claims.organizationId,
+              );
+            if (linked) {
+              await cache.set(cacheKey, linked, CacheTTL.agent.characterData);
+            }
+          }
+        };
+        const warmVoiceModelPricing = async (): Promise<void> => {
+          const [pricing, voiceConfig] = await Promise.all([
+            import("@/lib/pricing"),
+            import("@/lib/voice-session/config"),
+          ]);
+          const { calculateCost, getProviderFromModel, normalizeModelName } =
+            pricing;
+          const { resolveElizaModel } = voiceConfig;
+          const model = resolveElizaModel(env);
+          await calculateCost(
+            normalizeModelName(model),
+            getProviderFromModel(model),
+            1,
+            1,
+            "bitrouter",
+          );
         };
 
         // Publish the authorization gate as soon as the authoritative agent
@@ -90,6 +111,14 @@ export async function hydrateVoiceSharedAgentScope(
               error: error instanceof Error ? error.message : String(error),
             });
           }),
+          warmVoiceModelPricing().catch((error) => {
+            // error-policy:J7 pricing hydration is latency-only; the first turn
+            // retains the canonical typed cache-warming retry fallback.
+            logger.warn("[voice-scope-hydration] pricing prefill failed", {
+              agentId: claims.agentId,
+              error: error instanceof Error ? error.message : String(error),
+            });
+          }),
           warmInferenceAdmissionSnapshot(claims.organizationId).catch(
             (error) => {
               // error-policy:J7 the shared turn stays fail-closed on its combined
@@ -101,13 +130,28 @@ export async function hydrateVoiceSharedAgentScope(
               });
             },
           ),
+          warmInferenceAdmissionGate(claims.organizationId).catch((error) => {
+            // error-policy:J7 a cold durable admission gate remains on the
+            // canonical fail-closed retry path if this latency prefill fails.
+            logger.warn(
+              "[voice-scope-hydration] admission gate prefill failed",
+              {
+                agentId: claims.agentId,
+                organizationId: claims.organizationId,
+                error: error instanceof Error ? error.message : String(error),
+              },
+            );
+          }),
         ];
         if (env.SHARED_RUNTIME_CONVERSATIONS) {
           optionalWarmups.push(
             coordinateSharedConversationPrewarm(
               claims.agentId,
               claims.conversationId,
-              { namespace: env.SHARED_RUNTIME_CONVERSATIONS },
+              {
+                namespace: env.SHARED_RUNTIME_CONVERSATIONS,
+                startEmpty: options.freshConversation === true,
+              },
             ).catch((error) => {
               // error-policy:J7 conversation hydration is a latency hint; the
               // real turn retains its typed cache-warming retry fallback.

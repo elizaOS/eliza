@@ -116,6 +116,29 @@ describe("Worker-owned browser pairing token claim", () => {
     });
   });
 
+  test("keeps an overlapping staging alias out of the production trust group", async () => {
+    const mintedOrigin = `https://${AGENT_ID}.staging.elizacloud.ai`;
+    const token = await mint(mintedOrigin);
+
+    await expect(
+      pairingTokenService.claimBrowserToken(token, {
+        agentId: AGENT_ID,
+        expectedOrigin: `https://${AGENT_ID}.staging.cloud.eliza.app`,
+      }),
+    ).resolves.toEqual({ status: "invalid" });
+    expect(await readOnlyRow()).toMatchObject({ used_at: null });
+
+    await expect(
+      pairingTokenService.claimBrowserToken(token, {
+        agentId: AGENT_ID,
+        expectedOrigin: `https://${AGENT_ID}.cloud-staging.eliza.app`,
+      }),
+    ).resolves.toMatchObject({
+      status: "claimed",
+      pairingToken: { expectedOrigin: mintedOrigin },
+    });
+  });
+
   test("rejects the wrong URL-selected agent or origin without consuming the token", async () => {
     const token = await mint();
     const mismatches = [

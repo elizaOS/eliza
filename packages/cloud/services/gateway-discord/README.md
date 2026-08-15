@@ -466,6 +466,7 @@ Eliza Cloud logs show:
 | `ELIZA_APP_DISCORD_BOT_ENABLED` | No | `false` | Set to `"true"` to enable Eliza App bot |
 | `ELIZA_APP_DISCORD_BOT_TOKEN` | No* | - | Eliza App system bot token (required if enabled) |
 | `ELIZA_APP_DISCORD_APPLICATION_ID` | No | - | Eliza App bot application ID (for reference) |
+| `ELIZA_APP_DISCORD_PUBLIC_KEY` | No | - | Discord application's Ed25519 public key; recommended so signed install webhooks never need a first-request API lookup |
 
 **\*** Required when `ELIZA_APP_DISCORD_BOT_ENABLED=true`
 

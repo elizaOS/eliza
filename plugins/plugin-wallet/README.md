@@ -70,6 +70,7 @@ Additional optional variables:
 | `BIRDEYE_NO_TRENDING` | Disable trending provider |
 | `ELIZA_AGENT_WALLET_AUTO_ENABLE` | Set to `0` to disable auto-enable |
 | `PUMPFUN_TRADE_LOCAL_URL` | Override PumpPortal local transaction API; default `https://pumpportal.fun/api/trade-local` |
+| `JUPITER_API_BASE_URL` | Override the Jupiter Swap API base; default `https://lite-api.jup.ag/swap/v1` |
 | `PUMPFUN_PRIORITY_FEE_SOL` | Priority fee in SOL for `pump_fun_buy`; default `0.00005` |
 | `PUMPFUN_POOL` | PumpPortal pool selector for `pump_fun_buy`; default `auto` |
 | `X402_SUPPORTED_NETWORKS` | Comma-separated networks for x402 micropayments |

@@ -58,6 +58,7 @@ function resolvePublicUrl(c: AppContext): URL {
 }
 
 app.post("/", async (c) => {
+  const requestStartedAt = Date.now();
   const rawBody = await c.req.text();
   const params = Object.fromEntries(new URLSearchParams(rawBody));
   const parsed = TwilioVoicePayloadSchema.safeParse(params);
@@ -125,6 +126,7 @@ app.post("/", async (c) => {
       headers: { "Content-Type": "text/xml" },
     });
   }
+  const targetResolvedAt = Date.now();
 
   const id = randomUUID();
   const conversationId = phoneNumber.agentId;
@@ -148,78 +150,110 @@ app.post("/", async (c) => {
       error: error instanceof Error ? error.message : String(error),
     });
   }
-  const [priorCall] = await dbRead
-    .select({
-      id: twilioInboundCalls.id,
-      receivedAt: twilioInboundCalls.received_at,
-    })
-    .from(twilioInboundCalls)
-    .where(
-      and(
-        or(
-          and(
-            eq(twilioInboundCalls.from_number, callerNumber),
-            eq(twilioInboundCalls.to_number, publicLineNumber),
+  const priorCallPromise = Promise.resolve(
+    dbRead
+      .select({
+        id: twilioInboundCalls.id,
+        receivedAt: twilioInboundCalls.received_at,
+      })
+      .from(twilioInboundCalls)
+      .where(
+        and(
+          or(
+            and(
+              eq(twilioInboundCalls.from_number, callerNumber),
+              eq(twilioInboundCalls.to_number, publicLineNumber),
+            ),
+            and(
+              eq(twilioInboundCalls.from_number, publicLineNumber),
+              eq(twilioInboundCalls.to_number, callerNumber),
+            ),
           ),
-          and(
-            eq(twilioInboundCalls.from_number, publicLineNumber),
-            eq(twilioInboundCalls.to_number, callerNumber),
-          ),
+          eq(twilioInboundCalls.agent_id, phoneNumber.agentId),
         ),
-        eq(twilioInboundCalls.agent_id, phoneNumber.agentId),
-      ),
-    )
-    .orderBy(desc(twilioInboundCalls.received_at))
-    .limit(1);
-  const [priorConversation] = await dbRead
-    .select({ updatedAt: sharedRuntimeHistory.updated_at })
-    .from(sharedRuntimeHistory)
-    .where(
-      and(
-        eq(sharedRuntimeHistory.agent_id, phoneNumber.agentId),
-        eq(
-          sharedRuntimeHistory.channel_id,
-          sharedRuntimeChannelId(phoneNumber.agentId, conversationId),
-        ),
-      ),
-    )
-    .orderBy(desc(sharedRuntimeHistory.updated_at))
-    .limit(1);
-  const previousInteractionAt = Math.max(
-    priorCall?.receivedAt?.getTime() ?? 0,
-    priorConversation?.updatedAt?.getTime() ?? 0,
+      )
+      .orderBy(desc(twilioInboundCalls.received_at))
+      .limit(1),
   );
-  const rawPayload = await offloadJsonField<Record<string, string>>({
+  const priorConversationPromise = Promise.resolve(
+    dbRead
+      .select({ updatedAt: sharedRuntimeHistory.updated_at })
+      .from(sharedRuntimeHistory)
+      .where(
+        and(
+          eq(sharedRuntimeHistory.agent_id, phoneNumber.agentId),
+          eq(
+            sharedRuntimeHistory.channel_id,
+            sharedRuntimeChannelId(phoneNumber.agentId, conversationId),
+          ),
+        ),
+      )
+      .orderBy(desc(sharedRuntimeHistory.updated_at))
+      .limit(1),
+  );
+  const rawPayloadPromise = offloadJsonField<Record<string, string>>({
     namespace: ObjectNamespaces.TwilioInboundPayloads,
-    organizationId: phoneNumber?.organizationId ?? "twilio",
+    organizationId: phoneNumber.organizationId,
     objectId: id,
     field: "raw_payload",
     createdAt: new Date(),
     value: params,
     inlineValueWhenOffloaded: {},
   });
-  await dbWrite
-    .insert(twilioInboundCalls)
-    .values({
-      id,
-      call_sid: event.CallSid,
-      account_sid: event.AccountSid,
-      from_number: normalizedFrom,
-      to_number: normalizedTo,
-      call_status: event.CallStatus,
-      agent_id: phoneNumber?.agentId ?? null,
-      raw_payload: rawPayload.value ?? {},
-      raw_payload_storage: rawPayload.storage,
-      raw_payload_key: rawPayload.key,
+  const recordCall = Promise.all([rawPayloadPromise, priorCallPromise])
+    .then(([rawPayload]) =>
+      dbWrite
+        .insert(twilioInboundCalls)
+        .values({
+          id,
+          call_sid: event.CallSid,
+          account_sid: event.AccountSid,
+          from_number: normalizedFrom,
+          to_number: normalizedTo,
+          call_status: event.CallStatus,
+          agent_id: phoneNumber.agentId,
+          raw_payload: rawPayload.value ?? {},
+          raw_payload_storage: rawPayload.storage,
+          raw_payload_key: rawPayload.key,
+        })
+        .onConflictDoNothing({ target: twilioInboundCalls.call_sid }),
+    )
+    .then(() => {
+      logger.info("[twilio-voice-inbound] recorded realtime call", {
+        callSid: event.CallSid,
+        from: normalizedFrom,
+        to: normalizedTo,
+        agentId: phoneNumber.agentId,
+        persistenceMs: Date.now() - requestStartedAt,
+      });
     })
-    .onConflictDoNothing({ target: twilioInboundCalls.call_sid });
-
-  logger.info("[twilio-voice-inbound] recorded realtime call", {
-    callSid: event.CallSid,
-    from: normalizedFrom,
-    to: normalizedTo,
-    agentId: phoneNumber?.agentId,
-  });
+    .catch((error) => {
+      // error-policy:J7 call audit persistence is diagnostic and must not delay
+      // the live TwiML response; report any background failure explicitly.
+      logger.warn("[twilio-voice-inbound] call persistence failed", {
+        callSid: event.CallSid,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    });
+  const [[priorCall], [priorConversation]] = await Promise.all([
+    priorCallPromise,
+    priorConversationPromise,
+  ]);
+  const previousInteractionAt = Math.max(
+    priorCall?.receivedAt?.getTime() ?? 0,
+    priorConversation?.updatedAt?.getTime() ?? 0,
+  );
+  const callerResolvedAt = Date.now();
+  try {
+    c.executionCtx.waitUntil(recordCall);
+  } catch (error) {
+    // error-policy:J7 a local/test context may lack a Worker lifetime; the
+    // already-contained persistence promise remains best-effort in-process.
+    logger.warn("[twilio-voice-inbound] call persistence wait unavailable", {
+      callSid: event.CallSid,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
 
   const minted = await mintTwilioStreamToken(
     {
@@ -242,6 +276,15 @@ app.post("/", async (c) => {
     sessionId: minted.claims.sessionId,
     jti: minted.claims.jti,
     expSeconds: minted.claims.exp,
+  });
+  const responseReadyAt = Date.now();
+  logger.info("[twilio-voice-inbound] realtime TwiML ready", {
+    callSid: event.CallSid,
+    returningCaller: Boolean(priorCall || priorConversation),
+    targetMs: targetResolvedAt - requestStartedAt,
+    callerLookupMs: callerResolvedAt - targetResolvedAt,
+    tokenAndDirectoryMs: responseReadyAt - callerResolvedAt,
+    totalMs: responseReadyAt - requestStartedAt,
   });
   publicUrl.pathname = "/api/v1/twilio/voice/media";
   publicUrl.search = "";

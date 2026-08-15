@@ -6296,6 +6296,21 @@ async function resolveStage1SenderRole(
 	}
 	try {
 		const result = await checkSenderRole(runtime, message);
+		// The resolved role decides the entire action surface for the turn, and
+		// a silent fall to the floor is indistinguishable from an explicit
+		// non-elevated grant without this line. `result === null` means no world
+		// resolved for the message — the most common cause of an owner probe
+		// landing on the floor.
+		runtime.logger.debug(
+			{
+				src: "service:message",
+				entityId: message.entityId,
+				roomId: message.roomId,
+				worldResolved: result !== null,
+				role: result?.role ?? null,
+			},
+			"Stage 1 sender role resolved",
+		);
 		if (result?.role) {
 			return result.role as RoleGateRole;
 		}

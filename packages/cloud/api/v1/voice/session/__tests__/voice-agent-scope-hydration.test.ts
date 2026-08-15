@@ -61,6 +61,23 @@ const warmInferenceAdmissionSnapshot = mock(async () => undefined);
 mock.module("@/lib/services/inference-admission-snapshot", () => ({
   warmInferenceAdmissionSnapshot,
 }));
+const warmInferenceAdmissionGate = mock(async () => undefined);
+mock.module("@/lib/services/inference-admission-gate", () => ({
+  warmInferenceAdmissionGate,
+}));
+const calculateCost = mock(async () => ({
+  inputCost: 0,
+  outputCost: 0,
+  totalCost: 0,
+}));
+mock.module("@/lib/pricing", () => ({
+  calculateCost,
+  getProviderFromModel: () => "cerebras",
+  normalizeModelName: (model: string) => model.replace(/^cerebras\//, ""),
+}));
+mock.module("@/lib/voice-session/config", () => ({
+  resolveElizaModel: () => "cerebras/gemma-4-31b",
+}));
 
 const { cache } = await import("@/lib/cache/client");
 const { CacheKeys } = await import("@/lib/cache/keys");
@@ -90,6 +107,8 @@ afterEach(async () => {
   findByIdAndOrg.mockClear();
   findByIdInOrganization.mockClear();
   warmInferenceAdmissionSnapshot.mockClear();
+  warmInferenceAdmissionGate.mockClear();
+  calculateCost.mockClear();
   findByIdInOrganization.mockImplementation(async () => linkedCharacter);
 });
 
@@ -113,6 +132,14 @@ test("one cold hydration warms BOTH the scope gate and the linked character", as
     );
     expect(warmInferenceAdmissionSnapshot).toHaveBeenCalledWith(
       ORGANIZATION_ID,
+    );
+    expect(warmInferenceAdmissionGate).toHaveBeenCalledWith(ORGANIZATION_ID);
+    expect(calculateCost).toHaveBeenCalledWith(
+      "gemma-4-31b",
+      "cerebras",
+      1,
+      1,
+      "bitrouter",
     );
   });
 });
@@ -195,6 +222,43 @@ test("prewarms the call conversation while the fixed greeting is playing", async
     operation: "prewarm",
     agentId: AGENT_ID,
     roomId: CONVERSATION_ID,
+    startEmpty: false,
+  });
+});
+
+test("marks a newly minted phone-call conversation as empty", async () => {
+  const requests: Request[] = [];
+  const voiceEnv = {
+    ...env,
+    SHARED_RUNTIME_CONVERSATIONS: {
+      getByName() {
+        return {
+          async fetch(input: RequestInfo | URL, init?: RequestInit) {
+            requests.push(new Request(input, init));
+            return Response.json({ success: true });
+          },
+        };
+      },
+    },
+  };
+
+  await runWithCloudBindingsAsync(voiceEnv, async () => {
+    await hydrateVoiceSharedAgentScope(
+      voiceEnv as unknown as Parameters<typeof hydrateVoiceSharedAgentScope>[0],
+      claims,
+      sharedAgent as never,
+      { freshConversation: true },
+    );
+  });
+
+  const request = requests[0];
+  if (!request) throw new Error("expected fresh conversation prewarm request");
+  const body = (await request.json()) as unknown;
+  expect(body).toEqual({
+    operation: "prewarm",
+    agentId: AGENT_ID,
+    roomId: CONVERSATION_ID,
+    startEmpty: true,
   });
 });
 

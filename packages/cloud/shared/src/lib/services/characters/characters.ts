@@ -208,8 +208,13 @@ export class CharactersService {
     category?: string;
     limit?: number;
     offset?: number;
+    orderBy?: "name";
   }): Promise<UserCharacter[]> {
     return await userCharactersRepository.listPublic(options);
+  }
+
+  async countPublicCatalog(options?: { search?: string; category?: string }): Promise<number> {
+    return await userCharactersRepository.countPublicCatalog(options);
   }
 
   async listTemplates(): Promise<UserCharacter[]> {

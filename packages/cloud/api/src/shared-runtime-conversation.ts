@@ -50,7 +50,12 @@ type ConversationRequest =
       rpc: BridgeRequest;
       trustedMessageRole?: "system";
     }
-  | { operation: "prewarm"; agentId: string; roomId: string }
+  | {
+      operation: "prewarm";
+      agentId: string;
+      roomId: string;
+      startEmpty?: boolean;
+    }
   | { operation: "history"; agentId: string; roomId: string }
   | {
       operation: "lifecycle";
@@ -339,9 +344,10 @@ export class SharedRuntimeConversation {
   private async prewarmConversation(
     agentId: string,
     channelId: string,
+    startEmpty: boolean,
   ): Promise<void> {
     try {
-      await this.loadConversation(agentId, channelId, false);
+      await this.loadConversation(agentId, channelId, startEmpty);
     } catch (error) {
       if (!(error instanceof ConversationCacheWarmingError)) throw error;
       const hydration = this.hydration;
@@ -1019,7 +1025,11 @@ export class SharedRuntimeConversation {
       return Response.json({ success: true });
     }
     if (payload.operation === "prewarm") {
-      await this.prewarmConversation(payload.agentId, payload.roomId);
+      await this.prewarmConversation(
+        payload.agentId,
+        payload.roomId,
+        payload.startEmpty === true,
+      );
       return Response.json({ success: true });
     }
     if (payload.operation === "cutover-seal") {

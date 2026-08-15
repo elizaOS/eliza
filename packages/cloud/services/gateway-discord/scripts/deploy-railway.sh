@@ -20,7 +20,7 @@
 # WS lib (lazy require -> graceful fallback to no compression).
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")/.." && pwd)"
-PACKAGES_DIR="$(cd "$HERE/../.." && pwd)"
+PACKAGES_DIR="$(cd "$HERE/../../.." && pwd)"
 CLEANUP_HELPER="$PACKAGES_DIR/scripts/rm-path-recursive.mjs"
 STAGE="$(mktemp -d)"
 cleanup_stage() {
@@ -52,5 +52,16 @@ DOCKER
 cp "$HERE/railway.toml" "$STAGE/railway.toml" 2>/dev/null || true
 
 echo "[deploy] railway up from staged bundle ..."
-( cd "$STAGE" && railway up --service gateway-discord --environment production --detach )
+(
+  cd "$STAGE"
+  railway link \
+    --project "${RAILWAY_PROJECT:-eliza-cloud}" \
+    --service "${RAILWAY_SERVICE:-gateway-discord}" \
+    --environment "${RAILWAY_ENVIRONMENT:-production}" \
+    >/dev/null
+  railway up \
+    --service "${RAILWAY_SERVICE:-gateway-discord}" \
+    --environment "${RAILWAY_ENVIRONMENT:-production}" \
+    --detach
+)
 echo "[deploy] done — current deployment stays live until the new one passes healthcheck."

@@ -1,5 +1,6 @@
-// Exercises steward url behavior with deterministic cloud-shared lib fixtures.
+/** Exercises Steward URL resolution with deterministic browser-host fixtures. */
 import { afterEach, describe, expect, test } from "bun:test";
+import { ELIZA_DOMAIN_CONTRACTS } from "@elizaos/shared/elizacloud";
 import { resolveBrowserStewardApiUrl } from "./steward-url";
 
 const originalLocation = globalThis.location;
@@ -20,15 +21,17 @@ afterEach(() => {
 
 describe("resolveBrowserStewardApiUrl", () => {
   test("routes staging cloud host to the staging API worker", () => {
-    setLocation("cloud-staging.eliza.app");
+    const contract = ELIZA_DOMAIN_CONTRACTS.staging;
+    setLocation(new URL(contract.cloudAppOrigin).hostname);
 
-    expect(resolveBrowserStewardApiUrl()).toBe("https://api-staging.eliza.app/steward");
+    expect(resolveBrowserStewardApiUrl()).toBe(`${contract.cloudApiOrigin}/steward`);
   });
 
   test("routes production cloud host to the production API worker", () => {
-    setLocation("cloud.eliza.app");
+    const contract = ELIZA_DOMAIN_CONTRACTS.production;
+    setLocation(new URL(contract.cloudAppOrigin).hostname);
 
-    expect(resolveBrowserStewardApiUrl()).toBe("https://api.eliza.app/steward");
+    expect(resolveBrowserStewardApiUrl()).toBe(`${contract.cloudApiOrigin}/steward`);
   });
 
   test("falls back to same-origin steward mount for unknown hosts", () => {
