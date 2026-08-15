@@ -1,11 +1,11 @@
 /**
- * Resolves the read-only repeat-turn projection for a Telegram personal Eliza
- * delivery. Only a fully converged canonical identity, lookup projection, and
- * active organization qualifies; every repair or creation case stays on the
- * sender-locked users repository path.
+ * Resolves read-only repeat-turn projections for trusted personal Eliza
+ * deliveries. Only a fully converged canonical identity, lookup projection,
+ * and active organization qualifies; every repair or creation case stays on
+ * the provider-scoped users repository path.
  */
 
-import { sql } from "drizzle-orm";
+import { type SQL, sql } from "drizzle-orm";
 import { AGENT_UPGRADED_FROM_KEY } from "../../lib/services/eliza-agent-config";
 import { sqlRows } from "../execute-helpers";
 import { dbWrite } from "../helpers";
@@ -15,7 +15,7 @@ import { organizations } from "../schemas/organizations";
 import { userIdentities } from "../schemas/user-identities";
 import { users } from "../schemas/users";
 
-export interface ReusableTelegramPersonalDelivery {
+export interface ReusablePersonalDelivery {
   userId: string;
   organizationId: string;
   dedicatedCandidate: {
@@ -26,7 +26,7 @@ export interface ReusableTelegramPersonalDelivery {
   } | null;
 }
 
-interface ReusableTelegramPersonalDeliveryRow {
+interface ReusablePersonalDeliveryRow {
   user_id: string;
   organization_id: string;
   dedicated_id: string | null;
@@ -35,18 +35,12 @@ interface ReusableTelegramPersonalDeliveryRow {
   dedicated_agent_config: Record<string, unknown> | null;
 }
 
-/**
- * One indexed primary-database statement serves an established Telegram turn.
- * The bounded target candidate avoids a second lookup for the normal one-user
- * organization; callers retain the exact source-marker lookup when another
- * personal target in the organization sorts ahead of this account's target.
- */
-export async function findReusableTelegramPersonalDelivery(params: {
-  telegramId: string;
-  telegramUsername?: string;
-  telegramFirstName?: string;
-}): Promise<ReusableTelegramPersonalDelivery | null> {
-  const [row] = await sqlRows<ReusableTelegramPersonalDeliveryRow>(
+async function findReusablePersonalDelivery(params: {
+  projectionMatch: SQL;
+  canonicalIdentityMatch: SQL;
+  incomingProfileMatch: SQL;
+}): Promise<ReusablePersonalDelivery | null> {
+  const [row] = await sqlRows<ReusablePersonalDeliveryRow>(
     dbWrite,
     sql`
       SELECT
@@ -59,19 +53,10 @@ export async function findReusableTelegramPersonalDelivery(params: {
       FROM ${userIdentities} projection
       INNER JOIN ${users} canonical
         ON canonical.id = projection.user_id
-        AND canonical.telegram_id = ${params.telegramId}
         AND canonical.steward_user_id = projection.steward_user_id
         AND canonical.is_anonymous = projection.is_anonymous
-        AND canonical.telegram_username IS NOT DISTINCT FROM projection.telegram_username
-        AND canonical.telegram_first_name IS NOT DISTINCT FROM projection.telegram_first_name
-        AND (
-          ${params.telegramUsername ?? null}::text IS NULL
-          OR canonical.telegram_username = ${params.telegramUsername ?? null}
-        )
-        AND (
-          ${params.telegramFirstName ?? null}::text IS NULL
-          OR canonical.telegram_first_name = ${params.telegramFirstName ?? null}
-        )
+        AND ${params.canonicalIdentityMatch}
+        AND ${params.incomingProfileMatch}
       INNER JOIN ${organizations} organization
         ON organization.id = canonical.organization_id
         AND organization.is_active = TRUE
@@ -88,7 +73,7 @@ export async function findReusableTelegramPersonalDelivery(params: {
         ORDER BY candidate.created_at DESC
         LIMIT 1
       ) dedicated ON TRUE
-      WHERE projection.telegram_id = ${params.telegramId}
+      WHERE ${params.projectionMatch}
         AND canonical.deleted_at IS NULL
         AND canonical.is_active = TRUE
         AND canonical.organization_id IS NOT NULL
@@ -117,4 +102,60 @@ export async function findReusableTelegramPersonalDelivery(params: {
       agent_config: row.dedicated_agent_config,
     },
   };
+}
+
+/**
+ * One indexed primary-database statement serves an established Telegram turn.
+ * The bounded target candidate avoids a second lookup for the normal one-user
+ * organization; callers retain the exact source-marker lookup when another
+ * personal target in the organization sorts ahead of this account's target.
+ */
+export function findReusableTelegramPersonalDelivery(params: {
+  telegramId: string;
+  telegramUsername?: string;
+  telegramFirstName?: string;
+}): Promise<ReusablePersonalDelivery | null> {
+  return findReusablePersonalDelivery({
+    projectionMatch: sql`projection.telegram_id = ${params.telegramId}`,
+    canonicalIdentityMatch: sql`
+      canonical.telegram_id = ${params.telegramId}
+      AND canonical.telegram_username IS NOT DISTINCT FROM projection.telegram_username
+      AND canonical.telegram_first_name IS NOT DISTINCT FROM projection.telegram_first_name
+    `,
+    incomingProfileMatch: sql`
+      (${params.telegramUsername ?? null}::text IS NULL
+        OR canonical.telegram_username = ${params.telegramUsername ?? null})
+      AND (${params.telegramFirstName ?? null}::text IS NULL
+        OR canonical.telegram_first_name = ${params.telegramFirstName ?? null})
+    `,
+  });
+}
+
+/**
+ * Discord uses the same read-only delivery authority as Telegram while keeping
+ * its independent provider identity columns. Omitted optional profile fields
+ * are not interpreted as deletions; an explicit null must match durable state.
+ */
+export function findReusableDiscordPersonalDelivery(params: {
+  discordId: string;
+  discordUsername: string;
+  discordGlobalName?: string | null;
+  discordAvatarUrl?: string | null;
+}): Promise<ReusablePersonalDelivery | null> {
+  return findReusablePersonalDelivery({
+    projectionMatch: sql`projection.discord_id = ${params.discordId}`,
+    canonicalIdentityMatch: sql`
+      canonical.discord_id = ${params.discordId}
+      AND canonical.discord_username IS NOT DISTINCT FROM projection.discord_username
+      AND canonical.discord_global_name IS NOT DISTINCT FROM projection.discord_global_name
+      AND canonical.discord_avatar_url IS NOT DISTINCT FROM projection.discord_avatar_url
+    `,
+    incomingProfileMatch: sql`
+      canonical.discord_username = ${params.discordUsername}
+      AND (${params.discordGlobalName === undefined}::boolean
+        OR canonical.discord_global_name IS NOT DISTINCT FROM ${params.discordGlobalName ?? null})
+      AND (${params.discordAvatarUrl === undefined}::boolean
+        OR canonical.discord_avatar_url IS NOT DISTINCT FROM ${params.discordAvatarUrl ?? null})
+    `,
+  });
 }

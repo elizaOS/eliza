@@ -237,18 +237,18 @@ app.post("/", async (c) => {
       };
       dedicated = delivery.dedicatedTarget;
     } else if (parsed.data.platform === "discord") {
-      const discordAccount = await elizaAppUserService.findOrCreateByDiscordId(
-        parsed.data.discordUserId,
-        {
+      const delivery =
+        await elizaAppUserService.resolvePersonalDeliveryByDiscord({
+          discordId: parsed.data.discordUserId,
           username: parsed.data.discordUsername,
           globalName: parsed.data.displayName,
           avatarUrl: parsed.data.avatarUrl,
-        },
-      );
+        });
       account = {
-        userId: discordAccount.user.id,
-        organizationId: discordAccount.organization.id,
+        userId: delivery.userId,
+        organizationId: delivery.organizationId,
       };
+      dedicated = delivery.dedicatedTarget;
     } else {
       const phoneAccount = await elizaAppUserService.findOrCreateByPhone(
         parsed.data.phoneNumber,

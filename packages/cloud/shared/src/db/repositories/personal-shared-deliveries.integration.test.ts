@@ -1,7 +1,7 @@
 /**
- * Drives repeat-turn Telegram resolution against the real Drizzle schema on
- * isolated PGlite, including single-statement reuse, exact Dedicated authority,
- * stale-projection repair, and concurrent first contact.
+ * Drives trusted Telegram and Discord personal-delivery resolution against the
+ * real Drizzle schema on isolated PGlite, including single-statement reuse,
+ * exact Dedicated authority, projection repair, and concurrent first contact.
  */
 
 import { afterAll, beforeAll, beforeEach, describe, expect, spyOn, test } from "bun:test";
@@ -22,6 +22,7 @@ import { elizaAppUserService } from "../../lib/services/eliza-app/user-service";
 import { personalSharedAgentId } from "../../lib/services/shared-runtime/personal-shared-agent";
 import { closeDatabaseConnectionsForTests, dbWrite, getPgliteClientForTests } from "../client";
 import { agentSandboxes } from "../schemas/agent-sandboxes";
+import { apiKeys } from "../schemas/api-keys";
 import { organizationBalanceRevisionSequence, organizations } from "../schemas/organizations";
 import { userCharacters } from "../schemas/user-characters";
 import { userIdentities } from "../schemas/user-identities";
@@ -36,6 +37,15 @@ function telegramInput(telegramId: string) {
     username: `user_${telegramId}`,
     firstName: "Nubs",
     displayName: "Nubs",
+  };
+}
+
+function discordInput(discordId: string) {
+  return {
+    discordId,
+    username: `user_${discordId}`,
+    globalName: "Nubs",
+    avatarUrl: `https://cdn.discordapp.com/avatars/${discordId}/avatar.png`,
   };
 }
 
@@ -71,6 +81,7 @@ beforeAll(async () => {
         userIdentities,
         userCharacters,
         agentSandboxes,
+        apiKeys,
       } as never,
       dbWrite as never,
     );
@@ -87,6 +98,7 @@ beforeAll(async () => {
 
 beforeEach(async () => {
   expect(pgliteReady).toBe(true);
+  await dbWrite.delete(apiKeys);
   await dbWrite.delete(agentSandboxes);
   await dbWrite.delete(userIdentities);
   await dbWrite.delete(users);
@@ -294,5 +306,240 @@ describe("Telegram personal Shared repeat delivery", () => {
     expect(projections).toEqual([{ userId: first.userId }]);
     expect(organization).toHaveLength(1);
     expect(Number(organization[0]?.credit_balance)).toBe(0);
+  });
+});
+
+describe("Discord personal Shared repeat delivery", () => {
+  test("reuses a converged account in one statement without rewriting identity rows", async () => {
+    const input = discordInput("1284887060825509890");
+    const created = await elizaAppUserService.resolvePersonalDeliveryByDiscord(input);
+    const [userBefore] = await dbWrite.select().from(users).where(eq(users.id, created.userId));
+    const [projectionBefore] = await dbWrite
+      .select()
+      .from(userIdentities)
+      .where(eq(userIdentities.user_id, created.userId));
+
+    const query = spyOn(getPgliteClientForTests(), "query");
+    const replayed = await elizaAppUserService.resolvePersonalDeliveryByDiscord(input);
+    expect(query).toHaveBeenCalledTimes(1);
+    query.mockRestore();
+
+    const [userAfter] = await dbWrite.select().from(users).where(eq(users.id, created.userId));
+    const [projectionAfter] = await dbWrite
+      .select()
+      .from(userIdentities)
+      .where(eq(userIdentities.user_id, created.userId));
+    expect(replayed).toMatchObject({
+      userId: created.userId,
+      organizationId: created.organizationId,
+      dedicatedTarget: null,
+      isNew: false,
+      resolution: "single-query-repeat",
+    });
+    expect(userAfter.updated_at).toEqual(userBefore.updated_at);
+    expect(projectionAfter.updated_at).toEqual(projectionBefore.updated_at);
+  });
+
+  test("returns the exact authoritative Dedicated target in the repeat statement", async () => {
+    const input = discordInput("1284887060825509891");
+    const account = await elizaAppUserService.resolvePersonalDeliveryByDiscord(input);
+    const sourceAgentId = personalSharedAgentId({
+      userId: account.userId,
+      organizationId: account.organizationId,
+    });
+    const [target] = await dbWrite
+      .insert(agentSandboxes)
+      .values({
+        organization_id: account.organizationId,
+        user_id: account.userId,
+        execution_tier: "dedicated-always",
+        status: "running",
+        bridge_url: "http://127.0.0.1:9876/api/compat/agents/sandbox",
+        agent_config: {
+          [AGENT_UPGRADED_FROM_KEY]: sourceAgentId,
+          [AGENT_PERSONAL_CUTOVER_KEY]: cutoverFor(sourceAgentId),
+        },
+      })
+      .returning();
+
+    const query = spyOn(getPgliteClientForTests(), "query");
+    const replayed = await elizaAppUserService.resolvePersonalDeliveryByDiscord(input);
+    expect(query).toHaveBeenCalledTimes(1);
+    query.mockRestore();
+    expect(replayed.dedicatedTarget).toMatchObject({
+      id: target.id,
+      status: "running",
+    });
+  });
+
+  test("falls back to exact marker authority when another org target is newer", async () => {
+    const input = discordInput("1284887060825509892");
+    const account = await elizaAppUserService.resolvePersonalDeliveryByDiscord(input);
+    const sourceAgentId = personalSharedAgentId({
+      userId: account.userId,
+      organizationId: account.organizationId,
+    });
+    const [exact] = await dbWrite
+      .insert(agentSandboxes)
+      .values({
+        organization_id: account.organizationId,
+        user_id: account.userId,
+        execution_tier: "dedicated-always",
+        status: "running",
+        created_at: new Date("2026-08-15T12:00:00.000Z"),
+        agent_config: {
+          [AGENT_UPGRADED_FROM_KEY]: sourceAgentId,
+          [AGENT_PERSONAL_CUTOVER_KEY]: cutoverFor(sourceAgentId),
+        },
+      })
+      .returning();
+    await dbWrite.insert(agentSandboxes).values({
+      organization_id: account.organizationId,
+      user_id: account.userId,
+      execution_tier: "dedicated-always",
+      status: "running",
+      created_at: new Date("2026-08-15T12:01:00.000Z"),
+      agent_config: { [AGENT_UPGRADED_FROM_KEY]: "personal:another-account" },
+    });
+
+    const query = spyOn(getPgliteClientForTests(), "query");
+    const replayed = await elizaAppUserService.resolvePersonalDeliveryByDiscord(input);
+    expect(query).toHaveBeenCalledTimes(2);
+    query.mockRestore();
+    expect(replayed.resolution).toBe("exact-dedicated-fallback");
+    expect(replayed.dedicatedTarget?.id).toBe(exact.id);
+  });
+
+  test("repairs a canonical-only identity through the sender-locked writer", async () => {
+    const input = discordInput("1284887060825509893");
+    const account = await elizaAppUserService.resolvePersonalDeliveryByDiscord(input);
+    await dbWrite.delete(userIdentities).where(eq(userIdentities.user_id, account.userId));
+
+    const repaired = await elizaAppUserService.resolvePersonalDeliveryByDiscord(input);
+    expect(repaired.resolution).toBe("locked-create-or-repair");
+    const [projection] = await dbWrite
+      .select()
+      .from(userIdentities)
+      .where(eq(userIdentities.user_id, account.userId));
+    expect(projection.discord_id).toBe(input.discordId);
+    expect(projection.discord_username).toBe(input.username);
+  });
+
+  test("does not erase Discord profile fields omitted by a later gateway payload", async () => {
+    const input = discordInput("1284887060825509898");
+    const account = await elizaAppUserService.resolvePersonalDeliveryByDiscord(input);
+
+    const replayed = await elizaAppUserService.resolvePersonalDeliveryByDiscord({
+      discordId: input.discordId,
+      username: input.username,
+    });
+    expect(replayed).toMatchObject({
+      userId: account.userId,
+      organizationId: account.organizationId,
+      resolution: "single-query-repeat",
+    });
+    const [canonical] = await dbWrite.select().from(users).where(eq(users.id, account.userId));
+    const [projection] = await dbWrite
+      .select()
+      .from(userIdentities)
+      .where(eq(userIdentities.user_id, account.userId));
+    expect(canonical.discord_global_name).toBe(input.globalName);
+    expect(canonical.discord_avatar_url).toBe(input.avatarUrl);
+    expect(projection.discord_global_name).toBe(input.globalName);
+    expect(projection.discord_avatar_url).toBe(input.avatarUrl);
+  });
+
+  test("persists changed Discord profile metadata through locked repair", async () => {
+    const input = discordInput("1284887060825509894");
+    const account = await elizaAppUserService.resolvePersonalDeliveryByDiscord(input);
+
+    const repaired = await elizaAppUserService.resolvePersonalDeliveryByDiscord({
+      ...input,
+      username: "renamed_user",
+      globalName: "Luna",
+      avatarUrl: null,
+    });
+    expect(repaired).toMatchObject({
+      userId: account.userId,
+      organizationId: account.organizationId,
+      resolution: "locked-create-or-repair",
+    });
+    const [canonical] = await dbWrite.select().from(users).where(eq(users.id, account.userId));
+    const [projection] = await dbWrite
+      .select()
+      .from(userIdentities)
+      .where(eq(userIdentities.user_id, account.userId));
+    expect(canonical.discord_username).toBe("renamed_user");
+    expect(canonical.discord_global_name).toBe("Luna");
+    expect(canonical.discord_avatar_url).toBeNull();
+    expect(projection.discord_username).toBe("renamed_user");
+    expect(projection.discord_global_name).toBe("Luna");
+    expect(projection.discord_avatar_url).toBeNull();
+  });
+
+  test("fails closed when the Discord projection points at another tenant", async () => {
+    const firstInput = discordInput("1284887060825509895");
+    const secondInput = discordInput("1284887060825509896");
+    const first = await elizaAppUserService.resolvePersonalDeliveryByDiscord(firstInput);
+    const second = await elizaAppUserService.resolvePersonalDeliveryByDiscord(secondInput);
+    const [secondBefore] = await dbWrite.select().from(users).where(eq(users.id, second.userId));
+
+    await dbWrite.delete(userIdentities).where(eq(userIdentities.user_id, second.userId));
+    await dbWrite
+      .update(userIdentities)
+      .set({ user_id: second.userId })
+      .where(eq(userIdentities.user_id, first.userId));
+
+    await expect(
+      elizaAppUserService.resolvePersonalDeliveryByDiscord(firstInput),
+    ).rejects.toMatchObject({
+      code: "DISCORD_PERSONAL_ACCOUNT_IDENTITY_CONFLICT",
+    });
+
+    const [secondAfter] = await dbWrite.select().from(users).where(eq(users.id, second.userId));
+    const [conflictingProjection] = await dbWrite
+      .select()
+      .from(userIdentities)
+      .where(eq(userIdentities.discord_id, firstInput.discordId));
+    expect(secondAfter).toEqual(secondBefore);
+    expect(conflictingProjection.user_id).toBe(second.userId);
+    expect(first.organizationId).not.toBe(second.organizationId);
+  });
+
+  test("concurrent first contacts converge on one zero-credit account without runtime artifacts", async () => {
+    const input = discordInput("1284887060825509897");
+    const [first, second] = await Promise.all([
+      elizaAppUserService.resolvePersonalDeliveryByDiscord(input),
+      elizaAppUserService.resolvePersonalDeliveryByDiscord(input),
+    ]);
+
+    expect(second.userId).toBe(first.userId);
+    expect(second.organizationId).toBe(first.organizationId);
+    const canonical = await dbWrite
+      .select({ id: users.id })
+      .from(users)
+      .where(eq(users.discord_id, input.discordId));
+    const projections = await dbWrite
+      .select({ userId: userIdentities.user_id })
+      .from(userIdentities)
+      .where(eq(userIdentities.discord_id, input.discordId));
+    const organization = await dbWrite
+      .select()
+      .from(organizations)
+      .where(eq(organizations.id, first.organizationId));
+    const keys = await dbWrite
+      .select({ id: apiKeys.id })
+      .from(apiKeys)
+      .where(eq(apiKeys.user_id, first.userId));
+    const sandboxes = await dbWrite
+      .select({ id: agentSandboxes.id })
+      .from(agentSandboxes)
+      .where(eq(agentSandboxes.user_id, first.userId));
+    expect(canonical).toEqual([{ id: first.userId }]);
+    expect(projections).toEqual([{ userId: first.userId }]);
+    expect(organization).toHaveLength(1);
+    expect(Number(organization[0]?.credit_balance)).toBe(0);
+    expect(keys).toEqual([]);
+    expect(sandboxes).toEqual([]);
   });
 });

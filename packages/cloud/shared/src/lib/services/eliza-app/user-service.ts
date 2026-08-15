@@ -1,18 +1,16 @@
 /**
- * Eliza App User Service
- *
- * Manages user accounts for Eliza App authentication.
- * Primary auth: Telegram OAuth + phone number (entered by user in frontend).
- * Auto-creates $0 organizations for new users. Shared access is independent of
- * paid credits; explicit promotion codes and purchased top-ups remain separate.
- *
- * Cross-platform support:
- * - Telegram bot: lookup by telegram_id
- * - iMessage: lookup by phone_number (same phone entered during Telegram OAuth)
+ * Resolves browser authentication and trusted messaging identities into Eliza
+ * Cloud users and organizations. Personal messaging deliveries create $0
+ * rowless accounts, while login flows retain their explicit credit, linking,
+ * and API-key policies.
  */
 
 import { organizationsRepository } from "../../../db/repositories/organizations";
-import { findReusableTelegramPersonalDelivery } from "../../../db/repositories/personal-shared-deliveries";
+import {
+  findReusableDiscordPersonalDelivery,
+  findReusableTelegramPersonalDelivery,
+  type ReusablePersonalDelivery,
+} from "../../../db/repositories/personal-shared-deliveries";
 import { type UserWithOrganization, usersRepository } from "../../../db/repositories/users";
 import type { AgentSandbox } from "../../../db/schemas/agent-sandboxes";
 import type { Organization } from "../../../db/schemas/organizations";
@@ -38,12 +36,41 @@ export interface FindOrCreateResult {
   isNew: boolean;
 }
 
-export interface TelegramPersonalDeliveryResult {
+export interface PersonalDeliveryResult {
   userId: string;
   organizationId: string;
   dedicatedTarget: Pick<AgentSandbox, "id" | "status" | "bridge_url" | "agent_config"> | null;
   isNew: boolean;
   resolution: "single-query-repeat" | "exact-dedicated-fallback" | "locked-create-or-repair";
+}
+
+async function resolveReusableDedicatedTarget(reusable: ReusablePersonalDelivery): Promise<{
+  dedicatedTarget: Pick<AgentSandbox, "id" | "status" | "bridge_url" | "agent_config"> | null;
+  resolution: PersonalDeliveryResult["resolution"];
+}> {
+  const personalAgentId = personalSharedAgentId({
+    userId: reusable.userId,
+    organizationId: reusable.organizationId,
+  });
+  const candidate = reusable.dedicatedCandidate;
+  if (!candidate) {
+    return { dedicatedTarget: null, resolution: "single-query-repeat" };
+  }
+  if (readUpgradedFromAgentId(candidate.agent_config) === personalAgentId) {
+    return {
+      dedicatedTarget: isAuthoritativePersonalDedicatedTarget(candidate, personalAgentId)
+        ? candidate
+        : null,
+      resolution: "single-query-repeat",
+    };
+  }
+  return {
+    dedicatedTarget: await findActivePersonalDedicatedTarget(
+      reusable.organizationId,
+      personalAgentId,
+    ),
+    resolution: "exact-dedicated-fallback",
+  };
 }
 
 function generateSlugFromTelegram(username?: string, telegramId?: string): string {
@@ -203,7 +230,7 @@ class ElizaAppUserService {
     username?: string;
     firstName?: string;
     displayName?: string;
-  }): Promise<TelegramPersonalDeliveryResult> {
+  }): Promise<PersonalDeliveryResult> {
     const telegramId = params.telegramId.trim();
     if (!/^\d{1,20}$/.test(telegramId)) {
       throw new Error("Trusted Telegram transport supplied an invalid sender id");
@@ -218,26 +245,7 @@ class ElizaAppUserService {
       telegramFirstName: firstName,
     });
     if (reusable) {
-      const personalAgentId = personalSharedAgentId({
-        userId: reusable.userId,
-        organizationId: reusable.organizationId,
-      });
-      const candidate = reusable.dedicatedCandidate;
-      let dedicatedTarget: TelegramPersonalDeliveryResult["dedicatedTarget"] = null;
-      let resolution: TelegramPersonalDeliveryResult["resolution"] = "single-query-repeat";
-      if (candidate) {
-        if (readUpgradedFromAgentId(candidate.agent_config) === personalAgentId) {
-          dedicatedTarget = isAuthoritativePersonalDedicatedTarget(candidate, personalAgentId)
-            ? candidate
-            : null;
-        } else {
-          dedicatedTarget = await findActivePersonalDedicatedTarget(
-            reusable.organizationId,
-            personalAgentId,
-          );
-          resolution = "exact-dedicated-fallback";
-        }
-      }
+      const { dedicatedTarget, resolution } = await resolveReusableDedicatedTarget(reusable);
       logger.info("[ElizaAppUserService] Reused Telegram personal account", {
         userId: reusable.userId,
         organizationId: reusable.organizationId,
@@ -277,6 +285,90 @@ class ElizaAppUserService {
         userId: result.user.id,
         organizationId: result.organization.id,
         telegramId,
+        resolution: "locked-create-or-repair",
+      },
+    );
+    return {
+      userId: result.user.id,
+      organizationId: result.organization.id,
+      dedicatedTarget,
+      isNew: result.isNew,
+      resolution: "locked-create-or-repair",
+    };
+  }
+
+  /**
+   * Resolves a trusted Discord DM into the same personal service without
+   * treating every message as an OAuth login. Healthy repeats are one read;
+   * create and repair remain serialized by the Discord sender id.
+   */
+  async resolvePersonalDeliveryByDiscord(params: {
+    discordId: string;
+    username: string;
+    globalName?: string | null;
+    avatarUrl?: string | null;
+  }): Promise<PersonalDeliveryResult> {
+    const discordId = params.discordId.trim();
+    if (!/^\d{1,20}$/.test(discordId)) {
+      throw new Error("Trusted Discord transport supplied an invalid sender id");
+    }
+    const username = params.username.trim();
+    if (!username) {
+      throw new Error("Trusted Discord transport supplied an invalid username");
+    }
+    const globalName =
+      params.globalName === undefined ? undefined : params.globalName?.trim() || null;
+    const avatarUrl = params.avatarUrl === undefined ? undefined : params.avatarUrl?.trim() || null;
+    const displayName = globalName || username;
+
+    const reusable = await findReusableDiscordPersonalDelivery({
+      discordId,
+      discordUsername: username,
+      discordGlobalName: globalName,
+      discordAvatarUrl: avatarUrl,
+    });
+    if (reusable) {
+      const { dedicatedTarget, resolution } = await resolveReusableDedicatedTarget(reusable);
+      logger.info("[ElizaAppUserService] Reused Discord personal account", {
+        userId: reusable.userId,
+        organizationId: reusable.organizationId,
+        discordId,
+        resolution,
+      });
+      return {
+        userId: reusable.userId,
+        organizationId: reusable.organizationId,
+        dedicatedTarget,
+        isNew: false,
+        resolution,
+      };
+    }
+
+    const result = await usersRepository.findOrCreateDiscordPersonalAccount({
+      discordId,
+      discordUsername: username,
+      discordGlobalName: globalName,
+      discordAvatarUrl: avatarUrl,
+      displayName,
+      organizationName: `${displayName}'s Workspace`,
+      organizationSlug: generateSlugFromDiscord(username, discordId),
+    });
+    const personalAgentId = personalSharedAgentId({
+      userId: result.user.id,
+      organizationId: result.organization.id,
+    });
+    const dedicatedTarget = await findActivePersonalDedicatedTarget(
+      result.organization.id,
+      personalAgentId,
+    );
+    logger.info(
+      result.isNew
+        ? "[ElizaAppUserService] Created Discord personal account"
+        : "[ElizaAppUserService] Repaired Discord personal account",
+      {
+        userId: result.user.id,
+        organizationId: result.organization.id,
+        discordId,
         resolution: "locked-create-or-repair",
       },
     );

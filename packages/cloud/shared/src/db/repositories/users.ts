@@ -1,4 +1,8 @@
-// Persists users records for cloud services through the shared DB boundary.
+/**
+ * Persists canonical users and their external-identity projections through the
+ * shared database boundary. Trusted messaging account writers keep tenant,
+ * lifecycle, and provider ownership checks in the same transaction.
+ */
 import { ElizaError } from "@elizaos/core";
 import { convergeTodoScopesInTransaction } from "@elizaos/plugin-todos/edge";
 import { and, desc, eq, isNull, ne, or, type SQL, sql } from "drizzle-orm";
@@ -14,7 +18,11 @@ import {
   type PersonalAccountConvergence,
   personalAccountConvergences,
 } from "../schemas/personal-account-convergences";
-import { type UserIdentity, userIdentities } from "../schemas/user-identities";
+import {
+  type NewUserIdentity,
+  type UserIdentity,
+  userIdentities,
+} from "../schemas/user-identities";
 import { type NewUser, type User, users } from "../schemas/users";
 
 export type { NewUser, User, UserIdentity };
@@ -57,7 +65,7 @@ export interface ResolvedIdentity {
   identity?: UserIdentity;
 }
 
-export interface FindOrCreateTelegramPersonalAccountResult {
+export interface FindOrCreatePersonalAccountResult {
   user: User;
   organization: Organization;
   isNew: boolean;
@@ -93,12 +101,6 @@ export interface TelegramIdentityLink {
   telegram_username?: string | null;
   telegram_first_name?: string | null;
   telegram_photo_url?: string | null;
-}
-
-export interface FindOrCreatePhonePersonalAccountResult {
-  user: User;
-  organization: Organization;
-  isNew: boolean;
 }
 
 /** Non-merging outcome when a verified phone claims its provisional account. */
@@ -509,6 +511,175 @@ async function findUnexpectedProvisionalAccountState(
     if (occupied.target_found) return "telegram";
   }
   return undefined;
+}
+
+type TrustedPersonalUserIdentityFields = Partial<
+  Pick<
+    NewUser,
+    | "telegram_id"
+    | "telegram_username"
+    | "telegram_first_name"
+    | "discord_id"
+    | "discord_username"
+    | "discord_global_name"
+    | "discord_avatar_url"
+  >
+>;
+
+type TrustedPersonalProjectionFields = Partial<
+  Pick<
+    NewUserIdentity,
+    | "telegram_id"
+    | "telegram_username"
+    | "telegram_first_name"
+    | "discord_id"
+    | "discord_username"
+    | "discord_global_name"
+    | "discord_avatar_url"
+  >
+>;
+
+interface TrustedPersonalAccountSpec {
+  providerName: "Telegram" | "Discord";
+  lockKey: string;
+  projectionWhere: SQL;
+  canonicalWhere: SQL;
+  conflictCode:
+    | "TELEGRAM_PERSONAL_ACCOUNT_IDENTITY_CONFLICT"
+    | "DISCORD_PERSONAL_ACCOUNT_IDENTITY_CONFLICT";
+  unavailableCode: "TELEGRAM_PERSONAL_ACCOUNT_UNAVAILABLE" | "DISCORD_PERSONAL_ACCOUNT_UNAVAILABLE";
+  stewardUserId: string;
+  displayName: string;
+  organizationName: string;
+  organizationSlug: string;
+  identityFields: (existing: User | undefined) => {
+    user: TrustedPersonalUserIdentityFields;
+    projection: TrustedPersonalProjectionFields;
+  };
+}
+
+/**
+ * Trusted messaging gateways share one account-convergence transaction. The
+ * provider spec owns only its identity columns; tenant, lifecycle, locking,
+ * projection, and zero-credit creation invariants remain one authority.
+ */
+async function findOrCreateTrustedPersonalAccount(
+  spec: TrustedPersonalAccountSpec,
+): Promise<FindOrCreatePersonalAccountResult> {
+  return dbWrite.transaction(async (tx) => {
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${spec.lockKey}))`);
+
+    const [projection] = await tx
+      .select({ userId: userIdentities.user_id })
+      .from(userIdentities)
+      .where(spec.projectionWhere)
+      .limit(1);
+    const [canonical] = await tx.select().from(users).where(spec.canonicalWhere).limit(1);
+
+    if (projection && canonical && projection.userId !== canonical.id) {
+      throw new ElizaError(`${spec.providerName} identity owners disagree`, {
+        code: spec.conflictCode,
+        context: { canonicalUserId: canonical.id, projectedUserId: projection.userId },
+        severity: "fatal",
+      });
+    }
+
+    const [existing] = projection
+      ? await tx.select().from(users).where(eq(users.id, projection.userId)).limit(1)
+      : canonical
+        ? [canonical]
+        : [];
+    if (projection && !existing) {
+      throw new ElizaError(`${spec.providerName} identity projection has no canonical owner`, {
+        code: spec.conflictCode,
+        context: { projectedUserId: projection.userId },
+        severity: "fatal",
+      });
+    }
+
+    if (existing) {
+      if (existing.deleted_at || !existing.is_active || !existing.organization_id) {
+        throw new ElizaError(`${spec.providerName} personal account is unavailable`, {
+          code: spec.unavailableCode,
+          context: { userId: existing.id },
+          severity: "fatal",
+        });
+      }
+      const [organization] = await tx
+        .select()
+        .from(organizations)
+        .where(eq(organizations.id, existing.organization_id))
+        .limit(1);
+      if (!organization?.is_active) {
+        throw new ElizaError(`${spec.providerName} personal account organization is unavailable`, {
+          code: spec.unavailableCode,
+          context: { userId: existing.id, organizationId: existing.organization_id },
+          severity: "fatal",
+        });
+      }
+
+      const identity = spec.identityFields(existing);
+      const now = new Date();
+      const [updated] = await tx
+        .update(users)
+        .set({
+          ...identity.user,
+          name: existing.name ?? spec.displayName,
+          updated_at: now,
+        })
+        .where(eq(users.id, existing.id))
+        .returning();
+      if (!updated) throw new Error(`${spec.providerName} account ${existing.id} disappeared`);
+      await tx
+        .insert(userIdentities)
+        .values({
+          user_id: updated.id,
+          steward_user_id: updated.steward_user_id,
+          is_anonymous: updated.is_anonymous,
+          ...identity.projection,
+          updated_at: now,
+        })
+        .onConflictDoUpdate({
+          target: userIdentities.user_id,
+          set: { ...identity.projection, updated_at: now },
+        });
+      return { user: updated, organization, isNew: false };
+    }
+
+    const [organization] = await tx
+      .insert(organizations)
+      .values({
+        name: spec.organizationName,
+        slug: spec.organizationSlug,
+        credit_balance: "0.00",
+      })
+      .returning();
+    if (!organization) {
+      throw new Error(`Failed to create ${spec.providerName} personal organization`);
+    }
+
+    const identity = spec.identityFields(undefined);
+    const [user] = await tx
+      .insert(users)
+      .values({
+        steward_user_id: spec.stewardUserId,
+        ...identity.user,
+        name: spec.displayName,
+        is_anonymous: false,
+        organization_id: organization.id,
+        role: "owner",
+        is_active: true,
+      })
+      .returning();
+    if (!user) throw new Error(`Failed to create ${spec.providerName} personal user`);
+    await tx.insert(userIdentities).values({
+      user_id: user.id,
+      steward_user_id: user.steward_user_id,
+      is_anonymous: false,
+      ...identity.projection,
+    });
+    return { user, organization, isNew: true };
+  });
 }
 
 /**
@@ -1556,7 +1727,7 @@ export class UsersRepository {
     displayName: string;
     organizationName: string;
     organizationSlug: string;
-  }): Promise<FindOrCreatePhonePersonalAccountResult> {
+  }): Promise<FindOrCreatePersonalAccountResult> {
     return dbWrite.transaction(async (tx) => {
       await tx.execute(
         sql`SELECT pg_advisory_xact_lock(hashtext(${`phone_personal_account:${params.phoneNumber}`}))`,
@@ -2020,135 +2191,82 @@ export class UsersRepository {
     displayName: string;
     organizationName: string;
     organizationSlug: string;
-  }): Promise<FindOrCreateTelegramPersonalAccountResult> {
-    return dbWrite.transaction(async (tx) => {
-      await tx.execute(
-        sql`SELECT pg_advisory_xact_lock(hashtext(${`telegram_personal_account:${params.telegramId}`}))`,
-      );
-
-      const [projection] = await tx
-        .select({ userId: userIdentities.user_id })
-        .from(userIdentities)
-        .where(eq(userIdentities.telegram_id, params.telegramId))
-        .limit(1);
-      const [canonical] = await tx
-        .select()
-        .from(users)
-        .where(eq(users.telegram_id, params.telegramId))
-        .limit(1);
-
-      if (projection && canonical && projection.userId !== canonical.id) {
-        throw new ElizaError("Telegram identity owners disagree", {
-          code: "TELEGRAM_PERSONAL_ACCOUNT_IDENTITY_CONFLICT",
-          context: { canonicalUserId: canonical.id, projectedUserId: projection.userId },
-          severity: "fatal",
-        });
-      }
-
-      const [existing] = projection
-        ? await tx.select().from(users).where(eq(users.id, projection.userId)).limit(1)
-        : canonical
-          ? [canonical]
-          : [];
-      if (projection && !existing) {
-        throw new ElizaError("Telegram identity projection has no canonical owner", {
-          code: "TELEGRAM_PERSONAL_ACCOUNT_IDENTITY_CONFLICT",
-          context: { projectedUserId: projection.userId },
-          severity: "fatal",
-        });
-      }
-
-      if (existing) {
-        if (existing.deleted_at || !existing.is_active || !existing.organization_id) {
-          throw new ElizaError("Telegram personal account is unavailable", {
-            code: "TELEGRAM_PERSONAL_ACCOUNT_UNAVAILABLE",
-            context: { userId: existing.id },
-            severity: "fatal",
-          });
-        }
-        const [organization] = await tx
-          .select()
-          .from(organizations)
-          .where(eq(organizations.id, existing.organization_id))
-          .limit(1);
-        if (!organization?.is_active) {
-          throw new ElizaError("Telegram personal account organization is unavailable", {
-            code: "TELEGRAM_PERSONAL_ACCOUNT_UNAVAILABLE",
-            context: { userId: existing.id, organizationId: existing.organization_id },
-            severity: "fatal",
-          });
-        }
-
-        const now = new Date();
-        const [updated] = await tx
-          .update(users)
-          .set({
-            telegram_id: params.telegramId,
-            telegram_username: params.telegramUsername,
-            telegram_first_name: params.telegramFirstName,
-            name: existing.name ?? params.displayName,
-            updated_at: now,
-          })
-          .where(eq(users.id, existing.id))
-          .returning();
-        if (!updated) throw new Error(`Telegram account ${existing.id} disappeared`);
-        await tx
-          .insert(userIdentities)
-          .values({
-            user_id: updated.id,
-            steward_user_id: updated.steward_user_id,
-            is_anonymous: updated.is_anonymous,
-            telegram_id: params.telegramId,
-            telegram_username: params.telegramUsername,
-            telegram_first_name: params.telegramFirstName,
-            updated_at: now,
-          })
-          .onConflictDoUpdate({
-            target: userIdentities.user_id,
-            set: {
-              telegram_id: params.telegramId,
-              telegram_username: params.telegramUsername,
-              telegram_first_name: params.telegramFirstName,
-              updated_at: now,
-            },
-          });
-        return { user: updated, organization, isNew: false };
-      }
-
-      const [organization] = await tx
-        .insert(organizations)
-        .values({
-          name: params.organizationName,
-          slug: params.organizationSlug,
-          credit_balance: "0.00",
-        })
-        .returning();
-      if (!organization) throw new Error("Failed to create Telegram personal organization");
-
-      const [user] = await tx
-        .insert(users)
-        .values({
-          steward_user_id: `telegram:${params.telegramId}`,
+  }): Promise<FindOrCreatePersonalAccountResult> {
+    return findOrCreateTrustedPersonalAccount({
+      providerName: "Telegram",
+      lockKey: `telegram_personal_account:${params.telegramId}`,
+      projectionWhere: eq(userIdentities.telegram_id, params.telegramId),
+      canonicalWhere: eq(users.telegram_id, params.telegramId),
+      conflictCode: "TELEGRAM_PERSONAL_ACCOUNT_IDENTITY_CONFLICT",
+      unavailableCode: "TELEGRAM_PERSONAL_ACCOUNT_UNAVAILABLE",
+      stewardUserId: `telegram:${params.telegramId}`,
+      displayName: params.displayName,
+      organizationName: params.organizationName,
+      organizationSlug: params.organizationSlug,
+      identityFields: () => ({
+        user: {
           telegram_id: params.telegramId,
           telegram_username: params.telegramUsername,
           telegram_first_name: params.telegramFirstName,
-          name: params.displayName,
-          is_anonymous: false,
-          organization_id: organization.id,
-          role: "owner",
-          is_active: true,
-        })
-        .returning();
-      if (!user) throw new Error("Failed to create Telegram personal user");
-      await tx.insert(userIdentities).values({
-        user_id: user.id,
-        steward_user_id: user.steward_user_id,
-        is_anonymous: false,
-        telegram_id: params.telegramId,
-        telegram_username: params.telegramUsername,
-        telegram_first_name: params.telegramFirstName,
-      });
-      return { user, organization, isNew: true };
+        },
+        projection: {
+          telegram_id: params.telegramId,
+          telegram_username: params.telegramUsername,
+          telegram_first_name: params.telegramFirstName,
+        },
+      }),
+    });
+  }
+
+  /**
+   * Creates or repairs the $0 personal account proven by Discord's trusted
+   * gateway boundary. The provider-scoped lock makes concurrent first messages
+   * converge without creating an API key, runtime, or split identity owner.
+   */
+  async findOrCreateDiscordPersonalAccount(params: {
+    discordId: string;
+    discordUsername: string;
+    discordGlobalName?: string | null;
+    discordAvatarUrl?: string | null;
+    displayName: string;
+    organizationName: string;
+    organizationSlug: string;
+  }): Promise<FindOrCreatePersonalAccountResult> {
+    return findOrCreateTrustedPersonalAccount({
+      providerName: "Discord",
+      lockKey: `discord_personal_account:${params.discordId}`,
+      projectionWhere: eq(userIdentities.discord_id, params.discordId),
+      canonicalWhere: eq(users.discord_id, params.discordId),
+      conflictCode: "DISCORD_PERSONAL_ACCOUNT_IDENTITY_CONFLICT",
+      unavailableCode: "DISCORD_PERSONAL_ACCOUNT_UNAVAILABLE",
+      stewardUserId: `discord:${params.discordId}`,
+      displayName: params.displayName,
+      organizationName: params.organizationName,
+      organizationSlug: params.organizationSlug,
+      identityFields: (existing) => {
+        const discordGlobalName =
+          params.discordGlobalName === undefined
+            ? existing?.discord_global_name
+            : params.discordGlobalName;
+        const discordAvatarUrl =
+          params.discordAvatarUrl === undefined
+            ? existing?.discord_avatar_url
+            : params.discordAvatarUrl;
+        return {
+          user: {
+            discord_id: params.discordId,
+            discord_username: params.discordUsername,
+            discord_global_name: discordGlobalName,
+            discord_avatar_url: discordAvatarUrl,
+          },
+          projection: {
+            discord_id: params.discordId,
+            discord_username: params.discordUsername,
+            discord_global_name: discordGlobalName,
+            discord_avatar_url: discordAvatarUrl,
+          },
+        };
+      },
     });
   }
 

@@ -21,10 +21,12 @@ const findOrCreateByPhone = mock(async () => ({
   organization: { id: "00000000-0000-4000-8000-000000000011" },
   isNew: true,
 }));
-const findOrCreateByDiscordId = mock(async () => ({
-  user: { id: "00000000-0000-4000-8000-000000000002" },
-  organization: { id: "00000000-0000-4000-8000-000000000001" },
+const resolvePersonalDeliveryByDiscord = mock(async () => ({
+  userId: "00000000-0000-4000-8000-000000000002",
+  organizationId: "00000000-0000-4000-8000-000000000001",
+  dedicatedTarget: activeTarget,
   isNew: false,
+  resolution: "single-query-repeat" as const,
 }));
 const sharedRestMessageSend = mock(async () => ({ text: "hello from Eliza" }));
 const runOnboardingChat = mock(async (_input: OnboardingChatInput) => ({
@@ -114,8 +116,8 @@ const runtimeExecutionCtx = { waitUntil() {} };
 
 mock.module("@/lib/services/eliza-app", () => ({
   elizaAppUserService: {
-    findOrCreateByDiscordId,
     findOrCreateByPhone,
+    resolvePersonalDeliveryByDiscord,
     resolvePersonalDeliveryByTelegram,
   },
 }));
@@ -195,7 +197,7 @@ const validPhone = {
 describe("personal Shared messaging deliveries", () => {
   beforeEach(() => {
     findOrCreateByPhone.mockClear();
-    findOrCreateByDiscordId.mockClear();
+    resolvePersonalDeliveryByDiscord.mockClear();
     activeTarget = null;
     resolvePersonalDeliveryByTelegram.mockClear();
     findActivePersonalDedicatedTarget.mockClear();
@@ -439,11 +441,16 @@ describe("personal Shared messaging deliveries", () => {
     const body = (await response.json()) as {
       data: { identity: { id: string } };
     };
-    expect(findOrCreateByDiscordId).toHaveBeenCalledWith("123456789012345678", {
+    expect(resolvePersonalDeliveryByDiscord).toHaveBeenCalledWith({
+      discordId: "123456789012345678",
       username: "shaw",
       globalName: "Shaw",
       avatarUrl: "https://cdn.discordapp.com/avatar.png",
     });
+    expect(findActivePersonalDedicatedTarget).not.toHaveBeenCalled();
+    expect(response.headers.get("server-timing")).toMatch(
+      /^account;dur=\d+\.\d, shared;dur=\d+\.\d$/,
+    );
     expect(sharedRestMessageSend).toHaveBeenCalledWith(
       expect.objectContaining({ id: body.data.identity.id }),
       body.data.identity.id,
