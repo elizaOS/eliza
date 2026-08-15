@@ -1,0 +1,9 @@
+{
+  "package": "plugin-x402-finance",
+  "repository": "github:lokixc84/x402-finance-api",
+  "kind": "plugin",
+  "description": "Base token safety (honeypot, tax, liquidity) via x402 Finance — $0.04 USDC per call, no API key",
+  "homepage": "https://github.com/lokixc84/x402-finance-api/tree/main/plugin-x402-finance",
+  "version": "1.0.0",
+  "tags": ["x402", "token-safety", "honeypot", "base", "defi", "payments"]
+}
