@@ -275,6 +275,7 @@ set -euo pipefail
 HS_HOST=headscale-staging.eliza.app
 HS_LEGACY_HOST=headscale-staging.elizacloud.ai
 HS_RETIRABLE_LEGACY_VHOST=${JSON.stringify(legacyVhost)}
+HS_VHOST=/etc/nginx/conf.d/headscale.conf
 HS_REVIEWED_LEGACY_VHOST_SHA256=${JSON.stringify(options.reviewedSha256 ?? "")}
 HS_REQUIRE_RETIRABLE_LEGACY_VHOST=${options.requireFile ? "true" : "false"}
 HS_ENFORCE_LEGACY_VHOST_DIRECTIVE_ALLOWLIST=${options.enforceDirectiveAllowlist ? "true" : "false"}
@@ -816,7 +817,7 @@ server_name headscale-staging.elizacloud.ai;
       "directive-name inventory (values withheld)",
     );
     expect(result.stdout).toContain(
-      "reviewed-upgrade-map=headscale-websocket-v1 external-references=0",
+      "reviewed-upgrade-map=headscale-websocket-v1 managed-references=$legacy_upgrade_map_managed_references unmanaged-references=",
     );
     expect(result.stdout).toContain("reviewed-shape=server-blocks:");
     expect(result.stdout).not.toContain(
@@ -826,6 +827,26 @@ server_name headscale-staging.elizacloud.ai;
     expect(result.stdout).not.toContain("sudo systemctl restart headscale");
     expect(result.stdout).not.toContain("sudo rm -f --");
     expectBashSyntax(result.stdout);
+  });
+
+  test("accepts only the reviewed two-reference managed-vhost overlap", () => {
+    const managedOverlapConfig = expectedLoadedConfig.replace(
+      "server_name headscale-staging.eliza.app headscale-staging.elizacloud.ai;\nserver_name headscale-staging.eliza.app headscale-staging.elizacloud.ai;",
+      `server_name headscale-staging.eliza.app headscale-staging.elizacloud.ai;
+map $http_upgrade $connection_upgrade {
+server_name headscale-staging.eliza.app headscale-staging.elizacloud.ai;
+proxy_set_header Connection $connection_upgrade;`,
+    );
+    const result = runLegacyVhostInspection(
+      expectedLegacySource,
+      managedOverlapConfig,
+    );
+    expect(result.status).toBe(0);
+    expect(result.stderr).toBe("");
+    expect(result.stdout).toContain(
+      "reviewed-upgrade-map=headscale-websocket-v1 managed-references=2 unmanaged-references=0",
+    );
+    expect(result.stdout).not.toContain("$connection_upgrade");
   });
 
   test("withholds every reviewed directive literal from inspection output", () => {
@@ -954,7 +975,7 @@ server {
     );
     expect(inspection.status).toBe(0);
     expect(inspection.stdout).toContain(
-      "reviewed-upgrade-map=headscale-websocket-v1 external-references=0",
+      "reviewed-upgrade-map=headscale-websocket-v1 managed-references=0 unmanaged-references=0",
     );
     expect(inspection.stdout).not.toContain("$connection_upgrade");
 
@@ -1090,6 +1111,43 @@ proxy_set_header Connection $connection_upgrade;
       "path=/etc/nginx/conf.d/unrelated.conf references=1",
     );
     expect(externallyReferenced.stdout).not.toContain("$connection_upgrade");
+
+    const reviewedManagedOverlap = runLegacyVhostValidation({
+      source: expectedLegacySource,
+      loadedConfig: `${expectedLoadedConfig}
+# configuration file /etc/nginx/conf.d/headscale.conf:
+map $http_upgrade $connection_upgrade {
+proxy_set_header Connection $connection_upgrade;
+`,
+      enforceDirectiveAllowlist: true,
+    });
+    expect(reviewedManagedOverlap.status).toBe(0);
+    expect(reviewedManagedOverlap.stdout).toBe("");
+
+    for (const loadedConfig of [
+      `${expectedLoadedConfig}
+# configuration file /etc/nginx/conf.d/headscale.conf:
+proxy_set_header Connection $connection_upgrade;
+`,
+      `${expectedLoadedConfig}
+# configuration file /etc/nginx/conf.d/headscale.conf:
+map $http_upgrade $connection_upgrade {
+proxy_set_header Connection $connection_upgrade;
+# configuration file /etc/nginx/conf.d/unrelated-managed-overlap.conf:
+proxy_set_header Connection $connection_upgrade;
+`,
+    ]) {
+      const invalidManagedOverlap = runLegacyVhostValidation({
+        source: expectedLegacySource,
+        loadedConfig,
+        enforceDirectiveAllowlist: true,
+      });
+      expect(invalidManagedOverlap.status).not.toBe(0);
+      expect(invalidManagedOverlap.stdout).toContain(
+        "upgrade-map output is referenced outside the reviewed file",
+      );
+      expect(invalidManagedOverlap.stdout).not.toContain("$connection_upgrade");
+    }
 
     const customExternalOutputVariable = "$headscale_connection_upgrade";
     const customOutputExternallyReferenced = runLegacyVhostValidation({
