@@ -57,10 +57,6 @@ export const SCRIPT_TEST_EXCLUSIONS = new Map([
     "the release-candidate workflow owns this slow real-registry transport test",
   ],
   [
-    "scripts/federated-agent-charter-conformance.test.mjs",
-    "crashes at import: validates docs/federated-agent-charter.schema.json, deleted from the tree; repair or retirement tracked in #19448",
-  ],
-  [
     "scripts/lifeops/connector-paths.test.mjs",
     "2/24 tests parse docs/testing/hitl-identity-slots.md, deleted from the tree; lifeops-owner repair tracked in #19448",
   ],
