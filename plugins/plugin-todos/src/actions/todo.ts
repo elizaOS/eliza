@@ -21,20 +21,20 @@ import type {
   IAgentRuntime,
   Memory,
   State,
-} from "@elizaos/core";
+} from "@elizaos/core/edge";
 
 import {
   type CreateTodoInput,
-  getTodosService,
   isValidTodoListLimit,
-  type TodosService,
+  type TodoStore,
   type UpdateTodoInput,
-} from "../service.js";
+} from "../store.js";
 import {
   TODO_ACTIONS,
   TODO_FAILURE_TEXT_PREFIX,
   TODO_STATUSES,
   TODOS_CONTEXTS,
+  TODOS_SERVICE_TYPE,
   type Todo,
   type TodoActionName,
   type TodoStatus,
@@ -117,6 +117,10 @@ function isOwnedByScope(todo: Todo, scope: ScopeContext): boolean {
   return todo.entityId === scope.entityId && todo.agentId === scope.agentId;
 }
 
+function todoScope(scope: ScopeContext) {
+  return { agentId: scope.agentId, entityId: scope.entityId };
+}
+
 interface ParsedListItem {
   id?: string;
   content: string;
@@ -181,15 +185,15 @@ function readScope(
   if (!agentId) {
     return { error: "runtime has no agentId" };
   }
-  const parentStepFromEnv = readString(
-    process.env[PARENT_TRAJECTORY_STEP_ENV_KEY],
+  const parentStepFromRuntime = readString(
+    runtime.getSetting(PARENT_TRAJECTORY_STEP_ENV_KEY),
   );
   return {
     entityId,
     agentId,
     roomId: readString(message.roomId) ?? null,
     worldId: readString(message.worldId) ?? null,
-    parentTrajectoryStepId: parentStepFromEnv ?? null,
+    parentTrajectoryStepId: parentStepFromRuntime ?? null,
   };
 }
 
@@ -203,7 +207,7 @@ async function emit(
 }
 
 interface ActionHandlerArgs {
-  service: TodosService;
+  service: TodoStore;
   scope: ScopeContext;
   params: TodoActionParameters;
   callback: HandlerCallback | undefined;
@@ -305,7 +309,7 @@ async function actionUpdate({
   if (!id) {
     return failure("missing_param", "id is required for action=update");
   }
-  const existing = await service.get(id);
+  const existing = await service.get(todoScope(scope), id);
   if (!existing || !isOwnedByScope(existing, scope)) {
     return failure("not_found", `todo ${id} not found for this user`);
   }
@@ -324,7 +328,7 @@ async function actionUpdate({
       "at least one field is required for action=update",
     );
   }
-  const todo = await service.update(id, patch);
+  const todo = await service.update(todoScope(scope), id, patch);
   if (!todo) {
     return failure("not_found", `todo ${id} not found`);
   }
@@ -352,11 +356,11 @@ async function actionSetStatus(
   if (!id) {
     return failure("missing_param", `id is required for action=${verb}`);
   }
-  const existing = await service.get(id);
+  const existing = await service.get(todoScope(scope), id);
   if (!existing || !isOwnedByScope(existing, scope)) {
     return failure("not_found", `todo ${id} not found for this user`);
   }
-  const todo = await service.update(id, { status });
+  const todo = await service.update(todoScope(scope), id, { status });
   if (!todo) {
     return failure("not_found", `todo ${id} not found`);
   }
@@ -379,11 +383,11 @@ async function actionDelete({
   if (!id) {
     return failure("missing_param", "id is required for action=delete");
   }
-  const existing = await service.get(id);
+  const existing = await service.get(todoScope(scope), id);
   if (!existing || !isOwnedByScope(existing, scope)) {
     return failure("not_found", `todo ${id} not found for this user`);
   }
-  const ok = await service.delete(id);
+  const ok = await service.delete(todoScope(scope), id);
   if (!ok) {
     return failure("not_found", `todo ${id} not found`);
   }
@@ -416,7 +420,7 @@ async function actionList({
       "limit must be a positive safe integer number (omit for unlimited results)",
     );
   }
-  const filter: Parameters<TodosService["list"]>[0] = {
+  const filter: Parameters<TodoStore["list"]>[0] = {
     entityId: scope.entityId,
     agentId: scope.agentId,
     includeCompleted,
@@ -462,244 +466,260 @@ async function actionClear({
   };
 }
 
-// Canonical planner-facing todo surface. Backed by the per-user @elizaos/core
-// TodosService store (filesystem under TODOS_BASE_PATH). The owner-store
-// equivalent — backed by app-lifeops definitions — is OWNER_TODOS in
-// plugins/plugin-personal-assistant/src/actions/owner-surfaces.ts. The two surfaces target
-// different stores and must not be merged.
-export const todoAction: Action = {
-  name: "TODO",
-  contexts: [...TODOS_CONTEXTS],
-  roleGate: { minRole: "ADMIN" },
-  contextGate: { anyOf: [...TODOS_CONTEXTS] },
-  tags: [
-    "domain:reminders",
-    "capability:read",
-    "capability:write",
-    "capability:update",
-    "capability:delete",
-    "surface:internal",
-  ],
-  similes: [
-    "TODO_WRITE",
-    "WRITE_TODOS",
-    "SET_TODOS",
-    "UPDATE_TODOS",
-    "TODO_CREATE",
-    "CREATE_TODO",
-    "TODO_UPDATE",
-    "UPDATE_TODO",
-    "TODO_COMPLETE",
-    "COMPLETE_TODO",
-    "FINISH_TODO",
-    "TODO_CANCEL",
-    "CANCEL_TODO",
-    "TODO_DELETE",
-    "DELETE_TODO",
-    "REMOVE_TODO",
-    "TODO_LIST",
-    "LIST_TODOS",
-    "GET_TODOS",
-    "SHOW_TODOS",
-    "TODO_CLEAR",
-    "CLEAR_TODOS",
-  ],
-  description:
-    "Manage the user's todo list. Actions: write (replace the list with `todos:[{id?, content, status, activeForm?}]`), create (add one), update (change by id), complete, cancel, delete, list, clear. Todos are user-scoped (entityId), persistent, and shared across rooms for the same user.",
-  descriptionCompressed:
-    "todos: write|create|update|complete|cancel|delete|list|clear; user-scoped (entityId)",
-  parameters: [
-    {
-      name: "action",
-      description:
-        "Action: write, create, update, complete, cancel, delete, list, clear.",
-      required: true,
-      schema: { type: "string" as const, enum: [...TODO_ACTIONS] },
-    },
-    {
-      name: "id",
-      description: "Todo id (update/complete/cancel/delete).",
-      required: false,
-      schema: { type: "string" as const },
-    },
-    {
-      name: "content",
-      description: "Imperative form, e.g. 'Add tests' (create/update).",
-      required: false,
-      schema: { type: "string" as const },
-    },
-    {
-      name: "activeForm",
-      description:
-        "Present-continuous form, e.g. 'Adding tests' (create/update).",
-      required: false,
-      schema: { type: "string" as const },
-    },
-    {
-      name: "status",
-      description: "pending | in_progress | completed | cancelled.",
-      required: false,
-      schema: { type: "string" as const, enum: [...TODO_STATUSES] },
-    },
-    {
-      name: "parentTodoId",
-      description: "Parent todo id for sub-tasks (create/update).",
-      required: false,
-      schema: { type: "string" as const },
-    },
-    {
-      name: "todos",
-      description:
-        "Array of {id?, content, status, activeForm?} for action=write. Replaces the user's list for this conversation.",
-      required: false,
-      schema: {
-        type: "array" as const,
-        items: {
-          type: "object" as const,
-          properties: {
-            id: { type: "string" as const },
-            content: { type: "string" as const },
-            status: { type: "string" as const, enum: [...TODO_STATUSES] },
-            activeForm: { type: "string" as const },
+export interface TodoActionOptions {
+  resolveStore?: (runtime: IAgentRuntime) => TodoStore | null;
+  roleGate?: Action["roleGate"];
+}
+
+function runtimeTodoStore(runtime: IAgentRuntime): TodoStore | null {
+  return runtime.getService<TodoStore>(TODOS_SERVICE_TYPE);
+}
+
+/** Canonical planner-facing todo surface shared by Node and edge hosts. */
+export function createTodoAction(options: TodoActionOptions = {}): Action {
+  const resolveStore = options.resolveStore ?? runtimeTodoStore;
+  return {
+    name: "TODO",
+    contexts: [...TODOS_CONTEXTS],
+    roleGate: options.roleGate ?? { minRole: "ADMIN" },
+    contextGate: { anyOf: [...TODOS_CONTEXTS] },
+    tags: [
+      "domain:reminders",
+      "capability:read",
+      "capability:write",
+      "capability:update",
+      "capability:delete",
+      "surface:internal",
+    ],
+    similes: [
+      "TODO_WRITE",
+      "WRITE_TODOS",
+      "SET_TODOS",
+      "UPDATE_TODOS",
+      "TODO_CREATE",
+      "CREATE_TODO",
+      "TODO_UPDATE",
+      "UPDATE_TODO",
+      "TODO_COMPLETE",
+      "COMPLETE_TODO",
+      "FINISH_TODO",
+      "TODO_CANCEL",
+      "CANCEL_TODO",
+      "TODO_DELETE",
+      "DELETE_TODO",
+      "REMOVE_TODO",
+      "TODO_LIST",
+      "LIST_TODOS",
+      "GET_TODOS",
+      "SHOW_TODOS",
+      "TODO_CLEAR",
+      "CLEAR_TODOS",
+    ],
+    description:
+      "Manage the user's todo list. Actions: write (replace the list with `todos:[{id?, content, status, activeForm?}]`), create (add one), update (change by id), complete, cancel, delete, list, clear. Todos are user-scoped (entityId), persistent, and shared across rooms for the same user.",
+    descriptionCompressed:
+      "todos: write|create|update|complete|cancel|delete|list|clear; user-scoped (entityId)",
+    parameters: [
+      {
+        name: "action",
+        description:
+          "Action: write, create, update, complete, cancel, delete, list, clear.",
+        required: true,
+        schema: { type: "string" as const, enum: [...TODO_ACTIONS] },
+      },
+      {
+        name: "id",
+        description: "Todo id (update/complete/cancel/delete).",
+        required: false,
+        schema: { type: "string" as const },
+      },
+      {
+        name: "content",
+        description: "Imperative form, e.g. 'Add tests' (create/update).",
+        required: false,
+        schema: { type: "string" as const },
+      },
+      {
+        name: "activeForm",
+        description:
+          "Present-continuous form, e.g. 'Adding tests' (create/update).",
+        required: false,
+        schema: { type: "string" as const },
+      },
+      {
+        name: "status",
+        description: "pending | in_progress | completed | cancelled.",
+        required: false,
+        schema: { type: "string" as const, enum: [...TODO_STATUSES] },
+      },
+      {
+        name: "parentTodoId",
+        description: "Parent todo id for sub-tasks (create/update).",
+        required: false,
+        schema: { type: "string" as const },
+      },
+      {
+        name: "todos",
+        description:
+          "Array of {id?, content, status, activeForm?} for action=write. Replaces the user's list for this conversation.",
+        required: false,
+        schema: {
+          type: "array" as const,
+          items: {
+            type: "object" as const,
+            properties: {
+              id: { type: "string" as const },
+              content: { type: "string" as const },
+              status: { type: "string" as const, enum: [...TODO_STATUSES] },
+              activeForm: { type: "string" as const },
+            },
+            required: ["content", "status"],
           },
-          required: ["content", "status"],
         },
       },
-    },
-    {
-      name: "includeCompleted",
-      description: "Include completed/cancelled todos in action=list output.",
-      required: false,
-      schema: { type: "boolean" as const },
-    },
-    {
-      name: "limit",
-      description:
-        "Positive safe integer maximum rows to return for action=list; omit for unlimited results.",
-      required: false,
-      schema: {
-        type: "integer" as const,
-        minimum: 1,
-        maximum: Number.MAX_SAFE_INTEGER,
+      {
+        name: "includeCompleted",
+        description: "Include completed/cancelled todos in action=list output.",
+        required: false,
+        schema: { type: "boolean" as const },
       },
-    },
-  ],
-  validate: async (runtime: IAgentRuntime) => Boolean(getTodosService(runtime)),
-  handler: async (
-    runtime: IAgentRuntime,
-    message: Memory,
-    _state?: State,
-    options?: HandlerOptions,
-    callback?: HandlerCallback,
-  ): Promise<ActionResult> => {
-    const params = (options?.parameters ?? {}) as TodoActionParameters;
-    const action = readAction(params.action ?? params.subaction ?? params.op);
-    if (!action) {
-      return failure(
-        "missing_param",
-        `action is required (one of: ${TODO_ACTIONS.join(", ")})`,
-      );
-    }
-    const scope = readScope(runtime, message);
-    if ("error" in scope) {
-      return failure("missing_param", scope.error);
-    }
-    try {
-      const service = getTodosService(runtime);
-      const args: ActionHandlerArgs = { service, scope, params, callback };
-      switch (action) {
-        case "write":
-          return await actionWrite(args);
-        case "create":
-          return await actionCreate(args);
-        case "update":
-          return await actionUpdate(args);
-        case "complete":
-          return await actionSetStatus(args, "completed", "complete");
-        case "cancel":
-          return await actionSetStatus(args, "cancelled", "cancel");
-        case "delete":
-          return await actionDelete(args);
-        case "list":
-          return await actionList(args);
-        case "clear":
-          return await actionClear(args);
+      {
+        name: "limit",
+        description:
+          "Positive safe integer maximum rows to return for action=list; omit for unlimited results.",
+        required: false,
+        schema: {
+          type: "integer" as const,
+          minimum: 1,
+          maximum: Number.MAX_SAFE_INTEGER,
+        },
+      },
+    ],
+    validate: async (runtime: IAgentRuntime) => Boolean(resolveStore(runtime)),
+    handler: async (
+      runtime: IAgentRuntime,
+      message: Memory,
+      _state?: State,
+      options?: HandlerOptions,
+      callback?: HandlerCallback,
+    ): Promise<ActionResult> => {
+      const params = (options?.parameters ?? {}) as TodoActionParameters;
+      const action = readAction(params.action ?? params.subaction ?? params.op);
+      if (!action) {
+        return failure(
+          "missing_param",
+          `action is required (one of: ${TODO_ACTIONS.join(", ")})`,
+        );
       }
-    } catch (error) {
-      const message =
-        error instanceof Error ? error.message : "todo persistence failed";
-      return failure("persistence_error", message);
-    }
-  },
-  examples: [
-    [
-      {
-        name: "{{name1}}",
-        content: {
-          text: "Add 'review PR feedback' to my todo list.",
-          source: "chat",
+      const scope = readScope(runtime, message);
+      if ("error" in scope) {
+        return failure("missing_param", scope.error);
+      }
+      try {
+        const service = resolveStore(runtime);
+        if (!service) {
+          return failure(
+            "service_unavailable",
+            "Todo storage is not available for this runtime.",
+          );
+        }
+        const args: ActionHandlerArgs = { service, scope, params, callback };
+        switch (action) {
+          case "write":
+            return await actionWrite(args);
+          case "create":
+            return await actionCreate(args);
+          case "update":
+            return await actionUpdate(args);
+          case "complete":
+            return await actionSetStatus(args, "completed", "complete");
+          case "cancel":
+            return await actionSetStatus(args, "cancelled", "cancel");
+          case "delete":
+            return await actionDelete(args);
+          case "list":
+            return await actionList(args);
+          case "clear":
+            return await actionClear(args);
+        }
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : "todo persistence failed";
+        return failure("persistence_error", message);
+      }
+    },
+    examples: [
+      [
+        {
+          name: "{{name1}}",
+          content: {
+            text: "Add 'review PR feedback' to my todo list.",
+            source: "chat",
+          },
         },
-      },
-      {
-        name: "{{agentName}}",
-        content: {
-          text: "Adding the todo.",
-          actions: ["TODO"],
-          thought:
-            "Single-todo creation maps to TODO action=create with content set.",
+        {
+          name: "{{agentName}}",
+          content: {
+            text: "Adding the todo.",
+            actions: ["TODO"],
+            thought:
+              "Single-todo creation maps to TODO action=create with content set.",
+          },
         },
-      },
+      ],
+      [
+        {
+          name: "{{name1}}",
+          content: {
+            text: "Show my todos that are still pending.",
+            source: "chat",
+          },
+        },
+        {
+          name: "{{agentName}}",
+          content: {
+            text: "Listing your pending todos.",
+            actions: ["TODO"],
+            thought:
+              "List query maps to TODO action=list with includeCompleted=false.",
+          },
+        },
+      ],
+      [
+        {
+          name: "{{name1}}",
+          content: { text: "Cancel todo abc-123.", source: "chat" },
+        },
+        {
+          name: "{{agentName}}",
+          content: {
+            text: "Cancelling that todo.",
+            actions: ["TODO"],
+            thought:
+              "Cancel intent on a specific id maps to TODO action=cancel with id=abc-123.",
+          },
+        },
+      ],
+      [
+        {
+          name: "{{name1}}",
+          content: {
+            text: "rappelle-moi de relire l'audit demain",
+            source: "chat",
+          },
+        },
+        {
+          name: "{{agentName}}",
+          content: {
+            text: "Saved. I'll remind you tomorrow about the audit re-read.",
+            actions: ["TODO"],
+            thought:
+              "Casual French reminder phrasing maps to TODO action=create. Plugin examples must cover non-English idiom so the few-shot extends past the literal 'Add X to my todo list' pattern.",
+          },
+        },
+      ],
     ],
-    [
-      {
-        name: "{{name1}}",
-        content: {
-          text: "Show my todos that are still pending.",
-          source: "chat",
-        },
-      },
-      {
-        name: "{{agentName}}",
-        content: {
-          text: "Listing your pending todos.",
-          actions: ["TODO"],
-          thought:
-            "List query maps to TODO action=list with includeCompleted=false.",
-        },
-      },
-    ],
-    [
-      {
-        name: "{{name1}}",
-        content: { text: "Cancel todo abc-123.", source: "chat" },
-      },
-      {
-        name: "{{agentName}}",
-        content: {
-          text: "Cancelling that todo.",
-          actions: ["TODO"],
-          thought:
-            "Cancel intent on a specific id maps to TODO action=cancel with id=abc-123.",
-        },
-      },
-    ],
-    [
-      {
-        name: "{{name1}}",
-        content: {
-          text: "rappelle-moi de relire l'audit demain",
-          source: "chat",
-        },
-      },
-      {
-        name: "{{agentName}}",
-        content: {
-          text: "Saved. I'll remind you tomorrow about the audit re-read.",
-          actions: ["TODO"],
-          thought:
-            "Casual French reminder phrasing maps to TODO action=create. Plugin examples must cover non-English idiom so the few-shot extends past the literal 'Add X to my todo list' pattern.",
-        },
-      },
-    ],
-  ],
-};
+  };
+}
+
+export const todoAction = createTodoAction();

@@ -15,48 +15,21 @@ import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 
 import { type TodoRow, todosTable } from "./db/schema.js";
 import {
+  type CreateTodoInput,
+  isValidTodoListLimit,
+  TODO_LIST_LIMIT_ERROR_CODE,
+  type TodoFilter,
+  type TodoScope,
+  type TodoStore,
+  type UpdateTodoInput,
+  type WriteTodoListInput,
+} from "./store.js";
+import {
   TODOS_LOG_PREFIX,
   TODOS_SERVICE_TYPE,
   type Todo,
   type TodoStatus,
 } from "./types.js";
-
-export interface TodoFilter {
-  entityId: string;
-  agentId?: string;
-  roomId?: string | null;
-  status?: TodoStatus | TodoStatus[];
-  includeCompleted?: boolean;
-  limit?: number;
-}
-
-export interface CreateTodoInput {
-  entityId: string;
-  agentId: string;
-  roomId?: string | null;
-  worldId?: string | null;
-  content: string;
-  activeForm?: string;
-  status?: TodoStatus;
-  parentTodoId?: string | null;
-  parentTrajectoryStepId?: string | null;
-  metadata?: Record<string, unknown>;
-}
-
-export interface UpdateTodoInput {
-  content?: string;
-  activeForm?: string;
-  status?: TodoStatus;
-  parentTodoId?: string | null;
-  metadata?: Record<string, unknown>;
-}
-
-export const TODO_LIST_LIMIT_ERROR_CODE = "TODO_INVALID_LIST_LIMIT";
-
-/** Return true only for executable SQL limits accepted by the TODO contract. */
-export function isValidTodoListLimit(value: unknown): value is number {
-  return typeof value === "number" && Number.isSafeInteger(value) && value > 0;
-}
 
 function rowToTodo(row: TodoRow): Todo {
   const metadata =
@@ -83,7 +56,7 @@ function rowToTodo(row: TodoRow): Todo {
   };
 }
 
-export class TodosService extends Service {
+export class TodosService extends Service implements TodoStore {
   static override readonly serviceType = TODOS_SERVICE_TYPE;
 
   override capabilityDescription =
@@ -129,12 +102,18 @@ export class TodosService extends Service {
     return rowToTodo(row);
   }
 
-  async get(id: string): Promise<Todo | null> {
+  async get(scope: TodoScope, id: string): Promise<Todo | null> {
     const db = this.getDb();
     const [row] = await db
       .select()
       .from(todosTable)
-      .where(eq(todosTable.id, id as UUID))
+      .where(
+        and(
+          eq(todosTable.id, id as UUID),
+          eq(todosTable.agentId, scope.agentId as UUID),
+          eq(todosTable.entityId, scope.entityId as UUID),
+        ),
+      )
       .limit(1);
     return row ? rowToTodo(row) : null;
   }
@@ -183,7 +162,11 @@ export class TodosService extends Service {
     return rows.map(rowToTodo);
   }
 
-  async update(id: string, patch: UpdateTodoInput): Promise<Todo | null> {
+  async update(
+    scope: TodoScope,
+    id: string,
+    patch: UpdateTodoInput,
+  ): Promise<Todo | null> {
     const db = this.getDb();
     const set: Record<string, unknown> = { updatedAt: new Date() };
     if (patch.content !== undefined) set.content = patch.content;
@@ -197,16 +180,28 @@ export class TodosService extends Service {
     const [row] = await db
       .update(todosTable)
       .set(set)
-      .where(eq(todosTable.id, id as UUID))
+      .where(
+        and(
+          eq(todosTable.id, id as UUID),
+          eq(todosTable.agentId, scope.agentId as UUID),
+          eq(todosTable.entityId, scope.entityId as UUID),
+        ),
+      )
       .returning();
     return row ? rowToTodo(row) : null;
   }
 
-  async delete(id: string): Promise<boolean> {
+  async delete(scope: TodoScope, id: string): Promise<boolean> {
     const db = this.getDb();
     const rows = await db
       .delete(todosTable)
-      .where(eq(todosTable.id, id as UUID))
+      .where(
+        and(
+          eq(todosTable.id, id as UUID),
+          eq(todosTable.agentId, scope.agentId as UUID),
+          eq(todosTable.entityId, scope.entityId as UUID),
+        ),
+      )
       .returning({ id: todosTable.id });
     return rows.length > 0;
   }
@@ -217,19 +212,9 @@ export class TodosService extends Service {
    * desired list, and the store reconciles. Existing rows are matched by id;
    * absent rows are deleted; new rows are inserted.
    */
-  async writeList(args: {
-    entityId: string;
-    agentId: string;
-    roomId: string | null;
-    worldId: string | null;
-    parentTrajectoryStepId: string | null;
-    todos: Array<{
-      id?: string;
-      content: string;
-      status: TodoStatus;
-      activeForm?: string;
-    }>;
-  }): Promise<{ before: Todo[]; after: Todo[] }> {
+  async writeList(
+    args: WriteTodoListInput,
+  ): Promise<{ before: Todo[]; after: Todo[] }> {
     const db = this.getDb();
     const filter: TodoFilter = {
       entityId: args.entityId,
@@ -252,7 +237,7 @@ export class TodosService extends Service {
           existing.status !== item.status ||
           existing.activeForm !== (item.activeForm ?? item.content);
         if (needsUpdate) {
-          const updated = await this.update(existing.id, {
+          const updated = await this.update(args, existing.id, {
             content: item.content,
             activeForm: item.activeForm ?? item.content,
             status: item.status,
@@ -281,7 +266,15 @@ export class TodosService extends Service {
       .filter((t) => !keepIds.has(t.id))
       .map((t) => t.id as UUID);
     if (toDelete.length > 0) {
-      await db.delete(todosTable).where(inArray(todosTable.id, toDelete));
+      await db
+        .delete(todosTable)
+        .where(
+          and(
+            eq(todosTable.agentId, args.agentId as UUID),
+            eq(todosTable.entityId, args.entityId as UUID),
+            inArray(todosTable.id, toDelete),
+          ),
+        );
     }
 
     return { before, after };
@@ -307,6 +300,17 @@ export class TodosService extends Service {
     return rows.length;
   }
 }
+
+export {
+  type CreateTodoInput,
+  isValidTodoListLimit,
+  TODO_LIST_LIMIT_ERROR_CODE,
+  type TodoFilter,
+  type TodoScope,
+  type TodoStore,
+  type UpdateTodoInput,
+  type WriteTodoListInput,
+} from "./store.js";
 
 export function getTodosService(runtime: IAgentRuntime): TodosService {
   const service = runtime.getService<TodosService>(TODOS_SERVICE_TYPE);
