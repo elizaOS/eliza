@@ -116,6 +116,11 @@ export interface TelegramIdentityLink {
   telegram_photo_url?: string | null;
 }
 
+export interface WhatsAppIdentityLink {
+  whatsapp_id: string;
+  whatsapp_name?: string | null;
+}
+
 export interface FindOrCreatePhonePersonalAccountResult {
   user: User;
   organization: Organization;
@@ -2254,6 +2259,39 @@ export class UsersRepository {
   async linkDiscordIdentity(
     userId: string,
     identity: DiscordIdentityLink,
+  ): Promise<User | undefined> {
+    return dbWrite.transaction(async (tx) => {
+      const updatedAt = new Date();
+      const [updated] = await tx
+        .update(users)
+        .set({ ...identity, updated_at: updatedAt })
+        .where(eq(users.id, userId))
+        .returning();
+      if (!updated) return undefined;
+
+      await tx
+        .insert(userIdentities)
+        .values({
+          user_id: userId,
+          steward_user_id: updated.steward_user_id,
+          is_anonymous: updated.is_anonymous,
+          anonymous_session_id: updated.anonymous_session_id,
+          expires_at: updated.expires_at,
+          ...identity,
+          updated_at: updatedAt,
+        })
+        .onConflictDoUpdate({
+          target: userIdentities.user_id,
+          set: { ...identity, updated_at: updatedAt },
+        });
+      return updated;
+    });
+  }
+
+  /** Links WhatsApp on the canonical user and routing projection atomically. */
+  async linkWhatsAppIdentity(
+    userId: string,
+    identity: WhatsAppIdentityLink,
   ): Promise<User | undefined> {
     return dbWrite.transaction(async (tx) => {
       const updatedAt = new Date();

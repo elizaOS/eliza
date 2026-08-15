@@ -1,0 +1,265 @@
+/**
+ * Exercises identity-link code mint/confirm against the real Drizzle schema on
+ * isolated PGlite: single-use consumption (replay -> already_used), expiry,
+ * platform mismatch, cross-account handle-conflict rejection, and the actual
+ * canonical + projection binding writes. Real SQL, no rollback-capable mocks.
+ */
+import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
+
+const AMBIENT_DATABASE_URL = process.env.DATABASE_URL ?? "";
+const CAN_USE_ISOLATED_PGLITE =
+  AMBIENT_DATABASE_URL === "" || AMBIENT_DATABASE_URL.startsWith("pglite");
+process.env.DATABASE_URL ||= "pglite://memory";
+process.env.NODE_ENV ||= "test";
+
+import { pushSchema } from "drizzle-kit/api";
+import { eq } from "drizzle-orm";
+import { closeDatabaseConnectionsForTests, dbWrite } from "../../../db/client";
+import { usersRepository } from "../../../db/repositories/users";
+import { identityLinkCodes } from "../../../db/schemas/identity-link-codes";
+import {
+  organizationBalanceRevisionSequence,
+  organizations,
+} from "../../../db/schemas/organizations";
+import { userIdentities } from "../../../db/schemas/user-identities";
+import { users } from "../../../db/schemas/users";
+import { confirmIdentityLink, startIdentityLink } from "./identity-link";
+
+const PGLITE_TIMEOUT = 60_000;
+const ORG_A = "00000000-0000-4000-8000-00000000a001";
+const ORG_B = "00000000-0000-4000-8000-00000000a002";
+const USER_A = "00000000-0000-4000-8000-000000000101";
+const USER_B = "00000000-0000-4000-8000-000000000102";
+let pgliteReady = true;
+
+async function seedAccount(userId: string, orgId: string, stewardUserId: string): Promise<void> {
+  await dbWrite
+    .insert(organizations)
+    .values({ id: orgId, name: `org-${stewardUserId}`, slug: `org-${stewardUserId}` })
+    .onConflictDoNothing();
+  await dbWrite
+    .insert(users)
+    .values({ id: userId, steward_user_id: stewardUserId, organization_id: orgId });
+  await dbWrite.insert(userIdentities).values({ user_id: userId, steward_user_id: stewardUserId });
+}
+
+beforeAll(async () => {
+  if (!CAN_USE_ISOLATED_PGLITE) {
+    pgliteReady = false;
+    console.warn(
+      "[identity-link.integration.test] isolated PGlite is required; refusing to mutate an ambient Postgres database.",
+    );
+    return;
+  }
+  try {
+    const { apply } = await pushSchema(
+      {
+        organizationBalanceRevisionSequence,
+        organizations,
+        users,
+        userIdentities,
+        identityLinkCodes,
+      } as never,
+      dbWrite as never,
+    );
+    await apply();
+  } catch (error) {
+    // error-policy:J1 The test boundary records schema setup failure and every case fails loudly.
+    pgliteReady = false;
+    console.error("[identity-link.integration.test] PGlite schema setup failed.", error);
+  }
+}, PGLITE_TIMEOUT);
+
+beforeEach(async () => {
+  expect(pgliteReady).toBe(true);
+  await dbWrite.delete(identityLinkCodes);
+  await dbWrite.delete(userIdentities);
+  await dbWrite.delete(users);
+  await dbWrite.delete(organizations);
+});
+
+afterAll(async () => {
+  await closeDatabaseConnectionsForTests();
+});
+
+describe("startIdentityLink", () => {
+  test("mints a prefixed pending code and supersedes the previous pending code", async () => {
+    await seedAccount(USER_A, ORG_A, "steward-a");
+
+    const first = await startIdentityLink({
+      userId: USER_A,
+      organizationId: ORG_A,
+      platform: "whatsapp",
+    });
+    expect(first.code).toMatch(/^LINK-[A-HJ-NP-Z2-9]{8}$/);
+    expect(first.expiresAt.getTime()).toBeGreaterThan(Date.now());
+
+    const second = await startIdentityLink({
+      userId: USER_A,
+      organizationId: ORG_A,
+      platform: "whatsapp",
+    });
+    expect(second.code).not.toBe(first.code);
+
+    const rows = await dbWrite.select().from(identityLinkCodes);
+    const byCode = new Map(rows.map((row) => [`LINK-${row.code}`, row.status]));
+    expect(byCode.get(first.code)).toBe("expired");
+    expect(byCode.get(second.code)).toBe("pending");
+  });
+});
+
+describe("confirmIdentityLink", () => {
+  test("binds the handle once and reports replay as already_used", async () => {
+    await seedAccount(USER_A, ORG_A, "steward-a");
+    const { code } = await startIdentityLink({
+      userId: USER_A,
+      organizationId: ORG_A,
+      platform: "whatsapp",
+    });
+
+    const confirmed = await confirmIdentityLink({
+      code,
+      platform: "whatsapp",
+      platformId: "15551230001",
+      platformName: "Sam",
+    });
+    expect(confirmed).toMatchObject({
+      status: "linked",
+      userId: USER_A,
+      organizationId: ORG_A,
+      platform: "whatsapp",
+    });
+
+    const [canonical] = await dbWrite.select().from(users).where(eq(users.id, USER_A));
+    expect(canonical.whatsapp_id).toBe("15551230001");
+    const [projection] = await dbWrite
+      .select()
+      .from(userIdentities)
+      .where(eq(userIdentities.user_id, USER_A));
+    expect(projection.whatsapp_id).toBe("15551230001");
+
+    const replayed = await confirmIdentityLink({
+      code,
+      platform: "whatsapp",
+      platformId: "15551230001",
+    });
+    expect(replayed).toEqual({ status: "already_used" });
+  });
+
+  test("tolerates case and missing prefix in the typed code", async () => {
+    await seedAccount(USER_A, ORG_A, "steward-a");
+    const { code } = await startIdentityLink({
+      userId: USER_A,
+      organizationId: ORG_A,
+      platform: "telegram",
+    });
+    const bare = code.slice("LINK-".length).toLowerCase();
+    const confirmed = await confirmIdentityLink({
+      code: bare,
+      platform: "telegram",
+      platformId: "424242",
+      platformName: "sam_tg",
+    });
+    expect(confirmed.status).toBe("linked");
+    const [canonical] = await dbWrite.select().from(users).where(eq(users.id, USER_A));
+    expect(canonical.telegram_id).toBe("424242");
+  });
+
+  test("reports an unknown code as code_not_found", async () => {
+    const result = await confirmIdentityLink({
+      code: "LINK-ZZZZZZZZ",
+      platform: "whatsapp",
+      platformId: "15551230002",
+    });
+    expect(result).toEqual({ status: "code_not_found" });
+  });
+
+  test("reports an expired code as expired and never binds", async () => {
+    await seedAccount(USER_A, ORG_A, "steward-a");
+    const { code } = await startIdentityLink({
+      userId: USER_A,
+      organizationId: ORG_A,
+      platform: "whatsapp",
+    });
+    await dbWrite
+      .update(identityLinkCodes)
+      .set({ expires_at: new Date(Date.now() - 1_000) })
+      .where(eq(identityLinkCodes.code, code.slice("LINK-".length)));
+
+    const result = await confirmIdentityLink({
+      code,
+      platform: "whatsapp",
+      platformId: "15551230003",
+    });
+    expect(result).toEqual({ status: "expired" });
+    const [canonical] = await dbWrite.select().from(users).where(eq(users.id, USER_A));
+    expect(canonical.whatsapp_id).toBeNull();
+  });
+
+  test("rejects a confirm from the wrong platform without consuming the code", async () => {
+    await seedAccount(USER_A, ORG_A, "steward-a");
+    const { code } = await startIdentityLink({
+      userId: USER_A,
+      organizationId: ORG_A,
+      platform: "whatsapp",
+    });
+
+    const mismatch = await confirmIdentityLink({
+      code,
+      platform: "telegram",
+      platformId: "424242",
+    });
+    expect(mismatch).toEqual({ status: "platform_mismatch", expectedPlatform: "whatsapp" });
+
+    const stillValid = await confirmIdentityLink({
+      code,
+      platform: "whatsapp",
+      platformId: "15551230004",
+    });
+    expect(stillValid.status).toBe("linked");
+  });
+
+  test("rejects a handle already linked to a different account (cross-account confirm)", async () => {
+    await seedAccount(USER_A, ORG_A, "steward-a");
+    await seedAccount(USER_B, ORG_B, "steward-b");
+    await usersRepository.linkWhatsAppIdentity(USER_B, {
+      whatsapp_id: "15551230005",
+      whatsapp_name: "Owner B",
+    });
+
+    const { code } = await startIdentityLink({
+      userId: USER_A,
+      organizationId: ORG_A,
+      platform: "whatsapp",
+    });
+    const result = await confirmIdentityLink({
+      code,
+      platform: "whatsapp",
+      platformId: "15551230005",
+    });
+    expect(result).toEqual({ status: "handle_conflict" });
+
+    // The victim's handle keeps its owner and the code stays consumable by the
+    // legitimate flow.
+    const [ownerB] = await dbWrite.select().from(users).where(eq(users.id, USER_B));
+    expect(ownerB.whatsapp_id).toBe("15551230005");
+  });
+
+  test("normalizes and binds a phone handle end to end", async () => {
+    await seedAccount(USER_A, ORG_A, "steward-a");
+    const { code } = await startIdentityLink({
+      userId: USER_A,
+      organizationId: ORG_A,
+      platform: "phone",
+    });
+    const result = await confirmIdentityLink({
+      code,
+      platform: "phone",
+      platformId: "+1 (415) 555-0123",
+    });
+    expect(result.status).toBe("linked");
+    const [canonical] = await dbWrite.select().from(users).where(eq(users.id, USER_A));
+    expect(canonical.phone_number).toBe("+14155550123");
+    expect(canonical.phone_verified).toBe(true);
+  });
+});

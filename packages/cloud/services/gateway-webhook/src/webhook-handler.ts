@@ -7,6 +7,7 @@ import type {
 } from "./adapters/types";
 import { reacquireAuthHeader } from "./auth";
 import { resolveConnectorAccountId } from "./connector-account";
+import { tryConfirmIdentityLink } from "./identity-link";
 import { logger } from "./logger";
 import type { GatewayRedis } from "./redis";
 import {
@@ -362,6 +363,22 @@ async function processMessage(
   stageStartedAt = Date.now();
 
   if (!identity) {
+    // A LINK-XXXXXXXX code from an unlinked sender is an identity-link
+    // confirmation (#17344), not onboarding chatter: confirm it against the
+    // cloud, drop this handle's negative-cache entry on success, and answer
+    // with the link outcome instead of the onboarding flow.
+    const linkAttempt = await tryConfirmIdentityLink(
+      { redis, cloudBaseUrl, getAuthHeader },
+      adapter.platform,
+      event.senderId,
+      event.senderName,
+      event.text,
+    );
+    if (linkAttempt.handled && linkAttempt.reply) {
+      await beforeEgress?.();
+      await adapter.sendReply(config, event, linkAttempt.reply);
+      return;
+    }
     logger.info(
       "Identity not linked; routing message to the account entry service",
       {
