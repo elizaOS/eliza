@@ -529,7 +529,12 @@ describe("authenticated view loopback requests", () => {
 		process.env.ELIZA_PORT = String(server.port);
 		process.env.ELIZA_API_TOKEN = token;
 
-		const runtime = { agentId: "agent-1" } as never;
+		const runtime = {
+			agentId: "agent-1",
+			getTasks: async () => [],
+			createTask: async () => "task-1",
+			deleteTask: async () => undefined,
+		} as never;
 		const message = (text: string) =>
 			({
 				entityId: "user-1",

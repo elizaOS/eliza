@@ -10,22 +10,60 @@ import type {
 	Memory,
 	RoleGate,
 	RoleGateRole,
+	Task,
+	UUID,
 } from "@elizaos/core";
 import { satisfiesRoleGate } from "@elizaos/core";
 import { DEFAULT_ELIZA_CLOUD_TEXT_MODEL } from "@elizaos/shared";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	createModelSwitchAction,
 	inferModelSwitchRequest,
+	isModelSwitchIntent,
 	type ModelSwitchFn,
 	type ModelSwitchOutcome,
 	sanctionedModelError,
 } from "./model-switch.ts";
 
-const runtime = {} as IAgentRuntime;
+const pendingTasks: Task[] = [];
+const runtime = {
+	agentId: "agent-1" as UUID,
+	getTasks: vi.fn(
+		async ({
+			roomId,
+			tags,
+			agentIds,
+		}: {
+			roomId?: UUID;
+			tags?: string[];
+			agentIds: UUID[];
+		}) =>
+			pendingTasks.filter(
+				(task) =>
+					(!roomId || task.roomId === roomId) &&
+					task.agentId !== undefined &&
+					agentIds.includes(task.agentId) &&
+					(!tags || tags.every((tag) => task.tags?.includes(tag))),
+			),
+	),
+	createTask: vi.fn(async (task: Task) => {
+		const id = `task-${pendingTasks.length + 1}` as UUID;
+		pendingTasks.push({ ...task, id });
+		return id;
+	}),
+	deleteTask: vi.fn(async (id: UUID) => {
+		const index = pendingTasks.findIndex((task) => task.id === id);
+		if (index >= 0) pendingTasks.splice(index, 1);
+	}),
+} as unknown as IAgentRuntime;
 
-function message(text: string): Memory {
-	return { content: { text } } as Memory;
+beforeEach(() => {
+	pendingTasks.splice(0);
+	vi.clearAllMocks();
+});
+
+function message(text: string, roomId = "room-1" as UUID): Memory {
+	return { roomId, content: { text } } as Memory;
 }
 
 function captureCallback(): {
@@ -88,6 +126,23 @@ describe("inferModelSwitchRequest", () => {
 	});
 });
 
+describe("isModelSwitchIntent", () => {
+	it("recognizes preference-shaped and ambiguous model-switch asks", () => {
+		expect(isModelSwitchIntent("switch to the faster model")).toBe(true);
+		expect(isModelSwitchIntent("switch model between local and cloud")).toBe(
+			true,
+		);
+	});
+
+	it("does not claim model questions or generic settings asks", () => {
+		expect(isModelSwitchIntent("what model are you using?")).toBe(false);
+		expect(isModelSwitchIntent("open model settings")).toBe(false);
+		expect(isModelSwitchIntent("switch to high-contrast-dark-mode")).toBe(
+			false,
+		);
+	});
+});
+
 describe("sanctionedModelError", () => {
 	it("rejects a non-curated local id", () => {
 		expect(sanctionedModelError("local", "llama-3-8b")).toMatch(
@@ -121,15 +176,18 @@ describe("MODEL_SWITCH handler", () => {
 		return { action: createModelSwitchAction({ switchModel }), switchModel };
 	}
 
-	it("validates only messages that name a switch target", async () => {
+	it("validates explicit and preference-shaped switch requests", async () => {
 		const { action: a } = action({ ok: true });
 		expect(await a.validate(runtime, message("use the local model"))).toBe(
 			true,
 		);
+		expect(
+			await a.validate(runtime, message("switch to the faster model")),
+		).toBe(true);
 		expect(await a.validate(runtime, message("hi"))).toBe(false);
 	});
 
-	it("declares an OWNER role gate and required target param", () => {
+	it("declares an OWNER role gate and optional sanctioned target param", () => {
 		// #16172 gap 3: MODEL_SWITCH flips the GLOBAL inference backend, so it must
 		// be OWNER-gated (matching the owner-only `/model local|cloud` slash write
 		// and the sibling AGENT_SWITCH action). A planner-routed guest message must
@@ -137,8 +195,226 @@ describe("MODEL_SWITCH handler", () => {
 		const { action: a } = action({ ok: true });
 		expect(a.roleGate).toEqual({ minRole: "OWNER" });
 		const target = a.parameters?.find((p) => p.name === "target");
-		expect(target?.required).toBe(true);
+		expect(target?.required).toBe(false);
 		expect(target?.schema).toMatchObject({ enum: ["local", "cloud"] });
+	});
+
+	it("asks for a target instead of trusting a planner guess", async () => {
+		const { action: a, switchModel } = action({ ok: true });
+		const { callback, texts } = captureCallback();
+		const result = await a.handler(
+			runtime,
+			message("switch to the faster model"),
+			undefined,
+			{ target: "cloud" },
+			callback,
+		);
+		expect(switchModel).not.toHaveBeenCalled();
+		expect(result?.success).toBe(true);
+		expect(result?.values).toMatchObject({ awaitingTarget: true });
+		expect(texts[0]).toMatch(/local model|Eliza Cloud/);
+		expect(runtime.createTask).toHaveBeenCalledTimes(1);
+		expect(pendingTasks[0]?.agentId).toBe(runtime.agentId);
+	});
+
+	it("does not let a matching planner option resolve ambiguous user text", async () => {
+		const { action: a, switchModel } = action({ ok: true });
+		const { callback } = captureCallback();
+		const result = await a.handler(
+			runtime,
+			message("switch model between local and cloud"),
+			undefined,
+			{ target: "cloud" },
+			callback,
+		);
+		expect(switchModel).not.toHaveBeenCalled();
+		expect(result?.values).toMatchObject({ awaitingTarget: true });
+		expect(runtime.createTask).toHaveBeenCalledTimes(1);
+	});
+
+	it("does not let a planner invent a model tier for an explicit target", async () => {
+		const { action: a, switchModel } = action({
+			ok: true,
+			target: "local",
+		});
+		const { callback } = captureCallback();
+		await a.handler(
+			runtime,
+			message("switch to the local model"),
+			undefined,
+			{ target: "local", model: "eliza-1-4b" },
+			callback,
+		);
+		expect(switchModel).toHaveBeenCalledWith({ target: "local" });
+	});
+
+	it("consumes a persisted target choice on a real second action turn", async () => {
+		const { action: a, switchModel } = action({
+			ok: true,
+			target: "cloud",
+		});
+		const first = captureCallback();
+		await a.handler(
+			runtime,
+			message("switch to the faster model"),
+			undefined,
+			{ target: "local" },
+			first.callback,
+		);
+		expect(await a.validate(runtime, message("cloud"))).toBe(true);
+
+		const second = captureCallback();
+		const result = await a.handler(
+			runtime,
+			message("cloud"),
+			undefined,
+			{ target: "local" },
+			second.callback,
+		);
+		expect(switchModel).toHaveBeenCalledTimes(1);
+		expect(switchModel).toHaveBeenCalledWith({ target: "cloud" });
+		expect(result?.success).toBe(true);
+		expect(runtime.deleteTask).toHaveBeenCalledTimes(1);
+		expect(await a.validate(runtime, message("cloud"))).toBe(false);
+	});
+
+	it("clears a consumed target choice when the route refuses the switch", async () => {
+		const { action: a, switchModel } = action({
+			ok: false,
+			error: "no provider",
+		});
+		await a.handler(runtime, message("switch to the faster model"));
+
+		const result = await a.handler(runtime, message("cloud"));
+
+		expect(result?.success).toBe(false);
+		expect(switchModel).toHaveBeenCalledTimes(1);
+		expect(pendingTasks).toHaveLength(0);
+		expect(await a.validate(runtime, message("cloud"))).toBe(false);
+	});
+
+	it("clears a consumed target choice when the route throws", async () => {
+		const { action: a, switchModel } = action(new Error("ECONNREFUSED"));
+		await a.handler(runtime, message("switch to the faster model"));
+
+		const result = await a.handler(runtime, message("local"));
+
+		expect(result?.success).toBe(false);
+		expect(switchModel).toHaveBeenCalledTimes(1);
+		expect(pendingTasks).toHaveLength(0);
+	});
+
+	it("does not switch when the pending choice cannot be claimed", async () => {
+		const { action: a, switchModel } = action({ ok: true, target: "cloud" });
+		await a.handler(runtime, message("switch to the faster model"));
+		vi.mocked(runtime.deleteTask).mockRejectedValueOnce(
+			new Error("task store unavailable"),
+		);
+		const { callback, texts } = captureCallback();
+
+		const result = await a.handler(
+			runtime,
+			message("cloud"),
+			undefined,
+			undefined,
+			callback,
+		);
+
+		expect(result?.success).toBe(false);
+		expect(switchModel).not.toHaveBeenCalled();
+		expect(pendingTasks).toHaveLength(1);
+		expect(texts[0]).toMatch(/didn't switch anything/);
+	});
+
+	it("serializes concurrent targetless asks into one pending choice", async () => {
+		const { action: a, switchModel } = action({ ok: true });
+
+		await Promise.all([
+			a.handler(runtime, message("switch to the faster model")),
+			a.handler(runtime, message("switch model between local and cloud")),
+		]);
+
+		expect(runtime.createTask).toHaveBeenCalledTimes(1);
+		expect(pendingTasks).toHaveLength(1);
+		expect(switchModel).not.toHaveBeenCalled();
+	});
+
+	it("clears every duplicate pending choice before switching", async () => {
+		const { action: a, switchModel } = action({ ok: true, target: "cloud" });
+		const duplicate = {
+			name: "MODEL_SWITCH target choice",
+			description: "Awaiting an explicit target",
+			agentId: runtime.agentId,
+			roomId: "room-1" as UUID,
+			tags: ["MODEL_SWITCH_TARGET_CHOICE", "AWAITING_CHOICE"],
+			metadata: { choiceActionName: "MODEL_SWITCH" },
+		};
+		await runtime.createTask(duplicate);
+		await runtime.createTask(duplicate);
+
+		const result = await a.handler(runtime, message("use cloud inference"));
+
+		expect(result?.success).toBe(true);
+		expect(runtime.deleteTask).toHaveBeenCalledTimes(2);
+		expect(pendingTasks).toHaveLength(0);
+		expect(switchModel).toHaveBeenCalledTimes(1);
+	});
+
+	it("allows only one concurrent answer to consume a pending choice", async () => {
+		let resolveSwitch: ((outcome: ModelSwitchOutcome) => void) | undefined;
+		const switchModel = vi.fn(
+			() =>
+				new Promise<ModelSwitchOutcome>((resolve) => {
+					resolveSwitch = resolve;
+				}),
+		);
+		const a = createModelSwitchAction({ switchModel });
+		await a.handler(runtime, message("switch to the faster model"));
+
+		const localResult = a.handler(runtime, message("local"));
+		await vi.waitFor(() => expect(switchModel).toHaveBeenCalledTimes(1));
+		const cloudResult = a.handler(runtime, message("cloud"));
+		resolveSwitch?.({ ok: true, target: "local" });
+
+		const [first, second] = await Promise.all([localResult, cloudResult]);
+		expect(first?.success).toBe(true);
+		expect(second?.success).toBe(false);
+		expect(second?.text).toMatch(/no longer pending/);
+		expect(switchModel).toHaveBeenCalledTimes(1);
+		expect(pendingTasks).toHaveLength(0);
+	});
+
+	it("serializes global model switches across different rooms", async () => {
+		let resolveFirst: ((outcome: ModelSwitchOutcome) => void) | undefined;
+		const switchModel = vi
+			.fn<ModelSwitchFn>()
+			.mockImplementationOnce(
+				() =>
+					new Promise<ModelSwitchOutcome>((resolve) => {
+						resolveFirst = resolve;
+					}),
+			)
+			.mockResolvedValueOnce({ ok: true, target: "cloud" });
+		const a = createModelSwitchAction({ switchModel });
+
+		const localResult = a.handler(
+			runtime,
+			message("use the local model", "room-1" as UUID),
+		);
+		await vi.waitFor(() => expect(switchModel).toHaveBeenCalledTimes(1));
+		const cloudResult = a.handler(
+			runtime,
+			message("use cloud inference", "room-2" as UUID),
+		);
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		expect(switchModel).toHaveBeenCalledTimes(1);
+
+		resolveFirst?.({ ok: true, target: "local" });
+		const [first, second] = await Promise.all([localResult, cloudResult]);
+		expect(first?.success).toBe(true);
+		expect(second?.success).toBe(true);
+		expect(switchModel).toHaveBeenNthCalledWith(1, { target: "local" });
+		expect(switchModel).toHaveBeenNthCalledWith(2, { target: "cloud" });
 	});
 
 	it("narrates a cloud switch", async () => {
